@@ -367,7 +367,8 @@ class PreparePlan:
         )
         changeset = _decided(candidates, rendered, reading, manifest, state, target, handlers, composite_plans)
         stale = stale_observation(target, self._clock.monotonic_ms() - started)
-        # A reading with a refused read is incomplete, so no later plan may reuse it.
+        # A reading with a refused read is incomplete, so no later plan may reuse it. An advisory
+        # read the role may not make (SST-VAL020) is as complete as the role can ever read it.
         recorded = RecordedObservation(target, reading.observation, state, reading.preflight)
         ready = _ready(
             candidates,
@@ -379,7 +380,7 @@ class PreparePlan:
             leading=(*state_diagnostics, *((stale,) if stale else ())),
             trailing=channel_divergence(port, result),
         )
-        return replace(ready, recorded=None if reading.failures else recorded)
+        return replace(ready, recorded=None if reading.failures.has_errors else recorded)
 
     def run_recorded(
         self,

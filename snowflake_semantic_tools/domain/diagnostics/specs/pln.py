@@ -158,6 +158,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{value} is being modified by another session",
         "retry, or serialise the publishers",
         condition="the observation shows a competing writer",
+        note="Reading other sessions' locks needs MONITOR on the account. A role without it skips "
+        "this check, reported as `SST-VAL020`, and the plan goes ahead.",
     ),
     spec(
         "SST-PLN020",
