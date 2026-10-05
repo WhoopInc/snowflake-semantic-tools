@@ -5,7 +5,7 @@
 -- `stg_customers`, because the only cleaning this model needs is the aggregation
 -- below and a staging layer that does nothing is a file to maintain for no gain.
 --
--- WHOOP SQL conventions, the same set `../staging/stg_orders.sql` documents:
+-- The house SQL conventions, the same set `../staging/stg_orders.sql` documents:
 -- import CTEs first, one per `source()` or `ref()`; UPPERCASE keywords, functions
 -- and types; leading commas; tables always aliased; columns always prefixed with
 -- the alias; explicit JOIN syntax.

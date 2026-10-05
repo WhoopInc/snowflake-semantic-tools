@@ -27,7 +27,7 @@
   ],
   "tool_resources": {
     "partner_delivery_agent": {
-      "identifier": "SCRATCH.SST_1_REFERENCE_IMPL.DELIVERY_AGENT",
+      "identifier": "SST_TEST.REFERENCE.DELIVERY_AGENT",
       "type": "agent"
     }
   }

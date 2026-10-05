@@ -43,8 +43,7 @@ def test_reference_agents_match_complete_json_goldens() -> None:
         if isinstance(item, CompiledExtension) and item.artifact_type == "skill"
     }
     agent_targets = {
-        model.name.casefold(): QualifiedName.from_parts("SCRATCH", "SST_1_REFERENCE_IMPL", model.name)
-        for model in models
+        model.name.casefold(): QualifiedName.from_parts("SST_TEST", "REFERENCE", model.name) for model in models
     }
     result = CompileAgents(
         models,

@@ -86,6 +86,138 @@ The `pull_request` trigger gives a fork's pull request no secrets, so its connec
 authenticate. Keep it that way: a project's YAML is SQL that runs with the job's role, so never
 move a credentialed step to `pull_request_target`; see [Security](security.md#trust-model).
 
+## Template: a consumer project's deploy workflow
+
+> **A template for the repository that holds your dbt project.** It is not this repository's CI,
+> and nothing here runs it. The project that publishes to production owns its deploys: copy the
+> file to `.github/workflows/semantic-layer.yml` there and adjust the names.
+
+It validates and plans every pull request from the repository's own branches, and on each merge
+to `main` plans again and applies exactly that saved plan to `prod`. It signs in by key pair from
+repository secrets: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`,
+`SNOWFLAKE_WAREHOUSE`, and `SNOWFLAKE_PRIVATE_KEY`, the user's PKCS#8 private key as PEM text.
+The `prod` output in `profiles.yml` reads them:
+
+```yaml
+my_project:
+  target: dev
+  outputs:
+    prod:
+      type: snowflake
+      authenticator: snowflake_jwt
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
+      database: ANALYTICS_DB
+      schema: SEMANTIC
+      threads: 4
+```
+
+```yaml
+name: semantic layer
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+  SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+  SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+  SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+
+jobs:
+  plan:
+    name: Validate and plan
+    # A fork's pull request gets no secrets, so it cannot plan; review it before running this.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "snowflake-semantic-tools[dbt]==1.0.0"
+      - name: Write the private key
+        env:
+          PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$PRIVATE_KEY" > "$RUNNER_TEMP/snowflake_key.p8"
+          echo "SNOWFLAKE_PRIVATE_KEY_PATH=$RUNNER_TEMP/snowflake_key.p8" >> "$GITHUB_ENV"
+      - run: dbt deps
+      - run: sst validate --strict --target prod
+      - run: sst compile --target prod --emit-ddl target/ddl/
+      - name: Plan (exit 2 means there are changes to review)
+        run: sst plan --target prod --output json > plan.json || test $? -eq 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sst-plan
+          path: |
+            plan.json
+            target/ddl/
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/snowflake_key.p8"
+
+  apply:
+    name: Apply to prod
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Add required reviewers to this environment to approve each deploy by hand.
+    environment: production
+    # One deploy at a time, in merge order. Never cancel one in progress: an apply stopped part
+    # way can leave changes half published and its run lock behind.
+    concurrency:
+      group: sst-apply-prod
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "snowflake-semantic-tools[dbt]==1.0.0"
+      - name: Write the private key
+        env:
+          PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$PRIVATE_KEY" > "$RUNNER_TEMP/snowflake_key.p8"
+          echo "SNOWFLAKE_PRIVATE_KEY_PATH=$RUNNER_TEMP/snowflake_key.p8" >> "$GITHUB_ENV"
+      - run: dbt deps
+      - run: sst compile --target prod
+      - name: Plan, saving it to target/sst/plan.json
+        run: sst plan --target prod || test $? -eq 2
+      - name: Apply exactly the saved plan
+        run: sst apply --target prod --plan target/sst/plan.json --yes
+      - run: sst test --suite smoke --target prod
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/snowflake_key.p8"
+```
+
+- **The plan on merge is the one applied.** `apply --plan` executes that saved plan and refuses
+  it if the project or the target's state changed after it was written, so nothing is published
+  that no plan listed. The pull request's `plan.json` is for review; it is not applied, because
+  `main` may have moved by the time the branch merges.
+- **The run lock backs up the concurrency group.** The group queues this workflow's deploys;
+  `apply` also holds a lock in the target's state table while it runs, so an apply started
+  anywhere else -- another workflow, a laptop -- stops with `SST-APL011` rather than interleave.
+  If a killed run left its lock behind, `--break-stale-lock` takes over a lock whose run no
+  longer exists.
+- **Pin what runs.** Keep SST at an exact version and each action at a commit SHA, and let a
+  dependency bot propose updates.
+- **Prune is a separate decision.** The template never passes `--prune`; add it only once the
+  plan's drops are part of the review (see [Security](security.md#operating-sst)).
+
 ## JSON output
 
 Every command accepts `--output json` and then prints exactly one JSON object on

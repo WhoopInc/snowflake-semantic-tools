@@ -25,7 +25,7 @@ tools:
           Partner-operated agent answering delivery-status questions. Referenced so
           a jaffle agent can route to it; never created here.
         relations:
-          dev: SCRATCH.SST_1_REFERENCE_IMPL.DELIVERY_AGENT
+          dev: SST_TEST.REFERENCE.DELIVERY_AGENT
           prod: SST_REF_PROD.PARTNER.DELIVERY_AGENT
 
       # ---- generic --------------------------------------------------------

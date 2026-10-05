@@ -4,7 +4,7 @@
 -- The snapshot grain. `snapshot_month` is what makes a non-additive metric
 -- authorable, and non-additivity is unreachable without a snapshot table.
 --
--- WHOOP SQL conventions, the same set `../staging/stg_orders.sql` documents:
+-- The house SQL conventions, the same set `../staging/stg_orders.sql` documents:
 -- import CTEs first, one per `source()` or `ref()`; UPPERCASE keywords, functions
 -- and types; leading commas; tables always aliased; columns always prefixed with
 -- the alias; explicit JOIN syntax.

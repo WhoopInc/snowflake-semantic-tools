@@ -1,13 +1,15 @@
 """A live Snowflake account for the tests marked `live`: credentials, the run's scratch schema, the sweep.
 
-Credentials come only from the environment, as `SST_TEST_SNOWFLAKE_*`, and authenticate with a key
-pair, so a run needs no browser and no credential is written into a file. A profile `sst` reads
-names the variables, never their values.
+Where the tests connect, and as whom, is configuration only (`tests/helpers/live_config.py`): the
+environment, a git-ignored local file, or a named connection. A profile `sst` reads names the
+`SST_TEST_SNOWFLAKE_*` variables, never their values.
 
-Every live run works in a schema of its own, `SST_IT_<UTC timestamp>_<run>_<worker>`, created with
-the comment `SCRATCH_MARKER`. The timestamp makes a schema's age readable from its name, the run
-token lets a CI job drop exactly the schemas it created, and `sweepable` drops only a schema with
-both the prefix and the marker -- so neither can reach a schema anything else created.
+Every live run works in schemas of its own, `SST_IT_<UTC timestamp>_<run>_<worker>`, in the
+configured database, created with the comment `SCRATCH_MARKER`. The timestamp makes a schema's age
+readable from its name, the run token lets a CI job drop exactly the schemas it created, and
+`sweepable` drops only a schema with both the prefix and the marker -- so neither can reach a
+schema anything else created. `scratch_scope` is the one way a live helper names a schema to write
+to, and it refuses any name without the prefix and the configured reference schema itself.
 """
 
 from __future__ import annotations
@@ -16,70 +18,55 @@ import os
 import re
 import time
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from snowflake_semantic_tools.domain.model.identifier import Identifier, SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.sql import literal, scope, sql
+from tests.helpers.live_config import (
+    ENV_PREFIX,
+    LiveAccount,
+    LiveConfigurationError,
+    load_live_account,
+    not_configured_reason,
+)
 
-ENV_PREFIX = "SST_TEST_SNOWFLAKE_"
-REQUIRED = ("ACCOUNT", "USER", "PRIVATE_KEY_PATH", "ROLE", "WAREHOUSE", "DATABASE")
+__all__ = [
+    "ENV_PREFIX",
+    "SCRATCH_MARKER",
+    "SCRATCH_PREFIX",
+    "LiveAccount",
+    "LiveConfigurationError",
+    "create_scratch",
+    "drop_scratch",
+    "load_live_account",
+    "not_configured_reason",
+    "profile_target",
+    "run_token",
+    "scratch_created_at",
+    "scratch_schema_name",
+    "scratch_scope",
+    "sweepable",
+]
+
 SCRATCH_PREFIX = "SST_IT_"
 SCRATCH_MARKER = "sst test suite scratch schema, dropped by its run or by the sweep"
 _STAMP = "%Y%m%d%H%M%S"
 _SCRATCH_NAME = re.compile(r"^SST_IT_(?P<stamp>\d{14})_(?P<run>[A-Z0-9]+)_(?P<worker>[A-Z0-9]+)$")
 
 
-class LiveConfigurationError(Exception):
-    """Some `SST_TEST_SNOWFLAKE_*` variables are set and others are not."""
+def profile_target(schema: str, *, key_pair: bool = True) -> dict[str, object]:
+    """A dbt profile target in `schema` whose every account value is an `env_var` reference.
 
-
-@dataclass(frozen=True, slots=True)
-class LiveAccount:
-    """The account, key-pair user, role, warehouse and scratch database the live tests run in."""
-
-    account: str
-    user: str
-    private_key_path: str
-    role: str
-    warehouse: str
-    database: str
-
-    @classmethod
-    def from_environment(cls, environ: Mapping[str, str]) -> LiveAccount | None:
-        """Read the account from `environ`; None when no account is configured.
-
-        Raises:
-            LiveConfigurationError: the account is set but another required variable is not.
-        """
-        values = {name: environ.get(ENV_PREFIX + name, "") for name in REQUIRED}
-        if not values["ACCOUNT"]:
-            return None
-        missing = [ENV_PREFIX + name for name, value in values.items() if not value]
-        if missing:
-            raise LiveConfigurationError(f"set {', '.join(missing)} as well, or unset {ENV_PREFIX}ACCOUNT")
-        return cls(*(values[name] for name in REQUIRED))
-
-    def connection_params(self) -> dict[str, object]:
-        """The driver settings `SnowflakeConnector` connects with, by key pair."""
-        return {
-            "account": self.account,
-            "user": self.user,
-            "private_key_file": self.private_key_path,
-            "authenticator": "SNOWFLAKE_JWT",
-            "role": self.role,
-            "warehouse": self.warehouse,
-            "database": self.database,
-        }
-
-
-def profile_target(schema: str) -> dict[str, object]:
-    """A dbt profile target in `schema` whose every credential is an `env_var` reference."""
-    target: dict[str, object] = {"type": "snowflake", "authenticator": "snowflake_jwt", "threads": 4}
-    for name in REQUIRED:
-        key = "private_key_path" if name == "PRIVATE_KEY_PATH" else name.lower()
-        target[key] = "{{ env_var('" + ENV_PREFIX + name + "') }}"
+    By key pair it names the private key path; otherwise it names the authenticator, and an
+    `sst` subprocess signs in the way that authenticator does.
+    """
+    target: dict[str, object] = {"type": "snowflake", "threads": 4}
+    names = ("ACCOUNT", "USER", "PRIVATE_KEY_PATH" if key_pair else "AUTHENTICATOR", "ROLE", "WAREHOUSE", "DATABASE")
+    if key_pair:
+        target["authenticator"] = "snowflake_jwt"
+    for name in names:
+        target[name.lower()] = "{{ env_var('" + ENV_PREFIX + name + "') }}"
     target["schema"] = schema
     return target
 
@@ -126,7 +113,16 @@ def sweepable(
 
 
 def scratch_scope(account: LiveAccount, name: str) -> SchemaScope:
-    """The scratch schema `name` in the account's scratch database."""
+    """The scratch schema `name` in the account's configured database.
+
+    Raises:
+        ValueError: `name` lacks the scratch prefix, or is the configured reference schema.
+    """
+    folded = name.upper()
+    if not folded.startswith(SCRATCH_PREFIX) or folded == (account.schema or "").upper():
+        raise ValueError(
+            f"refusing to write to {account.database}.{name}: it is not an {SCRATCH_PREFIX} scratch schema"
+        )
     return SchemaScope(Identifier.parse(account.database), Identifier.parse(name))
 
 
@@ -134,8 +130,11 @@ def create_scratch(port: ExecutionPort, schema: SchemaScope) -> None:
     """Create `schema` with the marker the sweep recognises; refuse one that already exists.
 
     Raises:
+        ValueError: `schema` is not a scratch schema, so it is never created.
         RuntimeError: Snowflake refused the statement.
     """
+    if scratch_created_at(schema.schema.value) is None:
+        raise ValueError(f"refusing to create {schema.sql}: it is not an {SCRATCH_PREFIX} scratch schema")
     created = port.execute_script(
         (sql("CREATE SCHEMA {schema} COMMENT = {marker}", schema=scope(schema), marker=literal(SCRATCH_MARKER)),)
     )

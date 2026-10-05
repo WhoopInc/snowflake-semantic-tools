@@ -124,7 +124,7 @@
       }
     },
     "order_tier_lookup": {
-      "identifier": "SCRATCH.SST_1_REFERENCE_IMPL.ORDER_TIER_LOOKUP",
+      "identifier": "SST_TEST.REFERENCE.ORDER_TIER_LOOKUP",
       "type": "procedure",
       "execution_environment": {
         "type": "warehouse",

@@ -22,11 +22,11 @@ def with_dataset_template(template: str) -> ResolvedEval:
 
 
 def test_sst_val704_fires() -> None:
-    result = compile_eval(with_dataset_template("SCRATCH.ME.EVAL_{{ agent | upper }}_{{ sha7 }}"))
+    result = compile_eval(with_dataset_template("OTHER_DB.ME.EVAL_{{ agent | upper }}_{{ sha7 }}"))
     diagnostic = only(result.diagnostics, "SST-VAL704")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
-        "dataset 'SCRATCH.ME.EVAL_SALES_AGENT_0000000' resolves to SCRATCH.ME; agent 'sales_agent' resolves to DB.S"
+        "dataset 'OTHER_DB.ME.EVAL_SALES_AGENT_0000000' resolves to OTHER_DB.ME; agent 'sales_agent' resolves to DB.S"
     )
     assert diagnostic.subject == "eval:sales_agent"
     assert result.compiled == ()

@@ -22,7 +22,7 @@ from tests.helpers.live_snowflake import SCRATCH_MARKER, LiveAccount, scratch_sc
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
-ACCOUNT = LiveAccount("acct", "ci_user", "/keys/ci.p8", "CI_ROLE", "CI_WH", "SCRATCH_DB")
+ACCOUNT = LiveAccount("acct", "ci_user", "CI_ROLE", "CI_WH", "SCRATCH_DB", private_key_path="/keys/ci.p8")
 
 
 def coverage_report(**layers: tuple[int, int, int, int]) -> dict[str, Any]:

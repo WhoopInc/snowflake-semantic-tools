@@ -8,7 +8,8 @@ one with HYPOTHESIS_PROFILE or pytest's `--hypothesis-profile`.
 
 Every test also runs with an empty home directory and none of the environment variables `sst`
 reads, so a developer's own `~/.dbt/profiles.yml` or exported `SST_*` setting cannot change what
-a test sees.
+a test sees. An offline test also sees no live configuration: no `SST_TEST_SNOWFLAKE_*` variable
+and no local file.
 
 A test fails when a thread it started is still running shortly after it returns: a run-lease
 heartbeat or a pool worker that outlives its test holds locks and ports across tests.
@@ -18,10 +19,16 @@ name lookup to anything but a Unix socket or a loopback address raises, and a re
 test swallowed still fails the test (`tests/helpers/network_guard.py`). A live test, from the setup
 of the fixtures it brings in to its teardown, runs with the guard lifted.
 
-A test marked `live` connects to the Snowflake account `SST_TEST_SNOWFLAKE_*` describes. With no
-account it is skipped, and with `--require-snowflake` it fails instead, so a gate that could not
-connect is never green. Live tests share one connector per worker and work only in scratch
-schemas that `scratch_schema` creates and drops (`tests/helpers/live_snowflake.py`).
+A test marked `live` connects to the Snowflake account the live configuration describes -- the
+`SST_TEST_SNOWFLAKE_*` environment, the git-ignored `tests/live.local.env`, or a named connection
+(`tests/helpers/live_config.py`). It keeps the real home directory, where the driver finds its
+connection files and cached credentials, and its `sst` subprocesses see the resolved values as
+`SST_TEST_SNOWFLAKE_*`. It runs only when the marker expression selects live tests (`-m live`), so a
+run that clears `addopts` never connects. With no account it is skipped, and with
+`--require-snowflake` it fails instead, so a gate that could not connect is never green. Live tests
+share one connector per
+worker and work only in scratch schemas that `scratch_schema` creates and drops
+(`tests/helpers/live_snowflake.py`).
 """
 
 from __future__ import annotations
@@ -30,19 +37,22 @@ import os
 import threading
 from collections.abc import Callable, Generator, Iterator
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 from hypothesis import settings
 
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
-from tests.helpers import network_guard
+from tests.helpers import live_config, network_guard
 from tests.helpers.live_snowflake import (
     ENV_PREFIX,
     LiveAccount,
     LiveConfigurationError,
     create_scratch,
     drop_scratch,
+    load_live_account,
+    not_configured_reason,
     run_token,
     scratch_schema_name,
     scratch_scope,
@@ -69,13 +79,21 @@ _SST_ENVIRONMENT = (
 # How long a thread a test started may take to finish after the test returns, before it counts as
 # left running.
 _THREAD_GRACE_SECONDS = 2.0
+# Read before any test replaces HOME, so a live test finds the driver's connection files.
+_REAL_HOME = Path.home()
 
 
 @pytest.fixture(autouse=True)
-def _isolated_environment(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    monkeypatch.setenv("HOME", str(tmp_path_factory.mktemp("home")))
+def _isolated_environment(
+    request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[None]:
     for name in _SST_ENVIRONMENT:
         monkeypatch.delenv(name, raising=False)
+    if "live" not in request.keywords:
+        monkeypatch.setenv("HOME", str(tmp_path_factory.mktemp("home")))
+        for name in [name for name in os.environ if name.startswith(ENV_PREFIX)]:
+            monkeypatch.delenv(name)
+        monkeypatch.setattr(live_config, "LOCAL_FILE", tmp_path_factory.mktemp("live") / "absent.env")
     yield
 
 
@@ -128,26 +146,39 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
+def _configured_account() -> LiveAccount | None:
+    home = Path(os.environ.get("SNOWFLAKE_HOME") or _REAL_HOME / ".snowflake")
+    return load_live_account(os.environ, snowflake_home=home)
+
+
 def pytest_runtest_setup(item: pytest.Item) -> None:
     if "live" not in item.keywords:
         return
+    # A configured account must not turn an ordinary run, such as one that clears `addopts`, into
+    # a connected one: a live test runs only when the marker expression asks for live tests.
+    if "live" not in (item.config.getoption("markexpr") or ""):
+        pytest.skip("live tests run only when selected with -m live")
     try:
-        account = LiveAccount.from_environment(os.environ)
+        account = _configured_account()
     except LiveConfigurationError as error:
-        pytest.fail(f"the live Snowflake account is half configured: {error}")
+        pytest.fail(f"the live Snowflake configuration is incomplete: {error}")
     if account is not None:
         return
-    reason = f"no live Snowflake account: {ENV_PREFIX}ACCOUNT is not set"
+    reason = not_configured_reason()
     if item.config.getoption("--require-snowflake"):
         pytest.fail(f"--require-snowflake, but {reason}")
     pytest.skip(reason)
 
 
 @pytest.fixture(scope="session")
-def live_account() -> LiveAccount:
-    account = LiveAccount.from_environment(os.environ)
+def live_account() -> Iterator[LiveAccount]:
+    """The configured account, with its values exported as `SST_TEST_SNOWFLAKE_*` for `sst` subprocesses."""
+    account = _configured_account()
     assert account is not None, "pytest_runtest_setup lets a live test run only with an account"
-    return account
+    with pytest.MonkeyPatch.context() as patch:
+        for name, value in account.environment().items():
+            patch.setenv(name, value)
+        yield account
 
 
 @pytest.fixture(scope="session")

@@ -4,7 +4,7 @@
 -- The range-join partner, and the reason `DISTINCT RANGE` is reachable. Its
 -- `alias:` diverges from its model name, which is its second assertion.
 --
--- WHOOP SQL conventions, the same set `../staging/stg_orders.sql` documents:
+-- The house SQL conventions, the same set `../staging/stg_orders.sql` documents:
 -- import CTEs first, one per `source()` or `ref()`; UPPERCASE keywords, functions
 -- and types; leading commas; tables always aliased; columns always prefixed with
 -- the alias; explicit JOIN syntax.
