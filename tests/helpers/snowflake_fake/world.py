@@ -30,6 +30,10 @@ from snowflake_semantic_tools.domain.state import AppliedEntry
 from snowflake_semantic_tools.domain.state.lock import StateWrite
 from tests.helpers.snowflake_fake.run_locks import InMemoryRunLocks
 
+# MEASURED: Cortex agent evaluation adds this version to a dataset it runs against. It is
+# not SST's, and SST must never drop it.
+SYSTEM_DATASET_VERSION = "SYSTEM_AI_OBS_CORTEX_AGENT_DATASET_VERSION_DO_NOT_DELETE"
+
 
 @dataclass
 class PreflightAnswers:
@@ -97,6 +101,9 @@ class SnowflakeWorld:
         self.objects: dict[tuple[str, str], tuple[ShowRow, ...]] = dict(objects or {})
         self.grants: dict[str, tuple[GrantRow, ...]] = dict(grants or {})
         self.markers: dict[str, OwnershipMarker | None] = dict(markers or {})
+        # The type of each object named here, by qualified name: a marker read under another
+        # type finds nothing, as SHOW <type> LIKE lists no object of a different type.
+        self.object_types: dict[str, str] = {}
         # GET_DDL's answer by qualified name; an object missing here has no readable definition.
         self.definitions: dict[str, str] = dict(definitions or {})
         # The qualified names that exist; None models an account where every TABLE OR VIEW does.
@@ -120,6 +127,10 @@ class SnowflakeWorld:
         self.live_agents: set[str] = set()
         # The versions of each dataset, by qualified name; ADD VERSION appends to them.
         self.dataset_version_names: dict[str, list[str]] = {}
+        # Each dataset's owner, by qualified name, as SHOW DATASETS lists it; a dataset not
+        # named here is owned by the session's role. MEASURED: SHOW GRANTS ON DATASET is a
+        # syntax error, so SHOW DATASETS' `owner` is the only way to read who owns one.
+        self.dataset_owners: dict[str, str] = {}
         self.table_row_counts: dict[str, int] = {}
         # Column (name, type) pairs by qualified name; the profile registry's shape lands here.
         self.tables: dict[str, tuple[tuple[str, str], ...]] = {}

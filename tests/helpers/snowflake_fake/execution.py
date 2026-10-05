@@ -20,7 +20,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
-from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, GrantRow, QueryResult
+from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
 from tests.helpers.snowflake_fake.extensions import apply_extension_statement, quoted_arguments
@@ -106,7 +106,7 @@ class FakeExecution(SnowflakeWorld):
             if len(quoted) >= 3 and self.existing is not None:
                 self.existing.add(quoted[2])
                 # The role that creates a dataset owns it.
-                self.grants.setdefault(quoted[2], (GrantRow("OWNERSHIP", "ROLE", self.role),))
+                self.dataset_owners.setdefault(quoted[2], self.role)
 
     def _exists(self, name: str) -> None:
         if self.existing is not None:

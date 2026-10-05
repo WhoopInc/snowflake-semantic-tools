@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
+import pytest
+
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
 
 SCOPE = SchemaScope(Identifier.parse("DB"), Identifier.parse("SCH"))
@@ -157,7 +160,34 @@ def test_the_walk_stops_at_the_hierarchy_depth_and_reads_a_deeper_grant_as_missi
     assert within.missing_role_privileges("R00", SCOPE, ("CREATE TASK",)) == ()
 
 
+def _version_row(version: str) -> dict[str, object]:
+    """A row as SHOW VERSIONS IN DATASET lists it: the version's name is `version`."""
+    return {
+        "created_on": "2026-01-01",
+        "version": version,
+        "comment": None,
+        "database_name": "DB",
+        "schema_name": "SCH",
+        "dataset_name": "DS",
+        "metadata": "{}",
+    }
+
+
 def test_a_dataset_lists_its_versions_by_name_in_show_order() -> None:
-    connector = ScriptedConnector({"SHOW VERSIONS IN DATASET": ({"name": "SST_ABC"}, {"name": ""}, {"name": "V2"})})
+    connector = ScriptedConnector(
+        {"SHOW VERSIONS IN DATASET": (_version_row("SST_ABC"), _version_row(""), _version_row("V2"))}
+    )
     assert connector.dataset_versions(QualifiedName.parse("DB.SCH.DS")) == ("SST_ABC", "V2")
     assert connector.sent == [("SHOW VERSIONS IN DATASET DB.SCH.DS", None)]
+
+
+def test_a_dataset_version_is_read_from_the_version_column_not_name() -> None:
+    connector = ScriptedConnector({"SHOW VERSIONS IN DATASET": ({"name": "WRONG", "version": "SST_ABC"},)})
+    assert connector.dataset_versions(QualifiedName.parse("DB.SCH.DS")) == ("SST_ABC",)
+
+
+def test_grants_on_a_dataset_are_refused_without_sending_a_statement() -> None:
+    connector = ScriptedConnector({})
+    with pytest.raises(SnowflakePortError, match="no grants on a dataset"):
+        connector.show_grants("dataset", QualifiedName.parse("DB.SCH.DS"))
+    assert connector.sent == []

@@ -6,8 +6,9 @@ from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.model.agent import AgentProfile
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.validate.agent import agent_rules, token_budget
-from snowflake_semantic_tools.domain.validate.agent_live import signature_disagreement
+from snowflake_semantic_tools.domain.validate.agent_live import names_object, signature_disagreement
 from snowflake_semantic_tools.domain.validate.agent_tool import (
     misplaced_keys,
     overrides,
@@ -99,3 +100,13 @@ def test_a_search_tools_own_columns_and_its_members_both_count() -> None:
     assert [item.context["value"] for item in overrides(MODEL, tool, "docs", member)][-1:] == [
         "columns_and_descriptions"
     ]
+
+
+def test_a_live_specification_names_an_object_by_its_qualified_name_anywhere_in_it() -> None:
+    view = QualifiedName.parse("DB.S.ORDERS")
+    assert names_object({"tool_resources": {"analyst": {"semantic_view": "db.s.orders"}}}, view)
+    assert names_object({"tools": [{"name": "x"}, ["DB.S.ORDERS"]]}, view)
+    assert not names_object({"tool_resources": {"analyst": {"semantic_view": "DB.S.CUSTOMERS"}}}, view)
+    assert not names_object({"limit": 3, "flag": None, "text": "no dots here"}, view)
+    assert not names_object({"unbalanced": '"DB.S.ORDERS', "four": "A.B.C.D"}, view)
+    assert not names_object('"DB"."S"."orders"', view)

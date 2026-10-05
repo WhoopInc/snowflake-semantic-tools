@@ -57,7 +57,7 @@ def test_apply_publishes_a_view_that_carries_its_marker_and_answers_a_metric(
 ) -> None:
     assert applied.first.exit_code == 0, applied.first.stdout
     view = live_view(applied.schema)
-    assert live_connector.describe_marker(view) is not None
+    assert live_connector.describe_marker(view, "SEMANTIC VIEW") is not None
     answered = live_connector.query(
         sql("SELECT SV.ORDER_COUNT FROM SEMANTIC_VIEW({view} METRICS ORDERS.ORDER_COUNT) AS SV", view=qname(view))
     )

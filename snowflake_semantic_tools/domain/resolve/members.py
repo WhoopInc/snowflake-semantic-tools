@@ -90,7 +90,8 @@ def attach_view_members(
         changed = False
         for member in candidates:
             dependency_keys = dependencies.get(member.key, ())
-            if not dependency_keys:
+            # A poisoned metric stays unattached however healthy what it is built on is.
+            if not dependency_keys or member.poisoned:
                 continue
             initial = attached.get(member.key, ())
             allowed = set(initial) if effective_tables(member) else set(view_tables)

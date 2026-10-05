@@ -55,7 +55,7 @@ def observe(port: SnowflakePort, schema: SchemaScope) -> dict[str, Any]:
     """What Snowflake shows of the live project published in `schema`, unnormalised."""
     view = live_view(schema)
     table = orders_table(schema)
-    marker = port.describe_marker(view)
+    marker = port.describe_marker(view, "SEMANTIC VIEW")
     state = port.read_state(QualifiedName(schema.database, schema.schema, Identifier.parse("SST_STATE")), TARGET)
     return {
         "objects": {f"SEMANTIC VIEW|{schema.sql}": [asdict(row) for row in port.show_objects("SEMANTIC VIEW", schema)]},

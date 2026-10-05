@@ -98,9 +98,7 @@ class SmokeSession(TrackedSession):
             raise SnowflakePortError("probe refused")
         return super().query(sql, params)
 
-    def describe_marker(
-        self, qualified_name: QualifiedName, object_type: str = "SEMANTIC VIEW"
-    ) -> OwnershipMarker | None:
+    def describe_marker(self, qualified_name: QualifiedName, object_type: str) -> OwnershipMarker | None:
         self.opened.saw()
         _pause()
         return super().describe_marker(qualified_name, object_type)

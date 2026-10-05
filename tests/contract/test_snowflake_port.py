@@ -47,7 +47,7 @@ def test_the_fake_implements_the_full_read_write_contract() -> None:
     )
     assert port.show_objects("SEMANTIC VIEW", scope) == (row,)
     assert port.show_grants("SEMANTIC VIEW", name) == (grant,)
-    assert port.describe_marker(name) == marker
+    assert port.describe_marker(name, "SEMANTIC VIEW") == marker
     assert port.object_exists("TABLE", name)
     assert port.dataset_exists(name)
     assert port.describe_stage_file_format(name) is None

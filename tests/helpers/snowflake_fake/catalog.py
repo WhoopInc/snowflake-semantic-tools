@@ -7,6 +7,7 @@ refuses the statement behind it.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
@@ -30,17 +31,25 @@ class FakeCatalog(SnowflakeWorld):
         qualified_name: QualifiedName,
         routine_signature: tuple[str, ...] = (),
     ) -> tuple[GrantRow, ...]:
-        del object_type, routine_signature
+        del routine_signature
         self._check("show_grants")
+        if " ".join(object_type.upper().split()) == "DATASET":
+            # MEASURED: Snowflake rejects SHOW GRANTS ON DATASET in every form.
+            raise SnowflakePortError(
+                "SQL compilation error: syntax error line 1 at position 23 "
+                f"unexpected '{qualified_name.database.folded}'."
+            )
         return self.grants.get(qualified_name.sql, ())
 
     def describe_marker(
         self,
         qualified_name: QualifiedName,
-        object_type: str = "SEMANTIC VIEW",
+        object_type: str,
     ) -> OwnershipMarker | None:
-        del object_type
         self._check("describe_marker")
+        recorded = self.object_types.get(qualified_name.sql)
+        if recorded is not None and recorded.upper() != " ".join(object_type.upper().split()):
+            return None
         return self.markers.get(qualified_name.sql)
 
     def get_ddl(self, object_type: str, qualified_name: QualifiedName) -> str:
@@ -142,7 +151,23 @@ class FakeCatalog(SnowflakeWorld):
 
     def show_row(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
         self._check("show_row")
-        return self.show_rows.get(f"{object_type.upper()} {qualified_name.sql}")
+        kind = " ".join(object_type.upper().split())
+        row = self.show_rows.get(f"{kind} {qualified_name.sql}")
+        if row is None and kind == "DATASET" and self.dataset_exists(qualified_name):
+            return self._dataset_row(qualified_name)
+        return row
+
+    def _dataset_row(self, qualified_name: QualifiedName) -> Mapping[str, str]:
+        """A dataset's row as SHOW DATASETS lists it, its keys casefolded as `show_row` returns them."""
+        return {
+            "created_on": "",
+            "name": qualified_name.name.folded,
+            "database_name": qualified_name.database.folded,
+            "schema_name": qualified_name.schema.folded,
+            "comment": "",
+            "owner": self.dataset_owners.get(qualified_name.sql, self.role),
+            "versions": json.dumps(self.dataset_version_names.get(qualified_name.sql, [])),
+        }
 
     def describe_properties(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
         self._check("describe_properties")

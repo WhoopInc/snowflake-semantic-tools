@@ -38,7 +38,7 @@ def test_catalog_port_methods_are_declarations_only() -> None:
     source = object()
     assert CatalogPort.show_objects(source, "x", object()) is None  # type: ignore[arg-type]
     assert CatalogPort.show_grants(source, "x", object()) is None  # type: ignore[arg-type]
-    assert CatalogPort.describe_marker(source, object()) is None  # type: ignore[arg-type]
+    assert CatalogPort.describe_marker(source, object(), "x") is None  # type: ignore[arg-type]
     assert CatalogPort.object_exists(source, "x", object()) is None  # type: ignore[arg-type]
     assert CatalogPort.dataset_exists(source, object()) is None  # type: ignore[arg-type]
     assert CatalogPort.table_columns(source, object()) is None  # type: ignore[arg-type]

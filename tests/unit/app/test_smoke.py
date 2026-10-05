@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
+import pytest
+
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.manifest import manifest_for
 from snowflake_semantic_tools.app.smoke import SmokePublished
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
 from snowflake_semantic_tools.domain.state import AppliedEntry, Manifest, State
+from tests.helpers.agent_builders import compile_tools, search_member
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.compile_builders import compiled
 from tests.helpers.project_inputs import EMPTY_SOURCES, dev_target
@@ -22,11 +25,11 @@ class MarkerCountingSnowflake(FakeSnowflake):
     def __init__(self) -> None:
         super().__init__()
         self.described: list[str] = []
+        self.described_types: list[str] = []
 
-    def describe_marker(
-        self, qualified_name: QualifiedName, object_type: str = "SEMANTIC VIEW"
-    ) -> OwnershipMarker | None:
+    def describe_marker(self, qualified_name: QualifiedName, object_type: str) -> OwnershipMarker | None:
         self.described.append(qualified_name.sql)
+        self.described_types.append(object_type)
         return super().describe_marker(qualified_name, object_type)
 
 
@@ -51,6 +54,7 @@ def published(result: CompileResult) -> tuple[Manifest, MarkerCountingSnowflake]
     port.markers = {
         artifact.target.sql: OwnershipMarker(manifest.manifest_id, artifact.fingerprint) for artifact in result.rendered
     }
+    port.object_types = {artifact.target.sql: artifact.object_type for artifact in result.rendered}
     return manifest, port
 
 
@@ -72,6 +76,26 @@ def test_owned_objects_are_probed_as_apply_published_them() -> None:
     assert [probe.key for probe in outcome.attempted] == ["semantic_view:menu:view", "semantic_view:sales:view"]
     assert [sql for sql, _ in port.queries] == [str(probe.sql) for probe in outcome.attempted]
     assert port.described == ["DB.SCH.MENU", "DB.SCH.SALES"]
+
+
+@pytest.mark.parametrize(
+    ("result", "described_types"),
+    [
+        pytest.param(compiled("MENU"), ["SEMANTIC VIEW"], id="semantic-view"),
+        pytest.param(compiled("MENU", agents=("ANALYST",)), ["SEMANTIC VIEW", "AGENT"], id="agent"),
+        pytest.param(compile_tools([search_member()]), ["CORTEX SEARCH SERVICE"], id="search-service"),
+    ],
+)
+def test_each_marker_is_read_under_its_artifact_s_object_type(
+    result: CompileResult, described_types: list[str]
+) -> None:
+    manifest, port = published(result)
+
+    outcome = smoke(result, manifest, port)
+
+    assert "SST-APL012" not in [item.code for item in outcome.diagnostics]
+    assert port.described_types == described_types
+    assert len(outcome.attempted) == len(described_types)
 
 
 def test_state_from_another_manifest_and_a_changed_marker_keep_every_probe_from_running() -> None:

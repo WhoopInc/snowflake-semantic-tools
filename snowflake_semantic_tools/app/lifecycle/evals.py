@@ -149,20 +149,20 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
 
         SST mints a dataset as the session's role, so that role owns it unless ownership moved
         since -- a future grant, or a hand transfer -- and only the owner may add a version.
+        Snowflake lists no grants on a dataset, so the owner is read from SHOW DATASETS and
+        compared with the role as the agent observation compares an agent's owner.
         """
         role = self._port.current_role()
-        grants = self._port.show_grants("DATASET", dataset)
-        if any(
-            grant.privilege.upper() == "OWNERSHIP" and grant.grantee_name.upper() == role.upper() for grant in grants
-        ):
+        row = self._port.show_row("DATASET", dataset)
+        owner = (row or {}).get("owner", "")
+        if owner.upper() == role.upper():
             return None
-        held = sorted({grant.privilege.upper() for grant in grants if grant.grantee_name.upper() == role.upper()})
         return D(
             "SST-VAL713",
             subject=artifact.key,
             artifact=artifact.key,
             value=role,
-            found=", ".join(held) or "no privilege",
+            found=f"no ownership ({owner} owns it)" if owner else "no ownership",
         )
 
     def _decide(

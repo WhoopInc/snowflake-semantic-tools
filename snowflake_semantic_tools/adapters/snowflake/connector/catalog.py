@@ -41,6 +41,9 @@ OBJECT_TYPES = frozenset(
 )
 # The account-level object types SHOW PARAMETERS ... IN <type> is asked about.
 PARAMETER_OBJECT_TYPES = frozenset(("WAREHOUSE",))
+# The observed types SHOW GRANTS ON <type> cannot address: Snowflake reports a dataset's
+# grants only in SHOW GRANTS TO ROLE, and its owner in SHOW DATASETS.
+_UNLISTED_GRANTS = frozenset(("DATASET",))
 
 
 class CatalogMethods(Session, CatalogPort):
@@ -79,12 +82,14 @@ class CatalogMethods(Session, CatalogPort):
         routine_signature: tuple[str, ...] = (),
     ) -> tuple[GrantRow, ...]:
         object_name = qname(qualified_name)
-        if object_type.upper() in {"PROCEDURE", "FUNCTION"}:
+        kind = _object_type(object_type)
+        if kind in _UNLISTED_GRANTS:
+            # Snowflake rejects SHOW GRANTS ON DATASET in every form; it is never sent.
+            raise SnowflakePortError(f"Snowflake lists no grants on a {kind.lower()}; read its owner from SHOW")
+        if kind in {"PROCEDURE", "FUNCTION"}:
             types = join(", ", (datatype(value) for value in routine_signature))
             object_name = sql("{name}({types})", name=object_name, types=types)
-        rows = self._dict_rows(
-            sql("SHOW GRANTS ON {kind} {name}", kind=keyword(_object_type(object_type)), name=object_name)
-        )
+        rows = self._dict_rows(sql("SHOW GRANTS ON {kind} {name}", kind=keyword(kind), name=object_name))
         return tuple(
             sorted(
                 GrantRow(
@@ -101,7 +106,7 @@ class CatalogMethods(Session, CatalogPort):
     def describe_marker(
         self,
         qualified_name: QualifiedName,
-        object_type: str = "SEMANTIC VIEW",
+        object_type: str,
     ) -> OwnershipMarker | None:
         rows = self._show_like(object_type, qualified_name, str.upper)
         return extract_marker(_show_comment(rows[0])) if rows else None
@@ -188,7 +193,8 @@ class CatalogMethods(Session, CatalogPort):
 
     def dataset_versions(self, qualified_name: QualifiedName) -> tuple[str, ...]:
         rows = self._dict_rows(sql("SHOW VERSIONS IN DATASET {dataset}", dataset=qname(qualified_name)))
-        return tuple(str(row.get("name") or "") for row in rows if row.get("name"))
+        # SHOW VERSIONS IN DATASET names each version in `version`; it has no `name` column.
+        return tuple(str(row.get("version") or "") for row in rows if row.get("version"))
 
     def describe_stage_file_format(self, qualified_name: QualifiedName) -> str | None:
         rows = self._dict_rows(sql("DESCRIBE STAGE {stage}", stage=qname(qualified_name)))
@@ -259,13 +265,13 @@ class CatalogMethods(Session, CatalogPort):
         if selector.upper().startswith("VERSION$"):
             return selector.upper()
         rows = self._dict_rows(sql("DESCRIBE AGENT {agent}", agent=qname(qualified_name)))
-        # Unlike DESCRIBE STAGE above, a row's `name` and `value` win over `property` and
-        # `property_value`, and names compare casefolded.
-        properties = {
-            str(row.get("name") or row.get("property") or "").casefold(): row.get("value", row.get("property_value"))
-            for row in rows
-        }
-        aliases = _variant_value(properties.get("aliases"), {})
+        # MEASURED: DESCRIBE AGENT answers one row whose columns include `aliases`, a JSON
+        # object from alias to version such as {"LAST": "VERSION$1"}; column names compare
+        # casefolded.
+        if len(rows) != 1:
+            raise _unexpected_describe(f"AGENT {qualified_name.sql}")
+        columns = {str(key).casefold(): value for key, value in rows[0].items()}
+        aliases = _variant_value(columns.get("aliases"), {})
         if not isinstance(aliases, dict):
             raise _unexpected_describe(f"AGENT {qualified_name.sql}")
         key = "LAST" if selector == "committed" else selector.removeprefix("alias:")

@@ -66,14 +66,15 @@ class CatalogPort(Protocol):
         the overload; any other object ignores it. Never writes.
 
         Raises:
-            SnowflakePortError: SHOW GRANTS failed, including for an object that does not exist.
+            SnowflakePortError: SHOW GRANTS failed, including for an object that does not exist,
+                or the object is a dataset, whose grants Snowflake does not list this way.
         """
         ...
 
     def describe_marker(
         self,
         qualified_name: QualifiedName,
-        object_type: str = "SEMANTIC VIEW",
+        object_type: str,
     ) -> OwnershipMarker | None:
         """Return the SST ownership marker in the comment of one object of `object_type`.
 
@@ -122,7 +123,8 @@ class CatalogPort(Protocol):
     def dataset_versions(self, qualified_name: QualifiedName) -> tuple[str, ...]:
         """Return the names of a dataset's versions, as SHOW VERSIONS lists them, in its order.
 
-        Never writes.
+        The list holds every version, including ones SST did not add, such as the system
+        version Cortex agent evaluation adds to a dataset it runs against. Never writes.
 
         Raises:
             SnowflakePortError: SHOW VERSIONS failed, as it does for a dataset that does not exist.

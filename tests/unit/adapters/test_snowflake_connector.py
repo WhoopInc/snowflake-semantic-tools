@@ -14,7 +14,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConne
 from snowflake_semantic_tools.adapters.snowflake.connector import session as session_module
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult
-from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import Sql, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
@@ -653,6 +653,40 @@ def test_describe_properties_reads_property_rows_or_a_single_row() -> None:
     single = StubSnowflakeConnector({**present, "DESCRIBE AGENT": ({"name": "SALES_AGENT", "agent_spec": "{}"},)})
     assert single.describe_properties("AGENT", name) == {"name": "SALES_AGENT", "agent_spec": "{}"}
     assert StubSnowflakeConnector({}).describe_properties("AGENT", name) is None
+
+
+def _described_agent(aliases: object) -> dict[str, object]:
+    """DESCRIBE AGENT's one row, as Snowflake answers it, with `aliases` as given."""
+    return {
+        "name": "SALES_AGENT",
+        "database_name": "DB",
+        "schema_name": "S",
+        "owner": "ROLE_A",
+        "comment": None,
+        "profile": None,
+        "agent_spec": "{}",
+        "created_on": "2026-01-01",
+        "default_version_name": "LAST",
+        "versions": '["VERSION$1"]',
+        "aliases": aliases,
+    }
+
+
+def test_an_agent_version_selector_resolves_through_describe_agent_s_aliases_column() -> None:
+    name = QualifiedName.parse("DB.S.SALES_AGENT")
+    aliases = '{"DEFAULT":"VERSION$1","FIRST":"VERSION$1","LAST":"VERSION$2","PROMOTED":"VERSION$1"}'
+    connector = StubSnowflakeConnector({"DESCRIBE AGENT": (_described_agent(aliases),)})
+    assert connector.resolve_agent_version(name, "committed") == "VERSION$2"
+    assert connector.resolve_agent_version(name, "alias:promoted") == "VERSION$1"
+    assert connector.resolve_agent_version(name, "version$7") == "VERSION$7"
+    with pytest.raises(AgentVersionNotFound):
+        connector.resolve_agent_version(name, "alias:missing")
+    never_committed = StubSnowflakeConnector({"DESCRIBE AGENT": (_described_agent(None),)})
+    with pytest.raises(AgentVersionNotFound):
+        never_committed.resolve_agent_version(name, "committed")
+    for rows in ((), (_described_agent("{}"), _described_agent("{}")), (_described_agent("[]"),)):
+        with pytest.raises(SnowflakePortError, match="unexpected shape"):
+            StubSnowflakeConnector({"DESCRIBE AGENT": rows}).resolve_agent_version(name, "committed")
 
 
 def test_object_parameter_reads_one_warehouse_parameter() -> None:
