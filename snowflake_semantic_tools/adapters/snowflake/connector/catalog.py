@@ -265,13 +265,13 @@ class CatalogMethods(Session, CatalogPort):
         if selector.upper().startswith("VERSION$"):
             return selector.upper()
         rows = self._dict_rows(sql("DESCRIBE AGENT {agent}", agent=qname(qualified_name)))
-        # Unlike DESCRIBE STAGE above, a row's `name` and `value` win over `property` and
-        # `property_value`, and names compare casefolded.
-        properties = {
-            str(row.get("name") or row.get("property") or "").casefold(): row.get("value", row.get("property_value"))
-            for row in rows
-        }
-        aliases = _variant_value(properties.get("aliases"), {})
+        # MEASURED: DESCRIBE AGENT answers one row whose columns include `aliases`, a JSON
+        # object from alias to version such as {"LAST": "VERSION$1"}; column names compare
+        # casefolded.
+        if len(rows) != 1:
+            raise _unexpected_describe(f"AGENT {qualified_name.sql}")
+        columns = {str(key).casefold(): value for key, value in rows[0].items()}
+        aliases = _variant_value(columns.get("aliases"), {})
         if not isinstance(aliases, dict):
             raise _unexpected_describe(f"AGENT {qualified_name.sql}")
         key = "LAST" if selector == "committed" else selector.removeprefix("alias:")
