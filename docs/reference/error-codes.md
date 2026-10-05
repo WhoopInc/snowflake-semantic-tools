@@ -620,7 +620,7 @@ Fix: create the directory, or remove the key
 
 `<block>: declares a folder route '<key>'`
 
-Raised when an unprefixed path-segment key appears inside `evals:`.
+Raised when an unprefixed path-segment key appears inside `evals:` or `skills:`.
 
 Fix: remove it -- `evals:` location is structural, and `skills:`'s unprefixed keys are its `catalog`/`stage` sub-blocks
 

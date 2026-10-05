@@ -310,7 +310,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{block}: declares a folder route '{key}'",
         "remove it -- `evals:` location is structural, and `skills:`'s unprefixed keys are its `catalog`/`stage` "
         "sub-blocks",
-        condition="an unprefixed path-segment key appears inside `evals:`",
+        condition="an unprefixed path-segment key appears inside `evals:` or `skills:`",
     ),
     spec(
         "SST-CFG043",
