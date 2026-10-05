@@ -106,6 +106,10 @@ class PreflightPort(Protocol):
     def external_references(self, qualified_name: QualifiedName) -> tuple[QualifiedName, ...]:
         """Return the objects that name an object, as Snowflake's dependency record lists them.
 
+        The record is `SNOWFLAKE.ACCOUNT_USAGE`, which Snowflake shows only a role granted
+        IMPORTED PRIVILEGES on the `SNOWFLAKE` database, or a database role there that covers
+        it; a role without it is refused as if the schema did not exist.
+
         Raises:
             SnowflakePortError: the dependency record could not be read.
         """

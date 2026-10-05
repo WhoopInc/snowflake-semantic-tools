@@ -58,9 +58,19 @@ control character, or template syntax, and reports each one it refuses for its c
 - **Use a dedicated, least-privileged role.** Give the role SST connects as the privileges to
   create and replace the object types it publishes in its target schemas, read access to the
   tables the semantic views select from, and nothing else. Grant consumers access to the
-  published objects separately; SST does not. `plan` needs nothing account-wide: without
-  `MONITOR` on the account it cannot see other users' locks, so it skips the
-  concurrent-writer warning (`SST-PLN019`) with an info (`SST-VAL020`) and goes ahead.
+  published objects separately; SST does not. `plan` and `apply` need nothing account-wide.
+  Two account-level grants are optional; each only feeds a warning, so a role without one
+  skips that warning with an info (`SST-VAL020`, shown with `--show-info`) and goes ahead:
+
+  | Optional grant | What it reads | Without it |
+  |---|---|---|
+  | `MONITOR` on the account | other users' locks (`SHOW LOCKS IN ACCOUNT`) | no concurrent-writer warning (`SST-PLN019`) |
+  | `IMPORTED PRIVILEGES` on the `SNOWFLAKE` database | `SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES` | under `--prune`, no warning that a dropped object is still named by something outside the project (`SST-PLN017`) |
+
+  Without the second, `apply --prune` drops each orphan the plan lists without checking who
+  names it, so read the plan's drops yourself before confirming with `--yes`. Even with the
+  grant the check is a warning, never a block, and Snowflake's dependency record can lag by up
+  to three hours.
 - **Develop against a scratch schema.** Point a personal target in `profiles.yml` at a schema
   of your own, and run `plan` and `apply` there before any change reaches a shared target.
 - **Apply only a reviewed plan.** Plan on pull requests from the repository's own branches,
