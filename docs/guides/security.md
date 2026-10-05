@@ -58,7 +58,9 @@ control character, or template syntax, and reports each one it refuses for its c
 - **Use a dedicated, least-privileged role.** Give the role SST connects as the privileges to
   create and replace the object types it publishes in its target schemas, read access to the
   tables the semantic views select from, and nothing else. Grant consumers access to the
-  published objects separately; SST does not.
+  published objects separately; SST does not. `plan` needs nothing account-wide: without
+  `MONITOR` on the account it cannot see other users' locks, so it skips the
+  concurrent-writer warning (`SST-PLN019`) with an info (`SST-VAL020`) and goes ahead.
 - **Develop against a scratch schema.** Point a personal target in `profiles.yml` at a schema
   of your own, and run `plan` and `apply` there before any change reaches a shared target.
 - **Apply only a reviewed plan.** Plan on pull requests from the repository's own branches,

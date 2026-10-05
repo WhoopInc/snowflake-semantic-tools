@@ -29,6 +29,15 @@ nothing. A winning claim is issued the next generation, recorded on its row and 
 row, and returned as its `LockFence`. Expiry is computed and judged by Snowflake's
 CURRENT_TIMESTAMP, so the clocks of the machines that contend never matter. Every value is
 bound.
+
+Contention is per table, not per target. Every lock transaction writes the one mutex row, so
+claims for different targets that share a lock table queue behind each other by design; and
+(1) is coarser than a row lock even without it: measured on a standard table, an UPDATE of
+one existing row waits for an uncommitted UPDATE of a different row until that transaction
+commits (an INSERT does not wait). What keeps the queue short is that each transaction is
+only its few bound statements, committed as its block exits: nothing slow -- no client-side
+work, no statement outside the lock table and, for the state write, the state table -- runs
+while it holds the lock.
 """
 
 from __future__ import annotations

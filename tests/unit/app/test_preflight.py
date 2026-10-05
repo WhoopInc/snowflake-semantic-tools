@@ -9,7 +9,7 @@ from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.manifest import manifest_for
 from snowflake_semantic_tools.app.plan import PlanCandidates, PlanReady, PlanScope, PreparePlan
 from snowflake_semantic_tools.app.preflight import read_preflight
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
@@ -21,6 +21,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     SnowflakeObservation,
 )
 from snowflake_semantic_tools.domain.ports.project import ValidationDefaults
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import change, rendered
@@ -98,6 +99,58 @@ def test_a_refused_preflight_read_is_reported_and_never_blocks_on_its_own() -> N
     assert preflight.role == "TEST_ROLE"
     assert preflight.missing_databases == frozenset() and preflight.missing_relations == {}
     assert preflight.warehouse_usable and preflight.locked == frozenset() and preflight.referenced == {}
+
+
+# How Snowflake refuses SHOW LOCKS IN ACCOUNT to a role without MONITOR on the account.
+_NO_MONITOR = SnowflakePortError(
+    "003001 (42501): SQL access control error:\nInsufficient privileges to operate on account 'XY01234'. "
+    "Your primary role DEPLOYER must have MONITOR granted on ACCOUNT XY01234.",
+    errno=3001,
+    sqlstate="42501",
+)
+
+
+def test_a_lock_read_the_role_may_not_make_skips_the_lock_check_and_fails_nothing() -> None:
+    port = FakeSnowflake()
+    port.fail("locked_objects", _NO_MONITOR)
+    sales = view("sales")
+    preflight, failures = read_preflight(
+        port, {sales.key: sales}, _observation(), state_of(manifest_of()), dev_target(), include_prune=False
+    )
+    [skipped] = failures
+    assert (skipped.code, skipped.severity) == ("SST-VAL020", Severity.INFO)
+    assert skipped.message.startswith("SST-PLN019 skipped: the role may not read locks in DB.SCH: SQL access")
+    assert "MONITOR granted on ACCOUNT" in skipped.message
+    assert preflight.locked == frozenset()
+
+
+def test_a_lock_read_that_fails_for_another_reason_is_still_a_failed_read() -> None:
+    port = FakeSnowflake()
+    port.fail("locked_objects", SnowflakePortError("251005: connection reset", errno=251005, sqlstate="08006"))
+    sales = view("sales")
+    _, failures = read_preflight(
+        port, {sales.key: sales}, _observation(), state_of(manifest_of()), dev_target(), include_prune=False
+    )
+    assert [(item.code, item.severity) for item in failures] == [("SST-PLN001", Severity.ERROR)]
+    assert failures[0].message == "observation of locks in DB.SCH failed: 251005: connection reset"
+
+
+def test_a_plan_by_a_role_without_monitor_goes_ahead_and_may_be_reused() -> None:
+    port = FakeSnowflake()
+    port.fail("locked_objects", _NO_MONITOR)
+    ready = PreparePlan(InMemoryProjectInputs(), FixedClock()).run(
+        _select(compiled()),
+        port,
+        InMemoryStateStore(State.empty(dev_target())),
+        target=dev_target(),
+        state_table=STATE_TABLE,
+        preflight=port,
+    )
+    assert isinstance(ready, PlanReady)
+    codes = [item.code for item in ready.changeset.diagnostics]
+    assert "SST-VAL020" in codes and "SST-PLN001" not in codes
+    assert not ready.changeset.diagnostics.has_errors
+    assert ready.recorded is not None
 
 
 def test_a_schema_or_privilege_read_refused_leaves_the_write_unblocked() -> None:

@@ -24,9 +24,9 @@ ResultT = TypeVar("ResultT")
 class Fanout(Generic[PortT]):
     """Map work over items on `port`, or concurrently on sessions leased from `sessions`.
 
-    Every worker thread is joined before `map` returns or raises. An exception an item
-    raises, opening its session included, propagates once every worker has stopped; with
-    several, the first item's in order.
+    Every worker thread is joined before `map` returns or raises, and every item runs, whether
+    or not another raises. An exception an item raises, opening its session included,
+    propagates once every item has run; with several, the first item's in order.
 
     Args:
         port: Where items run one at a time; the session `sessions` was opened from.
@@ -65,4 +65,8 @@ class Fanout(Generic[PortT]):
                 return work(session, item)
 
         with ThreadPoolExecutor(max_workers=min(self.workers, len(items)), thread_name_prefix="sst-worker") as pool:
-            return tuple(pool.map(leased, items))
+            futures = tuple(pool.submit(leased, item) for item in items)
+        # Leaving the block waits for every item. Results are read only then: `Executor.map`'s
+        # results cancel the items not yet started once one raises, which ones depending on
+        # how the workers were scheduled.
+        return tuple(future.result() for future in futures)

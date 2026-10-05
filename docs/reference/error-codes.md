@@ -6102,6 +6102,8 @@ Raised when the observation shows a competing writer.
 
 Fix: retry, or serialise the publishers
 
+Note: Reading other sessions' locks needs MONITOR on the account. A role without it skips this check, reported as `SST-VAL020`, and the plan goes ahead.
+
 ### SST-PLN020
 
 **Smoke query could not be constructed** (error)

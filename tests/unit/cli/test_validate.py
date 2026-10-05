@@ -49,6 +49,24 @@ def test_validate_uses_config_strict_unless_cli_overrides(tmp_path: Path) -> Non
     assert result.exit_code == 0
 
 
+def test_strict_validate_of_a_selection_promotes_only_what_concerns_it(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
+    base = ["validate", "--project-dir", str(project), "--manifest", str(DBT_MANIFEST), "--strict"]
+    base.append("--no-snowflake-syntax-check")
+    views = CliRunner().invoke(cli, [*base, "--select", "type:semantic_view"])
+    agents = CliRunner().invoke(cli, [*base, "--select", "type:agent"])
+    # The three agent warnings concern only the agents; the two SST-CFG018 warnings name a tool
+    # group, no artifact, so every strict run promotes them.
+    assert views.exit_code == 1 and agents.exit_code == 1
+    promoted = "(promoted from warning)"
+    assert [line.split("]")[0].split("[")[-1] for line in views.output.splitlines() if promoted in line] == [
+        "SST-CFG018",
+        "SST-CFG018",
+    ]
+    for code in ("SST-RND013", "SST-VAL528", "SST-RND010"):
+        assert f"warning[{code}]" in views.output and f"error[{code}] {promoted}" in agents.output
+
+
 def test_validate_connected_syntax_check_requires_a_connection(tmp_path: Path) -> None:
     project = project_copy(tmp_path, offline=False)
     result = CliRunner().invoke(

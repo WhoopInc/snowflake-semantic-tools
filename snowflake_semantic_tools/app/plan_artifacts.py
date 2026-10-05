@@ -48,7 +48,8 @@ class TargetReading:
     Attributes:
         observation: Every object observed, keyed by artifact key.
         preflight: The preflight facts; None when no preflight reads were made.
-        failures: The reads Snowflake refused, as SST-PLN001 diagnostics.
+        failures: The reads Snowflake refused, as SST-PLN001, and the advisory reads the role
+            may not make, as SST-VAL020.
     """
 
     observation: SnowflakeObservation

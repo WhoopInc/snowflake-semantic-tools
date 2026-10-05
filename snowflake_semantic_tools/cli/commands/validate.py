@@ -9,6 +9,7 @@ import click
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.yaml.ownership import ownership_report
+from snowflake_semantic_tools.app.policy import strict_reach
 from snowflake_semantic_tools.app.validate import ValidateArtifacts, ValidationResult
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
@@ -32,6 +33,7 @@ from snowflake_semantic_tools.cli.settings import (
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.project import connect
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.plan.selectors import SelectionScope
 
 
 @click.command(cls=SstCommand)
@@ -64,8 +66,9 @@ def validate(
     """
     paths = with_model_paths(paths, dbt_dir, semantic_dir)
     compiled = compiling.compile_result(paths, target_name, manifest_path, database=database)
+    scope = SelectionScope()
     if selected or excluded:
-        compiled = compiling.selected_result(paths.project_dir, compiled, selected, excluded)
+        compiled, scope = compiling.selected_within(paths.project_dir, compiled, selected, excluded)
     effective_strict, effective_connected = validation_settings(
         paths,
         strict=strict,
@@ -83,6 +86,7 @@ def validate(
             connected=effective_connected,
             verify_schema=verify_schema,
             overrides=severity_overrides_setting(paths),
+            reaches=strict_reach(scope),
         )
     finally:
         if port is not None:

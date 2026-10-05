@@ -118,7 +118,10 @@ the bundle. Check the validation output for the file:
 ## A warning started failing the build
 
 `--strict` and `validation.strict: true` promote every warning to an error. The
-summary's `promoted` count says how many diagnostics that affected.
+summary's `promoted` count says how many diagnostics that affected. A run narrowed
+by `--select` or `--exclude` promotes no warning about an artifact it leaves out;
+a warning that names no artifact, such as one about configuration or a tool group,
+is promoted whatever the selection.
 
 ## `plan --prune` keeps listing a deleted skill, plugin, or eval
 

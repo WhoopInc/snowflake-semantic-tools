@@ -8,13 +8,16 @@ warnings now block. Both read the run's resolved configuration, the one every ot
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.diagnostics.policy import SeverityPolicy, apply_overrides
 from snowflake_semantic_tools.domain.model.config_schema import config_block, config_bool
+from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
+from snowflake_semantic_tools.domain.plan.selectors import SelectionScope
 from snowflake_semantic_tools.domain.ports.project import ProjectConfig
 from snowflake_semantic_tools.domain.validate.config import severity_overrides
 
@@ -41,6 +44,11 @@ class PolicyResult:
 def severity_policy(tree: Mapping[str, Any], *, strict: bool = False) -> SeverityPolicy:
     """Return the severity policy a resolved configuration declares, with strict mode as given."""
     return SeverityPolicy(severity_overrides(tree), strict)
+
+
+def strict_reach(scope: SelectionScope) -> Callable[[str | None], bool]:
+    """Return whether strict mode reaches a diagnostic's subject under a run's `--select` and `--exclude`."""
+    return partial(scope.reaches, artifact_types=frozenset(SEMANTIC_REGISTRY.artifacts))
 
 
 def hold_to_policy(

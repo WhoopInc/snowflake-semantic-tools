@@ -95,6 +95,9 @@ class PreflightPort(Protocol):
     def locked_objects(self, scope: SchemaScope) -> tuple[QualifiedName, ...]:
         """Return the objects in a schema another session holds a lock on.
 
+        Every user's locks are read, which Snowflake permits only a role with MONITOR on the
+        account; a role without it is refused with a privilege failure.
+
         Raises:
             SnowflakePortError: the locks could not be read.
         """

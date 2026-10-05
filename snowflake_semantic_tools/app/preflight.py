@@ -4,6 +4,11 @@
 for what the plan may write or prune. A read Snowflake refuses is reported and treated as
 "not known to be missing", so one refused read never blocks a write on its own.
 
+The lock read is advisory: it only warns of a competing writer (SST-PLN019), and reading
+another user's locks needs MONITOR on the account, which a role that owns its schema need
+not hold. A role refused it skips that warning (SST-VAL020) rather than failing the plan;
+any other failure of the read is SST-PLN001, as for every other read.
+
 The reads run in phases -- databases, schemas, the role, relations, privileges, occupied
 names, locks, references, the warehouse -- and the reads of one phase are independent, so a
 `Fanout` may run them on sessions of their own. Their answers and refusals are taken in the
@@ -18,6 +23,7 @@ from typing import TypeVar
 
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, detail_of, session_failure
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact, SnowflakeObservation
 from snowflake_semantic_tools.domain.plan.preflight import Preflight
@@ -30,14 +36,21 @@ ValueT = TypeVar("ValueT")
 _Scope = tuple[str, str]
 _Name = tuple[str, str, str]
 # What one read answered, or why Snowflake refused it.
-_Answer = tuple[ValueT | None, str | None]
+_Answer = tuple[ValueT | None, SnowflakePortError | None]
 
 # The verb of the schema privilege a create needs, such as CREATE SEMANTIC VIEW.
 _CREATE = "CREATE"
+# The check the lock read serves, which a role refused the read skips.
+_LOCK_CHECK = "SST-PLN019"
 
 
 class _Reader:
-    """Run each phase's preflight reads, recording each refused read as SST-PLN001."""
+    """Run each phase's preflight reads, recording each refused read as SST-PLN001.
+
+    Attributes:
+        failures: The refused reads, as SST-PLN001, and the advisory reads the role may not
+            make, as SST-VAL020, in the order they were read.
+    """
 
     def __init__(self, readers: Fanout[PreflightPort]) -> None:
         self._readers = readers
@@ -54,20 +67,52 @@ class _Reader:
         Diagnostics:
             SST-PLN001: the read of an item failed; named by `what`, in item order.
         """
+        answers = self._answers(items, read)
+        self.failures.extend(
+            D("SST-PLN001", value=what(item), detail=str(error))
+            for item, (_, error) in zip(items, answers, strict=True)
+            if error is not None
+        )
+        return tuple(value for value, _ in answers)
+
+    def advise_each(
+        self,
+        items: Sequence[ItemT],
+        read: Callable[[PreflightPort, ItemT], tuple[QualifiedName, ...]],
+        what: Callable[[ItemT], str],
+        *,
+        check: str,
+    ) -> tuple[tuple[QualifiedName, ...], ...]:
+        """Return the names an advisory read lists of each item; none where Snowflake refuses it.
+
+        Diagnostics:
+            SST-VAL020: the role lacks a privilege the read of an item needs, so `check` is
+                skipped for it.
+            SST-PLN001: the read of an item failed for any other reason.
+        """
+        answers = self._answers(items, read)
+        for item, (_, error) in zip(items, answers, strict=True):
+            if error is None:
+                continue
+            if _not_permitted(error):
+                detail = f"the role may not read {what(item)}: {detail_of(str(error))}"
+                self.failures.append(D("SST-VAL020", rule_id=check, detail=detail))
+            else:
+                self.failures.append(D("SST-PLN001", value=what(item), detail=str(error)))
+        return tuple(value or () for value, _ in answers)
+
+    def _answers(
+        self, items: Sequence[ItemT], read: Callable[[PreflightPort, ItemT], ValueT]
+    ) -> tuple[_Answer[ValueT], ...]:
+        """Read each item, in item order, keeping the error Snowflake refused each with."""
 
         def attempt(port: PreflightPort, item: ItemT) -> _Answer[ValueT]:
             try:
                 return read(port, item), None
             except SnowflakePortError as exc:
-                return None, str(exc)
+                return None, exc
 
-        answers = self._readers.map(attempt, items)
-        self.failures.extend(
-            D("SST-PLN001", value=what(item), detail=error)
-            for item, (_, error) in zip(items, answers, strict=True)
-            if error is not None
-        )
-        return tuple(value for value, _ in answers)
+        return self._readers.map(attempt, items)
 
     def holds_each(
         self,
@@ -115,6 +160,7 @@ def read_preflight(
 
     Diagnostics:
         SST-PLN001: a preflight read failed.
+        SST-VAL020: the role may not read the target's locks, so SST-PLN019 is skipped.
     """
     reader = _Reader(readers or Fanout(port))
     created = {key: artifact for key, artifact in rendered.items() if key not in observation.artifacts}
@@ -247,8 +293,11 @@ def _occupied(
 
 def _locked(reader: _Reader, present: tuple[SchemaScope, ...]) -> frozenset[_Name]:
     """Return the folded names, in the existing scopes, another session holds a lock on."""
-    listed = reader.names_each(
-        present, lambda port, scope: port.locked_objects(scope), lambda item: f"locks in {item.sql}"
+    listed = reader.advise_each(
+        present,
+        lambda port, scope: port.locked_objects(scope),
+        lambda item: f"locks in {item.sql}",
+        check=_LOCK_CHECK,
     )
     return frozenset(name.folded for names in listed for name in names)
 
@@ -276,6 +325,11 @@ def _referenced(
         if outside:
             found[key] = outside
     return found
+
+
+def _not_permitted(error: SnowflakePortError) -> bool:
+    """Report whether Snowflake refused a read because the role lacks a privilege it needs."""
+    return session_failure(str(error), errno=error.errno, sqlstate=error.sqlstate) is SessionFailure.PRIVILEGE
 
 
 def _warehouse_usable(reader: _Reader, warehouse: str | None) -> bool:

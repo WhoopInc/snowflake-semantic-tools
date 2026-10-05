@@ -164,6 +164,30 @@ def test_run_plans_from_state_with_agents_staged_and_every_composite_type_handle
     assert inputs.reads[-2:] == ["config", "git_sha"]
 
 
+def _strict_plan(*warnings: object) -> PlanReady | PlanRefused:
+    """Plan MENU alone, strictly, from a compile of MENU and SALES reporting `warnings`."""
+    result = with_diagnostics(compiled("MENU", "SALES"), *warnings)
+    menu_only = PlanScope(("menu",), None, frozenset(("semantic_view:menu",)), None, None, False)
+    candidates, use_case, _ = select(result, scope=menu_only, strict=True)
+    assert isinstance(candidates, PlanCandidates)
+    return use_case.run(candidates, FakeSnowflake(), InMemoryStateStore(), target=dev_target(), state_table=STATE_TABLE)
+
+
+def test_strict_leaves_a_warning_about_an_unselected_artifact_a_warning() -> None:
+    ready = _strict_plan(D("SST-LOD003", file="sales.yml", subject="semantic_view:sales"))
+    assert isinstance(ready, PlanReady)
+    [warning] = [item for item in ready.result.diagnostics if item.code == "SST-LOD003"]
+    assert warning.severity is Severity.WARNING
+    assert [change.key for change in ready.changeset.changes] == ["semantic_view:menu"]
+
+
+def test_strict_promotes_a_warning_about_a_selected_artifact_or_the_whole_project() -> None:
+    for subject in ("semantic_view:menu", None, "config:validation.strict", "tool_group:partner"):
+        refused = _strict_plan(D("SST-LOD003", file="a.yml", subject=subject))
+        assert isinstance(refused, PlanRefused), subject
+        assert [(item.code, item.severity) for item in refused.diagnostics][0] == ("SST-LOD003", Severity.ERROR)
+
+
 def test_run_refuses_what_validation_promotes_to_an_error_without_reading_state() -> None:
     warned = with_diagnostics(compiled(), D("SST-LOD003", file="warning.yml"))
     candidates, use_case, _ = select(warned, strict=True)
