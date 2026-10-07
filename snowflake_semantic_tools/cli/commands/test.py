@@ -43,7 +43,7 @@ from snowflake_semantic_tools.cli.options import (
     threads_option,
 )
 from snowflake_semantic_tools.cli.plan_output import print_eval_results
-from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.runner import CommandResult, command_body, terminated_as_interrupt
 from snowflake_semantic_tools.cli.settings import threads_setting
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.compile import selected_result
@@ -315,6 +315,7 @@ def _run_evals(
     """Run the selected evals against their published agents and gate them; exit 1 unless the run passes.
 
     `results` is the whole compile, which the compiled manifest must match, and the selection.
+    SIGTERM interrupts the run as Ctrl-C does, so the run lock is released either way.
 
     Raises:
         SstUsageError: `--capture-baseline` and `--reason` are not given together.
@@ -333,7 +334,11 @@ def _run_evals(
     profile, port = connect(paths, target_name)
     params = profile.connection_params
     workers = suite_concurrency(evals, inputs.eval_catalog().defaults, request.threads)
-    with closed_on_error(port), ConnectorPool(workers, lambda: open_connector(params)) as pool:
+    with (
+        terminated_as_interrupt(),
+        closed_on_error(port),
+        ConnectorPool(workers, lambda: open_connector(params)) as pool,
+    ):
         store = state_store(paths, profile.target_name)
         eval_store = SnowflakeEvalStateStore(port, _eval_state_table(profile.state_table))
         outcome = RunEvalGate(

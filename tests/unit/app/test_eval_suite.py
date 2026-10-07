@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import signal
+import threading
+from collections.abc import Callable
 from dataclasses import replace
 from types import MappingProxyType
 
 import pytest
 
 from snowflake_semantic_tools.app.compile import CompileResult
-from snowflake_semantic_tools.app.evals.run import empty_eval_suite_json
+from snowflake_semantic_tools.app.evals.run import EvalRunsInterrupted, empty_eval_suite_json
 from snowflake_semantic_tools.app.evals.suite import (
     EvalGateOutcome,
     EvalGateRefused,
@@ -17,6 +20,7 @@ from snowflake_semantic_tools.app.evals.suite import (
     compiled_evals,
 )
 from snowflake_semantic_tools.app.manifest import build_manifest
+from snowflake_semantic_tools.cli.runner import terminated_as_interrupt
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
     EvalCatalog,
@@ -25,9 +29,10 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalSystemMetric,
     ThresholdRange,
 )
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from snowflake_semantic_tools.domain.state.lock import LockClaim
 from tests.helpers.app_ports import InMemoryStateStore
@@ -246,6 +251,60 @@ def test_the_lock_is_released_when_the_run_raises() -> None:
     with pytest.raises(SnowflakePortError, match="connection reset"):
         gate(Dropped([]), state_store=lock)
     assert not lock.locked
+
+
+class InterruptedAtStart(EvalSnowflake):
+    """Starts the run, then is interrupted by `interrupt` before the START call returns."""
+
+    def __init__(self, interrupt: Callable[[], None]) -> None:
+        super().__init__([])
+        self.interrupt = interrupt
+
+    def query_in_context(self, scope: SchemaScope, sql: Sql, params: object = None) -> QueryResult:
+        reply = super().query_in_context(scope, sql, params)
+        if "EXECUTE_AI_EVALUATION('START'" in str(sql):
+            self.interrupt()
+        return reply
+
+
+def _keyboard_interrupt() -> None:
+    raise KeyboardInterrupt
+
+
+def test_an_interrupted_run_names_the_runs_it_started_and_releases_both_locks() -> None:
+    port = InterruptedAtStart(_keyboard_interrupt)
+    lock = InMemoryStateStore()
+
+    with pytest.raises(EvalRunsInterrupted) as raised:
+        gate(port, state_store=lock)
+
+    assert raised.value.run_names == ("EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z",)
+    assert not lock.locked and port.run_locks.rows == {}
+
+
+def test_sigterm_interrupts_the_run_as_ctrl_c_does_so_both_locks_are_released() -> None:
+    port = InterruptedAtStart(lambda: signal.raise_signal(signal.SIGTERM))
+    lock = InMemoryStateStore()
+    before = signal.getsignal(signal.SIGTERM)
+
+    with pytest.raises(EvalRunsInterrupted), terminated_as_interrupt():
+        gate(port, state_store=lock)
+
+    assert not lock.locked and port.run_locks.rows == {}
+    assert signal.getsignal(signal.SIGTERM) == before
+
+
+def test_sigterm_handling_leaves_a_worker_thread_unchanged() -> None:
+    seen: list[object] = []
+
+    def in_worker() -> None:
+        with terminated_as_interrupt():
+            seen.append(signal.getsignal(signal.SIGTERM))
+
+    worker = threading.Thread(target=in_worker)
+    worker.start()
+    worker.join()
+    assert seen == [signal.getsignal(signal.SIGTERM)]
 
 
 def test_an_eval_run_takes_over_an_expired_lock_only_when_asked_and_never_a_live_one() -> None:
