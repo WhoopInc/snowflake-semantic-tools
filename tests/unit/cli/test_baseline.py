@@ -12,8 +12,9 @@ from click.testing import CliRunner, Result
 from snowflake_semantic_tools.adapters.fs.baseline import baseline_text, read_baseline
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, BaselineEntry, Renewal
-from tests.helpers.cli_projects import common
+from tests.helpers.cli_projects import common, invoke_with_port
 from tests.helpers.reference_project import project_copy
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 BASELINE = Path(".sst") / "baseline.json"
 
@@ -141,3 +142,88 @@ def test_the_global_baseline_path_is_where_the_group_writes(tmp_path: Path) -> N
     assert result.exit_code == 0, result.output
     assert (project / "elsewhere.json").is_file()
     assert not (project / BASELINE).exists()
+
+
+# The objects two of the reference agents call, which only a connected validate looks up.
+_CALLED = {"SST_TEST.REFERENCE.ORDER_TIER_LOOKUP", "SST_TEST.REFERENCE.DELIVERY_AGENT"}
+
+
+def _connected(project: Path, monkeypatch: pytest.MonkeyPatch, port: FakeSnowflake, *args: str) -> Result:
+    return invoke_with_port(monkeypatch, port, ["baseline", *args, *common(project), "--output", "json"])
+
+
+def _refuse_connecting(monkeypatch: pytest.MonkeyPatch) -> None:
+    def connector(params: object) -> object:
+        raise AssertionError("an offline baseline command connected to Snowflake")
+
+    monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", connector)
+
+
+def test_add_with_a_target_baselines_what_the_connected_validate_finds_and_records_the_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    monkeypatch.delenv("SST_TARGET", raising=False)
+    offline = _run(project, "add", "SST-VAL531", "--output", "json")
+    assert json.loads(offline.output)["data"]["added"] == []
+
+    added = _connected(project, monkeypatch, FakeSnowflake(), "add", "SST-VAL531", "--target", "dev")
+
+    assert added.exit_code == 0, added.output
+    data = json.loads(added.stdout)["data"]
+    assert [(item["code"], item["connected"], item["target"]) for item in data["added"]] == [
+        ("SST-VAL531", True, "dev"),
+        ("SST-VAL531", True, "dev"),
+    ]
+    entries = _file(project)["entries"]
+    assert all((entry["connected"], entry["target"]) == (True, "dev") for entry in entries)
+    offline_run = CliRunner().invoke(cli, ["validate", *common(project), "--no-strict", "-o", "json"])
+    assert json.loads(offline_run.output)["summary"]["baselined"] == 0
+
+
+def test_an_offline_prune_keeps_connected_entries_and_a_prune_against_their_target_judges_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    assert _connected(project, monkeypatch, FakeSnowflake(), "add", "SST-VAL531", "--target", "dev").exit_code == 0
+    assert _run(project, "add", "SST-CFG018").exit_code == 0
+    _refuse_connecting(monkeypatch)
+
+    offline = _run(project, "prune", "--output", "json")
+
+    assert offline.exit_code == 0, offline.output
+    assert json.loads(offline.output)["data"]["pruned"] == []
+    held = FakeSnowflake()
+    held.existing = set(_CALLED)
+    elsewhere = _connected(project, monkeypatch, held, "prune", "--target", "prod")
+    assert json.loads(elsewhere.stdout)["data"]["pruned"] == []
+    judged = _connected(project, monkeypatch, held, "prune", "--target", "dev")
+    assert judged.exit_code == 0, judged.output
+    assert [item["code"] for item in json.loads(judged.stdout)["data"]["pruned"]] == ["SST-VAL531"] * 2
+    assert {entry["code"] for entry in _file(project)["entries"]} == {"SST-CFG018"}
+
+
+def test_show_says_where_each_entry_came_from_and_filters_by_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    assert _connected(project, monkeypatch, FakeSnowflake(), "add", "SST-VAL531", "--target", "dev").exit_code == 0
+    assert _run(project, "add", "SST-CFG018").exit_code == 0
+    _refuse_connecting(monkeypatch)
+
+    shown = _run(project, "show")
+    assert shown.output.count("connected:dev") == 2
+    assert shown.output.count("offline") == 2
+    other = json.loads(_run(project, "show", "--target", "prod", "--output", "json").output)["data"]
+    assert [entry["code"] for entry in other["entries"]] == ["SST-CFG018", "SST-CFG018"]
+    same = json.loads(_run(project, "show", "--target", "dev", "--output", "json").output)["data"]
+    assert len(same["entries"]) == 4
+
+
+def test_a_connected_entry_round_trips_and_an_offline_one_omits_the_target(tmp_path: Path) -> None:
+    entries = (BaselineEntry("ab", "SST-VAL531", "agent:a", "", "n", "verify"), BaselineEntry("cd", "SST-CFG003"))
+    path = tmp_path / "b.json"
+    path.write_text(baseline_text(Baseline("b.json", "2027-01-01", entries)), encoding="utf-8")
+    assert read_baseline(path, "b.json").entries == entries[::-1]
+    written = json.loads(path.read_text(encoding="utf-8"))["entries"]
+    assert [("connected" in entry, entry.get("target")) for entry in written] == [(False, None), (True, "verify")]

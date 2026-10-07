@@ -252,8 +252,10 @@ Subcommands: [`sst baseline add`](#sst-baseline-add), [`sst baseline prune`](#ss
 Baseline every current instance of CODE, or with --all-warnings every current warning.
 
 Additive: an entry is never removed. A new file expires in --expires-in days; an existing
-one keeps its date, which only `renew` moves. Exit 1 when CODE is an error or non-demotable,
-and 3 when CODE is not registered, or --all-warnings has no --yes off a terminal.
+one keeps its date, which only `renew` moves. With --target, what the connected validate
+against it reports is baselined, and each entry added records the target. Exit 1 when CODE
+is an error or non-demotable, and 3 when CODE is not registered, or --all-warnings has no
+--yes off a terminal.
 
 Diagnostics:
     SST-PRT100: no CODE and no --all-warnings, or CODE is not registered; raised. Also, at
@@ -267,6 +269,7 @@ sst baseline add [OPTIONS]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
+| `--target / -t` | TEXT |  | Connects: baseline what `sst validate --target` finds there, recording the target in each entry. Never `$SST_TARGET`; offline without it. |
 | `--select` | TEXT, repeatable |  | Baseline only the diagnostics of these artifacts. |
 | `--exclude` | TEXT, repeatable |  | Leave the diagnostics of these artifacts out. |
 | `--all-warnings` | flag |  | Baseline every current warning; prints the count and needs `--yes`. |
@@ -278,6 +281,8 @@ sst baseline add [OPTIONS]
 
 Remove the entries no current diagnostic matches; the only way an entry leaves the file.
 
+The offline entries are judged by an offline validate. A connected entry is judged only by
+`--target` naming its target, which runs the connected validate too; every other is kept.
 With --select or --exclude, only the entries of the artifacts chosen are considered.
 
 Diagnostics:
@@ -289,6 +294,7 @@ sst baseline prune [OPTIONS]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
+| `--target / -t` | TEXT |  | Connects: also prune the entries a connected validate against this target recorded. Without it, connected entries are kept. |
 | `--select` | TEXT, repeatable |  | Prune only the entries of these artifacts. |
 | `--exclude` | TEXT, repeatable |  | Leave the entries of these artifacts as they are. |
 
@@ -315,6 +321,10 @@ sst baseline renew [OPTIONS]
 
 List the baseline's entries: those of one --code, or with --expired only once it has expired.
 
+Each entry says whether a connected validate found it, and against which target. With
+--target, only the entries a validate against it can match are listed: the offline ones and
+that target's connected ones. Nothing connects.
+
 ```text
 sst baseline show [OPTIONS]
 ```
@@ -323,6 +333,7 @@ sst baseline show [OPTIONS]
 |---|---|---|---|
 | `--code` | TEXT |  | Show only the entries of this code. |
 | `--expired` | flag |  | Show the entries only once the baseline has expired. |
+| `--target / -t` | TEXT |  | Show only the offline entries and those recorded against this target. |
 
 ## sst list
 

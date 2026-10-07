@@ -173,10 +173,19 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst baseline add", "--yes"): "Baseline every warning without asking; required off a terminal.",
     ("sst baseline add", "--select"): "Baseline only the diagnostics of these artifacts.",
     ("sst baseline add", "--exclude"): "Leave the diagnostics of these artifacts out.",
+    ("sst baseline add", "--target"): (
+        "Connects: baseline what `sst validate --target` finds there, recording the target in each "
+        "entry. Never `$SST_TARGET`; offline without it."
+    ),
     ("sst baseline prune", "--select"): "Prune only the entries of these artifacts.",
     ("sst baseline prune", "--exclude"): "Leave the entries of these artifacts as they are.",
+    ("sst baseline prune", "--target"): (
+        "Connects: also prune the entries a connected validate against this target recorded. "
+        "Without it, connected entries are kept."
+    ),
     ("sst baseline show", "--code"): "Show only the entries of this code.",
     ("sst baseline show", "--expired"): "Show the entries only once the baseline has expired.",
+    ("sst baseline show", "--target"): "Show only the offline entries and those recorded against this target.",
     ("sst baseline renew", "--reason"): "Required. Why the baseline is renewed; written into the file.",
     ("sst baseline renew", "--expires-in"): "Days until the renewed baseline expires, at most 365.",
     ("sst diff", "--from"): "The state compared from: `local` (default), a dbt target, or a saved plan's `.json` path.",

@@ -3,9 +3,12 @@
 `add` records every current instance of one code, or with `--all-warnings` of every warning,
 and never removes an entry. `prune` removes only the entries no current diagnostic matches.
 `show` lists the entries. `renew` re-dates the file and records why. The current diagnostics are
-those an offline `sst validate` reports. An error, or any non-demotable code, cannot be
-baselined: a baseline suppresses and never demotes. The file is the global `--baseline`, else
-`.sst/baseline.json`.
+those an offline `sst validate` reports; with `--target`, those the connected `sst validate
+--target` reports, and each entry `add` writes then records that target. An offline run cannot
+see what only a connected one finds, so an offline `prune` keeps every connected entry, and
+`prune --target` judges that target's connected entries as well. An error, or any non-demotable
+code, cannot be baselined: a baseline suppresses and never demotes. The file is the global
+`--baseline`, else `.sst/baseline.json`.
 """
 
 from __future__ import annotations
@@ -27,9 +30,10 @@ from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.cli.exit_codes import ERROR
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
-from snowflake_semantic_tools.cli.options import selection_options
+from snowflake_semantic_tools.cli.options import Decorator, selection_options
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, project_path, write_text
 from snowflake_semantic_tools.cli.wiring import compile as compiling
+from snowflake_semantic_tools.cli.wiring.project import connect
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.diagnostics.baseline import (
     DEFAULT_EXPIRY_DAYS,
@@ -46,6 +50,14 @@ from snowflake_semantic_tools.domain.diagnostics.baseline import (
 _SUBCOMMANDS = ("add", "prune", "show", "renew")
 
 
+def _connected_target() -> Decorator:
+    """`--target`: run the connected validate against it.
+
+    Never read from `$SST_TARGET`, so a baseline command stays offline unless asked by name.
+    """
+    return click.option("--target", "-t", "target_name")
+
+
 @click.group()
 @click.pass_context
 def baseline(ctx: click.Context) -> None:
@@ -56,6 +68,7 @@ def baseline(ctx: click.Context) -> None:
 
 @baseline.command(cls=SstCommand, name="add")
 @click.argument("code", metavar="[CODE]", required=False)
+@_connected_target()
 @selection_options()
 @click.option("--all-warnings", is_flag=True)
 @click.option("--expires-in", type=click.IntRange(1, MAX_EXPIRY_DAYS), default=DEFAULT_EXPIRY_DAYS)
@@ -67,6 +80,7 @@ def add_command(
     options: GlobalOptions,
     manifest_path: Path | None,
     code: str | None,
+    target_name: str | None,
     selected: tuple[str, ...],
     excluded: tuple[str, ...],
     all_warnings: bool,
@@ -77,8 +91,10 @@ def add_command(
     """Baseline every current instance of CODE, or with --all-warnings every current warning.
 
     Additive: an entry is never removed. A new file expires in --expires-in days; an existing
-    one keeps its date, which only `renew` moves. Exit 1 when CODE is an error or non-demotable,
-    and 3 when CODE is not registered, or --all-warnings has no --yes off a terminal.
+    one keeps its date, which only `renew` moves. With --target, what the connected validate
+    against it reports is baselined, and each entry added records the target. Exit 1 when CODE
+    is an error or non-demotable, and 3 when CODE is not registered, or --all-warnings has no
+    --yes off a terminal.
 
     Diagnostics:
         SST-PRT100: no CODE and no --all-warnings, or CODE is not registered; raised. Also, at
@@ -92,28 +108,34 @@ def add_command(
     path, current = _read(paths, options)
     today = _today()
     start = current or Baseline(_name(options), _date(today, expires_in), (), _now(), VERSION)
-    diagnostics = _current(paths, manifest_path, selected, excluded)
+    diagnostics = _current(paths, manifest_path, selected, excluded, target_name)
     chosen = chosen_for_baseline(diagnostics, wanted)
     if all_warnings:
         _confirm(options, len(chosen), assume_yes=assume_yes)
-    written, added = with_entries(start, chosen, lambda found: note or f"pre-existing at adoption of {found}")
+    written, added = with_entries(
+        start, chosen, lambda found: note or f"pre-existing at adoption of {found}", target_name or ""
+    )
     write_text(output_root(paths.project_dir, path.parent), path, baseline_text(written))
     data = _data(path, written, added=added)
     return CommandResult(data=data, human=lambda: click.echo(f"baselined {len(added)} diagnostic(s) in {path}"))
 
 
 @baseline.command(cls=SstCommand, name="prune")
+@_connected_target()
 @selection_options()
 @command_body("baseline prune", applies_baseline=False)
 def prune_command(
     paths: ProjectPaths,
     options: GlobalOptions,
     manifest_path: Path | None,
+    target_name: str | None,
     selected: tuple[str, ...],
     excluded: tuple[str, ...],
 ) -> CommandResult:
     """Remove the entries no current diagnostic matches; the only way an entry leaves the file.
 
+    The offline entries are judged by an offline validate. A connected entry is judged only by
+    `--target` naming its target, which runs the connected validate too; every other is kept.
     With --select or --exclude, only the entries of the artifacts chosen are considered.
 
     Diagnostics:
@@ -122,9 +144,14 @@ def prune_command(
     path, current = _read(paths, options)
     if current is None:
         return _absent(path)
-    diagnostics = _current(paths, manifest_path, selected, excluded)
     in_scope = _scope(paths, manifest_path, selected, excluded)
-    written, pruned = without_stale(current, diagnostics, in_scope)
+    written = current
+    pruned: tuple[BaselineEntry, ...] = ()
+    for target in dict.fromkeys((None, target_name)):
+        diagnostics = _current(paths, manifest_path, selected, excluded, target)
+        judged = _judged_by(in_scope, target)
+        written, dropped = without_stale(written, diagnostics, judged)
+        pruned = (*pruned, *dropped)
     write_text(output_root(paths.project_dir, path.parent), path, baseline_text(written))
     data = _data(path, written, pruned=pruned)
     return CommandResult(data=data, human=lambda: click.echo(f"pruned {len(pruned)} entry(ies) from {path}"))
@@ -133,9 +160,17 @@ def prune_command(
 @baseline.command(cls=SstCommand, name="show")
 @click.option("--code")
 @click.option("--expired", is_flag=True)
+@_connected_target()
 @command_body("baseline show", applies_baseline=False)
-def show_command(paths: ProjectPaths, options: GlobalOptions, code: str | None, expired: bool) -> CommandResult:
-    """List the baseline's entries: those of one --code, or with --expired only once it has expired."""
+def show_command(
+    paths: ProjectPaths, options: GlobalOptions, code: str | None, expired: bool, target_name: str | None
+) -> CommandResult:
+    """List the baseline's entries: those of one --code, or with --expired only once it has expired.
+
+    Each entry says whether a connected validate found it, and against which target. With
+    --target, only the entries a validate against it can match are listed: the offline ones and
+    that target's connected ones. Nothing connects.
+    """
     path, current = _read(paths, options)
     if current is None:
         data = _data(path, Baseline(_name(options), "", ()))
@@ -144,7 +179,9 @@ def show_command(paths: ProjectPaths, options: GlobalOptions, code: str | None, 
     shown = tuple(
         entry
         for entry in current.entries
-        if (code is None or entry.code == code.strip().upper()) and (lapsed or not expired)
+        if (code is None or entry.code == code.strip().upper())
+        and (lapsed or not expired)
+        and (target_name is None or entry.judged_by(None) or entry.judged_by(target_name))
     )
     data = _data(path, current, shown=shown)
     return CommandResult(data=data, human=lambda: _print_entries(current, shown, lapsed=lapsed))
@@ -238,16 +275,37 @@ def _name(options: GlobalOptions) -> str:
 
 
 def _current(
-    paths: ProjectPaths, manifest_path: Path | None, selected: tuple[str, ...], excluded: tuple[str, ...]
+    paths: ProjectPaths,
+    manifest_path: Path | None,
+    selected: tuple[str, ...],
+    excluded: tuple[str, ...],
+    target_name: str | None = None,
 ) -> tuple[Diagnostic, ...]:
-    """Return what an offline `sst validate` of the chosen artifacts reports now."""
-    compiled = compiling.compile_result(paths, None, manifest_path)
+    """Return what `sst validate` of the chosen artifacts reports now.
+
+    Offline; or, with `target_name`, connected to that target as `sst validate --target` runs it.
+    """
+    compiled = compiling.compile_result(paths, target_name, manifest_path)
     if selected or excluded:
         compiled = compiling.selected_result(paths.project_dir, compiled, selected, excluded)
-    result = ValidateArtifacts(None, catalog=None, target="", clock=SystemClock()).run(
-        compiled, strict=False, connected=False
-    )
+    if target_name is None:
+        result = ValidateArtifacts(None, catalog=None, target="", clock=SystemClock()).run(
+            compiled, strict=False, connected=False
+        )
+        return tuple(result.diagnostics)
+    profile, port = connect(paths, target_name)
+    try:
+        result = ValidateArtifacts(port, catalog=port, target=profile.target_name, clock=SystemClock()).run(
+            compiled, strict=False, connected=True
+        )
+    finally:
+        port.close()
     return tuple(result.diagnostics)
+
+
+def _judged_by(in_scope: Callable[[BaselineEntry], bool], target: str | None) -> Callable[[BaselineEntry], bool]:
+    """Return which entries in scope a validate against `target`, or offline, may prune."""
+    return lambda entry: in_scope(entry) and entry.judged_by(target)
 
 
 def _scope(
@@ -291,13 +349,15 @@ def _data(
     }
 
 
-def _entry(entry: BaselineEntry) -> dict[str, str]:
+def _entry(entry: BaselineEntry) -> dict[str, object]:
     return {
         "fingerprint": entry.fingerprint,
         "code": entry.code,
         "artifact": entry.artifact,
         "file": entry.file,
         "note": entry.note,
+        "connected": entry.connected,
+        "target": entry.target or None,
     }
 
 
@@ -305,7 +365,8 @@ def _print_entries(current: Baseline, shown: tuple[BaselineEntry, ...], *, lapse
     state = "expired on" if lapsed else "expires on"
     click.echo(f"{current.path}: {len(current.entries)} entry(ies), {state} {current.expires_on}")
     for entry in shown:
-        click.echo(f"  {entry.code} {entry.artifact or '-'} {entry.file or '-'} {entry.fingerprint}")
+        found = f"connected:{entry.target}" if entry.connected else "offline"
+        click.echo(f"  {entry.code} {entry.artifact or '-'} {entry.file or '-'} {entry.fingerprint} {found}")
 
 
 def _today() -> date:

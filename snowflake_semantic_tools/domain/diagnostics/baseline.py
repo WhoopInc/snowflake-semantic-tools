@@ -26,6 +26,9 @@ class BaselineEntry:
     Attributes:
         fingerprint: The diagnostic's `stable_fingerprint`, which is all matching reads.
         artifact, file, note: Recorded for a reviewer; matching ignores them.
+        target: The `profiles.yml` target of the connected validate that found the diagnostic;
+            empty for one an offline validate finds. Only a run against that target can
+            tell whether a connected entry is stale.
     """
 
     fingerprint: str
@@ -33,6 +36,16 @@ class BaselineEntry:
     artifact: str = ""
     file: str = ""
     note: str = ""
+    target: str = ""
+
+    @property
+    def connected(self) -> bool:
+        """Report whether a connected validate found the diagnostic, so an offline one cannot."""
+        return bool(self.target)
+
+    def judged_by(self, target: str | None) -> bool:
+        """Report whether a validate against `target`, or offline when None, can find this entry."""
+        return self.target == (target or "")
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,14 +153,16 @@ DEFAULT_EXPIRY_DAYS = 180
 MAX_EXPIRY_DAYS = 365
 
 
-def baseline_entry(diagnostic: Diagnostic, note: str) -> BaselineEntry:
-    """Record one diagnostic: its stable fingerprint, and what a reviewer reads it by."""
+def baseline_entry(diagnostic: Diagnostic, note: str, target: str = "") -> BaselineEntry:
+    """Record one diagnostic: its stable fingerprint, what a reviewer reads it by, and its run's target."""
     origin = diagnostic.origin.file if diagnostic.origin else ""
-    return BaselineEntry(stable_fingerprint(diagnostic), diagnostic.code, diagnostic.subject or "", origin, note)
+    return BaselineEntry(
+        stable_fingerprint(diagnostic), diagnostic.code, diagnostic.subject or "", origin, note, target
+    )
 
 
 def with_entries(
-    baseline: Baseline, diagnostics: Iterable[Diagnostic], note: Callable[[str], str]
+    baseline: Baseline, diagnostics: Iterable[Diagnostic], note: Callable[[str], str], target: str = ""
 ) -> tuple[Baseline, tuple[BaselineEntry, ...]]:
     """Return `baseline` with an entry added for each baselinable diagnostic it does not record.
 
@@ -156,6 +171,8 @@ def with_entries(
 
     Args:
         note: The note for an entry of a code, given the code.
+        target: The target of the connected validate that reported `diagnostics`; empty for
+            an offline one. Each entry added records it.
 
     Returns:
         The baseline, and the entries added, in the order the diagnostics came.
@@ -167,7 +184,7 @@ def with_entries(
     for item in candidates:
         fingerprint = stable_fingerprint(item)
         if counts[fingerprint] == 1 and fingerprint not in recorded:
-            added.append(baseline_entry(item, note(item.code)))
+            added.append(baseline_entry(item, note(item.code), target))
             recorded.add(fingerprint)
     return replace(baseline, entries=(*baseline.entries, *added)), tuple(added)
 

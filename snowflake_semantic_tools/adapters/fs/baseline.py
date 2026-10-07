@@ -1,7 +1,8 @@
 """Read and render the baseline file: the committed record of warnings a project knows about.
 
 The file is JSON, version 1, with a mandatory `expires_on` and one entry per recorded diagnostic,
-keyed on its stable fingerprint. `sst baseline` writes the text `baseline_text` renders: when and
+keyed on its stable fingerprint. An entry a connected validate found carries `connected: true`
+and the `target` it ran against. `sst baseline` writes the text `baseline_text` renders: when and
 by which SST it was first written, every renewal and its reason, and the entries, sorted so a
 change to the file reviews as a diff of the entries it touched.
 """
@@ -51,6 +52,7 @@ def read_baseline(path: Path, name: str) -> Baseline:
                 artifact=str(entry.get("artifact") or ""),
                 file=str(entry.get("file") or ""),
                 note=str(entry.get("note") or ""),
+                target=str(entry.get("target") or "") if entry.get("connected") is True else "",
             )
         )
     return Baseline(
@@ -88,17 +90,23 @@ def baseline_text(baseline: Baseline) -> str:
             {"renewed_on": item.renewed_on, "reason": item.reason, "expires_on": item.expires_on}
             for item in baseline.renewals
         ]
-    document["entries"] = [
-        {
-            "fingerprint": entry.fingerprint,
-            "code": entry.code,
-            "artifact": entry.artifact,
-            "file": entry.file,
-            "note": entry.note,
-        }
-        for entry in entries
-    ]
+    document["entries"] = [_entry_document(entry) for entry in entries]
     return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+
+
+def _entry_document(entry: BaselineEntry) -> dict[str, object]:
+    """Render one entry; one a connected validate found also says so, and names its target."""
+    document: dict[str, object] = {
+        "fingerprint": entry.fingerprint,
+        "code": entry.code,
+        "artifact": entry.artifact,
+        "file": entry.file,
+        "note": entry.note,
+    }
+    if entry.connected:
+        document["connected"] = True
+        document["target"] = entry.target
+    return document
 
 
 def _refuse(name: str, detail: str) -> NoReturn:
