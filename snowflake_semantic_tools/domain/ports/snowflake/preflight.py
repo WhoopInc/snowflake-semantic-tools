@@ -80,15 +80,17 @@ class PreflightPort(Protocol):
         Unlike `missing_privileges`, the session's secondary roles do not count: this is what a
         task running as `role` holds. The role holds a privilege when it, or a role or database
         role granted to it, is granted the privilege or owns the schema. The hierarchy is read
-        with SHOW GRANTS TO ROLE and TO DATABASE ROLE, each role once however often it is
-        granted, and no deeper than `ROLE_HIERARCHY_DEPTH`; a privilege only a deeper role
-        holds reads as missing.
+        upward from the schema: SHOW GRANTS ON SCHEMA names the holders, and SHOW GRANTS OF
+        ROLE and OF DATABASE ROLE climb from them toward `role`, each role once however often
+        it is granted and never `role`'s own grants, no further than `ROLE_HIERARCHY_DEPTH`
+        roles; a privilege only a more distant role holds reads as missing. A privilege no
+        role holds on the schema reads as missing without reading any role.
 
         Args:
             role: The account role, as CURRENT_ROLE() names it.
 
         Raises:
-            SnowflakePortError: a role's grants could not be read.
+            SnowflakePortError: the schema's or a role's grants could not be read.
         """
         ...
 
