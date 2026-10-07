@@ -8,7 +8,8 @@ from __future__ import annotations
 from dataclasses import replace
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.evals.run import EvalRunOptions, RunEvalSuite
+from snowflake_semantic_tools.app.evals.options import EvalRunOptions
+from snowflake_semantic_tools.app.evals.run import RunEvalSuite
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound

@@ -176,7 +176,10 @@ def test_smoke_suite_is_separate_from_apply(tmp_path: Path, monkeypatch: pytest.
     assert "compiled SST manifest is stale" in json.loads(stale.output)["data"]["error"]
 
 
-def test_eval_suite_uses_common_json_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("output", ["json", "table"])
+def test_eval_suite_uses_common_json_envelope_and_prints_progress_only_as_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, output: str
+) -> None:
     project = project_copy(tmp_path)
     monkeypatch.setattr("snowflake_semantic_tools.cli.wiring.project.git_sha", lambda path: "0000000")
     monkeypatch.setattr("snowflake_semantic_tools.app.evals.run._compact_timestamp", lambda: "20260928T010203Z")
@@ -325,12 +328,25 @@ def test_eval_suite_uses_common_json_envelope(tmp_path: Path, monkeypatch: pytes
             "--reason",
             "initial",
             "--output",
-            "json",
+            output,
         ],
     )
 
     assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
+    progress = [line for line in result.stderr.splitlines() if line.startswith(("eval run ", "waiting on "))]
+    first = "EVAL_JAFFLE_ANALYTICS_AGENT_0000000_ci_20260928T010203Z"
+    if output == "table":
+        # Runs may start in any order; each start and each end is printed once. The capture
+        # needs five completed runs and allows one retry.
+        names = [first, *(f"{first}_R{number}" for number in range(2, 6))]
+        assert sorted(line for line in progress if ": starting " in line) == [
+            f"eval run {name}: starting (attempt {number} of 6)" for number, name in enumerate(names, start=1)
+        ]
+        assert sum(": ended COMPLETED after " in line for line in progress) == 5
+        return
+    # JSON output carries the envelope alone: no progress line reaches either stream.
+    assert not progress
+    payload = json.loads(result.stdout)
     assert payload["data"]["suite"] == "evals"
     assert payload["data"]["attempt_count"] == 5
     assert payload["data"]["evals"][0]["attempts"][0]["terminal_status"] == "COMPLETED"

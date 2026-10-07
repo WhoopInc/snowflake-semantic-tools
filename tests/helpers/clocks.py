@@ -1,9 +1,9 @@
 """Clocks and tickers a test controls: no test waits on, or reads, the wall clock.
 
 `FixedClock` is the use cases' `Clock`: each read advances it by one, and `sleep` records the
-wait instead of waiting. `SteppedTicker` is a heartbeat `Ticker` that never waits on the wall
-clock: each `step` lets exactly one beat run and returns once the heartbeat waits again or has
-stopped.
+wait instead of waiting; `PollClock` is one whose sleeps pass, for deadlines.
+`SteppedTicker` is a heartbeat `Ticker` that never waits on the wall clock: each `step` lets
+exactly one beat run and returns once the heartbeat waits again or has stopped.
 """
 
 from __future__ import annotations
@@ -29,6 +29,20 @@ class FixedClock:
 
     def new_run_id(self) -> str:
         return "run-1"
+
+
+class PollClock(FixedClock):
+    """A `FixedClock` whose sleeps pass: each `sleep` moves monotonic time on by its wait.
+
+    `advance` moves it on too, as a slow status read would; a read still moves it by one.
+    """
+
+    def sleep(self, milliseconds: int) -> None:
+        super().sleep(milliseconds)
+        self.current += milliseconds
+
+    def advance(self, milliseconds: int) -> None:
+        self.current += milliseconds
 
 
 class SteppedTicker:

@@ -6,7 +6,8 @@ from dataclasses import replace
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.evals.run import EvalRunOptions, RunEvalSuite
+from snowflake_semantic_tools.app.evals.options import EvalRunOptions
+from snowflake_semantic_tools.app.evals.run import RunEvalSuite
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from tests.helpers.clocks import FixedClock

@@ -6,7 +6,8 @@ cannot parse; the format evals read lets it run.
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.app.evals.run import EvalRunOptions, RunEvalSuite
+from snowflake_semantic_tools.app.evals.options import EvalRunOptions
+from snowflake_semantic_tools.app.evals.run import RunEvalSuite
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.clocks import FixedClock

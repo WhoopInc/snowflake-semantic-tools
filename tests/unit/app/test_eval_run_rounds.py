@@ -17,7 +17,8 @@ import pytest
 
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.evals.run import EvalRunOptions, EvalRunsInterrupted, EvalSuiteResult, RunEvalSuite
+from snowflake_semantic_tools.app.evals.options import EvalRunOptions
+from snowflake_semantic_tools.app.evals.run import EvalRunsInterrupted, EvalSuiteResult, RunEvalSuite
 from snowflake_semantic_tools.domain.model.eval import EvalDefaults
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult

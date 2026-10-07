@@ -36,3 +36,38 @@ def test_a_human_report_is_captured_before_anything_is_printed(capsys: pytest.Ca
     assert captured(report) == "line one\n"
     printed = capsys.readouterr()
     assert printed.out == "" and printed.err == "warn\n"
+
+
+@pytest.mark.parametrize(
+    ("policy", "shown"),
+    [
+        (output.RenderPolicy(), True),
+        (output.RenderPolicy(output="csv"), True),
+        (output.RenderPolicy(output="json"), False),
+        (output.RenderPolicy(output="yaml"), False),
+        (output.RenderPolicy(quiet=True), False),
+    ],
+    ids=["table", "csv", "json", "yaml", "quiet"],
+)
+def test_progress_lines_go_to_stderr_unless_the_output_is_machine_read_or_quiet(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, policy: output.RenderPolicy, shown: bool
+) -> None:
+    monkeypatch.setattr(output, "_POLICY", [policy])
+    output.print_progress("eval run R: starting (attempt 1 of 1)")
+    output.print_progress("eval run R: status read failed (1/5), retrying: Read timed out.", warning=True)
+    printed = capsys.readouterr()
+    assert printed.out == ""
+    expected = (
+        "eval run R: starting (attempt 1 of 1)\nwarn  eval run R: status read failed (1/5), retrying: Read timed out.\n"
+    )
+    assert printed.err == (expected if shown else "")
+
+
+def test_a_progress_line_carrying_a_credential_is_withheld(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(output, "_POLICY", [output.RenderPolicy()])
+    register_secrets(("s3cret-value",))
+    output.print_progress("status read failed: password=s3cret-value", warning=True)
+    printed = capsys.readouterr().err
+    assert "s3cret-value" not in printed and "a credential in the progress output" in printed

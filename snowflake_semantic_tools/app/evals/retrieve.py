@@ -51,18 +51,22 @@ def _read_status(
     compiled: CompiledEval,
     run_name: str,
     config_path: str,
+    *,
+    timeout_seconds: int | None = None,
 ) -> tuple[str, tuple[str, ...]]:
     """Read one run's status, uppercased, and its details, from the row that describes this run.
 
     Raises:
-        SnowflakePortError: the read failed, it did not return exactly one row, or the row
-            describes another run, agent or agent type.
+        SnowflakeTransientError: the read failed in transit, or took longer than `timeout_seconds`.
+        SnowflakePortError: the read failed otherwise, it did not return exactly one row, or the
+            row describes another run, agent or agent type.
         ValueError: the row omits a column or a value, or its details are neither an array nor text.
     """
     result = port.query_in_context(
         SchemaScope(compiled.agent_target.database, compiled.agent_target.schema),
         _STATUS_CALL,
         (run_name, config_path),
+        timeout_seconds=timeout_seconds,
     )
     row = _single_row(result.columns, result.rows, _STATUS_COLUMNS, "evaluation status")
     if _required_text(row, "RUN_NAME") != run_name:

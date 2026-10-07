@@ -18,9 +18,10 @@ from snowflake_semantic_tools.app.apply.lock import LockPolicy, RunLease
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, persist_gate, recorded_judges
+from snowflake_semantic_tools.app.evals.options import EvalRunOptions
 from snowflake_semantic_tools.app.evals.privileges import EvalRolePort, eval_role_diagnostics
+from snowflake_semantic_tools.app.evals.progress import EvalProgress, no_progress
 from snowflake_semantic_tools.app.evals.run import (
-    EvalRunOptions,
     EvalSuiteResult,
     RunEvalSuite,
     empty_eval_suite_json,
@@ -119,7 +120,7 @@ class RunEvalGate:
     held from before state is read until the run ends, so no apply on any machine regenerates
     what the evals run against. The lease is released however the run ends. Evals that run at
     once each lease a session from `sessions`, opened from `port`; without it they run one at
-    a time.
+    a time. Each attempt's progress goes to `progress` while the suite runs.
     """
 
     def __init__(
@@ -134,6 +135,7 @@ class RunEvalGate:
         host: str = "",
         lock_policy: LockPolicy = _DEFAULT_LOCK_POLICY,
         sessions: SessionPool[CatalogPublicationPort] | None = None,
+        progress: EvalProgress = no_progress,
     ) -> None:
         self._port = port
         self._inputs = inputs
@@ -144,6 +146,7 @@ class RunEvalGate:
         self._host = host
         self._lock_policy = lock_policy
         self._sessions = sessions
+        self._progress = progress
 
     def run(
         self,
@@ -233,7 +236,7 @@ class RunEvalGate:
             if (entry := state.applied.get(item.artifact_key)) is not None
             if (digest := dict(entry.component_fingerprints).get("config_stage_md5")) is not None
         }
-        suite = RunEvalSuite(self._port, self._clock, lifecycle_config, self._sessions).run(
+        suite = RunEvalSuite(self._port, self._clock, lifecycle_config, self._sessions, self._progress).run(
             evals,
             defaults=defaults,
             options=EvalRunOptions(self._inputs.git_sha()),

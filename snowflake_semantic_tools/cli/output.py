@@ -329,6 +329,8 @@ class RenderPolicy:
     Attributes:
         color: Whether severity labels are coloured: `table` output on a terminal, unless
             `--no-color`, `$SST_NO_COLOR`, or a non-empty `$NO_COLOR` says otherwise.
+        progress: Whether a long-running command prints progress lines on stderr: never with
+            `--quiet`, nor with `--output json` or `yaml`, whose readers expect no other text.
     """
 
     def __init__(
@@ -350,6 +352,7 @@ class RenderPolicy:
         self.show_baselined = show_baselined
         self.show_cascade = show_cascade
         self.show_all_occurrences = show_all_occurrences
+        self.progress = output not in ("json", "yaml") and not quiet
 
 
 _DEFAULT_POLICY = RenderPolicy()
@@ -364,6 +367,19 @@ def use_render_policy(policy: RenderPolicy) -> None:
 def verbose_run() -> bool:
     """Report whether this run was asked for detailed progress, `--verbose`."""
     return _POLICY[0].verbose
+
+
+def print_progress(line: str, *, warning: bool = False) -> None:
+    """Print one progress line on stderr, as it happens, when this run's render policy shows progress.
+
+    A warning is prefixed `warn`, as other command warnings are. A line that would carry a
+    credential this run resolved is replaced by SST-PRT012.
+    """
+    policy = _POLICY[0]
+    if not policy.progress:
+        return
+    text = f"warn  {line}" if warning else line
+    click.echo(_render(_secret_refusal("progress output"), policy) if _leaks(text) else text, err=True)
 
 
 def render_diagnostics(diagnostics: Iterable[Diagnostic]) -> None:
