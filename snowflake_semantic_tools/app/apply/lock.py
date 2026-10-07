@@ -162,7 +162,8 @@ class RunLease:
         Diagnostics:
             SST-APL011: another run holds either lock, or the remote lock expired and
                 `break_stale` was not given.
-            SST-APL010: an expired lock, local or remote, was taken over.
+            SST-APL010: an expired lock was taken over; once, though both locks were, in the
+                remote lock's words, which name the run, its role and host, and the expiry.
         """
         run_id = self._claim.run_id
         self._holder = None
@@ -170,7 +171,7 @@ class RunLease:
         if not locked:
             self._holder = holder
             return False, (D("SST-APL011", value=holder or "another run"),)
-        reported = [D("SST-APL010", value=holder or "expired run")] if broke_local else []
+        local_break = (D("SST-APL010", value=holder or "expired run"),) if broke_local else ()
         try:
             remote = self._port.acquire_run_lock(
                 self._state_table, self._target_name, self._claim, break_stale=break_stale
@@ -182,12 +183,13 @@ class RunLease:
             self._store.release_lock(run_id)
             self._holder = remote.holder.run_id if remote.holder is not None else None
             value = remote.holder.describe() if remote.holder is not None else "another run"
-            return False, (*reported, D("SST-APL011", value=value))
+            return False, (*local_break, D("SST-APL011", value=value))
+        reported = local_break
         if remote.broke_stale and remote.holder is not None:
-            reported.append(D("SST-APL010", value=remote.holder.describe()))
+            reported = (D("SST-APL010", value=remote.holder.describe()),)
         self._fence = remote.fence
         self._start_heartbeat(remote.fence)
-        return True, tuple(reported)
+        return True, reported
 
     def release(self) -> None:
         """Stop the heartbeat, then release the remote lock and the local one; idempotent.

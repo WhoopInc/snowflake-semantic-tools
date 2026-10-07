@@ -25,6 +25,10 @@ _OPTION_HELP: Mapping[str, str] = {
     "--profiles-dir": "Directory of `profiles.yml`, else `$SST_PROFILES_DIR`, then `$DBT_PROFILES_DIR`.",
     "--target": "Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target.",
     "--manifest": "Read this dbt `manifest.json` instead of running `dbt parse`.",
+    "--break-stale-lock": (
+        "Take over the run lock only once the run holding it has expired (SST-APL010); a live lock "
+        "is refused all the same (SST-APL011)."
+    ),
     "--output": "`table` (default), `plain`, or `json`; `list` also takes `yaml` and `csv`. Else `$SST_OUTPUT`.",
     "--verbose": "Add each diagnostic's phase and fingerprint. Cannot be combined with `--quiet`.",
     "--quiet": "Show errors only.",
@@ -101,7 +105,6 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst list", "--long"): "Every detail column, including each artifact's source files.",
     ("sst apply", "--plan"): "Apply this saved plan. It must still match the compiled project.",
     ("sst apply", "--yes"): "Apply without asking for confirmation.",
-    ("sst apply", "--break-stale-lock"): "Take over a state lock left behind by a run that no longer exists.",
     ("sst apply", "--temporary"): (
         "Publish agents as session-scoped temporary agents; refused for a production-like target."
     ),

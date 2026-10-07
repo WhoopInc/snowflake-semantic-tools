@@ -55,12 +55,15 @@ class DropRequest:
         artifact_type: The registered type the operator says the object is.
         object_type: That type's Snowflake object type, which the DROP statement names.
         target_name: The dbt target the drop runs against, which the run lock is held for.
+        break_stale_lock: Take over the run lock when its holder has expired, as
+            `sst apply --break-stale-lock` does; a live holder is refused all the same.
     """
 
     qualified_name: QualifiedName
     artifact_type: str
     object_type: str
     target_name: str
+    break_stale_lock: bool = False
 
     @property
     def drop_sql(self) -> Sql:
@@ -137,7 +140,7 @@ class DropObject:
         Diagnostics:
             SST-APL011: another run holds the lock, or broke it before the dropped object's
                 state entries could be deleted; they are then left as they are.
-            SST-APL010: an expired lock was taken over.
+            SST-APL010: the request breaks stale locks, and an expired one was taken over.
             SST-PRT005: the named object does not exist.
             SST-PLN024: the object carries no SST ownership marker, or one naming a manifest
                 the target's state never applied while state does not record the object.
@@ -152,7 +155,7 @@ class DropObject:
             LockClaim(self._clock.new_run_id(), self._actor, self._host, self._lock_policy.ttl_seconds),
             self._lock_policy,
         )
-        locked, reported = lease.acquire(break_stale=False)
+        locked, reported = lease.acquire(break_stale=request.break_stale_lock)
         if not locked or lease.fence is None:
             return DropResult(REFUSED, DiagnosticBag(reported))
         try:

@@ -103,6 +103,16 @@ def sql_out_option() -> Decorator:
     return click.option("--sql-out", type=click.Path(file_okay=False, path_type=Path))
 
 
+def break_stale_lock_option() -> Decorator:
+    """`--break-stale-lock`: take over the run lock only once its holder has expired.
+
+    Every command that takes the target's run lock offers it with one meaning, which
+    `RunLease.acquire` implements: an expired lock is taken over and reported, a live one
+    is refused all the same.
+    """
+    return click.option("--break-stale-lock", is_flag=True)
+
+
 def fail_fast_option() -> Decorator:
     """The `--fail-fast` flag."""
     return click.option("--fail-fast", is_flag=True)

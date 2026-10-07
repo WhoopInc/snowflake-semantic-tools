@@ -26,6 +26,7 @@ from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import (
+    break_stale_lock_option,
     defer_target_option,
     fail_fast_pair,
     no_validate_option,
@@ -101,7 +102,7 @@ def _refuse_invocation(
 @click.option("--yes", "-y", "confirmed", is_flag=True)
 @fail_fast_pair()
 @threads_option()
-@click.option("--break-stale-lock", is_flag=True)
+@break_stale_lock_option()
 @click.option("--temporary", is_flag=True)
 @no_validate_option()
 @sql_out_option()

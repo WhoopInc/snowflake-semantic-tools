@@ -33,6 +33,7 @@ from snowflake_semantic_tools.app.drop import DropObject, DropRequest, DropResul
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
+from snowflake_semantic_tools.cli.options import break_stale_lock_option
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body
 from snowflake_semantic_tools.cli.wiring.project import connect, state_store
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
@@ -88,6 +89,7 @@ def _refuse(objects: tuple[str, ...], artifact_type: str | None, target_name: st
 @click.option("--target", "-t", "target_name")
 @click.option("--profile", "profile_name")
 @click.option("--yes", "-y", "assume_yes", is_flag=True)
+@break_stale_lock_option()
 @command_body("drop", config=ConfigNeed.NONE, refusals=_refuse)
 def drop(
     paths: ProjectPaths,
@@ -97,6 +99,7 @@ def drop(
     target_name: str,
     profile_name: str | None,
     assume_yes: bool,
+    break_stale_lock: bool,
 ) -> CommandResult:
     """Break-glass: drop exactly one object SST owns from one target, and forget it in state.
 
@@ -109,7 +112,11 @@ def drop(
     files = _state_files(paths)
     profile, port = connect(files, target_name, profile=profile_name or _project_profile(paths))
     request = DropRequest(
-        QualifiedName.parse(objects[0]), artifact_type, droppable_types()[artifact_type], profile.target_name
+        QualifiedName.parse(objects[0]),
+        artifact_type,
+        droppable_types()[artifact_type],
+        profile.target_name,
+        break_stale_lock=break_stale_lock,
     )
     role = profile.identity.role or ""
     _audit(

@@ -246,3 +246,22 @@ def test_the_lock_is_released_when_the_run_raises() -> None:
     with pytest.raises(SnowflakePortError, match="connection reset"):
         gate(Dropped([]), state_store=lock)
     assert not lock.locked
+
+
+def test_an_eval_run_takes_over_an_expired_lock_only_when_asked_and_never_a_live_one() -> None:
+    def locked_by(ttl: int) -> EvalSnowflake:
+        port = EvalSnowflake(completed_attempt())
+        port.run_locks.acquire_run_lock(STATE_TABLE, "verify", LockClaim("crashed", "R", "h", ttl), break_stale=False)
+        port.run_locks.now = 60.0
+        return port
+
+    breaking = EvalGateRequest(break_stale_lock=True)
+    kept, _, _, _ = gate(locked_by(10))
+    assert isinstance(kept, EvalGateRefused) and [item.code for item in kept.diagnostics] == ["SST-APL011"]
+    broke, _, _, _ = gate(locked_by(10), request=breaking)
+    assert isinstance(broke, EvalGateOutcome)
+    assert [(item.code, item.message) for item in broke.diagnostics if item.code.startswith("SST-APL01")] == [
+        ("SST-APL010", "broke a stale lock held by run crashed (R on h), expired 10.0")
+    ]
+    live, _, _, _ = gate(locked_by(600), request=breaking)
+    assert isinstance(live, EvalGateRefused) and [item.code for item in live.diagnostics] == ["SST-APL011"]

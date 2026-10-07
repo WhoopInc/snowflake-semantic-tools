@@ -420,7 +420,7 @@ sst apply [OPTIONS]
 | `--yes / -y` | flag |  | Apply without asking for confirmation. |
 | `--fail-fast / --no-fail-fast` | flag |  | Stop at the first failure instead of continuing. Defaults to `apply.fail_fast`. |
 | `--threads` | INTEGER RANGE |  | Sessions to plan and apply on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`. Planning defaults to 1; applying to `skills.+threads`, else 4. |
-| `--break-stale-lock` | flag |  | Take over a state lock left behind by a run that no longer exists. |
+| `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 | `--temporary` | flag |  | Publish agents as session-scoped temporary agents; refused for a production-like target. |
 | `--no-validate` | flag |  | Skip validation: no cycle check, connected check, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. |
 | `--sql-out` | DIRECTORY |  | Also write the statements for each change into this directory. |
@@ -464,7 +464,8 @@ does. `--select` and `--exclude` narrow every suite to those artifacts. Exit 1 w
 suite fails, 4 when a selected artifact has no golden file, and 5 when a connected suite
 cannot reach Snowflake. `--threads` runs the smoke probes, and the evals no setting paces,
 that many at once. `--update-golden` runs the golden suite only, rewriting each golden the
-current output no longer equals.
+current output no longer equals. The eval suite holds the target's run lock while it runs;
+`--break-stale-lock` takes it over only from a run that has expired.
 
 ```text
 sst test [OPTIONS]
@@ -482,6 +483,7 @@ sst test [OPTIONS]
 | `--fail-fast` | flag |  | Stop at the first failing golden, probe, or eval. |
 | `--capture-baseline` | flag |  | Record this eval run as the new baseline. Requires `--reason`. |
 | `--reason` | TEXT |  | Why the baseline is changing; stored with it. |
+| `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 
 ## sst explain
 
@@ -557,3 +559,4 @@ sst drop [OPTIONS]
 | `--target / -t` | TEXT |  | Required. Target from `profiles.yml`; there is no default, and `$SST_TARGET` is not read. |
 | `--profile` | TEXT |  | Profile in `profiles.yml`; else `dbt_project.yml`'s `profile:`. Needed outside a project. |
 | `--yes / -y` | flag |  | Required on every invocation: it is the confirmation, and there is no prompt. |
+| `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
