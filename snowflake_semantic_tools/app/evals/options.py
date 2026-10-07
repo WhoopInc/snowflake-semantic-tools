@@ -23,6 +23,11 @@ class EvalRunOptions:
         read_timeout_ms: The longest one status read may take, network retries included,
             before it fails as transient; never longer than what is left of the deadline.
         heartbeat_ms: How often, at most, the suite reports the runs it is still waiting on.
+        partial_settle_ms: How long a partial status must persist before it ends the run, in
+            milliseconds of the clock's monotonic time from its first read. Snowflake reports
+            PARTIALLY_COMPLETED for up to a minute before a run it is finalizing reads
+            COMPLETED, so a partial status that changes within this window is not the result;
+            3 minutes by default. One read at the deadline still decides.
     """
 
     git_sha: str
@@ -32,3 +37,4 @@ class EvalRunOptions:
     max_read_failures: int = 5
     read_timeout_ms: int = 30_000
     heartbeat_ms: int = 60_000
+    partial_settle_ms: int = 180_000

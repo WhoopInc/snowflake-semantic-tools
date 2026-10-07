@@ -30,6 +30,7 @@ from snowflake_semantic_tools.app.lifecycle.evals import (
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
+    EVAL_PARTIAL_STATUSES,
     EVAL_PASS_STATUSES,
     EvalCostSummary,
     EvalDefaults,
@@ -49,7 +50,6 @@ from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_t
 from snowflake_semantic_tools.domain.sql import Sql, literal, sql
 from snowflake_semantic_tools.domain.state import APPLIED, Manifest, State
 
-_PARTIAL_STATUSES = frozenset(("INVOCATION_PARTIALLY_COMPLETED", "PARTIALLY_COMPLETED"))
 _DEFAULT_RUN_NAME_TEMPLATE = "EVAL_{{ agent | upper }}_{{ sha7 }}_{{ variant }}_{{ ts }}"
 
 
@@ -660,7 +660,7 @@ def retention_class(run: EvalRunConfig, default: str | None) -> str | None:
 
 def _partial_status(compiled: CompiledEval, run: EvalRunConfig, terminal_status: str) -> tuple[Diagnostic, ...]:
     """Warn of a partial terminal status the config does not accept."""
-    if terminal_status not in _PARTIAL_STATUSES or terminal_status in run.accept_statuses:
+    if terminal_status not in EVAL_PARTIAL_STATUSES or terminal_status in run.accept_statuses:
         return ()
     return (D("SST-APL024", artifact=compiled.artifact_key, found=terminal_status),)
 
@@ -671,7 +671,7 @@ def _accepted_partial(compiled: CompiledEval, run: EvalRunConfig, terminal_statu
     A partial status is still not a pass, whatever the config accepts, and whether or not a
     retry completed in its place.
     """
-    if terminal_status in _PARTIAL_STATUSES and terminal_status in run.accept_statuses:
+    if terminal_status in EVAL_PARTIAL_STATUSES and terminal_status in run.accept_statuses:
         return (D("SST-VAL730", artifact=compiled.name, found=terminal_status, subject=compiled.artifact_key),)
     return ()
 
@@ -696,7 +696,7 @@ def _failed_status(
     compiled: CompiledEval, run_name: str, terminal_status: str, status_details: tuple[str, ...]
 ) -> tuple[Diagnostic, ...]:
     """Report a terminal status that is neither a pass nor partial, with the run's status details."""
-    if terminal_status in EVAL_PASS_STATUSES or terminal_status in _PARTIAL_STATUSES:
+    if terminal_status in EVAL_PASS_STATUSES or terminal_status in EVAL_PARTIAL_STATUSES:
         return ()
     reason = "; ".join(status_details) or "no status details"
     detail = f"run {run_name!r} ended {terminal_status}: {reason}"

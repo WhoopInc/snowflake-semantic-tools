@@ -1,7 +1,8 @@
 """Polling an eval run through status reads that fail in transit, against a deadline, with progress.
 
 Every run here is the fake's scripted session on a `PollClock`, whose sleeps pass, so a
-deadline and a heartbeat interval are reached without waiting on the wall clock.
+deadline, a heartbeat interval and a partial status's settle window are reached without
+waiting on the wall clock.
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from tests.helpers.eval_builders import EvalSnowflake, compiled_eval_of, result_
 
 RUN = "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z"
 DROPPED = SnowflakeTransientError("250003: Failed to execute request: Read timed out.\nretry 4 of 4")
+PARTIAL = status_result("PARTIALLY_COMPLETED")
 EventT = TypeVar("EventT")
 
 
@@ -233,3 +235,134 @@ def test_progress_lines_render_durations_and_short_reasons() -> None:
     assert StatusReadFailed(RUN, 1, 5, "Read timed out.").line == (
         f"eval run {RUN}: status read failed (1/5), retrying: Read timed out."
     )
+    assert StatusChanged(RUN, "PARTIALLY_COMPLETED", 415_000, 180_000).line == (
+        f"eval run {RUN}: PARTIALLY_COMPLETED after 6m55s (waiting up to 3m00s for it to settle)"
+    )
+
+
+def test_a_partial_status_that_turns_completed_within_the_window_is_kept_without_a_retry() -> None:
+    port = EvalSnowflake(
+        [status_result("COMPUTATION_IN_PROGRESS"), PARTIAL, PARTIAL, status_result("COMPLETED"), result_rows()]
+    )
+
+    result, events = run_polled(port, compiled=retrying_eval())
+
+    assert result.success and not result.diagnostics
+    [attempt] = result.evals[0].attempts
+    assert attempt.terminal_status == "COMPLETED"
+    assert (starts(port), status_reads(port)) == (1, 4)
+    # The partial status is reported once, with the window it is given; then the usual lines.
+    changes = of_kind(events, StatusChanged)
+    assert [(change.status, change.settle_ms) for change in changes] == [
+        ("COMPUTATION_IN_PROGRESS", None),
+        ("PARTIALLY_COMPLETED", 180_000),
+        ("COMPLETED", None),
+    ]
+    assert changes[1].line == f"eval run {RUN}: PARTIALLY_COMPLETED after 5s (waiting up to 3m00s for it to settle)"
+    [ended] = of_kind(events, AttemptEnded)
+    assert ended == events[-1] and ended.status == "COMPLETED"
+
+
+def test_a_partial_status_that_persists_for_the_window_ends_the_run() -> None:
+    clock = PollClock()
+    port = EvalSnowflake([PARTIAL] * 4)
+
+    result, events = run_polled(port, clock=clock, partial_settle_ms=12_000)
+
+    [attempt] = result.evals[0].attempts
+    assert attempt.terminal_status == "PARTIALLY_COMPLETED"
+    assert [item.code for item in result.diagnostics] == ["SST-APL024"]
+    # Reads a poll interval apart, the last wait cut short to end the window on a read.
+    assert status_reads(port) == 4
+    assert clock.sleeps[:2] == [5_000, 5_000] and 0 < clock.sleeps[2] < 5_000
+    assert sum(clock.sleeps) < 12_000 + 10
+    assert len(of_kind(events, StatusChanged)) == 1
+    [ended] = of_kind(events, AttemptEnded)
+    assert ended.status == "PARTIALLY_COMPLETED"
+
+
+def test_a_partial_status_settles_at_its_first_read_without_a_window() -> None:
+    port = EvalSnowflake([PARTIAL])
+
+    result, events = run_polled(port, partial_settle_ms=0)
+
+    assert result.evals[0].attempts[0].terminal_status == "PARTIALLY_COMPLETED"
+    assert status_reads(port) == 1
+    [change] = of_kind(events, StatusChanged)
+    assert change.settle_ms is None and "settle" not in change.line
+
+
+@pytest.mark.parametrize(
+    ("last", "ended_as"),
+    [("PARTIALLY_COMPLETED", "PARTIALLY_COMPLETED"), ("COMPUTATION_IN_PROGRESS", "STATUS_FAILED")],
+)
+def test_a_partial_status_still_settling_at_the_deadline_is_decided_by_the_last_read(last: str, ended_as: str) -> None:
+    port = EvalSnowflake([*[PARTIAL] * 4, status_result(last)])
+
+    result, _ = run_polled(port, deadline_ms=20_000)
+
+    [attempt] = result.evals[0].attempts
+    assert attempt.terminal_status == ended_as
+    assert status_reads(port) == 5
+    if ended_as == "STATUS_FAILED":
+        assert "did not reach a terminal status within 20s; it was COMPUTATION_IN_PROGRESS" in (
+            attempt.retrieval_error or ""
+        )
+
+
+def test_a_status_change_restarts_the_settle_window() -> None:
+    statuses = ("INVOCATION_PARTIALLY_COMPLETED", "INVOCATION_PARTIALLY_COMPLETED", *["PARTIALLY_COMPLETED"] * 3)
+    port = EvalSnowflake([*(status_result(status) for status in statuses), status_result("COMPLETED"), result_rows()])
+
+    result, _ = run_polled(port, partial_settle_ms=12_000)
+
+    # Ten seconds of the second partial status, fifteen of either: neither has settled.
+    assert result.evals[0].attempts[0].terminal_status == "COMPLETED"
+    assert status_reads(port) == 6
+
+
+def test_an_invocation_partial_status_that_goes_on_to_compute_and_complete_is_kept() -> None:
+    statuses = ("INVOCATION_PARTIALLY_COMPLETED", "COMPUTATION_IN_PROGRESS", "COMPLETED")
+    port = EvalSnowflake([*(status_result(status) for status in statuses), result_rows()])
+
+    result, events = run_polled(port, compiled=retrying_eval())
+
+    assert result.success and not result.diagnostics
+    assert [attempt.terminal_status for attempt in result.evals[0].attempts] == ["COMPLETED"]
+    assert [change.status for change in of_kind(events, StatusChanged)] == list(statuses)
+
+
+def test_failed_reads_while_a_partial_status_settles_are_retried_and_count_towards_the_window() -> None:
+    port = EvalSnowflake([PARTIAL, DROPPED, DROPPED, PARTIAL])
+
+    result, events = run_polled(port, partial_settle_ms=12_000)
+
+    assert result.evals[0].attempts[0].terminal_status == "PARTIALLY_COMPLETED"
+    assert [event.failures for event in of_kind(events, StatusReadFailed)] == [1, 2]
+    assert len(of_kind(events, StatusChanged)) == 1
+
+    recovering = EvalSnowflake([PARTIAL, DROPPED, status_result("COMPLETED"), result_rows()])
+    recovered, _ = run_polled(recovering)
+    assert recovered.success
+
+
+def test_a_settle_window_that_ran_out_while_reads_failed_still_waits_the_interval() -> None:
+    clock = PollClock()
+    port = EvalSnowflake([PARTIAL, DROPPED, DROPPED, PARTIAL])
+
+    result, _ = run_polled(port, clock=clock, partial_settle_ms=6_000)
+
+    assert result.evals[0].attempts[0].terminal_status == "PARTIALLY_COMPLETED"
+    # The second wait ends the window; the failed read there is retried an interval later.
+    assert len(clock.sleeps) == 3 and clock.sleeps[0] == clock.sleeps[2] == 5_000
+    assert 0 < clock.sleeps[1] < 1_000 + 1
+
+
+def test_the_heartbeat_goes_on_while_a_partial_status_settles() -> None:
+    port = EvalSnowflake([*[PARTIAL] * 14, status_result("COMPLETED"), result_rows()])
+
+    result, events = run_polled(port)
+
+    assert result.success
+    [beat] = of_kind(events, StillWaiting)
+    assert beat.line == f"waiting on 1 run: {RUN} PARTIALLY_COMPLETED 1m00s"

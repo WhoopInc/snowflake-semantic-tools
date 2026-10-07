@@ -1,8 +1,9 @@
 """What a suite tells its caller while its evaluation runs go on, which can take many minutes.
 
 `RunWatch` follows every run in flight and reports an event when an attempt starts, when a
-run's status changes, when a status read fails and is retried, and when an attempt ends;
-while runs are in flight, it reports at most one `StillWaiting` per heartbeat interval. It
+run's status changes (saying, for a provisional status, how long it is given to settle), when
+a status read fails and is retried, and when an attempt ends; while runs are in flight, it
+reports at most one `StillWaiting` per heartbeat interval. It
 reports nothing for a poll that saw no change, so the events stay few however often runs are
 polled. Each event renders as one line of text; where the lines go, and whether they go
 anywhere, is the caller's choice.
@@ -36,16 +37,25 @@ class AttemptStarted:
 
 @dataclass(frozen=True, slots=True)
 class StatusChanged:
-    """A status read found the run in another status than the read before it, or for the first time."""
+    """A status read found the run in another status than the read before it, or for the first time.
+
+    Attributes:
+        settle_ms: For a provisional status, how long polling waits for it to persist before
+            it ends the run; None for any other status.
+    """
 
     run_name: str
     status: str
     elapsed_ms: int
+    settle_ms: int | None = None
 
     @property
     def line(self) -> str:
         """Render the event as one progress line."""
-        return f"eval run {self.run_name}: {self.status} after {duration_text(self.elapsed_ms)}"
+        line = f"eval run {self.run_name}: {self.status} after {duration_text(self.elapsed_ms)}"
+        if self.settle_ms is None:
+            return line
+        return f"{line} (waiting up to {duration_text(self.settle_ms)} for it to settle)"
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,14 +142,17 @@ class RunWatch:
                 self._last_beat = now
             self._progress(AttemptStarted(run_name, attempt, attempt_limit))
 
-    def status(self, run_name: str, status: str) -> None:
-        """Record a status a read found, reporting it only when it differs from the run's last one."""
+    def status(self, run_name: str, status: str, settle_ms: int | None = None) -> None:
+        """Record a status a read found, reporting it only when it differs from the run's last one.
+
+        `settle_ms` marks a provisional status, and how long it is given to settle.
+        """
         with self._lock:
             began, last = self._runs.get(run_name, (self._clock.monotonic_ms(), None))
             if status == last:
                 return
             self._runs[run_name] = (began, status)
-            self._progress(StatusChanged(run_name, status, self._clock.monotonic_ms() - began))
+            self._progress(StatusChanged(run_name, status, self._clock.monotonic_ms() - began, settle_ms))
 
     def read_failed(self, run_name: str, failures: int, limit: int, reason: str) -> None:
         """Report a status read that failed in transit and will be retried."""

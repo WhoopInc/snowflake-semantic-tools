@@ -11,6 +11,7 @@ from types import MappingProxyType
 import pytest
 
 from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.evals.options import EvalRunOptions
 from snowflake_semantic_tools.app.evals.run import EvalRunsInterrupted, empty_eval_suite_json
 from snowflake_semantic_tools.app.evals.suite import (
     EvalGateOutcome,
@@ -28,6 +29,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalRunConfig,
     EvalSystemMetric,
     ThresholdRange,
+    eval_status_is_provisional,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
@@ -37,7 +39,7 @@ from snowflake_semantic_tools.domain.state import AppliedEntry
 from snowflake_semantic_tools.domain.state.lock import LockClaim
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import target
-from tests.helpers.clocks import FixedClock
+from tests.helpers.clocks import FixedClock, PollClock
 from tests.helpers.eval_builders import (
     STATUS_COLUMNS,
     EvalSnowflake,
@@ -73,12 +75,13 @@ def gate(
     inputs: InMemoryProjectInputs | None = None,
     store: InMemoryEvalStateStore | None = None,
     state_store: InMemoryStateStore | None = None,
+    clock: FixedClock | None = None,
 ) -> tuple[EvalGateOutcome | EvalGateRefused, InMemoryEvalStateStore, InMemoryStateStore, InMemoryProjectInputs]:
     compiled = result or compile_eval()
     project = inputs or InMemoryProjectInputs(revision="abcdef0", evals=EvalCatalog((), (), EvalDefaults()))
     eval_store = store if store is not None else InMemoryEvalStateStore()
     lock = state_store or InMemoryStateStore()
-    use_case = RunEvalGate(port, project, lock, eval_store, FixedClock())
+    use_case = RunEvalGate(port, project, lock, eval_store, clock or FixedClock())
     outcome = use_case.run(
         compiled_evals(compiled), build_manifest(compiled), request, target=target(), state_table=STATE_TABLE
     )
@@ -216,6 +219,12 @@ def retried_eval(*, retry: int, baseline_runs: int | None = None) -> CompileResu
     return compile_eval(replace(resolved, config=replace(resolved.config, system_metrics=(metric,), run=run)))
 
 
+def settle_reads() -> int:
+    """The status reads, a poll interval apart, that span the default settle window."""
+    options = EvalRunOptions("abcdef0")
+    return options.partial_settle_ms // options.poll_interval_ms + 1
+
+
 def ended(status: str, run_name: str = FIRST_RUN) -> QueryResult:
     return QueryResult(STATUS_COLUMNS, ((run_name, "SALES_AGENT", "CORTEX AGENT", status, ["judge timed out"]),))
 
@@ -238,9 +247,15 @@ def test_an_attempt_a_completed_retry_replaced_is_reported_and_the_gate_judges_t
     result = retried_eval(retry=1)
     store = captured_store(result)
     retry = status_result("COMPLETED", f"{FIRST_RUN}_R2")
+    # A partial status ends the attempt only once it has read the same for the settle window.
+    first = [ended(status)] * (settle_reads() if eval_status_is_provisional(status) else 1)
 
-    passing, _, _, _ = gate(EvalSnowflake([ended(status), retry, result_rows()]), store=store, result=result)
-    regressed, _, _, _ = gate(EvalSnowflake([ended(status), retry, worse_rows()]), store=store, result=result)
+    passing, _, _, _ = gate(
+        EvalSnowflake([*first, retry, result_rows()]), store=store, result=result, clock=PollClock()
+    )
+    regressed, _, _, _ = gate(
+        EvalSnowflake([*first, retry, worse_rows()]), store=store, result=result, clock=PollClock()
+    )
 
     assert isinstance(passing, EvalGateOutcome) and passing.passed
     assert passing.data["gate_verdict"] == "passed"

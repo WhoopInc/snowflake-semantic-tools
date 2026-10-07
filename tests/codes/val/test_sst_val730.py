@@ -16,6 +16,9 @@ from tests.helpers.clocks import FixedClock
 from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.eval_builders import EvalSnowflake, compiled_eval_of, status_result
 
+# A partial status settles at its first read, as one that persisted would.
+SETTLED = EvalRunOptions("abcdef0", timestamp="20260928T010203Z", partial_settle_ms=0)
+
 
 def accepting(*statuses: str) -> CompiledEval:
     compiled = compiled_eval_of()
@@ -28,9 +31,7 @@ def accepting(*statuses: str) -> CompiledEval:
 def test_sst_val730_fires() -> None:
     port = EvalSnowflake([status_result("PARTIALLY_COMPLETED")])
     compiled = accepting("COMPLETED", "PARTIALLY_COMPLETED")
-    result = RunEvalSuite(port, FixedClock()).run(
-        (compiled,), options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z")
-    )
+    result = RunEvalSuite(port, FixedClock()).run((compiled,), options=SETTLED)
     diagnostic = only(result.diagnostics, "SST-VAL730")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "eval run for 'sales_agent': status 'PARTIALLY_COMPLETED' is not a pass"
@@ -40,8 +41,6 @@ def test_sst_val730_fires() -> None:
 
 def test_sst_val730_silent() -> None:
     port = EvalSnowflake([status_result("PARTIALLY_COMPLETED")])
-    result = RunEvalSuite(port, FixedClock()).run(
-        (accepting("COMPLETED"),), options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z")
-    )
+    result = RunEvalSuite(port, FixedClock()).run((accepting("COMPLETED"),), options=SETTLED)
     assert "SST-VAL730" not in codes(result.diagnostics)
     assert codes(result.diagnostics) == ["SST-APL024"]

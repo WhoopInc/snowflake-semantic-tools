@@ -111,11 +111,11 @@ def runner(port: EvalSnowflake) -> tuple[RunEvalSuite, CompiledEval]:
     return RunEvalSuite(port, FixedClock()), compiled
 
 
-def run_once(port: EvalSnowflake, compiled: CompiledEval | None = None) -> EvalSuiteResult:
+def run_once(port: EvalSnowflake, compiled: CompiledEval | None = None, **options: int) -> EvalSuiteResult:
     use_case, default_compiled = runner(port)
     return use_case.run(
         (compiled or default_compiled,),
-        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"),
+        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", **options),
     )
 
 
@@ -175,7 +175,7 @@ def test_eval_runner_reports_every_retry_and_partial_status() -> None:
 
     result = RunEvalSuite(port, FixedClock()).run(
         (compiled,),
-        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"),
+        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", partial_settle_ms=0),
     )
 
     assert result.success
@@ -276,7 +276,11 @@ def test_a_config_accepting_a_partial_status_errs_even_when_a_retry_completed() 
         ]
     )
 
-    result = run_once(port, with_run(compiled_eval_of(), retry=1, accept_statuses=("COMPLETED", "PARTIALLY_COMPLETED")))
+    result = run_once(
+        port,
+        with_run(compiled_eval_of(), retry=1, accept_statuses=("COMPLETED", "PARTIALLY_COMPLETED")),
+        partial_settle_ms=0,
+    )
 
     # The retry absorbed the partial run, but the config that would pass a partial is still wrong.
     assert result.evals[0].accepted and not result.success
