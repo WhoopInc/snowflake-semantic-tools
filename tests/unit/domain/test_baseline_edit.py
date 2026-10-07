@@ -84,3 +84,11 @@ def test_add_chooses_one_code_or_every_warning() -> None:
     warning, info = _warning("a"), D("SST-DIS200", path="x.yml", type="metric")
     assert chosen_for_baseline([warning, info], None) == (warning,)
     assert chosen_for_baseline([warning, info], "SST-DIS200") == (info,)
+
+
+def test_an_entry_a_connected_run_added_is_judged_only_by_a_run_against_its_target() -> None:
+    _, [connected] = with_entries(EMPTY, [_warning("a")], lambda code: "", "verify")
+    offline = baseline_entry(_warning("b"), "")
+    assert (connected.connected, connected.target, offline.connected) == (True, "verify", False)
+    assert connected.judged_by("verify") and not connected.judged_by(None) and not connected.judged_by("prod")
+    assert offline.judged_by(None) and not offline.judged_by("verify")
