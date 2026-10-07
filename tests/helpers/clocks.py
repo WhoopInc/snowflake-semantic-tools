@@ -9,6 +9,7 @@ exactly one beat run and returns once the heartbeat waits again or has stopped.
 from __future__ import annotations
 
 import threading
+from datetime import UTC, datetime, timedelta
 
 
 class FixedClock:
@@ -34,8 +35,15 @@ class FixedClock:
 class PollClock(FixedClock):
     """A `FixedClock` whose sleeps pass: each `sleep` moves monotonic time on by its wait.
 
-    `advance` moves it on too, as a slow status read would; a read still moves it by one.
+    `advance` moves it on too, as a slow status read would; a read still moves it by one. Its
+    wall time is as many milliseconds past the same midnight, so it stays a valid instant
+    however long the waits run.
     """
+
+    def now_iso(self) -> str:
+        self.current += 1
+        instant = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(milliseconds=self.current)
+        return instant.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
     def sleep(self, milliseconds: int) -> None:
         super().sleep(milliseconds)

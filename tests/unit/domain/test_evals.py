@@ -9,6 +9,8 @@ from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentTool, ResolvedAgent, ResolvedAgentTool
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_IN_PROGRESS_STATUSES,
+    EVAL_KNOWN_TERMINAL_STATUSES,
+    EVAL_PARTIAL_STATUSES,
     CustomEvalMetric,
     EvalCatalog,
     EvalConfig,
@@ -26,6 +28,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalSystemMetric,
     ResolvedEval,
     ThresholdRange,
+    eval_status_is_provisional,
     eval_status_is_terminal,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
@@ -660,3 +663,13 @@ def test_a_custom_metric_definition_digest_moves_with_its_judge_prompt_and_bands
 def test_only_the_in_progress_statuses_keep_a_run_going() -> None:
     assert not any(eval_status_is_terminal(status) for status in EVAL_IN_PROGRESS_STATUSES)
     assert all(eval_status_is_terminal(status) for status in ("COMPLETED", "CANCELLED", "FAILED", "SOMETHING_NEW"))
+
+
+def test_a_partial_status_is_provisional_not_terminal() -> None:
+    assert {"PARTIALLY_COMPLETED", "INVOCATION_PARTIALLY_COMPLETED"} == EVAL_PARTIAL_STATUSES
+    assert EVAL_PARTIAL_STATUSES <= EVAL_KNOWN_TERMINAL_STATUSES
+    assert all(eval_status_is_provisional(status) for status in EVAL_PARTIAL_STATUSES)
+    assert not any(eval_status_is_terminal(status) for status in EVAL_PARTIAL_STATUSES)
+    assert not any(
+        eval_status_is_provisional(status) for status in (*EVAL_IN_PROGRESS_STATUSES, "COMPLETED", "FAILED", "NEW")
+    )

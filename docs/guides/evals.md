@@ -145,6 +145,25 @@ fail the attempt (`SST-APL023`), and then only after one last read, so a run
 that completed while the network was down is still kept rather than retried.
 A run that has not finished 20 minutes after it started fails the same way.
 
+`PARTIALLY_COMPLETED` and `INVOCATION_PARTIALLY_COMPLETED` are provisional.
+Snowflake can report a run as `PARTIALLY_COMPLETED` for up to a minute after its
+last metric is scored, while it finalizes the run, and then report the same run
+`COMPLETED`. So a partial status does not end the run when it is first read:
+the suite keeps polling and accepts it only once it has read the same status
+for 3 minutes, counted from its first read (failed reads in between included).
+Any other status restarts the wait, and a run that turns `COMPLETED` is kept
+without a retry. A partial status still read at the 20-minute deadline ends the
+run. The wait is printed once, when the status is first read:
+
+```text
+eval run EVAL_SALES_AGENT_1a2b3c4_ci_20260928T010203Z: PARTIALLY_COMPLETED after 6m55s (waiting up to 3m00s for it to settle)
+eval run EVAL_SALES_AGENT_1a2b3c4_ci_20260928T010203Z: COMPLETED after 7m30s
+eval run EVAL_SALES_AGENT_1a2b3c4_ci_20260928T010203Z: ended COMPLETED after 7m30s
+```
+
+A run that settles partially completed is reported as `SST-APL024` and, when
+`retry` allows, retried like any attempt that did not pass.
+
 ## Baselines
 
 A gate compares scores with a **baseline**: the range of scores the published

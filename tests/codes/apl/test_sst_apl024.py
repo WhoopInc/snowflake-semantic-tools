@@ -9,7 +9,8 @@ from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.clocks import FixedClock
 from tests.helpers.eval_builders import EvalSnowflake, compiled_eval_of, result_rows, status_result
 
-OPTIONS = EvalRunOptions("abcdef0", timestamp="20260928T010203Z")
+# A partial status settles at its first read, as one that persisted would.
+OPTIONS = EvalRunOptions("abcdef0", timestamp="20260928T010203Z", partial_settle_ms=0)
 
 
 def test_sst_apl024_fires() -> None:

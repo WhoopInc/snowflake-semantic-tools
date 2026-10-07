@@ -51,20 +51,29 @@ SUPPORTED_JUDGE_PLACEHOLDERS = frozenset(
 EVAL_MINT_AUTO = "auto"
 EVAL_MINT_NEVER = "never"
 EVAL_MINT_POLICIES = frozenset((EVAL_MINT_AUTO, EVAL_MINT_NEVER))
-# The statuses of a run Snowflake is still working on. Any other status ends the run, a value
-# Snowflake reports and does not document included: a run once reported `FAILED`.
+# The statuses of a run Snowflake is still working on. Any other status ends the run -- a partial
+# one once it persists -- a value Snowflake reports and does not document included: a run once
+# reported `FAILED`.
 EVAL_IN_PROGRESS_STATUSES = frozenset(
     ("CREATED", "INVOCATION_IN_PROGRESS", "INVOCATION_COMPLETED", "COMPUTATION_IN_PROGRESS")
 )
+# The partial statuses: some questions failed to run or to score. Snowflake reports them
+# provisionally too: between a run's last metric and its finalizing steps it reads
+# PARTIALLY_COMPLETED for up to a minute, then COMPLETED. Only a partial status that persists
+# ends a run.
+EVAL_PARTIAL_STATUSES = frozenset(("PARTIALLY_COMPLETED", "INVOCATION_PARTIALLY_COMPLETED"))
 # The terminal statuses a run is known to report, which `run.accept_statuses` may name.
-EVAL_KNOWN_TERMINAL_STATUSES = frozenset(
-    (EVAL_COMPLETED, "PARTIALLY_COMPLETED", "INVOCATION_PARTIALLY_COMPLETED", "CANCELLED", "FAILED")
-)
+EVAL_KNOWN_TERMINAL_STATUSES = frozenset((EVAL_COMPLETED, "CANCELLED", "FAILED", *EVAL_PARTIAL_STATUSES))
 
 
 def eval_status_is_terminal(status: str) -> bool:
-    """Report whether a run's status ends it: every status but the in-progress ones does."""
-    return status not in EVAL_IN_PROGRESS_STATUSES
+    """Report whether a run's status ends it at once: every status but the in-progress and partial ones."""
+    return status not in EVAL_IN_PROGRESS_STATUSES and status not in EVAL_PARTIAL_STATUSES
+
+
+def eval_status_is_provisional(status: str) -> bool:
+    """Report whether a run's status ends it only once it persists: the partial statuses."""
+    return status in EVAL_PARTIAL_STATUSES
 
 
 @dataclass(frozen=True, slots=True)
