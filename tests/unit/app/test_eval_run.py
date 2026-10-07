@@ -36,7 +36,7 @@ from snowflake_semantic_tools.app.evals.run import (
 )
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT, EvalLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.eval import (
     EvalCostSummary,
     EvalDefaults,
@@ -182,7 +182,12 @@ def test_eval_runner_reports_every_retry_and_partial_status() -> None:
     attempts = result.evals[0].attempts
     assert [attempt.terminal_status for attempt in attempts] == ["PARTIALLY_COMPLETED", "COMPLETED"]
     assert attempts[1].run_name.endswith("_R2")
-    assert result.diagnostics[0].code == "SST-APL024"
+    [retried] = result.diagnostics
+    assert (retried.code, retried.severity) == ("SST-APL029", Severity.WARNING)
+    assert retried.message == (
+        "eval 'eval:sales_agent': run 'EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z' ended PARTIALLY_COMPLETED"
+        " and was retried: no status details"
+    )
     assert result.evals[0].accepted
 
 
@@ -238,10 +243,11 @@ def test_a_gate_run_stops_at_its_first_attempt_that_completed_and_was_read() -> 
 
 
 def test_a_gate_run_retries_an_attempt_that_failed_and_reports_both() -> None:
+    first = "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z"
     port = EvalSnowflake(
         [
-            status_result("FAILED"),
-            status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R2"),
+            QueryResult(STATUS_COLUMNS, ((first, "SALES_AGENT", "CORTEX AGENT", "FAILED", ["Invocation failed"]),)),
+            status_result("COMPLETED", f"{first}_R2"),
             result_rows(),
         ]
     )
@@ -253,8 +259,54 @@ def test_a_gate_run_retries_an_attempt_that_failed_and_reports_both() -> None:
         (1, "FAILED"),
         (2, "COMPLETED"),
     ]
-    assert [item.code for item in result.diagnostics] == ["SST-APL023"]
+    # The failed attempt is reported, as a warning: the retry completed in its place.
+    assert result.success and not result.diagnostics.has_errors
+    assert [(item.code, item.message) for item in result.diagnostics] == [
+        ("SST-APL029", f"eval 'eval:sales_agent': run '{first}' ended FAILED and was retried: Invocation failed")
+    ]
     assert len(port.scripts) == 2 and not port.query_results
+
+
+def test_a_config_accepting_a_partial_status_errs_even_when_a_retry_completed() -> None:
+    port = EvalSnowflake(
+        [
+            status_result("PARTIALLY_COMPLETED"),
+            status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R2"),
+            result_rows(),
+        ]
+    )
+
+    result = run_once(port, with_run(compiled_eval_of(), retry=1, accept_statuses=("COMPLETED", "PARTIALLY_COMPLETED")))
+
+    # The retry absorbed the partial run, but the config that would pass a partial is still wrong.
+    assert result.evals[0].accepted and not result.success
+    assert [item.code for item in result.diagnostics] == ["SST-VAL730", "SST-APL029"]
+
+
+def test_a_retry_after_an_unstarted_or_unread_attempt_reports_why_the_first_did_not_pass() -> None:
+    unreadable = QueryResult(("INPUT_ID",), (("q",),))
+    port = EvalSnowflake(
+        [
+            status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R2"),
+            unreadable,
+            status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R3"),
+            result_rows(),
+        ]
+    )
+    port.execute_results.append(ExecResult(False, error=ExecutionError("cannot start")))
+
+    result = run_once(port, with_run(compiled_eval_of(), retry=2))
+
+    assert [attempt.terminal_status for attempt in result.evals[0].attempts] == [
+        "START_FAILED",
+        "COMPLETED",
+        "COMPLETED",
+    ]
+    assert result.success
+    started, unread = result.diagnostics
+    assert (started.code, started.severity, unread.code) == ("SST-APL029", Severity.WARNING, "SST-APL029")
+    assert "ended START_FAILED and was retried: " in started.message and "cannot start" in started.message
+    assert "_R2' ended COMPLETED and was retried: " in unread.message
 
 
 def test_a_gate_run_retries_an_unread_attempt_until_its_retries_run_out() -> None:
@@ -273,6 +325,8 @@ def test_a_gate_run_retries_an_unread_attempt_until_its_retries_run_out() -> Non
     assert not result.success
     assert [attempt.attempt for attempt in result.evals[0].attempts] == [1, 2]
     assert all(attempt.retrieval_error for attempt in result.evals[0].attempts)
+    # No retry completed, so each attempt reports the error its outcome is.
+    assert [item.code for item in result.diagnostics] == ["SST-SNO001", "SST-SNO001"]
 
 
 def test_baseline_capture_runs_until_configured_completed_attempt_count() -> None:

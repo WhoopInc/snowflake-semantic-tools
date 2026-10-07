@@ -49,7 +49,8 @@ def test_capture_baseline_requires_reason_and_configured_attempts() -> None:
     with pytest.raises(ValueError, match="2 completed attempts"):
         capture_baseline(compiled, run_result(first), reason="initial", captured_at="2026-09-01T00:00:00Z")
     partial = replace(first, terminal_status="PARTIALLY_COMPLETED")
-    with pytest.raises(ValueError, match="refuses partial"):
+    # A partial attempt is never captured, so a completed one alone is still one too few.
+    with pytest.raises(ValueError, match="requires 2 completed attempts, found 1"):
         capture_baseline(
             compiled,
             run_result(partial, first),
@@ -269,7 +270,8 @@ def test_local_baseline_run_count_overrides_global_default() -> None:
     assert len(baseline.run_names) == 2
 
 
-def test_partial_current_attempt_is_no_signal_even_with_a_completed_retry() -> None:
+@pytest.mark.parametrize("status", ("FAILED", "PARTIALLY_COMPLETED"))
+def test_a_completed_retry_is_judged_and_the_attempt_it_replaced_scores_nothing(status: str) -> None:
     compiled = compiled_eval()
     baseline_result = run_result(
         attempt("base-1", (("q", "answer_correctness", True), ("q", "grounding", True))),
@@ -281,13 +283,73 @@ def test_partial_current_attempt_is_no_signal_even_with_a_completed_retry() -> N
         reason="initial",
         captured_at="2026-09-01T00:00:00Z",
     )
-    partial = replace(baseline_result.attempts[0], terminal_status="PARTIALLY_COMPLETED")
-    current = run_result(partial, baseline_result.attempts[1])
+    # The attempt that did not pass carries failing scores; were it judged, they would regress.
+    failed = replace(
+        attempt("current-1", (("q", "answer_correctness", False), ("q", "grounding", False))),
+        terminal_status=status,
+    )
+    retry = replace(attempt("current-1_R2", (("q", "answer_correctness", True), ("q", "grounding", True))), attempt=2)
 
-    verdict, diagnostics = evaluate_gate(compiled, current, baseline, now="2026-09-10T00:00:00Z")
+    verdict, diagnostics = evaluate_gate(compiled, run_result(failed, retry), baseline, now="2026-09-10T00:00:00Z")
 
-    assert verdict.reason == "current_no_signal"
-    assert diagnostics.has_errors
+    assert verdict.passed and verdict.reason is None and verdict.regression_count == 0
+    assert diagnostics == ()
+
+
+def test_a_regression_in_the_completed_retry_still_fails_a_blocking_gate() -> None:
+    compiled = compiled_eval()
+    values = (("q", "answer_correctness", True), ("q", "grounding", True))
+    baseline = capture_baseline(
+        compiled,
+        run_result(attempt("base-1", values), attempt("base-2", values)),
+        reason="initial",
+        captured_at="2026-09-01T00:00:00Z",
+    )
+    failed = replace(attempt("current-1", values), terminal_status="FAILED")
+    retry = attempt("current-1_R2", (("q", "answer_correctness", False), ("q", "grounding", True)))
+
+    verdict, diagnostics = evaluate_gate(compiled, run_result(failed, retry), baseline, now="2026-09-10T00:00:00Z")
+
+    assert not verdict.passed and verdict.reason is None and verdict.regression_count == 1
+    assert [item.code for item in diagnostics] == ["SST-VAL763"]
+
+
+def test_a_baseline_is_captured_from_the_completed_attempts_around_a_failed_one() -> None:
+    compiled = compiled_eval_of()
+    values = (("q", "answer_correctness", True),)
+    attempts = (
+        attempt("run-1", values),
+        replace(attempt("run-2", values), terminal_status="FAILED"),
+        *(attempt(f"run-{number}", values) for number in range(3, 7)),
+    )
+
+    baseline = capture_baseline(
+        compiled,
+        run_result(*attempts),
+        reason="initial",
+        captured_at="2026-09-01T00:00:00Z",
+        required_attempts=5,
+    )
+
+    assert baseline.run_names == ("run-1", "run-3", "run-4", "run-5", "run-6")
+
+
+def test_a_baseline_with_too_few_completed_attempts_is_refused() -> None:
+    values = (("q", "answer_correctness", True),)
+    attempts = (
+        *(attempt(f"run-{number}", values) for number in range(1, 5)),
+        replace(attempt("run-5", values), terminal_status="FAILED"),
+        replace(attempt("run-6", values), terminal_status="COMPLETED", retrieval_error="unreadable"),
+    )
+
+    with pytest.raises(ValueError, match="requires 5 completed attempts, found 4"):
+        capture_baseline(
+            compiled_eval_of(),
+            run_result(*attempts),
+            reason="initial",
+            captured_at="2026-09-01T00:00:00Z",
+            required_attempts=5,
+        )
 
 
 def test_threshold_or_gate_policy_change_invalidates_baseline() -> None:

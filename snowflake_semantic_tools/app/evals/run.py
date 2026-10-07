@@ -182,12 +182,11 @@ class _SuiteRun:
 
 @dataclass(slots=True)
 class _Progress:
-    """One eval's attempts so far, in attempt order, and what they reported."""
+    """One eval's attempts so far, in attempt order, each with the diagnostics its outcome reported."""
 
     compiled: CompiledEval
     setup: _RunSetup | Diagnostic
-    attempts: list[EvalRunAttempt] = field(default_factory=list)
-    diagnostics: list[Diagnostic] = field(default_factory=list)
+    outcomes: list[tuple[EvalRunAttempt, tuple[Diagnostic, ...]]] = field(default_factory=list)
     completed: int = 0
     cancelled: bool = False
 
@@ -201,26 +200,42 @@ class _Progress:
         setup = self.setup
         if isinstance(setup, Diagnostic) or self.cancelled:
             return ()
-        started = len(self.attempts)
+        started = len(self.outcomes)
         wanted = min(setup.required_completed - self.completed, setup.attempt_limit - started)
         return tuple((self, setup, number) for number in range(started + 1, started + 1 + max(0, wanted)))
 
     def record(self, attempt: EvalRunAttempt, diagnostics: tuple[Diagnostic, ...]) -> None:
-        self.attempts.append(attempt)
-        self.diagnostics.extend(diagnostics)
+        self.outcomes.append((attempt, diagnostics))
         if attempt.terminal_status == "CANCELLED":
             self.cancelled = True
         elif _retrieved(attempt):
             self.completed += 1
 
     def result(self) -> EvalRunResult:
-        """Report every attempt that ran; any one completed and read accepts the eval."""
-        if isinstance(self.setup, Diagnostic):
-            return EvalRunResult(self.compiled.artifact_key, (), DiagnosticBag((self.setup,)))
+        """Report every attempt that ran; any one completed and read accepts the eval.
+
+        Once the eval has every completed attempt it needs, each attempt that did not pass was
+        retried in its place, so it reports SST-APL029, a warning naming its run, status and
+        details, rather than the error its outcome is on its own. Short of that, every attempt
+        reports its outcome as it ended. A partial attempt the config accepts reports SST-VAL730
+        either way: the config, not the run, is what is wrong.
+        """
+        setup = self.setup
+        if isinstance(setup, Diagnostic):
+            return EvalRunResult(self.compiled.artifact_key, (), DiagnosticBag((setup,)))
+        retried = self.completed >= setup.required_completed
+        diagnostics = tuple(
+            diagnostic
+            for attempt, outcome in self.outcomes
+            for diagnostic in (
+                *_accepted_partial(self.compiled, setup.run, attempt.terminal_status),
+                *((_retried_attempt(self.compiled, attempt),) if retried and not _retrieved(attempt) else outcome),
+            )
+        )
         return EvalRunResult(
             self.compiled.artifact_key,
-            tuple(self.attempts),
-            DiagnosticBag(tuple(self.diagnostics)),
+            tuple(attempt for attempt, _ in self.outcomes),
+            DiagnosticBag(diagnostics),
             self.completed > 0,
         )
 
@@ -385,21 +400,22 @@ class RunEvalSuite:
         """Start one attempt, poll it to a terminal status, and read its results once it completed.
 
         A failure at any step ends the attempt with it: the attempt records the terminal status
-        it reached and why it failed.
+        it reached and why it failed. Its diagnostics describe the attempt on its own; the
+        eval's result reports them only when no retry completed in its place.
 
         Diagnostics:
             SST-APL023: the run could not be started, its status could not be read, or it
                 ended in a status that is neither a pass nor partial, such as `FAILED` or one
                 Snowflake does not document; the message carries its status details.
-            SST-APL024: the run ended partially completed.
-            SST-VAL730: the run ended partially completed, and the config accepts that status;
-                it is still not a pass.
+            SST-APL024: the run ended partially completed, in a status the config does not
+                accept.
             SST-SNO001: the run completed but its results could not be read or did not match.
         """
         run_name = _run_name(compiled, setup, options, attempt_number)
         refused = self._start(compiled, run_name, setup.config_path, started)
         if refused is not None:
-            return EvalRunAttempt(run_name, attempt_number, "START_FAILED", retrieval_error=refused.message), (refused,)
+            diagnostic = D("SST-APL023", artifact=compiled.artifact_key, detail=refused)
+            return EvalRunAttempt(run_name, attempt_number, "START_FAILED", retrieval_error=refused), (diagnostic,)
         try:
             terminal_status, status_details = self._poll(compiled, run_name, setup.config_path, options)
         except (SnowflakePortError, ValueError) as exc:
@@ -470,10 +486,8 @@ class RunEvalSuite:
         staged_digest = md5(staged_content, usedforsecurity=False).hexdigest() if staged_content is not None else None
         return observed, staged_content, staged_digest
 
-    def _start(
-        self, compiled: CompiledEval, run_name: str, config_path: str, started: _StartedRuns
-    ) -> Diagnostic | None:
-        """Start a run in the agent's schema; its SST-APL023 diagnostic when Snowflake refuses.
+    def _start(self, compiled: CompiledEval, run_name: str, config_path: str, started: _StartedRuns) -> str | None:
+        """Start a run in the agent's schema; the error Snowflake gave when it refuses.
 
         The call resolves in the agent's schema on the port's scoped session, so it never
         changes the schema any other statement runs in. The run counts as started from before
@@ -487,7 +501,7 @@ class RunEvalSuite:
             )
         except SnowflakePortError as exc:
             started.discard(run_name)
-            return D("SST-APL023", artifact=compiled.artifact_key, detail=str(exc))
+            return str(exc)
         return None
 
     def _poll(
@@ -669,12 +683,37 @@ def retention_class(run: EvalRunConfig, default: str | None) -> str | None:
 
 
 def _partial_status(compiled: CompiledEval, run: EvalRunConfig, terminal_status: str) -> tuple[Diagnostic, ...]:
-    """Report a partial terminal status: an error when the config would accept it, else a warning."""
-    if terminal_status not in _PARTIAL_STATUSES:
+    """Warn of a partial terminal status the config does not accept."""
+    if terminal_status not in _PARTIAL_STATUSES or terminal_status in run.accept_statuses:
         return ()
-    if terminal_status in run.accept_statuses:
-        return (D("SST-VAL730", artifact=compiled.name, found=terminal_status, subject=compiled.artifact_key),)
     return (D("SST-APL024", artifact=compiled.artifact_key, found=terminal_status),)
+
+
+def _accepted_partial(compiled: CompiledEval, run: EvalRunConfig, terminal_status: str) -> tuple[Diagnostic, ...]:
+    """Report SST-VAL730, an error, for a partial terminal status the config accepts.
+
+    A partial status is still not a pass, whatever the config accepts, and whether or not a
+    retry completed in its place.
+    """
+    if terminal_status in _PARTIAL_STATUSES and terminal_status in run.accept_statuses:
+        return (D("SST-VAL730", artifact=compiled.name, found=terminal_status, subject=compiled.artifact_key),)
+    return ()
+
+
+def _retried_attempt(compiled: CompiledEval, attempt: EvalRunAttempt) -> Diagnostic:
+    """Warn with SST-APL029 of an attempt that did not pass and that a completed retry replaced.
+
+    The message carries the run's name, the status it reached, and its status details, else
+    why its status or results could not be read.
+    """
+    reasons = (*attempt.status_details, *((attempt.retrieval_error,) if attempt.retrieval_error else ()))
+    return D(
+        "SST-APL029",
+        artifact=compiled.artifact_key,
+        value=attempt.run_name,
+        found=attempt.terminal_status,
+        detail="; ".join(reasons) or "no status details",
+    )
 
 
 def _failed_status(

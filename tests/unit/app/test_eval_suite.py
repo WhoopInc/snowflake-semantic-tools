@@ -21,7 +21,7 @@ from snowflake_semantic_tools.app.evals.suite import (
 )
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.cli.runner import terminated_as_interrupt
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.eval import (
     EvalCatalog,
     EvalDefaults,
@@ -38,7 +38,14 @@ from snowflake_semantic_tools.domain.state.lock import LockClaim
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import target
 from tests.helpers.clocks import FixedClock
-from tests.helpers.eval_builders import EvalSnowflake, compile_eval, resolved_eval, result_rows, status_result
+from tests.helpers.eval_builders import (
+    STATUS_COLUMNS,
+    EvalSnowflake,
+    compile_eval,
+    resolved_eval,
+    result_rows,
+    status_result,
+)
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from tests.helpers.project_inputs import InMemoryProjectInputs
 
@@ -193,6 +200,107 @@ def test_a_blocking_regression_fails_the_run_and_leaves_the_gate_unresolved() ->
     assert [item.code for item in regressed.diagnostics] == ["SST-VAL763"]
     assert (regressed.data["gate_verdict"], regressed.data["regression_count"]) == ("regressed", 1)
     assert store.gates[("verify", "eval:sales_agent")].unresolved
+
+
+FIRST_RUN = "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z"
+
+
+def retried_eval(*, retry: int, baseline_runs: int | None = None) -> CompileResult:
+    """The sales eval gating `answer_correctness` at 0.5 in a blocking tier, with `retry` retries."""
+    resolved = resolved_eval()
+    metric = EvalSystemMetric(
+        resolved.config.system_metrics[0].origin, "answer_correctness", "v3", True, ThresholdRange(0.5)
+    )
+    assert resolved.config.run is not None
+    run = replace(resolved.config.run, tier="blocking", retry=retry, baseline_runs=baseline_runs)
+    return compile_eval(replace(resolved, config=replace(resolved.config, system_metrics=(metric,), run=run)))
+
+
+def ended(status: str, run_name: str = FIRST_RUN) -> QueryResult:
+    return QueryResult(STATUS_COLUMNS, ((run_name, "SALES_AGENT", "CORTEX AGENT", status, ["judge timed out"]),))
+
+
+def worse_rows() -> QueryResult:
+    rows = result_rows()
+    return replace(rows, rows=tuple((*row[:10], 0.0, *row[11:]) for row in rows.rows))
+
+
+def captured_store(result: CompileResult) -> InMemoryEvalStateStore:
+    store = InMemoryEvalStateStore()
+    capture = EvalGateRequest(capture_baseline=True, reason="initial")
+    captured, _, _, _ = gate(EvalSnowflake(completed_attempt()), request=capture, store=store, result=result)
+    assert isinstance(captured, EvalGateOutcome) and captured.passed
+    return store
+
+
+@pytest.mark.parametrize("status", ("FAILED", "PARTIALLY_COMPLETED"))
+def test_an_attempt_a_completed_retry_replaced_is_reported_and_the_gate_judges_the_retry(status: str) -> None:
+    result = retried_eval(retry=1)
+    store = captured_store(result)
+    retry = status_result("COMPLETED", f"{FIRST_RUN}_R2")
+
+    passing, _, _, _ = gate(EvalSnowflake([ended(status), retry, result_rows()]), store=store, result=result)
+    regressed, _, _, _ = gate(EvalSnowflake([ended(status), retry, worse_rows()]), store=store, result=result)
+
+    assert isinstance(passing, EvalGateOutcome) and passing.passed
+    assert passing.data["gate_verdict"] == "passed"
+    [warning] = passing.diagnostics
+    assert (warning.code, warning.severity) == ("SST-APL029", Severity.WARNING)
+    assert warning.message == (
+        f"eval 'eval:sales_agent': run '{FIRST_RUN}' ended {status} and was retried: judge timed out"
+    )
+    # Both attempts are reported, the one that did not pass with its status details.
+    evals = passing.data["evals"]
+    assert isinstance(evals, list)
+    assert [(item["run_name"], item["terminal_status"], item["status_details"]) for item in evals[0]["attempts"]] == [
+        (FIRST_RUN, status, ["judge timed out"]),
+        (f"{FIRST_RUN}_R2", "COMPLETED", []),
+    ]
+    # The verdict is the retry's: a blocking regression in it still fails the run.
+    assert isinstance(regressed, EvalGateOutcome) and not regressed.passed
+    assert [item.code for item in regressed.diagnostics] == ["SST-APL029", "SST-VAL763"]
+    assert regressed.data["gate_verdict"] == "regressed"
+
+
+def test_an_eval_whose_every_attempt_failed_fails_with_no_signal() -> None:
+    result = retried_eval(retry=1)
+    store = captured_store(result)
+
+    outcome, _, _, _ = gate(
+        EvalSnowflake([ended("FAILED"), ended("FAILED", f"{FIRST_RUN}_R2")]), store=store, result=result
+    )
+
+    assert isinstance(outcome, EvalGateOutcome) and not outcome.passed
+    assert [item.code for item in outcome.diagnostics] == ["SST-APL023", "SST-APL023", "SST-SNO001"]
+    assert (outcome.data["gate_verdict"], outcome.data["gate_reasons"]) == ("no_signal", ["current_no_signal"])
+
+
+def test_a_baseline_is_captured_from_its_completed_attempts_when_a_failed_one_was_retried() -> None:
+    result = retried_eval(retry=1, baseline_runs=5)
+    capture = EvalGateRequest(capture_baseline=True, reason="initial")
+    names = [FIRST_RUN, *(f"{FIRST_RUN}_R{number}" for number in range(2, 7))]
+    script: list[QueryResult | Exception] = [status_result("COMPLETED"), result_rows(), ended("FAILED", names[1])]
+    for name in names[2:]:
+        script.extend((status_result("COMPLETED", name), result_rows()))
+
+    outcome, store, _, _ = gate(EvalSnowflake(script), request=capture, result=result)
+
+    assert isinstance(outcome, EvalGateOutcome) and outcome.passed
+    assert store.baselines[("verify", "eval:sales_agent")].run_names == (names[0], *names[2:])
+    retried = [item for item in outcome.diagnostics if item.code == "SST-APL029"]
+    assert [item.severity for item in retried] == [Severity.WARNING] and names[1] in retried[0].message
+    assert not outcome.diagnostics.has_errors
+
+
+def test_a_baseline_with_too_few_completed_attempts_is_refused() -> None:
+    result = retried_eval(retry=0, baseline_runs=2)
+    capture = EvalGateRequest(capture_baseline=True, reason="initial")
+    store = InMemoryEvalStateStore()
+    script: list[QueryResult | Exception] = [*completed_attempt(), ended("FAILED", f"{FIRST_RUN}_R2")]
+
+    with pytest.raises(ValueError, match="requires 2 completed attempts, found 1"):
+        gate(EvalSnowflake(script), request=capture, result=result, store=store)
+    assert store.baselines == {}
 
 
 def test_a_capture_takes_the_baseline_runs_of_the_eval_before_the_default() -> None:

@@ -27,7 +27,7 @@ cannot be downgraded by any setting.
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
 - [Planning (PLN)](#planning-pln) -- 36 codes
-- [Apply (APL)](#apply-apl) -- 28 codes
+- [Apply (APL)](#apply-apl) -- 29 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 22 codes
 - [Internal (INT)](#internal-int) -- 12 codes
@@ -6537,6 +6537,16 @@ Fix: re-run sst extract, then apply
 Raised when a pre-existing eval config stage does not carry the file format eval runs read.
 
 Fix: run one ALTER STAGE to set the required FILE FORMAT; SST will not alter a stage it did not create
+
+### SST-APL029
+
+**Eval attempt did not pass and was retried** (warning)
+
+`eval '<artifact>': run '<value>' ended <found> and was retried: <detail>`
+
+Raised when an attempt failed, was partial, or was not read, and a later attempt completed in its place.
+
+Fix: the retry's results were used; if this recurs, investigate the run's non-determinism
 
 ### SST-APL100
 
