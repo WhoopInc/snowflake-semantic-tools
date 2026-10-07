@@ -218,32 +218,61 @@ def test_eval_runner_stops_after_cancellation_and_preserves_details() -> None:
     assert result.evals[0].attempts[0].status_details == ("user cancelled",)
 
 
-def test_eval_runner_runs_and_retains_every_configured_attempt() -> None:
+def with_run(compiled: CompiledEval, **changes: Any) -> CompiledEval:
+    run = compiled.resolved.config.run
+    assert run is not None
+    config = replace(compiled.resolved.config, run=replace(run, **changes))
+    return replace(compiled, resolved=replace(compiled.resolved, config=config))
+
+
+def test_a_gate_run_stops_at_its_first_attempt_that_completed_and_was_read() -> None:
+    port = EvalSnowflake([status_result("COMPLETED"), result_rows()])
+
+    result = run_once(port, with_run(compiled_eval_of(), retry=3))
+
+    assert result.success
+    assert [attempt.run_name for attempt in result.evals[0].attempts] == [
+        "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z"
+    ]
+    assert len(port.scripts) == 1 and not port.query_results
+
+
+def test_a_gate_run_retries_an_attempt_that_failed_and_reports_both() -> None:
     port = EvalSnowflake(
         [
-            status_result("COMPLETED"),
-            result_rows(),
+            status_result("FAILED"),
             status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R2"),
-            result_rows(),
-            status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R3"),
-            result_rows(),
-            status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R4"),
             result_rows(),
         ]
     )
-    use_case, compiled = runner(port)
-    run = compiled.resolved.config.run
-    assert run is not None
-    compiled = replace(
-        compiled,
-        resolved=replace(compiled.resolved, config=replace(compiled.resolved.config, run=replace(run, retry=3))),
+
+    result = run_once(port, with_run(compiled_eval_of(), retry=3))
+
+    attempts = result.evals[0].attempts
+    assert result.evals[0].accepted and [(attempt.attempt, attempt.terminal_status) for attempt in attempts] == [
+        (1, "FAILED"),
+        (2, "COMPLETED"),
+    ]
+    assert [item.code for item in result.diagnostics] == ["SST-APL023"]
+    assert len(port.scripts) == 2 and not port.query_results
+
+
+def test_a_gate_run_retries_an_unread_attempt_until_its_retries_run_out() -> None:
+    unreadable = QueryResult(("INPUT_ID",), (("q",),))
+    port = EvalSnowflake(
+        [
+            status_result("COMPLETED"),
+            unreadable,
+            status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R2"),
+            unreadable,
+        ]
     )
 
-    result = use_case.run((compiled,), options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"))
+    result = run_once(port, with_run(compiled_eval_of(), retry=1))
 
-    assert result.success
-    assert len(result.evals[0].attempts) == 4
-    assert not port.query_results
+    assert not result.success
+    assert [attempt.attempt for attempt in result.evals[0].attempts] == [1, 2]
+    assert all(attempt.retrieval_error for attempt in result.evals[0].attempts)
 
 
 def test_baseline_capture_runs_until_configured_completed_attempt_count() -> None:
@@ -514,54 +543,29 @@ def test_eval_runner_reports_missing_run_version_and_config_failures() -> None:
     assert not config_failure.evals[0].attempts
 
 
-def test_eval_runner_fail_fast_stops_before_the_next_eval(monkeypatch: pytest.MonkeyPatch) -> None:
-    compiled = compiled_eval_of()
-    use_case = RunEvalSuite(EvalSnowflake([]), FixedClock())
-    calls: list[str] = []
+def test_eval_runner_fail_fast_stops_before_the_next_eval() -> None:
+    port = EvalSnowflake([status_result("FAILED")])
 
-    def fail(*args: Any) -> EvalRunResult:
-        calls.append(args[0].artifact_key)
-        return EvalRunResult(args[0].artifact_key, (), DiagnosticBag(), False)
-
-    monkeypatch.setattr(use_case, "_run_eval", fail)
-
-    result = use_case.run(
-        (compiled, compiled),
+    result = RunEvalSuite(port, FixedClock()).run(
+        (compiled_eval_of(), compiled_eval_of()),
         options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"),
         fail_fast=True,
     )
 
-    assert calls == [compiled.artifact_key]
-    assert len(result.evals) == 1
+    assert len(result.evals) == 1 and len(port.scripts) == 1
     assert not result.success
 
 
-def test_eval_runner_parallelizes_with_the_requested_concurrency(monkeypatch: pytest.MonkeyPatch) -> None:
-    first = compiled_eval_of()
-    first_run = first.resolved.config.run
-    assert first_run is not None
-    second = replace(
-        first,
-        resolved=replace(
-            first.resolved,
-            config=replace(first.resolved.config, run=replace(first_run, concurrency=3)),
-        ),
-    )
-    use_case = RunEvalSuite(EvalSnowflake([]), FixedClock())
+def test_an_interrupt_before_any_run_started_propagates_as_it_came() -> None:
+    class Interrupted(EvalSnowflake):
+        def resolve_agent_version(self, qualified_name: QualifiedName, selector: str) -> str:
+            del qualified_name, selector
+            raise KeyboardInterrupt
 
-    def succeed(*args: Any) -> EvalRunResult:
-        return EvalRunResult(args[0].artifact_key, (), DiagnosticBag(), True)
+    with pytest.raises(KeyboardInterrupt) as raised:
+        run_once(Interrupted([]))
 
-    monkeypatch.setattr(use_case, "_run_eval", succeed)
-
-    result = use_case.run(
-        (first, second),
-        defaults=EvalDefaults(),
-        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"),
-    )
-
-    assert len(result.evals) == 2
-    assert result.success
+    assert type(raised.value) is KeyboardInterrupt
 
 
 @pytest.mark.parametrize(
