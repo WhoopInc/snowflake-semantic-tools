@@ -368,8 +368,10 @@ class InterruptedAtStart(EvalSnowflake):
         super().__init__([])
         self.interrupt = interrupt
 
-    def query_in_context(self, scope: SchemaScope, sql: Sql, params: object = None) -> QueryResult:
-        reply = super().query_in_context(scope, sql, params)
+    def query_in_context(
+        self, scope: SchemaScope, sql: Sql, params: object = None, *, timeout_seconds: int | None = None
+    ) -> QueryResult:
+        reply = super().query_in_context(scope, sql, params, timeout_seconds=timeout_seconds)
         if "EXECUTE_AI_EVALUATION('START'" in str(sql):
             self.interrupt()
         return reply

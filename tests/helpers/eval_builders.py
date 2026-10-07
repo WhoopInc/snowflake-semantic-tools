@@ -183,9 +183,11 @@ class EvalSnowflake(FakeSnowflake):
         # The agent `compile_eval` targets has one committed version.
         self.agent_versions.setdefault(("DB.S.SALES_AGENT", "committed"), "VERSION$1")
 
-    def query_in_context(self, scope: SchemaScope, sql: Sql, params: object = None) -> QueryResult:
+    def query_in_context(
+        self, scope: SchemaScope, sql: Sql, params: object = None, *, timeout_seconds: int | None = None
+    ) -> QueryResult:
         if "EXECUTE_AI_EVALUATION('START'" not in str(sql):
-            return super().query_in_context(scope, sql, params)
+            return super().query_in_context(scope, sql, params, timeout_seconds=timeout_seconds)
         self.log.append(Sent("script", (f"IN {scope.sql}", str(sql))))
         result = self.execute_results.pop(0) if self.execute_results else ExecResult(True)
         if not result.ok:

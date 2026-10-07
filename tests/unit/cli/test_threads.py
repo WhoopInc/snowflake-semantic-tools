@@ -84,8 +84,10 @@ class _Session:
             raise SnowflakePortError("recorded EXPLAIN refusal")
         return self._recorded.query(sql, params)
 
-    def query_in_context(self, scope: SchemaScope, sql: Sql, params: Any = None) -> QueryResult:
-        del scope
+    def query_in_context(
+        self, scope: SchemaScope, sql: Sql, params: Any = None, *, timeout_seconds: int | None = None
+    ) -> QueryResult:
+        del scope, timeout_seconds
         return self.query(sql, params)
 
     def schema_exists(self, scope: SchemaScope) -> bool:

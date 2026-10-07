@@ -1,9 +1,11 @@
 """Start, poll, retrieve, and normalize Cortex Agent evaluation runs.
 
 `RunEvalSuite` runs each compiled eval as a series of attempts: stage the eval's config, start
-a run, poll it to a terminal status, and read its results (`retrieve` reads and checks what
-Snowflake reports). The suite result carries every attempt; `eval_suite_json` projects it for
-the CLI, without judging it -- the gate compares it with a baseline.
+a run, poll it to a terminal status (`poll` rides out reads that fail in transit), and read its
+results (`retrieve` reads and checks what Snowflake reports). While runs are in flight, the
+suite reports their progress as `progress` events. The suite result carries every attempt;
+`eval_suite_json` projects it for the CLI, without judging it -- the gate compares it with a
+baseline.
 """
 
 from __future__ import annotations
@@ -15,7 +17,10 @@ from hashlib import md5
 from threading import Lock
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.evals.retrieve import _read_results, _read_status, _sum_costs
+from snowflake_semantic_tools.app.evals.options import EvalRunOptions
+from snowflake_semantic_tools.app.evals.poll import StatusPoll
+from snowflake_semantic_tools.app.evals.progress import EvalProgress, RunWatch, no_progress
+from snowflake_semantic_tools.app.evals.retrieve import _read_results, _sum_costs
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.lifecycle.evals import (
     EvalLifecycleConfig,
@@ -32,7 +37,6 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalResultRow,
     EvalRunAttempt,
     EvalRunConfig,
-    eval_status_is_terminal,
 )
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import Action
@@ -47,24 +51,6 @@ from snowflake_semantic_tools.domain.state import APPLIED, Manifest, State
 
 _PARTIAL_STATUSES = frozenset(("INVOCATION_PARTIALLY_COMPLETED", "PARTIALLY_COMPLETED"))
 _DEFAULT_RUN_NAME_TEMPLATE = "EVAL_{{ agent | upper }}_{{ sha7 }}_{{ variant }}_{{ ts }}"
-
-
-@dataclass(frozen=True, slots=True)
-class EvalRunOptions:
-    """How a suite names and polls its runs.
-
-    Attributes:
-        git_sha: The commit the run names carry, as its first seven characters; empty or
-            `UNKNOWN_GIT_SHA` when the project is not in a git work tree.
-        timestamp: The run names' `ts` token; None uses the current UTC time.
-        poll_interval_ms: The wait between two status reads of a run, in milliseconds.
-        max_polls: The status reads of a run before it counts as not terminating.
-    """
-
-    git_sha: str
-    timestamp: str | None = None
-    poll_interval_ms: int = 5_000
-    max_polls: int = 240
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,6 +156,7 @@ class _SuiteRun:
         fanout: Where every round's setups and attempts run, as many at once as the suite's
             concurrency allows.
         started: The runs started so far, which an interrupt reports.
+        watch: The runs in flight, which every attempt reports its progress to.
     """
 
     defaults: EvalDefaults
@@ -178,6 +165,7 @@ class _SuiteRun:
     baseline_capture: bool
     fanout: Fanout[CatalogPublicationPort]
     started: _StartedRuns
+    watch: RunWatch
 
 
 @dataclass(slots=True)
@@ -250,6 +238,8 @@ class RunEvalSuite:
         sessions: Where setups and attempts running at once lease a session each, opened from
             `port`, so each attempt starts and polls its run on a session of its own; None runs
             everything on `port`, one at a time, so no two share a session.
+        progress: Where each attempt's start, status changes, failed status reads and end go,
+            and the heartbeat naming the runs still in flight; by default nowhere.
     """
 
     def __init__(
@@ -258,11 +248,13 @@ class RunEvalSuite:
         clock: ClockPort,
         lifecycle_config: EvalLifecycleConfig = EvalLifecycleConfig(),
         sessions: SessionPool[CatalogPublicationPort] | None = None,
+        progress: EvalProgress = no_progress,
     ) -> None:
         self._port = port
         self._clock = clock
         self._lifecycle_config = lifecycle_config
         self._sessions = sessions
+        self._progress = progress
 
     def run(
         self,
@@ -305,6 +297,7 @@ class RunEvalSuite:
             baseline_capture,
             Fanout(self._port, self._sessions, suite_concurrency(compiled, defaults, threads)),
             _StartedRuns(),
+            RunWatch(self._progress, self._clock, options.heartbeat_ms),
         )
         try:
             if fail_fast:
@@ -337,7 +330,7 @@ class RunEvalSuite:
             port: CatalogPublicationPort, step: tuple[_Progress, _RunSetup, int]
         ) -> tuple[EvalRunAttempt, tuple[Diagnostic, ...]]:
             progress, setup, number = step
-            return self._on(port)._attempt(progress.compiled, context.options, setup, number, context.started)
+            return self._on(port)._attempt(progress.compiled, context, setup, number)
 
         setups = context.fanout.map(set_up, compiled)
         evals = [_Progress(item, setup) for item, setup in zip(compiled, setups, strict=True)]
@@ -392,35 +385,42 @@ class RunEvalSuite:
     def _attempt(
         self,
         compiled: CompiledEval,
-        options: EvalRunOptions,
+        context: _SuiteRun,
         setup: _RunSetup,
         attempt_number: int,
-        started: _StartedRuns,
     ) -> tuple[EvalRunAttempt, tuple[Diagnostic, ...]]:
         """Start one attempt, poll it to a terminal status, and read its results once it completed.
 
         A failure at any step ends the attempt with it: the attempt records the terminal status
         it reached and why it failed. Its diagnostics describe the attempt on its own; the
-        eval's result reports them only when no retry completed in its place.
+        eval's result reports them only when no retry completed in its place. The watch hears
+        the attempt start and end, with the status it ended in.
 
         Diagnostics:
-            SST-APL023: the run could not be started, its status could not be read, or it
-                ended in a status that is neither a pass nor partial, such as `FAILED` or one
-                Snowflake does not document; the message carries its status details.
+            SST-APL023: the run could not be started, its status could not be read (a read
+                failed for good, or `max_read_failures` in a row failed in transit), it did not
+                end by the deadline, or it ended in a status that is neither a pass nor partial,
+                such as `FAILED` or one Snowflake does not document; the message carries its
+                status details.
             SST-APL024: the run ended partially completed, in a status the config does not
                 accept.
             SST-SNO001: the run completed but its results could not be read or did not match.
         """
-        run_name = _run_name(compiled, setup, options, attempt_number)
-        refused = self._start(compiled, run_name, setup.config_path, started)
+        run_name = _run_name(compiled, setup, context.options, attempt_number)
+        context.watch.started(run_name, attempt_number, setup.attempt_limit)
+        refused = self._start(compiled, run_name, setup.config_path, context.started)
         if refused is not None:
+            context.watch.ended(run_name, "START_FAILED")
             diagnostic = D("SST-APL023", artifact=compiled.artifact_key, detail=refused)
             return EvalRunAttempt(run_name, attempt_number, "START_FAILED", retrieval_error=refused), (diagnostic,)
+        poll = StatusPoll(self._port, self._clock, context.options, context.watch)
         try:
-            terminal_status, status_details = self._poll(compiled, run_name, setup.config_path, options)
+            terminal_status, status_details = poll.until_terminal(compiled, run_name, setup.config_path)
         except (SnowflakePortError, ValueError) as exc:
+            context.watch.ended(run_name, "STATUS_FAILED")
             diagnostic = D("SST-APL023", artifact=compiled.artifact_key, detail=str(exc))
             return EvalRunAttempt(run_name, attempt_number, "STATUS_FAILED", retrieval_error=str(exc)), (diagnostic,)
+        context.watch.ended(run_name, terminal_status)
         diagnostics = _partial_status(compiled, setup.run, terminal_status) or _failed_status(
             compiled, run_name, terminal_status, status_details
         )
@@ -503,30 +503,6 @@ class RunEvalSuite:
             started.discard(run_name)
             return str(exc)
         return None
-
-    def _poll(
-        self,
-        compiled: CompiledEval,
-        run_name: str,
-        config_path: str,
-        options: EvalRunOptions,
-    ) -> tuple[str, tuple[str, ...]]:
-        """Read a run's status until it is terminal, waiting the poll interval between two reads.
-
-        Only the in-progress statuses keep a run polling, so a status Snowflake does not document
-        ends it rather than polling it to the limit.
-
-        Raises:
-            SnowflakePortError: a read failed, or the run was not terminal after `max_polls` reads.
-            ValueError: a status row was malformed.
-        """
-        for poll in range(options.max_polls):
-            status, details = _read_status(self._port, compiled, run_name, config_path)
-            if eval_status_is_terminal(status):
-                return status, details
-            if poll + 1 < options.max_polls:
-                self._clock.sleep(options.poll_interval_ms)
-        raise SnowflakePortError(f"evaluation run {run_name!r} did not reach a terminal status")
 
 
 def validate_eval_publication(

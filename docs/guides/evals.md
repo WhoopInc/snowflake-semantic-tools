@@ -126,6 +126,25 @@ The suite refuses to start unless the manifest is current and every eval it
 would run has been applied, so a result always describes the published agent.
 Each run is retried up to `retry` times, and every attempt is reported.
 
+A run takes minutes in Snowflake. While it runs, the suite reads its status
+every 5 seconds and prints to stderr when each attempt starts, when its status
+changes, and when it ends, plus a line naming the runs still in flight at most
+once a minute:
+
+```text
+eval run EVAL_SALES_AGENT_1a2b3c4_ci_20260928T010203Z: starting (attempt 1 of 2)
+eval run EVAL_SALES_AGENT_1a2b3c4_ci_20260928T010203Z: CREATED after 2s
+waiting on 1 run: EVAL_SALES_AGENT_1a2b3c4_ci_20260928T010203Z COMPUTATION_IN_PROGRESS 4m10s
+eval run EVAL_SALES_AGENT_1a2b3c4_ci_20260928T010203Z: ended COMPLETED after 7m32s
+```
+
+`--quiet`, `--output json` and `--output yaml` print none of these lines. Each
+status read may take 30 seconds at most. A read that fails on the network is
+retried at the next poll, with a `warn` line; only five failed reads in a row
+fail the attempt (`SST-APL023`), and then only after one last read, so a run
+that completed while the network was down is still kept rather than retried.
+A run that has not finished 20 minutes after it started fails the same way.
+
 ## Baselines
 
 A gate compares scores with a **baseline**: the range of scores the published

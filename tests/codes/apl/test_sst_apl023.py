@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
-from snowflake_semantic_tools.app.evals.run import EvalRunOptions, RunEvalSuite
+from snowflake_semantic_tools.app.evals.options import EvalRunOptions
+from snowflake_semantic_tools.app.evals.run import RunEvalSuite
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError
 from tests.helpers.clocks import FixedClock

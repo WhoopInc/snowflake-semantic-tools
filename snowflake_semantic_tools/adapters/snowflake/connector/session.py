@@ -24,6 +24,7 @@ from typing import Any, Self, cast
 import snowflake.connector
 from snowflake.connector import DictCursor
 from snowflake.connector.cursor import SnowflakeCursorBase
+from snowflake.connector.errorcode import ER_FAILED_TO_REQUEST
 from snowflake.connector.errors import Error as DriverError
 
 from snowflake_semantic_tools.adapters.json_files import parse_json
@@ -31,7 +32,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, session_failure
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
-from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError, SnowflakeTransientError
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.sql import Sql, sql
 
@@ -138,12 +139,14 @@ class Session(ExecutionPort):
         scope: SchemaScope,
         sql: Sql,
         params: Sequence[object] | Mapping[str, object] | None = None,
+        *,
+        timeout_seconds: int | None = None,
     ) -> QueryResult:
         # The scoped session runs nothing but these calls, all in the one scope it connected
         # with, so no statement ever changes the scope another statement runs in.
         session = self._scoped_session(scope)
         with _as_port_errors(), session._cursor() as cursor:
-            return _fetch(cursor, sql, params)
+            return _fetch(cursor, sql, params, timeout_seconds=timeout_seconds)
 
     def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
         completed: list[str] = []
@@ -323,13 +326,17 @@ def _execute(
     cursor: SnowflakeCursorBase[Any],
     statement: Sql,
     params: Sequence[object] | Mapping[str, object] | None = None,
+    *,
+    timeout_seconds: int | None = None,
 ) -> None:
     """Hand one statement to the driver with `params` bound: the only place `Sql` becomes text.
 
     Snowflake is told to run exactly one statement, so text that a reader other than SST's
     lexer splits into several is refused by the server rather than run. An empty `params` binds
     nothing, so the text goes as built rather than with every `%` doubled for formatting the
-    driver then skips.
+    driver then skips. A `timeout_seconds` bounds the statement end to end: the driver cancels
+    it once that long has passed, and gives up retrying its requests over a failing network
+    then too, rather than after the connection's own network timeout.
 
     Raises:
         TypeError: `statement` is not `Sql`, so nothing built from a plain string reaches the driver.
@@ -338,14 +345,18 @@ def _execute(
         raise TypeError(f"the connector runs only Sql, found {type(statement).__name__}")
     bound = bool(params)
     connector_params = cast(Sequence[Any] | dict[Any, Any] | None, params) if bound else None
-    cursor.execute(statement.for_driver(bound=bound), connector_params, num_statements=1)
+    cursor.execute(statement.for_driver(bound=bound), connector_params, num_statements=1, timeout=timeout_seconds)
 
 
 def _fetch(
-    cursor: SnowflakeCursorBase[Any], sql: Sql, params: Sequence[object] | Mapping[str, object] | None
+    cursor: SnowflakeCursorBase[Any],
+    sql: Sql,
+    params: Sequence[object] | Mapping[str, object] | None,
+    *,
+    timeout_seconds: int | None = None,
 ) -> QueryResult:
     """Run one statement on `cursor` with `params` bound, and return its columns and rows."""
-    _execute(cursor, sql, params)
+    _execute(cursor, sql, params, timeout_seconds=timeout_seconds)
     columns = tuple(item[0] for item in (cursor.description or ()))
     rows = tuple(tuple(row) for row in cursor.fetchall()) if cursor.description else ()
     return QueryResult(columns, rows)
@@ -369,6 +380,9 @@ def _port_error(exc: Exception, *, connecting_to: str | None = None) -> Snowflak
     nothing else of the failure is copied. What the failure means is the signature table's
     reading of it (`signatures.session_failure`), from its message, errno and SQLSTATE.
 
+    The error is a `SnowflakeTransientError` when the failure happened in transit, as
+    `_in_transit` reads it, so a caller may send a read again.
+
     Diagnostics:
         SST-PRT002: Snowflake rejected the session's credential while connecting.
         SST-PRT001: connecting to `connecting_to` failed for another reason.
@@ -388,7 +402,18 @@ def _port_error(exc: Exception, *, connecting_to: str | None = None) -> Snowflak
         diagnostic = D("SST-PRT003", detail=f"its deadline ({message})")
     elif failure is SessionFailure.PRIVILEGE:
         diagnostic = D("SST-PRT004", value="the session's role", detail=f"a privilege the statement needs ({message})")
-    return SnowflakePortError(message, sqlstate=sqlstate, errno=errno, diagnostic=diagnostic)
+    error_class = SnowflakeTransientError if _in_transit(exc, failure, errno) else SnowflakePortError
+    return error_class(message, sqlstate=sqlstate, errno=errno, diagnostic=diagnostic)
+
+
+def _in_transit(exc: Exception, failure: SessionFailure | None, errno: object) -> bool:
+    """Report whether a connector failure happened on the way to or from Snowflake.
+
+    So it did when the transport raised (an `OSError`: a socket or HTTP failure), when the
+    signature table reads it as a missed deadline (a dropped connection, a timeout, a busy
+    warehouse), or when it carries the driver's number for a request it gave up on.
+    """
+    return isinstance(exc, OSError) or failure is SessionFailure.DEADLINE or errno == ER_FAILED_TO_REQUEST
 
 
 def _require_ok(result: ExecResult, failure: str) -> None:

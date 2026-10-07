@@ -34,8 +34,10 @@ class ReadOnlySnowflake:
         scope: SchemaScope,
         sql: Sql,
         params: Sequence[object] | Mapping[str, object] | None = None,
+        *,
+        timeout_seconds: int | None = None,
     ) -> QueryResult:
-        return self._delegate.query_in_context(scope, sql, params)
+        return self._delegate.query_in_context(scope, sql, params, timeout_seconds=timeout_seconds)
 
     def upload(self, stage_path: str, content: bytes) -> None:
         del stage_path, content

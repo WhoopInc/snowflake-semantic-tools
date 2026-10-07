@@ -33,15 +33,28 @@ class FakeExecution(SnowflakeWorld):
     """`ExecutionPort` over the shared account and script."""
 
     def query(self, sql: Sql, params: object = None) -> QueryResult:
-        return self._answer(Sent("query", (str(sql),), params, getattr(self._in_scope, "scope", None)))
+        return self._answer(
+            Sent(
+                "query",
+                (str(sql),),
+                params,
+                getattr(self._in_scope, "scope", None),
+                timeout_seconds=getattr(self._in_scope, "timeout_seconds", None),
+            )
+        )
 
-    def query_in_context(self, scope: SchemaScope, sql: Sql, params: object = None) -> QueryResult:
-        # Runs through `query`, so a test that answers `query` answers both; the log keeps the scope.
+    def query_in_context(
+        self, scope: SchemaScope, sql: Sql, params: object = None, *, timeout_seconds: int | None = None
+    ) -> QueryResult:
+        # Runs through `query`, so a test that answers `query` answers both; the log keeps the
+        # scope and the timeout.
         self._in_scope.scope = scope.sql
+        self._in_scope.timeout_seconds = timeout_seconds
         try:
             return self.query(sql, params)
         finally:
             self._in_scope.scope = None
+            self._in_scope.timeout_seconds = None
 
     def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
         texts = tuple(str(statement) for statement in statements)

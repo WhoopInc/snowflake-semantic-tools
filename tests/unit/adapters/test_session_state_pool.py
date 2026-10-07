@@ -253,8 +253,14 @@ def test_a_script_halted_part_way_stops_before_its_next_statement() -> None:
     connector = DriverConnector(driver)
     halting = driver.execute
 
-    def execute(statement: str, params: Sequence[object] | None = None, *, num_statements: int | None = None) -> None:
-        halting(statement, params, num_statements=num_statements)
+    def execute(
+        statement: str,
+        params: Sequence[object] | None = None,
+        *,
+        num_statements: int | None = None,
+        timeout: int | None = None,
+    ) -> None:
+        halting(statement, params, num_statements=num_statements, timeout=timeout)
         connector.halt("lost")
 
     driver.execute = execute  # type: ignore[method-assign]

@@ -45,6 +45,8 @@ class ExecutionPort(Protocol):
         scope: SchemaScope,
         sql: Sql,
         params: Sequence[object] | Mapping[str, object] | None = None,
+        *,
+        timeout_seconds: int | None = None,
     ) -> QueryResult:
         """Run one statement as `query` does, resolving its unqualified names in `scope`.
 
@@ -53,7 +55,13 @@ class ExecutionPort(Protocol):
         its current database and schema; no statement changes that session's scope, and no
         other statement runs on it.
 
+        Args:
+            timeout_seconds: How long the statement may take end to end, network retries
+                included, before it is cancelled and fails as transient; None leaves it to
+                the session's own timeouts.
+
         Raises:
+            SnowflakeTransientError: the statement failed in transit, or ran out of time.
             SnowflakePortError: the scoped session could not connect in `scope`, or the
                 statement failed.
         """

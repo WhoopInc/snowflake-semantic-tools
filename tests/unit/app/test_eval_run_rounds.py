@@ -17,7 +17,8 @@ import pytest
 
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.evals.run import EvalRunOptions, EvalRunsInterrupted, EvalSuiteResult, RunEvalSuite
+from snowflake_semantic_tools.app.evals.options import EvalRunOptions
+from snowflake_semantic_tools.app.evals.run import EvalRunsInterrupted, EvalSuiteResult, RunEvalSuite
 from snowflake_semantic_tools.domain.model.eval import EvalDefaults
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
@@ -98,8 +99,10 @@ class RoundSession(FakeSnowflake):
     def close(self) -> None:
         pass
 
-    def query_in_context(self, scope: SchemaScope, sql: Sql, params: object = None) -> QueryResult:
-        del scope
+    def query_in_context(
+        self, scope: SchemaScope, sql: Sql, params: object = None, *, timeout_seconds: int | None = None
+    ) -> QueryResult:
+        del scope, timeout_seconds
         text = str(sql)
         if "EXECUTE_AI_EVALUATION('START'" in text:
             match = _RUN_NAME.search(text)
@@ -238,8 +241,10 @@ def test_an_interrupt_names_every_run_it_started_and_halts_every_session() -> No
         def __init__(self) -> None:
             super().__init__(clock, ("sales_agent",))
 
-        def query_in_context(self, scope: SchemaScope, sql: Sql, params: object = None) -> QueryResult:
-            reply = super().query_in_context(scope, sql, params)
+        def query_in_context(
+            self, scope: SchemaScope, sql: Sql, params: object = None, *, timeout_seconds: int | None = None
+        ) -> QueryResult:
+            reply = super().query_in_context(scope, sql, params, timeout_seconds=timeout_seconds)
             if "'START'" in str(sql) and len(clock.started_at) == 2:
                 raise KeyboardInterrupt
             return reply

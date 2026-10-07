@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
+from snowflake_semantic_tools.app.evals.options import EvalRunOptions
 from snowflake_semantic_tools.app.evals.retrieve import (
     _expected_question_map,
     _metric_passed,
@@ -23,7 +24,6 @@ from snowflake_semantic_tools.app.evals.retrieve import (
     _variant,
 )
 from snowflake_semantic_tools.app.evals.run import (
-    EvalRunOptions,
     EvalRunResult,
     EvalSuiteResult,
     RunEvalSuite,
@@ -52,7 +52,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
 from tests.helpers.artifact_builders import target
-from tests.helpers.clocks import FixedClock
+from tests.helpers.clocks import FixedClock, PollClock
 from tests.helpers.eval_builders import (
     RESULT_COLUMNS,
     STATUS_COLUMNS,
@@ -383,7 +383,7 @@ def test_eval_runner_ends_an_undocumented_status_and_fails_the_eval() -> None:
 
     result = use_case.run(
         (compiled,),
-        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", max_polls=5),
+        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"),
     )
 
     [attempt] = result.evals[0].attempts
@@ -405,7 +405,7 @@ def test_eval_runner_stops_polling_a_failed_run_and_reports_its_details() -> Non
 
     result = use_case.run(
         (compiled,),
-        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", max_polls=240),
+        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"),
     )
 
     [attempt] = result.evals[0].attempts
@@ -417,18 +417,22 @@ def test_eval_runner_stops_polling_a_failed_run_and_reports_its_details() -> Non
     assert len([query for query, _ in port.queries if "'STATUS'" in query]) == 2
 
 
-def test_eval_runner_polls_every_in_progress_status_until_its_limit() -> None:
+def test_eval_runner_polls_every_in_progress_status_until_its_deadline() -> None:
     statuses = ("CREATED", "INVOCATION_IN_PROGRESS", "INVOCATION_COMPLETED", "COMPUTATION_IN_PROGRESS")
     port = EvalSnowflake([status_result(status) for status in statuses])
-    use_case, compiled = runner(port)
+    compiled = compiled_eval_of()
 
-    result = use_case.run(
+    result = RunEvalSuite(port, PollClock()).run(
         (compiled,),
-        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", max_polls=4),
+        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", deadline_ms=15_000),
     )
 
+    # Reads at 0, 5, 10 and, the last one, 15 seconds.
     assert result.evals[0].attempts[0].terminal_status == "STATUS_FAILED"
-    assert "did not reach" in (result.evals[0].attempts[0].retrieval_error or "")
+    assert result.evals[0].attempts[0].retrieval_error == (
+        "evaluation run 'EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z' did not reach a terminal status "
+        "within 15s; it was COMPUTATION_IN_PROGRESS"
+    )
 
 
 def test_eval_run_name_outside_a_git_work_tree_carries_the_eval_fingerprint() -> None:

@@ -21,6 +21,7 @@ from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs, 
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.adapters.snowflake.eval_state import SnowflakeEvalStateStore
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
+from snowflake_semantic_tools.app.evals.progress import EvalProgressEvent, StatusReadFailed
 from snowflake_semantic_tools.app.evals.run import suite_concurrency
 from snowflake_semantic_tools.app.evals.suite import (
     EvalGateOutcome,
@@ -42,6 +43,7 @@ from snowflake_semantic_tools.cli.options import (
     target_option,
     threads_option,
 )
+from snowflake_semantic_tools.cli.output import print_progress
 from snowflake_semantic_tools.cli.plan_output import print_eval_results
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, terminated_as_interrupt
 from snowflake_semantic_tools.cli.settings import threads_setting
@@ -315,7 +317,9 @@ def _run_evals(
     """Run the selected evals against their published agents and gate them; exit 1 unless the run passes.
 
     `results` is the whole compile, which the compiled manifest must match, and the selection.
-    SIGTERM interrupts the run as Ctrl-C does, so the run lock is released either way.
+    SIGTERM interrupts the run as Ctrl-C does, so the run lock is released either way. While
+    the runs go on, each attempt's start, status changes and end, every status read retried,
+    and a line naming the runs still in flight at most once a minute, go to stderr.
 
     Raises:
         SstUsageError: `--capture-baseline` and `--reason` are not given together.
@@ -350,11 +354,17 @@ def _run_evals(
             actor=profile.identity.role or "",
             host=socket.gethostname(),
             sessions=pool,
+            progress=_print_eval_progress,
         ).run(evals, manifest, request, target=profile.identity, state_table=profile.state_table)
     port.close()
     if isinstance(outcome, EvalGateRefused):
         raise ProjectError(outcome.reason, diagnostics=tuple(outcome.diagnostics))
     return _eval_report(outcome)
+
+
+def _print_eval_progress(event: EvalProgressEvent) -> None:
+    """Print one eval progress event as a line; a status read that will be retried as a warning."""
+    print_progress(event.line, warning=isinstance(event, StatusReadFailed))
 
 
 def _eval_state_table(state_table: QualifiedName) -> QualifiedName:
