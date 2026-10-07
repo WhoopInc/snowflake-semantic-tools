@@ -5,7 +5,7 @@ connector opens cursors on it and executes statements. It is the connection and 
 cursor in one object, as the connector holds one cursor at a time under its session lock.
 
 - Every statement is recorded with its binds in `executed`; `statements` lists the texts,
-  and `num_statements` the statement count each was sent with.
+  and `num_statements` the statement count, and `timeouts` the timeout, each was sent with.
 - A statement whose text starts with a key of `failures` raises that error; the key
   `"cursor"` fails opening the cursor instead, and `""` fails every statement.
 - A statement whose text starts with a key of `rows` returns those rows: tuples, or dicts
@@ -44,6 +44,7 @@ class FakeDriverSession:
         self.respond = respond
         self.executed: list[tuple[str, tuple[object, ...]]] = []
         self.num_statements: list[int | None] = []
+        self.timeouts: list[int | None] = []
         self.description: tuple[tuple[str], ...] | None = None
         self.sfqid = ""
         self.rowcount = 0
@@ -62,11 +63,17 @@ class FakeDriverSession:
         return self
 
     def execute(
-        self, statement: str, params: Sequence[object] | None = None, *, num_statements: int | None = None
+        self,
+        statement: str,
+        params: Sequence[object] | None = None,
+        *,
+        num_statements: int | None = None,
+        timeout: int | None = None,
     ) -> None:
         binds = tuple(params or ())
         self.executed.append((statement, binds))
         self.num_statements.append(num_statements)
+        self.timeouts.append(timeout)
         failure = next((error for prefix, error in self.failures.items() if statement.startswith(prefix)), None)
         if failure is not None:
             raise failure

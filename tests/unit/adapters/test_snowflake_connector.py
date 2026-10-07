@@ -14,7 +14,11 @@ from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConne
 from snowflake_semantic_tools.adapters.snowflake.connector import session as session_module
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult
-from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import (
+    AgentVersionNotFound,
+    SnowflakePortError,
+    SnowflakeTransientError,
+)
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import Sql, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
@@ -481,6 +485,35 @@ def test_a_driver_or_transport_failure_is_still_reported_as_a_port_error(
     with pytest.raises(SnowflakePortError) as raised:
         call(SessionConnector(_session({prefix: error})))
     assert str(raised.value) == str(error) and raised.value.__cause__ is error
+
+
+@pytest.mark.parametrize(
+    ("error", "transient"),
+    [
+        (TimeoutError("The read operation timed out"), True),
+        (OperationalError(msg="Failed to execute request: Read timed out.", errno=250003), True),
+        (OperationalError(msg="Failed to get the response. Hanging? method: post, url: x", errno=250003), True),
+        (OperationalError(msg="Connection is closed", errno=250002, sqlstate="08003"), True),
+        (ProgrammingError(msg="SQL execution canceled", errno=604, sqlstate="57014"), True),
+        (ProgrammingError(msg="SQL compilation error", errno=1003, sqlstate="42000"), False),
+        (ProgrammingError(msg="Insufficient privileges to operate on schema 'S'", errno=3001, sqlstate="42501"), False),
+    ],
+    ids=["socket-timeout", "request-timeout", "no-response", "closed", "statement-timeout", "syntax", "privilege"],
+)
+def test_only_a_failure_in_transit_is_transient(error: Exception, transient: bool) -> None:
+    with pytest.raises(SnowflakePortError) as raised:
+        SessionConnector(_session({"SELECT 1": error})).query_in_context(SCOPE, sql("SELECT 1"))
+    assert isinstance(raised.value, SnowflakeTransientError) is transient
+
+
+def test_query_in_context_hands_its_timeout_to_the_driver_and_nothing_else_sends_one() -> None:
+    main, scoped = _session(), _session()
+    connector = SessionConnector(main, scoped)
+    connector.query_in_context(SCOPE, sql("SELECT 1"), timeout_seconds=7)
+    connector.query_in_context(SCOPE, sql("SELECT 2"))
+    connector.query(sql("SELECT 3"))
+    assert scoped.timeouts == [None, 7, None]
+    assert main.timeouts == [None]
 
 
 def test_every_statement_reaches_the_driver_as_exactly_one_statement() -> None:

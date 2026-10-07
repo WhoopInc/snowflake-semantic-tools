@@ -59,7 +59,8 @@ class Sent:
     """One call that reached the session: a query, a script, or an upload.
 
     `statements` holds a query's one statement, a script's statements, or an upload's stage
-    path; `scope` is the schema a `query_in_context` ran in.
+    path; `scope` is the schema a `query_in_context` ran in, and `timeout_seconds` the
+    timeout it was given.
     """
 
     kind: str
@@ -67,6 +68,7 @@ class Sent:
     params: object = None
     scope: str | None = None
     content: bytes = b""
+    timeout_seconds: int | None = None
 
 
 @dataclass

@@ -33,5 +33,16 @@ class SnowflakePortError(RuntimeError):
         self.diagnostic = diagnostic
 
 
+class SnowflakeTransientError(SnowflakePortError):
+    """A statement that failed on the way to or from Snowflake, rather than in it.
+
+    The connection dropped or could not be made, the request or statement timed out, or
+    Snowflake was too busy to run it. Snowflake may or may not have run the statement, so only
+    a read is safe to send again; the same read may then succeed. Anything Snowflake answered
+    and SST cannot use -- a refused statement, a row describing another object -- is a plain
+    `SnowflakePortError`, never this.
+    """
+
+
 class AgentVersionNotFound(SnowflakePortError):
     """An agent version selector names no committed version: it was never created, or was dropped."""

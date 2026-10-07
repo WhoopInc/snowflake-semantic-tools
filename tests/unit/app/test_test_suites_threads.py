@@ -168,8 +168,10 @@ class EvalSession(TrackedSession):
         for agent in OUTCOMES:
             self.agent_versions[(f"DB.S.{agent.upper()}", "committed")] = "VERSION$1"
 
-    def query_in_context(self, scope: SchemaScope, sql: Sql, params: object = None) -> QueryResult:
-        del scope
+    def query_in_context(
+        self, scope: SchemaScope, sql: Sql, params: object = None, *, timeout_seconds: int | None = None
+    ) -> QueryResult:
+        del scope, timeout_seconds
         self.opened.saw()
         _pause()
         text = str(sql)
