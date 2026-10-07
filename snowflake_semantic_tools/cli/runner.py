@@ -215,7 +215,7 @@ class _Run:
             overrides=options.overrides,
         )
         reads = self.applies_baseline and self.config is not ConfigNeed.NONE
-        baseline = _baseline(options) if reads else None
+        baseline = run_baseline(options) if reads else None
         # Read before the body, which may write the manifest this asks about.
         first_run = not ran_under_1_0(files.project_dir)
         result = self.body(**self._arguments(files))
@@ -308,7 +308,7 @@ def _refuse_pair(first: str, second: str) -> NoReturn:
     raise SstUsageError(diagnostic.message, diagnostic=diagnostic)
 
 
-def _baseline(options: GlobalOptions) -> Baseline | None:
+def run_baseline(options: GlobalOptions) -> Baseline | None:
     """Read the run's baseline: `--baseline`, else `.sst/baseline.json` when it exists; None without one.
 
     Raises:

@@ -40,6 +40,7 @@ from snowflake_semantic_tools.cli.wiring.project import (
 )
 from snowflake_semantic_tools.cli.wiring.selectors import selector_report
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan.impact import STATE_MODIFIED
@@ -62,6 +63,7 @@ class PlanRequest:
         validate: False under `--no-validate`, which skips validation.
         use_cached_state: `plan --use-cached-state`: plan from the observation recorded in
             `state_dir` instead of reading the target.
+        baseline: The run's baseline; a validation error it holds does not refuse the plan.
     """
 
     paths: ProjectPaths
@@ -79,6 +81,7 @@ class PlanRequest:
     observe_options: ObserveOptions = ObserveOptions()
     validate: bool = True
     use_cached_state: bool = False
+    baseline: Baseline | None = None
 
     @property
     def project_dir(self) -> Path:
@@ -316,7 +319,8 @@ def _prepared(request: PlanRequest) -> tuple[PreparePlan, PlanCandidates, Diagno
     project_dir = request.project_dir
     full_result = compiling.compile_result(request.paths, request.target_name, request.manifest_path)
     selectors = selector_report(_named(request), request.excluded, full_result.compiled)
-    prepare = PreparePlan(project_inputs(request.paths, request.target_name, request.manifest_path), SystemClock())
+    inputs = project_inputs(request.paths, request.target_name, request.manifest_path)
+    prepare = PreparePlan(inputs, SystemClock(), baseline=request.baseline)
     candidates = prepare.select(
         full_result,
         compiled_manifest(project_dir),

@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from types import MappingProxyType
 
+from snowflake_semantic_tools.app.baseline import blocking, held_by_baseline
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent, for_publication
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
@@ -38,6 +39,7 @@ from snowflake_semantic_tools.app.policy import strict_reach
 from snowflake_semantic_tools.app.state import change_summary, read_state
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
 from snowflake_semantic_tools.domain.diagnostics.policy import apply_overrides
 from snowflake_semantic_tools.domain.model.config_schema import config_block, config_text
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
@@ -205,11 +207,16 @@ class PreparePlan:
     Two steps, because the caller opens the connection between them: `select` decides
     offline whether anything can be planned, and `run` plans over the open connection. The
     connection belongs to the caller, which closes it. Neither step writes to Snowflake.
+
+    Args:
+        baseline: The run's baseline. A validation error it holds -- a warning `--strict`
+            promoted -- does not refuse the plan, as it does not fail `sst validate`.
     """
 
-    def __init__(self, inputs: ProjectInputs, clock: ClockPort) -> None:
+    def __init__(self, inputs: ProjectInputs, clock: ClockPort, *, baseline: Baseline | None = None) -> None:
         self._inputs = inputs
         self._clock = clock
+        self._baseline = baseline
 
     def select(
         self,
@@ -440,7 +447,8 @@ class PreparePlan:
             if validate
             else apply_overrides(candidates.selected.diagnostics, overrides)
         )
-        validated = _validated(candidates, diagnostics)
+        held = held_by_baseline(diagnostics, self._baseline, clock=self._clock)
+        validated = _validated(candidates, diagnostics, held)
         if isinstance(validated, PlanRefused):
             return validated
         result, healthy = validated
@@ -556,9 +564,12 @@ def _validation(
 
 
 def _validated(
-    candidates: PlanCandidates, diagnostics: DiagnosticBag
+    candidates: PlanCandidates, diagnostics: DiagnosticBag, held: frozenset[str] = frozenset()
 ) -> tuple[CompileResult, CompileResult | None] | PlanRefused:
     """Apply validation's findings: narrow a partial plan to what stays healthy, else refuse on an error.
+
+    An error whose stable fingerprint `held` names is one the run's baseline holds, which
+    refuses nothing; a partial plan still splits on every error.
 
     The split walks the whole healthy set, so a selection cannot hide a dependency; its
     result is then narrowed back to what was selected.
@@ -587,7 +598,7 @@ def _validated(
             source, compiled=tuple(item for item in source.compiled if item.artifact_key in still_healthy)
         )
         return narrowed, (healthy_source if len(healthy_source.compiled) != len(source.compiled) else None)
-    if diagnostics.has_errors:
+    if blocking(diagnostics, held):
         refusal = partial_refusal(replace(selected, diagnostics=diagnostics)) if candidates.partial else None
         return PlanRefused(DiagnosticBag((*diagnostics, *((refusal,) if refusal else ()))))
     return selected, None

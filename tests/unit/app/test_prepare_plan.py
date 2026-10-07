@@ -9,6 +9,7 @@ from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.manifest import manifest_for
 from snowflake_semantic_tools.app.plan import PlanCandidates, PlanReady, PlanRefused, PlanScope, PreparePlan
 from snowflake_semantic_tools.domain.diagnostics import D, Origin, Severity
+from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, baseline_entry
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ShowRow
 from snowflake_semantic_tools.domain.ports.project import ValidationDefaults
@@ -206,6 +207,31 @@ def test_run_refuses_what_validation_promotes_to_an_error_without_reading_state(
         ("SST-VAL020", Severity.INFO),
     ]
     assert port.queries == [] and store.writes == []
+
+
+def test_run_plans_past_a_promoted_warning_the_baseline_holds_and_refuses_once_it_has_expired() -> None:
+    warning = D("SST-LOD003", file="warning.yml")
+    warned = with_diagnostics(compiled(), warning)
+    held = Baseline(".sst/baseline.json", "2027-01-01", (baseline_entry(warning, "known"),))
+
+    def run(baseline: Baseline) -> PlanReady | PlanRefused:
+        use_case = PreparePlan(InMemoryProjectInputs(), FixedClock(), baseline=baseline)
+        candidates = use_case.select(
+            warned,
+            manifest_for(warned, EMPTY_SOURCES),
+            EVERYTHING,
+            partial=False,
+            strict=True,
+            connected=False,
+            project="p",
+        )
+        assert isinstance(candidates, PlanCandidates)
+        return use_case.run(
+            candidates, FakeSnowflake(), InMemoryStateStore(), target=dev_target(), state_table=STATE_TABLE
+        )
+
+    assert isinstance(run(held), PlanReady)
+    assert isinstance(run(replace(held, expires_on="2025-01-01")), PlanRefused)
 
 
 def test_partial_run_leaves_out_what_validation_excludes_and_names_everything_left_out() -> None:

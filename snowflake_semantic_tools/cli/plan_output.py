@@ -15,6 +15,7 @@ from typing import cast
 import click
 
 from snowflake_semantic_tools.adapters.paths import make_folders_within, output_root, write_within
+from snowflake_semantic_tools.app.baseline import blocking
 from snowflake_semantic_tools.app.evals.run import EvalSuiteResult, eval_suite_json
 from snowflake_semantic_tools.app.plan import PlanReady
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
@@ -26,15 +27,20 @@ from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOutcome
 from snowflake_semantic_tools.domain.plan.properties import changed_properties
 
 
-def plan_exit_code(ready: PlanReady, shown: DiagnosticBag, *, detailed: bool) -> int:
+def plan_exit_code(
+    ready: PlanReady, shown: DiagnosticBag, *, detailed: bool, held: frozenset[str] = frozenset()
+) -> int:
     """Return how a plan exits: 1 on an error or blocked change, 2 when applying changes Snowflake, else 0.
+
+    An error whose stable fingerprint `held` names is one the run's baseline holds, which
+    fails nothing; the plan still exits 2 when it has changes.
 
     Applying changes Snowflake when the plan writes, and when it only reports prunes that
     state has not yet recorded under this manifest: apply re-stamps state for them, so the
     plan is not in sync until it runs. Without `detailed`, pending changes exit 0.
     """
     changeset = ready.changeset
-    if changeset.blocked or shown.has_errors:
+    if changeset.blocked or blocking(shown, held):
         return ERROR
     if changeset.writes or ready.restamps_state:
         return CHANGES if detailed else OK
