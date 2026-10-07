@@ -24,6 +24,9 @@ from snowflake_semantic_tools.domain.model.skill import SkillCatalog
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog
 from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
 
+# What `ProjectInputs.git_sha` returns for a project that is not in a git work tree.
+UNKNOWN_GIT_SHA = "WORKTREE"
+
 
 @dataclass(frozen=True, slots=True)
 class ProjectConfig:
@@ -210,7 +213,7 @@ class ProjectInputs(SemanticViewSource, Protocol):
         """Return the project's commit, as its first seven characters.
 
         Returns:
-            The abbreviated commit; `WORKTREE` when the project is not in a git work tree.
+            The abbreviated commit; `UNKNOWN_GIT_SHA` when the project is not in a git work tree.
         """
         ...
 

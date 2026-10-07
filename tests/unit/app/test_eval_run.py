@@ -294,17 +294,71 @@ def test_eval_runner_distinguishes_start_status_and_retrieval_failures() -> None
     assert retrieve.diagnostics[0].code == "SST-SNO001"
 
 
-def test_eval_runner_rejects_unknown_status_and_times_out() -> None:
-    port = EvalSnowflake([status_result("UNKNOWN")])
+def test_eval_runner_ends_an_undocumented_status_and_fails_the_eval() -> None:
+    port = EvalSnowflake([status_result("UNKNOWN"), status_result("COMPLETED")])
     use_case, compiled = runner(port)
 
     result = use_case.run(
         (compiled,),
-        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", max_polls=1),
+        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", max_polls=5),
+    )
+
+    [attempt] = result.evals[0].attempts
+    assert attempt.terminal_status == "UNKNOWN"
+    assert not result.success
+    [diagnostic] = result.diagnostics
+    assert diagnostic.code == "SST-APL023"
+    assert diagnostic.message == (
+        "eval 'eval:sales_agent': run 'EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z' ended UNKNOWN: no status details"
+    )
+
+
+def test_eval_runner_stops_polling_a_failed_run_and_reports_its_details() -> None:
+    run_name = "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z"
+    # MEASURED: a run whose agent could not be invoked reports FAILED, which the docs omit.
+    failed = QueryResult(STATUS_COLUMNS, ((run_name, "SALES_AGENT", "CORTEX AGENT", "FAILED", "Invocation failed"),))
+    port = EvalSnowflake([status_result("INVOCATION_IN_PROGRESS"), failed])
+    use_case, compiled = runner(port)
+
+    result = use_case.run(
+        (compiled,),
+        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", max_polls=240),
+    )
+
+    [attempt] = result.evals[0].attempts
+    assert (attempt.terminal_status, attempt.status_details) == ("FAILED", ("Invocation failed",))
+    assert not result.evals[0].accepted
+    assert [diagnostic.message for diagnostic in result.diagnostics] == [
+        f"eval 'eval:sales_agent': run '{run_name}' ended FAILED: Invocation failed"
+    ]
+    assert len([query for query, _ in port.queries if "'STATUS'" in query]) == 2
+
+
+def test_eval_runner_polls_every_in_progress_status_until_its_limit() -> None:
+    statuses = ("CREATED", "INVOCATION_IN_PROGRESS", "INVOCATION_COMPLETED", "COMPUTATION_IN_PROGRESS")
+    port = EvalSnowflake([status_result(status) for status in statuses])
+    use_case, compiled = runner(port)
+
+    result = use_case.run(
+        (compiled,),
+        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", max_polls=4),
     )
 
     assert result.evals[0].attempts[0].terminal_status == "STATUS_FAILED"
     assert "did not reach" in (result.evals[0].attempts[0].retrieval_error or "")
+
+
+def test_eval_run_name_outside_a_git_work_tree_carries_the_eval_fingerprint() -> None:
+    port = EvalSnowflake([status_result("CANCELLED", run_name="unused"), status_result("CANCELLED", run_name="unused")])
+    use_case, compiled = runner(port)
+
+    result = use_case.run((compiled,), options=EvalRunOptions("WORKTREE", timestamp="20260928T010203Z"))
+
+    run_name = result.evals[0].attempts[0].run_name
+    assert run_name == f"EVAL_SALES_AGENT_{compiled.rendered_artifact.fingerprint[:7]}_ci_20260928T010203Z"
+    assert "WORKTRE" not in run_name
+    blank = use_case.run((compiled,), options=EvalRunOptions("", timestamp="20260928T010203Z"))
+    assert blank.evals[0].attempts[0].run_name == run_name
 
 
 def test_eval_cost_deduplicates_agent_usage_across_metric_rows() -> None:
@@ -820,6 +874,9 @@ def test_optional_float_rejects_invalid_values(value: object) -> None:
 def test_status_details_helper_normalizes_and_rejects_values() -> None:
     assert _status_details(None) == ()
     assert _status_details('["one", 2]') == ("one", "2")
+    assert _status_details("Invocation failed") == ("Invocation failed",)
+    assert _status_details('"Invocation failed"') == ("Invocation failed",)
+    assert _status_details("  ") == ()
     with pytest.raises(ValueError, match="must be an array"):
         _status_details({})
 

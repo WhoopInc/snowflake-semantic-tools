@@ -8,6 +8,7 @@ import pytest
 from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentTool, ResolvedAgent, ResolvedAgentTool
 from snowflake_semantic_tools.domain.model.eval import (
+    EVAL_IN_PROGRESS_STATUSES,
     CustomEvalMetric,
     EvalCatalog,
     EvalConfig,
@@ -25,6 +26,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalSystemMetric,
     ResolvedEval,
     ThresholdRange,
+    eval_status_is_terminal,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
@@ -653,3 +655,8 @@ def test_a_custom_metric_definition_digest_moves_with_its_judge_prompt_and_bands
     assert replace(metric, prompt="Score 0 to 5.").definition_digest != digest
     assert replace(metric, model="openai-gpt-5.4").definition_digest != digest
     assert replace(metric, score_ranges=None).definition_digest not in {digest, metric.definition_digest[::-1]}
+
+
+def test_only_the_in_progress_statuses_keep_a_run_going() -> None:
+    assert not any(eval_status_is_terminal(status) for status in EVAL_IN_PROGRESS_STATUSES)
+    assert all(eval_status_is_terminal(status) for status in ("COMPLETED", "CANCELLED", "FAILED", "SOMETHING_NEW"))

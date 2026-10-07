@@ -22,8 +22,8 @@ from snowflake_semantic_tools.adapters.yaml.fields import optional_int, optional
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
 from snowflake_semantic_tools.domain.model.eval import (
+    EVAL_KNOWN_TERMINAL_STATUSES,
     EVAL_MINT_POLICIES,
-    EVAL_TERMINAL_STATUSES,
     EvalColumnMapping,
     EvalConfig,
     EvalDatasetConfig,
@@ -418,22 +418,22 @@ def _parse_accept_statuses(
     origin: Origin,
     diagnostics: list[Diagnostic],
 ) -> tuple[str, ...]:
-    """Parse `run.accept_statuses`; a status that is not terminal is reported and still kept.
+    """Parse `run.accept_statuses`; a status no run is known to end in is reported and still kept.
 
     Diagnostics:
         SST-PRS003: the field is not a list of strings.
-        SST-PRS013: a status is not a terminal status.
+        SST-PRS013: a status is not a terminal status a run is known to report.
     """
     accept_statuses = string_tuple(value.get("accept_statuses"), "run.accept_statuses", origin, diagnostics)
     for status in accept_statuses:
-        if status not in EVAL_TERMINAL_STATUSES:
+        if status not in EVAL_KNOWN_TERMINAL_STATUSES:
             diagnostics.append(
                 D(
                     "SST-PRS013",
                     artifact=source_file,
                     field="run.accept_statuses",
                     found=status,
-                    expected=", ".join(sorted(EVAL_TERMINAL_STATUSES)),
+                    expected=", ".join(sorted(EVAL_KNOWN_TERMINAL_STATUSES)),
                     origin=origin,
                 )
             )

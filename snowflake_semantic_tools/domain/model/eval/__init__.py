@@ -12,12 +12,13 @@ from snowflake_semantic_tools.domain.model.eval.model import (
     DEFAULT_EVAL_CONFIG_STAGE,
     EVAL_COMPLETED,
     EVAL_CONCURRENCY_MIN,
+    EVAL_IN_PROGRESS_STATUSES,
+    EVAL_KNOWN_TERMINAL_STATUSES,
     EVAL_MINT_AUTO,
     EVAL_MINT_NEVER,
     EVAL_MINT_POLICIES,
     EVAL_PASS_STATUSES,
     EVAL_RETRY_MIN,
-    EVAL_TERMINAL_STATUSES,
     SUPPORTED_JUDGE_PLACEHOLDERS,
     SYSTEM_EVAL_METRIC_VERSION,
     SYSTEM_EVAL_METRICS,
@@ -37,6 +38,7 @@ from snowflake_semantic_tools.domain.model.eval.model import (
     EvalSystemMetric,
     ResolvedEval,
     ThresholdRange,
+    eval_status_is_terminal,
 )
 from snowflake_semantic_tools.domain.model.eval.results import (
     EvalBaselineMetric,
@@ -60,7 +62,8 @@ __all__ = [
     "EVAL_MINT_POLICIES",
     "EVAL_PASS_STATUSES",
     "EVAL_RETRY_MIN",
-    "EVAL_TERMINAL_STATUSES",
+    "EVAL_IN_PROGRESS_STATUSES",
+    "EVAL_KNOWN_TERMINAL_STATUSES",
     "EvalBaselineMetric",
     "EvalBaselineRecord",
     "EvalCatalog",
@@ -88,4 +91,5 @@ __all__ = [
     "SYSTEM_EVAL_METRICS",
     "SYSTEM_EVAL_METRIC_VERSION",
     "ThresholdRange",
+    "eval_status_is_terminal",
 ]

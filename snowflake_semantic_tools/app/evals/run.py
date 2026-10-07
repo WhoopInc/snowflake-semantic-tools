@@ -25,17 +25,18 @@ from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_PASS_STATUSES,
-    EVAL_TERMINAL_STATUSES,
     EvalCostSummary,
     EvalDefaults,
     EvalMetricResult,
     EvalResultRow,
     EvalRunAttempt,
     EvalRunConfig,
+    eval_status_is_terminal,
 )
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import Action
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
+from snowflake_semantic_tools.domain.ports.project import UNKNOWN_GIT_SHA
 from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.execution import SessionPool
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
@@ -52,7 +53,8 @@ class EvalRunOptions:
     """How a suite names and polls its runs.
 
     Attributes:
-        git_sha: The commit the run names carry, as its first seven characters.
+        git_sha: The commit the run names carry, as its first seven characters; empty or
+            `UNKNOWN_GIT_SHA` when the project is not in a git work tree.
         timestamp: The run names' `ts` token; None uses the current UTC time.
         poll_interval_ms: The wait between two status reads of a run, in milliseconds.
         max_polls: The status reads of a run before it counts as not terminating.
@@ -306,7 +308,9 @@ class RunEvalSuite:
         it reached and why it failed.
 
         Diagnostics:
-            SST-APL023: the run could not be started, or its status could not be read.
+            SST-APL023: the run could not be started, its status could not be read, or it
+                ended in a status that is neither a pass nor partial, such as `FAILED` or one
+                Snowflake does not document; the message carries its status details.
             SST-APL024: the run ended partially completed.
             SST-VAL730: the run ended partially completed, and the config accepts that status;
                 it is still not a pass.
@@ -321,7 +325,9 @@ class RunEvalSuite:
         except (SnowflakePortError, ValueError) as exc:
             diagnostic = D("SST-APL023", artifact=compiled.artifact_key, detail=str(exc))
             return EvalRunAttempt(run_name, attempt_number, "STATUS_FAILED", retrieval_error=str(exc)), (diagnostic,)
-        diagnostics = _partial_status(compiled, setup.run, terminal_status)
+        diagnostics = _partial_status(compiled, setup.run, terminal_status) or _failed_status(
+            compiled, run_name, terminal_status, status_details
+        )
         if terminal_status not in EVAL_PASS_STATUSES:
             return EvalRunAttempt(run_name, attempt_number, terminal_status, status_details=status_details), diagnostics
         completed = EvalRunAttempt(
@@ -408,13 +414,16 @@ class RunEvalSuite:
     ) -> tuple[str, tuple[str, ...]]:
         """Read a run's status until it is terminal, waiting the poll interval between two reads.
 
+        Only the in-progress statuses keep a run polling, so a status Snowflake does not document
+        ends it rather than polling it to the limit.
+
         Raises:
             SnowflakePortError: a read failed, or the run was not terminal after `max_polls` reads.
             ValueError: a status row was malformed.
         """
         for poll in range(options.max_polls):
             status, details = _read_status(self._port, compiled, run_name, config_path)
-            if status in EVAL_TERMINAL_STATUSES:
+            if eval_status_is_terminal(status):
                 return status, details
             if poll + 1 < options.max_polls:
                 self._clock.sleep(options.poll_interval_ms)
@@ -535,11 +544,17 @@ def suite_concurrency(compiled: Sequence[CompiledEval], defaults: EvalDefaults, 
 
 
 def _run_name(compiled: CompiledEval, setup: _RunSetup, options: EvalRunOptions, attempt_number: int) -> str:
-    """Name one attempt's run from the eval's template; a retry appends `_R<attempt>`."""
+    """Name one attempt's run from the eval's template; a retry appends `_R<attempt>`.
+
+    `sha7` is the commit's first seven characters. Outside a git work tree there is no commit,
+    so it is the first seven of the eval's fingerprint: still derived from what the project
+    declares, and never from where the project happens to sit on disk.
+    """
+    known = options.git_sha and options.git_sha != UNKNOWN_GIT_SHA
     base_name = render_eval_name_template(
         setup.run.name_template or _DEFAULT_RUN_NAME_TEMPLATE,
         agent=compiled.name,
-        sha7=options.git_sha[:7],
+        sha7=(options.git_sha if known else compiled.rendered_artifact.fingerprint)[:7],
         variant=setup.run.variant or "ci",
         ts=setup.timestamp,
     )
@@ -567,6 +582,17 @@ def _partial_status(compiled: CompiledEval, run: EvalRunConfig, terminal_status:
     if terminal_status in run.accept_statuses:
         return (D("SST-VAL730", artifact=compiled.name, found=terminal_status, subject=compiled.artifact_key),)
     return (D("SST-APL024", artifact=compiled.artifact_key, found=terminal_status),)
+
+
+def _failed_status(
+    compiled: CompiledEval, run_name: str, terminal_status: str, status_details: tuple[str, ...]
+) -> tuple[Diagnostic, ...]:
+    """Report a terminal status that is neither a pass nor partial, with the run's status details."""
+    if terminal_status in EVAL_PASS_STATUSES or terminal_status in _PARTIAL_STATUSES:
+        return ()
+    reason = "; ".join(status_details) or "no status details"
+    detail = f"run {run_name!r} ended {terminal_status}: {reason}"
+    return (D("SST-APL023", artifact=compiled.artifact_key, detail=detail),)
 
 
 def _retrieved(attempt: EvalRunAttempt) -> bool:
