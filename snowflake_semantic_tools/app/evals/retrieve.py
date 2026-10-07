@@ -57,7 +57,7 @@ def _read_status(
     Raises:
         SnowflakePortError: the read failed, it did not return exactly one row, or the row
             describes another run, agent or agent type.
-        ValueError: the row omits a column or a value, or its details are not an array.
+        ValueError: the row omits a column or a value, or its details are neither an array nor text.
     """
     result = port.query_in_context(
         SchemaScope(compiled.agent_target.database, compiled.agent_target.schema),
@@ -508,14 +508,18 @@ def _optional_float(value: object) -> float | None:
 
 
 def _status_details(value: object) -> tuple[str, ...]:
-    """Read a run's STATUS_DETAILS array as text; null reads as none.
+    """Read a run's STATUS_DETAILS array as text; null reads as none, and text as one detail.
+
+    A failed run has reported its details as bare text, such as `Invocation failed`.
 
     Raises:
-        ValueError: the value is not an array.
+        ValueError: the value is neither an array nor text.
     """
     parsed = _variant(value)
     if parsed is None:
         return ()
+    if isinstance(parsed, str):
+        return (parsed,) if parsed.strip() else ()
     if not isinstance(parsed, list):
         raise ValueError("evaluation STATUS_DETAILS must be an array")
     return tuple(str(item) for item in parsed)

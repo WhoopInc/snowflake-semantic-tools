@@ -25,6 +25,10 @@ _OPTION_HELP: Mapping[str, str] = {
     "--profiles-dir": "Directory of `profiles.yml`, else `$SST_PROFILES_DIR`, then `$DBT_PROFILES_DIR`.",
     "--target": "Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target.",
     "--manifest": "Read this dbt `manifest.json` instead of running `dbt parse`.",
+    "--break-stale-lock": (
+        "Take over the run lock only once the run holding it has expired (SST-APL010); a live lock "
+        "is refused all the same (SST-APL011)."
+    ),
     "--output": "`table` (default), `plain`, or `json`; `list` also takes `yaml` and `csv`. Else `$SST_OUTPUT`.",
     "--verbose": "Add each diagnostic's phase and fingerprint. Cannot be combined with `--quiet`.",
     "--quiet": "Show errors only.",
@@ -101,7 +105,6 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst list", "--long"): "Every detail column, including each artifact's source files.",
     ("sst apply", "--plan"): "Apply this saved plan. It must still match the compiled project.",
     ("sst apply", "--yes"): "Apply without asking for confirmation.",
-    ("sst apply", "--break-stale-lock"): "Take over a state lock left behind by a run that no longer exists.",
     ("sst apply", "--temporary"): (
         "Publish agents as session-scoped temporary agents; refused for a production-like target."
     ),
@@ -173,10 +176,19 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst baseline add", "--yes"): "Baseline every warning without asking; required off a terminal.",
     ("sst baseline add", "--select"): "Baseline only the diagnostics of these artifacts.",
     ("sst baseline add", "--exclude"): "Leave the diagnostics of these artifacts out.",
+    ("sst baseline add", "--target"): (
+        "Connects: baseline what `sst validate --target` finds there, recording the target in each "
+        "entry. Never `$SST_TARGET`; offline without it."
+    ),
     ("sst baseline prune", "--select"): "Prune only the entries of these artifacts.",
     ("sst baseline prune", "--exclude"): "Leave the entries of these artifacts as they are.",
+    ("sst baseline prune", "--target"): (
+        "Connects: also prune the entries a connected validate against this target recorded. "
+        "Without it, connected entries are kept."
+    ),
     ("sst baseline show", "--code"): "Show only the entries of this code.",
     ("sst baseline show", "--expired"): "Show the entries only once the baseline has expired.",
+    ("sst baseline show", "--target"): "Show only the offline entries and those recorded against this target.",
     ("sst baseline renew", "--reason"): "Required. Why the baseline is renewed; written into the file.",
     ("sst baseline renew", "--expires-in"): "Days until the renewed baseline expires, at most 365.",
     ("sst diff", "--from"): "The state compared from: `local` (default), a dbt target, or a saved plan's `.json` path.",

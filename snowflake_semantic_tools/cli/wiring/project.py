@@ -24,6 +24,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConne
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
 from snowflake_semantic_tools.cli.output import register_secrets, verbose_run
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_KEYS, config_block, config_int
+from snowflake_semantic_tools.domain.ports.project import UNKNOWN_GIT_SHA
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
 # Where a command's shared `LoadCache` is kept, in the click context's `meta`.
@@ -38,7 +39,7 @@ def target_dir(project_dir: Path) -> Path:
 
 
 def git_sha(project_dir: Path) -> str:
-    """Return the project's commit as a 7-character sha, or `WORKTREE` when git cannot say."""
+    """Return the project's commit as a 7-character sha, or `UNKNOWN_GIT_SHA` when git cannot say."""
     import subprocess
 
     completed = subprocess.run(
@@ -48,7 +49,7 @@ def git_sha(project_dir: Path) -> str:
         check=False,
     )
     value = completed.stdout.strip()
-    return value if completed.returncode == 0 and value else "WORKTREE"
+    return value if completed.returncode == 0 and value else UNKNOWN_GIT_SHA
 
 
 def project_inputs(

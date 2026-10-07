@@ -44,19 +44,18 @@ def capture_baseline(
 
     Only metadata is kept -- pass flags, score ranges, and the identities of the dataset, the
     config, the agent version and the metrics -- never an input, an output or a score. The first
-    `required_attempts` completed attempts are captured, else the eval's `baseline_runs`, else
-    one; the baseline expires `BASELINE_TTL_DAYS` after its capture.
+    `required_attempts` completed attempts whose results were read are captured, in attempt
+    order, else the eval's `baseline_runs`, else one; the baseline expires `BASELINE_TTL_DAYS`
+    after its capture. An attempt that failed, was partial or was not read is never captured:
+    the run reported it, and the retry that completed in its place counts instead.
 
     Raises:
-        ValueError: the reason is blank; an attempt did not complete or its results were not
-            read; too few attempts completed; the attempts do not share one immutable agent
-            version or one complete question/metric vector; `captured_at` does not parse; or
-            the tier is invalid.
+        ValueError: the reason is blank; too few attempts completed and were read; the
+            captured attempts do not share one immutable agent version or one complete
+            question/metric vector; `captured_at` does not parse; or the tier is invalid.
     """
     if not reason.strip():
         raise ValueError("baseline capture requires a non-empty reason")
-    if any(attempt.terminal_status != EVAL_COMPLETED or attempt.retrieval_error for attempt in result.attempts):
-        raise ValueError("baseline capture refuses partial, cancelled, failed, or unretrievable attempts")
     required = required_attempts or _baseline_runs(compiled)
     completed = _completed_attempts(result)
     if len(completed) < required:
@@ -118,11 +117,13 @@ def evaluate_gate(
     """Decide whether a run regressed against its baseline, or say why the gate cannot tell.
 
     A metric regresses on a question when it is gated, passed in every baseline attempt and
-    failed in some current one. Only a blocking tier fails on a regression, and reports it as
-    SST-VAL763; a report tier passes and lists it. Without a usable baseline or a clean current
-    run the verdict has no signal: it does not pass, and its reason says why -- `baseline_absent`,
-    `current_no_signal`, `baseline_incompatible`, `baseline_incomplete`, `baseline_expired` or
-    `retrieval_no_signal`.
+    failed in some current one. Only the current attempts that completed and were read are
+    judged: one that failed or was partial is never a pass and scores nothing, and the run
+    reports it (SST-APL029 when a retry completed in its place). Only a blocking tier fails on a
+    regression, and reports it as SST-VAL763; a report tier passes and lists it. Without a
+    usable baseline or a completed current attempt the verdict has no signal: it does not pass,
+    and its reason says why -- `baseline_absent`, `current_no_signal`, `baseline_incompatible`,
+    `baseline_incomplete`, `baseline_expired` or `retrieval_no_signal`.
 
     Raises:
         ValueError: the tier is invalid, a timestamp does not parse, or a current attempt's
@@ -137,8 +138,8 @@ def evaluate_gate(
         SST-VAL760: the baseline expires within `BASELINE_WARNING_DAYS`.
         SST-VAL761: the baseline has expired.
         SST-VAL763: a blocking eval regressed; the error fails the run.
-        SST-SNO001: the current run has no immutable agent version, or has a partial,
-            unretrievable or no completed attempt.
+        SST-SNO001: no current attempt completed and was read, or the ones that did have no
+            one immutable agent version.
     """
     tier = _resolved_tier(compiled, default_tier)
     if baseline is None:
@@ -239,12 +240,11 @@ def _expiry_warning(compiled: CompiledEval, baseline: EvalBaselineRecord, now: s
 
 
 def _current_no_signal(compiled: CompiledEval, result: EvalRunResult) -> tuple[str, Diagnostic] | None:
-    """Say why the run gives the gate no signal, as a verdict reason and its diagnostic; None when it does."""
-    if any(
-        attempt.terminal_status != EVAL_COMPLETED or attempt.retrieval_error is not None for attempt in result.attempts
-    ):
-        detail = f"eval '{compiled.artifact_key}' has partial or unretrievable current attempts"
-        return "current_no_signal", D("SST-SNO001", detail=detail)
+    """Say why the run gives the gate no signal, as a verdict reason and its diagnostic; None when it does.
+
+    The run gives a signal once some attempt completed and was read; the attempts that did not
+    pass carry none, and the run reported each of them.
+    """
     if not _completed_attempts(result):
         detail = f"eval '{compiled.artifact_key}' has no retrievable completed attempt"
         return "retrieval_no_signal", D("SST-SNO001", detail=detail)

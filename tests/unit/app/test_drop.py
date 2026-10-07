@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.drop import DropObject, DropRequest, DropResult
@@ -203,3 +204,21 @@ def test_the_warning_is_kept_when_the_drop_is_rejected_or_its_lock_was_broken() 
     broken.descriptions = {f"AGENT {AGENT.sql}": _agent_spec(VIEW.sql)}
     broken.write_state = lambda *args: False  # type: ignore[method-assign]
     assert [item.code for item in _run(broken).diagnostics] == ["SST-PLN017", "SST-APL011"]
+
+
+def test_a_drop_takes_over_an_expired_lock_only_when_asked_and_never_a_live_one() -> None:
+    def locked_by(ttl: int) -> FakeSnowflake:
+        port = _port()
+        port.run_locks.acquire_run_lock(TABLE, "dev", LockClaim("crashed", "R", "h", ttl), break_stale=False)
+        port.run_locks.now = 60.0
+        return port
+
+    breaking = replace(REQUEST, break_stale_lock=True)
+    kept = DropObject(locked_by(10), InMemoryStateStore(), FixedClock(), state_table=TABLE).run(REQUEST)
+    assert (kept.outcome, [item.code for item in kept.diagnostics]) == ("refused", ["SST-APL011"])
+    broke = DropObject(locked_by(10), InMemoryStateStore(), FixedClock(), state_table=TABLE).run(breaking)
+    assert broke.dropped and [(item.code, item.message) for item in broke.diagnostics] == [
+        ("SST-APL010", "broke a stale lock held by run crashed (R on h), expired 10.0")
+    ]
+    live = DropObject(locked_by(600), InMemoryStateStore(), FixedClock(), state_table=TABLE).run(breaking)
+    assert (live.outcome, [item.code for item in live.diagnostics]) == ("refused", ["SST-APL011"])

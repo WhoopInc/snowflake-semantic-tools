@@ -6,6 +6,7 @@ import json
 import shutil
 from hashlib import md5
 from pathlib import Path
+from typing import Any
 
 import pytest
 from click.testing import CliRunner
@@ -25,9 +26,11 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalResultRow,
     EvalRunAttempt,
 )
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
+from snowflake_semantic_tools.domain.state.lock import LockClaim
 from tests.helpers.artifact_builders import target
 from tests.helpers.cli_projects import common, compile_project, invoke_counting_closes, invoke_with_port
 from tests.helpers.eval_builders import EvalSnowflake
@@ -356,6 +359,45 @@ def test_eval_suite_refuses_unpublished_eval_before_start(
     assert payload["diagnostics"][0]["code"] == "SST-APL012"
     assert payload["data"]["attempt_count"] == 0
     assert port.scripts == []
+
+
+def test_eval_suite_breaks_an_expired_run_lock_only_with_break_stale_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    args = ["test", *common(project), "--target", "dev", "--suite", "evals", "--output", "json"]
+    probe = FakeSnowflake(state={})
+    tables: list[QualifiedName] = []
+    claim = probe.run_locks.acquire_run_lock
+
+    def recording(table: QualifiedName, *rest: Any, **options: Any) -> Any:
+        tables.append(table)
+        return claim(table, *rest, **options)
+
+    probe.run_locks.acquire_run_lock = recording  # type: ignore[method-assign,assignment]
+    invoke_with_port(monkeypatch, probe, args)
+
+    def expired() -> FakeSnowflake:
+        port = FakeSnowflake(state={})
+        port.run_locks.acquire_run_lock(tables[0], "dev", LockClaim("crashed", "R", "h", 10), break_stale=False)
+        port.run_locks.now = 60.0
+        return port
+
+    kept = invoke_with_port(monkeypatch, expired(), args)
+    assert [item["code"] for item in json.loads(kept.output)["diagnostics"]][0] == "SST-APL011"
+    broke = invoke_with_port(monkeypatch, expired(), [*args, "--break-stale-lock"])
+    codes = [item["code"] for item in json.loads(broke.output)["diagnostics"]]
+    assert codes.count("SST-APL010") == 1 and "SST-APL011" not in codes
+
+
+def test_the_lock_and_baseline_options_are_listed_in_help() -> None:
+    shown = CliRunner().invoke(cli, ["test", "--help"])
+    for option in ("--capture-baseline", "--reason", "--break-stale-lock"):
+        assert option in shown.output
+    for command in ("apply", "drop"):
+        assert "--break-stale-lock" in CliRunner().invoke(cli, [command, "--help"]).output
 
 
 def test_eval_suite_reports_every_attempt_in_human_output(

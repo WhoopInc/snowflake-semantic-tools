@@ -26,6 +26,7 @@ from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import (
+    break_stale_lock_option,
     defer_target_option,
     fail_fast_pair,
     no_validate_option,
@@ -39,7 +40,7 @@ from snowflake_semantic_tools.cli.options import (
     validation_options,
 )
 from snowflake_semantic_tools.cli.plan_output import outcome_json, print_plan, write_plan_sql
-from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.runner import CommandResult, command_body, run_baseline
 from snowflake_semantic_tools.cli.settings import (
     apply_fail_fast,
     apply_parallelism,
@@ -101,7 +102,7 @@ def _refuse_invocation(
 @click.option("--yes", "-y", "confirmed", is_flag=True)
 @fail_fast_pair()
 @threads_option()
-@click.option("--break-stale-lock", is_flag=True)
+@break_stale_lock_option()
 @click.option("--temporary", is_flag=True)
 @no_validate_option()
 @sql_out_option()
@@ -146,6 +147,7 @@ def apply(
         state_dir=state_dir,
         threads=threads_setting(paths, threads),
         validate=not no_validate,
+        baseline=run_baseline(options),
     )
     saved = _saved_plan(plan_path, request)
     planned = request.following(saved)

@@ -83,6 +83,15 @@ _THREAD_GRACE_SECONDS = 2.0
 _REAL_HOME = Path.home()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _session_environment() -> Iterator[None]:
+    # Module- and session-scoped fixtures run before `_isolated_environment`, so a variable from
+    # the developer's shell (a `DBT_PROFILES_DIR` exported for live work, say) would reach them.
+    saved = {name: os.environ.pop(name) for name in _SST_ENVIRONMENT if name in os.environ}
+    yield
+    os.environ.update(saved)
+
+
 @pytest.fixture(autouse=True)
 def _isolated_environment(
     request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch

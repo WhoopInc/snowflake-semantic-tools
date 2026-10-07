@@ -34,10 +34,14 @@ import inspect
 import io
 import json
 import logging
+import signal
 import sys
-from collections.abc import Callable, Collection
+import threading
+from collections.abc import Callable, Collection, Iterator
+from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
+from types import FrameType
 from typing import Any, NoReturn
 
 import click
@@ -215,7 +219,7 @@ class _Run:
             overrides=options.overrides,
         )
         reads = self.applies_baseline and self.config is not ConfigNeed.NONE
-        baseline = _baseline(options) if reads else None
+        baseline = run_baseline(options) if reads else None
         # Read before the body, which may write the manifest this asks about.
         first_run = not ran_under_1_0(files.project_dir)
         result = self.body(**self._arguments(files))
@@ -308,7 +312,7 @@ def _refuse_pair(first: str, second: str) -> NoReturn:
     raise SstUsageError(diagnostic.message, diagnostic=diagnostic)
 
 
-def _baseline(options: GlobalOptions) -> Baseline | None:
+def run_baseline(options: GlobalOptions) -> Baseline | None:
     """Read the run's baseline: `--baseline`, else `.sst/baseline.json` when it exists; None without one.
 
     Raises:
@@ -411,6 +415,30 @@ def guarded(action: Callable[[], None], *, command: str, output: str) -> None:
         _unusable(command, output, exc)
     except Exception as exc:  # the one crash handler: an exception nothing above expects
         _internal_error(command, output, exc)
+
+
+@contextmanager
+def terminated_as_interrupt() -> Iterator[None]:
+    """Raise SIGTERM as `KeyboardInterrupt` in the block, so it ends a run as an interrupt does.
+
+    By default SIGTERM ends the process at once and no `finally` runs, so a run lock taken in
+    the block stays held until it expires. Raised instead, every `finally` releases what it
+    holds, and `guarded` reports SST-PRT107 and exits 130. Outside the main thread no handler
+    can be set, so the block runs unchanged; SIGKILL can never be caught.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    previous = signal.signal(signal.SIGTERM, _raise_interrupt)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, signal.SIG_DFL if previous is None else previous)
+
+
+def _raise_interrupt(signum: int, frame: FrameType | None) -> NoReturn:
+    del signum, frame
+    raise KeyboardInterrupt
 
 
 def _snowflake_failed(command: str, output: str, exc: SnowflakePortError) -> NoReturn:

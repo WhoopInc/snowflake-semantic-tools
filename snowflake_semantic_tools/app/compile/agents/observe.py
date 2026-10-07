@@ -3,7 +3,9 @@
 Connected validation runs `ObserveLiveObjects` once Snowflake is reachable. It only reads --
 SHOW, DESCRIBE, SHOW GRANTS and SHOW PARAMETERS through the `CatalogPort` -- and the
 comparisons are pure, in `domain.validate.agent_live`. A read Snowflake refuses is no
-evidence either way, so the check that needed it reports nothing.
+evidence either way, so the check that needed it reports nothing -- except that an extension
+the project consumes, which Snowflake reports does not exist or is not authorized, is one
+the agent cannot reach, and that is reported.
 """
 
 from __future__ import annotations
@@ -15,7 +17,8 @@ from snowflake_semantic_tools.app.compile.agents.compiled import CompiledAgent
 from snowflake_semantic_tools.app.compile.base import CompileResult
 from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
-from snowflake_semantic_tools.domain.model.agent import ResolvedAgentTool
+from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, session_failure
+from snowflake_semantic_tools.domain.model.agent import AgentSkill, ResolvedAgentTool
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow
 from snowflake_semantic_tools.domain.model.tool import ToolKind
@@ -37,6 +40,10 @@ _EXTERNAL = {
     "agent": ("identifier", "AGENT"),
 }
 _SHARED_GRANTEES = frozenset(("SHARE", "APPLICATION_ROLE", "APPLICATION ROLE"))
+# The skill reference resolver of an extension this project consumes rather than publishes.
+_CONSUMED = "extension"
+# A version selector that names no fixed version, which SST-VAL538 refuses offline.
+_MOVING_VERSION = "live"
 _HOLDS = frozenset(("USAGE", "OWNERSHIP"))
 
 
@@ -61,7 +68,9 @@ class ObserveLiveObjects:
             SST-VAL508: an agent's tag names no tag object.
             SST-VAL509: an agent SST last published unchanged no longer matches its rendered spec.
             SST-VAL533: a generic tool's resource key is not confirmed by a live spec.
-            SST-VAL531: an object a tool calls, which SST does not publish, does not exist.
+            SST-VAL531: an object a tool calls, which SST does not publish, does not exist;
+                or an extension the agent consumes, or the version it pins, does not exist
+                or is not visible to the session.
             SST-VAL532: such a routine's live signature disagrees with the tool's input schema.
             SST-VAL616: the session or a consuming role lacks USAGE on such an object.
             SST-VAL534: a tool's query timeout exceeds its warehouse's statement timeout.
@@ -113,7 +122,7 @@ class ObserveLiveObjects:
         for tool in agent.resolved.tools:
             found.extend(self._agent_tool(agent, tool, spec, consumers, sources))
         for skill in model.skills:
-            found.extend(self._extension(agent, skill.path, consumers))
+            found.extend(self._extension(agent, skill, consumers))
         return found
 
     def _tags(self, agent: CompiledAgent) -> list[Diagnostic]:
@@ -246,19 +255,47 @@ class ObserveLiveObjects:
             and str(column).casefold() in vectors
         ]
 
-    def _extension(self, agent: CompiledAgent, path: str, consumers: tuple[str, ...]) -> list[Diagnostic]:
-        """Report each consuming role, the session's included, with no READ on an extension the agent pins."""
-        qualified = _qualified(path, None)
+    def _extension(self, agent: CompiledAgent, skill: AgentSkill, consumers: tuple[str, ...]) -> list[Diagnostic]:
+        """Check an extension the agent pins: who may read it and, when consumed, that it exists.
+
+        Reports each consuming role, the session's included, with no READ on it. An extension
+        the project publishes may not exist before its first apply, so only a consumed one is
+        reported absent: when SHOW GRANTS says it does not exist or is not authorized -- a
+        missing schema reads the same -- or when it lists no version or alias the agent pins.
+        """
+        qualified = _qualified(skill.path, None)
         if qualified is None:
             return []
-        grants = self._read(lambda: self._port.show_grants("CORTEX EXTENSION", qualified))
-        if grants is None:
+        try:
+            grants = self._port.show_grants("CORTEX EXTENSION", qualified)
+        except SnowflakePortError as exc:
+            if skill.ref == _CONSUMED and _not_visible(exc):
+                return [self._absent(agent, qualified.sql)]
             return []
         holders = {grant.grantee_name.upper() for grant in grants if grant.privilege.upper() in ("READ", "OWNERSHIP")}
-        return [
+        found = [
             D("SST-VAL542", artifact=agent.name, value=consumer, name=qualified.sql, subject=agent.artifact_key)
             for consumer in dict.fromkeys(role for role in consumers if role and role.upper() not in holders)
         ]
+        found.extend(self._pinned_version(agent, skill, qualified))
+        return found
+
+    def _pinned_version(self, agent: CompiledAgent, skill: AgentSkill, qualified: QualifiedName) -> list[Diagnostic]:
+        """Report a consumed extension's pinned version that SHOW VERSIONS lists by neither name nor alias."""
+        pinned = skill.version.strip()
+        if skill.ref != _CONSUMED or not pinned or pinned.casefold() == _MOVING_VERSION:
+            return []
+        versions = self._read(lambda: self._port.extension_versions(qualified))
+        if versions is None:
+            return []
+        listed = {version.name.casefold() for version in versions}
+        listed.update(alias.strip().casefold() for version in versions for alias in (version.alias or "").split(","))
+        if pinned.casefold() in listed:
+            return []
+        return [self._absent(agent, f"{qualified.sql} version {pinned}")]
+
+    def _absent(self, agent: CompiledAgent, value: str) -> Diagnostic:
+        return D("SST-VAL531", artifact=agent.name, value=value, target=self._target, subject=agent.artifact_key)
 
     def _tool(self, tool: CompiledTool) -> list[Diagnostic]:
         """Check one compiled search service against its live service, its source, and its grants."""
@@ -294,6 +331,11 @@ class ObserveLiveObjects:
         if row is None or row.get("change_tracking", "").upper() != "OFF":
             return []
         return [D("SST-VAL618", value=qualified.sql, name=tool.member.name, subject=tool.artifact_key)]
+
+
+def _not_visible(error: SnowflakePortError) -> bool:
+    """Report whether Snowflake refused a read because the object does not exist or is not granted."""
+    return session_failure(str(error), errno=error.errno, sqlstate=error.sqlstate) is SessionFailure.NOT_VISIBLE
 
 
 def _uses(grant: GrantRow) -> bool:

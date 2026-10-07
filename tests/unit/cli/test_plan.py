@@ -496,6 +496,21 @@ def test_plan_honors_configured_strict_validation(tmp_path: Path, monkeypatch: p
     assert allowed.exit_code == 2
 
 
+def test_a_strict_plan_goes_ahead_when_the_baseline_holds_the_promoted_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    added = CliRunner().invoke(cli, ["baseline", "add", "--all-warnings", "--yes", *common(project)])
+    assert added.exit_code == 0, added.output
+    args = ["plan", *common(project), "--target", "dev", "--strict", "--output", "json"]
+
+    held = invoke_with_port(monkeypatch, FakeSnowflake(state={}), args)
+    assert held.exit_code == 2, held.output
+    refused = invoke_with_port(monkeypatch, FakeSnowflake(state={}), [*args, "--no-baseline"])
+    assert refused.exit_code == 1
+    assert json.loads(refused.stdout)["data"] == {}
+
+
 def test_report_only_prunes_are_listed_but_are_not_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import shutil
 

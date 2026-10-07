@@ -8,13 +8,15 @@ from pathlib import Path
 
 import click
 
+from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.fs.local import PlanFileStore
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.paths import output_root
+from snowflake_semantic_tools.app.baseline import held_by_baseline
 from snowflake_semantic_tools.app.observe import ObserveOptions
 from snowflake_semantic_tools.app.plan import PlanReady, PlanRefused
 from snowflake_semantic_tools.cli.exit_codes import ERROR
-from snowflake_semantic_tools.cli.globals import SstCommand
+from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import (
     defer_target_option,
@@ -37,7 +39,7 @@ from snowflake_semantic_tools.cli.plan_output import (
     print_plan,
     write_plan_sql,
 )
-from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.runner import CommandResult, command_body, run_baseline
 from snowflake_semantic_tools.cli.settings import strict_disagreement, threads_setting
 from snowflake_semantic_tools.cli.wiring.plan import (
     PlanRequest,
@@ -130,6 +132,7 @@ def plan(
     no_detailed_exitcode: bool,
     strict: bool | None,
     snowflake_syntax_check: bool | None,
+    options: GlobalOptions,
 ) -> CommandResult:
     """Observe live Snowflake state and compute a non-writing plan.
 
@@ -155,6 +158,7 @@ def plan(
         observe_options=ObserveOptions(grants=grants, capture_prior=capture_prior),
         validate=not no_validate,
         use_cached_state=use_cached_state,
+        baseline=run_baseline(options),
     )
     ready, close = _planned(request)
     if isinstance(ready, PlanRefused):
@@ -245,7 +249,8 @@ def _plan_report(
     shown = (
         DiagnosticBag((*ready.result.diagnostics, *changeset.diagnostics)) if request.partial else changeset.diagnostics
     )
-    exit_code = plan_exit_code(ready, shown, detailed=not no_detailed_exitcode)
+    held = held_by_baseline(shown, request.baseline, clock=SystemClock())
+    exit_code = plan_exit_code(ready, shown, detailed=not no_detailed_exitcode, held=held)
     data: dict[str, object] = {
         "manifest_id": ready.manifest.manifest_id,
         "plan_id": saved.plan_id,

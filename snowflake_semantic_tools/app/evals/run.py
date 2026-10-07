@@ -9,9 +9,10 @@ the CLI, without judging it -- the gate compares it with a baseline.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from hashlib import md5
+from threading import Lock
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.retrieve import _read_results, _read_status, _sum_costs
@@ -25,17 +26,18 @@ from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_PASS_STATUSES,
-    EVAL_TERMINAL_STATUSES,
     EvalCostSummary,
     EvalDefaults,
     EvalMetricResult,
     EvalResultRow,
     EvalRunAttempt,
     EvalRunConfig,
+    eval_status_is_terminal,
 )
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import Action
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
+from snowflake_semantic_tools.domain.ports.project import UNKNOWN_GIT_SHA
 from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.execution import SessionPool
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
@@ -52,7 +54,8 @@ class EvalRunOptions:
     """How a suite names and polls its runs.
 
     Attributes:
-        git_sha: The commit the run names carry, as its first seven characters.
+        git_sha: The commit the run names carry, as its first seven characters; empty or
+            `UNKNOWN_GIT_SHA` when the project is not in a git work tree.
         timestamp: The run names' `ts` token; None uses the current UTC time.
         poll_interval_ms: The wait between two status reads of a run, in milliseconds.
         max_polls: The status reads of a run before it counts as not terminating.
@@ -102,6 +105,42 @@ class EvalSuiteResult:
         return bool(self.evals) and not self.diagnostics.has_errors and all(result.success for result in self.evals)
 
 
+class EvalRunsInterrupted(KeyboardInterrupt):
+    """The suite was interrupted after it asked Snowflake to start evaluation runs.
+
+    A started run goes on in Snowflake whatever becomes of the suite, so whoever reports the
+    interrupt names each one, for the user to check or cancel.
+
+    Attributes:
+        run_names: Every run the suite asked Snowflake to start, in name order.
+    """
+
+    def __init__(self, run_names: tuple[str, ...]) -> None:
+        super().__init__(", ".join(run_names))
+        self.run_names = run_names
+
+
+class _StartedRuns:
+    """The runs a suite has asked Snowflake to start, as every worker records them."""
+
+    def __init__(self) -> None:
+        self._names: set[str] = set()
+        self._lock = Lock()
+
+    def add(self, run_name: str) -> None:
+        with self._lock:
+            self._names.add(run_name)
+
+    def discard(self, run_name: str) -> None:
+        with self._lock:
+            self._names.discard(run_name)
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        with self._lock:
+            return tuple(sorted(self._names))
+
+
 @dataclass(frozen=True, slots=True)
 class _RunSetup:
     """What every attempt of one eval shares, resolved before the first one starts.
@@ -109,8 +148,9 @@ class _RunSetup:
     Attributes:
         timestamp: The run names' `ts` token.
         agent_version: The concrete version the agent's selector resolved to.
-        required_completed: The completed attempts a baseline capture needs; 1 otherwise.
-        attempt_limit: The attempts allowed in all.
+        required_completed: The completed attempts the eval needs: a baseline capture's
+            `baseline_runs`, else 1. No attempt starts once that many completed and were read.
+        attempt_limit: The attempts allowed in all: `required_completed` plus the retries.
         config_path: Where the eval's config is staged.
     """
 
@@ -122,6 +162,84 @@ class _RunSetup:
     config_path: str
 
 
+@dataclass(frozen=True, slots=True)
+class _SuiteRun:
+    """What one suite run shares across its evals and their attempts.
+
+    Attributes:
+        fanout: Where every round's setups and attempts run, as many at once as the suite's
+            concurrency allows.
+        started: The runs started so far, which an interrupt reports.
+    """
+
+    defaults: EvalDefaults
+    options: EvalRunOptions
+    config_digests: Mapping[str, str]
+    baseline_capture: bool
+    fanout: Fanout[CatalogPublicationPort]
+    started: _StartedRuns
+
+
+@dataclass(slots=True)
+class _Progress:
+    """One eval's attempts so far, in attempt order, each with the diagnostics its outcome reported."""
+
+    compiled: CompiledEval
+    setup: _RunSetup | Diagnostic
+    outcomes: list[tuple[EvalRunAttempt, tuple[Diagnostic, ...]]] = field(default_factory=list)
+    completed: int = 0
+    cancelled: bool = False
+
+    def next_steps(self) -> tuple[tuple[_Progress, _RunSetup, int], ...]:
+        """Return the attempts the next round starts, by number: one per completed attempt still needed.
+
+        Never past the attempt limit, and none once an attempt was cancelled or the eval could
+        not be set up. An eval needing one completed attempt so starts another only after one
+        that did not pass: it failed, was partial, or its status or results could not be read.
+        """
+        setup = self.setup
+        if isinstance(setup, Diagnostic) or self.cancelled:
+            return ()
+        started = len(self.outcomes)
+        wanted = min(setup.required_completed - self.completed, setup.attempt_limit - started)
+        return tuple((self, setup, number) for number in range(started + 1, started + 1 + max(0, wanted)))
+
+    def record(self, attempt: EvalRunAttempt, diagnostics: tuple[Diagnostic, ...]) -> None:
+        self.outcomes.append((attempt, diagnostics))
+        if attempt.terminal_status == "CANCELLED":
+            self.cancelled = True
+        elif _retrieved(attempt):
+            self.completed += 1
+
+    def result(self) -> EvalRunResult:
+        """Report every attempt that ran; any one completed and read accepts the eval.
+
+        Once the eval has every completed attempt it needs, each attempt that did not pass was
+        retried in its place, so it reports SST-APL029, a warning naming its run, status and
+        details, rather than the error its outcome is on its own. Short of that, every attempt
+        reports its outcome as it ended. A partial attempt the config accepts reports SST-VAL730
+        either way: the config, not the run, is what is wrong.
+        """
+        setup = self.setup
+        if isinstance(setup, Diagnostic):
+            return EvalRunResult(self.compiled.artifact_key, (), DiagnosticBag((setup,)))
+        retried = self.completed >= setup.required_completed
+        diagnostics = tuple(
+            diagnostic
+            for attempt, outcome in self.outcomes
+            for diagnostic in (
+                *_accepted_partial(self.compiled, setup.run, attempt.terminal_status),
+                *((_retried_attempt(self.compiled, attempt),) if retried and not _retrieved(attempt) else outcome),
+            )
+        )
+        return EvalRunResult(
+            self.compiled.artifact_key,
+            tuple(attempt for attempt, _ in self.outcomes),
+            DiagnosticBag(diagnostics),
+            self.completed > 0,
+        )
+
+
 class RunEvalSuite:
     """Run a suite of compiled evals against their published agents.
 
@@ -129,8 +247,9 @@ class RunEvalSuite:
     stages when the staged copy is missing or cannot be trusted.
 
     Args:
-        sessions: Where evals running at once lease a session each, opened from `port`;
-            None runs every eval on `port`, one at a time, so no two share a session.
+        sessions: Where setups and attempts running at once lease a session each, opened from
+            `port`, so each attempt starts and polls its run on a session of its own; None runs
+            everything on `port`, one at a time, so no two share a session.
     """
 
     def __init__(
@@ -156,80 +275,83 @@ class RunEvalSuite:
         baseline_capture: bool = False,
         threads: int = 1,
     ) -> EvalSuiteResult:
-        """Run every eval and collect their results in suite order.
+        """Run every eval and collect their results, each eval's attempts in attempt order, in suite order.
 
-        With `fail_fast`, or fewer than two evals, they run one at a time, and `fail_fast` stops
-        at the first eval not accepted. Otherwise they run on sessions of their own, as many at
-        once as `defaults.concurrency` says, else as the most any eval's run configuration
-        requests, else as `threads`; without a session pool, one at a time.
+        Every eval is set up, then its attempts run in rounds: each round starts, for every eval,
+        one attempt per completed attempt it still needs, within its attempt limit (see
+        `_RunSetup`), so a gate run retries only an attempt that did not pass, and a baseline
+        capture starts all of its `baseline_runs` in its first round. A round's attempts, across
+        every eval, run on sessions of their own, as many at once as `suite_concurrency` allows,
+        so no more START calls are in flight than it says; without a session pool, one at a
+        time. With `fail_fast` the evals run one after another, and the suite stops at the first
+        one not accepted.
 
         Args:
             config_digests: The MD5 digest of each eval's staged config that state trusts, by
                 eval key; a staged config without one is staged again.
             baseline_capture: Run each eval until it has the completed attempts its baseline
-                needs, rather than its configured attempts.
-            threads: The evals run at once when neither the project nor any eval says.
+                needs, rather than until one attempt passes.
+            threads: The attempts run at once when neither the project nor any eval says.
+
+        Raises:
+            EvalRunsInterrupted: the suite was interrupted after it started a run. Every session
+                the pool lent is halted first, so no worker starts or polls another; interrupted
+                before any run started, the `KeyboardInterrupt` itself propagates.
         """
-        config_digests = config_digests or {}
-
-        def run_one(port: CatalogPublicationPort, item: CompiledEval) -> EvalRunResult:
-            return self._on(port)._run_eval(
-                item,
-                defaults,
-                options,
-                config_digests.get(item.artifact_key),
-                baseline_capture,
-                defaults.baseline_runs,
-            )
-
-        if fail_fast or len(compiled) < 2:
-            results = _in_order(compiled, lambda item: run_one(self._port, item), fail_fast)
-        else:
-            workers = suite_concurrency(compiled, defaults, threads)
-            results = list(Fanout(self._port, self._sessions, workers).map(run_one, compiled))
+        context = _SuiteRun(
+            defaults,
+            options,
+            config_digests or {},
+            baseline_capture,
+            Fanout(self._port, self._sessions, suite_concurrency(compiled, defaults, threads)),
+            _StartedRuns(),
+        )
+        try:
+            if fail_fast:
+                results = _in_order(compiled, lambda item: self._run_rounds((item,), context)[0])
+            else:
+                results = self._run_rounds(compiled, context)
+        except KeyboardInterrupt as exc:
+            if self._sessions is not None:
+                self._sessions.halt("the eval run was interrupted")
+            if context.started.names:
+                raise EvalRunsInterrupted(context.started.names) from exc
+            raise
         diagnostics = [diagnostic for result in results for diagnostic in result.diagnostics]
         return EvalSuiteResult(tuple(results), DiagnosticBag(tuple(diagnostics)))
 
     def _on(self, port: CatalogPublicationPort) -> RunEvalSuite:
-        """Return this suite, or one like it running on `port`, a session leased for one eval."""
+        """Return this suite, or one like it running on `port`, a session leased for one item."""
         return self if port is self._port else RunEvalSuite(port, self._clock, self._lifecycle_config)
 
-    def _run_eval(
-        self,
-        compiled: CompiledEval,
-        defaults: EvalDefaults,
-        options: EvalRunOptions,
-        config_digest: str | None,
-        baseline_capture: bool,
-        default_baseline_runs: int | None,
-    ) -> EvalRunResult:
-        """Run one eval: resolve what its attempts share and stage its config, then run the attempts.
+    def _run_rounds(self, compiled: Sequence[CompiledEval], context: _SuiteRun) -> list[EvalRunResult]:
+        """Set up each eval, then run rounds of attempts until no eval needs another; report each eval.
 
         An eval that cannot be set up runs no attempt and reports why.
         """
-        setup = self._setup(compiled, defaults, options, config_digest, baseline_capture, default_baseline_runs)
-        if isinstance(setup, Diagnostic):
-            result = EvalRunResult(compiled.artifact_key, (), DiagnosticBag((setup,)))
-        else:
-            result = self._attempts(compiled, options, setup, baseline_capture)
-        run = compiled.resolved.config.run
-        retention = retention_class(run, defaults.retention) if run is not None else defaults.retention
-        window = run.retention.decision_window_days if run is not None and retention == "decision" else None
-        return replace(result, retention=retention, decision_window_days=window)
 
-    def _setup(
-        self,
-        compiled: CompiledEval,
-        defaults: EvalDefaults,
-        options: EvalRunOptions,
-        config_digest: str | None,
-        baseline_capture: bool,
-        default_baseline_runs: int | None,
-    ) -> _RunSetup | Diagnostic:
+        def set_up(port: CatalogPublicationPort, item: CompiledEval) -> _RunSetup | Diagnostic:
+            return self._on(port)._setup(item, context)
+
+        def attempt(
+            port: CatalogPublicationPort, step: tuple[_Progress, _RunSetup, int]
+        ) -> tuple[EvalRunAttempt, tuple[Diagnostic, ...]]:
+            progress, setup, number = step
+            return self._on(port)._attempt(progress.compiled, context.options, setup, number, context.started)
+
+        setups = context.fanout.map(set_up, compiled)
+        evals = [_Progress(item, setup) for item, setup in zip(compiled, setups, strict=True)]
+        while batch := [step for progress in evals for step in progress.next_steps()]:
+            for (progress, _, _), outcome in zip(batch, context.fanout.map(attempt, batch), strict=True):
+                progress.record(*outcome)
+        return [_with_retention(progress.result(), progress.compiled, context.defaults) for progress in evals]
+
+    def _setup(self, compiled: CompiledEval, context: _SuiteRun) -> _RunSetup | Diagnostic:
         """Resolve what every attempt shares and stage the config; a diagnostic when the eval cannot run.
 
-        A baseline capture allows the completed attempts it needs plus the retries; any other
-        run allows its first attempt plus the retries.
+        A baseline capture needs its `baseline_runs` completed attempts, else the project's, else
+        one, and allows that many plus the retries; any other run needs one, and allows it plus
+        the retries.
 
         Diagnostics:
             SST-APL023: the eval has no run configuration, its agent version cannot be read, or
@@ -240,8 +362,8 @@ class RunEvalSuite:
         run = compiled.resolved.config.run
         if run is None:
             return D("SST-APL023", artifact=compiled.artifact_key, detail="run configuration is absent")
-        timestamp = options.timestamp or _compact_timestamp()
-        retry_count = run.retry if run.retry is not None else defaults.retry or 0
+        timestamp = context.options.timestamp or _compact_timestamp()
+        retry_count = run.retry if run.retry is not None else context.defaults.retry or 0
         selector = compiled.resolved.config.agent_version or ""
         try:
             agent_version = self._port.resolve_agent_version(compiled.agent_target, selector)
@@ -252,45 +374,19 @@ class RunEvalSuite:
         stage_problem = self._stage_format_problem(compiled)
         if stage_problem is not None:
             return stage_problem
-        required_completed = (run.baseline_runs or default_baseline_runs or 1) if baseline_capture else 1
-        attempt_limit = required_completed + retry_count if baseline_capture else retry_count + 1
+        baseline_runs = run.baseline_runs or context.defaults.baseline_runs or 1
+        required_completed = baseline_runs if context.baseline_capture else 1
         config_path = EvalLifecycleHandler(self._port, self._lifecycle_config).config_path(compiled.rendered_artifact)
         try:
-            self._ensure_config(config_path, compiled.rendered.config_yaml.encode("utf-8"), config_digest)
+            self._ensure_config(
+                config_path,
+                compiled.rendered.config_yaml.encode("utf-8"),
+                context.config_digests.get(compiled.artifact_key),
+            )
         except SnowflakePortError as exc:
             return D("SST-APL023", artifact=compiled.artifact_key, detail=str(exc))
-        return _RunSetup(run, timestamp, agent_version, required_completed, attempt_limit, config_path)
-
-    def _attempts(
-        self,
-        compiled: CompiledEval,
-        options: EvalRunOptions,
-        setup: _RunSetup,
-        baseline_capture: bool,
-    ) -> EvalRunResult:
-        """Run the eval's attempts in order and record each; any one completed and read accepts it.
-
-        Every allowed attempt runs, a completed one included, except that a cancelled run ends
-        the eval and a baseline capture stops once it has the completed attempts it needs.
-        """
-        attempts: list[EvalRunAttempt] = []
-        diagnostics: list[Diagnostic] = []
-        completed_count = 0
-        for attempt_number in range(1, setup.attempt_limit + 1):
-            attempt, attempt_diagnostics = self._attempt(compiled, options, setup, attempt_number)
-            attempts.append(attempt)
-            diagnostics.extend(attempt_diagnostics)
-            if attempt.terminal_status == "CANCELLED":
-                break
-            if _retrieved(attempt):
-                completed_count += 1
-                if baseline_capture and completed_count >= setup.required_completed:
-                    break
-        return EvalRunResult(
-            compiled.artifact_key,
-            tuple(attempts),
-            DiagnosticBag(tuple(diagnostics)),
-            completed_count > 0,
+        return _RunSetup(
+            run, timestamp, agent_version, required_completed, required_completed + retry_count, config_path
         )
 
     def _attempt(
@@ -299,29 +395,35 @@ class RunEvalSuite:
         options: EvalRunOptions,
         setup: _RunSetup,
         attempt_number: int,
+        started: _StartedRuns,
     ) -> tuple[EvalRunAttempt, tuple[Diagnostic, ...]]:
         """Start one attempt, poll it to a terminal status, and read its results once it completed.
 
         A failure at any step ends the attempt with it: the attempt records the terminal status
-        it reached and why it failed.
+        it reached and why it failed. Its diagnostics describe the attempt on its own; the
+        eval's result reports them only when no retry completed in its place.
 
         Diagnostics:
-            SST-APL023: the run could not be started, or its status could not be read.
-            SST-APL024: the run ended partially completed.
-            SST-VAL730: the run ended partially completed, and the config accepts that status;
-                it is still not a pass.
+            SST-APL023: the run could not be started, its status could not be read, or it
+                ended in a status that is neither a pass nor partial, such as `FAILED` or one
+                Snowflake does not document; the message carries its status details.
+            SST-APL024: the run ended partially completed, in a status the config does not
+                accept.
             SST-SNO001: the run completed but its results could not be read or did not match.
         """
         run_name = _run_name(compiled, setup, options, attempt_number)
-        started = self._start(compiled, run_name, setup.config_path)
-        if started is not None:
-            return EvalRunAttempt(run_name, attempt_number, "START_FAILED", retrieval_error=started.message), (started,)
+        refused = self._start(compiled, run_name, setup.config_path, started)
+        if refused is not None:
+            diagnostic = D("SST-APL023", artifact=compiled.artifact_key, detail=refused)
+            return EvalRunAttempt(run_name, attempt_number, "START_FAILED", retrieval_error=refused), (diagnostic,)
         try:
             terminal_status, status_details = self._poll(compiled, run_name, setup.config_path, options)
         except (SnowflakePortError, ValueError) as exc:
             diagnostic = D("SST-APL023", artifact=compiled.artifact_key, detail=str(exc))
             return EvalRunAttempt(run_name, attempt_number, "STATUS_FAILED", retrieval_error=str(exc)), (diagnostic,)
-        diagnostics = _partial_status(compiled, setup.run, terminal_status)
+        diagnostics = _partial_status(compiled, setup.run, terminal_status) or _failed_status(
+            compiled, run_name, terminal_status, status_details
+        )
         if terminal_status not in EVAL_PASS_STATUSES:
             return EvalRunAttempt(run_name, attempt_number, terminal_status, status_details=status_details), diagnostics
         completed = EvalRunAttempt(
@@ -384,19 +486,22 @@ class RunEvalSuite:
         staged_digest = md5(staged_content, usedforsecurity=False).hexdigest() if staged_content is not None else None
         return observed, staged_content, staged_digest
 
-    def _start(self, compiled: CompiledEval, run_name: str, config_path: str) -> Diagnostic | None:
-        """Start a run in the agent's schema; its SST-APL023 diagnostic when Snowflake refuses.
+    def _start(self, compiled: CompiledEval, run_name: str, config_path: str, started: _StartedRuns) -> str | None:
+        """Start a run in the agent's schema; the error Snowflake gave when it refuses.
 
         The call resolves in the agent's schema on the port's scoped session, so it never
-        changes the schema any other statement runs in.
+        changes the schema any other statement runs in. The run counts as started from before
+        the call until Snowflake refuses it: an interrupt during the call may leave it running.
         """
+        started.add(run_name)
         try:
             self._port.query_in_context(
                 SchemaScope.from_qualified_name(compiled.agent_target),
                 _evaluation_call("START", run_name, config_path),
             )
         except SnowflakePortError as exc:
-            return D("SST-APL023", artifact=compiled.artifact_key, detail=str(exc))
+            started.discard(run_name)
+            return str(exc)
         return None
 
     def _poll(
@@ -408,13 +513,16 @@ class RunEvalSuite:
     ) -> tuple[str, tuple[str, ...]]:
         """Read a run's status until it is terminal, waiting the poll interval between two reads.
 
+        Only the in-progress statuses keep a run polling, so a status Snowflake does not document
+        ends it rather than polling it to the limit.
+
         Raises:
             SnowflakePortError: a read failed, or the run was not terminal after `max_polls` reads.
             ValueError: a status row was malformed.
         """
         for poll in range(options.max_polls):
             status, details = _read_status(self._port, compiled, run_name, config_path)
-            if status in EVAL_TERMINAL_STATUSES:
+            if eval_status_is_terminal(status):
                 return status, details
             if poll + 1 < options.max_polls:
                 self._clock.sleep(options.poll_interval_ms)
@@ -505,24 +613,32 @@ def empty_eval_suite_json() -> dict[str, object]:
 
 
 def _in_order(
-    compiled: Sequence[CompiledEval],
-    run_one: Callable[[CompiledEval], EvalRunResult],
-    fail_fast: bool,
+    compiled: Sequence[CompiledEval], run_one: Callable[[CompiledEval], EvalRunResult]
 ) -> list[EvalRunResult]:
-    """Run the evals one at a time; with `fail_fast`, stop after the first one not accepted."""
+    """Run the evals one at a time, and stop after the first one not accepted."""
     results = []
     for item in compiled:
         result = run_one(item)
         results.append(result)
-        if fail_fast and not result.success:
+        if not result.success:
             break
     return results
 
 
-def suite_concurrency(compiled: Sequence[CompiledEval], defaults: EvalDefaults, threads: int = 1) -> int:
-    """Return how many evals run at once: the project's setting, else the most any eval asks.
+def _with_retention(result: EvalRunResult, compiled: CompiledEval, defaults: EvalDefaults) -> EvalRunResult:
+    """Classify the eval's runs for retention, from its run configuration else the project's."""
+    run = compiled.resolved.config.run
+    retention = retention_class(run, defaults.retention) if run is not None else defaults.retention
+    window = run.retention.decision_window_days if run is not None and retention == "decision" else None
+    return replace(result, retention=retention, decision_window_days=window)
 
-    With neither, `threads`: `--threads` paces the evals no setting paces.
+
+def suite_concurrency(compiled: Sequence[CompiledEval], defaults: EvalDefaults, threads: int = 1) -> int:
+    """Return how many runs a suite starts and polls at once, across all of its evals.
+
+    The project's `evals.+concurrency`, else the most any eval's `run.concurrency` asks; with
+    neither, `threads`: `--threads` paces the runs no setting paces. The session pool the
+    suite leases from holds this many sessions.
     """
     requested: list[int] = []
     for item in compiled:
@@ -535,11 +651,17 @@ def suite_concurrency(compiled: Sequence[CompiledEval], defaults: EvalDefaults, 
 
 
 def _run_name(compiled: CompiledEval, setup: _RunSetup, options: EvalRunOptions, attempt_number: int) -> str:
-    """Name one attempt's run from the eval's template; a retry appends `_R<attempt>`."""
+    """Name one attempt's run from the eval's template; a retry appends `_R<attempt>`.
+
+    `sha7` is the commit's first seven characters. Outside a git work tree there is no commit,
+    so it is the first seven of the eval's fingerprint: still derived from what the project
+    declares, and never from where the project happens to sit on disk.
+    """
+    known = options.git_sha and options.git_sha != UNKNOWN_GIT_SHA
     base_name = render_eval_name_template(
         setup.run.name_template or _DEFAULT_RUN_NAME_TEMPLATE,
         agent=compiled.name,
-        sha7=options.git_sha[:7],
+        sha7=(options.git_sha if known else compiled.rendered_artifact.fingerprint)[:7],
         variant=setup.run.variant or "ci",
         ts=setup.timestamp,
     )
@@ -561,12 +683,48 @@ def retention_class(run: EvalRunConfig, default: str | None) -> str | None:
 
 
 def _partial_status(compiled: CompiledEval, run: EvalRunConfig, terminal_status: str) -> tuple[Diagnostic, ...]:
-    """Report a partial terminal status: an error when the config would accept it, else a warning."""
-    if terminal_status not in _PARTIAL_STATUSES:
+    """Warn of a partial terminal status the config does not accept."""
+    if terminal_status not in _PARTIAL_STATUSES or terminal_status in run.accept_statuses:
         return ()
-    if terminal_status in run.accept_statuses:
-        return (D("SST-VAL730", artifact=compiled.name, found=terminal_status, subject=compiled.artifact_key),)
     return (D("SST-APL024", artifact=compiled.artifact_key, found=terminal_status),)
+
+
+def _accepted_partial(compiled: CompiledEval, run: EvalRunConfig, terminal_status: str) -> tuple[Diagnostic, ...]:
+    """Report SST-VAL730, an error, for a partial terminal status the config accepts.
+
+    A partial status is still not a pass, whatever the config accepts, and whether or not a
+    retry completed in its place.
+    """
+    if terminal_status in _PARTIAL_STATUSES and terminal_status in run.accept_statuses:
+        return (D("SST-VAL730", artifact=compiled.name, found=terminal_status, subject=compiled.artifact_key),)
+    return ()
+
+
+def _retried_attempt(compiled: CompiledEval, attempt: EvalRunAttempt) -> Diagnostic:
+    """Warn with SST-APL029 of an attempt that did not pass and that a completed retry replaced.
+
+    The message carries the run's name, the status it reached, and its status details, else
+    why its status or results could not be read.
+    """
+    reasons = (*attempt.status_details, *((attempt.retrieval_error,) if attempt.retrieval_error else ()))
+    return D(
+        "SST-APL029",
+        artifact=compiled.artifact_key,
+        value=attempt.run_name,
+        found=attempt.terminal_status,
+        detail="; ".join(reasons) or "no status details",
+    )
+
+
+def _failed_status(
+    compiled: CompiledEval, run_name: str, terminal_status: str, status_details: tuple[str, ...]
+) -> tuple[Diagnostic, ...]:
+    """Report a terminal status that is neither a pass nor partial, with the run's status details."""
+    if terminal_status in EVAL_PASS_STATUSES or terminal_status in _PARTIAL_STATUSES:
+        return ()
+    reason = "; ".join(status_details) or "no status details"
+    detail = f"run {run_name!r} ended {terminal_status}: {reason}"
+    return (D("SST-APL023", artifact=compiled.artifact_key, detail=detail),)
 
 
 def _retrieved(attempt: EvalRunAttempt) -> bool:

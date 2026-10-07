@@ -286,6 +286,17 @@
   "precheck": "observe"
  },
  {
+  "code": "SST-APL029",
+  "area": "APL",
+  "number": 29,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Eval attempt did not pass and was retried",
+  "message": "eval '{artifact}': run '{value}' ended {found} and was retried: {detail}",
+  "suggestion": "the retry's results were used; if this recurs, investigate the run's non-determinism",
+  "precheck": "runtime"
+ },
+ {
   "code": "SST-APL100",
   "area": "APL",
   "number": 100,

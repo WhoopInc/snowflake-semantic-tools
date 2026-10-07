@@ -51,9 +51,20 @@ SUPPORTED_JUDGE_PLACEHOLDERS = frozenset(
 EVAL_MINT_AUTO = "auto"
 EVAL_MINT_NEVER = "never"
 EVAL_MINT_POLICIES = frozenset((EVAL_MINT_AUTO, EVAL_MINT_NEVER))
-EVAL_TERMINAL_STATUSES = frozenset(
-    (EVAL_COMPLETED, "PARTIALLY_COMPLETED", "INVOCATION_PARTIALLY_COMPLETED", "CANCELLED")
+# The statuses of a run Snowflake is still working on. Any other status ends the run, a value
+# Snowflake reports and does not document included: a run once reported `FAILED`.
+EVAL_IN_PROGRESS_STATUSES = frozenset(
+    ("CREATED", "INVOCATION_IN_PROGRESS", "INVOCATION_COMPLETED", "COMPUTATION_IN_PROGRESS")
 )
+# The terminal statuses a run is known to report, which `run.accept_statuses` may name.
+EVAL_KNOWN_TERMINAL_STATUSES = frozenset(
+    (EVAL_COMPLETED, "PARTIALLY_COMPLETED", "INVOCATION_PARTIALLY_COMPLETED", "CANCELLED", "FAILED")
+)
+
+
+def eval_status_is_terminal(status: str) -> bool:
+    """Report whether a run's status ends it: every status but the in-progress ones does."""
+    return status not in EVAL_IN_PROGRESS_STATUSES
 
 
 @dataclass(frozen=True, slots=True)

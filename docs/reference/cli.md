@@ -252,8 +252,10 @@ Subcommands: [`sst baseline add`](#sst-baseline-add), [`sst baseline prune`](#ss
 Baseline every current instance of CODE, or with --all-warnings every current warning.
 
 Additive: an entry is never removed. A new file expires in --expires-in days; an existing
-one keeps its date, which only `renew` moves. Exit 1 when CODE is an error or non-demotable,
-and 3 when CODE is not registered, or --all-warnings has no --yes off a terminal.
+one keeps its date, which only `renew` moves. With --target, what the connected validate
+against it reports is baselined, and each entry added records the target. Exit 1 when CODE
+is an error or non-demotable, and 3 when CODE is not registered, or --all-warnings has no
+--yes off a terminal.
 
 Diagnostics:
     SST-PRT100: no CODE and no --all-warnings, or CODE is not registered; raised. Also, at
@@ -267,6 +269,7 @@ sst baseline add [OPTIONS]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
+| `--target / -t` | TEXT |  | Connects: baseline what `sst validate --target` finds there, recording the target in each entry. Never `$SST_TARGET`; offline without it. |
 | `--select` | TEXT, repeatable |  | Baseline only the diagnostics of these artifacts. |
 | `--exclude` | TEXT, repeatable |  | Leave the diagnostics of these artifacts out. |
 | `--all-warnings` | flag |  | Baseline every current warning; prints the count and needs `--yes`. |
@@ -278,6 +281,8 @@ sst baseline add [OPTIONS]
 
 Remove the entries no current diagnostic matches; the only way an entry leaves the file.
 
+The offline entries are judged by an offline validate. A connected entry is judged only by
+`--target` naming its target, which runs the connected validate too; every other is kept.
 With --select or --exclude, only the entries of the artifacts chosen are considered.
 
 Diagnostics:
@@ -289,6 +294,7 @@ sst baseline prune [OPTIONS]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
+| `--target / -t` | TEXT |  | Connects: also prune the entries a connected validate against this target recorded. Without it, connected entries are kept. |
 | `--select` | TEXT, repeatable |  | Prune only the entries of these artifacts. |
 | `--exclude` | TEXT, repeatable |  | Leave the entries of these artifacts as they are. |
 
@@ -315,6 +321,10 @@ sst baseline renew [OPTIONS]
 
 List the baseline's entries: those of one --code, or with --expired only once it has expired.
 
+Each entry says whether a connected validate found it, and against which target. With
+--target, only the entries a validate against it can match are listed: the offline ones and
+that target's connected ones. Nothing connects.
+
 ```text
 sst baseline show [OPTIONS]
 ```
@@ -323,6 +333,7 @@ sst baseline show [OPTIONS]
 |---|---|---|---|
 | `--code` | TEXT |  | Show only the entries of this code. |
 | `--expired` | flag |  | Show the entries only once the baseline has expired. |
+| `--target / -t` | TEXT |  | Show only the offline entries and those recorded against this target. |
 
 ## sst list
 
@@ -409,7 +420,7 @@ sst apply [OPTIONS]
 | `--yes / -y` | flag |  | Apply without asking for confirmation. |
 | `--fail-fast / --no-fail-fast` | flag |  | Stop at the first failure instead of continuing. Defaults to `apply.fail_fast`. |
 | `--threads` | INTEGER RANGE |  | Sessions to plan and apply on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`. Planning defaults to 1; applying to `skills.+threads`, else 4. |
-| `--break-stale-lock` | flag |  | Take over a state lock left behind by a run that no longer exists. |
+| `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 | `--temporary` | flag |  | Publish agents as session-scoped temporary agents; refused for a production-like target. |
 | `--no-validate` | flag |  | Skip validation: no cycle check, connected check, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. |
 | `--sql-out` | DIRECTORY |  | Also write the statements for each change into this directory. |
@@ -453,7 +464,8 @@ does. `--select` and `--exclude` narrow every suite to those artifacts. Exit 1 w
 suite fails, 4 when a selected artifact has no golden file, and 5 when a connected suite
 cannot reach Snowflake. `--threads` runs the smoke probes, and the evals no setting paces,
 that many at once. `--update-golden` runs the golden suite only, rewriting each golden the
-current output no longer equals.
+current output no longer equals. The eval suite holds the target's run lock while it runs;
+`--break-stale-lock` takes it over only from a run that has expired.
 
 ```text
 sst test [OPTIONS]
@@ -471,6 +483,7 @@ sst test [OPTIONS]
 | `--fail-fast` | flag |  | Stop at the first failing golden, probe, or eval. |
 | `--capture-baseline` | flag |  | Record this eval run as the new baseline. Requires `--reason`. |
 | `--reason` | TEXT |  | Why the baseline is changing; stored with it. |
+| `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 
 ## sst explain
 
@@ -546,3 +559,4 @@ sst drop [OPTIONS]
 | `--target / -t` | TEXT |  | Required. Target from `profiles.yml`; there is no default, and `$SST_TARGET` is not read. |
 | `--profile` | TEXT |  | Profile in `profiles.yml`; else `dbt_project.yml`'s `profile:`. Needed outside a project. |
 | `--yes / -y` | flag |  | Required on every invocation: it is the confirmation, and there is no prompt. |
+| `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |

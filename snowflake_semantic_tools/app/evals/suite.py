@@ -65,12 +65,15 @@ class EvalGateRequest:
         reason: Why the baselines change; required to capture, and recorded with each one.
         threads: The evals run at once when neither the project nor any eval says, as
             `--threads` resolved.
+        break_stale_lock: Take over the target's lock when the run holding it has expired, as
+            `sst apply --break-stale-lock` does; a live holder is refused all the same.
     """
 
     fail_fast: bool = False
     capture_baseline: bool = False
     reason: str | None = None
     threads: int = 1
+    break_stale_lock: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +175,7 @@ class RunEvalGate:
 
         Diagnostics:
             SST-APL011: another run holds the target's lock, so no eval starts.
+            SST-APL010: the request breaks stale locks, and an expired one was taken over.
             SST-VAL755: the run holding the lock is not an eval run, so it may be regenerating
                 a semantic view an eval's agent uses; one per eval and view.
             SST-VAL727, SST-VAL728: the primary role lacks a privilege a run needs in an eval's
@@ -192,7 +196,7 @@ class RunEvalGate:
             LockClaim(lock_id, self._actor, self._host, self._lock_policy.ttl_seconds),
             self._lock_policy,
         )
-        locked, lock_diagnostics = lease.acquire(break_stale=False)
+        locked, lock_diagnostics = lease.acquire(break_stale=request.break_stale_lock)
         if not locked:
             holder = lease.holder
             overlaps = () if holder is not None and holder.startswith(EVAL_RUN_PREFIX) else view_overlaps(evals)
@@ -203,7 +207,9 @@ class RunEvalGate:
         try:
             state, state_diagnostics = read_state(self._state_store, self._port, state_table=state_table, target=target)
             publication = validate_eval_publication(evals, manifest, state, handler)
-            preflight = DiagnosticBag((*state_diagnostics, *publication, *eval_role_diagnostics(self._port, evals)))
+            preflight = DiagnosticBag(
+                (*lock_diagnostics, *state_diagnostics, *publication, *eval_role_diagnostics(self._port, evals))
+            )
             if preflight.has_errors:
                 return EvalGateOutcome(preflight, None, False, {"suite": "evals", **empty_eval_suite_json()})
             return self._run_suite(evals, state, preflight, defaults, lifecycle_config, request, target.name)

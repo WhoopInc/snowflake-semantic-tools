@@ -579,3 +579,30 @@ def test_a_stale_local_lock_broken_is_reported_with_its_holder() -> None:
     assert acquired and [(item.code, item.message) for item in reported] == [
         ("SST-APL010", "broke a stale lock held by old-run")
     ]
+
+
+def test_breaking_both_stale_locks_reports_one_takeover_in_the_remote_locks_words() -> None:
+    port, store = FakeSnowflake(), InMemoryStateStore()
+    store.locked, store.holder, store.stale = True, "crashed", True
+    port.run_locks.acquire_run_lock(STATE_TABLE, "verify", LockClaim("crashed", "ROLE", "ci", 10), break_stale=False)
+    port.run_locks.now = 60.0
+    lease = lease_for(port, store, stepped())
+
+    acquired, reported = lease.acquire(break_stale=True)
+    lease.release()
+
+    assert acquired and [(item.code, item.message) for item in reported] == [
+        ("SST-APL010", "broke a stale lock held by run crashed (ROLE on ci), expired 10.0")
+    ]
+
+
+def test_a_stale_local_lock_broken_before_a_live_remote_one_refuses_reports_both() -> None:
+    port, store = FakeSnowflake(), InMemoryStateStore()
+    store.locked, store.holder, store.stale = True, "crashed", True
+    port.run_locks.acquire_run_lock(STATE_TABLE, "verify", LockClaim("live", "ROLE", "ci", 600), break_stale=False)
+    lease = lease_for(port, store, stepped())
+
+    acquired, reported = lease.acquire(break_stale=True)
+
+    assert not acquired and [item.code for item in reported] == ["SST-APL010", "SST-APL011"]
+    assert not store.locked

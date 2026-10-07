@@ -223,6 +223,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="a pre-existing eval config stage does not carry the file format eval runs read",
     ),
     spec(
+        "SST-APL029",
+        Severity.WARNING,
+        "Eval attempt did not pass and was retried",
+        "eval '{artifact}': run '{value}' ended {found} and was retried: {detail}",
+        "the retry's results were used; if this recurs, investigate the run's non-determinism",
+        condition="an attempt failed, was partial, or was not read, and a later attempt completed in its place",
+    ),
+    spec(
         "SST-APL100",
         Severity.ERROR,
         "Smoke query failed",

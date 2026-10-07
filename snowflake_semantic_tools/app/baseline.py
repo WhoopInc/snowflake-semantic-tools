@@ -58,6 +58,22 @@ def gate_baseline(diagnostics: DiagnosticBag, baseline: Baseline, *, clock: Cloc
     )
 
 
+def held_by_baseline(diagnostics: DiagnosticBag, baseline: Baseline | None, *, clock: ClockPort) -> frozenset[str]:
+    """Return the stable fingerprints of the diagnostics `baseline` holds today; none without one.
+
+    The same match the run's report applies, so a command that gates on its diagnostics before
+    reporting them -- a plan refusing on a validation error -- holds the same ones.
+    """
+    if baseline is None:
+        return frozenset()
+    return gate_baseline(diagnostics, baseline, clock=clock).baselined
+
+
+def blocking(diagnostics: DiagnosticBag, held: frozenset[str]) -> bool:
+    """Report whether some diagnostic blocks and is not one `held` names."""
+    return any(item.blocks and stable_fingerprint(item) not in held for item in diagnostics)
+
+
 def clock_today(clock: ClockPort) -> date:
     """Return the clock's current date in UTC."""
     return date.fromisoformat(clock.now_iso()[:10])

@@ -25,6 +25,7 @@ import click
 
 from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.adapters.clock import SystemClock
+from snowflake_semantic_tools.app.evals.run import EvalRunsInterrupted
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, INTERRUPTED, OK
 from snowflake_semantic_tools.domain.diagnostics import (
     ERROR_REGISTRY,
@@ -294,14 +295,10 @@ def interrupted(command: str, output: str, cause: BaseException) -> NoReturn:
     """End a run the user interrupted or declined to confirm with exit 130, never an internal error.
 
     Diagnostics:
-        SST-PRT107: the run was interrupted; after `apply`, partial work may have been applied.
+        SST-PRT107: the run was interrupted; after `apply`, partial work may have been applied,
+            and after an eval run started, it names every run, which goes on in Snowflake.
     """
-    remains = (
-        "partial work may have been applied; run sst plan to see what remains"
-        if command == "apply"
-        else "nothing was written to Snowflake"
-    )
-    notice = D("SST-PRT107", subject="cli", detail=f"sst {command} started", value=remains)
+    notice = D("SST-PRT107", subject="cli", detail=f"sst {command} started", value=_what_remains(command, cause))
     if output == "json":
         print_envelope(
             json_envelope(
@@ -312,6 +309,18 @@ def interrupted(command: str, output: str, cause: BaseException) -> NoReturn:
         click.echo("Aborted.", err=True)
         click.echo(render_diagnostic(notice), err=True)
     raise click.exceptions.Exit(INTERRUPTED) from cause
+
+
+def _what_remains(command: str, cause: BaseException) -> str:
+    """Say what an interrupted run leaves in Snowflake: started eval runs, partial work, or nothing."""
+    if isinstance(cause, EvalRunsInterrupted):
+        return (
+            f"evaluation runs were started and may still be running: {', '.join(cause.run_names)}; "
+            "check their status or cancel them in Snowflake"
+        )
+    if command == "apply":
+        return "partial work may have been applied; run sst plan to see what remains"
+    return "nothing was written to Snowflake"
 
 
 class RenderPolicy:

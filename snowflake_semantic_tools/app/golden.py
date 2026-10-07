@@ -20,6 +20,7 @@ from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
 from snowflake_semantic_tools.domain.file_names import file_name
 from snowflake_semantic_tools.domain.ports.golden import GoldenPath, GoldenStore, GoldenWriter
+from snowflake_semantic_tools.domain.ports.project import UNKNOWN_GIT_SHA
 
 # Optional goldens a reference project may commit for an extension: where each lives, and
 # the bundle member it pins.
@@ -260,6 +261,6 @@ def _ddl_statements(text: str, name: str) -> str:
 
 def _normalized(value: str, git_sha: str) -> str:
     """Replace the commit in a payload's `GIT_<commit>` with zeros; unchanged outside a git work tree."""
-    if git_sha and git_sha != "WORKTREE":
+    if git_sha and git_sha != UNKNOWN_GIT_SHA:
         return value.replace(f"GIT_{git_sha}", "GIT_0000000")
     return value

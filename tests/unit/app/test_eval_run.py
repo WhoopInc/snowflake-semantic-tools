@@ -36,7 +36,7 @@ from snowflake_semantic_tools.app.evals.run import (
 )
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT, EvalLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.eval import (
     EvalCostSummary,
     EvalDefaults,
@@ -182,7 +182,12 @@ def test_eval_runner_reports_every_retry_and_partial_status() -> None:
     attempts = result.evals[0].attempts
     assert [attempt.terminal_status for attempt in attempts] == ["PARTIALLY_COMPLETED", "COMPLETED"]
     assert attempts[1].run_name.endswith("_R2")
-    assert result.diagnostics[0].code == "SST-APL024"
+    [retried] = result.diagnostics
+    assert (retried.code, retried.severity) == ("SST-APL029", Severity.WARNING)
+    assert retried.message == (
+        "eval 'eval:sales_agent': run 'EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z' ended PARTIALLY_COMPLETED"
+        " and was retried: no status details"
+    )
     assert result.evals[0].accepted
 
 
@@ -218,32 +223,110 @@ def test_eval_runner_stops_after_cancellation_and_preserves_details() -> None:
     assert result.evals[0].attempts[0].status_details == ("user cancelled",)
 
 
-def test_eval_runner_runs_and_retains_every_configured_attempt() -> None:
+def with_run(compiled: CompiledEval, **changes: Any) -> CompiledEval:
+    run = compiled.resolved.config.run
+    assert run is not None
+    config = replace(compiled.resolved.config, run=replace(run, **changes))
+    return replace(compiled, resolved=replace(compiled.resolved, config=config))
+
+
+def test_a_gate_run_stops_at_its_first_attempt_that_completed_and_was_read() -> None:
+    port = EvalSnowflake([status_result("COMPLETED"), result_rows()])
+
+    result = run_once(port, with_run(compiled_eval_of(), retry=3))
+
+    assert result.success
+    assert [attempt.run_name for attempt in result.evals[0].attempts] == [
+        "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z"
+    ]
+    assert len(port.scripts) == 1 and not port.query_results
+
+
+def test_a_gate_run_retries_an_attempt_that_failed_and_reports_both() -> None:
+    first = "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z"
     port = EvalSnowflake(
         [
-            status_result("COMPLETED"),
-            result_rows(),
-            status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R2"),
-            result_rows(),
-            status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R3"),
-            result_rows(),
-            status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R4"),
+            QueryResult(STATUS_COLUMNS, ((first, "SALES_AGENT", "CORTEX AGENT", "FAILED", ["Invocation failed"]),)),
+            status_result("COMPLETED", f"{first}_R2"),
             result_rows(),
         ]
     )
-    use_case, compiled = runner(port)
-    run = compiled.resolved.config.run
-    assert run is not None
-    compiled = replace(
-        compiled,
-        resolved=replace(compiled.resolved, config=replace(compiled.resolved.config, run=replace(run, retry=3))),
+
+    result = run_once(port, with_run(compiled_eval_of(), retry=3))
+
+    attempts = result.evals[0].attempts
+    assert result.evals[0].accepted and [(attempt.attempt, attempt.terminal_status) for attempt in attempts] == [
+        (1, "FAILED"),
+        (2, "COMPLETED"),
+    ]
+    # The failed attempt is reported, as a warning: the retry completed in its place.
+    assert result.success and not result.diagnostics.has_errors
+    assert [(item.code, item.message) for item in result.diagnostics] == [
+        ("SST-APL029", f"eval 'eval:sales_agent': run '{first}' ended FAILED and was retried: Invocation failed")
+    ]
+    assert len(port.scripts) == 2 and not port.query_results
+
+
+def test_a_config_accepting_a_partial_status_errs_even_when_a_retry_completed() -> None:
+    port = EvalSnowflake(
+        [
+            status_result("PARTIALLY_COMPLETED"),
+            status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R2"),
+            result_rows(),
+        ]
     )
 
-    result = use_case.run((compiled,), options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"))
+    result = run_once(port, with_run(compiled_eval_of(), retry=1, accept_statuses=("COMPLETED", "PARTIALLY_COMPLETED")))
 
+    # The retry absorbed the partial run, but the config that would pass a partial is still wrong.
+    assert result.evals[0].accepted and not result.success
+    assert [item.code for item in result.diagnostics] == ["SST-VAL730", "SST-APL029"]
+
+
+def test_a_retry_after_an_unstarted_or_unread_attempt_reports_why_the_first_did_not_pass() -> None:
+    unreadable = QueryResult(("INPUT_ID",), (("q",),))
+    port = EvalSnowflake(
+        [
+            status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R2"),
+            unreadable,
+            status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R3"),
+            result_rows(),
+        ]
+    )
+    port.execute_results.append(ExecResult(False, error=ExecutionError("cannot start")))
+
+    result = run_once(port, with_run(compiled_eval_of(), retry=2))
+
+    assert [attempt.terminal_status for attempt in result.evals[0].attempts] == [
+        "START_FAILED",
+        "COMPLETED",
+        "COMPLETED",
+    ]
     assert result.success
-    assert len(result.evals[0].attempts) == 4
-    assert not port.query_results
+    started, unread = result.diagnostics
+    assert (started.code, started.severity, unread.code) == ("SST-APL029", Severity.WARNING, "SST-APL029")
+    assert "ended START_FAILED and was retried: " in started.message and "cannot start" in started.message
+    assert "_R2' ended COMPLETED and was retried: " in unread.message
+
+
+def test_a_gate_run_retries_an_unread_attempt_until_its_retries_run_out() -> None:
+    unreadable = QueryResult(("INPUT_ID",), (("q",),))
+    port = EvalSnowflake(
+        [
+            status_result("COMPLETED"),
+            unreadable,
+            status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R2"),
+            unreadable,
+        ]
+    )
+
+    result = run_once(port, with_run(compiled_eval_of(), retry=1))
+
+    assert not result.success
+    assert [attempt.attempt for attempt in result.evals[0].attempts] == [1, 2]
+    assert all(attempt.retrieval_error for attempt in result.evals[0].attempts)
+    # No retry completed, so each attempt reports the error its outcome is.
+    assert [item.code for item in result.diagnostics] == ["SST-SNO001", "SST-SNO001"]
 
 
 def test_baseline_capture_runs_until_configured_completed_attempt_count() -> None:
@@ -294,17 +377,71 @@ def test_eval_runner_distinguishes_start_status_and_retrieval_failures() -> None
     assert retrieve.diagnostics[0].code == "SST-SNO001"
 
 
-def test_eval_runner_rejects_unknown_status_and_times_out() -> None:
-    port = EvalSnowflake([status_result("UNKNOWN")])
+def test_eval_runner_ends_an_undocumented_status_and_fails_the_eval() -> None:
+    port = EvalSnowflake([status_result("UNKNOWN"), status_result("COMPLETED")])
     use_case, compiled = runner(port)
 
     result = use_case.run(
         (compiled,),
-        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", max_polls=1),
+        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", max_polls=5),
+    )
+
+    [attempt] = result.evals[0].attempts
+    assert attempt.terminal_status == "UNKNOWN"
+    assert not result.success
+    [diagnostic] = result.diagnostics
+    assert diagnostic.code == "SST-APL023"
+    assert diagnostic.message == (
+        "eval 'eval:sales_agent': run 'EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z' ended UNKNOWN: no status details"
+    )
+
+
+def test_eval_runner_stops_polling_a_failed_run_and_reports_its_details() -> None:
+    run_name = "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z"
+    # MEASURED: a run whose agent could not be invoked reports FAILED, which the docs omit.
+    failed = QueryResult(STATUS_COLUMNS, ((run_name, "SALES_AGENT", "CORTEX AGENT", "FAILED", "Invocation failed"),))
+    port = EvalSnowflake([status_result("INVOCATION_IN_PROGRESS"), failed])
+    use_case, compiled = runner(port)
+
+    result = use_case.run(
+        (compiled,),
+        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", max_polls=240),
+    )
+
+    [attempt] = result.evals[0].attempts
+    assert (attempt.terminal_status, attempt.status_details) == ("FAILED", ("Invocation failed",))
+    assert not result.evals[0].accepted
+    assert [diagnostic.message for diagnostic in result.diagnostics] == [
+        f"eval 'eval:sales_agent': run '{run_name}' ended FAILED: Invocation failed"
+    ]
+    assert len([query for query, _ in port.queries if "'STATUS'" in query]) == 2
+
+
+def test_eval_runner_polls_every_in_progress_status_until_its_limit() -> None:
+    statuses = ("CREATED", "INVOCATION_IN_PROGRESS", "INVOCATION_COMPLETED", "COMPUTATION_IN_PROGRESS")
+    port = EvalSnowflake([status_result(status) for status in statuses])
+    use_case, compiled = runner(port)
+
+    result = use_case.run(
+        (compiled,),
+        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", max_polls=4),
     )
 
     assert result.evals[0].attempts[0].terminal_status == "STATUS_FAILED"
     assert "did not reach" in (result.evals[0].attempts[0].retrieval_error or "")
+
+
+def test_eval_run_name_outside_a_git_work_tree_carries_the_eval_fingerprint() -> None:
+    port = EvalSnowflake([status_result("CANCELLED", run_name="unused"), status_result("CANCELLED", run_name="unused")])
+    use_case, compiled = runner(port)
+
+    result = use_case.run((compiled,), options=EvalRunOptions("WORKTREE", timestamp="20260928T010203Z"))
+
+    run_name = result.evals[0].attempts[0].run_name
+    assert run_name == f"EVAL_SALES_AGENT_{compiled.rendered_artifact.fingerprint[:7]}_ci_20260928T010203Z"
+    assert "WORKTRE" not in run_name
+    blank = use_case.run((compiled,), options=EvalRunOptions("", timestamp="20260928T010203Z"))
+    assert blank.evals[0].attempts[0].run_name == run_name
 
 
 def test_eval_cost_deduplicates_agent_usage_across_metric_rows() -> None:
@@ -460,54 +597,29 @@ def test_eval_runner_reports_missing_run_version_and_config_failures() -> None:
     assert not config_failure.evals[0].attempts
 
 
-def test_eval_runner_fail_fast_stops_before_the_next_eval(monkeypatch: pytest.MonkeyPatch) -> None:
-    compiled = compiled_eval_of()
-    use_case = RunEvalSuite(EvalSnowflake([]), FixedClock())
-    calls: list[str] = []
+def test_eval_runner_fail_fast_stops_before_the_next_eval() -> None:
+    port = EvalSnowflake([status_result("FAILED")])
 
-    def fail(*args: Any) -> EvalRunResult:
-        calls.append(args[0].artifact_key)
-        return EvalRunResult(args[0].artifact_key, (), DiagnosticBag(), False)
-
-    monkeypatch.setattr(use_case, "_run_eval", fail)
-
-    result = use_case.run(
-        (compiled, compiled),
+    result = RunEvalSuite(port, FixedClock()).run(
+        (compiled_eval_of(), compiled_eval_of()),
         options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"),
         fail_fast=True,
     )
 
-    assert calls == [compiled.artifact_key]
-    assert len(result.evals) == 1
+    assert len(result.evals) == 1 and len(port.scripts) == 1
     assert not result.success
 
 
-def test_eval_runner_parallelizes_with_the_requested_concurrency(monkeypatch: pytest.MonkeyPatch) -> None:
-    first = compiled_eval_of()
-    first_run = first.resolved.config.run
-    assert first_run is not None
-    second = replace(
-        first,
-        resolved=replace(
-            first.resolved,
-            config=replace(first.resolved.config, run=replace(first_run, concurrency=3)),
-        ),
-    )
-    use_case = RunEvalSuite(EvalSnowflake([]), FixedClock())
+def test_an_interrupt_before_any_run_started_propagates_as_it_came() -> None:
+    class Interrupted(EvalSnowflake):
+        def resolve_agent_version(self, qualified_name: QualifiedName, selector: str) -> str:
+            del qualified_name, selector
+            raise KeyboardInterrupt
 
-    def succeed(*args: Any) -> EvalRunResult:
-        return EvalRunResult(args[0].artifact_key, (), DiagnosticBag(), True)
+    with pytest.raises(KeyboardInterrupt) as raised:
+        run_once(Interrupted([]))
 
-    monkeypatch.setattr(use_case, "_run_eval", succeed)
-
-    result = use_case.run(
-        (first, second),
-        defaults=EvalDefaults(),
-        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"),
-    )
-
-    assert len(result.evals) == 2
-    assert result.success
+    assert type(raised.value) is KeyboardInterrupt
 
 
 @pytest.mark.parametrize(
@@ -820,6 +932,9 @@ def test_optional_float_rejects_invalid_values(value: object) -> None:
 def test_status_details_helper_normalizes_and_rejects_values() -> None:
     assert _status_details(None) == ()
     assert _status_details('["one", 2]') == ("one", "2")
+    assert _status_details("Invocation failed") == ("Invocation failed",)
+    assert _status_details('"Invocation failed"') == ("Invocation failed",)
+    assert _status_details("  ") == ()
     with pytest.raises(ValueError, match="must be an array"):
         _status_details({})
 
