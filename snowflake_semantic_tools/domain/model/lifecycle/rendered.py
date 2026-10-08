@@ -327,15 +327,13 @@ def _metadata_removals(
 def _safe_identifier(value: str) -> Sql | None:
     """Spell a shown name as SQL: unquoted only when that reads back as exactly the same name.
 
+    A shown reserved word, such as an alias `SELECT`, is quoted as `ident` quotes every one.
+
     Returns:
         The identifier; None for a name no identifier can spell, such as an empty one.
     """
     try:
-        parsed = Identifier.parse(value)
-    except ValueError:
-        parsed = Identifier(value, quoted=True)
-    try:
-        return ident(parsed if parsed.folded == value else Identifier(value, quoted=True))
+        return ident(Identifier.shown(value))
     except ValueError:
         return None
 

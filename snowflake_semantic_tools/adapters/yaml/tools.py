@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import posixpath
 from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.paths import resolve_within
+from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.adapters.yaml.fields import optional_string, refused, strings
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
@@ -221,9 +222,9 @@ def _parse_member(
 
     It points at line `index + 1` of the file: its place in its list. YAML 1.1 reads an unquoted
     `on:` key as `true`, so that key counts as `on:`. `body_file:` is read relative to the
-    project root; a body outside it or unreadable is None, which `validate_tool_catalog` reports
-    for a `define:` member. An explicit `search_column` or `attribute_columns` wins over the one
-    `on:` gives.
+    project root, as a project walk reads a file; one refused is None, as is one unreadable,
+    which `validate_tool_catalog` reports for a `define:` member. An explicit `search_column` or
+    `attribute_columns` wins over the one `on:` gives.
 
     Diagnostics:
         SST-PRS003: when the entry is not a mapping, or `on:`, `relations`, `secrets`,
@@ -231,6 +232,8 @@ def _parse_member(
         SST-PRS002: when the entry has no non-blank `name`, or no non-blank `type`.
         SST-LOD004, SST-REF033, SST-REF003: when the template in `on:` does not parse.
         SST-VAL608: when `on:` is not one single-argument `ref()` call.
+        SST-PRT009: when `body_file:` is absolute, climbs out of the project, is or is reached
+            through a symbolic link, or resolves outside the project; it is not read.
     """
     origin = Origin(source_file, index + 1, 1)
     if not isinstance(value, dict):
@@ -254,13 +257,7 @@ def _parse_member(
         return None, tuple(diagnostics)
     on_model, search_column, attributes = _on_fields(value.get("on", value.get(True)), origin, str(name), diagnostics)
     body_file = optional_string(value.get("body_file"))
-    body: str | None = None
-    if body_file:
-        sidecar = resolve_within(project_dir, project_dir / body_file)
-        try:
-            body = sidecar.read_text(encoding="utf-8") if sidecar is not None else None
-        except (OSError, UnicodeDecodeError):
-            body = None
+    body = _body(project_dir, body_file, str(name), origin, diagnostics) if body_file else None
     relations = _string_map(value.get("relations"), "relations", str(name), origin, diagnostics)
     columns = _columns(value.get("columns_and_descriptions"), str(name), origin, diagnostics)
     signature = _signature(value.get("signature"), str(name), origin, diagnostics)
@@ -304,6 +301,47 @@ def _parse_member(
         ),
         tuple(diagnostics),
     )
+
+
+def _body(project_dir: Path, body_file: str, name: str, origin: Origin, diagnostics: list[Diagnostic]) -> str | None:
+    """Read a member's `body_file:` relative to the project; None when it is refused or unreadable.
+
+    Diagnostics:
+        SST-PRT009: when the file is refused as `_body_path` refuses it; it is not read.
+    """
+    sidecar, refusal = _body_path(project_dir, body_file)
+    if refusal is not None:
+        diagnostics.append(
+            D(
+                "SST-PRT009",
+                path=posixpath.normpath(body_file),
+                detail=refusal,
+                subject=artifact_key("tool", name),
+                origin=origin,
+            )
+        )
+        return None
+    try:
+        return sidecar.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _body_path(project_dir: Path, body_file: str) -> tuple[Path, str | None]:
+    """Return the file a `body_file:` names, relative to the project, and why SST refuses to read it.
+
+    Its `..` is taken away as written, so the path returned is the one checked. It is refused when
+    absolute or climbing out of the project, and else as `walk_refusal` refuses a path.
+
+    Returns:
+        The file, and the reason, worded to follow "could not read <path>: " in SST-PRT009;
+        None when it may be read.
+    """
+    relative = posixpath.normpath(body_file)
+    path = project_dir / relative
+    if posixpath.isabs(relative) or relative == ".." or relative.startswith("../"):
+        return path, "it resolves outside the project"
+    return path, walk_refusal(project_dir, path)
 
 
 def _on_fields(

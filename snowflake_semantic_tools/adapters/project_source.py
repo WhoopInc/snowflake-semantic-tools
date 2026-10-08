@@ -29,6 +29,7 @@ from snowflake_semantic_tools.adapters.dbt.project import (
 from snowflake_semantic_tools.adapters.deferral import resolve_deferral
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.config import read_config_document
@@ -482,6 +483,9 @@ def _file_checksums(files: ProjectPaths, tree: Mapping[str, object], cache: Load
     tools, agents, and eval metric roots; then, when a channel publishes them, the skill and plugin
     roots, and with the stage channel the profile, hook, and MCP server roots. Those bundled
     roots skip what publication skips: hidden entries and caches.
+
+    A symbolic link, or a file reached through one, is skipped, as every loader refuses it: no
+    checksum is read from outside the project.
     """
     project_dir = files.project_dir
     config = dict(tree)
@@ -510,11 +514,12 @@ def _file_checksums(files: ProjectPaths, tree: Mapping[str, object], cache: Load
         )
     for directory in (*directories, *bundled):
         root = project_dir / directory
-        if not root.is_dir():
+        refused = not root.is_relative_to(project_dir) or walk_refusal(project_dir, root) is not None
+        if refused or not root.is_dir():
             continue
         for path in sorted(root.rglob("*")):
             if directory in bundled and not _published(path, root):
                 continue
-            if path.is_file():
+            if walk_refusal(project_dir, path) is None and path.is_file():
                 checksums[path.relative_to(project_dir).as_posix()] = sha256(path.read_bytes()).hexdigest()
     return checksums

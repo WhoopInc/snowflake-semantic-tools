@@ -222,6 +222,19 @@ def test_apply_update_rechecks_marker_preserves_or_detects_grants() -> None:
     assert port.scripts == []
 
 
+def test_grants_unreadable_before_the_replace_report_apl008_once() -> None:
+    artifact = rendered()
+    ownership = marker(artifact)
+    live = observed(artifact, ownership=ownership)
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    port.fail("show_grants", SnowflakePortError("cannot read baseline"))
+    use_case, _, _, _ = runner(port)
+    result = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+    assert result.outcomes[0].grants is GrantCheck.UNREADABLE
+    assert [diagnostic.code for diagnostic in result.diagnostics].count("SST-APL008") == 1
+
+
 def test_apply_update_refuses_marker_drift_and_unsafe_replace() -> None:
     artifact = rendered()
     ownership = marker(artifact)
@@ -561,7 +574,8 @@ def test_search_service_update_replays_and_verifies_explicit_grants() -> None:
 
     assert result.success
     assert port.scripts[0] == texts(artifact.statements)
-    assert port.scripts[1] == ("GRANT USAGE ON CORTEX SEARCH SERVICE DB.SCHEMA.V TO ROLE READER WITH GRANT OPTION",)
+    # The target's schema is named SCHEMA, a reserved word, so the replayed grant quotes it.
+    assert port.scripts[1] == ('GRANT USAGE ON CORTEX SEARCH SERVICE DB."SCHEMA".V TO ROLE READER WITH GRANT OPTION',)
     assert result.outcomes[0].grants is GrantCheck.PRESERVED
 
 
@@ -707,7 +721,7 @@ def test_database_role_grant_replay_uses_snowflake_spelling() -> None:
     use_case, _, _, _ = runner(port)
     result = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
     assert result.success
-    assert port.scripts[1] == ("GRANT USAGE ON CORTEX SEARCH SERVICE DB.SCHEMA.V TO DATABASE ROLE DB.READER",)
+    assert port.scripts[1] == ('GRANT USAGE ON CORTEX SEARCH SERVICE DB."SCHEMA".V TO DATABASE ROLE DB.READER',)
 
 
 def test_grant_replay_quotes_special_role_names() -> None:
@@ -727,7 +741,7 @@ def test_grant_replay_quotes_special_role_names() -> None:
     use_case, _, _, _ = runner(port)
     result = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
     assert result.success
-    assert port.scripts[1] == ('GRANT USAGE ON CORTEX SEARCH SERVICE DB.SCHEMA.V TO ROLE "Mixed Role"',)
+    assert port.scripts[1] == ('GRANT USAGE ON CORTEX SEARCH SERVICE DB."SCHEMA".V TO ROLE "Mixed Role"',)
 
 
 def test_apply_stop_all_processes_successes_before_first_failure() -> None:

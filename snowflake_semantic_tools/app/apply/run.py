@@ -358,7 +358,8 @@ class _WaveRun:
     The outcomes are recorded wave by wave: a wave's skipped changes, then those it ran, each
     in key order, and STOP_ALL's skips last, in plan order. An applied temporary artifact the
     plan saw a permanent object for reports SST-APL014; an outcome whose grants could not be
-    verified reports SST-APL008 before its failure's diagnostic. `lost` is checked before
+    verified reports SST-APL008 before its failure's diagnostic, once: a change that failed
+    because its grants could not be read reports it as that failure only. `lost` is checked before
     every change starts, not only between waves: once it reports the run lock lost, no further
     change starts, and after the wave every change without an outcome is skipped, in plan
     order, after one SST-APL011 naming the run `lost` says holds the lock.
@@ -441,7 +442,7 @@ class _WaveRun:
             self._outcomes.append(outcome)
             if _shadows(change, outcome):
                 self._diagnostics.append(D("SST-APL014", artifact=change.key))
-            if outcome.grants is GrantCheck.UNREADABLE:
+            if outcome.grants is GrantCheck.UNREADABLE and not _reports_unreadable_grants(outcome):
                 self._diagnostics.append(D("SST-APL008", artifact=change.key))
             if outcome.status is OutcomeStatus.FAILED:
                 self._failed_or_skipped.add(change.key)
@@ -479,6 +480,11 @@ def _shadows(change: Change, outcome: ApplyOutcome) -> bool:
         and rendered.temporary
         and change.observed is not None
     )
+
+
+def _reports_unreadable_grants(outcome: ApplyOutcome) -> bool:
+    """Report whether a failed outcome's own diagnostic already says its grants could not be read."""
+    return outcome.status is OutcomeStatus.FAILED and outcome.error is not None and outcome.error.code == "SST-APL008"
 
 
 def _refusal(changeset: ChangeSet, options: ApplyOptions) -> tuple[Diagnostic, ...] | None:

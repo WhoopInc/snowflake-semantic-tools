@@ -181,6 +181,8 @@ class ProjectInputs(SemanticViewSource, Protocol):
     def agents(self, *, agents_dir: str) -> tuple[tuple[AgentModel, ...], DiagnosticBag]:
         """Return every agent under `agents_dir`, enabled or not, with what loading them reported.
 
+        Each agent's `enabled` is already resolved against the `agents:` folder routes: its own
+        `enabled` when its file sets one, else the `+enabled` the routes over its folder give.
         What loading reports includes each `agents:` folder route that names no folder under
         `agents_dir` (SST-CFG041), and each agent records the folders its file sits in.
 

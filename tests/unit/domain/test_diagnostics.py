@@ -22,6 +22,12 @@ def test_registered_code_owns_severity_and_formats_context() -> None:
     assert diagnostic.origin == Origin("views.yml", 3, 7)
 
 
+def test_render_diagnostic_documents_the_headline_it_renders() -> None:
+    rendered = render_diagnostic(D("SST-REF001", model="missing", origin=Origin("views.yml", 4, 7)))
+    assert render_diagnostic.__doc__ is not None
+    assert rendered.splitlines()[0] in render_diagnostic.__doc__
+
+
 def test_unregistered_code_becomes_an_internal_diagnostic() -> None:
     diagnostic = D("SST-NOPE999")
     assert diagnostic.code == "SST-INT900"

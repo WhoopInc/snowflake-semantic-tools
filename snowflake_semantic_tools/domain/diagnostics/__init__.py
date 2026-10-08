@@ -424,7 +424,7 @@ def render_diagnostic(diagnostic: Diagnostic) -> str:
     begins with its own ``file:line:`` is not located twice: the headline drops that prefix.
 
     Example:
-        views.yml:4:7: error[SST-REF001]: { ref('missing') } is not a model in the dbt manifest
+        views.yml:4:7: error[SST-REF001]: {{ ref('missing') }} is not a model in the dbt manifest
           help: <the code's suggestion>
           docs: <the code's help URL>
     """

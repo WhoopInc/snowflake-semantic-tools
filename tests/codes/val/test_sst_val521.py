@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.agent_builders import agent, catalog, compile_agents, search_member, search_tool
+from tests.helpers.agent_builders import agent, catalog, compile_agents, generic_tool, search_member, search_tool
 from tests.helpers.diagnostic_filters import coded
 
 
@@ -13,6 +13,18 @@ def test_sst_val521_fires() -> None:
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "agent 'sales_agent': tool 'docs' omits 'search_service'"
     assert diagnostic.subject == "agent:sales_agent"
+
+
+def test_sst_val521_names_every_key_a_tool_omits() -> None:
+    model = agent("sales_agent", search_tool(name="", backing=()), generic_tool(name=""))
+    messages = sorted(
+        diagnostic.message
+        for diagnostic in coded(compile_agents(model, tools=catalog(search_member())).diagnostics, "SST-VAL521")
+    )
+    assert messages == [
+        "agent 'sales_agent': tool 'cortex_search' omits 'name, search_service'",
+        "agent 'sales_agent': tool 'generic' omits 'name'",
+    ]
 
 
 def test_sst_val521_silent() -> None:
