@@ -13,7 +13,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "No config file found",
         "no sst_config.yml at {path}",
         "create sst_config.yml at the project root, or pass --project-dir",
-        condition="the explicit project root has no config file",
+        condition=(
+            "the file `--config` or `$SST_CONFIG` names does not exist, or a command that needs a "
+            "configuration file finds neither `sst_config.yml` nor `sst_config.yaml` at the project root"
+        ),
     ),
     spec(
         "SST-CFG002",
@@ -21,7 +24,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Config is not valid YAML",
         "{path} is not valid YAML: {detail}",
         "fix the YAML syntax at the reported position",
-        condition="the config file fails to parse",
+        condition="`sst_config.yml` or `dbt_project.yml` is not valid YAML; an invalid `profiles.yml` is SST-DBT019",
     ),
     spec(
         "SST-CFG003",
@@ -29,7 +32,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unknown config key",
         "unknown config key '{key}'",
         "remove the key, or check it against sst docs config",
-        condition="a config key is not in the known key set",
+        condition=(
+            "a config key is not declared where it is written, including a "
+            "`diagnostics.severity_overrides` entry that names no registered code"
+        ),
     ),
     spec(
         "SST-CFG004",
@@ -37,7 +43,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Config value has the wrong type",
         "config key '{key}' expects {expected}, found {found}",
         "correct the value type",
-        condition="a config value fails its declared type",
+        condition=(
+            "a config value is not of its declared type, or an `SST_*` environment variable a command "
+            "option reads is not of the option's type"
+        ),
     ),
     spec(
         "SST-CFG005",
@@ -45,7 +54,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Multiple config files discoverable",
         "{count} candidate config files found; used {used}, shadowed {shadowed}",
         "delete the shadowed files, or pass --project-dir",
-        condition="more than one config file is discoverable from the project root",
+        condition=(
+            "both `sst_config.yml` and `sst_config.yaml` exist at the project root and neither "
+            "`--config` nor `$SST_CONFIG` names the file to use"
+        ),
     ),
     spec(
         "SST-CFG006",
@@ -53,7 +65,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Required config key missing",
         "required config key '{key}' is absent",
         "add {key} to sst_config.yml",
-        condition="a key with no default is absent",
+        condition="a required config key is absent or empty",
     ),
     spec(
         "SST-CFG007",
@@ -69,7 +81,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Config value outside its allowed domain",
         "config key '{key}' value {found} is outside {expected}",
         "use one of {expected}",
-        condition="a value passes its type and fails its domain",
+        condition=(
+            "a value of the right type is outside its choices or bounds or is not its fixed value, "
+            "`enrichment.sample_values_display_limit` exceeds `enrichment.distinct_limit`, or "
+            "`skills.+version_prefix` cannot start a version alias"
+        ),
     ),
     spec(
         "SST-CFG009",
@@ -77,7 +93,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "profiles.yml not found",
         "no profiles.yml at any searched location",
         "create profiles.yml, or set DBT_PROFILES_DIR",
-        condition="the dbt profile file is absent everywhere searched",
+        condition=(
+            "no `profiles.yml` exists in the `--profiles-dir` directory, `$DBT_PROFILES_DIR`, the "
+            "project root, or `~/.dbt`, searched in that order"
+        ),
     ),
     spec(
         "SST-CFG010",
@@ -85,7 +104,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Profile or target not found",
         "target '{target}' is absent from profile '{profile}'",
         "add the target, or pass --target with a declared name",
-        condition="the requested target is not in profiles.yml",
+        condition=(
+            "`profiles.yml` does not declare the project's profile, or the profile's outputs do not "
+            "declare the selected target or the `defer.target`"
+        ),
     ),
     spec(
         "SST-CFG011",
@@ -93,7 +115,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Profile type is not snowflake",
         "profile '{profile}' declares type '{found}'",
         "point SST at a Snowflake profile",
-        condition="the resolved dbt profile is for another adapter",
+        condition="the selected `profiles.yml` target declares a `type` other than `snowflake`",
     ),
     spec(
         "SST-CFG012",
@@ -109,7 +131,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "env_var() resolved to an empty string",
         "env_var('{var}') is unset and has no default",
         "set {var}, or give env_var() a default",
-        condition="a profile env_var() has no value and no default",
+        condition="a `profiles.yml` field SST reads calls `env_var()` on an unset variable with no default",
     ),
     spec(
         "SST-CFG014",
@@ -117,7 +139,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Profile field silently empty",
         "profile '{profile}' leaves {field} empty",
         "set {field} explicitly rather than relying on account defaults",
-        condition="role, warehouse, database or schema is absent from the resolved target",
+        condition="the selected `profiles.yml` target sets no `role`, or no `warehouse`",
     ),
     spec(
         "SST-CFG015",
@@ -125,7 +147,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "evals block declares a database or schema",
         "evals: declares {key}, which is structurally invalid",
         "remove +database and +schema from evals:",
-        condition="eval targeting keys are set; eval objects resolve to the agent schema",
+        condition="`evals:` sets `+database` or `+schema`",
+        note="Eval objects resolve to their agent's schema, so neither key can apply.",
     ),
     spec(
         "SST-CFG016",
@@ -133,7 +156,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Targeting value does not resolve for the current target",
         "+{key} does not resolve for target '{target}'",
         "declare the value for every target you publish to",
-        condition="a +database or +schema resolves for some target and not the current one",
+        condition=(
+            "a whole-value target conditional in `sst_config.yml` has no arm for the current target and no final `else`"
+        ),
     ),
     spec(
         "SST-CFG017",
@@ -141,7 +166,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "tool() reference does not resolve from config",
         "{{ tool('{group}','{name}') }} does not resolve",
         "declare the group and member in the tools directory",
-        condition="a config tool() ref names an undeclared group or member",
+        condition="a `tool()` call in a config value names a group or member the tools directory does not declare",
     ),
     spec(
         "SST-CFG018",
@@ -149,7 +174,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Declared tool member referenced by nothing",
         "tool member '{group}.{name}' is referenced by nothing",
         "reference it from an agent, or delete it",
-        condition="a declared tool member has no consumer",
+        condition="a declared tool member is referenced by no agent and no config value",
     ),
     spec(
         "SST-CFG019",
@@ -157,7 +182,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Tool member declared under both define and reference",
         "'{name}' appears under both define: and reference:",
         "choose one; a member is owned or referenced, never both",
-        condition="a member is listed in both blocks",
+        condition="a tool group lists one member name under both `define:` and `reference:`",
     ),
     spec(
         "SST-CFG020",
@@ -165,7 +190,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Per-group tools override names an unknown or reference-only group",
         "tools: override names group '{group}', which {reason}",
         "target a group that exists and contains define: members",
-        condition="a per-group override names a missing group, or a reference-only group",
+        condition="a `tools.<group>` override names no declared group, or a group with no `define:` members",
     ),
     spec(
         "SST-CFG023",
@@ -173,7 +198,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "max_staleness below the accepted floor",
         "+max_staleness is {found}; the minimum is 120",
         "raise max_staleness to at least 120",
-        condition="a target-level max_staleness is set below 120 seconds",
+        condition="`semantic_views.+max_staleness` is set below 120 seconds",
     ),
     spec(
         "SST-CFG025",
@@ -181,7 +206,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Value absent from an allowlist",
         "{kind} '{found}' is absent from {key}",
         "add it to {key}, or use an allowed value",
-        condition="a tool type or model is used that neither the shipped default nor the allowlist names",
+        condition=(
+            "`agents.+orchestration_model`, or a folder route's, names a model "
+            "`snowflake.orchestration_models` does not list; unset, that list holds only `auto`"
+        ),
     ),
     spec(
         "SST-CFG029",
@@ -189,7 +217,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "var() reference has no declaration",
         "{{ var('{var}') }} is not declared in config",
         "declare {var} under vars:",
-        condition="a var() reference resolves to nothing",
+        condition=(
+            "a `var()` call, in `sst_config.yml` or in project YAML, names a variable `vars:` does not "
+            "declare; a declared variable whose value is empty is SST-REF009"
+        ),
     ),
     spec(
         "SST-CFG031",
@@ -197,7 +228,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "snowflake_syntax_check is not set explicitly",
         "validation.snowflake_syntax_check is unset",
         "set it true or false explicitly",
-        condition="the key is absent",
+        condition="`sst_config.yml` does not set `validation.snowflake_syntax_check`",
         note=(
             "1.0 defaults it true, but whether expressions are compiled decides what a green validate "
             "proves, so intent must be stated."
@@ -209,7 +240,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Config file shadows another config file",
         "using {used}; shadowed {shadowed}",
         "delete the shadowed file",
-        condition="discovery found a usable file and at least one shadowed candidate",
+        condition=(
+            "`--config` or `$SST_CONFIG` names a config file while the project root also holds a "
+            "discoverable one, which is ignored"
+        ),
     ),
     spec(
         "SST-CFG033",
@@ -219,6 +253,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         "promote instead of demoting, or remove the override",
         demotable=False,
         condition="an override breaks the demotion floor, or --strict and strict: disagree",
+        note=(
+            "The floor: a `diagnostics.severity_overrides` entry may not lower a non-demotable code, "
+            "demote an error to info, or promote an info code to error. A refused override is not "
+            "applied. A `--strict` flag that disagrees with `validation.strict` is SST-CFG034, a "
+            "warning, not this code."
+        ),
     ),
     spec(
         "SST-CFG034",
@@ -226,7 +266,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Strict flag and config key disagree",
         "--strict {flag} disagrees with validation.strict {config}; the flag wins",
         "remove one of the two",
-        condition="both are set and they disagree",
+        condition="`--strict` or `--no-strict` is given and `validation.strict` is set to the other value",
     ),
     spec(
         "SST-CFG035",
@@ -243,9 +283,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{block}: '{name}' cannot be qualified -- no fqn: and {reason}",
         "set fqn: on the entry, or set default_prefix on the block",
         condition=(
-            "a `tags:` or `skills.extensions:` entry has no `fqn:` and either the block sets no "
-            "`default_prefix` or the entry key contains a dot, which would render a four-part name; "
-            "also two entries in one block that qualify to the same name"
+            "a `skills.extensions` entry has no `fqn:` and either the block sets no `default_prefix` "
+            "or the entry key contains a dot, which would render a four-part name; or the name it "
+            "qualifies to does not parse"
         ),
     ),
     spec(
@@ -256,9 +296,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "run sst baseline add to hold the current warning count, then fix them",
         condition=(
             "the first 1.0 `validate`, `plan` or `apply` in a project that declares `strict: true` "
-            "and has no baseline file"
+            "and has no baseline file, unless `--no-strict` is given"
         ),
-        note="Once only, per project.",
+        note="Given until the project has run under 1.0 once.",
     ),
     spec(
         "SST-CFG038",
@@ -268,7 +308,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "remove --include sample-values, or change the key in sst_config.yml",
         demotable=False,
         condition=(
-            "`sst enrich` is invoked with `--include sample-values` or `--all` while "
+            "`sst enrich` includes a component that reads row data (`sample-values` or `enums`, "
+            "alone or through a group such as `all`) while "
             "`enrichment.allow_sample_value_collection: false`"
         ),
         note=("Fires on COLLECTION only -- an authored `sample_values` in project YAML is legal and must not trip it."),
@@ -326,7 +367,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Config key is not supported in this release",
         "config key '{key}' is not supported in this release",
         "delete the key",
-        condition="a key reserved for a later release is set",
+        condition="an eval config file declares a `sweep:` block, which this release does not run",
     ),
     spec(
         "SST-CFG046",
@@ -336,7 +377,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "add dbt_project.yml, or remove the configuration; a project without dbt publishes skills, plugins, "
         "and profiles only",
         condition=(
-            "configuration that needs dbt (semantic_views, evals, ...) is present and dbt_project.yml is absent"
+            "configuration that needs dbt (semantic_views, evals, ...) is present and dbt_project.yml is "
+            "absent, or `sst init` runs in a directory with no dbt_project.yml"
         ),
     ),
     spec(
@@ -395,6 +437,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Deprecated config key",
         "config key '{key}' is deprecated; use '{expected}'",
         "rename the key",
-        condition="a deprecated key is present",
+        condition="a deprecated config key is set; it is still read as the key that replaced it",
     ),
 )

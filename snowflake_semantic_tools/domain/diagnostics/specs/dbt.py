@@ -13,7 +13,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dbt manifest absent or empty",
         "no dbt models available",
         "check that the dbt project has models; under --manifest, check the path",
-        condition="the dbt catalog is empty at the validate seam",
+        condition="the dbt manifest SST reads lists no model",
     ),
     spec(
         "SST-DBT002",
@@ -21,7 +21,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dbt model referenced but absent from the manifest",
         "model '{model}' is not in the dbt manifest",
         "run dbt compile, or correct the name",
-        condition="a referenced model has no manifest node",
+        condition=(
+            "a model the semantic layer references, or a name `sst enrich` selects without a "
+            "wildcard, is no model the manifest knows"
+        ),
     ),
     spec(
         "SST-DBT003",
@@ -29,7 +32,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "config.meta.sst names an unknown role",
         "model '{model}': meta.sst role '{found}' is not a known role",
         "correct the role name",
-        condition="a meta.sst role value is unrecognised",
+        condition="a column's `meta.sst.column_type` is not a known column kind",
     ),
     spec(
         "SST-DBT004",
@@ -37,7 +40,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Column type in dbt disagrees with the declared type",
         "model '{model}': column '{column}' is {found} in dbt and {expected} in the semantic layer",
         "reconcile the two, or add a contract",
-        condition="the dbt type and the semantic-layer type differ",
+        condition="a column's declared `data_type` disagrees with the type dbt records for it",
     ),
     spec(
         "SST-DBT005",
@@ -45,7 +48,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dbt manifest is stale relative to the models on disk",
         "manifest is older than {value}",
         "drop --manifest and let SST parse, or rebuild the manifest you passed",
-        condition="a model file is newer than the manifest",
+        condition=(
+            "under `--manifest`, a root-project model file's contents no longer match the checksum "
+            "the manifest recorded; once per file"
+        ),
     ),
     spec(
         "SST-DBT006",
@@ -53,7 +59,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Resolved relation differs from the model name",
         "model '{model}' resolves to relation '{value}'",
         "point the semantic layer at the resolved relation",
-        condition="an alias: makes the relation and the model name differ",
+        condition=(
+            "a literal relation names a dbt model as `<database>.<schema>.<model name>` and the model's "
+            "`alias:` makes it build under another name, so nothing exists there"
+        ),
     ),
     spec(
         "SST-DBT009",
@@ -61,7 +70,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Consumed model is disabled or ephemeral",
         "model '{model}' is {found} and produces no relation",
         "enable it, or change the materialisation",
-        condition="a consumed model produces no readable relation",
+        condition="a model the semantic layer consumes is disabled, or materialised so that it has no relation",
     ),
     spec(
         "SST-DBT010",
@@ -69,7 +78,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Collapse safety rule violated",
         "models {a} and {b} collapse to '{value}' and differ in {column}",
         "rename one relation, or align the columns",
-        condition="two models collapsing to one relation differ in referenced columns",
+        condition="two models resolve to one relation and differ in a column the semantic layer uses",
     ),
     spec(
         "SST-DBT011",
@@ -77,7 +86,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Source referenced by the semantic layer is not declared in dbt",
         "source '{value}' is not declared in dbt",
         "declare the source",
-        condition="a source reference has no dbt declaration",
+        condition="no dbt source declares a `source.table` pair the semantic layer uses, or it has no relation",
     ),
     spec(
         "SST-DBT012",
@@ -85,7 +94,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Duplicate source name or source.table pair",
         "source '{value}' is declared more than once",
         "rename one of them",
-        condition="ambiguous source resolution that dbt tolerates and SST cannot",
+        condition="the manifest declares one `source.table` pair more than once; once per pair",
+        note="dbt tolerates the duplicate; SST cannot tell which declaration a reference means.",
     ),
     spec(
         "SST-DBT013",
@@ -93,7 +103,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Model node has no name",
         "dbt node {value} has no name and was skipped",
         "report this against dbt; a named node is a manifest invariant",
-        condition="a manifest node is unusable",
+        condition="a manifest model node has no name; it is skipped",
     ),
     spec(
         "SST-DBT014",
@@ -101,7 +111,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Model node has no database or schema",
         "model '{model}' has empty {key}",
         "set database and schema for this target in profiles.yml or dbt_project.yml",
-        condition="a node cannot be located",
+        condition="a manifest model has a relation but an empty `database` or `schema`; it is skipped",
     ),
     spec(
         "SST-DBT015",
@@ -109,7 +119,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Model checksum absent on both sides of a comparison",
         "model '{model}' has no checksum; change detection is unusable",
         "check that the dbt installation populates checksum.checksum",
-        condition="checksums compare None to None, so every model reads as unchanged",
+        condition="a model the semantic layer consumes has no checksum in the manifest",
+        note="Two missing checksums compare equal, so every such model reads as unchanged.",
     ),
     spec(
         "SST-DBT016",
@@ -117,7 +128,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Model to artifact fan-out",
         "model '{model}' feeds {count} artifacts",
         None,
-        condition=("attachment is implicit by table membership, so blast radius exceeds what the model's tests imply"),
+        condition="a dbt model feeds two or more SST artifacts",
+        note=(
+            "Attachment is implicit by table membership, so a change to the model reaches more "
+            "than its own tests imply."
+        ),
     ),
     spec(
         "SST-DBT017",
@@ -126,7 +141,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "manifest schema '{found}'; supported: {expected}",
         "upgrade or downgrade dbt to a version that emits a supported schema, or pass "
         "--allow-unsupported-manifest-schema",
-        condition="the manifest schema is outside the supported set",
+        condition="the manifest's `dbt_schema_version` names a version outside the supported set",
     ),
     spec(
         "SST-DBT018",
@@ -134,7 +149,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dbt manifest schema version key is absent or unparseable",
         "manifest schema version is {found}",
         "check the dbt version; pass --allow-unsupported-manifest-schema only if you accept the risk",
-        condition="the schema version cannot be read",
+        condition="the manifest's `dbt_schema_version` is absent or names no version",
     ),
     spec(
         "SST-DBT019",
@@ -142,7 +157,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dbt profile could not be parsed",
         "{path}: {detail}",
         "fix profiles.yml",
-        condition="profile parsing failed",
+        condition="`profiles.yml` is not valid YAML, or its root is not a mapping of profiles",
     ),
     spec(
         "SST-DBT020",
@@ -150,7 +165,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dbt installation type could not be determined",
         "dbt type detection returned {found}",
         "ignore this if a valid manifest exists; the manifest is the contract",
-        condition="dbt is absent from PATH, or its version output is unrecognised",
+        condition=(
+            "`dbt --version` runs and names no dbt installation SST knows, or exits non-zero; a dbt "
+            "that cannot be started at all is SST-DBT027"
+        ),
     ),
     spec(
         "SST-DBT021",
@@ -158,7 +176,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "auto_compile requested under an installation that cannot compile a non-default target",
         "defer.auto_compile is true under {found}",
         "use state_path instead",
-        condition="dbt Cloud CLI cannot compile a non-default target locally",
+        condition="`defer.auto_compile` is set while the installed dbt is the dbt Cloud CLI",
+        note="The dbt Cloud CLI cannot compile a non-default target locally.",
     ),
     spec(
         "SST-DBT022",
@@ -166,7 +185,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "model-paths is unreadable and defaulted",
         "model-paths could not be read; defaulted to {expected}",
         "declare model-paths explicitly",
-        condition="the configured model directories were not honoured",
+        condition="`model-paths` in dbt_project.yml is not a list of directories; dbt's default is used",
     ),
     spec(
         "SST-DBT023",
@@ -174,7 +193,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dbt model referenced with no tests at all",
         "model '{model}' has no tests",
         "add at least a uniqueness test on the declared grain",
-        condition="the semantic layer asserts business meaning over unverified data",
+        condition="no dbt test is attached to a model the semantic layer consumes",
+        note="The semantic layer then asserts business meaning over data nothing verifies.",
     ),
     spec(
         "SST-DBT024",
@@ -182,7 +202,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dbt model feeding an artifact has no contract",
         "model '{model}' has no contract",
         "add a contract",
-        condition="a silent upstream type change re-infers every dependent data_type invisibly",
+        condition=(
+            "a model the semantic layer consumes enforces no contract and leaves a column's type to "
+            "inference; a model that types every column with `data_type` has pinned them without one"
+        ),
+        note="An upstream type change would otherwise re-infer every dependent `data_type` unseen.",
     ),
     spec(
         "SST-DBT025",
@@ -190,7 +214,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dbt seam summary",
         "{value}",
         None,
-        condition="models read, sources read, refs resolved and columns checked",
+        condition="a run reads the dbt seam; once, counting models and sources read, refs resolved, columns checked",
     ),
     spec(
         "SST-DBT026",
@@ -231,7 +255,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "model '{model}': meta.sst.{key} is forbidden -- delete it",
         "delete the key; the location comes from dbt's own `+database` / `+schema` and SST reads the RESOLVED "
         "value out of the manifest",
-        condition="an author mirrored the relation location into `meta.sst`, which 0.3 accepted and ignored",
+        condition=("a model's `meta.sst` sets `database` or `schema`, which 0.3 accepted and ignored; once per key"),
     ),
     spec(
         "SST-DBT031",

@@ -1,7 +1,7 @@
 """External-system codes (PRT): a failure at the boundary with an external system.
 
-The Snowflake connection, a transient failure, a refused privilege, a missing object, or a
-file SST refuses to read.
+The Snowflake connection, a transient failure, a refused privilege, a missing object, a file SST
+cannot read, refuses to read, or cannot write, and a command-line invocation SST does not accept.
 """
 
 from __future__ import annotations
@@ -17,7 +17,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Snowflake connection failed",
         "could not connect to {value}: {detail}",
         "check the account, the network and the credential",
-        condition="the connector could not establish a session",
+        condition=(
+            "connecting to Snowflake fails for a reason other than a rejected credential, or a "
+            "Snowflake error matches no more specific code"
+        ),
     ),
     spec(
         "SST-PRT002",
@@ -25,7 +28,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Authentication failed",
         "authentication failed for {value}",
         "refresh the credential",
-        condition="the session was rejected at authentication",
+        condition="Snowflake rejects the session's credential while connecting",
     ),
     spec(
         "SST-PRT003",
@@ -33,7 +36,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Query timed out",
         "query timed out after {detail}",
         "retry; this is retryable",
-        condition="a port-level statement exceeded its deadline",
+        condition="a statement times out or is cancelled, or the connection drops while it runs",
     ),
     spec(
         "SST-PRT004",
@@ -41,7 +44,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Insufficient privilege",
         "{value} lacks {detail}",
         "grant the privilege",
-        condition="the port reported a privilege failure",
+        condition="Snowflake refuses a statement for want of a privilege",
     ),
     spec(
         "SST-PRT005",
@@ -49,7 +52,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Object not found",
         "Snowflake object {value} was not found: {detail}",
         "publish it, or correct the name",
-        condition="the port could not resolve an object",
+        condition="an object a command reads or drops does not exist, such as a table a semantic view reads",
     ),
     spec(
         "SST-PRT006",
@@ -57,7 +60,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dbt manifest not found",
         "no dbt manifest at {path}",
         "run dbt compile, or set the manifest path",
-        condition="the dbt artifact port found no manifest",
+        condition="no dbt manifest exists at the path SST reads it from",
     ),
     spec(
         "SST-PRT008",
@@ -65,7 +68,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Filesystem write failed",
         "could not write {path}: {detail}",
         "check the permissions and the free space",
-        condition="a write through the filesystem port failed",
+        condition="a file SST writes cannot be written",
     ),
     spec(
         "SST-PRT009",
@@ -73,7 +76,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Filesystem read failed",
         "could not read {path}: {detail}",
         "check the permissions",
-        condition="a read through the filesystem port failed",
+        condition=(
+            "a file SST reads cannot be read or does not hold what it should (a manifest, baseline, "
+            "saved plan, or `--state` observation); a file or folder to be read is a symbolic link "
+            "or is reached through one; or dbt's `target-path` resolves outside the project"
+        ),
     ),
     spec(
         "SST-PRT010",
@@ -81,7 +88,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Path could not be removed",
         "could not remove {path}: {detail}",
         "remove it by hand",
-        condition="sst clean could not delete a generated artifact",
+        condition="`sst clean` cannot remove the build directory, or it is reached through a link",
     ),
     spec(
         "SST-PRT011",
@@ -89,7 +96,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Credential resolved to an empty value",
         "{value} resolved to an empty credential",
         "set the environment variable, or the profile field",
-        condition="a secret resolved to nothing",
+        condition="a credential field written for the selected `profiles.yml` target renders empty",
     ),
     spec(
         "SST-PRT012",
@@ -97,7 +104,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Secret would be rendered in plain text",
         "{value} would be rendered verbatim",
         "wrap the value in Secret",
-        condition="a credential reached a formatting boundary unredacted",
+        condition="a resolved credential reaches command output unredacted",
     ),
     spec(
         "SST-PRT100",
@@ -105,7 +112,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Invalid invocation",
         "{detail}",
         "see sst <command> --help",
-        condition="a flag, value or combination is not accepted",
+        condition=(
+            "a flag, a value, or a combination is not accepted, such as an unknown code for "
+            "`sst explain` or a PATH `sst format` finds no YAML file at"
+        ),
     ),
     spec(
         "SST-PRT101",
@@ -121,7 +131,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unknown selector kind",
         "selector '{value}' names an unknown kind",
         "use one of {expected}",
-        condition="a selector prefix is not registered",
+        condition="a selector's prefix is not a registered kind, or globs a kind whose values are a fixed set",
     ),
     spec(
         "SST-PRT103",
@@ -129,7 +139,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Selector requires state that was not supplied",
         "selector '{value}' requires --state",
         "pass --state",
-        condition="a state: selector was used with no state file",
+        condition="a `state:` selector is given without `--state`",
     ),
     spec(
         "SST-PRT104",
@@ -145,7 +155,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Invalid source or model selector",
         "'{value}' is not a valid {detail} selector",
         "use the documented form",
-        condition="an enrich selector does not parse",
+        condition="an `sst enrich` selector names a directory, a kind other than a model, or nothing",
     ),
     spec(
         "SST-PRT106",
@@ -153,7 +163,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Output format is not supported by this command",
         "'{found}' is not a supported format for {command}; supported: {expected}",
         "pass one of {expected}",
-        condition="an `--output` value the command does not support",
+        condition="`--output` names a format the command does not support",
     ),
     spec(
         "SST-PRT107",
@@ -161,7 +171,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Run interrupted",
         "interrupted after {detail}; {value}",
         None,
-        condition="SIGINT was received; partial work may have been applied",
+        condition=(
+            "the user interrupts a run, or declines a confirmation prompt; the run exits 130. After "
+            "`apply`, partial work may have been applied; after an eval run started, the message "
+            "names each run, which goes on in Snowflake"
+        ),
     ),
     spec(
         "SST-PRT108",
@@ -169,7 +183,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Object name is not fully qualified",
         "{command} requires a fully-qualified name; '{value}' is not one",
         "pass <database>.<schema>.<object>",
-        condition="a positional object name is not a three-part name",
+        condition="the object `sst drop` names is not a three-part name",
     ),
     spec(
         "SST-PRT109",
@@ -177,7 +191,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Mandatory confirmation flag absent",
         "{command} requires --yes",
         "re-run with --yes; there is no interactive prompt",
-        condition="a command whose confirmation is mandatory was invoked without --yes",
+        condition=(
+            "a command that needs confirmation runs without --yes: `sst drop`, an `apply` that needs "
+            "it, or `baseline add --all-warnings` with no terminal to prompt on or under JSON output"
+        ),
     ),
     spec(
         "SST-PRT110",
@@ -185,6 +202,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Selector passed to a command that has none",
         "{command} takes no selector; '{value}' is not accepted",
         "name one object, or use apply --prune for set-based removal",
-        condition="--select or --exclude was passed to a command with no selector",
+        condition=(
+            "--select or --exclude is passed to a command that takes no selector, or `sst drop` is "
+            "given a pattern rather than one name"
+        ),
     ),
 )

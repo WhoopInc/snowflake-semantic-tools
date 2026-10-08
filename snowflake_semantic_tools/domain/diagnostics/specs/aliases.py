@@ -182,7 +182,7 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
     ("SST-REF200", "table() is deprecated", "SST-REF034"),
     ("SST-REF201", "column() is deprecated", "SST-REF035"),
     ("SST-SNO021", "Unsupported clause for the publish path", None),
-    ("SST-VAL313", "Primary key and unique keys overlap", None),
+    ("SST-VAL313", "Primary key and unique keys overlap", "SST-VAL223"),
     ("SST-VAL501", "create_mode holds an unrecognised value", None),
     ("SST-VAL502", "create_mode and copy_grants combination is illegal", None),
     ("SST-VAL503", "copy_grants is a no-op for this create mode", None),
