@@ -28,7 +28,7 @@ Read `references/expected-outputs.md` for the baselines and `references/setup-gu
   P=tests/fixtures/reference_project
   M=tests/fixtures/reference_project_manifest.json
   ```
-- Never write inside the repo except gitignored build output: `sst compile` writes `$P/target/sst/`, which git ignores. Never run `sst migrate refs --write` on `tests/fixtures/`.
+- Never write inside the repo except gitignored build output: `sst compile` writes `$P/target/sst/`, which git ignores, and `sst clean --project-dir $P` removes it. Never run `sst migrate refs --write` on `tests/fixtures/`.
 - Never hardcode user-specific paths.
 
 ---
@@ -52,10 +52,11 @@ poetry run sst validate --project-dir $P --manifest $M --no-strict --no-snowflak
 
 ### Pass Criteria
 - Exit code 0
-- Last line: `validated 14 artifact(s): 0 errors, 1 warnings`
-- The only warning is `SST-VAL528`; the infos match `expected-outputs.md`
+- stdout: `validated 14 artifact(s): 0 errors, 5 warnings`
+- stderr ends with `0 errors; 6 warnings; 51 info; 51 info not shown (--show-info)`
+- The warnings and the info codes match `expected-outputs.md`: the five expected artifact warnings, plus `SST-CFG034`, which `--no-strict` itself raises because it contradicts the fixture's `validation.strict: true`
 
-Without `--no-strict`, exit 1 is expected: the fixture's `validation.strict: true` promotes that warning.
+Without `--no-strict`, exit 1 is expected: the fixture's `validation.strict: true` promotes the five warnings to errors (`5 errors; 0 warnings; 51 info`).
 
 ---
 
@@ -68,7 +69,7 @@ ls "$OUT"
 ```
 
 ### Pass Criteria
-- Exit code 0 and `wrote 14 artifact payload file(s)`
+- Exit code 0, with `compiled 14 artifact(s); manifest tests/fixtures/reference_project/target/sst/manifest.json` and `wrote 14 file(s) to <dir>`
 - The file names match `expected-outputs.md`
 - The rendered files reflect the change under test (for example, read `$OUT/jaffle_sales.sql` after a semantic view change)
 
@@ -80,15 +81,15 @@ ls "$OUT"
 poetry run sst test --suite golden --project-dir $P --manifest $M --golden-dir "$PWD/tests/golden/expected/ddl"
 ```
 
-`--golden-dir` must be absolute: a relative path is resolved against `--project-dir`.
+`--golden-dir` names the DDL goldens and must be absolute: a relative path is resolved against `--project-dir`. The other goldens are read from its sibling directories (`agent/`, `tool/`, `eval/`, `skill/`, `plugin/`, `profile/`).
 
 ### Pass Criteria
 - `golden suite passed for 14 artifact(s)`, exit 0
 
 ### On Failure
-The output is a unified diff per golden. A diff is a regression unless the change was meant to alter rendered output.
+The output is a unified diff per golden, and the suite exits 1. A diff is a regression unless the change was meant to alter rendered output.
 
-**⚠️ MANDATORY STOPPING POINT**: Show the user each diff and ask whether it is intended. Do NOT edit a golden without explicit approval; when approved, keep a DDL golden's `--` provenance header (`tests/golden/README.md`).
+**⚠️ MANDATORY STOPPING POINT**: Show the user each diff and ask whether it is intended. Do NOT change a golden without explicit approval. When approved, rewrite them with the same command plus `--update-golden` (refused when `$CI` is set; it keeps a DDL golden's `--` provenance header), never by hand, and review the resulting diff (`tests/golden/README.md`).
 
 ---
 
@@ -121,12 +122,14 @@ poetry run sst migrate refs --project-dir "$V1"
 
 The reference project cannot be published as it is: its tool `relations:` maps cover only `dev` and `prod`, which have no credentials, and under its `verify` target compile stops with `SST-REF018` (see `references/setup-guide.md`). Use a project the user names, with a `profiles.yml` target that points at a scratch schema. Set `PROJ` and `T` to them.
 
+To QA the engine itself against a real account instead, the repository's own live tests run the whole lifecycle in schemas they create and drop. They are configured as `docs/guides/testing-live.md` describes and run with `poetry run pytest -m live tests/contract_live tests/integration tests/e2e`; ask before running them too.
+
 ```bash
-poetry run sst debug --project-dir "$PROJ" --target "$T"                    # database and schema must be the scratch schema
-poetry run sst debug --project-dir "$PROJ" --target "$T" --test-connection  # the role and account SST connects as
-poetry run sst validate --project-dir "$PROJ" --target "$T"                 # syntax checks connect unless the project turns them off
-poetry run sst compile --project-dir "$PROJ" --target "$T"                  # plan and apply need a manifest for this target
-poetry run sst plan --project-dir "$PROJ" --target "$T"                     # never writes; saves $PROJ/target/sst/plan.json
+poetry run sst debug --project-dir "$PROJ" --target "$T" --no-connect  # offline: database and schema must be the scratch schema
+poetry run sst debug --project-dir "$PROJ" --target "$T"               # connects: the role and account SST signs in as
+poetry run sst validate --project-dir "$PROJ" --target "$T"            # syntax checks connect unless the project turns them off
+poetry run sst compile --project-dir "$PROJ" --target "$T"             # plan and apply need a manifest for this target
+poetry run sst plan --project-dir "$PROJ" --target "$T"                # never writes; saves $PROJ/target/sst/plan.json
 ```
 
 `plan` exits 2 when there are changes. Add `--sql-out "$(mktemp -d)"` to see the statements.
@@ -139,14 +142,14 @@ poetry run sst test --suite smoke --project-dir "$PROJ" --target "$T"
 poetry run sst plan --project-dir "$PROJ" --target "$T"                     # exit 0: nothing left to change
 ```
 
-`--yes` skips the interactive confirmation, which the user already gave above.
+`--yes` skips the interactive confirmation, which the user already gave above. Without `--plan`, `apply` plans afresh; with it, it applies exactly the saved plan, which must still match what the project compiles and what the target holds.
 
 ### Pass Criteria
 - `apply` exits 0
 - The smoke suite passes
 - The second `plan` exits 0
 
-SST has no teardown command, and `apply` also creates a state table in the target schema (`SST_STATE` by default). Leave cleanup to the user; never drop anything without explicit approval.
+No SST command tears down a deployment. `sst drop <DB>.<SCHEMA>.<NAME> --type agent|semantic_view --target "$T" --yes` is break-glass: it drops one object SST owns and forgets it in state. `apply` also creates a state table (`SST_STATE` by default, from `state.+table`) and a run-lock table beside it (`SST_STATE_LOCK`). Leave cleanup to the user; never drop anything without explicit approval.
 
 ---
 
@@ -158,7 +161,7 @@ Compile results from all phases into a summary:
 Phase               | Status | Details
 ----------------------------------------------
 1. Test suite       | ...    | all gates / failing gate
-2. Validate         | ...    | 14 artifacts, 0 errors, 1 warning (SST-VAL528)
+2. Validate         | ...    | 14 artifacts, 0 errors, 5 warnings (+ SST-CFG034)
 3. Compile          | ...    | 14 payload files
 4. Golden suite     | ...    | 14 artifacts match
 5. migrate refs     | ...    | 4 files pending, round trip matches
@@ -194,20 +197,23 @@ A phase-by-phase summary report (Phase 7) with PASS/FAIL/SKIPPED status for each
 
 ## Troubleshooting
 
-**`SST-MAN001`, or `compiled SST manifest is stale`**
-- `plan`, `apply`, and the smoke and eval suites need `sst compile` with the same `--target` first.
+**`SST-MAN001`, `SST-MAN006`, or `compiled SST manifest is stale; run sst compile before ...`**
+- `plan`, `apply`, and the smoke and eval suites need a current `sst compile` with the same `--target` first: `SST-MAN001` means there is no compiled manifest, `SST-MAN006` that it was compiled for another target, and the stale message that the project changed since.
 
 **`missing golden .../tests/fixtures/reference_project/tests/golden/...`**
 - `--golden-dir` was relative. Pass `"$PWD/tests/golden/expected/ddl"`.
 
-**`validate` exits 1 with `error[SST-VAL528]`**
+**`validate` exits 1 with `error[SST-VAL528] (promoted from warning)`**
 - `--no-strict` is missing; the fixture is strict by design.
 
-**`error: environment variable SST_VERIFY_ACCOUNT is required`**
-- The `verify` target reads everything from `SST_VERIFY_*`. The offline phases use `dev`, the default.
+**`error[SST-CFG013]: env_var('SST_TEST_SNOWFLAKE_ACCOUNT') is unset and has no default`**
+- `--target verify` was given: that target reads `SST_TEST_SNOWFLAKE_*`. The offline phases use `dev`, the default.
 
-**`dbt parse failed`**
-- Pass `--manifest`, or run `dbt deps` and keep `profiles.yml` in the project root.
+**`error[SST-APL011]`: the run lock is held by a live run**
+- Another `apply`, `drop`, or eval run holds the target's lock; wait for it. `--break-stale-lock` takes over only a lock whose run has expired (`SST-APL010`), never a live one.
+
+**`SST-DBT026`, `SST-DBT027`, or `SST-DBT028` (SST could not run `dbt parse`)**
+- Pass `--manifest`, or run `dbt deps`, put dbt on PATH, and keep `profiles.yml` where SST finds it (see `references/setup-guide.md`).
 
 **`sst --version` shows the wrong version**
 - The environment is not running this checkout. Run `poetry install` from the repo root, or reinstall the checkout in editable mode in the chosen environment.

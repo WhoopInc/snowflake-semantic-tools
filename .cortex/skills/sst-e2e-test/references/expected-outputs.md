@@ -16,21 +16,26 @@ Baselines for `tests/fixtures/reference_project` under its default `dev` target,
 
 After a compile, `sst list --project-dir tests/fixtures/reference_project` lists all 14 as `pending`.
 
-`jaffle_menu` publishes to `SST_REF_DEV.CORE` through a folder route; the other artifacts publish to `SST_REF_DEV.JAFFLE`.
+`jaffle_menu` publishes to `SST_REF_DEV.CORE` through a `semantic_views:` folder route, and `jaffle_minimal_agent` to `SST_REF_DEV.OPS` through an `agents:` folder route; the other artifacts publish to `SST_REF_DEV.JAFFLE`, the two profiles as rows of its `PROFILE_REGISTRY` table.
 
 ## Validate (offline)
 
+`sst validate --project-dir $P --manifest $M --no-strict --no-snowflake-syntax-check`:
+
 | Check | Expected |
 |-------|----------|
-| Exit code with `--no-strict` | 0 |
-| Last line | `validated 14 artifact(s): 0 errors, 1 warnings` |
-| Warning | `SST-VAL528` on `jaffle_delivery_agent`: its agent tool is deliberate |
-| Infos | `SST-VAL854`, `SST-VAL711`, `SST-VAL712`, `SST-VAL725`, `SST-VAL020` |
-| Exit code without `--no-strict` | 1: the fixture's `validation.strict: true` promotes `SST-VAL528` |
+| Exit code | 0 |
+| stdout | `validated 14 artifact(s): 0 errors, 5 warnings` |
+| Last stderr line | `0 errors; 6 warnings; 51 info; 51 info not shown (--show-info)` |
+| Warnings | `SST-VAL528`, `SST-RND010`, `SST-RND013`, and `SST-CFG018` twice (see Known Diagnostics), plus `SST-CFG034` on `sst_config.yml`: `--no-strict` disagrees with `validation.strict: true`. The stdout count leaves out `SST-CFG034`, which is raised while the command's settings resolve, not by validation |
+| Infos (count) | `SST-MEM011` (15), `SST-VAL125` (9), `SST-VAL020` (4), `SST-VAL831` (4), `SST-MEM103` (3), `SST-VAL319` (3), `SST-VAL816` (3), `SST-DBT016` (2), `SST-VAL217` (2), `SST-DBT025`, `SST-VAL216`, `SST-VAL711`, `SST-VAL712`, `SST-VAL725`, `SST-VAL854` (1 each) |
+| Without `--no-strict` | exit 1, `5 errors; 0 warnings; 51 info`: the fixture's `validation.strict: true` promotes the five artifact warnings, and `SST-CFG034` is not raised |
+
+`--output json` gives the same counts in `summary` (`"warning": 6, "info": 51`). With `--show-info`, the infos are printed and seven `SST-DIS200` infos (which type owns each semantic-model file) are added, for 58.
 
 ## Compile (`--emit-ddl`)
 
-`wrote 14 artifact payload file(s) to <dir>`, exit 0:
+`compiled 14 artifact(s); manifest tests/fixtures/reference_project/target/sst/manifest.json`, then `wrote 14 file(s) to <dir>`, exit 0:
 
 | Files | Artifacts |
 |-------|-----------|
@@ -56,12 +61,14 @@ After a compile, `sst list --project-dir tests/fixtures/reference_project` lists
 | `plugin/` | `jaffle-toolkit.bundle.json`, `jaffle-toolkit.plugin.json` |
 | `profile/` | one `.profile.json` per profile, and the `jaffle-analyst/` tree |
 
+`ddl/` also holds `jaffle_customer_orders.sql` and `jaffle_product_costs.sql`, and `enrich/` holds whole YAML files; the unit tests compare those (`tests/fixtures/scoped_views/`, `sst enrich`), not the golden suite. A relative `--golden-dir` exits 4 with `missing golden tests/fixtures/reference_project/tests/golden/expected/...`.
+
 ## `sst migrate refs` (`tests/fixtures/v1_dialect`)
 
 | Run | Expected |
 |-----|----------|
-| Dry run | exit 2; `would rewrite` for `filters.yml`, `metrics.yml`, `relationships.yml`, `views.yml` |
-| `--write`, on a copy | exit 0; the copy's `semantic_models/` equals `expected/converted/semantic_models/` |
+| Dry run | exit 2; `would rewrite semantic_models/...` for `filters/filters.yml`, `metrics/metrics.yml`, `relationships/relationships.yml`, `semantic_views/views.yml` |
+| `--write`, on a copy | exit 0; `rewrote` for the same four; the copy's `semantic_models/` equals `expected/converted/semantic_models/` |
 | Re-run on the copy | `no legacy references found`, exit 0 |
 
 ## Test Suite
@@ -81,6 +88,10 @@ No fixed baseline: it depends on the project the user names. Pass criteria:
 
 | Phase | Code | Reason |
 |-------|------|--------|
-| Validate | `SST-VAL528` (warning) | Deliberate: `jaffle_delivery_agent` declares an agent tool |
+| Validate | `SST-VAL528` (warning) | Deliberate: `jaffle_delivery_agent` declares an agent toolset |
+| Validate | `SST-RND010` (warning) | Deliberate: `jaffle_minimal_agent` renders with no tools |
+| Validate | `SST-RND013` (warning) | `jaffle_analytics_agent`'s generic tool `order_tier_lookup` has resources Snowflake does not validate |
+| Validate | `SST-CFG018` (warning, twice) | The `jaffle_partner` tool members `payment_settlement_view` and `partner_invoice_stage` are referenced by nothing |
+| Validate | `SST-CFG034` (warning) | Only with `--no-strict`: the flag disagrees with `validation.strict: true`, and the flag wins |
 | Validate | `SST-VAL854` (info) | The fixture publishes profiles to its own registry table, not the one CoCo Desktop reads |
-| Validate | `SST-VAL020` (info) | Connected validation skipped by `--no-snowflake-syntax-check` |
+| Validate | `SST-VAL020` (info) | Connected rules skipped by `--no-snowflake-syntax-check` |
