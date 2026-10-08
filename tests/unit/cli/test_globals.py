@@ -135,6 +135,29 @@ def test_strict_does_not_block_on_what_the_baseline_holds(tmp_path: Path) -> Non
     assert _json(["validate", *common(project), "--strict", "--output", "json"])[0] == 0
 
 
+def test_strict_promoted_warnings_the_baseline_holds_are_counted_apart_not_as_errors(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    _, before = _warnings(project)
+    # The five warnings --strict promotes are baselined; SST-CFG034, about the flag itself, is
+    # neither promoted nor baselined, so it stays the one warning.
+    held = [item["fingerprint"] for item in before["diagnostics"] if item["code"] in _PROMOTED]
+    _baseline(project, held)
+    exit_code, envelope = _json(["validate", *common(project), "--strict", "--output", "json"])
+    summary = envelope["summary"]
+    assert (exit_code, envelope["status"], summary["promoted"]) == (0, "ok", 5)
+    assert (summary["error"], summary["warning"], summary["baselined"]) == (0, 1, 5)
+    assert summary["error"] + summary["warning"] + summary["info"] + summary["baselined"] == len(
+        envelope["diagnostics"]
+    )
+    human = CliRunner().invoke(cli, ["validate", *common(project), "--strict"])
+    assert human.exit_code == 0, human.output
+    assert "0 errors; 1 warning (5 baselined); " in human.output
+    assert "validated 14 artifact(s): 0 errors, 0 warnings (5 baselined)" in human.output
+
+
+_PROMOTED = frozenset({"SST-CFG018", "SST-RND010", "SST-RND013", "SST-VAL528"})
+
+
 def test_an_expired_or_unreadable_baseline_fails_the_run(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
     _baseline(project, ["0" * 16], expires_on="2000-01-01")

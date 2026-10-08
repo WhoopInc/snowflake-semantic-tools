@@ -22,7 +22,7 @@ from snowflake_semantic_tools.cli.options import (
     validation_options,
     with_model_paths,
 )
-from snowflake_semantic_tools.cli.output import suppressed_by_baseline
+from snowflake_semantic_tools.cli.output import counted, summary_counts, suppressed_by_baseline
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import (
     project_config,
@@ -32,7 +32,7 @@ from snowflake_semantic_tools.cli.settings import (
 )
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.project import connect
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.plan.selectors import SelectionScope
 
 
@@ -104,15 +104,22 @@ def validate(
             "artifacts_checked": result.artifacts_checked,
             "suppressed_by_baseline": suppressed_by_baseline(diagnostics),
         },
-        human=None if exit_code else lambda: _print_counts(result),
+        human=lambda: _print_counts(result),
         promoted=result.promoted,
         gated=True,
     )
 
 
 def _print_counts(result: ValidationResult) -> None:
+    """Print what was validated, once the baseline is matched, unless an error it does not hold remains.
+
+    A diagnostic the baseline holds is counted apart, so a run it lets pass reports no errors.
+    """
+    counts = summary_counts(result.diagnostics)
+    if counts["error"]:
+        return
+    held = f" ({counts['baselined']} baselined)" if counts["baselined"] else ""
     click.echo(
         f"validated {len(result.rendered)} artifact(s): "
-        f"{result.diagnostics.count(Severity.ERROR)} errors, "
-        f"{result.diagnostics.count(Severity.WARNING)} warnings"
+        f"{counted(counts['error'], 'error')}, {counted(counts['warning'], 'warning')}{held}"
     )
