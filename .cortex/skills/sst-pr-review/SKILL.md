@@ -48,17 +48,17 @@ Read the diff carefully. Focus on:
 **Consistency with project conventions**
 - Read `AGENTS.md` and `CONTRIBUTING.md` for current conventions
 - ruff-formatted and lint-clean (line length 120), and strictly typed for mypy
-- Each new problem is a new diagnostic in its code area's module under `domain/diagnostics/specs/`: a new `SST-` code (never a reused one) with an actionable suggestion
+- Each new problem is a new diagnostic in its code area's module under `domain/diagnostics/specs/`: a new `SST-` code (never a reused or retired one) with an actionable suggestion, present in `tests/codes/catalog.json` (regenerated from the catalog, never hand-edited), and a `test_<code>_fires` / `test_<code>_silent` pair under `tests/codes/<area>/`; the `tests/codes/allowlist/` files only shrink
 - A new `sst_config.yml` key is declared in `domain/model/config_schema/keys.py`
 - A change to diagnostics, config keys, CLI options, or artifact types ships the regenerated `docs/reference/*.md` (`sst docs`)
 - `--output json` prints exactly one envelope on stdout; exit codes match `docs/reference/cli.md`
 
 **Architecture**
-- Rings: `cli` → (`app` | `adapters`) → `domain`, with `app` and `adapters` independent. `lint-imports` catches crossing imports; also look for I/O or SDK use hidden behind a helper in `domain/` or `app/`
+- Rings: `cli` → (`app` | `adapters`) → `domain`, with `app` and `adapters` independent. `lint-imports` checks the seven contracts in `pyproject.toml` and catches crossing imports; also look for I/O or SDK use hidden behind a helper in `domain/` or `app/`
 - The package root gains nothing beside `__init__.py`, `_version.py`, and the four rings, and `__init__.py` exports nothing but `__version__`: there is no Python API
 - Where code belongs: commands and options in `cli/`; use cases in `app/`; YAML, dbt, Snowflake, and filesystem access in `adapters/`, behind a port in `domain/ports/`; rules, rendering, reference resolution, plan diffing, and state in `domain/`, by stage (`parse`, `resolve`, `validate`, `render`, `plan`, `state`), with `domain/model` holding data types only and a use case typed with the narrowest Snowflake port role it calls
-- Tests use real in-memory ports (`tests/helpers/recorded_snowflake.py`, `tests/helpers/app_ports.py`), not mocks
-- A golden change is intended and explained in the PR; otherwise it is a regression
+- Tests use real in-memory ports (`tests/helpers/app_ports.py`, `tests/helpers/snowflake_fake/`), not mocks, and nothing outside the `live` marker reaches the network
+- A golden change is intended and explained in the PR, and was made with `--update-golden`, not by hand; otherwise it is a regression
 
 ### Step 4: Run tests
 
@@ -93,7 +93,7 @@ Structure the review as:
 
 ## Test Results
 - Suite: X passed, Y failed
-- Gates: coverage floors, mypy, ruff format, ruff check, lint-imports, sst docs --check
+- Gates: exit-code contract, fixture `format --check`, coverage floors and ratchet, mypy, ruff format, ruff check, lint-imports, sst docs --check, bandit
 - E2E: PASS/FAIL/SKIPPED
 
 ## Verdict

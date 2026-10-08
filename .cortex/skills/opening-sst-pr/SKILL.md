@@ -38,13 +38,13 @@ Branch naming: `fix/<description>` or `feature/<description>`
 
 ### Step 3: Make changes, run the gates
 
-Load the `sst-test` skill and run its workflow. It covers the suite, the coverage floors, mypy, ruff, `lint-imports`, and `sst docs --check`. To format before committing:
+Load the `sst-test` skill and run its workflow. It covers the suite, coverage (the per-ring floors and the ratchet), the exit-code contract, the fixture's `sst format --check`, mypy, ruff, `lint-imports`, `sst docs --check`, and bandit. To format before committing:
 ```bash
 poetry run ruff format snowflake_semantic_tools/ tests/
 poetry run ruff check --fix snowflake_semantic_tools/ tests/
 ```
 
-If the change touches diagnostics, `sst_config.yml` keys, CLI options, or artifact types, run `poetry run sst docs` and include the regenerated `docs/reference/*.md`.
+If the change touches diagnostics, `sst_config.yml` keys, CLI options, or artifact types, run `poetry run sst docs` and include the regenerated `docs/reference/*.md`. A new diagnostic code also needs its fires/silent test pair under `tests/codes/<area>/` (`tests/codes/README.md`). If rendered output is meant to change, regenerate the goldens with `sst test --suite golden ... --update-golden` (the `sst-e2e-test` skill, Phase 4) and say why in the PR.
 
 ### Step 3b: Run E2E tests (for code changes)
 
