@@ -72,9 +72,14 @@ We use GitHub issue templates to help structure your report. When you [create a 
 
 ### Prerequisites
 
-- Python 3.11–3.13
-- Poetry for dependency management
+- Python 3.11–3.13 (`pyproject.toml` declares `>=3.11,<3.14`; CI runs 3.11)
+- Poetry 2 for dependency management (CI pins 2.2.1)
 - Nothing else for the test suite: it needs no Snowflake account and no dbt install
+
+Any interpreter in that range works. To use a conda environment, create it with the Python you
+want (`conda create -n sst python=3.11`), activate it, and point Poetry at it with
+`poetry env use "$(which python)"`; Poetry then builds its virtualenv from that interpreter.
+Conda is optional: CI uses a plain Poetry virtualenv.
 
 ### Installation
 
@@ -82,8 +87,8 @@ We use GitHub issue templates to help structure your report. When you [create a 
 git clone https://github.com/WhoopInc/snowflake-semantic-tools.git
 cd snowflake-semantic-tools
 
-poetry install                  # add --extras dbt to run sst against a dbt project of your own
-poetry run pre-commit install   # optional: the CI gates and file checks on every commit
+poetry install                  # the package and the dev group; add --extras dbt to run sst against a dbt project of your own
+poetry run pre-commit install   # optional: a fast subset of the gates on every commit (see below)
 
 poetry run sst --version
 ```
@@ -98,9 +103,7 @@ poetry lock
 ```
 
 CI checks this first (`poetry check --lock`) and fails with that instruction when the lock is out of
-date. The lock on this branch predates the dev dependencies added for the hardening work (property
-tests, parallel runs, mutation testing, security scans, the per-test timeout), so it must be
-regenerated, on a machine that can reach PyPI, before CI can install.
+date. A new dependency also needs a row, with its license, in [DEPENDENCIES.md](DEPENDENCIES.md).
 
 ### Running the Gates
 
@@ -110,45 +113,63 @@ needs a secret or a Snowflake account. `.github/workflows/nightly.yml` adds muta
 `domain/` and the property tests under the deeper `nightly` Hypothesis profile, both offline and
 report-only.
 
+In the order CI runs them:
+
 ```bash
+# poetry.lock matches pyproject.toml
+poetry check --lock
+
 # The exit-code contract, reported as its own step
 poetry run pytest tests/unit/cli/test_exit_codes.py
 
 # The reference project's semantic-layer YAML is in canonical form (exit 2 when not)
 poetry run sst --project-dir tests/fixtures/reference_project format --check
 
-# The suite, with coverage over the whole of it, then the per-layer ratchet against
-# tests/coverage_baseline.json: line and branch coverage per layer may rise, never fall
-poetry run pytest tests/ -n auto --cov=snowflake_semantic_tools --cov-branch --cov-report=json:coverage.json
+# The whole suite in parallel, with coverage over the whole of it, then the per-layer ratchet
+# against tests/coverage_baseline.json: line and branch coverage per layer may rise, never fall
+poetry run pytest tests/ -v -n auto --cov=snowflake_semantic_tools --cov-branch \
+  --cov-report=term --cov-report=json:coverage.json
 poetry run python -m tests.helpers.coverage_ratchet check --coverage-json coverage.json
-poetry run coverage report --include='snowflake_semantic_tools/adapters/*' --fail-under=90
+poetry run coverage report --include='snowflake_semantic_tools/adapters/*' --fail-under=90 --skip-covered
 
-# Branch-coverage floors, each measured on its own test paths
-poetry run pytest -q --cov=snowflake_semantic_tools.domain --cov-branch --cov-fail-under=100 \
+# Branch-coverage floors, each measured serially on its own test paths
+poetry run pytest -q --cov=snowflake_semantic_tools.domain --cov-branch --cov-report=term --cov-fail-under=100 \
   tests/unit/domain tests/unit/test_render_semantic_view.py
-poetry run pytest -q --cov=snowflake_semantic_tools.app --cov-branch --cov-fail-under=95 \
+poetry run pytest -q --cov=snowflake_semantic_tools.app --cov-branch --cov-report=term --cov-fail-under=95 \
   tests/unit/app tests/unit/test_compile_use_case.py tests/unit/test_manifest_v1.py
-poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch --cov-fail-under=90 \
+poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch --cov-report=term --cov-fail-under=90 \
   tests/unit/cli
 
-poetry run mypy snowflake_semantic_tools tests   # strict
+poetry run mypy snowflake_semantic_tools tests   # strict = true in pyproject.toml
 poetry run ruff format --check snowflake_semantic_tools/ tests/
 poetry run ruff check snowflake_semantic_tools/ tests/
-poetry run lint-imports         # ring boundaries
-poetry run sst docs --check     # generated reference pages are current
+poetry run lint-imports         # the seven ring-boundary contracts
+poetry run sst docs --check     # generated reference pages are current (exit 2 when not)
 poetry run bandit -r snowflake_semantic_tools -ll
+poetry run pip-audit --skip-editable --progress-spinner off   # needs to reach the vulnerability database
 
 # semgrep runs in its own job, installed outside the project's environment from a hash-locked
 # requirements file, with the rules vendored in .semgrep/ (its README says how to refresh them)
 pip install --require-hashes --only-binary :all: -r .github/requirements/semgrep.txt  # linux x86_64
-semgrep scan --config .semgrep/ --error --metrics off snowflake_semantic_tools
+semgrep scan --config .semgrep/ --error --metrics off --disable-version-check snowflake_semantic_tools
 ```
+
+The ratchet and the three floors are separate checks: the ratchet compares each layer over the
+whole suite with its recorded baseline, and each floor measures one layer from its own tests
+only, so a layer cannot borrow coverage from tests written for another.
 
 The requirements file pins wheels for the CI runner (linux x86_64, CPython 3.11); elsewhere,
 `pip install semgrep==1.179.0` gives the same scanner.
 
 A semgrep false positive is silenced on its line with `# nosemgrep: <rule-id>` and a comment
 saying why.
+
+`.pre-commit-config.yaml` runs a fast subset on each commit, from the project's own virtualenv
+(every hook is `language: system`, so the tools are the versions `poetry.lock` pins): ruff format
+`--check` and ruff check on the staged files, mypy, `lint-imports`, `sst docs --check`, and
+`pytest -q -n auto tests/unit/domain tests/codes`, plus whitespace, end-of-file, YAML, and
+large-file checks. It is not the gate: run the whole list above before you open a pull request.
+`poetry run pre-commit run --all-files` runs every hook over the tree.
 
 No test outside the `live` marker may reach the network. `tests/conftest.py` installs a guard for
 the whole session (`tests/helpers/network_guard.py`) that patches `socket.socket.connect`,
@@ -166,13 +187,15 @@ needs it, where a reviewer sees it.
 
 Every test has a 120-second timeout (`pytest-timeout`, configured in `pyproject.toml`), so a test
 that deadlocks fails with every thread's stack rather than hanging the run. A test also fails if a
-thread it started is still running after it returns.
+thread it started is still running two seconds after it returns.
 
 ### Testing
 
-The offline suite is the whole required gate: `poetry run pytest tests/ -n auto` runs it with no
+The offline suite is every test the gate requires: `poetry run pytest tests/ -n auto` runs it with no
 account and no secrets, and no test in it can reach the network or read your own Snowflake or dbt
-configuration. Goldens are rewritten with `sst test --suite golden --update-golden`, never by hand.
+configuration. Goldens are rewritten by the golden suite with `--update-golden`, never by hand;
+[tests/README.md](tests/README.md#goldens) gives the exact command, and a pull request that changes a
+golden says why.
 
 Tests marked `live` connect to a real account and are deselected by default. No contribution needs
 them; they are for maintainers with an account of their own. Their account comes only from
@@ -222,7 +245,8 @@ domain/
 ├── enrich/       # the rules `sst enrich` derives column metadata by
 ├── migrate/      # the `sst migrate refs` rewrite
 ├── sql/          # typed SQL: the one way SST builds statement text
-└── ports/        # the protocols adapters implement; ports/snowflake/ holds one module per role
+├── ports/        # the protocols adapters implement; ports/snowflake/ holds one module per role
+└── file_names.py # the one file name each artifact name maps to
 ```
 
 A use case depends on the narrowest port it uses: a single role such as `ExecutionPort`, or a
@@ -236,17 +260,51 @@ Imports run one way, `cli` → (`app` | `adapters`) → `domain`:
 - `app` never imports an SDK or touches the terminal (`yaml`, `click`, and `snowflake` are forbidden there).
 - `adapters` may use domain models and ports, but not `domain/render`.
 - The adapter subpackages `yaml`, `dbt`, `snowflake`, and `fs` never import one another, so each can be replaced and tested alone; a top-level adapter module such as `project_source.py` composes them.
-- Only `adapters/yaml` (SST's own files) and `adapters/dbt` (dbt's) import `yaml`; everything else reaches YAML through them.
+- Only `adapters/yaml` (SST's own files), `adapters/dbt` (dbt's), and `adapters/bounded_yaml.py` (the depth-bounded loader both parse through) import `yaml`; everything else reaches YAML through them.
+- Only `adapters/roundtrip.py` and the `yaml` and `dbt` adapters edit YAML in place with `ruamel`.
 
-`poetry run lint-imports` enforces these as six contracts in `pyproject.toml`, and `tests/unit/test_ring_boundaries.py` proves that each contract rejects a crossing and that the package root holds nothing else.
+`poetry run lint-imports` enforces these as seven contracts in `pyproject.toml`, and `tests/unit/test_ring_boundaries.py` proves that each contract rejects a crossing and that the package root holds nothing else:
+
+| Contract | Rule |
+|----------|------|
+| Rings are layered: cli above (app \| adapters) above domain | `cli` → (`app` \| `adapters`) → `domain`; `app` and `adapters` independent |
+| domain is pure -- no I/O, no clock, no environment, no SDKs | `domain` imports none of `yaml`, `click`, `snowflake`, `os`, `pathlib`, `datetime`, `time`, `random`, `tempfile`, `subprocess`, `socket`, `logging` |
+| app imports domain only -- no SDKs, no terminal | `app` imports none of `yaml`, `click`, `snowflake` |
+| adapters use domain ports and models, not domain renderers | `adapters` never imports `domain.render` |
+| adapter subpackages are independent | `adapters.yaml`, `.dbt`, `.snowflake`, `.fs` never import one another |
+| only the roundtrip, dbt and yaml adapters edit YAML | nothing else imports `ruamel` |
+| only the yaml and dbt adapters parse YAML | `cli` and the other adapters never import `yaml` directly |
 
 ### Diagnostics
 
-Every problem SST reports is a diagnostic registered in `snowflake_semantic_tools/domain/diagnostics/specs/`, in the module for its code area (VAL is split by hundreds, `val_metric` for 1xx and so on): a stable code (`SST-`, a three-letter subsystem, and a number, such as `SST-VAL116`), a severity, a message template, and a suggestion that says how to fix it. Build one with `D("SST-...", ...)`. A new problem gets a new code; codes are never reused, even after the diagnostic that used one is removed.
+Every problem SST reports is a diagnostic registered in `snowflake_semantic_tools/domain/diagnostics/specs/`, in the module for its code area (VAL is split by hundreds, `val_metric` for 1xx and so on; the package docstring lists the bands): a stable code (`SST-`, a three-letter subsystem, and a number, such as `SST-VAL116`), a severity, a message template, and a suggestion that says how to fix it. Build one with `D("SST-...", ...)`. A new problem gets a new code; codes are never reused, even after the diagnostic that used one is removed.
+
+#### Adding a diagnostic code
+
+1. **Register it.** Add a `spec(...)` entry to `SPECS` in the module for its area, kept sorted by code: the code, its `Severity`, a title, a message template, and an actionable suggestion (or `None`), plus `condition=` (when it is raised, which `sst explain` and the error reference print) and, where it helps, `note=`. Pass `demotable=False` for an error no setting may downgrade. Take the next free number; a number in `specs/retired.py` is burned. The registry is built through `domain/diagnostics/integrity.py` at import, which refuses a malformed code (SST-REG012), a duplicate (SST-REG002), a retired number (SST-REG017), a template placeholder outside the shared `PLACEHOLDERS` vocabulary (SST-REG016), a 900-band code that is not an error, or in INT and REG not a non-demotable one (SST-REG014), and `internal_detail` outside INT and SNO (SST-REG019).
+2. **Raise it** with `D("SST-XXXnnn", subject=..., <placeholder>=...)` from a module outside `specs/`, and list it under `Diagnostics:` in the docstring of the function that reports it. `D` reports SST-INT901 instead when a template placeholder is not supplied.
+3. **Add its catalog row.** `tests/codes/catalog.json` is the 1.0 error catalog's projection and the source of truth for each code's severity, demotability, title, template, and suggestion; `tests/codes/test_catalog_parity.py` fails when the registry and the catalog disagree, or when a registered code has no row. The file is regenerated with `python -m tests.helpers.code_guards`, not edited by hand ([tests/codes/README.md](tests/codes/README.md#catalogjson)); agree the row with a maintainer in the issue.
+4. **Test it both ways.** Add `tests/codes/<area>/test_sst_<area><nnn>.py` with `test_sst_<area><nnn>_fires` (the smallest input that reports it, pinning severity, message, and subject) and `test_sst_<area><nnn>_silent` (the nearest legitimate input), copying `tests/codes/cfg/test_sst_cfg003.py`. `test_codes_tested.py` requires the pair and `test_codes_emitted.py` requires the code to be named outside `specs/`. The allowlists under `tests/codes/allowlist/` are empty and only shrink: never add an entry to make a guard pass.
+5. **Regenerate the reference.** `poetry run sst docs` rewrites `docs/reference/error-codes.md` and `docs/reference/coverage.md`; commit them, then check `poetry run sst explain SST-XXXnnn` reads well.
 
 ### Generated Reference Pages
 
 `docs/reference/*.md` is rendered from the engine's registries: the diagnostics, the configuration schema (`snowflake_semantic_tools/domain/model/config_schema/keys.py`, where every `sst_config.yml` key is declared), the CLI's commands and options, and the artifact registry (`snowflake_semantic_tools/domain/model/registry.py`). After changing any of them, run `poetry run sst docs` and commit the pages it rewrites; CI fails on `sst docs --check` otherwise.
+
+### Adding a CLI option
+
+Each command lives in its own module under `snowflake_semantic_tools/cli/commands/`. An option is declared with `click.option(...)` and **no `help=`**: once every command is registered, `cli/help_text.py`'s `document_options` gives each flag its one description from `_OPTION_HELP`, or from `_COMMAND_OPTION_HELP[("sst <command>", "--flag")]` where the flag means something narrower on one command, so `--help` and `docs/reference/cli.md` say the same thing everywhere. An option several commands share is a factory in `cli/options.py`; a global option belongs in `cli/globals.py`, and every command lists it under "Global options".
+
+- Say in the help text what the default is and where else the value comes from, in the order it is resolved: the flag, then its `$SST_*` variable (`envvar=`), then the `sst_config.yml` key, then the default. A setting that has both a flag and a config key resolves in `cli/settings.py`; a new key is declared in `domain/model/config_schema/keys.py`.
+- `tests/unit/cli/test_docs.py` fails for an option without help text. An exit code the option can produce must be one its command documents: `tests/unit/cli/test_exit_codes.py` holds each command's codes and a scenario per flag that changes them.
+- A removed flag stays as a hidden option that refuses with what replaces it, as `cli/commands/enrich.py` does for the 0.3 flags.
+- Run `poetry run sst docs` to regenerate `docs/reference/cli.md` (and `config.md` for a new key), and commit the pages.
+
+### Building SQL
+
+Every statement SST sends to Snowflake is an `Sql` value from `snowflake_semantic_tools.domain.sql`. `Sql` is sealed: constructing one outside that package raises `TypeError`. A statement is composed with `sql("<constant template>", name=<Sql part>, ...)`, where each part comes from a constructor that quotes or refuses its input (`ident`, `qname`, `literal`, `number`, `keyword` from a closed vocabulary, `datatype`, `dollar_quoted`, `guard_expression`, and the rest of the package's exports), and `join` takes a constant separator. The connector turns an `Sql` into text only at the driver boundary (`Sql.for_driver`).
+
+`tests/unit/security/test_sql_construction.py` refuses, anywhere else in the package, an f-string, `%` format, `.format()`, `+`, or `join` whose constant text reads as SQL, a direct `Sql(...)` call, and an `sql()` or `join()` whose template is not a string constant; semgrep's vendored SQL-injection rules scan the same code. A new statement shape is a new template, never string concatenation.
 
 ### Version
 
