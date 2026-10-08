@@ -4,9 +4,13 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.evals import load_eval_catalog, parse_eval_defaults
+from snowflake_semantic_tools.app.compile.evals import CompiledEval, CompileEvals
+from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, recorded_judges
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.agent import AgentModel
-from snowflake_semantic_tools.domain.model.eval import EvalDefaults
+from snowflake_semantic_tools.domain.model.eval import EvalCatalog, EvalDefaults
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from tests.helpers.eval_builders import attempt, run_result
 
 
 def _write(path: Path, text: str) -> None:
@@ -242,3 +246,125 @@ def test_an_unknown_mint_policy_and_any_sweep_block_are_refused(tmp_path: Path) 
     assert ("SST-CFG044", "sweep") in found
     [config_value] = [item.config for item in catalog.evals]
     assert config_value.dataset is not None and config_value.dataset.mint == "sometimes"
+
+
+SYSTEM_BLOCK = """  system:
+    - name: tool_selection_accuracy
+      version: v3
+      gate: true
+      threshold: {min: 0.8}
+"""
+
+
+def _edit(path: Path, old: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert old in text
+    _write(path, text.replace(old, new))
+
+
+def _compiled(catalog: EvalCatalog) -> CompiledEval:
+    result = CompileEvals(catalog, agent_targets={"sales": QualifiedName.parse("DB.S.SALES")}).run_result()
+    [compiled] = [item for item in result.compiled if isinstance(item, CompiledEval)]
+    return compiled
+
+
+def test_a_config_without_metrics_system_enables_the_project_metrics_ungated(tmp_path: Path) -> None:
+    agents, agent_diagnostics = _project(tmp_path)
+    config = tmp_path / "agents" / "sales" / "evals" / "config.yml"
+    _edit(config, SYSTEM_BLOCK, "")
+    defaults = EvalDefaults(metrics=("tool_selection_accuracy", "answer_correctness"), metric_version="v3")
+    catalog = load_eval_catalog(tmp_path, agents, defaults=defaults, initial_diagnostics=agent_diagnostics)
+    assert not catalog.diagnostics.has_errors
+    [value] = catalog.evals
+    metrics = value.config.system_metrics
+    assert [(metric.name, metric.version, metric.gate, metric.threshold) for metric in metrics] == [
+        ("tool_selection_accuracy", "v3", None, None),
+        ("answer_correctness", "v3", None, None),
+    ]
+    assert metrics[0].origin.file == "agents/sales/evals/config.yml"
+    rendered = _compiled(catalog).rendered.config_yaml
+    assert '- name: "tool_selection_accuracy"\n    version: "v3"' in rendered
+    assert '- name: "answer_correctness"\n    version: "v3"' in rendered
+
+
+def test_a_config_listing_system_metrics_or_none_does_not_inherit_the_project_metrics(tmp_path: Path) -> None:
+    agents, agent_diagnostics = _project(tmp_path)
+    defaults = EvalDefaults(metrics=("answer_correctness",), metric_version="v3")
+    listed = load_eval_catalog(tmp_path, agents, defaults=defaults, initial_diagnostics=agent_diagnostics)
+    assert [metric.name for metric in listed.evals[0].config.system_metrics] == ["tool_selection_accuracy"]
+
+    config = tmp_path / "agents" / "sales" / "evals" / "config.yml"
+    _edit(config, SYSTEM_BLOCK, "  system: []\n")
+    empty = load_eval_catalog(tmp_path, agents, defaults=defaults, initial_diagnostics=agent_diagnostics)
+    assert empty.evals[0].config.system_metrics == ()
+
+
+def test_an_unknown_project_metric_is_refused_and_left_out() -> None:
+    defaults, diagnostics = parse_eval_defaults(
+        {"+metrics": ["answer_correctness", "answer_relevance", "answer_correctness"]}, file="sst_config.yml"
+    )
+    assert defaults.metrics == ("answer_correctness",)
+    assert [(item.code, item.context.get("field"), item.context.get("found")) for item in diagnostics] == [
+        ("SST-PRS013", "evals.+metrics", "answer_relevance")
+    ]
+    assert diagnostics[0].origin is not None and diagnostics[0].origin.file == "sst_config.yml"
+
+
+def test_an_inherited_metric_version_is_the_one_render_baseline_and_gate_read(tmp_path: Path) -> None:
+    agents, agent_diagnostics = _project(tmp_path)
+    config = tmp_path / "agents" / "sales" / "evals" / "config.yml"
+    pinned = _compiled(load_eval_catalog(tmp_path, agents, initial_diagnostics=agent_diagnostics))
+    _edit(config, "      version: v3\n", "")
+    inherited = _compiled(
+        load_eval_catalog(
+            tmp_path, agents, defaults=EvalDefaults(metric_version="v3"), initial_diagnostics=agent_diagnostics
+        )
+    )
+    assert inherited.resolved.config.system_metrics[0].version == "v3"
+    assert inherited.rendered.config_yaml == pinned.rendered.config_yaml
+    assert [item.context.get("value") for item in recorded_judges(inherited)] == ["v3"]
+    flags = (("q", "tool_selection_accuracy", True), ("q", "judge", True))
+    attempts = tuple(attempt(f"run-{index}", *flags) for index in range(1, 6))
+    baseline = capture_baseline(pinned, run_result(*attempts), reason="initial", captured_at="2026-09-01T00:00:00Z")
+    assert dict(baseline.metric_versions)["tool_selection_accuracy"] == "v3"
+    recaptured = capture_baseline(
+        inherited, run_result(*attempts), reason="initial", captured_at="2026-09-01T00:00:00Z"
+    )
+    assert recaptured.metric_versions == baseline.metric_versions
+    verdict, diagnostics = evaluate_gate(inherited, run_result(attempts[0]), baseline, now="2026-09-02T00:00:00Z")
+    assert verdict.reason is None, [item.code for item in diagnostics]
+
+
+def test_a_custom_metric_without_a_model_takes_the_project_judge_model(tmp_path: Path) -> None:
+    agents, agent_diagnostics = _project(tmp_path)
+    _edit(tmp_path / "eval_metrics" / "judge.yml", "model: claude-sonnet-4-6\n", "")
+    catalog = load_eval_catalog(
+        tmp_path,
+        agents,
+        defaults=EvalDefaults(judge_model="claude-sonnet-4-6"),
+        initial_diagnostics=agent_diagnostics,
+        allowed_models=("claude-sonnet-4-6",),
+    )
+    assert not catalog.diagnostics.has_errors
+    assert catalog.evals[0].custom_metrics[0].model == "claude-sonnet-4-6"
+    assert 'model: "claude-sonnet-4-6"' in _compiled(catalog).rendered.config_yaml
+
+
+def test_a_metric_model_wins_and_the_project_judge_model_must_still_be_explicit(tmp_path: Path) -> None:
+    agents, agent_diagnostics = _project(tmp_path)
+    own = load_eval_catalog(
+        tmp_path, agents, defaults=EvalDefaults(judge_model="other-model"), initial_diagnostics=agent_diagnostics
+    )
+    assert own.evals[0].custom_metrics[0].model == "claude-sonnet-4-6"
+
+    _edit(tmp_path / "eval_metrics" / "judge.yml", "model: claude-sonnet-4-6\n", "")
+    auto = load_eval_catalog(
+        tmp_path, agents, defaults=EvalDefaults(judge_model="auto"), initial_diagnostics=agent_diagnostics
+    )
+    unset = load_eval_catalog(tmp_path, agents, initial_diagnostics=agent_diagnostics)
+    assert [item.message for item in auto.diagnostics if item.code == "SST-VAL738"] == [
+        "eval metric 'judge' names no judge model (model: auto)"
+    ]
+    assert [item.message for item in unset.diagnostics if item.code == "SST-VAL738"] == [
+        "eval metric 'judge' names no judge model (model: unset)"
+    ]

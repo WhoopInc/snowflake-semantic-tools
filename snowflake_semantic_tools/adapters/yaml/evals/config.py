@@ -1,7 +1,9 @@
 """Parse an agent's eval config file, and the `evals:` defaults block of `sst_config.yml`.
 
-The defaults are returned apart and never merged into a config, so the validator can tell a
-value the config sets from one it inherits.
+The defaults are returned apart and never merged into a config here. The catalog loader
+fills in the defaults that only stand in for an unset value -- `+metrics`, `+metric_version`
+and `+judge_model` -- before validation; the others are read by whoever needs them, so the
+validator can tell a value the config sets from one it inherits.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_KNOWN_TERMINAL_STATUSES,
     EVAL_MINT_POLICIES,
+    SYSTEM_EVAL_METRICS,
     EvalColumnMapping,
     EvalConfig,
     EvalDatasetConfig,
@@ -41,16 +44,18 @@ def parse_eval_defaults(value: object, *, file: str = CONFIG_FILE) -> tuple[Eval
 
     `file` is how diagnostics name the configuration file the run read.
 
-    An absent block reads as the empty defaults. `+metrics` is checked for its type and a
-    string `+eval_tier` for its value; any other value of the wrong type reads as unset,
-    unreported.
+    An absent block reads as the empty defaults. `+metrics` is checked for its type and each
+    name it lists, and a string `+eval_tier` for its value; any other value of the wrong type
+    reads as unset, unreported. A `+metrics` name that is not a system metric is reported and
+    left out, and a repeated one is kept once.
 
     Returns:
         The defaults, and the diagnostics about the block.
 
     Diagnostics:
         SST-PRS003: the block is not a mapping, or `+metrics` is not a list of strings.
-        SST-PRS013: `+eval_tier` is neither `blocking` nor `report`.
+        SST-PRS013: a `+metrics` name is not a system metric, or `+eval_tier` is neither
+            `blocking` nor `report`.
     """
     if value is None:
         return EvalDefaults(), DiagnosticBag()
@@ -60,7 +65,7 @@ def parse_eval_defaults(value: object, *, file: str = CONFIG_FILE) -> tuple[Eval
         )
     diagnostics: list[Diagnostic] = []
     origin = Origin(file)
-    metrics = string_tuple(value.get("+metrics"), "evals.+metrics", origin, diagnostics)
+    metrics = _default_metrics(value.get("+metrics"), file, origin, diagnostics)
     eval_tier = optional_string(value.get("+eval_tier"))
     if eval_tier is not None and eval_tier not in {"blocking", "report"}:
         diagnostics.append(
@@ -88,6 +93,31 @@ def parse_eval_defaults(value: object, *, file: str = CONFIG_FILE) -> tuple[Eval
         ),
         DiagnosticBag(tuple(diagnostics)),
     )
+
+
+def _default_metrics(value: object, file: str, origin: Origin, diagnostics: list[Diagnostic]) -> tuple[str, ...]:
+    """Read `evals.+metrics`: the system metrics it names, in order, each once.
+
+    Diagnostics:
+        SST-PRS003: the value is not a list of strings.
+        SST-PRS013: a name is not a system metric; it is left out.
+    """
+    names: list[str] = []
+    for name in string_tuple(value, "evals.+metrics", origin, diagnostics):
+        if name not in SYSTEM_EVAL_METRICS:
+            diagnostics.append(
+                D(
+                    "SST-PRS013",
+                    artifact=file,
+                    field="evals.+metrics",
+                    found=name,
+                    expected=", ".join(sorted(SYSTEM_EVAL_METRICS)),
+                    origin=origin,
+                )
+            )
+        elif name not in names:
+            names.append(name)
+    return tuple(names)
 
 
 def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) -> EvalConfig:

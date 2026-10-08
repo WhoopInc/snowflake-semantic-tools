@@ -35,7 +35,10 @@ _Status = tuple[str, tuple[str, ...]]
 
 
 class StatusPoll:
-    """One attempt's polling: its deadline, its failed reads in a row, and the last status it read."""
+    """One attempt's polling: its deadline, its failed reads in a row, and the last status it read.
+
+    The deadline counts from when the poll is made, which the attempt does just before START.
+    """
 
     def __init__(
         self,

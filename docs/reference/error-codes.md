@@ -4602,11 +4602,11 @@ Fix: rename the custom metric
 
 `eval metric '<artifact>' names no judge model (model: <found>)`
 
-Raised when a custom metric's `model` is absent or `auto`.
+Raised when a custom metric's `model`, else `evals.+judge_model`, is absent or `auto`.
 
 Fix: name the judge model explicitly
 
-Note: Set the metric file's `model:` key to a named judge model. With `auto`, Snowflake picks the judge and may change it, so score movement cannot be attributed.
+Note: Set the metric file's `model:` key, or `evals.+judge_model` for every metric that sets none, to a named judge model. With `auto`, Snowflake picks the judge and may change it, so score movement cannot be attributed.
 
 ### SST-VAL739
 
@@ -4614,7 +4614,7 @@ Note: Set the metric file's `model:` key to a named judge model. With `auto`, Sn
 
 `eval metric '<artifact>': model '<found>' is not in the allowlist`
 
-Raised when `snowflake.orchestration_models` is set and a custom metric's `model` is not in it, compared ignoring case.
+Raised when `snowflake.orchestration_models` is set and a custom metric's `model`, else `evals.+judge_model`, is not in it, compared ignoring case.
 
 Fix: add it to the config allowlist, or use an allowed model
 

@@ -17,5 +17,10 @@ def test_sst_val738_fires() -> None:
     assert diagnostic.subject == "eval_metric:grounding"
 
 
+def test_sst_val738_names_an_absent_model_as_unset() -> None:
+    diagnostic = only(validate(sales_eval(metrics=(judge(model=None),))), "SST-VAL738")
+    assert diagnostic.message == "eval metric 'grounding' names no judge model (model: unset)"
+
+
 def test_sst_val738_silent() -> None:
     assert "SST-VAL738" not in codes(validate())

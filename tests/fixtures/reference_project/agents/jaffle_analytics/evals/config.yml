@@ -116,5 +116,8 @@ run:
 #   the file format EXECUTE_AI_EVALUATION needs; if it exists with another
 #   format, apply stops with `SST-APL028` instead of altering a stage it may not
 #   own. CREATE OR REPLACE is never used, because it would drop the staged configs.
-# - Starting a run needs CREATE TASK in the agent's schema. SST does not check
-#   this in advance; a refused start is `SST-APL023`.
+# - Starting a run needs CREATE TASK, CREATE STAGE and CREATE FILE FORMAT in the
+#   agent's schema, held by the session's primary role. `sst test --suite evals`
+#   checks this before any run starts: `SST-VAL727` when only a secondary role
+#   holds one, `SST-VAL728` when no role does. A start Snowflake still refuses is
+#   `SST-APL023`.

@@ -189,7 +189,8 @@ class EvalSystemMetric:
 
     Attributes:
         name: None when omitted; an unknown name is reported, not dropped.
-        version: None falls back to `evals.+metric_version`.
+        version: None when neither the metric nor `evals.+metric_version` sets one; the loader
+            fills an unset one from `evals.+metric_version`.
         gate: Whether the metric gates the eval; None reads as ungated.
         judge_model: Must stay None: a system metric's judge comes with its version.
     """
@@ -276,7 +277,8 @@ class CustomEvalMetric:
     """A custom LLM-judge metric; it creates no Snowflake object and is inlined into eval configs.
 
     Attributes:
-        model: The judge model; None and `auto` are rejected.
+        model: The judge model; the loader fills an absent one from `evals.+judge_model`.
+            None, when neither sets one, and `auto` are rejected.
         score_ranges: None when absent or malformed; the parser reports why.
         gate_default: Whether every eval that uses the metric gates on it.
         enabled: False leaves the metric out of rendered eval configs.
@@ -313,7 +315,13 @@ class CustomEvalMetric:
 
 @dataclass(frozen=True, slots=True)
 class EvalDefaults:
-    """The project's `evals:` defaults from `sst_config.yml`; None, or `()`, means the key is unset."""
+    """The project's `evals:` defaults from `sst_config.yml`; None, or `()`, means the key is unset.
+
+    Attributes:
+        metrics: The system metrics, ungated, of a config whose `metrics:` block has no
+            `system` key; only system metric names, each once.
+        judge_model: The judge model of a custom metric that sets no `model`.
+    """
 
     eval_tier: str | None = None
     metrics: tuple[str, ...] = ()
