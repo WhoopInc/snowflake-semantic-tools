@@ -34,7 +34,7 @@ It publishes seven artifact types from one project:
 pip install snowflake-semantic-tools
 cd your-dbt-project        # profiles.yml lives here
 sst init
-sst enrich models/marts    # fill column metadata from the warehouse
+sst enrich --target prod models/marts   # column and data types, read from a production target
 sst validate
 sst compile                # writes the manifest plan and apply read
 sst plan                   # exit 2 means there are changes to apply
@@ -48,20 +48,26 @@ semantic view end to end.
 
 | Command | Purpose |
 |---------|---------|
-| `sst init` | Create a minimal project scaffold without overwriting files |
-| `sst debug` | Show the resolved profile, target, and locations; optionally test the connection |
-| `sst enrich` | Fill missing column types, sample values, and synonyms from the warehouse, editing the YAML in place |
+| `sst init` | Write `sst_config.yml` and the semantic-model directory into a dbt project, never overwriting a file |
+| `sst debug` | Show the resolved configuration, profile, target, and state table, and test the connection (`--no-connect` skips it) |
+| `sst enrich` | Fill missing column types, data types, sample values, enums, and synonyms from the warehouse, editing the YAML in place |
+| `sst format` | Rewrite YAML into canonical form; `--check` exits 2 when a file would change |
 | `sst validate` | Check every artifact, offline or with Snowflake syntax checks |
-| `sst compile` | Render every artifact and write the SST manifest; `--emit-ddl` writes DDL files |
+| `sst compile` | Render every artifact and write the SST manifest; `--emit-ddl` writes each rendered payload |
 | `sst plan` | Compare the project with Snowflake and save a reviewable plan |
 | `sst apply` | Execute a saved plan |
+| `sst diff` | Compare two states -- local, a dbt target, or a saved plan |
 | `sst test` | Run offline goldens, smoke probes, or agent evals |
 | `sst list` | List compiled artifacts and their status |
-| `sst migrate refs` | Rewrite 0.3 `table()` / `column()` references to `ref()` |
+| `sst baseline` | Record known, not yet fixed warnings so they stop blocking under `--strict`, and maintain that file |
+| `sst explain` | Explain one diagnostic code, offline |
+| `sst migrate refs` | Rewrite 0.3 `table()` / `column()` references to `ref()`; a dry run unless `--write` |
 | `sst docs` | Regenerate the reference pages from the engine's registries |
 | `sst clean` | Remove local build output |
+| `sst drop` | Break-glass: drop one object SST owns from one target |
 
-Every command takes `--output json` for one machine-readable result on stdout.
+Every command that reports results takes `--output json` for one machine-readable
+result on stdout.
 
 ## Documentation
 
@@ -73,9 +79,12 @@ Every command takes `--output json` for one machine-readable result on stdout.
   [skills](docs/guides/skills.md),
   [plugins and profiles](docs/guides/plugins-and-profiles.md),
   [configuration](docs/guides/configuration.md), [CI/CD](docs/guides/ci-cd.md),
-  [troubleshooting](docs/guides/troubleshooting.md)
+  [security](docs/guides/security.md),
+  [troubleshooting](docs/guides/troubleshooting.md),
+  [testing SST](docs/guides/testing-live.md)
 - Reference: [CLI](docs/reference/cli.md), [configuration keys](docs/reference/config.md),
-  [error codes](docs/reference/error-codes.md), [artifact types](docs/reference/artifacts.md)
+  [error codes](docs/reference/error-codes.md), [artifact types](docs/reference/artifacts.md),
+  [coverage matrix](docs/reference/coverage.md)
 - Upgrading: [migrating from 0.3](docs/guides/migrating-from-0.3.md)
 
 ## Requirements
@@ -84,7 +93,7 @@ Every command takes `--output json` for one machine-readable result on stdout.
 - A Snowflake account
 - A dbt project on the Snowflake adapter, for semantic views, tools, agents, and
   evals. A project that publishes only skills, plugins, and profiles does not
-  need dbt.
+  need dbt (see [projects without dbt](docs/guides/configuration.md#projects-without-dbt)).
 
 ---
 
@@ -94,12 +103,12 @@ Every command takes `--output json` for one machine-readable result on stdout.
 git clone https://github.com/WhoopInc/snowflake-semantic-tools.git
 cd snowflake-semantic-tools
 
-poetry install --with dev
-pre-commit install
+poetry install
+poetry run pre-commit install   # optional: the CI gates on every commit
 
-sst --version
-pytest tests/unit/
-sst docs --check           # the generated reference pages are current
+poetry run sst --version
+poetry run pytest               # offline: no account and no dbt install needed
+poetry run sst docs --check     # the generated reference pages are current
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed development guidelines.
