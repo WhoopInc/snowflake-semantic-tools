@@ -32,7 +32,6 @@ from snowflake_semantic_tools.domain.diagnostics import (
     D,
     Diagnostic,
     DiagnosticBag,
-    Severity,
     render_diagnostic,
 )
 from snowflake_semantic_tools.domain.diagnostics.baseline import stable_fingerprint
@@ -114,6 +113,27 @@ def suppressed_by_baseline(diagnostics: Iterable[Diagnostic]) -> int:
     return sum(stable_fingerprint(item) in baselined for item in diagnostics)
 
 
+def summary_counts(diagnostics: Iterable[Diagnostic], baselined: frozenset[str] | None = None) -> dict[str, int]:
+    """Count the diagnostics by severity, and those the baseline holds apart from every severity.
+
+    A baselined diagnostic is counted once, under `baselined`, so a run whose every error the
+    baseline holds -- a promoted warning under `--strict` -- reports no errors, as its exit says.
+
+    Args:
+        baselined: The fingerprints the baseline holds; this run's when None.
+    """
+    held = baselined_fingerprints() if baselined is None else baselined
+    counts: Counter[str] = Counter()
+    for item in diagnostics:
+        counts["baselined" if stable_fingerprint(item) in held else item.severity.name.lower()] += 1
+    return {key: counts[key] for key in ("error", "warning", "info", "baselined")}
+
+
+def counted(count: int, noun: str) -> str:
+    """Return `count` and `noun`, plural unless the count is 1: `1 error`, `2 errors`, `3 info`."""
+    return f"{count} {noun}" if count == 1 or noun == "info" else f"{count} {noun}s"
+
+
 def diagnostic_json(value: Diagnostic, *, baselined: bool = False) -> dict[str, object]:
     """Return one diagnostic as the envelope lists it, with its registered severity and suggestion.
 
@@ -177,14 +197,15 @@ def json_envelope(
     Without `exit_code`, the run exits 1 when a diagnostic is an error and 0 otherwise;
     without `status`, it follows the exit code: `ok`, `changes` for 2, else `error`. A callable
     `data` is called here, once the run's baseline is matched, for a payload that counts what
-    the baseline suppressed.
+    the baseline suppressed. The summary counts as `summary_counts` does: a baselined diagnostic
+    under `baselined`, and under no severity.
     """
     if callable(data):
         data = data()
     baselined = baselined_fingerprints()
     marked = [(diagnostic, stable_fingerprint(diagnostic) in baselined) for diagnostic in diagnostics]
-    errors = diagnostics.count(Severity.ERROR)
-    resolved_exit = exit_code if exit_code is not None else ERROR if errors else OK
+    counts = summary_counts(diagnostics, baselined)
+    resolved_exit = exit_code if exit_code is not None else ERROR if counts["error"] else OK
     return {
         "tool": "sst",
         "sst_version": VERSION,
@@ -196,12 +217,12 @@ def json_envelope(
         "invocation": _invocation(command),
         "diagnostics": [diagnostic_json(diagnostic, baselined=flag) for diagnostic, flag in marked],
         "summary": {
-            "error": errors,
-            "warning": diagnostics.count(Severity.WARNING),
-            "info": diagnostics.count(Severity.INFO),
+            "error": counts["error"],
+            "warning": counts["warning"],
+            "info": counts["info"],
             "promoted": promoted,
             "suppressed_cascade": sum(diagnostic.cascaded for diagnostic in diagnostics),
-            "baselined": sum(flag for _, flag in marked),
+            "baselined": counts["baselined"],
         },
         "data": data if data is not None else {},
     }
@@ -451,13 +472,13 @@ def _render(diagnostic: Diagnostic, policy: RenderPolicy) -> str:
 
 
 def _summary(diagnostics: DiagnosticBag, baselined: frozenset[str], hidden: Counter[str]) -> str:
-    """Return the counts line: every severity, how many were baselined, and what was not shown."""
-    held = sum(stable_fingerprint(item) in baselined for item in diagnostics)
-    warnings = diagnostics.count(Severity.WARNING)
+    """Return the counts line: every severity, how many were baselined apart, and what was not shown."""
+    counts = summary_counts(diagnostics, baselined)
+    held = counts["baselined"]
     parts = [
-        f"{diagnostics.count(Severity.ERROR)} errors",
-        f"{warnings} warnings" + (f" ({held} baselined)" if held else ""),
-        f"{diagnostics.count(Severity.INFO)} info",
+        counted(counts["error"], "error"),
+        counted(counts["warning"], "warning") + (f" ({held} baselined)" if held else ""),
+        counted(counts["info"], "info"),
     ]
     flags = {"info": "--show-info", "baselined": "--show-baselined", "cascade": "--show-cascade"}
     notes = [f"{count} {reason} not shown ({flags[reason]})" for reason, count in hidden.items() if reason in flags]

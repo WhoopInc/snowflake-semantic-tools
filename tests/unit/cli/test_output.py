@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -10,6 +11,16 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools import __version__
 from snowflake_semantic_tools.cli.main import cli
+from snowflake_semantic_tools.cli.output import (
+    RenderPolicy,
+    counted,
+    json_envelope,
+    render_diagnostics,
+    resolve_invocation,
+    use_render_policy,
+)
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics.baseline import stable_fingerprint
 from tests.helpers.cli_projects import common, invoke_with_port
 from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
@@ -69,6 +80,64 @@ def test_validate_json_emits_one_v2_envelope(tmp_path: Path) -> None:
         "suppressed_cascade": 0,
         "baselined": 0,
     }
+
+
+def _promoted_warning(name: str = "lookup") -> Diagnostic:
+    found = D("SST-CFG018", subject="tool_group:partner", group="partner", name=name)
+    return dataclasses.replace(found, severity=Severity.ERROR)
+
+
+def _summary_line(tmp_path: Path, capsys: pytest.CaptureFixture[str], *found: Diagnostic, held: int = 0) -> str:
+    """Render `found` with its first `held` diagnostics baselined, and return the counts line."""
+    baselined = frozenset(stable_fingerprint(item) for item in found[:held])
+    resolve_invocation(project_dir=tmp_path, config_file=None, target=None, baselined=baselined)
+    use_render_policy(RenderPolicy())
+    capsys.readouterr()
+    render_diagnostics(found)
+    return capsys.readouterr().err.splitlines()[-1]
+
+
+def test_one_baselined_promoted_warning_is_counted_apart_and_counts_are_pluralised(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    promoted = _promoted_warning()
+    assert _summary_line(tmp_path, capsys, promoted, held=1) == (
+        "0 errors; 0 warnings (1 baselined); 0 info; 1 baselined not shown (--show-baselined)"
+    )
+    assert _summary_line(tmp_path, capsys, promoted) == "1 error; 0 warnings; 0 info"
+    warning = D("SST-CFG018", subject="tool_group:partner", group="partner", name="other")
+    assert _summary_line(tmp_path, capsys, promoted, _promoted_warning("third"), warning) == (
+        "2 errors; 1 warning; 0 info"
+    )
+    assert [counted(count, noun) for count, noun in ((1, "warning"), (2, "warning"), (1, "info"), (3, "info"))] == [
+        "1 warning",
+        "2 warnings",
+        "1 info",
+        "3 info",
+    ]
+    resolve_invocation(project_dir=tmp_path, config_file=None, target=None, baselined=frozenset())
+
+
+def test_the_envelope_counts_a_baselined_diagnostic_under_baselined_and_under_no_severity(tmp_path: Path) -> None:
+    promoted = _promoted_warning()
+    resolve_invocation(project_dir=tmp_path, config_file=None, target=None, baselined=frozenset())
+    assert json_envelope("validate", DiagnosticBag((promoted,)))["exit_code"] == 1
+    resolve_invocation(
+        project_dir=tmp_path, config_file=None, target=None, baselined=frozenset((stable_fingerprint(promoted),))
+    )
+    envelope = json_envelope("validate", DiagnosticBag((promoted,)), promoted=1)
+    assert (envelope["exit_code"], envelope["status"]) == (0, "ok")
+    assert envelope["summary"] == {
+        "error": 0,
+        "warning": 0,
+        "info": 0,
+        "promoted": 1,
+        "suppressed_cascade": 0,
+        "baselined": 1,
+    }
+    listed = envelope["diagnostics"]
+    assert isinstance(listed, list) and [(item["baselined"], item["severity"]) for item in listed] == [(True, "error")]
+    resolve_invocation(project_dir=tmp_path, config_file=None, target=None, baselined=frozenset())
 
 
 def test_human_output_and_usage_branches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
