@@ -20,48 +20,73 @@ from snowflake_semantic_tools.domain.render.reference_docs import CommandDoc, Op
 # and the generated CLI reference say the same thing everywhere. A command whose
 # flag means something narrower overrides it in `_COMMAND_OPTION_HELP`.
 _OPTION_HELP: Mapping[str, str] = {
-    "--project-dir": "Project root, else `$SST_PROJECT_DIR`: where `sst_config.yml` and `dbt_project.yml` are.",
+    "--project-dir": (
+        "Project root, else `$SST_PROJECT_DIR`, else the current directory: where `sst_config.yml` and "
+        "`dbt_project.yml` are."
+    ),
     "--config": "Read this configuration file, else `$SST_CONFIG`, instead of discovering one in the project.",
-    "--profiles-dir": "Directory of `profiles.yml`, else `$SST_PROFILES_DIR`, then `$DBT_PROFILES_DIR`.",
+    "--profiles-dir": (
+        "Look for `profiles.yml` here first, else in `$SST_PROFILES_DIR`; then in `$DBT_PROFILES_DIR`, the "
+        "project root, and `~/.dbt`. The first that has one wins."
+    ),
     "--target": "Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target.",
     "--manifest": "Read this dbt `manifest.json` instead of running `dbt parse`.",
     "--break-stale-lock": (
         "Take over the run lock only once the run holding it has expired (SST-APL010); a live lock "
         "is refused all the same (SST-APL011)."
     ),
-    "--output": "`table` (default), `plain`, or `json`; `list` also takes `yaml` and `csv`. Else `$SST_OUTPUT`.",
-    "--verbose": "Add each diagnostic's phase and fingerprint. Cannot be combined with `--quiet`.",
-    "--quiet": "Show errors only.",
-    "--log-level": "Log threshold, else `$SST_LOG_LEVEL`; independent of `--verbose`.",
-    "--no-color": "No ANSI colour, as `$SST_NO_COLOR` or a non-empty `$NO_COLOR` also say.",
+    "--output": (
+        "`table` (default), `plain` (`table` without colour), or `json`, else `$SST_OUTPUT`; `list` also "
+        "takes `yaml` and `csv`. A format the command does not take is refused (SST-PRT106)."
+    ),
+    "--verbose": (
+        "Add each diagnostic's phase and fingerprint, and report each file the run's parse cache served "
+        "(SST-LOD201). Cannot be combined with `--quiet`."
+    ),
+    "--quiet": "Show error diagnostics only, with no counts line or progress lines; the report still prints.",
+    "--log-level": (
+        "Threshold for log records on stderr, such as the Snowflake connector's, else `$SST_LOG_LEVEL`, "
+        "else `info`. Independent of `--verbose`."
+    ),
+    "--no-color": (
+        "No ANSI colour, else `$SST_NO_COLOR`; a non-empty `$NO_COLOR` does the same. Only `table` "
+        "output on a terminal is ever coloured."
+    ),
     "--allow-unsupported-manifest-schema": "Read a dbt manifest of an unsupported schema version, for this run only.",
     "--allow-stale-manifest": "Accept a `--manifest` older than the files it describes, for this run only.",
-    "--baseline": "Baseline file of known warnings; `.sst/baseline.json` when it exists.",
+    "--baseline": (
+        "Read this baseline file of known warnings, which must exist, instead of the project's "
+        "`.sst/baseline.json`, read when it exists."
+    ),
     "--no-baseline": "Ignore the baseline for this run: every diagnostic is shown and blocks as declared.",
     "--show-baselined": "Show baselined diagnostics instead of counting them.",
     "--show-info": "Show info diagnostics instead of counting them.",
     "--show-cascade": "Show cascade diagnostics instead of counting them.",
-    "--show-all-occurrences": "Show every occurrence of a code that repeats four or more times.",
+    "--show-all-occurrences": "Show every occurrence of a code, not the first three of four or more.",
     "--select": (
-        "Only these artifacts: a name (globs allowed), `type:<type>`, `path:<glob>`, `state:<state>`, "
-        "or `<type>:<name>`."
+        "Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, "
+        "or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`."
     ),
     "--exclude": "Leave these artifacts out; same forms as `--select`.",
-    "--state": "Previous run's build directory, else `$SST_STATE_DIR`, for `state:` selectors.",
+    "--state": "Previous run's build directory, else `$SST_STATE_DIR`, whose `manifest.json` `state:` selectors read.",
     "--defer-target": (
-        "Resolve dbt objects to this `profiles.yml` target's relations while publishing to `--target`, "
+        "The `profiles.yml` target whose relations dbt objects resolve to, while publishing to `--target`; "
         "else `$SST_DEFER_TARGET`, else `defer.target`."
     ),
-    "--no-defer": "Defer to no target, whatever `defer.target` says.",
+    "--no-defer": "Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say.",
     "--threads": (
         "Snowflake sessions to work on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, "
         "else 1. Output is the same for any count."
     ),
     "--database": "Read from this database instead of the target's; never where an artifact is published.",
     "--no-detailed-exitcode": "Exit 0 instead of 2 when there are differences.",
-    "--strict": "Promote every warning to an error, else `$SST_STRICT`. Defaults to `validation.strict`.",
+    "--strict": (
+        "Promote every warning to an error; `--no-strict` promotes none. Else `$SST_STRICT`, else "
+        "`validation.strict`, off when unset. A warning about an artifact the selection leaves out stays one."
+    ),
     "--snowflake-syntax-check": (
-        "Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`."
+        "Connects: compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`, "
+        "on when unset."
     ),
     "--prune": (
         "Also act on managed artifacts whose source was deleted, as far as each type "
@@ -71,11 +96,11 @@ _OPTION_HELP: Mapping[str, str] = {
         "Go ahead with every artifact that has no errors and depends on nothing that does; "
         "still exits 1 while errors remain. Cannot be combined with `--prune`."
     ),
-    "--sql-out": "Also write the statements for each change into this directory.",
+    "--sql-out": "Write each create's and update's statements into this directory instead of `target/sst/sql`.",
     "--fail-fast": "Stop at the first failure instead of continuing.",
     "--no-validate": (
         "Skip validation: no cycle check, connected check, or strict promotion. Only when `sst validate` "
-        "already ran on the same tree; compile errors still stop the run."
+        "already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`."
     ),
     "--dbt": "Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`.",
     "--semantic": "Read the semantic models from this directory instead of `project.semantic_models_dir`.",
@@ -91,8 +116,8 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "else 1. The plan is the same for any count."
     ),
     ("sst test", "--threads"): (
-        "Smoke probes, and evals no `concurrency` setting paces, run at once, 1 to 16, else `$SST_THREADS`, "
-        "else `generation.threads`, else 1."
+        "Smoke probes, and eval runs neither `evals.+concurrency` nor an eval's `run.concurrency` paces, "
+        "run at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1."
     ),
     ("sst compile", "--database"): "Resolve refs against this database instead of the target's.",
     ("sst compile", "--emit-agent-spec"): "Write each agent's rendered specification into this directory.",
@@ -102,7 +127,10 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst init", "--check-only"): "Report whether the setup is complete; create nothing.",
     ("sst clean", "--dry-run"): "List what would be removed; remove nothing.",
     ("sst docs", "--output-dir"): "Write the pages here instead of `docs/reference`.",
-    ("sst list", "--long"): "Every detail column, including each artifact's source files.",
+    ("sst list", "--long"): (
+        "Also print each artifact's applied fingerprint and published version; `json`, `yaml` and `csv` "
+        "also carry its source files."
+    ),
     ("sst apply", "--plan"): "Apply this saved plan. It must still match the compiled project.",
     ("sst apply", "--yes"): "Apply without asking for confirmation.",
     ("sst apply", "--temporary"): (
@@ -145,29 +173,52 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst plan", "--use-cached-state"): (
         "Plan from the observation an earlier `sst plan` recorded in `--state` instead of reading "
         "the target, without connecting; the plan says what the target held then, and its age is "
-        "reported. Requires `--state`; composite artifacts are blocked."
+        "reported. Requires `--state`; refused with `--snowflake-syntax-check` or `--capture-prior`; composite "
+        "artifacts are blocked."
     ),
-    ("sst plan", "--full"): "Also print, under each update, the properties it changes on the object.",
+    ("sst plan", "--full"): (
+        "Also print, under each update, the properties it changes on the object, and the definition it "
+        "replaces when `--capture-prior` read it."
+    ),
     ("sst plan", "--names-only"): "Print the name of each changed artifact, one per line, and nothing else.",
     ("sst plan", "--no-detailed-exitcode"): "Exit 0 when changes are pending, instead of 2.",
     ("sst plan", "--state"): (
-        "Directory holding the previous run's `manifest.json`, which `--select state:modified` compares with."
+        "Previous run's build directory, else `$SST_STATE_DIR`: `state:` selectors compare with its "
+        "`manifest.json`, and `--use-cached-state` plans from its `observation.<target>.json`."
     ),
     ("sst test", "--suite"): (
         "Repeatable. `golden` compares outputs with committed goldens offline; `smoke` probes deployed "
         "objects; `evals` runs agent evaluations. Defaults to every suite that applies."
     ),
-    ("sst test", "--golden-dir"): "Directory of the semantic view DDL goldens; the other goldens sit beside it.",
+    ("sst test", "--golden-dir"): (
+        "Directory of the semantic view DDL goldens, taken from the project directory when relative; the "
+        "other types' goldens sit in directories beside it."
+    ),
     ("sst test", "--update-golden"): (
         "Rewrite each golden the current output no longer equals, and create missing ones; runs the "
-        "golden suite only. Refused with `--suite smoke` or `evals`, and whenever `$CI` is set."
+        "golden suite only. Refused with `--suite smoke` or `evals`, and when `$CI` is set to anything but "
+        "empty, `0`, `false` or `no`."
     ),
-    ("sst test", "--capture-baseline"): "Record this eval run as the new baseline. Requires `--reason`.",
-    ("sst test", "--reason"): "Why the baseline is changing; stored with it.",
-    ("sst test", "--fail-fast"): "Stop at the first failing golden, probe, or eval.",
+    ("sst test", "--capture-baseline"): (
+        "Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires `--reason`."
+    ),
+    ("sst test", "--reason"): "Why the baseline is changing; stored with it. Requires `--capture-baseline`.",
+    ("sst test", "--fail-fast"): (
+        "Stop the smoke or eval suite at its first failing probe or eval, running them one at a time, and "
+        "run no suite after one that fails. The golden suite always compares every golden."
+    ),
     ("sst validate", "--verify-schema"): "Connects: confirm each column a semantic view reads exists in the warehouse.",
     ("sst list", "--no-manifest"): "Compile the project's files in memory instead of reading the compiled manifest.",
-    ("sst validate", "--show-info"): "Also report which registered type owns each semantic-model file.",
+    ("sst list", "--dbt"): (
+        "With `--no-manifest`, read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`."
+    ),
+    ("sst list", "--semantic"): (
+        "With `--no-manifest`, read the semantic models from this directory instead of `project.semantic_models_dir`."
+    ),
+    ("sst validate", "--show-info"): (
+        "Show info diagnostics instead of counting them, among them which registered type owns each "
+        "semantic-model file."
+    ),
     ("sst baseline add", "--all-warnings"): "Baseline every current warning; prints the count and needs `--yes`.",
     ("sst baseline add", "--expires-in"): (
         "Days, 1 to 365, until a new baseline expires; an existing one keeps its date until `renew`."

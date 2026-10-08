@@ -137,11 +137,12 @@ def plan(
     """Observe live Snowflake state and compute a non-writing plan.
 
     Exit 0 with nothing to change, 2 with changes pending, and 1 on an error or a blocked change.
-    `--threads` observes on that many sessions at once; the plan is the same for any count.
+    The plan is saved as `target/sst/plan.json` unless --plan-out or --no-plan-out says
+    otherwise, and each create's and update's statements go to `target/sst/sql`, or --sql-out.
     `--names-only` prints only the name of each changed artifact, and wins over `--full`.
-    What the plan read of the target is recorded beside the saved plan, as
-    `observation.<target>.json`; `--use-cached-state` plans from the one `--state` holds
-    instead, without connecting, and reports how old it is.
+    What the plan read of the target is recorded as `target/sst/observation.<target>.json`;
+    `--use-cached-state` plans from the one `--state` holds instead, without connecting, and
+    reports how old it is.
     """
     request = PlanRequest(
         paths,

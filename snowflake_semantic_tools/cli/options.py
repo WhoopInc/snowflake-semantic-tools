@@ -61,7 +61,7 @@ def selection_options() -> Decorator:
 
 
 def state_option() -> Decorator:
-    """`--state`, else `$SST_STATE_DIR`: the directory holding a previous run's `manifest.json`."""
+    """`--state`, else `$SST_STATE_DIR`: a previous run's build directory, holding its `manifest.json`."""
     return click.option(
         "--state", "state_dir", type=click.Path(file_okay=False, path_type=Path), envvar="SST_STATE_DIR"
     )
@@ -99,7 +99,7 @@ def defer_target_option() -> Decorator:
 
 
 def sql_out_option() -> Decorator:
-    """`--sql-out`, a directory for each change's statements."""
+    """`--sql-out`, the directory for each change's statements in place of `target/sst/sql`."""
     return click.option("--sql-out", type=click.Path(file_okay=False, path_type=Path))
 
 

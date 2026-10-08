@@ -22,13 +22,15 @@ def migrate(ctx: click.Context) -> None:
 
 
 @migrate.command(cls=SstCommand, name="refs")
-@click.option("--write", "write_files", is_flag=True, help="Rewrite files in place instead of reporting.")
+@click.option("--write", "write_files", is_flag=True, help="Rewrite the files in place; without it, only report.")
 @command_body("migrate refs")
 def migrate_refs_command(paths: ProjectPaths, write_files: bool) -> CommandResult:
     """Rewrite legacy table()/column() globals to ref(), and label boolean filters.
 
-    Dry-run by default: exit 2 when rewrites are pending, 0 when there are none,
-    and 1 when a table() call sits where no rewrite is safe.
+    Reads every YAML file under `project.semantic_models_dir`. Dry-run by default: exit 2
+    when rewrites are pending, 0 when there are none, and 1 when a table() call sits where
+    no rewrite is safe, each such call named on stderr. With --write the files are
+    rewritten, and the command exits 0, or 1 while such a call remains.
     """
     project_dir = paths.project_dir
     files = semantic_files(project_dir, semantic_models_dir(paths))

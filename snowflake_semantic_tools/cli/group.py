@@ -224,7 +224,17 @@ def forward_globals(ctx: click.Context, group: click.Group, values: dict[str, An
 @group_global_options()
 @click.pass_context
 def cli(ctx: click.Context, /, **params: Any) -> None:
-    """Snowflake Semantic Tools 1.0."""
+    """Snowflake Semantic Tools 1.0.
+
+    A global option goes before the command, after it, or both: a value written after the
+    command wins, then one written before it, then its environment variable, then the
+    built-in default. The global options read SST_OUTPUT, SST_LOG_LEVEL, SST_NO_COLOR,
+    SST_PROJECT_DIR, SST_CONFIG and SST_PROFILES_DIR; the commands whose help names them read
+    SST_TARGET, SST_DEFER_TARGET, SST_STATE_DIR, SST_STRICT and SST_THREADS. A boolean
+    variable takes 1, true, yes, on, or their negations, and a value that does not parse
+    exits 4 before anything runs. NO_COLOR and DBT_PROFILES_DIR are honoured, and CI set to
+    anything but empty, 0, false, or no refuses `sst test --update-golden`.
+    """
     forward_globals(ctx, cli, forwarded(ctx, params))
 
 
