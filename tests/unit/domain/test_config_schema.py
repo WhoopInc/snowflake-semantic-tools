@@ -241,3 +241,12 @@ def test_only_legal_severity_overrides_take_effect() -> None:
         ("SST-CFG003", "config:diagnostics.severity_overrides.SST-NOPE01"),
     ]
     assert severity_overrides({"diagnostics": []}) == {}
+
+
+def test_key_summaries_describe_what_the_renderer_and_the_stage_channel_do() -> None:
+    # Tags render inline in the view's CREATE, not in a statement after it.
+    tags = CONFIG_KEYS["semantic_views.+tags"].summary
+    assert "WITH TAG" in tags and "after the CREATE" not in tags
+    # A profile publishes command and plugin trees beside the others.
+    layout = CONFIG_KEYS["skills.stage.+layout"].summary
+    assert all(f"`{tree}/`" in layout for tree in ("skills", "prompts", "mcp", "hooks", "commands", "plugins"))

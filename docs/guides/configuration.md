@@ -135,8 +135,8 @@ agent's schema, and the unprefixed keys of `skills:` are its `catalog`,
 | `generation` | How many Snowflake sessions `plan`, `apply`, and `test` use, and how long one statement may run. |
 | `dbt` | Whether SST runs dbt, which command writes the manifest, and which manifest schema versions it reads. |
 | `defer` | The target whose relations dbt objects resolve to while publishing to `--target`. |
-| `vars` | Values `{{ var() }}` substitutes, in authored files and in this one. |
-| `tags` | Tags `{{ tag() }}` resolves, by `fqn:` or by `default_prefix`. |
+| `vars` | Values `{{ var() }}` substitutes, in authored files and in this one, and in an agent's `extension()` version. |
+| `tags` | Tags `{{ tag() }}` resolves, by `fqn:` or by `default_prefix`; an entry with neither, or a dotted key without `fqn:`, is an error (`SST-CFG036`). |
 | `state` | Where the state table lives (default `SST_STATE` in the target's database and schema). |
 | `semantic_views`, `tools`, `agents` | Location and defaults for each type. |
 | `evals` | Defaults for evaluations; never a location, because evals publish into their agent's schema. |

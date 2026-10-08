@@ -64,7 +64,12 @@ spec:
 alias: promoted
 ```
 
-`name:` is the only required key (`SST-PRS002`). The other top-level keys:
+`name:` is the only required key (`SST-PRS002`). A key SST does not model, in
+any block of the file but `meta` and the passthrough blocks, is a warning
+(`SST-PRS004`) and is not rendered; put such keys under `passthrough`. One a
+few edits from a key SST does model, such as `warehosue:`, is an error
+(`SST-PRS022`). An agent file that cannot be read is `SST-LOD018`. The other
+top-level keys:
 
 | Key | Meaning |
 |---|---|
@@ -73,7 +78,7 @@ alias: promoted
 | `spec` | The Cortex Agent specification, below. |
 | `alias` | The version alias SST moves to each new version. |
 | `secure` | Published with `ALTER AGENT ... SET SECURE`; unset takes `agents.+secure`, else false. |
-| `enabled` | `false` leaves the agent out of the compiled project, as `agents.+enabled: false` does for a folder. |
+| `enabled` | `false` leaves the agent out of the compiled project. Unset, it takes `agents.+enabled` as the folder routes over the agent resolve it, so `enabled: true` keeps an agent under a route that sets `+enabled: false`. |
 | `deprecated` | Retires the agent; a deprecated agent that still has an alias is an error (`SST-VAL550`). |
 | `tags` | A list of `{name, value}` pairs, applied with `ALTER AGENT ... SET TAG`. A tag name is an identifier or a qualified name (`SST-PRS005`) of a tag object that already exists. Unset takes `agents.+tags`. |
 | `meta` | Free-form metadata. It is not published, but changing it changes the agent's fingerprint, so the next plan updates the agent. |
@@ -111,7 +116,8 @@ not compile; write it as `instructions: {response: Answer briefly.}`.
 - `orchestration` and `response` are each inline text or exactly one
   `{{ file('<path>') }}` call that is the whole value, which inlines a file so
   long instructions live in Markdown. Text and a template mixed in one value is
-  an error (`SST-REF003`).
+  an error (`SST-REF003`), and so is a value that is not a string
+  (`SST-PRS003`).
 - A `file()` path resolves against the agent's folder and must stay inside the
   project (`SST-REF027`). A missing file is `SST-REF014`, an unreadable one
   `SST-LOD018`, and one holding only whitespace `SST-LOD019`. Trailing
@@ -198,7 +204,9 @@ tools:
 
 - **`define:`** entries are objects SST publishes and owns: Cortex Search
   services, procedures, functions, and stages. They publish into `tools.+database`
-  / `tools.+schema` before any agent that uses them.
+  / `tools.+schema`, or their group's `tools.<group>` override, before any agent
+  that uses them, and an agent's tool calls them there, wherever the agent
+  publishes.
 - **`reference:`** entries are objects someone else owns. SST never creates or
   changes them; `relations:` maps each target to the object's name. A target the
   map does not cover is an error for any agent that uses the tool
@@ -285,8 +293,9 @@ An agent loads skills published as Cortex Extensions:
 - **`{{ extension('<name>') }}`** names an extension another project publishes.
   It resolves through `skills.extensions` in `sst_config.yml` (`SST-REF013`;
   one this project publishes is `SST-REF037`) and must pin a version, such as
-  `VERSION$3`; no version, or `LIVE`, is refused (`SST-VAL538`), and so is
-  `{{ var('sha_version') }}` (`SST-VAL839`).
+  `VERSION$3`, or `{{ var('<name>') }}` naming a value under `vars:`; no
+  version, a `var()` that `vars:` gives no value, or `LIVE` is refused
+  (`SST-VAL538`), and so is `{{ var('sha_version') }}` (`SST-VAL839`).
 - A `STAGE` source is an error (`SST-VAL539`): a stage path can change with no
   new version.
 - Two entries that load a skill of one name are a warning (`SST-VAL541`).
@@ -297,7 +306,8 @@ covers how skill versions are named.
 
 ## Publishing
 
-`sst plan` shows each agent as a create, an update, or unchanged. Apply
+`sst plan` shows each agent as a create, an update, or unchanged, and its
+summary counts an agent's updates as `update`, since each adds a version. Apply
 uploads the rendered spec to `@<stage>/<agent>/<commit>/agent_spec.yaml` under
 `apply.agent_spec_stage` (default stage `AGENT_SPECS`, in the target's database
 and schema), then:

@@ -246,3 +246,85 @@ def test_agents_in_grouping_folders_load_with_their_folder_and_routes_are_checke
     # Without an agents folder there are no agents, and every route names a missing folder.
     [missing] = load_agents(tmp_path, agents_dir="bots", config=config)[1]
     assert (missing.code, missing.subject) == ("SST-CFG041", "config_route:finance")
+
+
+def test_an_agents_own_enabled_wins_over_its_routes_and_an_unset_one_takes_them(tmp_path: Path) -> None:
+    for folder, extra in (("retired/kept", "enabled: true\n"), ("retired/gone", ""), ("live/dark", "enabled: false\n")):
+        (tmp_path / "agents" / folder).mkdir(parents=True)
+        name = folder.rsplit("/")[-1]
+        (tmp_path / "agents" / folder / "agent.yml").write_text(f"name: {name}\n{extra}", encoding="utf-8")
+    config = {"agents": {"retired": {"+enabled": False}, "live": {"+enabled": True}}}
+
+    agents, _ = load_agents(tmp_path, config=config)
+
+    assert {agent.name: agent.enabled for agent in agents} == {"dark": False, "gone": False, "kept": True}
+    # Without a configuration, an agent that sets no `enabled` is enabled.
+    assert all(agent.enabled for agent in load_agents(tmp_path)[0] if agent.name != "dark")
+
+
+def test_keys_an_agent_file_does_not_model_are_reported_and_a_near_miss_is_a_typo(tmp_path: Path) -> None:
+    text = (
+        "name: sales_agent\n"
+        "owner: data\n"
+        "profile:\n  display_name: Sales\n  colour: red\n"
+        "spec:\n"
+        "  orchestration:\n    budget:\n      seconds: 60\n      minutes: 1\n"
+        "  tools:\n"
+        "    - type: cortex_analyst_text_to_sql\n"
+        "      semantic_view: \"{{ semantic_view('sales') }}\"\n"
+        "      description: Sales.\n"
+        "      warehosue: WH\n"
+        "  skills:\n"
+        "    - name: s\n      source: {type: CORTEX_EXTENSION, path: x, pin: 1}\n"
+        "meta:\n  anything: goes\n"
+        "evals:\n  dataset: d.yml\n  config: c.yml\n  extra: 1\n"
+    )
+    agents, diagnostics = load_agents(_agent_file(tmp_path, text))
+
+    assert len(agents) == 1
+    found = sorted((item.code, item.message, item.subject) for item in diagnostics)
+    file = "agents/sales/agent.yml"
+    assert found == [
+        ("SST-PRS004", f"{file}: unknown field 'evals.extra'", "agent:sales_agent"),
+        ("SST-PRS004", f"{file}: unknown field 'owner'", "agent:sales_agent"),
+        ("SST-PRS004", f"{file}: unknown field 'spec.orchestration.budget.minutes'", "agent:sales_agent"),
+        ("SST-PRS004", f"{file}: unknown field 'spec.skills[0].source.pin'", "agent:sales_agent"),
+        (
+            "SST-PRS022",
+            f"{file}: unknown field 'profile.colour'; did you mean 'profile.color'?",
+            "agent:sales_agent",
+        ),
+        (
+            "SST-PRS022",
+            f"{file}: unknown field 'spec.tools[0].warehosue'; did you mean 'spec.tools[0].warehouse'?",
+            "agent:sales_agent",
+        ),
+    ]
+    lines = {item.message.split("'")[1]: item.origin.line for item in diagnostics if item.origin is not None}
+    assert (lines["spec.tools[0].warehosue"], lines["owner"]) == (15, 2)
+
+
+def test_an_instruction_that_is_not_a_string_is_refused_rather_than_dropped(tmp_path: Path) -> None:
+    project = _agent_file(tmp_path, "name: sales_agent\nspec:\n  instructions:\n    response: [one, two]\n")
+
+    agents, diagnostics = load_agents(project)
+
+    [diagnostic] = diagnostics
+    assert (diagnostic.code, diagnostic.subject) == ("SST-PRS003", "agent:sales_agent")
+    assert diagnostic.message == "agents/sales/agent.yml: 'spec.instructions.response' expects string, found list"
+    assert agents[0].response_instructions is None
+
+
+def test_an_agent_file_that_cannot_be_read_is_reported_as_unreadable(tmp_path: Path) -> None:
+    project = _agent_file(tmp_path, "name: sales_agent\n")
+    path = project / "agents" / "sales" / "agent.yml"
+    path.chmod(0)
+    try:
+        agents, diagnostics = load_agents(project)
+    finally:
+        path.chmod(0o644)
+
+    assert agents == ()
+    [diagnostic] = diagnostics
+    assert diagnostic.code == "SST-LOD018"
+    assert diagnostic.origin is not None and diagnostic.origin.file == "agents/sales/agent.yml"

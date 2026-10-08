@@ -52,7 +52,8 @@ def load_tool_catalog(
         `validate_tool_catalog`, sorted by origin file (none first), then code.
 
     Diagnostics:
-        SST-LOD004: when a file cannot be read, or a template in it or in an `on:` is malformed.
+        SST-LOD018: when a file cannot be read.
+        SST-LOD004: when a template in a file or in an `on:` is malformed.
         SST-LOD006: when a file is not UTF-8.
         SST-LOD001: when a file is not valid YAML.
         SST-LOD005: when a file writes a key twice in one mapping.
@@ -80,10 +81,8 @@ def load_tool_catalog(
         except ProjectError as exc:
             diagnostics.extend(exc.diagnostics)
             continue
-        except OSError as exc:
-            diagnostics.append(
-                D("SST-LOD004", file=relative, line=1, col=1, reason=str(exc), origin=Origin(relative, 1, 1))
-            )
+        except OSError:
+            diagnostics.append(D("SST-LOD018", file=relative, path=relative, origin=Origin(relative)))
             continue
         if not isinstance(loaded, dict):
             diagnostics.append(

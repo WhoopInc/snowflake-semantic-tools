@@ -171,8 +171,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         None,
         condition=(
             "a plan reports its counts by artifact type, as `view: 1 create, 0 replace, 2 noop, 0 "
-            "prune`; under `--use-cached-state` it first reports when the recorded observation was "
-            "taken and how old it is"
+            "prune`, counting updates as `update` for a type that alters or re-versions in place, "
+            "such as an agent; under `--use-cached-state` it first reports when the recorded "
+            "observation was taken and how old it is"
         ),
     ),
     spec(

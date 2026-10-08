@@ -349,7 +349,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "semantic_views.+tags",
         _L,
-        "Tags, as a view's own `tags:` lists them, for views that set none; applied after the CREATE.",
+        "Tags, as a view's own `tags:` lists them, for views that set none; rendered in the CREATE's WITH TAG.",
     ),
     _key(
         "semantic_views.+max_staleness",
@@ -517,7 +517,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "skills.stage.+layout",
         KeyKind.ENUM,
-        "Stage layout: content-addressed trees under `skills/`, `prompts/`, `mcp/`, and `hooks/`.",
+        "Stage layout: content-addressed trees under `skills/`, `prompts/`, `mcp/`, `hooks/`, `commands/`, "
+        "and `plugins/`.",
         default="by_type",
         choices=("by_type",),
         code="SST-VAL821",

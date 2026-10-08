@@ -63,7 +63,10 @@ semantic_views:
   `MAX_STALENESS = '300 seconds'`.
 - `tags:` entries each name one `{{ tag('<name>') }}` declared under `tags:` in
   `sst_config.yml` (`SST-REF028`) and a value of at most 256 characters
-  (`SST-PRS026`). They render inline as `WITH TAG (...)`.
+  (`SST-PRS026`). A tag is its entry's `fqn:`, else `default_prefix` and its
+  name in upper case; an entry with no `fqn:` is an error when the block sets
+  no `default_prefix` or its key is dotted (`SST-CFG036`). They render inline
+  as `WITH TAG (...)`.
 - A folder route's `+max_staleness` and `+tags` apply to a view that sets
   neither key; `+enabled` applies to one that does not set `enabled`.
 - `enabled: false` keeps a view in the project without publishing it.

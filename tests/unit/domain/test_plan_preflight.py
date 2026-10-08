@@ -104,7 +104,7 @@ def test_the_summary_counts_each_type_in_name_order() -> None:
     agent = Change("agent:a", "agent", Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS, None, None, (), 1)
     widened = replace(planned, changes=(*planned.changes, agent))
     assert plan_summary(widened) == (
-        "agent: 0 create, 1 replace, 0 noop, 0 prune; semantic_view: 1 create, 0 replace, 0 noop, 1 prune"
+        "agent: 0 create, 1 update, 0 noop, 0 prune; semantic_view: 1 create, 0 replace, 0 noop, 1 prune"
     )
 
 

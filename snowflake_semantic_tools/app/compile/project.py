@@ -240,11 +240,8 @@ class CompileProject:
         tool_catalog = self._inputs.tool_catalog()
         tools = _compile_tools(settings, tool_catalog, dbt)
         agent_models, agent_diagnostics = self._inputs.agents(agents_dir=settings.directory("agents_dir", "agents"))
-        enabled = tuple(
-            model
-            for model in agent_models
-            if model.enabled and settings.agent_block(model.folder).get("+enabled", True) is not False
-        )
+        # Loading resolves each agent's `enabled`: its own, else the folder routes' `+enabled`.
+        enabled = tuple(model for model in agent_models if model.enabled)
         context = self._agent_context(settings, enabled, semantic, tool_catalog, consumed, publishing, unpublished)
         routed = {model.folder: _routed_context(settings, context, model.folder) for model in enabled}
         agents = CompileAgents(enabled, agent_diagnostics, context, routed=routed).run_result()
@@ -306,7 +303,7 @@ class CompileProject:
             tool_catalog,
             agent_targets,
             consumed,
-            {"sha_version": self._inputs.git_sha()},
+            _skill_variables(settings.tree, self._inputs.git_sha()),
             database,
             schema,
             allowed_models=allowed_models,
@@ -317,8 +314,22 @@ class CompileProject:
             allow_unknown_keys=settings.block("snowflake").get("allow_unknown_keys") is not False,
             avatar_allowlist=_avatar_allowlist(settings.block("snowflake")),
             extra_tool_types=_extra_tool_types(settings.block("snowflake")),
+            tool_locations=MappingProxyType(_tool_locations(settings, tool_catalog)),
             **_agent_defaults(settings, defaults),
         )
+
+
+def _skill_variables(tree: Mapping[str, object], sha: str) -> dict[str, str]:
+    """Return what `{{ var('<name>') }}` in a skill's version reads: `vars:`, and `sha_version`.
+
+    `vars:` is read as configuration templates read it; `sha_version` is supplied by SST, and
+    `vars:` may not declare it. A variable declared with no value resolves to nothing, so a
+    version naming it is SST-VAL538.
+    """
+    declared = tree.get("vars")
+    entries = declared.items() if isinstance(declared, Mapping) else ()
+    variables = {str(key): str(value) for key, value in entries if value is not None}
+    return {**variables, "sha_version": sha}
 
 
 def _agent_defaults(settings: _Settings, block: Mapping[str, object]) -> dict[str, Any]:
@@ -506,31 +517,7 @@ def _compile_tools(settings: _Settings, catalog: ToolCatalog, dbt: DbtCatalog) -
     """
     defaults = settings.block("tools")
     by_name = {group.name.casefold(): group for group in catalog.groups}
-    overrides: dict[str, dict[str, object]] = {}
-    problems: list[Diagnostic] = []
-    for name, block in defaults.items():
-        if name.startswith("+") or not isinstance(block, dict):
-            continue
-        group = by_name.get(name.casefold())
-        reason = (
-            "is not declared"
-            if group is None
-            else "has no define: members, so the override would change nothing"
-            if not any(member.ownership is ToolOwnership.DEFINE for member in group.members)
-            else None
-        )
-        if reason is not None:
-            problems.append(
-                D(
-                    "SST-CFG020",
-                    origin=Origin(settings.file),
-                    subject=f"config:tools.{name}",
-                    group=name,
-                    reason=reason,
-                )
-            )
-        else:
-            overrides[name.casefold()] = {**defaults, **config_block(block)}
+    overrides, problems = _tool_overrides(settings, catalog)
 
     def keys(groups: tuple[ToolGroup, ...]) -> frozenset[str]:
         return frozenset(f"tool:{member.name.casefold()}" for group in groups for member in group.members)
@@ -561,6 +548,54 @@ def _compile_tools(settings: _Settings, catalog: ToolCatalog, dbt: DbtCatalog) -
         tuple(item for result in results for item in result.compiled),
         DiagnosticBag((*problems, *(item for result in results for item in result.diagnostics))),
     )
+
+
+def _tool_overrides(settings: _Settings, catalog: ToolCatalog) -> tuple[dict[str, dict[str, object]], list[Diagnostic]]:
+    """Read each `tools.<group>` override, merged over the `tools:` defaults, by casefolded group name.
+
+    Diagnostics:
+        SST-CFG020: an override names no declared group, or one with no `define:`.
+    """
+    defaults = settings.block("tools")
+    by_name = {group.name.casefold(): group for group in catalog.groups}
+    overrides: dict[str, dict[str, object]] = {}
+    problems: list[Diagnostic] = []
+    for name, block in defaults.items():
+        if name.startswith("+") or not isinstance(block, dict):
+            continue
+        group = by_name.get(name.casefold())
+        reason = (
+            "is not declared"
+            if group is None
+            else "has no define: members, so the override would change nothing"
+            if not any(member.ownership is ToolOwnership.DEFINE for member in group.members)
+            else None
+        )
+        if reason is not None:
+            problems.append(
+                D(
+                    "SST-CFG020",
+                    origin=Origin(settings.file),
+                    subject=f"config:tools.{name}",
+                    group=name,
+                    reason=reason,
+                )
+            )
+        else:
+            overrides[name.casefold()] = {**defaults, **config_block(block)}
+    return overrides, problems
+
+
+def _tool_locations(settings: _Settings, catalog: ToolCatalog) -> dict[str, tuple[str, str]]:
+    """Return where each `define:` member publishes, by casefolded name, as `_compile_tools` places it."""
+    defaults = settings.block("tools")
+    overrides, _ = _tool_overrides(settings, catalog)
+    return {
+        member.name.casefold(): settings.location(overrides.get(group.name.casefold(), defaults))
+        for group in catalog.groups
+        for member in group.members
+        if member.ownership is ToolOwnership.DEFINE
+    }
 
 
 def _tool_result(

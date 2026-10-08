@@ -23,10 +23,13 @@ class AgentCompileContext:
         agents: Every enabled agent's published name, by casefolded name, each in the location
             the folder routes over its file resolve to.
         extensions: `skills.extensions` entries, by casefolded name.
-        variables: What `{{ var('<name>') }}` resolves to in a skill's version.
+        variables: What `{{ var('<name>') }}` resolves to in a skill's version: the project's
+            `vars:`, and `sha_version`.
         database, schema: The `agents:` block's own location: where an agent `agents` does not
-            name publishes, and where a tool an agent names from a `define:` member is taken
-            to be.
+            name publishes, and where a `define:` member `tool_locations` does not place is
+            taken to be.
+        tool_locations: Each `define:` member's database and schema, by casefolded member
+            name: the `tools:` block's location, or its group's `tools.<group>` override.
         warehouse, query_timeout: The execution environment a tool gets when it sets none.
         orchestration_model, budget_seconds, budget_tokens, tool_not_accessible,
             analytical_search, alias: What an agent inherits when it sets none; an
@@ -68,10 +71,22 @@ class AgentCompileContext:
     tags: tuple[tuple[str, str], ...] = ()
     # `snowflake.tool_types`: tool types this project adds to the ones SST renders (SST-RND012).
     extra_tool_types: frozenset[str] = frozenset()
+    tool_locations: Mapping[str, tuple[str, str]] = field(default_factory=lambda: MappingProxyType({}))
 
     def agent_target(self, name: str) -> QualifiedName:
         """Return where the agent named `name` publishes: its entry in `agents`, else the block's location."""
         return self.agents.get(name.casefold()) or QualifiedName.from_parts(self.database, self.schema, name)
+
+    def tool_target(self, name: str) -> QualifiedName:
+        """Return where the `define:` member named `name` publishes.
+
+        That is its `tool_locations` entry, else the block's location.
+
+        Raises:
+            ValueError: a part of the name is not a valid identifier.
+        """
+        database, schema = self.tool_locations.get(name.casefold(), (self.database, self.schema))
+        return QualifiedName.from_parts(database, schema, name)
 
 
 @dataclass(frozen=True, slots=True)

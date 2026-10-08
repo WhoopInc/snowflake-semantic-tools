@@ -17,6 +17,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
     mapping,
     optional_int,
     optional_string,
+    unknown_keys,
 )
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.routes import folder_route_diagnostics
@@ -24,9 +25,12 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.agent import AgentEvalFiles, AgentModel, AgentProfile, AgentSkill, AgentTool
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosition
+from snowflake_semantic_tools.domain.model.config_schema import routed_block
+from snowflake_semantic_tools.domain.parse.fields import unknown_field
 from snowflake_semantic_tools.domain.parse.passthrough import AGENT_SPEC_KEYS, TOOL_SPEC_KEYS, passthrough_diagnostics
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
 from snowflake_semantic_tools.domain.resolve.calls import call_problem, malformed_field, syntax_problem
+from snowflake_semantic_tools.domain.validate.agent_tool import TOOL_KEYS
 
 _Block = TypeVar("_Block", bound=Mapping[Any, Any])
 
@@ -45,12 +49,14 @@ def load_agents(
 
     Args:
         config: The run's resolved configuration, whose `agents:` folder routes are checked
-            against the folders under `agents_dir`; None checks none.
+            against the folders under `agents_dir`, and whose `+enabled`, as the routes over an
+            agent's file resolve it, is the `enabled` of an agent that sets none; None checks no
+            route, and an agent that sets no `enabled` is enabled.
 
     Diagnostics:
         SST-CFG041: when an `agents:` folder route names no folder under `agents_dir`; reported
             first.
-        SST-LOD004: when a file cannot be read, or a template in it is malformed.
+        SST-LOD004: when a template in a file is malformed.
         SST-LOD006: when a file or an instruction sidecar is not UTF-8.
         SST-LOD001: when a file is not valid YAML.
         SST-LOD005: when a file writes a key twice in one mapping.
@@ -60,15 +66,18 @@ def load_agents(
         SST-PRS002: when the agent has no `name`, a tool no `type`, a skill no `source.type`, or
             `evals:` no `dataset` or `config`.
         SST-PRS003: when `evals:` is not a mapping, or one of its paths not a non-empty string;
-            when `spec.tools`, `spec.skills`, `tags` or the sample questions are not a list; or
+            when `spec.tools`, `spec.skills`, `tags` or the sample questions are not a list;
             when `spec.instructions`, `meta`, `spec.passthrough` or a tool's mapping field, such
-            as `filter`, is not a mapping. The agent is kept back, and the field reads as empty.
+            as `filter`, is not a mapping; or when an `orchestration` or `response` instruction
+            is not a string. The agent is kept back, and the field reads as empty.
+        SST-PRS004: when a block SST models holds a key it does not model.
+        SST-PRS022: when that key is within edit distance of one the block models.
         SST-PRS018: when a `spec.tools` or `spec.skills` entry has the wrong shape.
         SST-PRS118: when a sample question is not a mapping with a string `question`.
         SST-REF003: when an instruction holds templates other than one whole `{{ file() }}` call.
         SST-REF014: when an instruction's `{{ file() }}` names no file.
         SST-REF027: when a sidecar or an eval file resolves outside the project root.
-        SST-LOD018: when a sidecar cannot be read.
+        SST-LOD018: when a file or a sidecar cannot be read.
         SST-LOD019: when a sidecar holds only whitespace.
     """
     root = project_dir / agents_dir
@@ -85,19 +94,93 @@ def load_agents(
         except ProjectError as exc:
             diagnostics.extend(exc.diagnostics)
             continue
-        except OSError as exc:
-            diagnostics.append(D("SST-LOD004", file=relative, line=1, col=1, reason=str(exc)))
+        except OSError:
+            diagnostics.append(D("SST-LOD018", file=relative, path=relative, origin=Origin(relative)))
             continue
         agent, problems = _parse_agent(project_dir, path.parent, relative, dict(parsed.tree), parsed.line_index)
         diagnostics.extend((*parsed.diagnostics, *problems))
         if agent is not None:
             documented = _comment_mentions(raw, parsed.line_index.get(_TOKENS), "orchestration")
             folder = path.parent.relative_to(root).parts
-            agents.append(replace(agent, budget_tokens_documented=documented, folder=folder))
+            enabled = agent.enabled
+            # The agent's own `enabled` wins; only an unset one takes the folder routes' `+enabled`.
+            if "enabled" not in parsed.tree and config is not None:
+                enabled = routed_block(config.get("agents"), folder).get("+enabled", True) is not False
+            agents.append(replace(agent, budget_tokens_documented=documented, folder=folder, enabled=enabled))
     return tuple(agents), DiagnosticBag(diagnostics)
 
 
 _TOKENS: NodePath = ("spec", "orchestration", "budget", "tokens")
+
+# The keys each block of an agent file models, by the block's path; `*` stands for any list index.
+# `meta` and the passthrough blocks are free-form, and a tool's own mapping fields are its type's.
+_TOOL_KEYS = frozenset(key for keys in TOOL_KEYS.values() for key in keys)
+_AGENT_KEYS: Mapping[NodePath, frozenset[str]] = MappingProxyType(
+    {
+        (): frozenset(
+            ("name", "comment", "profile", "spec", "alias", "secure", "enabled", "deprecated", "tags", "meta", "evals")
+        ),
+        ("profile",): frozenset(("display_name", "avatar", "color")),
+        ("spec",): frozenset(("models", "orchestration", "instructions", "tools", "skills", "passthrough")),
+        ("spec", "models"): frozenset(("orchestration",)),
+        ("spec", "orchestration"): frozenset(("budget", "tool_not_accessible", "capabilities")),
+        ("spec", "orchestration", "budget"): frozenset(("seconds", "tokens")),
+        ("spec", "orchestration", "capabilities"): frozenset(("analytical_search",)),
+        ("spec", "instructions"): frozenset(("orchestration", "response", "sample_questions")),
+        ("spec", "tools", "*"): _TOOL_KEYS,
+        ("spec", "skills", "*"): frozenset(("name", "source")),
+        ("spec", "skills", "*", "source"): frozenset(("type", "path", "version")),
+        ("tags", "*"): frozenset(("name", "value")),
+        ("evals",): frozenset(("dataset", "config")),
+    }
+)
+
+
+def _unknown_keys(
+    relative: str, tree: Mapping[str, Any], lines: Mapping[NodePath, SourcePosition], subject: str
+) -> list[Diagnostic]:
+    """Report each key an agent file writes in a block SST models and that the block does not model.
+
+    A key is placed where it is written, else at the file's start. A tool's key is checked
+    against every key some tool type takes; one of another type's is SST-VAL516's to report.
+
+    Diagnostics:
+        SST-PRS022: the key is within edit distance of one the block models, which it names.
+        SST-PRS004: otherwise.
+    """
+    found: list[Diagnostic] = []
+    for pattern, known in _AGENT_KEYS.items():
+        for path, node in _nodes(tree, pattern):
+            for key in unknown_keys(node, known):
+                position = lines.get((*path, key))
+                origin = Origin(relative, position.line, position.col) if position else Origin(relative, 1, 1)
+                label = _label((*path, str(key)))
+                found.append(
+                    unknown_field(str(key), known, label=label, artifact=relative, origin=origin, subject=subject)
+                )
+    return found
+
+
+def _nodes(tree: Mapping[str, Any], pattern: NodePath) -> list[tuple[NodePath, Mapping[Any, Any]]]:
+    """Return each mapping at `pattern` in `tree`, with its path; `*` matches every index of a list."""
+    matched: list[tuple[NodePath, object]] = [((), tree)]
+    for part in pattern:
+        step: list[tuple[NodePath, object]] = []
+        for path, node in matched:
+            if part == "*" and isinstance(node, list):
+                step.extend(((*path, index), item) for index, item in enumerate(node))
+            elif part != "*" and isinstance(node, Mapping) and part in node:
+                step.append(((*path, part), node[part]))
+        matched = step
+    return [(path, node) for path, node in matched if isinstance(node, Mapping)]
+
+
+def _label(path: NodePath) -> str:
+    """Write a node path as a diagnostic names a field: `spec.tools[0].warehouse`."""
+    text = ""
+    for part in path:
+        text += f"[{part}]" if isinstance(part, int) else (f".{part}" if text else part)
+    return text
 
 
 def _comment_mentions(raw: bytes, position: SourcePosition | None, word: str) -> bool:
@@ -150,7 +233,16 @@ def _parse_agent(
     instructions = mapped(spec.get("instructions"), "spec.instructions")
     source_files = [relative]
     orchestration_text, response_text = (
-        _instruction(project_dir, agent_dir, relative, instructions.get(key), source_files, diagnostics)
+        _instruction(
+            project_dir,
+            agent_dir,
+            relative,
+            instructions.get(key),
+            source_files,
+            diagnostics,
+            field=key,
+            subject=subject,
+        )
         for key in ("orchestration", "response")
     )
     tools = _parse_tools(relative, listed(spec.get("tools"), "spec.tools"), lines, diagnostics, subject)
@@ -172,6 +264,7 @@ def _parse_agent(
         passthrough_diagnostics(f"{name}.spec", passthrough, AGENT_SPEC_KEYS, subject=subject, origin=origin)
     )
     eval_files = _parse_eval_files(project_dir, agent_dir, relative, tree.get("evals"), diagnostics)
+    diagnostics.extend(_unknown_keys(relative, tree, lines, subject))
     return (
         AgentModel(
             name=name,
@@ -295,16 +388,25 @@ def _instruction(
     value: object,
     source_files: list[str],
     diagnostics: list[Diagnostic],
+    *,
+    field: str,
+    subject: str,
 ) -> str | None:
     """Read one instruction: its text as written, or the `{{ file('<path>') }}` sidecar it names.
 
     A sidecar resolves against the agent's folder, is read as UTF-8 without trailing whitespace,
     and is appended to `source_files`. A malformed template is reported and the text kept.
 
+    Args:
+        field: The instruction's key under `spec.instructions`, which a value of the wrong
+            type is reported under.
+        subject: The agent's key, which a value of the wrong type is reported against.
+
     Returns:
         The instruction; None when `value` is not a string or a sidecar problem was reported.
 
     Diagnostics:
+        SST-PRS003: when the value is present and is not a string.
         SST-LOD004, SST-REF033, SST-REF003: when a template in the text does not parse.
         SST-REF003: when the text holds templates, and they are not one call that is all of it.
         SST-REF004, SST-REF041, SST-REF015: when that call is not one one-path `file()` call.
@@ -315,6 +417,18 @@ def _instruction(
         SST-LOD019: when the sidecar holds only whitespace.
     """
     if not isinstance(value, str):
+        if value is not None:
+            diagnostics.append(
+                D(
+                    "SST-PRS003",
+                    artifact=source_file,
+                    field=f"spec.instructions.{field}",
+                    expected="string",
+                    found=type(value).__name__,
+                    origin=Origin(source_file),
+                    subject=subject,
+                )
+            )
         return None
     try:
         calls = scan_template_calls(value)

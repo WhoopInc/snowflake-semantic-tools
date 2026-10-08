@@ -144,7 +144,7 @@ Defaults for semantic views, overridable per folder.
 | `semantic_views.+database` | string | the target database | Database for semantic views. |
 | `semantic_views.+schema` | string | the target schema | Schema for semantic views. |
 | `semantic_views.+enabled` | boolean | `true` | Default for views that do not set `enabled` themselves. |
-| `semantic_views.+tags` | list |  | Tags, as a view's own `tags:` lists them, for views that set none; applied after the CREATE. |
+| `semantic_views.+tags` | list |  | Tags, as a view's own `tags:` lists them, for views that set none; rendered in the CREATE's WITH TAG. |
 | `semantic_views.+max_staleness` | integer |  | Default `max_staleness`, in seconds, for views that set none; at least 120 (SST-CFG023). |
 | `semantic_views.<route>` | block |  | Folder route: overrides for views under that directory. |
 
@@ -214,7 +214,7 @@ Declare at least one of `catalog`, `stage`.
 | `skills.stage.+registry_table` | string | `PROFILE_REGISTRY` | Profile registry table. Desktop reads `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`. |
 | `skills.stage.+flatten` | boolean | `false` | Must be false: Desktop expects the authored nested layout. |
 | `skills.stage.+auto_compress` | boolean | `false` | Must be false: compressed uploads are invisible to Desktop. |
-| `skills.stage.+layout` | enum: `by_type` | `by_type` | Stage layout: content-addressed trees under `skills/`, `prompts/`, `mcp/`, and `hooks/`. |
+| `skills.stage.+layout` | enum: `by_type` | `by_type` | Stage layout: content-addressed trees under `skills/`, `prompts/`, `mcp/`, `hooks/`, `commands/`, and `plugins/`. |
 
 ## apply
 

@@ -558,7 +558,7 @@ Fix: fix the baselined diagnostics, or run sst baseline renew --reason
 
 `<block>: '<name>' cannot be qualified -- no fqn: and <reason>`
 
-Raised when a `skills.extensions` entry has no `fqn:` and either the block sets no `default_prefix` or the entry key contains a dot, which would render a four-part name; or the name it qualifies to does not parse.
+Raised when a `skills.extensions` entry, or a `tags` entry a view's `tag()` names, has no `fqn:` and either the block sets no `default_prefix` or the entry key contains a dot, which would render a four-part name; or the name it qualifies to does not parse.
 
 Fix: set fqn: on the entry, or set default_prefix on the block
 
@@ -3874,7 +3874,7 @@ Fix: pin the date, and keep the two sets distinct
 
 `agent '<artifact>': skill source '<name>' does not pin an immutable version`
 
-Raised when an agent's `extension()` skill source, for an extension the project consumes, pins no version or pins LIVE.
+Raised when an agent's `extension()` skill source, for an extension the project consumes, pins no version -- none is written, or its `{{ var() }}` names no value under `vars:` -- or pins LIVE.
 
 Fix: pin a committed version; `LIVE` and an omitted version are both refused HERE -- Snowflake refuses neither
 
@@ -6266,7 +6266,7 @@ Raised when the proposed definition matches the observation.
 
 `<value>`
 
-Raised when a plan reports its counts by artifact type, as `view: 1 create, 0 replace, 2 noop, 0 prune`; under `--use-cached-state` it first reports when the recorded observation was taken and how old it is.
+Raised when a plan reports its counts by artifact type, as `view: 1 create, 0 replace, 2 noop, 0 prune`, counting updates as `update` for a type that alters or re-versions in place, such as an agent; under `--use-cached-state` it first reports when the recorded observation was taken and how old it is.
 
 ### SST-PLN017
 

@@ -345,7 +345,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "agent '{artifact}': skill source '{name}' does not pin an immutable version",
         "pin a committed version; `LIVE` and an omitted version are both refused HERE -- Snowflake refuses neither",
         condition=(
-            "an agent's `extension()` skill source, for an extension the project consumes, pins no version or pins LIVE"
+            "an agent's `extension()` skill source, for an extension the project consumes, pins no version "
+            "-- none is written, or its `{{ var() }}` names no value under `vars:` -- or pins LIVE"
         ),
     ),
     spec(
