@@ -4858,7 +4858,7 @@
   "non_demotable": false,
   "title": "Description does not state when to invoke",
   "message": "{type} '{name}' description describes what it is, not when to use it",
-  "suggestion": "state the trigger condition",
+  "suggestion": "say when to use it, for example `Use when the question is about ...`",
   "precheck": "local"
  },
  {
@@ -4869,7 +4869,7 @@
   "non_demotable": false,
   "title": "Hardcoded fully-qualified name in an authored file",
   "message": "{type} '{name}': '{field}' hardcodes '{value}'",
-  "suggestion": "resolve the object through sst_config.yml or a reference: block",
+  "suggestion": "name the object through a template such as `{{ ref('<model>') }}`, or, in verified-query SQL, by its logical table name, so it resolves for each target",
   "precheck": "local"
  },
  {
@@ -4880,7 +4880,7 @@
   "non_demotable": false,
   "title": "Declared but referenced by nothing",
   "message": "{type} '{name}' is referenced by nothing",
-  "suggestion": "reference it, or delete it",
+  "suggestion": "add its tables to a view (a custom instruction: list it in a view's `custom_instructions:`), or delete it",
   "precheck": "local"
  },
  {
@@ -4924,7 +4924,7 @@
   "non_demotable": false,
   "title": "Declared value would be dropped or altered by the renderer",
   "message": "{type} '{name}': '{field}' would be {detail} by the renderer",
-  "suggestion": "emit the value unmodified, or stop declaring it",
+  "suggestion": "remove the value, or write it in a form the renderer keeps",
   "precheck": "local"
  },
  {
@@ -4935,7 +4935,7 @@
   "non_demotable": false,
   "title": "Deprecated key spelling in use",
   "message": "{type} '{name}' uses '{field}'; the current spelling is '{expected}'",
-  "suggestion": "rename the key",
+  "suggestion": "rename the key to the spelling the message names",
   "precheck": "local"
  },
  {
@@ -4968,7 +4968,7 @@
   "non_demotable": false,
   "title": "Deploy ordering violated",
   "message": "{type} '{name}' would publish before {blocker}, which it depends on",
-  "suggestion": "include the blocker in the selection, or break the dependency -- the ORDER is not authorable",
+  "suggestion": "add the dependency to `--select` or drop it from `--exclude`, or apply it first",
   "precheck": "local"
  },
  {
@@ -4979,7 +4979,7 @@
   "non_demotable": false,
   "title": "Referenced object is not published by this project or declared external",
   "message": "{type} '{name}' references '{value}', which is neither published nor declared",
-  "suggestion": "publish it, or declare it under reference:",
+  "suggestion": "enable the view, or point the tool at a view this project publishes",
   "precheck": "local"
  },
  {
@@ -5001,7 +5001,7 @@
   "non_demotable": false,
   "title": "Composed prose surface exceeds the configured budget",
   "message": "{artifact}: composed instruction surface is {size} chars, over {expected}",
-  "suggestion": "move bulk content into a referenced file",
+  "suggestion": "shorten the view's description or its custom instructions, or raise `validation.instruction_budget`",
   "precheck": "local"
  },
  {
@@ -5034,7 +5034,7 @@
   "non_demotable": false,
   "title": "Metric expression is not an aggregate",
   "message": "metric '{metric}' is table-scoped and its expr is not an aggregate",
-  "suggestion": "wrap the expression in an aggregate; if the expression is a WINDOW function, compute it in the dbt model -- do NOT make the metric derived",
+  "suggestion": "wrap the expression in an aggregate; for a window function, declare a `window:` block instead of writing OVER (...) -- do not make the metric derived",
   "precheck": "local"
  },
  {
@@ -5045,7 +5045,7 @@
   "non_demotable": true,
   "title": "Window function in a derived metric",
   "message": "window function {function} in derived metric '{metric}'",
-  "suggestion": "compute the window in the dbt model and aggregate the resulting column",
+  "suggestion": "make it a table-scoped metric of one table with a `window:` block, or compute the window in the dbt model and aggregate the resulting column",
   "precheck": "local"
  },
  {
@@ -5089,7 +5089,7 @@
   "non_demotable": true,
   "title": "Regular metric references a derived metric",
   "message": "metric '{metric}' is table-scoped and references derived metric '{other}'",
-  "suggestion": "make '{metric}' derived, or inline the expression",
+  "suggestion": "make this metric derived, or inline the derived metric's expression",
   "precheck": "local"
  },
  {
@@ -5100,7 +5100,7 @@
   "non_demotable": true,
   "title": "Regular metric references a non-additive metric",
   "message": "metric '{metric}' references '{other}', which declares non_additive_dimensions",
-  "suggestion": "remove the reference, or drop the non-additive declaration",
+  "suggestion": "make this metric derived, remove the reference, or drop the non-additive declaration",
   "precheck": "local"
  },
  {
@@ -5111,7 +5111,7 @@
   "non_demotable": false,
   "title": "Derived metric declares a table list",
   "message": "derived metric '{metric}' declares tables:",
-  "suggestion": "remove tables:; a derived metric is view-scoped by definition",
+  "suggestion": "remove `tables:`; a derived metric is view-scoped by definition",
   "precheck": "local"
  },
  {
@@ -5122,7 +5122,7 @@
   "non_demotable": false,
   "title": "Table-scoped metric declares no table list",
   "message": "metric '{metric}' is table-scoped and declares no tables:",
-  "suggestion": "declare tables: explicitly",
+  "suggestion": "declare `tables:` explicitly",
   "precheck": "local"
  },
  {
@@ -5133,7 +5133,7 @@
   "non_demotable": false,
   "title": "Metric expression contains an unwrapped bare identifier",
   "message": "metric '{metric}' expression contains bare identifier '{column}'",
-  "suggestion": "wrap it in {{ ref('<model>','<column>') }} so it is checked",
+  "suggestion": "wrap it in `{{ ref('<model>', '<column>') }}` so it is checked",
   "precheck": "local"
  },
  {
@@ -5155,7 +5155,7 @@
   "non_demotable": false,
   "title": "Metric expression touches a table outside the view",
   "message": "metric '{metric}' in {artifact} reaches {outside}",
-  "suggestion": "add the table to the view, or narrow the expression",
+  "suggestion": "add the model to the metric's `tables:`, or remove the reference",
   "precheck": "local"
  },
  {
@@ -5166,7 +5166,7 @@
   "non_demotable": false,
   "title": "using_relationships declared on a derived metric",
   "message": "derived metric '{metric}' declares using_relationships",
-  "suggestion": "remove using_relationships; derived metrics have no join path",
+  "suggestion": "remove `using_relationships`; derived metrics have no join path",
   "precheck": "local"
  },
  {
@@ -5177,7 +5177,7 @@
   "non_demotable": false,
   "title": "using_relationships does not start from the metric's table",
   "message": "metric '{metric}': relationship '{other}' does not start from '{name}'",
-  "suggestion": "name a relationship whose left side is the metric's table",
+  "suggestion": "name a relationship whose `left_table` is the metric's table",
   "precheck": "local"
  },
  {
@@ -5199,7 +5199,7 @@
   "non_demotable": false,
   "title": "using_relationships absent where the join path is ambiguous",
   "message": "metric '{metric}' has {count} paths to '{name}' and declares no using_relationships",
-  "suggestion": "declare using_relationships to pick the path",
+  "suggestion": "declare `using_relationships` to pick the path",
   "precheck": "local"
  },
  {
@@ -5210,7 +5210,7 @@
   "non_demotable": false,
   "title": "Snapshot-grain metric declares no non-additive dimensions",
   "message": "metric '{metric}' is over a snapshot grain and declares no non_additive_dimensions",
-  "suggestion": "declare the non-additive dimension, or confirm additivity",
+  "suggestion": "declare `non_additive_dimensions` over the snapshot date, or confirm the sum is additive",
   "precheck": "local"
  },
  {
@@ -5241,9 +5241,9 @@
   "number": 120,
   "severity": "WARNING",
   "non_demotable": false,
-  "title": "Metric declares a sort with no ordering semantics",
+  "title": "Metric declares a sort direction with no null order",
   "message": "metric '{metric}' declares sort_direction with no null_order",
-  "suggestion": "declare null_order explicitly",
+  "suggestion": "declare `null_order` explicitly",
   "precheck": "local"
  },
  {
@@ -5254,7 +5254,7 @@
   "non_demotable": false,
   "title": "access_modifier holds an unrecognised value",
   "message": "metric '{metric}': access_modifier is '{found}'",
-  "suggestion": "use public_access or private_access",
+  "suggestion": "use `public_access` or `private_access`",
   "precheck": "local"
  },
  {
@@ -5265,7 +5265,7 @@
   "non_demotable": false,
   "title": "visibility used instead of access_modifier",
   "message": "metric '{metric}' uses visibility; the current key is access_modifier",
-  "suggestion": "rename the key",
+  "suggestion": "rename `visibility` to `access_modifier`, with `public_access` or `private_access` as its value",
   "precheck": "local"
  },
  {
@@ -5276,7 +5276,7 @@
   "non_demotable": false,
   "title": "Metric-level restriction set not enforced before publish",
   "message": "metric '{metric}' would publish without the derived-metric restriction check",
-  "suggestion": "re-enable the restriction rules; Snowflake enforces none of them",
+  "suggestion": "report this as a bug",
   "precheck": "local"
  },
  {
@@ -5287,7 +5287,7 @@
   "non_demotable": false,
   "title": "Duplicate metric expression under two names",
   "message": "metric '{metric}' has the same expression as '{other}'",
-  "suggestion": "keep one, and synonym the other",
+  "suggestion": "keep one, and add the other's name to its `synonyms:`",
   "precheck": "local"
  },
  {
@@ -5320,7 +5320,7 @@
   "non_demotable": true,
   "title": "Window frame without an order",
   "message": "metric '{metric}': window frame '{value}' needs an order_by",
-  "suggestion": "add order_by, or remove the frame",
+  "suggestion": "add `order_by`, or remove the frame",
   "precheck": "local"
  },
  {
@@ -5353,7 +5353,7 @@
   "non_demotable": false,
   "title": "relationship_conditions is empty",
   "message": "relationship '{relationship}' declares no conditions",
-  "suggestion": "declare at least one condition",
+  "suggestion": "declare at least one condition under `relationship_conditions`",
   "precheck": "local"
  },
  {
@@ -5364,7 +5364,7 @@
   "non_demotable": true,
   "title": "A declared condition would not be emitted",
   "message": "relationship '{relationship}': condition '{value}' would be dropped from the DDL",
-  "suggestion": "fix the condition so it renders, or remove it",
+  "suggestion": "remove the extra condition: a relationship renders one range alone, or equalities with at most one ASOF comparison",
   "precheck": "local"
  },
  {
@@ -5375,7 +5375,7 @@
   "non_demotable": false,
   "title": "Relationship names a table not in the view",
   "message": "relationship '{relationship}' names '{name}', absent from {artifact}",
-  "suggestion": "add the table to the view, or drop the relationship",
+  "suggestion": "add the missing table to the view's `tables:`, or remove the relationship from the view's scope list",
   "precheck": "local"
  },
  {
@@ -5408,7 +5408,7 @@
   "non_demotable": false,
   "title": "Range relationship target declares no distinct_range",
   "message": "relationship '{relationship}' is a range join and '{name}' declares no distinct_range",
-  "suggestion": "declare distinct_range on the target table",
+  "suggestion": "declare `table_config.<model>.distinct_range` on the target table in the view",
   "precheck": "local"
  },
  {
@@ -5419,7 +5419,7 @@
   "non_demotable": false,
   "title": "Self-loop on a single logical table",
   "message": "relationship '{relationship}' joins '{name}' to itself",
-  "suggestion": "declare two logical names over the one model",
+  "suggestion": "remove the relationship; one model cannot appear under two logical names in 1.0, so model the second role as its own dbt model",
   "precheck": "local"
  },
  {
@@ -5430,7 +5430,7 @@
   "non_demotable": false,
   "title": "Equality join to a finer-grained table",
   "message": "relationship '{relationship}' joins '{a}' to '{b}', whose grain is finer than one row per key",
-  "suggestion": "use an asof join, or aggregate the target",
+  "suggestion": "join on every column of the target's key, or aggregate the target to the join grain",
   "precheck": "local"
  },
  {
@@ -5441,7 +5441,7 @@
   "non_demotable": false,
   "title": "Ambiguous join path between two tables",
   "message": "{artifact}: {count} paths between '{a}' and '{b}'",
-  "suggestion": "declare using_relationships on the affected metrics",
+  "suggestion": "declare `using_relationships` on the metrics that cross the pair",
   "precheck": "local"
  },
  {
@@ -5452,7 +5452,7 @@
   "non_demotable": false,
   "title": "Join target declares no key covering the join columns",
   "message": "relationship '{relationship}': '{name}' declares neither primary_key nor unique_keys over {value}",
-  "suggestion": "declare the key; it is the cheapest fan-out protection",
+  "suggestion": "join on a declared key of the target, or declare `unique_keys` over the join columns",
   "precheck": "local"
  },
  {
@@ -5463,7 +5463,7 @@
   "non_demotable": false,
   "title": "relationship_type or join_type declared",
   "message": "relationship '{relationship}' declares '{field}', which is not emitted",
-  "suggestion": "remove the key",
+  "suggestion": "remove the key; the join's direction is `left_table` (the many side) to `right_table` (the one side)",
   "precheck": "local"
  },
  {
@@ -5472,9 +5472,9 @@
   "number": 212,
   "severity": "WARNING",
   "non_demotable": false,
-  "title": "Declared cardinality disagrees with the data",
+  "title": "Relationship target repeats a join key in the data",
   "message": "relationship '{relationship}' declares cardinality {found}; the spot-check found {value}",
-  "suggestion": "correct the declaration, or fix the grain",
+  "suggestion": "fix the target's grain so each key appears once, or swap `left_table` and `right_table`",
   "precheck": "observe"
  },
  {
@@ -5507,7 +5507,7 @@
   "non_demotable": false,
   "title": "Relationship graph has a cycle that changes results",
   "message": "{artifact}: relationship cycle {cycle}",
-  "suggestion": "break the cycle, or split into role-playing tables",
+  "suggestion": "remove a relationship so the path no longer returns to its start",
   "precheck": "local"
  },
  {
@@ -5584,7 +5584,7 @@
   "non_demotable": false,
   "title": "Dimension declares a private access modifier",
   "message": "{artifact}: dimension '{member}' declares access_modifier '{value}'; SST does not support a private dimension",
-  "suggestion": "remove the key",
+  "suggestion": "remove `access_modifier` from the column",
   "precheck": "local"
  },
  {
@@ -5606,7 +5606,7 @@
   "non_demotable": false,
   "title": "View resolves no dimensions and no metrics",
   "message": "{artifact} resolves no dimension and no metric",
-  "suggestion": "attach at least one member, or enrich the base models",
+  "suggestion": "attach a metric or a labelled filter, or set `column_type` on the base models' columns (`sst enrich`)",
   "precheck": "local"
  },
  {
@@ -5617,7 +5617,7 @@
   "non_demotable": false,
   "title": "Resolved relation differs from the model name",
   "message": "{artifact}: table '{name}' resolves to relation '{value}'",
-  "suggestion": "point base_table at the resolved relation, not the model name",
+  "suggestion": "report this as a bug; SST renders each table at its dbt model's resolved relation",
   "precheck": "local"
  },
  {
@@ -5639,7 +5639,7 @@
   "non_demotable": false,
   "title": "max_staleness below the accepted floor",
   "message": "{artifact}: max_staleness is {found}; the minimum is 120",
-  "suggestion": "raise max_staleness to at least 120",
+  "suggestion": "raise `max_staleness` to at least 120",
   "precheck": "local"
  },
  {
@@ -5650,7 +5650,7 @@
   "non_demotable": false,
   "title": "Fact column is not numeric",
   "message": "{artifact}: fact '{member}' has type {found}",
-  "suggestion": "use a numeric column, or make it a dimension",
+  "suggestion": "use a numeric column, or set its `column_type` to `dimension`",
   "precheck": "local"
  },
  {
@@ -5661,7 +5661,7 @@
   "non_demotable": false,
   "title": "Time dimension column is not temporal",
   "message": "{artifact}: time_dimension '{member}' has type {found}",
-  "suggestion": "use a date or timestamp column, or change column_type",
+  "suggestion": "use a date or timestamp column, or change `column_type`",
   "precheck": "local"
  },
  {
@@ -5672,7 +5672,7 @@
   "non_demotable": true,
   "title": "Publisher would replace without preserving grants",
   "message": "{artifact} would be replaced without COPY GRANTS or CREATE OR ALTER",
-  "suggestion": "emit COPY GRANTS on every replace",
+  "suggestion": "report this as a bug",
   "precheck": "local"
  },
  {
@@ -5683,7 +5683,7 @@
   "non_demotable": false,
   "title": "column_type metadata is absent",
   "message": "{artifact}: column '{member}' declares no column_type",
-  "suggestion": "declare dimension, time_dimension or fact",
+  "suggestion": "set `column_type` in the column's `meta.sst` to `dimension`, `time_dimension` or `fact`, or run `sst enrich`",
   "precheck": "local"
  },
  {
@@ -5694,7 +5694,7 @@
   "non_demotable": false,
   "title": "data_type metadata is absent",
   "message": "{artifact}: column '{member}' declares no data_type",
-  "suggestion": "declare the Snowflake type",
+  "suggestion": "declare `data_type` in dbt or in `meta.sst`, or run `sst enrich`",
   "precheck": "local"
  },
  {
@@ -5705,7 +5705,7 @@
   "non_demotable": false,
   "title": "Primary key column is not on the table",
   "message": "{artifact}: primary_key names '{column}', absent from '{name}'",
-  "suggestion": "correct the primary_key list",
+  "suggestion": "correct the `primary_key` or `unique_keys` entry",
   "precheck": "local"
  },
  {
@@ -5716,7 +5716,7 @@
   "non_demotable": false,
   "title": "Table declares no primary key and one is required",
   "message": "{artifact}: '{name}' declares neither primary_key nor unique_keys, and a relationship references it",
-  "suggestion": "declare primary_key in config.meta.sst",
+  "suggestion": "declare `primary_key` or `unique_keys` in the model's `config.meta.sst`",
   "precheck": "local"
  },
  {
@@ -5749,7 +5749,7 @@
   "non_demotable": false,
   "title": "Enum column declares no sample values",
   "message": "{artifact}: '{member}' is is_enum and declares no sample_values",
-  "suggestion": "populate sample_values, or clear is_enum",
+  "suggestion": "populate `sample_values`, or clear `is_enum`",
   "precheck": "local"
  },
  {
@@ -5760,7 +5760,7 @@
   "non_demotable": false,
   "title": "Non-enum column declares sample values that look exhaustive",
   "message": "{artifact}: '{member}' declares {count} sample_values and is not is_enum",
-  "suggestion": "set is_enum if the set is genuinely closed",
+  "suggestion": "set `is_enum: true` if the set is closed, or `is_enum: false` to mark the values a sample",
   "precheck": "local"
  },
  {
@@ -5771,7 +5771,7 @@
   "non_demotable": false,
   "title": "Auto-managed field contains a sentinel value",
   "message": "{artifact}: '{member}'.{field} contains '{value}'",
-  "suggestion": "re-run sst enrich; the value came from a pandas round-trip",
+  "suggestion": "delete the value, or run `sst enrich --force sample-values` to sample the column again",
   "precheck": "local"
  },
  {
@@ -5780,9 +5780,9 @@
   "number": 317,
   "severity": "WARNING",
   "non_demotable": false,
-  "title": "Auto-managed field hand-edited",
+  "title": "Written is_enum contradicts the sampled data",
   "message": "{artifact}: '{member}'.{field} differs from the enriched value",
-  "suggestion": "let sst enrich own the field",
+  "suggestion": "set `is_enum: false`, or run `sst enrich --force enums`",
   "precheck": "local"
  },
  {
@@ -5815,7 +5815,7 @@
   "non_demotable": false,
   "title": "Drift comparison not normalised on both sides",
   "message": "{artifact}: drift comparison compared raw DDL",
-  "suggestion": "normalise both sides before comparing",
+  "suggestion": "report this as a bug",
   "precheck": "local"
  },
  {
@@ -5826,7 +5826,7 @@
   "non_demotable": false,
   "title": "Tags would be set by the create statement",
   "message": "{artifact}: tags would be set by CREATE OR ALTER, which cannot set them",
-  "suggestion": "apply tags in a separate ALTER",
+  "suggestion": "report this as a bug",
   "precheck": "local"
  },
  {
@@ -5848,7 +5848,7 @@
   "non_demotable": false,
   "title": "Base model has no columns block",
   "message": "{artifact}: '{name}' has no columns: block in dbt",
-  "suggestion": "add a columns: block so column refs can be checked",
+  "suggestion": "add a `columns:` block so column refs can be checked",
   "precheck": "local"
  },
  {
@@ -5892,7 +5892,7 @@
   "non_demotable": false,
   "title": "Declared data type differs from the relation",
   "message": "model '{model}': column '{column}' declares data_type {declared}, and the relation has {found}",
-  "suggestion": "correct data_type, or run sst enrich --force data-types",
+  "suggestion": "correct `data_type`, or run `sst enrich --force data-types`",
   "precheck": "observe"
  },
  {
@@ -5903,7 +5903,7 @@
   "non_demotable": false,
   "title": "PII-tagged column carries sample values",
   "message": "model '{model}': column '{column}' carries pii_tags and {count} sample_values",
-  "suggestion": "delete the sample_values; sst enrich never samples a column with pii_tags",
+  "suggestion": "delete the `sample_values`; `sst enrich` never samples a column with `pii_tags`",
   "precheck": "local"
  },
  {
@@ -5958,7 +5958,7 @@
   "non_demotable": false,
   "title": "Filter expression is not boolean",
   "message": "filter '{member}' carries labels: [filter] and its expr is not boolean",
-  "suggestion": "make the expression boolean",
+  "suggestion": "make the expression boolean, or remove `labels: [filter]` so it renders as prose",
   "precheck": "local"
  },
  {
@@ -5969,7 +5969,7 @@
   "non_demotable": false,
   "title": "Filter label applied to a metric",
   "message": "'{member}' carries labels: [filter] and is a metric",
-  "suggestion": "remove the label, or declare a filter",
+  "suggestion": "remove `labels:` from the metric, or declare the expression under `snowflake_filters:`",
   "precheck": "local"
  },
  {
@@ -5980,7 +5980,7 @@
   "non_demotable": true,
   "title": "Legacy filter syntax",
   "message": "filter '{member}' uses the legacy inline form",
-  "suggestion": "declare filters as named objects with labels:",
+  "suggestion": "move each entry to `snowflake_filters:` as a named filter with `labels: [filter]`",
   "precheck": "local"
  },
  {
@@ -5991,7 +5991,7 @@
   "non_demotable": false,
   "title": "Filter expression contains an unwrapped bare identifier",
   "message": "filter '{member}' expression contains bare identifier '{column}'",
-  "suggestion": "wrap it in {{ ref('<model>','<column>') }}",
+  "suggestion": "wrap it in `{{ ref('<model>', '<column>') }}`",
   "precheck": "local"
  },
  {
@@ -6013,7 +6013,7 @@
   "non_demotable": false,
   "title": "Filter synonyms declared but not emitted",
   "message": "filter '{member}' declares synonyms that the renderer drops",
-  "suggestion": "remove the synonyms until the renderer emits them",
+  "suggestion": "remove `synonyms:` from the filter",
   "precheck": "local"
  },
  {
@@ -6024,7 +6024,7 @@
   "non_demotable": false,
   "title": "Custom instruction block has no non-empty channel",
   "message": "custom_instruction '{member}' declares no non-empty channel",
-  "suggestion": "populate at least one channel",
+  "suggestion": "write text under `ai_sql_generation` or `ai_question_categorization`",
   "precheck": "local"
  },
  {
@@ -6035,7 +6035,7 @@
   "non_demotable": false,
   "title": "Legacy custom-instruction rendering",
   "message": "custom_instruction '{member}' would render as a bare string",
-  "suggestion": "emit module_custom_instructions or the ai_-prefixed clauses",
+  "suggestion": "declare the text as a block under `snowflake_custom_instructions:` and list `{{ custom_instructions('<name>') }}` in the view's `custom_instructions:`",
   "precheck": "local"
  },
  {
@@ -6079,7 +6079,7 @@
   "non_demotable": false,
   "title": "Verified query declares neither sql nor sql_file, or both",
   "message": "verified_query '{member}': {detail}",
-  "suggestion": "declare exactly one of sql or sql_file",
+  "suggestion": "declare exactly one of `sql` or `sql_file`",
   "precheck": "local"
  },
  {
@@ -6101,7 +6101,7 @@
   "non_demotable": false,
   "title": "Verified query SQL references a table not in its table list",
   "message": "verified_query '{member}' queries '{relation}', absent from tables:",
-  "suggestion": "add the table to tables:",
+  "suggestion": "add the table to `tables:`",
   "precheck": "local"
  },
  {
@@ -6112,7 +6112,7 @@
   "non_demotable": false,
   "title": "Verified query returns no rows",
   "message": "verified_query '{member}' executed and returned {row_count} rows in {elapsed_ms}ms",
-  "suggestion": "fix the query, or widen the fixture",
+  "suggestion": "fix the query, or check that the target holds the data it asks about",
   "precheck": "observe"
  },
  {
@@ -6123,7 +6123,7 @@
   "non_demotable": false,
   "title": "Verified query SQL contains a relative date",
   "message": "verified_query '{member}' contains relative date '{value}'",
-  "suggestion": "pin the date, or accept that it is runtime guidance only",
+  "suggestion": "pin the date, or accept that its answer changes over time",
   "precheck": "local"
  },
  {
@@ -6143,9 +6143,9 @@
   "number": 418,
   "severity": "ERROR",
   "non_demotable": false,
-  "title": "Expression does not compile against Snowflake",
+  "title": "Expression or query is not valid SQL",
   "message": "{type} '{name}': expression failed to compile: {detail}",
-  "suggestion": "fix the expression",
+  "suggestion": "fix the expression or query; the message carries the reason",
   "precheck": "observe"
  },
  {
