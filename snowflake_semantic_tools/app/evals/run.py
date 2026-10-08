@@ -43,7 +43,11 @@ from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import Action
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.project import UNKNOWN_GIT_SHA
-from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import (
+    AgentVersionNotFound,
+    SnowflakePortError,
+    SnowflakeTransientError,
+)
 from snowflake_semantic_tools.domain.ports.snowflake.execution import SessionPool
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
@@ -492,6 +496,7 @@ class RunEvalSuite:
         The call resolves in the agent's schema on the port's scoped session, so it never
         changes the schema any other statement runs in. The run counts as started from before
         the call until Snowflake refuses it: an interrupt during the call may leave it running.
+        A transport failure may follow a start Snowflake accepted, so the run stays started.
         """
         started.add(run_name)
         try:
@@ -500,7 +505,8 @@ class RunEvalSuite:
                 _evaluation_call("START", run_name, config_path),
             )
         except SnowflakePortError as exc:
-            started.discard(run_name)
+            if not isinstance(exc, SnowflakeTransientError):
+                started.discard(run_name)
             return str(exc)
         return None
 

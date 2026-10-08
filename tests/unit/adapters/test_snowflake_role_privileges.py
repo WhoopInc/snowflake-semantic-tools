@@ -164,3 +164,17 @@ def test_grants_to_anything_but_a_role_confer_nothing() -> None:
     )
     assert grantees_of(writer, edges) == (Grantee.database_role(Identifier.parse("OTHER"), Identifier.parse("READER")),)
     assert grantees_of(Grantee.role(Identifier.parse("R")), edges[2:3]) == ()
+
+
+def test_a_schema_holder_database_role_may_be_shown_qualified_or_unqualified() -> None:
+    rows = (
+        {"privilege": "CREATE TASK", "granted_to": "DATABASE_ROLE", "grantee_name": "WRITER"},
+        {"privilege": "CREATE STAGE", "granted_to": "DATABASE_ROLE", "grantee_name": "DB.WRITER"},
+        {"privilege": "CREATE TASK", "granted_to": "DATABASE_ROLE", "grantee_name": "OTHER.READER"},
+    )
+    assert schema_holders(rows, SCOPE, ("CREATE TASK", "CREATE STAGE")) == {
+        Grantee.database_role(Identifier.parse("DB"), Identifier.parse("WRITER")): frozenset(
+            {"CREATE TASK", "CREATE STAGE"}
+        ),
+        Grantee.database_role(Identifier.parse("DB"), Identifier.shown("OTHER.READER")): frozenset({"CREATE TASK"}),
+    }

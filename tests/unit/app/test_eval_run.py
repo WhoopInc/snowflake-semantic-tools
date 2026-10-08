@@ -28,6 +28,7 @@ from snowflake_semantic_tools.app.evals.run import (
     EvalSuiteResult,
     RunEvalSuite,
     _compact_timestamp,
+    _StartedRuns,
     empty_eval_suite_json,
     eval_suite_json,
     retention_class,
@@ -48,7 +49,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
-from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError, SnowflakeTransientError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
 from tests.helpers.artifact_builders import target
@@ -628,6 +629,26 @@ def test_an_interrupt_before_any_run_started_propagates_as_it_came() -> None:
         run_once(Interrupted([]))
 
     assert type(raised.value) is KeyboardInterrupt
+
+
+@pytest.mark.parametrize(
+    ("error", "kept"),
+    ((SnowflakeTransientError("connection reset"), ("RUN_X",)), (SnowflakePortError("refused"), ())),
+    ids=["transient", "refused"],
+)
+def test_a_start_lost_in_transit_stays_started_and_a_refused_one_does_not(
+    error: SnowflakePortError, kept: tuple[str, ...]
+) -> None:
+    class FailingStart(EvalSnowflake):
+        def query_in_context(self, *args: Any, **kwargs: Any) -> QueryResult:
+            del args, kwargs
+            raise error
+
+    started = _StartedRuns()
+
+    message = RunEvalSuite(FailingStart([]), FixedClock())._start(compiled_eval_of(), "RUN_X", "@config", started)
+
+    assert message == str(error) and started.names == kept
 
 
 @pytest.mark.parametrize(

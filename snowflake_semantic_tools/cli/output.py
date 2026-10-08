@@ -89,7 +89,12 @@ def register_secrets(values: Iterable[str]) -> None:
 
 
 def _leaks(text: str) -> bool:
-    return any(secret in text for secret in _SECRETS)
+    """Whether `text` carries a registered secret as written or as JSON escapes it."""
+    return any(
+        form in text
+        for secret in _SECRETS
+        for form in (secret, json.dumps(secret)[1:-1], json.dumps(secret, ensure_ascii=False)[1:-1])
+    )
 
 
 def _secret_refusal(where: str) -> Diagnostic:

@@ -51,8 +51,9 @@ def schema_holders(
     """Map each role or database role SHOW GRANTS ON SCHEMA names to the requested privileges it holds.
 
     Ownership of the schema holds every requested privilege. A database role's name is
-    printed unqualified and belongs to the schema's database; a grant to anything else (a
-    share, an application) confers nothing on a role.
+    printed as `DB.NAME` or, unqualified, in the schema's database -- the only database whose
+    roles hold its privileges; a grant to anything else (a share, an application) confers
+    nothing on a role.
     """
     wanted = {privilege.upper() for privilege in privileges}
     holders: dict[Grantee, set[str]] = {}
@@ -63,8 +64,7 @@ def schema_holders(
         kind = str(row.get("granted_to") or "").upper()
         if not held or not name or kind not in (_ROLE, _DATABASE_ROLE):
             continue
-        shown = Identifier.shown(name)
-        grantee = Grantee.role(shown) if kind == _ROLE else Grantee.database_role(scope.database, shown)
+        grantee = Grantee.role(Identifier.shown(name)) if kind == _ROLE else _schema_database_role(scope.database, name)
         holders.setdefault(grantee, set()).update(held)
     return {grantee: frozenset(held) for grantee, held in holders.items()}
 
@@ -130,3 +130,10 @@ def _database_role(database: Identifier, name: str) -> Grantee:
     if dot and qualifier and rest:
         return Grantee.database_role(Identifier.shown(qualifier), Identifier.shown(rest))
     return Grantee.database_role(database, Identifier.shown(name))
+
+
+def _schema_database_role(database: Identifier, name: str) -> Grantee:
+    """A schema holder SHOW printed as `DB.NAME` in `database`, or else as `NAME`, dots and all."""
+    unqualified = Grantee.database_role(database, Identifier.shown(name))
+    qualified = _database_role(database, name)
+    return qualified if qualified.names[0] == unqualified.names[0] else unqualified
