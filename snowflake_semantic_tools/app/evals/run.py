@@ -348,7 +348,8 @@ class RunEvalSuite:
 
         A baseline capture needs its `baseline_runs` completed attempts, else the project's, else
         one, and allows that many plus the retries; any other run needs one, and allows it plus
-        the retries.
+        the retries. The agent version selector is the config's `agent_version`, else
+        `evals.+agent_version`, as validation reads it.
 
         Diagnostics:
             SST-APL023: the eval has no run configuration, its agent version cannot be read, or
@@ -361,7 +362,7 @@ class RunEvalSuite:
             return D("SST-APL023", artifact=compiled.artifact_key, detail="run configuration is absent")
         timestamp = context.options.timestamp or _compact_timestamp()
         retry_count = run.retry if run.retry is not None else context.defaults.retry or 0
-        selector = compiled.resolved.config.agent_version or ""
+        selector = compiled.resolved.config.agent_version or context.defaults.agent_version or ""
         try:
             agent_version = self._port.resolve_agent_version(compiled.agent_target, selector)
         except AgentVersionNotFound:
@@ -398,7 +399,8 @@ class RunEvalSuite:
         A failure at any step ends the attempt with it: the attempt records the terminal status
         it reached and why it failed. Its diagnostics describe the attempt on its own; the
         eval's result reports them only when no retry completed in its place. The watch hears
-        the attempt start and end, with the status it ended in.
+        the attempt start and end, with the status it ended in. The deadline starts just before
+        the START call, so a slow START uses up the time it took.
 
         Diagnostics:
             SST-APL023: the run could not be started, its status could not be read (a read
@@ -412,12 +414,12 @@ class RunEvalSuite:
         """
         run_name = _run_name(compiled, setup, context.options, attempt_number)
         context.watch.started(run_name, attempt_number, setup.attempt_limit)
+        poll = StatusPoll(self._port, self._clock, context.options, context.watch)
         refused = self._start(compiled, run_name, setup.config_path, context.started)
         if refused is not None:
             context.watch.ended(run_name, "START_FAILED")
             diagnostic = D("SST-APL023", artifact=compiled.artifact_key, detail=refused)
             return EvalRunAttempt(run_name, attempt_number, "START_FAILED", retrieval_error=refused), (diagnostic,)
-        poll = StatusPoll(self._port, self._clock, context.options, context.watch)
         try:
             terminal_status, status_details = poll.until_terminal(compiled, run_name, setup.config_path)
         except (SnowflakePortError, ValueError) as exc:

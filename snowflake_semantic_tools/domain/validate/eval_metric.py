@@ -56,7 +56,8 @@ def validate_custom_metric(
         SST-VAL001: another catalog metric has the same name, compared casefolded.
         SST-VAL737: the name is a system metric's.
         SST-VAL733: a default threshold on a metric that does not gate by default.
-        SST-VAL738: the judge model is absent or `auto`.
+        SST-VAL738: the judge model is absent or `auto`; an absent one reads as `unset`. The
+            loader has already filled an absent model from `evals.+judge_model`.
         SST-VAL739: the judge model is outside a non-empty allowlist.
         SST-VAL740: the prompt reads as a system metric's intent.
         SST-VAL741: the prompt states no scale with a score instruction or band anchors.
@@ -110,7 +111,7 @@ def _ungated_threshold(metric: CustomEvalMetric) -> tuple[Diagnostic, ...]:
 def _judge_model(metric: CustomEvalMetric, allowed_models: frozenset[str]) -> tuple[Diagnostic, ...]:
     emit = _emitter(metric)
     if metric.model is None or metric.model.casefold() == "auto":
-        emit("SST-VAL738", found=metric.model)
+        emit("SST-VAL738", found=metric.model or "unset")
     elif allowed_models and metric.model.casefold() not in allowed_models:
         emit("SST-VAL739", found=metric.model)
     return emit.diagnostics

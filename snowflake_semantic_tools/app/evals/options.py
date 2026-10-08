@@ -15,9 +15,9 @@ class EvalRunOptions:
         timestamp: The run names' `ts` token; None uses the current UTC time.
         poll_interval_ms: The wait between two status reads of a run, in milliseconds.
         deadline_ms: How long a run may take to reach a terminal status, in milliseconds of
-            the clock's monotonic time from just before its start; slow status reads count
-            against it. Once it passes, one last read decides, given at most
-            `read_timeout_ms`; 20 minutes by default, 240 polls at the default interval.
+            the clock's monotonic time from just before the START call; a slow START and slow
+            status reads count against it. Once it passes, one last read decides, given at
+            most `read_timeout_ms`; 20 minutes by default, 240 polls at the default interval.
         max_read_failures: The status reads in a row that may fail in transit before the
             attempt fails, after one last read; any read that succeeds resets the count.
         read_timeout_ms: The longest one status read may take, network retries included,

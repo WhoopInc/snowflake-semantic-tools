@@ -150,9 +150,10 @@ warning `SST-VAL723`). A system metric's judge comes with its version, so
 no LLM judge (`SST-VAL725`, info); gating on the reference-free
 `logical_consistency` is a warning (`SST-VAL726`).
 
-A custom metric must name its judge `model`; a missing or `auto` model is
-`SST-VAL738`, and when `snowflake.orchestration_models` is set the model must be
-in it (`SST-VAL739`).
+A custom metric must name its judge `model`, or inherit `evals.+judge_model`; a
+missing or `auto` model, here and in `evals.+judge_model`, is `SST-VAL738`, and
+when `snowflake.orchestration_models` is set the model must be in it
+(`SST-VAL739`).
 
 From 2026-10-13, Snowflake runs an unversioned or `auto` system metric at
 version `v3` rather than `v1`, and a custom metric with no judge model on
@@ -235,7 +236,9 @@ The `evals:` block of `sst_config.yml` sets what an eval config leaves unset:
 | Key | Default for |
 |---|---|
 | `+agent_version` | `agent_version` |
+| `+metrics` | `metrics.system`, when the `metrics:` block has no `system` key: each listed system metric, ungated and without a threshold. `system: []` enables none. A name that is not a system metric is `SST-PRS013`. |
 | `+metric_version` | each system metric's `version` |
+| `+judge_model` | each custom metric's `model`; a system metric's judge comes with its version |
 | `+eval_tier` | `run.tier` |
 | `+retry` | `run.retry` |
 | `+concurrency` | the runs in flight at once, across the suite; also the ceiling `run.concurrency` is checked against |
@@ -337,8 +340,9 @@ status:
   `COMPLETED` passes, and any other, such as `FAILED`, `CANCELLED` or one
   Snowflake does not document, fails it (`SST-APL023`, with the run's status
   details).
-- **Deadline.** A run that has not ended 20 minutes after it was started fails
-  (`SST-APL023`). SST does not cancel it in Snowflake.
+- **Deadline.** A run that has not ended 20 minutes after SST asked Snowflake to
+  start it fails (`SST-APL023`); the time the start itself takes counts. SST
+  does not cancel it in Snowflake.
 - **Per-read timeout.** Each status read may take 30 seconds at most, network
   retries included, and never longer than what is left of the deadline; a slow
   read uses up the time it took. Reading a completed run's results has the

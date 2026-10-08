@@ -8,6 +8,7 @@ from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.privileges import EVAL_RUN_PRIVILEGES, eval_role_diagnostics
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from tests.helpers.eval_builders import EvalSnowflake, compiled_eval_of
+from tests.helpers.reference_project import FIXTURE
 
 
 def _two_evals_in_one_schema() -> tuple[CompiledEval, ...]:
@@ -46,3 +47,11 @@ def test_a_primary_role_that_holds_everything_needs_no_session_read() -> None:
     port = EvalSnowflake([])
     port.refuse("missing_privileges")
     assert eval_role_diagnostics(port, _two_evals_in_one_schema()) == ()
+
+
+def test_the_reference_eval_config_describes_the_privilege_check_the_run_makes() -> None:
+    text = (FIXTURE / "agents" / "jaffle_analytics" / "evals" / "config.yml").read_text(encoding="utf-8")
+    note = text[text.index("# - Starting a run needs") :]
+    assert "does not check" not in note
+    assert all(privilege in note for privilege in EVAL_RUN_PRIVILEGES)
+    assert "`SST-VAL727`" in note and "`SST-VAL728`" in note

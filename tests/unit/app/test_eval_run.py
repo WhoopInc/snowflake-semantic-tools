@@ -47,10 +47,11 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalRunAttempt,
     ThresholdRange,
 )
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError, SnowflakeTransientError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
+from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
 from tests.helpers.artifact_builders import target
 from tests.helpers.clocks import FixedClock, PollClock
@@ -604,6 +605,48 @@ def test_eval_runner_reports_missing_run_version_and_config_failures() -> None:
     assert not missing_run.evals[0].attempts
     assert not version_failure.evals[0].attempts
     assert not config_failure.evals[0].attempts
+
+
+def test_a_config_without_an_agent_version_runs_the_project_agent_version() -> None:
+    compiled = compiled_eval_of()
+    unpinned = replace(
+        compiled,
+        resolved=replace(compiled.resolved, config=replace(compiled.resolved.config, agent_version=None)),
+    )
+    port = EvalSnowflake([status_result("COMPLETED"), result_rows()])
+    port.agent_versions[("DB.S.SALES_AGENT", "alias:prod")] = "VERSION$7"
+
+    result = RunEvalSuite(port, FixedClock()).run(
+        (unpinned,),
+        defaults=EvalDefaults(agent_version="alias:prod"),
+        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"),
+    )
+
+    assert result.success, [item.code for item in result.diagnostics]
+    assert result.evals[0].attempts[0].agent_version == "VERSION$7"
+
+
+def test_the_deadline_counts_from_just_before_start_so_a_slow_start_uses_it_up() -> None:
+    clock = PollClock()
+
+    class SlowStart(EvalSnowflake):
+        def query_in_context(
+            self, scope: SchemaScope, sql: Sql, params: object = None, *, timeout_seconds: int | None = None
+        ) -> QueryResult:
+            if "EXECUTE_AI_EVALUATION('START'" in str(sql):
+                clock.advance(10_000)
+            return super().query_in_context(scope, sql, params, timeout_seconds=timeout_seconds)
+
+    port = SlowStart([status_result("CREATED") for _ in range(4)])
+
+    result = RunEvalSuite(port, clock).run(
+        (compiled_eval_of(),),
+        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", deadline_ms=15_000),
+    )
+
+    # The START took 10 of the 15 seconds: one read, a 5-second wait, and the last read.
+    assert result.evals[0].attempts[0].terminal_status == "STATUS_FAILED"
+    assert len([query for query, _ in port.queries if "'STATUS'" in query]) == 2
 
 
 def test_eval_runner_fail_fast_stops_before_the_next_eval() -> None:
