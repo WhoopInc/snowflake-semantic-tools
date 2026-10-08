@@ -22,7 +22,11 @@ from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 def clean(paths: ProjectPaths, dry_run: bool) -> CommandResult:
     """Remove local SST build artifacts only; never touch Snowflake.
 
-    Exit 1 when the build directory cannot be removed, or a symbolic link is on the way to it.
+    Removes `target/sst` under the project, where SST writes the compiled manifest, saved plans
+    and observations, statement files, local state, and the run log. Authored files, `.sst/`
+    with its baseline, and the rest of dbt's `target/` are kept. With --dry-run, nothing is
+    removed. Exit 1 when the build directory cannot be removed, or a symbolic link is on the
+    way to it.
 
     Diagnostics:
         SST-PRT010: the build directory could not be removed, or is reached through a link.

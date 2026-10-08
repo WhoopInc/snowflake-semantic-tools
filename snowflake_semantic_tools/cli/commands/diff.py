@@ -3,10 +3,10 @@
 A state is `local`, the manifest `sst compile` wrote; a path ending in `.json`, a saved plan,
 as what it would leave published; or any other name, a dbt target, as what that target holds
 of SST's artifacts now. `--from` defaults to `local` and `--to` to the resolved target, so
-`sst diff` alone compares the working tree with Snowflake; `--from dev --to prod` compares two
+`sst diff` alone compares the last compile with Snowflake; `--from dev --to prod` compares two
 targets with no local state at all. Diff only reads: it validates nothing, produces no plan, and
 works on a project that does not validate. Exit 2 when the states differ, 1 when one cannot be
-read.
+read, 4 when a target is not declared, and 5 when one cannot be reached.
 """
 
 from __future__ import annotations
@@ -65,8 +65,19 @@ def diff(
 ) -> CommandResult:
     """Compare two states -- local, a dbt target, or a saved plan -- and list what differs.
 
-    Exit 0 when they agree, 2 when they differ, 1 when a state cannot be read, and 5 when a
-    target cannot be reached.
+    A state is `local`, the manifest `sst compile` last wrote; a path ending in `.json`, read
+    from the project directory, a saved plan, as what it would leave published; or any other
+    name, a `profiles.yml` target, as what it holds of SST's artifacts now: each one its state
+    table records whose object still carries SST's ownership marker. --from defaults to
+    `local` and --to to the resolved target, so `sst diff` alone compares the last compile with
+    Snowflake, and `--from dev --to prod` compares two targets. An artifact is `new` when only
+    --to holds it, `orphaned` when only --from does, and `modified` when their fingerprints
+    differ. --select and --exclude keep the differences of the artifacts they choose. Diff only
+    reads: it validates nothing, writes no plan, and works on a project that does not
+    validate; only a target connects.
+
+    Exit 0 when they agree, 2 when they differ, 1 when a state cannot be read, 4 when a target
+    is not declared in `profiles.yml`, and 5 when a target cannot be reached.
 
     Diagnostics:
         SST-MAN001: `local` was asked for and `sst compile` has written no manifest.

@@ -153,13 +153,23 @@ def enrich(
     """Fill dbt model column metadata from the warehouse, editing the model YAML in place.
 
     Reads each selected model's relation for its columns and types, and fills what the
-    model YAML leaves out: column types and data types by default, and sample values,
-    enums, and synonyms with --include. Values already written are kept unless --force
-    names their component. PATH selects the models whose SQL or YAML file is under it. A
-    target that is not production-like is refused unless --allow-non-prod is given.
+    model YAML leaves out: column types and data types by default, and with --include sample
+    values, enums (which bring sample values with them), and synonyms, which Cortex proposes.
+    Table synonyms are written into the `table_config` of each semantic view that uses the
+    model. Values already written are kept unless --force names their component. Sample values
+    and enums read row data, which `enrichment.allow_sample_value_collection: false` refuses.
+    PATH selects the models whose SQL or YAML file is under it. The relations are the
+    manifest's, for the resolved target, which must be production-like unless --allow-non-prod
+    is given.
 
-    Exit 0 when done, 1 when a model failed, 2 under --check when files would change, and 3
-    for a target that is not production-like.
+    Exit 0 when done; 1 when a model failed or row data is refused; 2 under --check when files
+    would change; 3 for a target that is not production-like, a PATH outside the project, or an
+    unknown component; 4 when no model matches the selection.
+
+    Diagnostics:
+        SST-PRT100: the target is not production-like, a PATH is outside the project, or a
+            component is unknown; raised.
+        SST-CFG038: sample values or enums were asked for, and the project refuses collecting them.
     """
     options = resolve_options(_components(included, "--include"), _components(forced, "--force"))
     project_dir = paths.project_dir

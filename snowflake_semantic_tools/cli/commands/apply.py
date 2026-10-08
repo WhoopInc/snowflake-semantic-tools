@@ -131,7 +131,30 @@ def apply(
 ) -> CommandResult:
     """Apply a current reviewed plan; smoke probes never run here.
 
-    `--fail-fast` and `--no-fail-fast` override `apply.fail_fast` for this run.
+    Without --plan, apply plans afresh as `sst plan` does, prints the plan, and asks before it
+    writes; --yes skips the question, and is required with --prune and with --output json.
+    With --plan, the saved plan's selection and --prune are used: --select, --exclude, --prune
+    and --partial must agree with it, and it must have been made for this target, from the
+    manifest the project compiles now, observing what Snowflake holds now. The statements are
+    written to `target/sst/sql`, or --sql-out, before anything runs, and the changes run under
+    the target's run lock. A failed change skips the changes that depend on it; with
+    --fail-fast, every change not yet run. `--fail-fast` and `--no-fail-fast` override
+    `apply.fail_fast`, false by default, for this run. With --partial, the changes no error
+    touches are applied, those left out are reported, and the run exits 1 while errors remain.
+
+    Exit 0 when every change applied; 1 when a change failed, the plan has errors, or another
+    run holds the lock; 3 when apply refuses the command line; 4 when the project, its
+    configuration, or the saved plan cannot be used; 5 when Snowflake cannot be reached; and
+    130 when the question is declined.
+
+    Diagnostics:
+        SST-PRT109: --prune or --output json without --yes; raised.
+        SST-PRT104: --partial with --prune, or --no-validate with --snowflake-syntax-check; raised.
+        SST-APL005: the saved plan was made for another target.
+        SST-MAN030: the saved plan's observation is past its time to live; apply observed afresh.
+        SST-APL010: the run took over an expired lock, with --break-stale-lock.
+        SST-APL011: another run holds the lock.
+        SST-APL013: --temporary would publish to a production-like target.
     """
     request = PlanRequest(
         paths,

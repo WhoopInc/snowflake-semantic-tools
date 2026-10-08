@@ -103,10 +103,34 @@ def drop(
 ) -> CommandResult:
     """Break-glass: drop exactly one object SST owns from one target, and forget it in state.
 
+    For when `apply --prune` cannot serve, such as a project that does not compile: drop reads
+    no project artifact and needs no configuration file. The object is one three-part name,
+    never a pattern; --type picks the DROP statement; --target has no default and
+    `$SST_TARGET` is not read; the profile is --profile, else `dbt_project.yml`'s `profile:`.
+    --yes is required on every invocation, and there is no prompt. Only an object carrying
+    SST's ownership marker is dropped. Drop holds the target's run lock, as apply does, and
+    deletes the object's entries from the state table the configuration's `state:` block
+    names, or, when there is no configuration that reads, the target's default `SST_STATE`.
+    One audit line goes to stderr before the statement and one after; --quiet does not silence
+    them, --log-level error does.
+
     Exit 0 when the object was dropped; 1 when Snowflake refused, the object does not exist,
-    it carries no SST ownership marker, or another run holds the lock; 3 for a command line drop
-    refuses; 4 when the profile or target cannot be resolved; and 5 when Snowflake cannot be
-    reached.
+    it carries no SST ownership marker, or another run holds or took the lock; 3 when drop
+    refuses the command line; 4 when the profile or target cannot be resolved; and 5 when
+    Snowflake cannot be reached.
+
+    Diagnostics:
+        SST-PRT100: not exactly one object, a missing or unregistered --type, or no --target;
+            raised.
+        SST-PRT110: the object is a pattern rather than one name; raised.
+        SST-PRT108: the object is not a three-part name; raised.
+        SST-PRT109: --yes was not given; raised.
+        SST-PRT005: the object does not exist.
+        SST-PLN024: the object carries no SST ownership marker.
+        SST-APL001: Snowflake refused the DROP.
+        SST-APL011: another run holds the lock, or took it before state was updated.
+        SST-APL010: an expired lock was taken over, with --break-stale-lock.
+        SST-PLN017: an agent apply published names the object; it is dropped all the same.
     """
     del assume_yes
     files = _state_files(paths)

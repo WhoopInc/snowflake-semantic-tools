@@ -43,8 +43,11 @@ def docs(
 
     The error-code, coverage, artifact, command-line, and configuration references are
     rendered from the engine's own registries, so they cannot drift from what the engine
-    accepts. With --check, nothing is written and the command exits 2 when a committed page
-    differs.
+    accepts; --only picks some of them, and --output-dir writes or checks them elsewhere. Only
+    a page that differs from the file on disk is written. The coverage page also reads each
+    code's tests from `tests/codes/` under the project directory. With --check, nothing is
+    written and the command exits 2 when a page differs or is missing; --no-detailed-exitcode
+    turns that 2 into 0. Exit 1 when the generator itself fails.
     """
     root = paths.project_dir
     chosen = only or tuple(REFERENCES)

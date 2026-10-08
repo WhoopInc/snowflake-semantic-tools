@@ -64,9 +64,20 @@ def compile(
 ) -> CommandResult:
     """Compile every artifact and write the canonical manifest, offline.
 
+    The manifest, `target/sst/manifest.json`, always holds everything that compiled; --select
+    narrows only what is reported and emitted. --emit-ddl writes each rendered payload, and
+    --emit-agent-spec each agent's specification, one file per artifact. With --partial, a
+    compile with errors still writes the manifest of the artifacts no error touches, and exits
+    1. Nothing connects: --target, --defer-target, and --database only decide what names
+    resolve to.
+
+    Exit 0 when everything compiled; 1 when an error stopped the compile, the manifest could
+    not be written, or --partial left an artifact out; 4 when --select matches nothing.
+
     Diagnostics:
         SST-MAN008: the compile failed, so no manifest was written.
         SST-MAN007: the canonical manifest could not be written.
+        SST-PLN033: --partial cannot trace an error to the artifacts it would leave out.
     """
     paths = with_model_paths(paths, dbt_dir, semantic_dir)
     full_result = compiling.compile_result(paths, target_name, manifest_path, database=database)
