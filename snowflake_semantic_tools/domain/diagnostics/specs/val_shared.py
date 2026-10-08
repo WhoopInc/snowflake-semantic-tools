@@ -13,7 +13,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Name is not unique within its type",
         "{type} '{name}' is declared more than once",
         "rename one of them",
-        condition="two artifacts or members of one type share a name, across all files",
+        condition=(
+            "two semantic views, metrics, agents, tool groups or custom eval metrics share a name, "
+            "compared case-insensitively across all files"
+        ),
+        note=(
+            "A repeated filter, relationship, verified query or custom instruction name is `SST-PRS106` "
+            "or `SST-PRS007`."
+        ),
     ),
     spec(
         "SST-VAL002",
@@ -21,7 +28,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Name is not unique across the extension namespace",
         "{type} '{name}' collides with {other} in another namespace",
         "rename one of them",
-        condition="global uniqueness is required and two declarations collide",
+        condition=(
+            "a skill or plugin this project publishes has the name of an extension it consumes under "
+            "`skills.extensions`, compared case-insensitively"
+        ),
     ),
     spec(
         "SST-VAL003",
@@ -29,7 +39,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Description missing",
         "{type} '{name}' has no description",
         "add a description; it is how Analyst chooses between objects",
-        condition="a describable object has no description",
+        condition=(
+            "a semantic view's `description` is absent or blank, a metric has none, or a column of a dbt "
+            "model a view uses has none"
+        ),
     ),
     spec(
         "SST-VAL004",
@@ -37,19 +50,25 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Description shorter than the configured floor",
         "{type} '{name}' description is {size} chars, under {expected}",
         "expand the description",
-        condition="a description is present and below the length floor",
+        condition=(
+            "a semantic view's or metric's description is shorter than `validation.description_floor`; "
+            "unset, nothing is checked"
+        ),
     ),
     spec(
         "SST-VAL005",
         Severity.ERROR,
         "Description does not state when to invoke",
         "{type} '{name}' description describes what it is, not when to use it",
-        "state the trigger condition",
-        condition="a description omits invocation guidance for a routed object",
+        "say when to use it, for example `Use when the question is about ...`",
+        condition=(
+            "a semantic view's description holds none of the words that state when to use it, such as "
+            "`use`, `when`, `if`, `invoke`, `ask` or `for questions`"
+        ),
         note=(
-            "It is the only text the agent matches against, so a description that never states a "
-            "trigger means the object is silently never invoked, which is indistinguishable from not "
-            "publishing it."
+            "An agent's Analyst tool chooses between views by their descriptions alone, so a view whose "
+            "description never says when it applies is chosen by chance, if at all. An absent "
+            "description is `SST-VAL003`."
         ),
     ),
     spec(
@@ -57,16 +76,23 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Hardcoded fully-qualified name in an authored file",
         "{type} '{name}': '{field}' hardcodes '{value}'",
-        "resolve the object through sst_config.yml or a reference: block",
-        condition="a literal three-part name appears in an authored artifact",
+        "name the object through a template such as `{{ ref('<model>') }}`, or, in verified-query SQL, by "
+        "its logical table name, so it resolves for each target",
+        condition=(
+            "a view's `tables:` entry, a metric or filter `expr`, or verified-query SQL writes a name of "
+            "three or more parts outside a template, string or comment"
+        ),
     ),
     spec(
         "SST-VAL007",
         Severity.WARNING,
         "Declared but referenced by nothing",
         "{type} '{name}' is referenced by nothing",
-        "reference it, or delete it",
-        condition="a declared object has no consumer anywhere in the project",
+        "add its tables to a view (a custom instruction: list it in a view's `custom_instructions:`), or delete it",
+        condition=(
+            "an authored metric, filter, relationship, verified query or custom instruction attaches to "
+            "no view, and `SST-MEM005` has not already reported it"
+        ),
     ),
     spec(
         "SST-VAL008",
@@ -82,7 +108,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "File is not canonically formatted",
         "{path} is not canonically formatted",
         "run sst format",
-        condition="sst format would change the file",
+        condition=(
+            "a semantic-model file has a carriage return, trailing whitespace, a tab in its indentation, "
+            "or not exactly one final newline"
+        ),
+        note="`sst format` also rewrites indentation and key order; this check does not report those.",
     ),
     spec(
         "SST-VAL010",
@@ -90,23 +120,35 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Reference graph contains a cycle",
         "{type} reference cycle: {cycle}",
         "break the cycle",
-        condition="a declared reference graph of one kind is not acyclic",
+        condition="the compiled artifacts depend on one another in a cycle, so no publish order satisfies them",
     ),
     spec(
         "SST-VAL011",
         Severity.ERROR,
         "Declared value would be dropped or altered by the renderer",
         "{type} '{name}': '{field}' would be {detail} by the renderer",
-        "emit the value unmodified, or stop declaring it",
-        condition="a declared value is validated and would not reach the published object intact",
+        "remove the value, or write it in a form the renderer keeps",
+        condition=(
+            "a filter carries a label other than `filter`, which the renderer drops, or a verified "
+            "query's `verified_by` is not text or has surrounding whitespace, which the renderer "
+            "converts, trims or drops"
+        ),
     ),
     spec(
         "SST-VAL012",
         Severity.ERROR,
         "Deprecated key spelling in use",
         "{type} '{name}' uses '{field}'; the current spelling is '{expected}'",
-        "rename the key",
-        condition="a superseded key spelling is present and still honoured",
+        "rename the key to the spelling the message names",
+        condition=(
+            "a custom instruction writes the 0.3 key `sql_generation` or `question_categorization` "
+            "without its 1.0 spelling"
+        ),
+        note=(
+            "An error, so a 0.3 project does not publish under 1.0 unmigrated. The old key is still read, "
+            "so a run that demotes the code renders what was meant. Written beside its 1.0 key, it is "
+            "`SST-PRS020` instead."
+        ),
     ),
     spec(
         "SST-VAL013",
@@ -115,7 +157,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{type} '{name}': '{key}' is not modelled and would be rendered as-is",
         "promote the key, remove it, or set `snowflake.allow_unknown_keys: true` to render it with a warning instead",
         condition=(
-            "an off-spec key reaches the renderer without validation and `snowflake.allow_unknown_keys` is `false`"
+            "an agent spec renders a key SST does not model and `snowflake.allow_unknown_keys` is "
+            "`false`; reported once per key"
         ),
     ),
     spec(
@@ -124,19 +167,24 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unmodelled key reported",
         "{type} '{name}': {count} unmodelled keys rendered",
         "promote the keys to first-class fields if they are load-bearing",
-        condition=("off-spec usage is present and visible and `snowflake.allow_unknown_keys` is `true`, its default"),
+        condition=(
+            "an agent spec renders keys SST does not model and `snowflake.allow_unknown_keys` is `true`, "
+            "its default; reported once per agent"
+        ),
     ),
     spec(
         "SST-VAL015",
         Severity.ERROR,
         "Deploy ordering violated",
         "{type} '{name}' would publish before {blocker}, which it depends on",
-        "include the blocker in the selection, or break the dependency -- the ORDER is not authorable",
-        condition="a dependent artifact is ordered before its dependency",
+        "add the dependency to `--select` or drop it from `--exclude`, or apply it first",
+        condition=(
+            "`sst plan` creates or updates an artifact whose dependency `--select` or `--exclude` left "
+            "out and which does not exist yet"
+        ),
         note=(
-            "Publish order is the registry's type order, which is proven a valid topological sort, so "
-            "this means the selection is missing the blocker, or the project has a dependency the "
-            "registry's type order cannot satisfy."
+            "Publish order is the registry's type order, so it cannot be authored; only the selection "
+            "can leave a dependency unpublished. A pinned version is `SST-PLN030`."
         ),
     ),
     spec(
@@ -144,8 +192,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Referenced object is not published by this project or declared external",
         "{type} '{name}' references '{value}', which is neither published nor declared",
-        "publish it, or declare it under reference:",
-        condition="a reference names an object with no owner",
+        "enable the view, or point the tool at a view this project publishes",
+        condition=(
+            "an agent's Analyst tool names a semantic view the project declares but does not publish, "
+            "because it is disabled"
+        ),
+        note="A view the project does not declare at all is `SST-REF011`.",
     ),
     spec(
         "SST-VAL017",
@@ -153,15 +205,21 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Two objects express the same thing",
         "{type} '{name}' duplicates {other}",
         "say it once, in the enforceable place",
-        condition="a filter and a custom instruction, or two near-duplicate descriptions, overlap",
+        condition=(
+            "a custom instruction's text writes out a filter's predicate, compared with its `ref()` and "
+            "`var()` calls resolved and ignoring case and whitespace"
+        ),
     ),
     spec(
         "SST-VAL018",
         Severity.WARNING,
         "Composed prose surface exceeds the configured budget",
         "{artifact}: composed instruction surface is {size} chars, over {expected}",
-        "move bulk content into a referenced file",
-        condition="descriptions plus instructions plus tool text exceed the budget",
+        "shorten the view's description or its custom instructions, or raise `validation.instruction_budget`",
+        condition=(
+            "a semantic view's description plus the text of the custom instructions it attaches is longer "
+            "than `validation.instruction_budget`; unset, nothing is checked"
+        ),
     ),
     spec(
         "SST-VAL019",
@@ -169,7 +227,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Prose names an object that does not resolve",
         "{type} '{name}': prose names '{value}', which does not resolve",
         "correct the name, or remove the mention",
-        condition="free text references a filter, metric, dimension, table or tool that is absent",
+        condition=(
+            "a custom instruction's text names a metric or filter as `the <name> metric` or "
+            "`the <name> filter`, and the project declares none by that name"
+        ),
     ),
     spec(
         "SST-VAL020",
@@ -177,6 +238,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Rule skipped -- requirement unavailable",
         "{rule_id} skipped: {detail}",
         None,
-        condition="a rule needs an observation, a connection or a cap that was unavailable",
+        condition=(
+            "a rule needs a Snowflake connection, a privilege or an observation that was unavailable: "
+            "each connected validate rule when syntax checking is off or no connection was given, or a "
+            "plan check the role may not read for"
+        ),
     ),
 )

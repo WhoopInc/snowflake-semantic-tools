@@ -12,34 +12,37 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Filter expression is not boolean",
         "filter '{member}' carries labels: [filter] and its expr is not boolean",
-        "make the expression boolean",
-        condition="an enforced filter's expression does not evaluate to a boolean",
+        "make the expression boolean, or remove `labels: [filter]` so it renders as prose",
+        condition="a filter labelled `filter` has an expression SST does not read as boolean",
     ),
     spec(
         "SST-VAL402",
         Severity.ERROR,
         "Filter label applied to a metric",
         "'{member}' carries labels: [filter] and is a metric",
-        "remove the label, or declare a filter",
-        condition="an enforcement label is attached to a metric",
+        "remove `labels:` from the metric, or declare the expression under `snowflake_filters:`",
+        condition="a metric declares `labels:` holding `filter`",
     ),
     spec(
         "SST-VAL403",
         Severity.ERROR,
         "Legacy filter syntax",
         "filter '{member}' uses the legacy inline form",
-        "declare filters as named objects with labels:",
+        "move each entry to `snowflake_filters:` as a named filter with `labels: [filter]`",
         demotable=False,
-        condition="the removed inline filter form is in use",
-        note="Forbidden.",
+        condition="a semantic view declares `filters:`, the 0.3 inline form 1.0 removed",
+        note="Reported once per inline entry.",
     ),
     spec(
         "SST-VAL404",
         Severity.WARNING,
         "Filter expression contains an unwrapped bare identifier",
         "filter '{member}' expression contains bare identifier '{column}'",
-        "wrap it in {{ ref('<model>','<column>') }}",
-        condition="a filter expression carries an unchecked column reference",
+        "wrap it in `{{ ref('<model>', '<column>') }}`",
+        condition=(
+            "a filter's expression names a column of one of its `tables:` without `ref()`, so the "
+            "reference is not checked"
+        ),
     ),
     spec(
         "SST-VAL405",
@@ -47,32 +50,39 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Boolean standalone filter",
         "filter '{member}' is boolean-valued and declares no labels: key",
         "add `labels: [filter]` so it renders as a native `LABELS = (FILTER)` dimension on its table",
-        condition="a boolean filter declares no `labels:` key, so it has no clause left to render into",
-        note="It would be authored and emitted nowhere.",
+        condition="a filter whose expression is boolean declares no `labels:` key",
+        note=(
+            "Without the label it would render only as a sentence in the view's SQL-generation "
+            "instructions, which no query enforces."
+        ),
     ),
     spec(
         "SST-VAL406",
         Severity.WARNING,
         "Filter synonyms declared but not emitted",
         "filter '{member}' declares synonyms that the renderer drops",
-        "remove the synonyms until the renderer emits them",
-        condition="synonyms are declared on an object whose renderer ignores them",
+        "remove `synonyms:` from the filter",
+        condition="a filter declares `synonyms:`, which no clause of the view's DDL carries for a filter",
     ),
     spec(
         "SST-VAL407",
         Severity.ERROR,
         "Custom instruction block has no non-empty channel",
         "custom_instruction '{member}' declares no non-empty channel",
-        "populate at least one channel",
-        condition="every channel on a block is empty or absent",
+        "write text under `ai_sql_generation` or `ai_question_categorization`",
+        condition=(
+            "a custom instruction's `ai_sql_generation` and `ai_question_categorization` are both empty or absent"
+        ),
+        note="A block written only in the 0.3 spellings is `SST-VAL012` instead.",
     ),
     spec(
         "SST-VAL408",
         Severity.ERROR,
         "Legacy custom-instruction rendering",
         "custom_instruction '{member}' would render as a bare string",
-        "emit module_custom_instructions or the ai_-prefixed clauses",
-        condition="the legacy bare-string form would be emitted",
+        "declare the text as a block under `snowflake_custom_instructions:` and list "
+        "`{{ custom_instructions('<name>') }}` in the view's `custom_instructions:`",
+        condition="a semantic view's `custom_instructions:` is a string, the 0.3 form, rather than a list",
     ),
     spec(
         "SST-VAL409",
@@ -80,8 +90,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Instruction placed in the wrong channel",
         "custom_instruction '{member}': a {found} rule appears in the {expected} channel",
         "move the rule to the channel that acts on it",
-        condition="a categorization rule sits in sql_generation, or the reverse",
-        note="Silently inert.",
+        condition=(
+            "a rule about whether to answer (out of scope, decline, ask for clarification) sits in "
+            "`ai_sql_generation`, or a rule shaping the SQL (group by, order by, rounding, joins) sits in "
+            "`ai_question_categorization`"
+        ),
+        note="The channel that does not act on the rule ignores it.",
     ),
     spec(
         "SST-VAL410",
@@ -89,7 +103,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Two instruction blocks on one view contradict each other",
         "{artifact}: '{a}' and '{b}' give contradictory directives",
         "reconcile the two blocks",
-        condition="two attached blocks issue conflicting guidance",
+        condition=(
+            "two custom instructions one view attaches carry the same directive clause, one with "
+            "`always`, `must` or `should` and the other with its negation"
+        ),
     ),
     spec(
         "SST-VAL411",
@@ -97,7 +114,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Instruction uses Cortex Analyst state keywords",
         "custom_instruction '{member}' uses {found} keywords, which an agent does not need",
         "write the instruction as plain natural language",
-        condition="UNCLEAR-style keywords are present",
+        condition=(
+            "a custom instruction's text uses `UNCLEAR`, `AMBIGUOUS`, `UNAMBIGUOUS_SQL`, `UNANSWERABLE` or "
+            "`OUT_OF_SCOPE`, in uppercase"
+        ),
         note="Unconditional, because every 1.0 consumer is an agent.",
     ),
     spec(
@@ -105,8 +125,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Verified query declares neither sql nor sql_file, or both",
         "verified_query '{member}': {detail}",
-        "declare exactly one of sql or sql_file",
-        condition="the two source forms are both present or both absent",
+        "declare exactly one of `sql` or `sql_file`",
+        condition="a verified query declares both `sql` and `sql_file`, or neither",
     ),
     spec(
         "SST-VAL413",
@@ -114,31 +134,43 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Verified query question text is not unique within a view",
         "{artifact}: question text is shared by '{a}' and '{b}'",
         "make the question text unique",
-        condition="selection is by question text, so duplicates are ambiguous",
+        condition=(
+            "two verified queries attached to one view ask the same question, compared ignoring case "
+            "and runs of whitespace"
+        ),
     ),
     spec(
         "SST-VAL414",
         Severity.WARNING,
         "Verified query SQL references a table not in its table list",
         "verified_query '{member}' queries '{relation}', absent from tables:",
-        "add the table to tables:",
-        condition="attachment is computed from tables:, so the VQ may land on a view lacking the table",
+        "add the table to `tables:`",
+        condition=(
+            "a verified query's SQL reads a table that its non-empty `tables:` leaves out; attachment "
+            "is computed from `tables:`, so the query may land on a view that lacks the table"
+        ),
     ),
     spec(
         "SST-VAL415",
         Severity.WARNING,
         "Verified query returns no rows",
         "verified_query '{member}' executed and returned {row_count} rows in {elapsed_ms}ms",
-        "fix the query, or widen the fixture",
-        condition="a VQ runs successfully and returns nothing, so it teaches nothing",
+        "fix the query, or check that the target holds the data it asks about",
+        condition=(
+            "connected validate runs a verified query that compiles and it returns no rows, so it teaches nothing"
+        ),
     ),
     spec(
         "SST-VAL416",
         Severity.WARNING,
         "Verified query SQL contains a relative date",
         "verified_query '{member}' contains relative date '{value}'",
-        "pin the date, or accept that it is runtime guidance only",
-        condition="a VQ that doubles as eval ground truth re-evaluates over time",
+        "pin the date, or accept that its answer changes over time",
+        condition=(
+            "a verified query's SQL calls a clock function such as `CURRENT_DATE` outside a string, "
+            "quoted identifier or comment"
+        ),
+        note="A verified query that doubles as eval ground truth then scores against a moving answer.",
     ),
     spec(
         "SST-VAL417",
@@ -146,14 +178,22 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Question text is shared across three different sets",
         "'{value}' appears as a VQ question, an agent sample_question and an eval row",
         "keep the three sets distinct",
-        condition="one question string serves purposes that should not overlap",
+        condition=(
+            "one question, ignoring surrounding whitespace, is a verified query's `question`, an agent's "
+            "sample question and an eval row"
+        ),
     ),
     spec(
         "SST-VAL418",
         Severity.ERROR,
-        "Expression does not compile against Snowflake",
+        "Expression or query is not valid SQL",
         "{type} '{name}': expression failed to compile: {detail}",
-        "fix the expression",
-        condition="snowflake_syntax_check is enabled and the expression does not compile",
+        "fix the expression or query; the message carries the reason",
+        condition=(
+            "an expression or a tool member's `where:` is not one SQL expression, or verified-query SQL "
+            "is not one SELECT or WITH query, both checked offline; or Snowflake's EXPLAIN of a metric, "
+            "dimension, filter or verified query fails in connected validate with "
+            "`validation.snowflake_syntax_check` on"
+        ),
     ),
 )
