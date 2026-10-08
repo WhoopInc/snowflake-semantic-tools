@@ -1,11 +1,12 @@
 """Drop the scratch schemas live runs left behind: one run's, or every one older than a window.
 
 `python -m tests.helpers.sweep_scratch --run <id>` is a CI job's own teardown, run even when the job
-failed; `--older-than-hours <n>` is the nightly sweep, the only cleanup that survives a cancelled job
-or a killed runner. Either drops a schema only when `live_snowflake.sweepable` chooses it -- the
+failed; `--older-than-hours <n>` is the sweep a maintainer starts by hand (the `sweep` suite of the
+manual workflow, slow.yml), the only cleanup for a cancelled job or a killed runner. Nothing runs
+it on a schedule. Either drops a schema only when `live_snowflake.sweepable` chooses it -- the
 scratch prefix, a parseable stamp, and SST's marker comment -- so a schema anything else created is
-out of reach. It prints each schema it drops, and a non-empty nightly report on a green pipeline is
-worth investigating: it means some job died in a way nothing else noticed.
+out of reach. It prints each schema it drops, and a sweep that finds schemas after runs that
+passed is worth investigating: it means some job died in a way nothing else noticed.
 
 Exit status: 0 when every chosen schema was dropped (or none was chosen); 1 when a drop failed or no
 account is configured.

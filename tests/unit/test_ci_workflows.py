@@ -1,0 +1,104 @@
+"""The GitHub workflows and issue forms, read offline: what runs where, and what the Snowflake checks need."""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Any
+
+import pytest
+import yaml
+
+from tests.helpers import sweep_scratch
+from tests.helpers.cli_json import invoke_json
+from tests.helpers.cli_projects import common
+from tests.helpers.reference_project import REPO_ROOT, project_copy
+
+WORKFLOWS = REPO_ROOT / ".github" / "workflows"
+MANUAL = "slow.yml"
+EVALS = "inputs.suite == 'evals'"
+# Only the manual workflow reaches Snowflake; these name what it needs to.
+SNOWFLAKE_ONLY = ("secrets.SNOWFLAKE_", "SST_TEST_SNOWFLAKE_", "tests.helpers.sweep_scratch", "-m live")
+
+
+def _workflow(name: str) -> dict[Any, Any]:
+    document = yaml.safe_load((WORKFLOWS / name).read_text(encoding="utf-8"))
+    assert isinstance(document, dict)
+    return document
+
+
+def _triggers(document: dict[Any, Any]) -> dict[str, Any]:
+    # YAML 1.1 reads the bare key `on` as True.
+    found = document.get("on", document.get(True))
+    return {found: None} if isinstance(found, str) else dict(found)
+
+
+def _evals_runs() -> list[str]:
+    steps = _workflow(MANUAL)["jobs"]["run"]["steps"]
+    return [" ".join(str(step.get("run", "")).split()) for step in steps if step.get("if") == EVALS]
+
+
+def test_every_workflow_parses_and_only_the_manual_one_reaches_snowflake() -> None:
+    names = sorted(path.name for path in WORKFLOWS.glob("*.yml"))
+    assert MANUAL in names
+    for name in names:
+        assert _workflow(name)["jobs"], name
+        if name != MANUAL:
+            text = (WORKFLOWS / name).read_text(encoding="utf-8")
+            assert [needle for needle in SNOWFLAKE_ONLY if needle in text] == [], name
+    assert set(_triggers(_workflow(MANUAL))) == {"workflow_dispatch"}
+
+
+def test_the_evals_suite_builds_compiles_and_applies_verify_before_it_runs() -> None:
+    runs = _evals_runs()
+
+    def first(fragment: str) -> int:
+        return next(index for index, run in enumerate(runs) if fragment in run)
+
+    order = [
+        first("dbt build --target verify"),
+        first("compile --target verify"),
+        first("apply --target verify --yes --no-strict"),
+        first("test --suite evals --target verify"),
+    ]
+    assert order == sorted(order) and len(set(order)) == 4
+    manifests = {found[1] for run in runs if "poetry run sst" in run if (found := re.search(r"--manifest (\S+)", run))}
+    assert manifests == {"tests/fixtures/reference_project/target/manifest.json"}
+
+
+def test_the_verify_target_resolves_every_partner_reference_offline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for key in ("ACCOUNT", "USER", "ROLE", "WAREHOUSE", "DATABASE", "SCHEMA"):
+        monkeypatch.setenv(f"SST_TEST_SNOWFLAKE_{key}", f"PLACEHOLDER_{key}")
+    project = project_copy(tmp_path)
+    _, diagnostics = invoke_json(["compile", *common(project), "--target", "verify"])
+    unresolved = [item["message"] for item in diagnostics if item["code"] in ("SST-REF018", "SST-REF019")]
+    assert [message for message in unresolved if "jaffle_partner" in message] == []
+
+
+def test_the_grantee_role_is_a_test_harness_grant_only() -> None:
+    engine = REPO_ROOT / "snowflake_semantic_tools"
+    assert [path for path in engine.rglob("*.py") if "GRANTEE_ROLE" in path.read_text(encoding="utf-8")] == []
+    readers = sorted(
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in (REPO_ROOT / "tests").rglob("*.py")
+        if path != Path(__file__).resolve() and ".grantee_role" in path.read_text(encoding="utf-8")
+    )
+    assert readers == ["tests/integration/test_apply_live.py", "tests/unit/test_live_config.py"]
+    guide = (REPO_ROOT / "docs" / "guides" / "testing-live.md").read_text(encoding="utf-8")
+    assert "The `GRANTEE_ROLE` grant is the test harness's own." in guide
+
+
+def test_the_scratch_sweep_is_described_as_the_manual_run_it_is() -> None:
+    assert "sweep_scratch" not in (WORKFLOWS / "nightly.yml").read_text(encoding="utf-8")
+    assert "tests.helpers.sweep_scratch --older-than-hours" in (WORKFLOWS / MANUAL).read_text(encoding="utf-8")
+    described = (sweep_scratch.__doc__ or "").casefold()
+    assert "nightly" not in described and "by hand" in described
+
+
+def test_the_bug_report_form_sends_vulnerabilities_to_the_private_security_policy() -> None:
+    form = yaml.safe_load((REPO_ROOT / ".github" / "ISSUE_TEMPLATE" / "bug_report.yml").read_text(encoding="utf-8"))
+    intro = form["body"][0]["attributes"]["value"]
+    assert "vulnerability" in intro and "SECURITY.md" in intro and "Do not open an issue" in intro
+    assert "Do not open a public GitHub issue" in (REPO_ROOT / "SECURITY.md").read_text(encoding="utf-8")

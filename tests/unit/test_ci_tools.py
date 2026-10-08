@@ -145,3 +145,16 @@ def test_a_recording_names_no_account_and_no_run_and_compares_byte_for_byte(tmp_
     assert session_recorder.compare(captured, recording) == (True, "")
     same, diff = session_recorder.compare(captured.replace("<volatile>", "moved", 1), recording)
     assert not same and diff.startswith("--- committed\n+++ captured\n")
+
+
+def test_the_first_capture_becomes_the_recording_and_later_ones_are_compared_with_it(tmp_path: Path) -> None:
+    out, recording = tmp_path / "out" / "capture.json", tmp_path / "recordings" / "live_project.json"
+    status, report = session_recorder.settle("{}\n", out, recording)
+    assert (status, out.read_text(encoding="utf-8"), recording.read_text(encoding="utf-8")) == (0, "{}\n", "{}\n")
+    assert (
+        report == f"no recording at {recording}: wrote this capture there as the first one; review it and commit it\n"
+    )
+    assert session_recorder.settle("{}\n", out, recording) == (0, "the capture matches the committed recording\n")
+    status, report = session_recorder.settle('{"moved": 1}\n', out, recording)
+    assert status == 1 and report.startswith("--- committed\n+++ captured\n")
+    assert out.read_text(encoding="utf-8") == '{"moved": 1}\n' and recording.read_text(encoding="utf-8") == "{}\n"

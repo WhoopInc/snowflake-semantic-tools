@@ -14,8 +14,9 @@ name: Snowflake checks (manual)
 #   SNOWFLAKE_WAREHOUSE     the warehouse the tests run in
 #   SNOWFLAKE_DATABASE      a database set aside for test scratch schemas
 #   SNOWFLAKE_SCHEMA        the schema the evals suite deploys to (evals only)
-#   SNOWFLAKE_GRANTEE_ROLE  optional; a role the test role may grant SELECT to, which adds the
-#                           check that replacing a view keeps its grants
+#   SNOWFLAKE_GRANTEE_ROLE  optional, `live` only; a role the test role may grant SELECT to, which
+#                           adds the check that replacing a view keeps its grants. The grant is the
+#                           test's own, on a view in its scratch schema; SST never grants to it.
 #
 # Without them the run skips with a notice and succeeds; it never fails for missing credentials.
 #
@@ -27,8 +28,11 @@ name: Snowflake checks (manual)
 #   sweep      drop SST_IT_* scratch schemas older than `older_than_hours`, the cleanup for a
 #              cancelled job or a killed runner
 #   recording  re-capture the recorded session and diff it against the committed recording
-#   evals      `sst test --suite evals` on the reference project; needs SNOWFLAKE_SCHEMA and a role
-#              that may create agents
+#   evals      the reference project on its `verify` target: `dbt build`, then `sst compile`,
+#              `sst apply --no-strict` and `sst test --suite evals`, all against SNOWFLAKE_DATABASE
+#              and SNOWFLAKE_SCHEMA. Needs SNOWFLAKE_SCHEMA and a role that may create the
+#              project's objects and agents (docs/guides/testing-live.md). What it publishes stays
+#              in place for the next run; it is not a scratch schema.
 on:
   workflow_dispatch:
     inputs:
@@ -139,6 +143,11 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
+      # The evals suite builds the reference project's models, which needs dbt itself.
+      - name: Install dbt for the evals suite
+        if: inputs.suite == 'evals'
+        run: poetry install --no-interaction --extras dbt
+
       # The key never reaches the log or the workspace: it is written once, outside the checkout,
       # readable only by the runner user, and removed by the last step.
       - name: Write the Snowflake private key
@@ -168,7 +177,9 @@ jobs:
         run: poetry run python -m tests.helpers.sweep_scratch --older-than-hours "$OLDER_THAN_HOURS"
 
       # A difference means Snowflake's answers moved: the project and the schema it is captured
-      # in are fixed. The capture is uploaded either way, so a reviewer can commit it.
+      # in are fixed. Until a recording is committed, the capture becomes the first one and the
+      # step passes. The capture is uploaded either way, so a reviewer can commit it as
+      # tests/fixtures/recordings/live_project.json.
       - name: Capture and compare the recorded session
         if: inputs.suite == 'recording'
         run: poetry run python -m tests.helpers.session_recorder --out recording/live_project.json
@@ -205,13 +216,45 @@ jobs:
                 threads: 4
           PROFILE
 
+      # The committed manifest is dbt's for `dev`, so its refs name SST_REF_DEV. Building the
+      # models in `verify` writes the manifest whose refs name SNOWFLAKE_DATABASE.SNOWFLAKE_SCHEMA,
+      # and every sst step below reads that one.
+      - name: Build the reference project's dbt models in the verify target
+        if: inputs.suite == 'evals'
+        env:
+          REFERENCE_PROJECT: tests/fixtures/reference_project
+        run: |
+          poetry run dbt deps --project-dir "$REFERENCE_PROJECT"
+          poetry run dbt build --target verify --project-dir "$REFERENCE_PROJECT" --profiles-dir "$RUNNER_TEMP/profiles"
+
+      # The eval suite reads the SST manifest `sst compile` writes (SST-MAN001 without it) and
+      # runs the agents `sst apply` published. --no-strict because the fixture keeps warnings on
+      # purpose, and a connected check reports each absent stand-in (SST-VAL531).
+      - name: Compile the reference project for the verify target
+        if: inputs.suite == 'evals'
+        run: >-
+          poetry run sst
+          --project-dir tests/fixtures/reference_project
+          --profiles-dir "$RUNNER_TEMP/profiles"
+          --manifest tests/fixtures/reference_project/target/manifest.json
+          compile --target verify
+
+      - name: Apply the reference project to the verify target
+        if: inputs.suite == 'evals'
+        run: >-
+          poetry run sst
+          --project-dir tests/fixtures/reference_project
+          --profiles-dir "$RUNNER_TEMP/profiles"
+          --manifest tests/fixtures/reference_project/target/manifest.json
+          apply --target verify --yes --no-strict
+
       - name: Run the eval suite
         if: inputs.suite == 'evals'
         run: >-
           poetry run sst --output json
           --project-dir tests/fixtures/reference_project
           --profiles-dir "$RUNNER_TEMP/profiles"
-          --manifest tests/fixtures/reference_project_manifest.json
+          --manifest tests/fixtures/reference_project/target/manifest.json
           test --suite evals --target verify
           > evals.json
 
