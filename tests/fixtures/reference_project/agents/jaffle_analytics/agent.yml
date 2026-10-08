@@ -37,8 +37,10 @@ profile:
   # Published with ALTER AGENT ... SET PROFILE. A display name shared with
   # another agent is SST-VAL549.
   display_name: Jaffle Analytics
-  # Neither avatar nor color is a closed set, so SST passes both through
-  # unchecked. A plain color name reads better in review than a theme token.
+  # SST-VAL548 checks both: the color must be a plain color name or a
+  # `var(--token)`, and the avatar must be in `snowflake.profile.avatar_allowlist`
+  # when that is set (this fixture sets none). A plain color name reads better
+  # in review than a theme token.
   avatar: SparklesAgentIcon
   color: blue
 
@@ -197,7 +199,7 @@ alias: promoted
 enabled: true
 
 meta:
-  owner: daa-platform
+  owner: analytics-platform
   deprecated: false
 
 # The eval files live in ./evals/. Eval objects publish into this agent's
@@ -210,8 +212,9 @@ evals:
 # DELIBERATELY ABSENT
 # =============================================================================
 # `tags`: would publish as a separate ALTER AGENT ... SET TAG.
-# `passthrough` / `tool_spec_passthrough`: copied into the spec unchecked, so
-#   using one would assert a key SST does not model.
+# `passthrough` / `tool_spec_passthrough`: copied into the spec with their
+#   values unchecked (a non-empty one is SST-PRS024, one repeating a key SST
+#   renders SST-PRS023), so using one would assert a key SST does not model.
 # An `mcp` tool: MCP and agent tools are skipped during evals (SST-VAL732), so
 #   this agent's eval gate could not see it.
 # A `web_search` tool: it must be named `web_search` (SST-VAL517), and eval

@@ -53,10 +53,12 @@ sst_reference_impl:
     # SST_TEST_SNOWFLAKE_* variables the live tests read (docs/guides/testing-live.md).
     # Account, user, role, database, schema and warehouse have no default, so an
     # unset one stops at profile load with the variable named. The authenticator
-    # defaults to externalbrowser (SSO). Like `ci`, it is absent from
-    # `relations:`, and no golden resolves against it. With the variables
-    # exported (`set -a; . tests/live.local.env; set +a` from the repository
-    # root), build the dbt models there with:
+    # defaults to externalbrowser (SSO). Unlike `ci`, every tool member maps
+    # it in `relations:`, to a stand-in under SST_REF_VERIFY: a relation is a
+    # literal name and cannot follow these variables. No golden resolves
+    # against it. With the variables exported
+    # (`set -a; . tests/live.local.env; set +a` from the repository root),
+    # build the dbt models there with:
     #
     #   dbt deps
     #   dbt build --target verify

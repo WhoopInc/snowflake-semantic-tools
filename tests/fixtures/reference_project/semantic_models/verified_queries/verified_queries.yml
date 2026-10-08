@@ -30,7 +30,7 @@ snowflake_verified_queries:
     use_as_onboarding_question: true
     # Epoch seconds, rendered as written.
     verified_at: 1769904000
-    verified_by: "daa-platform"
+    verified_by: "analytics-platform"
 
   - name: revenue_by_location
     tables:
@@ -52,7 +52,7 @@ snowflake_verified_queries:
     use_as_onboarding_question: true
     # A date string, rendered as epoch seconds at midnight UTC (1767225600).
     verified_at: "2026-01-01"
-    verified_by: "daa-platform"
+    verified_by: "analytics-platform"
 
   # sql_file: resolves against this file's directory. SST drops the sidecar's
   # leading comment block, so the rendered SQL starts at SELECT.
