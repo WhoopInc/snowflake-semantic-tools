@@ -16,7 +16,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Model is missing a field the dialect requires",
         "{artifact}: the {value} dialect requires '{field}'",
         "supply the field",
-        condition="the model is valid and the renderer cannot produce DDL from it",
+        condition="a semantic view has no tables, which `CREATE SEMANTIC VIEW` requires",
     ),
     spec(
         "SST-RND002",
@@ -32,7 +32,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Rendered DDL exceeds the statement size limit",
         "{artifact}: rendered DDL is {size} bytes, over the {expected} guess",
         "split the view, or reduce the member count",
-        condition="the rendered statement is larger than the assumed statement limit",
+        condition=(
+            "a semantic view's rendered statement is larger than 1,048,576 bytes, SST's estimate "
+            "of Snowflake's statement limit"
+        ),
     ),
     spec(
         "SST-RND010",
@@ -48,7 +51,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Agent spec contains a dollar-quote sequence",
         "agent '{artifact}': spec contains '$$' at {value}",
         "remove or escape the sequence",
-        condition="the rendered spec would break dollar-quoting in the DDL",
+        condition=(
+            "an agent's rendered specification contains `$$`, which would end the dollar-quoted "
+            "literal it is published in"
+        ),
     ),
     spec(
         "SST-RND012",
@@ -56,7 +62,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unknown agent tool type at render",
         "agent '{artifact}': tool type '{found}' is unknown to the renderer",
         "add the type to snowflake.tool_types",
-        condition="a tool type reaches the renderer unrecognised",
+        condition=("an agent tool's `type` is neither a type SST knows nor one `snowflake.tool_types` declares"),
     ),
     spec(
         "SST-RND013",
@@ -72,7 +78,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unknown eval expectation kind",
         "eval '{artifact}': expectation kind '{found}' is unknown",
         "use a supported expectation kind",
-        condition="an eval row declares an expectation the renderer cannot express",
+        condition=(
+            "a question's ground truth names a `ground_truth_` key other than "
+            "`ground_truth_invocations` or `ground_truth_output`"
+        ),
     ),
     spec(
         "SST-RND021",
@@ -80,7 +89,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Eval has no cases",
         "eval '{artifact}' renders with no cases",
         "add rows to the dataset",
-        condition="the rendered eval has an empty case list",
+        condition="the eval's dataset has no questions",
     ),
     spec(
         "SST-RND022",
@@ -88,7 +97,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SQL_MATCH expectation is brittle",
         "eval '{artifact}': row {index} uses SQL_MATCH",
         "prefer a result-set comparison",
-        condition="a textual SQL match will break on any formatting change",
+        condition=(
+            "a question's ground truth expects a tool input that is SQL text, which any formatting change breaks"
+        ),
     ),
     spec(
         "SST-RND030",
@@ -96,7 +107,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Skill references a path that does not exist",
         "skill '{artifact}': '{path}' does not exist at render",
         "add the file, or correct the reference",
-        condition="a bundle path is unresolvable at render",
+        condition="a skill renders files but no SKILL.md, or a plugin bundles no skill under `./skills/`",
     ),
     spec(
         "SST-RND031",
@@ -112,7 +123,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Skill body exceeds the soft size limit",
         "skill '{artifact}': rendered body is {size} bytes, over {expected}",
         "move bulk content into a referenced file",
-        condition="the rendered body is over the soft cap",
+        condition="a skill's rendered SKILL.md is over 25 KiB while the authored one is not",
+        note="A skill file authored over 25 KiB reports SST-VAL812 instead.",
     ),
     spec(
         "SST-RND040",
@@ -128,7 +140,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Tool source query is empty",
         "tool '{artifact}': rendered source query is empty",
         "supply on: or body_file: content",
-        condition="the rendered tool body has no statement",
+        condition=("a search-service tool has no relation to select from, or a procedure or function tool has no body"),
     ),
     spec(
         "SST-RND900",
@@ -136,6 +148,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Rendered member count differs from the model's",
         "{artifact}: rendered {found} members, model carries {expected}",
         "report this as a bug",
-        condition="render is not total over the model",
+        condition="a semantic view renders a different number of members than the model carries",
     ),
 )

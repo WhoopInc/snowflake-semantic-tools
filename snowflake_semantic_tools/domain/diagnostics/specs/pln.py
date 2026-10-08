@@ -13,7 +13,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Observation query failed",
         "observation of {value} failed: {detail}",
         "check the connection and the role, then re-run plan",
-        condition="a query that reads current state failed",
+        condition=(
+            "a read of the target failed: an object listing, a definition, grants, the state table, "
+            "a preflight read, or a composite artifact's resources; under `--use-cached-state`, also "
+            "each composite artifact, which a recorded observation cannot decide"
+        ),
     ),
     spec(
         "SST-PLN002",
@@ -29,7 +33,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Prune candidate has no ownership marker",
         "{value} has no SST ownership marker; skipped",
         "adopt it explicitly, or delete it by hand",
-        condition="an unmanaged object sits in the target schema",
+        condition=(
+            "under `--prune`, a live object of a prunable type that the project no longer "
+            "declares carries no SST ownership marker, so it is not pruned"
+        ),
     ),
     spec(
         "SST-PLN004",
@@ -37,7 +44,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Marked prune candidate is absent from local state",
         "{value} carries an SST marker and is absent from state; skipped",
         "reconcile state, or delete it by hand",
-        condition="a marked object has no local record",
+        condition=(
+            "under `--prune`, a candidate carries an SST ownership marker, but state has no entry "
+            "for it, or its entry's manifest, fingerprint, DDL hash or name disagrees with the "
+            "marker, so it is not pruned"
+        ),
     ),
     spec(
         "SST-PLN005",
@@ -45,7 +56,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Dependency cycle among artifacts",
         "artifact dependency cycle: {cycle}",
         "break the cycle",
-        condition="the artifact-level dependency graph is not acyclic",
+        condition="the planned changes' dependencies form a cycle, so no change can be ordered",
     ),
     spec(
         "SST-PLN006",
@@ -53,7 +64,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Impact-scoped plan requested with no previous manifest",
         "no previous manifest; a full plan was computed",
         "commit the manifest, or pass --state",
-        condition="impact scoping is unavailable",
+        condition=(
+            "`state:modified` was selected without a previous manifest: no `--state`, or a "
+            "`--state` directory holding no `manifest.json`, so the plan covers every artifact"
+        ),
     ),
     spec(
         "SST-PLN007",
@@ -61,7 +75,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Referenced object does not exist in the target",
         "{artifact} references {value}, absent from target '{target}'",
         "publish it first, or correct the reference",
-        condition="an observation shows a referenced object is missing",
+        condition="a planned create or update references a relation the target does not hold",
+        note="Plan blocks the change rather than let apply fail with SST-SNO003.",
     ),
     spec(
         "SST-PLN008",
@@ -69,7 +84,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Deploying role lacks a required privilege",
         "{value} lacks {detail} on {target}",
         "grant the privilege",
-        condition="an observation shows the role cannot perform the planned write",
+        condition=(
+            "no role in the session holds, or owns the schema for, the CREATE privilege a planned "
+            "create needs on its schema, such as CREATE SEMANTIC VIEW"
+        ),
+        note=(
+            "Plan blocks the change rather than let apply fail with SST-SNO004. An update is not "
+            "checked: it replaces an object the role already owns."
+        ),
     ),
     spec(
         "SST-PLN009",
@@ -77,7 +99,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "An object already exists at the target name",
         "{artifact}: {value} already exists",
         "use or_replace, or choose another name",
-        condition="the planned create would collide with an existing object",
+        condition="the name a planned create writes to is held by an object of its type that observation did not list",
+        note="Unless the name is free by then, apply refuses the create (SST-APL012).",
     ),
     spec(
         "SST-PLN010",
@@ -85,7 +108,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Target schema does not exist",
         "schema {value} does not exist or is not authorised",
         "create the schema, or correct the target",
-        condition="the target schema is absent from the observation",
+        condition=(
+            "the schema a planned write targets does not exist, or the role cannot see it; reported once per schema"
+        ),
     ),
     spec(
         "SST-PLN011",
@@ -93,7 +118,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Target database does not exist",
         "database {value} does not exist or is not authorised",
         "create the database, or correct the target",
-        condition="the target database is absent from the observation",
+        condition=(
+            "the database a planned write targets does not exist, or the role cannot see it; reported once per database"
+        ),
     ),
     spec(
         "SST-PLN012",
@@ -101,7 +128,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Warehouse does not exist or is not authorised",
         "warehouse {value} does not exist or is not authorised",
         "grant USAGE, or name an existing warehouse",
-        condition="the configured warehouse is unusable",
+        condition="the warehouse the profile names does not exist, or the role cannot see it; reported once per plan",
     ),
     spec(
         "SST-PLN013",
@@ -109,7 +136,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Live object carries grants that a replace would drop",
         "{artifact}: {count} explicit grants exist on {value}",
         "confirm COPY GRANTS is emitted before applying",
-        condition="plan surfaces what is at stake before a replace",
+        condition="a planned update replaces an object that carries explicit grants",
+        note="Apply checks every one survives the replace, and fails the change if not (SST-APL009).",
     ),
     spec(
         "SST-PLN014",
@@ -117,7 +145,15 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Live definition differs from the last recorded state",
         "{artifact} was changed out of band",
         "review the difference before applying",
-        condition="an out-of-band edit is detectable from the marker",
+        condition=(
+            "state records the artifact, but the live object's ownership marker is absent, or "
+            "names another manifest or fingerprint than state records, or the object is under "
+            "another name"
+        ),
+        note=(
+            "The change is blocked, so `apply` refuses the plan (SST-APL003) until the live object "
+            "is again the one SST wrote, although this code is a warning."
+        ),
     ),
     spec(
         "SST-PLN015",
@@ -133,7 +169,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Plan summary",
         "{value}",
         None,
-        condition="per-type counts of create, replace, noop and prune",
+        condition=(
+            "a plan reports its counts by artifact type, as `view: 1 create, 0 replace, 2 noop, 0 "
+            "prune`; under `--use-cached-state` it first reports when the recorded observation was "
+            "taken and how old it is"
+        ),
     ),
     spec(
         "SST-PLN017",
@@ -171,7 +211,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Smoke query could not be constructed",
         "{artifact}: no smoke query can be built for metric '{member}'",
         "make the metric selectable, or exclude it from smoke checks",
-        condition="a public metric cannot be expressed as a query",
+        condition="a public metric of a semantic view has no smoke probe, because no query can name it",
+        note="Raised by `sst test --suite smoke`, which then runs no probe.",
     ),
     spec(
         "SST-PLN021",
@@ -179,7 +220,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Prune reconciliation found objects the repo does not declare",
         "{count} objects in {value} are not declared here",
         "adopt or delete them explicitly",
-        condition="the declared set and the live set differ after case folding",
+        condition=(
+            "under `--prune`, a schema holds live objects of a prunable type that the project does "
+            "not declare, compared case-folded; one per schema, counting every candidate whether "
+            "or not it is pruned"
+        ),
     ),
     spec(
         "SST-PLN022",
@@ -187,7 +232,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Change order is not computable",
         "change order could not be computed: {detail}",
         "resolve the dependency conflict",
-        condition="topological ordering failed for a reason other than a cycle",
+        condition="two planned changes carry artifact keys that are the same once case-folded",
     ),
     spec(
         "SST-PLN023",
@@ -204,7 +249,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: {value} exists without trusted SST ownership",
         "adopt or remove the object explicitly before applying",
         demotable=False,
-        condition="an object holds the target name and state records no SST entry for it",
+        condition=(
+            "an object holds the target name and state records no SST entry for it; `sst drop` "
+            "also reports it for an object with no trusted SST ownership marker"
+        ),
     ),
     spec(
         "SST-PLN025",
@@ -303,7 +351,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Smoke check skipped",
         "{artifact}: smoke check skipped ({detail})",
         None,
-        condition="smoke queries are disabled, or no connection was available",
+        condition=(
+            "under `sst test --suite smoke --fail-fast`, an artifact whose probes did not run "
+            "because an earlier probe failed"
+        ),
     ),
     spec(
         "SST-PLN900",
