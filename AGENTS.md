@@ -2,7 +2,7 @@
 
 SST is a command-line compiler and publisher for a Snowflake semantic layer kept as code in a dbt project: semantic views, agent tools, Cortex Agents, evals, skills, plugins, and CoCo Desktop profiles. It validates offline, saves a reviewable plan, and applies exactly that plan.
 
-**Commands**: `sst init`, `debug`, `validate`, `compile`, `plan`, `apply`, `test --suite golden|smoke|evals`, `list`, `clean`, `docs [--check]`, `migrate refs`. The CLI is the only interface; there is no Python API. Options and exit codes are in `docs/reference/cli.md` (generated).
+**Commands**: `sst init`, `debug`, `migrate refs`, `enrich`, `format`, `compile`, `validate`, `baseline add|prune|renew|show`, `list`, `plan`, `apply`, `diff`, `test --suite golden|smoke|evals`, `explain`, `docs [--check]`, `clean`, `drop`. The CLI is the only interface; there is no Python API. Options and exit codes are in `docs/reference/cli.md` (generated).
 
 ## Critical Rules
 
@@ -14,7 +14,7 @@ SST is a command-line compiler and publisher for a Snowflake semantic layer kept
   Preferred format: `[SST-<issue#>] <description>`
 - **Each PR addresses exactly one GitHub issue.** The PR body MUST contain `Closes #<number>`.
 - **Branch from the line you are changing**: 1.0 work from the 1.0 development branch; a 0.3.x fix from the maintenance branch cut from tag `v0.3.1`, never merged into 1.0 (see `CONTRIBUTING.md`). Name branches `fix/<description>` or `feature/<description>`.
-- **Connect to Snowflake only when the user asks**, and then only to a non-production scratch schema. `plan`, `apply`, `test --suite smoke|evals`, `debug --test-connection`, and `validate` with syntax checks connect; everything else, including the whole test suite, is offline.
+- **Connect to Snowflake only when the user asks**, and then only to a non-production scratch schema. These connect: `plan`, `apply`, `enrich`, `drop`, `baseline add --target`, `test` unless `--suite golden`, `diff` whenever either side is a dbt target (`--to` defaults to one), `debug` unless `--no-connect`, and `validate` with `--verify-schema` or with syntax checks on, which they are by default (`validation.snowflake_syntax_check: true`); `sst validate --no-snowflake-syntax-check` stays offline. Everything else, including the whole offline test suite, does not.
 - **When addressing PR review comments**: reply to the comment explaining the fix, then resolve the thread:
   ```bash
   # Reply to the comment
@@ -31,22 +31,28 @@ SST is a command-line compiler and publisher for a Snowflake semantic layer kept
 |------|-------|--------------|
 | `cli/` | click commands; the composition root | may import every ring |
 | `app/` | use cases (compile, validate, plan, apply, test suites, migrate refs) | `domain` only, never `adapters`; no `yaml`, `click`, or `snowflake` |
-| `adapters/` | YAML, dbt manifest, Snowflake connector, filesystem, config, profile | `domain` models and ports, never `domain.render` or `app`; the `yaml`, `dbt`, `snowflake`, and `fs` subpackages never import each other, and only `yaml` and `dbt` import `yaml` |
+| `adapters/` | YAML, dbt manifest, Snowflake connector, filesystem, config, profile | `domain` models and ports, never `domain.render` or `app`; the `yaml`, `dbt`, `snowflake`, and `fs` subpackages never import each other; only `yaml`, `dbt`, and `bounded_yaml.py` import `yaml`, and only `roundtrip.py`, `yaml`, and `dbt` import `ruamel` |
 | `domain/` | pure, by stage: parse, resolve, validate, render, plan, state; plus model (data types only), diagnostics, enrich, migrate, sql, ports | no I/O, clock, environment, randomness, logging, or SDKs |
 
-`poetry run lint-imports` enforces these as the six contracts in `pyproject.toml`; `tests/unit/test_ring_boundaries.py` proves each one rejects a crossing.
+`poetry run lint-imports` enforces these as the seven contracts in `pyproject.toml`; `tests/unit/test_ring_boundaries.py` proves each one rejects a crossing.
 
 ## Gates
 
-What `.github/workflows/test-and-lint.yml` runs; the exact coverage commands are in `CONTRIBUTING.md`.
+What `.github/workflows/test-and-lint.yml` runs, in short; the exact commands, coverage included, are under "Running the Gates" in `CONTRIBUTING.md`.
 
 ```bash
-poetry run pytest tests/ -n auto  # plus branch-coverage floors: domain 100%, app 95%, cli 90%, adapters 90%
+poetry check --lock
+poetry run pytest tests/unit/cli/test_exit_codes.py
+poetry run sst --project-dir tests/fixtures/reference_project format --check
+poetry run pytest tests/ -n auto  # with coverage, then the per-layer ratchet; serial floors: domain 100%, app 95%, cli 90%; adapters 90%
 poetry run mypy snowflake_semantic_tools tests   # strict
 poetry run ruff format --check snowflake_semantic_tools/ tests/
 poetry run ruff check snowflake_semantic_tools/ tests/
 poetry run lint-imports
 poetry run sst docs --check
+poetry run bandit -r snowflake_semantic_tools -ll
+poetry run pip-audit --skip-editable --progress-spinner off
+semgrep scan --config .semgrep/ --error --metrics off --disable-version-check snowflake_semantic_tools  # separate job
 ```
 
 ## Conventions
@@ -55,9 +61,11 @@ poetry run sst docs --check
 - **Style**: ruff formats, sorts imports, and lints, line length 120; mypy runs in strict mode over the package and the tests.
 - **Imports**: absolute, by full dotted path (`from snowflake_semantic_tools.domain.model.dbt import DbtCatalog`, never `from .dbt import ...`); tests share code only through `tests.helpers`. `tests/unit/test_import_style.py` enforces both.
 - **Docstrings and size**: follow "Docstrings and comments" in `CONTRIBUTING.md`; `tests/unit/test_docstrings.py` and `tests/unit/test_structure.py` enforce it with no exceptions.
-- **Diagnostics**: every problem is registered in `snowflake_semantic_tools/domain/diagnostics/specs/` (one module per code area) with a stable `SST-XXXnnn` code and an actionable suggestion (what is wrong AND how to fix it). Codes are never reused. `tests/codes/` holds each code to the 1.0 catalog and requires it to be emitted and tested both ways; its allowlists only shrink (`tests/codes/README.md`).
+- **Diagnostics**: every problem is registered in `snowflake_semantic_tools/domain/diagnostics/specs/` (one module per code area) with a stable `SST-XXXnnn` code and an actionable suggestion (what is wrong AND how to fix it). Codes are never reused. `tests/codes/` holds each code to the 1.0 catalog (`tests/codes/catalog.json`) and requires it to be emitted and tested both ways (`test_<code>_fires` / `test_<code>_silent`); its allowlists only shrink (`tests/codes/README.md`). The steps are under "Adding a diagnostic code" in `CONTRIBUTING.md`.
+- **CLI options** are declared without `help=`; the description goes in `cli/help_text.py` (`_OPTION_HELP`, or `_COMMAND_OPTION_HELP` for one command's narrower meaning). See "Adding a CLI option" in `CONTRIBUTING.md`.
+- **SQL** is built only through `snowflake_semantic_tools.domain.sql`: `sql()` with a constant template and `Sql` parts from its quoting constructors. `Sql` cannot be constructed elsewhere, and `tests/unit/security/test_sql_construction.py` refuses SQL built from strings.
 - **Config keys** are declared in `snowflake_semantic_tools/domain/model/config_schema/keys.py`.
-- **Generated pages**: after changing diagnostics, the config schema, CLI options, or the artifact registry, run `poetry run sst docs` and commit `docs/reference/*.md`.
+- **Generated pages**: after changing diagnostics, the config schema, CLI options, or the artifact registry, run `poetry run sst docs` and commit `docs/reference/*.md`. Never edit those pages by hand.
 - **Version**: `snowflake_semantic_tools/_version.py` must equal the version in `pyproject.toml` (a test asserts it).
 - **Tests** never connect to Snowflake; fixtures and goldens are described in `tests/README.md`.
 - **Hygiene**: no planning identifiers (one capital letter followed by three digits), environment-specific names, or home-directory paths in committed files.
