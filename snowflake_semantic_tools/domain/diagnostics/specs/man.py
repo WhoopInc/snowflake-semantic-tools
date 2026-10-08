@@ -13,7 +13,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "manifest.json not found where expected",
         "no SST manifest at {path}",
         "run sst compile",
-        condition="the compiled manifest is absent",
+        condition=(
+            "there is no manifest where it is read: `target/sst/manifest.json`, which "
+            "`sst compile` writes, or the `manifest.json` of the `--state` directory"
+        ),
     ),
     spec(
         "SST-MAN002",
@@ -37,7 +40,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Impact index incomplete",
         "{artifact} has no reverse-index entry",
         "re-run sst compile",
-        condition="an artifact is absent from the impact index",
+        condition="the impact index of a stored manifest does not list an artifact under a file it came from",
     ),
     spec(
         "SST-MAN005",
@@ -53,7 +56,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Manifest written for a different target",
         "manifest target '{found}', current target '{expected}'",
         "drop --manifest and let SST parse for this target",
-        condition="the manifest and the run disagree about the target",
+        condition="the manifest `sst compile` wrote records another target than the run's",
+        note=(
+            "Re-run `sst compile` for the run's target. `--manifest` names the dbt manifest, not "
+            "this one, so dropping it does not help."
+        ),
     ),
     spec(
         "SST-MAN007",
@@ -77,7 +84,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "state.json absent",
         "no state file; treating every artifact as new",
         "check `state.+table` is readable on this target; a full plan is the safe fallback, not the fix",
-        condition="change detection has no prior state",
+        condition="read offline, the target has no local state cache, so every artifact reads as new",
     ),
     spec(
         "SST-MAN021",
@@ -93,7 +100,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "state.json present but unreadable",
         "{path} is present and unreadable: {detail}",
         "fix or delete the file explicitly",
-        condition=("refusing rather than silently discarding, because discarding is what makes a prune unsafe"),
+        condition=(
+            "the local state cache, `target/sst/state.<target>.json`, exists but cannot be read; "
+            "`sst diff` also reports it for a state table that exists and cannot be read"
+        ),
+        note="SST refuses rather than discard the file, because discarding it is what makes a prune unsafe.",
     ),
     spec(
         "SST-MAN023",
@@ -101,7 +112,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "State file schema is unrecognised",
         "{path} declares schema {found}",
         "delete it and re-run plan",
-        condition="the state file version is outside the supported set",
+        condition="the local state cache declares a schema version this release does not read or migrate",
     ),
     spec(
         "SST-MAN024",
@@ -109,7 +120,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "State written by a newer SST",
         "{path} was written by SST {found}; this is {expected}",
         "upgrade SST, or delete the state file",
-        condition="the state file is from a later version",
+        condition="the local state cache was written by a later SST release",
     ),
     spec(
         "SST-MAN025",
@@ -117,7 +128,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Two writers produced one state filename",
         "{path} was written by {value}",
         "split the two files; one filename, one schema",
-        condition="the 0.3 two-schemas-one-filename clobber is detected",
+        condition=(
+            "the local state cache under this target's file name records another database or "
+            "schema, so it is set aside, neither read nor rewritten; or the observation "
+            "`--use-cached-state` reads records another account, database or schema"
+        ),
     ),
     spec(
         "SST-MAN026",
@@ -125,7 +140,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Change detection summary",
         "{value}",
         None,
-        condition="per-type counts of new, modified, unmodified and orphaned",
+        condition=("a plan reports, per artifact type, its counts of new, modified, unmodified and orphaned artifacts"),
     ),
     spec(
         "SST-MAN027",
@@ -157,7 +172,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dbt manifest digest changed mid-run",
         "dbt manifest digest changed during the run",
         "re-run; a concurrent dbt compile is in progress",
-        condition="the dbt manifest was rewritten while SST was reading it",
+        condition="the dbt manifest `--manifest` names changed its models while the project compiled",
     ),
     spec(
         "SST-MAN201",
@@ -165,7 +180,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Older manifest schema migrated in memory",
         "{path} schema {found} migrated to {expected} in memory",
         None,
-        condition="a read command migrated without rewriting the file",
+        condition="a stored manifest of an older schema was read, migrated in memory without rewriting the file",
     ),
     spec(
         "SST-MAN202",
@@ -173,7 +188,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Older manifest schema with no migration",
         "{path} schema {found} has no migration; full recompile",
         "re-run sst compile",
-        condition="an old schema cannot be migrated",
+        condition="a stored manifest declares an older schema that has no migration",
+        note="The manifest cannot be read, so the command stops; `sst compile` writes a current one.",
     ),
     spec(
         "SST-MAN203",

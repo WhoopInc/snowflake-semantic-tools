@@ -13,7 +13,15 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Snowflake refused and SST does not recognise the refusal",
         "Snowflake refused: {detail}",
         "read internal_detail; if this recurs, add a signature",
-        condition="no registered signature matched the driver error",
+        condition=(
+            "Snowflake refused a statement and no SST signature matches the error; also an eval "
+            "run whose results could not be read or checked, or an eval the gate finds no "
+            "completed, read attempt for"
+        ),
+        note=(
+            "The detail is Snowflake's error, or for an eval what could not be read. When the "
+            "failure ends a command's own connection, the command reports SST-PRT001 instead."
+        ),
     ),
     spec(
         "SST-SNO002",
@@ -21,7 +29,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Object already exists",
         "{value} already exists",
         "choose another name, or -- for a semantic view -- let the unconditional `CREATE OR REPLACE` handle it.",
-        condition="Snowflake reported 002002 / already exists",
+        condition="Snowflake reported error 2002 (SQLSTATE 42710), or a message saying `already exists`",
     ),
     spec(
         "SST-SNO003",
@@ -29,7 +37,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Object does not exist or is not authorised",
         "{value} does not exist or is not authorised",
         "publish the object, or grant access",
-        condition="Snowflake reported 002003",
+        condition=(
+            "Snowflake reported error 2003 (SQLSTATE 02000), SQLSTATE 42S02, or a message saying "
+            "`does not exist` that names no schema, database or warehouse"
+        ),
+        note="Plan reports a missing referenced relation first, as SST-PLN007.",
     ),
     spec(
         "SST-SNO004",
@@ -37,7 +49,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Insufficient privileges",
         "insufficient privileges for {value}",
         "grant the privilege to the deploying role",
-        condition="Snowflake reported 003001",
+        condition=(
+            "Snowflake reported error 3001 (SQLSTATE 42501), SQLSTATE 28000, or a message saying "
+            "`insufficient privileges` or `not authorized`"
+        ),
+        note="Plan reports a missing CREATE privilege on a schema first, as SST-PLN008.",
     ),
     spec(
         "SST-SNO005",
@@ -45,7 +61,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Schema does not exist or is not authorised",
         "schema {value} does not exist or is not authorised",
         "create the schema, or correct the target",
-        condition="Snowflake reported 002043",
+        condition="Snowflake reported error 2043, or a message saying `schema '<name>' does not exist`",
+        note="Plan reports a missing schema first, as SST-PLN010.",
     ),
     spec(
         "SST-SNO006",
@@ -53,7 +70,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Database does not exist or is not authorised",
         "database {value} does not exist or is not authorised",
         "create the database, or correct the target",
-        condition="Snowflake reported a database-level resolution failure",
+        condition="Snowflake reported a message saying `database '<name>' does not exist`",
+        note="Plan reports a missing database first, as SST-PLN011.",
     ),
     spec(
         "SST-SNO007",
@@ -61,7 +79,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Warehouse does not exist or is not authorised",
         "warehouse {value} does not exist or is not authorised",
         "grant USAGE, or name an existing warehouse",
-        condition="Snowflake reported a warehouse resolution failure",
+        condition="Snowflake reported a message saying `warehouse '<name>' does not exist`",
+        note="Plan reports an unusable warehouse first, as SST-PLN012.",
     ),
     spec(
         "SST-SNO008",
@@ -69,7 +88,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "No active warehouse in the session",
         "no active warehouse in the session",
         "set a default warehouse for the connecting user",
-        condition="Snowflake reported no active warehouse",
+        condition="Snowflake reported a message saying `no active warehouse`",
     ),
     spec(
         "SST-SNO009",
@@ -77,7 +96,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SQL compilation error",
         "SQL compilation error: {detail}",
         "fix the statement",
-        condition="Snowflake reported 001003",
+        condition=(
+            "Snowflake reported error 1003 (SQLSTATE 42000), SQLSTATE 42601, or a message saying "
+            "`syntax error` or `SQL compilation error`"
+        ),
     ),
     spec(
         "SST-SNO010",
@@ -85,7 +107,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SQL execution internal error",
         "SQL execution internal error: {detail}",
         "this is the query-time class the derived-metric restrictions exist to prevent",
-        condition="Snowflake reported an internal error or an incident id",
+        condition="Snowflake reported `SQL execution internal error`, or a message carrying an incident number",
+        note=(
+            "Snowflake failed while running a statement it had accepted. If it recurs, the "
+            "incident number in the detail is what Snowflake support asks for."
+        ),
     ),
     spec(
         "SST-SNO011",
@@ -93,7 +119,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Statement timeout",
         "statement timed out after {detail}",
         "raise the timeout, or reduce the statement",
-        condition="Snowflake reported 000630",
+        condition="Snowflake reported error 630 (SQLSTATE 57014), or a message saying `statement or warehouse timeout`",
     ),
     spec(
         "SST-SNO012",
@@ -101,7 +127,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Secure-object share restriction",
         "{value}: share restriction",
         "keep the object secure, or revoke the share grant",
-        condition="Snowflake reported 093932",
+        condition="Snowflake reported error 93932, or a message naming both a secure object and a share",
     ),
     spec(
         "SST-SNO013",
@@ -109,7 +135,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Authentication failed",
         "authentication failed for {value}",
         "refresh the credential",
-        condition="Snowflake reported 250001",
+        condition=(
+            "Snowflake rejected a login: error 250001 with authentication wording, or error "
+            "390100, 390144, 390195, 390302, 390303, 390318 or 390422"
+        ),
+        note="When a command's own connection fails this way, the command reports SST-PRT001.",
     ),
     spec(
         "SST-SNO014",
@@ -117,7 +147,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Driver network failure",
         "network failure: {detail}",
         "retry",
-        condition="the driver could not complete a round trip",
+        condition=(
+            "the driver lost or could not open its connection: SQLSTATE 08000, 08003 (error "
+            "250002), 08006, or 08001 with timeout or connection wording"
+        ),
+        note="When a command's own connection fails this way, the command reports SST-PRT001.",
     ),
     spec(
         "SST-SNO015",
@@ -125,7 +159,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "max_staleness rejected",
         "max_staleness {found} rejected",
         "raise it to at least 120",
-        condition="Snowflake rejected the staleness value",
+        condition="Snowflake rejected a statement with a message naming `max_staleness`",
     ),
     spec(
         "SST-SNO016",
@@ -133,7 +167,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Semantic view feature not enabled",
         "semantic views are not enabled on this account",
         "ask an account administrator to enable the feature",
-        condition="Snowflake reported the feature as unavailable",
+        condition=("Snowflake reported semantic views as an unsupported feature, or as not enabled or not available"),
     ),
     spec(
         "SST-SNO017",
@@ -141,7 +175,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "CREATE AGENT privilege required",
         "CREATE AGENT required on {value}",
         "grant CREATE AGENT on the schema",
-        condition="Snowflake required CREATE AGENT",
+        condition="Snowflake reported a message naming CREATE AGENT as a missing or required privilege",
     ),
     spec(
         "SST-SNO018",
@@ -149,7 +183,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "CREATE DATASET privilege required",
         "CREATE DATASET required on {value}",
         "grant CREATE DATASET on the schema",
-        condition="Snowflake required CREATE DATASET",
+        condition="Snowflake reported a message naming CREATE DATASET as a missing or required privilege",
     ),
     spec(
         "SST-SNO019",
@@ -157,7 +191,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Duplicate synonym",
         "duplicate synonym {value}",
         "make synonyms unique within the view",
-        condition="Snowflake rejected a repeated synonym",
+        condition="Snowflake reported a message saying `duplicate synonym`",
     ),
     spec(
         "SST-SNO020",
@@ -165,7 +199,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Identifier too long",
         "identifier {value} is too long",
         "shorten the name",
-        condition="Snowflake rejected an over-length identifier",
+        condition=("Snowflake reported an identifier as too long, or a message saying it exceeds the maximum length"),
     ),
     spec(
         "SST-SNO022",
@@ -173,7 +207,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Concurrent DDL or lock timeout",
         "lock timeout on {value}",
         "retry, or serialise the publishers",
-        condition="Snowflake reported a lock or concurrency failure",
+        condition="Snowflake reported a lock timeout or wait, a deadlock, or a concurrent change",
+        note="Plan warns of an object another session holds a lock on as SST-PLN019.",
     ),
     spec(
         "SST-SNO023",
@@ -181,7 +216,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Result set too large",
         "result set too large for {value}",
         "narrow the query",
-        condition="Snowflake refused to return the result",
+        condition="Snowflake reported a result as too large to return",
     ),
     spec(
         "SST-SNO024",
@@ -189,7 +224,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Query queued beyond the wait limit",
         "query queued beyond {detail}",
         "raise the queue limit, or use a larger warehouse",
-        condition="Snowflake queued the statement past the wait cap",
+        condition=("Snowflake reported a statement queued beyond its limit, or a `statement_queued_timeout`"),
     ),
     spec(
         "SST-SNO025",
@@ -197,7 +232,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unexpected DESCRIBE output shape",
         "DESCRIBE {value} returned an unexpected shape",
         "report this as a Snowflake drift finding",
-        condition="a DESCRIBE result does not match the expected columns",
+        condition="a DESCRIBE returned rows that lack a column SST reads, such as a table's `type`",
     ),
     spec(
         "SST-SNO030",
@@ -213,6 +248,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Enrichment step failed",
         "model '{model}': {step} failed: {detail}",
         "fix the cause the message names, then run sst enrich again",
-        condition="an enrich step (reading values, Cortex call) fails for a model",
+        condition=(
+            "an enrich step failed for a model: reading its columns or values, or a Cortex call; "
+            "Cortex answered in another shape than requested; or a value to write holds template "
+            "syntax dbt would run, so nothing is written for that column"
+        ),
     ),
 )
