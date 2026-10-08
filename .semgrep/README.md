@@ -1,9 +1,10 @@
 # Vendored semgrep rules
 
 The `semgrep` job in `.github/workflows/test-and-lint.yml` scans the package with the rules in this
-directory and nothing else (`semgrep scan --config .semgrep/ --metrics off`), so a scan's result
-depends only on the commit and the pinned semgrep in `.github/requirements/semgrep.txt`, never on
-what the Semgrep Registry serves that day.
+directory and nothing else (`semgrep scan --config .semgrep/ --error --metrics off
+--disable-version-check snowflake_semantic_tools`), so a scan's result depends only on the commit
+and the pinned semgrep in `.github/requirements/semgrep.txt`, never on what the Semgrep Registry
+serves that day. Any finding fails the job.
 
 | File | Registry ruleset | Rules |
 |------|------------------|-------|
