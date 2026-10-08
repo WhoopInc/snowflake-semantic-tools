@@ -9,7 +9,7 @@ from tests.helpers.ref_codes import procedure_relation_findings
 def test_sst_ref023_fires() -> None:
     [diagnostic] = procedure_relation_findings({"dev": "DB.S.LOOKUP", "prod": "DB.S.LOOKUP"}, "SST-REF023")
     assert diagnostic.severity is Severity.WARNING
-    assert diagnostic.message == "{ tool('platform', 'lookup') } resolves to DB.S.LOOKUP for both dev and prod"
+    assert diagnostic.message == "{{ tool('platform', 'lookup') }} resolves to DB.S.LOOKUP for both dev and prod"
     assert diagnostic.subject == "tool:lookup"
 
 

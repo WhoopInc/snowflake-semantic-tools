@@ -12,8 +12,8 @@ def test_sst_ref034_fires() -> None:
     assert (diagnostic.code, diagnostic.severity) == ("SST-REF034", Severity.ERROR)
     assert (
         diagnostic.message
-        == "semantic_models/metrics/metrics.yml:1:1: '{ table('orders') }' is not a reference in 1.0; "
-        "use '{ ref('orders') }'"
+        == "semantic_models/metrics/metrics.yml:1:1: '{{ table('orders') }}' is not a reference in 1.0; "
+        "use '{{ ref('orders') }}'"
     )
     assert diagnostic.subject == "metric:m"
     assert value.poisoned

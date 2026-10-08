@@ -14,9 +14,9 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL801",
         Severity.ERROR,
-        "Skill folder layout is wrong",
+        "Skill, plugin or profile folder is misnamed",
         "'{artifact}': {detail}",
-        "put SKILL.md at the folder root, with scripts beside it",
+        "rename the folder, or correct the manifest or SKILL.md name the message names",
         condition=(
             "a skill, plugin or profile folder is misnamed or its manifest is wrong: a skill or plugin "
             "name is not kebab-case or would publish as an extension name that does not start with a "

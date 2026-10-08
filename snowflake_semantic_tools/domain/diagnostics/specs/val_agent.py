@@ -56,9 +56,9 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL510",
         Severity.ERROR,
-        "Renderer emitted a partial spec",
+        "Rendered agent spec omits a section",
         "agent '{artifact}': rendered spec omits {value}",
-        "emit the complete spec; a partial spec deletes fields on the live agent",
+        "remove the passthrough key that sets the section to null; a partial spec deletes it from the live agent",
         demotable=False,
         condition=(
             "a top-level section the agent carries (models, orchestration, instructions, tools, "
@@ -165,9 +165,9 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL521",
         Severity.ERROR,
-        "Cortex Search tool omits a required key",
+        "Search or generic tool omits a required key",
         "agent '{artifact}': tool '{name}' omits '{field}'",
-        "declare search_service and name",
+        "declare the tool's name, and its search_service or, for a generic tool, its identifier",
         condition=(
             "a cortex_search tool omits `name` or `search_service`, or a generic tool omits `name` or `identifier`"
         ),
@@ -343,7 +343,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Skill source does not pin an immutable version",
         "agent '{artifact}': skill source '{name}' does not pin an immutable version",
-        "pin a committed version; `LIVE` and an omitted version are both refused HERE -- Snowflake refuses neither",
+        "pin a committed version; SST refuses LIVE and an omitted version, though Snowflake accepts both",
         condition=(
             "an agent's `extension()` skill source, for an extension the project consumes, pins no version or pins LIVE"
         ),
@@ -466,9 +466,9 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL550",
         Severity.ERROR,
-        "Deprecated or dropped version is still referenced",
+        "Deprecated agent still sets an alias",
         "agent '{artifact}': {detail}",
-        "clear the alias, or retain the version",
+        "remove the alias, or stop deprecating the agent",
         condition="a deprecated agent still sets an `alias`, which points at a version of it",
     ),
 )

@@ -61,7 +61,7 @@ def test_sst_val744_fires() -> None:
     assert action is Action.BLOCKED
     [(code, message, subject)] = found
     assert code == "SST-VAL744"
-    assert message == "eval metric 'grounding' declares no version"
+    assert message == "eval metric 'grounding' changed since state recorded it under the same name"
     assert subject == "eval_metric:grounding"
     assert ERROR_REGISTRY["SST-VAL744"].severity is Severity.ERROR
 

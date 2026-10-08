@@ -12,7 +12,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "DDL execution failed",
         "{artifact}: {value} failed: {detail}",
-        "read internal_detail, then fix the statement or the account",
+        "fix the statement or the account as the error in the message says",
         condition=(
             "Snowflake rejected a statement `apply` or `drop` ran, or a change failed for a reason "
             "no other APL code names"
@@ -49,7 +49,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Refused: replace would run without COPY GRANTS",
         "{artifact}: replace statement omits COPY GRANTS",
-        "emit COPY GRANTS; this is not configurable",
+        "report this as a bug; SST renders COPY GRANTS on every such replace",
         demotable=False,
         condition=(
             "a statement about to replace an object whose grants survive only by COPY GRANTS does "
@@ -96,9 +96,9 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-APL008",
         Severity.WARNING,
-        "Grants could not be re-read after a replace",
-        "{artifact}: grants could not be verified after replace",
-        "check the grants by hand",
+        "Explicit grants could not be read for a replace",
+        "{artifact}: its explicit grants could not be read",
+        "check the grants by hand; if the change failed, re-apply once they can be read",
         condition=(
             "the explicit grants of an object an update replaces could not be read: before the "
             "replace, which fails the change with nothing written, or after it, which leaves the "
@@ -268,9 +268,9 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-APL023",
         Severity.ERROR,
-        "Eval run could not be started",
+        "Eval run failed",
         "eval '{artifact}': {detail}",
-        "check CREATE TASK, CREATE STAGE and the file format",
+        "fix what the detail names, then re-run the eval",
         condition=(
             "an eval could not run, or one of its attempts failed: it has no run configuration; "
             "its agent version could not be read or its config could not be staged; "
@@ -352,7 +352,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Smoke query failed",
         "{artifact}: smoke probe failed: {detail}",
-        "fix the metric; a created view is not a working view",
+        "fix the artifact the probe names; a created view is not a working view",
         condition=(
             "a smoke probe of a view, a verified query, or a DESCRIBE of a published artifact "
             "failed, observed by `sst test --suite smoke` rather than by `apply`"

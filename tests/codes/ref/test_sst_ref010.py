@@ -22,7 +22,7 @@ def test_sst_ref010_fires() -> None:
     )
     [diagnostic] = coded(diagnostics, "SST-REF010")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "{ tool('platform','missing') } does not resolve"
+    assert diagnostic.message == "{{ tool('platform','missing') }} does not resolve"
     assert diagnostic.subject is None
 
 

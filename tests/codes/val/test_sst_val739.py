@@ -13,7 +13,7 @@ from tests.helpers.eval_inputs import judge, sales_eval, validate
 def test_sst_val739_fires() -> None:
     diagnostic = only(validate(sales_eval(metrics=(judge(model="mistral-large2"),))), "SST-VAL739")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "eval metric 'grounding': judge_model 'mistral-large2' is not in the allowlist"
+    assert diagnostic.message == "eval metric 'grounding': model 'mistral-large2' is not in the allowlist"
     assert diagnostic.subject == "eval_metric:grounding"
 
 

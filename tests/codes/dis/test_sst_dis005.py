@@ -14,7 +14,10 @@ def test_sst_dis005_fires(tmp_path: Path) -> None:
     (root / "sub" / "loop").symlink_to("..")
     [diagnostic] = discover_yaml(tmp_path, "semantic_models").diagnostics
     assert (diagnostic.code, diagnostic.severity) == ("SST-DIS005", Severity.ERROR)
-    assert diagnostic.message == "semantic_models/sub/loop exceeds the traversal depth limit"
+    assert (
+        diagnostic.message
+        == "semantic_models/sub/loop is not walked: it links back into the tree, or lies more than 32 directories deep"
+    )
 
 
 def test_sst_dis005_fires_past_the_depth_limit(tmp_path: Path) -> None:

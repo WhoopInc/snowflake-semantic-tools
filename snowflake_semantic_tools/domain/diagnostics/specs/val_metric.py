@@ -19,8 +19,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL102",
         Severity.ERROR,
-        "Window function in a derived metric",
-        "window function {function} in derived metric '{metric}'",
+        "Window function in a metric that renders at view level",
+        "window function {function} in metric '{metric}', which renders at view level",
         "make it a table-scoped metric of one table with a `window:` block, or compute the window in the dbt "
         "model and aggregate the resulting column",
         demotable=False,

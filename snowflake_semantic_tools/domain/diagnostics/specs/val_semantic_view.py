@@ -90,8 +90,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL310",
         Severity.ERROR,
-        "Primary key column is not on the table",
-        "{artifact}: primary_key names '{column}', absent from '{name}'",
+        "Key column is not on the model",
+        "{artifact}: key column '{column}' is absent from '{name}'",
         "correct the `primary_key` or `unique_keys` entry",
         condition=(
             "a column named in a model's `config.meta.sst.primary_key` or `.unique_keys` does not exist on that model"

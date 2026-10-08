@@ -18,9 +18,7 @@ def test_sst_val722_fires() -> None:
         validate(sales_eval(eval_config=config(system_metrics=(system_metric(version=None),)))), "SST-VAL722"
     )
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == (
-        "eval config for 'sales': metric 'tool_selection_accuracy' declares no metric_version"
-    )
+    assert diagnostic.message == ("eval config for 'sales': metric 'tool_selection_accuracy' declares no version")
     assert diagnostic.subject == "eval:sales"
 
 

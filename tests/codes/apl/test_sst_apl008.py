@@ -1,4 +1,4 @@
-"""SST-APL008: an object's explicit grants could not be read back after its replace."""
+"""SST-APL008: an object's explicit grants could not be read, here back after its replace."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def test_sst_apl008_fires() -> None:
     diagnostic = only(result.diagnostics, "SST-APL008")
     assert (diagnostic.severity, diagnostic.message) == (
         Severity.WARNING,
-        "semantic_view:v: grants could not be verified after replace",
+        "semantic_view:v: its explicit grants could not be read",
     )
     assert result.outcomes[0].status is OutcomeStatus.APPLIED
 

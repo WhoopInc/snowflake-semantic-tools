@@ -19,7 +19,7 @@ def test_sst_ref043_fires(tmp_path: Path) -> None:
     project = load(edited(tmp_path, FILE, BEFORE, after))
     [diagnostic] = coded(project.diagnostics, "SST-REF043")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "filter:is_large_order: ref('customers') is not one of the view's tables"
+    assert diagnostic.message == "filter:is_large_order: ref('customers') is not one of the member's tables:"
     assert diagnostic.subject == "filter:is_large_order"
 
 

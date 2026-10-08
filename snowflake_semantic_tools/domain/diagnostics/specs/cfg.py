@@ -128,7 +128,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-CFG013",
         Severity.ERROR,
-        "env_var() resolved to an empty string",
+        "env_var() names an unset variable with no default",
         "env_var('{var}') is unset and has no default",
         "set {var}, or give env_var() a default",
         condition="a `profiles.yml` field SST reads calls `env_var()` on an unset variable with no default",
@@ -164,7 +164,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-CFG017",
         Severity.ERROR,
         "tool() reference does not resolve from config",
-        "{{ tool('{group}','{name}') }} does not resolve",
+        "{{{{ tool('{group}','{name}') }}}} does not resolve",
         "declare the group and member in the tools directory",
         condition="a `tool()` call in a config value names a group or member the tools directory does not declare",
     ),
@@ -215,7 +215,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-CFG029",
         Severity.ERROR,
         "var() reference has no declaration",
-        "{{ var('{var}') }} is not declared in config",
+        "{{{{ var('{var}') }}}} is not declared in config",
         "declare {var} under vars:",
         condition=(
             "a `var()` call, in `sst_config.yml` or in project YAML, names a variable `vars:` does not "
@@ -250,9 +250,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Illegal severity override",
         "severity_overrides {code}: {found} is not permitted ({reason})",
-        "promote instead of demoting, or remove the override",
+        "remove the override, or give the code a severity the floor permits",
         demotable=False,
-        condition="an override breaks the demotion floor, or --strict and strict: disagree",
+        condition="a `diagnostics.severity_overrides` entry breaks the demotion floor",
         note=(
             "The floor: a `diagnostics.severity_overrides` entry may not lower a non-demotable code, "
             "demote an error to info, or promote an info code to error. A refused override is not "
@@ -305,7 +305,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Sample-value collection requested but the project refuses it",
         "--include {components} reads row data, and enrichment.allow_sample_value_collection is false",
-        "remove --include sample-values, or change the key in sst_config.yml",
+        "leave sample-values and enums out of the run, or set enrichment.allow_sample_value_collection to true",
         demotable=False,
         condition=(
             "`sst enrich` includes a component that reads row data (`sample-values` or `enums`, "

@@ -241,8 +241,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL722",
         Severity.ERROR,
-        "metric_version is not pinned",
-        "eval config for '{artifact}': metric '{name}' declares no metric_version",
+        "System metric version is not pinned",
+        "eval config for '{artifact}': metric '{name}' declares no version",
         "pin the version",
         condition="a system metric sets no `version` and `evals.+metric_version` is unset",
         note=(
@@ -254,7 +254,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL723",
         Severity.WARNING,
-        "metric_version pins a legacy judge",
+        "System metric version pins a legacy judge",
         "eval config for '{artifact}': metric '{name}' pins legacy version '{found}'",
         "move to a current version, and record the score shift",
         condition=(
@@ -427,7 +427,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL738",
         Severity.ERROR,
         "Custom metric declares no explicit judge model",
-        "eval metric '{artifact}': judge_model is '{found}'",
+        "eval metric '{artifact}' names no judge model (model: {found})",
         "name the judge model explicitly",
         condition="a custom metric's `model` is absent or `auto`",
         note=(
@@ -438,8 +438,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL739",
         Severity.ERROR,
-        "judge_model is not in the allowlist",
-        "eval metric '{artifact}': judge_model '{found}' is not in the allowlist",
+        "Custom metric's judge model is not in the allowlist",
+        "eval metric '{artifact}': model '{found}' is not in the allowlist",
         "add it to the config allowlist, or use an allowed model",
         condition=(
             "`snowflake.orchestration_models` is set and a custom metric's `model` is not in it, compared ignoring case"
@@ -496,9 +496,9 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL744",
         Severity.ERROR,
-        "Custom metric is not versioned",
-        "eval metric '{artifact}' declares no version",
-        "version it; an edited prompt is a new metric",
+        "Custom metric changed under the same name",
+        "eval metric '{artifact}' changed since state recorded it under the same name",
+        "publish the change under a new metric name, or revert it",
         condition=(
             "a plan finds a custom metric whose prompt, score bands or judge model changed since state "
             "recorded it under the same name; the eval is blocked"

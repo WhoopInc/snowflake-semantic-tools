@@ -12,7 +12,7 @@ def test_sst_ref013_fires() -> None:
         AgentSkill("unknown", "CORTEX_EXTENSION", "nowhere", "V1", ref="extension"), "SST-REF013"
     )
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "{ extension('nowhere') } does not resolve"
+    assert diagnostic.message == "{{ extension('nowhere') }} does not resolve"
     assert diagnostic.subject == "agent:router"
 
 

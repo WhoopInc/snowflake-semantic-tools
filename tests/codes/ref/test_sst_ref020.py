@@ -22,7 +22,7 @@ def test_sst_ref020_fires() -> None:
     )
     [diagnostic] = coded(diagnostics, "SST-REF020")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "{ tool('search') } resolves to procedure, expected cortex_search_service"
+    assert diagnostic.message == "{{ tool('search') }} resolves to procedure, expected cortex_search_service"
     assert diagnostic.subject == "agent:router"
 
 

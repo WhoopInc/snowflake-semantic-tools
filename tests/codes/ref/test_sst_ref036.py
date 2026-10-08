@@ -10,7 +10,7 @@ from tests.helpers.ref_codes import skill_entry_findings
 def test_sst_ref036_fires() -> None:
     [diagnostic] = skill_entry_findings(AgentSkill("", "CORTEX_EXTENSION", "ghost-kit", "", ref="plugin"), "SST-REF036")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "{ plugin('ghost-kit') } does not resolve"
+    assert diagnostic.message == "{{ plugin('ghost-kit') }} does not resolve"
     assert diagnostic.subject == "agent:router"
 
 

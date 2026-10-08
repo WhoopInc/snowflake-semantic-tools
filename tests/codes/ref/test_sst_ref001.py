@@ -10,7 +10,7 @@ from tests.helpers.resolve_builders import resolved
 def test_sst_ref001_fires() -> None:
     value, (diagnostic,) = resolved("{{ ref('missing') }}", METRIC_EXPR)
     assert (diagnostic.code, diagnostic.severity) == ("SST-REF001", Severity.ERROR)
-    assert diagnostic.message == "{ ref('missing') } is not a model in the dbt manifest"
+    assert diagnostic.message == "{{ ref('missing') }} is not a model in the dbt manifest"
     assert diagnostic.subject == "metric:m"
     assert value.poisoned
 

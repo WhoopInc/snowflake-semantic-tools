@@ -1,4 +1,4 @@
-"""SST-MAN202: a manifest of a schema too old to migrate is discarded for a full recompile."""
+"""SST-MAN202: a manifest of a schema too old to migrate cannot be read."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def test_sst_man202_fires(tmp_path: Path) -> None:
     path = written(tmp_path, document)
     diagnostic = manifest_refusal(path)
     assert (diagnostic.code, diagnostic.severity) == ("SST-MAN202", Severity.WARNING)
-    assert diagnostic.message == f"{path} schema 0 has no migration; full recompile"
+    assert diagnostic.message == f"{path} schema 0 has no migration, so it cannot be read"
 
 
 def test_sst_man202_silent(tmp_path: Path) -> None:
