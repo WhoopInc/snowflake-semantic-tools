@@ -168,19 +168,21 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "validation.snowflake_syntax_check",
         _B,
-        "Compile expressions against Snowflake during validate and plan.",
+        "Compile expressions against Snowflake during validate and plan. Must be written out, true or false "
+        "(SST-CFG031).",
         default="true",
     ),
     _key(
         "validation.description_floor",
         _I,
-        "Shortest description, in characters, a semantic view or metric may carry; unset checks none.",
+        "Shortest description, in characters, a semantic view or metric may carry (SST-VAL004); unset checks none.",
         minimum=1,
     ),
     _key(
         "validation.instruction_budget",
         _I,
-        "Longest composed comment and instructions, in characters, a semantic view may publish; unset checks none.",
+        "Longest composed comment and instructions, in characters, a semantic view may publish (SST-VAL018); "
+        "unset checks none.",
         minimum=1,
     ),
     _key(
@@ -196,14 +198,14 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "diagnostics.severity_overrides",
         KeyKind.MAP,
-        "Per-code severity: promote freely; demote an error no lower than warning, and never a "
-        "non-demotable code (SST-CFG033).",
+        "Per-code severity. A warning may become an error or info, an error a warning, and an info a warning; "
+        "a non-demotable code is never lowered (SST-CFG033). Strict mode promotes after overrides apply.",
         children=ChildPolicy.NAMES,
     ),
     _key(
         "diagnostics.severity_overrides.<name>",
         KeyKind.ENUM,
-        "The severity this code reports at.",
+        "The severity this registered code reports at; a code the registry lacks is SST-CFG003.",
         choices=("error", "warning", "info"),
     ),
     _key("enrichment", _BLOCK, "What `sst enrich` collects from the warehouse, and how much."),
@@ -235,14 +237,15 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "enrichment.allow_sample_value_collection",
         _B,
-        "False refuses every run that reads row data: `--include sample-values` and `enums` (SST-CFG038).",
+        "False refuses every run that reads row data, one that includes `sample-values` or `enums` (SST-CFG038).",
         default="true",
     ),
     _key("generation", _BLOCK, "How the commands that reach Snowflake pace their work."),
     _key(
         "generation.threads",
         _I,
-        "Sessions `plan`, `apply` and `test` work on at once, unless `--threads` or `$SST_THREADS` says.",
+        "Sessions `plan` and `test` work on at once, and changes `apply` applies at once, unless `--threads` or "
+        "`$SST_THREADS` says. Unset, applying takes `skills.+threads`, else 4.",
         default="1",
         minimum=1,
         maximum=16,
@@ -270,7 +273,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "dbt.manifest_schema_versions",
         _L,
-        "Manifest schema versions read; any other is refused (SST-DBT017).",
+        "Manifest schema version numbers read, such as `[12]`; any other is refused (SST-DBT017) unless "
+        "`--allow-unsupported-manifest-schema` is given.",
         default="the versions this release is tested against",
     ),
     _key("defer", _BLOCK, "Resolve dbt objects to another target's relations while publishing to `--target`."),
@@ -322,7 +326,12 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         choices=("caller", "owner"),
     ),
     _removed("tools.+enabled", "omit the tools instead"),
-    _key("tools.<route>", _BLOCK, "Per-group override of the `+` keys above, for a group with `define:` members."),
+    _key(
+        "tools.<route>",
+        _BLOCK,
+        "Per-group override of the `+` keys above, keyed by group name, for a group with `define:` members "
+        "(SST-CFG020).",
+    ),
     _key(
         "semantic_views",
         _BLOCK,
@@ -355,7 +364,13 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("agents.+database", _S, "Database for agents.", default="the target database"),
     _key("agents.+schema", _S, "Schema for agents.", default="the target schema"),
     _key("agents.+warehouse", _S, "Warehouse for agent tool execution.", default="the target warehouse"),
-    _key("agents.+orchestration_model", _S, "Orchestration model.", default="auto"),
+    _key(
+        "agents.+orchestration_model",
+        _S,
+        "Orchestration model of agents that name none or `auto`; must be in `snowflake.orchestration_models` "
+        "(SST-CFG025).",
+        default="auto",
+    ),
     _key("agents.+query_timeout", _I, "Tool query timeout in seconds."),
     _key("agents.+budget_seconds", _I, "Orchestration time budget."),
     _key("agents.+budget_tokens", _I, "Orchestration token budget."),
@@ -375,16 +390,35 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _removed("agents.+create_mode", "agents are created once and versioned"),
     _key("agents.<route>", _BLOCK, "Folder route: overrides for agents under that directory."),
     _key("evals", _BLOCK, "Defaults for agent evaluations.", children=ChildPolicy.ROUTES),
-    _key("evals.+eval_tier", KeyKind.ENUM, "Whether a regression blocks.", choices=("blocking", "report")),
+    _key(
+        "evals.+eval_tier",
+        KeyKind.ENUM,
+        "Whether a regression blocks, for evals whose `run.tier` is unset; unset is `report`.",
+        choices=("blocking", "report"),
+    ),
     _key("evals.+metrics", _L, "Default system metrics."),
-    _key("evals.+metric_version", _S, "System metric version."),
+    _key(
+        "evals.+metric_version",
+        _S,
+        "Version of each system metric that names none; only `v3` is accepted (SST-VAL723), and unset with "
+        "none named is SST-VAL722.",
+    ),
     _key("evals.+judge_model", _S, "Custom judge model."),
-    _key("evals.+agent_version", _S, "Agent version an eval runs against."),
-    _key("evals.+retry", _I, "Retries per run; every attempt is reported."),
-    _key("evals.+concurrency", _I, "Concurrent eval runs."),
-    _key("evals.+baseline_runs", _I, "Completed attempts a baseline needs."),
-    _key("evals.+min_dataset_rows", _I, "Smallest accepted question set."),
-    _key("evals.+retention", KeyKind.ENUM, "Run retention class.", choices=("audit", "decision")),
+    _key("evals.+agent_version", _S, "Agent version an eval runs against when its config names none."),
+    _key("evals.+retry", _I, "Retries per run, for evals that set none; unset retries none. Each attempt is reported."),
+    _key(
+        "evals.+concurrency",
+        _I,
+        "Eval runs a suite starts and polls at once, and the most an eval's `run.concurrency` may ask (SST-VAL731).",
+    ),
+    _key("evals.+baseline_runs", _I, "Completed attempts a baseline needs, for evals that set none; unset needs 1."),
+    _key("evals.+min_dataset_rows", _I, "Smallest accepted question set (SST-VAL710); unset checks none."),
+    _key(
+        "evals.+retention",
+        KeyKind.ENUM,
+        "Retention class of a run whose variant `run.retention` does not list.",
+        choices=("audit", "decision"),
+    ),
     _removed("evals.+enabled", "omit the evals instead"),
     _removed("evals.+database", "eval objects resolve to the agent's schema", code="SST-CFG015"),
     _removed("evals.+schema", "eval objects resolve to the agent's schema", code="SST-CFG015"),
@@ -411,7 +445,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "skills.+threads",
         _I,
-        "Concurrent catalog publishes. Profiles always publish one at a time.",
+        "Changes `apply` applies at once when neither `--threads`, `$SST_THREADS`, nor `generation.threads` "
+        "says. Profiles always publish one at a time.",
         default="4",
         minimum=1,
         maximum=16,
