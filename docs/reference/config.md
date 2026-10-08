@@ -38,9 +38,9 @@ What blocks a build.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `validation.strict` | boolean | `false` | Promote every warning to an error. |
-| `validation.snowflake_syntax_check` | boolean | `true` | Compile expressions against Snowflake during validate and plan. |
-| `validation.description_floor` | integer |  | Shortest description, in characters, a semantic view or metric may carry; unset checks none. |
-| `validation.instruction_budget` | integer |  | Longest composed comment and instructions, in characters, a semantic view may publish; unset checks none. |
+| `validation.snowflake_syntax_check` | boolean | `true` | Compile expressions against Snowflake during validate and plan. Must be written out, true or false (SST-CFG031). |
+| `validation.description_floor` | integer |  | Shortest description, in characters, a semantic view or metric may carry (SST-VAL004); unset checks none. |
+| `validation.instruction_budget` | integer |  | Longest composed comment and instructions, in characters, a semantic view may publish (SST-VAL018); unset checks none. |
 | `validation.exclude_dirs` | list | `[]` | Globs of project-relative directories discovery skips: no semantic model file under one is read. |
 
 ## diagnostics
@@ -49,8 +49,8 @@ How severe a diagnostic is, beyond what the error registry declares.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `diagnostics.severity_overrides` | map |  | Per-code severity: promote freely; demote an error no lower than warning, and never a non-demotable code (SST-CFG033). |
-| `diagnostics.severity_overrides.<name>` | enum: `error`, `warning`, `info` |  | The severity this code reports at. |
+| `diagnostics.severity_overrides` | map |  | Per-code severity. A warning may become an error or info, an error a warning, and an info a warning; a non-demotable code is never lowered (SST-CFG033). Strict mode promotes after overrides apply. |
+| `diagnostics.severity_overrides.<name>` | enum: `error`, `warning`, `info` |  | The severity this registered code reports at; a code the registry lacks is SST-CFG003. |
 
 ## enrichment
 
@@ -62,7 +62,7 @@ What `sst enrich` collects from the warehouse, and how much.
 | `enrichment.sample_values_display_limit` | integer, 1 to 1000 | `10` | Sample values written for a column that is not an enum. At most `distinct_limit`. |
 | `enrichment.synonym_model` | string | `mistral-large2` | Cortex model that writes synonyms. |
 | `enrichment.synonym_max_count` | integer, 1 to 20 | `4` | Synonyms written per column and per table. |
-| `enrichment.allow_sample_value_collection` | boolean | `true` | False refuses every run that reads row data: `--include sample-values` and `enums` (SST-CFG038). |
+| `enrichment.allow_sample_value_collection` | boolean | `true` | False refuses every run that reads row data, one that includes `sample-values` or `enums` (SST-CFG038). |
 
 ## generation
 
@@ -70,7 +70,7 @@ How the commands that reach Snowflake pace their work.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `generation.threads` | integer, 1 to 16 | `1` | Sessions `plan`, `apply` and `test` work on at once, unless `--threads` or `$SST_THREADS` says. |
+| `generation.threads` | integer, 1 to 16 | `1` | Sessions `plan` and `test` work on at once, and changes `apply` applies at once, unless `--threads` or `$SST_THREADS` says. Unset, applying takes `skills.+threads`, else 4. |
 | `generation.view_timeout` | integer | `300` | Seconds one statement of a plan or apply session may run (`STATEMENT_TIMEOUT_IN_SECONDS`). |
 
 ## dbt
@@ -81,7 +81,7 @@ How SST produces and reads the dbt manifest.
 |---|---|---|---|
 | `dbt.invoke` | boolean | `true` | Run dbt before reading the manifest; false reads the one on disk. |
 | `dbt.command` | enum: `parse`, `compile` | `parse` | The dbt command that writes the manifest; `compile` needs a warehouse. |
-| `dbt.manifest_schema_versions` | list | the versions this release is tested against | Manifest schema versions read; any other is refused (SST-DBT017). |
+| `dbt.manifest_schema_versions` | list | the versions this release is tested against | Manifest schema version numbers read, such as `[12]`; any other is refused (SST-DBT017) unless `--allow-unsupported-manifest-schema` is given. |
 
 ## defer
 
@@ -133,7 +133,7 @@ Defaults for tool backing objects.
 | `tools.+target_lag` | string |  | Target lag for defined search services. |
 | `tools.+embedding_model` | string |  | Embedding model for defined search services. |
 | `tools.+execute_as` | enum: `caller`, `owner` | `caller` | Rights a generic tool runs with. |
-| `tools.<route>` | block |  | Per-group override of the `+` keys above, for a group with `define:` members. |
+| `tools.<route>` | block |  | Per-group override of the `+` keys above, keyed by group name, for a group with `define:` members (SST-CFG020). |
 
 ## semantic_views
 
@@ -157,7 +157,7 @@ Defaults for Cortex Agents, overridable per folder.
 | `agents.+database` | string | the target database | Database for agents. |
 | `agents.+schema` | string | the target schema | Schema for agents. |
 | `agents.+warehouse` | string | the target warehouse | Warehouse for agent tool execution. |
-| `agents.+orchestration_model` | string | `auto` | Orchestration model. |
+| `agents.+orchestration_model` | string | `auto` | Orchestration model of agents that name none or `auto`; must be in `snowflake.orchestration_models` (SST-CFG025). |
 | `agents.+query_timeout` | integer |  | Tool query timeout in seconds. |
 | `agents.+budget_seconds` | integer |  | Orchestration time budget. |
 | `agents.+budget_tokens` | integer |  | Orchestration token budget. |
@@ -175,16 +175,16 @@ Defaults for agent evaluations.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `evals.+eval_tier` | enum: `blocking`, `report` |  | Whether a regression blocks. |
+| `evals.+eval_tier` | enum: `blocking`, `report` |  | Whether a regression blocks, for evals whose `run.tier` is unset; unset is `report`. |
 | `evals.+metrics` | list |  | Default system metrics. |
-| `evals.+metric_version` | string |  | System metric version. |
+| `evals.+metric_version` | string |  | Version of each system metric that names none; only `v3` is accepted (SST-VAL723), and unset with none named is SST-VAL722. |
 | `evals.+judge_model` | string |  | Custom judge model. |
-| `evals.+agent_version` | string |  | Agent version an eval runs against. |
-| `evals.+retry` | integer |  | Retries per run; every attempt is reported. |
-| `evals.+concurrency` | integer |  | Concurrent eval runs. |
-| `evals.+baseline_runs` | integer |  | Completed attempts a baseline needs. |
-| `evals.+min_dataset_rows` | integer |  | Smallest accepted question set. |
-| `evals.+retention` | enum: `audit`, `decision` |  | Run retention class. |
+| `evals.+agent_version` | string |  | Agent version an eval runs against when its config names none. |
+| `evals.+retry` | integer |  | Retries per run, for evals that set none; unset retries none. Each attempt is reported. |
+| `evals.+concurrency` | integer |  | Eval runs a suite starts and polls at once, and the most an eval's `run.concurrency` may ask (SST-VAL731). |
+| `evals.+baseline_runs` | integer |  | Completed attempts a baseline needs, for evals that set none; unset needs 1. |
+| `evals.+min_dataset_rows` | integer |  | Smallest accepted question set (SST-VAL710); unset checks none. |
+| `evals.+retention` | enum: `audit`, `decision` |  | Retention class of a run whose variant `run.retention` does not list. |
 
 ## skills
 
@@ -196,7 +196,7 @@ Declare at least one of `catalog`, `stage`.
 |---|---|---|---|
 | `skills.+certified` | boolean | `false` | Tag each new skill and plugin version `SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'`. |
 | `skills.+version_prefix` | string | `SST_` | Prefix of every version alias; the rest is 12 hex characters of the bundle digest. |
-| `skills.+threads` | integer, 1 to 16 | `4` | Concurrent catalog publishes. Profiles always publish one at a time. |
+| `skills.+threads` | integer, 1 to 16 | `4` | Changes `apply` applies at once when neither `--threads`, `$SST_THREADS`, nor `generation.threads` says. Profiles always publish one at a time. |
 | `skills.extensions` | block |  | Name map for extensions this project consumes but does not publish. |
 | `skills.extensions.default_prefix` | string |  | `<database>.<schema>` for entries without `fqn:`. |
 | `skills.extensions.<name>` | block |  | One consumed extension; empty takes `default_prefix`. |

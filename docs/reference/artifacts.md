@@ -10,12 +10,12 @@ another artifact with `{{ <function>('<name>') }}`.
 | Type | Position | Authored in | Publishes | Reference function |
 |---|---:|---|---|---|
 | [`semantic_view`](#semantic_view) | 100 | `semantic_views:` in `project.semantic_models_dir` | SEMANTIC VIEW | `semantic_view()` |
-| [`tool`](#tool) | 200 | `project.tools_dir` | CORTEX SEARCH SERVICE, PROCEDURE, FUNCTION, or STAGE | `tool()` |
+| [`tool`](#tool) | 200 | a `define:` member of a `tools:` group in `project.tools_dir` | CORTEX SEARCH SERVICE, PROCEDURE, FUNCTION, or STAGE | `tool()` |
 | [`skill`](#skill) | 250 | a `SKILL.md` folder in `project.skills_dir` | CORTEX EXTENSION (TYPE = 'SKILL') and its bundle stage | `skill()` |
 | [`plugin`](#plugin) | 260 | `plugin.yml` in `project.plugins_dir` | CORTEX EXTENSION (TYPE = 'PLUGIN') and its bundle stage | `plugin()` |
 | [`profile`](#profile) | 270 | `profile.yml` in `project.profiles_dir` | profile stage trees and one profile registry row | none |
 | [`agent`](#agent) | 300 | `agent.yml` in `project.agents_dir` | AGENT | `agent()` |
-| [`eval`](#eval) | 400 | an agent's `evals/` folder | TABLE, DATASET, and a staged run configuration | none |
+| [`eval`](#eval) | 400 | the dataset and config files an agent's `evals:` names, by convention in `evals/` | TABLE, DATASET, and a staged run configuration | none |
 
 ## semantic_view
 
@@ -30,7 +30,7 @@ A Snowflake semantic view built from dbt models and the semantic members attache
 
 ## tool
 
-A Snowflake object an agent tool calls, published before any agent that uses it.
+One `define:` member of a tool group: a Snowflake object an agent tool calls, published before any agent that uses it. Grants depend on the kind: a search service is replaced and its explicit grants re-applied, a procedure or function is replaced with `COPY GRANTS`, and a stage is only ever created when absent. A `reference:` member names an object SST never writes, and is no artifact.
 
 - Position: 200
 - Lifecycle: one Snowflake object
@@ -41,7 +41,7 @@ A Snowflake object an agent tool calls, published before any agent that uses it.
 
 ## skill
 
-One `SKILL.md` folder, flattened and published as a Cortex Extension version whose alias is a hash of its content.
+One `SKILL.md` folder, flattened and published as a version of a skill-type Cortex Extension. The version alias is `skills.+version_prefix` and 12 hex characters of the bundle digest, so a version is never rewritten: a change adds a new one, and `--prune` only reports one whose folder was deleted.
 
 - Position: 250
 - Lifecycle: composite -- several objects, reconciled together
@@ -51,7 +51,7 @@ One `SKILL.md` folder, flattened and published as a Cortex Extension version who
 
 ## plugin
 
-A named set of project skills, published together as one plugin-type Cortex Extension.
+A named set of project skills, published together as a version of one plugin-type Cortex Extension, content-addressed as a skill's versions are.
 
 - Position: 260
 - Lifecycle: composite -- several objects, reconciled together
@@ -61,7 +61,7 @@ A named set of project skills, published together as one plugin-type Cortex Exte
 
 ## profile
 
-A CoCo Desktop profile: content-addressed skill, prompt, MCP, and hook trees behind one profile registry row.
+A CoCo Desktop profile: content-addressed skill, prompt, MCP, and hook trees on a stage, behind one row of the profile registry table. `--prune` deactivates the row; nothing is deleted.
 
 - Position: 270
 - Lifecycle: composite -- several objects, reconciled together
@@ -71,7 +71,7 @@ A CoCo Desktop profile: content-addressed skill, prompt, MCP, and hook trees beh
 
 ## agent
 
-A Cortex Agent whose specification SST renders and pins to exactly what it uses.
+A Cortex Agent whose specification SST renders and pins to exactly what it uses. It is created once from a staged specification, and each change to that specification adds a version; `apply --temporary` publishes a session-scoped temporary agent instead.
 
 - Position: 300
 - Lifecycle: one Snowflake object
@@ -83,7 +83,7 @@ A Cortex Agent whose specification SST renders and pins to exactly what it uses.
 
 ## eval
 
-An agent evaluation: its question dataset, the table it reads, and its run configuration.
+One agent's evaluation, published into the agent's schema: a source table and dataset of its questions, named by default for their digest, and its staged run configuration. A changed question set publishes a new table and dataset and keeps the old ones; with `dataset.mint: never`, only the configuration publishes, against a dataset that must already exist.
 
 - Position: 400
 - Lifecycle: composite -- several objects, reconciled together
