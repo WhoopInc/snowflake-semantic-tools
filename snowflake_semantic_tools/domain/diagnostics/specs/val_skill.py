@@ -17,7 +17,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Skill folder layout is wrong",
         "'{artifact}': {detail}",
         "put SKILL.md at the folder root, with scripts beside it",
-        condition="SKILL.md is nested, or scripts live outside the folder",
+        condition=(
+            "a skill, plugin or profile folder is misnamed or its manifest is wrong: a skill or plugin "
+            "name is not kebab-case or would publish as an extension name that does not start with a "
+            "letter; a profile name is not lowercase letters, digits, '-' or '_', or is 'shared'; a "
+            "plugin or profile folder has no manifest, or both the .yml and .yaml spellings; or the "
+            "SKILL.md frontmatter or manifest `name` is not the folder's name"
+        ),
+        note="The message names which; rename the folder, or correct the manifest or frontmatter.",
     ),
     spec(
         "SST-VAL802",
@@ -25,7 +32,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Skill is not published as a typed CORTEX EXTENSION",
         "skill '{artifact}': TYPE is {found}",
         "publish with an explicit TYPE of SKILL or PLUGIN",
-        condition="the extension type is absent or unrecognised",
+        condition=(
+            "a plan finds a CORTEX EXTENSION already at the target with no TYPE, or one SST does not "
+            "recognise; the release is blocked"
+        ),
+        note=("SST did not create that object. Drop or rename it, or publish the skill under another name."),
     ),
     spec(
         "SST-VAL803",
@@ -33,7 +44,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Extension version is not immutable and SHA-derived",
         "skill '{artifact}': version '{value}' is not SHA-derived",
         "derive the version from the content hash, using +version_prefix",
-        condition="a version could change content under a pinned reference",
+        condition=(
+            "an extension's version alias is not its version prefix followed by the first 12 "
+            "characters of the bundle's content digest, uppercased"
+        ),
+        note="A version that is not content-derived could change content under a pinned reference.",
     ),
     spec(
         "SST-VAL804",
@@ -41,7 +56,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Extension version referenced by no agent",
         "{artifact}: version {value} is referenced by no agent",
         "reference it, or stop publishing it",
-        condition="a committed version has no consumer",
+        condition=(
+            "the project defines agents, and a skill or plugin it publishes is pinned by none of them "
+            "and included in no plugin, profile or the shared layer"
+        ),
+        note=(
+            "A skill people use directly from the catalog has a consumer SST cannot see; baseline the "
+            "warning, or demote it with `diagnostics.severity_overrides`."
+        ),
     ),
     spec(
         "SST-VAL805",
@@ -49,7 +71,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Repo and catalog disagree",
         "skill reconciliation: {value}",
         "publish the missing sources, and reap the orphan objects",
-        condition="orphan objects with no source file, or source files never published",
+        condition=("a plan finds an extension SST published whose source is gone from the project; SST never drops it"),
+        note="Restore the source, or drop the object yourself once nothing pins it (SST-PLN021 says what is kept).",
     ),
     spec(
         "SST-VAL806",
@@ -57,7 +80,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Folder-to-schema split introduced",
         "skill '{artifact}' would land in schema '{value}'",
         "split for confidentiality, not tidiness; the agent owner then needs USAGE per schema",
-        condition="a new skill domain becomes an infrastructure PR before any agent can use it",
+        condition=(
+            "a skill's or plugin's extension target is outside the catalog channel's database and "
+            "schema (`skills.catalog.+database`, `+schema`)"
+        ),
+        note="A new skill schema has to be provisioned before any agent can use it.",
     ),
     spec(
         "SST-VAL807",
@@ -65,7 +92,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Certification attempted by moving schemas",
         "skill '{artifact}': certification would change its schema",
         "certify with the SNOWFLAKE.CORE.CERTIFICATION_STATUS tag",
-        condition="a schema move changes the FQN and breaks every pinned reference",
+        condition=(
+            "a certified release targets another schema than state recorded for the extension; the release is blocked"
+        ),
+        note="A schema move changes the extension's name, which breaks every pinned reference.",
     ),
     spec(
         "SST-VAL808",
@@ -73,7 +103,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Referenced bundle path does not resolve",
         "skill '{artifact}': '{path}' is referenced and absent from the bundle",
         "add the file, or correct the reference",
-        condition="a path named in SKILL.md is not in the published bundle",
+        condition="a Markdown reference in the skill names a file that is not in the bundle",
     ),
     spec(
         "SST-VAL809",
@@ -89,11 +119,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Flattening did not rewrite a subdirectory reference",
         "skill '{artifact}': '{path}' does not resolve inside the published bundle",
         "rewrite every subdirectory reference, then re-check the paths",
-        condition="the rewritten SKILL.md does not re-pass the path check",
-        note=(
-            "Including a reference anchored at the authoring repository's root, which is rejected "
-            "rather than rewritten."
+        condition=(
+            "a Markdown reference names a directory, or walks down from the repository root, or a "
+            "reference rewritten for the flattened catalog bundle no longer resolves"
         ),
+        note="A reference anchored at the authoring repository's root is rejected rather than rewritten.",
     ),
     spec(
         "SST-VAL811",
@@ -101,7 +131,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Flattened bundle exceeds the size budget",
         "'{artifact}': bundle is {size} bytes, over {expected}",
         "move bulk content out of the bundle",
-        condition="skills are read on demand, so this is invocation latency and token cost",
+        condition=(
+            "a flattened bundle is over the 1 MiB size budget and within the 10 MiB scan limit "
+            "(SST-VAL834 reports a bundle over it)"
+        ),
+        note="Skills are read on demand, so the cost is invocation latency and tokens.",
     ),
     spec(
         "SST-VAL812",
@@ -109,7 +143,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SKILL.md exceeds the size budget",
         "skill '{artifact}': SKILL.md is {size} bytes, over {expected}",
         "move bulk content into a referenced file",
-        condition="SKILL.md is evaluated against every query, so its cost is paid continuously",
+        condition="a skill's SKILL.md, as authored, is over the 25 KiB size budget",
+        note="The skill's main file is read on every orchestration turn, so its cost is paid continuously.",
     ),
     spec(
         "SST-VAL813",
@@ -117,7 +152,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Bundled file is never referenced",
         "skill '{artifact}': '{path}' is never referenced from the skill's Markdown",
         "reference it, or remove it",
-        condition="dead payload still ships, still counts against size, and still has to be reviewed",
+        condition="a bundled file is named by no Markdown reference in the skill",
+        note="Dead payload still ships, still counts against the size budget, and still has to be reviewed.",
     ),
     spec(
         "SST-VAL814",
@@ -125,7 +161,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Bundle carries a script with no consumer that can run it",
         "skill '{artifact}': '{path}' is executable and no consuming agent enables code_execution",
         "enable code_execution, or drop the script",
-        condition="the skill loads and is selected; the script cannot run",
+        condition=(
+            "an extension agents pin ships an executable script, and none of those agents declares a "
+            "code_execution tool"
+        ),
+        note="The skill loads and is selected; the script cannot run.",
     ),
     spec(
         "SST-VAL815",
@@ -133,7 +173,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Bundled script reads a credential or an absolute local path",
         "skill '{artifact}': '{path}' contains {detail}",
         "parameterise it; a path that resolves locally will not resolve in the sandbox",
-        condition="a script reaches for a secret or a machine-specific path",
+        condition="a bundled script holds an absolute local path, or any bundled text file a credential literal",
     ),
     spec(
         "SST-VAL816",
@@ -141,7 +181,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SKILL.md and bundle byte split",
         "skill '{artifact}': {value}",
         None,
-        condition="progressive disclosure is made visible rather than assumed",
+        condition="any skill bundle builds; reports how its bytes split between SKILL.md and the rest",
     ),
     spec(
         "SST-VAL817",
@@ -149,7 +189,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "No publication channel configured",
         "{key}: configures neither the catalog nor the stage channel",
         "configure at least one channel",
-        condition="the skill would reach no consumer",
+        condition="the `skills:` block configures neither `skills.catalog` nor `skills.stage`",
     ),
     spec(
         "SST-VAL818",
@@ -157,7 +197,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Flatten settings are wrong for a channel",
         "config key '{key}' is {found}; it must be {expected}",
         "set catalog flatten true and stage flatten false",
-        condition="a nested catalog bundle is unreadable by agents; a flattened stage bundle breaks Desktop",
+        condition=("`skills.catalog.+flatten` is not true, or `skills.stage.+flatten` is not false"),
+        note="A nested catalog bundle is unreadable by agents; a flattened stage bundle breaks Desktop.",
     ),
     spec(
         "SST-VAL819",
@@ -165,7 +206,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Stage auto_compress is enabled",
         "config key '{key}' is {found}; it must be {expected}",
         "set it false",
-        condition="TRUE produces `<file>`/`<file>`.gz and silently hides skills from the local cache",
+        condition="`skills.stage.+auto_compress` is true",
+        note="A compressed upload lands as `<file>.gz`, which hides the skill from Desktop's local cache.",
     ),
     spec(
         "SST-VAL820",
@@ -173,7 +215,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Stage PUT target does not end in a separator",
         "skill '{artifact}': PUT target '{path}' does not end in '/'",
         "append a trailing slash",
-        condition="the upload would land at the wrong path",
+        condition="a bundle's or profile tree's stage upload location does not end in '/'",
     ),
     spec(
         "SST-VAL821",
@@ -181,7 +223,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Stage layout is not by_type",
         "config key '{key}' value {found} is outside {expected}",
         "set layout to by_type",
-        condition=("the prompts/, mcp/, hooks/ and skills/ prefixes are what Desktop reads and are not configurable"),
+        condition="`skills.stage.+layout` is not by_type",
+        note="The prompts/, mcp/, hooks/ and skills/ prefixes are what Desktop reads and are not configurable.",
     ),
     spec(
         "SST-VAL822",
@@ -189,7 +232,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Uploaded artifact has no registry pointer",
         "skill '{artifact}': '{path}' was uploaded with no PROFILE_REGISTRY pointer",
         "write the pointer as part of the same publish",
-        condition="a half-completed publish uploads a file and records nothing",
+        condition="no pointer in a profile's registry row reaches a tree the profile uploads",
     ),
     spec(
         "SST-VAL823",
@@ -197,7 +240,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Profile content hash does not cover every shipped tree",
         "skill '{artifact}': hash omits {value}",
         "include every shipped tree in the hash",
-        condition="a change in an uncovered tree produces no new version",
+        condition=(
+            "a profile ships a tree whose digest-named prefix is absent from what its VERSION is the "
+            "digest of, so a change there would produce no new version"
+        ),
     ),
     spec(
         "SST-VAL824",
@@ -205,7 +251,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Deleted file survives into the next version",
         "skill '{artifact}': '{path}' was deleted and is still published",
         "build each version from empty, or issue explicit removals",
-        condition="a removed file persists in the published bundle",
+        condition=(
+            "a plan finds a file under the bundle's stage prefix that the bundle no longer has, before "
+            "the version exists, so ADD VERSION would publish it; the release is blocked"
+        ),
+        note="Remove the leftover file from the stage prefix, then plan again.",
     ),
     spec(
         "SST-VAL825",
@@ -213,7 +263,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Version name is not collision-free under parallel deploys",
         "skill '{artifact}': version name '{value}' is not collision-free",
         "derive the version from the content SHA",
-        condition="two parallel deploys could mint one version name",
+        condition=(
+            "two releases name one extension's version alike for different bundle content; the later "
+            "one does not compile"
+        ),
     ),
     spec(
         "SST-VAL826",
@@ -221,7 +274,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Grants issued before certification succeeded",
         "skill '{artifact}': grants would be issued before certification",
         "grant only after certification succeeds, and name the role TYPE explicitly",
-        condition="the order is wrong, or DATABASE ROLE versus ROLE is assumed",
+        condition=(
+            "a GRANT would run while the publish's certification has not yet succeeded, or names no "
+            "role type (ROLE or DATABASE ROLE)"
+        ),
     ),
     spec(
         "SST-VAL827",
@@ -229,7 +285,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Identifier interpolated into DDL without validation",
         "skill '{artifact}': '{value}' reaches DDL unvalidated",
         "validate every interpolated identifier at parse time",
-        condition="an identifier is concatenated into DDL",
+        condition="a publisher would send a statement built as raw text, so nothing it interpolates was validated",
     ),
     spec(
         "SST-VAL828",
@@ -237,7 +293,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Partial deploy reported as aggregate success",
         "skill '{artifact}': {detail}",
         "report per-channel status separately",
-        condition="an out-of-sync channel state is invisible",
+        condition=(
+            "apply reports no outcome, or several, for a skill, plugin or profile change, so the "
+            "result would not show that channel's state"
+        ),
     ),
     spec(
         "SST-VAL829",
@@ -245,7 +304,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Channel content hashes diverge beyond flattening",
         "skill '{artifact}': catalog and stage hashes diverge by {value}",
         "compare the two bundles",
-        condition="divergence larger than flattening alone explains",
+        condition="a skill's catalog and stage file sets differ by more than flattening's renames",
     ),
     spec(
         "SST-VAL830",
@@ -253,7 +312,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Skill reaches neither channel",
         "skill '{artifact}' is published nowhere",
         "reference it from a profile, or enable a channel",
-        condition="catalog is false, no profile references it, and it is not shared",
+        condition=(
+            "`skills.catalog` is not configured and no profile, plugin a profile names, or the shared "
+            "layer includes the skill"
+        ),
     ),
     spec(
         "SST-VAL831",
@@ -261,7 +323,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "CORTEX EXTENSION DDL surface used",
         "skill '{artifact}': {value}",
         None,
-        condition="the surface is absent from the public SQL reference, so it carries upgrade risk",
+        condition=(
+            "any skill or plugin compiles; it publishes through the CORTEX EXTENSION statements, "
+            "which are absent from the public SQL reference and so carry upgrade risk"
+        ),
     ),
     spec(
         "SST-VAL832",
@@ -269,7 +334,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Skill name is not globally unique across extensions",
         "'{artifact}' collides with '{other}' as one extension name",
         "rename one of them",
-        condition="global uniqueness is what makes a flat schema viable",
+        condition="a skill or plugin would publish under an extension name an earlier skill or plugin already takes",
+        note="Global uniqueness is what makes one flat extension schema viable.",
     ),
     spec(
         "SST-VAL833",
@@ -438,7 +504,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Profile registry is not the one Desktop reads",
         "profiles publish to {value}; CoCo Desktop reads only {expected}",
         "point skills.stage at the Desktop registry to publish for real, or keep this for rehearsal",
-        condition="profiles publish to a registry other than the one CoCo Desktop reads",
+        condition=(
+            "profiles publish to a registry other than CORTEX_CODE.CONFIG.PROFILE_REGISTRY, the one "
+            "CoCo Desktop reads (`skills.stage.+database`, `+schema` and `+registry_table`)"
+        ),
     ),
     spec(
         "SST-VAL855",

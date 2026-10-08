@@ -13,7 +13,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Tool member name is not unique within its group",
         "tool group '{a}': member '{name}' is declared twice",
         "rename one of them",
-        condition="two members of one group share a name",
+        condition="two members of one tool group share a name, compared ignoring case",
     ),
     spec(
         "SST-VAL602",
@@ -37,7 +37,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "define member carries no creation properties",
         "tool member '{name}' is under define: and declares neither on: nor body_file:",
         "declare on: or body_file:, or move it to reference:",
-        condition="an owned member has nothing to create from",
+        condition="a `define:` member other than a stage declares neither `on:` nor `body_file:`",
     ),
     spec(
         "SST-VAL605",
@@ -45,7 +45,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "reference member carries creation properties",
         "tool member '{name}' is under reference: and declares '{key}'",
         "remove the creation property; a reference is not owned",
-        condition="an external member declares how to build itself",
+        condition=(
+            "a `reference:` member declares a creation key such as `on:` or `body_file:`, or a "
+            "`define:` member declares `relations`"
+        ),
+        note="For a `define:` member, remove `relations`: SST creates the object, so it has no per-target relation.",
     ),
     spec(
         "SST-VAL606",
@@ -53,7 +57,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "define block present in an immutable group",
         "tool group '{a}' is immutable: true and declares define:",
         "remove the define: block",
-        condition="an immutable group claims ownership of an object",
+        condition="a tool group sets `immutable: true` and declares a member under `define:`",
     ),
     spec(
         "SST-VAL607",
@@ -61,7 +65,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Defined procedure signature does not match the consuming input schema",
         "tool member '{name}': signature {found} differs from input_schema {expected}",
         "align the signature and the schema",
-        condition="arity, names or types differ between the procedure and its agent tool",
+        condition=(
+            "the arity, names or types of a defined procedure's or function's signature differ from the "
+            "input schema of the generic agent tool that calls it"
+        ),
     ),
     spec(
         "SST-VAL608",
@@ -69,7 +76,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "on: does not resolve to a dbt model",
         "tool member '{name}': on: '{value}' is not a model in the dbt manifest",
         "correct the model name, or run dbt compile",
-        condition="a defined search service indexes a model the manifest does not list",
+        condition=(
+            "a defined search service's `on:` is not a single `{{ ref('<model>') }}`, or names a model "
+            "the dbt manifest does not list"
+        ),
     ),
     spec(
         "SST-VAL609",
@@ -77,7 +87,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "search_column or attribute_columns not on the indexed model",
         "tool member '{name}': '{column}' is not on '{value}'",
         "correct the column list",
-        condition="a search service names a column the model does not have",
+        condition=(
+            "a defined search service's `search_column` or an `attribute_columns` entry is not a "
+            "column of its `on:` model"
+        ),
     ),
     spec(
         "SST-VAL610",
@@ -85,7 +98,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "execute_as: owner on a procedure reachable from an agent",
         "tool member '{name}' runs as owner and is reachable from agent '{artifact}'",
         "review the privilege escalation, or run as caller",
-        condition="a deliberate privilege escalation is reachable from an agent tool",
+        condition="an agent's tool reaches a defined procedure declared `execute_as: owner`",
+        note="An owner's-rights procedure is a deliberate privilege escalation, now reachable from conversation.",
     ),
     spec(
         "SST-VAL611",
@@ -93,7 +107,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "embedding_model is null on an eval-gated search service",
         "tool member '{name}' declares embedding_model: null and is read by a gated agent",
         "pin the embedding model",
-        condition="retrieval would change silently between deploys",
+        condition=("a defined search service read by an agent whose eval is blocking sets no `embedding_model`"),
+        note="Without a pinned model, retrieval can change between deploys with no change in the project.",
     ),
     spec(
         "SST-VAL612",
@@ -101,7 +116,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "DDL would be emitted for a reference member",
         "tool member '{name}' is under reference: and DDL was rendered for it",
         "emit no DDL for referenced members",
-        condition="an external object would be created or pruned by SST",
+        condition=(
+            "DDL was rendered for a `reference:` member, so SST would create, replace or prune an "
+            "object it does not own"
+        ),
     ),
     spec(
         "SST-VAL613",
@@ -109,7 +127,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Declared column is absent from the live object",
         "tool member '{name}': column '{column}' is absent from the live object",
         "align the declaration with the object",
-        condition="a columns_and_descriptions entry has no counterpart live",
+        condition=(
+            "connected validation finds a column a defined search service declares that the live service does not have"
+        ),
     ),
     spec(
         "SST-VAL614",
@@ -117,11 +137,15 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Search service publish order violated",
         "tool member '{name}' would publish before '{value}', which it indexes",
         "include the source relation in the selection, or let dbt build it first -- the ORDER is not authorable",
-        condition="a defined search service is ordered before its source relation",
+        condition=(
+            "a defined search service's `on:` relation has the name of an object another SST artifact "
+            "publishes at the tools' position or later, so the service would be created before the "
+            "object it indexes exists"
+        ),
         note=(
-            "`tool` publishes after every semantic view and the relation it indexes is a dbt model "
-            "built before SST runs, so a violation is a missing selection or an unbuilt model, never "
-            "a misordered config."
+            "The publish order is not authorable: tools publish after every semantic view, and dbt "
+            "builds the `on:` model before SST runs. Rename the artifact that publishes to the "
+            "relation's name, or point `on:` at the model dbt builds."
         ),
     ),
     spec(
@@ -141,7 +165,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Referenced object privilege pre-flight failed",
         "tool member '{name}': {value} lacks {detail}",
         "grant the privilege before publishing",
-        condition="a deploying or consuming role lacks USAGE or READ on a referenced object",
+        condition=(
+            "connected validation finds the session's role, or a role granted USAGE on the agent, "
+            "holds neither USAGE nor OWNERSHIP on an object a tool calls that SST does not publish"
+        ),
+        note=(
+            "A warning rather than an error: SST compares the object's direct grantees only, without "
+            "following the role hierarchy, so a role that inherits the privilege is still reported."
+        ),
     ),
     spec(
         "SST-VAL617",
@@ -171,8 +202,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "exist between commit and replay",
         "none -- Snowflake provides no `COPY GRANTS` for this object type",
         condition=(
-            "an artifact whose `grant_preservation` is `REPLAY` is in a `ChangeSet` with explicit "
-            "grants on the live object"
+            "connected validation finds explicit grants, other than OWNERSHIP, on a defined search "
+            "service's live object; reported whether or not a replace is planned"
+        ),
+        note=(
+            "When apply replaces the service it reads those grants first and re-issues them after, "
+            "then checks none was lost (SST-APL009); between the replace and the replay the grantees "
+            "cannot use the service. Plan the replace for a quiet window."
         ),
     ),
 )
