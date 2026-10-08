@@ -61,8 +61,11 @@ def validate(
 ) -> CommandResult:
     """Validate every offline rule, with optional connected checks.
 
-    Exit 0 with no errors, and 1 with errors, or warnings under --strict. With
-    --verify-schema, the columns each semantic view reads are looked up in the warehouse.
+    Exit 0 with no errors, and 1 with errors, or warnings under --strict; a warning the
+    baseline holds never blocks, and an expired baseline fails the run. The Snowflake syntax
+    check connects, and runs unless --no-snowflake-syntax-check or
+    `validation.snowflake_syntax_check: false` turns it off. With --verify-schema, the
+    columns each semantic view reads are looked up in the warehouse.
     """
     paths = with_model_paths(paths, dbt_dir, semantic_dir)
     compiled = compiling.compile_result(paths, target_name, manifest_path, database=database)

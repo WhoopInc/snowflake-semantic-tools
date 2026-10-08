@@ -121,12 +121,16 @@ def test_command(
 
     The golden suite always applies; the connected suites apply once `sst compile` has written
     the manifest, the smoke suite when a semantic view compiles, the eval suite when an eval
-    does. `--select` and `--exclude` narrow every suite to those artifacts. Exit 1 when any
-    suite fails, 4 when a selected artifact has no golden file, and 5 when a connected suite
-    cannot reach Snowflake. `--threads` runs the smoke probes, and the evals no setting paces,
-    that many at once. `--update-golden` runs the golden suite only, rewriting each golden the
-    current output no longer equals. The eval suite holds the target's run lock while it runs;
-    `--break-stale-lock` takes it over only from a run that has expired.
+    does. `--select` and `--exclude` narrow every suite to those artifacts. Exit 1 when the
+    project does not compile or a suite fails; 4 when a selected artifact has no golden file,
+    or a connected suite finds the compiled manifest stale or the target's run lock held; and
+    5 when a connected suite cannot reach Snowflake. Unless one --suite is given, the worst
+    exit wins and the summary counts the suites that passed, failed, and were skipped: not
+    named, not applying, or not reached once --fail-fast stopped. `--update-golden` runs the
+    golden suite only, rewriting each golden the current output no longer equals. The eval
+    suite holds the target's run lock while it runs, and `--break-stale-lock` takes it over
+    only from a run that has expired; progress on its runs goes to stderr, except under
+    --quiet or --output json or yaml.
     """
     compiled = compiling.compile_result(paths, target_name, manifest_path)
     if not compiled.success:

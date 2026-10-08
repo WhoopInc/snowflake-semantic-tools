@@ -75,9 +75,11 @@ def list_command(
     """List compiled artifacts and their cached application status, optionally of one TYPE.
 
     TYPE is an artifact type such as semantic-views or agents, a member type such as
-    metrics or verified-queries, or tables. With --no-manifest the project's files are
-    compiled in memory instead of reading the manifest `sst compile` wrote, and nothing
-    is written.
+    metrics or verified-queries, or tables. An artifact's status -- pending, applied,
+    failed, or deactivated -- is what the one local state file under `target/sst` records;
+    with none there, or more than one target's, every artifact is pending. Without
+    --no-manifest the manifest `sst compile` wrote is read, and its absence exits 4; with
+    it, the project's files are compiled in memory, and nothing is written.
     """
     paths = with_model_paths(paths, dbt_dir, semantic_dir)
     if no_manifest:

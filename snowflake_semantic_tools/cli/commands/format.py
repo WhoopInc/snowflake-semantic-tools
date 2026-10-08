@@ -57,9 +57,14 @@ def format_command(
 ) -> CommandResult:
     """Rewrite YAML into canonical form: indentation, key order, and `|-` block scalars.
 
-    Exit 0 when every file is formatted or already canonical, 1 when a file cannot be parsed
-    or written, 2 with --check when a file would change, and 4 with no PATH and no
-    configuration to find the paths in.
+    With no PATH, every artifact type's directory in the configuration and dbt's
+    `model-paths` are formatted. A PATH is a file, a directory, or a glob, taken from the
+    project directory when relative; a directory's build, package, and hidden folders are
+    skipped. --check, --dry-run, --force, and --sanitize compose.
+
+    Exit 0 when every file is formatted or already canonical, 1 when a file cannot be read,
+    parsed, or written, 2 with --check when a file would change, 3 when a PATH names no YAML
+    file, and 4 with no PATH and no configuration to find the paths in.
 
     Diagnostics:
         SST-CFG001: no PATH was given and there is no configuration file.
