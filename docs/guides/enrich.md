@@ -2,7 +2,9 @@
 
 `sst enrich` fills the column metadata a semantic view needs from what the warehouse holds,
 and writes it into the dbt model YAML in place. It reads each model's relation for its columns
-and types, and fills what the YAML leaves out. It never writes to Snowflake.
+and types, and fills what the YAML leaves out. It never writes to Snowflake, and it never
+writes a description: a model's and its columns' descriptions are only read, into the synonym
+prompts.
 
 ```bash
 sst enrich models/marts                          # column types and data types
@@ -25,7 +27,8 @@ it, a run fills `column-types` and `data-types`, which need no row data and no m
 | `column-synonyms` | `synonyms` | a Cortex model |
 | `table-synonyms` | `synonyms` in each semantic view's `table_config` for the model | a Cortex model |
 
-`synonyms` names both synonym components, and `all` names every component.
+`synonyms` names both synonym components, and `all` names every component. Names are matched
+without case; an unknown one is refused with exit `3`.
 
 A key is a column the model declares in `primary_key` or `unique_keys`, or one a `unique`,
 `unique_combination_of_columns`, or `relationships` test names, so a numeric identifier is not
@@ -38,16 +41,27 @@ component; forcing a component includes it. `sample_values: []` counts as writte
 `synonyms: []` as missing.
 
 - **Columns come from the warehouse.** A column the relation has and the YAML does not
-  describe is added, in the relation's order. A column the YAML describes and the relation
-  lacks is reported (`SST-VAL325`) and left in place.
+  describe is added, in the relation's order, when the run gives it a value. A column the YAML
+  describes and the relation lacks is reported (`SST-VAL325`) and left in place.
+- **Names match without case.** A YAML entry describes the relation column of the same name
+  in any case. An added column is written lowercase when Snowflake stores its name unquoted
+  (`ORDER_ID` becomes `order_id`), and exactly as stored when it was created quoted
+  (`"MixedCase"`). Two relation columns that differ only in case share one entry.
+- **`is_enum` is enrich's to write.** A hand-written `is_enum: true` on a column whose values
+  the run would write, when the data shows more values than an enum holds, is reported
+  (`SST-VAL317`) and kept, and the column's values are not written, unless `--force enums`.
+- **Template syntax is never written.** dbt renders the YAML as Jinja, so a column whose name,
+  or a value enrich would write for it, holds `{{`, `{%` or `{#` gets nothing, and is reported
+  (`SST-SNO031`).
 - **dbt's contract type wins.** A column with dbt's own `data_type` gets no `meta.sst.data_type`.
   A written `meta.sst.data_type` the relation contradicts is reported (`SST-VAL327`), not
   changed, unless `--force data-types`.
 - **Excluded columns are left alone.** A column with `meta.sst.exclude: true` is not read or
   written.
 - **PII is never sampled.** A column carrying `pii_tags` in its meta, of any category, is not
-  sampled, and its values are never sent to Cortex. Sample values still on such a column are
-  reported (`SST-VAL328`) when the run reads row data.
+  sampled, and its values are never sent to Cortex; its name, type and description still are
+  when it is asked synonyms for. Sample values still on such a column are reported
+  (`SST-VAL328`) when the run reads row data.
 
 ## Sample values and enums
 
@@ -70,23 +84,38 @@ a run that includes `sample-values` or `enums` then stops before reading anythin
 ## Synonyms
 
 Synonyms are written by `enrichment.synonym_model` through `AI_COMPLETE`, at temperature 0,
-with structured output, inside the account. A prompt describes up to 50 columns: their names,
-types, descriptions, and up to five example values from columns without `pii_tags`. Each
-synonym is cleaned before it is written: whitespace collapsed; quotes, control characters,
-template syntax, and more than 100 characters refused, each refusal reported as a warning
-(`SST-PRS030`); and any synonym that repeats the column's own name, or another column's name or
-synonym, dropped. At most `enrichment.synonym_max_count` are kept. A model's synonyms are a
-proposal: review them in the diff before merging (see [Security](security.md#trust-model)).
+with structured output, inside the account. A prompt describes up to 50 columns, and a wider
+model is asked in batches: each column's name, type, description, and up to five example
+values, each cut to 40 characters, from the values sampled in the run or already written,
+never from a column with `pii_tags`. Each synonym is cleaned before it is written:
+
+- whitespace is collapsed;
+- one holding a quote, a control character or template syntax, or longer than 100
+  characters, is refused and reported as a warning (`SST-PRS030`, at most
+  `synonym_max_count` reports per column or table);
+- one that repeats the column's own name (underscores read as spaces), another column's name
+  or synonym, or an earlier synonym is dropped without a report.
+
+At most `enrichment.synonym_max_count` are kept. A model's synonyms are a proposal: review
+them in the diff before merging (see [Security](security.md#trust-model)).
 
 A table's synonyms are generated once per model and written into every semantic view that
-uses the model and has none for it, each cleaned against that view's other tables.
+uses the model and has none for it, each cleaned against that view's other tables;
+`--force table-synonyms` replaces the ones a view has. A model no view uses gets no table
+synonyms and no Cortex call for them.
 
 ## Selecting models
 
-`PATH` arguments, relative to the project, select the models whose SQL or YAML file is under
-them. `--select` and `--exclude` take `model:<name>`, a bare name, or a glob such as
-`model:fct_*`, and repeat. Only the project's own models are enriched, never an installed
-package's; an ephemeral model has no relation to read (`SST-DBT031`).
+`PATH` arguments, relative to the project directory, select the models whose SQL or YAML file
+is under them; a `PATH` outside the project is refused. `--select` and `--exclude` take
+`model:<name>`, a bare name, or a glob such as `model:fct_*`, matched without case, and
+repeat: one model or glob per flag. A comma (`SST-PRT101`), a directory, or another kind of
+selector such as `source:` (`SST-PRT105`) is refused with exit `3`.
+
+Only the project's own models are enriched, never an installed package's. A name without a
+wildcard that the manifest does not know is an error (`SST-DBT002`); an ephemeral model has no
+relation to read (`SST-DBT031`, a warning). A selection that matches no model at all stops
+with exit `4`.
 
 `--database` and `--schema` read every relation from another database or schema, such as a
 production clone, while the YAML stays where it is.
@@ -95,8 +124,8 @@ production clone, while the YAML stays where it is.
 
 The YAML enrich writes is shared by every target, so it reads from production. A target whose
 name has no `prod`, `production` or `prd` part, split on `_`, `-` and `.`, is refused with
-exit 3 before anything is read; pass `--target` for a production target, or `--allow-non-prod`
-to enrich from this one anyway.
+exit 3 (`SST-PRT100`) before anything is read; pass `--target` for a production target, or
+`--allow-non-prod` to enrich from this one anyway.
 
 ```bash
 sst enrich --target prod models/marts
@@ -108,9 +137,11 @@ sst enrich --allow-non-prod models/marts         # from the default target, deli
 Every edit is computed in memory before any file is written. The YAML is edited in place:
 comments, key order, quoting, and the file's indentation are kept, and only the keys enrich
 sets change. A new `meta.sst` block goes under `config.meta.sst`; an existing one is edited
-where it is. A file whose layout cannot be reproduced exactly, usually because it mixes
-indentation styles, is reported (`SST-PRS125`) and written in one consistent style; review the
-diff with `--dry-run`.
+where it is, a bare `meta.sst` winning over `config.meta.sst`. A model with no YAML file gets
+one beside its SQL (`models/orders.sql` gains `models/orders.yml`). Files are written only
+inside the project, never through a symbolic link. A file whose layout cannot be reproduced
+exactly, usually because it mixes indentation styles, is reported (`SST-PRS125`) and written
+in one consistent style; review the diff with `--dry-run`.
 
 | Flag | Effect |
 |---|---|
@@ -119,8 +150,36 @@ diff with `--dry-run`.
 | `--fail-fast` | Stop at the first model that fails, and write nothing. |
 
 A model whose relation is missing or not visible (`SST-SNO030`), or whose sampling or Cortex
-call fails (`SST-SNO031`), gains nothing; the others are still written, and the run exits `1`.
-A connection, transient, or privilege failure stops the run with exit `5`.
+call fails or answers in another shape (`SST-SNO031`), gains nothing; the others are still
+written, and the run exits `1`. A failure no model would get past (the connection or login
+failing, a statement timing out or the connection dropping, a refused privilege:
+`SST-PRT001` to `SST-PRT004`) stops the run with exit `5`, and nothing is written.
+
+| Exit | When |
+|---|---|
+| `0` | Done, written or nothing to write. |
+| `1` | An error was reported: a model failed, a name matched no model, `SST-CFG038`, or a file could not be written (`SST-PRT008`). |
+| `2` | `--check` found a file that would change. |
+| `3` | The command line is refused, including a target that is not production-like. |
+| `4` | The project, its manifest or its configuration cannot be read, or the selection matches no model. |
+| `5` | Snowflake could not be reached or refused the session. |
+
+The run prints one line per model (`orders: 2 columns added, column-types 9, data-types 9`,
+or `unchanged`, or `failed`), then each file it wrote or would write (its diff under
+`--dry-run`), then a count of files and models. With `--output json`, `data` holds
+`components`, `forced`, `stopped`, `written`, one `models` entry per model (`status`
+`enriched`, `unchanged` or `failed`; the columns `added`; how many columns each component
+`filled`; the views given `table_synonyms`), and one `files` entry per file (`changed`,
+`created`, `reformatted`).
+
+## Offline and connected
+
+Enrich reads the dbt manifest, running `dbt parse` unless `--manifest` names one, and then
+the warehouse through the target's `profiles.yml` output. The session opens at the first
+warehouse read, so a run refused before it (a target that is not production-like, an error in
+the `enrichment:` block, `SST-CFG038`, a selection that matches nothing) never connects.
+`--check` and `--dry-run` write nothing but read the warehouse and call Cortex like any other
+run.
 
 ## Configuration
 
@@ -143,14 +202,18 @@ the block's warnings and leaves the rest of the file to `sst validate`.
 |---|---|
 | `sst enrich models/x` | `sst enrich models/x` |
 | `--models a,b` / `-m` | `--select model:a --select model:b` |
+| `--exclude dir1,dir2` (directories) | `--exclude` takes model names or globs, one per flag; pass only the `PATH`s you want |
 | `--column-types`, `--data-types`, `--sample-values`, `--detect-enums` | `--include column-types,data-types,sample-values,enums` |
 | `--table-synonyms`, `--column-synonyms`, `--synonyms` | `--include table-synonyms`, `column-synonyms`, `synonyms` |
 | `--all` | `--include all` |
 | `--force-synonyms`, `--force-column-types`, `--force-data-types`, `--force-all` | `--force synonyms`, `column-types`, `data-types`, `all` |
-| `-d`, `-s`, `-t` | `--database`, `--schema`, `--target` |
+| `-d`, `-s` | `--database`, `--schema`; `-t` is still `--target` |
+| `--manifest` | the global `--manifest` |
+| `--verbose` / `-v` | removed: every change is reported, and `--output json` gives the full report |
 | `--include-sources`, `--sources-only`, `--source` | not supported: 1.0 enriches dbt models only |
 | `--allow-non-prod` | `--allow-non-prod`: still needed for a target that is not production-like |
 
-Each removed flag is refused with what replaces it. Two behaviours differ: `time_dimension` is
-no longer derived, and table synonyms are written into the semantic views' `table_config`
-rather than the model YAML.
+Each removed flag is refused with exit `3` and what replaces it. Some behaviours differ:
+`time_dimension` is no longer derived; table synonyms are written into the semantic views'
+`table_config` rather than the model YAML; and 0.3's `enrichment.generate_synonyms` and `generate_column_synonyms` keys are not
+read (`SST-CFG003`): synonyms are generated only when `--include` names them.
