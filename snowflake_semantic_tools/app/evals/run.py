@@ -20,7 +20,7 @@ from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.options import EvalRunOptions
 from snowflake_semantic_tools.app.evals.poll import StatusPoll
 from snowflake_semantic_tools.app.evals.progress import EvalProgress, RunWatch, no_progress
-from snowflake_semantic_tools.app.evals.retrieve import _read_results, _sum_costs
+from snowflake_semantic_tools.app.evals.retrieve import read_results, sum_costs
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.lifecycle.evals import (
     EvalLifecycleConfig,
@@ -438,7 +438,7 @@ class RunEvalSuite:
             agent_version=setup.agent_version,
         )
         try:
-            rows, cost = _read_results(self._port, compiled, run_name)
+            rows, cost = read_results(self._port, compiled, run_name, timeout_seconds=poll.read_timeout_seconds())
         except (SnowflakePortError, ValueError) as exc:
             failure = D("SST-SNO001", detail=f"eval '{compiled.artifact_key}' retrieval failed: {exc}")
             return replace(completed, retrieval_error=str(exc)), (*diagnostics, failure)
@@ -552,7 +552,7 @@ def eval_suite_json(result: EvalSuiteResult) -> dict[str, object]:
     The regression count and gate verdict are placeholders the gate fills in when it runs.
     """
     attempts = tuple(attempt for eval_result in result.evals for attempt in eval_result.attempts)
-    total_cost = _sum_costs(tuple(attempt.cost for attempt in attempts))
+    total_cost = sum_costs(tuple(attempt.cost for attempt in attempts))
     return {
         "evals": [
             {

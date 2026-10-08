@@ -176,6 +176,30 @@ def test_the_deadline_is_the_clocks_however_slow_the_reads_are() -> None:
     assert clock.sleeps == [5_000]
 
 
+def test_a_failed_last_read_after_the_deadline_blames_the_deadline() -> None:
+    clock = PollClock()
+    port = SlowReads([status_result("CREATED"), DROPPED, DROPPED], clock, read_ms=40_000)
+
+    result, _ = run_polled(port, clock=clock, deadline_ms=60_000, read_timeout_ms=30_000)
+
+    [attempt] = result.evals[0].attempts
+    assert attempt.terminal_status == "STATUS_FAILED"
+    assert attempt.retrieval_error == (
+        f"evaluation run '{RUN}' did not reach a terminal status within 1m00s; it was CREATED"
+    )
+    assert [diagnostic.code for diagnostic in result.diagnostics] == ["SST-APL023"]
+
+
+def test_the_results_read_is_given_the_read_timeout() -> None:
+    port = EvalSnowflake([status_result("COMPLETED"), result_rows()])
+
+    result, _ = run_polled(port, read_timeout_ms=30_000)
+
+    assert result.success
+    assert [sent.timeout_seconds for sent in port.log if sent.kind == "query"] == [30, 30]
+    assert "GET_AI_EVALUATION_DATA" in port.queries[-1][0]
+
+
 def test_a_status_is_reported_once_per_change_with_the_attempts_start_and_end() -> None:
     statuses = ("CREATED", "CREATED", "INVOCATION_IN_PROGRESS", "INVOCATION_IN_PROGRESS", "COMPLETED")
     port = EvalSnowflake([*(status_result(status) for status in statuses), result_rows()])

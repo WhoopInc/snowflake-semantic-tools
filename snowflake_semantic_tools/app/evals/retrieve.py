@@ -46,7 +46,7 @@ _RESULTS_QUERY = sql("SELECT * FROM TABLE(SNOWFLAKE.LOCAL.GET_AI_EVALUATION_DATA
 _RecordQuestion = tuple[str, str]
 
 
-def _read_status(
+def read_status(
     port: ExecutionPort,
     compiled: CompiledEval,
     run_name: str,
@@ -78,15 +78,17 @@ def _read_status(
     return _required_text(row, "STATUS").upper(), _status_details(row.get("STATUS_DETAILS"))
 
 
-def _read_results(
+def read_results(
     port: ExecutionPort,
     compiled: CompiledEval,
     run_name: str,
+    *,
+    timeout_seconds: int | None = None,
 ) -> tuple[tuple[EvalResultRow, ...], EvalCostSummary]:
     """Read a completed run's results: one row per question, in record order, and the run's cost.
 
     Raises:
-        SnowflakePortError: the read failed.
+        SnowflakePortError: the read failed, or took longer than `timeout_seconds`.
         ValueError: the results are empty, malformed, or do not match the compiled eval, as
             `_ResultCollector` checks them.
     """
@@ -100,6 +102,7 @@ def _read_results(
             "CORTEX AGENT",
             run_name,
         ),
+        timeout_seconds=timeout_seconds,
     )
     records = _rows_by_name(result.columns, result.rows, _RESULT_COLUMNS, "evaluation results")
     if not records:
@@ -198,7 +201,7 @@ class _ResultCollector:
 
     def cost(self) -> EvalCostSummary:
         """Return the run's cost: the sum over its requests."""
-        return _sum_costs(tuple(self._costs.values()))
+        return sum_costs(tuple(self._costs.values()))
 
     def _pair(self, record_id: str, question_key: str) -> None:
         """Pair a record id with its question, refusing a record id or a question paired otherwise."""
@@ -435,7 +438,7 @@ def _row_cost(row: Mapping[str, object]) -> EvalCostSummary:
     )
 
 
-def _sum_costs(values: tuple[EvalCostSummary, ...]) -> EvalCostSummary:
+def sum_costs(values: tuple[EvalCostSummary, ...]) -> EvalCostSummary:
     """Add up costs field by field."""
     return EvalCostSummary(
         duration_ms=sum(value.duration_ms for value in values),

@@ -115,6 +115,18 @@ threshold_default:
 
 An eval includes it with `{{ eval_metric('answer_grounding') }}`.
 
+From 2026-10-13, Snowflake runs an unversioned or `auto` system metric at
+version `v3` rather than `v1`, and a custom metric with no judge model on
+`claude-sonnet-4-6` (behavior change BCR-2442). SST is unaffected: it always
+renders an explicit `version`, and only `v3` is accepted (`SST-PRS013`,
+`SST-VAL722`, `SST-VAL723`), and a custom metric must name its judge `model`
+(`SST-VAL738`). Scores from different metric versions or judge models are not
+comparable, so a baseline records each metric's version, and each custom
+metric's judge model and definition digest. When the eval's differ from the
+baseline's, the gate compares no scores: the verdict does not pass, with reason
+`baseline_incompatible` and `SST-VAL745` for an edited custom metric or
+`SST-VAL759` otherwise, until a new baseline is captured.
+
 ## Running
 
 ```bash

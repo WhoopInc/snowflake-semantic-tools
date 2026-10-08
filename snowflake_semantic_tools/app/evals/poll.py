@@ -25,7 +25,7 @@ from __future__ import annotations
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.options import EvalRunOptions
 from snowflake_semantic_tools.app.evals.progress import RunWatch, duration_text, short_reason
-from snowflake_semantic_tools.app.evals.retrieve import _read_status
+from snowflake_semantic_tools.app.evals.retrieve import read_status
 from snowflake_semantic_tools.domain.model.eval import eval_status_is_provisional, eval_status_is_terminal
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError, SnowflakeTransientError
@@ -101,14 +101,11 @@ class StatusPoll:
     def _read(self, compiled: CompiledEval, run_name: str, config_path: str, *, final: bool) -> _Status | None:
         """Read the status once; None when the read failed in transit, which counts the failure.
 
-        A read is given at most what is left of the deadline; the one made once it has passed
-        is given the whole read timeout. A failed read is reported unless it is the last one.
+        A read is given `read_timeout_seconds`. A failed read is reported unless it is the last one.
         """
-        remaining = self._remaining()
-        timeout_ms = min(self._options.read_timeout_ms, remaining) if remaining > 0 else self._options.read_timeout_ms
         try:
-            found = _read_status(
-                self._port, compiled, run_name, config_path, timeout_seconds=max(1, -(-timeout_ms // 1000))
+            found = read_status(
+                self._port, compiled, run_name, config_path, timeout_seconds=self.read_timeout_seconds()
             )
         except SnowflakeTransientError as exc:
             self._failures += 1
@@ -120,6 +117,15 @@ class StatusPoll:
         self._last_status = found[0]
         self._watch.status(run_name, found[0], self._settle_shown(found[0]))
         return found
+
+    def read_timeout_seconds(self) -> int:
+        """The whole seconds a read is given: at most what is left of the deadline, else the read timeout.
+
+        A read made once the deadline has passed is given the whole read timeout.
+        """
+        remaining = self._remaining()
+        timeout_ms = min(self._options.read_timeout_ms, remaining) if remaining > 0 else self._options.read_timeout_ms
+        return max(1, -(-timeout_ms // 1000))
 
     def _settle_shown(self, status: str) -> int | None:
         """The settle window a provisional status is reported with; None for any other, or none."""
@@ -141,8 +147,8 @@ class StatusPoll:
         return self._deadline - self._clock.monotonic_ms()
 
     def _why(self, run_name: str) -> str:
-        """Say why the attempt gave up: its status reads kept failing, or its deadline passed."""
-        if self._failures:
+        """Say why the attempt gave up: its deadline passed, or, with time left, its status reads kept failing."""
+        if self._failures and self._remaining() > 0:
             return (
                 f"evaluation run {run_name!r}: its status could not be read in {self._failures} reads in a row "
                 f"({short_reason(self._last_failure)})"

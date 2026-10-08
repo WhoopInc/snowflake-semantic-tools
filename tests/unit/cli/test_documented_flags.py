@@ -69,6 +69,17 @@ def test_test_runs_every_applicable_suite_by_default(tmp_path: Path) -> None:
     assert failing.exit_code == 4
 
 
+def test_fail_fast_counts_the_selected_suites_it_never_ran_as_skipped(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    args = ["test", *common(project), "--golden-dir", str(tmp_path), "--suite", "golden", "--suite", "smoke"]
+    stopped = CliRunner().invoke(cli, [*args, "--fail-fast", "-o", "json"])
+    assert stopped.exit_code == 4, stopped.output
+    data = json.loads(stopped.stdout)["data"]
+    assert (data["suites"], data["skipped_suites"], data["skipped"]) == (["golden"], ["smoke", "evals"], 2)
+    human = CliRunner().invoke(cli, [*args, "--fail-fast"])
+    assert "0 suite(s) passed, 1 failed, 2 skipped" in human.output
+
+
 def test_compiled_projects_add_the_connected_suites(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = project_copy(tmp_path)
     compile_project(project)

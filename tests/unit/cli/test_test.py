@@ -596,3 +596,19 @@ def test_golden_json_failure_missing_file_and_smoke_failure(tmp_path: Path, monk
         ["test", *common(project), "--target", "dev", "--suite", "smoke", "--fail-fast"],
     )
     assert smoke.exit_code == 1 and "SST-APL100" in smoke.output
+
+
+@pytest.mark.parametrize(
+    ("state_table", "expected"),
+    [
+        ("DB.SCH.SST_STATE", "SST_STATE_EVALS"),
+        ('DB.SCH."sst_State"', '"sst_State_EVALS"'),
+        ('DB.SCH."sst state"', '"sst state_EVALS"'),
+    ],
+)
+def test_the_eval_state_table_keeps_a_quoted_state_tables_exact_name(state_table: str, expected: str) -> None:
+    from snowflake_semantic_tools.cli.commands.test import _eval_state_table
+
+    source = QualifiedName.parse(state_table)
+    table = _eval_state_table(source)
+    assert (table.database, table.schema, table.name.sql) == (source.database, source.schema, expected)

@@ -158,7 +158,9 @@ def test_command(
             break
     if len(suites) == 1:
         return reports[0][1]
-    return _combined(reports, skipped=tuple(name for name in SUITES if name not in chosen))
+    # A suite --fail-fast stopped before is skipped, as one that does not apply is.
+    ran = {name for name, _ in reports}
+    return _combined(reports, skipped=tuple(name for name in SUITES if name not in ran))
 
 
 def _applies(suite: str, paths: ProjectPaths, result: CompileResult) -> bool:
@@ -369,7 +371,7 @@ def _print_eval_progress(event: EvalProgressEvent) -> None:
 
 def _eval_state_table(state_table: QualifiedName) -> QualifiedName:
     """Name the table eval baselines and gates are kept in: beside the state table, suffixed `_EVALS`."""
-    return QualifiedName(state_table.database, state_table.schema, Identifier.parse(f"{state_table.name.folded}_EVALS"))
+    return QualifiedName(state_table.database, state_table.schema, Identifier.shown(f"{state_table.name.folded}_EVALS"))
 
 
 def _eval_report(outcome: EvalGateOutcome) -> CommandResult:
