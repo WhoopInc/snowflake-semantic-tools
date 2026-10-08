@@ -205,6 +205,34 @@ def test_rendered_artifact_selects_create_live_update_and_safe_metadata_statemen
     assert len(removals) == 2
 
 
+def test_a_shown_alias_or_tag_that_is_a_reserved_word_is_unset_quoted() -> None:
+    agent = RenderedArtifact.create(
+        key="agent:a",
+        artifact_type="agent",
+        target=QualifiedName.from_parts("db", "sch", "a"),
+        ddl=statement("{}"),
+        shape=PublishShape("AGENT"),
+        statements=StatementPlan(update=statements("update")),
+    )
+    observed = ObservedArtifact(
+        agent.key,
+        "A",
+        agent.target,
+        "AGENT",
+        "owner",
+        "now",
+        None,
+        None,
+        aliases=("SELECT",),
+        tags=("DB.TABLE.ORDER",),
+    )
+    assert texts(agent.for_action(Action.UPDATE, observed).statements) == (
+        "update",
+        'ALTER AGENT DB.SCH.A MODIFY VERSION "SELECT" UNSET ALIAS',
+        'ALTER AGENT DB.SCH.A UNSET TAG DB."TABLE"."ORDER"',
+    )
+
+
 def test_changeset_partitions_writes_and_blocked() -> None:
     artifact = rendered()
     changes = tuple(

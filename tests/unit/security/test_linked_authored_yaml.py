@@ -2,8 +2,9 @@
 
 Discovery of semantic models, and the agent, tool, and eval-metric loaders, refuse a linked
 file or folder with SST-PRT009 wherever it points, inside the project or out; a link that
-loops is SST-DIS005. A verified query's `sql_file:` is refused the same way, and may not
-climb out of the project with `..` or an absolute path.
+loops is SST-DIS005. A verified query's `sql_file:` and a tool's `body_file:` are refused the
+same way, and may not climb out of the project with `..` or an absolute path. The input
+checksums a manifest records skip every link the loaders refuse.
 """
 
 from __future__ import annotations
@@ -13,6 +14,8 @@ from pathlib import Path
 import pytest
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.project_source import _file_checksums
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
 from snowflake_semantic_tools.adapters.yaml.documents import load_documents
@@ -268,3 +271,62 @@ def test_a_sql_file_beside_its_document_is_read(tmp_path: Path) -> None:
     project = _query_project(tmp_path, "../sql/q.sql")
     _write(project / "semantic_models" / "sql" / "q.sql", "SELECT 1\n")
     assert _sql_file_results(project) == ([], ["SELECT 1"])
+
+
+# --- a tool's body_file ---------------------------------------------------------------------
+
+ROUTINE = (
+    "tools:\n  - group: g\n    define:\n      - name: lookup\n        type: procedure\n        body_file: {path}\n"
+)
+
+
+def _body_results(project: Path) -> tuple[list[tuple[str, str]], str | None]:
+    catalog = load_tool_catalog(
+        project, DbtCatalog("v12", "1.11", "p", ()), target_name="dev", declared_targets=frozenset(("dev",))
+    )
+    [member] = [member for group in catalog.groups for member in group.members]
+    return _refusals(list(catalog.diagnostics)), member.body
+
+
+@pytest.mark.parametrize(
+    ("body_file", "shown"),
+    [("../secret.sql", "../secret.sql"), ("tools/../../secret.sql", "../secret.sql"), ("{absolute}", "{absolute}")],
+    ids=["climbing", "climbing-after-a-folder", "absolute"],
+)
+def test_a_body_file_outside_the_project_is_refused_and_never_read(tmp_path: Path, body_file: str, shown: str) -> None:
+    project = tmp_path / "project"
+    absolute = str(_write(tmp_path / "secret.sql", "SELECT 'secret'\n"))
+    _write(project / "tools" / "routines.yml", ROUTINE.format(path=body_file.format(absolute=absolute)))
+    assert _body_results(project) == ([(shown.format(absolute=absolute), "it resolves outside the project")], None)
+
+
+@pytest.mark.parametrize("target_inside", [True, False], ids=["inside", "outside"])
+def test_a_linked_body_file_is_refused_and_never_read(tmp_path: Path, target_inside: bool) -> None:
+    project = tmp_path / "project"
+    _write(project / "tools" / "routines.yml", ROUTINE.format(path="tools/lookup.sql"))
+    target = _write((project if target_inside else tmp_path) / "real.sql", "SELECT 1\n")
+    (project / "tools" / "lookup.sql").symlink_to(target)
+    assert _body_results(project) == ([("tools/lookup.sql", LINKED)], None)
+
+
+def test_a_body_file_in_the_project_is_read(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    _write(project / "tools" / "routines.yml", ROUTINE.format(path="tools/lookup.sql"))
+    _write(project / "tools" / "lookup.sql", "SELECT 1\n")
+    assert _body_results(project) == ([], "SELECT 1\n")
+
+
+# --- the manifest's input checksums ---------------------------------------------------------
+
+
+def test_input_checksums_skip_every_link_and_read_nothing_outside_the_project(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    _write(project / "tools" / "real.yml", "tools: []\n")
+    _write(project / "agents" / "a" / "agent.yml", "name: a\n")
+    outside = _write(tmp_path / "outside" / "secret.yml", "tools: []\n")
+    (project / "tools" / "evil.yml").symlink_to(outside)
+    (project / "tools" / "inside.yml").symlink_to(project / "tools" / "real.yml")
+    (project / "tools" / "shared").symlink_to(outside.parent)
+    (project / "eval_metrics").symlink_to(outside.parent)
+    checksums = _file_checksums(ProjectPaths(project, None), {})
+    assert sorted(checksums) == ["agents/a/agent.yml", "tools/real.yml"]

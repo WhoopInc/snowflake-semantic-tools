@@ -69,6 +69,7 @@ _KEYWORDS = frozenset(
 
 
 def _identifier_text(identifier: Identifier) -> str:
+    """The text `ident` seals, checked as `ident` documents."""
     if not isinstance(identifier, Identifier):
         raise TypeError(f"expected Identifier, found {type(identifier).__name__}")
     value = identifier.value
@@ -76,18 +77,28 @@ def _identifier_text(identifier: Identifier) -> str:
         raise ValueError(f"{value!r} is not a Snowflake identifier")
     if not identifier.quoted and not _UNQUOTED.fullmatch(value):
         raise ValueError(f"{value!r} must be quoted to be an identifier")
-    # A reader may take `$$` inside a word as opening a dollar-quoted string, so such a name
-    # is quoted in the upper case its unquoted form resolves to, naming the same object.
-    if not identifier.quoted and "$$" in value:
+    # A reader may take `$$` inside a word as opening a dollar-quoted string, and a reserved word
+    # as the keyword, so such a name is quoted in the upper case its unquoted form resolves to,
+    # naming the same object.
+    if not identifier.quoted and ("$$" in value or value.upper() in _reserved_words()):
         return Identifier(value.upper(), quoted=True).sql
     return identifier.sql
+
+
+def _reserved_words() -> frozenset[str]:
+    """Snowflake's reserved and limited keywords, the one set the name checks also use."""
+    # Imported here: `domain.parse.names` reaches this module through `domain.validate.sql`.
+    from snowflake_semantic_tools.domain.parse.names import RESERVED_WORDS
+
+    return RESERVED_WORDS
 
 
 def ident(identifier: Identifier) -> Sql:
     """Return one identifier: double-quoted with inner quotes doubled when quoted, else upper-cased.
 
-    An unquoted name holding `$$` is written quoted and upper-cased, so no reader can take it
-    as opening a dollar-quoted string.
+    An unquoted name holding `$$`, or one that is a Snowflake reserved word such as `select`, is
+    written quoted and upper-cased (`"SELECT"`), so no reader can take it as opening a
+    dollar-quoted string or as the keyword; it still names the object the unquoted name does.
 
     Raises:
         TypeError: `identifier` is not an `Identifier`.

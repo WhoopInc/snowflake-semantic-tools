@@ -229,10 +229,23 @@ def _backing(
     authored_key: str,
     expected: tuple[str, ...],
 ) -> ToolMember | None:
-    """Resolve the tool member a Cortex Search or generic tool names, if its type is `expected`."""
+    """Resolve the tool member a Cortex Search or generic tool names, if its type is `expected`.
+
+    A tool missing `name`, `authored_key`, or both reports every key it misses; an unnamed tool
+    is called after its type.
+    """
     name = authored.name or ""
-    if not authored.backing or not name:
-        diagnostics.append(D("SST-VAL521", artifact=agent.name, name=name, field=authored_key, subject=agent.key))
+    missing = tuple(key for key, absent in (("name", not name), (authored_key, not authored.backing)) if absent)
+    if missing:
+        diagnostics.append(
+            D(
+                "SST-VAL521",
+                artifact=agent.name,
+                name=name or authored.type,
+                field=", ".join(missing),
+                subject=agent.key,
+            )
+        )
         return None
     backing, problems = context.tools.resolve(*authored.backing)
     diagnostics.extend(problems)

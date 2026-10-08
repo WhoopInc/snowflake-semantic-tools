@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
+from snowflake_semantic_tools.domain.parse.names import RESERVED_WORDS
 from snowflake_semantic_tools.domain.sql import (
     datatype,
     ident,
@@ -24,6 +25,20 @@ def test_identifiers_render_quoted_exactly_or_unquoted_upper_cased() -> None:
     assert str(ident(Identifier.parse('"Mixed ""Case"""'))) == '"Mixed ""Case"""'
     assert str(qname(NAME)) == 'DB.S."we""ird"'
     assert str(scope(SchemaScope.from_qualified_name(NAME))) == "DB.S"
+
+
+@pytest.mark.parametrize("word", sorted(RESERVED_WORDS))
+def test_an_unquoted_reserved_word_is_quoted_as_the_name_it_resolves_to(word: str) -> None:
+    assert str(ident(Identifier.parse(word.lower()))) == f'"{word}"'
+    assert str(qname(QualifiedName.parse(f"db.{word}.{word.lower()}"))) == f'DB."{word}"."{word}"'
+    assert str(scope(SchemaScope(Identifier.parse(word), Identifier.parse("s")))) == f'"{word}".S'
+    # A quoted reserved word is already written as the exact name it is.
+    assert str(ident(Identifier(word.lower(), quoted=True))) == f'"{word.lower()}"'
+
+
+def test_a_word_that_is_not_reserved_stays_unquoted() -> None:
+    assert str(ident(Identifier.parse("selected"))) == "SELECTED"
+    assert str(ident(Identifier.parse("public"))) == "PUBLIC"
 
 
 @pytest.mark.parametrize(

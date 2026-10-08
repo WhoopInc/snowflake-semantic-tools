@@ -64,6 +64,9 @@ control character, or template syntax, and reports each one it refuses for its c
   quote. The connector refuses anything else, and tells Snowflake to run exactly one statement
   per call, so text that another reader would split into two statements is refused by the
   server rather than run.
+- **A name that is a reserved word is quoted.** An unquoted name that is a Snowflake reserved
+  word, such as a column called `select`, is written double-quoted in upper case (`"SELECT"`):
+  it names the same object, and no reader takes it for the keyword.
 - **Authored SQL passes a guard first.** Each metric, fact, dimension, and filter expression, a
   window frame, and a search tool's `where:` must be exactly one expression, checked after its
   `{{ ... }}` references are resolved. Outside strings and quoted identifiers it may hold no
@@ -102,8 +105,11 @@ and computes is still the author's, and runs with the target's role.
   file that resolves outside the project is refused (`SST-REF027`), and so is a dbt
   `target-path` outside it (`SST-PRT009`). A verified query's `sql_file:` that climbs out of
   the project, is absolute, or is or passes through a symbolic link is refused and never read
-  (`SST-PRT009`). A tool's `body_file:` outside it is not read and is reported as missing
-  (`SST-LOD018`).
+  (`SST-PRT009`); so is a tool's `body_file:`, which is read relative to the project. A
+  `define:` member whose body is refused is also reported as missing (`SST-LOD018`).
+- **Checksums are read from the project only.** The input checksums a manifest records skip
+  every symbolic link, and every file reached through one, as the loaders refuse them, so no
+  checksum is read from outside the project.
 - **Writes stay inside a root.** Every file SST writes -- the manifest, rendered DDL, formatted
   or enriched YAML, a baseline, a lock -- goes under the project, or under the output
   directory you named. Each folder on the way is opened without following links, so a `..` or
