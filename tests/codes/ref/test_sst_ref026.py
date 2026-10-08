@@ -26,7 +26,7 @@ def _references(tmp_path: Path, metric: str) -> list[Diagnostic]:
 def test_sst_ref026_fires(tmp_path: Path) -> None:
     [diagnostic] = _references(tmp_path, "answer_groundng")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "{ eval_metric('answer_groundng') } does not resolve"
+    assert diagnostic.message == "{{ eval_metric('answer_groundng') }} does not resolve"
     assert diagnostic.subject == "eval:jaffle_analytics_agent"
 
 

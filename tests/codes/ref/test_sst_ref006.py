@@ -10,7 +10,7 @@ from tests.helpers.resolve_builders import resolved
 def test_sst_ref006_fires() -> None:
     value, (diagnostic,) = resolved("{{ metric('missing') }}", METRIC_EXPR)
     assert (diagnostic.code, diagnostic.severity) == ("SST-REF006", Severity.ERROR)
-    assert diagnostic.message == "{ metric('missing') } does not resolve"
+    assert diagnostic.message == "{{ metric('missing') }} does not resolve"
     assert diagnostic.subject == "metric:m"
     assert value.poisoned
 

@@ -9,7 +9,7 @@ from tests.helpers.val_codes import dbt_model_findings
 def test_sst_val310_fires() -> None:
     [found] = dbt_model_findings("SST-VAL310", primary_key=("order_number",))
     assert found.severity is Severity.ERROR
-    assert found.message == "dbt_model:orders: primary_key names 'order_number', absent from 'orders'"
+    assert found.message == "dbt_model:orders: key column 'order_number' is absent from 'orders'"
     assert found.subject == "dbt_model:orders"
 
 

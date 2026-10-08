@@ -11,7 +11,7 @@ def test_sst_cfg017_fires() -> None:
     tree = {"agents": {"+alias": "{{ tool('platform', 'missing') }}"}}
     [diagnostic] = config_tool_references(tree, docs_catalog(), file="sst_config.yml")
     assert (diagnostic.code, diagnostic.severity) == ("SST-CFG017", Severity.ERROR)
-    assert diagnostic.message == "{ tool('platform','missing') } does not resolve"
+    assert diagnostic.message == "{{ tool('platform','missing') }} does not resolve"
     assert diagnostic.subject == "config:agents.+alias"
 
 

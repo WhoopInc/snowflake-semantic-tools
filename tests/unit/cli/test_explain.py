@@ -52,7 +52,7 @@ def test_explain_json_carries_the_spec_payload(tmp_path: Path) -> None:
         True,
         False,
     )
-    assert data["condition"] == "an override breaks the demotion floor, or --strict and strict: disagree"
+    assert data["condition"] == "a `diagnostics.severity_overrides` entry breaks the demotion floor"
 
 
 def test_explain_prints_when_a_code_is_raised_and_its_note(tmp_path: Path) -> None:

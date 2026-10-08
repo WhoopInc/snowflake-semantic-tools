@@ -11,7 +11,7 @@ from tests.helpers.resolve_builders import resolved
 def test_sst_cfg029_fires() -> None:
     value, (diagnostic,) = resolved("{{ var('missing') }}", METRIC_EXPR)
     assert (diagnostic.code, diagnostic.severity) == ("SST-CFG029", Severity.ERROR)
-    assert diagnostic.message == "{ var('missing') } is not declared in config"
+    assert diagnostic.message == "{{ var('missing') }} is not declared in config"
     assert diagnostic.subject == "metric:m"
     assert value.poisoned
 
@@ -21,7 +21,7 @@ def test_sst_cfg029_fires_in_a_configuration_value() -> None:
         {"tags": {"default_prefix": "{{ var('gov') }}.TAGS"}}, target_name=None, file="sst_config.yml"
     )
     assert (diagnostic.code, diagnostic.severity) == ("SST-CFG029", Severity.ERROR)
-    assert diagnostic.message == "{ var('gov') } is not declared in config"
+    assert diagnostic.message == "{{ var('gov') }} is not declared in config"
     assert diagnostic.subject == "config:tags.default_prefix"
     assert tree["tags"]["default_prefix"] == "{{ var('gov') }}.TAGS"
 

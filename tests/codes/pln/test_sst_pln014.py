@@ -15,7 +15,7 @@ def test_sst_pln014_fires() -> None:
     planned = plan((sales,), observed=(live(sales),), applied=recorded, manifest=planned_manifest)
     [diagnostic] = coded(planned.diagnostics, "SST-PLN014")
     assert diagnostic.severity is Severity.WARNING
-    assert diagnostic.message == "semantic_view:sales was changed out of band"
+    assert diagnostic.message == "semantic_view:sales was changed out of band; apply refuses it"
     assert planned.changes[0].action is Action.BLOCKED
 
 

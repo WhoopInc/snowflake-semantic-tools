@@ -10,7 +10,7 @@ from tests.helpers.resolve_builders import resolved
 def test_sst_ref002_fires() -> None:
     value, (diagnostic,) = resolved("{{ ref('orders', 'nope') }}", METRIC_EXPR)
     assert (diagnostic.code, diagnostic.severity) == ("SST-REF002", Severity.ERROR)
-    assert diagnostic.message == "{ ref('orders','nope') }: 'nope' is not a column on orders"
+    assert diagnostic.message == "{{ ref('orders','nope') }}: 'nope' is not a column on orders"
     assert diagnostic.subject == "metric:m"
     assert value.poisoned
 

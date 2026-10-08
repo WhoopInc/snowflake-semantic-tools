@@ -78,8 +78,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL408",
         Severity.ERROR,
-        "Legacy custom-instruction rendering",
-        "custom_instruction '{member}' would render as a bare string",
+        "View custom_instructions is a bare string",
+        "semantic view '{member}': custom_instructions is a bare string, the 0.3 form",
         "declare the text as a block under `snowflake_custom_instructions:` and list "
         "`{{ custom_instructions('<name>') }}` in the view's `custom_instructions:`",
         condition="a semantic view's `custom_instructions:` is a string, the 0.3 form, rather than a list",
@@ -187,7 +187,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL418",
         Severity.ERROR,
         "Expression or query is not valid SQL",
-        "{type} '{name}': expression failed to compile: {detail}",
+        "{type} '{name}' is not valid SQL: {detail}",
         "fix the expression or query; the message carries the reason",
         condition=(
             "an expression or a tool member's `where:` is not one SQL expression, or verified-query SQL "

@@ -88,7 +88,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-REG010",
         Severity.ERROR,
-        "ddl_position contradicts dependency_edges",
+        "ddl_position contradicts dependency_types",
         "{type} is ordered at {position} but depends on {blocker}, ordered later",
         "renumber ddl_position so dependents follow their dependencies",
         demotable=False,
@@ -99,7 +99,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Type dependency graph has a cycle",
         "type dependency cycle: {cycle}",
-        "break the cycle by removing one dependency_edge",
+        "break the cycle by removing one entry from a type's dependency_types",
         demotable=False,
         condition="the graph the artifact types' `dependency_types` declare has a cycle",
     ),

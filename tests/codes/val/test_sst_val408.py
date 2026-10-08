@@ -18,7 +18,7 @@ def test_sst_val408_fires(tmp_path: Path) -> None:
     project = edited(tmp_path, VIEWS, LIST, "    custom_instructions: Round money to cents.\n")
     [diagnostic] = reported(project, "SST-VAL408")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "custom_instruction 'jaffle_sales' would render as a bare string"
+    assert diagnostic.message == "semantic view 'jaffle_sales': custom_instructions is a bare string, the 0.3 form"
     assert diagnostic.subject == "semantic_view:jaffle_sales"
 
 

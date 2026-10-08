@@ -20,7 +20,7 @@ def test_sst_ref011_fires() -> None:
     )
     [diagnostic] = coded(diagnostics, "SST-REF011")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "{ semantic_view('nope') } does not resolve"
+    assert diagnostic.message == "{{ semantic_view('nope') }} does not resolve"
     assert diagnostic.subject == "agent:router"
 
 

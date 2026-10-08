@@ -7,7 +7,7 @@
   "non_demotable": false,
   "title": "DDL execution failed",
   "message": "{artifact}: {value} failed: {detail}",
-  "suggestion": "read internal_detail, then fix the statement or the account",
+  "suggestion": "fix the statement or the account as the error in the message says",
   "precheck": "runtime"
  },
  {
@@ -40,7 +40,7 @@
   "non_demotable": true,
   "title": "Refused: replace would run without COPY GRANTS",
   "message": "{artifact}: replace statement omits COPY GRANTS",
-  "suggestion": "emit COPY GRANTS; this is not configurable",
+  "suggestion": "report this as a bug; SST renders COPY GRANTS on every such replace",
   "precheck": "local"
  },
  {
@@ -82,9 +82,9 @@
   "number": 8,
   "severity": "WARNING",
   "non_demotable": false,
-  "title": "Grants could not be re-read after a replace",
-  "message": "{artifact}: grants could not be verified after replace",
-  "suggestion": "check the grants by hand",
+  "title": "Explicit grants could not be read for a replace",
+  "message": "{artifact}: its explicit grants could not be read",
+  "suggestion": "check the grants by hand; if the change failed, re-apply once they can be read",
   "precheck": "runtime"
  },
  {
@@ -247,9 +247,9 @@
   "number": 23,
   "severity": "ERROR",
   "non_demotable": false,
-  "title": "Eval run could not be started",
+  "title": "Eval run failed",
   "message": "eval '{artifact}': {detail}",
-  "suggestion": "check CREATE TASK, CREATE STAGE and the file format",
+  "suggestion": "fix what the detail names, then re-run the eval",
   "precheck": "runtime"
  },
  {
@@ -304,7 +304,7 @@
   "non_demotable": false,
   "title": "Smoke query failed",
   "message": "{artifact}: smoke probe failed: {detail}",
-  "suggestion": "fix the metric; a created view is not a working view",
+  "suggestion": "fix the artifact the probe names; a created view is not a working view",
   "precheck": "runtime"
  },
  {
@@ -478,7 +478,7 @@
   "number": 13,
   "severity": "ERROR",
   "non_demotable": false,
-  "title": "env_var() resolved to an empty string",
+  "title": "env_var() names an unset variable with no default",
   "message": "env_var('{var}') is unset and has no default",
   "suggestion": "set {var}, or give env_var() a default",
   "precheck": "local"
@@ -523,7 +523,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "tool() reference does not resolve from config",
-  "message": "{{ tool('{group}','{name}') }} does not resolve",
+  "message": "{{{{ tool('{group}','{name}') }}}} does not resolve",
   "suggestion": "declare the group and member in the tools directory",
   "precheck": "local"
  },
@@ -655,7 +655,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "var() reference has no declaration",
-  "message": "{{ var('{var}') }} is not declared in config",
+  "message": "{{{{ var('{var}') }}}} is not declared in config",
   "suggestion": "declare {var} under vars:",
   "precheck": "local"
  },
@@ -700,7 +700,7 @@
   "non_demotable": true,
   "title": "Illegal severity override",
   "message": "severity_overrides {code}: {found} is not permitted ({reason})",
-  "suggestion": "promote instead of demoting, or remove the override",
+  "suggestion": "remove the override, or give the code a severity the floor permits",
   "precheck": "local"
  },
  {
@@ -755,7 +755,7 @@
   "non_demotable": true,
   "title": "Sample-value collection requested but the project refuses it",
   "message": "--include {components} reads row data, and enrichment.allow_sample_value_collection is false",
-  "suggestion": "remove --include sample-values, or change the key in sst_config.yml",
+  "suggestion": "leave sample-values and enums out of the run, or set enrichment.allow_sample_value_collection to true",
   "precheck": "local"
  },
  {
@@ -1261,7 +1261,7 @@
   "non_demotable": false,
   "title": "Semantic path does not exist",
   "message": "{path} does not exist",
-  "suggestion": "create the directory, or correct semantic_path",
+  "suggestion": "create the directory, or correct project.semantic_models_dir or --semantic",
   "precheck": "local"
  },
  {
@@ -1272,7 +1272,7 @@
   "non_demotable": false,
   "title": "Semantic path is not a directory",
   "message": "{path} is not a directory",
-  "suggestion": "point semantic_path at a directory",
+  "suggestion": "point project.semantic_models_dir or --semantic at a directory",
   "precheck": "local"
  },
  {
@@ -1283,7 +1283,7 @@
   "non_demotable": false,
   "title": "No candidate files found",
   "message": "no candidate files under {path}",
-  "suggestion": "check semantic_path and the file-name conventions",
+  "suggestion": "check project.semantic_models_dir, --semantic, and validation.exclude_dirs",
   "precheck": "local"
  },
  {
@@ -1304,7 +1304,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "Symlink loop or depth limit exceeded",
-  "message": "{path} exceeds the traversal depth limit",
+  "message": "{path} is not walked: it links back into the tree, or lies more than 32 directories deep",
   "suggestion": "remove the symlink loop, or flatten the tree",
   "precheck": "local"
  },
@@ -1325,9 +1325,9 @@
   "number": 7,
   "severity": "ERROR",
   "non_demotable": false,
-  "title": "File claimed by two artifact types",
+  "title": "Directory claimed by two artifact types",
   "message": "{path} is claimed by {types}",
-  "suggestion": "move the file, or make its root key unambiguous",
+  "suggestion": "give each artifact type its own directory, neither inside the other",
   "precheck": "local"
  },
  {
@@ -1844,7 +1844,7 @@
   "non_demotable": false,
   "title": "Manifest written for a different target",
   "message": "manifest target '{found}', current target '{expected}'",
-  "suggestion": "drop --manifest and let SST parse for this target",
+  "suggestion": "re-run sst compile for this target",
   "precheck": "local"
  },
  {
@@ -1997,7 +1997,7 @@
   "severity": "WARNING",
   "non_demotable": false,
   "title": "Older manifest schema with no migration",
-  "message": "{path} schema {found} has no migration; full recompile",
+  "message": "{path} schema {found} has no migration, so it cannot be read",
   "suggestion": "re-run sst compile",
   "precheck": "local"
  },
@@ -2437,8 +2437,8 @@
   "severity": "WARNING",
   "non_demotable": false,
   "title": "Live definition differs from the last recorded state",
-  "message": "{artifact} was changed out of band",
-  "suggestion": "review the difference before applying",
+  "message": "{artifact} was changed out of band; apply refuses it",
+  "suggestion": "review the live object, then restore the one SST wrote or remove it before applying",
   "precheck": "observe"
  },
  {
@@ -3461,7 +3461,7 @@
   "non_demotable": false,
   "title": "Secret would be rendered in plain text",
   "message": "{value} would be rendered verbatim",
-  "suggestion": "wrap the value in Secret",
+  "suggestion": "the output was withheld; remove the credential's value from the project text it appears in, or report this as a bug",
   "precheck": "local"
  },
  {
@@ -3505,7 +3505,7 @@
   "non_demotable": false,
   "title": "Selector requires state that was not supplied",
   "message": "selector '{value}' requires --state",
-  "suggestion": "pass --state",
+  "suggestion": "pass --state to sst plan or sst apply; no other command reads a state: selector",
   "precheck": "local"
  },
  {
@@ -3549,7 +3549,7 @@
   "non_demotable": false,
   "title": "Run interrupted",
   "message": "interrupted after {detail}; {value}",
-  "suggestion": null,
+  "suggestion": "after apply, run sst plan to see what remains; an eval run already started keeps running in Snowflake until it ends or is cancelled there",
   "precheck": "runtime"
  },
  {
@@ -3571,7 +3571,7 @@
   "non_demotable": false,
   "title": "Mandatory confirmation flag absent",
   "message": "{command} requires --yes",
-  "suggestion": "re-run with --yes; there is no interactive prompt",
+  "suggestion": "re-run with --yes; only sst baseline add --all-warnings asks instead, on a terminal and without JSON output",
   "precheck": "local"
  },
  {
@@ -3592,7 +3592,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "ref() model not in the dbt catalog",
-  "message": "{{ ref('{model}') }} is not a model in the dbt manifest",
+  "message": "{{{{ ref('{model}') }}}} is not a model in the dbt manifest",
   "suggestion": "run dbt compile, or correct the model name",
   "precheck": "local"
  },
@@ -3603,7 +3603,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "ref() column not on the model",
-  "message": "{{ ref('{model}','{column}') }}: '{column}' is not a column on {model}",
+  "message": "{{{{ ref('{model}','{column}') }}}}: '{column}' is not a column on {model}",
   "suggestion": "correct the column name, or add it to the model's columns: block",
   "precheck": "local"
  },
@@ -3647,7 +3647,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "metric() target not found",
-  "message": "{{ metric('{name}') }} does not resolve",
+  "message": "{{{{ metric('{name}') }}}} does not resolve",
   "suggestion": "correct the name, or declare the metric",
   "precheck": "local"
  },
@@ -3658,7 +3658,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "custom_instructions() target not found",
-  "message": "{{ custom_instructions('{name}') }} does not resolve",
+  "message": "{{{{ custom_instructions('{name}') }}}} does not resolve",
   "suggestion": "declare the block, or correct the name",
   "precheck": "local"
  },
@@ -3680,7 +3680,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "Ref resolved to an empty string",
-  "message": "{{ {ref_function}('{name}') }} resolved to an empty string",
+  "message": "{{{{ {ref_function}('{name}') }}}} resolved to an empty string",
   "suggestion": "check the referenced object's name",
   "precheck": "local"
  },
@@ -3691,7 +3691,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "tool() target not found",
-  "message": "{{ tool('{group}','{name}') }} does not resolve",
+  "message": "{{{{ tool('{group}','{name}') }}}} does not resolve",
   "suggestion": "declare the member in the tools directory",
   "precheck": "local"
  },
@@ -3702,7 +3702,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "semantic_view() target not found",
-  "message": "{{ semantic_view('{name}') }} does not resolve",
+  "message": "{{{{ semantic_view('{name}') }}}} does not resolve",
   "suggestion": "declare the view, or correct the name",
   "precheck": "local"
  },
@@ -3713,7 +3713,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "agent() target not found",
-  "message": "{{ agent('{name}') }} does not resolve",
+  "message": "{{{{ agent('{name}') }}}} does not resolve",
   "suggestion": "declare the agent, or correct the name",
   "precheck": "local"
  },
@@ -3724,7 +3724,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "extension() target not found",
-  "message": "{{ extension('{name}') }} does not resolve",
+  "message": "{{{{ extension('{name}') }}}} does not resolve",
   "suggestion": "declare the extension source, or correct the name",
   "precheck": "local"
  },
@@ -3735,7 +3735,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "file() sidecar does not resolve",
-  "message": "{{ file('{path}') }} does not resolve to a file",
+  "message": "{{{{ file('{path}') }}}} does not resolve to a file",
   "suggestion": "create the file, or correct the path",
   "precheck": "local"
  },
@@ -3746,7 +3746,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "Ref has the wrong arity",
-  "message": "{{ {ref_function}() }} takes {expected} arguments, found {found}",
+  "message": "{{{{ {ref_function}() }}}} takes {expected} arguments, found {found}",
   "suggestion": "supply the documented arguments",
   "precheck": "local"
  },
@@ -3779,7 +3779,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "Ref resolves outside the declared target",
-  "message": "{{ {ref_function}('{name}') }} has no entry for target '{target}'",
+  "message": "{{{{ {ref_function}('{name}') }}}} has no entry for target '{target}'",
   "suggestion": "declare a relation for every target you publish to",
   "precheck": "local"
  },
@@ -3801,7 +3801,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "Ref resolves to an incompatible object type",
-  "message": "{{ {ref_function}('{name}') }} resolves to {found}, expected {expected}",
+  "message": "{{{{ {ref_function}('{name}') }}}} resolves to {found}, expected {expected}",
   "suggestion": "point the reference at a compatible object",
   "precheck": "local"
  },
@@ -3834,7 +3834,7 @@
   "severity": "WARNING",
   "non_demotable": false,
   "title": "Ref target resolves to the same object across targets",
-  "message": "{{ {ref_function}('{name}') }} resolves to {value} for both dev and prod",
+  "message": "{{{{ {ref_function}('{name}') }}}} resolves to {value} for both dev and prod",
   "suggestion": "use per-target relations for anything writable",
   "precheck": "local"
  },
@@ -3867,7 +3867,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "eval_metric() target not found",
-  "message": "{{ eval_metric('{name}') }} does not resolve",
+  "message": "{{{{ eval_metric('{name}') }}}} does not resolve",
   "suggestion": "declare the metric in the eval_metrics/ tree, or correct the name",
   "precheck": "local"
  },
@@ -3878,7 +3878,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "file() path escapes the project root",
-  "message": "{{ file('{path}') }} resolves outside the project root",
+  "message": "{{{{ file('{path}') }}}} resolves outside the project root",
   "suggestion": "use a path inside the project",
   "precheck": "local"
  },
@@ -3889,7 +3889,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "tag() target not declared",
-  "message": "{{ tag('{name}') }} does not resolve",
+  "message": "{{{{ tag('{name}') }}}} does not resolve",
   "suggestion": "declare the entry under tags: in sst_config.yml, or correct the name",
   "precheck": "local"
  },
@@ -3900,7 +3900,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "relationship() target not declared",
-  "message": "{{ relationship('{name}') }} does not resolve",
+  "message": "{{{{ relationship('{name}') }}}} does not resolve",
   "suggestion": "declare the relationship, or correct the name",
   "precheck": "local"
  },
@@ -3911,7 +3911,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "filter() target not declared",
-  "message": "{{ filter('{name}') }} does not resolve",
+  "message": "{{{{ filter('{name}') }}}} does not resolve",
   "suggestion": "declare the filter, or correct the name",
   "precheck": "local"
  },
@@ -3922,7 +3922,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "verified_query() target not declared",
-  "message": "{{ verified_query('{name}') }} does not resolve",
+  "message": "{{{{ verified_query('{name}') }}}} does not resolve",
   "suggestion": "declare the verified query, or correct the name",
   "precheck": "local"
  },
@@ -3933,7 +3933,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "skill() target not declared",
-  "message": "{{ skill('{name}') }} does not resolve",
+  "message": "{{{{ skill('{name}') }}}} does not resolve",
   "suggestion": "declare the skill under skills/, or correct the name",
   "precheck": "local"
  },
@@ -3955,7 +3955,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "Legacy table() global is rejected",
-  "message": "{file}:{line}:{col}: '{{ table('{model}') }}' is not a reference in 1.0; use '{{ ref('{model}') }}'",
+  "message": "{file}:{line}:{col}: '{{{{ table('{model}') }}}}' is not a reference in 1.0; use '{{{{ ref('{model}') }}}}'",
   "suggestion": "run `sst migrate refs`, which is a pure rename",
   "precheck": "local"
  },
@@ -3966,7 +3966,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "Legacy column() global is rejected",
-  "message": "{file}:{line}:{col}: '{{ column('{model}','{column}') }}' is not a reference in 1.0; use '{{ ref('{model}','{column}') }}'",
+  "message": "{file}:{line}:{col}: '{{{{ column('{model}','{column}') }}}}' is not a reference in 1.0; use '{{{{ ref('{model}','{column}') }}}}'",
   "suggestion": "run `sst migrate refs`, which is a pure rename",
   "precheck": "local"
  },
@@ -3977,7 +3977,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "plugin() target not declared",
-  "message": "{{ plugin('{name}') }} does not resolve",
+  "message": "{{{{ plugin('{name}') }}}} does not resolve",
   "suggestion": "declare the plugin under the plugins directory, or correct the name",
   "precheck": "local"
  },
@@ -4020,9 +4020,9 @@
   "number": 43,
   "severity": "ERROR",
   "non_demotable": false,
-  "title": "Expression references a table outside the view",
-  "message": "{artifact}: ref('{model}') is not one of the view's tables",
-  "suggestion": "add the model to the view's tables:, or reference one of them",
+  "title": "Expression references a table outside the member's tables:",
+  "message": "{artifact}: ref('{model}') is not one of the member's tables:",
+  "suggestion": "add the model to the member's tables:, or reference one of them",
   "precheck": "local"
  },
  {
@@ -4032,7 +4032,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "View table entry is not a ref()",
-  "message": "{artifact}: table entry {found} is not a {{ ref('<model>') }} call",
+  "message": "{artifact}: table entry {found} is not a {{{{ ref('<model>') }}}} call",
   "suggestion": "write each tables: entry as `{{ ref('<model>') }}`",
   "precheck": "local"
  },
@@ -4163,7 +4163,7 @@
   "number": 10,
   "severity": "ERROR",
   "non_demotable": true,
-  "title": "ddl_position contradicts dependency_edges",
+  "title": "ddl_position contradicts dependency_types",
   "message": "{type} is ordered at {position} but depends on {blocker}, ordered later",
   "suggestion": "renumber ddl_position so dependents follow their dependencies",
   "precheck": "local"
@@ -4176,7 +4176,7 @@
   "non_demotable": true,
   "title": "Type dependency graph has a cycle",
   "message": "type dependency cycle: {cycle}",
-  "suggestion": "break the cycle by removing one dependency_edge",
+  "suggestion": "break the cycle by removing one entry from a type's dependency_types",
   "precheck": "local"
  },
  {
@@ -5043,8 +5043,8 @@
   "number": 102,
   "severity": "ERROR",
   "non_demotable": true,
-  "title": "Window function in a derived metric",
-  "message": "window function {function} in derived metric '{metric}'",
+  "title": "Window function in a metric that renders at view level",
+  "message": "window function {function} in metric '{metric}', which renders at view level",
   "suggestion": "make it a table-scoped metric of one table with a `window:` block, or compute the window in the dbt model and aggregate the resulting column",
   "precheck": "local"
  },
@@ -5703,8 +5703,8 @@
   "number": 310,
   "severity": "ERROR",
   "non_demotable": false,
-  "title": "Primary key column is not on the table",
-  "message": "{artifact}: primary_key names '{column}', absent from '{name}'",
+  "title": "Key column is not on the model",
+  "message": "{artifact}: key column '{column}' is absent from '{name}'",
   "suggestion": "correct the `primary_key` or `unique_keys` entry",
   "precheck": "local"
  },
@@ -6033,8 +6033,8 @@
   "number": 408,
   "severity": "ERROR",
   "non_demotable": false,
-  "title": "Legacy custom-instruction rendering",
-  "message": "custom_instruction '{member}' would render as a bare string",
+  "title": "View custom_instructions is a bare string",
+  "message": "semantic view '{member}': custom_instructions is a bare string, the 0.3 form",
   "suggestion": "declare the text as a block under `snowflake_custom_instructions:` and list `{{ custom_instructions('<name>') }}` in the view's `custom_instructions:`",
   "precheck": "local"
  },
@@ -6144,7 +6144,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "Expression or query is not valid SQL",
-  "message": "{type} '{name}': expression failed to compile: {detail}",
+  "message": "{type} '{name}' is not valid SQL: {detail}",
   "suggestion": "fix the expression or query; the message carries the reason",
   "precheck": "observe"
  },
@@ -6253,9 +6253,9 @@
   "number": 510,
   "severity": "ERROR",
   "non_demotable": true,
-  "title": "Renderer emitted a partial spec",
+  "title": "Rendered agent spec omits a section",
   "message": "agent '{artifact}': rendered spec omits {value}",
-  "suggestion": "emit the complete spec; a partial spec deletes fields on the live agent",
+  "suggestion": "remove the passthrough key that sets the section to null; a partial spec deletes it from the live agent",
   "precheck": "local"
  },
  {
@@ -6374,9 +6374,9 @@
   "number": 521,
   "severity": "ERROR",
   "non_demotable": false,
-  "title": "Cortex Search tool omits a required key",
+  "title": "Search or generic tool omits a required key",
   "message": "agent '{artifact}': tool '{name}' omits '{field}'",
-  "suggestion": "declare search_service and name",
+  "suggestion": "declare the tool's name, and its search_service or, for a generic tool, its identifier",
   "precheck": "local"
  },
  {
@@ -6563,7 +6563,7 @@
   "non_demotable": false,
   "title": "Skill source does not pin an immutable version",
   "message": "agent '{artifact}': skill source '{name}' does not pin an immutable version",
-  "suggestion": "pin a committed version; `LIVE` and an omitted version are both refused HERE -- Snowflake refuses neither",
+  "suggestion": "pin a committed version; SST refuses LIVE and an omitted version, though Snowflake accepts both",
   "precheck": "local"
  },
  {
@@ -6693,9 +6693,9 @@
   "number": 550,
   "severity": "ERROR",
   "non_demotable": false,
-  "title": "Deprecated or dropped version is still referenced",
+  "title": "Deprecated agent still sets an alias",
   "message": "agent '{artifact}': {detail}",
-  "suggestion": "clear the alias, or retain the version",
+  "suggestion": "remove the alias, or stop deprecating the agent",
   "precheck": "local"
  },
  {
@@ -7155,8 +7155,8 @@
   "number": 722,
   "severity": "ERROR",
   "non_demotable": false,
-  "title": "metric_version is not pinned",
-  "message": "eval config for '{artifact}': metric '{name}' declares no metric_version",
+  "title": "System metric version is not pinned",
+  "message": "eval config for '{artifact}': metric '{name}' declares no version",
   "suggestion": "pin the version",
   "precheck": "local"
  },
@@ -7166,7 +7166,7 @@
   "number": 723,
   "severity": "WARNING",
   "non_demotable": false,
-  "title": "metric_version pins a legacy judge",
+  "title": "System metric version pins a legacy judge",
   "message": "eval config for '{artifact}': metric '{name}' pins legacy version '{found}'",
   "suggestion": "move to a current version, and record the score shift",
   "precheck": "local"
@@ -7332,7 +7332,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "Custom metric declares no explicit judge model",
-  "message": "eval metric '{artifact}': judge_model is '{found}'",
+  "message": "eval metric '{artifact}' names no judge model (model: {found})",
   "suggestion": "name the judge model explicitly",
   "precheck": "local"
  },
@@ -7342,8 +7342,8 @@
   "number": 739,
   "severity": "ERROR",
   "non_demotable": false,
-  "title": "judge_model is not in the allowlist",
-  "message": "eval metric '{artifact}': judge_model '{found}' is not in the allowlist",
+  "title": "Custom metric's judge model is not in the allowlist",
+  "message": "eval metric '{artifact}': model '{found}' is not in the allowlist",
   "suggestion": "add it to the config allowlist, or use an allowed model",
   "precheck": "local"
  },
@@ -7397,9 +7397,9 @@
   "number": 744,
   "severity": "ERROR",
   "non_demotable": false,
-  "title": "Custom metric is not versioned",
-  "message": "eval metric '{artifact}' declares no version",
-  "suggestion": "version it; an edited prompt is a new metric",
+  "title": "Custom metric changed under the same name",
+  "message": "eval metric '{artifact}' changed since state recorded it under the same name",
+  "suggestion": "publish the change under a new metric name, or revert it",
   "precheck": "local"
  },
  {
@@ -7617,9 +7617,9 @@
   "number": 801,
   "severity": "ERROR",
   "non_demotable": false,
-  "title": "Skill folder layout is wrong",
+  "title": "Skill, plugin or profile folder is misnamed",
   "message": "'{artifact}': {detail}",
-  "suggestion": "put SKILL.md at the folder root, with scripts beside it",
+  "suggestion": "rename the folder, or correct the manifest or SKILL.md name the message names",
   "precheck": "local"
  },
  {

@@ -16,7 +16,7 @@ def test_sst_ref029_fires(tmp_path: Path) -> None:
     project = load(edited(tmp_path, FILE, BEFORE, "      - \"{{ relationship('order_items_to_order') }}\""))
     [diagnostic] = coded(project.diagnostics, "SST-REF029")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "{ relationship('order_items_to_order') } does not resolve"
+    assert diagnostic.message == "{{ relationship('order_items_to_order') }} does not resolve"
     assert diagnostic.subject == "metric:line_item_count"
 
 

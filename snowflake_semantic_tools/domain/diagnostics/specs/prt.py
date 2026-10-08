@@ -103,7 +103,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Secret would be rendered in plain text",
         "{value} would be rendered verbatim",
-        "wrap the value in Secret",
+        "the output was withheld; remove the credential's value from the project text it appears in, "
+        "or report this as a bug",
         condition="a resolved credential reaches command output unredacted",
     ),
     spec(
@@ -138,8 +139,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Selector requires state that was not supplied",
         "selector '{value}' requires --state",
-        "pass --state",
-        condition="a `state:` selector is given without `--state`",
+        "pass --state to sst plan or sst apply; no other command reads a state: selector",
+        condition="a `state:` selector is given without `--state`, or to a command that takes no `--state`",
     ),
     spec(
         "SST-PRT104",
@@ -170,7 +171,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.INFO,
         "Run interrupted",
         "interrupted after {detail}; {value}",
-        None,
+        "after apply, run sst plan to see what remains; an eval run already started keeps running in "
+        "Snowflake until it ends or is cancelled there",
         condition=(
             "the user interrupts a run, or declines a confirmation prompt; the run exits 130. After "
             "`apply`, partial work may have been applied; after an eval run started, the message "
@@ -190,7 +192,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Mandatory confirmation flag absent",
         "{command} requires --yes",
-        "re-run with --yes; there is no interactive prompt",
+        "re-run with --yes; only sst baseline add --all-warnings asks instead, on a terminal and without JSON output",
         condition=(
             "a command that needs confirmation runs without --yes: `sst drop`, an `apply` that needs "
             "it, or `baseline add --all-warnings` with no terminal to prompt on or under JSON output"

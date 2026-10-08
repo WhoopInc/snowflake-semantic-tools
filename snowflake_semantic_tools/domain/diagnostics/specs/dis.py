@@ -16,7 +16,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Semantic path does not exist",
         "{path} does not exist",
-        "create the directory, or correct semantic_path",
+        "create the directory, or correct project.semantic_models_dir or --semantic",
         condition="the semantic-model directory (`project.semantic_models_dir`, or `--semantic`) does not exist",
     ),
     spec(
@@ -24,7 +24,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Semantic path is not a directory",
         "{path} is not a directory",
-        "point semantic_path at a directory",
+        "point project.semantic_models_dir or --semantic at a directory",
         condition="the semantic-model directory (`project.semantic_models_dir`, or `--semantic`) is not a directory",
     ),
     spec(
@@ -32,7 +32,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "No candidate files found",
         "no candidate files under {path}",
-        "check semantic_path and the file-name conventions",
+        "check project.semantic_models_dir, --semantic, and validation.exclude_dirs",
         condition="the walk of the semantic-model directory found no YAML file",
     ),
     spec(
@@ -47,13 +47,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-DIS005",
         Severity.ERROR,
         "Symlink loop or depth limit exceeded",
-        "{path} exceeds the traversal depth limit",
+        "{path} is not walked: it links back into the tree, or lies more than 32 directories deep",
         "remove the symlink loop, or flatten the tree",
         condition=(
             "a directory symlink points back into the tree, or a directory is more than 32 levels deep; "
             "it is not walked"
         ),
-        note="The message names the depth limit in both cases.",
+        note="The message does not say which of the two applies.",
     ),
     spec(
         "SST-DIS006",
@@ -66,9 +66,9 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-DIS007",
         Severity.ERROR,
-        "File claimed by two artifact types",
+        "Directory claimed by two artifact types",
         "{path} is claimed by {types}",
-        "move the file, or make its root key unambiguous",
+        "give each artifact type its own directory, neither inside the other",
         condition="two artifact types' configured directories are one directory, or one contains the other",
     ),
     spec(

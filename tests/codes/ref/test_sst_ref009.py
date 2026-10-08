@@ -10,7 +10,7 @@ from tests.helpers.resolve_builders import resolved
 def test_sst_ref009_fires() -> None:
     value, (diagnostic,) = resolved("{{ var('blank') }}", METRIC_EXPR, variables={"blank": ""})
     assert (diagnostic.code, diagnostic.severity) == ("SST-REF009", Severity.ERROR)
-    assert diagnostic.message == "{ var('blank') } resolved to an empty string"
+    assert diagnostic.message == "{{ var('blank') }} resolved to an empty string"
     assert diagnostic.subject == "metric:m"
     assert value.poisoned
 

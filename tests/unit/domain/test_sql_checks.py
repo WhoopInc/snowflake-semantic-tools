@@ -25,8 +25,7 @@ def test_a_refused_expression_reports_val418_with_where_and_why() -> None:
     assert isinstance(found, Diagnostic)
     assert found.code == "SST-VAL418" and found.subject == "metric:m" and found.origin == ORIGIN
     assert found.message == (
-        "metric 'm': expression failed to compile: ')' closes nothing at '); DROP TABLE x; --', "
-        "so SST will not send it to Snowflake"
+        "metric 'm' is not valid SQL: ')' closes nothing at '); DROP TABLE x; --', so SST will not send it to Snowflake"
     )
     assert isinstance(checked_expression("SUM(X)", kind="metric", name="m", subject="metric:m"), AuthoredExpression)
 

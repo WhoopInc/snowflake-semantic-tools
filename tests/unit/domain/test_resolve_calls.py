@@ -100,7 +100,7 @@ def test_a_variable_must_be_declared_and_not_empty() -> None:
     missing = variable_problem("nope", variables, ORIGIN, subject="metric:m")
     blank = variable_problem("blank", variables, ORIGIN)
     assert missing is not None and (missing.code, missing.subject) == ("SST-CFG029", "metric:m")
-    assert blank is not None and blank.message == "{ var('blank') } resolved to an empty string"
+    assert blank is not None and blank.message == "{{ var('blank') }} resolved to an empty string"
 
 
 @pytest.mark.parametrize(

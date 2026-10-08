@@ -16,7 +16,7 @@ def test_sst_ref030_fires(tmp_path: Path) -> None:
     project = load(edited(tmp_path, FILE, BEFORE, "using the {{ filter('is_complete_order') }} filter"))
     [diagnostic] = coded(project.diagnostics, "SST-REF030")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "{ filter('is_complete_order') } does not resolve"
+    assert diagnostic.message == "{{ filter('is_complete_order') }} does not resolve"
     assert diagnostic.subject == "custom_instruction:jaffle_sql_conventions"
 
 

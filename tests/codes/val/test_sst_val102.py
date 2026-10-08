@@ -21,7 +21,7 @@ def test_sst_val102_fires() -> None:
     lagged = metric("lagged", "LAG({{ metric('total') }}) OVER (ORDER BY 1)", derived=True)
     [found] = metric_findings(base, lagged, code="SST-VAL102")
     assert (found.severity, ERROR_REGISTRY[found.code].demotable) == (Severity.ERROR, False)
-    assert found.message == "window function LAG in derived metric 'lagged'"
+    assert found.message == "window function LAG in metric 'lagged', which renders at view level"
     assert found.subject == "metric:lagged"
 
 

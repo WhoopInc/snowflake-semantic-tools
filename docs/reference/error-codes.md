@@ -106,7 +106,7 @@ Fix: register the member type, or correct the name
 
 ### SST-REG010
 
-**ddl_position contradicts dependency_edges** (error, always an error)
+**ddl_position contradicts dependency_types** (error, always an error)
 
 `<type> is ordered at <position> but depends on <blocker>, ordered later`
 
@@ -122,7 +122,7 @@ Fix: renumber ddl_position so dependents follow their dependencies
 
 Raised when the graph the artifact types' `dependency_types` declare has a cycle.
 
-Fix: break the cycle by removing one dependency_edge
+Fix: break the cycle by removing one entry from a type's dependency_types
 
 ### SST-REG012
 
@@ -388,7 +388,7 @@ Fix: set {field} in profiles.yml or its env var
 
 ### SST-CFG013
 
-**env_var() resolved to an empty string** (error)
+**env_var() names an unset variable with no default** (error)
 
 `env_var('<var>') is unset and has no default`
 
@@ -432,7 +432,7 @@ Fix: declare the value for every target you publish to
 
 **tool() reference does not resolve from config** (error)
 
-`{ tool('<group>','<name>') } does not resolve`
+`{{ tool('<group>','<name>') }} does not resolve`
 
 Raised when a `tool()` call in a config value names a group or member the tools directory does not declare.
 
@@ -492,7 +492,7 @@ Fix: add it to {key}, or use an allowed value
 
 **var() reference has no declaration** (error)
 
-`{ var('<var>') } is not declared in config`
+`{{ var('<var>') }} is not declared in config`
 
 Raised when a `var()` call, in `sst_config.yml` or in project YAML, names a variable `vars:` does not declare; a declared variable whose value is empty is SST-REF009.
 
@@ -526,9 +526,9 @@ Fix: delete the shadowed file
 
 `severity_overrides <code>: <found> is not permitted (<reason>)`
 
-Raised when an override breaks the demotion floor, or --strict and strict: disagree.
+Raised when a `diagnostics.severity_overrides` entry breaks the demotion floor.
 
-Fix: promote instead of demoting, or remove the override
+Fix: remove the override, or give the code a severity the floor permits
 
 Note: The floor: a `diagnostics.severity_overrides` entry may not lower a non-demotable code, demote an error to info, or promote an info code to error. A refused override is not applied. A `--strict` flag that disagrees with `validation.strict` is SST-CFG034, a warning, not this code.
 
@@ -582,7 +582,7 @@ Note: Given until the project has run under 1.0 once.
 
 Raised when `sst enrich` includes a component that reads row data (`sample-values` or `enums`, alone or through a group such as `all`) while `enrichment.allow_sample_value_collection: false`.
 
-Fix: remove --include sample-values, or change the key in sst_config.yml
+Fix: leave sample-values and enums out of the run, or set enrichment.allow_sample_value_collection to true
 
 Note: Fires on COLLECTION only -- an authored `sample_values` in project YAML is legal and must not trip it.
 
@@ -728,7 +728,7 @@ Fix: rename the key
 
 Raised when the semantic-model directory (`project.semantic_models_dir`, or `--semantic`) does not exist.
 
-Fix: create the directory, or correct semantic_path
+Fix: create the directory, or correct project.semantic_models_dir or --semantic
 
 ### SST-DIS002
 
@@ -738,7 +738,7 @@ Fix: create the directory, or correct semantic_path
 
 Raised when the semantic-model directory (`project.semantic_models_dir`, or `--semantic`) is not a directory.
 
-Fix: point semantic_path at a directory
+Fix: point project.semantic_models_dir or --semantic at a directory
 
 ### SST-DIS003
 
@@ -748,7 +748,7 @@ Fix: point semantic_path at a directory
 
 Raised when the walk of the semantic-model directory found no YAML file.
 
-Fix: check semantic_path and the file-name conventions
+Fix: check project.semantic_models_dir, --semantic, and validation.exclude_dirs
 
 ### SST-DIS004
 
@@ -764,13 +764,13 @@ Fix: fix the file permissions
 
 **Symlink loop or depth limit exceeded** (error)
 
-`<path> exceeds the traversal depth limit`
+`<path> is not walked: it links back into the tree, or lies more than 32 directories deep`
 
 Raised when a directory symlink points back into the tree, or a directory is more than 32 levels deep; it is not walked.
 
 Fix: remove the symlink loop, or flatten the tree
 
-Note: The message names the depth limit in both cases.
+Note: The message does not say which of the two applies.
 
 ### SST-DIS006
 
@@ -784,13 +784,13 @@ Fix: rename one file
 
 ### SST-DIS007
 
-**File claimed by two artifact types** (error)
+**Directory claimed by two artifact types** (error)
 
 `<path> is claimed by <types>`
 
 Raised when two artifact types' configured directories are one directory, or one contains the other.
 
-Fix: move the file, or make its root key unambiguous
+Fix: give each artifact type its own directory, neither inside the other
 
 ### SST-DIS008
 
@@ -1668,7 +1668,7 @@ Raised when CRLF line endings were read as LF in memory; the file itself is left
 
 **ref() model not in the dbt catalog** (error)
 
-`{ ref('<model>') } is not a model in the dbt manifest`
+`{{ ref('<model>') }} is not a model in the dbt manifest`
 
 Raised when a single-argument ref names a model the manifest does not list.
 
@@ -1678,7 +1678,7 @@ Fix: run dbt compile, or correct the model name
 
 **ref() column not on the model** (error)
 
-`{ ref('<model>','<column>') }: '<column>' is not a column on <model>`
+`{{ ref('<model>','<column>') }}: '<column>' is not a column on <model>`
 
 Raised when a two-argument ref names a column absent from the model.
 
@@ -1718,7 +1718,7 @@ Fix: break the cycle
 
 **metric() target not found** (error)
 
-`{ metric('<name>') } does not resolve`
+`{{ metric('<name>') }} does not resolve`
 
 Raised when a `metric()` reference names no metric the project declares.
 
@@ -1728,7 +1728,7 @@ Fix: correct the name, or declare the metric
 
 **custom_instructions() target not found** (error)
 
-`{ custom_instructions('<name>') } does not resolve`
+`{{ custom_instructions('<name>') }} does not resolve`
 
 Raised when a `custom_instructions()` reference names no custom instruction the project declares.
 
@@ -1748,7 +1748,7 @@ Fix: move the reference, or inline the value
 
 **Ref resolved to an empty string** (error)
 
-`{ <ref_function>('<name>') } resolved to an empty string`
+`{{ <ref_function>('<name>') }} resolved to an empty string`
 
 Raised when a template call resolves to an empty value, such as `var()` naming a variable whose value is empty.
 
@@ -1758,7 +1758,7 @@ Fix: check the referenced object's name
 
 **tool() target not found** (error)
 
-`{ tool('<group>','<name>') } does not resolve`
+`{{ tool('<group>','<name>') }} does not resolve`
 
 Raised when a `tool()` reference names no tool member, or, by name alone, more than one.
 
@@ -1768,7 +1768,7 @@ Fix: declare the member in the tools directory
 
 **semantic_view() target not found** (error)
 
-`{ semantic_view('<name>') } does not resolve`
+`{{ semantic_view('<name>') }} does not resolve`
 
 Raised when a `semantic_view()` reference names no semantic view the project declares.
 
@@ -1778,7 +1778,7 @@ Fix: declare the view, or correct the name
 
 **agent() target not found** (error)
 
-`{ agent('<name>') } does not resolve`
+`{{ agent('<name>') }} does not resolve`
 
 Raised when an `agent()` reference names no agent the project declares; also an eval whose dataset or config names another agent than the eval's, or than each other.
 
@@ -1788,7 +1788,7 @@ Fix: declare the agent, or correct the name
 
 **extension() target not found** (error)
 
-`{ extension('<name>') } does not resolve`
+`{{ extension('<name>') }} does not resolve`
 
 Raised when an agent's `extension()` entry names no extension `skills.extensions` declares.
 
@@ -1798,7 +1798,7 @@ Fix: declare the extension source, or correct the name
 
 **file() sidecar does not resolve** (error)
 
-`{ file('<path>') } does not resolve to a file`
+`{{ file('<path>') }} does not resolve to a file`
 
 Raised when an agent's `file()` reference names a file that does not exist.
 
@@ -1808,7 +1808,7 @@ Fix: create the file, or correct the path
 
 **Ref has the wrong arity** (error)
 
-`{ <ref_function>() } takes <expected> arguments, found <found>`
+`{{ <ref_function>() }} takes <expected> arguments, found <found>`
 
 Raised when a template function is called with the wrong number of arguments.
 
@@ -1818,7 +1818,7 @@ Fix: supply the documented arguments
 
 **Ref resolves outside the declared target** (error)
 
-`{ <ref_function>('<name>') } has no entry for target '<target>'`
+`{{ <ref_function>('<name>') }} has no entry for target '<target>'`
 
 Raised when a `reference:` tool member has no relation for the current target, or declares one for a target `profiles.yml` does not declare.
 
@@ -1838,7 +1838,7 @@ Fix: use database.schema.object
 
 **Ref resolves to an incompatible object type** (error)
 
-`{ <ref_function>('<name>') } resolves to <found>, expected <expected>`
+`{{ <ref_function>('<name>') }} resolves to <found>, expected <expected>`
 
 Raised when an agent tool's backing tool member is of a type that tool cannot use.
 
@@ -1858,7 +1858,7 @@ Fix: break the cycle
 
 **Ref target resolves to the same object across targets** (warning)
 
-`{ <ref_function>('<name>') } resolves to <value> for both dev and prod`
+`{{ <ref_function>('<name>') }} resolves to <value> for both dev and prod`
 
 Raised when a `reference:` tool member, in a group not declared immutable, names one object for both its `dev` and its `prod` target.
 
@@ -1868,7 +1868,7 @@ Fix: use per-target relations for anything writable
 
 **eval_metric() target not found** (error)
 
-`{ eval_metric('<name>') } does not resolve`
+`{{ eval_metric('<name>') }} does not resolve`
 
 Raised when an eval config names a custom metric that no file under `eval_metrics/`, or `project.eval_metrics_dir`, declares.
 
@@ -1878,7 +1878,7 @@ Fix: declare the metric in the eval_metrics/ tree, or correct the name
 
 **file() path escapes the project root** (error)
 
-`{ file('<path>') } resolves outside the project root`
+`{{ file('<path>') }} resolves outside the project root`
 
 Raised when an agent's `file()` reference, or its eval's dataset or config path, resolves outside the project root.
 
@@ -1888,7 +1888,7 @@ Fix: use a path inside the project
 
 **tag() target not declared** (error)
 
-`{ tag('<name>') } does not resolve`
+`{{ tag('<name>') }} does not resolve`
 
 Raised when a tag reference names an entry absent from the tags: block.
 
@@ -1898,7 +1898,7 @@ Fix: declare the entry under tags: in sst_config.yml, or correct the name
 
 **relationship() target not declared** (error)
 
-`{ relationship('<name>') } does not resolve`
+`{{ relationship('<name>') }} does not resolve`
 
 Raised when a relationship reference names a relationship absent from the project.
 
@@ -1908,7 +1908,7 @@ Fix: declare the relationship, or correct the name
 
 **filter() target not declared** (error)
 
-`{ filter('<name>') } does not resolve`
+`{{ filter('<name>') }} does not resolve`
 
 Raised when a filter reference names a filter absent from the project.
 
@@ -1918,7 +1918,7 @@ Fix: declare the filter, or correct the name
 
 **verified_query() target not declared** (error)
 
-`{ verified_query('<name>') } does not resolve`
+`{{ verified_query('<name>') }} does not resolve`
 
 Raised when a verified-query reference names a query absent from the project.
 
@@ -1928,7 +1928,7 @@ Fix: declare the verified query, or correct the name
 
 **skill() target not declared** (error)
 
-`{ skill('<name>') } does not resolve`
+`{{ skill('<name>') }} does not resolve`
 
 Raised when a `skill()` reference names no skill the project declares.
 
@@ -1948,7 +1948,7 @@ Fix: use `{{ fn('arg') }}`
 
 **Legacy table() global is rejected** (error)
 
-`<file>:<line>:<col>: '{ table('<model>') }' is not a reference in 1.0; use '{ ref('<model>') }'`
+`<file>:<line>:<col>: '{{ table('<model>') }}' is not a reference in 1.0; use '{{ ref('<model>') }}'`
 
 Raised when the legacy `table()` global appears anywhere in the project.
 
@@ -1960,7 +1960,7 @@ Note: `sst migrate refs` only reports by default; `--write` rewrites the files.
 
 **Legacy column() global is rejected** (error)
 
-`<file>:<line>:<col>: '{ column('<model>','<column>') }' is not a reference in 1.0; use '{ ref('<model>','<column>') }'`
+`<file>:<line>:<col>: '{{ column('<model>','<column>') }}' is not a reference in 1.0; use '{{ ref('<model>','<column>') }}'`
 
 Raised when the legacy `column()` global appears anywhere in the project.
 
@@ -1972,7 +1972,7 @@ Note: `sst migrate refs` only reports by default; `--write` rewrites the files.
 
 **plugin() target not declared** (error)
 
-`{ plugin('<name>') } does not resolve`
+`{{ plugin('<name>') }} does not resolve`
 
 Raised when an agent's `plugin()` entry names no plugin the project declares.
 
@@ -2000,19 +2000,19 @@ Fix: remove the call; each field accepts only the functions its reference page l
 
 ### SST-REF043
 
-**Expression references a table outside the view** (error)
+**Expression references a table outside the member's tables:** (error)
 
-`<artifact>: ref('<model>') is not one of the view's tables`
+`<artifact>: ref('<model>') is not one of the member's tables:`
 
 Raised when a member expression's `ref()` names a model outside the member's non-empty `tables:`.
 
-Fix: add the model to the view's tables:, or reference one of them
+Fix: add the model to the member's tables:, or reference one of them
 
 ### SST-REF044
 
 **View table entry is not a ref()** (error)
 
-`<artifact>: table entry <found> is not a { ref('<model>') } call`
+`<artifact>: table entry <found> is not a {{ ref('<model>') }} call`
 
 Raised when a view tables: entry is not exactly one `{{ ref('<model>') }}` call.
 
@@ -2498,9 +2498,9 @@ Fix: wrap the expression in an aggregate; for a window function, declare a `wind
 
 ### SST-VAL102
 
-**Window function in a derived metric** (error, always an error)
+**Window function in a metric that renders at view level** (error, always an error)
 
-`window function <function> in derived metric '<metric>'`
+`window function <function> in metric '<metric>', which renders at view level`
 
 Raised when a derived metric's expression calls a window function (`... OVER (`) or the metric declares `window:`; or a `window:` metric does not belong to exactly one table, so it would render at view level as a derived metric does.
 
@@ -3124,9 +3124,9 @@ Fix: declare `data_type` in dbt or in `meta.sst`, or run `sst enrich`
 
 ### SST-VAL310
 
-**Primary key column is not on the table** (error)
+**Key column is not on the model** (error)
 
-`<artifact>: primary_key names '<column>', absent from '<name>'`
+`<artifact>: key column '<column>' is absent from '<name>'`
 
 Raised when a column named in a model's `config.meta.sst.primary_key` or `.unique_keys` does not exist on that model.
 
@@ -3422,9 +3422,9 @@ Note: A block written only in the 0.3 spellings is `SST-VAL012` instead.
 
 ### SST-VAL408
 
-**Legacy custom-instruction rendering** (error)
+**View custom_instructions is a bare string** (error)
 
-`custom_instruction '<member>' would render as a bare string`
+`semantic view '<member>': custom_instructions is a bare string, the 0.3 form`
 
 Raised when a semantic view's `custom_instructions:` is a string, the 0.3 form, rather than a list.
 
@@ -3530,7 +3530,7 @@ Fix: keep the three sets distinct
 
 **Expression or query is not valid SQL** (error)
 
-`<type> '<name>': expression failed to compile: <detail>`
+`<type> '<name>' is not valid SQL: <detail>`
 
 Raised when an expression or a tool member's `where:` is not one SQL expression, or verified-query SQL is not one SELECT or WITH query, both checked offline; or Snowflake's EXPLAIN of a metric, dimension, filter or verified query fails in connected validate with `validation.snowflake_syntax_check` on.
 
@@ -3578,13 +3578,13 @@ Fix: apply, or reconcile the authored file with the live object
 
 ### SST-VAL510
 
-**Renderer emitted a partial spec** (error, always an error)
+**Rendered agent spec omits a section** (error, always an error)
 
 `agent '<artifact>': rendered spec omits <value>`
 
 Raised when a top-level section the agent carries (models, orchestration, instructions, tools, tool_resources or skills) is absent or null in the rendered spec.
 
-Fix: emit the complete spec; a partial spec deletes fields on the live agent
+Fix: remove the passthrough key that sets the section to null; a partial spec deletes it from the live agent
 
 Note: A passthrough key set to null is how it happens; remove that key. The replacing spec would delete the section from the live agent.
 
@@ -3694,13 +3694,13 @@ Fix: declare exactly one semantic_view and no name
 
 ### SST-VAL521
 
-**Cortex Search tool omits a required key** (error)
+**Search or generic tool omits a required key** (error)
 
 `agent '<artifact>': tool '<name>' omits '<field>'`
 
 Raised when a cortex_search tool omits `name` or `search_service`, or a generic tool omits `name` or `identifier`.
 
-Fix: declare search_service and name
+Fix: declare the tool's name, and its search_service or, for a generic tool, its identifier
 
 Note: A generic tool declares `name` and `identifier`, the `tool()` reference to its member.
 
@@ -3876,7 +3876,7 @@ Fix: pin the date, and keep the two sets distinct
 
 Raised when an agent's `extension()` skill source, for an extension the project consumes, pins no version or pins LIVE.
 
-Fix: pin a committed version; `LIVE` and an omitted version are both refused HERE -- Snowflake refuses neither
+Fix: pin a committed version; SST refuses LIVE and an omitted version, though Snowflake accepts both
 
 ### SST-VAL539
 
@@ -3996,13 +3996,13 @@ Fix: rename one of them; it is the conversational handle
 
 ### SST-VAL550
 
-**Deprecated or dropped version is still referenced** (error)
+**Deprecated agent still sets an alias** (error)
 
 `agent '<artifact>': <detail>`
 
 Raised when a deprecated agent still sets an `alias`, which points at a version of it.
 
-Fix: clear the alias, or retain the version
+Fix: remove the alias, or stop deprecating the agent
 
 ### SST-VAL601
 
@@ -4428,9 +4428,9 @@ Fix: declare the custom metric, or use a system metric
 
 ### SST-VAL722
 
-**metric_version is not pinned** (error)
+**System metric version is not pinned** (error)
 
-`eval config for '<artifact>': metric '<name>' declares no metric_version`
+`eval config for '<artifact>': metric '<name>' declares no version`
 
 Raised when a system metric sets no `version` and `evals.+metric_version` is unset.
 
@@ -4440,7 +4440,7 @@ Note: Set `version: v3` on the metric, or `evals.+metric_version: v3` once for t
 
 ### SST-VAL723
 
-**metric_version pins a legacy judge** (warning)
+**System metric version pins a legacy judge** (warning)
 
 `eval config for '<artifact>': metric '<name>' pins legacy version '<found>'`
 
@@ -4596,7 +4596,7 @@ Fix: rename the custom metric
 
 **Custom metric declares no explicit judge model** (error)
 
-`eval metric '<artifact>': judge_model is '<found>'`
+`eval metric '<artifact>' names no judge model (model: <found>)`
 
 Raised when a custom metric's `model` is absent or `auto`.
 
@@ -4606,9 +4606,9 @@ Note: Set the metric file's `model:` key to a named judge model. With `auto`, Sn
 
 ### SST-VAL739
 
-**judge_model is not in the allowlist** (error)
+**Custom metric's judge model is not in the allowlist** (error)
 
-`eval metric '<artifact>': judge_model '<found>' is not in the allowlist`
+`eval metric '<artifact>': model '<found>' is not in the allowlist`
 
 Raised when `snowflake.orchestration_models` is set and a custom metric's `model` is not in it, compared ignoring case.
 
@@ -4660,13 +4660,13 @@ Fix: add the branch; otherwise the judge invents one per call
 
 ### SST-VAL744
 
-**Custom metric is not versioned** (error)
+**Custom metric changed under the same name** (error)
 
-`eval metric '<artifact>' declares no version`
+`eval metric '<artifact>' changed since state recorded it under the same name`
 
 Raised when a plan finds a custom metric whose prompt, score bands or judge model changed since state recorded it under the same name; the eval is blocked.
 
-Fix: version it; an edited prompt is a new metric
+Fix: publish the change under a new metric name, or revert it
 
 Note: A custom metric has no Snowflake version: its name is the score's column, so an edited prompt under the same name would read as one continuous trend. Publish the change under a new metric name, or revert it.
 
@@ -4792,13 +4792,13 @@ Note: A report-tier eval lists the same regressions without this error, so its r
 
 ### SST-VAL801
 
-**Skill folder layout is wrong** (error)
+**Skill, plugin or profile folder is misnamed** (error)
 
 `'<artifact>': <detail>`
 
 Raised when a skill, plugin or profile folder is misnamed or its manifest is wrong: a skill or plugin name is not kebab-case or would publish as an extension name that does not start with a letter; a profile name is not lowercase letters, digits, '-' or '_', or is 'shared'; a plugin or profile folder has no manifest, or both the .yml and .yaml spellings; or the SKILL.md frontmatter or manifest `name` is not the folder's name.
 
-Fix: put SKILL.md at the folder root, with scripts beside it
+Fix: rename the folder, or correct the manifest or SKILL.md name the message names
 
 Note: The message names which; rename the folder, or correct the manifest or frontmatter.
 
@@ -5944,9 +5944,9 @@ Fix: re-run sst compile; the manifest is tampered or truncated
 
 Raised when the manifest `sst compile` wrote records another target than the run's.
 
-Fix: drop --manifest and let SST parse for this target
+Fix: re-run sst compile for this target
 
-Note: Re-run `sst compile` for the run's target. `--manifest` names the dbt manifest, not this one, so dropping it does not help.
+Note: `--manifest` names the dbt manifest, not this one, so dropping it does not help.
 
 ### SST-MAN007
 
@@ -6082,7 +6082,7 @@ Raised when a stored manifest of an older schema was read, migrated in memory wi
 
 **Older manifest schema with no migration** (warning)
 
-`<path> schema <found> has no migration; full recompile`
+`<path> schema <found> has no migration, so it cannot be read`
 
 Raised when a stored manifest declares an older schema that has no migration.
 
@@ -6244,11 +6244,11 @@ Note: Apply checks every one survives the replace, and fails the change if not (
 
 **Live definition differs from the last recorded state** (warning)
 
-`<artifact> was changed out of band`
+`<artifact> was changed out of band; apply refuses it`
 
 Raised when state records the artifact, but the live object's ownership marker is absent, or names another manifest or fingerprint than state records, or the object is under another name.
 
-Fix: review the difference before applying
+Fix: review the live object, then restore the one SST wrote or remove it before applying
 
 Note: The change is blocked, so `apply` refuses the plan (SST-APL003) until the live object is again the one SST wrote, although this code is a warning.
 
@@ -6482,7 +6482,7 @@ Fix: report this as a bug
 
 Raised when Snowflake rejected a statement `apply` or `drop` ran, or a change failed for a reason no other APL code names.
 
-Fix: read internal_detail, then fix the statement or the account
+Fix: fix the statement or the account as the error in the message says
 
 Note: The message's detail is the error itself; when SST recognises a Snowflake refusal it also reports it under its SST-SNO code.
 
@@ -6514,7 +6514,7 @@ Fix: fix the errors, then re-apply
 
 Raised when a statement about to replace an object whose grants survive only by COPY GRANTS does not say COPY GRANTS, so it would silently revoke consumer access.
 
-Fix: emit COPY GRANTS; this is not configurable
+Fix: report this as a bug; SST renders COPY GRANTS on every such replace
 
 Note: Nothing runs for the change. SST renders COPY GRANTS on every such replace it plans, so this points at a defect in SST rather than in the project.
 
@@ -6554,13 +6554,13 @@ Note: When roles already hold grants on the extension, SST-APL021 is reported in
 
 ### SST-APL008
 
-**Grants could not be re-read after a replace** (warning)
+**Explicit grants could not be read for a replace** (warning)
 
-`<artifact>: grants could not be verified after replace`
+`<artifact>: its explicit grants could not be read`
 
 Raised when the explicit grants of an object an update replaces could not be read: before the replace, which fails the change with nothing written, or after it, which leaves the change applied with its grants unverified.
 
-Fix: check the grants by hand
+Fix: check the grants by hand; if the change failed, re-apply once they can be read
 
 ### SST-APL009
 
@@ -6712,13 +6712,13 @@ Fix: check OWNERSHIP on the dataset
 
 ### SST-APL023
 
-**Eval run could not be started** (error)
+**Eval run failed** (error)
 
 `eval '<artifact>': <detail>`
 
 Raised when an eval could not run, or one of its attempts failed: it has no run configuration; its agent version could not be read or its config could not be staged; EXECUTE_AI_EVALUATION refused to start the run; its status could not be read (a read failed for good, or 5 reads in a row failed in transit); it did not reach a terminal status within 20 minutes; or it ended FAILED, CANCELLED, or in a status Snowflake does not document.
 
-Fix: check CREATE TASK, CREATE STAGE and the file format
+Fix: fix what the detail names, then re-run the eval
 
 Note: The detail carries Snowflake's error or the run's status details. A missing run privilege is caught before any run starts (SST-VAL727, SST-VAL728), and a wrong config stage format too (SST-VAL729). A run that ends partially completed reports SST-APL024, and a completed run whose results cannot be read SST-SNO001. When a retry (`run.retry`, else `evals.+retry`) completes in its place, the attempt reports SST-APL029 instead; a CANCELLED run is not retried.
 
@@ -6778,7 +6778,7 @@ Note: It replaces the error or warning the attempt reports on its own (SST-APL02
 
 Raised when a smoke probe of a view, a verified query, or a DESCRIBE of a published artifact failed, observed by `sst test --suite smoke` rather than by `apply`.
 
-Fix: fix the metric; a created view is not a working view
+Fix: fix the artifact the probe names; a created view is not a working view
 
 Note: Fix the artifact the probe names; a metric probe reports `SST-PLN100`.
 
@@ -7184,7 +7184,7 @@ Fix: set the environment variable, or the profile field
 
 Raised when a resolved credential reaches command output unredacted.
 
-Fix: wrap the value in Secret
+Fix: the output was withheld; remove the credential's value from the project text it appears in, or report this as a bug
 
 ### SST-PRT100
 
@@ -7222,9 +7222,9 @@ Fix: use one of {expected}
 
 `selector '<value>' requires --state`
 
-Raised when a `state:` selector is given without `--state`.
+Raised when a `state:` selector is given without `--state`, or to a command that takes no `--state`.
 
-Fix: pass --state
+Fix: pass --state to sst plan or sst apply; no other command reads a state: selector
 
 ### SST-PRT104
 
@@ -7264,6 +7264,8 @@ Fix: pass one of {expected}
 
 Raised when the user interrupts a run, or declines a confirmation prompt; the run exits 130. After `apply`, partial work may have been applied; after an eval run started, the message names each run, which goes on in Snowflake.
 
+Fix: after apply, run sst plan to see what remains; an eval run already started keeps running in Snowflake until it ends or is cancelled there
+
 ### SST-PRT108
 
 **Object name is not fully qualified** (error)
@@ -7282,7 +7284,7 @@ Fix: pass &lt;database&gt;.&lt;schema&gt;.&lt;object&gt;
 
 Raised when a command that needs confirmation runs without --yes: `sst drop`, an `apply` that needs it, or `baseline add --all-warnings` with no terminal to prompt on or under JSON output.
 
-Fix: re-run with --yes; there is no interactive prompt
+Fix: re-run with --yes; only sst baseline add --all-warnings asks instead, on a terminal and without JSON output
 
 ### SST-PRT110
 

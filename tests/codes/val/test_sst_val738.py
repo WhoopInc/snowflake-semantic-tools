@@ -13,7 +13,7 @@ from tests.helpers.eval_inputs import judge, sales_eval, validate
 def test_sst_val738_fires() -> None:
     diagnostic = only(validate(sales_eval(metrics=(judge(model="auto"),))), "SST-VAL738")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "eval metric 'grounding': judge_model is 'auto'"
+    assert diagnostic.message == "eval metric 'grounding' names no judge model (model: auto)"
     assert diagnostic.subject == "eval_metric:grounding"
 
 

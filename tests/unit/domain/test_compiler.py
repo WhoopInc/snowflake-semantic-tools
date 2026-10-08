@@ -159,7 +159,7 @@ def test_resolver_reports_policy_arity_and_unknown_targets() -> None:
     )
     assert bad_arity.poisoned
     assert diagnostics[0].code == "SST-REF015"
-    assert diagnostics[0].message == "{ ref() } takes 1 or 2 arguments, found 0"
+    assert diagnostics[0].message == "{{ ref() }} takes 1 or 2 arguments, found 0"
 
     unknown_metric, diagnostics = resolve_scalar(
         "{{ metric('missing') }}",
@@ -343,7 +343,7 @@ def test_resolver_covers_remaining_error_and_value_branches() -> None:
         field="expression",
     )
     assert empty_metric.poisoned
-    assert [item.message for item in diagnostics] == ["{ metric('m') } resolved to an empty string"]
+    assert [item.message for item in diagnostics] == ["{{ metric('m') }} resolved to an empty string"]
 
 
 def test_resolver_reports_calls_last_first_then_the_call_count() -> None:
@@ -355,7 +355,7 @@ def test_resolver_reports_calls_last_first_then_the_call_count() -> None:
         field="tag",
     )
     assert [(item.code, item.message) for item in diagnostics] == [
-        ("SST-REF028", "{ tag('missing') } does not resolve"),
+        ("SST-REF028", "{{ tag('missing') }} does not resolve"),
         ("SST-REF041", "tag: metric() is not allowed in tag"),
         ("SST-REF041", "tag: ref() is not allowed in tag"),
         (

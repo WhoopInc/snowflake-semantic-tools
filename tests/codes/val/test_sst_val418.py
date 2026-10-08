@@ -25,7 +25,7 @@ def test_sst_val418_fires(tmp_path: Path) -> None:
     found = [item for item in loaded.diagnostics if item.code == "SST-VAL418"]
     assert found and all(item.severity is Severity.ERROR for item in found)
     assert found[0].message == (
-        "metric 'order_count': expression failed to compile: ')' closes nothing at '); DROP TABLE x; --', "
+        "metric 'order_count' is not valid SQL: ')' closes nothing at '); DROP TABLE x; --', "
         "so SST will not send it to Snowflake"
     )
     assert found[0].subject == "metric:order_count"

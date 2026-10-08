@@ -143,8 +143,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-PLN014",
         Severity.WARNING,
         "Live definition differs from the last recorded state",
-        "{artifact} was changed out of band",
-        "review the difference before applying",
+        "{artifact} was changed out of band; apply refuses it",
+        "review the live object, then restore the one SST wrote or remove it before applying",
         condition=(
             "state records the artifact, but the live object's ownership marker is absent, or "
             "names another manifest or fingerprint than state records, or the object is under "

@@ -16,7 +16,7 @@ def test_sst_ref031_fires(tmp_path: Path) -> None:
     project = load(edited(tmp_path, FILE, BEFORE, "using the {{ verified_query('no_such_query') }} filter"))
     [diagnostic] = coded(project.diagnostics, "SST-REF031")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "{ verified_query('no_such_query') } does not resolve"
+    assert diagnostic.message == "{{ verified_query('no_such_query') }} does not resolve"
     assert diagnostic.subject == "custom_instruction:jaffle_sql_conventions"
 
 

@@ -55,12 +55,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Manifest written for a different target",
         "manifest target '{found}', current target '{expected}'",
-        "drop --manifest and let SST parse for this target",
+        "re-run sst compile for this target",
         condition="the manifest `sst compile` wrote records another target than the run's",
-        note=(
-            "Re-run `sst compile` for the run's target. `--manifest` names the dbt manifest, not "
-            "this one, so dropping it does not help."
-        ),
+        note="`--manifest` names the dbt manifest, not this one, so dropping it does not help.",
     ),
     spec(
         "SST-MAN007",
@@ -186,7 +183,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-MAN202",
         Severity.WARNING,
         "Older manifest schema with no migration",
-        "{path} schema {found} has no migration; full recompile",
+        "{path} schema {found} has no migration, so it cannot be read",
         "re-run sst compile",
         condition="a stored manifest declares an older schema that has no migration",
         note="The manifest cannot be read, so the command stops; `sst compile` writes a current one.",
