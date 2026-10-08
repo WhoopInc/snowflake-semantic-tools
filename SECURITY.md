@@ -10,6 +10,9 @@ WHOOP operates a bug bounty program to encourage responsible disclosure of secur
 
 **[WHOOP Bug Bounty Program on HackerOne](https://hackerone.com/whoop_bug_bounty)**
 
+Do not open a public GitHub issue or pull request for a vulnerability, and do not include
+credentials, account identifiers, or customer data in a report.
+
 ### What to Report
 
 Please report any security concerns, including but not limited to:
@@ -49,20 +52,29 @@ SST publishes what a project declares; it does not sandbox it. The files in a pr
   expression, with that role, and publishing writes them into the semantic view.
 - **Agent instructions**, tool definitions, and skills are published as written and decide what
   an agent does for whoever calls it; `sst test --suite evals` runs the agents.
+- **Profiles, hooks, MCP configs, and commands** are installed by CoCo Desktop for everyone who
+  selects the profile, so a hook's script and an MCP server's command run for them.
+
+SST checks that each authored expression is one expression and each verified query one
+`SELECT` or `WITH` query, and sends every statement as exactly one; it does not judge what
+the SQL reads or does.
 
 Consequences:
 
-- **Never run a credentialed `sst validate`, `sst plan`, or `sst apply` on an untrusted pull
-  request**, such as one from a fork, and never give such a job Snowflake credentials. Every
-  command that connects -- `plan`, `apply`, `enrich`, `test --suite smoke|evals`,
-  `debug --test-connection`, and `validate` with Snowflake syntax checks -- runs the project's
-  SQL. Check untrusted changes offline: `sst validate --no-snowflake-syntax-check`,
-  `sst compile`, and `sst test --suite golden`. In GitHub Actions use the `pull_request`
-  trigger, which withholds secrets from forks, never `pull_request_target`.
+- **Never run a credentialed SST command on an untrusted pull request**, such as one from a
+  fork, and never give such a job Snowflake credentials. A command that connects runs the
+  project's SQL with the target's role. That includes `sst validate` by default (Snowflake
+  syntax checks are on unless turned off), `sst debug` unless `--no-connect` is given, and
+  `sst test` with no `--suite`; the full list is in
+  [docs/guides/security.md](docs/guides/security.md#trust-model). Check untrusted changes
+  offline: `sst validate --no-snowflake-syntax-check`, `sst compile`, and
+  `sst test --suite golden`. In GitHub Actions use the `pull_request` trigger, which withholds
+  secrets from forks, never `pull_request_target`.
 - **`sst enrich` sends sample values to Cortex.** Synonym generation calls `AI_COMPLETE` in the
   account with column names, types, descriptions, and up to five example values per column.
   Columns with `pii_tags` are never sampled and contribute no examples;
-  `enrichment.allow_sample_value_collection: false` stops enrich reading row data.
+  `enrichment.allow_sample_value_collection: false` refuses every enrich run that would read
+  row data.
 - **Generated synonyms require human review.** SST refuses a synonym with quotes, control
   characters, template syntax, or more than 100 characters, and reports each refusal
   (`SST-PRS030`), but it cannot judge meaning: review the rest in the diff before merging.
