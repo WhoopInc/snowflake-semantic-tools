@@ -26,9 +26,16 @@ def test_sst_dis005_fires_past_the_depth_limit(tmp_path: Path) -> None:
     assert diagnostic.code == "SST-DIS005"
 
 
+def test_sst_dis005_fires_for_a_link_to_itself(tmp_path: Path) -> None:
+    root = models(tmp_path, "metrics.yml")
+    (root / "loop.yml").symlink_to("loop.yml")
+    [diagnostic] = discover_yaml(tmp_path, "semantic_models").diagnostics
+    assert (diagnostic.code, diagnostic.context["path"]) == ("SST-DIS005", "semantic_models/loop.yml")
+
+
 def test_sst_dis005_silent(tmp_path: Path) -> None:
-    # A link to a directory outside the tree is not a loop; it is not walked, as before.
+    # A link to a directory outside the tree is not a loop: it is refused (SST-PRT009), not walked.
     root = models(tmp_path, "metrics.yml")
     (tmp_path / "elsewhere").mkdir()
     (root / "shared").symlink_to(tmp_path / "elsewhere")
-    assert discover_yaml(tmp_path, "semantic_models").diagnostics == ()
+    assert [item.code for item in discover_yaml(tmp_path, "semantic_models").diagnostics] == ["SST-PRT009"]

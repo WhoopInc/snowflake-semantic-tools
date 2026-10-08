@@ -8,7 +8,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import resolve_within
-from snowflake_semantic_tools.adapters.yaml.fields import optional_string, strings
+from snowflake_semantic_tools.adapters.yaml.fields import optional_string, refused, strings
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
@@ -52,6 +52,8 @@ def load_tool_catalog(
         `validate_tool_catalog`, sorted by origin file (none first), then code.
 
     Diagnostics:
+        SST-PRT009: when a file, or a folder between the project and it, is a symbolic link, or it
+            resolves outside the project; the file is not read.
         SST-LOD004: when a file cannot be read, or a template in it or in an `on:` is malformed.
         SST-LOD006: when a file is not UTF-8.
         SST-LOD001: when a file is not valid YAML.
@@ -72,6 +74,8 @@ def load_tool_catalog(
     if not root.is_dir():
         return ToolCatalog((), target_name, declared_targets)
     for path in sorted(root.glob("*.y*ml")):
+        if refused(project_dir, path, diagnostics):
+            continue
         relative = path.relative_to(project_dir).as_posix()
         try:
             parsed = parse_yaml_bytes(path.read_bytes(), relative)

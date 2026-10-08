@@ -311,9 +311,14 @@ and schema), then:
 
 An agent is created once and then updated by adding a version, never replaced,
 so its grants and its version history survive every publish, and promotion or
-rollback is a move of the alias. An alias is an identifier written unquoted
-when it can be, so pick one that is not a SQL reserved word; `LIVE`, `FIRST`,
-`LAST`, and `DEFAULT` are refused (`SST-PRS025`).
+rollback is a move of the alias. An alias is a plain identifier, always written
+unquoted, so it is matched without regard to case wherever it is named later.
+`LIVE`, `FIRST`, `LAST`, `DEFAULT`, and every SQL reserved word, such as
+`select` or `current`, are refused (`SST-PRS025`): SST never double-quotes an
+alias to rescue it, because quoting would make it case-sensitive. An alias
+written quoted, or one that is a valid identifier only once quoted, such as
+`pro-moted`, is refused too (`SST-PRS005`). A reserved word in a tag name is
+quoted, as the upper-cased name it already resolves to.
 
 `sst apply --temporary` instead publishes each agent as a session-scoped
 `CREATE OR REPLACE TEMPORARY AGENT` from the inline spec, staging nothing; it is

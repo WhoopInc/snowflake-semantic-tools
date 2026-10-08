@@ -766,7 +766,7 @@ Fix: fix the file permissions
 
 `<path> is not walked: it links back into the tree, or lies more than 32 directories deep`
 
-Raised when a directory symlink points back into the tree, or a directory is more than 32 levels deep; it is not walked.
+Raised when a symlink points back into the tree or at itself, or a directory is more than 32 levels deep; it is not walked.
 
 Fix: remove the symlink loop, or flatten the tree
 
@@ -891,6 +891,8 @@ Note: Distinct from `SST-VAL013`/`SST-VAL014`: this is a key inside a block SST 
 Raised when a name fails the identifier grammar.
 
 Fix: use letters, digits and underscores, starting with a letter
+
+Note: An agent's alias must be a plain identifier, rendered unquoted: one written quoted, or valid only once quoted, is reported too.
 
 ### SST-PRS006
 
@@ -1088,9 +1090,11 @@ Fix: promote the keys to first-class fields where possible
 
 `<artifact>: alias '<value>' is reserved`
 
-Raised when an agent's alias is `LIVE`, `FIRST`, `LAST` or `DEFAULT`, ignoring case.
+Raised when an agent's alias is `LIVE`, `FIRST`, `LAST` or `DEFAULT`, or a Snowflake reserved word such as `select` or `current`, ignoring case.
 
 Fix: choose a different alias
+
+Note: SST never double-quotes an alias to rescue a reserved word: quoting would make it case-sensitive.
 
 ### SST-PRS026
 
@@ -7152,7 +7156,7 @@ Fix: check the permissions and the free space
 
 `could not read <path>: <detail>`
 
-Raised when a file SST reads cannot be read or does not hold what it should (a manifest, baseline, saved plan, or `--state` observation); a file or folder to be read is a symbolic link or is reached through one; or dbt's `target-path` resolves outside the project.
+Raised when a file SST reads cannot be read or does not hold what it should (a manifest, baseline, saved plan, or `--state` observation); a file or folder to be read is a symbolic link or is reached through one; or dbt's `target-path`, the semantic-models directory, or a verified query's `sql_file` resolves outside the project.
 
 Fix: check the permissions
 

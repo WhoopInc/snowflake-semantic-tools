@@ -54,6 +54,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: '{value}' is not a valid identifier",
         "use letters, digits and underscores, starting with a letter",
         condition="a name fails the identifier grammar",
+        note=(
+            "An agent's alias must be a plain identifier, rendered unquoted: one written quoted, or "
+            "valid only once quoted, is reported too."
+        ),
     ),
     spec(
         "SST-PRS006",
@@ -216,7 +220,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Reserved alias used",
         "{artifact}: alias '{value}' is reserved",
         "choose a different alias",
-        condition="an agent's alias is `LIVE`, `FIRST`, `LAST` or `DEFAULT`, ignoring case",
+        condition=(
+            "an agent's alias is `LIVE`, `FIRST`, `LAST` or `DEFAULT`, or a Snowflake reserved word "
+            "such as `select` or `current`, ignoring case"
+        ),
+        note="SST never double-quotes an alias to rescue a reserved word: quoting would make it case-sensitive.",
     ),
     spec(
         "SST-PRS026",

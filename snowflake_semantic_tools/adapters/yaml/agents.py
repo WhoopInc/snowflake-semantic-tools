@@ -17,6 +17,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
     mapping,
     optional_int,
     optional_string,
+    refused,
 )
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.routes import folder_route_diagnostics
@@ -41,7 +42,8 @@ def load_agents(
     `agents_dir` holds no agents. A file that cannot be read or parsed, or names no
     agent, contributes its diagnostics and no agent; any other problem is reported and the
     agent kept without what could not be read. Sidecars and eval files resolve against the
-    agent's own folder.
+    agent's own folder. An agent file that is a symbolic link, or is reached through one, is
+    reported and not read, wherever the link points.
 
     Args:
         config: The run's resolved configuration, whose `agents:` folder routes are checked
@@ -50,6 +52,8 @@ def load_agents(
     Diagnostics:
         SST-CFG041: when an `agents:` folder route names no folder under `agents_dir`; reported
             first.
+        SST-PRT009: when an agent file, or a folder between the project and it, is a symbolic
+            link, or it resolves outside the project; the agent is left out.
         SST-LOD004: when a file cannot be read, or a template in it is malformed.
         SST-LOD006: when a file or an instruction sidecar is not UTF-8.
         SST-LOD001: when a file is not valid YAML.
@@ -78,6 +82,8 @@ def load_agents(
     agents: list[AgentModel] = []
     diagnostics: list[Diagnostic] = list(routes)
     for path in sorted(root.glob("*/**/agent.y*ml")):
+        if refused(project_dir, path, diagnostics):
+            continue
         relative = path.relative_to(project_dir).as_posix()
         try:
             raw = path.read_bytes()

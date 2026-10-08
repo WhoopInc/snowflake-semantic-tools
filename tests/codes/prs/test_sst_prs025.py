@@ -22,5 +22,12 @@ def test_sst_prs025_fires() -> None:
     assert diagnostic.subject == "agent:sales"
 
 
+def test_sst_prs025_fires_for_a_sql_reserved_word() -> None:
+    # Unquoted it is a syntax error; quoted it would be case-sensitive forever.
+    for alias in ("current", "Select"):
+        codes = _codes(alias)
+        assert codes.count("SST-PRS025") == 1 and "SST-PRS005" not in codes
+
+
 def test_sst_prs025_silent() -> None:
     assert "SST-PRS025" not in _codes("promoted")

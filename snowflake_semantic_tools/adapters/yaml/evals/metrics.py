@@ -2,7 +2,8 @@
 
 Every `.yml` or `.yaml` file below the directory, the suffix in any case and at any depth, is
 one metric, read in sorted path order. A file that does not parse, or has no usable `name`, is
-reported and skipped, and the rest still load.
+reported and skipped, and the rest still load. A symbolic link -- a linked metric file, or a
+linked folder -- is reported and not followed, wherever it points.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from snowflake_semantic_tools.adapters.yaml.evals.readers import (
     parse_threshold,
     required_string,
 )
-from snowflake_semantic_tools.adapters.yaml.fields import report_unknown_keys
+from snowflake_semantic_tools.adapters.yaml.fields import refused, report_unknown_keys
 from snowflake_semantic_tools.adapters.yaml.parse import read_yaml_file
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.eval import CustomEvalMetric, EvalScoreRanges
@@ -49,6 +50,8 @@ def load_custom_metrics(
         The metrics with a usable name; `()` when the directory does not exist.
 
     Diagnostics:
+        SST-PRT009: a metric file or a folder below `directory` is a symbolic link, or
+            `directory` is reached through one, or resolves outside the project; it is not read.
         SST-LOD018: a metric file cannot be read.
         SST-LOD006: a metric file is not UTF-8.
         SST-LOD004: a template in a metric file is unterminated or nested.
@@ -66,7 +69,13 @@ def load_custom_metrics(
     if not root.is_dir():
         return ()
     metrics: list[CustomEvalMetric] = []
-    for path in sorted(candidate for candidate in root.rglob("*") if candidate.suffix.casefold() in (".yml", ".yaml")):
+    # `rglob` lists a linked folder without descending into it, so each link is met once.
+    for path in sorted(root.rglob("*")):
+        is_metric = path.suffix.casefold() in (".yml", ".yaml")
+        if not is_metric and not path.is_dir():
+            continue
+        if refused(project_dir, path, diagnostics) or not is_metric:
+            continue
         relative = path.relative_to(project_dir).as_posix()
         parsed = read_yaml_file(path, relative, diagnostics)
         if parsed is None:

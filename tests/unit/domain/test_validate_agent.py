@@ -69,6 +69,12 @@ def test_agent_rules_report_each_agent_wide_problem_in_order() -> None:
     ]
 
 
+def test_an_alias_is_a_plain_identifier_and_a_one_part_tag_name_may_be_plain() -> None:
+    # Quoting an alias would make it case-sensitive, so a quoted one is refused; a tag is not.
+    model = agent(alias='"Prod"', tags=(("owner", "v"), ("bad name", "v")))
+    assert codes(agent_rules(model, MODELS, ())) == ["SST-PRS005", "SST-PRS005"]
+
+
 def test_analytical_search_is_satisfied_by_a_cortex_search_tool() -> None:
     model = agent(alias="bad name", analytical_search=True)
     assert codes(agent_rules(model, MODELS, (tool("s", "cortex_search"),))) == ["SST-PRS005"]

@@ -6,21 +6,27 @@ artifact types against each other; `load_documents` then reads what it found. On
 are loaded, `assign_owners` gives each to the types whose root keys it holds -- a file's
 location is a hint, its content the authority.
 
-The walk does not descend into a symbolic link to a directory, as `Path.rglob` does not; one
-that points back into its own tree is a loop, and is reported.
+The walk never follows a symbolic link. A linked YAML file or a linked directory is refused and
+reported, wherever it points, so nothing outside the project -- and nothing inside it reached
+by a second path -- is compiled; a link that loops back into its own tree is reported as a loop.
+The semantic-models directory itself, and every folder between the project and it, must not be
+a link either, and must not resolve outside the project.
 """
 
 from __future__ import annotations
 
+import errno
 import os
 import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
+from stat import S_ISDIR
 from types import MappingProxyType
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_KEYS, config_block, configured_dir
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY, Registry
@@ -102,13 +108,15 @@ def discover_yaml(
             defaults and skips nothing.
 
     Raises:
-        ProjectError: SST-DIS001 or SST-DIS002, carried as its diagnostic: the directory is
-            absent, or is not a directory.
+        ProjectError: SST-DIS001, SST-DIS002 or SST-PRT009, carried as its diagnostic: the
+            directory is absent, is not a directory, or is -- or is reached through -- a
+            symbolic link, or resolves outside the project.
 
     Diagnostics:
         SST-DIS007: two artifact types' directories are one directory, or one holds the other.
         SST-DIS003: the walk found no YAML file.
-        SST-DIS004, SST-DIS005, SST-DIS006, SST-LOD200, SST-LOD020: as `_walk` reports them.
+        SST-DIS004, SST-DIS005, SST-DIS006, SST-PRT009, SST-LOD200, SST-LOD020: as `_walk`
+            reports them.
     """
     root = project_dir / semantic_models_dir
     if not root.exists():
@@ -116,6 +124,10 @@ def discover_yaml(
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     if not root.is_dir():
         diagnostic = D("SST-DIS002", path=semantic_models_dir)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    refusal = _root_refusal(project_dir, root)
+    if refusal is not None:
+        diagnostic = D("SST-PRT009", path=semantic_models_dir, detail=refusal)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     claims = shared_directories(registry_roots(config or {}, registry), registry)
     found, problems = _walk(project_dir, root, excluded_globs(config or {}))
@@ -178,12 +190,15 @@ def _walk(
     """Walk `root` depth first, in name order, for the YAML files it holds.
 
     A directory or file whose project-relative path matches an `excluded` glob is skipped, and an
-    excluded directory is not descended into.
+    excluded directory is not descended into. No symbolic link is followed: `root` is not one,
+    as `discover_yaml` checks, and each link below it is reported and left out.
 
     Diagnostics:
         SST-DIS004: a file cannot be read.
-        SST-DIS005: a directory link points back into the tree, or a directory is deeper than
-            `MAX_DEPTH`; it is not walked.
+        SST-DIS005: a link loops -- it points back into the tree, or at itself -- or a directory
+            is deeper than `MAX_DEPTH`; it is not walked.
+        SST-PRT009: any other link to a directory, or a link named as a YAML file; it is not
+            read, wherever it points.
         SST-DIS006: a path equals an earlier one under case folding; the later is left out.
         SST-LOD200, SST-LOD020: as `_extension_notes` reports them, for each file found.
     """
@@ -198,11 +213,13 @@ def _walk(
             relative = entry.relative_to(project_dir).as_posix()
             if _excluded(relative, excluded):
                 continue
+            if entry.is_symlink():
+                problem = _link_problem(entry, relative, root)
+                if problem is not None:
+                    problems.append(problem)
+                continue
             if entry.is_dir():
-                if entry.is_symlink():
-                    if _loops(entry, root):
-                        problems.append(D("SST-DIS005", path=relative))
-                elif depth + 1 > MAX_DEPTH:
+                if depth + 1 > MAX_DEPTH:
                     problems.append(D("SST-DIS005", path=relative))
                 else:
                     children.append((entry, depth + 1))
@@ -239,6 +256,38 @@ def _extension_notes(relative: str, suffix: str) -> tuple[Diagnostic, ...]:
 def fold_key(path: str) -> str:
     """Return the form two paths share when a case-insensitive file system holds them as one."""
     return unicodedata.normalize("NFC", path).casefold()
+
+
+def _root_refusal(project_dir: Path, root: Path) -> str | None:
+    """Say why the semantic-models directory may not be walked; None when it may."""
+    try:
+        return walk_refusal(project_dir, root)
+    except ValueError:
+        # An absolute directory that does not lie below the project, as written.
+        return "it resolves outside the project"
+
+
+def _link_problem(link: Path, relative: str, root: Path) -> Diagnostic | None:
+    """Report a symbolic link the walk met: a loop, else a link it would have read; None otherwise.
+
+    A link to a file that is not YAML is passed over, as such a file is.
+    """
+    try:
+        is_dir = S_ISDIR(os.stat(link).st_mode)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            return D("SST-DIS005", path=relative)
+        is_dir = False  # A dangling link.
+    if is_dir and _loops(link, root):
+        return D("SST-DIS005", path=relative)
+    if is_dir or link.suffix.casefold() in YAML_SUFFIXES:
+        return D(
+            "SST-PRT009",
+            origin=Origin(relative),
+            path=relative,
+            detail="it is a symbolic link, which SST does not follow",
+        )
+    return None
 
 
 def _loops(link: Path, root: Path) -> bool:
