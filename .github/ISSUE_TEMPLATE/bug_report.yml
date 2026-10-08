@@ -9,6 +9,8 @@ body:
         Thanks for taking the time to report a bug! Please fill out the sections below to help us diagnose and fix the issue.
         Remove account, user, database, and schema names and any credentials before submitting.
 
+        **Found a security vulnerability?** Do not open an issue: issues are public. Report it privately as [SECURITY.md](../blob/main/SECURITY.md) describes.
+
   - type: textarea
     id: description
     attributes:

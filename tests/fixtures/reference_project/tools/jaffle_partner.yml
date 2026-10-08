@@ -7,6 +7,12 @@
 # so every member is a `reference:`: no DDL is emitted, and `relations:` names
 # each member's object per target. The members cover the kinds the mutable
 # group (tools/jaffle_platform.yml) does not use: agent, generic and stage.
+#
+# `verify`, the connected target, maps each member to a stand-in under
+# SST_REF_VERIFY. A relation is a literal name, not a template, so it cannot
+# follow the SST_TEST_SNOWFLAKE_* database. No eval question reaches these
+# objects; a connected validate reports each one that is absent as the warning
+# SST-VAL531, so the manual workflow applies this target with --no-strict.
 # =============================================================================
 
 tools:
@@ -27,6 +33,7 @@ tools:
         relations:
           dev: SST_TEST.REFERENCE.DELIVERY_AGENT
           prod: SST_REF_PROD.PARTNER.DELIVERY_AGENT
+          verify: SST_REF_VERIFY.PARTNER.DELIVERY_AGENT
 
       # ---- generic --------------------------------------------------------
       - name: payment_settlement_view
@@ -37,6 +44,7 @@ tools:
         relations:
           dev: SST_REF_DEV.PARTNER.SETTLEMENTS
           prod: SST_REF_PROD.PARTNER.SETTLEMENTS
+          verify: SST_REF_VERIFY.PARTNER.SETTLEMENTS
 
       # ---- stage: referenced only; under `define:` SST would emit
       # CREATE STAGE IF NOT EXISTS for it.
@@ -47,3 +55,4 @@ tools:
         relations:
           dev: SST_REF_DEV.PARTNER.INVOICE_STAGE
           prod: SST_REF_PROD.PARTNER.INVOICE_STAGE
+          verify: SST_REF_VERIFY.PARTNER.INVOICE_STAGE

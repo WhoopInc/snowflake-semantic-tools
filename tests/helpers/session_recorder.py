@@ -11,8 +11,12 @@ and schema and every per-run value (timestamps, owners, run ids) replaced by pla
 captures of an unchanged Snowflake are byte-identical. Our side of the comparison cannot move,
 because the project and the schema are fixed; a difference means Snowflake's behaviour moved.
 
-Exit status: 0 when the capture matches the recording; 1 when it differs, or when there is no
-recording yet, after writing the capture to `--out` for review and commit.
+The capture is always written to `--out`. When there is no recording yet (none is committed until
+the first capture), the capture is also written to `--recording`, creating it, for review and
+commit; later captures are compared with it.
+
+Exit status: 0 when the capture matches the recording, or became the first recording; 1 when it
+differs, or when no account is configured.
 """
 
 from __future__ import annotations
@@ -98,6 +102,18 @@ def compare(captured: str, recording: Path) -> tuple[bool, str]:
     return False, "".join(diff)
 
 
+def settle(captured: str, out: Path, recording: Path) -> tuple[int, str]:
+    """Write `captured` to `out`, and to `recording` when there is none yet; the exit status and report."""
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(captured, encoding="utf-8")
+    if not recording.is_file():
+        recording.parent.mkdir(parents=True, exist_ok=True)
+        recording.write_text(captured, encoding="utf-8")
+        return 0, f"no recording at {recording}: wrote this capture there as the first one; review it and commit it\n"
+    same, report = compare(captured, recording)
+    return (0, "the capture matches the committed recording\n") if same else (1, report)
+
+
 def capture(port: SnowflakePort, account: LiveAccount, root: Path) -> str:
     """Publish the live project into the recording schema, observe it, and drop the schema.
 
@@ -131,7 +147,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Capture against the configured live account and compare with the recording."""
     parser = argparse.ArgumentParser(prog="python -m tests.helpers.session_recorder", description=__doc__)
     parser.add_argument("--out", type=Path, required=True, help="Where to write the capture.")
-    parser.add_argument("--recording", type=Path, default=RECORDING, help="The committed recording.")
+    parser.add_argument(
+        "--recording", type=Path, default=RECORDING, help="The committed recording; the first capture creates it."
+    )
     options = parser.parse_args(argv)
     account = load_live_account(os.environ)
     if account is None:
@@ -145,11 +163,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             captured = capture(connector, account, Path(root))
     finally:
         connector.close()
-    options.out.parent.mkdir(parents=True, exist_ok=True)
-    options.out.write_text(captured, encoding="utf-8")
-    same, report = compare(captured, options.recording)
-    sys.stdout.write(report or "the capture matches the committed recording\n")
-    return 0 if same else 1
+    status, report = settle(captured, options.out, options.recording)
+    sys.stdout.write(report)
+    return status
 
 
 if __name__ == "__main__":
