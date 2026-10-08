@@ -13,18 +13,27 @@ sst compile --target prod --emit-ddl target/ddl/
 sst plan --target prod --output json > plan.json || test $? -eq 2
 ```
 
-- `validate --strict` fails on any warning. Leave `--strict` off to fail on
-  errors only.
+- `validate --strict` promotes every warning to an error. `--no-strict` fails
+  on errors only; with neither flag, `validation.strict` in `sst_config.yml`
+  decides. `validate` connects when `validation.snowflake_syntax_check` is true,
+  to compile expressions against Snowflake; `--no-snowflake-syntax-check` keeps
+  it offline.
 - `compile` writes the SST manifest `plan` and `apply` read, for the same target;
-  `--emit-ddl` also writes each semantic view's DDL, a readable artifact to
-  attach to the review.
+  `--emit-ddl` also writes each artifact's rendered payload (a semantic view's
+  DDL, an agent's specification), a readable artifact to attach to the review.
 - `plan` reads production and reports what merging would change without writing
   anything. It exits `2` when there are changes, so a pipeline that should
   accept a pending change treats `2` as success; any other non-zero exit is a
-  failure.
+  failure. `--no-detailed-exitcode` makes it exit `0` with changes pending
+  instead. It also saves the plan to `target/sst/plan.json` (`--plan-out` to put
+  it elsewhere).
 
 If the project commits golden files, `sst test --suite golden` compares the
-rendered DDL and specs with them offline.
+rendered DDL and specs with them offline. The DDL goldens are read from
+`--golden-dir` (default `expected/ddl/` in the project), and the other goldens
+sit beside it. An artifact with no golden file exits `4`, and `--update-golden`
+is refused whenever `$CI` is set, so a pipeline can never rewrite the goldens it
+checks.
 
 ## On merge
 
@@ -35,56 +44,42 @@ sst apply --target prod --plan target/sst/plan.json --yes
 sst test --suite smoke --target prod
 ```
 
-`apply` executes exactly the plan it is given and refuses a plan that no longer
-matches the project, so it cannot publish something no one planned. Keep the
-`plan` and `apply` in one job, or pass `target/sst/plan.json` between jobs as an
-artifact.
+`apply` executes exactly the plan it is given. It plans the target again and
+refuses the saved plan, exiting `4`, if it was made for another target, from
+another manifest, or from a different reading of Snowflake, so it cannot
+publish something no one planned. Keep the `plan` and `apply` in one job, or
+pass `target/sst/plan.json` between jobs as an artifact. Pass `--yes` in a
+pipeline: it is required with `--output json` or `--prune`, and without it
+`apply` stops to ask before it writes.
 
-`apply` holds a lock on the target's state while it runs, so a second apply
-against the same target stops with `SST-APL011` instead of interleaving with
-the first. If a run died and left its lock behind, `--break-stale-lock` takes it
-over.
+`apply` holds a run lock in the target's state table while it runs, so a second
+apply against the same target stops with `SST-APL011` instead of interleaving
+with the first; `sst test --suite evals` and `sst drop` take the same lock. A
+running apply extends its lock every five minutes, and the lock expires 30
+minutes after its last extension. If a run died and left its lock behind,
+`--break-stale-lock` takes it over once it has expired, reporting `SST-APL010`;
+a lock that has not expired is refused all the same.
 
-## Example: GitHub Actions
+## Known warnings: the baseline
 
-```yaml
-name: semantic layer
-on:
-  pull_request:
-  push:
-    branches: [main]
+A project that adopts `--strict` with warnings it cannot fix yet records them in
+a baseline instead of turning strict off:
 
-jobs:
-  sst:
-    runs-on: ubuntu-latest
-    env:
-      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-      SNOWFLAKE_PRIVATE_KEY_PATH: ${{ runner.temp }}/snowflake_key.p8
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: python -m pip install "snowflake-semantic-tools[dbt]"
-      - run: echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > "$SNOWFLAKE_PRIVATE_KEY_PATH"
-      - run: dbt deps
-      - run: sst validate --strict
-      - run: sst compile --target prod
-      - name: plan
-        run: sst plan --target prod || test $? -eq 2
-      - name: apply
-        if: github.event_name == 'push'
-        run: sst apply --target prod --plan target/sst/plan.json --yes
+```bash
+sst baseline add <CODE>                 # every current instance of one warning
+sst baseline add <CODE> --target prod   # what a connected validate of prod reports
 ```
 
-The `prod` output in `profiles.yml` reads the key path with
-`private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"`, the field dbt
-reads too; see [authentication](configuration.md#authentication).
-
-The `pull_request` trigger gives a fork's pull request no secrets, so its connected steps cannot
-authenticate. Keep it that way: a project's YAML is SQL that runs with the job's role, so never
-move a credentialed step to `pull_request_target`; see [Security](security.md#trust-model).
+Commit the file, `.sst/baseline.json`. A diagnostic it holds no longer fails a
+run, strict or not; it is counted under `baselined` in the summary and hidden
+unless `--show-baselined`. An entry is keyed on the code, the artifact, the file
+and the message's values, never the line, so a reformat keeps it while a new
+instance, or a renamed artifact, is not covered. Errors and non-demotable
+warnings cannot be baselined. The file expires
+(`--expires-in`, 180 days by default): a run past its expiry fails with
+`SST-CFG039` until `sst baseline renew --reason ...`. `sst baseline prune`
+removes the entries nothing matches any more, and `--no-baseline` ignores the
+file for one run.
 
 ## Template: a consumer project's deploy workflow
 
@@ -95,8 +90,11 @@ move a credentialed step to `pull_request_target`; see [Security](security.md#tr
 It validates and plans every pull request from the repository's own branches, and on each merge
 to `main` plans again and applies exactly that saved plan to `prod`. It signs in by key pair from
 repository secrets: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`,
-`SNOWFLAKE_WAREHOUSE`, and `SNOWFLAKE_PRIVATE_KEY`, the user's PKCS#8 private key as PEM text.
-The `prod` output in `profiles.yml` reads them:
+`SNOWFLAKE_WAREHOUSE`, and `SNOWFLAKE_PRIVATE_KEY`, the user's unencrypted PKCS#8 private key as
+PEM text. Each job writes the key to a file outside the checkout and exports its path as
+`SNOWFLAKE_PRIVATE_KEY_PATH`; the `prod` output in `profiles.yml` reads them all, through
+`private_key_path` for the key, the field dbt reads too (see
+[authentication](configuration.md#authentication)):
 
 ```yaml
 my_project:
@@ -205,14 +203,22 @@ jobs:
 ```
 
 - **The plan on merge is the one applied.** `apply --plan` executes that saved plan and refuses
-  it if the project or the target's state changed after it was written, so nothing is published
-  that no plan listed. The pull request's `plan.json` is for review; it is not applied, because
-  `main` may have moved by the time the branch merges.
+  it, exiting `4`, if the manifest or the target's state changed after it was written, so
+  nothing is published that no plan listed. The pull request's `plan.json` is for review; it is
+  not applied, because `main` may have moved by the time the branch merges.
+- **A fork's pull request runs nothing credentialed.** The `pull_request` trigger gives it no
+  secrets, and the `plan` job's condition skips it, `sst validate` included: with
+  `validation.snowflake_syntax_check: true`, validate connects too. A project's YAML is SQL that
+  runs with the job's role, so never move a credentialed step to `pull_request_target`; see
+  [Security](security.md#trust-model). To check a fork's change offline, add a job with no
+  Snowflake secrets that runs `sst validate --no-snowflake-syntax-check`, `sst compile` and
+  `sst test --suite golden`. Give it the profile's non-secret values, not empty ones: the target's
+  warehouse, for one, is compiled into an agent tool that declares none of its own.
 - **The run lock backs up the concurrency group.** The group queues this workflow's deploys;
   `apply` also holds a lock in the target's state table while it runs, so an apply started
   anywhere else -- another workflow, a laptop -- stops with `SST-APL011` rather than interleave.
-  If a killed run left its lock behind, `--break-stale-lock` takes over a lock whose run no
-  longer exists.
+  If a killed run left its lock behind, it expires 30 minutes after the run last extended it,
+  and from then on `--break-stale-lock` takes it over.
 - **Pin what runs.** Keep SST at an exact version and each action at a commit SHA, and let a
   dependency bot propose updates.
 - **Prune is a separate decision.** The template never passes `--prune`; add it only once the
@@ -220,8 +226,9 @@ jobs:
 
 ## JSON output
 
-Every command accepts `--output json` and then prints exactly one JSON object on
-stdout:
+Every command accepts `--output json` (or `-o json`, or `SST_OUTPUT=json`) and then
+prints exactly one JSON object on stdout, on one line with its keys sorted; it is
+shown indented here:
 
 ```json
 {
@@ -231,7 +238,7 @@ stdout:
   "command": "plan",
   "status": "changes",
   "exit_code": 2,
-  "invocation": {"argv": ["sst", "plan"], "target": "prod", "project_dir": "...", "config_file": "...", "started_at": "...", "duration_s": 4.2},
+  "invocation": {"argv": ["sst", "plan"], "target": "prod", "project_dir": "...", "config_file": "...", "overrides": [], "started_at": "...", "duration_s": 4.2},
   "diagnostics": [],
   "summary": {"error": 0, "warning": 0, "info": 3, "promoted": 0, "suppressed_cascade": 0, "baselined": 0},
   "data": {}
@@ -240,11 +247,22 @@ stdout:
 
 - `status` is `ok`, `changes`, or `error`, and `exit_code` is the process exit
   code.
-- Each diagnostic carries `code`, `severity`, `message`, `location`, `suggestion`,
-  and `help_url`, a link to its entry in the
-  [error code reference](../reference/error-codes.md).
+- `invocation.overrides` names each guarantee the run switched off:
+  `--allow-stale-manifest`, `--allow-unsupported-manifest-schema`, or
+  `--no-baseline`.
+- Each diagnostic carries `code`, `severity` (and `declared_severity`, with
+  `promoted_from` or `demoted_from` when they differ), `message`, `location`,
+  `suggestion`, `baselined`, a stable `fingerprint`, and `help_url`, a link to
+  its entry in the [error code reference](../reference/error-codes.md).
+- `summary` counts a baselined diagnostic under `baselined` and under no
+  severity.
 - `data` holds the command's result: the planned changes for `plan`, the
   outcomes for `apply`, the artifacts for `compile`.
+- With `--output json`, no progress line is printed on stderr, so a long
+  `sst test --suite evals` stays silent until its envelope; in the default
+  output it reports each eval run's progress on stderr as it goes.
+- An envelope that would carry a credential is replaced by one reporting
+  `SST-PRT012`, and the run exits `1`.
 
 `schema_version` changes only when a field is removed or changes meaning; new
 fields can appear in the same version.
@@ -254,10 +272,14 @@ fields can appear in the same version.
 | Code | Meaning |
 |---:|---|
 | 0 | Success. For `plan`, nothing to change. |
-| 1 | Errors were reported, or an apply or test failed. |
-| 2 | `plan` found changes. |
+| 1 | Errors were reported, or an apply, a test suite, or a check failed. |
+| 2 | Declared and actual state differ: `plan` found changes, `diff` found the two states differ, or `format --check`, `enrich --check`, `docs --check`, or `migrate refs` found something to rewrite. |
 | 3 | The command line is invalid. |
-| 4 | The project or its configuration cannot be used. |
+| 4 | The project, its configuration, or a saved plan cannot be used. |
 | 5 | Snowflake could not be reached. |
+| 130 | The run was interrupted. |
 
-The [CLI reference](../reference/cli.md#exit-codes) lists every code.
+A pipeline that runs `sst format --check` gates on canonical YAML the same way
+it gates `plan`: `2` means a file would be rewritten. The
+[CLI reference](../reference/cli.md#exit-codes) lists every code, and which
+commands can return it.

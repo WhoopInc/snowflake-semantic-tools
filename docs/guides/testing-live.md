@@ -9,6 +9,23 @@ This page is about running the suite. [CONTRIBUTING.md](../../CONTRIBUTING.md#ru
 lists every gate, and [tests/README.md](../../tests/README.md) describes the reference project and
 the goldens.
 
+## What CI runs
+
+| Workflow | When | What |
+|---|---|---|
+| `test-and-lint.yml` | every pull request (the `pull_request` trigger only), each push to `main`, and every release | The required gate, offline and with no secrets: the exit-code conformance tests, `format --check` on the reference project, the whole offline suite with coverage, the per-layer coverage floors and ratchet, strict mypy, ruff, import-linter, `sst docs --check`, bandit, pip-audit, and semgrep. |
+| `nightly.yml` | 02:00 UTC daily, or by hand | Mutation testing over `domain/` and the suite under the deeper `nightly` Hypothesis profile. Offline and report-only: it blocks nothing. |
+| `slow.yml` | by hand only | The checks that connect to Snowflake; see [the manual workflow](#the-manual-workflow). No pull request or release waits on it. |
+| `publish-to-pypi.yml` | a `v*.*.*` tag | Runs `test-and-lint.yml` itself, checks the tag matches `pyproject.toml`, builds, and publishes through PyPI's trusted publishing; the publish job holds the only token and runs no project code. |
+
+The coverage floors are measured per layer, as line and branch coverage together: `domain` 100%
+and `app` 95% on their own tests, `cli` 90% on `tests/unit/cli`, and `adapters` 90% over the
+whole suite. On top
+of them, `python -m tests.helpers.coverage_ratchet check --coverage-json coverage.json` holds
+each layer's line and branch coverage over the whole suite to `tests/coverage_baseline.json`
+(each side floored to one decimal place): a number may rise, never fall. `coverage_ratchet
+raise` locks a rise in; lowering a number is an edit to the baseline file, in review.
+
 ## Offline tests
 
 ```bash
@@ -19,15 +36,20 @@ poetry run pytest tests/ -n auto
 offline test:
 
 - runs against the reference project in `tests/fixtures/reference_project/`, whose `dev`, `prod`
-  and `ci` targets name placeholder accounts (`sst_reference`, `SST_REF_DEV`, ...) and carry no
-  credential, so they cannot connect;
+  and `ci` targets name a placeholder account (`sst_reference`) and databases (`SST_REF_DEV`,
+  ...) and carry no credential, so they cannot connect;
 - reads Snowflake through the fakes and the recorded session in `tests/helpers/`, never through a
   connection;
 - runs with an empty home directory, none of the `SST_*` variables `sst` reads, no
   `SST_TEST_SNOWFLAKE_*` variable and no local live configuration, so nothing on your machine
   changes what it sees;
 - fails if it opens a network connection, even one the code under test catches
-  (`tests/helpers/network_guard.py`).
+  (`tests/helpers/network_guard.py`);
+- fails if a thread it started is still running after it returns, and fails rather than hangs
+  once it has run for 120 seconds (`pytest-timeout`).
+
+Property tests run under the Hypothesis profile `HYPOTHESIS_PROFILE` names: `dev` (the default,
+random), `ci` (deterministic, so a failure reproduces on rerun), or `nightly` (deeper).
 
 A change to rendered output is compared byte for byte with the goldens under
 `tests/golden/expected/`; when the change is intended, rewrite them with the engine itself and
@@ -39,6 +61,9 @@ M=tests/fixtures/reference_project_manifest.json
 poetry run sst test --suite golden --update-golden --project-dir $P --manifest $M \
   --golden-dir "$PWD/tests/golden/expected/ddl"
 ```
+
+`--update-golden` is refused whenever `$CI` is set. The `enrich` goldens are the exception to
+the rule: `sst test` does not write them; see [tests/golden/README.md](../../tests/golden/README.md).
 
 ## Live tests
 
@@ -65,8 +90,9 @@ highest first.
 3. **A named connection**: with `SST_TEST_SNOWFLAKE_CONNECTION=<name>`, the tests read that
    connection from the Snowflake driver's own files under `$SNOWFLAKE_HOME` (default
    `~/.snowflake`): `[<name>]` in `connections.toml`, else `[connections.<name>]` in `config.toml`.
-   It supplies the account, user, role, warehouse and authenticator when the sources above leave
-   them unset, and passes its other driver settings, such as
+   It supplies the account, user, role, warehouse, database, authenticator and private key file
+   (`private_key_file` or `private_key_path`) when the sources above leave them unset, ignores a
+   `schema` it holds, and passes its other driver settings, such as
    `client_store_temporary_credential`, to the test process's connection as they are.
 
 | Key (`SST_TEST_SNOWFLAKE_` + ) | Required | Meaning |
@@ -104,6 +130,8 @@ poetry run pytest -m live tests/contract_live tests/integration tests/e2e
   without the marker, skips them even when an account is configured.
 - `--require-snowflake` fails them instead, so a gate that could not connect is never green.
 - `-n 4` runs them in parallel; each worker works in schemas of its own.
+- `SST_TEST_RUN_ID` names the run in its schemas, so a teardown can drop exactly them
+  (`sweep_scratch --run`); without it, a run is named after its start time and process.
 - `pytest -m live --collect-only -q` lists them without connecting.
 
 ### What they write, and where
@@ -123,8 +151,11 @@ profile targets the scratch schema. The helpers enforce it:
   schemas with both the prefix and the marker comment, so a schema anything else created is out
   of reach. `--dry-run` reports what it would drop.
 
-`python -m tests.helpers.session_recorder --out capture.json` re-captures the recorded session the
-offline tests replay, in the schema `SST_IT_RECORDING`, which it replaces and drops.
+`python -m tests.helpers.session_recorder --out capture.json` publishes the small live project in
+the schema `SST_IT_RECORDING`, which it replaces and drops, captures what Snowflake shows of it
+with every per-run value replaced by a placeholder, and compares the capture with the committed
+recording, `tests/fixtures/recordings/live_project.json` (`--recording` names another). It exits
+`1` on a difference, or when no recording is committed: review the capture and commit it.
 
 ### Privileges
 
@@ -140,13 +171,29 @@ Nothing account-wide is needed. For the evals suite and the `verify` target, the
 to create the reference project's objects in `DATABASE.SCHEMA` -- tables, semantic views and
 agents -- and to use Cortex agents in your account.
 
+The evals suite is `sst test --suite evals --target verify` on the reference project. Like the
+smoke suite, it reads the manifest `sst compile` wrote for that target and runs against the
+agents already published there, and it holds the target's run lock while it runs. The fixture's
+`verify` target signs in with `SST_TEST_SNOWFLAKE_AUTHENTICATOR` (default `externalbrowser`) and
+reads no key path; to sign in by key pair, point `--profiles-dir` at a profile of your own, as the
+manual workflow does.
+
 ## The manual workflow
 
 `.github/workflows/slow.yml` runs the same checks in GitHub Actions, in this repository or a
 fork. Nothing triggers it but a manual run (Actions, "Snowflake checks (manual)", Run workflow),
-and nothing waits on it. Pick a suite -- `live`, `sweep`, `recording` or `evals` -- and supply
-these repository secrets; the workflow maps them to `SST_TEST_SNOWFLAKE_*` and signs in by key
-pair:
+and nothing waits on it. Pick a suite:
+
+| Suite | Runs |
+|---|---|
+| `live` | `pytest -m live --require-snowflake -n 4` over the three live layers, then drops the run's scratch schemas even when a test failed |
+| `sweep` | `sweep_scratch --older-than-hours` with the `older_than_hours` input (default `6`), for schemas a cancelled job left |
+| `recording` | `session_recorder`, uploading the capture as an artifact either way |
+| `evals` | `sst test --suite evals --target verify` on the reference project, with a key-pair profile written for the run; uploads `evals.json` |
+
+A second run of the same suite on the same ref cancels the first. Supply these repository
+secrets; the workflow maps them to `SST_TEST_SNOWFLAKE_*`, sets `SST_TEST_RUN_ID` to the
+workflow run, and signs in by key pair:
 
 | Secret | Value |
 |--------|-------|
