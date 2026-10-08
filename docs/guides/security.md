@@ -92,14 +92,18 @@ and computes is still the author's, and runs with the target's role.
   it walks skill, plugin, profile, hook, MCP, and command folders: a linked file or folder, or
   one reached through a linked folder, is reported (`SST-PRT009`) and left out, even when it
   points inside the project.
-- **Semantic model, agent, and tool YAML** is found by a walk that does not descend into a
-  linked folder (one that loops back is `SST-DIS005`; any other is skipped), but it does read
-  a linked YAML file, wherever it points. Review links in those folders as you would their
-  contents.
+- **Linked authored YAML is refused too.** Semantic-model discovery, and the agent, tool, and
+  eval-metric loaders, never follow a symbolic link either: a linked YAML file or a linked
+  folder is reported (`SST-PRT009`) and left out, wherever it points, and a link that loops
+  back into its tree, or to itself, is `SST-DIS005`. The semantic-models directory itself must
+  not be a link, be reached through one, or resolve outside the project (`SST-PRT009`). Only
+  the project directory may itself be a link.
 - **Paths a project names stay inside it.** A `{{ file() }}` instructions sidecar or an eval
   file that resolves outside the project is refused (`SST-REF027`), and so is a dbt
-  `target-path` outside it (`SST-PRT009`). A tool's `body_file:` outside it is not read and is
-  reported as missing (`SST-LOD018`).
+  `target-path` outside it (`SST-PRT009`). A verified query's `sql_file:` that climbs out of
+  the project, is absolute, or is or passes through a symbolic link is refused and never read
+  (`SST-PRT009`). A tool's `body_file:` outside it is not read and is reported as missing
+  (`SST-LOD018`).
 - **Writes stay inside a root.** Every file SST writes -- the manifest, rendered DDL, formatted
   or enriched YAML, a baseline, a lock -- goes under the project, or under the output
   directory you named. Each folder on the way is opened without following links, so a `..` or

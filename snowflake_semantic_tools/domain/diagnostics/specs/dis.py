@@ -50,8 +50,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{path} exceeds the traversal depth limit",
         "remove the symlink loop, or flatten the tree",
         condition=(
-            "a directory symlink points back into the tree, or a directory is more than 32 levels deep; "
-            "it is not walked"
+            "a symlink points back into the tree or at itself, or a directory is more than 32 levels "
+            "deep; it is not walked"
         ),
         note="The message names the depth limit in both cases.",
     ),

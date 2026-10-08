@@ -5,13 +5,15 @@ the wrong type as its empty sentinel without a word. A checked reader (`checked_
 `checked_strings`, `checked_list`, `checked_mapping`) does the same and also reports the value
 (SST-PRS003) into the caller's diagnostics list, and `report_unknown_keys` reports the keys a
 parser does not read (SST-PRS004). No reader raises. `project_relative` is the path a
-diagnostic names a file by, and `refused` reports a file a folder walk must not read.
+diagnostic names a file by, `refused` reports a file a folder walk must not read, and
+`sibling_within` says why a file a discovered document names may not be read.
 """
 
 from __future__ import annotations
 
+import posixpath
 from collections.abc import Callable, Iterable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from snowflake_semantic_tools.adapters.paths import walk_refusal
@@ -207,3 +209,24 @@ def refused(project_dir: Path, path: Path, diagnostics: list[Diagnostic], *, sub
     file = project_relative(project_dir, path)
     diagnostics.append(D("SST-PRT009", origin=Origin(file), subject=subject, path=file, detail=reason))
     return True
+
+
+def sibling_within(document: Path, document_path: str, named: str) -> tuple[Path, str | None]:
+    """Return the file `named`, relative to a discovered document, and why SST refuses to read it.
+
+    The project is the folder `document_path` -- the document's project-relative path -- is
+    relative to, found from `document`, its resolved path. `named` is joined to the document's
+    folder and its `..` taken away as written, so the path returned is the one checked, and the
+    one to read. It is refused as `walk_refusal` refuses a path: when it, or a folder between the
+    project and it, is a symbolic link, or it lies outside the project.
+
+    Returns:
+        The file to read, and the reason it may not be, worded to follow "could not read
+        <path>: " in SST-PRT009; None when it may.
+    """
+    project = document.parents[len(PurePosixPath(document_path).parts) - 1]
+    relative = posixpath.normpath(posixpath.join(posixpath.dirname(document_path), named))
+    path = project / relative
+    if posixpath.isabs(relative) or relative == ".." or relative.startswith("../"):
+        return path, "it resolves outside the project"
+    return path, walk_refusal(project, path)

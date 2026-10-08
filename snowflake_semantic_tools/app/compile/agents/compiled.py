@@ -19,6 +19,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     Upload,
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.parse.names import RESERVED_WORDS
 from snowflake_semantic_tools.domain.sql import (
     Sql,
     boolean,
@@ -30,6 +31,7 @@ from snowflake_semantic_tools.domain.sql import (
     sql,
     stage_path,
 )
+from snowflake_semantic_tools.domain.validate.agent import plain_alias
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,7 +174,8 @@ def _agent_programs(
 
     Raises:
         ValueError: a temporary agent's specification holds `$$`, which would end the
-            dollar-quoted literal it is inlined in.
+            dollar-quoted literal it is inlined in; or the alias is not a plain identifier,
+            which validation reports as SST-PRS025 or SST-PRS005.
     """
     agent = qname(target)
     if temporary:
@@ -202,7 +205,7 @@ def _agent_programs(
         alias = sql(
             'ALTER AGENT {agent}\n  MODIFY VERSION "LAST" SET ALIAS = {alias}',
             agent=agent,
-            alias=_identifier(model.alias),
+            alias=_alias(model.alias),
         )
         create.append(alias)
         update.append(alias)
@@ -249,12 +252,28 @@ def _agent_metadata_statements(
     )
 
 
-def _identifier(value: str) -> Sql:
+def _alias(value: str) -> Sql:
+    """Render an alias unquoted; one that would need quoting, or is reserved, is never rendered.
+
+    Raises:
+        ValueError: the alias is not a plain identifier.
+    """
+    if not plain_alias(value):
+        raise ValueError(f"agent alias {value!r} is not a plain, unreserved identifier")
     return ident(Identifier.parse(value))
 
 
+def _unreserved(part: Identifier) -> Identifier:
+    """An unquoted reserved word, quoted as the upper-cased name it already resolves to."""
+    if not part.quoted and part.folded in RESERVED_WORDS:
+        return Identifier(part.folded, quoted=True)
+    return part
+
+
 def _qualified_or_identifier(value: str) -> Sql:
+    """Render a tag name: three parts or one, each reserved word quoted so it still parses."""
     try:
-        return qname(QualifiedName.parse(value))
+        name = QualifiedName.parse(value)
     except ValueError:
-        return _identifier(value)
+        return ident(_unreserved(Identifier.parse(value)))
+    return qname(QualifiedName(_unreserved(name.database), _unreserved(name.schema), _unreserved(name.name)))

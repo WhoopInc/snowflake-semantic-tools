@@ -7,6 +7,7 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
+from snowflake_semantic_tools.adapters.yaml.fields import sibling_within
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import _non_additive, _window
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple, _safe_table_refs, _table_refs_poisoned
 from snowflake_semantic_tools.domain.diagnostics import D
@@ -176,7 +177,8 @@ def load_verified_queries(
 
     A file in any folder is read. The SQL is `sql:`, or the `sql_file:` it names relative to the
     entry's own file. An entry is skipped here when it is not a mapping, has no `name` or no
-    `question`, declares both or neither of `sql` and `sql_file`, or names a file that cannot be
+    `question`, declares both or neither of `sql` and `sql_file`, or names a file that is, or
+    is reached through, a symbolic link, lies outside the project, cannot be
     read, is not UTF-8, or holds only whitespace; the shape checks report those files.
 
     Raises:
@@ -193,7 +195,10 @@ def load_verified_queries(
             continue
         sql = str(node.get("sql") or "")
         if not sql and node.get("sql_file"):
-            sql_path = documents.by_path[document.path].abs_path.parent / str(node["sql_file"])
+            raw = documents.by_path[document.path]
+            sql_path, refusal = sibling_within(raw.abs_path, document.path, str(node["sql_file"]))
+            if refusal is not None:
+                continue
             try:
                 sql = sql_path.read_text(encoding="utf-8").rstrip("\n")
             except (OSError, UnicodeDecodeError):

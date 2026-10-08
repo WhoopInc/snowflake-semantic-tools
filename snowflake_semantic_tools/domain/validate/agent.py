@@ -17,6 +17,9 @@ from snowflake_semantic_tools.domain.model.agent import (
     ResolvedAgent,
     ResolvedAgentTool,
 )
+from snowflake_semantic_tools.domain.model.identifier import Identifier
+from snowflake_semantic_tools.domain.parse.names import RESERVED_WORDS
+from snowflake_semantic_tools.domain.sql import ident
 from snowflake_semantic_tools.domain.validate.sql import name_problem, qualified_name_problem
 
 SPEC_LIMIT_BYTES = 100_000
@@ -89,8 +92,10 @@ def agent_rules(
         avatar_allowlist: `snowflake.profile.avatar_allowlist`; None when it is not configured.
 
     Diagnostics:
-        SST-PRS025: the agent's alias is reserved.
-        SST-PRS005: the agent's alias or a tag name is not an identifier or a qualified name.
+        SST-PRS025: the agent's alias is reserved: a version shortcut, or a Snowflake reserved
+            word.
+        SST-PRS005: the agent's alias is not a plain identifier, or a tag name is not an
+            identifier or a qualified name.
         SST-VAL543: the agent's orchestration model is not in `allowed_models`.
         SST-VAL545: the agent's `tool_not_accessible` is not accept, reject, or legacy.
         SST-VAL546: the agent enables analytical search without a cortex_search tool.
@@ -99,10 +104,10 @@ def agent_rules(
         SST-VAL550: the agent is deprecated and an alias still points at a version of it.
     """
     diagnostics: list[Diagnostic] = []
-    if model.alias and model.alias.upper() in RESERVED_AGENT_ALIASES:
-        diagnostics.append(D("SST-PRS025", artifact=model.name, value=model.alias, subject=model.key))
-    # The alias and each tag name are written into ALTER AGENT unquoted when they can be.
-    for name in (model.alias, *(tag for tag, _ in model.tags)):
+    if model.alias:
+        diagnostics.extend(_alias_problems(model, model.alias))
+    # Each tag name is written into ALTER AGENT unquoted when it can be.
+    for name in (tag for tag, _ in model.tags):
         if not name:
             continue
         problem = name_problem(name, artifact=model.key, subject=model.key, origin=model.origin)
@@ -132,6 +137,41 @@ def agent_rules(
 
 
 _COLOR_FORMS = re.compile(r"[A-Za-z]+|var\(--[A-Za-z0-9_-]+\)")
+
+
+def reserved_alias(value: str) -> bool:
+    """Report whether an alias, unquoted, is a version shortcut or a Snowflake reserved word."""
+    return value.strip().upper() in RESERVED_AGENT_ALIASES | RESERVED_WORDS
+
+
+def plain_alias(value: str) -> bool:
+    """Report whether an alias renders unquoted, as written but upper-cased, and is not reserved.
+
+    An alias is never quoted to rescue it: quoting makes it case-sensitive, so every later
+    reference to it -- an eval's `agent_version:`, a rollback -- would have to match its case.
+    So a name written quoted, one that is a valid identifier only once quoted, and a reserved
+    word are not plain.
+    """
+    text = value.strip()
+    try:
+        rendered = str(ident(Identifier.parse(text)))
+    except (TypeError, ValueError):
+        return False
+    return rendered == text.upper() and not reserved_alias(text)
+
+
+def _alias_problems(model: AgentModel, alias: str) -> tuple[Diagnostic, ...]:
+    """Report an alias that is reserved, else one that is not a plain identifier.
+
+    Diagnostics:
+        SST-PRS025: the alias is a version shortcut or a Snowflake reserved word.
+        SST-PRS005: the alias is not a plain identifier.
+    """
+    if reserved_alias(alias):
+        return (D("SST-PRS025", artifact=model.name, value=alias, subject=model.key),)
+    if not plain_alias(alias):
+        return (D("SST-PRS005", artifact=model.key, value=alias, subject=model.key, origin=model.origin),)
+    return ()
 
 
 def _profile_problems(model: AgentModel, avatar_allowlist: frozenset[str] | None) -> list[Diagnostic]:

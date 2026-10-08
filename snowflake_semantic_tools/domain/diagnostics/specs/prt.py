@@ -79,7 +79,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "a file SST reads cannot be read or does not hold what it should (a manifest, baseline, "
             "saved plan, or `--state` observation); a file or folder to be read is a symbolic link "
-            "or is reached through one; or dbt's `target-path` resolves outside the project"
+            "or is reached through one; or dbt's `target-path`, the semantic-models directory, or a "
+            "verified query's `sql_file` resolves outside the project"
         ),
     ),
     spec(
