@@ -27,9 +27,10 @@ from snowflake_semantic_tools.adapters.yaml.semantic.build_members import (
     _with_variable_names,
 )
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple
-from snowflake_semantic_tools.domain.diagnostics import D, Origin
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
+from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtSource, DbtTarget
 from snowflake_semantic_tools.domain.model.project import ParsedMember
 from snowflake_semantic_tools.domain.model.semantic_view import (
@@ -43,7 +44,8 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     ViewScope,
 )
 from snowflake_semantic_tools.domain.parse.template import single_template_call
-from snowflake_semantic_tools.domain.resolve.template import TAG_NAME, ResolveContext, resolve_scalar
+from snowflake_semantic_tools.domain.resolve.ref_fields import ref_field
+from snowflake_semantic_tools.domain.resolve.template import ResolveContext, resolve_scalar
 from snowflake_semantic_tools.domain.sql import Sql, boolean, datatype, is_datatype, literal, number
 from snowflake_semantic_tools.domain.validate.semantic.scope import view_scope
 from snowflake_semantic_tools.domain.validate.semantic_view import relation_diagnostics
@@ -502,29 +504,64 @@ def _view_tags(node: Mapping[str, Any], view: _View, config: dict[str, Any], tar
     if raw_tags is not None and not isinstance(raw_tags, list):
         diagnostic = D("SST-PRS027", artifact=view.key, found=type(raw_tags).__name__)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    tag_names = _tag_names(config, target)
-    return tuple(_tag(value, view=view, tag_names=tag_names) for value in raw_tags or [])
+    tag_names, unqualified = _tag_names(config, target)
+    return tuple(_tag(value, view=view, tag_names=tag_names, unqualified=unqualified) for value in raw_tags or [])
 
 
-def _tag_names(config: dict[str, Any], target: DbtTarget) -> dict[str, str]:
-    """Name each tag `tags:` in `sst_config.yml` declares: its `default_prefix` and its upper-cased name."""
+def _tag_names(config: dict[str, Any], target: DbtTarget) -> tuple[dict[str, str], dict[str, Diagnostic]]:
+    """Name each tag `tags:` declares: its `fqn:`, else `default_prefix` and its upper-cased name.
+
+    Both may name `{{ target.database }}` and `{{ target.schema }}`.
+
+    Returns:
+        The names by tag; and, by tag, why each entry that cannot be named cannot.
+
+    Diagnostics:
+        SST-CFG036: an entry has no `fqn:`, and the block sets no `default_prefix` or the
+            entry's key is dotted, which would render a four-part name.
+    """
     block = config.get("tags") or {}
     if not isinstance(block, dict):
-        return {}
-    prefix = (
-        str(block.get("default_prefix") or "")
-        .replace("{{ target.database }}", target.database)
-        .replace("{{ target.schema }}", target.schema)
-    )
-    return {str(name): f"{prefix}.{str(name).upper()}" for name in block if name != "default_prefix"}
+        return {}, {}
+    prefix = _with_target(block.get("default_prefix"), target)
+    names: dict[str, str] = {}
+    unqualified: dict[str, Diagnostic] = {}
+    for key, entry in block.items():
+        name = str(key)
+        if name == "default_prefix":
+            continue
+        fqn = _with_target(entry.get("fqn"), target) if isinstance(entry, dict) else ""
+        if fqn:
+            names[name] = fqn
+        elif prefix and "." not in name:
+            names[name] = f"{prefix}.{name.upper()}"
+        else:
+            reason = "the block sets no default_prefix" if not prefix else "the key is not a single identifier"
+            unqualified[name] = D(
+                "SST-CFG036",
+                origin=Origin(CONFIG_FILE),
+                subject=f"config:tags.{name}",
+                block="tags",
+                name=name,
+                reason=reason,
+            )
+    return names, unqualified
 
 
-def _tag(value: object, *, view: _View, tag_names: Mapping[str, str]) -> Tag:
+def _with_target(value: object, target: DbtTarget) -> str:
+    """Return a `tags:` value as text with `{{ target.database }}` and `{{ target.schema }}` replaced."""
+    if value is None:
+        return ""
+    return str(value).replace("{{ target.database }}", target.database).replace("{{ target.schema }}", target.schema)
+
+
+def _tag(value: object, *, view: _View, tag_names: Mapping[str, str], unqualified: Mapping[str, Diagnostic]) -> Tag:
     """Build one tag: its name one `tag()` call naming a tag under `tags:` in `sst_config.yml`.
 
     Diagnostics:
         SST-PRS027: when the entry lacks a name or a value, or its name holds no template call.
         SST-REF003, SST-REF004, SST-REF041, SST-REF015: when its name is not one one-name `tag()` call.
+        SST-CFG036: when the call names a declared tag that cannot be qualified.
         SST-REF028: when the call names no declared tag.
         SST-REF019: when the tag's name is not a three-part name.
         SST-PRS026: when the value is longer than 256 characters.
@@ -539,9 +576,13 @@ def _tag(value: object, *, view: _View, tag_names: Mapping[str, str]) -> Tag:
         found = f"the name {value['name']!r}, which is not one tag() call"
         diagnostic = D("SST-PRS027", artifact=view.key, found=found, subject=view.key)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    named = single_template_call(str(value["name"]), "tag")
+    problem = unqualified.get(str(named.args[0])) if named is not None and len(named.args) == 1 else None
+    if problem is not None:
+        raise ProjectError(problem.message, diagnostics=(problem,))
     resolved, diagnostics = resolve_scalar(
         str(value["name"]),
-        TAG_NAME,
+        ref_field("tags.name"),
         view.origin,
         ResolveContext(view.catalog, tags=tag_names),
         field="tags.name",

@@ -12,7 +12,7 @@ from snowflake_semantic_tools.domain.resolve.ref_fields import (
     check_ref_policies,
     ref_field,
 )
-from snowflake_semantic_tools.domain.resolve.template import METRIC_EXPR
+from snowflake_semantic_tools.domain.resolve.template import METRIC_EXPR, TAG_NAME
 from tests.helpers.registry_types import refused
 
 
@@ -35,3 +35,5 @@ def test_sst_reg024_fires_for_an_undeclared_policy() -> None:
 def test_sst_reg024_silent() -> None:
     check_ref_policies(REF_POLICIES, REF_FIELDS, UNBOUND_POLICIES)
     assert ref_field("metric.expression") is METRIC_EXPR
+    # A view's tag name resolves `tag()` through its bound field, so its policy is not unbound.
+    assert ref_field("tags.name") is TAG_NAME and "tag_name" not in UNBOUND_POLICIES

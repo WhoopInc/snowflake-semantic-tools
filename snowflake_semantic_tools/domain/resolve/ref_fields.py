@@ -40,6 +40,7 @@ REF_FIELDS: Mapping[str, str] = MappingProxyType(
         "metric.window": "metric_expr",
         "filter.expression": "filter_expr",
         "verified_query.sql": "vqr_sql",
+        "tags.name": "tag_name",
     }
 )
 
@@ -49,7 +50,6 @@ UNBOUND_POLICIES: Mapping[str, str] = MappingProxyType(
             "a view's custom_instructions entries are resolved by the semantic loader's own pass, "
             "which refuses the same calls"
         ),
-        "tag_name": "no authored field names a tag through a template call yet",
         "description": "descriptions are rendered as written and never resolved",
     }
 )

@@ -172,3 +172,16 @@ tools:
     located = sorted((item.code, item.context["file"]) for item in catalog.diagnostics)
     assert located == [("SST-LOD001", "tools/a_broken.yml"), ("SST-LOD001", "tools/b_dated.yml")]
     assert [member.name for member in catalog.references] == ["lookup"]
+
+
+def test_a_tools_file_that_cannot_be_read_is_reported_as_unreadable_not_malformed(tmp_path: Path) -> None:
+    locked = tmp_path / "tools" / "locked.yml"
+    _write(locked, "tools: []\n")
+    locked.chmod(0)
+    try:
+        catalog = load_tool_catalog(tmp_path, _dbt(), target_name="dev", declared_targets=frozenset(("dev",)))
+    finally:
+        locked.chmod(0o644)
+
+    [diagnostic] = catalog.diagnostics
+    assert (diagnostic.code, diagnostic.context["path"]) == ("SST-LOD018", "tools/locked.yml")

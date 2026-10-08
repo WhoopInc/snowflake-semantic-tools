@@ -5,6 +5,7 @@ What it reads, in what order, and what it builds.
 
 from __future__ import annotations
 
+import json
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompileArtifacts, CompileResult
@@ -18,7 +19,7 @@ from snowflake_semantic_tools.app.compile.skills import (
     unpublished_reasons,
 )
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
-from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill
+from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill, AgentTool
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog, SharedProfile
@@ -191,9 +192,11 @@ def test_agents_follow_the_agents_block_and_disabled_agents_are_left_out() -> No
     assert agents == (agent("helper"),) and tool_names == {"helper": ()}
     assert "SST-VAL543" not in {item.code for item in result.diagnostics}
 
-    disabled = InMemoryProjectInputs(tree={"agents": {"+enabled": False}}, agent_models=(agent("helper"),))
-    assert [item.artifact_type for item in CompileProject(disabled).run().compiled] == []
-    assert disabled.eval_requests[0][0] == ()
+    # Loading resolves `agents.+enabled` into each agent's `enabled`, so compiling trusts the
+    # agent's own value: one that sets `enabled: true` compiles under a disabling default.
+    kept = InMemoryProjectInputs(tree={"agents": {"+enabled": False}}, agent_models=(agent("helper"),))
+    assert [item.artifact_type for item in CompileProject(kept).run().compiled] == ["agent"]
+    assert kept.eval_requests[0][0] == (agent("helper"),)
 
 
 def test_only_auto_is_allowed_without_a_list_of_orchestration_models() -> None:
@@ -305,3 +308,63 @@ def test_merge_orders_by_type_position_then_key_and_keeps_diagnostic_order() -> 
     assert [item.artifact_key for item in merged.compiled] == ["skill:a-skill", "skill:b-skill"]
     assert merged.diagnostics[0].code == "SST-CFG003"
     assert isinstance(POSITIONS, MappingProxyType) and POSITIONS["semantic_view"] < POSITIONS["eval"]
+
+
+def test_a_tool_over_a_defined_member_calls_it_where_the_tools_block_publishes_it() -> None:
+    search = ToolMember("platform", "search", "cortex_search_service", ToolOwnership.DEFINE, Origin("t"), "t")
+    lookup = ToolMember("ops", "lookup", "procedure", ToolOwnership.DEFINE, Origin("t"), "t", warehouse="WH")
+    catalog = ToolCatalog(
+        (
+            ToolGroup("platform", Origin("t"), "t", members=(search,)),
+            ToolGroup("ops", Origin("t"), "t", members=(lookup,)),
+        ),
+        "dev",
+        frozenset(("dev",)),
+    )
+    tools = (
+        AgentTool("cortex_search", Origin("a"), name="search", description="Docs.", backing=("platform", "search")),
+        AgentTool(
+            "generic",
+            Origin("a"),
+            name="lookup",
+            description="Look one up.",
+            backing=("ops", "lookup"),
+            input_schema=MappingProxyType({"type": "object", "properties": {}}),
+        ),
+    )
+    inputs = InMemoryProjectInputs(
+        tree={"agents": {"+schema": "BOTS"}, "tools": {"+schema": "TOOLS", "ops": {"+schema": "OPS"}}},
+        tools=catalog,
+        agent_models=(AgentModel("helper", Origin("agent.yml"), ("agent.yml",), tools=tools),),
+    )
+
+    [compiled] = [item for item in CompileProject(inputs).run().compiled if isinstance(item, CompiledAgent)]
+
+    resources = json.loads(compiled.payload)["tool_resources"]
+    assert compiled.rendered_artifact.target.sql == "DB.BOTS.HELPER"
+    assert resources["search"]["search_service"] == "DB.TOOLS.SEARCH"
+    assert resources["lookup"]["identifier"] == "DB.OPS.LOOKUP"
+
+
+def _consuming(tree: dict[str, object]) -> CompileResult:
+    pinned = AgentSkill("glossary", "CORTEX_EXTENSION", "glossary", "", version_var="glossary_version")
+    model = AgentModel("helper", Origin("agent.yml"), ("agent.yml",), skills=(pinned,))
+    extensions = {"skills": {"extensions": {"default_prefix": "DB.EXT", "glossary": None}}}
+    return CompileProject(InMemoryProjectInputs(tree={**extensions, **tree}, agent_models=(model,))).run()
+
+
+def test_a_var_version_pins_the_value_vars_declares_and_an_undeclared_one_pins_none() -> None:
+    declared = _consuming({"vars": {"glossary_version": "VERSION$3"}})
+
+    assert "SST-VAL538" not in {item.code for item in declared.diagnostics}
+    [compiled] = [item for item in declared.compiled if isinstance(item, CompiledAgent)]
+    [entry] = json.loads(compiled.payload)["skills"]
+    assert entry["source"]["path"] == "DB.EXT.GLOSSARY"
+    assert entry["source"]["version"] == "VERSION$3"
+    unresolved: tuple[dict[str, object], ...] = (
+        {},
+        {"vars": {"glossary_version": None}},
+        {"vars": {"other": "VERSION$3"}},
+    )
+    for tree in unresolved:
+        assert "SST-VAL538" in {item.code for item in _consuming(tree).diagnostics}

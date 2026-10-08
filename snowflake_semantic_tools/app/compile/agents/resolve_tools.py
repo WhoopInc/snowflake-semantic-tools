@@ -23,7 +23,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.agent import KNOWN_AGENT_TOOL_TYPES, AgentModel, AgentTool, ResolvedAgentTool
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember
+from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.validate.agent_tool import (
     misplaced_keys,
     overrides,
@@ -158,11 +158,7 @@ def _search(
     if backing is None:
         return None
     warehouse = authored.warehouse or backing.warehouse or context.warehouse
-    # A defined member is taken to be in the agents' schema; a referenced one resolves per target.
-    relation: QualifiedName | None = QualifiedName.from_parts(context.database, context.schema, backing.name)
-    if backing.ownership.value == "reference":
-        relation, problems = context.tools.relation(backing)
-        diagnostics.extend(problems)
+    relation = _member_target(backing, context, diagnostics)
     if relation is None:
         return None
     name = authored.name or ""
@@ -189,10 +185,8 @@ def _generic(
         return None
     name = authored.name or ""
     warehouse = authored.warehouse or backing.warehouse or context.warehouse
-    relation, problems = context.tools.relation(backing)
-    diagnostics.extend(problems)
-    if relation is None:
-        relation = QualifiedName.from_parts(context.database, context.schema, backing.name)
+    # A referenced member with no relation is reported; the tool's other checks still run.
+    relation = _member_target(backing, context, diagnostics) or context.tool_target(backing.name)
     resources: dict[str, object] = {
         "identifier": relation.sql,
         "type": backing.type,
@@ -356,6 +350,21 @@ def _finish(
         resolution.member,
         resolution.external,
     )
+
+
+def _member_target(
+    backing: ToolMember, context: AgentCompileContext, diagnostics: list[Diagnostic]
+) -> QualifiedName | None:
+    """Locate the object a search or generic tool calls, as its member's ownership places it.
+
+    A `define:` member is where the `tools:` block, or its group's override, publishes it; a
+    `reference:` member is its relation for the target.
+    """
+    if backing.ownership is ToolOwnership.DEFINE:
+        return context.tool_target(backing.name)
+    relation, problems = context.tools.relation(backing)
+    diagnostics.extend(problems)
+    return relation
 
 
 def _member_relation(

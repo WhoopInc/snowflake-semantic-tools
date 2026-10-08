@@ -41,7 +41,8 @@ def resolve_skills(
         SST-VAL840: an entry's name is not the skill, or not a member of the plugin.
         SST-REF037: `extension()` names an extension this project publishes.
         SST-REF013: `extension()` names no `skills.extensions` entry.
-        SST-VAL538: a consumed extension's entry pins no version, or pins LIVE.
+        SST-VAL538: a consumed extension's entry pins no version, or pins LIVE; a `var()`
+            version that `vars:` does not declare pins none.
         SST-VAL541: a resolved entry contributes a member name an earlier entry contributed.
     """
     diagnostics: list[Diagnostic] = []
