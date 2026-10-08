@@ -472,8 +472,14 @@ ARTIFACT_REGISTRY = build_registry(
             grant_preservation=GrantPreservation.REPLAY,
             dependency_types=("semantic_view",),
             object_types=("CORTEX SEARCH SERVICE", "PROCEDURE", "FUNCTION", "STAGE"),
-            summary="A Snowflake object an agent tool calls, published before any agent that uses it.",
-            authored_in="`project.tools_dir`",
+            summary=(
+                "One `define:` member of a tool group: a Snowflake object an agent tool calls, published "
+                "before any agent that uses it. Grants depend on the kind: a search service is replaced and "
+                "its explicit grants re-applied, a procedure or function is replaced with `COPY GRANTS`, "
+                "and a stage is only ever created when absent. A `reference:` member names an object SST "
+                "never writes, and is no artifact."
+            ),
+            authored_in="a `define:` member of a `tools:` group in `project.tools_dir`",
             publishes="CORTEX SEARCH SERVICE, PROCEDURE, FUNCTION, or STAGE",
             validation_rules=("shared", "tool"),
             dir_key="tools_dir",
@@ -490,8 +496,10 @@ ARTIFACT_REGISTRY = build_registry(
             grant_preservation=GrantPreservation.NONE,
             lifecycle=ArtifactLifecycle.COMPOSITE,
             summary=(
-                "One `SKILL.md` folder, flattened and published as a Cortex Extension version "
-                "whose alias is a hash of its content."
+                "One `SKILL.md` folder, flattened and published as a version of a skill-type Cortex "
+                "Extension. The version alias is `skills.+version_prefix` and 12 hex characters of the "
+                "bundle digest, so a version is never rewritten: a change adds a new one, and `--prune` "
+                "only reports one whose folder was deleted."
             ),
             authored_in="a `SKILL.md` folder in `project.skills_dir`",
             publishes="CORTEX EXTENSION (TYPE = 'SKILL') and its bundle stage",
@@ -509,7 +517,10 @@ ARTIFACT_REGISTRY = build_registry(
             replaces_on_update=False,
             grant_preservation=GrantPreservation.NONE,
             lifecycle=ArtifactLifecycle.COMPOSITE,
-            summary="A named set of project skills, published together as one plugin-type Cortex Extension.",
+            summary=(
+                "A named set of project skills, published together as a version of one plugin-type "
+                "Cortex Extension, content-addressed as a skill's versions are."
+            ),
             authored_in="`plugin.yml` in `project.plugins_dir`",
             publishes="CORTEX EXTENSION (TYPE = 'PLUGIN') and its bundle stage",
             validation_rules=("shared", "skill"),
@@ -527,8 +538,9 @@ ARTIFACT_REGISTRY = build_registry(
             grant_preservation=GrantPreservation.NONE,
             lifecycle=ArtifactLifecycle.COMPOSITE,
             summary=(
-                "A CoCo Desktop profile: content-addressed skill, prompt, MCP, and hook trees "
-                "behind one profile registry row."
+                "A CoCo Desktop profile: content-addressed skill, prompt, MCP, and hook trees on a stage, "
+                "behind one row of the profile registry table. `--prune` deactivates the row; nothing "
+                "is deleted."
             ),
             authored_in="`profile.yml` in `project.profiles_dir`",
             publishes="profile stage trees and one profile registry row",
@@ -546,7 +558,11 @@ ARTIFACT_REGISTRY = build_registry(
             grant_preservation=GrantPreservation.NONE,
             dependency_types=("semantic_view", "tool", "skill", "plugin"),
             pins_versions_of=("skill", "plugin"),
-            summary="A Cortex Agent whose specification SST renders and pins to exactly what it uses.",
+            summary=(
+                "A Cortex Agent whose specification SST renders and pins to exactly what it uses. It is "
+                "created once from a staged specification, and each change to that specification adds a "
+                "version; `apply --temporary` publishes a session-scoped temporary agent instead."
+            ),
             authored_in="`agent.yml` in `project.agents_dir`",
             publishes="AGENT",
             validation_rules=("shared", "agent"),
@@ -564,8 +580,14 @@ ARTIFACT_REGISTRY = build_registry(
             grant_preservation=GrantPreservation.NONE,
             dependency_types=("agent",),
             lifecycle=ArtifactLifecycle.COMPOSITE,
-            summary="An agent evaluation: its question dataset, the table it reads, and its run configuration.",
-            authored_in="an agent's `evals/` folder",
+            summary=(
+                "One agent's evaluation, published into the agent's schema: a source table and dataset "
+                "of its questions, named by default for their digest, and its staged run configuration. "
+                "A changed question set publishes a new table and dataset and keeps the old ones; with "
+                "`dataset.mint: never`, only the configuration publishes, against a dataset that must "
+                "already exist."
+            ),
+            authored_in="the dataset and config files an agent's `evals:` names, by convention in `evals/`",
             publishes="TABLE, DATASET, and a staged run configuration",
             validation_rules=("shared", "eval"),
             dir_key="agents_dir",
