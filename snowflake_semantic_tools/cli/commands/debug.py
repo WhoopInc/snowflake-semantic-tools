@@ -50,12 +50,20 @@ def debug(
 ) -> CommandResult:
     """Show the resolved configuration, profile, target, and registry, and test the connection.
 
+    Reports the SST and dbt versions, every configuration path discovery checked, the
+    registered artifact types, where the dbt manifest comes from and its schema, and the
+    resolved target: profile, role, warehouse, database, schema, state table, and how it
+    authenticates, never a credential. The connection is then opened, and its role and account
+    reported; with --no-connect nothing connects. --snowflake-signatures reports instead how
+    often Snowflake refusals went unrecognised, from `target/sst/run_log.jsonl`, offline.
+
     Exit 0 when everything resolved, 1 when a resolved value is invalid, 4 when the configuration
     or profile cannot be, and 5 when the connection fails.
 
     Diagnostics:
         SST-CFG001: there is no configuration file.
         SST-DBT017: the dbt manifest on disk declares a schema this release does not read.
+        SST-PRT001: the connection could not be opened.
         Each code the configuration file's own checks report, at exit 1 when one is an error.
     """
     if snowflake_signatures:

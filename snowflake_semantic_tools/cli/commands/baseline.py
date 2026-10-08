@@ -61,7 +61,13 @@ def _connected_target() -> Decorator:
 @click.group()
 @click.pass_context
 def baseline(ctx: click.Context) -> None:
-    """Write and maintain the baseline file of known, not yet fixed, diagnostics."""
+    """Write and maintain the baseline file of known, not yet fixed, diagnostics.
+
+    The file is the global --baseline, else `.sst/baseline.json`. Only a code below error that
+    the registry lets be demoted can be baselined: a baseline suppresses and never demotes.
+    `add`, `prune`, and `renew` write the file and `show` only reads it. Each runs offline;
+    `add --target` and `prune --target` connect, and `$SST_TARGET` is never read.
+    """
     inherited = dict(ctx.default_map or {})
     ctx.default_map = {name: dict(inherited) for name in _SUBCOMMANDS}
 
@@ -90,17 +96,24 @@ def add_command(
 ) -> CommandResult:
     """Baseline every current instance of CODE, or with --all-warnings every current warning.
 
-    Additive: an entry is never removed. A new file expires in --expires-in days; an existing
-    one keeps its date, which only `renew` moves. With --target, what the connected validate
-    against it reports is baselined, and each entry added records the target. Exit 1 when CODE
-    is an error or non-demotable, and 3 when CODE is not registered, or --all-warnings has no
-    --yes off a terminal.
+    CODE is a registered code, in any case. The current diagnostics are those an offline
+    `sst validate` reports, narrowed by --select and --exclude; with --target, those the
+    connected `sst validate --target` reports there, and each entry added records that target.
+    Additive: an entry is never removed, and a diagnostic already recorded, or sharing its
+    fingerprint with another current one, is not added. A new file expires in --expires-in
+    days; an existing one keeps its date, which only `renew` moves. --all-warnings asks first
+    on a terminal; off one, or with --output json, it needs --yes.
+
+    Exit 0 when the file is written, even with nothing added; 1 when CODE is an error or
+    non-demotable; 3 when CODE is missing, unregistered, or given with --all-warnings, or a
+    needed --yes is missing; 5 when --target cannot be reached; 130 when the question is
+    declined.
 
     Diagnostics:
         SST-PRT100: no CODE and no --all-warnings, or CODE is not registered; raised. Also, at
             exit 1, CODE cannot be baselined.
         SST-PRT104: CODE and --all-warnings were both given; raised.
-        SST-PRT109: --all-warnings off a terminal without --yes; raised.
+        SST-PRT109: --all-warnings without --yes off a terminal, or with --output json; raised.
     """
     wanted = _wanted_code(code, all_warnings)
     if wanted is not None and (refusal := baseline_refusal(wanted)) is not None:
@@ -136,7 +149,11 @@ def prune_command(
 
     The offline entries are judged by an offline validate. A connected entry is judged only by
     `--target` naming its target, which runs the connected validate too; every other is kept.
-    With --select or --exclude, only the entries of the artifacts chosen are considered.
+    With --select or --exclude, only the entries of the artifacts chosen, by artifact or source
+    file, are considered. An expired baseline is pruned all the same.
+
+    Exit 0 when the file is written, even with nothing pruned; 1 when there is no baseline
+    file; 5 when --target cannot be reached.
 
     Diagnostics:
         SST-PRT009: there is no baseline file to prune.
@@ -167,9 +184,11 @@ def show_command(
 ) -> CommandResult:
     """List the baseline's entries: those of one --code, or with --expired only once it has expired.
 
-    Each entry says whether a connected validate found it, and against which target. With
-    --target, only the entries a validate against it can match are listed: the offline ones and
-    that target's connected ones. Nothing connects.
+    Prints the file's entry count and expiry, then one line per entry shown: its code, artifact,
+    file, fingerprint, and `offline` or `connected:<target>` for the validate that found it.
+    With --target, only the entries a validate against it can match are listed: the offline
+    ones and that target's connected ones. Nothing connects. Without a baseline file it says so
+    and exits 0.
     """
     path, current = _read(paths, options)
     if current is None:
@@ -205,10 +224,13 @@ def _require_reason(reason: str | None) -> None:
 def renew_command(paths: ProjectPaths, options: GlobalOptions, reason: str, expires_in: int) -> CommandResult:
     """Re-date the baseline --expires-in days from today, recording --reason as its audit record.
 
-    Exit 1 when asked for more than 365 days, and 3 without --reason.
+    Each renewal is kept in the file, oldest first, with its date, reason, and the expiry it set;
+    the entries are untouched. Exit 1 when asked for more than 365 days or there is no baseline
+    file, and 3 when --reason is missing or blank.
 
     Diagnostics:
-        SST-PRT100: --expires-in is above 365 days.
+        SST-PRT100: --reason is missing or blank; raised. Also, at exit 1, --expires-in is above
+            365 days.
         SST-PRT009: there is no baseline file to renew.
     """
     if expires_in > MAX_EXPIRY_DAYS:

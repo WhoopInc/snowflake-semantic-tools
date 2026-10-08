@@ -32,6 +32,13 @@ REGISTRY_SPECS = PACKAGE / "domain" / "diagnostics" / "specs"
 def explain_command(code: str, show_aliases: bool) -> CommandResult:
     """Explain one diagnostic code from the registry: no project, configuration, or connection.
 
+    CODE is a registered 1.0 code, an SST 0.3 code that survives as an alias, or a retired 1.0
+    number, in any case. A code is shown with its severity, phase, when it is raised, its
+    message and suggestion, its note, the package modules that name it, the 0.3 codes it came
+    from, and its docs link; an alias with what it became; a retired number with what
+    superseded it. --aliases also lists each 0.3 code that resolves to the code; the JSON
+    envelope always carries them.
+
     Exit 0 when the code is explained, and 3 when it is not a registered code, a 0.3 alias, or
     a retired number.
 
