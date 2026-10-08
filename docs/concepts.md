@@ -9,18 +9,41 @@ An **artifact** is one thing SST publishes and tracks. There are seven types:
 
 | Type | Authored as | Publishes |
 |---|---|---|
-| `semantic_view` | `semantic_views:` YAML | a semantic view |
-| `tool` | tool group YAML | a Cortex Search service, procedure, function, or stage |
-| `skill` | a `SKILL.md` folder | a skill-type Cortex Extension |
-| `plugin` | `plugin.yml` | a plugin-type Cortex Extension |
-| `profile` | `profile.yml` | a CoCo Desktop profile |
+| `semantic_view` | an entry under `semantic_views:` | a semantic view |
+| `tool` | a `define:` member of a `tools:` group | a Cortex Search service, procedure, function, or stage |
+| `skill` | a `SKILL.md` folder | a version of a skill-type Cortex Extension |
+| `plugin` | `plugin.yml` | a version of a plugin-type Cortex Extension |
+| `profile` | `profile.yml` | a CoCo Desktop profile: stage trees and one registry row |
 | `agent` | `agent.yml` | a Cortex Agent |
-| `eval` | an agent's `evals/` folder | an agent evaluation |
+| `eval` | the dataset and config files an agent's `evals:` names | an evaluation table, dataset, and run configuration |
 
 Every command works on the same set, in the same order: an artifact is always
 published after the artifacts it depends on, so a view exists before the agent
 that queries it. The [artifact reference](reference/artifacts.md) lists each
 type's position, dependencies, and how it is updated.
+
+### Identity and versions
+
+An artifact is identified by its **key**, `<type>:<name>`, such as
+`semantic_view:jaffle_sales` or `agent:jaffle_analytics_agent`; an eval takes
+its agent's name. The key never names a database or schema: the target being
+built decides where the object lands, so the same key is a different object in
+each target.
+
+How a change reaches Snowflake depends on the type:
+
+- a **semantic view** is replaced, with `COPY GRANTS`;
+- a **tool** is replaced, except a stage, which is only ever created when
+  absent;
+- a **skill** or **plugin** gets a new extension version, whose alias is the
+  version prefix and a digest of the bundle, so a published version is never
+  rewritten;
+- a **profile** uploads its trees under content-addressed prefixes, then
+  switches its registry row to them;
+- an **agent** is created once, and each change to its specification adds a
+  version;
+- an **eval** publishes a new table and dataset when its questions change,
+  keeping the old ones, and re-stages its configuration when that changes.
 
 ## Members
 
@@ -34,20 +57,26 @@ A semantic view is assembled from **members** that are authored separately:
 - **custom instructions** are YAML entries under `snowflake_custom_instructions:`.
 
 A member is not published on its own; it reaches Snowflake inside every view it
-attaches to.
+attaches to. Members have keys too: `metric:order_count`, or
+`fact:orders.order_total` for a column of a model.
 
 ## Association: how members find views
 
 Metrics, relationships, filters, and verified queries attach by **table
 membership**: a member joins every semantic view whose `tables:` include all of
-the member's `tables:`. Nothing lists a view's metrics; adding a metric over
-`orders` adds it to every view that has `orders`.
+the member's tables. A view need not list its metrics; adding a metric over
+`orders` adds it to every view that has `orders`. A view that should expose less
+narrows what attached, with `columns:`, `metrics:`, or `relationships:`, or their
+`exclude_` counterparts.
 
-Two consequences:
+A member's tables are its `tables:`, or, when it declares none, the models its
+expression names with `{{ ref() }}` (`SST-MEM012`, an info diagnostic). A derived
+metric declares none: its tables come from the metrics it references. Some
+consequences:
 
 - A member whose tables no view covers attaches nowhere, and validation warns
   about it (`SST-MEM005`) instead of dropping it silently.
-- A member's `tables:` cannot be empty. An empty list would otherwise mean
+- `tables: []` is an error (`SST-PRS102`). An empty list would otherwise mean
   "every view", which is never what an author meant.
 
 Custom instructions are the exception: a view names the ones it wants with
@@ -61,14 +90,16 @@ and SST resolves the name for the target being built:
 | Reference | Resolves to | Where it is accepted |
 |---|---|---|
 | `{{ ref('orders') }}` | the dbt model's relation | view and member `tables:` |
-| `{{ ref('orders', 'order_id') }}` | a column of that model | expressions, relationship conditions |
-| `{{ metric('order_count') }}` | another metric's expression | metric expressions, verified query SQL |
-| `{{ var('name') }}` | a value from `vars:` in `sst_config.yml` | expressions, verified query SQL |
+| `{{ ref('orders', 'order_id') }}` | a column of that model | expressions, relationship conditions, a view's `columns:` |
+| `{{ metric('order_count') }}` | another metric's expression | metric expressions, verified query SQL, a view's `metrics:` |
+| `{{ var('name') }}` | a value from `vars:` in `sst_config.yml` | metric and filter expressions, verified query SQL |
 | `{{ custom_instructions('name') }}` | a custom instruction block | a view's `custom_instructions:` |
-| `{{ tag('name') }}` | a tag from `tags:` in `sst_config.yml` | a view's `tags:` |
-| `{{ semantic_view('name') }}`, `{{ tool('name') }}`, `{{ agent('name') }}` | the published object | agent specs |
+| `{{ filter('name') }}`, `{{ relationship('name') }}`, `{{ verified_query('name') }}` | that member's name | custom instruction text |
+| `{{ tag('name') }}` | a tag from `tags:` in `sst_config.yml` | the `name` of a view's `tags:` entry |
+| `{{ semantic_view('name') }}`, `{{ agent('name') }}` | the published object | agent specs |
+| `{{ tool('group', 'name') }}` | a member of a tool group | agent specs |
 | `{{ skill('name') }}`, `{{ plugin('name') }}` | a skill or plugin this project publishes, pinned to its current version | agent skill sources |
-| `{{ extension('name') }}` | an extension another project publishes | agent skill sources |
+| `{{ extension('name') }}` | an extension another project publishes, from `skills.extensions` | agent skill sources |
 | `{{ eval_metric('name') }}` | a custom judge metric | eval configs |
 | `{{ file('path') }}` | the contents of a file beside the artifact | agent instructions |
 
@@ -77,8 +108,9 @@ the dbt manifest, so it names models and their columns exactly as dbt does.
 
 ## Targets
 
-`--target` selects a target from `profiles.yml`, and that target decides where
-everything lands. Configuration writes locations relative to it:
+`--target` selects a target from `profiles.yml`, else `$SST_TARGET`, else the
+profile's default target, and that target decides where everything lands.
+Configuration writes locations relative to it:
 
 ```yaml
 semantic_views:
@@ -87,8 +119,10 @@ semantic_views:
 ```
 
 Keys that start with `+` set a default for everything below them. Under
-`semantic_views:` and `agents:`, an unprefixed key names a folder of view files
-or agent folders, and its `+` keys apply to what is in that folder:
+`semantic_views:` and `agents:`, an unprefixed key names a folder -- below
+`semantic_views/` in the semantic models directory, or below the agents
+directory -- and its `+` keys apply to what is in that folder (`SST-CFG041` when
+the folder does not exist). Under `tools:`, an unprefixed key names a tool group.
 
 ```yaml
 semantic_views:
@@ -97,48 +131,72 @@ semantic_views:
     +schema: FINANCE_SEMANTIC
 ```
 
+`--defer-target` (or `defer.target`) resolves dbt models to another target's
+relations while still publishing to `--target`.
+
 ## The pipeline
 
 ```text
-validate  ->  compile  ->  plan  ->  apply
+compile  ->  validate  ->  plan  ->  apply  ->  test
 ```
 
-- **`validate`** loads every artifact and checks it. It writes nothing.
 - **`compile`** renders every artifact and writes the SST manifest to
-  `target/sst/manifest.json`. `--emit-ddl <dir>` also writes each view's DDL.
-- **`plan`** compiles, reads what is live in Snowflake, and saves the changes
-  to `target/sst/plan.json`. It never writes to Snowflake, and it exits `2`
-  when there are changes.
-- **`apply`** executes one saved plan, and only if the project still compiles to
-  the plan's manifest.
+  `target/sst/manifest.json`. It is offline, and an error stops it before it
+  writes anything (`SST-MAN008`), unless `--partial` is given. `--emit-ddl <dir>`
+  also writes each artifact's rendered payload, and `--emit-agent-spec <dir>`
+  each agent's specification.
+- **`validate`** compiles, then adds the checks compile does not run: the
+  dependency-cycle check, `--strict`, and, when asked for, the connected checks.
+  It writes nothing.
+- **`plan`** compiles and validates, reads what is live in Snowflake, and saves
+  the changes to `target/sst/plan.json`. It never writes to Snowflake, and it
+  exits `2` when there are changes.
+- **`apply`** plans again and executes the changes, after asking unless `--yes`
+  is given. With `--plan <file>`, it executes that saved plan only if it was
+  made for the same target, from the manifest the project compiles to now,
+  against the same live state, with the same changes.
+- **`test`** runs the golden suite offline, comparing rendered output with
+  committed goldens, and, once a manifest exists, the smoke suite against
+  deployed objects and the eval suite against agents. See
+  [testing live](guides/testing-live.md) and [evals](guides/evals.md).
+
+The **manifest** is the record of one compile: every artifact with its key,
+fingerprint, publish target, dependencies, members, and source files. It holds
+everything that compiled even under `--select`, and its `manifest_id` is a
+digest of its content, so an edited manifest is detected.
 
 `validate`, `plan`, and `apply` all run the same validation, so a project that
-fails `validate` cannot be applied.
+fails `validate` cannot be applied. `--no-validate` skips it on `plan` and
+`apply`, for a tree `sst validate` already passed; compile errors still stop the
+run.
 
 ## State and ownership
 
-`apply` records every artifact it publishes -- its fingerprint, target, and the
-commit it came from -- in a state table, `SST_STATE` in the target schema by
-default (`state:` in `sst_config.yml` moves it). The next `plan` compares the
-project against that record and against what is live.
+`apply` records every artifact it publishes -- its fingerprint, the object it
+was published to, and the manifest and commit it came from -- in a state table,
+`SST_STATE` in the target's database and schema by default (`state:` in
+`sst_config.yml` moves it). A copy is cached locally in
+`target/sst/state.<target>.json`. The next `plan` compares the project against
+that record and against what is live.
 
 ### Concurrent applies and the run lock
 
-Only one `apply` runs against a target at a time. Before it writes anything,
-`apply` takes the target's row in a lock table beside the state table
-(`SST_STATE_LOCK` for the default `SST_STATE`), recording its run id, the role
-and machine it runs as, and when the lock expires. Every operation on the lock
-table runs as one transaction whose first statement writes the table's mutex
-row, so it waits for any other such transaction to end before it reads the
-lock; of any number of runs that race for it exactly one proceeds, and the
-others stop with `SST-APL011` naming the holder. The winner is issued the next
-*generation*, a fencing token it presents to extend or release the lock and to
-write state. A long apply extends its lock as it runs, on a connection of its
-own, and releases it when it ends, however it ends. Expiry is judged by
-Snowflake's clock. A lock left behind by a run that was killed expires after 30
-minutes; `--break-stale-lock` takes over an expired lock (`SST-APL010`), and
-never a live one. A run also keeps a lock file beside its local state cache,
-which guards one machine only.
+Only one run that writes to a target -- `apply`, the eval suite of `sst test`, or
+`sst drop` -- runs against it at a time. Before it writes anything, the run
+takes the target's row in a lock table beside the state table (`SST_STATE_LOCK`
+for the default `SST_STATE`), recording its run id, the role and machine it runs
+as, and when the lock expires. Every operation on the lock table runs as one
+transaction whose first statement writes the table's mutex row, so it waits for
+any other such transaction to end before it reads the lock; of any number of
+runs that race for it exactly one proceeds, and the others stop with
+`SST-APL011` naming the holder. The winner is issued the next *generation*, a
+fencing token it presents to extend or release the lock and to write state. A
+long run extends its lock every five minutes, on a connection of its own, and
+releases it when it ends, however it ends. Expiry is judged by Snowflake's
+clock. A lock left behind by a run that was killed expires 30 minutes after it
+was last extended; `--break-stale-lock` takes over an expired lock
+(`SST-APL010`), and never a live one. A run also keeps a lock file beside its
+local state cache, which guards one machine only.
 
 Once it holds the lock, a run reads the target's state again, and refuses the
 plan (`SST-APL012`) if another run changed it since the plan read it. If the run
@@ -179,13 +237,17 @@ availability: Snowflake also refuses to create one in a transient database or
 schema. How a hybrid table behaves under SST's write pattern has not yet been
 measured.
 
-SST changes only objects it published. An object that already exists and that
-SST did not publish is reported as **unmanaged** (`SST-PLN024`) and left alone;
-adopt it or remove it deliberately. SST never grants new access: access to
-published objects is managed outside SST. When it has to replace an object
-rather than alter it -- a tool whose definition cannot change in place -- it
-re-issues exactly the explicit grants that object already held, and verifies
-them afterwards.
+### Ownership, grants, and prune
+
+SST changes only objects it published. An object that already exists under an
+artifact's name, and that state records no entry for, is **unmanaged**: the plan
+blocks that artifact (`SST-PLN024`, an error) and leaves the object alone; adopt
+it or remove it deliberately. SST never grants new access: access to published
+objects is managed outside SST. When it replaces an object, it keeps the
+explicit grants the object already held -- with `COPY GRANTS` for a semantic
+view, procedure, or function, and by re-issuing them for a Cortex Search
+service -- and verifies them afterwards. `plan` warns of the grants a replace
+would drop (`SST-PLN013`).
 
 `--prune` extends a plan to managed artifacts whose source was deleted. What
 happens depends on the type: semantic views and agents are dropped, and
@@ -193,9 +255,10 @@ profiles are deactivated. Skills, plugins, and evals are **report-only**: the
 plan lists them (`SST-PLN034`, an info diagnostic), but they are never removed,
 because an agent elsewhere may still pin a version, or a run or baseline may
 still reference an evaluation. A report-only prune never makes `--strict` fail.
-`apply --prune` records that the source is gone; until it has, `plan` exits 2,
-because that apply still changes the state table. The plan keeps listing the
-objects until they are removed by hand.
+Tools are never pruned. `apply --prune` needs `--yes`, and records that the
+source is gone; until it has, `plan` exits 2, because that apply still changes
+the state table. The plan keeps listing report-only objects until they are
+removed by hand.
 
 `--partial` lets `compile`, `plan`, and `apply` go ahead with every artifact
 that has no errors and depends on nothing that does. Each artifact left out is
@@ -214,6 +277,10 @@ Every problem SST reports is a **diagnostic** with a stable code, such as
 - a **warning** does not, unless `--strict` or `validation.strict: true`
   promotes it;
 - an **info** never blocks.
+
+A warning held in the **baseline** file (`.sst/baseline.json`, written by
+`sst baseline add`) is counted rather than shown, and never blocks, even under
+`--strict`, until the baseline expires. `--no-baseline` ignores it for one run.
 
 Some errors stop other checks from running on the same artifact, so fixing one
 error can reveal the next. The [error code reference](reference/error-codes.md)
