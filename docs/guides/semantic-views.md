@@ -31,15 +31,41 @@ semantic_views:
         data_type: NUMBER
         description: Threshold above which an order counts as large.
         default_value: 1000
+    max_staleness: 300
+    tags:
+      - name: "{{ tag('cost_center') }}"
+        value: analytics
     custom_instructions:
       - "{{ custom_instructions('sql_conventions') }}"
 ```
 
-- `tables:` is required and lists models with `{{ ref() }}`. It decides which
-  members attach (see [Concepts](../concepts.md#association-how-members-find-views)).
+- `tables:` is required and lists models with `{{ ref('<model>') }}`, or dbt
+  sources with `{{ source('<source>', '<table>') }}` (a source contributes a
+  table but no columns). Any other entry is an error (`SST-REF044`), and so is a
+  model listed twice (`SST-PRS006`). Each table's logical name is its model
+  name, upper-cased; its relation is the model's relation, so an aliased model
+  keeps its model name in the view. `tables:` decides which members attach (see
+  [Concepts](../concepts.md#association-how-members-find-views)).
 - `description:` is what an agent reads to pick this view; say what it answers
-  and what it does not, and when to use it (`SST-VAL005`).
-- `variables:` declares view variables that expressions use by bare name.
+  and what it does not, and when to use it (`SST-VAL005`). It renders as the
+  view's `COMMENT`.
+- `table_config.<model>` takes `synonyms`, `description` (the table's
+  `COMMENT`) and `distinct_range` (see [Relationships](#relationships)). A key
+  that names no table in `tables:` is an error (`SST-PRS109`). Primary and
+  unique keys come from the model, not from here.
+- `variables:` declares view variables that expressions use by bare name. Each
+  needs `name`, `data_type` and `default_value`, and a `BOOLEAN`, `NUMBER` or
+  string default must be of that type; `description` renders as the variable's
+  `COMMENT`. A member that reads a variable must find it declared on every view
+  it attaches to (`SST-VAL326`); a variable nothing reads is warned about
+  (`SST-VAL220`).
+- `max_staleness:` is in seconds, at least 120 (`SST-VAL304`), and renders as
+  `MAX_STALENESS = '300 seconds'`.
+- `tags:` entries each name one `{{ tag('<name>') }}` declared under `tags:` in
+  `sst_config.yml` (`SST-REF028`) and a value of at most 256 characters
+  (`SST-PRS026`). They render inline as `WITH TAG (...)`.
+- A folder route's `+max_staleness` and `+tags` apply to a view that sets
+  neither key; `+enabled` applies to one that does not set `enabled`.
 - `enabled: false` keeps a view in the project without publishing it.
 
 ### Narrowing what a view exposes
@@ -65,6 +91,8 @@ semantic_views:
       - order_items_to_products
 ```
 
+- A column entry is a two-argument `ref()`; a metric entry is a `metric()` call
+  or a bare name; a relationship entry is a bare name.
 - An entry must name something the view's tables provide (`SST-VAL330`); a
   column excluded globally cannot be listed, and excluding it again only warns
   (`SST-VAL331`).
@@ -92,15 +120,28 @@ models:
           meta:
             sst:
               column_type: dimension
+              synonyms: [order status, fulfilment state]
               is_enum: true
               sample_values: [placed, completed, returned]
 ```
 
-`column_type` is `dimension`, `fact`, or `time_dimension`. `is_enum: true`
-declares that `sample_values` is the complete set of values. The model-level
-`primary_key` (or `unique_keys`) tells SST which columns identify a row; a
-relationship that joins to a model without a key over its join columns is
-warned about (`SST-VAL210`).
+- `column_type` is `dimension`, `fact`, or `time_dimension`; a time dimension
+  renders in `DIMENSIONS`. A column without a `column_type` is not a member of
+  any view, and `exclude: true` removes a column from every view.
+- The column's dbt `description` renders as its `COMMENT`, `synonyms` as
+  `WITH SYNONYMS (...)`, and `sample_values` as `SAMPLE_VALUES (...)`.
+- `is_enum: true` declares that `sample_values` is the complete set of values
+  and renders `IS_ENUM`; it needs sample values (`SST-VAL314`).
+- The model-level `primary_key` (a list of columns) and `unique_keys` (a list of
+  column lists) render as the table's `PRIMARY KEY (...)` and `UNIQUE (...)`; a
+  column may not be in both (`SST-VAL223`). See
+  [Relationships](#relationships) for what a join needs from them.
+
+The `order_state` column above renders as:
+
+```sql
+ORDERS.ORDER_STATE AS ORDERS.ORDER_STATE WITH SYNONYMS ('order status', 'fulfilment state') COMMENT = 'Where the order is in fulfilment.' SAMPLE_VALUES ('placed', 'completed', 'returned') IS_ENUM
+```
 
 ## Metrics
 
@@ -118,13 +159,22 @@ snowflake_metrics:
     expr: "DIV0({{ metric('total_revenue') }}, {{ metric('order_count') }})"
 ```
 
-- `tables:` names the models the expression reads.
+- `tables:` names the models the expression reads, and is required on a metric
+  that is not derived (`SST-VAL109`). Its expression must aggregate
+  (`SST-VAL101`). It renders under its table, as `ORDERS.TOTAL_REVENUE`.
 - A `derived: true` metric combines other metrics with `{{ metric() }}`; SST
-  infers its tables from the metrics it references. It cannot use window
-  functions (`SST-VAL102`), and metric references cannot form a cycle.
+  infers its tables from the metrics it references, so it declares none
+  (`SST-VAL108`). It renders unqualified, after the table-scoped metrics. It
+  cannot use window functions (`SST-VAL102`), and metric references cannot form
+  a cycle (`SST-REF005`).
 - When more than one relationship path joins a metric's table to another table
   in the view, name the path with `using_relationships:`. An ambiguous path is
   an error for the metric (`SST-VAL116`) and a warning for the view (`SST-VAL209`).
+  Each entry is a relationship name (or `{{ relationship('<name>') }}`) that
+  starts at the metric's table (`SST-VAL114`), and it renders as
+  `USING (...)`. A derived metric cannot set it (`SST-VAL113`).
+- `access_modifier: private_access` renders the metric as `PRIVATE`; the default
+  is `public_access`. The 0.3 key `visibility` is an error (`SST-VAL122`).
 
 ### Semi-additive metrics
 
@@ -151,17 +201,19 @@ order:
 ```
 
 - `dimension` names a dimension of the metric's table, or of `table:` when it is
-  set; a name that is not a dimension there is an error (`SST-VAL118`).
+  set; a name that is not a dimension there, or a `table:` outside the view, is
+  an error (`SST-VAL118`).
 - `sort_direction` is `ascending` (the default, which takes the latest value of a
   date) or `descending` (the earliest). `null_order` is `first` or `last`; left
   unset, Snowflake's default null ordering applies, which sorts nulls last in
   ascending order. Set `null_order: first` when a row with no date must never be
-  the one that counts.
+  the one that counts. A `sort_direction` without a `null_order` is warned
+  about (`SST-VAL120`).
 - List order matters, as in an `ORDER BY`.
 - Only a derived metric may reference a semi-additive metric (`SST-VAL107`).
 
-These render as `NON ADDITIVE BY (SNAPSHOT_MONTH)` and
-`NON ADDITIVE BY (SUPPLIES.SNAPSHOT_MONTH DESC NULLS FIRST)`.
+These render only what each entry authors, as `NON ADDITIVE BY (SNAPSHOT_MONTH)`
+and `NON ADDITIVE BY (SUPPLIES.SNAPSHOT_MONTH DESC NULLS FIRST)`.
 
 ### Window function metrics
 
@@ -170,6 +222,7 @@ total, a moving average, or a value from an earlier row.
 
 ```yaml
   - name: cumulative_customer_count
+    description: Running count of customers, by the date of their first order.
     tables: [customers]
     expr: "SUM({{ metric('customer_count') }})"
     window:
@@ -182,13 +235,10 @@ total, a moving average, or a value from an earlier row.
       frame: RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 ```
 
-This renders as:
+This renders as one `METRICS` entry:
 
 ```sql
-CUSTOMERS.CUMULATIVE_CUSTOMER_COUNT AS SUM(CUSTOMERS.CUSTOMER_COUNT) OVER (
-  PARTITION BY EXCLUDING CUSTOMERS.FIRST_ORDERED_AT
-  ORDER BY CUSTOMERS.FIRST_ORDERED_AT ASC NULLS LAST
-  RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+CUSTOMERS.CUMULATIVE_CUSTOMER_COUNT AS SUM(CUSTOMERS.CUSTOMER_COUNT) OVER (PARTITION BY EXCLUDING CUSTOMERS.FIRST_ORDERED_AT ORDER BY CUSTOMERS.FIRST_ORDERED_AT ASC NULLS LAST RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) COMMENT = 'Running count of customers, by the date of their first order.'
 ```
 
 - `expr` is one function call, and its first argument is a metric of the same
@@ -212,9 +262,11 @@ CUSTOMERS.CUMULATIVE_CUSTOMER_COUNT AS SUM(CUSTOMERS.CUSTOMER_COUNT) OVER (
   an error (`SST-PRS124`); a frame is never passed through as free SQL. A frame
   needs an `order_by` (`SST-VAL127`).
 - A window metric cannot also set `using_relationships` or
-  `non_additive_dimensions`, cannot be `derived: true` (`SST-VAL102`), and no
-  other metric may reference it (`SST-VAL128`).
-- Writing `OVER (...)` inside `expr` is an error (`SST-VAL101`); use `window:`.
+  `non_additive_dimensions` (`SST-PRS014`), must belong to exactly one table and
+  cannot be `derived: true` (`SST-VAL102`), and no other metric may reference it
+  (`SST-VAL128`).
+- Writing `OVER (...)` inside a table-scoped metric's `expr` is an error
+  (`SST-VAL101`); use `window:`.
 
 A query that returns a window metric must also return every dimension in its
 partition and order, or Snowflake rejects the query. `SHOW SEMANTIC DIMENSIONS IN
@@ -233,15 +285,68 @@ snowflake_relationships:
 ```
 
 `left_table` is the many side and `right_table` the one side, named as plain
-model names. Each condition pairs one column from each side: an equality, an
-as-of comparison such as `>=`, or a range with `BETWEEN`:
+model names; a `{{ ref() }}` there is an error (`SST-REF045`). The relationship
+attaches to every view that holds both tables; one that fits no view is an
+error (`SST-VAL205`). Its `description` documents the YAML and is not
+published, and `relationship_type` or `join_type` is an error because nothing
+renders it (`SST-VAL211`).
+
+Each condition pairs one column from the left table with one from the right
+(`SST-VAL204`), and its operator decides the join:
+
+| Condition | Join | Renders |
+|---|---|---|
+| `a = b` | equality | `REFERENCES T (KEY)` |
+| `a >= b` | as-of | `REFERENCES T (KEY, ASOF COL)` |
+| `a BETWEEN s AND e` | range | `REFERENCES T (BETWEEN S AND E EXCLUSIVE)` |
+
+`>=` is the only as-of operator, and a relationship has at most one as-of
+condition (`SST-PRS112`). A condition of any other shape is an error
+(`SST-PRS110`). An as-of join usually pairs a key equality with the comparison:
 
 ```yaml
+  - name: order_items_to_orders
+    left_table: order_items
+    right_table: orders
     relationship_conditions:
-      - "{{ ref('orders', 'ordered_at') }} BETWEEN {{ ref('pricing_periods', 'effective_start_at') }} AND {{ ref('pricing_periods', 'effective_end_at') }}"
+      - "{{ ref('order_items', 'order_id') }} = {{ ref('orders', 'order_id') }}"
+      - "{{ ref('order_items', 'occurred_at') }} >= {{ ref('orders', 'ordered_at') }}"
 ```
 
-Both tables must be in a view for the relationship to attach to it.
+which renders as
+`ORDER_ITEMS_TO_ORDERS AS ORDER_ITEMS (ORDER_ID, OCCURRED_AT) REFERENCES ORDERS (ORDER_ID, ASOF ORDERED_AT)`.
+
+A range must be the relationship's only condition (`SST-VAL202`), and its right
+table must declare non-overlapping ranges with `table_config.distinct_range` in
+every view that holds it (`SST-VAL206`):
+
+```yaml
+snowflake_relationships:
+  - name: orders_to_pricing_periods
+    left_table: orders
+    right_table: pricing_periods
+    relationship_conditions:
+      - "{{ ref('orders', 'ordered_at') }} BETWEEN {{ ref('pricing_periods', 'effective_start_at') }} AND {{ ref('pricing_periods', 'effective_end_at') }}"
+
+semantic_views:
+  - name: menu
+    # ...
+    table_config:
+      pricing_periods:
+        distinct_range:
+          start: effective_start_at
+          end: effective_end_at
+```
+
+The relationship renders as
+`ORDERS_TO_PRICING_PERIODS AS ORDERS (ORDERED_AT) REFERENCES PRICING_PERIODS (BETWEEN EFFECTIVE_START_AT AND EFFECTIVE_END_AT EXCLUSIVE)`,
+and the table entry gains
+`CONSTRAINT PRICING_PERIODS_DISTINCT_RANGE DISTINCT RANGE BETWEEN EFFECTIVE_START_AT AND EFFECTIVE_END_AT EXCLUSIVE`.
+
+The right table of an equality join must declare a `primary_key` or
+`unique_keys` (`SST-VAL311`). When no key lies within the join columns the
+cardinality is guessed, and SST warns (`SST-VAL210`); when the join columns are
+only part of a composite key, the join fans out, and SST warns (`SST-VAL208`).
 
 ## Filters
 
@@ -257,9 +362,19 @@ snowflake_filters:
     labels: [filter]
 ```
 
-A boolean expression without a `labels:` key is an error (`SST-VAL405`), and a
-filter labelled `filter` must be boolean (`SST-VAL401`). An entry without
-`labels:` whose expression is not boolean renders as an ordinary dimension.
+This renders in `DIMENSIONS` as:
+
+```sql
+ORDERS.IS_COMPLETED_ORDER LABELS = (FILTER) AS ORDERS.ORDER_STATE = 'completed' COMMENT = 'Orders that completed; the default lens for revenue.'
+```
+
+- A labelled filter must be boolean (`SST-VAL401`) and must resolve to exactly
+  one table: its `tables:` entry, else the model its `ref()` names.
+- A boolean expression without a `labels:` key is an error (`SST-VAL405`).
+- A filter not labelled `filter` renders as prose instead: one sentence,
+  `For <TABLE>, <name> is <expr>. <description>`, appended to the view's
+  `AI_SQL_GENERATION`. It needs exactly one table in `tables:`.
+- A filter cannot carry `synonyms:`; nothing renders them (`SST-VAL406`).
 
 ## Verified queries
 
@@ -278,9 +393,18 @@ snowflake_verified_queries:
     verified_by: analytics-team
 ```
 
-Use `sql_file:` instead of `sql:` to keep the query in a `.sql` file beside the
-YAML; setting both is an error. The SQL names tables by their logical names in
-the view, not by relation.
+- Use `sql_file:` instead of `sql:` to keep the query in a `.sql` file, resolved
+  relative to the YAML file; setting both or neither is an error
+  (`SST-VAL412`). Leading `--` comment lines are dropped from either.
+- The SQL names tables by their logical names in the view, not by relation. It
+  may use `{{ ref() }}`, `{{ metric() }}` and `{{ var() }}`.
+- A query attaches to every view that holds all its `tables:`.
+- `verified_at` is epoch seconds, or a quoted ISO-8601 date or timestamp (UTC
+  unless it says otherwise), which renders as epoch seconds; anything else is an
+  error (`SST-PRS017`).
+- Each entry renders in `AI_VERIFIED_QUERIES` as `QUESTION`, then whichever of
+  `VERIFIED_AT`, `ONBOARDING_QUESTION` and `VERIFIED_BY` are set, then `SQL`.
+  The `description` is not published.
 
 ## Custom instructions
 
@@ -295,10 +419,24 @@ snowflake_custom_instructions:
       Decline questions about individual named customers.
 ```
 
-A view includes a block by listing `{{ custom_instructions('<name>') }}`. The 0.3
-spellings `sql_generation` and `question_categorization` are still read, with a
-deprecation warning (`SST-PRS020`); setting both spellings on one block is an
-error.
+A view includes a block by listing `{{ custom_instructions('<name>') }}`; a name
+that matches no block is an error (`SST-REF007`), and so is a bare string
+(`SST-VAL408`). Unlike other members, a block attaches only to the views that
+name it. The view's `AI_SQL_GENERATION` is each included block's
+`ai_sql_generation`, then one sentence per prose filter (see
+[Filters](#filters)), separated by blank lines; `AI_QUESTION_CATEGORIZATION` is
+each included block's `ai_question_categorization`. The `description` is not
+published.
+
+The text may name members with `{{ filter('<name>') }}`,
+`{{ relationship('<name>') }}` and `{{ verified_query('<name>') }}`, which
+render as the member's name, so renaming a member breaks the build rather than
+the guidance.
+
+The 0.3 spellings `sql_generation` and `question_categorization` are errors.
+Written alone, one is reported (`SST-VAL012`) and still read, so a run that
+demotes the error renders what was meant; written beside its 1.0 key, it is
+reported (`SST-PRS020`) and ignored.
 
 ## Checking the rendered view
 
@@ -306,7 +444,17 @@ error.
 sst compile --emit-ddl target/ddl/
 ```
 
-writes each view's `CREATE SEMANTIC VIEW` statement to its own file, offline.
-Diffing that directory between two commits shows exactly what a change does to
-the published DDL. `sst test --suite golden` compares the rendered DDL with
-files committed under `--golden-dir`.
+writes each view's `CREATE SEMANTIC VIEW` statement to `<view>.sql`, offline,
+beside the rendered payloads of the project's other artifacts. Diffing that
+directory between two commits shows exactly what a change does to the published
+DDL. `sst test --suite golden` compares the rendered DDL with files committed
+under `--golden-dir` (default `expected/ddl`, relative to the project), and
+`--update-golden` rewrites them.
+
+The statement is `CREATE OR REPLACE SEMANTIC VIEW`, with its clauses in
+Snowflake's order: `TABLES`, `RELATIONSHIPS`, `VARIABLES`, `FACTS`,
+`DIMENSIONS`, `METRICS`, `COMMENT`, `AI_SQL_GENERATION`,
+`AI_QUESTION_CATEGORIZATION`, `AI_VERIFIED_QUERIES`, `MAX_STALENESS`,
+`WITH TAG`, and always `COPY GRANTS`. A clause with nothing in it is left out.
+Tables keep the order `tables:` lists them in; every other list is sorted by
+name, so adding an unrelated member does not reorder the rest.
