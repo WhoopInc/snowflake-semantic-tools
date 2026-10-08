@@ -118,7 +118,7 @@ from whichever view is to hand.'
       QUESTION 'How many orders are there in each fulfilment state?'
       VERIFIED_AT 1769904000
       ONBOARDING_QUESTION TRUE
-      VERIFIED_BY 'daa-platform'
+      VERIFIED_BY 'analytics-platform'
       SQL 'SELECT
       orders.order_state                  AS order_state
     , COUNT(DISTINCT orders.order_id)     AS order_count
@@ -130,7 +130,7 @@ ORDER BY order_count DESC'
       QUESTION 'What is total revenue by store location?'
       VERIFIED_AT 1767225600
       ONBOARDING_QUESTION TRUE
-      VERIFIED_BY 'daa-platform'
+      VERIFIED_BY 'analytics-platform'
       SQL 'SELECT
       locations.location_name                       AS location_name
     , SUM(orders.order_total) / 100                 AS revenue

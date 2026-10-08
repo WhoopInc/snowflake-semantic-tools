@@ -11,7 +11,9 @@
 # A `+` key sets a default that folder routes and individual artifacts inherit.
 #
 # An unknown key is a warning (SST-CFG003) and a misspelled top-level block an
-# error (SST-CFG007). Removed keys are SST-CFG043.
+# error (SST-CFG007). A removed key is SST-CFG043 unless it has its own
+# code; a deprecated spelling is SST-CFG200, an error, and is still read as
+# the key that replaced it.
 # =============================================================================
 
 snowflake:
@@ -91,9 +93,11 @@ tags:
 
 validation:
   # Every warning becomes an error; --strict/--no-strict on validate, plan and
-  # apply overrides this. Offline, the fixture has one warning, SST-VAL528 on
-  # jaffle_delivery's agent tool, so a strict run fails on it; the offline CLI
-  # tests pass --no-strict.
+  # apply overrides this. Offline, the fixture carries deliberate warnings:
+  # jaffle_delivery's agent tool (SST-VAL528), jaffle_minimal's empty tool list
+  # (SST-RND010), the analytics agent's generic tool resources (SST-RND013) and
+  # the jaffle_partner members nothing references (SST-CFG018). A strict run
+  # fails on them, so the offline CLI tests pass --no-strict.
   strict: true
 
   # The default: validate and plan compile expressions against Snowflake, which
@@ -101,7 +105,7 @@ validation:
   # validate reports the skip as SST-VAL020 rather than as a pass.
   snowflake_syntax_check: true
 
-  # Removed (SST-CFG043): `expression_rules` (the derived-metric rules
+  # Removed (SST-CFG043): `expression_rules` (the metric-expression rules
   # SST-VAL102 to SST-VAL107 always run), `multipath_check` (always on; a metric
   # with an ambiguous join path declares using_relationships, SST-VAL116) and
   # `smoke_query` (smoke probes run under `sst test --suite smoke`).
@@ -265,8 +269,8 @@ apply:
   # `agent_spec_stage` takes a location. `eval_config_stage` takes only a stage
   # name, because eval configs are staged in each agent's own schema. Publish
   # order is fixed by artifact type (semantic views, tools, skills, plugins,
-  # profiles, agents, evals), not configured. `deploy:` is a removed name for
-  # this block (SST-CFG043).
+  # profiles, agents, evals), not configured. `deploy:` is a deprecated name
+  # for this block: an error (SST-CFG200), still read as `apply:`.
   agent_spec_stage:
     database: "{{ target.database }}"
     schema: JAFFLE

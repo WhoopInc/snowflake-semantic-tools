@@ -12,7 +12,7 @@ tools:
     description: |-
       Tool backing objects for the jaffle analytics surface. Search over the menu,
       plus lookups owned by the ordering platform team.
-    owner: daa-platform
+    owner: analytics-platform
     # No `immutable:`: an immutable group cannot carry `define:` (SST-VAL606).
 
     # =======================================================================

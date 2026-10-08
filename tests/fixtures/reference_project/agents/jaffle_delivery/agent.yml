@@ -13,8 +13,8 @@
 # project, so it cannot close a cycle.
 #
 # Every agent tool raises SST-VAL528, a warning that the tool surface is no
-# longer fixed by this spec. It is the one warning in the fixture's offline
-# validate.
+# longer fixed by this spec. It is one of the fixture's deliberate offline
+# warnings, listed under `validation.strict` in sst_config.yml.
 # =============================================================================
 
 name: jaffle_delivery_agent
@@ -73,5 +73,5 @@ alias: promoted
 enabled: true
 
 meta:
-  owner: daa-platform
+  owner: analytics-platform
   deprecated: false

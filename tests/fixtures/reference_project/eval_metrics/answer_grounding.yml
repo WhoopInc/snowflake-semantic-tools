@@ -63,4 +63,4 @@ threshold_default:
 enabled: true
 
 meta:
-  owner: daa-platform
+  owner: analytics-platform
