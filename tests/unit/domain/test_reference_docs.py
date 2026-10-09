@@ -160,6 +160,15 @@ def test_config_page_renders_notes_types_and_removed_keys() -> None:
     assert "| `pick.named` | has its own code | [`SST-CFG040`](error-codes.md#sst-cfg040) |" in removed
 
 
+def test_cli_usage_shows_positional_arguments_and_config_page_names_the_other_files() -> None:
+    commands = (CommandDoc("sst format", "Format files.", arguments=("[PATH]...",)), *COMMANDS)
+    cli_page = reference_pages(commands, GLOBAL, EXITS, {})[f"{REFERENCE_DIR}/cli.md"]
+    assert "```text\nsst format [OPTIONS] [PATH]...\n```" in cli_page
+    assert "```text\nsst migrate refs [OPTIONS]\n```" in cli_page
+    intro = render_config(()).split("\n## ", 1)[0]
+    assert "`sst_config.yaml`" in intro and "`--config`" in intro
+
+
 def test_fixed_keys_state_their_value_in_their_summary() -> None:
     for key in CONFIG_SCHEMA:
         if key.fixed is not None:

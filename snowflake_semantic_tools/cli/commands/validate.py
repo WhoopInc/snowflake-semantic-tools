@@ -22,7 +22,7 @@ from snowflake_semantic_tools.cli.options import (
     validation_options,
     with_model_paths,
 )
-from snowflake_semantic_tools.cli.output import counted, summary_counts, suppressed_by_baseline
+from snowflake_semantic_tools.cli.output import counted, reported_diagnostics, summary_counts, suppressed_by_baseline
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import (
     project_config,
@@ -107,18 +107,20 @@ def validate(
             "artifacts_checked": result.artifacts_checked,
             "suppressed_by_baseline": suppressed_by_baseline(diagnostics),
         },
-        human=lambda: _print_counts(result),
+        human=lambda: _print_counts(result, diagnostics),
         promoted=result.promoted,
         gated=True,
     )
 
 
-def _print_counts(result: ValidationResult) -> None:
+def _print_counts(result: ValidationResult, diagnostics: DiagnosticBag) -> None:
     """Print what was validated, once the baseline is matched, unless an error it does not hold remains.
 
-    A diagnostic the baseline holds is counted apart, so a run it lets pass reports no errors.
+    The counts are those of the diagnostics the run reports, so they match the summary line
+    above them; a diagnostic the baseline holds is counted apart, so a run it lets pass
+    reports no errors.
     """
-    counts = summary_counts(result.diagnostics)
+    counts = summary_counts(reported_diagnostics(diagnostics))
     if counts["error"]:
         return
     held = f" ({counts['baselined']} baselined)" if counts["baselined"] else ""

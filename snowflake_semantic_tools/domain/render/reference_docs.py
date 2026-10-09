@@ -69,6 +69,8 @@ class CommandDoc:
     description: str
     options: tuple[OptionDoc, ...] = ()
     subcommands: tuple[str, ...] = ()
+    # The positional arguments' usage, in order, such as `[PATH]...`.
+    arguments: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -375,8 +377,9 @@ def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
         "",
         GENERATED,
         "",
-        "`sst_config.yml` sits at the project root. Every key SST reads is listed here,",
-        "and nothing else is read:",
+        "`sst_config.yml` (or `sst_config.yaml`, but not both) sits at the project root;",
+        "`--config` or `$SST_CONFIG` names another file instead. Every key SST reads is",
+        "listed here, and nothing else is read:",
         "",
         "- an unknown key is a warning (`SST-CFG003`), or an error when it is a",
         "  misspelled top-level block (`SST-CFG007`);",
@@ -459,7 +462,7 @@ def render_cli(
 
     A table of each command's first paragraph, the global options, and the exit codes come
     first, then a section per command: a group lists its subcommands, and any other command
-    shows its usage and options.
+    shows its usage, with its positional arguments, and options.
 
     Args:
         commands: Every command and group, in the order the page lists them.
@@ -494,7 +497,7 @@ def render_cli(
                 "Subcommands: " + ", ".join(f"[`{name}`](#{_slug(name)})" for name in command.subcommands) + "."
             )
             continue
-        lines.extend(("```text", f"{command.path} [OPTIONS]", "```", ""))
+        lines.extend(("```text", " ".join((command.path, "[OPTIONS]", *command.arguments)), "```", ""))
         lines.extend(_option_table(command.options))
     return "\n".join(lines).rstrip("\n") + "\n"
 

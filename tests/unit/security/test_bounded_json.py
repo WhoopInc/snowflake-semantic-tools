@@ -34,6 +34,7 @@ from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
 from snowflake_semantic_tools.cli.commands.debug import _manifest
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.run_log import RUN_LOG, signature_report
+from snowflake_semantic_tools.domain.model.config_schema import DbtSettings
 from tests.helpers.reference_project import project_copy
 
 CRAFTED = ("nested-past-the-bound", "nested-past-recursion", "oversized")
@@ -124,7 +125,7 @@ def test_a_crafted_mcp_config_is_refused_as_not_valid(tmp_path: Path, crafted: s
 def test_debug_reports_no_schema_for_a_crafted_dbt_manifest(tmp_path: Path, crafted: str) -> None:
     path = tmp_path / "manifest.json"
     path.write_text(crafted, encoding="utf-8")
-    reported = _manifest(locate_project(project_copy(tmp_path)), path)
+    reported = _manifest(locate_project(project_copy(tmp_path)), path, DbtSettings())
     assert (reported["schema_version"], reported["supported"]) == (None, None)
 
 

@@ -12,6 +12,18 @@ from tests.helpers.cli_projects import common
 from tests.helpers.reference_project import project_copy
 
 
+def test_init_reads_the_configured_semantic_models_dir(tmp_path: Path) -> None:
+    (tmp_path / "dbt_project.yml").write_text("name: p\nprofile: p\n", encoding="utf-8")
+    (tmp_path / "sst_config.yml").write_text("project:\n  semantic_models_dir: semantics\n", encoding="utf-8")
+    check = CliRunner().invoke(cli, ["init", "--project-dir", str(tmp_path), "--check-only", "--output", "json"])
+    assert (check.exit_code, json.loads(check.output)["data"]["missing"]) == (1, ["semantics/semantic_views"])
+    initialized = CliRunner().invoke(cli, ["init", "--project-dir", str(tmp_path), "--output", "json"])
+    assert json.loads(initialized.output)["data"]["created"] == ["semantics/semantic_views"]
+    assert not (tmp_path / "semantic_models").exists()
+    complete = CliRunner().invoke(cli, ["init", "--project-dir", str(tmp_path), "--check-only", "--output", "json"])
+    assert (complete.exit_code, json.loads(complete.output)["data"]["status"]) == (0, "complete")
+
+
 def test_init_debug_clean_and_list_json(tmp_path: Path) -> None:
     root = tmp_path / "empty"
     refused = CliRunner().invoke(cli, ["init", "--project-dir", str(root), "--output", "json"])

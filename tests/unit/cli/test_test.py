@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import shutil
 from hashlib import md5
@@ -437,9 +438,9 @@ def test_eval_suite_reports_every_attempt_in_human_output(
         EvalCostSummary(duration_ms=50, total_tokens=8, total_input_tokens=10, total_output_tokens=5, llm_call_count=1),
         agent_version="LAST",
     )
-    suite = EvalSuiteResult(
-        (EvalRunResult(eval_item.artifact_key, (attempt,), DiagnosticBag(), True),), DiagnosticBag()
-    )
+    attempts = tuple(dataclasses.replace(attempt, run_name=f"EVAL_RUN_R{n}", attempt=n) for n in range(1, 6))
+    # The fixture eval's `baseline_runs: 5` needs five completed attempts to capture.
+    suite = EvalSuiteResult((EvalRunResult(eval_item.artifact_key, attempts, DiagnosticBag(), True),), DiagnosticBag())
     monkeypatch.setattr("snowflake_semantic_tools.app.evals.run.RunEvalSuite.run", lambda *args, **kwargs: suite)
     monkeypatch.setattr(
         "snowflake_semantic_tools.app.evals.suite.validate_eval_publication", lambda *args: DiagnosticBag()
@@ -528,6 +529,29 @@ def test_eval_baseline_capture_requires_reason(tmp_path: Path) -> None:
     )
     assert result.exit_code == 3
     assert "requires --reason" in json.loads(result.output)["data"]["error"]
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        (["--reason", "why"], "--reason requires --capture-baseline"),
+        (["--suite", "golden", "--reason", "why"], "--reason requires --capture-baseline"),
+        (["--suite", "golden", "--capture-baseline", "--reason", "why"], "add --suite evals"),
+        (["--suite", "smoke", "--capture-baseline", "--reason", "why"], "add --suite evals"),
+        (["--update-golden", "--capture-baseline", "--reason", "why"], "cannot run with --update-golden"),
+        # No --suite, and nothing compiled yet: only the golden suite applies.
+        (["--capture-baseline", "--reason", "why"], "the eval suite does not apply"),
+    ],
+)
+def test_baseline_flags_are_refused_where_the_eval_suite_does_not_run(
+    tmp_path: Path, args: list[str], message: str
+) -> None:
+    project = project_copy(tmp_path)
+    result = CliRunner().invoke(cli, ["test", *common(project), *args, "--output", "json"])
+    assert result.exit_code == 3, result.output
+    payload = json.loads(result.output)
+    assert message in payload["data"]["error"]
+    assert [item["code"] for item in payload["diagnostics"]] == ["SST-PRT100"]
 
 
 def test_the_eval_suite_closes_its_connection_when_it_fails_before_running(

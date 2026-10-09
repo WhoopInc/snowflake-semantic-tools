@@ -42,7 +42,7 @@ from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
 from snowflake_semantic_tools.adapters.yaml.semantic import load_semantic_views_result, read_semantic_inputs
 from snowflake_semantic_tools.adapters.yaml.skills import _published, load_skill_catalog
 from snowflake_semantic_tools.adapters.yaml.tools import load_tool_catalog
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.config_schema import (
     config_block,
@@ -75,7 +75,8 @@ class YamlProjectSource:
 
     Satisfies `domain.ports.semantic_view_source.SemanticViewSource` structurally;
     it does not import the Protocol, which is what keeps the dependency pointing
-    one way.
+    one way. `allow_stale_manifest` reports a stale `--manifest` (SST-DBT005) as a warning
+    instead of an error, as `--allow-stale-manifest` asks.
     """
 
     def __init__(
@@ -88,12 +89,14 @@ class YamlProjectSource:
         database: str | None = None,
         dbt_runner: DbtRunner = subprocess_runner,
         load_cache: LoadCache | None = None,
+        allow_stale_manifest: bool = False,
     ) -> None:
         self._files = files
         self._database = database
         self._project_dir = files.project_dir
         self._target_name = target_name
         self._manifest_path = manifest_path
+        self._allow_stale_manifest = allow_stale_manifest
         self._invoke_dbt = invoke_dbt
         self._runner = dbt_runner
         self._load_cache = load_cache
@@ -202,14 +205,21 @@ class YamlProjectSource:
             SST-DBT013, SST-DBT014, SST-DBT012: from reading the manifest.
             SST-DBT001: the manifest holds no model.
             SST-DBT022: `model-paths` cannot be read.
-            SST-DBT005: under `--manifest`, a model file changed after the manifest was written.
+            SST-DBT005: under `--manifest`, a model file changed after the manifest was written;
+                a warning under `--allow-stale-manifest`.
         """
         found = [*self._parse_warnings, *catalog.diagnostics, *empty_catalog(catalog)]
         if self._manifest_path is not None and (self._project_dir / "dbt_project.yml").is_file():
             paths, unreadable = model_paths(self._project_dir, read_yaml_mapping)
             if self._files.model_paths is not None:
                 paths, unreadable = self._files.model_paths, ()
-            found.extend((*unreadable, *stale_models(self._project_dir, catalog, paths)))
+            stale = stale_models(self._project_dir, catalog, paths)
+            if self._allow_stale_manifest:
+                # Recorded as an override, so the severity stays one the policy could give.
+                stale = tuple(
+                    dataclasses.replace(item, severity=Severity.WARNING, override=Severity.WARNING) for item in stale
+                )
+            found.extend((*unreadable, *stale))
         return tuple(found)
 
     def load_project(self) -> SemanticViewProject:
@@ -314,6 +324,7 @@ class YamlProjectInputs(ProjectInputs):
     Implements `domain.ports.project.ProjectInputs`, whose methods document the contract.
     Without a dbt manifest path, the semantic views and tools run `dbt parse` first. The
     commit comes from `git_sha`, which the CLI supplies, so the CLI decides how git is asked.
+    `allow_stale_manifest` is passed to the source, as `YamlProjectSource` describes.
     """
 
     def __init__(
@@ -326,6 +337,7 @@ class YamlProjectInputs(ProjectInputs):
         database: str | None = None,
         dbt_runner: DbtRunner = subprocess_runner,
         load_cache: LoadCache | None = None,
+        allow_stale_manifest: bool = False,
     ) -> None:
         self._files = files
         self._project_dir = files.project_dir
@@ -340,6 +352,7 @@ class YamlProjectInputs(ProjectInputs):
             database=database,
             dbt_runner=dbt_runner,
             load_cache=self._load_cache,
+            allow_stale_manifest=allow_stale_manifest,
         )
         self._git_sha = git_sha
 

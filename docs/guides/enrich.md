@@ -209,7 +209,7 @@ the block's warnings and leaves the rest of the file to `sst validate`.
 | `--force-synonyms`, `--force-column-types`, `--force-data-types`, `--force-all` | `--force synonyms`, `column-types`, `data-types`, `all` |
 | `-d`, `-s` | `--database`, `--schema`; `-t` is still `--target` |
 | `--manifest` | the global `--manifest` |
-| `--verbose` / `-v` | removed: every change is reported, and `--output json` gives the full report |
+| `--verbose` / `-v` | the global `--verbose`; every change is reported without it, and `--output json` gives the full report |
 | `--include-sources`, `--sources-only`, `--source` | not supported: 1.0 enriches dbt models only |
 | `--allow-non-prod` | `--allow-non-prod`: still needed for a target that is not production-like |
 

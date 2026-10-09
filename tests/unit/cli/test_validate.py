@@ -28,8 +28,11 @@ def test_validate_accepts_the_recorded_manifest_offline(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     # SST-VAL528, SST-RND010 for the minimal agent's empty tool list, SST-RND013 for the generic
-    # tool's resources, and SST-CFG018 for each of the two partner tool members nothing references.
-    assert "validated 14 artifact(s): 0 errors, 5 warnings" in result.output
+    # tool's resources, SST-CFG018 for each of the two partner tool members nothing references,
+    # and SST-CFG034 for `--no-strict` against the copy's `validation.strict: true`. The counts
+    # line agrees with the summary line above it.
+    assert "0 errors; 6 warnings;" in result.output
+    assert "validated 14 artifact(s): 0 errors, 6 warnings" in result.output
 
 
 def test_validate_uses_config_strict_unless_cli_overrides(tmp_path: Path) -> None:

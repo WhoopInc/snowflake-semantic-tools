@@ -35,6 +35,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.config_schema import config_block
 from snowflake_semantic_tools.domain.model.eval import (
     DEFAULT_EVAL_CONFIG_STAGE,
+    EVAL_COMPLETED,
     EvalBaselineRecord,
     EvalDefaults,
     EvalGateVerdict,
@@ -264,14 +265,22 @@ class RunEvalGate:
         """Capture each eval's baseline, or evaluate its gate and record the verdict, in eval order.
 
         Captured baselines are written together once every eval has one, so a capture that
-        fails part way writes none.
+        fails part way writes none. A capture some eval of which completed fewer attempts
+        than its baseline needs captures nothing: each attempt has reported its own outcome.
+
+        Diagnostics:
+            SST-VAL734: under a capture, an eval completed and read fewer attempts than its
+                `run.baseline_runs`, else `evals.+baseline_runs`, requires; once per such eval.
         """
         verdicts: list[EvalGateVerdict] = []
         captured: list[EvalBaselineRecord] = []
         diagnostics: list[Diagnostic] = []
+        if request.capture_baseline:
+            short = _short_captures(evals, suite, defaults)
+            if short:
+                return verdicts, captured, list(short)
         for item, item_result in zip(evals, suite.evals, strict=False):
             if request.capture_baseline:
-                run = item.resolved.config.run
                 captured.append(
                     capture_baseline(
                         item,
@@ -279,11 +288,7 @@ class RunEvalGate:
                         reason=request.reason or "",
                         captured_at=self._clock.now_iso(),
                         default_tier=defaults.eval_tier,
-                        required_attempts=(
-                            run.baseline_runs
-                            if run is not None and run.baseline_runs is not None
-                            else defaults.baseline_runs
-                        ),
+                        required_attempts=_required_attempts(item, defaults),
                     )
                 )
                 diagnostics.extend(recorded_judges(item))
@@ -303,6 +308,37 @@ class RunEvalGate:
         if request.capture_baseline:
             self._eval_store.write_baselines(target_name, tuple(captured))
         return verdicts, captured, diagnostics
+
+
+def _required_attempts(item: CompiledEval, defaults: EvalDefaults) -> int | None:
+    """Return the completed attempts a capture of `item` needs: its `baseline_runs`, else the default."""
+    run = item.resolved.config.run
+    return run.baseline_runs if run is not None and run.baseline_runs is not None else defaults.baseline_runs
+
+
+def _short_captures(
+    evals: tuple[CompiledEval, ...], suite: EvalSuiteResult, defaults: EvalDefaults
+) -> tuple[Diagnostic, ...]:
+    """Report each eval a capture cannot take a baseline of, for too few completed attempts.
+
+    An attempt counts once it completed and its results were read, as `capture_baseline` counts
+    it; an eval the run did not reach, as `--fail-fast` leaves one, completed none.
+
+    Diagnostics:
+        SST-VAL734: the eval completed fewer attempts than it requires; once per such eval.
+    """
+    found: list[Diagnostic] = []
+    for index, item in enumerate(evals):
+        attempts = suite.evals[index].attempts if index < len(suite.evals) else ()
+        completed = sum(
+            attempt.terminal_status == EVAL_COMPLETED and attempt.retrieval_error is None for attempt in attempts
+        )
+        required = _required_attempts(item, defaults) or 1
+        if completed < required:
+            found.append(
+                D("SST-VAL734", artifact=item.name, count=completed, expected=required, subject=item.artifact_key)
+            )
+    return tuple(found)
 
 
 def view_overlaps(evals: tuple[CompiledEval, ...]) -> tuple[Diagnostic, ...]:
@@ -331,11 +367,12 @@ def _gate_data(
 ) -> dict[str, object]:
     """Project a run for the CLI: the suite's projection, with the gate's verdict filled in.
 
-    The verdict is `captured` for a capture; otherwise `no_signal` when some gate could not
-    tell, else `regressed` when some eval regressed, else `passed`.
+    The verdict is `captured` for a capture, `not_evaluated` for one that captured nothing;
+    otherwise `no_signal` when some gate could not tell, else `regressed` when some eval
+    regressed, else `passed`.
     """
     if request.capture_baseline:
-        verdict = "captured"
+        verdict = "captured" if captured else "not_evaluated"
     elif any(item.reason is not None for item in verdicts):
         verdict = "no_signal"
     elif any(item.regression_count for item in verdicts):

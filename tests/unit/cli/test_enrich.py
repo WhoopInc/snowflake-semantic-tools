@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from pathlib import Path
 
 import pytest
@@ -136,6 +137,18 @@ def test_the_json_report_lists_models_files_and_components(monkeypatch: pytest.M
     assert data["files"] == [
         {"path": "models/marts/order_items.yml", "changed": True, "created": False, "reformatted": False}
     ]
+
+
+def test_verbose_is_the_global_flag_declared_once(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        helped = CliRunner().invoke(cli, ["enrich", "--help"])
+    assert helped.exit_code == 0, helped.output
+    assert helped.output.count("-v, --verbose") == 1
+    for flag in ("-v", "--verbose"):
+        result = _invoke(monkeypatch, project, _port(), "--select", "order_items", "--check", flag)
+        assert result.exit_code == 2, result.output
+        assert "removed in SST 1.0" not in result.output
 
 
 @pytest.mark.parametrize(

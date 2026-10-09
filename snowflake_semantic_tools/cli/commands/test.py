@@ -68,15 +68,22 @@ _EXIT_RANK = {OK: 0, ERROR: 1, CONFIG: 2, CONNECTION: 3}
 _NOT_CI = frozenset({"", "0", "false", "no"})
 
 
-def _refuse_invocation(suites: tuple[str, ...], update_golden: bool) -> None:
-    """Refuse `--update-golden` with a suite that has no goldens, or in a CI run.
+def _refuse_invocation(
+    suites: tuple[str, ...], update_golden: bool, capture_baseline_requested: bool, reason: str | None
+) -> None:
+    """Refuse a flag combination the selected suites would not honour.
 
-    A pipeline that rewrites its own expectations asserts nothing, so `$CI` set to anything
+    `--update-golden` is refused with a suite that has no goldens or in a CI run, and
+    `--capture-baseline`/`--reason` when the eval suite would not read them. A pipeline that
+    rewrites its own expectations asserts nothing, so `$CI` set to anything
     but empty, `0`, `false` or `no` refuses the flag.
 
     Raises:
-        SstUsageError: `--suite` names `smoke` or `evals` with `--update-golden`, or `$CI` is set.
+        SstUsageError: `--suite` names `smoke` or `evals` with `--update-golden`, or `$CI` is set;
+            `--capture-baseline` and `--reason` are not given together, or are given with
+            `--update-golden` or with a `--suite` that does not name `evals`.
     """
+    _refuse_baseline_flags(suites, update_golden, capture_baseline_requested, reason)
     if not update_golden:
         return
     others = [name for name in suites if name != "golden"]
@@ -84,6 +91,22 @@ def _refuse_invocation(suites: tuple[str, ...], update_golden: bool) -> None:
         raise SstUsageError(f"--update-golden rewrites golden files only; it cannot run with --suite {others[0]}")
     if os.environ.get("CI", "").strip().casefold() not in _NOT_CI:
         raise SstUsageError("--update-golden is never valid in CI; regenerate golden files locally and commit them")
+
+
+def _refuse_baseline_flags(
+    suites: tuple[str, ...], update_golden: bool, capture_baseline_requested: bool, reason: str | None
+) -> None:
+    """Refuse `--capture-baseline` and `--reason` apart, or where the command line runs no eval suite."""
+    if capture_baseline_requested and not reason:
+        raise SstUsageError("--capture-baseline requires --reason")
+    if reason and not capture_baseline_requested:
+        raise SstUsageError("--reason requires --capture-baseline")
+    if not capture_baseline_requested:
+        return
+    if update_golden:
+        raise SstUsageError("--capture-baseline captures an eval baseline; it cannot run with --update-golden")
+    if suites and "evals" not in suites:
+        raise SstUsageError("--capture-baseline captures an eval baseline; add --suite evals")
 
 
 @click.command(cls=SstCommand, name="test")
@@ -130,7 +153,7 @@ def test_command(
     golden suite only, rewriting each golden the current output no longer equals. The eval
     suite holds the target's run lock while it runs, and `--break-stale-lock` takes it over
     only from a run that has expired; progress on its runs goes to stderr, except under
-    --quiet or --output json or yaml.
+    --quiet or --output json or yaml. `--capture-baseline` exits 3 unless the eval suite runs.
     """
     compiled = compiling.compile_result(paths, target_name, manifest_path)
     if not compiled.success:
@@ -141,6 +164,11 @@ def test_command(
     if update_golden:
         return _update_golden(paths.project_dir, golden_dir, result, inputs)
     chosen = suites or tuple(name for name in SUITES if _applies(name, paths, result))
+    if capture_baseline_requested and "evals" not in chosen:
+        raise SstUsageError(
+            "--capture-baseline captures an eval baseline, and the eval suite does not apply: "
+            "run sst compile first, or select an eval"
+        )
     reports: list[tuple[str, CommandResult]] = []
     for name in dict.fromkeys(chosen):
         if name == "golden":
@@ -328,14 +356,9 @@ def _run_evals(
     and a line naming the runs still in flight at most once a minute, go to stderr.
 
     Raises:
-        SstUsageError: `--capture-baseline` and `--reason` are not given together.
         ProjectError: the selection compiles no eval, the compiled manifest is stale, or another
             operation holds the target's lock; it carries what taking the lock reported.
     """
-    if request.capture_baseline and not request.reason:
-        raise SstUsageError("--capture-baseline requires --reason")
-    if request.reason and not request.capture_baseline:
-        raise SstUsageError("--reason requires --capture-baseline")
     full, result = results
     evals = compiled_evals(result)
     if not evals:

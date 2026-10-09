@@ -152,7 +152,8 @@ def test_strict_promoted_warnings_the_baseline_holds_are_counted_apart_not_as_er
     human = CliRunner().invoke(cli, ["validate", *common(project), "--strict"])
     assert human.exit_code == 0, human.output
     assert "0 errors; 1 warning (5 baselined); " in human.output
-    assert "validated 14 artifact(s): 0 errors, 0 warnings (5 baselined)" in human.output
+    # The closing line counts what the summary line counts.
+    assert "validated 14 artifact(s): 0 errors, 1 warning (5 baselined)" in human.output
 
 
 _PROMOTED = frozenset({"SST-CFG018", "SST-RND010", "SST-RND013", "SST-VAL528"})

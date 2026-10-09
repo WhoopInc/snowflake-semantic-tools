@@ -77,7 +77,8 @@ Scaffold SST into an existing dbt project without overwriting a file.
 Writes `sst_config.yml`, with every policy key at its documented default, and creates the
 `semantic_views` directory under the semantic models directory it names. On a terminal
 it asks for that directory, unless --skip-prompts or --output json; a file or directory
-that exists is left as it is. With --check-only nothing is written, and the command exits
+that exists is left as it is, and an existing configuration's `project.semantic_models_dir`
+is the directory used. With --check-only nothing is written, and the command exits
 1 unless the configuration file and the semantic views directory exist. Exit 4 when the
 directory is not a dbt project.
 
@@ -94,19 +95,22 @@ sst init [OPTIONS]
 
 Show the resolved configuration, profile, target, and registry, and test the connection.
 
-Reports the SST and dbt versions, every configuration path discovery checked, the
-registered artifact types, where the dbt manifest comes from and its schema, and the
-resolved target: profile, role, warehouse, database, schema, state table, and how it
-authenticates, never a credential. The connection is then opened, and its role and account
-reported; with --no-connect nothing connects. --snowflake-signatures reports instead how
-often Snowflake refusals went unrecognised, from `target/sst/run_log.jsonl`, offline.
+Reports the SST version and, when SST runs dbt for the manifest, the `dbt` on `PATH` it
+runs and that dbt's version; every configuration path discovery checked; the registered
+artifact types; where the dbt manifest comes from (`--manifest`, the file on disk under
+`dbt.invoke: false`, or the `dbt.command` SST runs), its schema, and the schema versions
+`dbt.manifest_schema_versions` accepts; and the resolved target: profile, role, warehouse,
+database, schema, state table, and how it authenticates, never a credential. The
+connection is then opened, and its role and account reported; with --no-connect nothing
+connects. --snowflake-signatures reports instead how often Snowflake refusals went
+unrecognised, from `target/sst/run_log.jsonl`, offline.
 
 Exit 0 when everything resolved, 1 when a resolved value is invalid, 4 when the configuration
 or profile cannot be, and 5 when the connection fails.
 
 Diagnostics:
     SST-CFG001: there is no configuration file.
-    SST-DBT017: the dbt manifest on disk declares a schema this release does not read.
+    SST-DBT017: the dbt manifest on disk declares a schema the run does not accept.
     SST-PRT001: the connection could not be opened.
     Each code the configuration file's own checks report, at exit 1 when one is an error.
 
@@ -167,7 +171,7 @@ Diagnostics:
     SST-CFG038: sample values or enums were asked for, and the project refuses collecting them.
 
 ```text
-sst enrich [OPTIONS]
+sst enrich [OPTIONS] [PATH]...
 ```
 
 | Option | Value | Default | Description |
@@ -208,7 +212,7 @@ Diagnostics:
     SST-INT003: a file's canonical form would change its value; it is left as it is.
 
 ```text
-sst format [OPTIONS]
+sst format [OPTIONS] [PATH]...
 ```
 
 | Option | Value | Default | Description |
@@ -318,7 +322,7 @@ Diagnostics:
     SST-PRT109: --all-warnings without --yes off a terminal, or with --output json; raised.
 
 ```text
-sst baseline add [OPTIONS]
+sst baseline add [OPTIONS] [CODE]
 ```
 
 | Option | Value | Default | Description |
@@ -410,7 +414,7 @@ with none there, or more than one target's, every artifact is pending. Without
 it, the project's files are compiled in memory, and nothing is written.
 
 ```text
-sst list [OPTIONS]
+sst list [OPTIONS] [TYPE]
 ```
 
 | Option | Value | Default | Description |
@@ -569,7 +573,7 @@ named, not applying, or not reached once --fail-fast stopped. `--update-golden` 
 golden suite only, rewriting each golden the current output no longer equals. The eval
 suite holds the target's run lock while it runs, and `--break-stale-lock` takes it over
 only from a run that has expired; progress on its runs goes to stderr, except under
---quiet or --output json or yaml.
+--quiet or --output json or yaml. `--capture-baseline` exits 3 unless the eval suite runs.
 
 ```text
 sst test [OPTIONS]
@@ -585,7 +589,7 @@ sst test [OPTIONS]
 | `--update-golden` | flag |  | Rewrite each golden the current output no longer equals, and create missing ones; runs the golden suite only. Refused with `--suite smoke` or `evals`, and when `$CI` is set to anything but empty, `0`, `false` or `no`. |
 | `--threads` | INTEGER RANGE |  | Smoke probes, and eval runs neither `evals.+concurrency` nor an eval's `run.concurrency` paces, run at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1. |
 | `--fail-fast` | flag |  | Stop the smoke or eval suite at its first failing probe or eval, running them one at a time, and run no suite after one that fails. The golden suite always compares every golden. |
-| `--capture-baseline` | flag |  | Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires `--reason`. |
+| `--capture-baseline` | flag |  | Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires `--reason`, and a run of the eval suite: refused with `--update-golden`, a `--suite` that does not name `evals`, or no `--suite` when the eval suite does not apply. |
 | `--reason` | TEXT |  | Why the baseline is changing; stored with it. Requires `--capture-baseline`. |
 | `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 
@@ -607,7 +611,7 @@ Diagnostics:
     SST-PRT100: the code is unknown; raised.
 
 ```text
-sst explain [OPTIONS]
+sst explain [OPTIONS] CODE
 ```
 
 | Option | Value | Default | Description |
@@ -692,7 +696,7 @@ Diagnostics:
     SST-PLN017: an agent apply published names the object; it is dropped all the same.
 
 ```text
-sst drop [OPTIONS]
+sst drop [OPTIONS] <DB>.<SCHEMA>.<NAME>
 ```
 
 | Option | Value | Default | Description |

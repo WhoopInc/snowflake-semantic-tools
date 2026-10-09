@@ -313,8 +313,13 @@ def test_a_baseline_with_too_few_completed_attempts_is_refused() -> None:
     store = InMemoryEvalStateStore()
     script: list[QueryResult | Exception] = [*completed_attempt(), ended("FAILED", f"{FIRST_RUN}_R2")]
 
-    with pytest.raises(ValueError, match="requires 2 completed attempts, found 1"):
-        gate(EvalSnowflake(script), request=capture, result=result, store=store)
+    outcome, _, _, _ = gate(EvalSnowflake(script), request=capture, result=result, store=store)
+
+    # The failed attempt reports its own outcome, then the shortfall; nothing is captured.
+    assert isinstance(outcome, EvalGateOutcome) and not outcome.passed
+    assert [item.code for item in outcome.diagnostics] == ["SST-APL023", "SST-VAL734"]
+    assert outcome.diagnostics[-1].message == "eval config for 'sales_agent': 1 baseline_runs completed, 2 required"
+    assert (outcome.data["gate_verdict"], outcome.data["captured_baselines"]) == ("not_evaluated", [])
     assert store.baselines == {}
 
 

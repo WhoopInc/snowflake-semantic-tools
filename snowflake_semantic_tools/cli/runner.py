@@ -61,6 +61,7 @@ from snowflake_semantic_tools.cli.output import (
     interrupted,
     json_envelope,
     print_report,
+    record_reported,
     render_diagnostics,
     resolve_invocation,
     use_render_policy,
@@ -371,6 +372,8 @@ def _report(command: str, options: GlobalOptions, result: CommandResult) -> None
         _exit(result.exit_code, withheld=print_report(_csv(result.rows or []), "CSV report"))
     if result.show_diagnostics:
         render_diagnostics(result.diagnostics)
+    # A human report that counts diagnostics counts these, as the summary line above did.
+    record_reported(result.diagnostics)
     withheld = result.human is not None and print_report(captured(result.human), "human report")
     if result.exit_code or withheld:
         _exit(result.exit_code, withheld=withheld)
