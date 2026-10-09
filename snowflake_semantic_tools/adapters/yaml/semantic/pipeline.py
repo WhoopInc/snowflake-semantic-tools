@@ -342,7 +342,8 @@ def _build_views(
     """Build each view of `nodes`, reporting a failure to build instead of raising it.
 
     Returns:
-        The views that built, in node order, by their casefolded artifact keys; and the failures.
+        The views that built, in node order, by their casefolded artifact keys; and the failures,
+        each distinct one once however many views it failed.
     """
     views: dict[str, SemanticView] = {}
     diagnostics: list[Diagnostic] = []
@@ -371,7 +372,10 @@ def _build_views(
                 context.catalog.sources,
             )
         except ProjectError as exc:
-            diagnostics.extend(_build_failure(context.project_dir, path, node, exc))
+            # A member several views hold fails the same way in each; it is reported once.
+            for item in _build_failure(context.project_dir, path, node, exc):
+                if item not in diagnostics:
+                    diagnostics.append(item)
     return views, tuple(diagnostics)
 
 

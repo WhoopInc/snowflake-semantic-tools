@@ -15,6 +15,103 @@ from snowflake_semantic_tools.domain.sql.core import Sql, _seal
 from snowflake_semantic_tools.domain.sql.values import _unrepresentable
 
 _UNQUOTED = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
+# Snowflake's reserved and limited keywords: as an identifier each must be quoted or not used.
+RESERVED_WORDS = frozenset(
+    [
+        "ACCOUNT",
+        "ALL",
+        "ALTER",
+        "AND",
+        "ANY",
+        "AS",
+        "BETWEEN",
+        "BY",
+        "CASE",
+        "CAST",
+        "CHECK",
+        "COLUMN",
+        "CONNECT",
+        "CONNECTION",
+        "CONSTRAINT",
+        "CREATE",
+        "CROSS",
+        "CURRENT",
+        "CURRENT_DATE",
+        "CURRENT_TIME",
+        "CURRENT_TIMESTAMP",
+        "CURRENT_USER",
+        "DATABASE",
+        "DELETE",
+        "DISTINCT",
+        "DROP",
+        "ELSE",
+        "EXISTS",
+        "FALSE",
+        "FOLLOWING",
+        "FOR",
+        "FROM",
+        "FULL",
+        "GRANT",
+        "GROUP",
+        "GSCLUSTER",
+        "HAVING",
+        "ILIKE",
+        "IN",
+        "INCREMENT",
+        "INNER",
+        "INSERT",
+        "INTERSECT",
+        "INTO",
+        "IS",
+        "ISSUE",
+        "JOIN",
+        "LATERAL",
+        "LEFT",
+        "LIKE",
+        "LOCALTIME",
+        "LOCALTIMESTAMP",
+        "MINUS",
+        "NATURAL",
+        "NOT",
+        "NULL",
+        "OF",
+        "ON",
+        "OR",
+        "ORDER",
+        "ORGANIZATION",
+        "QUALIFY",
+        "REGEXP",
+        "REVOKE",
+        "RIGHT",
+        "RLIKE",
+        "ROW",
+        "ROWS",
+        "SAMPLE",
+        "SCHEMA",
+        "SELECT",
+        "SET",
+        "SOME",
+        "START",
+        "TABLE",
+        "TABLESAMPLE",
+        "THEN",
+        "TO",
+        "TRIGGER",
+        "TRUE",
+        "TRY_CAST",
+        "UNION",
+        "UNIQUE",
+        "UPDATE",
+        "USING",
+        "VALUES",
+        "VIEW",
+        "WHEN",
+        "WHENEVER",
+        "WHERE",
+        "WINDOW",
+        "WITH",
+    ]
+)
 # Snowflake's limit on an identifier, quoted or not.
 _MAX_IDENTIFIER = 255
 # The characters a stage path segment may hold unquoted after `@<stage>/`.
@@ -80,17 +177,9 @@ def _identifier_text(identifier: Identifier) -> str:
     # A reader may take `$$` inside a word as opening a dollar-quoted string, and a reserved word
     # as the keyword, so such a name is quoted in the upper case its unquoted form resolves to,
     # naming the same object.
-    if not identifier.quoted and ("$$" in value or value.upper() in _reserved_words()):
+    if not identifier.quoted and ("$$" in value or value.upper() in RESERVED_WORDS):
         return Identifier(value.upper(), quoted=True).sql
     return identifier.sql
-
-
-def _reserved_words() -> frozenset[str]:
-    """Snowflake's reserved and limited keywords, the one set the name checks also use."""
-    # Imported here: `domain.parse.names` reaches this module through `domain.validate.sql`.
-    from snowflake_semantic_tools.domain.parse.names import RESERVED_WORDS
-
-    return RESERVED_WORDS
 
 
 def ident(identifier: Identifier) -> Sql:

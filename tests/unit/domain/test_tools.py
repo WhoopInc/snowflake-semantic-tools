@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
-from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership, ToolParameter
 from snowflake_semantic_tools.domain.validate.tool import validate_tool_catalog
@@ -294,6 +294,34 @@ def test_tool_validation_covers_reference_without_relations_shared_target_warnin
         "SST-LOD018",
         "SST-LOD019",
     }.issubset({diagnostic.code for diagnostic in diagnostics})
+
+
+def test_a_refused_body_file_is_reported_only_as_refused() -> None:
+    origin = Origin("tools.yml", 1, 1)
+    refused = ToolMember(
+        "group", "Lookup", "procedure", ToolOwnership.DEFINE, origin, "tools.yml", body_file="../secret.sql"
+    )
+    missing = ToolMember(
+        "group", "other", "procedure", ToolOwnership.DEFINE, origin, "tools.yml", body_file="missing.sql"
+    )
+    refusal = D(
+        "SST-PRT009",
+        path="../secret.sql",
+        detail="it resolves outside the project",
+        subject="tool:Lookup",
+        origin=origin,
+    )
+    catalog = ToolCatalog(
+        (ToolGroup("group", origin, "tools.yml", members=(refused, missing)),),
+        "dev",
+        frozenset(("dev",)),
+        DiagnosticBag((refusal,)),
+    )
+    diagnostics = validate_tool_catalog(catalog, DbtCatalog("v12", None, None, ()))
+    assert [(item.code, item.subject) for item in diagnostics if item.code in {"SST-PRT009", "SST-LOD018"}] == [
+        ("SST-LOD018", "tool:other"),
+        ("SST-PRT009", "tool:Lookup"),
+    ]
 
 
 def test_tool_validation_reports_unknown_search_model() -> None:

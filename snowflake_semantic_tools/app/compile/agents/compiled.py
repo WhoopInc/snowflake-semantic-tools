@@ -19,7 +19,6 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     Upload,
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
-from snowflake_semantic_tools.domain.parse.names import RESERVED_WORDS
 from snowflake_semantic_tools.domain.sql import (
     Sql,
     boolean,
@@ -263,17 +262,10 @@ def _alias(value: str) -> Sql:
     return ident(Identifier.parse(value))
 
 
-def _unreserved(part: Identifier) -> Identifier:
-    """An unquoted reserved word, quoted as the upper-cased name it already resolves to."""
-    if not part.quoted and part.folded in RESERVED_WORDS:
-        return Identifier(part.folded, quoted=True)
-    return part
-
-
 def _qualified_or_identifier(value: str) -> Sql:
-    """Render a tag name: three parts or one, each reserved word quoted so it still parses."""
+    """Render a tag name: three parts or one, each reserved word quoted, as `ident` renders it."""
     try:
         name = QualifiedName.parse(value)
     except ValueError:
-        return ident(_unreserved(Identifier.parse(value)))
-    return qname(QualifiedName(_unreserved(name.database), _unreserved(name.schema), _unreserved(name.name)))
+        return ident(Identifier.parse(value))
+    return qname(name)

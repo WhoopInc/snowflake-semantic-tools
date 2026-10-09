@@ -32,6 +32,17 @@ def test_sst_val418_fires(tmp_path: Path) -> None:
     assert all("DROP TABLE" not in str(view.metrics) for view in loaded.views)
 
 
+def test_sst_val418_once_for_a_metric_two_views_hold(tmp_path: Path) -> None:
+    clean = load_project(project_copy(tmp_path / "clean"), manifest_path=MANIFEST)
+    holders = [view for view in clean.views if any(metric.name == "ORDER_COUNT" for metric in view.metrics)]
+    assert len(holders) >= 2
+    project = project_copy(tmp_path / "broken")
+    path = project / METRICS
+    path.write_text(path.read_text().replace(ORDER_COUNT, f"{ORDER_COUNT}); DROP TABLE x; --", 1))
+    diagnostics = load_project(project, manifest_path=MANIFEST).diagnostics
+    assert [item.subject for item in diagnostics if item.code == "SST-VAL418"] == ["metric:order_count"]
+
+
 def test_sst_val418_silent(tmp_path: Path) -> None:
     diagnostics = load_project(project_copy(tmp_path), manifest_path=MANIFEST).diagnostics
     assert "SST-VAL418" not in [item.code for item in diagnostics]
