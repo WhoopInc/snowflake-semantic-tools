@@ -578,6 +578,8 @@ def parse_semantic_views(
                 "tables": tables_json,
                 "custom_instructions": custom_instructions_json,
                 "source_file": str(file_path),
+                "database": view_def.get("database"),
+                "schema": view_def.get("schema"),
                 **scope_fields,
             }
 
