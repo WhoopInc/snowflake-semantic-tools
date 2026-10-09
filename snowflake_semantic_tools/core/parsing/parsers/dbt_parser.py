@@ -47,6 +47,7 @@ def get_empty_result() -> Dict[str, List[Dict[str, Any]]]:
         "sm_verified_queries": [],
         "sm_custom_instructions": [],
         "sm_semantic_views": [],
+        "sm_skipped_columns": [],
     }
 
 
@@ -178,10 +179,7 @@ def parse_single_model(
             result["sm_facts"].append(fact_data)
 
         else:
-            # Skip columns with missing or invalid column_type - validation will catch this
-            logger.debug(
-                f"Skipping column '{column.get('name', 'unknown')}' with missing/invalid column_type during extraction"
-            )
+            result["sm_skipped_columns"].append(column_data)
 
     return result
 
