@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from snowflake_semantic_tools.adapters.dbt.invoke import CompletedRun
 from tests.helpers.cli_projects import common, invoke_with_port
 from tests.helpers.reference_project import project_copy
+from tests.helpers.seam_projects import FakeDbt, SmallProject, manifest
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
@@ -35,6 +38,54 @@ def test_debug_connection_and_human_apply_prompt(tmp_path: Path, monkeypatch: py
         ["apply", *common(project), "--target", "dev"],
     )
     assert applied.exit_code != 0 and "Apply this plan?" in applied.output
+
+
+def _debug_data(monkeypatch: pytest.MonkeyPatch, root: Path, config: str, dbt: FakeDbt) -> dict[str, Any]:
+    from click.testing import CliRunner
+
+    from snowflake_semantic_tools.cli.commands import debug
+    from snowflake_semantic_tools.cli.main import cli
+
+    SmallProject(root, files={"sst_config.yml": config, "dbt_project.yml": DBT_PROJECT}).write()
+    document = manifest()
+    document["metadata"]["dbt_schema_version"] = "https://schemas.getdbt.com/dbt/manifest/v11.json"
+    (root / "out").mkdir()
+    (root / "out" / "manifest.json").write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(debug, "dbt_runner", dbt)
+    result = CliRunner().invoke(cli, ["debug", "--project-dir", str(root), "--no-connect", "-o", "json"])
+    envelope: dict[str, Any] = json.loads(result.stdout)
+    envelope["data"]["exit_code"] = result.exit_code
+    return envelope
+
+
+DBT_PROJECT = "name: fixture\nprofile: fixture\nmodel-paths: [models]\ntarget-path: out\n"
+CONFIG = "project:\n  semantic_models_dir: semantic_models\nvalidation:\n  snowflake_syntax_check: false\n"
+
+
+def test_debug_reports_the_dbt_sst_runs_and_the_manifest_it_accepts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dbt = FakeDbt(version=CompletedRun(0, "Core:\n  - installed: 1.9.4\n  - latest: 1.9.4\n", ""))
+    accepted = CONFIG + "dbt:\n  command: compile\n  manifest_schema_versions: [11]\n"
+    envelope = _debug_data(monkeypatch, tmp_path / "accepted", accepted, dbt)
+    data = envelope["data"]
+    # The version is the one `dbt --version` reports, which is the dbt SST runs.
+    assert dbt.runs == [("dbt", "--version")]
+    assert data["versions"]["dbt"] == "1.9.4"
+    assert data["manifest"]["source"] == "dbt compile" and data["manifest"]["runs_dbt"] is True
+    assert data["manifest"]["path"] == str(tmp_path / "accepted" / "out" / "manifest.json")
+    assert (data["manifest"]["accepted_schema_versions"], data["manifest"]["supported"]) == (["v11"], True)
+    assert data["exit_code"] == 0 and "SST-DBT017" not in {item["code"] for item in envelope["diagnostics"]}
+
+    unread = FakeDbt()
+    refused = _debug_data(monkeypatch, tmp_path / "refused", CONFIG + "dbt:\n  invoke: false\n", unread)
+    assert unread.runs == []
+    assert refused["data"]["versions"]["dbt"] is None
+    assert refused["data"]["manifest"]["source"] == "on disk (dbt.invoke: false)"
+    assert refused["data"]["manifest"]["accepted_schema_versions"] == ["v12"]
+    [diagnostic] = [item for item in refused["diagnostics"] if item["code"] == "SST-DBT017"]
+    assert "v12" in diagnostic["message"]
+    assert refused["data"]["exit_code"] == 1
 
 
 def test_debug_reports_every_candidate_and_refuses_what_it_cannot_resolve(tmp_path: Path) -> None:

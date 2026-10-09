@@ -8,18 +8,22 @@ recognise, from the run log every command appends to.
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Mapping
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import click
 
 from snowflake_semantic_tools._version import __version__ as VERSION
+from snowflake_semantic_tools.adapters.dbt.invoke import DbtRunner, subprocess_runner
+from snowflake_semantic_tools.adapters.dbt.manifest import SUPPORTED_SCHEMA_VERSIONS, schema_version_number
 from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_profile_target
+from snowflake_semantic_tools.adapters.dbt.project import target_path
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.json_files import read_json_file
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
+from snowflake_semantic_tools.adapters.yaml.parse import read_yaml_mapping
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, ERROR, OK
 from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.options import target_option
@@ -28,12 +32,12 @@ from snowflake_semantic_tools.cli.run_log import signature_report
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body
 from snowflake_semantic_tools.cli.wiring.project import open_connector, target_dir
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
-from snowflake_semantic_tools.domain.model.config_schema import config_block
+from snowflake_semantic_tools.domain.model.config_schema import DbtSettings, config_block, dbt_settings
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
-# The dbt manifest schema this release reads; any other is refused unless allowed for one run.
-_SUPPORTED_MANIFEST_SCHEMA = "https://schemas.getdbt.com/dbt/manifest/v12.json"
+# How `dbt --version` is run: looked up on each call, so a test replaces it here.
+dbt_runner: DbtRunner = subprocess_runner
 
 
 @click.command(cls=SstCommand)
@@ -50,19 +54,22 @@ def debug(
 ) -> CommandResult:
     """Show the resolved configuration, profile, target, and registry, and test the connection.
 
-    Reports the SST and dbt versions, every configuration path discovery checked, the
-    registered artifact types, where the dbt manifest comes from and its schema, and the
-    resolved target: profile, role, warehouse, database, schema, state table, and how it
-    authenticates, never a credential. The connection is then opened, and its role and account
-    reported; with --no-connect nothing connects. --snowflake-signatures reports instead how
-    often Snowflake refusals went unrecognised, from `target/sst/run_log.jsonl`, offline.
+    Reports the SST version and, when SST runs dbt for the manifest, the `dbt` on `PATH` it
+    runs and that dbt's version; every configuration path discovery checked; the registered
+    artifact types; where the dbt manifest comes from (`--manifest`, the file on disk under
+    `dbt.invoke: false`, or the `dbt.command` SST runs), its schema, and the schema versions
+    `dbt.manifest_schema_versions` accepts; and the resolved target: profile, role, warehouse,
+    database, schema, state table, and how it authenticates, never a credential. The
+    connection is then opened, and its role and account reported; with --no-connect nothing
+    connects. --snowflake-signatures reports instead how often Snowflake refusals went
+    unrecognised, from `target/sst/run_log.jsonl`, offline.
 
     Exit 0 when everything resolved, 1 when a resolved value is invalid, 4 when the configuration
     or profile cannot be, and 5 when the connection fails.
 
     Diagnostics:
         SST-CFG001: there is no configuration file.
-        SST-DBT017: the dbt manifest on disk declares a schema this release does not read.
+        SST-DBT017: the dbt manifest on disk declares a schema the run does not accept.
         SST-PRT001: the connection could not be opened.
         Each code the configuration file's own checks report, at exit 1 when one is an error.
     """
@@ -70,9 +77,10 @@ def debug(
         report = signature_report(target_dir(paths.project_dir))
         data: dict[str, object] = {"signatures": report}
         return CommandResult(data=data, human=lambda: _print_fields(report))
-    manifest = _manifest(paths, manifest_path)
+    settings = _dbt_settings(paths, target_name)
+    manifest = _manifest(paths, manifest_path, settings)
     data = {
-        "versions": _versions(),
+        "versions": _versions(paths, runs_dbt=manifest["runs_dbt"] is True),
         "config": _config(paths),
         "registry": sorted(SEMANTIC_REGISTRY.artifacts),
         "manifest": manifest,
@@ -102,12 +110,40 @@ def debug(
     return CommandResult(exit_code, diagnostics, data, human=lambda: _print_fields(data))
 
 
-def _versions() -> dict[str, object]:
+def _dbt_settings(paths: ProjectPaths, target_name: str | None) -> DbtSettings:
+    """Return the `dbt:` block the run resolves; its defaults when no configuration resolves."""
+    if paths.config_file is None:
+        return DbtSettings()
     try:
-        dbt = version("dbt-core")
-    except PackageNotFoundError:
-        dbt = None
-    return {"sst": VERSION, "dbt": dbt}
+        return dbt_settings(resolved_config(paths, target_name).tree)
+    except ProjectError:
+        # Reported, with its exit code, once the configuration is resolved below.
+        return DbtSettings()
+
+
+def _versions(paths: ProjectPaths, *, runs_dbt: bool) -> dict[str, object]:
+    """Report SST's version and, when SST runs dbt, which `dbt` on `PATH` and its version."""
+    if not runs_dbt:
+        return {"sst": VERSION, "dbt": None, "dbt_path": None}
+    return {"sst": VERSION, "dbt": _dbt_version(paths.project_dir), "dbt_path": shutil.which("dbt")}
+
+
+def _dbt_version(project_dir: Path) -> str | None:
+    """Return the version `dbt --version` reports, as SST runs it; None when it cannot say."""
+    try:
+        completed = dbt_runner(("dbt", "--version"), project_dir)
+    except OSError:
+        return None
+    lines = [line.strip() for line in f"{completed.stdout}\n{completed.stderr}".splitlines() if line.strip()]
+    if completed.returncode != 0 or not lines:
+        return None
+    for line in lines:
+        # dbt-core prints `- installed: 1.8.0`; the dbt Cloud CLI prints `dbt Cloud CLI - 0.38.6`.
+        if "installed:" in line:
+            return line.split("installed:", 1)[1].split()[0]
+        if "cloud cli" in line.casefold() and " - " in line:
+            return line.rsplit(" - ", 1)[1].split()[0]
+    return lines[0]
 
 
 def _config(paths: ProjectPaths) -> dict[str, object]:
@@ -119,9 +155,19 @@ def _config(paths: ProjectPaths) -> dict[str, object]:
     }
 
 
-def _manifest(paths: ProjectPaths, manifest_path: Path | None) -> dict[str, object]:
-    """Report where the dbt manifest comes from and, when one is on disk, its schema version."""
-    path = manifest_path or paths.project_dir / "target" / "manifest.json"
+def _manifest(paths: ProjectPaths, manifest_path: Path | None, settings: DbtSettings) -> dict[str, object]:
+    """Report where the dbt manifest comes from, the schemas accepted, and the one on disk.
+
+    The path is the one SST reads: `--manifest`, else the one dbt writes under
+    `dbt_project.yml`'s `target-path`.
+    """
+    runs_dbt = manifest_path is None and settings.invoke
+    if manifest_path is not None:
+        source = "--manifest"
+    else:
+        source = f"dbt {settings.command}" if settings.invoke else "on disk (dbt.invoke: false)"
+    accepted = settings.manifest_schema_versions or SUPPORTED_SCHEMA_VERSIONS
+    path = manifest_path or _target_manifest(paths.project_dir)
     schema = None
     if path.is_file():
         try:
@@ -131,18 +177,30 @@ def _manifest(paths: ProjectPaths, manifest_path: Path | None) -> dict[str, obje
         except (OSError, ValueError):
             schema = None
     return {
-        "source": "--manifest" if manifest_path is not None else "dbt parse",
+        "source": source,
+        "runs_dbt": runs_dbt,
         "path": str(path),
         "schema_version": schema,
-        "supported": schema == _SUPPORTED_MANIFEST_SCHEMA if schema is not None else None,
+        "accepted_schema_versions": [f"v{number}" for number in sorted(accepted)],
+        "supported": schema_version_number(schema) in accepted if schema is not None else None,
     }
 
 
+def _target_manifest(project_dir: Path) -> Path:
+    """Return the manifest dbt writes for the project; `target/manifest.json` when that cannot be read."""
+    try:
+        return target_path(project_dir, read_yaml_mapping)
+    except ProjectError:
+        return project_dir / "target" / "manifest.json"
+
+
 def _unsupported_manifest(manifest: Mapping[str, object], *, allowed: bool) -> tuple[Diagnostic, ...]:
-    """Report a dbt manifest on disk whose schema this release refuses to read, unless allowed."""
+    """Report a dbt manifest on disk whose schema the run refuses to read, unless allowed."""
     if manifest["supported"] is not False or allowed:
         return ()
-    return (D("SST-DBT017", found=str(manifest["schema_version"]), expected=_SUPPORTED_MANIFEST_SCHEMA),)
+    accepted = manifest["accepted_schema_versions"]
+    expected = ", ".join(str(item) for item in accepted) if isinstance(accepted, list) else ""
+    return (D("SST-DBT017", found=str(manifest["schema_version"]), expected=expected),)
 
 
 def _target(profile: ProfileTarget, paths: ProjectPaths) -> dict[str, object]:

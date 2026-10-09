@@ -112,6 +112,17 @@ def baselined_fingerprints() -> frozenset[str]:
     return value if isinstance(value, frozenset) else frozenset()
 
 
+def record_reported(diagnostics: DiagnosticBag) -> None:
+    """Record the diagnostics this run reports, once its policy, baseline, and audit are applied."""
+    _INVOCATION["reported"] = diagnostics
+
+
+def reported_diagnostics(default: DiagnosticBag) -> DiagnosticBag:
+    """Return the diagnostics this run reports, as `record_reported` holds them; `default` before."""
+    value = _INVOCATION.get("reported")
+    return value if isinstance(value, DiagnosticBag) else default
+
+
 def suppressed_by_baseline(diagnostics: Iterable[Diagnostic]) -> int:
     """Count the diagnostics this run's baseline holds, so suppresses; call once the baseline is matched."""
     baselined = baselined_fingerprints()

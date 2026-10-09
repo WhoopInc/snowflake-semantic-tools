@@ -646,7 +646,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL731`](error-codes.md#sst-val731) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.eval_config` | `tests/codes/val/test_sst_val731.py` |
 | [`SST-VAL732`](error-codes.md#sst-val732) | VAL | info | local | `snowflake_semantic_tools.domain.validate.eval_config` | `tests/codes/val/test_sst_val732.py` |
 | [`SST-VAL733`](error-codes.md#sst-val733) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_config`<br>`snowflake_semantic_tools.domain.validate.eval_metric` | `tests/codes/val/test_sst_val733.py` |
-| [`SST-VAL734`](error-codes.md#sst-val734) | VAL | error | local | `snowflake_semantic_tools.app.evals.gate` | `tests/codes/val/test_sst_val734.py` |
+| [`SST-VAL734`](error-codes.md#sst-val734) | VAL | error | local | `snowflake_semantic_tools.app.evals.gate`<br>`snowflake_semantic_tools.app.evals.suite` | `tests/codes/val/test_sst_val734.py` |
 | [`SST-VAL735`](error-codes.md#sst-val735) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.eval_config` | `tests/codes/val/test_sst_val735.py` |
 | [`SST-VAL737`](error-codes.md#sst-val737) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_metric` | `tests/codes/val/test_sst_val737.py` |
 | [`SST-VAL738`](error-codes.md#sst-val738) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_metric` | `tests/codes/val/test_sst_val738.py` |

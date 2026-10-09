@@ -58,7 +58,6 @@ _REMOVED_FLAGS: tuple[tuple[tuple[str, ...], bool, str], ...] = (
     (("--include-sources",), False, "SST 1.0 enriches dbt models only"),
     (("--sources-only",), False, "SST 1.0 enriches dbt models only"),
     (("--source",), True, "SST 1.0 enriches dbt models only"),
-    (("--verbose", "-v"), False, "every change is reported; --output json gives the full report"),
 )
 
 

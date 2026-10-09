@@ -200,7 +200,9 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "empty, `0`, `false` or `no`."
     ),
     ("sst test", "--capture-baseline"): (
-        "Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires `--reason`."
+        "Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires `--reason`, "
+        "and a run of the eval suite: refused with `--update-golden`, a `--suite` that does not name `evals`, or no "
+        "`--suite` when the eval suite does not apply."
     ),
     ("sst test", "--reason"): "Why the baseline is changing; stored with it. Requires `--capture-baseline`.",
     ("sst test", "--fail-fast"): (
@@ -304,7 +306,14 @@ def command_docs(group: click.Group, prefix: str = "sst") -> tuple[CommandDoc, .
             documented.append(CommandDoc(path, description, subcommands=children))
             documented.extend(command_docs(command, path))
         else:
-            documented.append(CommandDoc(path, description, option_docs(command)))
+            with click.Context(command) as command_ctx:
+                arguments = tuple(
+                    piece
+                    for param in command.params
+                    if isinstance(param, click.Argument)
+                    for piece in param.get_usage_pieces(command_ctx)
+                )
+            documented.append(CommandDoc(path, description, option_docs(command), arguments=arguments))
     return tuple(documented)
 
 

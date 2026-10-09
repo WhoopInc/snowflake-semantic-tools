@@ -60,7 +60,8 @@ def project_inputs(
     The commit is asked for through this module's `git_sha`, looked up when a use case
     needs it, so replacing `git_sha` here changes the commit every use case sees. Under a click
     command, every input the command builds shares one load cache, so a file read twice in the
-    run is parsed once. The cache notes the reads it served only under `--verbose`.
+    run is parsed once. The cache notes the reads it served only under `--verbose`, and a stale
+    `--manifest` is a warning only under the command's `--allow-stale-manifest`.
 
     Args:
         database: Resolve refs against this database instead of the target's; None keeps it.
@@ -75,6 +76,7 @@ def project_inputs(
         load_cache=context.meta.setdefault(LOAD_CACHE, LoadCache(note_hits=verbose_run()))
         if context is not None
         else None,
+        allow_stale_manifest=context is not None and context.params.get("allow_stale_manifest") is True,
     )
 
 

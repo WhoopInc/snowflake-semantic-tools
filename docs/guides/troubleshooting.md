@@ -17,6 +17,11 @@ order. dbt's own output is printed above `SST-DBT028`.
 - **`SST-DBT017`.** The manifest's schema version is not the one SST supports;
   use a dbt version that writes manifest schema v12, or pass
   `--allow-unsupported-manifest-schema` for one run.
+- **`SST-DBT005`.** A model file changed after the manifest passed with
+  `--manifest` was written. Regenerate it, or drop `--manifest` and let SST run
+  `dbt parse`. `--allow-stale-manifest` reports it as a warning for one run, and
+  the envelope's `invocation.overrides` records the flag; `--strict` still
+  promotes that warning to an error.
 
 ## A metric or filter is missing from a view
 

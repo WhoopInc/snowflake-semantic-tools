@@ -462,12 +462,16 @@ Capture a baseline on purpose, with a reason that is recorded beside it:
 sst test --suite evals --capture-baseline --reason "new tool for supply cost"
 ```
 
-`--capture-baseline` and `--reason` go together (exit 3 otherwise). A capture
+`--capture-baseline` and `--reason` go together (exit 3 otherwise), and only
+with a run of the eval suite: with `--update-golden`, with a `--suite` that does
+not name `evals`, or without `--suite` when the eval suite does not apply, they
+are refused (exit 3). A capture
 runs each eval until `baseline_runs` attempts have completed, starting all of
 them in its first round, and gates nothing. It takes the first `baseline_runs`
 completed attempts, all against one agent version. The baselines of every eval
 are written together, and only when every eval got its runs: a capture that
-falls short writes none and exits 4. `SST-VAL746` (info) records the version
+falls short writes none and exits 1, reporting each attempt's own outcome and
+then `SST-VAL734` for each eval that completed too few. `SST-VAL746` (info) records the version
 each system metric was captured under.
 
 ### What a gate compares
@@ -515,7 +519,7 @@ does: `blocking` fails the run with `SST-VAL763` (exit 1); `report` lists it in
 
 The eval suite exits 0 when every eval passed and its gate compared cleanly; 1
 when an attempt failed without a retry passing, the preflight refused, the gate
-could not compare, or a blocking eval regressed; 3 for an invalid command line;
-4 when the manifest is stale, another run holds the lock, no eval matches the
-selection, or a capture fell short; 5 when Snowflake cannot be reached; and 130
+could not compare, a blocking eval regressed, or a capture fell short; 3 for an
+invalid command line; 4 when the manifest is stale, another run holds the lock,
+or no eval matches the selection; 5 when Snowflake cannot be reached; and 130
 when interrupted.

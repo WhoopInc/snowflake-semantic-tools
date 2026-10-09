@@ -17,6 +17,7 @@ from snowflake_semantic_tools.adapters.paths import make_folders_within, output_
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body, write_text
+from snowflake_semantic_tools.cli.settings import semantic_models_dir
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE, CONFIG_KEYS
 
@@ -64,7 +65,8 @@ def init(paths: ProjectPaths, skip_prompts: bool, check_only: bool, options: Glo
     Writes `sst_config.yml`, with every policy key at its documented default, and creates the
     `semantic_views` directory under the semantic models directory it names. On a terminal
     it asks for that directory, unless --skip-prompts or --output json; a file or directory
-    that exists is left as it is. With --check-only nothing is written, and the command exits
+    that exists is left as it is, and an existing configuration's `project.semantic_models_dir`
+    is the directory used. With --check-only nothing is written, and the command exits
     1 unless the configuration file and the semantic views directory exist. Exit 4 when the
     directory is not a dbt project.
     """
@@ -75,16 +77,17 @@ def init(paths: ProjectPaths, skip_prompts: bool, check_only: bool, options: Glo
             CONFIG, DiagnosticBag((refusal,)), {"created": [], "skipped": [], "status": "not a dbt project"}
         )
     config = paths.config_file or project_dir / CONFIG_FILE
-    views = Path(_DEFAULT_SEMANTIC_DIR) / "semantic_views"
-    wanted = (config, project_dir / views)
-    present = [str(path.relative_to(project_dir)) for path in wanted if path.exists()]
-    missing = [str(path.relative_to(project_dir)) for path in wanted if not path.exists()]
+    # A configuration that exists names the semantic models directory; a new one is asked for.
+    semantic_dir = semantic_models_dir(paths) if config.is_file() else _DEFAULT_SEMANTIC_DIR
+    views = Path(semantic_dir) / "semantic_views"
+    wanted = ((config, str(config.relative_to(project_dir))), (project_dir / views, views.as_posix()))
+    present = [name for path, name in wanted if path.exists()]
+    missing = [name for path, name in wanted if not path.exists()]
     if check_only:
         status = "incomplete" if missing else "complete"
         data = {"created": [], "skipped": present, "missing": missing, "status": status}
         return CommandResult(ERROR if missing else OK, data=data, human=lambda: click.echo(f"setup {status}"))
     created: list[str] = []
-    semantic_dir = _DEFAULT_SEMANTIC_DIR
     if not config.exists():
         if not skip_prompts and options.output != "json" and sys.stdin.isatty():
             semantic_dir = click.prompt("Semantic models directory", default=_DEFAULT_SEMANTIC_DIR)
@@ -93,7 +96,7 @@ def init(paths: ProjectPaths, skip_prompts: bool, check_only: bool, options: Glo
     directory = project_dir / semantic_dir / "semantic_views"
     if not directory.is_dir():
         make_folders_within(project_dir, directory)
-        created.append(str(directory.relative_to(project_dir)))
+        created.append((Path(semantic_dir) / "semantic_views").as_posix())
     skipped = [item for item in present if item not in created]
     data = {"created": created, "skipped": skipped, "status": "scaffolded"}
     return CommandResult(
