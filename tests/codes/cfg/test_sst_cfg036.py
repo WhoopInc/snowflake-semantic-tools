@@ -20,6 +20,9 @@ def test_sst_cfg036_fires() -> None:
     assert diagnostic.message == (
         "skills.extensions: 'glossary' cannot be qualified -- no fqn: and the block sets no default_prefix"
     )
+    assert diagnostic.suggestion == (
+        "set fqn: on the entry under `skills.extensions` or `tags:`, or set default_prefix on that block"
+    )
     assert (diagnostic.subject, diagnostic.origin) == ("config:skills.extensions.glossary", Origin("sst_config.yaml"))
     assert resolved == {}
 

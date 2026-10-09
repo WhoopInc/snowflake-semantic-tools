@@ -11,7 +11,7 @@ def test_sst_val521_fires() -> None:
     model = agent("sales_agent", search_tool(backing=()))
     [diagnostic] = coded(compile_agents(model, tools=catalog(search_member())).diagnostics, "SST-VAL521")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "agent 'sales_agent': tool 'docs' omits 'search_service'"
+    assert diagnostic.message == "agent 'sales_agent': tool 'docs' omits search_service"
     assert diagnostic.subject == "agent:sales_agent"
 
 
@@ -22,8 +22,8 @@ def test_sst_val521_names_every_key_a_tool_omits() -> None:
         for diagnostic in coded(compile_agents(model, tools=catalog(search_member())).diagnostics, "SST-VAL521")
     )
     assert messages == [
-        "agent 'sales_agent': tool 'cortex_search' omits 'name, search_service'",
-        "agent 'sales_agent': tool 'generic' omits 'name'",
+        "agent 'sales_agent': tool 'cortex_search' omits name, search_service",
+        "agent 'sales_agent': tool 'generic' omits name",
     ]
 
 

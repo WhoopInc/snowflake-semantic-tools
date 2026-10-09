@@ -75,7 +75,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Filesystem read failed",
         "could not read {path}: {detail}",
-        "check the permissions",
+        "remove the link, or use a path inside the project; otherwise check that the file exists and can be read",
         condition=(
             "a file SST reads cannot be read or does not hold what it should (a manifest, baseline, "
             "saved plan, or `--state` observation); a file or folder to be read is a symbolic link "

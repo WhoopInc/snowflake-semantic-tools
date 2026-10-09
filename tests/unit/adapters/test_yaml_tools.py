@@ -185,3 +185,4 @@ def test_a_tools_file_that_cannot_be_read_is_reported_as_unreadable_not_malforme
 
     [diagnostic] = catalog.diagnostics
     assert (diagnostic.code, diagnostic.context["path"]) == ("SST-LOD018", "tools/locked.yml")
+    assert diagnostic.message == "tools/locked.yml: could not read tools/locked.yml"

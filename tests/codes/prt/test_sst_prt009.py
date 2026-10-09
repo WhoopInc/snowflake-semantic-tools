@@ -34,6 +34,9 @@ def test_sst_prt009_fires(tmp_path: Path) -> None:
         "could not read skills/close/notes.txt: it is a symbolic link, which SST does not follow"
     )
     assert diagnostic.origin == Origin("skills/close/notes.txt")
+    assert diagnostic.suggestion == (
+        "remove the link, or use a path inside the project; otherwise check that the file exists and can be read"
+    )
     assert [item.path for item in catalog.skills[0].files] == ["SKILL.md"]
 
 

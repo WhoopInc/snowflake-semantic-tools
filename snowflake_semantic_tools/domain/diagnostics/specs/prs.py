@@ -459,7 +459,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Sample question entry is a bare string",
         "{artifact}: sample_questions[{index}] is a string, expected a mapping",
-        "use {{question: ...}} maps",
+        "write each entry as a mapping with a `question:` key",
         condition="an agent's sample question is not a mapping with a string `question`",
     ),
     spec(

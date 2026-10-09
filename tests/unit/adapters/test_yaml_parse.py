@@ -156,7 +156,7 @@ def test_an_unreadable_pointed_to_file_is_lod018_at_the_pointer(tmp_path: Path) 
     pointer = Origin("agents/a/agent.yml", 1, 1)
     assert read_yaml_file(tmp_path / "gone.yml", "agents/a/evals/dataset.yml", sink, pointer_origin=pointer) is None
     assert sink == [D("SST-LOD018", file="agents/a/agent.yml", path="agents/a/evals/dataset.yml", origin=pointer)]
-    assert sink[0].message == "agents/a/agent.yml references agents/a/evals/dataset.yml, which does not exist"
+    assert sink[0].message == "agents/a/agent.yml: could not read agents/a/evals/dataset.yml"
 
 
 def test_template_sources_record_the_one_based_column_after_the_last_newline() -> None:
