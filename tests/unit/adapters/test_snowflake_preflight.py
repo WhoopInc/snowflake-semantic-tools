@@ -84,6 +84,23 @@ def test_a_privilege_is_held_by_a_role_in_the_session_that_is_granted_it_or_owns
     assert owner.missing_privileges(SCOPE, privileges) == ()
 
 
+def test_a_stage_privilege_is_held_by_a_role_in_the_session_that_is_granted_it_or_owns_the_stage() -> None:
+    grants: tuple[dict[str, object], ...] = (
+        {"privilege": "READ", "granted_to": "ROLE", "grantee_name": "READER"},
+        {"privilege": "OWNERSHIP", "granted_to": "ROLE", "grantee_name": "OWNER"},
+    )
+    stage = QualifiedName.parse("DB.SCH.AGENT_SPECS")
+    connector = ScriptedConnector(
+        {"SHOW GRANTS ON STAGE": grants}, {"SELECT IS_ROLE_IN_SESSION": QueryResult(("IN",), ((False,),))}
+    )
+    assert connector.missing_stage_privileges(stage, ("READ", "WRITE")) == ("READ", "WRITE")
+    assert connector.sent[0] == ("SHOW GRANTS ON STAGE DB.SCH.AGENT_SPECS", None)
+    owner = ScriptedConnector(
+        {"SHOW GRANTS ON STAGE": grants}, {"SELECT IS_ROLE_IN_SESSION": QueryResult(("IN",), ((True,),))}
+    )
+    assert owner.missing_stage_privileges(stage, ("READ", "WRITE")) == ()
+
+
 def test_locked_objects_are_those_held_in_the_schema() -> None:
     locks: tuple[dict[str, object], ...] = (
         {"resource": "DB.SCH.SALES", "status": "HOLDING"},

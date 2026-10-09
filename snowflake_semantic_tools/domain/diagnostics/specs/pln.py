@@ -86,11 +86,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "grant the privilege",
         condition=(
             "no role in the session holds, or owns the schema for, the CREATE privilege a planned "
-            "create needs on its schema, such as CREATE SEMANTIC VIEW"
+            "create needs on its schema, such as CREATE SEMANTIC VIEW; or, for an agent create or "
+            "update, CREATE STAGE on the schema of an absent `apply.agent_spec_stage` stage, or READ "
+            "and WRITE on an existing one"
         ),
         note=(
             "Plan blocks the change rather than let apply fail with SST-SNO004. An update is not "
-            "checked: it replaces an object the role already owns."
+            "checked for its own CREATE privilege: it replaces an object the role already owns."
         ),
     ),
     spec(
@@ -271,7 +273,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: stage {value} is {found}, expected INTERNAL NO CSE",
         "point the configuration at an internal stage with SNOWFLAKE_SSE encryption; SST never alters a stage",
         demotable=False,
-        condition="the bundle or profile stage is not INTERNAL with SNOWFLAKE_SSE encryption",
+        condition=(
+            "the skill bundle stage, the profile stage, or the `apply.agent_spec_stage` stage exists "
+            "but is not INTERNAL with SNOWFLAKE_SSE encryption"
+        ),
     ),
     spec(
         "SST-PLN027",
@@ -336,6 +341,23 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "an artifact recorded in state is no longer declared; prune reports the resources SST "
             "keeps and never executes"
+        ),
+    ),
+    spec(
+        "SST-PLN035",
+        Severity.INFO,
+        "Apply creates the agent specification stage",
+        "stage {value} does not exist; apply creates it, server-side encrypted, before it stages an agent there",
+        "nothing to do; to manage the stage yourself, create it first as an internal stage with "
+        "SNOWFLAKE_SSE encryption",
+        condition=(
+            "a planned agent create or update stages its specification on the `apply.agent_spec_stage` "
+            "stage, which does not exist; reported once per stage"
+        ),
+        note=(
+            "Apply runs `CREATE STAGE IF NOT EXISTS ... ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE')` once per "
+            "stage before its first upload, and never replaces, alters, or drops the stage. Plan "
+            "blocks the agent instead when the role lacks CREATE STAGE on the stage's schema (SST-PLN008)."
         ),
     ),
     spec(

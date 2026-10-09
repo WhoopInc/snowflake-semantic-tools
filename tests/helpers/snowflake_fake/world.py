@@ -48,6 +48,8 @@ class PreflightAnswers:
     missing_relations: set[str] = field(default_factory=set)
     missing_warehouses: set[str] = field(default_factory=set)
     lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # What no role in the session holds on a stage, by the stage's `QualifiedName.sql`.
+    stage_lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # What the session's primary role lacks by itself and through its hierarchy, by schema.
     role_lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
     locked: dict[str, tuple[QualifiedName, ...]] = field(default_factory=dict)

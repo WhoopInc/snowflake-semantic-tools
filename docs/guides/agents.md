@@ -319,6 +319,24 @@ and schema), then:
    has an alias, and `SET TAG` for its tags.
 3. `SET PROFILE`, `SET COMMENT`, and `SET SECURE`.
 
+SST creates the stage when it is absent, as it does the skill bundle, profile,
+and eval config stages: before the first upload to it, apply runs
+`CREATE STAGE IF NOT EXISTS ... ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE')`, once per
+stage per run, whether or not the stage is in the agent's own schema, and the
+plan says so (`SST-PLN035`). SST never replaces, alters, or drops the stage. The
+plan checks the stage before anything is written, so a stage SST cannot create
+or use blocks each agent that stages there instead of failing part-way through
+apply:
+
+- an existing stage that is not an internal stage with server-side encryption
+  (`SST-PLN026`);
+- an absent stage when the role lacks `CREATE STAGE` on its schema, or an
+  existing one it lacks `READ` or `WRITE` on (`SST-PLN008`);
+- an absent schema or database for the stage (`SST-PLN010`, `SST-PLN011`).
+
+Once a stage exists, a later plan uses it as it is, so an apply that stopped
+part-way can be planned and applied again.
+
 An agent is created once and then updated by adding a version, never replaced,
 so its grants and its version history survive every publish, and promotion or
 rollback is a move of the alias. An alias is a plain identifier, always written

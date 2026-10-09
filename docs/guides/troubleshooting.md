@@ -71,6 +71,18 @@ profile registry row, the same code protects rows another tool wrote.
 `SST-PLN028` means a profile's registry row changed since SST last wrote it:
 another writer is active on that row.
 
+## `plan` blocks an agent on its spec stage
+
+There is no need to create the `apply.agent_spec_stage` stage yourself: apply
+creates it when it is absent, and the plan says so (`SST-PLN035`). The plan
+blocks each agent that stages on it when it cannot be used:
+
+- **`SST-PLN026`**: the stage exists, but is not an internal stage with
+  server-side encryption. SST never alters a stage; point
+  `apply.agent_spec_stage` at another one, or replace the stage yourself.
+- **`SST-PLN008`**: the role lacks `CREATE STAGE` on the schema of the absent
+  stage, or `READ` or `WRITE` on the existing one. Grant it, then plan again.
+
 ## It went to the wrong database or schema
 
 - Run `sst debug` and check the database and schema the target resolves to.

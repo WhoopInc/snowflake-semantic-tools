@@ -36,6 +36,7 @@ from snowflake_semantic_tools.domain.model.lifecycle.observation import (
     SnowflakeObservation,
 )
 from snowflake_semantic_tools.domain.model.lifecycle.rendered import (
+    SSE_STAGE_TYPE,
     CompositeFacts,
     DesiredMetadata,
     ProbeKind,
@@ -47,6 +48,7 @@ from snowflake_semantic_tools.domain.model.lifecycle.rendered import (
 )
 
 __all__ = [
+    "SSE_STAGE_TYPE",
     "Action",
     "ApplyOptions",
     "ApplyOutcome",

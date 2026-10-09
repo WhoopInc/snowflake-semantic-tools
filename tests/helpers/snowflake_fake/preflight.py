@@ -30,6 +30,11 @@ class FakePreflight(SnowflakeWorld):
         lacking = self.preflight.lacking.get(scope.sql, ())
         return tuple(privilege for privilege in privileges if privilege in lacking)
 
+    def missing_stage_privileges(self, stage: QualifiedName, privileges: tuple[str, ...]) -> tuple[str, ...]:
+        self._check("missing_stage_privileges")
+        lacking = self.preflight.stage_lacking.get(stage.sql, ())
+        return tuple(privilege for privilege in privileges if privilege in lacking)
+
     def missing_role_privileges(self, role: str, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
         self._check("missing_role_privileges")
         lacking = self.preflight.role_lacking.get(scope.sql, ())

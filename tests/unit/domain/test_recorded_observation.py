@@ -54,6 +54,9 @@ def _preflight() -> Preflight:
         referenced=MappingProxyType({"semantic_view:a": (QualifiedName.parse("DB.S.USER_VIEW"),)}),
         warehouse="WH",
         warehouse_usable=False,
+        stage_types=MappingProxyType({("DB", "S", "AGENT_SPECS"): "INTERNAL NO CSE"}),
+        absent_stages=frozenset({("DB", "OTHER", "AGENT_SPECS")}),
+        missing_stage_privileges=MappingProxyType({("DB", "S", "AGENT_SPECS"): ("WRITE",)}),
     )
 
 
@@ -80,6 +83,17 @@ def test_a_record_written_before_the_declared_account_reads_as_unset() -> None:
     document = _recorded(preflight=None).as_dict()
     del document["declared_account"]
     assert RecordedObservation.from_dict(document).declared_account == ""
+
+
+def test_a_record_written_before_the_stage_facts_reads_as_holding_none() -> None:
+    document = _recorded(preflight=_preflight()).as_dict()
+    preflight = document["preflight"]
+    assert isinstance(preflight, dict)
+    for field in ("stage_types", "absent_stages", "missing_stage_privileges"):
+        del preflight[field]
+    read = RecordedObservation.from_dict(document).preflight
+    assert read is not None
+    assert (read.stage_types, read.absent_stages, read.missing_stage_privileges) == ({}, frozenset(), {})
 
 
 def test_a_record_is_foreign_to_another_account_name_database_or_schema() -> None:

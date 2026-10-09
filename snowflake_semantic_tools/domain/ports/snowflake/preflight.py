@@ -74,6 +74,25 @@ class PreflightPort(Protocol):
         """
         ...
 
+    def stage_type(self, qualified_name: QualifiedName) -> str | None:
+        """Return a stage's TYPE as SHOW STAGES lists it, as `CatalogPort` does; None when it is absent.
+
+        Raises:
+            SnowflakePortError: the lookup failed.
+        """
+        ...
+
+    def missing_stage_privileges(self, stage: QualifiedName, privileges: tuple[str, ...]) -> tuple[str, ...]:
+        """Return, in the given order, the privileges on a stage no role in the session holds.
+
+        A role holds a privilege on the stage when it is granted it, or owns the stage, as
+        `missing_privileges` reads a schema's.
+
+        Raises:
+            SnowflakePortError: the stage's grants could not be read.
+        """
+        ...
+
     def missing_role_privileges(self, role: str, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
         """Return, in the given order, the schema privileges one role lacks, inheritance included.
 

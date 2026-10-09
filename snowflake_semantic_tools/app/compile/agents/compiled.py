@@ -94,7 +94,7 @@ class CompiledAgent(StandaloneArtifact):
             upload=(
                 None
                 if self.temporary
-                else Upload(f"@{self.stage_path.rstrip('/')}/agent_spec.yaml", self.payload.encode("utf-8"))
+                else Upload(f"@{self.stage_path.rstrip('/')}/agent_spec.yaml", self.payload.encode("utf-8"), self.stage)
             ),
             metadata=DesiredMetadata(
                 alias=self.resolved.model.alias, tags=tuple(name for name, _ in self.resolved.model.tags)

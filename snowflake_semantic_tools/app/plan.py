@@ -468,7 +468,8 @@ class PreparePlan:
 
         Each agent is staged under `apply.agent_spec_stage`, in the target's database and
         schema unless the block names others, beneath a folder for the project's commit; each
-        eval's dataset version records that commit.
+        eval's dataset version records that commit. The agent's upload names the stage, so the
+        preflight checks it and apply creates it when it is absent.
         """
         stage_config = config_block(apply_config.get("agent_spec_stage"))
         database = target.database.folded

@@ -24,6 +24,7 @@ from snowflake_semantic_tools.domain.plan.preflight import Preflight
 from snowflake_semantic_tools.domain.ports.project import ValidationDefaults
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
+from tests.helpers.agent_stage import staged_agent
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import change, rendered
 from tests.helpers.clocks import FixedClock
@@ -100,6 +101,68 @@ def test_a_refused_preflight_read_is_reported_and_never_blocks_on_its_own() -> N
     assert preflight.role == "TEST_ROLE"
     assert preflight.missing_databases == frozenset() and preflight.missing_relations == {}
     assert preflight.warehouse_usable and preflight.locked == frozenset() and preflight.referenced == {}
+
+
+def test_preflight_reads_each_upload_stage_once_and_the_privileges_each_one_needs() -> None:
+    port = FakeSnowflake()
+    absent, usable, wrong, unread, gone, refused = (
+        QualifiedName.parse(f"DB.{schema}.SPECS") for schema in ("S", "READY", "WRONG", "UNREAD", "GONE", "REFUSED")
+    )
+    port.stage_types.update({usable.sql: "INTERNAL NO CSE", wrong.sql: "EXTERNAL", unread.sql: "INTERNAL NO CSE"})
+    port.preflight.missing_schemas.add("DB.GONE")
+    port.preflight.lacking["DB.S"] = ("CREATE STAGE",)
+    port.preflight.stage_lacking[usable.sql] = ("WRITE",)
+    port.preflight.locked["DB.READY"] = (usable,)
+    agents = {
+        item.key: item
+        for item in (
+            staged_agent("a", stage=absent),
+            staged_agent("b", stage=absent),
+            staged_agent("c", stage=usable),
+            staged_agent("d", stage=wrong),
+            staged_agent("e", stage=gone),
+            staged_agent("f", stage=refused),
+            staged_agent("g", stage=unread),
+        )
+    }
+    stage_reads = 0
+    stage_type = port.stage_type
+
+    def counted(qualified_name: QualifiedName) -> str | None:
+        nonlocal stage_reads
+        stage_reads += 1
+        if qualified_name == refused:
+            raise SnowflakePortError("stage_type refused")
+        return stage_type(qualified_name)
+
+    port.stage_type = counted  # type: ignore[method-assign]
+    port.fail("missing_stage_privileges", SnowflakePortError("grants refused"), times=2)
+    preflight, failures = read_preflight(
+        port, agents, _observation(), state_of(manifest_of()), dev_target(), include_prune=False
+    )
+    assert stage_reads == 5
+    assert [item.message for item in failures] == [
+        "observation of stage DB.REFUSED.SPECS failed: stage_type refused",
+        "observation of grants on stage DB.READY.SPECS failed: grants refused",
+        "observation of grants on stage DB.UNREAD.SPECS failed: grants refused",
+    ]
+    assert preflight.absent_stages == {absent.folded}
+    assert preflight.stage_types == {
+        usable.folded: "INTERNAL NO CSE",
+        wrong.folded: "EXTERNAL",
+        unread.folded: "INTERNAL NO CSE",
+    }
+    assert preflight.missing_privileges == {("DB", "S"): ("CREATE STAGE",)}
+    assert preflight.missing_stage_privileges == {}
+    assert preflight.missing_schemas == {("DB", "GONE")}
+    # Only a target's schema is read for locks, not a schema that holds no more than a stage.
+    assert preflight.locked == frozenset()
+
+    port.heal("missing_stage_privileges")
+    preflight, failures = read_preflight(
+        port, agents, _observation(), state_of(manifest_of()), dev_target(), include_prune=False
+    )
+    assert preflight.missing_stage_privileges == {usable.folded: ("WRITE",)}
 
 
 # How Snowflake refuses SHOW LOCKS IN ACCOUNT to a role without MONITOR on the account.

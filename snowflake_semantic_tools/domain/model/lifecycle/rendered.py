@@ -21,6 +21,10 @@ from snowflake_semantic_tools.domain.model.lifecycle.observation import Artifact
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.sql import Sql, canonical, ident, join, qname, sql
 
+# The type Snowflake reports for an internal stage with server-side encryption only: the one
+# kind of stage SST creates, and the only kind it stages files on.
+SSE_STAGE_TYPE = "INTERNAL NO CSE"
+
 
 class ProbeKind(Enum):
     """What a smoke probe exercises: the view, one metric, one verified query, or a DESCRIBE."""
@@ -98,10 +102,13 @@ class Upload:
     Attributes:
         path: The stage path the file is written to, such as `@DB.S.STAGE/name/sha/spec.yaml`.
         content: The file's bytes, exactly as they are staged.
+        stage: The stage `path` is on, which apply creates when it is absent; None when apply
+            leaves the stage to whoever owns it.
     """
 
     path: str
     content: bytes
+    stage: QualifiedName | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,7 +156,8 @@ class RenderedArtifact:
         fingerprint: The SHA-256 hex digest of `ddl`, unless the compiler replaced it.
         object_type, render_dialect, grant_preservation, temporary, routine_signature: As
             `PublishShape` describes them.
-        upload_path, upload_content: As `Upload` describes them; both None when nothing is staged.
+        upload_path, upload_content, upload_stage: As `Upload` describes its `path`, `content`,
+            and `stage`; all None when nothing is staged.
         create_statements, update_statements, update_live_statements: As `StatementPlan`
             describes its `create`, `update`, and `update_live`.
         expected_marker: The ownership marker the write must leave, which apply reads back;
@@ -176,6 +184,7 @@ class RenderedArtifact:
     grant_preservation: GrantPreservation = GrantPreservation.CLAUSE
     upload_path: str | None = None
     upload_content: bytes | None = None
+    upload_stage: QualifiedName | None = None
     temporary: bool = False
     routine_signature: tuple[str, ...] = ()
     create_statements: tuple[Sql, ...] = ()
@@ -246,6 +255,7 @@ class RenderedArtifact:
             grant_preservation=shape.grant_preservation,
             upload_path=upload.path if upload is not None else None,
             upload_content=upload.content if upload is not None else None,
+            upload_stage=upload.stage if upload is not None else None,
             temporary=shape.temporary,
             routine_signature=shape.routine_signature,
             create_statements=statements.create,

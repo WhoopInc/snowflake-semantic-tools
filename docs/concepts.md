@@ -40,8 +40,9 @@ How a change reaches Snowflake depends on the type:
   rewritten;
 - a **profile** uploads its trees under content-addressed prefixes, then
   switches its registry row to them;
-- an **agent** is created once, and each change to its specification adds a
-  version;
+- an **agent** is created once, from a specification staged on the
+  `apply.agent_spec_stage` stage, which is only ever created when absent; each
+  change to its specification adds a version;
 - an **eval** publishes a new table and dataset when its questions change,
   keeping the old ones, and re-stages its configuration when that changes.
 

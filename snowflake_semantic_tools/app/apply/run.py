@@ -25,6 +25,7 @@ from snowflake_semantic_tools.app.apply.errors import (
 )
 from snowflake_semantic_tools.app.apply.lock import BROKEN_BY_ANOTHER_RUN, LockPolicy, RunLease
 from snowflake_semantic_tools.app.apply.one import ChangeApplier
+from snowflake_semantic_tools.app.apply.stages import UploadStages
 from snowflake_semantic_tools.app.apply.state import EntryStamp, _applied_after, _run_outcome
 from snowflake_semantic_tools.app.apply.temporary import temporary_notes, temporary_refusal
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
@@ -105,7 +106,6 @@ class ApplyArtifacts:
         self._sessions = sessions
         self._heartbeat = heartbeat
         self._lock_policy = lock_policy
-        self._changes = ChangeApplier(port, clock, self._lifecycle_handlers)
 
     def run(self, changeset: ChangeSet, previous: State, options: ApplyOptions = ApplyOptions()) -> ApplyResult:
         """Execute the plan's writes under the apply lock and record their outcomes in state.
@@ -217,15 +217,22 @@ class ApplyArtifacts:
         started: str,
         lease: RunLease,
     ) -> ApplyResult:
-        """Run the phases that need the lock: preflight, waves, accounting, then persist."""
+        """Run the phases that need the lock: preflight, waves, accounting, then persist.
+
+        The waves share one `UploadStages`, so each stage the run uploads to is created at most once.
+        """
         outcomes = self._preflight_relations(changeset.changes)
         wave_diagnostics: tuple[Diagnostic, ...] = ()
+        stages = UploadStages()
 
         def lost() -> str | None:
             return lease.lost_reason if lease.lost else None
 
+        def apply_one(change: Change, options: ApplyOptions) -> ApplyOutcome:
+            return self._apply_one(change, options, stages)
+
         if outcomes is None:
-            outcomes, wave_diagnostics = _WaveRun(changeset, options, self._apply_one, lost).run()
+            outcomes, wave_diagnostics = _WaveRun(changeset, options, apply_one, lost).run()
         accounted = (
             *_unaccounted(changeset, outcomes),
             *channel_outcome_diagnostics(
@@ -237,17 +244,21 @@ class ApplyArtifacts:
         assert lease.fence is not None
         return self._persist(changeset, previous, outcomes, diagnostics, run_id, started, lease.fence)
 
-    def _apply_one(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
+    def _apply_one(self, change: Change, options: ApplyOptions, stages: UploadStages) -> ApplyOutcome:
         """Apply one change: on `port` without a pool, else on a session leased for it alone.
 
         On a leased session the change's composite handler runs there too. A session that
         cannot be opened fails the change with nothing written.
         """
         if self._sessions is None:
-            return self._changes.apply(change, options)
+            return ChangeApplier(self._port, self._clock, self._lifecycle_handlers, stages=stages).apply(
+                change, options
+            )
         try:
             with self._sessions.lease() as port:
-                return ChangeApplier(port, self._clock, self._lifecycle_handlers, leased=True).apply(change, options)
+                return ChangeApplier(port, self._clock, self._lifecycle_handlers, leased=True, stages=stages).apply(
+                    change, options
+                )
         except SnowflakePortError as exc:
             return _failed(change, _exception_error(exc), _rendered_ddl(change))
 

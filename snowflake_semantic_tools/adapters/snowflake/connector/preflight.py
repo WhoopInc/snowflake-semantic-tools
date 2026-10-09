@@ -16,7 +16,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector.grant_walk import (
 )
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import ROLE_HIERARCHY_DEPTH, PreflightPort
-from snowflake_semantic_tools.domain.sql import ident, literal, sql
+from snowflake_semantic_tools.domain.sql import Sql, ident, literal, qname, sql
 from snowflake_semantic_tools.domain.sql import scope as scope_sql
 
 
@@ -45,7 +45,17 @@ class PreflightMethods(CatalogMethods, PreflightPort):
         return any(str(row.get("name") or "") == warehouse.folded for row in rows)
 
     def missing_privileges(self, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
-        rows = self._dict_rows(sql("SHOW GRANTS ON SCHEMA {scope}", scope=scope_sql(scope)))
+        return self._lacking(sql("SHOW GRANTS ON SCHEMA {scope}", scope=scope_sql(scope)), privileges)
+
+    def missing_stage_privileges(self, stage: QualifiedName, privileges: tuple[str, ...]) -> tuple[str, ...]:
+        return self._lacking(sql("SHOW GRANTS ON STAGE {stage}", stage=qname(stage)), privileges)
+
+    def _lacking(self, grants: Sql, privileges: tuple[str, ...]) -> tuple[str, ...]:
+        """Return the privileges no role in the session holds, by the grants `grants` lists.
+
+        A role holds a privilege when a grant to it names the privilege or OWNERSHIP.
+        """
+        rows = self._dict_rows(grants)
         holders: dict[str, set[str]] = {}
         for row in rows:
             if str(row.get("granted_to") or "").upper() == "ROLE":

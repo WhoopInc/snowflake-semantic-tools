@@ -27,6 +27,7 @@ from snowflake_semantic_tools.domain.state import State, StoredDocumentError
 RECORDED_OBSERVATION_SCHEMA_VERSION = 1
 
 _Scope = tuple[str, str]
+_Name = tuple[str, str, str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,14 +193,28 @@ def _preflight_to_json(preflight: Preflight) -> dict[str, object]:
         "referenced": _names_to_json(preflight.referenced),
         "warehouse": preflight.warehouse,
         "warehouse_usable": preflight.warehouse_usable,
+        "stage_types": [[*name, found] for name, found in sorted(preflight.stage_types.items())],
+        "absent_stages": [list(name) for name in sorted(preflight.absent_stages)],
+        "missing_stage_privileges": [
+            [*name, list(privileges)] for name, privileges in sorted(preflight.missing_stage_privileges.items())
+        ],
     }
 
 
 def _preflight_from_json(value: Mapping[str, Any]) -> Preflight:
+    """Read the preflight facts `_preflight_to_json` wrote; a record without the stage facts has none."""
     privileges: dict[_Scope, tuple[str, ...]] = {}
     for entry in _list(value.get("missing_privileges"), "missing_privileges"):
         database, schema, held = _list(entry, "missing privilege")
         privileges[(str(database), str(schema))] = _texts(held)
+    stage_types: dict[_Name, str] = {}
+    for entry in _list(value.get("stage_types", []), "stage_types"):
+        database, schema, name, found = _list(entry, "stage type")
+        stage_types[(str(database), str(schema), str(name))] = str(found)
+    stage_privileges: dict[_Name, tuple[str, ...]] = {}
+    for entry in _list(value.get("missing_stage_privileges", []), "missing_stage_privileges"):
+        database, schema, name, lacking = _list(entry, "missing stage privilege")
+        stage_privileges[(str(database), str(schema), str(name))] = _texts(lacking)
     return Preflight(
         target_name=str(value["target_name"]),
         role=str(value["role"]),
@@ -212,6 +227,9 @@ def _preflight_from_json(value: Mapping[str, Any]) -> Preflight:
         referenced=_names_from_json(value.get("referenced"), "referenced"),
         warehouse=_text(value.get("warehouse")),
         warehouse_usable=bool(value.get("warehouse_usable", True)),
+        stage_types=MappingProxyType(stage_types),
+        absent_stages=frozenset(_triple(name) for name in _list(value.get("absent_stages", []), "absent_stages")),
+        missing_stage_privileges=MappingProxyType(stage_privileges),
     )
 
 

@@ -41,9 +41,6 @@ from snowflake_semantic_tools.domain.sql import Sql, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
 from snowflake_semantic_tools.domain.validate.publication import statement_diagnostic
 
-# The type Snowflake reports for an internal stage with server-side encryption only.
-SSE_STAGE_TYPE = "INTERNAL NO CSE"
-
 SubjectT = TypeVar("SubjectT")
 ObservedT = TypeVar("ObservedT")
 

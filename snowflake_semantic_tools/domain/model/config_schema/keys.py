@@ -524,7 +524,12 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         code="SST-VAL821",
     ),
     _key("apply", _BLOCK, "Stages apply uploads through."),
-    _key("apply.agent_spec_stage", _BLOCK, "Stage for staged agent specs."),
+    _key(
+        "apply.agent_spec_stage",
+        _BLOCK,
+        "Internal stage agent specs are uploaded to. Created when absent, server-side encrypted; "
+        "an existing stage of another kind blocks the plan.",
+    ),
     _key("apply.agent_spec_stage.database", _S, "Stage database.", default="the target database"),
     _key("apply.agent_spec_stage.schema", _S, "Stage schema.", default="the target schema"),
     _key("apply.agent_spec_stage.stage", _S, "Stage name.", default="AGENT_SPECS"),

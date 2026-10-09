@@ -180,3 +180,89 @@ def test_two_changes_for_one_key_cannot_be_ordered_and_no_previous_manifest_plan
     assert ordered == () and diagnostic is not None and diagnostic.code == "SST-PLN022"
     keys, notice = impact_scope(None, manifest_of())
     assert keys is None and notice is not None and notice.code == "SST-PLN006"
+
+
+SPECS = QualifiedName.parse("DB.SCHEMA.AGENT_SPECS")
+
+
+def _staging(name: str, stage: QualifiedName = SPECS, action: Action = Action.CREATE) -> Change:
+    """A write of `DB.SCHEMA.<name>` that stages a file on `stage` first."""
+    return change(replace(rendered(name), upload_stage=stage), action)
+
+
+def test_an_absent_upload_stage_is_announced_once_per_stage_and_blocks_nothing() -> None:
+    other = QualifiedName.parse("DB.SCHEMA.OTHER_SPECS")
+    writes = (_staging("A"), _staging("B", action=Action.UPDATE), _staging("C", other))
+    noop = replace(_staging("D"), action=Action.NOOP)
+    preflight = Preflight("dev", "R", absent_stages=frozenset((SPECS.folded, other.folded)))
+    checked, diagnostics = check_preflight((*writes, noop), preflight)
+    assert [(item.code, item.subject, item.message) for item in diagnostics] == [
+        (
+            "SST-PLN035",
+            "semantic_view:a",
+            "stage DB.SCHEMA.AGENT_SPECS does not exist; apply creates it, server-side encrypted, "
+            "before it stages an agent there",
+        ),
+        (
+            "SST-PLN035",
+            "semantic_view:c",
+            "stage DB.SCHEMA.OTHER_SPECS does not exist; apply creates it, server-side encrypted, "
+            "before it stages an agent there",
+        ),
+    ]
+    assert checked == (*writes, noop)
+
+
+def test_an_absent_upload_stage_the_role_cannot_create_blocks_each_write_on_it() -> None:
+    preflight = Preflight(
+        "dev",
+        "R",
+        absent_stages=frozenset((SPECS.folded,)),
+        missing_privileges=MappingProxyType({("DB", "SCHEMA"): ("CREATE STAGE",)}),
+    )
+    checked, diagnostics = check_preflight((_staging("A"), _staging("B")), preflight)
+    assert [item.message for item in diagnostics] == ["R lacks CREATE STAGE on DB.SCHEMA"] * 2
+    assert [item.action for item in checked] == [Action.BLOCKED, Action.BLOCKED]
+
+
+@pytest.mark.parametrize(
+    ("found", "lacking", "expected"),
+    [
+        ("INTERNAL", (), "semantic_view:a: stage DB.SCHEMA.AGENT_SPECS is INTERNAL, expected INTERNAL NO CSE"),
+        ("", (), "semantic_view:a: stage DB.SCHEMA.AGENT_SPECS is untyped, expected INTERNAL NO CSE"),
+        ("internal no cse", ("READ", "WRITE"), "R lacks READ, WRITE on DB.SCHEMA.AGENT_SPECS"),
+    ],
+)
+def test_an_existing_upload_stage_must_be_internal_sse_and_readable_and_writable(
+    found: str, lacking: tuple[str, ...], expected: str
+) -> None:
+    preflight = Preflight(
+        "dev",
+        "R",
+        stage_types=MappingProxyType({SPECS.folded: found}),
+        missing_stage_privileges=MappingProxyType({SPECS.folded: lacking}),
+    )
+    [checked], [diagnostic] = check_preflight((_staging("A"),), preflight)
+    assert checked.action is Action.BLOCKED and diagnostic.message == expected
+
+
+def test_a_usable_or_unread_upload_stage_and_an_already_blocked_write_report_nothing_of_the_stage() -> None:
+    usable = Preflight("dev", "R", stage_types=MappingProxyType({SPECS.folded: "INTERNAL NO CSE"}))
+    assert check_preflight((_staging("A"),), usable) == ((_staging("A"),), ())
+    assert check_preflight((_staging("A"),), Preflight("dev", "R")) == ((_staging("A"),), ())
+    blocked = _staging("A")
+    missing = Preflight(
+        "dev",
+        "R",
+        absent_stages=frozenset((SPECS.folded,)),
+        missing_relations=MappingProxyType({blocked.key: (QualifiedName.parse("DB.SCHEMA.T"),)}),
+    )
+    assert _codes(check_preflight((blocked,), missing)[1]) == ["SST-PLN007"]
+
+
+def test_an_upload_stage_in_a_missing_schema_blocks_its_writes_once_for_the_schema() -> None:
+    elsewhere = QualifiedName.parse("DB.SPECS.AGENT_SPECS")
+    preflight = Preflight("dev", "R", missing_schemas=frozenset((("DB", "SPECS"),)))
+    checked, diagnostics = check_preflight((_staging("A", elsewhere), _staging("B", elsewhere)), preflight)
+    assert _codes(diagnostics) == ["SST-PLN010"]
+    assert [_codes(item.diagnostics) for item in checked] == [["SST-PLN010"], ["SST-PLN010"]]

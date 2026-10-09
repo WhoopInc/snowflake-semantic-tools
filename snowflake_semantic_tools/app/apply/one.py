@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 
 from snowflake_semantic_tools.app.apply.errors import _exception_error, _failed, _rendered_ddl, _script_error, _skipped
+from snowflake_semantic_tools.app.apply.stages import UploadStages
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.lifecycle import (
@@ -56,10 +57,12 @@ def preserves_grants(change: Change) -> bool:
 class ChangeApplier:
     """Apply the changes of a plan one by one; a run's parallel workers share one applier.
 
-    It keeps no state between changes. The lifecycle handlers are the run's own mapping, not a
-    copy, so a handler registered on the run after construction is used here too. With
-    `leased`, `port` is a session leased for this change, and each composite handler runs its
-    statements there too, through `for_session`, rather than on the session it was built on.
+    It keeps no state between changes, but for `stages`, which the run shares across its
+    workers so each upload stage is created once. The lifecycle handlers are the run's own
+    mapping, not a copy, so a handler registered on the run after construction is used here
+    too. With `leased`, `port` is a session leased for this change, and each composite handler
+    runs its statements there too, through `for_session`, rather than on the session it was
+    built on.
     """
 
     def __init__(
@@ -69,11 +72,13 @@ class ChangeApplier:
         lifecycle_handlers: Mapping[str, CompositeLifecycleHandler],
         *,
         leased: bool = False,
+        stages: UploadStages | None = None,
     ) -> None:
         self._port = port
         self._clock = clock
         self._lifecycle_handlers = lifecycle_handlers
         self._leased = leased
+        self._stages = stages if stages is not None else UploadStages()
 
     def apply(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
         """Apply one change and report how it ended; an exception that escapes fails the change."""
@@ -164,8 +169,9 @@ class ChangeApplier:
         """Run a checked change's statements, then verify what they wrote.
 
         The explicit grants an update keeps are read before anything runs, and the file the
-        artifact publishes is staged before its statements. Either failing fails the change
-        with nothing written.
+        artifact publishes is staged before its statements, on a stage made to exist first
+        when the artifact names it. Any of them failing fails the change with nothing of the
+        artifact written.
         """
         try:
             before = self._grants_to_keep(change, rendered)
@@ -175,6 +181,10 @@ class ChangeApplier:
                 change, error, rendered.ddl, duration_ms=self._elapsed(started), grants=GrantCheck.UNREADABLE
             )
         try:
+            stage = rendered.upload_stage
+            unusable = self._stages.ensure(self._port, stage) if stage is not None else None
+            if unusable is not None:
+                return _failed(change, unusable, rendered.ddl, duration_ms=self._elapsed(started))
             self._stage_upload(rendered)
         except SnowflakePortError as exc:
             return _failed(change, _exception_error(exc), rendered.ddl, duration_ms=self._elapsed(started))

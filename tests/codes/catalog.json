@@ -2651,6 +2651,17 @@
   "precheck": "local"
  },
  {
+  "code": "SST-PLN035",
+  "area": "PLN",
+  "number": 35,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Apply creates the agent specification stage",
+  "message": "stage {value} does not exist; apply creates it, server-side encrypted, before it stages an agent there",
+  "suggestion": "nothing to do; to manage the stage yourself, create it first as an internal stage with SNOWFLAKE_SSE encryption",
+  "precheck": "observe"
+ },
+ {
   "code": "SST-PLN100",
   "area": "PLN",
   "number": 100,

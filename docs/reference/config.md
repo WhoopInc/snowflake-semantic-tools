@@ -223,7 +223,7 @@ Stages apply uploads through.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `apply.agent_spec_stage` | block |  | Stage for staged agent specs. |
+| `apply.agent_spec_stage` | block |  | Internal stage agent specs are uploaded to. Created when absent, server-side encrypted; an existing stage of another kind blocks the plan. |
 | `apply.agent_spec_stage.database` | string | the target database | Stage database. |
 | `apply.agent_spec_stage.schema` | string | the target schema | Stage schema. |
 | `apply.agent_spec_stage.stage` | string | `AGENT_SPECS` | Stage name. |

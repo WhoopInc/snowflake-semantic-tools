@@ -26,7 +26,7 @@ cannot be downgraded by any setting.
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
-- [Planning (PLN)](#planning-pln) -- 36 codes
+- [Planning (PLN)](#planning-pln) -- 37 codes
 - [Apply (APL)](#apply-apl) -- 29 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 22 codes
@@ -6184,11 +6184,11 @@ Note: Plan blocks the change rather than let apply fail with SST-SNO003.
 
 `<value> lacks <detail> on <target>`
 
-Raised when no role in the session holds, or owns the schema for, the CREATE privilege a planned create needs on its schema, such as CREATE SEMANTIC VIEW.
+Raised when no role in the session holds, or owns the schema for, the CREATE privilege a planned create needs on its schema, such as CREATE SEMANTIC VIEW; or, for an agent create or update, CREATE STAGE on the schema of an absent `apply.agent_spec_stage` stage, or READ and WRITE on an existing one.
 
 Fix: grant the privilege
 
-Note: Plan blocks the change rather than let apply fail with SST-SNO004. An update is not checked: it replaces an object the role already owns.
+Note: Plan blocks the change rather than let apply fail with SST-SNO004. An update is not checked for its own CREATE privilege: it replaces an object the role already owns.
 
 ### SST-PLN009
 
@@ -6374,7 +6374,7 @@ Fix: move the object explicitly, then reconcile state and re-run plan
 
 `<artifact>: stage <value> is <found>, expected INTERNAL NO CSE`
 
-Raised when the bundle or profile stage is not INTERNAL with SNOWFLAKE_SSE encryption.
+Raised when the skill bundle stage, the profile stage, or the `apply.agent_spec_stage` stage exists but is not INTERNAL with SNOWFLAKE_SSE encryption.
 
 Fix: point the configuration at an internal stage with SNOWFLAKE_SSE encryption; SST never alters a stage
 
@@ -6447,6 +6447,18 @@ Fix: fix that error first; a configuration error, or an error in a semantic view
 Raised when an artifact recorded in state is no longer declared; prune reports the resources SST keeps and never executes.
 
 Fix: the plan lists it until the objects are removed by hand; it is never a write, and the plan exits 2 only until an apply records it
+
+### SST-PLN035
+
+**Apply creates the agent specification stage** (info)
+
+`stage <value> does not exist; apply creates it, server-side encrypted, before it stages an agent there`
+
+Raised when a planned agent create or update stages its specification on the `apply.agent_spec_stage` stage, which does not exist; reported once per stage.
+
+Fix: nothing to do; to manage the stage yourself, create it first as an internal stage with SNOWFLAKE_SSE encryption
+
+Note: Apply runs `CREATE STAGE IF NOT EXISTS ... ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE')` once per stage before its first upload, and never replaces, alters, or drops the stage. Plan blocks the agent instead when the role lacks CREATE STAGE on the stage's schema (SST-PLN008).
 
 ### SST-PLN100
 

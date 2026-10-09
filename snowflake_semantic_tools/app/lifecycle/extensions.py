@@ -16,7 +16,6 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile.skills import ExtensionRelease
 from snowflake_semantic_tools.app.lifecycle.composite import (
-    SSE_STAGE_TYPE,
     CompositeHandler,
     PublicationRun,
     blocked,
@@ -29,6 +28,7 @@ from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
+    SSE_STAGE_TYPE,
     Action,
     ApplyOptions,
     ApplyOutcome,

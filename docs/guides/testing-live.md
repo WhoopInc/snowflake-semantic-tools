@@ -186,8 +186,9 @@ account, and to create the reference project's objects where its `sst_config.yml
   `DATABASE.CORE` and `DATABASE.OPS`.
 
 Apply creates none of those schemas (a missing one is `SST-PLN010`), and SST never creates a tag
-object, so the schemas, the tags under `tags:` and the `apply.agent_spec_stage` stage must already
-exist.
+object, so the schemas and the tags under `tags:` must already exist. The `apply.agent_spec_stage`
+stage need not: apply creates it when it is absent, which needs `CREATE STAGE` on its schema
+(`SST-PLN008` otherwise).
 
 The evals suite is `sst test --suite evals --target verify` on the reference project. Like the
 smoke suite, it reads the manifest `sst compile` wrote for that target (`SST-MAN001` without one)
