@@ -560,7 +560,7 @@ Fix: fix the baselined diagnostics, or run sst baseline renew --reason
 
 Raised when a `skills.extensions` entry, or a `tags` entry a view's `tag()` names, has no `fqn:` and either the block sets no `default_prefix` or the entry key contains a dot, which would render a four-part name; or the name it qualifies to does not parse.
 
-Fix: set fqn: on the entry, or set default_prefix on the block
+Fix: set fqn: on the entry under `skills.extensions` or `tags:`, or set default_prefix on that block
 
 ### SST-CFG037
 
@@ -1366,7 +1366,7 @@ Fix: give every row a question and at least one expectation
 
 Raised when an agent's sample question is not a mapping with a string `question`.
 
-Fix: use {{question: ...}} maps
+Fix: write each entry as a mapping with a `question:` key
 
 ### SST-PRS119
 
@@ -1604,13 +1604,13 @@ Fix: re-save without a BOM
 
 ### SST-LOD018
 
-**Sidecar file referenced by a document is missing** (error)
+**Referenced or project file cannot be read** (error)
 
-`<file> references <path>, which does not exist`
+`<file>: could not read <path>`
 
 Raised when a `file()` sidecar, `body_file:` or `sql_file:` a document references is not a file or cannot be read; also an eval, metric, or project YAML file that cannot be read.
 
-Fix: create the file, or correct the path
+Fix: create the file, correct the path, or make it readable
 
 ### SST-LOD019
 
@@ -3700,7 +3700,7 @@ Fix: declare exactly one semantic_view and no name
 
 **Search or generic tool omits a required key** (error)
 
-`agent '<artifact>': tool '<name>' omits '<field>'`
+`agent '<artifact>': tool '<name>' omits <field>`
 
 Raised when a cortex_search tool omits `name` or `search_service`, or a generic tool omits `name` or `identifier`.
 
@@ -7158,7 +7158,7 @@ Fix: check the permissions and the free space
 
 Raised when a file SST reads cannot be read or does not hold what it should (a manifest, baseline, saved plan, or `--state` observation); a file or folder to be read is a symbolic link or is reached through one; or dbt's `target-path`, the semantic-models directory, a verified query's `sql_file`, or a tool's `body_file` resolves outside the project.
 
-Fix: check the permissions
+Fix: remove the link, or use a path inside the project; otherwise check that the file exists and can be read
 
 ### SST-PRT010
 

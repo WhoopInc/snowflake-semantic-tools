@@ -22,7 +22,7 @@ def test_sst_lod018_fires(tmp_path: Path) -> None:
     project = SmallProject(tmp_path, files={f"{QUERIES}/vq.yml": VERIFIED_QUERY}).load()
     [diagnostic] = coded(project.diagnostics, "SST-LOD018")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == f"{QUERIES}/vq.yml references sql/how_many.sql, which does not exist"
+    assert diagnostic.message == f"{QUERIES}/vq.yml: could not read sql/how_many.sql"
     assert diagnostic.subject == "verified_query:how_many"
     assert diagnostic.origin == Origin(f"{QUERIES}/vq.yml", 2, 5)
 

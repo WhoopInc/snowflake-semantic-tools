@@ -163,9 +163,9 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-LOD018",
         Severity.ERROR,
-        "Sidecar file referenced by a document is missing",
-        "{file} references {path}, which does not exist",
-        "create the file, or correct the path",
+        "Referenced or project file cannot be read",
+        "{file}: could not read {path}",
+        "create the file, correct the path, or make it readable",
         condition=(
             "a `file()` sidecar, `body_file:` or `sql_file:` a document references is not a file or "
             "cannot be read; also an eval, metric, or project YAML file that cannot be read"

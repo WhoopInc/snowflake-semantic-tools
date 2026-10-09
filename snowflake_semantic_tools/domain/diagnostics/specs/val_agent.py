@@ -166,7 +166,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL521",
         Severity.ERROR,
         "Search or generic tool omits a required key",
-        "agent '{artifact}': tool '{name}' omits '{field}'",
+        "agent '{artifact}': tool '{name}' omits {field}",
         "declare the tool's name, and its search_service or, for a generic tool, its identifier",
         condition=(
             "a cortex_search tool omits `name` or `search_service`, or a generic tool omits `name` or `identifier`"

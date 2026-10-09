@@ -14,6 +14,7 @@ def test_sst_prs118_fires(tmp_path: Path) -> None:
     )
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "agent:sales: sample_questions[0] is a string, expected a mapping"
+    assert diagnostic.suggestion == "write each entry as a mapping with a `question:` key"
     assert diagnostic.subject == "agent:sales"
 
 

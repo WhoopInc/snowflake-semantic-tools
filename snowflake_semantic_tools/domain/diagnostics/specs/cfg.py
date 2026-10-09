@@ -281,7 +281,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Name-map entry cannot be qualified",
         "{block}: '{name}' cannot be qualified -- no fqn: and {reason}",
-        "set fqn: on the entry, or set default_prefix on the block",
+        "set fqn: on the entry under `skills.extensions` or `tags:`, or set default_prefix on that block",
         condition=(
             "a `skills.extensions` entry, or a `tags` entry a view's `tag()` names, has no `fqn:` and "
             "either the block sets no `default_prefix` or the entry key contains a dot, which would "

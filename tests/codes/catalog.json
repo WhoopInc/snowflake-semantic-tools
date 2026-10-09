@@ -733,7 +733,7 @@
   "non_demotable": false,
   "title": "Name-map entry cannot be qualified",
   "message": "{block}: '{name}' cannot be qualified -- no fqn: and {reason}",
-  "suggestion": "set fqn: on the entry, or set default_prefix on the block",
+  "suggestion": "set fqn: on the entry under `skills.extensions` or `tags:`, or set default_prefix on that block",
   "precheck": "local"
  },
  {
@@ -1710,9 +1710,9 @@
   "number": 18,
   "severity": "ERROR",
   "non_demotable": false,
-  "title": "Sidecar file referenced by a document is missing",
-  "message": "{file} references {path}, which does not exist",
-  "suggestion": "create the file, or correct the path",
+  "title": "Referenced or project file cannot be read",
+  "message": "{file}: could not read {path}",
+  "suggestion": "create the file, correct the path, or make it readable",
   "precheck": "local"
  },
  {
@@ -3263,7 +3263,7 @@
   "non_demotable": false,
   "title": "Sample question entry is a bare string",
   "message": "{artifact}: sample_questions[{index}] is a string, expected a mapping",
-  "suggestion": "use {{question: ...}} maps",
+  "suggestion": "write each entry as a mapping with a `question:` key",
   "precheck": "local"
  },
  {
@@ -3428,7 +3428,7 @@
   "non_demotable": false,
   "title": "Filesystem read failed",
   "message": "could not read {path}: {detail}",
-  "suggestion": "check the permissions",
+  "suggestion": "remove the link, or use a path inside the project; otherwise check that the file exists and can be read",
   "precheck": "runtime"
  },
  {
@@ -6375,7 +6375,7 @@
   "severity": "ERROR",
   "non_demotable": false,
   "title": "Search or generic tool omits a required key",
-  "message": "agent '{artifact}': tool '{name}' omits '{field}'",
+  "message": "agent '{artifact}': tool '{name}' omits {field}",
   "suggestion": "declare the tool's name, and its search_service or, for a generic tool, its identifier",
   "precheck": "local"
  },
