@@ -363,6 +363,12 @@ class SemanticViewGenerationService:
                 description = view_config.get("description", "")
                 custom_instruction_names = view_config.get("custom_instructions", [])
 
+                # Per-view target database/schema override
+                view_db = view_config.get("database")
+                view_schema = view_config.get("schema")
+                self.builder.target_database = view_db.upper() if view_db else generate_config.target_database
+                self.builder.target_schema = view_schema.upper() if view_schema else generate_config.target_schema
+
                 # Construct view scope from include/exclude lists
                 view_scope = {}
                 for scope_key in (
@@ -603,8 +609,11 @@ class SemanticViewGenerationService:
             cm = pool.checkout()
             try:
                 builder = SemanticViewBuilder(config=self.config, snowflake_loader=cm)
-                builder.target_database = generate_config.target_database
-                builder.target_schema = generate_config.target_schema
+                # Per-view target database/schema override
+                view_db = view_config.get("database")
+                view_schema = view_config.get("schema")
+                builder.target_database = view_db.upper() if view_db else generate_config.target_database
+                builder.target_schema = view_schema.upper() if view_schema else generate_config.target_schema
                 builder.metadata_database = generate_config.metadata_database
                 builder.metadata_schema = generate_config.metadata_schema
                 builder.store = self.builder.store
@@ -811,6 +820,8 @@ class SemanticViewGenerationService:
                         "tables": tables,
                         "description": row_dict.get("DESCRIPTION") or "",
                         "custom_instructions": custom_instruction_names,
+                        "database": row_dict.get("DATABASE"),
+                        "schema": row_dict.get("SCHEMA"),
                     }
 
                     # Extract scope fields if present in the table
@@ -988,6 +999,8 @@ class SemanticViewGenerationService:
                 "tables": tables if isinstance(tables, list) else [],
                 "description": view.get("DESCRIPTION", ""),
                 "custom_instructions": custom_instructions,
+                "database": view.get("DATABASE"),
+                "schema": view.get("SCHEMA"),
             }
 
             # Pass through view scope fields if present
