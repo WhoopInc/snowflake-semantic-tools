@@ -38,7 +38,8 @@ def validate_tool_catalog(catalog: ToolCatalog, dbt: DbtCatalog) -> DiagnosticBa
         SST-PRS032: a signature parameter has type OBJECT; only the first is reported.
         SST-VAL608: a defined search service's `on:` is not a dbt model.
         SST-VAL609: a search or attribute column is not on the search service's model.
-        SST-LOD018: a defined member's `body_file:` does not exist.
+        SST-LOD018: a defined member's `body_file:` does not exist, and the loader did not
+            refuse it (SST-PRT009).
         SST-LOD019: a defined member's `body_file:` is empty.
         SST-PRS005: a name a defined member's DDL writes is not an identifier, or a secret not a
             three-part name.
@@ -144,7 +145,7 @@ def _validate_member(member: ToolMember, catalog: ToolCatalog, dbt: DbtCatalog) 
         *_reference_relations(member, catalog, subject),
         *_object_parameter(member, subject),
         *_search_columns(member, dbt, subject),
-        *_body_file(member, subject),
+        *_body_file(member, catalog, subject),
         *_sql_values(member, subject),
     )
 
@@ -240,16 +241,31 @@ def _search_columns(member: ToolMember, dbt: DbtCatalog, subject: str) -> tuple[
     return emit.diagnostics
 
 
-def _body_file(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
-    """Report a defined member's `body_file:` that could not be read, or that is blank."""
+def _body_file(member: ToolMember, catalog: ToolCatalog, subject: str) -> tuple[Diagnostic, ...]:
+    """Report a defined member's `body_file:` that could not be read, or that is blank.
+
+    A `body_file:` the loader refused to read (SST-PRT009) is already reported; it is not
+    reported again as missing.
+    """
     emit = Emitter(subject=subject, origin=member.origin)
     if member.ownership is not ToolOwnership.DEFINE or not member.body_file:
+        return emit.diagnostics
+    if member.body is None and _refused_body(member, catalog):
         return emit.diagnostics
     if member.body is None:
         emit("SST-LOD018", file=member.source_file, path=member.body_file)
     elif not member.body.strip():
         emit("SST-LOD019", path=member.body_file, file=member.source_file)
     return emit.diagnostics
+
+
+def _refused_body(member: ToolMember, catalog: ToolCatalog) -> bool:
+    """Return whether the loader reported refusing to read the member's `body_file:`."""
+    subject = artifact_key("tool", member.name).casefold()
+    return any(
+        item.code == "SST-PRT009" and item.subject is not None and item.subject.casefold() == subject
+        for item in catalog.diagnostics
+    )
 
 
 _LANGUAGES = ("java", "javascript", "python", "scala", "sql")
