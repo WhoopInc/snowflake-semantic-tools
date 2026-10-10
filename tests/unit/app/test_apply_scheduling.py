@@ -15,6 +15,7 @@ import pytest
 
 from snowflake_semantic_tools.app.apply.errors import _failed
 from snowflake_semantic_tools.app.apply.run import _WaveRun
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     ApplyOptions,
     ApplyOutcome,
@@ -24,7 +25,9 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     FailurePolicy,
     OutcomeStatus,
 )
-from tests.helpers.artifact_builders import change, changeset, rendered
+from tests.helpers.apply_sessions import ListPool, apply_with
+from tests.helpers.artifact_builders import change, changeset, rendered, state
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _change(name: str, *depends_on: str) -> Change:
@@ -152,3 +155,24 @@ def test_a_lost_lock_starts_nothing_further_and_skips_the_rest_in_plan_order() -
         ("semantic_view:c", OutcomeStatus.SKIPPED),
     ]
     assert [item.code for item in diagnostics] == ["SST-APL011"]
+
+
+def _needing(name: str, *relations: str) -> Change:
+    artifact = replace(
+        rendered(name), required_relations=tuple(QualifiedName.parse(f"DB.SCHEMA.{item}") for item in relations)
+    )
+    return change(artifact)
+
+
+def test_the_preflight_looks_every_relation_up_at_once_on_worker_sessions() -> None:
+    main = FakeSnowflake()
+    workers = [FakeSnowflake() for _ in range(3)]
+    for port in (main, *workers):
+        port.existing = {"DB.SCHEMA.A", "DB.SCHEMA.C"}
+    pool = ListPool(workers)
+    plan = changeset(_needing("X", "C", "B"), _needing("Y", "A", "D"))
+    result = apply_with(main, "run-a", sessions=pool).run(plan, state(), ApplyOptions(parallelism=3))
+    errors = {item.error.message for item in result.outcomes if item.error is not None}
+    # Reported in name order, whichever lookup answered first; none ran on the command's own session.
+    assert errors == {"missing required relations: DB.SCHEMA.B, DB.SCHEMA.D"}
+    assert pool.leases == 4 and main.scripts == []

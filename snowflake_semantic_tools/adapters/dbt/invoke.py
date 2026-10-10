@@ -33,6 +33,7 @@ import yaml
 
 from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.json_files import JsonFileError, read_json_file
 from snowflake_semantic_tools.adapters.paths import UnsafeWrite, write_within
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.state import SST_VERSION
@@ -185,8 +186,8 @@ def _cached_kind(cache: Path | None, key: dict[str, object] | None) -> str | Non
     if cache is None or key is None:
         return None
     try:
-        held = json.loads(cache.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        held = read_json_file(cache)
+    except (OSError, JsonFileError):
         return None
     if not isinstance(held, dict) or held.get("key") != key:
         return None
