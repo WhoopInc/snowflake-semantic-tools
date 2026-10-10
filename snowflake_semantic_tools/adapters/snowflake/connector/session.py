@@ -26,7 +26,7 @@ import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from threading import Lock, RLock
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Self, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Self, TextIO, TypeVar, cast
 
 from snowflake_semantic_tools.adapters.json_files import parse_json
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
@@ -69,6 +69,41 @@ _CACHED_VERBS = frozenset(("SHOW", "DESCRIBE", "DESC", "LIST"))
 _READ_VERBS = _CACHED_VERBS | {"SELECT", "EXPLAIN", "GET"}
 
 ValueT = TypeVar("ValueT")
+
+
+class _LoginStdout:
+    """Send stdout to stderr while any session logs in, however many log in at once.
+
+    `sys.stdout` is the whole process's, and pool sessions log in on worker threads at the same
+    time. One `contextlib.redirect_stdout` each would interleave: a login entering while another
+    is in flight saves stderr as the stream to restore, and the last to leave restores it, so the
+    command's `--output json` envelope would land on stderr. Here the first login to enter saves
+    the real stdout and the last to leave restores it, under one lock; logins still run at once.
+    """
+
+    def __init__(self) -> None:
+        self._guard = Lock()
+        self._logging_in = 0
+        # The stream to restore; it is read when the first login enters.
+        self._saved: TextIO = sys.stdout
+
+    @contextlib.contextmanager
+    def redirected(self) -> Iterator[None]:
+        """Hold stdout on stderr for the block, restoring it when no other login is in flight."""
+        with self._guard:
+            if self._logging_in == 0:
+                self._saved, sys.stdout = sys.stdout, sys.stderr
+            self._logging_in += 1
+        try:
+            yield
+        finally:
+            with self._guard:
+                self._logging_in -= 1
+                if self._logging_in == 0:
+                    sys.stdout = self._saved
+
+
+_LOGIN_STDOUT = _LoginStdout()
 
 
 class ReadCache:
@@ -128,10 +163,11 @@ class Session(ExecutionPort):
         self._scoped_guard = Lock()
         try:
             # Browser SSO prints its prompts to stdout, which `--output json` reserves
-            # for exactly one envelope; the prompts still reach the user on stderr.
+            # for exactly one envelope; the prompts still reach the user on stderr. Pool
+            # sessions log in at once, so the redirect is the shared `_LOGIN_STDOUT`'s.
             import snowflake.connector
 
-            with contextlib.redirect_stdout(sys.stderr), RUN_TIMINGS.login():
+            with _LOGIN_STDOUT.redirected(), RUN_TIMINGS.login():
                 self._connection = snowflake.connector.connect(**dict(connection_params))
             self._lock = RLock()
         except Exception as exc:

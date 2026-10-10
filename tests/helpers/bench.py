@@ -124,14 +124,15 @@ def run_once(sst: Sequence[str], project_dir: Path, target: str | None, name: st
         return {"ok": False, "error": f"could not start {argv[0]}: {exc}", "wall_s": 0.0}
     wall_s = time.perf_counter() - started
     envelope = parse_envelope(completed.stdout)
-    # An envelope belongs on stdout; one found on stderr still has its timings, and is flagged.
+    # An envelope belongs on stdout. One found on stderr broke the `--output json` contract: the
+    # run fails, and its timings are kept in the sample but left out of the summary.
     misplaced = envelope is None and (envelope := parse_envelope(completed.stderr)) is not None
     if envelope is None:
         tail = (completed.stderr or completed.stdout).strip().splitlines()[-3:]
         error = f"exit {completed.returncode} with no JSON envelope: " + " | ".join(tail)
         return {"ok": False, "exit_code": completed.returncode, "error": error, "wall_s": wall_s}
-    return {
-        "ok": completed.returncode in command.ok_exits,
+    sample: dict[str, Any] = {
+        "ok": completed.returncode in command.ok_exits and not misplaced,
         "exit_code": completed.returncode,
         "status": envelope.get("status"),
         "sst_version": envelope.get("sst_version"),
@@ -139,6 +140,9 @@ def run_once(sst: Sequence[str], project_dir: Path, target: str | None, name: st
         "wall_s": wall_s,
         "metrics": sample_metrics(wall_s, envelope),
     }
+    if misplaced:
+        sample["error"] = "CONTRACT: the JSON envelope was printed on stderr, not stdout"
+    return sample
 
 
 def parse_envelope(stdout: str) -> dict[str, Any] | None:
@@ -209,7 +213,8 @@ def table(results: Mapping[str, Any]) -> str:
     """Render the results as text: a row per command, then the median seconds of each phase.
 
     The first table shows the wall time's median, minimum, and maximum, and the median of each
-    other metric, over the successful runs; `ok` counts them.
+    other metric, over the successful runs; `ok` counts them. A command that printed its envelope on stderr,
+    breaking the `--output json` contract, is named on a `CONTRACT BROKEN` line at the end.
     """
     header = ["command", "ok", "wall", "min", "max", *(key.removesuffix("_s") for key in METRICS[1:])]
     rows = [header]
@@ -236,6 +241,11 @@ def table(results: Mapping[str, Any]) -> str:
         for name, entry in results.get("commands", {}).items():
             phase_rows.append([name, *(_cell(_median(entry["summary"], f"phase.{phase}"), "") for phase in ordered)])
         text += "\n" + _aligned(phase_rows)
+    for name, entry in results.get("commands", {}).items():
+        misplaced = sum(bool(sample.get("envelope_on_stderr")) for sample in entry["samples"])
+        if misplaced:
+            runs = len(entry["samples"])
+            text += f"CONTRACT BROKEN: {name} printed its JSON envelope on stderr in {misplaced} of {runs} runs\n"
     return text
 
 

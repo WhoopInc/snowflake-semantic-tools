@@ -132,11 +132,30 @@ def test_a_run_records_its_exit_and_metrics_and_an_exit_it_does_not_accept_as_fa
     assert not refused["ok"] and refused["status"] == "ok" and not refused["envelope_on_stderr"]
 
 
-def test_an_envelope_printed_on_stderr_is_read_and_flagged(tmp_path: Path) -> None:
+def test_an_envelope_printed_on_stderr_fails_the_run_as_a_broken_contract(tmp_path: Path) -> None:
     script = tmp_path / "stderr_sst.py"
     script.write_text(f"import sys\nsys.stderr.write({json.dumps(_envelope()) + chr(10)!r})\n", encoding="utf-8")
     sample = bench.run_once([sys.executable, str(script)], tmp_path, None, "compile")
-    assert sample["ok"] and sample["envelope_on_stderr"] and sample["metrics"]["queries"] == 4
+    assert not sample["ok"] and sample["envelope_on_stderr"] and sample["metrics"]["queries"] == 4
+    assert sample["error"].startswith("CONTRACT:")
+    results = {"commands": {"compile": {"samples": [sample], "summary": bench.summarize([sample])}}}
+    assert "CONTRACT BROKEN: compile printed its JSON envelope on stderr in 1 of 1 runs" in bench.table(results)
+
+
+def test_main_exits_one_when_an_envelope_reaches_stderr(tmp_path: Path) -> None:
+    script = tmp_path / "stderr_sst.py"
+    script.write_text(f"import sys\nsys.stderr.write({json.dumps(_envelope()) + chr(10)!r})\n", encoding="utf-8")
+    args = [
+        "--project-dir",
+        str(tmp_path),
+        "--sst",
+        f"{sys.executable} {script}",
+        "--runs",
+        "1",
+        "--commands",
+        "compile",
+    ]
+    assert bench.main(args) == 1
 
 
 def test_a_run_with_no_envelope_or_no_executable_is_a_failure(tmp_path: Path) -> None:

@@ -241,6 +241,11 @@ The commands are `compile`, `validate-offline`, `validate` (with the Snowflake s
 runs `sst apply --yes`, which publishes whatever the plan holds, so point it only at a scratch
 target whose plan is already applied.
 
+A run fails when its command exits with a status the benchmark does not expect, times out, prints
+no envelope, or prints its envelope on stderr rather than stdout: that breaks the `--output json`
+contract, so the run is left out of the medians and the table ends with a `CONTRACT BROKEN` line
+naming the command. The benchmark exits 1 when any run failed.
+
 ## Architecture
 
 The CLI is the only interface: the package exports nothing but `__version__`, so new behavior is a command or an option. The package root holds `__init__.py`, `_version.py`, and four rings:
