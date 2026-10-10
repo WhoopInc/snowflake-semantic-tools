@@ -171,9 +171,7 @@ def test_a_sibling_connects_with_the_same_settings_and_shares_no_connection(monk
         opened.append(params)
         return _driver()
 
-    monkeypatch.setattr(
-        "snowflake_semantic_tools.adapters.snowflake.connector.session.snowflake.connector.connect", connect
-    )
+    monkeypatch.setattr("snowflake.connector.connect", connect)
     first = SnowflakeConnector({"account": "acme", "role": "R"})
     second = first.sibling()
     assert isinstance(second, SnowflakeConnector) and second is not first
@@ -192,9 +190,7 @@ def _connecting(
         opened.append((params, driver))
         return driver
 
-    monkeypatch.setattr(
-        "snowflake_semantic_tools.adapters.snowflake.connector.session.snowflake.connector.connect", connect
-    )
+    monkeypatch.setattr("snowflake.connector.connect", connect)
     return opened
 
 

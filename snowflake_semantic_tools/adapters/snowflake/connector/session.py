@@ -7,7 +7,9 @@ hands SQL to the driver. A driver or transport failure surfaces as `SnowflakePor
 carrying the diagnostic a command reports; any other exception is an SST bug and propagates
 unwrapped. A halted session starts no further statement. No statement here is a USE: a scope
 is a session's own, set when it connects. The private helpers here are shared by the role
-modules beside this one.
+modules beside this one. The driver is imported the first time a session needs it, never when
+this module is: importing it costs most of a second, which a command that never connects
+(`sst explain`, `sst compile`) must not pay.
 """
 
 from __future__ import annotations
@@ -19,13 +21,7 @@ import sys
 from collections.abc import Iterator, Mapping, Sequence
 from threading import Lock, RLock
 from types import MappingProxyType
-from typing import Any, Self, cast
-
-import snowflake.connector
-from snowflake.connector import DictCursor
-from snowflake.connector.cursor import SnowflakeCursorBase
-from snowflake.connector.errorcode import ER_FAILED_TO_REQUEST
-from snowflake.connector.errors import Error as DriverError
+from typing import TYPE_CHECKING, Any, Self, cast
 
 from snowflake_semantic_tools.adapters.json_files import parse_json
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
@@ -36,11 +32,22 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.sql import Sql, sql
 
-# What a statement or fetch raises when Snowflake or the network fails: the driver's own
-# errors, and the OSError family (its vendored `requests` errors, socket timeouts) that it
-# lets escape a large result's chunk download. Anything else is an SST bug, never a
-# Snowflake failure, so it propagates unwrapped.
-_DRIVER_ERRORS = (DriverError, OSError)
+if TYPE_CHECKING:
+    from snowflake.connector.cursor import SnowflakeCursorBase
+
+
+def _driver_errors() -> tuple[type[Exception], ...]:
+    """What a statement or fetch raises when Snowflake or the network fails.
+
+    The driver's own errors, and the OSError family (its vendored `requests` errors, socket
+    timeouts) that it lets escape a large result's chunk download. Anything else is an SST bug,
+    never a Snowflake failure, so it propagates unwrapped. An `except` clause evaluates this only
+    once something was raised, so the driver is imported no sooner than a statement needs it.
+    """
+    from snowflake.connector.errors import Error as DriverError
+
+    return (DriverError, OSError)
+
 
 # What a driver or key library may echo into an error that must never reach a diagnostic: a
 # credential written as a `name=value` or `name: value` setting, and the path to a key file.
@@ -81,6 +88,8 @@ class Session(ExecutionPort):
         try:
             # Browser SSO prints its prompts to stdout, which `--output json` reserves
             # for exactly one envelope; the prompts still reach the user on stderr.
+            import snowflake.connector
+
             with contextlib.redirect_stdout(sys.stderr):
                 self._connection = snowflake.connector.connect(**dict(connection_params))
             self._lock = RLock()
@@ -161,7 +170,7 @@ class Session(ExecutionPort):
                         _execute(cursor, statement)
                         completed.append(str(cursor.sfqid or ""))
                         rows += max(cursor.rowcount or 0, 0)
-        except _DRIVER_ERRORS as exc:
+        except _driver_errors() as exc:
             # Only the statements before the failing one completed; the result names exactly
             # those, and never counts the one that failed as written.
             error = ExecutionError(scrubbed_message(exc), getattr(exc, "sqlstate", None), getattr(exc, "errno", None))
@@ -266,6 +275,8 @@ class Session(ExecutionPort):
         Raises:
             SnowflakePortError: the statement failed, or the driver returned a positional row.
         """
+        from snowflake.connector import DictCursor
+
         with _as_port_errors(), self._cursor(DictCursor) as cursor:
             _execute(cursor, sql)
             rows = cursor.fetchall()
@@ -318,7 +329,7 @@ def _as_port_errors() -> Iterator[None]:
     """
     try:
         yield
-    except _DRIVER_ERRORS as exc:
+    except _driver_errors() as exc:
         raise _port_error(exc) from exc
 
 
@@ -413,6 +424,8 @@ def _in_transit(exc: Exception, failure: SessionFailure | None, errno: object) -
     signature table reads it as a missed deadline (a dropped connection, a timeout, a busy
     warehouse), or when it carries the driver's number for a request it gave up on.
     """
+    from snowflake.connector.errorcode import ER_FAILED_TO_REQUEST
+
     return isinstance(exc, OSError) or failure is SessionFailure.DEADLINE or errno == ER_FAILED_TO_REQUEST
 
 
