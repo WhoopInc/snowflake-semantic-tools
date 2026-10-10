@@ -124,6 +124,8 @@ def run_once(sst: Sequence[str], project_dir: Path, target: str | None, name: st
         return {"ok": False, "error": f"could not start {argv[0]}: {exc}", "wall_s": 0.0}
     wall_s = time.perf_counter() - started
     envelope = parse_envelope(completed.stdout)
+    # An envelope belongs on stdout; one found on stderr still has its timings, and is flagged.
+    misplaced = envelope is None and (envelope := parse_envelope(completed.stderr)) is not None
     if envelope is None:
         tail = (completed.stderr or completed.stdout).strip().splitlines()[-3:]
         error = f"exit {completed.returncode} with no JSON envelope: " + " | ".join(tail)
@@ -133,6 +135,7 @@ def run_once(sst: Sequence[str], project_dir: Path, target: str | None, name: st
         "exit_code": completed.returncode,
         "status": envelope.get("status"),
         "sst_version": envelope.get("sst_version"),
+        "envelope_on_stderr": misplaced,
         "wall_s": wall_s,
         "metrics": sample_metrics(wall_s, envelope),
     }

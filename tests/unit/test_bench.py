@@ -129,7 +129,14 @@ def test_a_run_records_its_exit_and_metrics_and_an_exit_it_does_not_accept_as_fa
     planned = bench.run_once(_fake_sst(tmp_path, 2, printed), tmp_path, "verify", "plan")
     assert planned["ok"] and planned["exit_code"] == 2 and planned["metrics"]["queries"] == 4
     refused = bench.run_once(_fake_sst(tmp_path, 4, printed), tmp_path, None, "compile")
-    assert not refused["ok"] and refused["status"] == "ok"
+    assert not refused["ok"] and refused["status"] == "ok" and not refused["envelope_on_stderr"]
+
+
+def test_an_envelope_printed_on_stderr_is_read_and_flagged(tmp_path: Path) -> None:
+    script = tmp_path / "stderr_sst.py"
+    script.write_text(f"import sys\nsys.stderr.write({json.dumps(_envelope()) + chr(10)!r})\n", encoding="utf-8")
+    sample = bench.run_once([sys.executable, str(script)], tmp_path, None, "compile")
+    assert sample["ok"] and sample["envelope_on_stderr"] and sample["metrics"]["queries"] == 4
 
 
 def test_a_run_with_no_envelope_or_no_executable_is_a_failure(tmp_path: Path) -> None:
