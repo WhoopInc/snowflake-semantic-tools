@@ -185,7 +185,10 @@ class _EvalAnsweredByRunName(EvalSnowflake):
 
     def query(self, sql: Any, params: object = None) -> QueryResult:
         text = str(sql)
-        for marker, key, index in (("EXECUTE_AI_EVALUATION('STATUS'", "STATUS", 0), ("GET_AI_EVALUATION_DATA", "RESULTS", -1)):
+        for marker, key, index in (
+            ("EXECUTE_AI_EVALUATION('STATUS'", "STATUS", 0),
+            ("GET_AI_EVALUATION_DATA", "RESULTS", -1),
+        ):
             if isinstance(params, tuple) and marker in text:
                 self.log.append(Sent("query", (text,), params))
                 return self.run_answers[(key, str(params[index]))]

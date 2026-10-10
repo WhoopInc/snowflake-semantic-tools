@@ -24,6 +24,7 @@ import yaml
 
 from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 
 
@@ -41,12 +42,13 @@ DbtRunner = Callable[[Sequence[str], Path], CompletedRun]
 
 
 def subprocess_runner(argv: Sequence[str], cwd: Path) -> CompletedRun:
-    """Run `argv` with no shell in `cwd`, capturing its output.
+    """Run `argv` with no shell in `cwd`, capturing its output; `RUN_TIMINGS` counts the process.
 
     Raises:
         OSError: The executable is not on `PATH` or cannot be started.
     """
-    completed = subprocess.run(list(argv), cwd=cwd, capture_output=True, text=True, check=False)
+    with RUN_TIMINGS.dbt_process():
+        completed = subprocess.run(list(argv), cwd=cwd, capture_output=True, text=True, check=False)
     return CompletedRun(completed.returncode, completed.stdout or "", completed.stderr or "")
 
 

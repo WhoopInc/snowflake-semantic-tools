@@ -129,6 +129,10 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     assert applied.exit_code == 0, applied.output
     payload = json.loads(applied.output)
     assert payload["data"]["state_written"] is True
+    # Each command's envelope says how long the steps it named took.
+    plan_phases = planned_payload["invocation"]["timings"]["phases"]
+    assert {"load", "validate", "state_read", "observe", "classify"} <= set(plan_phases)
+    assert {"lock", "publish", "state_write"} <= set(payload["invocation"]["timings"]["phases"])
     # Seven more than M4: the bundle stage, one CREATE carrying the first version for each
     # of three skills and the plugin, and the profile stage; the eval dataset's own version;
     # and the agent spec stage, created once for every agent that stages there.

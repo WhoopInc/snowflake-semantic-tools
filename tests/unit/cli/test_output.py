@@ -10,6 +10,7 @@ import pytest
 from click.testing import CliRunner
 
 from snowflake_semantic_tools import __version__
+from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.output import (
     RenderPolicy,
@@ -17,6 +18,7 @@ from snowflake_semantic_tools.cli.output import (
     json_envelope,
     render_diagnostics,
     resolve_invocation,
+    start_invocation,
     use_render_policy,
 )
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
@@ -80,6 +82,35 @@ def test_validate_json_emits_one_v2_envelope(tmp_path: Path) -> None:
         "suppressed_cascade": 0,
         "baselined": 0,
     }
+    timings = envelope["invocation"]["timings"]
+    assert set(timings) == {"wall_s", "phases", "snowflake", "dbt_runs", "dbt_s"}
+    assert timings["wall_s"] == envelope["invocation"]["duration_s"]
+    assert {"load", "validate"} <= set(timings["phases"])
+    assert 0 < timings["phases"]["load"] <= timings["wall_s"]
+    # An offline validate sends Snowflake nothing.
+    assert timings["snowflake"] == {
+        "queries": 0,
+        "client_s": 0.0,
+        "max_s": 0.0,
+        "busy_s": 0.0,
+        "connects": 0,
+        "connect_s": 0.0,
+    }
+
+
+def test_a_run_that_prints_no_envelope_records_no_timings(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
+    result = CliRunner().invoke(cli, ["validate", *common(project), "--no-strict", "--no-snowflake-syntax-check"])
+    assert result.exit_code == 0, result.output
+    assert not RUN_TIMINGS.enabled
+    assert RUN_TIMINGS.snapshot()["phases"] == {}
+
+
+def test_an_envelope_printed_before_anything_ran_reports_empty_timings() -> None:
+    start_invocation(["sst", "plan"])
+    envelope = json.loads(json.dumps(json_envelope("plan", DiagnosticBag(()))))
+    timings = envelope["invocation"]["timings"]
+    assert timings["phases"] == {} and timings["dbt_runs"] == 0 and timings["snowflake"]["queries"] == 0
 
 
 def _promoted_warning(name: str = "lookup") -> Diagnostic:

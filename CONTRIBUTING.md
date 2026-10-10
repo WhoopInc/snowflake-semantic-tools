@@ -218,6 +218,29 @@ the safety guarantees, and the manual workflow's secrets.
 
 [tests/README.md](tests/README.md) describes the suite, the reference project, and the goldens.
 
+### Benchmarking
+
+`tests/helpers/bench.py` runs `sst` commands against a project, each as its own process
+`--runs` times with `--output json`, and reports where their time went from the envelope's
+`invocation.timings`: startup (the interpreter, imports, and the `load` phase, dbt included),
+Snowflake (statements, their summed and wall-clock time, logins), the rest, and each phase the
+engine names. It imports only the standard library and runs whichever `sst` is on `PATH`
+(or `--sst`). Benchmark a change by running it before and after against the same scratch target:
+
+```bash
+python tests/helpers/bench.py --project-dir ../my-project --target dev --runs 3 \
+  --commands compile,validate-offline,plan --out before.json
+python tests/helpers/bench.py --project-dir ../my-project --target dev --runs 3 \
+  --commands compile,validate-offline,plan --out after.json
+python tests/helpers/bench.py --compare before.json after.json
+python tests/helpers/bench.py --table after.json
+```
+
+The commands are `compile`, `validate-offline`, `validate` (with the Snowflake syntax check),
+`plan`, `apply-noop` and `smoke`; `--append` adds to an existing results file. `apply-noop`
+runs `sst apply --yes`, which publishes whatever the plan holds, so point it only at a scratch
+target whose plan is already applied.
+
 ## Architecture
 
 The CLI is the only interface: the package exports nothing but `__version__`, so new behavior is a command or an option. The package root holds `__init__.py`, `_version.py`, and four rings:

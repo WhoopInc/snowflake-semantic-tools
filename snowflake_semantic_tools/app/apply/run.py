@@ -54,6 +54,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.execution import SessionPool
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.ports.state import StateStore
+from snowflake_semantic_tools.domain.ports.timing import NO_PHASES, PhaseTimer
 from snowflake_semantic_tools.domain.state import SST_VERSION, STATE_SCHEMA_VERSION, LastRun, State
 from snowflake_semantic_tools.domain.state.lock import LockClaim, LockFence, state_write
 from snowflake_semantic_tools.domain.validate.publication import channel_outcome_diagnostics
@@ -80,6 +81,8 @@ class ApplyArtifacts:
         heartbeat: The session the lock heartbeat extends the lock on, used for nothing else;
             None extends it on `port`.
         host: The machine the run lock records; empty when it is unknown.
+        phases: Times `lock` (taking it), `publish` (the preflight and the waves), and
+            `state_write`.
     """
 
     def __init__(
@@ -96,6 +99,7 @@ class ApplyArtifacts:
         sessions: SessionPool[CatalogPublicationPort] | None = None,
         heartbeat: StatePort | None = None,
         lock_policy: LockPolicy = _DEFAULT_LOCK_POLICY,
+        phases: PhaseTimer = NO_PHASES,
     ) -> None:
         self._port = port
         self._state_store = state_store
@@ -108,6 +112,7 @@ class ApplyArtifacts:
         self._sessions = sessions
         self._heartbeat = heartbeat
         self._lock_policy = lock_policy
+        self._phases = phases
 
     def run(self, changeset: ChangeSet, previous: State, options: ApplyOptions = ApplyOptions()) -> ApplyResult:
         """Execute the plan's writes under the apply lock and record their outcomes in state.
@@ -186,7 +191,8 @@ class ApplyArtifacts:
         # it and the run's first statement must not leave it held. Releasing a lease that was
         # refused releases nothing another run holds.
         try:
-            locked, lock_diagnostics = lease.acquire(break_stale=options.break_stale_lock)
+            with self._phases.phase("lock"):
+                locked, lock_diagnostics = lease.acquire(break_stale=options.break_stale_lock)
             reported = (*changeset.diagnostics, *temporary_notes(changeset), *lock_diagnostics)
             if not locked:
                 return self._refused(reported, run_id, started)
@@ -238,7 +244,8 @@ class ApplyArtifacts:
 
         The waves share one `UploadStages`, so each stage the run uploads to is created at most once.
         """
-        outcomes = self._preflight_relations(changeset.changes)
+        with self._phases.phase("publish"):
+            outcomes = self._preflight_relations(changeset.changes)
         wave_diagnostics: tuple[Diagnostic, ...] = ()
         stages = UploadStages()
 
@@ -250,7 +257,8 @@ class ApplyArtifacts:
 
         waves = _WaveRun(changeset, options, apply_one, lost, on_second_interrupt=self._halt_interrupted)
         if outcomes is None:
-            outcomes, wave_diagnostics = waves.run()
+            with self._phases.phase("publish"):
+                outcomes, wave_diagnostics = waves.run()
         accounted = (
             *_unaccounted(changeset, outcomes),
             *channel_outcome_diagnostics(
@@ -260,7 +268,8 @@ class ApplyArtifacts:
         )
         diagnostics = DiagnosticBag((*reported, *wave_diagnostics, *accounted))
         assert lease.fence is not None
-        result = self._persist(changeset, previous, outcomes, diagnostics, run_id, started, lease.fence)
+        with self._phases.phase("state_write"):
+            result = self._persist(changeset, previous, outcomes, diagnostics, run_id, started, lease.fence)
         return replace(result, interrupted=waves.interrupted)
 
     def _apply_one(self, change: Change, options: ApplyOptions, stages: UploadStages) -> ApplyOutcome:

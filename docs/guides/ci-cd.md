@@ -258,7 +258,8 @@ shown indented here:
   "command": "plan",
   "status": "changes",
   "exit_code": 2,
-  "invocation": {"argv": ["sst", "plan"], "target": "prod", "project_dir": "...", "config_file": "...", "overrides": [], "started_at": "...", "duration_s": 4.2},
+  "invocation": {"argv": ["sst", "plan"], "target": "prod", "project_dir": "...", "config_file": "...", "overrides": [], "started_at": "...", "duration_s": 4.2,
+    "timings": {"wall_s": 4.2, "phases": {"load": 1.1, "observe": 2.4}, "snowflake": {"queries": 12, "client_s": 3.1, "max_s": 0.6, "busy_s": 2.6, "connects": 1, "connect_s": 0.4}, "dbt_runs": 0, "dbt_s": 0.0}},
   "diagnostics": [],
   "summary": {"error": 0, "warning": 0, "info": 3, "promoted": 0, "suppressed_cascade": 0, "baselined": 0},
   "data": {}
@@ -270,6 +271,18 @@ shown indented here:
 - `invocation.overrides` names each guarantee the run switched off:
   `--allow-stale-manifest`, `--allow-unsupported-manifest-schema`, or
   `--no-baseline`.
+- `invocation.timings` says where the run's time went, in seconds as the client
+  observed them: `wall_s` (the run, as `duration_s`); `phases`, the seconds of
+  each step the command names (`load`, the configuration and the compile with
+  any `dbt parse`; `validate`; `state_read`, `observe`, `classify` for `plan`
+  and `apply`; `lock`, `publish`, `state_write` for `apply`; `smoke`), a phase
+  absent when the run did not reach it; `snowflake`, with `queries` (statements
+  sent, failed ones included), `client_s` (their summed time, which statements
+  on parallel sessions push past the wall clock), `max_s` (the slowest),
+  `busy_s` (the wall time during which any statement or login was in flight),
+  `connects` and `connect_s` (logins); and `dbt_runs` and `dbt_s` (dbt
+  processes SST started). The names a phase can take may grow; read them as
+  diagnostics for a slow run, not as a contract on what a run does.
 - Each diagnostic carries `code`, `severity` (and `declared_severity`, with
   `promoted_from` or `demoted_from` when they differ), `message`, `location`,
   `suggestion`, `baselined`, a stable `fingerprint`, and `help_url`, a link to

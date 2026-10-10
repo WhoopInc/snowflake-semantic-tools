@@ -55,6 +55,7 @@ from snowflake_semantic_tools.domain.ports.project import ProjectInputs
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightPort
 from snowflake_semantic_tools.domain.ports.state import StateStore
+from snowflake_semantic_tools.domain.ports.timing import NO_PHASES, PhaseTimer
 from snowflake_semantic_tools.domain.state import Manifest, State
 from snowflake_semantic_tools.domain.validate.config import severity_overrides
 
@@ -208,12 +209,21 @@ class PreparePlan:
     Args:
         baseline: The run's baseline. A validation error it holds -- a warning `--strict`
             promoted -- does not refuse the plan, as it does not fail `sst validate`.
+        phases: Times `validate`, `state_read`, `observe`, and `classify`.
     """
 
-    def __init__(self, inputs: ProjectInputs, clock: ClockPort, *, baseline: Baseline | None = None) -> None:
+    def __init__(
+        self,
+        inputs: ProjectInputs,
+        clock: ClockPort,
+        *,
+        baseline: Baseline | None = None,
+        phases: PhaseTimer = NO_PHASES,
+    ) -> None:
         self._inputs = inputs
         self._clock = clock
         self._baseline = baseline
+        self._phases = phases
 
     def select(
         self,
@@ -354,7 +364,8 @@ class PreparePlan:
         if isinstance(validated, PlanRefused):
             return validated
         result, manifest = validated
-        state, state_diagnostics = read_state(state_store, port, state_table=state_table, target=target)
+        with self._phases.phase("state_read"):
+            state, state_diagnostics = read_state(state_store, port, state_table=state_table, target=target)
         apply_config = config_block(self._inputs.config().tree.get("apply"))
         handlers = _lifecycle_handlers(port, candidates.full, apply_config)
         scope = candidates.scope
@@ -365,16 +376,18 @@ class PreparePlan:
             port, lifecycle_handlers=handlers, preflight=preflight, readers=readers, observe_options=observe_options
         )
         composite_plans = planner.composite_plans(rendered, manifest, state)
-        reading = planner.read(
-            rendered,
-            state,
-            target,
-            fetched_at=fetched_at,
-            include_prune=scope.include_prune,
-            prune_types=scope.prune_types,
-            observation_targets=_observation_targets(candidates.full, state),
-        )
-        changeset = _decided(candidates, rendered, reading, manifest, state, target, handlers, composite_plans)
+        with self._phases.phase("observe"):
+            reading = planner.read(
+                rendered,
+                state,
+                target,
+                fetched_at=fetched_at,
+                include_prune=scope.include_prune,
+                prune_types=scope.prune_types,
+                observation_targets=_observation_targets(candidates.full, state),
+            )
+        with self._phases.phase("classify"):
+            changeset = _decided(candidates, rendered, reading, manifest, state, target, handlers, composite_plans)
         stale = stale_observation(target, self._clock.monotonic_ms() - started)
         # A reading with a refused read is incomplete, so no later plan may reuse it. An advisory
         # read the role may not make (SST-VAL020) is as complete as the role can ever read it.
@@ -439,11 +452,12 @@ class PreparePlan:
     ) -> tuple[CompileResult, Manifest] | PlanRefused:
         """Validate the selection as `run` says, and return it with the manifest of what publishes."""
         overrides = severity_overrides(self._inputs.config().tree)
-        diagnostics = (
-            _validation(candidates, port, target, readers, overrides)
-            if validate
-            else apply_overrides(candidates.selected.diagnostics, overrides)
-        )
+        with self._phases.phase("validate"):
+            diagnostics = (
+                _validation(candidates, port, target, readers, overrides)
+                if validate
+                else apply_overrides(candidates.selected.diagnostics, overrides)
+            )
         held = held_by_baseline(diagnostics, self._baseline, clock=self._clock)
         validated = _validated(candidates, diagnostics, held)
         if isinstance(validated, PlanRefused):

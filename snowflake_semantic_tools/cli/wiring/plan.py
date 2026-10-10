@@ -23,6 +23,7 @@ from snowflake_semantic_tools.adapters.fs.local import (
 )
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool, SnowflakeConnector
+from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.observe import ObserveOptions
 from snowflake_semantic_tools.app.plan import PlanCandidates, PlanReady, PlanRefused, PlanScope, PreparePlan
@@ -320,7 +321,7 @@ def _prepared(request: PlanRequest) -> tuple[PreparePlan, PlanCandidates, Diagno
     full_result = compiling.compile_result(request.paths, request.target_name, request.manifest_path)
     selectors = selector_report(_named(request), request.excluded, full_result.compiled)
     inputs = project_inputs(request.paths, request.target_name, request.manifest_path)
-    prepare = PreparePlan(inputs, SystemClock(), baseline=request.baseline)
+    prepare = PreparePlan(inputs, SystemClock(), baseline=request.baseline, phases=RUN_TIMINGS)
     candidates = prepare.select(
         full_result,
         compiled_manifest(project_dir),

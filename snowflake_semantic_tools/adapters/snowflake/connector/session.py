@@ -28,6 +28,7 @@ from snowflake.connector.errorcode import ER_FAILED_TO_REQUEST
 from snowflake.connector.errors import Error as DriverError
 
 from snowflake_semantic_tools.adapters.json_files import parse_json
+from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, session_failure
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
@@ -81,7 +82,7 @@ class Session(ExecutionPort):
         try:
             # Browser SSO prints its prompts to stdout, which `--output json` reserves
             # for exactly one envelope; the prompts still reach the user on stderr.
-            with contextlib.redirect_stdout(sys.stderr):
+            with contextlib.redirect_stdout(sys.stderr), RUN_TIMINGS.login():
                 self._connection = snowflake.connector.connect(**dict(connection_params))
             self._lock = RLock()
         except Exception as exc:
@@ -336,7 +337,8 @@ def _execute(
     nothing, so the text goes as built rather than with every `%` doubled for formatting the
     driver then skips. A `timeout_seconds` bounds the statement end to end: the driver cancels
     it once that long has passed, and gives up retrying its requests over a failing network
-    then too, rather than after the connection's own network timeout.
+    then too, rather than after the connection's own network timeout. Every statement handed
+    over counts as one round trip in `RUN_TIMINGS`, whether or not it succeeds.
 
     Raises:
         TypeError: `statement` is not `Sql`, so nothing built from a plain string reaches the driver.
@@ -345,7 +347,8 @@ def _execute(
         raise TypeError(f"the connector runs only Sql, found {type(statement).__name__}")
     bound = bool(params)
     connector_params = cast(Sequence[Any] | dict[Any, Any] | None, params) if bound else None
-    cursor.execute(statement.for_driver(bound=bound), connector_params, num_statements=1, timeout=timeout_seconds)
+    with RUN_TIMINGS.round_trip():
+        cursor.execute(statement.for_driver(bound=bound), connector_params, num_statements=1, timeout=timeout_seconds)
 
 
 def _fetch(

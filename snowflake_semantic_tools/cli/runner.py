@@ -48,6 +48,7 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.baseline import BASELINE_FILE, read_baseline
 from snowflake_semantic_tools.adapters.locations import ProjectPaths, locate_project
 from snowflake_semantic_tools.adapters.paths import write_within
+from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.adapters.yaml.dump import dump_yaml
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, CONNECTION, ERROR, OK
 from snowflake_semantic_tools.cli.globals import DEFAULT_OUTPUTS, GLOBAL_NAMES, GlobalOptions, command_global_options
@@ -148,6 +149,9 @@ def command_body(
         @functools.wraps(body)
         def callback(**params: Any) -> None:
             options = GlobalOptions.from_params(params)
+            # Only an envelope reports the run's timings, so a run that prints none records none.
+            if options.output in ("json", "yaml"):
+                RUN_TIMINGS.enable()
             given = {key: value for key, value in params.items() if key not in GLOBAL_NAMES}
             run = _Run(name, body, wanted, options, given, frozenset(outputs), config, refusals, applies_baseline)
             with terminated_as_interrupt():
