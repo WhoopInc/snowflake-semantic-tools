@@ -8,8 +8,10 @@ import click
 
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.adapters.yaml.ownership import ownership_report
+from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.policy import strict_reach
 from snowflake_semantic_tools.app.validate import ValidateArtifacts, ValidationResult
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
@@ -20,6 +22,7 @@ from snowflake_semantic_tools.cli.options import (
     model_path_options,
     selection_options,
     target_option,
+    threads_option,
     validation_options,
     with_model_paths,
 )
@@ -29,10 +32,11 @@ from snowflake_semantic_tools.cli.settings import (
     project_config,
     severity_overrides_setting,
     strict_disagreement,
+    threads_setting,
     validation_settings,
 )
 from snowflake_semantic_tools.cli.wiring import compile as compiling
-from snowflake_semantic_tools.cli.wiring.project import connect
+from snowflake_semantic_tools.cli.wiring.project import connect, open_connector
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.plan.selectors import SelectionScope
 
@@ -45,6 +49,7 @@ from snowflake_semantic_tools.domain.plan.selectors import SelectionScope
 @validation_options()
 @model_path_options()
 @click.option("--verify-schema", is_flag=True)
+@threads_option()
 @command_body("validate")
 def validate(
     paths: ProjectPaths,
@@ -59,6 +64,7 @@ def validate(
     dbt_dir: Path | None,
     semantic_dir: Path | None,
     verify_schema: bool,
+    threads: int | None,
 ) -> CommandResult:
     """Validate every offline rule, with optional connected checks.
 
@@ -66,7 +72,9 @@ def validate(
     baseline holds never blocks, and an expired baseline fails the run. The Snowflake syntax
     check connects, and runs unless --no-snowflake-syntax-check or
     `validation.snowflake_syntax_check: false` turns it off. With --verify-schema, the
-    columns each semantic view reads are looked up in the warehouse.
+    columns each semantic view reads are looked up in the warehouse. With more than one
+    thread, the connected checks run on up to that many sessions at once, with the same
+    findings.
     """
     paths = with_model_paths(paths, dbt_dir, semantic_dir)
     compiled = compiling.compile_result(paths, target_name, manifest_path, database=database)
@@ -79,13 +87,17 @@ def validate(
         connected=snowflake_syntax_check,
     )
     port = None
+    params: dict[str, object] = {}
     target = target_name or ""
+    workers = threads_setting(paths, threads)
     if effective_connected or verify_schema:
         profile, port = connect(paths, target_name)
         target = profile.target_name
+        params = profile.connection_params
     try:
-        with RUN_TIMINGS.phase("validate"):
-            result = ValidateArtifacts(port, catalog=port, target=target, clock=SystemClock()).run(
+        with ConnectorPool(workers, lambda: open_connector(params)) as pool, RUN_TIMINGS.phase("validate"):
+            readers = Fanout(port, pool, workers) if port is not None else None
+            result = ValidateArtifacts(port, catalog=port, target=target, clock=SystemClock(), readers=readers).run(
                 compiled,
                 strict=effective_strict,
                 connected=effective_connected,

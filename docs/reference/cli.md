@@ -268,7 +268,9 @@ Exit 0 with no errors, and 1 with errors, or warnings under --strict; a warning 
 baseline holds never blocks, and an expired baseline fails the run. The Snowflake syntax
 check connects, and runs unless --no-snowflake-syntax-check or
 `validation.snowflake_syntax_check: false` turns it off. With --verify-schema, the
-columns each semantic view reads are looked up in the warehouse.
+columns each semantic view reads are looked up in the warehouse. With more than one
+thread, the connected checks run on up to that many sessions at once, with the same
+findings.
 
 ```text
 sst validate [OPTIONS]
@@ -287,6 +289,7 @@ sst validate [OPTIONS]
 | `--dbt` | DIRECTORY |  | Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`. |
 | `--semantic` | DIRECTORY |  | Read the semantic models from this directory instead of `project.semantic_models_dir`. |
 | `--verify-schema` | flag |  | Connects: confirm each column a semantic view reads exists in the warehouse. |
+| `--threads` | INTEGER RANGE |  | Snowflake sessions to work on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1. Output is the same for any count. |
 
 ## sst baseline
 

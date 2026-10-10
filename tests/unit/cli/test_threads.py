@@ -172,6 +172,39 @@ def test_plan_refuses_a_thread_count_outside_one_to_sixteen(project: Path) -> No
         assert result.exit_code == 3, result.output
 
 
+def _validate(monkeypatch: pytest.MonkeyPatch, project: Path, *extra: str) -> tuple[dict[str, Any], JitteredSnowflake]:
+    sessions = JitteredSnowflake()
+    monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", sessions.open)
+    args = ["validate", *common(project), "--target", "dev", "--output", "json", "--snowflake-syntax-check", *extra]
+    result = CliRunner().invoke(cli, args)
+    assert result.exit_code == 1, result.output
+    return json.loads(result.output), sessions
+
+
+def _timeless(envelope: dict[str, Any]) -> list[dict[str, Any]]:
+    """A run's diagnostics, less how long each verified query's count took, which no run repeats."""
+    return [
+        {key: value for key, value in item.items() if key not in ("message", "fingerprint", "params")}
+        | {"params": {key: value for key, value in item["params"].items() if key != "elapsed_ms"}}
+        if item["code"] == "SST-VAL415"
+        else item
+        for item in envelope["diagnostics"]
+    ]
+
+
+def test_validate_reports_the_same_on_one_thread_and_on_four(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    one, one_sessions = _validate(monkeypatch, project, "--threads", "1")
+    four, four_sessions = _validate(monkeypatch, project, "--threads", "4")
+    again, _ = _validate(monkeypatch, project, "--threads", "4")
+
+    assert _timeless(one) == _timeless(four) == _timeless(again)
+    assert any("AVG_ORDER_VALUE" in item["message"] for item in one["diagnostics"] if item["code"] == "SST-VAL418")
+    assert len(one_sessions.opened) == 1 and one_sessions.threads == {"MainThread"}
+    assert 1 < len(four_sessions.opened) <= 5
+    assert any(name.startswith("sst-worker") for name in four_sessions.threads)
+    assert four_sessions.still_open == 0 and one_sessions.still_open == 0
+
+
 def test_test_takes_threads_from_the_flag_or_the_environment_within_one_to_sixteen(project: Path) -> None:
     golden = ["test", *common(project), "--suite", "golden", "--output", "json"]
     for args, env in ((["--threads", "4"], None), ([], {"SST_THREADS": "4"})):

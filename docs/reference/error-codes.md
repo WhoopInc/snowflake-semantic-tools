@@ -3508,7 +3508,7 @@ Raised when connected validate runs a verified query that compiles and it return
 
 Fix: fix the query, or check that the target holds the data it asks about
 
-Note: A verified query is run in each semantic view that holds it, and is reported once, naming every such view and the time of the first run.
+Note: A verified query several semantic views hold is counted once, and reported once, naming every such view.
 
 ### SST-VAL416
 
