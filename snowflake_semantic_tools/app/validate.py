@@ -1,27 +1,35 @@
 """Validation orchestration over compiled artifacts.
 
 The offline checks live in `domain.validate`. The connected checks stay here because they
-run SQL through the `ExecutionPort`: the syntax check (SST-VAL418) compiles each expression,
-the verified-query row count (SST-VAL415) runs each query that compiles, and the spot checks
+run SQL through the `ExecutionPort`: the syntax check (SST-VAL418) compiles each expression
+over columns typed as the target describes its tables (`app.explain_projection`), the
+verified-query row count (SST-VAL415) runs each query that compiles, and the spot checks
 (SST-VAL212, SST-VAL218) read the joined tables. SST-VAL020 reports each one skipped. The
 live-object checks of agents and tools are in `app.compile.agents.observe`. A view's
 connected checks are one unit a `Fanout` may run on a session of its own; the views'
-findings are merged in compile order.
+findings are merged in compile order, a member's finding once however many views hold it.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.compile.agents.observe import ObserveLiveObjects
+from snowflake_semantic_tools.app.explain_projection import (
+    ObservedTypes,
+    column_types,
+    describe_columns,
+    explain_expression,
+)
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.verify_schema import verify_columns
-from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.diagnostics.policy import SeverityPolicy, apply_policy
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, SemanticView, Table, VerifiedQuery
@@ -30,10 +38,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.sql import (
-    AuthoredExpression,
     Sql,
-    expr,
-    guard_expression,
     ident,
     join,
     qname,
@@ -111,14 +116,17 @@ class ValidateArtifacts:
         """Validate a compile result, asking Snowflake to check each semantic view when connected.
 
         Offline, the compiled artifacts' dependencies are checked for a cycle. Connected, each
-        compiled semantic view's metrics, its dimensions (time dimensions and filters included,
-        facts not), and its verified queries are EXPLAINed: an expression over a projection of
-        NULL columns, with qualified references, variables, and metric names replaced by NULL;
-        a verified query as written. A verified query that compiles is then run under a row
-        count. Then each equality relationship's target is read for a repeated join key, and
-        each distinct range for overlapping ranges. With a catalog, the compiled agents and
-        tools are checked against their live objects. The project's severity overrides then
-        apply, and strict mode promotes every warning to an error.
+        table the compiled semantic views read is described once, and each view's metrics, its
+        dimensions (time dimensions and filters included, facts not), and its verified queries
+        are EXPLAINed: an expression over a projection with no rows, in which each qualified
+        column reference is a NULL of the column's described type (else its declared one, else
+        untyped) and variables and metric names are NULL; a verified query as written. A
+        verified query that compiles is then run under a row count. Then each equality
+        relationship's target is read for a repeated join key, and each distinct range for
+        overlapping ranges. A compile or row-count finding repeated by every view that holds
+        the member is reported once, naming those views. With a catalog, the compiled agents
+        and tools are checked against their live objects. The project's severity overrides
+        then apply, and strict mode promotes every warning to an error.
 
         Args:
             strict: Promote every warning, the compile's included, to an error; with `reaches`,
@@ -151,8 +159,15 @@ class ValidateArtifacts:
             skipped = len(CONNECTED_RULES)
         else:
             views = tuple(item for item in compiled.compiled if isinstance(item, CompiledView))
-            checked = (self._readers or Fanout(self._port)).map(self._view_checks, views)
-            found.extend(diagnostic for diagnostics in checked for diagnostic in diagnostics)
+            readers = self._readers or Fanout(self._port)
+            relations = tuple(sorted({table.fqn for item in views for table in item.view.tables}))
+            observed = MappingProxyType(dict(zip(relations, readers.map(describe_columns, relations), strict=True)))
+
+            def view_checks(port: ExecutionPort, compiled_view: CompiledView) -> list[Diagnostic]:
+                return self._view_checks(port, compiled_view, observed)
+
+            checked = readers.map(view_checks, views)
+            found.extend(_once_per_member(diagnostic for diagnostics in checked for diagnostic in diagnostics))
             if self._catalog is not None:
                 found.extend(ObserveLiveObjects(self._catalog, target=self._target).run(compiled))
         if verify_schema and self._catalog is not None:
@@ -167,35 +182,52 @@ class ValidateArtifacts:
             artifacts_checked=len(compiled.compiled),
         )
 
-    def _view_checks(self, port: ExecutionPort, compiled_view: CompiledView) -> list[Diagnostic]:
+    def _view_checks(
+        self, port: ExecutionPort, compiled_view: CompiledView, observed: ObservedTypes
+    ) -> list[Diagnostic]:
         """Run one view's connected checks on `port`: its EXPLAINs and counts, then its spot checks."""
-        return [*self._compile_checks(port, compiled_view), *self._data_checks(port, compiled_view)]
+        return [*self._compile_checks(port, compiled_view, observed), *self._data_checks(port, compiled_view)]
 
-    def _compile_checks(self, port: ExecutionPort, compiled_view: CompiledView) -> list[Diagnostic]:
+    def _compile_checks(
+        self, port: ExecutionPort, compiled_view: CompiledView, observed: ObservedTypes
+    ) -> list[Diagnostic]:
         """EXPLAIN each metric, dimension and verified query of one view (SST-VAL418)."""
         view = compiled_view.view
-        projection = _validation_projection(view)
-        checks: list[tuple[str, str, Sql]] = [
-            ("metric", metric.qualified_name, _explain_expression(metric.expr, view, projection))
+        types = column_types(view, observed)
+        checks: list[tuple[str, str, Origin | None, Sql]] = [
+            (
+                "metric",
+                metric.qualified_name,
+                _origin(view, "metric", metric.name),
+                explain_expression(metric.expr, view, types),
+            )
             for metric in view.metrics
         ]
         checks.extend(
             (
                 "filter" if column.kind.value == "filter" else "dimension",
                 column.qualified_name,
-                _explain_expression(column.expr, view, projection),
+                _origin(view, "filter", column.name)
+                if column.kind.value == "filter"
+                else _origin(view, "dimension", column.qualified_name),
+                explain_expression(column.expr, view, types),
             )
             for column in view.dimensions
         )
         checks.extend(
-            ("verified_query", query.name, sql("EXPLAIN {query}", query=query_text(query.sql)))
+            (
+                "verified_query",
+                query.name,
+                _origin(view, "verified_query", query.name),
+                sql("EXPLAIN {query}", query=query_text(query.sql)),
+            )
             for query in view.verified_queries
         )
         # A verified query is authored SQL that may name objects relative to the view's schema,
         # so it alone is explained in that scope.
         view_scope = SchemaScope.from_qualified_name(QualifiedName.parse(view.fqn))
         diagnostics: list[Diagnostic] = []
-        for kind, name, statement in checks:
+        for kind, name, origin, statement in checks:
             try:
                 if kind == "verified_query":
                     port.query_in_context(view_scope, statement)
@@ -203,7 +235,15 @@ class ValidateArtifacts:
                     port.query(statement)
             except SnowflakePortError as exc:
                 diagnostics.append(
-                    D("SST-VAL418", type=kind, name=name, detail=str(exc), subject=compiled_view.artifact_key)
+                    D(
+                        "SST-VAL418",
+                        type=kind,
+                        name=name,
+                        detail=str(exc),
+                        view=compiled_view.name.casefold(),
+                        origin=origin,
+                        subject=compiled_view.artifact_key,
+                    )
                 )
         failed = {item.context["name"] for item in diagnostics if item.context["type"] == "verified_query"}
         for query in view.verified_queries:
@@ -234,6 +274,8 @@ class ValidateArtifacts:
                 member=query.name,
                 row_count=int(count),
                 elapsed_ms=elapsed,
+                view=compiled_view.name.casefold(),
+                origin=_origin(compiled_view.view, "verified_query", query.name),
                 subject=compiled_view.artifact_key,
             )
         ]
@@ -327,40 +369,54 @@ def _overlap_query(target: Table) -> Sql:
     )
 
 
-def _explain_expression(expression: AuthoredExpression, view: SemanticView, projection: Sql) -> Sql:
-    """EXPLAIN one member expression over the view's NULL projection.
+def _origin(view: SemanticView, kind: str, name: str) -> Origin | None:
+    """Return where the view's member of `kind` named `name` is declared; None when unrecorded."""
+    return view.member_origins.get(artifact_key(kind, name.casefold()))
 
-    The rewritten expression is guarded again, so a statement it builds still holds one
-    expression; a rewrite cannot fail that guard, since it only swaps words for NULL.
+
+# The connected findings about one member, which each view holding the member repeats.
+_PER_MEMBER = frozenset({"SST-VAL418", "SST-VAL415"})
+# A Snowflake query id, which differs between two runs of one statement.
+_QUERY_ID = re.compile(r"\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b", re.IGNORECASE)
+
+
+def _once_per_member(found: Iterable[Diagnostic]) -> list[Diagnostic]:
+    """Report each SST-VAL418 and SST-VAL415 once, naming every view that repeats it.
+
+    Two findings repeat each other when they agree on their code, origin, and context, but
+    for the view, the query id in a detail, and a row count's elapsed time. The first, in
+    compile order, keeps its place and its subject, its `view` lists every view in order,
+    and a VAL418 detail ends by naming them. Any other finding passes through in place.
     """
-    test = guard_expression(_test_expression(expression.text, view))
-    return sql(
-        "EXPLAIN SELECT {expression} FROM ({projection}) AS SST_VALIDATE", expression=expr(test), projection=projection
+    groups: dict[tuple[object, ...], list[Diagnostic]] = {}
+    order: list[tuple[object, ...] | Diagnostic] = []
+    for diagnostic in found:
+        if diagnostic.code not in _PER_MEMBER:
+            order.append(diagnostic)
+            continue
+        key = _repeat_key(diagnostic)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(diagnostic)
+    return [item if isinstance(item, Diagnostic) else _naming_views(groups[item]) for item in order]
+
+
+def _repeat_key(diagnostic: Diagnostic) -> tuple[object, ...]:
+    """Return what two repeats of one member's finding share: all but the view and the timing."""
+    context = tuple(
+        (name, _QUERY_ID.sub("", str(value)))
+        for name, value in sorted(diagnostic.context.items())
+        if name not in ("view", "elapsed_ms")
     )
+    return (diagnostic.code, diagnostic.origin, context)
 
 
-def _test_expression(expression: str, view: SemanticView) -> str:
-    qualified = re.sub(
-        r"\b[A-Za-z_][A-Za-z0-9_$]*\s*\.\s*[A-Za-z_][A-Za-z0-9_$]*\b",
-        "NULL",
-        expression,
-    )
-    variable_names = tuple(variable.name for variable in view.variables)
-    member_names = tuple(metric.name for metric in view.metrics)
-    for name in (*variable_names, *member_names):
-        qualified = re.sub(rf"\b{re.escape(name)}\b", "NULL", qualified, flags=re.IGNORECASE)
-    qualified = re.sub(
-        r"PARTITION\s+BY\s+EXCLUDING\s+NULL(?:\s*,\s*NULL)*",
-        "PARTITION BY NULL",
-        qualified,
-        flags=re.IGNORECASE,
-    )
-    return qualified
-
-
-def _validation_projection(view: SemanticView) -> Sql:
-    columns = sorted({column.name.upper() for column in view.columns})
-    if not columns:
-        return sql("SELECT 1 AS SST_VALUE WHERE FALSE")
-    nulls = join(", ", (sql("NULL AS {column}", column=ident(Identifier.parse(column))) for column in columns))
-    return sql("SELECT {columns} WHERE FALSE", columns=nulls)
+def _naming_views(repeats: list[Diagnostic]) -> Diagnostic:
+    """Return the first of a member's repeated findings, naming every view it was found in."""
+    first = repeats[0]
+    views = ", ".join(dict.fromkeys(str(item.context["view"]) for item in repeats))
+    context = {**first.context, "view": views}
+    if first.code == "SST-VAL418":
+        context["detail"] = f"{first.context['detail']} (in {views})"
+    return replace(first, context=MappingProxyType(context))

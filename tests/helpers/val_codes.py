@@ -23,6 +23,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import QueryResult, Rendere
 from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, SemanticView, Table
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.render.semantic_view import render
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.validate.semantic.dbt import dbt_column_diagnostics, dbt_model_diagnostics
@@ -117,6 +118,37 @@ def validated_live(view: SemanticView, answers: dict[str, tuple[object, ...]]) -
     """What a connected validate of `view` reports, Snowflake answering with `answers`."""
     compiled = CompileResult((CompiledView(view, render(view)),))
     return list(ValidateArtifacts(Scripted(answers)).run(compiled, strict=False, connected=True).diagnostics)
+
+
+class TypedWarehouse(FakeSnowflake):
+    """A port that describes tables as `tables` lists them, and refuses statements as `refusals` says.
+
+    `DESCRIBE TABLE <fqn>` answers `tables[fqn]`'s `(name, type)` pairs under DESCRIBE's headings,
+    and fails for a table not listed, as for one that does not exist. A query holding a key of
+    `refusals` raises its value, with `{qid}` replaced by a query id no other refusal has.
+    """
+
+    def __init__(
+        self, tables: Mapping[str, tuple[tuple[str, str], ...]], refusals: Mapping[str, str] | None = None
+    ) -> None:
+        super().__init__()
+        self._tables = dict(tables)
+        self._refusals = dict(refusals or {})
+        self._refused = 0
+
+    def query(self, sql: Sql, params: object = None) -> QueryResult:
+        answer = super().query(sql, params)
+        text = str(sql)
+        for fragment, message in self._refusals.items():
+            if fragment in text:
+                self._refused += 1
+                raise SnowflakePortError(message.replace("{qid}", f"01bc0000-0000-0000-0000-{self._refused:012d}"))
+        if text.startswith("DESCRIBE TABLE "):
+            fqn = text.removeprefix("DESCRIBE TABLE ")
+            if fqn not in self._tables:
+                raise SnowflakePortError(f"002003 (02000): Table '{fqn}' does not exist or not authorized.")
+            return QueryResult(("name", "type", "kind"), tuple((*column, "COLUMN") for column in self._tables[fqn]))
+        return answer
 
 
 TABLES = tuple(Table(name, f"DB.S.{name}") for name in ("ORDERS", "CUSTOMERS", "LOCATIONS"))

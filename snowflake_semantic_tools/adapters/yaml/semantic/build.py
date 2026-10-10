@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, TypeVar
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
@@ -127,6 +128,7 @@ def _build_view(
         source_files=source_files,
         referenced_models=tuple(sorted(logical_by_model)),
         scope=scope,
+        member_origins=MappingProxyType({member.key: member.origin for member in selected.attached}),
     )
 
 
@@ -420,6 +422,7 @@ def _view_column(model: DbtModel, column: DbtColumn, logical: str) -> Column:
         synonyms=column.synonyms,
         sample_values=column.sample_values,
         is_enum=column.is_enum is True,
+        data_type=column.data_type,
     )
 
 
