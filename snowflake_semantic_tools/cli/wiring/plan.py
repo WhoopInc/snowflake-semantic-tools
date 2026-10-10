@@ -8,9 +8,11 @@ the observation `--state` records instead and never connects.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
+from collections.abc import Iterator
 from pathlib import Path
-from typing import NoReturn
+from typing import NoReturn, TypeVar
 
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget
@@ -23,6 +25,7 @@ from snowflake_semantic_tools.adapters.fs.local import (
 )
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool, SnowflakeConnector
+from snowflake_semantic_tools.adapters.snowflake.connector.session import ReadCache, Session
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.observe import ObserveOptions
@@ -206,7 +209,13 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
     prepare, candidates, selectors = prepared
     profile, port = connect(request.paths, request.target_name, generating=True)
     params = profile.connection_params
-    with closed_on_error(port), ConnectorPool(request.threads, lambda: open_connector(params)) as pool:
+    # Planning only reads, so what one read answered answers its repeats until planning ends.
+    reads = ReadCache()
+    with (
+        closed_on_error(port),
+        ConnectorPool(request.threads, lambda: _keeping_reads(open_connector(params), reads)) as pool,
+        _reads_kept(port, reads),
+    ):
         store = state_store(request.paths, profile.target_name)
         outcome = prepare.run(
             candidates,
@@ -224,6 +233,32 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
         port.close()
         return outcome
     return PlanSession(_with_selectors(outcome, selectors), profile, port, store)
+
+
+SessionT = TypeVar("SessionT")
+
+
+def _keeping_reads(session: SessionT, reads: ReadCache) -> SessionT:
+    """Keep a planning sibling's read answers in `reads` for as long as it is open."""
+    if isinstance(session, Session):
+        session.keep_reads(reads)
+    return session
+
+
+@contextlib.contextmanager
+def _reads_kept(port: object, reads: ReadCache) -> Iterator[None]:
+    """Keep the planning connection's read answers in `reads` for the block; it reads anew after.
+
+    Apply writes on the same connection once planning returns, so no answer outlives the plan.
+    """
+    if not isinstance(port, Session):
+        yield
+        return
+    port.keep_reads(reads)
+    try:
+        yield
+    finally:
+        port.keep_reads(None)
 
 
 def recorded_plan(request: PlanRequest) -> PlanReady | PlanRefused:
