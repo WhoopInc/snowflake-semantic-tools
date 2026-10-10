@@ -5,9 +5,10 @@ run SQL through the `ExecutionPort`: the syntax check (SST-VAL418) compiles each
 over columns typed as the target describes its tables (`app.explain_projection`), the
 verified-query row count (SST-VAL415) runs each query that compiles, and the spot checks
 (SST-VAL212, SST-VAL218) read the joined tables. SST-VAL020 reports each one skipped. The
-live-object checks of agents and tools are in `app.compile.agents.observe`. A view's
-connected checks are one unit a `Fanout` may run on a session of its own; the views'
-findings are merged in compile order, a member's finding once however many views hold it.
+live-object checks of agents and tools are in `app.compile.agents.observe`. Each distinct
+statement the views' checks run is one unit a `Fanout` may run on a session of its own, and
+runs once however many views or members ask it; the views' findings are then read from the
+answers in compile order, a member's finding once however many views hold it.
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Diagn
 from snowflake_semantic_tools.domain.diagnostics.policy import SeverityPolicy, apply_policy
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
-from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
+from snowflake_semantic_tools.domain.model.lifecycle import QueryResult, RenderedArtifact
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, SemanticView, Table, VerifiedQuery
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
@@ -84,8 +85,8 @@ class ValidateArtifacts:
             None skips those checks.
         target: The `profiles.yml` target being validated, which a missing object names.
         clock: Times each verified query's count; None reports it as taking 0ms.
-        readers: Sessions to check the views on concurrently, opened from `port`; None
-            checks them on `port`, one at a time. Either way the findings are the same.
+        readers: Sessions to run the checks' statements on concurrently, opened from `port`;
+            None runs them on `port`, one at a time. Either way the findings are the same.
     """
 
     def __init__(
@@ -123,8 +124,10 @@ class ValidateArtifacts:
         untyped) and variables and metric names are NULL; a verified query as written. A
         verified query that compiles is then run under a row count. Then each equality
         relationship's target is read for a repeated join key, and each distinct range for
-        overlapping ranges. A compile or row-count finding repeated by every view that holds
-        the member is reported once, naming those views. With a catalog, the compiled agents
+        overlapping ranges. A statement two views or members ask, such as a shared verified
+        query's, runs once, and both read its answer. A compile or row-count finding repeated
+        by every view that holds the member is reported once, naming those views. With a
+        catalog, the compiled agents
         and tools are checked against their live objects. The project's severity overrides
         then apply, and strict mode promotes every warning to an error.
 
@@ -159,15 +162,7 @@ class ValidateArtifacts:
             skipped = len(CONNECTED_RULES)
         else:
             views = tuple(item for item in compiled.compiled if isinstance(item, CompiledView))
-            readers = self._readers or Fanout(self._port)
-            relations = tuple(sorted({table.fqn for item in views for table in item.view.tables}))
-            observed = MappingProxyType(dict(zip(relations, readers.map(describe_columns, relations), strict=True)))
-
-            def view_checks(port: ExecutionPort, compiled_view: CompiledView) -> list[Diagnostic]:
-                return self._view_checks(port, compiled_view, observed)
-
-            checked = readers.map(view_checks, views)
-            found.extend(_once_per_member(diagnostic for diagnostics in checked for diagnostic in diagnostics))
+            found.extend(_once_per_member(self._connected_checks(self._readers or Fanout(self._port), views)))
             if self._catalog is not None:
                 found.extend(ObserveLiveObjects(self._catalog, target=self._target).run(compiled))
         if verify_schema and self._catalog is not None:
@@ -182,141 +177,227 @@ class ValidateArtifacts:
             artifacts_checked=len(compiled.compiled),
         )
 
-    def _view_checks(
-        self, port: ExecutionPort, compiled_view: CompiledView, observed: ObservedTypes
-    ) -> list[Diagnostic]:
-        """Run one view's connected checks on `port`: its EXPLAINs and counts, then its spot checks."""
-        return [*self._compile_checks(port, compiled_view, observed), *self._data_checks(port, compiled_view)]
+    def _connected_checks(self, readers: Fanout[ExecutionPort], views: tuple[CompiledView, ...]) -> list[Diagnostic]:
+        """Run the views' connected checks, each distinct statement once, and report in view order.
 
-    def _compile_checks(
-        self, port: ExecutionPort, compiled_view: CompiledView, observed: ObservedTypes
-    ) -> list[Diagnostic]:
-        """EXPLAIN each metric, dimension and verified query of one view (SST-VAL418)."""
-        view = compiled_view.view
-        types = column_types(view, observed)
-        checks: list[tuple[str, str, Origin | None, Sql]] = [
-            (
-                "metric",
-                metric.qualified_name,
-                _origin(view, "metric", metric.name),
-                explain_expression(metric.expr, view, types),
-            )
-            for metric in view.metrics
-        ]
-        checks.extend(
-            (
-                "filter" if column.kind.value == "filter" else "dimension",
-                column.qualified_name,
-                _origin(view, "filter", column.name)
-                if column.kind.value == "filter"
-                else _origin(view, "dimension", column.qualified_name),
-                explain_expression(column.expr, view, types),
-            )
-            for column in view.dimensions
-        )
-        checks.extend(
-            (
-                "verified_query",
-                query.name,
-                _origin(view, "verified_query", query.name),
-                sql("EXPLAIN {query}", query=query_text(query.sql)),
-            )
-            for query in view.verified_queries
-        )
-        # A verified query is authored SQL that may name objects relative to the view's schema,
-        # so it alone is explained in that scope.
-        view_scope = SchemaScope.from_qualified_name(QualifiedName.parse(view.fqn))
-        diagnostics: list[Diagnostic] = []
-        for kind, name, origin, statement in checks:
-            try:
-                if kind == "verified_query":
-                    port.query_in_context(view_scope, statement)
-                else:
-                    port.query(statement)
-            except SnowflakePortError as exc:
-                diagnostics.append(
-                    D(
-                        "SST-VAL418",
-                        type=kind,
-                        name=name,
-                        detail=str(exc),
-                        view=compiled_view.name.casefold(),
-                        origin=origin,
-                        subject=compiled_view.artifact_key,
-                    )
-                )
-        failed = {item.context["name"] for item in diagnostics if item.context["type"] == "verified_query"}
-        for query in view.verified_queries:
-            if query.name not in failed:
-                diagnostics.extend(self._row_count(port, compiled_view, query))
-        return diagnostics
-
-    def _row_count(self, port: ExecutionPort, compiled_view: CompiledView, query: VerifiedQuery) -> list[Diagnostic]:
-        """Run a verified query under a row count, reporting one that returns nothing.
-
-        A query whose count fails is left to its EXPLAIN, which already passed; the failure is
-        not reported a second time.
+        Three rounds of reads, each on `readers`: every table the views read is described;
+        then every EXPLAIN is run; then each verified query that compiled is counted, and
+        each relationship spot-checked. Each view's findings are read from the answers.
         """
+        relations = tuple(sorted({table.fqn for item in views for table in item.view.tables}))
+        observed = MappingProxyType(dict(zip(relations, readers.map(describe_columns, relations), strict=True)))
+        compiles = {item.artifact_key: _compile_checks(item, observed) for item in views}
+        explained = self._answers(readers, (check.read for checks in compiles.values() for check in checks))
+        diagnostics = {
+            item.artifact_key: _compile_findings(item, compiles[item.artifact_key], explained) for item in views
+        }
+        counted = {item.artifact_key: _counted_queries(item, diagnostics[item.artifact_key]) for item in views}
+        spots = {item.artifact_key: _spot_checks(item) for item in views}
+        answered = self._answers(
+            readers,
+            (
+                *(_count_read(query) for queries in counted.values() for query in queries),
+                *(spot[2] for checks in spots.values() for spot in checks),
+            ),
+        )
+        found: list[Diagnostic] = []
+        for item in views:
+            found.extend(diagnostics[item.artifact_key])
+            for query in counted[item.artifact_key]:
+                empty = _row_count(item, query, answered[_count_read(query)])
+                if empty is not None:
+                    found.append(empty)
+            found.extend(_spot_findings(item, spots[item.artifact_key], answered))
+        return found
+
+    def _answers(self, readers: Fanout[ExecutionPort], reads: Iterable[_Read]) -> Mapping[_Read, _Answer]:
+        """Run each distinct read once on `readers`, returning every answer by its read."""
+        distinct = tuple(dict.fromkeys(reads))
+        return MappingProxyType(dict(zip(distinct, readers.map(self._answer, distinct), strict=True)))
+
+    def _answer(self, port: ExecutionPort, read: _Read) -> _Answer:
+        """Run one read on `port`, in its scope when it has one, keeping a refusal as its answer."""
         started = self._clock.monotonic_ms() if self._clock is not None else 0
         try:
-            result = port.query(
-                sql("SELECT COUNT(*) AS ROW_COUNT FROM ({query}) AS SST_VQ", query=query_text(query.sql))
+            result = (
+                port.query(read.statement) if read.scope is None else port.query_in_context(read.scope, read.statement)
             )
-        except SnowflakePortError:
-            return []
+        except SnowflakePortError as exc:
+            return _Answer(None, exc, 0)
         elapsed = (self._clock.monotonic_ms() - started) if self._clock is not None else 0
-        count = result.rows[0][0] if result.rows and result.rows[0] else None
-        if not isinstance(count, (int, float)) or count:
-            return []
-        return [
-            D(
-                "SST-VAL415",
-                member=query.name,
-                row_count=int(count),
-                elapsed_ms=elapsed,
-                view=compiled_view.name.casefold(),
-                origin=_origin(compiled_view.view, "verified_query", query.name),
-                subject=compiled_view.artifact_key,
-            )
-        ]
-
-    def _data_checks(self, port: ExecutionPort, compiled_view: CompiledView) -> list[Diagnostic]:
-        """Read each equality join's target for repeated keys, and each distinct range for overlaps.
-
-        A read that fails is not reported here: the EXPLAIN checks report a relation they
-        cannot reach.
-        """
-        view = compiled_view.view
-        tables = {table.logical_name: table for table in view.tables}
-        diagnostics: list[Diagnostic] = []
-        for relationship in sorted(view.relationships, key=lambda item: item.name):
-            target = tables.get(relationship.to_table)
-            if target is None or not view.scope.admits_relationship(relationship.name):
-                continue
-            try:
-                found = _spot_check(port, relationship, target)
-            except SnowflakePortError:
-                continue
-            if found is not None:
-                diagnostics.append(replace(found, subject=compiled_view.artifact_key))
-        return diagnostics
+        return _Answer(result, None, elapsed)
 
 
-def _spot_check(port: ExecutionPort, relationship: Relationship, target: Table) -> Diagnostic | None:
-    """Run one relationship's spot check: duplicate keys, or overlapping ranges for a range join."""
+@dataclass(frozen=True, slots=True)
+class _Read:
+    """One statement a connected check runs: on the session, or in `scope` when it names one.
+
+    Two reads are one when their statement text and scope are, so it runs once.
+    """
+
+    statement: Sql
+    scope: SchemaScope | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _Answer:
+    """What Snowflake answered a read: its result, else the refusal, and how long it took."""
+
+    result: QueryResult | None
+    error: SnowflakePortError | None
+    elapsed_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class _CompileCheck:
+    """One member a view EXPLAINs (SST-VAL418): its kind, name and origin, and the read."""
+
+    kind: str
+    name: str
+    origin: Origin | None
+    read: _Read
+
+
+def _compile_checks(compiled_view: CompiledView, observed: ObservedTypes) -> list[_CompileCheck]:
+    """Return the EXPLAIN of each metric, dimension and verified query of one view, in that order."""
+    view = compiled_view.view
+    types = column_types(view, observed)
+    checks = [
+        _CompileCheck(
+            "metric",
+            metric.qualified_name,
+            _origin(view, "metric", metric.name),
+            _Read(explain_expression(metric.expr, view, types)),
+        )
+        for metric in view.metrics
+    ]
+    checks.extend(
+        _CompileCheck(
+            "filter" if column.kind.value == "filter" else "dimension",
+            column.qualified_name,
+            _origin(view, "filter", column.name)
+            if column.kind.value == "filter"
+            else _origin(view, "dimension", column.qualified_name),
+            _Read(explain_expression(column.expr, view, types)),
+        )
+        for column in view.dimensions
+    )
+    # A verified query is authored SQL that may name objects relative to the view's schema,
+    # so it alone is explained in that scope.
+    view_scope = SchemaScope.from_qualified_name(QualifiedName.parse(view.fqn))
+    checks.extend(
+        _CompileCheck(
+            "verified_query",
+            query.name,
+            _origin(view, "verified_query", query.name),
+            _Read(sql("EXPLAIN {query}", query=query_text(query.sql)), view_scope),
+        )
+        for query in view.verified_queries
+    )
+    return checks
+
+
+def _compile_findings(
+    compiled_view: CompiledView, checks: list[_CompileCheck], answers: Mapping[_Read, _Answer]
+) -> list[Diagnostic]:
+    """Report each of one view's EXPLAINs that Snowflake refused (SST-VAL418), in check order."""
+    return [
+        D(
+            "SST-VAL418",
+            type=check.kind,
+            name=check.name,
+            detail=str(error),
+            view=compiled_view.name.casefold(),
+            origin=check.origin,
+            subject=compiled_view.artifact_key,
+        )
+        for check in checks
+        if (error := answers[check.read].error) is not None
+    ]
+
+
+def _counted_queries(compiled_view: CompiledView, compile_findings: list[Diagnostic]) -> list[VerifiedQuery]:
+    """Return the view's verified queries that compiled, which are then counted, in order."""
+    failed = {item.context["name"] for item in compile_findings if item.context["type"] == "verified_query"}
+    return [query for query in compiled_view.view.verified_queries if query.name not in failed]
+
+
+def _count_read(query: VerifiedQuery) -> _Read:
+    """Return the row count of a verified query, which runs on the session, whatever view holds it."""
+    return _Read(sql("SELECT COUNT(*) AS ROW_COUNT FROM ({query}) AS SST_VQ", query=query_text(query.sql)))
+
+
+def _row_count(compiled_view: CompiledView, query: VerifiedQuery, answer: _Answer) -> Diagnostic | None:
+    """Report a verified query whose row count is zero (SST-VAL415).
+
+    A query whose count fails is left to its EXPLAIN, which already passed; the failure is
+    not reported a second time.
+    """
+    rows = answer.result.rows if answer.result is not None else ()
+    count = rows[0][0] if rows and rows[0] else None
+    if not isinstance(count, (int, float)) or count:
+        return None
+    return D(
+        "SST-VAL415",
+        member=query.name,
+        row_count=int(count),
+        elapsed_ms=answer.elapsed_ms,
+        view=compiled_view.name.casefold(),
+        origin=_origin(compiled_view.view, "verified_query", query.name),
+        subject=compiled_view.artifact_key,
+    )
+
+
+def _spot_checks(compiled_view: CompiledView) -> list[tuple[Relationship, Table, _Read]]:
+    """Return each spot check of one view, by relationship name: the relationship, its target, the read.
+
+    An equality join's target is read for repeated keys, and a range join's distinct range
+    for overlaps; an ASOF join, or a range join whose target declares no distinct range, is
+    not checked.
+    """
+    view = compiled_view.view
+    tables = {table.logical_name: table for table in view.tables}
+    checks: list[tuple[Relationship, Table, _Read]] = []
+    for relationship in sorted(view.relationships, key=lambda item: item.name):
+        target = tables.get(relationship.to_table)
+        if target is None or not view.scope.admits_relationship(relationship.name):
+            continue
+        if relationship.range_bounds is not None:
+            if target.distinct_range is not None:
+                checks.append((relationship, target, _Read(_overlap_query(target))))
+        elif relationship.asof_index is None:
+            checks.append((relationship, target, _Read(_duplicate_key_query(relationship, target))))
+    return checks
+
+
+def _spot_findings(
+    compiled_view: CompiledView,
+    checks: list[tuple[Relationship, Table, _Read]],
+    answers: Mapping[_Read, _Answer],
+) -> list[Diagnostic]:
+    """Report what one view's spot checks read.
+
+    A read that failed is not reported here: the EXPLAIN checks report a relation they
+    cannot reach.
+    """
+    found = (
+        _spot_finding(relationship, target, result.rows)
+        for relationship, target, read in checks
+        if (result := answers[read].result) is not None
+    )
+    return [replace(item, subject=compiled_view.artifact_key) for item in found if item is not None]
+
+
+def _spot_finding(relationship: Relationship, target: Table, rows: tuple[tuple[object, ...], ...]) -> Diagnostic | None:
+    """Read one relationship's spot check: duplicate keys, or overlapping ranges for a range join."""
     name = relationship.name.casefold()
     if relationship.range_bounds is not None:
-        if target.distinct_range is None:
-            return None
-        start, end = target.distinct_range
-        rows = port.query(_overlap_query(target)).rows
+        assert target.distinct_range is not None
         if not rows:
             return None
+        start, end = target.distinct_range
         example = f"[{rows[0][0]}, {rows[0][1]}) and [{rows[0][2]}, {rows[0][3]})"
         return D("SST-VAL218", relationship=name, name=target.logical_name, a=start, b=end, value=example)
-    if relationship.asof_index is not None:
-        return None
-    rows = port.query(_duplicate_key_query(relationship, target)).rows
     repeated = int(str(rows[0][0])) if rows and rows[0] and rows[0][0] is not None else 0
     if repeated <= 0:
         return None

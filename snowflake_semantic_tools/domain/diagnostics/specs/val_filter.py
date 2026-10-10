@@ -160,8 +160,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "connected validate runs a verified query that compiles and it returns no rows, so it teaches nothing"
         ),
         note=(
-            "A verified query is run in each semantic view that holds it, and is reported once, naming every "
-            "such view and the time of the first run."
+            "A verified query several semantic views hold is counted once, and reported once, naming every such view."
         ),
     ),
     spec(
