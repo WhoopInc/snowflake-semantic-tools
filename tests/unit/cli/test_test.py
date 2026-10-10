@@ -39,6 +39,7 @@ from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from tests.helpers.projects import project_paths
 from tests.helpers.reference_project import DBT_MANIFEST, REPO_ROOT, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
+from tests.helpers.snowflake_fake.world import Sent
 
 
 def test_golden_suite_compares_every_compiled_view(tmp_path: Path) -> None:
@@ -177,6 +178,20 @@ def test_smoke_suite_is_separate_from_apply(tmp_path: Path, monkeypatch: pytest.
     assert "compiled SST manifest is stale" in json.loads(stale.output)["data"]["error"]
 
 
+class _EvalAnsweredByRunName(EvalSnowflake):
+    """`EvalSnowflake` answering each eval status and results query by the run name it binds."""
+
+    run_answers: dict[tuple[str, str], QueryResult]
+
+    def query(self, sql: Any, params: object = None) -> QueryResult:
+        text = str(sql)
+        for marker, key, index in (("EXECUTE_AI_EVALUATION('STATUS'", "STATUS", 0), ("GET_AI_EVALUATION_DATA", "RESULTS", -1)):
+            if isinstance(params, tuple) and marker in text:
+                self.log.append(Sent("query", (text,), params))
+                return self.run_answers[(key, str(params[index]))]
+        return super().query(sql, params)
+
+
 @pytest.mark.parametrize("output", ["json", "table"])
 def test_eval_suite_uses_common_json_envelope_and_prints_progress_only_as_text(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, output: str
@@ -212,7 +227,7 @@ def test_eval_suite_uses_common_json_envelope_and_prints_progress_only_as_text(
         ),
     )
     existing = tuple(resource["qualified_name"] for resource in eval_manifest["physical_resources"])
-    port = EvalSnowflake(
+    port = _EvalAnsweredByRunName(
         [],
         role="RECORDED_ROLE",
         account_locator="RECORDED_ACCOUNT",
@@ -277,27 +292,17 @@ def test_eval_suite_uses_common_json_envelope_and_prints_progress_only_as_text(
         for row_index, row in enumerate(json.loads(compiled_eval.rendered.dataset_payload))
         for metric_name, metric_type in metric_types.items()
     )
-    response_values: list[QueryResult] = []
+    # The attempts run concurrently, so each status and results query is answered by the run
+    # name it binds, not by a shared queue whose order depends on how the threads interleave.
+    port.run_answers = {}
     for attempt_number in range(1, 6):
         suffix = "" if attempt_number == 1 else f"_R{attempt_number}"
-        response_values.extend(
-            (
-                QueryResult(
-                    ("RUN_NAME", "AGENT_NAME", "AGENT_TYPE", "STATUS", "STATUS_DETAILS"),
-                    (
-                        (
-                            f"EVAL_JAFFLE_ANALYTICS_AGENT_0000000_ci_20260928T010203Z{suffix}",
-                            "JAFFLE_ANALYTICS_AGENT",
-                            "CORTEX AGENT",
-                            "COMPLETED",
-                            [],
-                        ),
-                    ),
-                ),
-                QueryResult(result_columns, result_rows),
-            )
+        run_name = f"EVAL_JAFFLE_ANALYTICS_AGENT_0000000_ci_20260928T010203Z{suffix}"
+        port.run_answers[("STATUS", run_name)] = QueryResult(
+            ("RUN_NAME", "AGENT_NAME", "AGENT_TYPE", "STATUS", "STATUS_DETAILS"),
+            ((run_name, "JAFFLE_ANALYTICS_AGENT", "CORTEX AGENT", "COMPLETED", []),),
         )
-    port.query_results.extend(response_values)
+        port.run_answers[("RESULTS", run_name)] = QueryResult(result_columns, result_rows)
     store = InMemoryEvalStateStore()
     monkeypatch.setattr("snowflake_semantic_tools.cli.commands.test.SnowflakeEvalStateStore", lambda *args: store)
     monkeypatch.setattr(
