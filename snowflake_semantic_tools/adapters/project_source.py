@@ -140,9 +140,19 @@ class YamlProjectSource:
                 auto_compile=self._auto_compile(),
                 profiles_dir=self._files.profiles_directory(),
                 command=settings.command,
+                installation_cache=self._installation_cache(),
             )
             self._parsed = True
         return path
+
+    def _installation_cache(self) -> Path | None:
+        """Where what `dbt --version` answered is kept: `sst/dbt_installation.json` under dbt's target path.
+
+        Only for the `dbt` on `PATH`: a runner passed in answers for itself, so None.
+        """
+        if self._runner is not subprocess_runner:
+            return None
+        return target_path(self._project_dir, read_yaml_mapping).parent / "sst" / "dbt_installation.json"
 
     def _auto_compile(self) -> bool:
         """Read `defer.auto_compile`: SST produces the deferred target's manifest itself."""
@@ -183,6 +193,7 @@ class YamlProjectSource:
                     profiles_dir=self._files.profiles_directory(),
                     target_path=deferral.state_dir,
                     command=dbt_settings(self._config_tree()).command,
+                    installation_cache=self._installation_cache(),
                 )
             self._deferred = self._read_catalog(deferral.manifest)
         return defer_relations(catalog, self._deferred)

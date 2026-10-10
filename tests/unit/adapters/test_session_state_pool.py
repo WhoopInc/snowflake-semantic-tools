@@ -73,7 +73,7 @@ def test_a_programming_error_inside_a_script_is_never_reported_as_a_snowflake_fa
         )
 
 
-def test_a_state_write_merges_each_change_in_one_fenced_transaction_with_every_value_bound() -> None:
+def test_a_state_write_merges_the_changes_in_one_fenced_transaction_with_every_value_bound() -> None:
     driver = _driver(rows={"SELECT RUN_ID, GENERATION": [("run", 3)]})
     hostile = "semantic_view:v'; DROP TABLE x; --"
     assert DriverConnector(driver).write_state(
@@ -86,7 +86,6 @@ def test_a_state_write_merges_each_change_in_one_fenced_transaction_with_every_v
         "BEGIN",
         "UPDATE",
         "SELECT",
-        "MERGE",
         "MERGE",
         "DELETE",
         "UPDATE",
@@ -102,8 +101,12 @@ def test_a_state_write_merges_each_change_in_one_fenced_transaction_with_every_v
         ("dev",),
     )
     assert all("DROP TABLE x" not in statement for statement in statements)
-    merged_keys = [params[1] for statement, params in driver.executed if statement.startswith("MERGE")]
-    assert merged_keys == ["semantic_view:v'; DROP TABLE x; --", "skill:b"]
+    merged = [(statement, params) for statement, params in driver.executed if statement.startswith("MERGE")]
+    # One SELECT of bound values per entry, in key order, every entry's twelve values bound.
+    assert [statement.count("SELECT ") for statement, _ in merged] == [2]
+    params = merged[0][1]
+    assert params is not None and len(params) == 24
+    assert [params[1], params[13]] == ["semantic_view:v'; DROP TABLE x; --", "skill:b"]
     assert driver.executed[-3] == (
         "DELETE FROM DB.S.SST_STATE WHERE TARGET_NAME = %s AND ARTIFACT_KEY = %s",
         ("dev", "agent:gone"),
@@ -112,6 +115,16 @@ def test_a_state_write_merges_each_change_in_one_fenced_transaction_with_every_v
         "UPDATE DB.S.SST_STATE SET STATE_MANIFEST_ID = %s WHERE TARGET_NAME = %s",
         ("m" * 64, "dev"),
     )
+
+
+def test_a_state_write_of_many_entries_merges_them_in_batches_in_key_order() -> None:
+    driver = _driver(rows={"SELECT RUN_ID, GENERATION": [("run", 3)]})
+    upserts = {f"skill:s{index:03d}": ENTRY for index in range(120)}
+    assert DriverConnector(driver).write_state(STATE_TABLE, "dev", "m" * 64, StateWrite(upserts, ()), FENCE)
+    merged = [(statement, params) for statement, params in driver.executed if statement.startswith("MERGE")]
+    assert [statement.count("SELECT ") for statement, _ in merged] == [50, 50, 20]
+    keys = [params[index] for _, params in merged if params is not None for index in range(1, len(params), 12)]
+    assert keys == sorted(upserts)
 
 
 def test_a_state_write_whose_fence_no_longer_holds_rolls_back_having_written_nothing() -> None:
@@ -171,9 +184,7 @@ def test_a_sibling_connects_with_the_same_settings_and_shares_no_connection(monk
         opened.append(params)
         return _driver()
 
-    monkeypatch.setattr(
-        "snowflake_semantic_tools.adapters.snowflake.connector.session.snowflake.connector.connect", connect
-    )
+    monkeypatch.setattr("snowflake.connector.connect", connect)
     first = SnowflakeConnector({"account": "acme", "role": "R"})
     second = first.sibling()
     assert isinstance(second, SnowflakeConnector) and second is not first
@@ -192,9 +203,7 @@ def _connecting(
         opened.append((params, driver))
         return driver
 
-    monkeypatch.setattr(
-        "snowflake_semantic_tools.adapters.snowflake.connector.session.snowflake.connector.connect", connect
-    )
+    monkeypatch.setattr("snowflake.connector.connect", connect)
     return opened
 
 

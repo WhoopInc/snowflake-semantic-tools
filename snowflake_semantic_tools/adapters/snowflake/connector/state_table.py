@@ -6,9 +6,11 @@ COMPONENT_FINGERPRINTS, PHYSICAL_RESOURCES and STATE_MANIFEST_ID came later, so 
 created before them reads the first two as NULL and records no manifest until
 `ensure_state_table` adds them with ADD COLUMN IF NOT EXISTS, which is safe to repeat.
 
-A run writes only the entries it changed: one MERGE per changed entry and one DELETE per
-retired key, then one UPDATE that stamps the run's manifest on every row of the target, all
-in one transaction on one cursor with every value bound. That transaction is a lock
+A run writes only the entries it changed: one MERGE per batch of changed entries and one DELETE
+per retired key, then one UPDATE that stamps the run's manifest on every row of the target, all
+in one transaction on one cursor with every value bound. A batch holds up to `_MERGE_BATCH`
+entries, a SELECT of bound values per entry under UNION ALL, so a run that changed many entries
+waits for a few round trips rather than one per entry. That transaction is a lock
 transaction: it first takes the lock table's mutex, as `run_lock` explains, and writes only
 if the writer's fence still holds the target's lock, so a run whose lock was broken can never
 overwrite what the run that broke it recorded.
@@ -74,6 +76,9 @@ _COLUMNS = (
 STATE_COLUMNS = tuple(column.name for column in _COLUMNS)
 # The manifest of the run that last wrote the target, on every one of its rows; not part of an entry.
 _STATE_MANIFEST = _StateColumn("STATE_MANIFEST_ID", sql("VARCHAR(64)"), added=True)
+# How many entries one MERGE writes: enough that a run waits for a few round trips, few enough
+# that the statement stays far below Snowflake's limit on a statement's text.
+_MERGE_BATCH = 50
 
 
 class StateTableMethods(LockTableMethods, StatePort, CatalogPort):
@@ -147,18 +152,20 @@ class StateTableMethods(LockTableMethods, StatePort, CatalogPort):
     ) -> bool:
         self.ensure_state_table(state_table)
         table = qname(state_table)
-        merge = _merge_sql(state_table)
         delete = sql("DELETE FROM {table} WHERE TARGET_NAME = %s AND ARTIFACT_KEY = %s", table=table)
         stamp = sql(
             "UPDATE {table} SET {column} = %s WHERE TARGET_NAME = %s", table=table, column=_STATE_MANIFEST.identifier
         )
         lock = lock_table_sql(state_table)
+        upserts = sorted(write.upserts.items())
         with self._lock_transaction(lock) as transaction:
             if not fence_holds(transaction, lock, target_name, fence):
                 transaction.rollback()
                 return False
-            for key, entry in sorted(write.upserts.items()):
-                transaction.run(merge, _state_values(target_name, key, entry))
+            for start in range(0, len(upserts), _MERGE_BATCH):
+                batch = upserts[start : start + _MERGE_BATCH]
+                values = tuple(value for key, entry in batch for value in _state_values(target_name, key, entry))
+                transaction.run(_merge_sql(state_table, len(batch)), values)
             for key in write.deletes:
                 transaction.run(delete, (target_name, key))
             transaction.run(stamp, (manifest_id, target_name))
@@ -208,9 +215,14 @@ def _column_list() -> Sql:
     return join(", ", (column.identifier for column in _COLUMNS))
 
 
-def _merge_sql(table: QualifiedName) -> Sql:
-    """Insert or replace one entry: matched on the key columns, every other column updated."""
-    source = join(", ", (sql("{bind} {name}", bind=column.bind, name=column.identifier) for column in _COLUMNS))
+def _merge_sql(table: QualifiedName, entries: int = 1) -> Sql:
+    """Insert or replace `entries` entries: matched on the key columns, every other column updated.
+
+    The source is one SELECT of bound values per entry, under UNION ALL, binding in
+    `STATE_COLUMNS` order entry after entry; a write never holds one key twice.
+    """
+    row = join(", ", (sql("{bind} {name}", bind=column.bind, name=column.identifier) for column in _COLUMNS))
+    source = join(" UNION ALL ", (sql("SELECT {row}", row=row) for _ in range(entries)))
     matched = join(
         " AND ",
         (sql("target.{name} = source.{name}", name=column.identifier) for column in _COLUMNS if column.key),
@@ -221,7 +233,7 @@ def _merge_sql(table: QualifiedName) -> Sql:
     )
     values = join(", ", (sql("source.{name}", name=column.identifier) for column in _COLUMNS))
     return sql(
-        "MERGE INTO {table} AS target USING (SELECT {source}) AS source ON {matched} "
+        "MERGE INTO {table} AS target USING ({source}) AS source ON {matched} "
         "WHEN MATCHED THEN UPDATE SET {updates} "
         "WHEN NOT MATCHED THEN INSERT ({columns}) VALUES ({values})",
         table=qname(table),

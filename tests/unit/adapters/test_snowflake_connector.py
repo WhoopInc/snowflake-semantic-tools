@@ -370,9 +370,7 @@ def test_connection_prompts_go_to_stderr_so_json_stdout_stays_one_envelope(
         print("Initiating login request with your identity provider...")
         return object()
 
-    monkeypatch.setattr(
-        "snowflake_semantic_tools.adapters.snowflake.connector.session.snowflake.connector.connect", connect
-    )
+    monkeypatch.setattr("snowflake.connector.connect", connect)
     SnowflakeConnector({"account": "a"})
     captured = capsys.readouterr()
     assert captured.out == ""
@@ -391,9 +389,7 @@ def test_a_failed_connection_names_the_account(monkeypatch: pytest.MonkeyPatch) 
     def connect(**params: object) -> object:
         raise _ConnectorFailure("Could not connect to Snowflake backend", "08001")
 
-    monkeypatch.setattr(
-        "snowflake_semantic_tools.adapters.snowflake.connector.session.snowflake.connector.connect", connect
-    )
+    monkeypatch.setattr("snowflake.connector.connect", connect)
     with pytest.raises(SnowflakePortError) as raised:
         SnowflakeConnector({"account": "acme-prod"})
     diagnostic = raised.value.diagnostic
@@ -610,9 +606,7 @@ def test_a_failed_connection_reports_no_credential_and_chains_no_driver_error(
     def connect(**params: object) -> object:
         raise _ConnectorFailure(_LEAKY, "08001")
 
-    monkeypatch.setattr(
-        "snowflake_semantic_tools.adapters.snowflake.connector.session.snowflake.connector.connect", connect
-    )
+    monkeypatch.setattr("snowflake.connector.connect", connect)
     with pytest.raises(SnowflakePortError) as raised:
         SnowflakeConnector({"account": "acme", "password": "hunter2", "private_key_file": "/tmp/rsa_key.p8"})
     error = raised.value

@@ -39,6 +39,16 @@ dbt and SST read the same profile. When none exists, the run stops with
 `SST-CFG009`, naming every path it searched. `sst debug` prints the candidates
 for both files and the ones it chose.
 
+Before it parses, SST asks `dbt --version` which installation it is (dbt Core
+or the dbt Cloud CLI). The answer is kept in `sst/dbt_installation.json` under
+dbt's target path, keyed by the `dbt` executable on `PATH` (its path, the file
+it resolves to, that file's size and modification time) and by SST's version,
+so installing, upgrading or switching dbt makes the next run ask again. An
+installation SST cannot identify is asked every run, and warns every run
+(`SST-DBT020`). `sst debug` always asks. SST still runs `dbt parse` every time;
+pass `--manifest`, or set `dbt.invoke: false`, to read a manifest you keep
+current yourself.
+
 ## How keys are validated
 
 Every key in `sst_config.yml` is checked against that schema when a command

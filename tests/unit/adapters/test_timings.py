@@ -136,10 +136,7 @@ def test_every_statement_the_connector_hands_the_driver_is_one_round_trip(record
 
 
 def test_a_login_is_timed_as_one_connect(monkeypatch: pytest.MonkeyPatch, recording: RunTimings) -> None:
-    monkeypatch.setattr(
-        "snowflake_semantic_tools.adapters.snowflake.connector.session.snowflake.connector.connect",
-        lambda **params: object(),
-    )
+    monkeypatch.setattr("snowflake.connector.connect", lambda **params: object())
     SnowflakeConnector({"account": "a"})
     assert cast(dict[str, int], recording.snapshot()["snowflake"])["connects"] == 1
 

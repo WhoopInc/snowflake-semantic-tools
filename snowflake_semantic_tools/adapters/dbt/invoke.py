@@ -9,10 +9,19 @@ is `subprocess_runner`; tests pass a fake. In order, `parse_project`:
    the dbt Cloud CLI, which cannot parse a target other than its default (SST-DBT021);
 3. runs `dbt parse`, refusing a non-zero exit (SST-DBT028) after passing dbt's own output on,
    and a zero exit that wrote no manifest where dbt_project.yml says it would (SST-DBT029).
+
+Starting dbt only to ask what it is costs about two seconds, so with an `installation_cache`
+the answer to step 2 is kept, keyed by the `dbt` executable on `PATH` -- its path, the file it
+resolves to, that file's size and modification time -- and by SST's version. Installing,
+upgrading or switching dbt rewrites or replaces that file, so the next run asks again. Only an
+identified installation is kept: one that fails or names no installation is asked every run.
 """
 
 from __future__ import annotations
 
+import json
+import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -24,8 +33,14 @@ import yaml
 
 from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.json_files import JsonFileError, read_json_file
+from snowflake_semantic_tools.adapters.paths import UnsafeWrite, write_within
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.state import SST_VERSION
+
+# The installation kinds `installation_type` names, the only answers the cache keeps.
+_KINDS = frozenset({"core", "cloud"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,8 +127,10 @@ def _run(runner: DbtRunner, argv: Sequence[str], cwd: Path) -> CompletedRun:
         raise _refuse(D("SST-DBT027", detail=f"{argv[0]}: {exc.strerror or exc}"), exc) from exc
 
 
-def _installation(runner: DbtRunner, project_dir: Path, auto_compile: bool) -> tuple[Diagnostic, ...]:
-    """Ask dbt what it is, and refuse what the installation cannot do.
+def _installation(
+    runner: DbtRunner, project_dir: Path, auto_compile: bool, cache: Path | None = None
+) -> tuple[Diagnostic, ...]:
+    """Ask dbt what it is, unless `cache` holds the answer for this dbt, and refuse what it cannot do.
 
     A `dbt --version` that runs and exits non-zero names no installation either: dbt still ran,
     so it is the `dbt parse` that follows which reports a broken install (SST-DBT028).
@@ -124,18 +141,70 @@ def _installation(runner: DbtRunner, project_dir: Path, auto_compile: bool) -> t
         SST-DBT020: the output names no installation SST knows, or `dbt --version` exits
             non-zero; returned.
     """
-    completed = _run(runner, ("dbt", "--version"), project_dir)
-    output = f"{completed.stdout}\n{completed.stderr}".strip()
-    if completed.returncode != 0:
-        first = output.splitlines()[0] if output else "no output"
-        return (D("SST-DBT020", found=f"{first!r} (exit {completed.returncode})"),)
-    kind = installation_type(output)
+    key = executable_key() if cache is not None else None
+    kind = _cached_kind(cache, key)
+    if kind is None:
+        completed = _run(runner, ("dbt", "--version"), project_dir)
+        output = f"{completed.stdout}\n{completed.stderr}".strip()
+        if completed.returncode != 0:
+            first = output.splitlines()[0] if output else "no output"
+            return (D("SST-DBT020", found=f"{first!r} (exit {completed.returncode})"),)
+        kind = installation_type(output)
+        if kind is None:
+            first = output.splitlines()[0] if output else "no output"
+            return (D("SST-DBT020", found=repr(first)),)
+        _store_kind(project_dir, cache, key, kind)
     if kind == "cloud" and auto_compile:
         raise _refuse(D("SST-DBT021", origin=Origin("sst_config.yml"), found="the dbt Cloud CLI"))
-    if kind is None:
-        first = output.splitlines()[0] if output else "no output"
-        return (D("SST-DBT020", found=repr(first)),)
     return ()
+
+
+def executable_key() -> dict[str, object] | None:
+    """Identify the `dbt` a run would start: what the cache keys an answer by; None without one.
+
+    The key is the executable `PATH` finds, the file it resolves to, that file's size and
+    modification time, and SST's version, so a reinstalled, upgraded or other dbt, or another
+    SST, never reads an answer kept for a different one.
+    """
+    found = shutil.which("dbt")
+    if found is None:
+        return None
+    resolved = os.path.realpath(found)
+    try:
+        status = os.stat(resolved)
+    except OSError:
+        return None
+    return {
+        "executable": found,
+        "resolved": resolved,
+        "size": status.st_size,
+        "mtime_ns": status.st_mtime_ns,
+        "sst": SST_VERSION,
+    }
+
+
+def _cached_kind(cache: Path | None, key: dict[str, object] | None) -> str | None:
+    """Return the installation `cache` holds for `key`; None when it holds none, another, or is unreadable."""
+    if cache is None or key is None:
+        return None
+    try:
+        held = read_json_file(cache)
+    except (OSError, JsonFileError):
+        return None
+    if not isinstance(held, dict) or held.get("key") != key:
+        return None
+    kind = held.get("kind")
+    return kind if isinstance(kind, str) and kind in _KINDS else None
+
+
+def _store_kind(project_dir: Path, cache: Path | None, key: dict[str, object] | None, kind: str) -> None:
+    """Keep `kind` in `cache` for `key`; a cache that cannot be written is only not kept."""
+    if cache is None or key is None:
+        return
+    try:
+        write_within(project_dir, cache, json.dumps({"key": key, "kind": kind}, sort_keys=True) + "\n")
+    except (OSError, UnsafeWrite):
+        return
 
 
 def parse_project(
@@ -149,6 +218,7 @@ def parse_project(
     profiles_dir: Path | None = None,
     target_path: Path | None = None,
     command: str = "parse",
+    installation_cache: Path | None = None,
 ) -> tuple[Diagnostic, ...]:
     """Run `dbt parse` (or `dbt.command`) for the target named, with the profiles SST resolved.
 
@@ -162,6 +232,8 @@ def parse_project(
         target_path: The directory dbt writes its artifacts to instead of its own target path,
             as `--target-path` asks; a deferred target's manifest is written there.
         command: The dbt command that writes the manifest, `parse` or `compile` (`dbt.command`).
+        installation_cache: The file that keeps what `dbt --version` answered, inside the
+            project, as the module describes; None asks dbt every run.
 
     Returns:
         The warnings the run found; anything worse is raised.
@@ -178,7 +250,7 @@ def parse_project(
     missing = missing_packages(project_dir)
     if missing:
         raise _refuse(D("SST-DBT026", origin=Origin("packages.yml"), count=missing))
-    warnings = _installation(runner, project_dir, auto_compile)
+    warnings = _installation(runner, project_dir, auto_compile, installation_cache)
     arguments = ["dbt", command, "--project-dir", str(project_dir), "--profiles-dir", str(profiles_dir or project_dir)]
     if target_name:
         arguments.extend(("--target", target_name))
