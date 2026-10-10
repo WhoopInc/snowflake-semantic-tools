@@ -272,6 +272,20 @@ so both can wait like this. Press Ctrl-C (exit 130).
   it until it expires. On Linux it does not, because SST does not pass
   `client_store_temporary_credential` (setting it is `SST-CFG048`).
 
+## A plan with nothing to change still takes a minute
+
+Most of a connected plan is many small reads, each a round trip to Snowflake.
+Within one plan, SST makes each SHOW, DESCRIBE and LIST once and reuses the
+answer. It looks up an object by name in one listing of its schema, and checks
+a table exists with one `INFORMATION_SCHEMA` read per schema. Nothing is reused
+from one command to the next, and `apply` reads afresh before it writes.
+
+By default a plan reads on one session at a time. `--threads` (else
+`$SST_THREADS`, else `generation.threads`) lets it run the validation checks,
+the listings and the reads of each listed object, and the preflight reads on
+that many sessions at once. The plan, its diagnostics and the saved plan file
+are the same for any count.
+
 ## The eval suite is slow
 
 An eval run takes minutes in Snowflake. The suite reads each run's status every 5

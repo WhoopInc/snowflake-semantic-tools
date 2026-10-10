@@ -3,13 +3,14 @@
 `observe` lists each artifact type's objects in every schema the targets name, once per
 schema, reading an object's grants only when the plan may replace it, and its definition only
 when asked to capture it. A failed read is reported and observation goes on, so one missing
-privilege never hides the rest. Each listing, with the reads of the objects it lists, is one
-unit a `Fanout` may run on a session of its own; the units are merged in the order they would
-run one at a time.
+privilege never hides the rest. Every listing is one unit a `Fanout` may run on a session of
+its own, and then so are the reads of each object listed; both are merged in the order they
+would run one at a time, each listing followed by the reads of what it lists.
 """
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -80,8 +81,9 @@ def observe(
             leaves out or empty lists the registry's object types instead.
         desired_artifacts: The rendered artifacts; the grants of an object one of them may
             replace are read, and its routine signature addresses it.
-        readers: Sessions to run the listings on concurrently; None lists on `port`, one
-            at a time. Either way the observation and its diagnostics are the same.
+        readers: Sessions to run the listings, then the reads of what they list, on
+            concurrently; None reads on `port`, one at a time. Either way the observation and
+            its diagnostics are the same.
         options: Which per-object reads to make, as `ObserveOptions` says.
 
     Diagnostics:
@@ -100,12 +102,26 @@ def observe(
         for object_type in _active_object_types(artifact_type, observed_object_types)
         for scope in scopes
     ]
-    results = (readers or Fanout(port)).map(
-        lambda session, unit: _observe_scope(session, unit[0], unit[1], unit[2], desired, options), units
+    readers = readers or Fanout(port)
+    listings = readers.map(lambda session, unit: _list_scope(session, unit[1], unit[2]), units)
+    listed = tuple(
+        (unit, row)
+        for unit, listing in zip(units, listings, strict=True)
+        if not isinstance(listing, Diagnostic)
+        for row in listing
     )
-    for observed, scope_diagnostics in results:
-        diagnostics.extend(scope_diagnostics)
-        found.update((artifact.key, artifact) for artifact in observed)
+    reads = iter(
+        readers.map(
+            lambda session, item: _observe_row(session, item[0][0], item[0][1], item[1], desired, options), listed
+        )
+    )
+    for listing in listings:
+        if isinstance(listing, Diagnostic):
+            diagnostics.append(listing)
+            continue
+        for artifact, row_diagnostics in itertools.islice(reads, len(listing)):
+            diagnostics.extend(row_diagnostics)
+            found[artifact.key] = artifact
     return SnowflakeObservation(MappingProxyType(found), fetched_at), DiagnosticBag(diagnostics)
 
 
@@ -122,26 +138,12 @@ def _active_object_types(
     return tuple(object_type for object_type in configured_object_types if object_type)
 
 
-def _observe_scope(
-    port: CatalogPort,
-    artifact_type: ArtifactType,
-    object_type: str,
-    scope: SchemaScope,
-    desired: Mapping[_FoldedName, RenderedArtifact],
-    options: ObserveOptions,
-) -> tuple[tuple[ObservedArtifact, ...], tuple[Diagnostic, ...]]:
-    """Observe the objects of one type in one schema, in the order SHOW lists them."""
+def _list_scope(port: CatalogPort, object_type: str, scope: SchemaScope) -> tuple[ShowRow, ...] | Diagnostic:
+    """List the objects of one type in one schema, in the order SHOW lists them; SST-PLN001 if it fails."""
     try:
-        rows = port.show_objects(object_type, scope)
+        return port.show_objects(object_type, scope)
     except SnowflakePortError as exc:
-        return (), (D("SST-PLN001", value=f"{object_type} in {scope.sql}", detail=str(exc)),)
-    observed: list[ObservedArtifact] = []
-    diagnostics: list[Diagnostic] = []
-    for row in rows:
-        artifact, row_diagnostics = _observe_row(port, artifact_type, object_type, row, desired, options)
-        diagnostics.extend(row_diagnostics)
-        observed.append(artifact)
-    return tuple(observed), tuple(diagnostics)
+        return D("SST-PLN001", value=f"{object_type} in {scope.sql}", detail=str(exc))
 
 
 def _observe_row(

@@ -4,11 +4,17 @@ Nothing here writes. SHOW ... LIKE ignores case and reads `_` and `%` as wildcar
 lookup by name compares each listed name again, under the case rule that lookup has always
 used: uppercased for ownership markers and object existence, casefolded for datasets,
 stages, and extensions. The two differ only for names outside ASCII.
+
+While the session keeps a read cache, as one plan's reads do, a lookup by name reads its
+schema's whole listing once instead: SHOW <type>S IN SCHEMA for an ASCII name without a
+backslash, which LIKE would match only by itself, and one INFORMATION_SCHEMA.TABLES read
+per schema for a table's existence. Either keeps exactly the rows the lookup by name keeps.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from types import MappingProxyType
 from typing import Any
 
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _variant_value
@@ -187,6 +193,9 @@ class CatalogMethods(Session, CatalogPort):
         normalized_input = " ".join(object_type.upper().split())
         if normalized_input == "DATASET":
             return self.dataset_exists(qualified_name)
+        if normalized_input in {"TABLE OR VIEW", "TABLE"} and self._read_cache is not None:
+            types = self._schema_tables(SchemaScope.from_qualified_name(qualified_name)).get(qualified_name.name.folded)
+            return types is not None and (normalized_input == "TABLE OR VIEW" or "BASE TABLE" in types)
         if normalized_input in {"TABLE OR VIEW", "TABLE"}:
             type_filter = sql("") if normalized_input == "TABLE OR VIEW" else sql(" AND TABLE_TYPE = 'BASE TABLE'")
             result = self.query(
@@ -320,6 +329,24 @@ class CatalogMethods(Session, CatalogPort):
             )
         return resolved.upper()
 
+    def _schema_tables(self, schema: SchemaScope) -> Mapping[str, frozenset[str]]:
+        """Return each table and view of a schema INFORMATION_SCHEMA lists: its TABLE_TYPEs by name."""
+
+        def read() -> Mapping[str, frozenset[str]]:
+            result = self.query(
+                sql(
+                    "SELECT TABLE_NAME, TABLE_TYPE FROM {database}.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = %s",
+                    database=ident(schema.database),
+                ),
+                (schema.schema.folded,),
+            )
+            types: dict[str, set[str]] = {}
+            for name, table_type in result.rows:
+                types.setdefault(str(name), set()).add(str(table_type))
+            return MappingProxyType({name: frozenset(found) for name, found in types.items()})
+
+        return self._cached(f"tables in {schema.sql}", read)
+
     def _show_like(
         self, object_type: str, qualified_name: QualifiedName, fold: Callable[[str], str]
     ) -> tuple[dict[str, Any], ...]:
@@ -327,19 +354,23 @@ class CatalogMethods(Session, CatalogPort):
 
         A row is kept when its name equals the looked-up name once `fold` (`str.upper` or
         `str.casefold`, the caller's case rule) is applied to both; rows keep SHOW's order.
+        While a read cache is in use, an ASCII name without a backslash is looked up in the
+        schema's whole listing instead: LIKE, ignoring case, matches such a name by itself
+        exactly when its letters match, so the rows kept are the same.
 
         Raises:
             SnowflakePortError: SST does not observe `object_type`, or the SHOW failed.
         """
-        rows = self._dict_rows(
-            sql(
-                "SHOW {kind} LIKE {pattern} IN SCHEMA {scope}",
-                kind=keyword(_object_type(object_type), plural=True),
-                pattern=literal(qualified_name.name.folded),
-                scope=_scope(SchemaScope.from_qualified_name(qualified_name)),
+        kind = keyword(_object_type(object_type), plural=True)
+        schema = _scope(SchemaScope.from_qualified_name(qualified_name))
+        name = qualified_name.name.folded
+        if self._read_cache is not None and name.isascii() and "\\" not in name:
+            rows = self._dict_rows(sql("SHOW {kind} IN SCHEMA {scope}", kind=kind, scope=schema))
+        else:
+            rows = self._dict_rows(
+                sql("SHOW {kind} LIKE {pattern} IN SCHEMA {scope}", kind=kind, pattern=literal(name), scope=schema)
             )
-        )
-        expected = fold(qualified_name.name.folded)
+        expected = fold(name)
         return tuple(row for row in rows if fold(str(row.get("name") or "")) == expected)
 
 

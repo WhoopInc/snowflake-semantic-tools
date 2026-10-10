@@ -8,6 +8,11 @@ carrying the diagnostic a command reports; any other exception is an SST bug and
 unwrapped. A halted session starts no further statement. No statement here is a USE: a scope
 is a session's own, set when it connects. The private helpers here are shared by the role
 modules beside this one.
+
+While a `ReadCache` is in use, as it is for one plan's reads, a SHOW, DESCRIBE or LIST that
+was answered once is answered again from what it returned, and a statement of any other
+verb, but for SELECT, EXPLAIN and GET, forgets every answer first, so nothing read before a
+write answers a read after it.
 """
 
 from __future__ import annotations
@@ -16,10 +21,10 @@ import contextlib
 import json
 import re
 import sys
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from threading import Lock, RLock
 from types import MappingProxyType
-from typing import Any, Self, cast
+from typing import Any, Self, TypeVar, cast
 
 import snowflake.connector
 from snowflake.connector import DictCursor
@@ -51,6 +56,39 @@ _SECRET_SETTING = re.compile(
 _KEY_FILE = re.compile(r"(?i)(?:[A-Za-z]:)?[\w.~-]*(?:[/\\][^\s/\\'\"]+)+\.(?:p8|pem|key|der|p12|pfx)\b")
 _REDACTED = "<redacted>"
 
+# The verbs whose answers a `ReadCache` keeps, and those that write nothing it must forget.
+_CACHED_VERBS = frozenset(("SHOW", "DESCRIBE", "DESC", "LIST"))
+_READ_VERBS = _CACHED_VERBS | {"SELECT", "EXPLAIN", "GET"}
+
+ValueT = TypeVar("ValueT")
+
+
+class ReadCache:
+    """What the reads of one run answered, by what was read, shared by the sessions it reads on.
+
+    Only an answer is kept: a read that raised is read again the next time it is asked for.
+    Two sessions asking for the same answer at once may both read it; either answer is kept.
+    """
+
+    def __init__(self) -> None:
+        self._answers: dict[str, object] = {}
+        self._guard = Lock()
+
+    def answer(self, key: str, read: Callable[[], ValueT]) -> ValueT:
+        """Return what `read` answered for `key` before, else read it now and keep the answer."""
+        with self._guard:
+            if key in self._answers:
+                return cast(ValueT, self._answers[key])
+        value = read()
+        with self._guard:
+            self._answers[key] = value
+        return value
+
+    def forget(self) -> None:
+        """Forget every answer, as a write must, so the next read of anything reads it anew."""
+        with self._guard:
+            self._answers.clear()
+
 
 class Session(ExecutionPort):
     """One live driver connection to Snowflake, which every role of the connector runs on.
@@ -73,6 +111,8 @@ class Session(ExecutionPort):
     _connection_params: Mapping[str, object] = MappingProxyType({})
     # Why the session was halted; None while it may run statements.
     _halted: str | None = None
+    # The answers this session's reads are kept in; None while every read reads anew.
+    _read_cache: ReadCache | None = None
 
     def __init__(self, connection_params: Mapping[str, object]) -> None:
         failure: SnowflakePortError | None = None
@@ -130,7 +170,16 @@ class Session(ExecutionPort):
         for session in tuple(self._scoped.values()):
             session.halt(self._halted)
 
+    def keep_reads(self, cache: ReadCache | None) -> None:
+        """Keep this session's read answers in `cache` from now on, as `ReadCache` says; None reads anew.
+
+        Every session one run reads on is given the same cache for that run's reads alone, and
+        never for a write that depends on them.
+        """
+        self._read_cache = cache
+
     def query(self, sql: Sql, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
+        self._forget_unless_read(sql)
         with _as_port_errors(), self._cursor() as cursor:
             return _fetch(cursor, sql, params)
 
@@ -144,11 +193,14 @@ class Session(ExecutionPort):
     ) -> QueryResult:
         # The scoped session runs nothing but these calls, all in the one scope it connected
         # with, so no statement ever changes the scope another statement runs in.
+        self._forget_unless_read(sql)
         session = self._scoped_session(scope)
         with _as_port_errors(), session._cursor() as cursor:
             return _fetch(cursor, sql, params, timeout_seconds=timeout_seconds)
 
     def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
+        if self._read_cache is not None:
+            self._read_cache.forget()
         completed: list[str] = []
         rows = 0
         halted = self._halted
@@ -224,6 +276,8 @@ class Session(ExecutionPort):
                 was rolled back. A ROLLBACK that fails too is noted on the error rather than
                 replacing it.
         """
+        if self._read_cache is not None:
+            self._read_cache.forget()
         with _as_port_errors(), self._cursor() as cursor:
             transaction = Transaction(cursor)
             try:
@@ -260,12 +314,31 @@ class Session(ExecutionPort):
             finally:
                 cursor.close()
 
+    def _cached(self, key: str, read: Callable[[], ValueT]) -> ValueT:
+        """Return `read()`, answered from the read cache by `key` while one is in use."""
+        cache = self._read_cache
+        return read() if cache is None else cache.answer(key, read)
+
+    def _forget_unless_read(self, statement: Sql) -> None:
+        """Forget every cached answer before a statement that may write, as `ReadCache` says."""
+        if self._read_cache is not None and _verb(statement) not in _READ_VERBS:
+            self._read_cache.forget()
+
     def _dict_rows(self, sql: Sql) -> tuple[dict[str, Any], ...]:
         """Run one statement without parameters and return its rows keyed by lowercase column name.
+
+        A SHOW, DESCRIBE or LIST is answered from the read cache while one is in use.
 
         Raises:
             SnowflakePortError: the statement failed, or the driver returned a positional row.
         """
+        if _verb(sql) in _CACHED_VERBS:
+            return self._cached(str(sql), lambda: self._read_dict_rows(sql))
+        self._forget_unless_read(sql)
+        return self._read_dict_rows(sql)
+
+    def _read_dict_rows(self, sql: Sql) -> tuple[dict[str, Any], ...]:
+        """Run one statement without parameters and return its rows keyed by lowercase column name."""
         with _as_port_errors(), self._cursor(DictCursor) as cursor:
             _execute(cursor, sql)
             rows = cursor.fetchall()
@@ -308,6 +381,12 @@ class Transaction:
         """End the transaction with `statement`, COMMIT or ROLLBACK; it counts as ended even if that fails."""
         self.open = False
         _execute(self._cursor, statement)
+
+
+def _verb(statement: Sql) -> str:
+    """Return a statement's first word, uppercased: the verb `ReadCache` decides by."""
+    words = str(statement).split(None, 1)
+    return words[0].upper() if words else ""
 
 
 @contextlib.contextmanager
