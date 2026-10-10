@@ -6122,7 +6122,7 @@
   "severity": "WARNING",
   "non_demotable": false,
   "title": "Verified query returns no rows",
-  "message": "verified_query '{member}' executed and returned {row_count} rows in {elapsed_ms}ms",
+  "message": "verified_query '{member}' executed and returned {row_count} rows in {elapsed_ms}ms (in {view})",
   "suggestion": "fix the query, or check that the target holds the data it asks about",
   "precheck": "observe"
  },

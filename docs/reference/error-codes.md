@@ -3502,11 +3502,13 @@ Fix: add the table to `tables:`
 
 **Verified query returns no rows** (warning)
 
-`verified_query '<member>' executed and returned <row_count> rows in <elapsed_ms>ms`
+`verified_query '<member>' executed and returned <row_count> rows in <elapsed_ms>ms (in <view>)`
 
 Raised when connected validate runs a verified query that compiles and it returns no rows, so it teaches nothing.
 
 Fix: fix the query, or check that the target holds the data it asks about
+
+Note: A verified query is run in each semantic view that holds it, and is reported once, naming every such view and the time of the first run.
 
 ### SST-VAL416
 
@@ -3536,9 +3538,11 @@ Fix: keep the three sets distinct
 
 `<type> '<name>' is not valid SQL: <detail>`
 
-Raised when an expression or a tool member's `where:` is not one SQL expression, or verified-query SQL is not one SELECT or WITH query, both checked offline; or Snowflake's EXPLAIN of a metric, dimension, filter or verified query fails in connected validate with `validation.snowflake_syntax_check` on.
+Raised when offline: an expression or a tool member's `where:` is not one SQL expression, or verified-query SQL does not begin with SELECT or WITH or is more than one statement; connected, with `validation.snowflake_syntax_check` on: Snowflake's EXPLAIN of a metric, dimension, filter or verified query fails.
 
 Fix: fix the expression or query; the message carries the reason
+
+Note: Offline, verified-query SQL is checked for its shape only, so a misspelt keyword or column needs the connected check. That check compiles a verified query as written, against the target's tables. It compiles a metric, dimension or filter over a projection with no rows, in which each `TABLE.COLUMN` reference is a NULL of the column's type: the type `DESCRIBE TABLE` reports in the target, else the `data_type` the dbt model declares, else none. It therefore catches a syntax error, an unknown function, and an argument type Snowflake refuses when it compiles, such as `SUM` over a timestamp, but not a value that fails only when a query runs, such as `SUM` over text that is not numeric, nor a column the table lacks (`--verify-schema` reports that, SST-VAL325); a reference to a metric, a filter, or a variable is untyped, and facts are not compiled. A finding is reported once, its detail naming every semantic view that holds the member.
 
 ### SST-VAL506
 

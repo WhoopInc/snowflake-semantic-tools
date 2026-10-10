@@ -75,7 +75,9 @@ def test_connected_validation_compiles_expressions_and_verified_queries() -> Non
     port = FakeSnowflake()
     validated = ValidateArtifacts(port).run(result, strict=False, connected=True)
     assert validated.success
+    # The fake describes no table, so the projection holds no typed column.
     assert [query for query, _params in port.queries] == [
+        "DESCRIBE TABLE DB.S.T",
         "EXPLAIN SELECT SUM(NULL) FROM (SELECT 1 AS SST_VALUE WHERE FALSE) AS SST_VALIDATE",
         "EXPLAIN SELECT 1",
         "SELECT COUNT(*) AS ROW_COUNT FROM (SELECT 1) AS SST_VQ",
@@ -103,6 +105,7 @@ def test_connected_validation_skips_non_views_and_projects_columns() -> None:
     validated = ValidateArtifacts(port).run(result, strict=False, connected=True)
     assert validated.success
     assert [query for query, _params in port.queries] == [
+        "DESCRIBE TABLE DB.S.T",
         "EXPLAIN SELECT SUM(NULL) + NULL + NULL "
         "FROM (SELECT NULL AS ACTIVE, NULL AS CATEGORY WHERE FALSE) AS SST_VALIDATE",
         "EXPLAIN SELECT NULL FROM (SELECT NULL AS ACTIVE, NULL AS CATEGORY WHERE FALSE) AS SST_VALIDATE",

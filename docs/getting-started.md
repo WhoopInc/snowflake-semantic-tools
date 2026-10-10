@@ -177,9 +177,11 @@ validated 1 artifact(s): 0 errors, 0 warnings
 
 `validate` runs `dbt parse`, loads every artifact, and checks references, types,
 and the rules each artifact type carries. By default
-(`validation.snowflake_syntax_check: true`) it also connects and compiles each
-expression against Snowflake; `--no-snowflake-syntax-check` stays offline and
-reports each skipped check as an info (`SST-VAL020`, shown with `--show-info`).
+(`validation.snowflake_syntax_check: true`) it also connects and has Snowflake
+compile each metric, dimension, and filter expression, every column typed as the
+target's tables have it, and each verified query; `--no-snowflake-syntax-check`
+stays offline and reports each skipped check as an info (`SST-VAL020`, shown with
+`--show-info`).
 If the project declares dbt packages, run `dbt deps` first (`SST-DBT026`).
 
 Each diagnostic prints its code and a `docs:` link to its entry in the

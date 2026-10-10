@@ -14,8 +14,8 @@ its shape and publishes it. Treat each of these like SQL you would run yourself:
   is SQL by design: SST checks that it is one expression (see
   [how SST builds SQL](#how-sst-builds-the-sql-it-sends)), not what it computes.
 - **Verified queries** are SQL. Connected validation runs `EXPLAIN` on each one, and on each
-  metric, dimension, and filter expression, with the target's role; publishing writes them
-  into the semantic view.
+  metric, dimension, and filter expression, with the target's role, after `DESCRIBE TABLE` on
+  each table the views read; publishing writes them into the semantic view.
 - **Agent instructions, tool definitions, and skills** are published as written, and decide
   what an agent does when someone calls it. `sst test --suite evals` runs the agents.
 - **Profiles, hooks, MCP configs, and commands** are published to the profile registry, and

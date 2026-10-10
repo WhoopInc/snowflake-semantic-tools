@@ -13,9 +13,12 @@ impossible.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
+from types import MappingProxyType
 
+from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.sql import AuthoredExpression, AuthoredQuery, Sql
 
 
@@ -41,6 +44,11 @@ class Column:
     `table` and `name` are already upper-cased by the loader, and each is one identifier.
     `expr` is the right side of `AS`, guarded: for a plain column that is `TABLE.COLUMN`,
     and for a filter it is a predicate such as `ORDERS.ORDER_STATE = 'completed'`.
+
+    Attributes:
+        data_type: The type the dbt manifest declares for the column, as written; None for a
+            filter and for a column that declares none. Not rendered: connected validation
+            types the column by it when the warehouse cannot describe the table.
     """
 
     table: str
@@ -51,6 +59,7 @@ class Column:
     synonyms: tuple[str, ...] = ()
     sample_values: tuple[str, ...] = ()
     is_enum: bool = False
+    data_type: str | None = None
 
     @property
     def qualified_name(self) -> str:
@@ -230,6 +239,11 @@ class SemanticView:
     Field order here mirrors the clause order in the DDL, which is the order the
     golden was verified against Snowflake in -- see `domain/render/semantic_view.py`
     for the authority on that order and for what is deliberately absent from it.
+
+    Attributes:
+        member_origins: Where each attached member is declared, by member key such as
+            `metric:order_count`; a member the loader recorded no origin for is absent. Not
+            rendered and not compared: it locates a connected check's finding.
     """
 
     fqn: str
@@ -252,6 +266,9 @@ class SemanticView:
     referenced_models: tuple[str, ...] = ()
     ownership_marker: str | None = None
     scope: ViewScope = ViewScope()
+    member_origins: Mapping[str, Origin] = field(
+        default_factory=lambda: MappingProxyType({}), repr=False, compare=False
+    )
 
     facts: tuple[Column, ...] = field(init=False, repr=False, compare=False)
     dimensions: tuple[Column, ...] = field(init=False, repr=False, compare=False)

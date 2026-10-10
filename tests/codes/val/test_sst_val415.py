@@ -34,7 +34,7 @@ def _validated(port: FakeSnowflake) -> list[Diagnostic]:
 def test_sst_val415_fires() -> None:
     [diagnostic] = _validated(FakeSnowflake())
     assert diagnostic.severity is Severity.WARNING
-    assert diagnostic.message == "verified_query 'order_total' executed and returned 0 rows in 1ms"
+    assert diagnostic.message == "verified_query 'order_total' executed and returned 0 rows in 1ms (in sales)"
     assert diagnostic.subject == "semantic_view:sales"
 
 
