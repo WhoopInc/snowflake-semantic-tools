@@ -221,6 +221,12 @@ wrong type in any variable, stops the run before it starts with exit code 4
 (`SST-CFG004`), never a silent default. The same value given as a flag is a
 usage error, exit code 3.
 
+`--threads` (else `$SST_THREADS`, else `generation.threads`) is how many Snowflake
+sessions `plan`, `validate` and `apply` work on at once. Unset, all three take the
+same default, 4; apply's changes take `skills.+threads` first. `--threads 1` works
+on one session at a time. The plan, its diagnostics and the saved plan file are
+the same for any count. `sst test` defaults to 1.
+
 SST also reads `$DBT_PROFILES_DIR` (see [above](#which-files-are-read)) and the
 standard `$NO_COLOR`: any non-empty value turns colour off, as `--no-color`
 does. Colour is only ever used for `table` output on a terminal. `$CI`, when

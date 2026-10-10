@@ -280,11 +280,11 @@ answer. It looks up an object by name in one listing of its schema, and checks
 a table exists with one `INFORMATION_SCHEMA` read per schema. Nothing is reused
 from one command to the next, and `apply` reads afresh before it writes.
 
-By default a plan reads on one session at a time. `--threads` (else
-`$SST_THREADS`, else `generation.threads`) lets it run the validation checks,
-the listings and the reads of each listed object, and the preflight reads on
-that many sessions at once. The plan, its diagnostics and the saved plan file
-are the same for any count.
+A plan reads on 4 sessions at once by default, as `apply` applies. `--threads`
+(else `$SST_THREADS`, else `generation.threads`) sets how many it runs the
+validation checks, the listings and the reads of each listed object, and the
+preflight reads on; `--threads 1` reads on one session at a time. The plan, its
+diagnostics and the saved plan file are the same for any count.
 
 ## The eval suite is slow
 

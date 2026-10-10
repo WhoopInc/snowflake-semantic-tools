@@ -289,7 +289,7 @@ sst validate [OPTIONS]
 | `--dbt` | DIRECTORY |  | Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`. |
 | `--semantic` | DIRECTORY |  | Read the semantic models from this directory instead of `project.semantic_models_dir`. |
 | `--verify-schema` | flag |  | Connects: confirm each column a semantic view reads exists in the warehouse. |
-| `--threads` | INTEGER RANGE |  | Snowflake sessions to work on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1. Output is the same for any count. |
+| `--threads` | INTEGER RANGE |  | Snowflake sessions to work on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 4; 1 works serially. Output is the same for any count. |
 
 ## sst baseline
 
@@ -464,7 +464,7 @@ sst plan [OPTIONS]
 | `--capture-prior` | flag |  | Read the current definition of each live object a planned artifact names, so a review can see what an update replaces and restore it: `GET_DDL` for a semantic view, search service, procedure or function (needs REFERENCES or OWNERSHIP); for an agent, which an update never replaces, the version it serves, its specification, and the `ALTER AGENT` statements that point back at it. A stage, skill, plugin, profile or eval has none. Shown by `--full` and as `prior_definition` in JSON; a read that fails is a warning (SST-PLN037), not a failed plan. |
 | `--sql-out` | DIRECTORY |  | Write each create's and update's statements into this directory instead of `target/sst/sql`. |
 | `--no-validate` | flag |  | Skip validation: no cycle check, connected check, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`. |
-| `--threads` | INTEGER RANGE |  | Sessions to validate and observe on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1. The plan is the same for any count. |
+| `--threads` | INTEGER RANGE |  | Sessions to validate and observe on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 4; 1 reads serially. The plan is the same for any count. |
 | `--full` | flag |  | Also print, under each update, the properties it changes on the object, and the definition it replaces when `--capture-prior` read it. |
 | `--names-only` | flag |  | Print the name of each changed artifact, one per line, and nothing else. |
 | `--no-detailed-exitcode` | flag |  | Exit 0 when changes are pending, instead of 2. |
@@ -522,7 +522,7 @@ sst apply [OPTIONS]
 | `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
 | `--yes / -y` | flag |  | Apply without asking for confirmation. |
 | `--fail-fast / --no-fail-fast` | flag |  | Stop at the first failure instead of continuing. Defaults to `apply.fail_fast`. |
-| `--threads` | INTEGER RANGE |  | Sessions to plan and apply on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`. Planning defaults to 1; applying to `skills.+threads`, else 4. |
+| `--threads` | INTEGER RANGE |  | Sessions to plan and apply on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`. Planning defaults to 4; applying to `skills.+threads`, else 4. |
 | `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 | `--temporary` | flag |  | Publish agents as session-scoped temporary agents; refused for a production-like target. |
 | `--no-validate` | flag |  | Skip validation: no cycle check, connected check, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`. |

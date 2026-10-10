@@ -19,6 +19,7 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.settings import apply_parallelism, threads_setting
+from snowflake_semantic_tools.domain.model.config_schema import DEFAULT_THREADS
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult, ShowRow
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -150,7 +151,7 @@ def test_plan_reports_the_same_on_one_thread_and_on_four(monkeypatch: pytest.Mon
 
 
 def test_plan_threads_come_from_the_environment_then_the_config(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
-    one, _ = _plan(monkeypatch, project)
+    one, default_sessions = _plan(monkeypatch, project)
     from_env, env_sessions = _plan(monkeypatch, project, env={"SST_THREADS": "3"})
     config = project / "sst_config.yml"
     config.write_text(config.read_text(encoding="utf-8") + "generation:\n  threads: 2\n", encoding="utf-8")
@@ -160,6 +161,8 @@ def test_plan_threads_come_from_the_environment_then_the_config(monkeypatch: pyt
 
     assert _comparable(one) == _comparable(from_env)
     assert _comparable(from_config) == _comparable(flag_wins)
+    # Unset, a plan reads on as many sessions as apply applies on.
+    assert 1 < len(default_sessions.opened) <= DEFAULT_THREADS + 1
     assert 1 < len(env_sessions.opened) <= 4
     assert 1 < len(config_sessions.opened) <= 3
     assert len(flag_sessions.opened) == 1
@@ -205,6 +208,16 @@ def test_validate_reports_the_same_on_one_thread_and_on_four(monkeypatch: pytest
     assert four_sessions.still_open == 0 and one_sessions.still_open == 0
 
 
+def test_validate_defaults_to_the_parallelism_apply_uses(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    default, default_sessions = _validate(monkeypatch, project)
+    serial, serial_sessions = _validate(monkeypatch, project, "--threads", "1")
+
+    assert _timeless(default) == _timeless(serial)
+    assert 1 < len(default_sessions.opened) <= DEFAULT_THREADS + 1
+    assert any(name.startswith("sst-worker") for name in default_sessions.threads)
+    assert serial_sessions.threads == {"MainThread"}
+
+
 def test_test_takes_threads_from_the_flag_or_the_environment_within_one_to_sixteen(project: Path) -> None:
     golden = ["test", *common(project), "--suite", "golden", "--output", "json"]
     for args, env in ((["--threads", "4"], None), ([], {"SST_THREADS": "4"})):
@@ -220,17 +233,20 @@ def test_test_takes_threads_from_the_flag_or_the_environment_within_one_to_sixte
 def test_threads_resolve_from_the_flag_then_generation_threads(tmp_path: Path) -> None:
     (tmp_path / "sst_config.yml").write_text("validation:\n  snowflake_syntax_check: false\n", encoding="utf-8")
     paths = project_paths(tmp_path)
-    assert (threads_setting(paths, None), apply_parallelism(paths)) == (1, 4)
+    # Plan, validate and apply share one default; `test` asks for 1.
+    assert (threads_setting(paths, None), apply_parallelism(paths)) == (DEFAULT_THREADS, DEFAULT_THREADS) == (4, 4)
+    assert threads_setting(paths, None, default=1) == 1
     assert (threads_setting(paths, 3), apply_parallelism(paths, 3)) == (3, 3)
     (tmp_path / "sst_config.yml").write_text(
         "validation:\n  snowflake_syntax_check: false\nskills:\n  +threads: 6\n", encoding="utf-8"
     )
     paths = project_paths(tmp_path)
-    assert (threads_setting(paths, None), apply_parallelism(paths)) == (1, 6)
+    assert (threads_setting(paths, None), apply_parallelism(paths)) == (DEFAULT_THREADS, 6)
     (tmp_path / "sst_config.yml").write_text(
         "validation:\n  snowflake_syntax_check: false\ngeneration:\n  threads: 5\nskills:\n  +threads: 6\n",
         encoding="utf-8",
     )
     paths = project_paths(tmp_path)
     assert (threads_setting(paths, None), apply_parallelism(paths)) == (5, 5)
+    assert threads_setting(paths, None, default=1) == 5
     assert (threads_setting(paths, 2), apply_parallelism(paths, 2)) == (2, 2)

@@ -17,6 +17,8 @@ from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX
 
 CONFIG_FILE = "sst_config.yml"
+# How many Snowflake sessions `plan`, `validate` and `apply` work on at once when nothing says.
+DEFAULT_THREADS = 4
 # The two spellings discovery accepts in the project root; both present is an error, not a precedence.
 CONFIG_NAMES: tuple[str, ...] = (CONFIG_FILE, "sst_config.yaml")
 
@@ -244,9 +246,9 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "generation.threads",
         _I,
-        "Sessions `plan` and `test` work on at once, and changes `apply` applies at once, unless `--threads` or "
-        "`$SST_THREADS` says. Unset, applying takes `skills.+threads`, else 4.",
-        default="1",
+        "Sessions `plan`, `validate` and `test` work on at once, and changes `apply` applies at once, unless "
+        "`--threads` or `$SST_THREADS` says. Unset, applying takes `skills.+threads` first, and `test` takes 1.",
+        default=str(DEFAULT_THREADS),
         minimum=1,
         maximum=16,
     ),
@@ -447,7 +449,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         _I,
         "Changes `apply` applies at once when neither `--threads`, `$SST_THREADS`, nor `generation.threads` "
         "says. Profiles always publish one at a time.",
-        default="4",
+        default=str(DEFAULT_THREADS),
         minimum=1,
         maximum=16,
     ),

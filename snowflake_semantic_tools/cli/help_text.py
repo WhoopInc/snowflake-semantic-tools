@@ -76,7 +76,7 @@ _OPTION_HELP: Mapping[str, str] = {
     "--no-defer": "Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say.",
     "--threads": (
         "Snowflake sessions to work on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, "
-        "else 1. Output is the same for any count."
+        "else 4; 1 works serially. Output is the same for any count."
     ),
     "--database": "Read from this database instead of the target's; never where an artifact is published.",
     "--no-detailed-exitcode": "Exit 0 instead of 2 when there are differences.",
@@ -109,11 +109,11 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst apply", "--fail-fast"): "Stop at the first failure instead of continuing. Defaults to `apply.fail_fast`.",
     ("sst apply", "--threads"): (
         "Sessions to plan and apply on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`. "
-        "Planning defaults to 1; applying to `skills.+threads`, else 4."
+        "Planning defaults to 4; applying to `skills.+threads`, else 4."
     ),
     ("sst plan", "--threads"): (
         "Sessions to validate and observe on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, "
-        "else 1. The plan is the same for any count."
+        "else 4; 1 reads serially. The plan is the same for any count."
     ),
     ("sst test", "--threads"): (
         "Smoke probes, and eval runs neither `evals.+concurrency` nor an eval's `run.concurrency` paces, "

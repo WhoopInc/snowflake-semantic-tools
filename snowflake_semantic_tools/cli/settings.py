@@ -14,7 +14,13 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.app import policy
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
-from snowflake_semantic_tools.domain.model.config_schema import config_block, config_bool, config_int, configured_dir
+from snowflake_semantic_tools.domain.model.config_schema import (
+    DEFAULT_THREADS,
+    config_block,
+    config_bool,
+    config_int,
+    configured_dir,
+)
 
 
 def project_config(paths: ProjectPaths) -> dict[str, object]:
@@ -27,25 +33,29 @@ def semantic_models_dir(paths: ProjectPaths) -> str:
     return configured_dir(project_config(paths), "semantic_models_dir", "semantic_models")
 
 
-def threads_setting(paths: ProjectPaths, threads: int | None) -> int:
-    """Return how many sessions a command reads on at once: `--threads`, else `generation.threads`, else 1.
+def threads_setting(paths: ProjectPaths, threads: int | None, *, default: int = DEFAULT_THREADS) -> int:
+    """Return how many sessions a command reads on at once: the flag, else the config, else `default`.
 
-    `--threads` already stands for `$SST_THREADS` when the flag is not given.
+    That is `--threads`, which already stands for `$SST_THREADS` when the flag is not given, else
+    `generation.threads`, else `default`. `plan`, `validate` and apply's plan take
+    `DEFAULT_THREADS`, the default apply applies with; `--threads 1` reads serially. `test`
+    passes 1.
     """
     if threads is not None:
         return threads
-    return _generation_threads(project_config(paths)) or 1
+    return _generation_threads(project_config(paths)) or default
 
 
 def apply_parallelism(paths: ProjectPaths, threads: int | None = None) -> int:
     """Return how many changes of one wave apply runs at once.
 
-    `--threads` (else `$SST_THREADS`), else `generation.threads`, else `skills.+threads`, else 4.
+    `--threads` (else `$SST_THREADS`), else `generation.threads`, else `skills.+threads`, else
+    `DEFAULT_THREADS`.
     """
     if threads is not None:
         return threads
     tree = project_config(paths)
-    return _generation_threads(tree) or config_int(config_block(tree.get("skills")).get("+threads")) or 4
+    return _generation_threads(tree) or config_int(config_block(tree.get("skills")).get("+threads")) or DEFAULT_THREADS
 
 
 def _generation_threads(tree: dict[str, object]) -> int | None:

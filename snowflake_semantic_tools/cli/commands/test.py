@@ -161,7 +161,7 @@ def test_command(
         return CommandResult(ERROR, compiled.diagnostics)
     result = selected_result(paths.project_dir, compiled, selected, excluded) if selected or excluded else compiled
     inputs = project_inputs(paths, target_name, manifest_path)
-    workers = threads_setting(paths, threads)
+    workers = threads_setting(paths, threads, default=1)
     if update_golden:
         return _update_golden(paths.project_dir, golden_dir, result, inputs)
     chosen = suites or tuple(name for name in SUITES if _applies(name, paths, result))

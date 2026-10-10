@@ -300,8 +300,9 @@ def test_apply_closes_its_connection_when_it_stops_before_applying(
     project = project_copy(tmp_path)
     compile_project(project)
     on_a_terminal(monkeypatch)
+    # One session, so the one close recorded is the command's own; a pool's siblings are the same fake.
     declined, closes = invoke_counting_closes(
-        monkeypatch, FakeSnowflake(state={}), ["apply", *common(project), "--target", "dev"]
+        monkeypatch, FakeSnowflake(state={}), ["apply", *common(project), "--target", "dev", "--threads", "1"]
     )
     assert declined.exit_code == 130 and "Apply this plan?" in declined.output
     assert closes == ["closed"]
@@ -317,7 +318,19 @@ def test_apply_closes_its_connection_when_it_stops_before_applying(
     stale, closes = invoke_counting_closes(
         monkeypatch,
         FakeSnowflake(state={}),
-        ["apply", *common(project), "--target", "dev", "--plan", str(path), "--yes", "--output", "json"],
+        [
+            "apply",
+            *common(project),
+            "--target",
+            "dev",
+            "--plan",
+            str(path),
+            "--yes",
+            "--output",
+            "json",
+            "--threads",
+            "1",
+        ],
     )
     assert stale.exit_code == 4 and "saved plan is stale" in json.loads(stale.output)["data"]["error"]
     assert closes == ["closed"]
