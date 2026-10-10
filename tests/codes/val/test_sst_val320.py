@@ -28,7 +28,6 @@ def _decide(fingerprint: str) -> Decision:
         ARTIFACT_REGISTRY,
         observed=observed(ARTIFACT, ownership=marker(ARTIFACT)),
         recorded=recorded,
-        manifest_id="a" * 64,
         validation=DiagnosticBag(),
         composite=None,
     )

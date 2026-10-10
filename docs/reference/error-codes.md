@@ -25,7 +25,7 @@ cannot be downgraded by any setting.
 - [Validation (VAL)](#validation-val) -- 298 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
-- [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
+- [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 37 codes
 - [Apply (APL)](#apply-apl) -- 29 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
@@ -5981,16 +5981,6 @@ Fix: fix the reported errors, then re-compile
 Raised when read offline, the target has no local state cache, so every artifact reads as new.
 
 Fix: check `state.+table` is readable on this target; a full plan is the safe fallback, not the fix
-
-### SST-MAN021
-
-**state.manifest_id does not match the current manifest** (warning)
-
-`state was recorded against manifest <found>; current is <expected>`
-
-Raised when the state and the manifest are from different compiles.
-
-Fix: re-run plan; NOOP detection is disabled for this run
 
 ### SST-MAN022
 

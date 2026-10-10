@@ -521,8 +521,8 @@ def validate_eval_publication(
 ) -> DiagnosticBag:
     """Check that every eval is published exactly as this manifest renders it, before running any.
 
-    State must record the eval as applied from this manifest, with the rendered fingerprint and
-    target, and its handler must plan no change against what is live now.
+    State must record the eval as applied at the rendered fingerprint and target, from whichever
+    manifest last published it, and its handler must plan no change against what is live now.
 
     Diagnostics:
         SST-APL012: an eval is not applied as this manifest renders it, or the live eval differs.
@@ -535,7 +535,6 @@ def validate_eval_publication(
         if (
             entry is None
             or entry.fingerprint != artifact.fingerprint
-            or entry.manifest_id != manifest.manifest_id
             or entry.qualified_name.casefold() != artifact.target.sql.casefold()
             or entry.outcome != APPLIED
         ):

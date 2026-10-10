@@ -1032,7 +1032,8 @@ def test_eval_config_path_sanitizes_unsafe_agent_names() -> None:
     assert f"/sales_team_{digest}/" in config_path
 
 
-def test_an_eval_recorded_under_another_manifest_is_rerecorded_then_unchanged() -> None:
+def test_an_eval_recorded_under_another_manifest_is_unchanged_and_applies_nothing() -> None:
+    # Another artifact's edit moved the manifest on; the eval's own fingerprint did not change.
     manifest, artifact, port, handler = setup_eval()
     entry = applied_entry(artifact, "an-older-manifest")
     seed_existing_resources(artifact, port)
@@ -1043,18 +1044,17 @@ def test_an_eval_recorded_under_another_manifest_is_rerecorded_then_unchanged() 
     port.stage_file(config_path, content)
     prior = state_with(entry, "an-older-manifest")
     plan = handler.plan(artifact, entry, manifest)
-    assert (plan.action, plan.reason) == (Action.UPDATE, ChangeReason.STATE_MANIFEST_MISMATCH)
+    assert (plan.action, plan.reason) == (Action.NOOP, ChangeReason.UNCHANGED)
 
     store = InMemoryStateStore(prior)
     change = planned_change(artifact, manifest, port, handler, prior)
+    assert change.action is Action.NOOP
     port.remote_state = prior.applied
     result = ApplyArtifacts(
         port, store, FixedClock(), state_table=artifact.target, lifecycle_handlers={"eval": handler}
     ).run(replace(changeset(change), manifest_id=manifest.manifest_id), prior)
-    assert result.success
-    assert store.state is not None and store.state.applied[artifact.key].manifest_id == manifest.manifest_id
-    assert not [script for script in port.scripts if script and script[0].startswith("CREATE")]
-    assert planned_change(artifact, manifest, port, handler, store.state).action is Action.NOOP
+    assert result.success and not result.state_written
+    assert port.scripts == []
 
 
 def test_an_eval_that_does_not_mint_requires_its_dataset_and_publishes_only_its_config() -> None:

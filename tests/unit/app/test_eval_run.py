@@ -1018,10 +1018,12 @@ def test_compact_timestamp_uses_utc_compact_format() -> None:
     assert value.endswith("Z")
 
 
-def test_eval_publication_preflight_refuses_manifest_mismatch() -> None:
+def test_eval_publication_preflight_accepts_an_eval_an_earlier_manifest_published_unchanged() -> None:
     compiled = compiled_eval_of()
     manifest = build_manifest(compile_eval())
     artifact = compiled.rendered_for_publish(manifest.manifest_id)
+    content = artifact.ddl.encode("utf-8")
+    stage_digest = md5(content, usedforsecurity=False).hexdigest()
     entry = AppliedEntry(
         artifact.fingerprint,
         artifact.target.sql,
@@ -1029,28 +1031,33 @@ def test_eval_publication_preflight_refuses_manifest_mismatch() -> None:
         "run",
         "applied",
         artifact.fingerprint,
-        "different",
-        component_fingerprints=artifact.component_fingerprints,
+        "e" * 64,
+        component_fingerprints=(*artifact.component_fingerprints, ("config_stage_md5", stage_digest)),
         physical_resources=tuple((kind, name.sql) for kind, name in artifact.physical_resources),
     )
     state = State(
-        STATE_SCHEMA_VERSION,
-        target(),
-        "",
-        "cfg",
-        None,
-        MappingProxyType({compiled.artifact_key: entry}),
+        STATE_SCHEMA_VERSION, target(), "e" * 64, "cfg", None, MappingProxyType({compiled.artifact_key: entry})
     )
+    port = FakeSnowflake()
+    port.existing = {name.sql for _, name in artifact.physical_resources}
+    seed_dataset_version(artifact, port)
+    port.existing.add("DB.S.EVAL_CONFIGS")
+    port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
+    config_path = EvalLifecycleHandler(port).config_path(artifact)
+    port.stage_files.add(config_path)
+    port.staged_file_contents[config_path] = content
 
-    diagnostics = validate_eval_publication(
+    accepted = validate_eval_publication((compiled,), manifest, state, EvalLifecycleHandler(port))
+    stale = validate_eval_publication(
         (compiled,),
         manifest,
-        state,
-        EvalLifecycleHandler(FakeSnowflake()),
+        replace(state, applied=MappingProxyType({compiled.artifact_key: replace(entry, fingerprint="f" * 64)})),
+        EvalLifecycleHandler(port),
     )
 
-    assert diagnostics[0].code == "SST-APL012"
-    assert compiled.artifact_key in diagnostics[0].message
+    assert not accepted
+    assert stale[0].code == "SST-APL012"
+    assert compiled.artifact_key in stale[0].message
 
 
 def test_eval_publication_preflight_allows_unrelated_rows_from_older_manifests() -> None:

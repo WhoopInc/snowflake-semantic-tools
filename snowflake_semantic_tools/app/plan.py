@@ -177,13 +177,10 @@ class PlanReady:
     def restamps_state(self) -> bool:
         """Report whether applying the plan would change state though it executes nothing.
 
-        A report-only prune executes nothing, but apply records it under this plan's
-        manifest; until it has, applying the plan changes the state table.
+        A report-only prune executes nothing, but apply records the object it observed when
+        state has no entry for it; until it has, applying the plan changes the state table.
         """
-        return any(
-            (entry := self.state.applied.get(change.key)) is None or entry.manifest_id != self.manifest.manifest_id
-            for change in self.changeset.report_only
-        )
+        return any(change.key not in self.state.applied for change in self.changeset.report_only)
 
 
 @dataclass(frozen=True, slots=True)

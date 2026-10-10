@@ -29,9 +29,12 @@ class Action(Enum):
 class ChangeReason(Enum):
     """Why plan chose a change's action.
 
-    STATE_MANIFEST_MISMATCH updates an object state recorded under another manifest, since
-    its fingerprint may be stale. UNMANAGED_OBJECT blocks an object that exists without a
-    state entry, and TARGET_MOVED one whose entry records a different target.
+    STATE_MANIFEST_MISMATCH updates a composite artifact whose live resources already match
+    the project while its state entry records another fingerprint or a failed write, so apply
+    re-verifies it and records it without publishing. Another manifest having recorded an
+    entry is no reason by itself: an artifact whose fingerprint matches is unchanged.
+    UNMANAGED_OBJECT blocks an object that exists without a state entry, and TARGET_MOVED one
+    whose entry records a different target.
     """
 
     NOT_PRESENT = "not_present"

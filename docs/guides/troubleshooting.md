@@ -158,9 +158,9 @@ about configuration or a tool group, is promoted whatever the selection.
 
 Those prunes are report-only (`SST-PLN034`, info): SST never removes them, so the
 plan lists them until the objects are removed by hand. They never fail `--strict`.
-Until state records them under the current manifest, `plan` exits 2, because the
-apply that records them still changes the state table; run `apply --prune` once
-so state records that the source is gone, and `plan` exits 0 from then on.
+While state has no entry for one, `plan` exits 2, because the apply that records
+it still changes the state table; run `apply --prune` once so state records it,
+and `plan` exits 0 from then on.
 
 ## A reference does not resolve
 

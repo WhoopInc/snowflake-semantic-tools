@@ -87,7 +87,7 @@ def _record_outcome(
     which lasts only for its session, leaves the entries as they are.
     """
     if change.action is Action.PRUNE:
-        _record_prune(applied, change, outcome, previous, manifest_id, stamp, lifecycle_handlers)
+        _record_prune(applied, change, outcome, previous, stamp, lifecycle_handlers)
         return
     if outcome.status is not OutcomeStatus.APPLIED and not outcome.write_succeeded:
         return
@@ -108,7 +108,6 @@ def _record_prune(
     change: Change,
     outcome: ApplyOutcome,
     previous: State,
-    manifest_id: str,
     stamp: EntryStamp,
     lifecycle_handlers: Mapping[str, CompositeLifecycleHandler],
 ) -> None:
@@ -117,11 +116,7 @@ def _record_prune(
     A prune that ran but did not apply leaves the entry as it was.
     """
     if not change.prune_executable:
-        # Nothing was removed, so the entry stays and the next plan reports it
-        # again; it now belongs to this manifest, which is what clears SST-MAN021.
-        retained = previous.applied.get(change.key)
-        if retained is not None:
-            applied[change.key] = replace(retained, manifest_id=manifest_id)
+        # Nothing was removed, so the entry stays as it was and the next plan reports it again.
         return
     if outcome.status is not OutcomeStatus.APPLIED:
         return

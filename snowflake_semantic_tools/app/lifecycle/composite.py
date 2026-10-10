@@ -13,7 +13,6 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Callable, Collection, Iterable, Mapping
 from copy import copy
-from dataclasses import replace
 from types import MappingProxyType
 from typing import Generic, Self, TypeVar, cast
 
@@ -187,20 +186,16 @@ class CompositeHandler(CompositeLifecycleHandler, Generic[SubjectT, ObservedT, P
     ) -> CompositePlan:
         """Observe the artifact's resources and decide its change; an unreadable resource blocks it.
 
-        An artifact the handler finds unchanged, but whose state entry another manifest
-        recorded, is an UPDATE for that reason: publishing re-verifies it and records it under
-        this manifest, which is what clears SST-MAN021.
+        The handler decides from the artifact, its state entry, and what is live; which
+        manifest recorded the entry does not matter, since its fingerprint says what it holds.
         """
+        del manifest
         subject = self._subject(artifact)
         try:
             observed = self._observe(subject)
         except SnowflakePortError as exc:
             return unobservable(artifact.key, exc)
-        decided = self._decide(artifact, state_entry, subject, observed)
-        recorded_elsewhere = state_entry is not None and state_entry.manifest_id != manifest.manifest_id
-        if decided.action is Action.NOOP and recorded_elsewhere:
-            return replace(decided, action=Action.UPDATE, reason=ChangeReason.STATE_MANIFEST_MISMATCH)
-        return decided
+        return self._decide(artifact, state_entry, subject, observed)
 
     def apply(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
         """Carry out one planned change, dispatched as the class describes.

@@ -169,7 +169,6 @@ def test_plan_blocks_a_comparison_against_a_recorded_value_that_is_not_a_digest(
         ARTIFACT_REGISTRY,
         observed=observed(artifact, ownership=marker(artifact)),
         recorded=recorded,
-        manifest_id="m" * 64,
         validation=DiagnosticBag(),
         composite=None,
     )

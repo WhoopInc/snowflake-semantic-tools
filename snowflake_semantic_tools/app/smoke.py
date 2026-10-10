@@ -24,7 +24,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.ports.state import StateStore
-from snowflake_semantic_tools.domain.state import Manifest, State
+from snowflake_semantic_tools.domain.state import AppliedEntry, Manifest, State
 
 
 class SmokePort(CatalogPort, ExecutionPort, StatePort, Protocol):
@@ -168,48 +168,45 @@ class SmokePublished:
         Steps, in order:
 
         1. Read authoritative state, as `read_state` does.
-        2. Check the state was applied from `manifest`.
-        3. Render each artifact as apply published it for `manifest`.
-        4. Check each artifact with probes: state records it from `manifest`, with its
-           fingerprint and target, and its live marker is the one apply wrote. Composite
-           artifacts carry no marker and have no probe, so they are not asked for one.
-        5. Check every public metric has a probe.
-        6. Run the probes only when nothing was reported; otherwise probe nothing.
+        2. Render each artifact as apply published it for `manifest`.
+        3. Check each artifact with probes: state records it at the fingerprint and target it
+           compiles to, and its live marker is the one that entry recorded, from whichever
+           manifest last published it. Composite artifacts carry no marker and have no probe,
+           so they are not asked for one.
+        4. Check every public metric has a probe.
+        5. Run the probes only when nothing was reported; otherwise probe nothing.
 
         Args:
             manifest: The manifest the project compiles to, which `sst compile` wrote.
 
         Diagnostics:
-            SST-APL012: state was not applied from `manifest`, or an object with probes is
-                not the one apply published.
+            SST-APL012: an object with probes is not the one apply published at the
+                fingerprint the project compiles to.
             Those of `read_state`, any of which also keeps the probes from running, and the
             probes' own.
         """
         state, state_diagnostics = read_state(self._state_store, self._port, state_table=state_table, target=target)
         problems: list[Diagnostic] = list(state_diagnostics)
-        if state.manifest_id != manifest.manifest_id:
-            problems.append(
-                D("SST-APL012", artifact="manifest", value="authoritative state does not match the compiled manifest")
-            )
         published = {artifact.key: artifact for artifact in result.rendered_for_publish(manifest.manifest_id)}
-        problems.extend(self._unowned(result, manifest, state))
+        problems.extend(self._unowned(result, state))
         problems.extend(unprobed_metrics(result))
         if problems:
             return SmokeResult((), DiagnosticBag(tuple(problems)))
         return RunSmokeSuite(self._port, self._readers).run(tuple(published.values()), fail_fast=fail_fast)
 
-    def _unowned(self, result: CompileResult, manifest: Manifest, state: State) -> list[Diagnostic]:
+    def _unowned(self, result: CompileResult, state: State) -> list[Diagnostic]:
         """Report each artifact with probes whose state entry or live marker is not apply's, in compile order.
 
         The live marker is read only for an artifact whose state entry matches.
         """
         probed = tuple(item for item in result.rendered if item.smoke)
-        recorded = tuple(artifact for artifact in probed if _recorded(artifact, manifest, state))
+        recorded = {artifact.key: entry for artifact in probed if (entry := _recorded(artifact, state)) is not None}
+        owned = tuple(artifact for artifact in probed if artifact.key in recorded)
         markers = dict(
             zip(
-                (artifact.key for artifact in recorded),
+                (artifact.key for artifact in owned),
                 (self._readers or Fanout(self._port)).map(
-                    lambda port, artifact: port.describe_marker(artifact.target, artifact.object_type), recorded
+                    lambda port, artifact: port.describe_marker(artifact.target, artifact.object_type), owned
                 ),
                 strict=True,
             )
@@ -217,16 +214,22 @@ class SmokePublished:
         return [
             D("SST-APL012", artifact=artifact.key, value=artifact.target.sql)
             for artifact in probed
-            if markers.get(artifact.key) != OwnershipMarker(manifest.manifest_id, artifact.fingerprint)
+            if artifact.key not in recorded
+            or markers.get(artifact.key) != OwnershipMarker(recorded[artifact.key].manifest_id, artifact.fingerprint)
         ]
 
 
-def _recorded(artifact: RenderedArtifact, manifest: Manifest, state: State) -> bool:
-    """Report whether state records the artifact as applied from `manifest`, at its fingerprint and target."""
+def _recorded(artifact: RenderedArtifact, state: State) -> AppliedEntry | None:
+    """Return the entry recording the artifact at its fingerprint and target; None when there is none.
+
+    The manifest the entry names is the one that last published the artifact, which need not
+    be the one being tested: an artifact no later apply changed keeps its entry as it was.
+    """
     entry = state.applied.get(artifact.key)
-    return (
+    if (
         entry is not None
         and entry.fingerprint == artifact.fingerprint
-        and entry.manifest_id == manifest.manifest_id
         and QualifiedName.parse(entry.qualified_name).folded == artifact.target.folded
-    )
+    ):
+        return entry
+    return None

@@ -36,8 +36,8 @@ def plan_exit_code(
     fails nothing; the plan still exits 2 when it has changes.
 
     Applying changes Snowflake when the plan writes, and when it only reports prunes that
-    state has not yet recorded under this manifest: apply re-stamps state for them, so the
-    plan is not in sync until it runs. Without `detailed`, pending changes exit 0.
+    state has no entry for yet: apply records them, so the plan is not in sync until it
+    runs. Without `detailed`, pending changes exit 0.
     """
     changeset = ready.changeset
     if changeset.blocked or blocking(shown, held):

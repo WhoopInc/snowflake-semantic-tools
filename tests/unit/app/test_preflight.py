@@ -378,19 +378,20 @@ def test_a_partial_plans_manifest_covers_only_what_stays_healthy_after_validatio
     assert {change.key for change in ready.changeset.changes} == {"semantic_view:sales"}
 
 
-def test_a_report_only_prune_restamps_state_until_state_records_it_under_the_plans_manifest() -> None:
+def test_a_report_only_prune_restamps_state_only_until_state_has_an_entry_for_it() -> None:
     gone = rendered("GONE")
     report_only = replace(change(gone, Action.PRUNE), prune_executable=False, reason=ChangeReason.ORPHANED)
     planned = ChangeSet("m" * 64, dev_target(), (report_only,), DiagnosticBag(), "now")
     manifest = manifest_of()
-    stale = AppliedEntry("f", gone.target.sql, "now", "run", "applied", "f", "old")
-    current = replace(stale, manifest_id=manifest.manifest_id)
+    earlier = AppliedEntry("f", gone.target.sql, "now", "run", "applied", "f", "old")
 
     def ready(applied: dict[str, AppliedEntry]) -> PlanReady:
         return PlanReady(compiled(), manifest, state_of(manifest, applied), planned, MappingProxyType({}))
 
-    assert ready({}).restamps_state and ready({gone.key: stale}).restamps_state
-    assert not ready({gone.key: current}).restamps_state
+    # An entry another manifest recorded needs no restamp: the object is unchanged.
+    assert ready({}).restamps_state
+    assert not ready({gone.key: earlier}).restamps_state
+    assert not ready({gone.key: replace(earlier, manifest_id=manifest.manifest_id)}).restamps_state
 
 
 def test_observation_rows_still_reach_the_plan() -> None:

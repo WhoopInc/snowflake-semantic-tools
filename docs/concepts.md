@@ -180,6 +180,15 @@ was published to, and the manifest and commit it came from -- in a state table,
 `target/sst/state.<target>.json`. The next `plan` compares the project against
 that record and against what is live.
 
+Each artifact is compared with its own entry. Its fingerprint covers everything
+its rendered form carries, including what it resolves from its dependencies,
+such as the skill version an agent pins or the columns a search tool exposes. So
+an artifact is updated only when its own render changed, however much else the
+project changed. An apply narrowed by `--select` records only what it selected,
+and the next full plan finds the rest unchanged. A semantic view an agent names
+as a tool is referenced by name, so editing the view republishes the view and
+not the agent.
+
 ### Concurrent applies and the run lock
 
 Only one run that writes to a target -- `apply`, the eval suite of `sst test`, or

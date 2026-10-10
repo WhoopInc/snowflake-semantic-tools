@@ -177,15 +177,11 @@ def test_plan_live_observation_saved_plan_and_detailed_exitcode(
     assert collapsed.exit_code == 0
 
 
-def test_plan_noop_uses_remote_state_not_a_prior_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    project = project_copy(tmp_path)
-    first_port = FakeSnowflake(state={})
-    first = invoke_with_port(
-        monkeypatch,
-        first_port,
-        ["plan", *common(project), "--target", "dev", "--output", "json"],
-    )
-    payload = json.loads(first.output)
+def published_target(project: Path, payload: dict[str, Any]) -> FakeSnowflake:
+    """A target where apply published every change of the plan `payload`, from its manifest.
+
+    Reads the compiled files of `project`, so call it before editing the project.
+    """
     manifest_id = payload["data"]["manifest_id"]
     state = {
         item["artifact_key"]: AppliedEntry(
@@ -253,6 +249,17 @@ def test_plan_noop_uses_remote_state_not_a_prior_manifest(tmp_path: Path, monkey
     )
     configure_skills_as_published(port, payload["data"]["changes"], project)
     configure_profiles_as_published(port, payload["data"]["changes"], project)
+    return port
+
+
+def test_plan_noop_uses_remote_state_not_a_prior_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = project_copy(tmp_path)
+    first = invoke_with_port(
+        monkeypatch,
+        FakeSnowflake(state={}),
+        ["plan", *common(project), "--target", "dev", "--output", "json"],
+    )
+    port = published_target(project, json.loads(first.output))
     planned = invoke_with_port(
         monkeypatch,
         port,
@@ -260,6 +267,71 @@ def test_plan_noop_uses_remote_state_not_a_prior_manifest(tmp_path: Path, monkey
     )
     assert planned.exit_code == 0, planned.output
     assert {item["action"] for item in json.loads(planned.output)["data"]["changes"]} == {"noop"}
+
+
+@pytest.mark.parametrize(
+    ("relative", "old", "new", "updated"),
+    [
+        pytest.param(
+            "semantic_models/metrics/metrics.yml",
+            "COUNT({{ ref('order_items', 'order_item_id') }})",
+            "COUNT(DISTINCT {{ ref('order_items', 'order_item_id') }})",
+            # The agent's Analyst tool names the view, so the view's metrics are not in its spec.
+            {"semantic_view:jaffle_menu"},
+            id="one-metric-of-one-view",
+        ),
+        pytest.param(
+            "agents/jaffle_analytics/instructions/orchestration.md",
+            "## Tool selection\n",
+            "## Tool selection\n\nPrefer the semantic views over the documents.\n",
+            {"agent:jaffle_analytics_agent"},
+            id="one-agent-s-instructions",
+        ),
+        pytest.param(
+            "skills/jaffle-semantics/SKILL.md",
+            "---\n",
+            "---\n\n",
+            # The skill's new version moves the pin of the agent, the plugin and the profile that carry it.
+            {
+                "skill:jaffle-semantics",
+                "plugin:jaffle-toolkit",
+                "profile:jaffle-analyst",
+                "profile:jaffle-operator",
+                "agent:jaffle_analytics_agent",
+            },
+            id="one-skill-its-dependents-pin",
+        ),
+    ],
+)
+def test_one_edit_plans_only_what_its_render_reaches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relative: str, old: str, new: str, updated: set[str]
+) -> None:
+    project = project_copy(tmp_path)
+    first = invoke_with_port(
+        monkeypatch,
+        FakeSnowflake(state={}),
+        ["plan", *common(project), "--target", "dev", "--output", "json"],
+    )
+    port = published_target(project, json.loads(first.output))
+    path = project / relative
+    text = path.read_text(encoding="utf-8")
+    assert old in text
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+    compile_project(project)
+
+    planned = invoke_with_port(
+        monkeypatch,
+        port,
+        ["plan", *common(project), "--target", "dev", "--output", "json", "--no-plan-out"],
+    )
+
+    payload = json.loads(planned.output)
+    assert planned.exit_code == 2, planned.output
+    assert payload["data"]["manifest_id"] != json.loads(first.output)["data"]["manifest_id"]
+    actions = {item["artifact_key"]: (item["action"], item["reason"]) for item in payload["data"]["changes"]}
+    assert {key for key, (action, _) in actions.items() if action != "noop"} == updated
+    assert {actions[key] for key in updated} == {("update", "fingerprint_differs")}
+    assert len(actions) == 14
 
 
 def test_selected_plan_refuses_a_stale_canonical_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -523,13 +595,13 @@ def test_report_only_prunes_are_listed_but_are_not_changes(tmp_path: Path, monke
     assert CliRunner().invoke(cli, ["compile", "--project-dir", str(project)]).exit_code == 0
     scripts = len(port.scripts)
 
-    # Until apply records the report-only prune under this manifest, applying changes state,
-    # so the plan exits 2 (and 0 without the detailed exit code).
+    # State already records the skill, so the report-only prune changes nothing to apply:
+    # the plan lists it and exits 0, detailed exit code or not.
     first = invoke_with_port(monkeypatch, port, ["plan", "--project-dir", str(project), "--prune", "--output", "json"])
-    assert first.exit_code == 2, first.output
+    assert first.exit_code == 0, first.output
     assert json.loads(first.output)["data"]["report_only"] == ["skill:month-close"]
     human = invoke_with_port(monkeypatch, port, ["plan", "--project-dir", str(project), "--prune"])
-    assert human.exit_code == 2, human.output
+    assert human.exit_code == 0, human.output
     quiet = invoke_with_port(
         monkeypatch, port, ["plan", "--project-dir", str(project), "--prune", "--no-detailed-exitcode"]
     )
@@ -537,7 +609,7 @@ def test_report_only_prunes_are_listed_but_are_not_changes(tmp_path: Path, monke
     assert "0 to prune" in human.output and "1 report-only (SST never removes these)." in human.output
     assert "- skill:month-close PRUNE - orphaned (report only)" in human.output
 
-    # Apply executes nothing, but records the run so the state follows the manifest.
+    # Apply executes nothing on Snowflake's objects; it still records the run.
     pruned = invoke_with_port(
         monkeypatch, port, ["apply", "--project-dir", str(project), "--prune", "--yes", "--output", "json"]
     )
