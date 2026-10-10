@@ -198,7 +198,10 @@ For each skill, `sst apply`:
    `<name>/<ALIAS>/skills/<name>/SKILL.md`; then checks that the prefix holds
    exactly the bundle's files, byte for byte;
 3. creates the extension if it is absent, with `TYPE = 'SKILL'` and the skill's
-   description as its comment;
+   description as its comment, from that prefix: its first version,
+   `VERSION$1`, is the bundle, named by the alias. An extension created
+   without a source would begin with an empty, unnamed `VERSION$1` that
+   Snowflake can neither drop nor name, and which the catalog would serve;
 4. adds a version named by the alias from that prefix, unless it already exists;
 5. checks that the version holds exactly the bundle's files, sets the comment
    again if the description changed, and certifies the version when

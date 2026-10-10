@@ -128,12 +128,13 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     assert applied.exit_code == 0, applied.output
     payload = json.loads(applied.output)
     assert payload["data"]["state_written"] is True
-    # Eleven more than M4: the bundle stage, CREATE and ADD VERSION for each of three
-    # skills and the plugin, and the profile stage; the eval dataset's own version; and
-    # the agent spec stage, created once for every agent that stages there.
-    assert len(apply_port.scripts) == 23
+    # Seven more than M4: the bundle stage, one CREATE carrying the first version for each
+    # of three skills and the plugin, and the profile stage; the eval dataset's own version;
+    # and the agent spec stage, created once for every agent that stages there.
+    assert len(apply_port.scripts) == 19
     first_lines = [statements[0].split("\n", 1)[0] for statements in apply_port.scripts]
-    assert sum("JAFFLE_TOOLKIT" in line for line in first_lines) == 2
+    assert sum("JAFFLE_TOOLKIT" in line for line in first_lines) == 1
+    assert not any(line.startswith("ALTER CORTEX EXTENSION") and " ADD VERSION " in line for line in first_lines)
     assert sum("SKILL_BUNDLES " in line and line.startswith("CREATE STAGE") for line in first_lines) == 1
     assert sum("AGENT_SPECS_SSE " in line and line.startswith("CREATE STAGE") for line in first_lines) == 1
     assert sum("[sst:" in statement for statements in apply_port.scripts for statement in statements) == 7

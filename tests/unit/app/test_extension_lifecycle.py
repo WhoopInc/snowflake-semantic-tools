@@ -43,6 +43,8 @@ STAGE = QualifiedName.parse("DB.S.SKILL_BUNDLES")
 # The byte split and publication-surface notes every compiled extension reports.
 NOTES = frozenset(("SST-VAL816", "SST-VAL831"))
 CHANNEL = CatalogChannel("DB", "S", STAGE)
+# A fragment only the CREATE that carries the bundle holds: `.../<alias>/ VERSION <alias>`.
+BUNDLED_CREATE = "/ VERSION SST_"
 
 
 def skill(name: str = "month-close", body: str = "Read reference/steps.md, then run run.py.\n") -> Skill:
@@ -146,15 +148,19 @@ def test_first_publish_then_noop_then_revert_is_a_state_only_update() -> None:
     assert statements[0].startswith(
         "CREATE STAGE IF NOT EXISTS DB.S.SKILL_BUNDLES ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE')"
     )
-    assert statements[1].startswith("CREATE CORTEX EXTENSION IF NOT EXISTS DB.S.MONTH_CLOSE TYPE = 'SKILL'")
     alias = compiled["skill:month-close"].release.alias
-    assert (
-        statements[2]
-        == f"ALTER CORTEX EXTENSION DB.S.MONTH_CLOSE ADD VERSION {alias} FROM @DB.S.SKILL_BUNDLES/month-close/{alias}/"
+    # The create carries the bundle, so the extension has no empty first version and no
+    # ADD VERSION follows.
+    assert statements[1] == (
+        f"CREATE CORTEX EXTENSION IF NOT EXISTS DB.S.MONTH_CLOSE FROM @DB.S.SKILL_BUNDLES/month-close/{alias}/ "
+        f"VERSION {alias} TYPE = 'SKILL' COMMENT = 'Close the month.'"
     )
+    assert not any("ADD VERSION" in item for item in statements)
+    versions = port.extension_versions(QualifiedName.parse("DB.S.MONTH_CLOSE"))
+    assert [(item.name, item.alias) for item in versions] == [("VERSION$1", alias)]
     assert len(port.uploads) == 3
     entry = after.applied["skill:month-close"]
-    assert dict(entry.component_fingerprints)["version"] == "VERSION$2"
+    assert dict(entry.component_fingerprints)["version"] == "VERSION$1"
     assert {resource.object_type for resource in entry.applied_resources} == {"CORTEX EXTENSION", "STAGE"}
 
     changeset, result, after = publish(port, compiled, after)
@@ -165,14 +171,14 @@ def test_first_publish_then_noop_then_revert_is_a_state_only_update() -> None:
     changeset, result, after_change = publish(port, changed, after)
     assert [change.action for change in changeset.changes] == [Action.UPDATE]
     assert result.success
-    assert len(port.extension_versions(QualifiedName.parse("DB.S.MONTH_CLOSE"))) == 3
+    assert len(port.extension_versions(QualifiedName.parse("DB.S.MONTH_CLOSE"))) == 2
 
     changeset, result, reverted = publish(port, compiled, after_change)
     assert [(change.action, change.reason) for change in changeset.changes] == [
         (Action.UPDATE, ChangeReason.STATE_MANIFEST_MISMATCH)
     ]
     assert result.success
-    assert len(port.extension_versions(QualifiedName.parse("DB.S.MONTH_CLOSE"))) == 3
+    assert len(port.extension_versions(QualifiedName.parse("DB.S.MONTH_CLOSE"))) == 2
     assert (
         reverted.applied["skill:month-close"].fingerprint == compiled["skill:month-close"].rendered_artifact.fingerprint
     )
@@ -309,30 +315,30 @@ def test_the_catalog_keeps_serving_a_certified_version_over_an_uncertified_one()
     changeset, result, after = publish(port, first, empty_state())
     assert result.success and served_warnings(changeset) == []
     target = QualifiedName.parse("DB.S.MONTH_CLOSE")
-    assert observation(port, target).latest_certified_version == "VERSION$2"
+    assert observation(port, target).latest_certified_version == "VERSION$1"
 
     uncertified = compile_catalog(SkillCatalog((skill(body="Read reference/steps.md twice.\n"),)))
     changeset, result, after_change = publish(port, uncertified, after)
     assert [change.action for change in changeset.changes] == [Action.UPDATE]
     alias = uncertified["skill:month-close"].release.alias
     assert served_warnings(changeset) == [
-        f"skill:month-close: the catalog will serve VERSION$2 of DB.S.MONTH_CLOSE, not {alias}, "
+        f"skill:month-close: the catalog will serve VERSION$1 of DB.S.MONTH_CLOSE, not {alias}, "
         "because it is the latest certified version"
     ]
     observed = observation(port, target)
-    assert (observed.effective_version, observed.latest_certified_version) == ("VERSION$2", "VERSION$2")
+    assert (observed.effective_version, observed.latest_certified_version) == ("VERSION$1", "VERSION$1")
 
     # Certifying the newer version makes it the one the catalog serves.
     newer = compile_catalog(SkillCatalog((skill(body="Read reference/steps.md twice.\n"),)), certified_channel)
     changeset, result, _ = publish(port, newer, after_change)
     assert [change.action for change in changeset.changes] == [Action.UPDATE]
     assert result.success and served_warnings(changeset) == []
-    assert observation(port, target).effective_version == "VERSION$3"
+    assert observation(port, target).effective_version == "VERSION$2"
 
     # Reverting to the older version cannot outrank the later certified one.
     changeset, _, _ = publish(port, first, after_change)
     assert served_warnings(changeset) == [
-        f"skill:month-close: the catalog will serve VERSION$3 of DB.S.MONTH_CLOSE, not "
+        f"skill:month-close: the catalog will serve VERSION$2 of DB.S.MONTH_CLOSE, not "
         f"{first['skill:month-close'].release.alias}, because it is the latest certified version"
     ]
 
@@ -390,7 +396,7 @@ def test_served_version_prediction_edges() -> None:
     certified = compile_catalog(SkillCatalog((skill(),)), replace(CHANNEL, certified=True))
     changeset, result, _ = publish(port, certified, reverted)
     assert result.success and served_warnings(changeset) == []
-    assert observation(port, QualifiedName.parse("DB.S.MONTH_CLOSE")).effective_version == "VERSION$2"
+    assert observation(port, QualifiedName.parse("DB.S.MONTH_CLOSE")).effective_version == "VERSION$1"
     assert _version_number("VERSION$12") == 12 and _version_number("LIVE") == -1
 
 
@@ -411,7 +417,7 @@ def test_plugin_falls_back_to_a_live_version_built_from_empty() -> None:
     )
     compiled = {key: item for key, item in compile_catalog(catalog).items() if key.startswith("plugin:")}
     port = FakeSnowflake(existing=())
-    port.refused = ("ADD VERSION SST_",)
+    port.refused = (BUNDLED_CREATE, "ADD VERSION SST_")
     _, result, _ = publish(port, compiled, empty_state())
     assert result.success, result.outcomes
     statements = [statement for script in port.scripts for statement in script]
@@ -421,11 +427,20 @@ def test_plugin_falls_back_to_a_live_version_built_from_empty() -> None:
     assert statements[-1] == "ALTER CORTEX EXTENSION DB.S.FINANCE_KIT COMMIT"
     assert any(path.startswith("snow://cortex_extension/DB.S.FINANCE_KIT/versions/live/") for path, _ in port.uploads)
 
+    # A skill has no fallback: a refused create fails the release.
     skills_only = compile_catalog(SkillCatalog((skill(),)))
     refused = FakeSnowflake(existing=())
-    refused.refused = ("ADD VERSION SST_",)
+    refused.refused = (BUNDLED_CREATE, "ADD VERSION SST_")
     _, result, _ = publish(refused, skills_only, empty_state())
-    assert result.outcomes[0].error is not None and "ADD VERSION failed" in result.outcomes[0].error.message
+    error = result.outcomes[0].error
+    assert error is not None and "CREATE CORTEX EXTENSION IF NOT EXISTS DB.S.MONTH_CLOSE failed" in error.message
+    assert not any("ADD VERSION" in item for script in refused.scripts for item in script)
+    # Nor when ADD VERSION, on a later release, is refused.
+    _, _, published = publish(refused := FakeSnowflake(existing=()), skills_only, empty_state())
+    refused.refused = ("ADD VERSION SST_",)
+    changed = compile_catalog(SkillCatalog((skill(body="Read reference/steps.md twice.\n"),)))
+    error = publish(refused, changed, published)[1].outcomes[0].error
+    assert error is not None and (error.code, error.message.split(":")[0]) == ("SST-APL001", "ADD VERSION failed")
 
 
 def test_stale_plan_prune_report_and_resource_merge() -> None:
@@ -607,12 +622,25 @@ def test_each_publish_step_fails_closed() -> None:
 def test_plugin_fallback_aborts_on_every_failure() -> None:
     compiled = {key: item for key, item in compile_catalog(_plugin_catalog()).items() if key.startswith("plugin:")}
 
+    create_refused = FakeSnowflake(existing=())
+    create_refused.refused = ("CREATE CORTEX EXTENSION",)
+    assert "CREATE CORTEX EXTENSION IF NOT EXISTS DB.S.FINANCE_KIT TYPE = 'PLUGIN' COMMENT = 'Kit.' failed" in _failure(
+        publish(create_refused, compiled, empty_state())[1]
+    )
+    assert [texts for texts in create_refused.scripts if "CORTEX EXTENSION" in texts[0]] == [
+        (
+            "CREATE CORTEX EXTENSION IF NOT EXISTS DB.S.FINANCE_KIT FROM "
+            f"{compiled['plugin:finance-kit'].release.prefix} VERSION {compiled['plugin:finance-kit'].release.alias} "
+            "TYPE = 'PLUGIN' COMMENT = 'Kit.'",
+        ),
+        ("CREATE CORTEX EXTENSION IF NOT EXISTS DB.S.FINANCE_KIT TYPE = 'PLUGIN' COMMENT = 'Kit.'",),
+    ]
     live_refused = FakeSnowflake(existing=())
-    live_refused.refused = ("ADD VERSION SST_", "ADD LIVE VERSION")
+    live_refused.refused = (BUNDLED_CREATE, "ADD VERSION SST_", "ADD LIVE VERSION")
     assert "ADD LIVE VERSION" in _failure(publish(live_refused, compiled, empty_state())[1])
 
     live_upload = FakeSnowflake(existing=())
-    live_upload.refused = ("ADD VERSION SST_",)
+    live_upload.refused = (BUNDLED_CREATE, "ADD VERSION SST_")
     upload = live_upload.upload
 
     def refuse_live(stage_path: str, content: bytes) -> None:
@@ -625,7 +653,7 @@ def test_plugin_fallback_aborts_on_every_failure() -> None:
     assert live_upload.scripts[-1] == ("ALTER CORTEX EXTENSION DB.S.FINANCE_KIT ABORT",)
 
     commit_refused = FakeSnowflake(existing=())
-    commit_refused.refused = ("ADD VERSION SST_", "COMMIT")
+    commit_refused.refused = (BUNDLED_CREATE, "ADD VERSION SST_", "COMMIT")
     assert "COMMIT" in _failure(publish(commit_refused, compiled, empty_state())[1])
     assert commit_refused.scripts[-1] == ("ALTER CORTEX EXTENSION DB.S.FINANCE_KIT ABORT",)
 

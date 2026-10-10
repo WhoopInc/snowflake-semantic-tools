@@ -36,6 +36,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ChangeReason,
     CompositeObservation,
     CompositePlan,
+    ExecResult,
     OutcomeStatus,
     PhysicalResource,
     RenderedArtifact,
@@ -171,8 +172,8 @@ class _Run(PublicationRun[CatalogPublicationPort]):
     """One publication attempt, tracking what has been written so a failure reports it.
 
     The steps run in order: ensure the bundle stage, upload the bundle and read it back,
-    create the extension, add the version, then verify the version, align the comment,
-    and certify it.
+    create the extension from the bundle, add the version unless the create made it, then
+    verify the version, align the comment, and certify it.
     """
 
     def __init__(
@@ -189,6 +190,7 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         self._current = current
         self._stage_lock = stage_lock
         self._certification_done = False
+        self._created_with_bundle = False
 
     def publish(self) -> ApplyOutcome:
         """Publish the release, reporting a port error as a failure that keeps what was written."""
@@ -249,23 +251,32 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         )
 
     def _create_extension(self) -> ApplyOutcome | None:
+        """Create the extension with the bundle as its first version, named by the alias.
+
+        MEASURED: CREATE without `FROM ... VERSION` leaves an empty, unaliased VERSION$1,
+        which no statement can drop or alias and which the catalog serves until a version is
+        added. A PLUGIN whose bundle the create refuses is created bare instead, so
+        `_add_version` can fall back to a live version for it.
+        """
         release = self._release
         if self._current.extension is None:
-            failure = self._execute(
-                sql(
-                    "CREATE CORTEX EXTENSION IF NOT EXISTS {target} TYPE = {kind} COMMENT = {comment}",
-                    target=qname(release.target),
-                    kind=literal(release.extension_type),
-                    comment=literal(release.comment),
-                )
-            )
-            if failure is not None:
-                return failure
+            bundled = _create_sql(release, with_bundle=True)
+            result = self._run_statement(bundled)
+            if not result.ok and release.extension_type != "PLUGIN":
+                return self._failure(bundled, result)
+            if not result.ok:
+                failure = self._execute(_create_sql(release, with_bundle=False))
+                if failure is not None:
+                    return failure
+            self._created_with_bundle = result.ok
         self._verified.append(("CORTEX EXTENSION", release.target.sql))
         return None
 
     def _add_version(self) -> ApplyOutcome | None:
-        if self._current.version is not None:
+        # The create that carried the bundle made the version. Should it have lost a race to
+        # another create, IF NOT EXISTS still reports success, and `_check_version` finds the
+        # alias absent (SST-APL016) rather than this adding a version to someone else's object.
+        if self._current.version is not None or self._created_with_bundle:
             return None
         release = self._release
         result = self._run_statement(
@@ -404,8 +415,9 @@ class _Run(PublicationRun[CatalogPublicationPort]):
 
     def _execute(self, statement: Sql, *, code: str = "SST-APL001") -> ApplyOutcome | None:
         result = self._run_statement(statement)
-        if result.ok:
-            return None
+        return None if result.ok else self._failure(statement, result, code)
+
+    def _failure(self, statement: Sql, result: ExecResult, code: str = "SST-APL001") -> ApplyOutcome:
         detail = result.error.message if result.error else "statement failed"
         return self.fail(f"{str(statement).split(' FROM ')[0][:120]} failed: {detail}", code)
 
@@ -624,6 +636,31 @@ def _digest(paths: tuple[str, ...]) -> str:
 
 def _text_digest(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
+
+
+def _create_sql(release: ExtensionRelease, *, with_bundle: bool) -> Sql:
+    """Render the CREATE, with the bundle as VERSION$1 under the release's alias or bare.
+
+    `IF NOT EXISTS` keeps a create that loses a race from replacing the winner, whose grants a
+    replace would drop. MEASURED: `FROM` and `VERSION` must precede `TYPE`.
+    """
+    target, kind, comment = qname(release.target), literal(release.extension_type), literal(release.comment)
+    if not with_bundle:
+        return sql(
+            "CREATE CORTEX EXTENSION IF NOT EXISTS {target} TYPE = {kind} COMMENT = {comment}",
+            target=target,
+            kind=kind,
+            comment=comment,
+        )
+    return sql(
+        "CREATE CORTEX EXTENSION IF NOT EXISTS {target} FROM {location} VERSION {alias} "
+        "TYPE = {kind} COMMENT = {comment}",
+        target=target,
+        location=release.location,
+        alias=_alias(release.alias),
+        kind=kind,
+        comment=comment,
+    )
 
 
 def _alias(value: str) -> Sql:

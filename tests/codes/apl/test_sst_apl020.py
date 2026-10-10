@@ -29,8 +29,11 @@ class MintedElsewhere(FakeSnowflake):
 
 
 def test_sst_apl020_fires() -> None:
-    compiled = compiled_skill()
-    _, result, _ = publish_skill(MintedElsewhere(existing=()), compiled)
+    # The first version arrives with the CREATE; a clash is possible only on a later ADD VERSION.
+    port = MintedElsewhere(existing=())
+    _, _, published = publish_skill(port, compiled_skill())
+    compiled = compiled_skill(steps=b"steps, revised\n")
+    _, result, _ = publish_skill(port, compiled, published)
     [diagnostic] = [item for item in result.diagnostics if item.code == "SST-APL020"]
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == f"skill:month-close: version '{compiled.release.alias}' was minted twice"
