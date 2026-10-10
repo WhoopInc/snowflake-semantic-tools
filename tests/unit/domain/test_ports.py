@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.eval_state import EvalStateStore
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
@@ -14,6 +16,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.profile_registry import Pro
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagePort
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.ports.state import StateStore
+from snowflake_semantic_tools.domain.ports.timing import NO_PHASES, PhaseTimer
 
 ROLES = (CatalogPort, ExecutionPort, StagePort, ProfileRegistryPort, StatePort)
 
@@ -119,3 +122,13 @@ def test_eval_and_composite_lifecycle_protocol_methods_are_declarations_only() -
     assert CompositeLifecycleHandler.apply(source, object(), object()) is None  # type: ignore[arg-type]
     assert CompositeLifecycleHandler.merge_physical_resources(source, (), None) is None  # type: ignore[arg-type]
     assert CompositeLifecycleHandler.report_prune(source, "eval:a", object()) is None  # type: ignore[arg-type]
+
+
+def test_the_phase_timer_is_a_declaration_and_no_phases_runs_the_block_untimed() -> None:
+    assert PhaseTimer.phase(object(), "observe") is None  # type: ignore[arg-type]
+    ran = []
+    with NO_PHASES.phase("observe"):
+        ran.append("observe")
+    assert ran == ["observe"]
+    with pytest.raises(ValueError, match="kept"), NO_PHASES.phase("observe"):
+        raise ValueError("kept")

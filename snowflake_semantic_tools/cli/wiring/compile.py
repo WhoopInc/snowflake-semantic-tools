@@ -14,6 +14,7 @@ import click
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.project import CompileProject
 from snowflake_semantic_tools.app.manifest import dbt_manifest_moved
@@ -33,6 +34,7 @@ def compile_result(
     With a dbt manifest given, its models are digested before and after the compile, and a
     manifest rewritten in between, by a concurrent `dbt compile`, fails the compile. Without
     one, SST runs `dbt parse` itself and so rewrites the manifest on purpose; nothing is checked.
+    The whole compile, any `dbt parse` included, is timed as the run's `load` phase.
 
     Args:
         database: Resolve refs against this database instead of the target's; None keeps it.
@@ -40,6 +42,13 @@ def compile_result(
     Diagnostics:
         SST-MAN031: the given dbt manifest's models changed while the project compiled.
     """
+    with RUN_TIMINGS.phase("load"):
+        return _compile_result(paths, target_name, manifest_path, database)
+
+
+def _compile_result(
+    paths: ProjectPaths, target_name: str | None, manifest_path: Path | None, database: str | None
+) -> CompileResult:
     inputs = project_inputs(paths, target_name, manifest_path, database=database)
     if manifest_path is None:
         return CompileProject(inputs).run()

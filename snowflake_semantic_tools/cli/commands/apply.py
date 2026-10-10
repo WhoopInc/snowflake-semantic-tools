@@ -19,6 +19,7 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.local import PlanFileStore
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
+from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.apply.observation import stale_observation
 from snowflake_semantic_tools.app.plan import PlanRefused
@@ -323,6 +324,7 @@ def _apply_plan(
                 lifecycle_handlers=ready.lifecycle_handlers,
                 sessions=pool,
                 heartbeat=heartbeat,
+                phases=RUN_TIMINGS,
             ).run(ready.changeset, ready.state, options)
     finally:
         session.port.close()

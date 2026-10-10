@@ -25,6 +25,7 @@ import click
 
 from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.adapters.clock import SystemClock
+from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.app.evals.run import EvalRunsInterrupted
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, INTERRUPTED, OK
 from snowflake_semantic_tools.cli.signals import received_signal
@@ -49,8 +50,13 @@ _GROUP_SHOWN = 3
 
 
 def start_invocation(argv: list[str]) -> None:
-    """Record the command line and the time this run started, for every envelope it prints."""
+    """Record the command line and the time this run started, for every envelope it prints.
+
+    The run's timings start from nothing, and switched off until the runner sees the run prints
+    an envelope, so one process running `sst` twice reports each run alone.
+    """
     _INVOCATION.clear()
+    RUN_TIMINGS.reset()
     _INVOCATION.update(
         {
             "argv": argv,
@@ -246,7 +252,10 @@ def json_envelope(
 
 
 def _invocation(command: str) -> dict[str, object]:
-    """Return the envelope's `invocation`: the command line, target, project, config file, and timing."""
+    """Return the envelope's `invocation`: the command line, target, project, config file, and timing.
+
+    `timings` is `RUN_TIMINGS.snapshot()` with `wall_s`, the run's duration, beside it.
+    """
     started_monotonic = _INVOCATION.get("started_monotonic")
     raw_argv = _INVOCATION.get("argv")
     duration = max(time.monotonic() - started_monotonic, 0.0) if isinstance(started_monotonic, float) else 0.0
@@ -262,6 +271,7 @@ def _invocation(command: str) -> dict[str, object]:
         "overrides": overrides if isinstance(overrides, list) else [],
         "started_at": _INVOCATION.get("started_at"),
         "duration_s": round(duration, 6),
+        "timings": {"wall_s": round(duration, 6), **RUN_TIMINGS.snapshot()},
     }
 
 

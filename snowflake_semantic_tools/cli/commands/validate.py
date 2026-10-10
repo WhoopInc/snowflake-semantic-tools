@@ -8,6 +8,7 @@ import click
 
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.adapters.yaml.ownership import ownership_report
 from snowflake_semantic_tools.app.policy import strict_reach
 from snowflake_semantic_tools.app.validate import ValidateArtifacts, ValidationResult
@@ -83,14 +84,15 @@ def validate(
         profile, port = connect(paths, target_name)
         target = profile.target_name
     try:
-        result = ValidateArtifacts(port, catalog=port, target=target, clock=SystemClock()).run(
-            compiled,
-            strict=effective_strict,
-            connected=effective_connected,
-            verify_schema=verify_schema,
-            overrides=severity_overrides_setting(paths),
-            reaches=strict_reach(scope),
-        )
+        with RUN_TIMINGS.phase("validate"):
+            result = ValidateArtifacts(port, catalog=port, target=target, clock=SystemClock()).run(
+                compiled,
+                strict=effective_strict,
+                connected=effective_connected,
+                verify_schema=verify_schema,
+                overrides=severity_overrides_setting(paths),
+                reaches=strict_reach(scope),
+            )
     finally:
         if port is not None:
             port.close()

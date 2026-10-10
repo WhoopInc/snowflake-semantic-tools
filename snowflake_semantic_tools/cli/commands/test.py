@@ -20,6 +20,7 @@ from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs, YamlProjectSource
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.adapters.snowflake.eval_state import SnowflakeEvalStateStore
+from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.evals.progress import EvalProgressEvent, StatusReadFailed
 from snowflake_semantic_tools.app.evals.run import suite_concurrency
@@ -321,7 +322,7 @@ def _run_smoke(
     profile, port = connect(paths, target_name)
     params = profile.connection_params
     try:
-        with ConnectorPool(threads, lambda: open_connector(params)) as pool:
+        with RUN_TIMINGS.phase("smoke"), ConnectorPool(threads, lambda: open_connector(params)) as pool:
             smoke = SmokePublished(port, state_store(paths, profile.target_name), Fanout(port, pool, threads)).run(
                 result,
                 manifest,
