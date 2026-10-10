@@ -12,7 +12,11 @@ from collections.abc import Mapping
 
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow
-from snowflake_semantic_tools.domain.ports.snowflake.catalog import ExtensionObservation, ExtensionVersion
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
+    AgentVersions,
+    ExtensionObservation,
+    ExtensionVersion,
+)
 from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
 from tests.helpers.snowflake_fake.extensions import versions
 from tests.helpers.snowflake_fake.world import SnowflakeWorld
@@ -126,9 +130,12 @@ class FakeCatalog(SnowflakeWorld):
             for version in versions(extension)
         )
 
-    def agent_has_live_version(self, qualified_name: QualifiedName) -> bool:
-        self._check("agent_has_live_version")
-        return qualified_name.sql in self.live_agents
+    def observe_agent_versions(self, qualified_name: QualifiedName) -> AgentVersions:
+        self._check("observe_agent_versions")
+        return AgentVersions(
+            has_live_version=qualified_name.sql in self.live_agents,
+            aliases=self.agent_aliases.get(qualified_name.sql, ()),
+        )
 
     def resolve_agent_version(self, qualified_name: QualifiedName, selector: str) -> str:
         self._check("resolve_agent_version")

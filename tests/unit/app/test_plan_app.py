@@ -26,7 +26,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
 from tests.helpers.artifact_builders import change, manifest, rendered, state, target
 from tests.helpers.snowflake_fake import FakeSnowflake
-from tests.helpers.sql_values import statement
+from tests.helpers.sql_values import statement, texts
 
 
 def test_observe_collects_markers_grants_and_errors() -> None:
@@ -176,7 +176,7 @@ def test_observe_queries_only_requested_artifact_types() -> None:
     assert diagnostics == ()
 
 
-def test_observe_agent_live_version_selects_update_program() -> None:
+def test_observe_agent_versions_selects_update_program_and_unsets_stranded_aliases() -> None:
     artifact = rendered()
     artifact = replace(
         artifact,
@@ -184,11 +184,13 @@ def test_observe_agent_live_version_selects_update_program() -> None:
         artifact_type="agent",
         object_type="AGENT",
         update_statements=(statement("ALTER AGENT ADD VERSION"),),
-        update_live_statements=(statement("ALTER AGENT COMMIT"), statement("ALTER AGENT ADD VERSION")),
+        update_live_statements=(statement("ALTER AGENT MODIFY LIVE VERSION"), statement("ALTER AGENT COMMIT")),
+        desired_alias="candidate",
     )
     port = FakeSnowflake()
     port.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now", object_type="AGENT"))
     port.live_agents.add(artifact.target.sql)
+    port.agent_aliases[artifact.target.sql] = ("CANDIDATE", "PROMOTED")
     observation, diagnostics = observe(
         port,
         SEMANTIC_REGISTRY,
@@ -201,7 +203,13 @@ def test_observe_agent_live_version_selects_update_program() -> None:
     assert diagnostics == ()
     observed = next(iter(observation.artifacts.values()))
     assert observed.has_live_version
-    assert str(artifact.for_action(Action.UPDATE, observed).statements[0]) == "ALTER AGENT COMMIT"
+    assert observed.aliases == ("CANDIDATE", "PROMOTED")
+    # The alias the agent file moved away from is unset; the one it declares is kept.
+    assert texts(artifact.for_action(Action.UPDATE, observed).statements) == (
+        "ALTER AGENT MODIFY LIVE VERSION",
+        "ALTER AGENT COMMIT",
+        'ALTER AGENT DB."SCHEMA".V MODIFY VERSION PROMOTED UNSET ALIAS',
+    )
 
 
 def test_plan_reports_composite_prune_when_generic_observation_has_no_change() -> None:

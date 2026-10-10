@@ -27,7 +27,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     extract_marker,
 )
 from snowflake_semantic_tools.domain.model.registry import ArtifactType, Registry
-from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersions, CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
 _FoldedName = tuple[str, str, str]
@@ -149,7 +149,7 @@ def _observe_row(
     desired: Mapping[_FoldedName, RenderedArtifact],
     options: ObserveOptions,
 ) -> tuple[ObservedArtifact, tuple[Diagnostic, ...]]:
-    """Observe one listed object: its marker, its grants and definition, and whether an agent is live."""
+    """Observe one listed object: its marker, its grants and definition, and an agent's versions."""
     desired_artifact = desired.get(row.qualified_name.folded)
     key = artifact_key(artifact_type.name, row.qualified_name.artifact_component)
     grants, diagnostics = (
@@ -158,6 +158,7 @@ def _observe_row(
     definition, definition_diagnostics = (
         _prior_definition(port, object_type, row, desired_artifact) if options.capture_prior else (None, ())
     )
+    versions = port.observe_agent_versions(row.qualified_name) if object_type == "AGENT" else AgentVersions()
     artifact = ObservedArtifact(
         key=key,
         raw_name=row.name,
@@ -169,7 +170,8 @@ def _observe_row(
         marker=extract_marker(row.comment),
         grants=grants,
         definition=definition,
-        has_live_version=(port.agent_has_live_version(row.qualified_name) if object_type == "AGENT" else False),
+        has_live_version=versions.has_live_version,
+        aliases=versions.aliases,
     )
     return artifact, (*diagnostics, *definition_diagnostics)
 

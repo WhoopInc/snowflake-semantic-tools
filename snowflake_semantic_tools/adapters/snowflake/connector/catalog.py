@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow, extract_marker
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
+    AgentVersions,
     CatalogPort,
     ExtensionObservation,
     ExtensionVersion,
@@ -257,9 +258,14 @@ class CatalogMethods(Session, CatalogPort):
             raise _unexpected_describe(f"TABLE {qualified_name.sql}")
         return tuple((str(row.get("name") or "").upper(), str(row.get("type") or "").upper()) for row in rows)
 
-    def agent_has_live_version(self, qualified_name: QualifiedName) -> bool:
+    def observe_agent_versions(self, qualified_name: QualifiedName) -> AgentVersions:
         rows = self._dict_rows(sql("SHOW VERSIONS IN AGENT {agent}", agent=qname(qualified_name)))
-        return any(row.get("name") is None for row in rows)
+        # MEASURED: the live version is the row whose `name` is NULL, and each row shows at
+        # most one alias; setting another alias on a version replaces the one it had.
+        return AgentVersions(
+            has_live_version=any(row.get("name") is None for row in rows),
+            aliases=tuple(str(row["alias"]) for row in rows if row.get("alias")),
+        )
 
     def resolve_agent_version(self, qualified_name: QualifiedName, selector: str) -> str:
         if selector.upper().startswith("VERSION$"):

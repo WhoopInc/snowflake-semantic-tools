@@ -83,7 +83,8 @@ class ObservedArtifact:
         grants: Every grant on the object; None when plan did not read them, because the
             object is not one this plan may replace or the read failed.
         definition: The object's definition text; None when it was not read.
-        has_live_version: The agent has a live version, which an update must commit first.
+        has_live_version: The agent has a live version, which an update writes the new
+            specification into and commits instead of adding a version beside it.
         routine_signature: The argument types of an observed procedure or function.
         aliases: The version aliases the agent shows; an update unsets all but the desired one.
         tags: The tags the agent shows; an update unsets those not desired.

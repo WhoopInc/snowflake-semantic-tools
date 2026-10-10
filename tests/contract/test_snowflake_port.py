@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     QueryResult,
     ShowRow,
 )
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersions
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import sql
@@ -64,7 +65,7 @@ def test_the_fake_implements_the_full_read_write_contract() -> None:
     stage = QualifiedName.from_parts("DB", "SCH", "EVAL_CONFIGS")
     port.stage_formats[stage.sql] = "TYPE='CSV' FIELD_DELIMITER=NONE"
     assert port.describe_stage_file_format(stage) == "TYPE='CSV' FIELD_DELIMITER=NONE"
-    assert port.agent_has_live_version(name) is False
+    assert port.observe_agent_versions(name) == AgentVersions()
     assert port.resolve_agent_version(name, "committed") == "VERSION$1"
     assert port.current_role()
     assert port.current_account_locator()

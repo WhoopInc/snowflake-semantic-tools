@@ -312,12 +312,31 @@ uploads the rendered spec to `@<stage>/<agent>/<commit>/agent_spec.yaml` under
 `apply.agent_spec_stage` (default stage `AGENT_SPECS`, in the target's database
 and schema), then:
 
-1. `CREATE AGENT ... FROM` that folder when the agent is absent, or
-   `ALTER AGENT ... ADD VERSION FROM` it, commented `git:<commit>`, when it
-   exists. An agent with a live version is committed first.
-2. `ALTER AGENT ... MODIFY VERSION "LAST" SET ALIAS = <alias>`, when the agent
-   has an alias, and `SET TAG` for its tags.
-3. `SET PROFILE`, `SET COMMENT`, and `SET SECURE`.
+1. When the agent is absent, `CREATE AGENT ... FROM` that folder. Snowflake
+   commits `VERSION$1` and also opens a live version holding the same spec,
+   which it can neither drop nor abort, so apply commits that copy while the
+   default is pinned to `VERSION$1`, drops it, and sets the default back to
+   `LAST`. The agent is left with exactly one version, `VERSION$1`, commented
+   `git:<commit>`, and no live version.
+2. When the agent exists, `ALTER AGENT ... ADD VERSION FROM` that folder,
+   commented `git:<commit>`. An agent with a live version, such as one created
+   before this release or edited in Snowsight, has the spec written into its
+   live version instead (`MODIFY LIVE VERSION SET SPECIFICATION`), which is then
+   committed with that comment, so an update always adds exactly one version.
+   A draft edited outside SST is replaced, not kept.
+3. `ALTER AGENT ... MODIFY VERSION "LAST" SET ALIAS = <alias>`, when the agent
+   has an alias, and `SET TAG` for its tags. The new version becomes the
+   default.
+4. `MODIFY VERSION <alias> UNSET ALIAS` for every other alias the agent shows,
+   so after apply the agent carries only the alias its file declares: changing
+   `alias: promoted` to `alias: candidate` moves the agent to `CANDIDATE` and
+   leaves no `PROMOTED`, and removing `alias:` removes the alias. `plan --full`
+   shows the `aliases` that change.
+5. `SET PROFILE`, `SET COMMENT`, and `SET SECURE`.
+
+A statement that fails after an earlier one of the agent's ran is not retried:
+re-running from the top would add the version again. The run reports a partial
+write, and the next plan and apply finish it.
 
 SST creates the stage when it is absent, as it does the skill bundle, profile,
 and eval config stages: before the first upload to it, apply runs

@@ -14,6 +14,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConne
 from snowflake_semantic_tools.adapters.snowflake.connector import session as session_module
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersions
 from snowflake_semantic_tools.domain.ports.snowflake.errors import (
     AgentVersionNotFound,
     SnowflakePortError,
@@ -66,6 +67,28 @@ def test_dataset_exists_accepts_only_the_exact_database_schema_and_name() -> Non
     )
 
     assert connector.dataset_exists(QualifiedName.parse("DB.SCH.EVAL_DATASET"))
+
+
+def test_agent_versions_report_the_live_row_and_every_shown_alias() -> None:
+    # The rows SHOW VERSIONS IN AGENT returned live right after CREATE and an alias move:
+    # the live version is the row with a NULL name, and an unaliased version shows None.
+    connector = StubSnowflakeConnector(
+        {
+            "SHOW VERSIONS IN AGENT": (
+                {"name": None, "alias": None, "is_default": "false"},
+                {"name": "VERSION$3", "alias": "CANDIDATE", "is_default": "true"},
+                {"name": "VERSION$2", "alias": "PROMOTED", "is_default": "false"},
+                {"name": "VERSION$1", "alias": None, "is_default": "false"},
+            )
+        }
+    )
+    assert connector.observe_agent_versions(QualifiedName.parse("DB.S.AGENT")) == AgentVersions(
+        has_live_version=True, aliases=("CANDIDATE", "PROMOTED")
+    )
+    committed = StubSnowflakeConnector({"SHOW VERSIONS IN AGENT": ({"name": "VERSION$1", "alias": "PROMOTED"},)})
+    assert committed.observe_agent_versions(QualifiedName.parse("DB.S.AGENT")) == AgentVersions(
+        has_live_version=False, aliases=("PROMOTED",)
+    )
 
 
 def test_stage_observation_preserves_the_exact_file_format() -> None:
