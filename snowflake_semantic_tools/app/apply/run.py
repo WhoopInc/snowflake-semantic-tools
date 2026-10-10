@@ -12,7 +12,7 @@ An interrupt stops the waves, not the run: what finished is recorded before the 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from concurrent.futures import Future, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import replace
 from types import MappingProxyType
 from typing import Protocol
@@ -238,7 +238,7 @@ class ApplyArtifacts:
 
         The waves share one `UploadStages`, so each stage the run uploads to is created at most once.
         """
-        outcomes = self._preflight_relations(changeset.changes)
+        outcomes = self._preflight_relations(changeset.changes, options.parallelism)
         wave_diagnostics: tuple[Diagnostic, ...] = ()
         stages = UploadStages()
 
@@ -281,25 +281,44 @@ class ApplyArtifacts:
         except SnowflakePortError as exc:
             return _failed(change, _exception_error(exc), _rendered_ddl(change))
 
-    def _preflight_relations(self, changes: tuple[Change, ...]) -> tuple[ApplyOutcome, ...] | None:
+    def _preflight_relations(self, changes: tuple[Change, ...], parallelism: int) -> tuple[ApplyOutcome, ...] | None:
         """Fail every change when a relation some create or update requires does not exist.
 
-        The relations are checked in name order. Returns None when all of them exist.
+        The relations are checked in name order, at once on worker sessions when there is a
+        pool, so the check waits for one lookup rather than one after another. Returns None
+        when all of them exist.
         """
-        relations = {
-            relation
-            for change in changes
-            if change.action in (Action.CREATE, Action.UPDATE) and change.rendered is not None
-            for relation in change.rendered.required_relations
-        }
-        missing = tuple(
-            relation for relation in sorted(relations) if not self._port.object_exists("TABLE OR VIEW", relation)
+        relations = sorted(
+            {
+                relation
+                for change in changes
+                if change.action in (Action.CREATE, Action.UPDATE) and change.rendered is not None
+                for relation in change.rendered.required_relations
+            }
         )
+        present = self._relations_exist(relations, parallelism)
+        missing = tuple(relation for relation, exists in zip(relations, present, strict=True) if not exists)
         if not missing:
             return None
         detail = "missing required relations: " + ", ".join(relation.sql for relation in missing)
         error = ClassifiedError("SST-PRT005", detail, ErrorKind.NOT_FOUND)
         return tuple(_failed(change, error, _rendered_ddl(change)) for change in changes)
+
+    def _relations_exist(self, relations: list[QualifiedName], parallelism: int) -> tuple[bool, ...]:
+        """Whether each relation exists, in order: on `port` without a pool, else on leased sessions at once."""
+        sessions = self._sessions
+        if sessions is None or len(relations) < 2:
+            return tuple(self._port.object_exists("TABLE OR VIEW", relation) for relation in relations)
+
+        def exists(relation: QualifiedName) -> bool:
+            with sessions.lease() as port:
+                return port.object_exists("TABLE OR VIEW", relation)
+
+        pool = ThreadPoolExecutor(max_workers=parallelism)
+        try:
+            return tuple(pool.map(exists, relations))
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
 
     def _persist(
         self,
@@ -375,24 +394,27 @@ class ApplyArtifacts:
 
 
 class _WaveRun:
-    """Run a plan's dependency waves in order, collecting every outcome and its diagnostics.
+    """Run a plan's changes in dependency order, collecting every outcome and its diagnostics.
 
-    Within a wave, the policy decides what runs:
+    The policy decides what runs, and when:
 
-    - STOP_DEPENDENTS skips each change that depends on a failed or skipped one (SST-APL002),
-      so a skip propagates to everything downstream, and runs the rest in parallel.
-    - STOP_ALL runs the wave's changes one at a time; the first failure skips every change of
-      the plan not yet run, in plan order, and no later wave runs.
-    - CONTINUE runs every change in parallel, whatever failed before.
+    - STOP_DEPENDENTS starts each change once every change it depends on ended, up to
+      `parallelism` at once, and skips one that depends on a failed or skipped one
+      (SST-APL002), so a skip propagates to everything downstream.
+    - STOP_ALL runs the dependency waves in order and their changes one at a time; the first
+      failure skips every change of the plan not yet run, in plan order, and no later wave runs.
+    - CONTINUE starts each change as STOP_DEPENDENTS does, whatever failed before.
 
-    The outcomes are recorded wave by wave: a wave's skipped changes, then those it ran, each
-    in key order, and STOP_ALL's skips last, in plan order. An applied temporary artifact the
+    A change never waits for one it does not depend on: the waves order only what is recorded.
+    The outcomes are recorded wave by wave, once the changes ended: a wave's skipped changes,
+    then those it ran, each in key order, and STOP_ALL's skips last, in plan order -- the same
+    record however the changes' durations interleave. An applied temporary artifact the
     plan saw a permanent object for reports SST-APL014; an outcome whose grants could not be
     verified reports SST-APL008 before its failure's diagnostic, once: a change that failed
     because its grants could not be read reports it as that failure only. `lost` is checked before
-    every change starts, not only between waves: once it reports the run lock lost, no further
-    change starts, and after the wave every change without an outcome is skipped, in plan
-    order, after one SST-APL011 naming the run `lost` says holds the lock.
+    every change starts: once it reports the run lock lost, no further change starts, and once
+    the running ones ended every change without an outcome is skipped, in plan order, after one
+    SST-APL011 naming the run `lost` says holds the lock.
 
     The changes run on worker threads, even one at a time, so the calling thread only waits,
     and an interrupt (`KeyboardInterrupt`) reaches it there. From then on no further change
@@ -420,9 +442,14 @@ class _WaveRun:
         self._outcomes: list[ApplyOutcome] = []
         self._diagnostics: list[Diagnostic] = []
         self._failed_or_skipped: set[str] = set()
-        # The changes the current wave submitted, in order, with what each will end with.
+        # The changes submitted so far, in order, with what each will end with.
         self._started: list[tuple[Change, Future[ApplyOutcome | None]]] = []
         self._interrupted = False
+        # Outside STOP_ALL: the waves the record follows, what each change that ended ended
+        # with (None when it did not start), and the dependencies that blocked each skipped one.
+        self._waves: tuple[tuple[Change, ...], ...] | None = None
+        self._ended: dict[str, ApplyOutcome | None] = {}
+        self._blocked: dict[str, tuple[str, ...]] = {}
 
     @property
     def interrupted(self) -> bool:
@@ -446,53 +473,127 @@ class _WaveRun:
         return tuple(self._outcomes), tuple(self._diagnostics)
 
     def _run_waves(self) -> None:
-        """Run the waves in order, until the lock is lost, a failure stops them, or none is left."""
-        for wave in dependency_waves(self._changeset.changes):
+        """Run the changes until the lock is lost, a failure stops them, or none is left."""
+        waves = dependency_waves(self._changeset.changes)
+        if self._options.on_failure is not FailurePolicy.STOP_ALL:
+            self._run_as_ready(waves)
+            return
+        for wave in waves:
             if self._lost() is None:
-                runnable = self._runnable(wave)
-                self._record(runnable, self._execute(runnable))
+                self._record(list(wave), self._execute(wave))
             holder = self._lost()
             if holder is not None:
                 self._diagnostics.append(lost_lock(holder))
                 self._skip_remaining()
                 break
-            if self._failed_or_skipped and self._options.on_failure is FailurePolicy.STOP_ALL:
+            if self._failed_or_skipped:
                 break
 
-    def _runnable(self, wave: tuple[Change, ...]) -> list[Change]:
-        """Return the wave's changes that may run; under STOP_DEPENDENTS, skip those a failure blocks."""
-        runnable: list[Change] = []
-        for change in wave:
-            blockers = tuple(dependency for dependency in change.depends_on if dependency in self._failed_or_skipped)
-            if blockers and self._options.on_failure is FailurePolicy.STOP_DEPENDENTS:
-                self._outcomes.append(_skipped(change, _rendered_ddl(change)))
-                self._diagnostics.append(D("SST-APL002", artifact=change.key, blocker=", ".join(blockers)))
-                self._failed_or_skipped.add(change.key)
-                continue
-            runnable.append(change)
-        return runnable
+    def _run_as_ready(self, waves: tuple[tuple[Change, ...], ...]) -> None:
+        """Start each change once those it depends on ended, then record them all wave by wave.
 
-    def _execute(self, runnable: list[Change]) -> tuple[ApplyOutcome | None, ...]:
-        """Apply the wave's runnable changes: one at a time up to a failure under STOP_ALL, else in parallel.
+        An interrupt cancels every change not yet started and propagates at once, without
+        waiting for those running: `run` waits for them, and records what they ended with.
+        """
+        self._waves = waves
+        planned = {change.key for wave in waves for change in wave}
+        waiting = [change for wave in waves for change in wave]
+        running: dict[Future[ApplyOutcome | None], Change] = {}
+        pool = ThreadPoolExecutor(max_workers=self._options.parallelism)
+        try:
+            while True:
+                if self._lost() is None:
+                    waiting = self._start_ready(pool, waiting, planned, running)
+                if not running:
+                    break
+                ended, _ = wait(running, return_when=FIRST_COMPLETED)
+                for future in ended:
+                    self._end(running.pop(future), future.result())
+        except KeyboardInterrupt:
+            # Set before the queued changes are cancelled, so a worker taking one meanwhile skips it.
+            self._interrupted = True
+            raise
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+        self._record_ended()
+        holder = self._lost()
+        if holder is not None:
+            self._diagnostics.append(lost_lock(holder))
+            self._skip_remaining()
+
+    def _start_ready(
+        self,
+        pool: ThreadPoolExecutor,
+        waiting: list[Change],
+        planned: set[str],
+        running: dict[Future[ApplyOutcome | None], Change],
+    ) -> list[Change]:
+        """Start, in plan order, each waiting change whose dependencies all ended; return the rest.
+
+        Under STOP_DEPENDENTS a change a failed or skipped dependency blocks is skipped instead,
+        which can decide its own dependents in turn, so the waiting changes are read again until
+        a reading decides none.
+        """
+        deciding = True
+        while deciding:
+            deciding = False
+            undecided: list[Change] = []
+            for change in waiting:
+                if any(
+                    key in planned and key not in self._ended and key not in self._blocked for key in change.depends_on
+                ):
+                    undecided.append(change)
+                    continue
+                blockers = tuple(key for key in change.depends_on if key in self._failed_or_skipped)
+                if blockers and self._options.on_failure is FailurePolicy.STOP_DEPENDENTS:
+                    self._blocked[change.key] = blockers
+                    self._failed_or_skipped.add(change.key)
+                    deciding = True
+                    continue
+                running[self._submit(pool, change)] = change
+            waiting = undecided
+        return waiting
+
+    def _end(self, change: Change, outcome: ApplyOutcome | None) -> None:
+        """Note what a change ended with; a failure blocks its dependents from here on."""
+        self._ended[change.key] = outcome
+        if outcome is not None and outcome.status is OutcomeStatus.FAILED:
+            self._failed_or_skipped.add(change.key)
+
+    def _record_ended(self) -> None:
+        """Record every change that ended or was skipped, wave by wave: the skipped, then the ran.
+
+        A change recorded already is not recorded again, so an interrupt that lands while this
+        records leaves `run` to record only the rest.
+        """
+        assert self._waves is not None
+        recorded = {outcome.key for outcome in self._outcomes}
+        for wave in self._waves:
+            for change in wave:
+                blockers = self._blocked.get(change.key)
+                if blockers is not None and change.key not in recorded:
+                    self._outcomes.append(_skipped(change, _rendered_ddl(change)))
+                    self._diagnostics.append(D("SST-APL002", artifact=change.key, blocker=", ".join(blockers)))
+            ran = [change for change in wave if change.key in self._ended and change.key not in recorded]
+            self._record(ran, tuple(self._ended[change.key] for change in ran))
+
+    def _execute(self, wave: tuple[Change, ...]) -> tuple[ApplyOutcome | None, ...]:
+        """Apply a wave's changes one at a time, up to the first failure, as STOP_ALL runs them.
 
         A change that would start once the lock is lost, or the run interrupted, does not
         start; its place holds None. An interrupt cancels every change not yet started and
         propagates at once, without waiting for those running: `run` waits for them.
         """
         self._started = []
-        serial = self._options.on_failure is FailurePolicy.STOP_ALL
-        pool = ThreadPoolExecutor(max_workers=1 if serial else self._options.parallelism)
+        pool = ThreadPoolExecutor(max_workers=1)
         try:
-            if serial:
-                outcomes: list[ApplyOutcome | None] = []
-                for change in runnable:
-                    outcome = self._submit(pool, change).result()
-                    outcomes.append(outcome)
-                    if outcome is None or outcome.status is OutcomeStatus.FAILED:
-                        break
-                return tuple(outcomes)
-            futures = [self._submit(pool, change) for change in runnable]
-            return tuple(future.result() for future in futures)
+            outcomes: list[ApplyOutcome | None] = []
+            for change in wave:
+                outcome = self._submit(pool, change).result()
+                outcomes.append(outcome)
+                if outcome is None or outcome.status is OutcomeStatus.FAILED:
+                    break
+            return tuple(outcomes)
         except KeyboardInterrupt:
             # Set before the queued changes are cancelled, so a worker taking one meanwhile skips it.
             self._interrupted = True
@@ -523,13 +624,18 @@ class _WaveRun:
             wait(started)
 
     def _record_started(self) -> None:
-        """Record how each change the interrupted wave ran ended, unless its outcome is recorded already."""
+        """Record how each change the interrupted run started ended, unless its outcome is recorded already."""
         recorded = {outcome.key for outcome in self._outcomes}
         ended = [
             (change, future.result())
             for change, future in self._started
             if change.key not in recorded and not future.cancelled() and future.exception() is None
         ]
+        if self._waves is not None:
+            for change, outcome in ended:
+                self._end(change, outcome)
+            self._record_ended()
+            return
         self._record([change for change, _ in ended], tuple(outcome for _, outcome in ended))
 
     def _record(self, runnable: list[Change], wave_outcomes: tuple[ApplyOutcome | None, ...]) -> None:
