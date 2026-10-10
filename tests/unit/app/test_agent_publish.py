@@ -7,6 +7,7 @@ from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentProfile, ResolvedAgent
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ObservedArtifact
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersions
 from tests.helpers.sql_values import texts
 
 
@@ -26,7 +27,7 @@ def compiled(*, alias: str | None = "promoted") -> CompiledAgent:
     )
 
 
-def test_permanent_agent_create_uses_exact_stage_path_then_alias_and_tags() -> None:
+def test_permanent_agent_create_leaves_one_committed_version_then_alias_and_tags() -> None:
     value = for_publication(
         compiled(),
         stage=QualifiedName.parse("DB.S.AGENT_SPECS"),
@@ -34,25 +35,44 @@ def test_permanent_agent_create_uses_exact_stage_path_then_alias_and_tags() -> N
     ).rendered_artifact
     assert value.upload_path == "@DB.S.AGENT_SPECS/agent/abc1234/agent_spec.yaml"
     assert value.upload_content == value.ddl.encode("utf-8")
+    # CREATE also opens a live copy of VERSION$1; it is committed as VERSION$2 while the
+    # default is pinned to VERSION$1, dropped, and the default handed back to LAST.
     assert texts(value.statements) == (
         "CREATE AGENT DB.S.AGENT\n  FROM @DB.S.AGENT_SPECS/agent/abc1234/",
+        "ALTER AGENT DB.S.AGENT SET DEFAULT_VERSION = 'VERSION$1'",
+        "ALTER AGENT DB.S.AGENT COMMIT",
+        "ALTER AGENT DB.S.AGENT DROP VERSION VERSION$2",
+        "ALTER AGENT DB.S.AGENT SET DEFAULT_VERSION = 'LAST'",
+        "ALTER AGENT DB.S.AGENT MODIFY VERSION VERSION$1 SET COMMENT = 'git:abc1234'",
         'ALTER AGENT DB.S.AGENT\n  MODIFY VERSION "LAST" SET ALIAS = PROMOTED',
         "ALTER AGENT DB.S.AGENT\n  SET TAG DOMAIN = 'sales'",
     )
+    assert value.for_action(Action.CREATE, None).statements == value.statements
 
 
-def test_permanent_agent_update_commits_live_before_add_version_alias_and_tags() -> None:
+def test_permanent_agent_update_adds_exactly_one_version_then_alias_and_tags() -> None:
     value = for_publication(
         compiled(),
         stage=QualifiedName.parse("DB.S.AGENT_SPECS"),
         git_sha="abc1234",
     ).rendered_artifact
-    assert str(value.update_live_statements[0]) == "ALTER AGENT DB.S.AGENT COMMIT"
-    assert str(value.update_live_statements[1]) == (
-        "ALTER AGENT DB.S.AGENT\n  ADD VERSION FROM @DB.S.AGENT_SPECS/agent/abc1234/\n  COMMENT = 'git:abc1234'"
+    observed = ObservedArtifact(
+        value.key, value.target.name.folded, value.target, "AGENT", "OWNER", "now", None, None, aliases=("PROMOTED",)
     )
-    assert str(value.update_live_statements[2]).endswith("ALIAS = PROMOTED")
-    assert str(value.update_live_statements[3]).endswith("DOMAIN = 'sales'")
+    assert texts(value.for_action(Action.UPDATE, observed).statements) == (
+        "ALTER AGENT DB.S.AGENT\n  ADD VERSION FROM @DB.S.AGENT_SPECS/agent/abc1234/\n  COMMENT = 'git:abc1234'",
+        'ALTER AGENT DB.S.AGENT\n  MODIFY VERSION "LAST" SET ALIAS = PROMOTED',
+        "ALTER AGENT DB.S.AGENT\n  SET TAG DOMAIN = 'sales'",
+    )
+
+
+def test_permanent_agent_update_writes_a_live_version_and_commits_it_as_the_one_new_version() -> None:
+    payload = '{\n  "instructions": {\n    "response": "it\'s \\"one\\"\\nline"\n  }\n}\n'
+    value = for_publication(
+        replace(compiled(), payload=payload),
+        stage=QualifiedName.parse("DB.S.AGENT_SPECS"),
+        git_sha="abc1234",
+    ).rendered_artifact
     observed = ObservedArtifact(
         value.key,
         value.target.name.folded,
@@ -66,16 +86,27 @@ def test_permanent_agent_update_commits_live_before_add_version_alias_and_tags()
     )
     update = value.for_action(Action.UPDATE, observed)
     assert update.statements == value.update_live_statements
+    # Committing the live version first would publish it as a version of its own, and ADD
+    # VERSION beside it fails: the spec goes into it, escaped so its JSON reads back exactly.
+    assert texts(update.statements) == (
+        "ALTER AGENT DB.S.AGENT\n  MODIFY LIVE VERSION SET SPECIFICATION = "
+        '\'{\n  "instructions": {\n    "response": "it\'\'s \\\\"one\\\\"\\\\nline"\n  }\n}\'',
+        "ALTER AGENT DB.S.AGENT COMMIT COMMENT = 'git:abc1234'",
+        'ALTER AGENT DB.S.AGENT\n  MODIFY VERSION "LAST" SET ALIAS = PROMOTED',
+        "ALTER AGENT DB.S.AGENT\n  SET TAG DOMAIN = 'sales'",
+    )
+    assert not any("ADD VERSION" in text for text in texts(update.statements))
 
 
-def test_recorded_port_reports_live_agent_versions() -> None:
+def test_recorded_port_reports_live_agent_versions_and_aliases() -> None:
     from tests.helpers.snowflake_fake import FakeSnowflake
 
     port = FakeSnowflake()
     name = QualifiedName.parse("DB.S.AGENT")
-    assert not port.agent_has_live_version(name)
+    assert port.observe_agent_versions(name) == AgentVersions()
     port.live_agents.add(name.sql)
-    assert port.agent_has_live_version(name)
+    port.agent_aliases[name.sql] = ("PROMOTED",)
+    assert port.observe_agent_versions(name) == AgentVersions(has_live_version=True, aliases=("PROMOTED",))
 
 
 def test_temporary_agent_is_inline_and_has_no_upload() -> None:

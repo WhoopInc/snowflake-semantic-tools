@@ -129,6 +129,8 @@ class SnowflakeWorld:
             (name, selector.casefold()): version for (name, selector), version in (agent_versions or {}).items()
         }
         self.live_agents: set[str] = set()
+        # The version aliases each agent shows, by qualified name, as SHOW VERSIONS lists them.
+        self.agent_aliases: dict[str, tuple[str, ...]] = {}
         # The versions of each dataset, by qualified name; ADD VERSION appends to them.
         self.dataset_version_names: dict[str, list[str]] = {}
         # Each dataset's owner, by qualified name, as SHOW DATASETS lists it; a dataset not

@@ -64,6 +64,12 @@ def apply_extension_statement(
         name = tokens[6]
         if name not in extensions:
             extensions[name] = _created(name, quoted)
+            if upper[7:8] == ["FROM"] and upper[9:10] == ["VERSION"]:
+                # MEASURED: CREATE ... FROM <prefix> VERSION <alias> makes VERSION$1 that bundle.
+                source = tokens[8]
+                contents = [path[len(source) :] for path in sorted(stage_files) if path.startswith(source)]
+                extensions[name]["versions"] = []
+                _add_version(name, extensions[name], tokens[10], contents)
         return
     name = tokens[3]
     if name not in extensions:

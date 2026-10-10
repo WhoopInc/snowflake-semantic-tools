@@ -25,7 +25,7 @@ def test_sst_val841_fires() -> None:
     alias = FIRST["skill:month-close"].release.alias
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == (
-        f"skill:month-close: the catalog will serve VERSION$3 of DB.S.MONTH_CLOSE, not {alias}, "
+        f"skill:month-close: the catalog will serve VERSION$2 of DB.S.MONTH_CLOSE, not {alias}, "
         "because it is the default version"
     )
     assert diagnostic.subject == "skill:month-close"

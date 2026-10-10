@@ -164,9 +164,20 @@ def _agent_programs(
     """Return the create, update, and update-live statement programs for an agent.
 
     A temporary agent is one CREATE OR REPLACE TEMPORARY AGENT from the inline
-    specification for all three. A staged agent is created from its stage directory, or gets a
-    version added from it -- after COMMIT when a live version exists -- and then its alias
-    and tags are set. An agent with no stage directory has no statements.
+    specification for all three. A staged agent ends each program with exactly one committed
+    version more than it began with and no live version, then its alias and tags are set:
+
+    - create: CREATE AGENT commits VERSION$1 and also opens a live version of the same
+      specification, which Snowflake can neither drop nor abort. It is committed as VERSION$2
+      while the default is pinned to VERSION$1, so the copy is never served, then dropped,
+      and the default is returned to LAST. VERSION$1 takes the `git:<sha>` comment an added
+      version carries.
+    - update: ADD VERSION from the stage directory.
+    - update-live: an agent with a live version gets the specification written into it
+      and committed, since ADD VERSION beside a live version fails and committing it first
+      would publish the stale draft as a version of its own.
+
+    An agent with no stage directory has no statements.
 
     Args:
         location: The stage directory and the git sha it is named for; None when unstaged.
@@ -191,15 +202,30 @@ def _agent_programs(
     if location is None:
         return (), (), ()
     directory, git_sha = location
-    create = [sql("CREATE AGENT {agent}\n  FROM {directory}", agent=agent, directory=directory)]
-    add_version = sql(
-        "ALTER AGENT {agent}\n  ADD VERSION FROM {directory}\n  COMMENT = {comment}",
-        agent=agent,
-        directory=directory,
-        comment=literal(f"git:{git_sha}"),
-    )
-    update = [add_version]
-    update_live = [sql("ALTER AGENT {agent} COMMIT", agent=agent), add_version]
+    comment = literal(f"git:{git_sha}")
+    create = [
+        sql("CREATE AGENT {agent}\n  FROM {directory}", agent=agent, directory=directory),
+        *_consume_created_live_version(agent),
+        sql("ALTER AGENT {agent} MODIFY VERSION VERSION$1 SET COMMENT = {comment}", agent=agent, comment=comment),
+    ]
+    update = [
+        sql(
+            "ALTER AGENT {agent}\n  ADD VERSION FROM {directory}\n  COMMENT = {comment}",
+            agent=agent,
+            directory=directory,
+            comment=comment,
+        )
+    ]
+    update_live = [
+        # `literal` escapes backslashes, so the JSON's own escapes survive; MEASURED that the
+        # committed version's spec then reads back byte for byte.
+        sql(
+            "ALTER AGENT {agent}\n  MODIFY LIVE VERSION SET SPECIFICATION = {specification}",
+            agent=agent,
+            specification=literal(payload.rstrip()),
+        ),
+        sql("ALTER AGENT {agent} COMMIT COMMENT = {comment}", agent=agent, comment=comment),
+    ]
     if model.alias:
         alias = sql(
             'ALTER AGENT {agent}\n  MODIFY VERSION "LAST" SET ALIAS = {alias}',
@@ -222,6 +248,22 @@ def _agent_programs(
         update.append(tag)
         update_live.append(tag)
     return tuple(create), tuple(update), tuple(update_live)
+
+
+def _consume_created_live_version(agent: Sql) -> tuple[Sql, ...]:
+    """Commit and drop the live copy CREATE AGENT opens, leaving VERSION$1 the only version.
+
+    MEASURED: a fresh agent's COMMIT is always VERSION$2. The default must not be the version
+    dropped, and DEFAULT_VERSION cannot be unset, so it is pinned and then set back to LAST,
+    which follows each version added later. VERSION$1 cannot go instead: it is the base the
+    committed copy was made from.
+    """
+    return (
+        sql("ALTER AGENT {agent} SET DEFAULT_VERSION = 'VERSION$1'", agent=agent),
+        sql("ALTER AGENT {agent} COMMIT", agent=agent),
+        sql("ALTER AGENT {agent} DROP VERSION VERSION$2", agent=agent),
+        sql("ALTER AGENT {agent} SET DEFAULT_VERSION = 'LAST'", agent=agent),
+    )
 
 
 def _profile_json(model: AgentModel) -> str:

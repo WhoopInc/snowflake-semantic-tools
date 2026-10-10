@@ -33,6 +33,19 @@ class ExtensionVersion:
     certification_status: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class AgentVersions:
+    """What `SHOW VERSIONS IN AGENT` shows of an agent's versions that an update acts on.
+
+    Attributes:
+        has_live_version: A live version exists, beside which ADD VERSION fails.
+        aliases: Every version alias the agent shows, live version included, as SHOW prints them.
+    """
+
+    has_live_version: bool = False
+    aliases: tuple[str, ...] = ()
+
+
 class CatalogPort(Protocol):
     """Read what exists in Snowflake and how it is defined, and who the session is.
 
@@ -194,8 +207,8 @@ class CatalogPort(Protocol):
         """
         ...
 
-    def agent_has_live_version(self, qualified_name: QualifiedName) -> bool:
-        """Report whether an agent has a live version, which an update must commit first.
+    def observe_agent_versions(self, qualified_name: QualifiedName) -> AgentVersions:
+        """Report whether an agent has a live version, and every version alias it shows.
 
         Never writes.
 

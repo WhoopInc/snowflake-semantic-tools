@@ -222,6 +222,10 @@ class ChangeApplier:
     def _execute_with_retry(self, statements: tuple[Sql, ...], retry: RetryPolicy) -> tuple[ExecResult, int]:
         """Run the statements, retrying a transient failure after the policy's backoff.
 
+        Only a script that wrote nothing is retried. One that failed after a statement
+        completed is a partial write, which the next plan finishes: re-running it from the
+        top would repeat statements that are not idempotent, such as ADD VERSION.
+
         Returns:
             The last attempt's result and how many attempts ran.
         """
@@ -230,7 +234,7 @@ class ChangeApplier:
         for attempt in range(1, retry.max_attempts + 1):
             attempts = attempt
             result = self._port.execute_script(statements)
-            if result.ok:
+            if result.ok or result.query_ids:
                 break
             if not _script_error(result, "unknown Snowflake failure").retryable or attempt == retry.max_attempts:
                 break

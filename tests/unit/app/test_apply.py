@@ -179,6 +179,22 @@ def test_apply_breaks_stale_lock_and_retries_transient_failure() -> None:
     assert result.outcomes[0].attempts == 2 and clock.sleeps == [7]
 
 
+def test_apply_never_reruns_a_script_that_failed_after_a_statement_ran() -> None:
+    # An agent's ADD VERSION that ran before a transient failure on its alias: running the
+    # script again from the top would add the version a second time.
+    artifact = rendered()
+    port = FakeSnowflake()
+    port.execute_results = [replace(failed("timeout", "08001"), query_ids=("01-add-version",))]
+    clock = FixedClock()
+    use_case, _, _, _ = runner(port, clock=clock)
+    result = use_case.run(changeset(change(artifact)), state(), ApplyOptions(retry=RetryPolicy(3, (7, 7))))
+    [outcome] = result.outcomes
+    assert not result.success
+    assert outcome.attempts == 1 and clock.sleeps == []
+    assert outcome.partial_write and outcome.write_succeeded
+    assert len(port.scripts) == 1
+
+
 def test_apply_update_rechecks_marker_preserves_or_detects_grants() -> None:
     artifact = rendered()
     ownership = marker(artifact)

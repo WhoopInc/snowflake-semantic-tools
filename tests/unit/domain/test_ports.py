@@ -46,7 +46,7 @@ def test_catalog_port_methods_are_declarations_only() -> None:
     assert CatalogPort.stage_type(source, object()) is None  # type: ignore[arg-type]
     assert CatalogPort.observe_extension(source, object()) is None  # type: ignore[arg-type]
     assert CatalogPort.extension_versions(source, object()) is None  # type: ignore[arg-type]
-    assert CatalogPort.agent_has_live_version(source, object()) is None  # type: ignore[arg-type]
+    assert CatalogPort.observe_agent_versions(source, object()) is None  # type: ignore[arg-type]
     assert CatalogPort.resolve_agent_version(source, object(), "committed") is None  # type: ignore[arg-type]
     assert CatalogPort.current_role(source) is None  # type: ignore[arg-type]
     assert CatalogPort.current_account_locator(source) is None  # type: ignore[arg-type]
