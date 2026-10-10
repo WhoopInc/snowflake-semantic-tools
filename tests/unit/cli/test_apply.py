@@ -21,6 +21,7 @@ from tests.helpers.cli_projects import (
     compile_project,
     invoke_counting_closes,
     invoke_with_port,
+    on_a_terminal,
     profile_with_commands_and_plugin,
     skill_project,
 )
@@ -294,6 +295,7 @@ def test_apply_closes_its_connection_when_it_stops_before_applying(
 ) -> None:
     project = project_copy(tmp_path)
     compile_project(project)
+    on_a_terminal(monkeypatch)
     declined, closes = invoke_counting_closes(
         monkeypatch, FakeSnowflake(state={}), ["apply", *common(project), "--target", "dev"]
     )

@@ -22,7 +22,8 @@ from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.apply.observation import stale_observation
 from snowflake_semantic_tools.app.plan import PlanRefused
-from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
+from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
+from snowflake_semantic_tools.cli.exit_codes import ERROR, INTERRUPTED, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import (
@@ -39,6 +40,7 @@ from snowflake_semantic_tools.cli.options import (
     threads_option,
     validation_options,
 )
+from snowflake_semantic_tools.cli.output import announce_interrupt
 from snowflake_semantic_tools.cli.plan_output import outcome_json, print_plan, write_plan_sql
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, run_baseline
 from snowflake_semantic_tools.cli.settings import (
@@ -57,7 +59,7 @@ from snowflake_semantic_tools.cli.wiring.plan import (
     refuse_unvalidated,
 )
 from snowflake_semantic_tools.cli.wiring.project import closed_on_error
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
@@ -78,15 +80,19 @@ def _refuse_invocation(
 ) -> None:
     """Refuse a command line apply cannot run.
 
-    JSON or a prune without `--yes`, a partial prune, or a syntax check with `--no-validate`.
+    JSON or a prune without `--yes`, a run without `--yes` that could not ask for it, a partial
+    prune, or a syntax check with `--no-validate`. Each is refused before anything is planned.
 
     Raises:
-        SstUsageError: as `_require_yes`, `refuse_partial_prune` and `refuse_unvalidated` say.
+        SstUsageError: as `_require_yes`, `require_answerable`, `refuse_partial_prune` and
+            `refuse_unvalidated` say.
     """
     if options.output == "json" and not confirmed:
         _require_yes("sst apply --output json")
     if prune and not confirmed:
         _require_yes("sst apply --prune")
+    if not confirmed:
+        require_answerable("sst apply")
     refuse_partial_prune(partial, prune)
     refuse_unvalidated(no_validate, snowflake_syntax_check)
 
@@ -132,7 +138,8 @@ def apply(
     """Apply a current reviewed plan; smoke probes never run here.
 
     Without --plan, apply plans afresh as `sst plan` does, prints the plan, and asks before it
-    writes; --yes skips the question, and is required with --prune and with --output json.
+    writes; --yes skips the question, and is required with --prune, with --output json, and
+    whenever stdin or stderr is not a terminal, which apply refuses before it plans.
     With --plan, the saved plan's selection and --prune are used: --select, --exclude, --prune
     and --partial must agree with it, and it must have been made for this target, from the
     manifest the project compiles now, observing what Snowflake holds now. The statements are
@@ -141,14 +148,18 @@ def apply(
     --fail-fast, every change not yet run. `--fail-fast` and `--no-fail-fast` override
     `apply.fail_fast`, false by default, for this run. With --partial, the changes no error
     touches are applied, those left out are reported, and the run exits 1 while errors remain.
+    Interrupted by Ctrl-C, SIGTERM or SIGHUP, apply starts no further change, waits for those
+    running, records what they wrote in state, and releases the lock; a second Ctrl-C stops
+    the running changes at their next statement.
 
     Exit 0 when every change applied; 1 when a change failed, the plan has errors, or another
     run holds the lock; 3 when apply refuses the command line; 4 when the project, its
     configuration, or the saved plan cannot be used; 5 when Snowflake cannot be reached; and
-    130 when the question is declined.
+    130 when the question is declined or the run is interrupted.
 
     Diagnostics:
-        SST-PRT109: --prune or --output json without --yes; raised.
+        SST-PRT109: --prune or --output json without --yes, or no terminal to ask on; raised.
+        SST-PRT107: the run was interrupted while its changes ran.
         SST-PRT104: --partial with --prune, or --no-validate with --snowflake-syntax-check; raised.
         SST-APL005: the saved plan was made for another target.
         SST-MAN030: the saved plan's observation is past its time to live; apply observed afresh.
@@ -272,7 +283,7 @@ def _confirmed_options(
     sql_path = write_plan_sql(request.project_dir, changeset, sql_out)
     if changeset.writes and not confirmed:
         print_plan(changeset)
-        click.confirm("Apply this plan?", abort=True)
+        confirm("Apply this plan?")
     options = ApplyOptions(
         parallelism=apply_parallelism(request.paths, threads),
         on_failure=(FailurePolicy.STOP_ALL if fail_fast else FailurePolicy.STOP_DEPENDENTS),
@@ -288,7 +299,8 @@ def _apply_plan(
 ) -> CommandResult:
     """Apply the plan, close the connection, and report each outcome; exit 1 unless everything applied.
 
-    A partial apply publishes the healthy changes and still exits 1 while errors remain.
+    A partial apply publishes the healthy changes and still exits 1 while errors remain; an
+    interrupted one exits 130 (INTERRUPTED) with SST-PRT107, reporting what did run.
     `notes` are reported first, then what the plan left out, then the run's own diagnostics.
     """
     ready = session.ready
@@ -315,12 +327,14 @@ def _apply_plan(
     finally:
         session.port.close()
     left_out = ready.result.diagnostics if request.partial else DiagnosticBag()
-    shown = DiagnosticBag((*notes, *left_out, *apply_result.diagnostics))
+    notice = _interrupt_notice(apply_result.state_written) if apply_result.interrupted else None
+    shown = DiagnosticBag((*notes, *left_out, *apply_result.diagnostics, *((notice,) if notice else ())))
     exit_code = OK if apply_result.success and not left_out.has_errors else ERROR
     outcomes = apply_result.outcomes
     data: dict[str, object] = {
         "run_id": apply_result.run_id,
         "state_written": apply_result.state_written,
+        "interrupted": apply_result.interrupted,
         "applied": _keys(outcomes, OutcomeStatus.APPLIED, prune=False),
         "failed": [outcome.key for outcome in outcomes if outcome.status is OutcomeStatus.FAILED],
         "pruned": _keys(outcomes, OutcomeStatus.APPLIED, prune=True),
@@ -329,7 +343,30 @@ def _apply_plan(
     }
     if request.partial:
         data["partial"] = {"excluded": partial_excluded(ready.result.diagnostics)}
+    if notice is not None:
+        interrupted = notice
+
+        def report() -> None:
+            _print_outcomes(outcomes)
+            announce_interrupt(interrupted)
+
+        return CommandResult(INTERRUPTED, shown, data, human=report)
     return CommandResult(exit_code, shown, data, human=lambda: _print_outcomes(apply_result.outcomes))
+
+
+def _interrupt_notice(state_written: bool) -> Diagnostic:
+    """Report an apply an interrupt stopped while its changes ran, and what state then holds.
+
+    Diagnostics:
+        SST-PRT107: the run was interrupted; its changes that finished are recorded in state,
+            unless the run lost its lock.
+    """
+    value = (
+        "the changes that finished are recorded in state and the rest were skipped; run sst plan to see what remains"
+        if state_written
+        else "partial work may have been applied; run sst plan to see what remains"
+    )
+    return D("SST-PRT107", subject="cli", detail="sst apply started", value=value)
 
 
 def _keys(outcomes: tuple[ApplyOutcome, ...], status: OutcomeStatus, *, prune: bool) -> list[str]:

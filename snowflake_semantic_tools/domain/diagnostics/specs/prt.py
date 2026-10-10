@@ -175,9 +175,19 @@ SPECS: tuple[ErrorSpec, ...] = (
         "after apply, run sst plan to see what remains; an eval run already started keeps running in "
         "Snowflake until it ends or is cancelled there",
         condition=(
-            "the user interrupts a run, or declines a confirmation prompt; the run exits 130. After "
-            "`apply`, partial work may have been applied; after an eval run started, the message "
-            "names each run, which goes on in Snowflake"
+            "the user interrupts a run, with Ctrl-C, SIGTERM or SIGHUP, or declines a confirmation "
+            "prompt; the run exits 130. An interrupted `apply` starts no further change, records in "
+            "state the changes that finished, and releases its lock; after an eval run started, the "
+            "message names each run, which goes on in Snowflake"
+        ),
+        note=(
+            "Every signal is handled as Ctrl-C is, so a CI cancellation, `timeout`, or `docker stop` "
+            "ends the run cleanly; a further SIGTERM or SIGHUP is ignored while it cleans up, and a "
+            "second Ctrl-C stops apply's running changes at their next statement. SIGKILL cannot be "
+            "handled: an apply it ends leaves its lock to expire (`--break-stale-lock` then takes it "
+            "over). An object it updated but did not record still carries SST's marker for the new "
+            "definition, so the next apply updates it again, and records it; one it created, which "
+            "state never recorded, is refused as SST-PLN024 until it is dropped by hand."
         ),
     ),
     spec(
@@ -193,10 +203,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Mandatory confirmation flag absent",
         "{command} requires --yes",
-        "re-run with --yes; only sst baseline add --all-warnings asks instead, on a terminal and without JSON output",
+        "re-run with --yes; sst apply and sst baseline add --all-warnings ask instead only when stdin and "
+        "stderr are both terminals and the output is not JSON",
         condition=(
-            "a command that needs confirmation runs without --yes: `sst drop`, an `apply` that needs "
-            "it, or `baseline add --all-warnings` with no terminal to prompt on or under JSON output"
+            "a command that needs confirmation runs without --yes: `sst drop`, `apply --prune`, "
+            "`--output json` with `apply` or `baseline add --all-warnings`, or either of those two "
+            "when stdin or stderr is not a terminal, so no question could be seen and answered"
         ),
     ),
     spec(

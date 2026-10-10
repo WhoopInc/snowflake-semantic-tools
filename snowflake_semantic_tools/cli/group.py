@@ -20,7 +20,7 @@ import click
 from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, INTERRUPTED, OK, USAGE
 from snowflake_semantic_tools.cli.globals import forwarded, group_global_options
-from snowflake_semantic_tools.cli.output import json_envelope, print_envelope, start_invocation
+from snowflake_semantic_tools.cli.output import aborted_line, json_envelope, print_envelope, start_invocation
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, render_diagnostic
 
 
@@ -145,7 +145,7 @@ class SstGroup(click.Group):
         except click.UsageError as exc:
             raise usage_refusal(exc) from exc
         except (click.exceptions.Abort, KeyboardInterrupt, EOFError) as exc:
-            click.echo("Aborted.", err=True)
+            click.echo(aborted_line(), err=True)
             raise click.exceptions.Exit(INTERRUPTED) from exc
 
     def main(

@@ -29,6 +29,11 @@ def common(project: Path) -> list[str]:
     return ["--project-dir", str(project), "--manifest", str(DBT_MANIFEST)]
 
 
+def on_a_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let `sst` ask its questions, as on a terminal; CliRunner's streams are never terminals."""
+    monkeypatch.setattr("snowflake_semantic_tools.cli.confirm.can_ask", lambda: True)
+
+
 def compile_project(project: Path) -> None:
     result = CliRunner().invoke(cli, ["compile", *common(project)])
     assert result.exit_code == 0, result.output

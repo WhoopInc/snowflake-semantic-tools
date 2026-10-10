@@ -45,7 +45,7 @@ from snowflake_semantic_tools.cli.options import (
 )
 from snowflake_semantic_tools.cli.output import print_progress
 from snowflake_semantic_tools.cli.plan_output import print_eval_results
-from snowflake_semantic_tools.cli.runner import CommandResult, command_body, terminated_as_interrupt
+from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import threads_setting
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.compile import selected_result
@@ -351,7 +351,8 @@ def _run_evals(
     """Run the selected evals against their published agents and gate them; exit 1 unless the run passes.
 
     `results` is the whole compile, which the compiled manifest must match, and the selection.
-    SIGTERM interrupts the run as Ctrl-C does, so the run lock is released either way. While
+    SIGTERM and SIGHUP interrupt the run as Ctrl-C does (`cli.signals`, which every command
+    runs under), so the run lock is released either way. While
     the runs go on, each attempt's start, status changes and end, every status read retried,
     and a line naming the runs still in flight at most once a minute, go to stderr.
 
@@ -368,7 +369,6 @@ def _run_evals(
     params = profile.connection_params
     workers = suite_concurrency(evals, inputs.eval_catalog().defaults, request.threads)
     with (
-        terminated_as_interrupt(),
         closed_on_error(port),
         ConnectorPool(workers, lambda: open_connector(params)) as pool,
     ):

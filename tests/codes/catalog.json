@@ -117,7 +117,7 @@
   "non_demotable": false,
   "title": "Lock held by a live run",
   "message": "{value} holds the apply lock",
-  "suggestion": "wait for the other run, or clear the lock",
+  "suggestion": "wait for the other run to end; once its lock has expired, re-run with --break-stale-lock",
   "precheck": "runtime"
  },
  {
@@ -2317,7 +2317,7 @@
   "non_demotable": false,
   "title": "Prune candidate has no ownership marker",
   "message": "{value} has no SST ownership marker; skipped",
-  "suggestion": "adopt it explicitly, or delete it by hand",
+  "suggestion": "drop it by hand if it is no longer wanted; SST prunes only objects carrying its marker",
   "precheck": "observe"
  },
  {
@@ -2515,7 +2515,7 @@
   "non_demotable": false,
   "title": "Prune reconciliation found objects the repo does not declare",
   "message": "{count} objects in {value} are not declared here",
-  "suggestion": "adopt or delete them explicitly",
+  "suggestion": "declare them in the project, or drop them by hand",
   "precheck": "observe"
  },
  {
@@ -2548,7 +2548,7 @@
   "non_demotable": true,
   "title": "Existing object is not managed by SST",
   "message": "{artifact}: {value} exists without trusted SST ownership",
-  "suggestion": "adopt or remove the object explicitly before applying",
+  "suggestion": "drop or rename the object by hand, or give the artifact another name; SST never takes over an object state does not record",
   "precheck": "observe"
  },
  {
@@ -3593,7 +3593,7 @@
   "non_demotable": false,
   "title": "Mandatory confirmation flag absent",
   "message": "{command} requires --yes",
-  "suggestion": "re-run with --yes; only sst baseline add --all-warnings asks instead, on a terminal and without JSON output",
+  "suggestion": "re-run with --yes; sst apply and sst baseline add --all-warnings ask instead only when stdin and stderr are both terminals and the output is not JSON",
   "precheck": "local"
  },
  {

@@ -66,7 +66,8 @@ A commit that changes nothing SST renders plans as no change.
 ## `plan` stops at an object SST does not manage
 
 `SST-PLN024` means the object already exists and SST did not publish it. SST
-will not change it. Remove it, or rename the artifact, before applying. For a
+will not change it, and has no command to take it over. Drop it by hand, or
+rename the artifact, before applying. For a
 profile registry row, the same code protects rows another tool wrote.
 `SST-PLN028` means a profile's registry row changed since SST last wrote it:
 another writer is active on that row.
@@ -216,6 +217,41 @@ expired.
   with it a lock that has not expired is refused all the same, so after a crash
   wait out the 30 minutes. Check first that the named run really is gone: a
   broken lock means it did not exit cleanly.
+
+There is no command that clears a live lock: a lock is only ever released by its
+own run, or taken over once it has expired.
+
+## An apply was interrupted or killed
+
+Ctrl-C, `SIGTERM` (a CI cancellation, `timeout`, `docker stop`), and `SIGHUP` all
+end a run the same way: `apply` starts no further change, waits for those
+running, records in state the ones that finished, releases both locks, and exits
+130 with `SST-PRT107`. A further `SIGTERM` or `SIGHUP` is ignored while it does
+this; a second Ctrl-C stops the running changes at their next statement. Run
+`sst plan` to see what remains; what was recorded plans as no change.
+
+`SIGKILL`, or a machine that went away, cannot be handled:
+
+- **The lock stays held** until it expires; see
+  [the previous entry](#another-run-holds-the-lock-sst-apl011).
+- **An object it updated but did not record** still carries SST's ownership
+  marker for the definition being planned. `plan` updates it, with reason
+  `unrecorded_publish`, and the next apply records it. Apply again before you
+  change that artifact: once its definition moves on, the marker no longer
+  vouches for it and it blocks as below.
+- **An object it created** has no entry in state, so `plan` blocks it as
+  unmanaged (`SST-PLN024`), as it would any object SST did not publish. Drop it
+  by hand (`DROP <type> <name>`, with a role that may), then apply again.
+- **An object it updated that someone then changed again** blocks as changed
+  out of band (`SST-PLN014`): restore the definition SST wrote, or drop it by
+  hand.
+
+## `sst apply` or `sst baseline add` refuses with `SST-PRT109`
+
+Both ask before they write, on stderr, and only when stdin and stderr are both
+terminals: a question written into a redirected log, or answered from a pipe,
+would wait for ever. Off a terminal they refuse at once, before planning or
+connecting, and say so. Pass `--yes` in a script or a CI job.
 
 ## A command hangs while signing in
 

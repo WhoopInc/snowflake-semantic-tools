@@ -7,13 +7,13 @@ reports what is in place and creates nothing.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import click
 
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.paths import make_folders_within, output_root
+from snowflake_semantic_tools.cli import confirm as asking
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body, write_text
@@ -64,7 +64,8 @@ def init(paths: ProjectPaths, skip_prompts: bool, check_only: bool, options: Glo
 
     Writes `sst_config.yml`, with every policy key at its documented default, and creates the
     `semantic_views` directory under the semantic models directory it names. On a terminal
-    it asks for that directory, unless --skip-prompts or --output json; a file or directory
+    (stdin and stderr both terminals) it asks for that directory, unless --skip-prompts or
+    --output json; off one it takes the default. A file or directory
     that exists is left as it is, and an existing configuration's `project.semantic_models_dir`
     is the directory used. With --check-only nothing is written, and the command exits
     1 unless the configuration file and the semantic views directory exist. Exit 4 when the
@@ -89,8 +90,8 @@ def init(paths: ProjectPaths, skip_prompts: bool, check_only: bool, options: Glo
         return CommandResult(ERROR if missing else OK, data=data, human=lambda: click.echo(f"setup {status}"))
     created: list[str] = []
     if not config.exists():
-        if not skip_prompts and options.output != "json" and sys.stdin.isatty():
-            semantic_dir = click.prompt("Semantic models directory", default=_DEFAULT_SEMANTIC_DIR)
+        if not skip_prompts and options.output != "json" and asking.can_ask():
+            semantic_dir = asking.ask("Semantic models directory", _DEFAULT_SEMANTIC_DIR)
         write_text(output_root(project_dir, config.parent), config, config_template(semantic_dir))
         created.append(config.name)
     directory = project_dir / semantic_dir / "semantic_views"

@@ -21,7 +21,7 @@ from snowflake_semantic_tools.app.evals.suite import (
     compiled_evals,
 )
 from snowflake_semantic_tools.app.manifest import build_manifest
-from snowflake_semantic_tools.cli.runner import terminated_as_interrupt
+from snowflake_semantic_tools.cli.signals import terminated_as_interrupt
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.eval import (
     EvalCatalog,

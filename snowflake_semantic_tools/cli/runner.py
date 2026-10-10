@@ -10,7 +10,8 @@ text, then exits with its code. Every exception becomes an exit code the same wa
 command:
 
 - `click.exceptions.Exit` and `click.UsageError` pass through, to click and `SstGroup`;
-- an interrupt, end of input, or a declined prompt exits 130 (INTERRUPTED);
+- an interrupt -- Ctrl-C, or SIGTERM or SIGHUP, which `cli.signals` raises as one --, end of
+  input, or a declined prompt exits 130 (INTERRUPTED);
 - `SnowflakePortError` reports its diagnostic and exits 5 (CONNECTION). One without a diagnostic is
   classified by the signature table: a statement Snowflake rejected -- an object that does not
   exist, a compilation error -- exits 1 (ERROR) under its SNO code; a refused privilege or a
@@ -34,14 +35,10 @@ import inspect
 import io
 import json
 import logging
-import signal
 import sys
-import threading
-from collections.abc import Callable, Collection, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable, Collection
 from enum import Enum
 from pathlib import Path
-from types import FrameType
 from typing import Any, NoReturn
 
 import click
@@ -68,6 +65,7 @@ from snowflake_semantic_tools.cli.output import (
 )
 from snowflake_semantic_tools.cli.policy import ran_under_1_0, with_baseline, with_policy
 from snowflake_semantic_tools.cli.run_log import append_run_log
+from snowflake_semantic_tools.cli.signals import terminated_as_interrupt
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, audit
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
@@ -131,7 +129,8 @@ def command_body(
     The callback keeps the body's name and docstring, which click takes as the command's name
     and help, and declares every global option on the command. It runs the body and then its
     report under `guarded`, so an exception raised while reporting -- writing `--emit-ddl`
-    files, say -- fails the command the same way as one raised by the body.
+    files, say -- fails the command the same way as one raised by the body, and under
+    `terminated_as_interrupt`, so SIGTERM and SIGHUP end every command as Ctrl-C does.
 
     Args:
         outputs: The `--output` values the command supports; any other is SST-PRT106.
@@ -151,7 +150,8 @@ def command_body(
             options = GlobalOptions.from_params(params)
             given = {key: value for key, value in params.items() if key not in GLOBAL_NAMES}
             run = _Run(name, body, wanted, options, given, frozenset(outputs), config, refusals, applies_baseline)
-            guarded(run.execute, command=name, output=options.output)
+            with terminated_as_interrupt():
+                guarded(run.execute, command=name, output=options.output)
 
         declared = command_global_options()(callback)
         return declared if "selected" in wanted else _no_selector_options(name)(declared)
@@ -418,30 +418,6 @@ def guarded(action: Callable[[], None], *, command: str, output: str) -> None:
         _unusable(command, output, exc)
     except Exception as exc:  # the one crash handler: an exception nothing above expects
         _internal_error(command, output, exc)
-
-
-@contextmanager
-def terminated_as_interrupt() -> Iterator[None]:
-    """Raise SIGTERM as `KeyboardInterrupt` in the block, so it ends a run as an interrupt does.
-
-    By default SIGTERM ends the process at once and no `finally` runs, so a run lock taken in
-    the block stays held until it expires. Raised instead, every `finally` releases what it
-    holds, and `guarded` reports SST-PRT107 and exits 130. Outside the main thread no handler
-    can be set, so the block runs unchanged; SIGKILL can never be caught.
-    """
-    if threading.current_thread() is not threading.main_thread():
-        yield
-        return
-    previous = signal.signal(signal.SIGTERM, _raise_interrupt)
-    try:
-        yield
-    finally:
-        signal.signal(signal.SIGTERM, signal.SIG_DFL if previous is None else previous)
-
-
-def _raise_interrupt(signum: int, frame: FrameType | None) -> NoReturn:
-    del signum, frame
-    raise KeyboardInterrupt
 
 
 def _snowflake_failed(command: str, output: str, exc: SnowflakePortError) -> NoReturn:

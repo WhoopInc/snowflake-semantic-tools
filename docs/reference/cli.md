@@ -76,7 +76,8 @@ Scaffold SST into an existing dbt project without overwriting a file.
 
 Writes `sst_config.yml`, with every policy key at its documented default, and creates the
 `semantic_views` directory under the semantic models directory it names. On a terminal
-it asks for that directory, unless --skip-prompts or --output json; a file or directory
+(stdin and stderr both terminals) it asks for that directory, unless --skip-prompts or
+--output json; off one it takes the default. A file or directory
 that exists is left as it is, and an existing configuration's `project.semantic_models_dir`
 is the directory used. With --check-only nothing is written, and the command exits
 1 unless the configuration file and the semantic views directory exist. Exit 4 when the
@@ -308,7 +309,8 @@ connected `sst validate --target` reports there, and each entry added records th
 Additive: an entry is never removed, and a diagnostic already recorded, or sharing its
 fingerprint with another current one, is not added. A new file expires in --expires-in
 days; an existing one keeps its date, which only `renew` moves. --all-warnings asks first
-on a terminal; off one, or with --output json, it needs --yes.
+when there are warnings to add, on a terminal; off one (stdin and stderr must both be
+terminals), or with --output json, it needs --yes.
 
 Exit 0 when the file is written, even with nothing added; 1 when CODE is an error or
 non-demotable; 3 when CODE is missing, unregistered, or given with --all-warnings, or a
@@ -471,7 +473,8 @@ sst plan [OPTIONS]
 Apply a current reviewed plan; smoke probes never run here.
 
 Without --plan, apply plans afresh as `sst plan` does, prints the plan, and asks before it
-writes; --yes skips the question, and is required with --prune and with --output json.
+writes; --yes skips the question, and is required with --prune, with --output json, and
+whenever stdin or stderr is not a terminal, which apply refuses before it plans.
 With --plan, the saved plan's selection and --prune are used: --select, --exclude, --prune
 and --partial must agree with it, and it must have been made for this target, from the
 manifest the project compiles now, observing what Snowflake holds now. The statements are
@@ -480,14 +483,18 @@ the target's run lock. A failed change skips the changes that depend on it; with
 --fail-fast, every change not yet run. `--fail-fast` and `--no-fail-fast` override
 `apply.fail_fast`, false by default, for this run. With --partial, the changes no error
 touches are applied, those left out are reported, and the run exits 1 while errors remain.
+Interrupted by Ctrl-C, SIGTERM or SIGHUP, apply starts no further change, waits for those
+running, records what they wrote in state, and releases the lock; a second Ctrl-C stops
+the running changes at their next statement.
 
 Exit 0 when every change applied; 1 when a change failed, the plan has errors, or another
 run holds the lock; 3 when apply refuses the command line; 4 when the project, its
 configuration, or the saved plan cannot be used; 5 when Snowflake cannot be reached; and
-130 when the question is declined.
+130 when the question is declined or the run is interrupted.
 
 Diagnostics:
-    SST-PRT109: --prune or --output json without --yes; raised.
+    SST-PRT109: --prune or --output json without --yes, or no terminal to ask on; raised.
+    SST-PRT107: the run was interrupted while its changes ran.
     SST-PRT104: --partial with --prune, or --no-validate with --snowflake-syntax-check; raised.
     SST-APL005: the saved plan was made for another target.
     SST-MAN030: the saved plan's observation is past its time to live; apply observed afresh.

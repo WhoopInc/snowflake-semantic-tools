@@ -6128,7 +6128,7 @@ Fix: rename the artifact, or drop the existing object
 
 Raised when under `--prune`, a live object of a prunable type that the project no longer declares carries no SST ownership marker, so it is not pruned.
 
-Fix: adopt it explicitly, or delete it by hand
+Fix: drop it by hand if it is no longer wanted; SST prunes only objects carrying its marker
 
 ### SST-PLN004
 
@@ -6320,7 +6320,7 @@ Note: Raised by `sst test --suite smoke`, which then runs no probe.
 
 Raised when under `--prune`, a schema holds live objects of a prunable type that the project does not declare, compared case-folded; one per schema, counting every candidate whether or not it is pruned.
 
-Fix: adopt or delete them explicitly
+Fix: declare them in the project, or drop them by hand
 
 ### SST-PLN022
 
@@ -6350,7 +6350,7 @@ Fix: normalise the declaration to the rendered case
 
 Raised when an object holds the target name and state records no SST entry for it; `sst drop` also reports it for an object with no trusted SST ownership marker.
 
-Fix: adopt or remove the object explicitly before applying
+Fix: drop or rename the object by hand, or give the artifact another name; SST never takes over an object state does not record
 
 ### SST-PLN025
 
@@ -6614,7 +6614,7 @@ Note: The lock in Snowflake expires 30 minutes after its run last extended it, a
 
 Raised when another run (`apply`, `drop`, or the eval suite of `sst test`) holds the target's run lock, in Snowflake or in the local cache; or the lock expired and `--break-stale-lock` was not given; or this run lost its lock while it ran.
 
-Fix: wait for the other run, or clear the lock
+Fix: wait for the other run to end; once its lock has expired, re-run with --break-stale-lock
 
 Note: The message names the holder: its run id and, for the lock in Snowflake, the role and host it runs as and when its lock expires. A live lock is never broken: wait for that run to end. Only once its lock has expired does `--break-stale-lock` take it over (SST-APL010). A run that lost its lock starts no further statement and writes no state.
 
@@ -7284,9 +7284,11 @@ Fix: pass one of {expected}
 
 `interrupted after <detail>; <value>`
 
-Raised when the user interrupts a run, or declines a confirmation prompt; the run exits 130. After `apply`, partial work may have been applied; after an eval run started, the message names each run, which goes on in Snowflake.
+Raised when the user interrupts a run, with Ctrl-C, SIGTERM or SIGHUP, or declines a confirmation prompt; the run exits 130. An interrupted `apply` starts no further change, records in state the changes that finished, and releases its lock; after an eval run started, the message names each run, which goes on in Snowflake.
 
 Fix: after apply, run sst plan to see what remains; an eval run already started keeps running in Snowflake until it ends or is cancelled there
+
+Note: Every signal is handled as Ctrl-C is, so a CI cancellation, `timeout`, or `docker stop` ends the run cleanly; a further SIGTERM or SIGHUP is ignored while it cleans up, and a second Ctrl-C stops apply's running changes at their next statement. SIGKILL cannot be handled: an apply it ends leaves its lock to expire (`--break-stale-lock` then takes it over). An object it updated but did not record still carries SST's marker for the new definition, so the next apply updates it again, and records it; one it created, which state never recorded, is refused as SST-PLN024 until it is dropped by hand.
 
 ### SST-PRT108
 
@@ -7304,9 +7306,9 @@ Fix: pass &lt;database&gt;.&lt;schema&gt;.&lt;object&gt;
 
 `<command> requires --yes`
 
-Raised when a command that needs confirmation runs without --yes: `sst drop`, an `apply` that needs it, or `baseline add --all-warnings` with no terminal to prompt on or under JSON output.
+Raised when a command that needs confirmation runs without --yes: `sst drop`, `apply --prune`, `--output json` with `apply` or `baseline add --all-warnings`, or either of those two when stdin or stderr is not a terminal, so no question could be seen and answered.
 
-Fix: re-run with --yes; only sst baseline add --all-warnings asks instead, on a terminal and without JSON output
+Fix: re-run with --yes; sst apply and sst baseline add --all-warnings ask instead only when stdin and stderr are both terminals and the output is not JSON
 
 ### SST-PRT110
 

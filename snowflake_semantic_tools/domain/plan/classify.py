@@ -214,6 +214,20 @@ def _changed_out_of_band(evidence: _Evidence) -> bool:
     )
 
 
+def _published_unrecorded(evidence: _Evidence) -> bool:
+    # An apply stopped between publishing an object and recording it -- killed outright, or its
+    # machine lost -- leaves SST's marker for exactly the definition being planned on an object
+    # state records an earlier write of. Publishing that definition again changes nothing live
+    # and records it, so the object is updated rather than refused as changed out of band.
+    observed = evidence.observed
+    return (
+        _changed_out_of_band(evidence)
+        and QualifiedName.parse(evidence.recorded.qualified_name).folded == observed.qualified_name.folded
+        and observed.marker is not None
+        and observed.marker.fingerprint == evidence.artifact.fingerprint
+    )
+
+
 def _fingerprint_differs(evidence: _Evidence) -> bool:
     return evidence.recorded.fingerprint != evidence.artifact.fingerprint
 
@@ -238,10 +252,12 @@ def _out_of_band(evidence: _Evidence) -> Diagnostic:
 
 
 # The first row that holds decides, and an object no row matches is unchanged. The blocking
-# rows come first, so an update never overwrites an object that moved or changed out of band.
+# rows come first, so an update never overwrites an object that moved or changed out of band;
+# the one update before them is of an object whose marker names the definition being planned.
 _STATE_RULES: tuple[_StateRule, ...] = (
     _StateRule(_unnormalised, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _raw_comparison),
     _StateRule(_recorded_elsewhere, Action.BLOCKED, ChangeReason.TARGET_MOVED, _target_moved),
+    _StateRule(_published_unrecorded, Action.UPDATE, ChangeReason.UNRECORDED_PUBLISH),
     _StateRule(_changed_out_of_band, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _out_of_band),
     _StateRule(_fingerprint_differs, Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS),
     _StateRule(_written_partly, Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS),

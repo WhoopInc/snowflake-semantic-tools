@@ -140,7 +140,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Lock held by a live run",
         "{value} holds the apply lock",
-        "wait for the other run, or clear the lock",
+        "wait for the other run to end; once its lock has expired, re-run with --break-stale-lock",
         condition=(
             "another run (`apply`, `drop`, or the eval suite of `sst test`) holds the target's run "
             "lock, in Snowflake or in the local cache; or the lock expired and "

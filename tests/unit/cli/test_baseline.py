@@ -12,7 +12,7 @@ from click.testing import CliRunner, Result
 from snowflake_semantic_tools.adapters.fs.baseline import baseline_text, read_baseline
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, BaselineEntry, Renewal
-from tests.helpers.cli_projects import common, invoke_with_port
+from tests.helpers.cli_projects import common, invoke_with_port, on_a_terminal
 from tests.helpers.reference_project import project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
@@ -66,7 +66,7 @@ def test_add_all_warnings_needs_yes_off_a_terminal_and_prompts_on_one(
     assert refused.exit_code == 3
     assert "error[SST-PRT109]: sst baseline add --all-warnings requires --yes" in refused.output
     assert not (project / BASELINE).exists()
-    monkeypatch.setattr("snowflake_semantic_tools.cli.commands.baseline._interactive", lambda: True)
+    on_a_terminal(monkeypatch)
     declined = CliRunner().invoke(cli, ["baseline", "add", "--all-warnings", *common(project)], input="n\n")
     assert declined.exit_code == 130
     accepted = CliRunner().invoke(cli, ["baseline", "add", "--all-warnings", *common(project)], input="y\n")

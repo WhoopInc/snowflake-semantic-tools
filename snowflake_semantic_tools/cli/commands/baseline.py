@@ -13,7 +13,6 @@ code, cannot be baselined: a baseline suppresses and never demotes. The file is 
 
 from __future__ import annotations
 
-import sys
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
@@ -27,6 +26,7 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.app.baseline import clock_stamp, clock_today, days_after
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
+from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
 from snowflake_semantic_tools.cli.exit_codes import ERROR
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
@@ -102,7 +102,8 @@ def add_command(
     Additive: an entry is never removed, and a diagnostic already recorded, or sharing its
     fingerprint with another current one, is not added. A new file expires in --expires-in
     days; an existing one keeps its date, which only `renew` moves. --all-warnings asks first
-    on a terminal; off one, or with --output json, it needs --yes.
+    when there are warnings to add, on a terminal; off one (stdin and stderr must both be
+    terminals), or with --output json, it needs --yes.
 
     Exit 0 when the file is written, even with nothing added; 1 when CODE is an error or
     non-demotable; 3 when CODE is missing, unregistered, or given with --all-warnings, or a
@@ -269,21 +270,19 @@ def _wanted_code(code: str | None, all_warnings: bool) -> str | None:
 
 
 def _confirm(options: GlobalOptions, count: int, *, assume_yes: bool) -> None:
-    """Confirm baselining every warning: by `--yes`, else by a prompt on a terminal.
+    """Confirm baselining every warning: by `--yes`, else by a question on a terminal; none for none.
 
     Diagnostics:
         SST-PRT109: there is no terminal to ask on, or the output is JSON; raised.
     """
-    if assume_yes:
+    if assume_yes or not count:
         return
-    if options.output == "json" or not _interactive():
-        diagnostic = D("SST-PRT109", subject="cli", command="sst baseline add --all-warnings")
+    command = "sst baseline add --all-warnings"
+    if options.output == "json":
+        diagnostic = D("SST-PRT109", subject="cli", command=command)
         raise SstUsageError(diagnostic.message, diagnostic=diagnostic)
-    click.confirm(f"baseline all {count} current warning(s)?", abort=True, err=True)
-
-
-def _interactive() -> bool:
-    return sys.stdin.isatty()
+    require_answerable(command)
+    confirm(f"baseline all {count} current warning(s)?")
 
 
 def _read(paths: ProjectPaths, options: GlobalOptions) -> tuple[Path, Baseline | None]:

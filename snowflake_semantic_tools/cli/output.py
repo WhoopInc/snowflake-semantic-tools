@@ -27,6 +27,7 @@ from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.app.evals.run import EvalRunsInterrupted
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, INTERRUPTED, OK
+from snowflake_semantic_tools.cli.signals import received_signal
 from snowflake_semantic_tools.domain.diagnostics import (
     ERROR_REGISTRY,
     D,
@@ -331,6 +332,10 @@ def captured(report: Callable[[], None]) -> str:
 def interrupted(command: str, output: str, cause: BaseException) -> NoReturn:
     """End a run the user interrupted or declined to confirm with exit 130, never an internal error.
 
+    An interrupt is Ctrl-C, or SIGTERM or SIGHUP as `cli.signals` raises them; the human report
+    names the signal. Text that cannot be written, as after SIGHUP closed the terminal, is
+    dropped rather than changing the exit code.
+
     Diagnostics:
         SST-PRT107: the run was interrupted; after `apply`, partial work may have been applied,
             and after an eval run started, it names every run, which goes on in Snowflake.
@@ -343,9 +348,31 @@ def interrupted(command: str, output: str, cause: BaseException) -> NoReturn:
             )
         )
     else:
-        click.echo("Aborted.", err=True)
-        click.echo(render_diagnostic(notice), err=True)
+        _echo_err(aborted_line())
+        _echo_err(render_diagnostic(notice))
     raise click.exceptions.Exit(INTERRUPTED) from cause
+
+
+def aborted_line() -> str:
+    """Return the line an interrupted run starts its human report with, naming the signal if one ended it."""
+    name = received_signal()
+    return f"Aborted: received {name}." if name else "Aborted."
+
+
+def announce_interrupt(notice: Diagnostic) -> None:
+    """Print that the run was interrupted, then `notice` when the render policy would only count it.
+
+    For a command that reports an interrupted run as a result rather than through `interrupted`;
+    the notice is in the result's diagnostics as well, for `--output json`.
+    """
+    _echo_err(aborted_line())
+    if _hidden_reason(notice, frozenset(), _POLICY[0]) is not None:
+        _echo_err(render_diagnostic(notice))
+
+
+def _echo_err(text: str) -> None:
+    with contextlib.suppress(OSError):
+        click.echo(text, err=True)
 
 
 def _what_remains(command: str, cause: BaseException) -> str:

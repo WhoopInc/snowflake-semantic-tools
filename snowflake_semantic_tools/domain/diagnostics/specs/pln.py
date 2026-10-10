@@ -33,7 +33,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Prune candidate has no ownership marker",
         "{value} has no SST ownership marker; skipped",
-        "adopt it explicitly, or delete it by hand",
+        "drop it by hand if it is no longer wanted; SST prunes only objects carrying its marker",
         condition=(
             "under `--prune`, a live object of a prunable type that the project no longer "
             "declares carries no SST ownership marker, so it is not pruned"
@@ -223,7 +223,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Prune reconciliation found objects the repo does not declare",
         "{count} objects in {value} are not declared here",
-        "adopt or delete them explicitly",
+        "declare them in the project, or drop them by hand",
         condition=(
             "under `--prune`, a schema holds live objects of a prunable type that the project does "
             "not declare, compared case-folded; one per schema, counting every candidate whether "
@@ -251,7 +251,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Existing object is not managed by SST",
         "{artifact}: {value} exists without trusted SST ownership",
-        "adopt or remove the object explicitly before applying",
+        "drop or rename the object by hand, or give the artifact another name; SST never takes over "
+        "an object state does not record",
         demotable=False,
         condition=(
             "an object holds the target name and state records no SST entry for it; `sst drop` "

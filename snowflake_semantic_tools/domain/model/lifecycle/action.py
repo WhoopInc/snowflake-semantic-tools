@@ -35,6 +35,9 @@ class ChangeReason(Enum):
     entry is no reason by itself: an artifact whose fingerprint matches is unchanged.
     UNMANAGED_OBJECT blocks an object that exists without a state entry, and TARGET_MOVED one
     whose entry records a different target.
+    UNRECORDED_PUBLISH updates an object whose ownership marker names the very definition being
+    planned, though state records an earlier one: an apply published it and was stopped before
+    it recorded it, so publishing it again records it.
     """
 
     NOT_PRESENT = "not_present"
@@ -48,3 +51,4 @@ class ChangeReason(Enum):
     DEPENDENCY_BLOCKED = "dependency_blocked"
     UNMANAGED_OBJECT = "unmanaged_object"
     TARGET_MOVED = "target_moved"
+    UNRECORDED_PUBLISH = "unrecorded_publish"

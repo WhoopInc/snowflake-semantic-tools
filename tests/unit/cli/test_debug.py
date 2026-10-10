@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from snowflake_semantic_tools.adapters.dbt.invoke import CompletedRun
-from tests.helpers.cli_projects import common, invoke_with_port
+from tests.helpers.cli_projects import common, invoke_with_port, on_a_terminal
 from tests.helpers.reference_project import project_copy
 from tests.helpers.seam_projects import FakeDbt, SmallProject, manifest
 from tests.helpers.snowflake_fake import FakeSnowflake
@@ -32,6 +32,7 @@ def test_debug_connection_and_human_apply_prompt(tmp_path: Path, monkeypatch: py
     }
 
     apply_port = FakeSnowflake(state={})
+    on_a_terminal(monkeypatch)
     applied = invoke_with_port(
         monkeypatch,
         apply_port,

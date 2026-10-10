@@ -202,7 +202,10 @@ runs that race for it exactly one proceeds, and the others stop with
 `SST-APL011` naming the holder. The winner is issued the next *generation*, a
 fencing token it presents to extend or release the lock and to write state. A
 long run extends its lock every five minutes, on a connection of its own, and
-releases it when it ends, however it ends. Expiry is judged by Snowflake's
+releases it when it ends, however it ends: Ctrl-C, `SIGTERM`, and `SIGHUP` all
+end it as an interrupt, after `apply` records what finished (exit 130). Only a
+process that cannot run its cleanup, killed by `SIGKILL` or with its machine
+lost, leaves its lock behind. Expiry is judged by Snowflake's
 clock. A lock left behind by a run that was killed expires 30 minutes after it
 was last extended; `--break-stale-lock` takes over an expired lock
 (`SST-APL010`), and never a live one. A run also keeps a lock file beside its
@@ -251,8 +254,9 @@ measured.
 
 SST changes only objects it published. An object that already exists under an
 artifact's name, and that state records no entry for, is **unmanaged**: the plan
-blocks that artifact (`SST-PLN024`, an error) and leaves the object alone; adopt
-it or remove it deliberately. SST never grants new access: access to published
+blocks that artifact (`SST-PLN024`, an error) and leaves the object alone; SST
+has no command to take such an object over, so drop it by hand or rename the
+artifact. SST never grants new access: access to published
 objects is managed outside SST. When it replaces an object, it keeps the
 explicit grants the object already held -- with `COPY GRANTS` for a semantic
 view, procedure, or function, and by re-issuing them for a Cortex Search

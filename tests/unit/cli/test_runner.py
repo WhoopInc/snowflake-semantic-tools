@@ -16,7 +16,7 @@ from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from tests.helpers.cli_projects import common, invoke_with_port
+from tests.helpers.cli_projects import common, invoke_with_port, on_a_terminal
 from tests.helpers.reference_project import DBT_MANIFEST, REPO_ROOT, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
@@ -86,6 +86,7 @@ def test_a_declined_or_interrupted_run_exits_130_without_an_internal_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = project_copy(tmp_path)
+    on_a_terminal(monkeypatch)
     declined = invoke_with_port(monkeypatch, FakeSnowflake(state={}), ["apply", *common(project), "--target", "dev"])
     assert declined.exit_code == 130, declined.output
     assert "Apply this plan?" in declined.output and "Aborted." in declined.output

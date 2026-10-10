@@ -157,6 +157,8 @@ class ApplyResult:
     Attributes:
         started_at, finished_at: When the run started and finished, as the clock reported it.
         state_written: Whether the run recorded its outcomes in state.
+        interrupted: Whether an interrupt stopped the run part way through its changes; the
+            changes it never started are skipped, and state records those that finished.
     """
 
     outcomes: tuple[ApplyOutcome, ...]
@@ -165,10 +167,13 @@ class ApplyResult:
     started_at: str
     finished_at: str
     state_written: bool
+    interrupted: bool = False
 
     @property
     def success(self) -> bool:
-        """Report whether the run had no error diagnostic and no failed outcome."""
-        return not self.diagnostics.has_errors and all(
-            outcome.status is not OutcomeStatus.FAILED for outcome in self.outcomes
+        """Report whether the run was not interrupted and had no error diagnostic and no failed outcome."""
+        return (
+            not self.interrupted
+            and not self.diagnostics.has_errors
+            and all(outcome.status is not OutcomeStatus.FAILED for outcome in self.outcomes)
         )

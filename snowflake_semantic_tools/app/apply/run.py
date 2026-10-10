@@ -6,12 +6,14 @@ plan whose state changed since it was read. It writes state only after every wav
 by the lease's token: remote first, then local, so local state never claims what the state
 table does not hold. Changes run on sessions leased from a pool, one per worker, never on the
 command's own session, and the heartbeat on one of its own; losing the lock halts them all.
+An interrupt stops the waves, not the run: what finished is recorded before the lock is released.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, wait
+from dataclasses import replace
 from types import MappingProxyType
 from typing import Protocol
 
@@ -128,6 +130,11 @@ class ApplyArtifacts:
         7. Persist: unless the plan has neither writes nor report-only prunes, the state the run
            leaves is written to the state table, fenced by the run's lock, then locally.
 
+        An interrupt -- `KeyboardInterrupt`, which Ctrl-C raises and the CLI raises for SIGTERM
+        and SIGHUP -- during the waves ends them as `_WaveRun` describes; the run then accounts
+        and persists as usual, and its result is `interrupted`. An interrupt in any other phase
+        propagates, the lock released first.
+
         A refused run never takes the lock, or releases it at once; once taken, it is released
         however the run ends, including when writing state raises. The moment the run loses
         its lock, its worker sessions refuse every further statement and no further change
@@ -140,6 +147,8 @@ class ApplyArtifacts:
             ValueError: the changes' dependencies form a cycle.
             SnowflakePortError: reading or writing the state table failed; local state is not
                 written.
+            KeyboardInterrupt: an interrupt outside the waves, or a third one while the run
+                waited for its running changes.
 
         Diagnostics:
             SST-APL002: a change was skipped because a change it depends on failed or was skipped.
@@ -173,11 +182,14 @@ class ApplyArtifacts:
             heartbeat_port=self._heartbeat,
             on_lost=self._halt,
         )
-        locked, lock_diagnostics = lease.acquire(break_stale=options.break_stale_lock)
-        reported = (*changeset.diagnostics, *temporary_notes(changeset), *lock_diagnostics)
-        if not locked:
-            return self._refused(reported, run_id, started)
+        # Released from the moment the lock may be taken: an interrupt that lands between taking
+        # it and the run's first statement must not leave it held. Releasing a lease that was
+        # refused releases nothing another run holds.
         try:
+            locked, lock_diagnostics = lease.acquire(break_stale=options.break_stale_lock)
+            reported = (*changeset.diagnostics, *temporary_notes(changeset), *lock_diagnostics)
+            if not locked:
+                return self._refused(reported, run_id, started)
             changed = self._state_changed(changeset, previous)
             if changed is not None:
                 return self._refused((*reported, changed), run_id, started)
@@ -189,6 +201,11 @@ class ApplyArtifacts:
         """Stop every worker session before its next statement, once the run lost its lock."""
         if self._sessions is not None:
             self._sessions.halt(f"the run lock was lost: {reason} holds it")
+
+    def _halt_interrupted(self) -> None:
+        """Stop every worker session before its next statement, once the run was interrupted again."""
+        if self._sessions is not None:
+            self._sessions.halt("the run was interrupted")
 
     def _state_changed(self, changeset: ChangeSet, previous: State) -> Diagnostic | None:
         """Read the target's state again under the lock; SST-APL012 when it is not the state the plan read.
@@ -231,8 +248,9 @@ class ApplyArtifacts:
         def apply_one(change: Change, options: ApplyOptions) -> ApplyOutcome:
             return self._apply_one(change, options, stages)
 
+        waves = _WaveRun(changeset, options, apply_one, lost, on_second_interrupt=self._halt_interrupted)
         if outcomes is None:
-            outcomes, wave_diagnostics = _WaveRun(changeset, options, apply_one, lost).run()
+            outcomes, wave_diagnostics = waves.run()
         accounted = (
             *_unaccounted(changeset, outcomes),
             *channel_outcome_diagnostics(
@@ -242,7 +260,8 @@ class ApplyArtifacts:
         )
         diagnostics = DiagnosticBag((*reported, *wave_diagnostics, *accounted))
         assert lease.fence is not None
-        return self._persist(changeset, previous, outcomes, diagnostics, run_id, started, lease.fence)
+        result = self._persist(changeset, previous, outcomes, diagnostics, run_id, started, lease.fence)
+        return replace(result, interrupted=waves.interrupted)
 
     def _apply_one(self, change: Change, options: ApplyOptions, stages: UploadStages) -> ApplyOutcome:
         """Apply one change: on `port` without a pool, else on a session leased for it alone.
@@ -374,6 +393,14 @@ class _WaveRun:
     every change starts, not only between waves: once it reports the run lock lost, no further
     change starts, and after the wave every change without an outcome is skipped, in plan
     order, after one SST-APL011 naming the run `lost` says holds the lock.
+
+    The changes run on worker threads, even one at a time, so the calling thread only waits,
+    and an interrupt (`KeyboardInterrupt`) reaches it there. From then on no further change
+    starts; the changes already running are waited for, and each outcome they end with is
+    recorded as usual, so state keeps what they wrote; every change without an outcome is then
+    skipped, in plan order, and `interrupted` is True. A second interrupt while it waits calls
+    `on_second_interrupt`, which halts the running changes' sessions before their next
+    statement, and waits again; a third propagates.
     """
 
     def __init__(
@@ -382,21 +409,44 @@ class _WaveRun:
         options: ApplyOptions,
         apply_one: _ApplyOne,
         lost: _Lost = lambda: None,
+        *,
+        on_second_interrupt: Callable[[], None] = lambda: None,
     ) -> None:
         self._changeset = changeset
         self._options = options
         self._apply_one = apply_one
         self._lost = lost
+        self._on_second_interrupt = on_second_interrupt
         self._outcomes: list[ApplyOutcome] = []
         self._diagnostics: list[Diagnostic] = []
         self._failed_or_skipped: set[str] = set()
+        # The changes the current wave submitted, in order, with what each will end with.
+        self._started: list[tuple[Change, Future[ApplyOutcome | None]]] = []
+        self._interrupted = False
+
+    @property
+    def interrupted(self) -> bool:
+        """Whether an interrupt ended the waves before every change the policy allows had run."""
+        return self._interrupted
 
     def run(self) -> tuple[tuple[ApplyOutcome, ...], tuple[Diagnostic, ...]]:
         """Run every wave the policy allows; return the outcomes and the diagnostics, in order.
 
         Raises:
             ValueError: the changes' dependencies form a cycle.
+            KeyboardInterrupt: a third interrupt, while the run waited for its running changes.
         """
+        try:
+            self._run_waves()
+        except KeyboardInterrupt:
+            self._interrupted = True
+            self._wait_for_started()
+            self._record_started()
+            self._skip_remaining()
+        return tuple(self._outcomes), tuple(self._diagnostics)
+
+    def _run_waves(self) -> None:
+        """Run the waves in order, until the lock is lost, a failure stops them, or none is left."""
         for wave in dependency_waves(self._changeset.changes):
             if self._lost() is None:
                 runnable = self._runnable(wave)
@@ -408,7 +458,6 @@ class _WaveRun:
                 break
             if self._failed_or_skipped and self._options.on_failure is FailurePolicy.STOP_ALL:
                 break
-        return tuple(self._outcomes), tuple(self._diagnostics)
 
     def _runnable(self, wave: tuple[Change, ...]) -> list[Change]:
         """Return the wave's changes that may run; under STOP_DEPENDENTS, skip those a failure blocks."""
@@ -426,24 +475,62 @@ class _WaveRun:
     def _execute(self, runnable: list[Change]) -> tuple[ApplyOutcome | None, ...]:
         """Apply the wave's runnable changes: one at a time up to a failure under STOP_ALL, else in parallel.
 
-        A change that would start once the lock is lost does not start; its place holds None.
+        A change that would start once the lock is lost, or the run interrupted, does not
+        start; its place holds None. An interrupt cancels every change not yet started and
+        propagates at once, without waiting for those running: `run` waits for them.
         """
-        if self._options.on_failure is FailurePolicy.STOP_ALL:
-            outcomes: list[ApplyOutcome | None] = []
-            for change in runnable:
-                outcome = self._attempt(change)
-                outcomes.append(outcome)
-                if outcome is None or outcome.status is OutcomeStatus.FAILED:
-                    break
-            return tuple(outcomes)
-        with ThreadPoolExecutor(max_workers=self._options.parallelism) as pool:
-            return tuple(pool.map(self._attempt, runnable))
+        self._started = []
+        serial = self._options.on_failure is FailurePolicy.STOP_ALL
+        pool = ThreadPoolExecutor(max_workers=1 if serial else self._options.parallelism)
+        try:
+            if serial:
+                outcomes: list[ApplyOutcome | None] = []
+                for change in runnable:
+                    outcome = self._submit(pool, change).result()
+                    outcomes.append(outcome)
+                    if outcome is None or outcome.status is OutcomeStatus.FAILED:
+                        break
+                return tuple(outcomes)
+            futures = [self._submit(pool, change) for change in runnable]
+            return tuple(future.result() for future in futures)
+        except KeyboardInterrupt:
+            # Set before the queued changes are cancelled, so a worker taking one meanwhile skips it.
+            self._interrupted = True
+            raise
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+
+    def _submit(self, pool: ThreadPoolExecutor, change: Change) -> Future[ApplyOutcome | None]:
+        future = pool.submit(self._attempt, change)
+        self._started.append((change, future))
+        return future
 
     def _attempt(self, change: Change) -> ApplyOutcome | None:
-        """Apply one change unless the lock is lost; None when it did not start."""
-        if self._lost() is not None:
+        """Apply one change unless the lock is lost or the run interrupted; None when it did not start."""
+        if self._interrupted or self._lost() is not None:
             return None
         return self._apply_one(change, self._options)
+
+    def _wait_for_started(self) -> None:
+        """Wait for the interrupted wave's running changes; a second interrupt halts them first."""
+        # A change cancelled before it started is never done for `wait`, which would block on it
+        # for ever; every other was taken by a worker, so it ends.
+        started = [future for _, future in self._started if not future.cancelled()]
+        try:
+            wait(started)
+        except KeyboardInterrupt:
+            self._on_second_interrupt()
+            wait(started)
+
+    def _record_started(self) -> None:
+        """Record how each change the interrupted wave ran ended, unless its outcome is recorded already."""
+        recorded = {outcome.key for outcome in self._outcomes}
+        ended = [
+            (change, future.result())
+            for change, future in self._started
+            if change.key not in recorded and not future.cancelled() and future.exception() is None
+        ]
+        self._record([change for change, _ in ended], tuple(outcome for _, outcome in ended))
 
     def _record(self, runnable: list[Change], wave_outcomes: tuple[ApplyOutcome | None, ...]) -> None:
         """Record the wave's outcomes with their diagnostics; a failure under STOP_ALL skips the rest."""
