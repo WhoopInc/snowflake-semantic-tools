@@ -84,14 +84,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="read offline, the target has no local state cache, so every artifact reads as new",
     ),
     spec(
-        "SST-MAN021",
-        Severity.WARNING,
-        "state.manifest_id does not match the current manifest",
-        "state was recorded against manifest {found}; current is {expected}",
-        "re-run plan; NOOP detection is disabled for this run",
-        condition="the state and the manifest are from different compiles",
-    ),
-    spec(
         "SST-MAN022",
         Severity.ERROR,
         "state.json present but unreadable",

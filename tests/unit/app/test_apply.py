@@ -880,9 +880,9 @@ def test_apply_prune_non_executable_and_observed_marker_state_paths() -> None:
     port.remote_state = prior.applied
     skipped = use_case.run(changeset(non_executable), prior, ApplyOptions(allow_prune=True))
     assert skipped.outcomes[0].status is OutcomeStatus.SKIPPED
-    # Nothing executes, but the retained entry moves to this manifest so the plan reconciles.
+    # Nothing executes, and the retained entry keeps the manifest that published the object.
     assert skipped.state_written and store.state is not None
-    assert store.state.applied[artifact.key] == replace(recorded, manifest_id="m" * 64)
+    assert store.state.applied[artifact.key] == recorded
 
     noop = replace(change(artifact), action=Action.NOOP, observed=live)
     use_case, _, store, _ = runner()

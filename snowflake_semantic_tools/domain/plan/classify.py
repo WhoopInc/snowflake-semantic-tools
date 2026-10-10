@@ -10,6 +10,11 @@
 6. the first row of `_STATE_RULES` whose condition holds, comparing the object with the
    entry apply recorded for it; an object no row matches is unchanged.
 
+Each artifact is decided by its own entry alone. The fingerprint digests everything its
+rendered form carries, resolved dependencies included, and the entry and the live marker
+name the manifest that last published it, so an artifact whose fingerprint matches is
+unchanged whatever else the project, or the manifest that last stamped state, changed.
+
 A blocking diagnostic travels on the change as well as in the plan's list. Two warnings
 never change a decision: a declared name whose case differs from the live object's
 (SST-PLN023), reported before the decision's own diagnostic, and an update of an object
@@ -56,7 +61,6 @@ def classify(
     *,
     observed: ObservedArtifact | None,
     recorded: AppliedEntry | None,
-    manifest_id: str,
     validation: DiagnosticBag,
     composite: CompositePlan | None,
 ) -> Decision:
@@ -68,7 +72,6 @@ def classify(
         key: The key plan indexes the artifact by, which every diagnostic names it by.
         observed: The object Snowflake shows under the key; None when there is none.
         recorded: The entry state recorded when apply last wrote the key; None when there is none.
-        manifest_id: The id of the manifest being planned.
         validation: What validation reported for the artifact; an error blocks it.
         composite: What the artifact's composite lifecycle handler planned; None for an
             artifact the generic lifecycle plans.
@@ -97,7 +100,7 @@ def classify(
         diagnostic = D("SST-PLN002", artifact=key, value=observed.qualified_name.sql, found=observed.object_type)
         blocked = _change(artifact, observed, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, registry, (diagnostic,))
         return Decision(blocked, (diagnostic,))
-    return _compare(key, artifact, observed, recorded, manifest_id, registry)
+    return _compare(key, artifact, observed, recorded, registry)
 
 
 def _invalid(
@@ -145,14 +148,13 @@ def _compare(
     artifact: RenderedArtifact,
     observed: ObservedArtifact,
     recorded: AppliedEntry | None,
-    manifest_id: str,
     registry: Registry,
 ) -> Decision:
     """Decide an artifact whose name holds an object of its type, by what state recorded there."""
     reported: list[Diagnostic] = []
     if observed.raw_name != artifact.target.name.folded and not artifact.target.name.quoted:
         reported.append(D("SST-PLN023", artifact=key, value=artifact.target.name.value, found=observed.raw_name))
-    action, reason, blocking = _state_verdict(key, artifact, observed, recorded, manifest_id)
+    action, reason, blocking = _state_verdict(key, artifact, observed, recorded)
     change = _change(artifact, observed, action, reason, registry, blocking)
     reported.extend(blocking)
     if change.action is Action.UPDATE and observed.explicit_grants:
@@ -170,7 +172,6 @@ class _Evidence:
     artifact: RenderedArtifact
     observed: ObservedArtifact
     recorded: AppliedEntry
-    manifest_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,10 +214,6 @@ def _changed_out_of_band(evidence: _Evidence) -> bool:
     )
 
 
-def _applied_under_another_manifest(evidence: _Evidence) -> bool:
-    return evidence.recorded.manifest_id != evidence.manifest_id
-
-
 def _fingerprint_differs(evidence: _Evidence) -> bool:
     return evidence.recorded.fingerprint != evidence.artifact.fingerprint
 
@@ -246,7 +243,6 @@ _STATE_RULES: tuple[_StateRule, ...] = (
     _StateRule(_unnormalised, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _raw_comparison),
     _StateRule(_recorded_elsewhere, Action.BLOCKED, ChangeReason.TARGET_MOVED, _target_moved),
     _StateRule(_changed_out_of_band, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _out_of_band),
-    _StateRule(_applied_under_another_manifest, Action.UPDATE, ChangeReason.STATE_MANIFEST_MISMATCH),
     _StateRule(_fingerprint_differs, Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS),
     _StateRule(_written_partly, Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS),
 )
@@ -257,7 +253,6 @@ def _state_verdict(
     artifact: RenderedArtifact,
     observed: ObservedArtifact,
     recorded: AppliedEntry | None,
-    manifest_id: str,
 ) -> tuple[Action, ChangeReason, tuple[Diagnostic, ...]]:
     """Decide an object of the artifact's type by the entry apply recorded for it.
 
@@ -267,7 +262,7 @@ def _state_verdict(
     if recorded is None:
         unmanaged = D("SST-PLN024", artifact=key, value=observed.qualified_name.sql)
         return Action.BLOCKED, ChangeReason.UNMANAGED_OBJECT, (unmanaged,)
-    evidence = _Evidence(key, artifact, observed, recorded, manifest_id)
+    evidence = _Evidence(key, artifact, observed, recorded)
     for rule in _STATE_RULES:
         if rule.holds(evidence):
             return rule.action, rule.reason, () if rule.report is None else (rule.report(evidence),)

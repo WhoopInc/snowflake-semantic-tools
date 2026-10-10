@@ -298,8 +298,8 @@ class ApplyArtifacts:
             SST-APL011: the state table refused the write because the run no longer holds
                 its lock; reported unless the waves already reported the loss.
         """
-        # A report-only prune executes nothing, but state still records the run:
-        # the entry is retained and the manifest moves on, or SST-MAN021 never clears.
+        # A report-only prune executes nothing, but state still records the run, and the
+        # object plan observed when no entry names it yet.
         if not changeset.writes and not changeset.report_only:
             return ApplyResult(outcomes, diagnostics, run_id, started, self._clock.now_iso(), False)
         state = self._finish_state(changeset, previous, outcomes, run_id, started)

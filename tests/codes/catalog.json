@@ -1884,12 +1884,12 @@
   "code": "SST-MAN021",
   "area": "MAN",
   "number": 21,
-  "severity": "WARNING",
+  "severity": "RETIRED",
   "non_demotable": false,
-  "title": "state.manifest_id does not match the current manifest",
-  "message": "state was recorded against manifest {found}; current is {expected}",
-  "suggestion": "re-run plan; NOOP detection is disabled for this run",
-  "precheck": "local"
+  "title": "state.manifest_id does not match the current manifest -- number burned, never reused",
+  "message": "--",
+  "suggestion": null,
+  "precheck": "--"
  },
  {
   "code": "SST-MAN022",

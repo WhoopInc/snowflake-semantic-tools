@@ -13,8 +13,7 @@ decided:
    blocked change -- after prune and preflight, so every change it checks against is decided;
 6. `order_changes` orders the changes, whose decisions hash into the plan id.
 
-The plan's diagnostics follow the same order, after the warning that state was recorded
-against another manifest.
+The plan's diagnostics follow the same order.
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from types import MappingProxyType
 
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Change,
@@ -75,13 +74,10 @@ def build_changeset(
         KeyError: the registry has no entry for a rendered artifact's type.
 
     Diagnostics:
-        SST-MAN021: state was recorded against another manifest.
-
-    Each phase's own codes follow, in phase order: see `classify`, `plan_prunes`,
-    `block_unpublished_dependencies`, `check_preflight`, `block_unsafe`, and `order_changes`.
+        Each phase's own codes, in phase order: see `classify`, `plan_prunes`,
+        `block_unpublished_dependencies`, `check_preflight`, `block_unsafe`, and `order_changes`.
     """
-    drift = _manifest_drift(manifest, state)
-    changes, classified = _classify_all(rendered, observation, manifest, state, registry, blocked, composite_plans)
+    changes, classified = _classify_all(rendered, observation, state, registry, blocked, composite_plans)
     pruned, skipped = (
         plan_prunes(rendered, observation, state, registry, prune_types, prune_keys) if include_prune else ((), ())
     )
@@ -91,20 +87,13 @@ def build_changeset(
     candidates = (*ordered_safely, *pruned)
     decided, preflighted = check_preflight(candidates, preflight) if preflight else (candidates, ())
     safe, unpinned = block_unsafe(decided, registry)
-    diagnostics = (*drift, *classified, *skipped, *unordered, *preflighted, *unpinned)
+    diagnostics = (*classified, *skipped, *unordered, *preflighted, *unpinned)
     return _ordered(safe, diagnostics, manifest, target, observation, full)
-
-
-def _manifest_drift(manifest: Manifest, state: State) -> tuple[Diagnostic, ...]:
-    if state.manifest_id and state.manifest_id != manifest.manifest_id:
-        return (D("SST-MAN021", found=state.manifest_id, expected=manifest.manifest_id),)
-    return ()
 
 
 def _classify_all(
     rendered: Mapping[str, RenderedArtifact],
     observation: SnowflakeObservation,
-    manifest: Manifest,
     state: State,
     registry: Registry,
     blocked: Mapping[str, DiagnosticBag] | None,
@@ -122,7 +111,6 @@ def _classify_all(
             registry,
             observed=observation.artifacts.get(key),
             recorded=state.applied.get(key),
-            manifest_id=manifest.manifest_id,
             validation=validation.get(key, DiagnosticBag()),
             composite=handled.get(key),
         )

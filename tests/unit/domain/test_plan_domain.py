@@ -120,13 +120,13 @@ def test_plan_classifies_create_update_noop_and_reports_grants_and_case() -> Non
     assert len(result.plan_id) == 64
 
 
-def test_plan_conservatively_updates_without_trusted_state_and_blocks_errors() -> None:
+def test_plan_decides_each_artifact_by_its_own_entry_and_blocks_errors() -> None:
     value = rendered("v")
     manifest, state = context({value.key: value}, {}, manifest_id="old")
     observation = SnowflakeObservation(MappingProxyType({value.key: live(value)}), "now")
     mismatch = build_changeset({value.key: value}, observation, manifest, state, SEMANTIC_REGISTRY, target())
     assert mismatch.changes[0].reason is ChangeReason.UNMANAGED_OBJECT
-    assert [item.code for item in mismatch.diagnostics] == ["SST-MAN021", "SST-PLN024"]
+    assert [item.code for item in mismatch.diagnostics] == ["SST-PLN024"]
 
     old_manifest = "a" * 64
     old_entry = applied(value, old_manifest)
@@ -157,8 +157,11 @@ def test_plan_conservatively_updates_without_trusted_state_and_blocks_errors() -
         SEMANTIC_REGISTRY,
         target(),
     )
-    assert stable.changes[0].action is Action.UPDATE
-    assert stable.changes[0].reason is ChangeReason.STATE_MANIFEST_MISMATCH
+    # The live object is the one an earlier manifest published, at the fingerprint this one
+    # renders: it is unchanged, however far the manifest moved on.
+    assert stable.changes[0].action is Action.NOOP
+    assert stable.changes[0].reason is ChangeReason.UNCHANGED
+    assert [item.code for item in stable.diagnostics] == []
 
     current_entry = applied(value, manifest.manifest_id)
     mixed_state = State(
@@ -290,8 +293,7 @@ def test_plan_conservatively_updates_without_trusted_state_and_blocks_errors() -
         target(),
     )
     assert wrong_type.changes[0].action is Action.BLOCKED
-    assert wrong_type.diagnostics[0].code == "SST-MAN021"
-    assert wrong_type.diagnostics[1].code == "SST-PLN002"
+    assert [item.code for item in wrong_type.diagnostics] == ["SST-PLN002"]
 
 
 def test_prune_requires_marker_and_matching_authoritative_state() -> None:

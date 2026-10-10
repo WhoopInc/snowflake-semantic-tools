@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import MappingProxyType
 
 import pytest
@@ -98,21 +99,48 @@ def test_each_marker_is_read_under_its_artifact_s_object_type(
     assert len(outcome.attempted) == len(described_types)
 
 
-def test_state_from_another_manifest_and_a_changed_marker_keep_every_probe_from_running() -> None:
+def test_a_changed_marker_keeps_every_probe_from_running() -> None:
     result = compiled("MENU", "SALES")
     manifest, port = published(result)
     port.markers["DB.SCH.SALES"] = OwnershipMarker(manifest.manifest_id, "f" * 64)
-    other = manifest_for(compiled("OTHER"), EMPTY_SOURCES)
 
     changed = smoke(result, manifest, port)
-    stale = smoke(result, other, published(result)[1])
 
     assert [(item.code, item.context["artifact"]) for item in changed.diagnostics] == [
         ("SST-APL012", "semantic_view:sales")
     ]
     assert changed.attempted == () and port.queries == []
-    assert stale.diagnostics[0].context["artifact"] == "manifest"
-    assert not stale.success
+
+
+def test_an_object_an_earlier_manifest_published_at_the_same_fingerprint_is_probed() -> None:
+    # Only SALES changed after MENU was published, so MENU's entry and marker keep the earlier
+    # manifest; its fingerprint still proves it is what this manifest renders.
+    result = compiled("MENU", "SALES")
+    earlier = "e" * 64
+    manifest, port = published(result)
+    menu = dict(port.remote_state or {})["semantic_view:menu"]
+    port.remote_state = MappingProxyType(
+        {**dict(port.remote_state or {}), "semantic_view:menu": replace(menu, manifest_id=earlier)}
+    )
+    port.markers["DB.SCH.MENU"] = OwnershipMarker(earlier, menu.fingerprint)
+
+    outcome = smoke(result, manifest, port)
+
+    assert outcome.success and outcome.diagnostics == ()
+    assert [probe.key for probe in outcome.attempted] == ["semantic_view:menu:view", "semantic_view:sales:view"]
+
+
+def test_a_marker_naming_another_manifest_than_the_entry_keeps_the_probes_from_running() -> None:
+    result = compiled("MENU")
+    manifest, port = published(result)
+    port.markers["DB.SCH.MENU"] = OwnershipMarker("e" * 64, result.rendered[0].fingerprint)
+
+    outcome = smoke(result, manifest, port)
+
+    assert [(item.code, item.context["artifact"]) for item in outcome.diagnostics] == [
+        ("SST-APL012", "semantic_view:menu")
+    ]
+    assert port.queries == []
 
 
 def test_an_entry_that_does_not_match_is_reported_without_reading_the_live_marker() -> None:
@@ -150,5 +178,5 @@ def test_unreadable_state_is_reported_with_every_object_it_cannot_vouch_for() ->
 
     outcome = smoke(result, manifest, port)
 
-    assert [item.code for item in outcome.diagnostics] == ["SST-PLN001", "SST-APL012", "SST-APL012"]
+    assert [item.code for item in outcome.diagnostics] == ["SST-PLN001", "SST-APL012"]
     assert port.queries == []
