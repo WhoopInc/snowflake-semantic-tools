@@ -28,6 +28,26 @@ sst plan --target prod --output json > plan.json || test $? -eq 2
   instead. It also saves the plan to `target/sst/plan.json` (`--plan-out` to put
   it elsewhere).
 
+### Recording what an update replaces
+
+`sst plan --capture-prior` also reads the current definition of each live object
+a planned artifact names, so a reviewer can see what an update replaces and
+restore it afterwards. `--full` prints it under each update, JSON reports it as
+each change's `prior_definition`, and the observation the plan records in
+`target/sst/observation.<target>.json` keeps it as each object's `definition`.
+What is read depends on how the kind is published:
+
+| Kind | Prior definition | To restore it |
+|---|---|---|
+| Semantic view, Cortex search service, procedure, function | What `GET_DDL` prints (procedures and functions are addressed by their argument types); needs REFERENCES or OWNERSHIP | Run it: it is a `CREATE OR REPLACE` |
+| Agent | The version it serves now (the one carrying the agent's alias, else the default, else the last committed), its specification as indented JSON, and the `ALTER AGENT` statements that point the alias and the default version back at it | An update adds a version and keeps every earlier one, so run those statements; never re-create the agent, which would drop its versions and grants |
+| Stage tool | None: apply only creates a stage when it is absent | Nothing to restore |
+| Skill, plugin, profile, eval | None: each publishes content-addressed versions, trees, tables, and datasets beside the earlier ones; a profile's row and an eval's staged configuration are rewritten in place and not captured | Re-publish the earlier source |
+
+A definition that cannot be read, for want of a privilege or because the agent
+lists no version, is a warning (`SST-PLN037`), and that change's
+`prior_definition` is null; the plan is otherwise the same as without the flag.
+
 If the project commits golden files, `sst test --suite golden` compares the
 rendered DDL and specs with them offline. The DDL goldens are read from
 `--golden-dir` (default `expected/ddl/` in the project), and the other goldens

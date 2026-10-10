@@ -65,6 +65,7 @@ def test_the_fake_implements_the_full_read_write_contract() -> None:
     port.stage_formats[stage.sql] = "TYPE='CSV' FIELD_DELIMITER=NONE"
     assert port.describe_stage_file_format(stage) == "TYPE='CSV' FIELD_DELIMITER=NONE"
     assert port.agent_has_live_version(name) is False
+    assert port.show_agent_versions(name) == ()
     assert port.resolve_agent_version(name, "committed") == "VERSION$1"
     assert port.current_role()
     assert port.current_account_locator()

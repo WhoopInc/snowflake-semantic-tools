@@ -14,6 +14,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConne
 from snowflake_semantic_tools.adapters.snowflake.connector import session as session_module
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import (
     AgentVersionNotFound,
     SnowflakePortError,
@@ -774,3 +775,41 @@ def test_get_ddl_names_the_type_as_get_ddl_spells_it_and_refuses_an_empty_answer
         _DdlConnector(((None,),)).get_ddl("AGENT", name)
     with pytest.raises(SnowflakePortError, match="GET_DDL returned nothing"):
         _DdlConnector(()).get_ddl("AGENT", name)
+
+
+def test_get_ddl_reads_an_agent_as_a_cortex_agent_and_a_routine_by_its_signature() -> None:
+    # MEASURED: GET_DDL('AGENT', ...) is "Invalid object type: 'AGENT'"; the type is CORTEX_AGENT.
+    connector = _DdlConnector((("create or replace agent A",),))
+    connector.get_ddl("AGENT", QualifiedName.parse("DB.S.A"))
+    connector.get_ddl("cortex search service", QualifiedName.parse("DB.S.SEARCH"))
+    connector.get_ddl("PROCEDURE", QualifiedName.parse("DB.S.P"), ("VARCHAR", "NUMBER(38,0)"))
+    connector.get_ddl("FUNCTION", QualifiedName.parse("DB.S.F"))
+    assert connector.statements == [
+        "SELECT GET_DDL('CORTEX_AGENT', 'DB.S.A')",
+        "SELECT GET_DDL('CORTEX_SEARCH_SERVICE', 'DB.S.SEARCH')",
+        "SELECT GET_DDL('PROCEDURE', 'DB.S.P(VARCHAR, NUMBER(38,0))')",
+        "SELECT GET_DDL('FUNCTION', 'DB.S.F()')",
+    ]
+
+
+@pytest.mark.parametrize("object_type", ["STAGE", "DATASET", "CORTEX EXTENSION"])
+def test_get_ddl_refuses_a_type_it_reads_no_object_of_without_sending_anything(object_type: str) -> None:
+    connector = _DdlConnector((("unused",),))
+    with pytest.raises(SnowflakePortError, match=f"GET_DDL cannot read a {object_type.lower()}"):
+        connector.get_ddl(object_type, QualifiedName.parse("DB.S.X"))
+    assert connector.statements == []
+
+
+def test_agent_versions_read_each_version_with_its_alias_default_and_specification() -> None:
+    # MEASURED: SHOW VERSIONS IN AGENT names no live version, and `is_default` reads 'true'/'false'.
+    rows: tuple[dict[str, object], ...] = (
+        {"name": None, "alias": None, "is_default": "false", "comment": None, "agent_spec": "{}"},
+        {"name": "VERSION$2", "alias": "PROD", "is_default": "false", "comment": "git:abc", "agent_spec": '{"a":1}'},
+        {"name": "VERSION$1", "alias": "", "is_default": "true", "comment": "", "agent_spec": None},
+    )
+    connector = StubSnowflakeConnector({"SHOW VERSIONS IN AGENT": rows})
+    assert connector.show_agent_versions(QualifiedName.parse("DB.S.A")) == (
+        AgentVersion(None, None, specification="{}"),
+        AgentVersion("VERSION$2", "PROD", comment="git:abc", specification='{"a":1}'),
+        AgentVersion("VERSION$1", None, is_default=True),
+    )

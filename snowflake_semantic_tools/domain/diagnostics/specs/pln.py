@@ -14,9 +14,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "observation of {value} failed: {detail}",
         "check the connection and the role, then re-run plan",
         condition=(
-            "a read of the target failed: an object listing, a definition, grants, the state table, "
+            "a read of the target failed: an object listing, grants, the state table, "
             "a preflight read, or a composite artifact's resources; under `--use-cached-state`, also "
-            "each composite artifact, which a recorded observation cannot decide"
+            "each composite artifact, which a recorded observation cannot decide. A definition "
+            "`--capture-prior` cannot read is SST-PLN037 instead"
         ),
     ),
     spec(
@@ -358,6 +359,21 @@ SPECS: tuple[ErrorSpec, ...] = (
             "Apply runs `CREATE STAGE IF NOT EXISTS ... ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE')` once per "
             "stage before its first upload, and never replaces, alters, or drops the stage. Plan "
             "blocks the agent instead when the role lacks CREATE STAGE on the stage's schema (SST-PLN008)."
+        ),
+    ),
+    spec(
+        "SST-PLN037",
+        Severity.WARNING,
+        "Prior definition not captured",
+        "the prior definition of {value} was not captured: {detail}",
+        "grant the role REFERENCES or OWNERSHIP on the object, or plan without --capture-prior",
+        condition=(
+            "under `sst plan --capture-prior`, reading the current definition of a live object a "
+            "planned artifact names failed: GET_DDL refused it, or SHOW VERSIONS IN AGENT did"
+        ),
+        note=(
+            "The plan is otherwise unaffected: the change is planned as without the flag, and its "
+            "`prior_definition` is null."
         ),
     ),
     spec(

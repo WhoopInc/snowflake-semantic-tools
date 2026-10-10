@@ -12,7 +12,7 @@ from collections.abc import Mapping
 
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow
-from snowflake_semantic_tools.domain.ports.snowflake.catalog import ExtensionObservation, ExtensionVersion
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion, ExtensionObservation, ExtensionVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
 from tests.helpers.snowflake_fake.extensions import versions
 from tests.helpers.snowflake_fake.world import SnowflakeWorld
@@ -52,11 +52,30 @@ class FakeCatalog(SnowflakeWorld):
             return None
         return self.markers.get(qualified_name.sql)
 
-    def get_ddl(self, object_type: str, qualified_name: QualifiedName) -> str:
+    def get_ddl(
+        self,
+        object_type: str,
+        qualified_name: QualifiedName,
+        routine_signature: tuple[str, ...] = (),
+    ) -> str:
         self._check("get_ddl")
+        kind = " ".join(object_type.upper().split())
+        if kind in {"STAGE", "DATASET", "CORTEX EXTENSION"}:
+            # As the connector does, a type GET_DDL reads no object of is refused unsent.
+            raise SnowflakePortError(f"GET_DDL cannot read a {kind.lower()}")
+        if kind in {"PROCEDURE", "FUNCTION"}:
+            # GET_DDL addresses a routine by its name with its argument types, as Snowflake documents.
+            name = f"{qualified_name.sql}({', '.join(routine_signature)})"
+            if name not in self.definitions:
+                raise SnowflakePortError(f"SQL compilation error: {kind} '{name}' does not exist or not authorized.")
+            return self.definitions[name]
         if qualified_name.sql not in self.definitions:
             raise SnowflakePortError(f"GET_DDL refused for {object_type} {qualified_name.sql}")
         return self.definitions[qualified_name.sql]
+
+    def show_agent_versions(self, qualified_name: QualifiedName) -> tuple[AgentVersion, ...]:
+        self._check("show_agent_versions")
+        return self.agent_version_rows.get(qualified_name.sql, ())
 
     def object_exists(self, object_type: str, qualified_name: QualifiedName) -> bool:
         self._check("object_exists")

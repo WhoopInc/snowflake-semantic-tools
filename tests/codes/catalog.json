@@ -2662,6 +2662,17 @@
   "precheck": "observe"
  },
  {
+  "code": "SST-PLN037",
+  "area": "PLN",
+  "number": 37,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Prior definition not captured",
+  "message": "the prior definition of {value} was not captured: {detail}",
+  "suggestion": "grant the role REFERENCES or OWNERSHIP on the object, or plan without --capture-prior",
+  "precheck": "observe"
+ },
+ {
   "code": "SST-PLN100",
   "area": "PLN",
   "number": 100,

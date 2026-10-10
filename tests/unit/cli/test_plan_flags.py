@@ -78,7 +78,9 @@ def test_capture_prior_reads_the_definition_an_update_replaces(tmp_path: Path, m
     refused.definitions.clear()
     unreadable = _plan(project, refused, monkeypatch, "--capture-prior", "-o", "json")
     assert _update(unreadable)["prior_definition"] is None
-    assert "SST-PLN001" in _codes(unreadable)
+    # A definition that cannot be read is a warning; the plan still exits as it would without it.
+    assert unreadable.exit_code == 2, unreadable.output
+    assert "SST-PLN037" in _codes(unreadable) and "SST-PLN001" not in _codes(unreadable)
 
 
 def test_full_names_the_properties_an_update_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow, extract_marker
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
+    AgentVersion,
     CatalogPort,
     ExtensionObservation,
     ExtensionVersion,
@@ -44,6 +45,20 @@ PARAMETER_OBJECT_TYPES = frozenset(("WAREHOUSE",))
 # The observed types SHOW GRANTS ON <type> cannot address: Snowflake reports a dataset's
 # grants only in SHOW GRANTS TO ROLE, and its owner in SHOW DATASETS.
 _UNLISTED_GRANTS = frozenset(("DATASET",))
+# How GET_DDL spells each observed type it reads. MEASURED: it rejects 'AGENT' as an invalid
+# object type and reads an agent as 'CORTEX_AGENT'. It reads no stage, dataset, or Cortex
+# extension, so a definition of one is never asked for.
+_GET_DDL_TYPES: Mapping[str, str] = {
+    "SEMANTIC VIEW": "SEMANTIC_VIEW",
+    "CORTEX SEARCH SERVICE": "CORTEX_SEARCH_SERVICE",
+    "AGENT": "CORTEX_AGENT",
+    "PROCEDURE": "PROCEDURE",
+    "FUNCTION": "FUNCTION",
+    "TABLE": "TABLE",
+    "VIEW": "VIEW",
+    "TAG": "TAG",
+}
+_ROUTINE_TYPES = frozenset(("PROCEDURE", "FUNCTION"))
 
 
 class CatalogMethods(Session, CatalogPort):
@@ -86,9 +101,8 @@ class CatalogMethods(Session, CatalogPort):
         if kind in _UNLISTED_GRANTS:
             # Snowflake rejects SHOW GRANTS ON DATASET in every form; it is never sent.
             raise SnowflakePortError(f"Snowflake lists no grants on a {kind.lower()}; read its owner from SHOW")
-        if kind in {"PROCEDURE", "FUNCTION"}:
-            types = join(", ", (datatype(value) for value in routine_signature))
-            object_name = sql("{name}({types})", name=object_name, types=types)
+        if kind in _ROUTINE_TYPES:
+            object_name = _routine(object_name, routine_signature)
         rows = self._dict_rows(sql("SHOW GRANTS ON {kind} {name}", kind=keyword(kind), name=object_name))
         return tuple(
             sorted(
@@ -111,10 +125,19 @@ class CatalogMethods(Session, CatalogPort):
         rows = self._show_like(object_type, qualified_name, str.upper)
         return extract_marker(_show_comment(rows[0])) if rows else None
 
-    def get_ddl(self, object_type: str, qualified_name: QualifiedName) -> str:
-        # GET_DDL names the type with underscores for spaces, as `SEMANTIC_VIEW`.
-        kind = _object_type(object_type).replace(" ", "_")
-        result = self.query(sql("SELECT GET_DDL({kind}, {name})", kind=literal(kind), name=literal(qualified_name.sql)))
+    def get_ddl(
+        self,
+        object_type: str,
+        qualified_name: QualifiedName,
+        routine_signature: tuple[str, ...] = (),
+    ) -> str:
+        observed_type = _object_type(object_type)
+        kind = _GET_DDL_TYPES.get(observed_type)
+        if kind is None:
+            raise SnowflakePortError(f"GET_DDL cannot read a {observed_type.lower()}")
+        # GET_DDL takes the name as a string, a routine's with its argument types.
+        name = str(_routine(qname(qualified_name), routine_signature)) if kind in _ROUTINE_TYPES else qualified_name.sql
+        result = self.query(sql("SELECT GET_DDL({kind}, {name})", kind=literal(kind), name=literal(name)))
         if not result.rows or result.rows[0][0] is None:
             raise SnowflakePortError(f"GET_DDL returned nothing for {object_type} {qualified_name.sql}")
         return str(result.rows[0][0])
@@ -257,6 +280,21 @@ class CatalogMethods(Session, CatalogPort):
             raise _unexpected_describe(f"TABLE {qualified_name.sql}")
         return tuple((str(row.get("name") or "").upper(), str(row.get("type") or "").upper()) for row in rows)
 
+    def show_agent_versions(self, qualified_name: QualifiedName) -> tuple[AgentVersion, ...]:
+        rows = self._dict_rows(sql("SHOW VERSIONS IN AGENT {agent}", agent=qname(qualified_name)))
+        # MEASURED: the live version is the row without a `name`; `agent_spec` holds each
+        # version's specification, and `is_default` reads 'true' or 'false'.
+        return tuple(
+            AgentVersion(
+                name=_optional_text(row.get("name")),
+                alias=_optional_text(row.get("alias")),
+                is_default=str(row.get("is_default") or "").casefold() == "true",
+                comment=_optional_text(row.get("comment")),
+                specification=_optional_text(row.get("agent_spec")),
+            )
+            for row in rows
+        )
+
     def agent_has_live_version(self, qualified_name: QualifiedName) -> bool:
         rows = self._dict_rows(sql("SHOW VERSIONS IN AGENT {agent}", agent=qname(qualified_name)))
         return any(row.get("name") is None for row in rows)
@@ -307,6 +345,11 @@ class CatalogMethods(Session, CatalogPort):
 
 def _scope(value: SchemaScope) -> Sql:
     return scope(value)
+
+
+def _routine(name: Sql, routine_signature: tuple[str, ...]) -> Sql:
+    """Address a procedure or function as Snowflake does: its name and its argument types."""
+    return sql("{name}({types})", name=name, types=join(", ", (datatype(value) for value in routine_signature)))
 
 
 def _object_type(value: str) -> str:

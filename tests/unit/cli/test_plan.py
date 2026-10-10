@@ -18,6 +18,7 @@ from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest as _c
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ShowRow
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.state import AppliedEntry
@@ -177,8 +178,8 @@ def test_plan_live_observation_saved_plan_and_detailed_exitcode(
     assert collapsed.exit_code == 0
 
 
-def test_plan_noop_uses_remote_state_not_a_prior_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    project = project_copy(tmp_path)
+def _published_reference(project: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[FakeSnowflake, dict[str, Any]]:
+    """Snowflake holding the reference project as an apply published it, and the plan that created it."""
     first_port = FakeSnowflake(state={})
     first = invoke_with_port(
         monkeypatch,
@@ -253,6 +254,12 @@ def test_plan_noop_uses_remote_state_not_a_prior_manifest(tmp_path: Path, monkey
     )
     configure_skills_as_published(port, payload["data"]["changes"], project)
     configure_profiles_as_published(port, payload["data"]["changes"], project)
+    return port, payload
+
+
+def test_plan_noop_uses_remote_state_not_a_prior_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = project_copy(tmp_path)
+    port, _ = _published_reference(project, monkeypatch)
     planned = invoke_with_port(
         monkeypatch,
         port,
@@ -260,6 +267,53 @@ def test_plan_noop_uses_remote_state_not_a_prior_manifest(tmp_path: Path, monkey
     )
     assert planned.exit_code == 0, planned.output
     assert {item["action"] for item in json.loads(planned.output)["data"]["changes"]} == {"noop"}
+
+
+def test_capture_prior_reads_every_published_kind_without_failing_the_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The reference project publishes views, a search service, agents, skills, a plugin, a
+    # profile, and an eval; a plan capturing their priors must still exit as it would without.
+    project = project_copy(tmp_path)
+    port, payload = _published_reference(project, monkeypatch)
+    targets = {str(item["artifact_key"]): str(item["target"]) for item in payload["data"]["changes"]}
+    for key, target in targets.items():
+        if key.startswith(("semantic_view:", "tool:")):
+            port.definitions[target] = f"create or replace {key}"
+        if key.startswith("agent:"):
+            port.agent_version_rows[target] = (
+                AgentVersion(None, None, specification="{}"),
+                AgentVersion("VERSION$2", None, is_default=True, specification='{"models":{"orchestration":"auto"}}'),
+                AgentVersion("VERSION$1", None, specification="{}"),
+            )
+    planned = invoke_with_port(
+        monkeypatch,
+        port,
+        ["plan", *common(project), "--target", "dev", "--capture-prior", "--output", "json", "--no-plan-out"],
+    )
+    assert planned.exit_code == 0, planned.output
+    result = json.loads(planned.output)
+    assert not [item for item in result["diagnostics"] if item["severity"] in ("error", "warning")]
+    priors = {item["artifact_key"]: item["prior_definition"] for item in result["data"]["changes"]}
+    agents = [key for key in priors if key.startswith("agent:")]
+    assert agents
+    for key in agents:
+        prior = priors[key]
+        assert prior.startswith(f"-- agent {targets[key]} serves VERSION$2 (the default).\n")
+        assert f"ALTER AGENT {targets[key]} SET DEFAULT_VERSION = 'VERSION$2';" in prior
+        assert prior.endswith('{\n  "models": {\n    "orchestration": "auto"\n  }\n}\n')
+    for key, prior in priors.items():
+        if key.startswith(("semantic_view:", "tool:")):
+            assert prior == f"create or replace {key}"
+        elif not key.startswith("agent:"):
+            # A skill, plugin, profile, or eval publishes content-addressed resources.
+            assert prior is None, key
+    # Nothing is updated, so `--full` prints no definition that an update would replace.
+    full = invoke_with_port(
+        monkeypatch, port, ["plan", *common(project), "--target", "dev", "--capture-prior", "--full", "--no-plan-out"]
+    )
+    assert full.exit_code == 0, full.output
+    assert "prior definition:" not in full.output
 
 
 def test_selected_plan_refuses_a_stale_canonical_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

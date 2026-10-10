@@ -33,6 +33,25 @@ class ExtensionVersion:
     certification_status: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class AgentVersion:
+    """One `SHOW VERSIONS IN AGENT` row.
+
+    Attributes:
+        name: The committed version's system name, such as `VERSION$3`; None for the live version.
+        alias: The version's alias; None when it has none.
+        is_default: The version an unversioned call runs.
+        specification: The version's specification as Snowflake stores it; None when the role
+            may not read it, as for a secure agent the owner role is not using.
+    """
+
+    name: str | None
+    alias: str | None
+    is_default: bool = False
+    comment: str | None = None
+    specification: str | None = None
+
+
 class CatalogPort(Protocol):
     """Read what exists in Snowflake and how it is defined, and who the session is.
 
@@ -88,14 +107,22 @@ class CatalogPort(Protocol):
         """
         ...
 
-    def get_ddl(self, object_type: str, qualified_name: QualifiedName) -> str:
+    def get_ddl(
+        self,
+        object_type: str,
+        qualified_name: QualifiedName,
+        routine_signature: tuple[str, ...] = (),
+    ) -> str:
         """Return one object's current definition, as GET_DDL prints it.
 
-        Needs REFERENCES or OWNERSHIP on the object. Never writes.
+        `object_type` is the type SHOW lists, which GET_DDL may spell otherwise: an AGENT is
+        read as `CORTEX_AGENT`. A procedure or function is addressed by `routine_signature`,
+        its argument types. Needs REFERENCES or OWNERSHIP on the object. Never writes.
 
         Raises:
             SnowflakePortError: GET_DDL failed, including for an object that does not exist or
-                a role that may not read its definition.
+                a role that may not read its definition; or GET_DDL reads no object of the
+                type, such as a stage, a dataset, or a Cortex extension, and nothing was sent.
         """
         ...
 
@@ -191,6 +218,16 @@ class CatalogPort(Protocol):
 
         Raises:
             SnowflakePortError: the listing failed, including for an extension that does not exist.
+        """
+        ...
+
+    def show_agent_versions(self, qualified_name: QualifiedName) -> tuple[AgentVersion, ...]:
+        """Return an agent's versions, the live one included, as SHOW VERSIONS IN AGENT lists them.
+
+        Never writes.
+
+        Raises:
+            SnowflakePortError: the listing failed, including for an agent that does not exist.
         """
         ...
 

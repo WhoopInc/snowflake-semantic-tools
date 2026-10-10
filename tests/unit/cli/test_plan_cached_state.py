@@ -200,9 +200,16 @@ def test_a_plan_whose_read_was_refused_records_nothing(tmp_path: Path, monkeypat
     project = project_copy(tmp_path)
     target = _target(project, monkeypatch)
     observation_file(target_dir(project), "dev").unlink()
+    # A definition --capture-prior cannot read is only a warning: the observation is whole.
+    uncaptured = _published(target)
+    uncaptured.definitions.clear()
+    warned = _live(project, monkeypatch, uncaptured, "--select", VIEW, "--capture-prior")
+    assert "SST-PLN037" in {item["code"] for item in _diagnostics(warned)}
+    assert json.loads(warned.stdout)["data"]["observation"]["path"] is not None
+    observation_file(target_dir(project), "dev").unlink()
     refused = _published(target)
-    refused.definitions.clear()
-    result = _live(project, monkeypatch, refused, "--select", VIEW, "--capture-prior")
+    refused.refuse("show_grants")
+    result = _live(project, monkeypatch, refused, "--select", VIEW)
     assert "SST-PLN001" in {item["code"] for item in _diagnostics(result)}
     assert json.loads(result.stdout)["data"]["observation"]["path"] is None
     assert not observation_file(target_dir(project), "dev").exists()

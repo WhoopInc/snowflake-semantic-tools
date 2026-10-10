@@ -167,8 +167,12 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "replace would drop (SST-PLN013). On by default; `--no-grants` skips the reads."
     ),
     ("sst plan", "--capture-prior"): (
-        "Read the current definition of each live object a planned artifact names, one `GET_DDL` "
-        "each; needs REFERENCES or OWNERSHIP. Shown by `--full` and as `prior_definition` in JSON."
+        "Read the current definition of each live object a planned artifact names, so a review can "
+        "see what an update replaces and restore it: `GET_DDL` for a semantic view, search service, "
+        "procedure or function (needs REFERENCES or OWNERSHIP); for an agent, which an update never "
+        "replaces, the version it serves, its specification, and the `ALTER AGENT` statements that "
+        "point back at it. A stage, skill, plugin, profile or eval has none. Shown by `--full` and as "
+        "`prior_definition` in JSON; a read that fails is a warning (SST-PLN037), not a failed plan."
     ),
     ("sst plan", "--use-cached-state"): (
         "Plan from the observation an earlier `sst plan` recorded in `--state` instead of reading "

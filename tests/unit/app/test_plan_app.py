@@ -87,8 +87,8 @@ def test_observe_options_skip_grants_and_capture_the_prior_definition() -> None:
         port, SEMANTIC_REGISTRY, targets, fetched_at="now", desired_artifacts=desired, options=capture
     )
     assert refused.artifacts[artifact.key].definition is None
-    assert {item.code for item in failed} == {"SST-PLN001"}
-    assert "the definition of DB.SCHEMA.V" in failed[0].message
+    assert {item.code for item in failed} == {"SST-PLN037"}
+    assert "the prior definition of DB.SCHEMA.V" in failed[0].message
 
 
 def test_plan_use_case_merges_observation_diagnostics() -> None:
