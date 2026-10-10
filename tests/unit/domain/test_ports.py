@@ -7,7 +7,7 @@ from snowflake_semantic_tools.domain.ports.eval_state import EvalStateStore
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
-from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion, AgentVersions, CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.ports.snowflake.profile_registry import ProfileRegistryPort
@@ -47,9 +47,18 @@ def test_catalog_port_methods_are_declarations_only() -> None:
     assert CatalogPort.observe_extension(source, object()) is None  # type: ignore[arg-type]
     assert CatalogPort.extension_versions(source, object()) is None  # type: ignore[arg-type]
     assert CatalogPort.observe_agent_versions(source, object()) is None  # type: ignore[arg-type]
+    assert CatalogPort.get_ddl(source, "x", object()) is None  # type: ignore[arg-type]
     assert CatalogPort.resolve_agent_version(source, object(), "committed") is None  # type: ignore[arg-type]
     assert CatalogPort.current_role(source) is None  # type: ignore[arg-type]
     assert CatalogPort.current_account_locator(source) is None  # type: ignore[arg-type]
+
+
+def test_agent_versions_derive_the_live_version_and_the_aliases_from_the_rows() -> None:
+    assert (AgentVersions().has_live_version, AgentVersions().aliases) == (False, ())
+    versions = AgentVersions(
+        (AgentVersion(None, "CANDIDATE"), AgentVersion("VERSION$2", None), AgentVersion("VERSION$1", "PROMOTED"))
+    )
+    assert (versions.has_live_version, versions.aliases) == (True, ("CANDIDATE", "PROMOTED"))
 
 
 def test_execution_and_stage_port_methods_are_declarations_only() -> None:

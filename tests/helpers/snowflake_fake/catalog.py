@@ -56,8 +56,23 @@ class FakeCatalog(SnowflakeWorld):
             return None
         return self.markers.get(qualified_name.sql)
 
-    def get_ddl(self, object_type: str, qualified_name: QualifiedName) -> str:
+    def get_ddl(
+        self,
+        object_type: str,
+        qualified_name: QualifiedName,
+        routine_signature: tuple[str, ...] = (),
+    ) -> str:
         self._check("get_ddl")
+        kind = " ".join(object_type.upper().split())
+        if kind in {"STAGE", "DATASET", "CORTEX EXTENSION"}:
+            # As the connector does, a type GET_DDL reads no object of is refused unsent.
+            raise SnowflakePortError(f"GET_DDL cannot read a {kind.lower()}")
+        if kind in {"PROCEDURE", "FUNCTION"}:
+            # GET_DDL addresses a routine by its name with its argument types, as Snowflake documents.
+            name = f"{qualified_name.sql}({', '.join(routine_signature)})"
+            if name not in self.definitions:
+                raise SnowflakePortError(f"SQL compilation error: {kind} '{name}' does not exist or not authorized.")
+            return self.definitions[name]
         if qualified_name.sql not in self.definitions:
             raise SnowflakePortError(f"GET_DDL refused for {object_type} {qualified_name.sql}")
         return self.definitions[qualified_name.sql]
@@ -132,10 +147,7 @@ class FakeCatalog(SnowflakeWorld):
 
     def observe_agent_versions(self, qualified_name: QualifiedName) -> AgentVersions:
         self._check("observe_agent_versions")
-        return AgentVersions(
-            has_live_version=qualified_name.sql in self.live_agents,
-            aliases=self.agent_aliases.get(qualified_name.sql, ()),
-        )
+        return AgentVersions(self.agent_version_rows.get(qualified_name.sql, ()))
 
     def resolve_agent_version(self, qualified_name: QualifiedName, selector: str) -> str:
         self._check("resolve_agent_version")

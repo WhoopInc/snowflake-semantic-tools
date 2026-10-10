@@ -24,6 +24,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, GrantRow, OwnershipMarker, QueryResult, ShowRow
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.state import AppliedEntry
@@ -108,7 +109,8 @@ class SnowflakeWorld:
         # The type of each object named here, by qualified name: a marker read under another
         # type finds nothing, as SHOW <type> LIKE lists no object of a different type.
         self.object_types: dict[str, str] = {}
-        # GET_DDL's answer by qualified name; an object missing here has no readable definition.
+        # GET_DDL's answer by qualified name, a routine's with its argument types, as
+        # `DB.S.P(VARCHAR)`; an object missing here has no readable definition.
         self.definitions: dict[str, str] = dict(definitions or {})
         # The qualified names that exist; None models an account where every TABLE OR VIEW does.
         self.existing: set[str] | None = set(existing) if existing is not None else None
@@ -128,9 +130,9 @@ class SnowflakeWorld:
         self.agent_versions: dict[tuple[str, str], str] = {
             (name, selector.casefold()): version for (name, selector), version in (agent_versions or {}).items()
         }
-        self.live_agents: set[str] = set()
-        # The version aliases each agent shows, by qualified name, as SHOW VERSIONS lists them.
-        self.agent_aliases: dict[str, tuple[str, ...]] = {}
+        # What SHOW VERSIONS IN AGENT lists, by the agent's qualified name; none by default. A
+        # row without a name is the live version, and its aliases are those SHOW shows.
+        self.agent_version_rows: dict[str, tuple[AgentVersion, ...]] = {}
         # The versions of each dataset, by qualified name; ADD VERSION appends to them.
         self.dataset_version_names: dict[str, list[str]] = {}
         # Each dataset's owner, by qualified name, as SHOW DATASETS lists it; a dataset not

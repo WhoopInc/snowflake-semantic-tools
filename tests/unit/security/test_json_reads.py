@@ -27,6 +27,7 @@ EXEMPT: dict[tuple[str, str], str] = {
     ("app/lifecycle/evals.py", "_with_provenance"): (
         "the dataset version METADATA SST rendered with json.dumps itself"
     ),
+    ("app/prior.py", "_specification"): "the specification text SHOW VERSIONS IN AGENT returned",
     ("domain/render/eval.py", "render_source_table_statements"): (
         "the payload render_dataset_payload rendered with json.dumps"
     ),

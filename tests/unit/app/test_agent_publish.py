@@ -7,7 +7,7 @@ from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentProfile, ResolvedAgent
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ObservedArtifact
-from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersions
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion, AgentVersions
 from tests.helpers.sql_values import texts
 
 
@@ -104,9 +104,9 @@ def test_recorded_port_reports_live_agent_versions_and_aliases() -> None:
     port = FakeSnowflake()
     name = QualifiedName.parse("DB.S.AGENT")
     assert port.observe_agent_versions(name) == AgentVersions()
-    port.live_agents.add(name.sql)
-    port.agent_aliases[name.sql] = ("PROMOTED",)
-    assert port.observe_agent_versions(name) == AgentVersions(has_live_version=True, aliases=("PROMOTED",))
+    port.agent_version_rows[name.sql] = (AgentVersion(None, None), AgentVersion("VERSION$1", "PROMOTED"))
+    observed = port.observe_agent_versions(name)
+    assert (observed.has_live_version, observed.aliases) == (True, ("PROMOTED",))
 
 
 def test_temporary_agent_is_inline_and_has_no_upload() -> None:

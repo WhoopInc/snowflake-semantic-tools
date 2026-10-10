@@ -150,10 +150,14 @@ def print_plan(changeset: ChangeSet, *, full: bool = False) -> None:
 
 
 def _print_detail(change: Change, manifest_id: str) -> None:
-    """Print what an update changes, property by property, then the definition it replaces when read."""
+    """Print what an update changes, property by property, then the definition it replaces when read.
+
+    Only an update replaces a definition, so an unchanged artifact's is not printed, though
+    JSON reports it.
+    """
     for item in changed_properties(change, manifest_id):
         click.echo(f"    {item.name}: {item.before or '-'} -> {item.after or '-'}")
-    if change.observed is not None and change.observed.definition is not None:
+    if change.action is Action.UPDATE and change.observed is not None and change.observed.definition is not None:
         click.echo("    prior definition:")
         for line in change.observed.definition.splitlines():
             click.echo(f"      {line}")

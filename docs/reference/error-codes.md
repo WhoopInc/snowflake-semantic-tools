@@ -26,7 +26,7 @@ cannot be downgraded by any setting.
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
-- [Planning (PLN)](#planning-pln) -- 37 codes
+- [Planning (PLN)](#planning-pln) -- 38 codes
 - [Apply (APL)](#apply-apl) -- 29 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 22 codes
@@ -6102,7 +6102,7 @@ Fix: upgrade SST
 
 `observation of <value> failed: <detail>`
 
-Raised when a read of the target failed: an object listing, a definition, grants, the state table, a preflight read, or a composite artifact's resources; under `--use-cached-state`, also each composite artifact, which a recorded observation cannot decide.
+Raised when a read of the target failed: an object listing, grants, the state table, a preflight read, or a composite artifact's resources; under `--use-cached-state`, also each composite artifact, which a recorded observation cannot decide. A definition `--capture-prior` cannot read is SST-PLN037 instead.
 
 Fix: check the connection and the role, then re-run plan
 
@@ -6449,6 +6449,18 @@ Raised when a planned agent create or update stages its specification on the `ap
 Fix: nothing to do; to manage the stage yourself, create it first as an internal stage with SNOWFLAKE_SSE encryption
 
 Note: Apply runs `CREATE STAGE IF NOT EXISTS ... ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE')` once per stage before its first upload, and never replaces, alters, or drops the stage. Plan blocks the agent instead when the role lacks CREATE STAGE on the stage's schema (SST-PLN008).
+
+### SST-PLN037
+
+**Prior definition not captured** (warning)
+
+`the prior definition of <value> was not captured: <detail>`
+
+Raised when under `sst plan --capture-prior`, reading the current definition of a live object a planned artifact names failed: GET_DDL refused it, or SHOW VERSIONS IN AGENT did.
+
+Fix: grant the role REFERENCES or OWNERSHIP on the object, or plan without --capture-prior
+
+Note: The plan is otherwise unaffected: the change is planned as without the flag, and its `prior_definition` is null.
 
 ### SST-PLN100
 

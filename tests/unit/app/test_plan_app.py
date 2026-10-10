@@ -22,6 +22,7 @@ from snowflake_semantic_tools.domain.model.registry import (
     GrantPreservation,
     Registry,
 )
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
 from tests.helpers.artifact_builders import change, manifest, rendered, state, target
@@ -87,8 +88,8 @@ def test_observe_options_skip_grants_and_capture_the_prior_definition() -> None:
         port, SEMANTIC_REGISTRY, targets, fetched_at="now", desired_artifacts=desired, options=capture
     )
     assert refused.artifacts[artifact.key].definition is None
-    assert {item.code for item in failed} == {"SST-PLN001"}
-    assert "the definition of DB.SCHEMA.V" in failed[0].message
+    assert {item.code for item in failed} == {"SST-PLN037"}
+    assert "the prior definition of DB.SCHEMA.V" in failed[0].message
 
 
 def test_plan_use_case_merges_observation_diagnostics() -> None:
@@ -189,8 +190,10 @@ def test_observe_agent_versions_selects_update_program_and_unsets_stranded_alias
     )
     port = FakeSnowflake()
     port.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now", object_type="AGENT"))
-    port.live_agents.add(artifact.target.sql)
-    port.agent_aliases[artifact.target.sql] = ("CANDIDATE", "PROMOTED")
+    port.agent_version_rows[artifact.target.sql] = (
+        AgentVersion(None, "CANDIDATE"),
+        AgentVersion("VERSION$1", "PROMOTED", is_default=True),
+    )
     observation, diagnostics = observe(
         port,
         SEMANTIC_REGISTRY,

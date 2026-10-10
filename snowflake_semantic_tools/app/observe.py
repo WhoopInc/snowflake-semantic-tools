@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.fanout import Fanout
+from snowflake_semantic_tools.app.prior import prior_definition
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
@@ -42,8 +43,9 @@ class ObserveOptions:
     Attributes:
         grants: Read the grants of each object the plan may replace, one SHOW GRANTS each, so
             the plan can report what a replace would drop; `plan --no-grants` turns it off.
-        capture_prior: Read the current definition of each object the plan may change, one
-            GET_DDL each, as `plan --capture-prior` asks.
+        capture_prior: Read the current definition of each object a rendered artifact names,
+            as `plan --capture-prior` asks: one GET_DDL each, or for an agent one SHOW
+            VERSIONS IN AGENT; `app.prior` says what each kind's definition is.
     """
 
     grants: bool = True
@@ -83,8 +85,9 @@ def observe(
         options: Which per-object reads to make, as `ObserveOptions` says.
 
     Diagnostics:
-        SST-PLN001: listing an object type in a schema, or reading an object's grants or
-            definition, failed.
+        SST-PLN001: listing an object type in a schema, or reading an object's grants, failed.
+        SST-PLN037: under `capture_prior`, reading an object's definition failed; the
+            observation is otherwise whole.
     """
     found: dict[str, ObservedArtifact] = {}
     diagnostics: list[Diagnostic] = []
@@ -155,10 +158,11 @@ def _observe_row(
     grants, diagnostics = (
         _replaceable_grants(port, artifact_type, object_type, row, desired_artifact) if options.grants else (None, ())
     )
-    definition, definition_diagnostics = (
-        _prior_definition(port, object_type, row, desired_artifact) if options.capture_prior else (None, ())
-    )
+    # One SHOW VERSIONS read serves both the update program and the agent's captured prior.
     versions = port.observe_agent_versions(row.qualified_name) if object_type == "AGENT" else AgentVersions()
+    definition, definition_diagnostics = (
+        prior_definition(port, object_type, row, desired_artifact, versions) if options.capture_prior else (None, ())
+    )
     artifact = ObservedArtifact(
         key=key,
         raw_name=row.name,
@@ -174,21 +178,6 @@ def _observe_row(
         aliases=versions.aliases,
     )
     return artifact, (*diagnostics, *definition_diagnostics)
-
-
-def _prior_definition(
-    port: CatalogPort,
-    object_type: str,
-    row: ShowRow,
-    desired_artifact: RenderedArtifact | None,
-) -> tuple[str | None, tuple[Diagnostic, ...]]:
-    """Read the definition of an object this plan may change; None when it is not one or cannot be read."""
-    if desired_artifact is None:
-        return None, ()
-    try:
-        return port.get_ddl(object_type, row.qualified_name), ()
-    except SnowflakePortError as exc:
-        return None, (D("SST-PLN001", value=f"the definition of {row.qualified_name.sql}", detail=str(exc)),)
 
 
 def _replaceable_grants(

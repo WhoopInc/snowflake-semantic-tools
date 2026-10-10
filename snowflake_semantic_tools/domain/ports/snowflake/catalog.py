@@ -34,16 +34,43 @@ class ExtensionVersion:
 
 
 @dataclass(frozen=True, slots=True)
-class AgentVersions:
-    """What `SHOW VERSIONS IN AGENT` shows of an agent's versions that an update acts on.
+class AgentVersion:
+    """One `SHOW VERSIONS IN AGENT` row.
 
     Attributes:
-        has_live_version: A live version exists, beside which ADD VERSION fails.
-        aliases: Every version alias the agent shows, live version included, as SHOW prints them.
+        name: The committed version's system name, such as `VERSION$3`; None for the live version.
+        alias: The version's alias; None when it has none.
+        is_default: The version an unversioned call runs.
+        specification: The version's specification as Snowflake stores it; None when the role
+            may not read it, as for a secure agent the owner role is not using.
     """
 
-    has_live_version: bool = False
-    aliases: tuple[str, ...] = ()
+    name: str | None
+    alias: str | None
+    is_default: bool = False
+    comment: str | None = None
+    specification: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AgentVersions:
+    """An agent's versions, the live one included, as `SHOW VERSIONS IN AGENT` lists them.
+
+    Attributes:
+        versions: Every row SHOW prints, in its order.
+    """
+
+    versions: tuple[AgentVersion, ...] = ()
+
+    @property
+    def has_live_version(self) -> bool:
+        """A live version exists, beside which ADD VERSION fails."""
+        return any(version.name is None for version in self.versions)
+
+    @property
+    def aliases(self) -> tuple[str, ...]:
+        """Every version alias the agent shows, live version included, as SHOW prints them."""
+        return tuple(version.alias for version in self.versions if version.alias)
 
 
 class CatalogPort(Protocol):
@@ -101,14 +128,22 @@ class CatalogPort(Protocol):
         """
         ...
 
-    def get_ddl(self, object_type: str, qualified_name: QualifiedName) -> str:
+    def get_ddl(
+        self,
+        object_type: str,
+        qualified_name: QualifiedName,
+        routine_signature: tuple[str, ...] = (),
+    ) -> str:
         """Return one object's current definition, as GET_DDL prints it.
 
-        Needs REFERENCES or OWNERSHIP on the object. Never writes.
+        `object_type` is the type SHOW lists, which GET_DDL may spell otherwise: an AGENT is
+        read as `CORTEX_AGENT`. A procedure or function is addressed by `routine_signature`,
+        its argument types. Needs REFERENCES or OWNERSHIP on the object. Never writes.
 
         Raises:
             SnowflakePortError: GET_DDL failed, including for an object that does not exist or
-                a role that may not read its definition.
+                a role that may not read its definition; or GET_DDL reads no object of the
+                type, such as a stage, a dataset, or a Cortex extension, and nothing was sent.
         """
         ...
 
@@ -208,12 +243,15 @@ class CatalogPort(Protocol):
         ...
 
     def observe_agent_versions(self, qualified_name: QualifiedName) -> AgentVersions:
-        """Report whether an agent has a live version, and every version alias it shows.
+        """Return an agent's versions, the live one included, as SHOW VERSIONS IN AGENT lists them.
+
+        One read serves both an update, which needs the live version and the aliases, and
+        `plan --capture-prior`, which needs the version the agent serves and its specification.
 
         Never writes.
 
         Raises:
-            SnowflakePortError: SHOW VERSIONS IN AGENT failed.
+            SnowflakePortError: SHOW VERSIONS IN AGENT failed, including for an agent that does not exist.
         """
         ...
 
