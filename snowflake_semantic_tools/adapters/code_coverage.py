@@ -3,9 +3,8 @@
 `raise_sites` reads the package for every string constant that is exactly a code; the error
 registry's own modules are left out, since registering a code is not raising it. `code_tests`
 reads the test tree for each code's conventional test file, `tests/codes/<area>/test_<code>.py`,
-counting it only when it defines both the `fires` and the `silent` test. `prechecks` reads the
-catalog projection the code tests check the registry against. Files a sync tool left behind as
-conflict copies, whose names hold a space, are never read.
+counting it only when it defines both the `fires` and the `silent` test. Files a sync tool left
+behind as conflict copies, whose names hold a space, are never read.
 """
 
 from __future__ import annotations
@@ -13,8 +12,6 @@ from __future__ import annotations
 import ast
 import re
 from pathlib import Path
-
-from snowflake_semantic_tools.adapters.json_files import read_json_file
 
 _CODE = re.compile(r"SST-[A-Z]{3}\d{3}\Z")
 
@@ -59,23 +56,3 @@ def code_tests(codes_dir: Path, codes: tuple[str, ...]) -> dict[str, str]:
         if {f"{stem}_fires", f"{stem}_silent"} <= names:
             found[code] = path.relative_to(codes_dir.parent.parent).as_posix()
     return found
-
-
-def prechecks(catalog: Path) -> dict[str, str]:
-    """Return, by code, where the catalog says its condition can first be detected; empty without one.
-
-    `local` needs no connection, `observe` needs a read of Snowflake, and `runtime` is seen only
-    while a statement runs. A file that is absent, not a JSON list of rows, or beyond the size and
-    nesting `adapters.json_files` bounds reads as empty.
-    """
-    try:
-        rows = read_json_file(catalog)
-    except (OSError, ValueError):
-        return {}
-    if not isinstance(rows, list):
-        return {}
-    return {
-        str(row["code"]): str(row.get("precheck") or "")
-        for row in rows
-        if isinstance(row, dict) and isinstance(row.get("code"), str)
-    }

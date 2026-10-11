@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
 
 TITLE: str = "Validation"
 
@@ -254,6 +254,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "`sst enrich` finds a written `meta.sst.data_type` that differs from the relation's type, "
             "on a column dbt gives no `data_type`"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL328",

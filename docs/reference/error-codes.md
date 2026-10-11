@@ -31,6 +31,7 @@ cannot be downgraded by any setting.
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 22 codes
 - [Internal (INT)](#internal-int) -- 12 codes
+- [Retired numbers](#retired-numbers) -- 40 numbers
 
 ## Registry (REG)
 
@@ -180,7 +181,7 @@ Fix: add the placeholder to the code's params, or correct the template
 
 `'<code>' was retired in <version> and cannot be reused`
 
-Raised when a diagnostic code is registered under a number the 1.0 catalog retired.
+Raised when a diagnostic code is registered under a number `RETIRED_CODES` lists as retired.
 
 Fix: allocate the next free number in the band
 
@@ -7441,3 +7442,266 @@ Fix: report this as a bug
 Raised when rendering an artifact that validated raises an unexpected error, or apply meets a failure the plan should have recorded and did not.
 
 Fix: report this as a bug
+
+## Retired numbers
+
+A retired number is never raised and never reused, so an old log, baseline, or
+setting that names one still means what it meant.
+
+### SST-APL101
+
+**Rolled back after a smoke failure** (retired in 1.0.0)
+
+Retired because apply runs no smoke probes and never rolls back; smoke is its own suite, `sst test --suite smoke`.
+
+### SST-APL102
+
+**Smoke failed and the prior definition was not recoverable** (retired in 1.0.0)
+
+Retired because apply runs no smoke probes and never rolls back, so there is no prior definition to recover.
+
+### SST-CFG021
+
+**publish_via is not yaml or ddl** (retired in 1.0.0)
+
+Retired because `generation.publish_via` is removed: SST renders DDL directly.
+
+### SST-CFG022
+
+**publish_via incompatible with a declared feature** (retired in 1.0.0)
+
+Retired because `generation.publish_via` is removed, so there is one publish path for every feature.
+
+### SST-CFG024
+
+**spec_version is not recognised** (retired in 1.0.0)
+
+Retired because configuration carries no spec version to check.
+
+### SST-CFG026
+
+**dependency_order is incomplete or has unknown entries** (retired in 1.0.0)
+
+Retired because publish order comes from the artifact registry and the dependency graph, never from a setting.
+
+### SST-CFG027
+
+**Smoke queries disabled** (retired in 1.0.0)
+
+Retired because apply runs no smoke probes, so there is nothing to disable.
+
+### SST-CFG028
+
+**emit_relationship_type is enabled** (retired in 1.0.0)
+
+Retired because `generation.emit_relationship_type` is removed: relationship and join types are never rendered.
+
+### SST-CFG030
+
+**infer_is_enum is enabled** (retired in 1.0.0)
+
+Retired because there is no such setting; `sst enrich` writes `is_enum`.
+
+### SST-DBT007
+
+**meta.sst location disagrees with the dbt config** (retired in 1.0.0)
+
+Retired because `meta.sst.database` and `meta.sst.schema` are refused outright (SST-DBT030), so no copy is left to disagree.
+
+### SST-DBT008
+
+**meta.sst location is hardcoded** (retired in 1.0.0)
+
+Retired because the keys it warned against are refused outright (SST-DBT030).
+
+### SST-MAN021
+
+**state.manifest_id does not match the current manifest** (retired in 1.0.0)
+
+Retired because no run is refused over a manifest mismatch: each artifact is compared with its own state entry.
+
+### SST-MEM102
+
+**Member attached only through a legacy reference** (retired in 1.0.0)
+
+Retired because legacy `table()` and `column()` references are refused at parse, so no member can attach through one.
+
+### SST-PRS108
+
+**Role-playing occurrence has no distinct name** (retired in 1.0.0)
+
+Retired because role-playing tables are not supported.
+
+### SST-PRT007
+
+**dbt manifest schema version unsupported** (retired in 1.0.0)
+
+Retired because the manifest schema check belongs with the other dbt checks.
+
+Superseded by [`SST-DBT017`](#sst-dbt017).
+
+### SST-REF016
+
+**Two-argument ref used with a dbt cross-project idiom** (retired in 1.0.0)
+
+Retired because SST reads the dbt manifest, not model SQL, and in SST YAML a two-argument `ref` always names a model and a column, so a misread one is an unknown column (SST-REF002).
+
+### SST-REF017
+
+**Hardcoded fully-qualified name** (retired in 1.0.0)
+
+Retired because SST-VAL006 already reported the same condition, at validation, which sees the literal text.
+
+Superseded by [`SST-VAL006`](#sst-val006).
+
+### SST-REF021
+
+**Ref target is declared under both define and reference** (retired in 1.0.0)
+
+Retired because SST-CFG019 already reported the same condition, when configuration is validated.
+
+Superseded by [`SST-CFG019`](#sst-cfg019).
+
+### SST-REF024
+
+**Legacy table() reference does not resolve** (retired in 1.0.0)
+
+Retired because `table()` is refused at parse, so it never reaches resolution.
+
+Superseded by [`SST-REF034`](#sst-ref034).
+
+### SST-REF025
+
+**Legacy column() reference does not resolve** (retired in 1.0.0)
+
+Retired because `column()` is refused at parse, so it never reaches resolution.
+
+Superseded by [`SST-REF035`](#sst-ref035).
+
+### SST-REF038
+
+**Unknown project variable** (retired in 1.0.0)
+
+Retired because SST-CFG029 already reported an undeclared `var()`, wherever it appears.
+
+Superseded by [`SST-CFG029`](#sst-cfg029).
+
+### SST-REF200
+
+**table() is deprecated** (retired in 1.0.0)
+
+Retired because `table()` is refused, not deprecated; a warning would say it still works.
+
+Superseded by [`SST-REF034`](#sst-ref034).
+
+### SST-REF201
+
+**column() is deprecated** (retired in 1.0.0)
+
+Retired because `column()` is refused, not deprecated; a warning would say it still works.
+
+Superseded by [`SST-REF035`](#sst-ref035).
+
+### SST-SNO021
+
+**Unsupported clause for the publish path** (retired in 1.0.0)
+
+Retired because `generation.publish_via` is removed, so there is one publish path.
+
+### SST-VAL313
+
+**Primary key and unique keys overlap** (retired in 1.0.0)
+
+Retired because SST-VAL223 reports a primary-key column that is also declared unique.
+
+Superseded by [`SST-VAL223`](#sst-val223).
+
+### SST-VAL501
+
+**create_mode holds an unrecognised value** (retired in 1.0.0)
+
+Retired because `create_mode` is removed: an artifact is created when absent and updated by its type's rule.
+
+### SST-VAL502
+
+**create_mode and copy_grants combination is illegal** (retired in 1.0.0)
+
+Retired because `create_mode` and `copy_grants` are removed.
+
+### SST-VAL503
+
+**copy_grants is a no-op for this create mode** (retired in 1.0.0)
+
+Retired because `create_mode` and `copy_grants` are removed.
+
+### SST-VAL504
+
+**Replace would drop live grants** (retired in 1.0.0)
+
+Retired because how grants survive a replace is each artifact type's registered rule, not a setting to get wrong.
+
+### SST-VAL505
+
+**Replace would run without COPY GRANTS** (retired in 1.0.0)
+
+Retired because how grants survive a replace is each artifact type's registered rule, not a setting to get wrong.
+
+### SST-VAL620
+
+**Publishing an artifact type whose grant preservation is unprobed** (retired in 1.0.0)
+
+Retired because the artifact registry refuses a type that replaces its object without declaring grant handling (SST-REG021).
+
+### SST-VAL736
+
+**Selected verified queries are removed for the duration of a run** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL749
+
+**Analyst eval declares the wrong subject or source** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL750
+
+**Analyst eval declares more than one semantic view** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL751
+
+**Analyst eval requests a metric other than sql_correctness** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL752
+
+**min_verified_queries resolved per file instead of per view** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL753
+
+**Analyst gate is an absolute pass rate** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL754
+
+**A verified query was removed since the last run** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL756
+
+**Analyst eval run overlaps a regenerate of the same view** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL757
+
+**Analyst evals cannot colocate with their ground truth** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.

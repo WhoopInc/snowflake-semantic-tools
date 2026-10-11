@@ -7,7 +7,7 @@ instructions, skill sources, orchestration settings, profile, and versions.
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
 
 TITLE: str = "Validation"
 
@@ -22,6 +22,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "connected validation finds a secure agent's live object owned by a role other than the "
             "session's, so the round-trip comparison (SST-VAL509) is skipped"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL507",
@@ -33,6 +34,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "an agent is authored `secure: false` while its live object is secure and granted to a "
             "share or an application role"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL508",
@@ -41,6 +43,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "agent '{artifact}': tag '{field}' does not resolve to a tag object",
         "create the tag, or correct the name",
         condition="connected validation finds no tag object for a tag the agent sets",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL509",
@@ -52,6 +55,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "connected validation finds the live agent, which SST last published from this same "
             "definition, no longer matches the rendered spec: it was changed outside SST"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL510",
@@ -210,6 +214,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "connected validation finds a column a cortex_search tool marks searchable is a VECTOR "
             "column of the indexed relation, which Cortex Search cannot search"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL526",
@@ -271,6 +276,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "publish: the object a tool calls, an `extension()` skill source, or the version it pins; an "
             "extension SST cannot see reads as absent"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL532",
@@ -282,6 +288,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "connected validation finds the arity, names or types of the live routine a generic tool "
             "calls differ from the tool's `input_schema`"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL533",
@@ -293,6 +300,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "a generic tool's `identifier` resource key is not confirmed by the live agent's spec: "
             "the agent does not exist yet, or its live spec lacks the key"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL534",
@@ -305,6 +313,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "connected validation finds a tool's `query_timeout` greater than its warehouse's "
             "STATEMENT_TIMEOUT_IN_SECONDS; a warehouse timeout of 0 is no limit and never reported"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL535",
@@ -394,6 +403,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "A warning rather than an error: SST compares the extension's direct grantees only, "
             "without following the role hierarchy, so a role that inherits READ is still reported."
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL543",

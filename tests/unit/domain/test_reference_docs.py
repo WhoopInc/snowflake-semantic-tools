@@ -6,6 +6,8 @@ import re
 import pytest
 
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REFERENCE_URL, ERROR_REGISTRY, ErrorSpec, Severity
+from snowflake_semantic_tools.domain.diagnostics.core import Precheck
+from snowflake_semantic_tools.domain.diagnostics.specs.aliases import TOMBSTONES, Tombstone
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_SCHEMA, ConfigKey, KeyKind, KeyStatus
 from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
 from snowflake_semantic_tools.domain.render.reference_docs import (
@@ -66,8 +68,9 @@ def test_pages_cover_every_registry_entry() -> None:
 
 
 def test_every_help_url_names_a_heading_in_the_error_reference() -> None:
-    headings = set(re.findall(r"^### (SST-[A-Z]{3}\d{3})$", render_error_codes(), flags=re.MULTILINE))
-    assert headings == set(ERROR_REGISTRY)
+    live, retired = render_error_codes().split("\n## Retired numbers\n", 1)
+    assert set(re.findall(r"^### (SST-[A-Z]{3}\d{3})$", live, flags=re.MULTILINE)) == set(ERROR_REGISTRY)
+    assert set(re.findall(r"^### (SST-[A-Z]{3}\d{3})$", retired, flags=re.MULTILINE)) == set(TOMBSTONES)
     for code, spec in ERROR_REGISTRY.items():
         assert spec.help_url == f"{ERROR_REFERENCE_URL}#{error_anchor(code)}"
         assert _slug(code) == error_anchor(code)
@@ -122,14 +125,29 @@ def test_reference_pages_render_only_what_is_named_and_refuse_an_unknown_referen
 def test_coverage_lists_every_code_and_counts_what_is_missing() -> None:
     spec = ErrorSpec("SST-CFG001", Severity.ERROR, "T", "m", None, "CFG", "cfg", "url")
     other = dataclasses.replace(spec, code="SST-CFG002", severity=Severity.WARNING)
-    facts = {"SST-CFG001": CodeCoverage(("a.b", "a.c"), "tests/codes/cfg/test_sst_cfg001.py", "local")}
+    other = dataclasses.replace(other, precheck=Precheck.OBSERVE)
+    facts = {"SST-CFG001": CodeCoverage(("a.b", "a.c"), "tests/codes/cfg/test_sst_cfg001.py")}
     page = render_coverage(facts, {spec.code: spec, other.code: other})
     assert "- Codes: 2\n- Raised from no module: 1\n- Without a complete test file: 1\n" in page
     assert (
         "| [`SST-CFG001`](error-codes.md#sst-cfg001) | CFG | error | local | `a.b`<br>`a.c` "
         "| `tests/codes/cfg/test_sst_cfg001.py` |"
     ) in page
-    assert "| [`SST-CFG002`](error-codes.md#sst-cfg002) | CFG | warning | - | MISSING | MISSING |" in page
+    assert "| [`SST-CFG002`](error-codes.md#sst-cfg002) | CFG | warning | observe | MISSING | MISSING |" in page
+
+
+def test_a_retired_number_renders_why_and_what_took_it_over() -> None:
+    stone = Tombstone("SST-CFG998", "Gone", "SST-CFG001", "the `<key>` moved")
+    page = render_error_codes({}, {stone.code: stone}, {stone.code: "1.0.0"})
+    assert "- [Retired numbers](#retired-numbers) -- 1 numbers" in page
+    assert (
+        "### SST-CFG998\n\n**Gone** (retired in 1.0.0)\n\nRetired because the `<key>` moved.\n\n"
+        "Superseded by [`SST-CFG001`](#sst-cfg001)."
+    ) in page
+    bare = Tombstone("SST-CFG997", "Also gone", None, "nothing <replaced> it")
+    entry = render_error_codes({}, {bare.code: bare}, {}).split("### SST-CFG997", 1)[1]
+    assert "(retired)" in entry and "nothing &lt;replaced&gt; it" in entry and "Superseded" not in entry
+    assert "Retired numbers" not in render_error_codes({}, {}, {})
 
 
 def test_error_codes_refuse_a_subsystem_without_a_section() -> None:

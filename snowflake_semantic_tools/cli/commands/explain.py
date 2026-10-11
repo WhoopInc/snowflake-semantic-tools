@@ -73,6 +73,7 @@ def _data(explanation: Explanation, sites: tuple[str, ...]) -> dict[str, object]
         "raise_sites": list(sites),
         "retired": explanation.retired,
         "retired_in": explanation.retired_in,
+        "retired_reason": explanation.retired_reason,
         "superseded_by": explanation.superseded_by,
         "deprecated_in": explanation.deprecated_in,
     }
@@ -87,6 +88,7 @@ def _print(explanation: Explanation, sites: tuple[str, ...], *, show_aliases: bo
         click.echo(f"  now: {', '.join(alias.targets) or 'nothing; the condition is gone'}")
     elif explanation.retired:
         click.echo(f"  retired in {explanation.retired_in}; the number is never reused")
+        click.echo(f"  why: {explanation.retired_reason}")
         click.echo(f"  superseded by: {explanation.superseded_by or 'nothing; the condition is gone'}")
     else:
         flag = ", non-demotable" if explanation.non_demotable else ""

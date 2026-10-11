@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY
 from snowflake_semantic_tools.domain.diagnostics.explain import explain
 from snowflake_semantic_tools.domain.diagnostics.specs.aliases import ALIASES, TOMBSTONES
 from snowflake_semantic_tools.domain.diagnostics.specs.retired import RETIRED_CODES
@@ -44,7 +45,14 @@ def test_a_retired_number_answers_from_its_tombstone() -> None:
     assert explanation is not None
     assert explanation.retired
     assert (explanation.superseded_by, explanation.retired_in) == ("SST-DBT017", "1.0.0")
+    assert explanation.retired_reason == "the manifest schema check belongs with the other dbt checks"
     assert explanation.severity is None
+
+
+def test_every_tombstone_says_why_and_names_only_registered_successors() -> None:
+    for stone in TOMBSTONES.values():
+        assert stone.reason and not stone.reason.endswith("."), stone.code
+        assert stone.superseded_by is None or stone.superseded_by in ERROR_REGISTRY, stone.code
 
 
 def test_unknown_text_is_not_explained() -> None:

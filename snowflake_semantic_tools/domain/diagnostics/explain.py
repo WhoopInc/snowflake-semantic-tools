@@ -41,6 +41,7 @@ class Explanation:
             alias, the alias itself, whose `targets` are the 1.0 codes it was split into.
         superseded_by: The code a retired number's condition moved to; None when it moved nowhere.
         retired_in: The release that retired the number; None for any other kind.
+        retired_reason: Why the number was retired; None for any other kind.
     """
 
     code: str
@@ -59,6 +60,7 @@ class Explanation:
     aliases: tuple[AliasRow, ...] = ()
     superseded_by: str | None = None
     retired_in: str | None = None
+    retired_reason: str | None = None
 
     @property
     def retired(self) -> bool:
@@ -96,6 +98,7 @@ def explain(text: str) -> Explanation | None:
         aliases=_aliases_of(code),
         superseded_by=tombstone.superseded_by,
         retired_in=RETIRED_CODES.get(code),
+        retired_reason=tombstone.reason,
     )
 
 

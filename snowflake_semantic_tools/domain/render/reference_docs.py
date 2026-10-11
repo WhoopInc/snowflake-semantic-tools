@@ -17,6 +17,8 @@ from dataclasses import dataclass
 
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, ErrorSpec
 from snowflake_semantic_tools.domain.diagnostics.specs import SUBSYSTEMS
+from snowflake_semantic_tools.domain.diagnostics.specs.aliases import TOMBSTONES, Tombstone
+from snowflake_semantic_tools.domain.diagnostics.specs.retired import RETIRED_CODES
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_SCHEMA, ConfigKey, KeyKind, KeyStatus
 from snowflake_semantic_tools.domain.model.registry import (
     ARTIFACT_REGISTRY,
@@ -81,12 +83,10 @@ class CodeCoverage:
         raise_sites: The package modules that name the code outside the registry; empty when
             none does.
         test_file: The code's test file, when it holds both its `fires` and `silent` tests.
-        precheck: Where the condition can first be detected: `local`, `observe`, or `runtime`.
     """
 
     raise_sites: tuple[str, ...] = ()
     test_file: str | None = None
-    precheck: str = ""
 
 
 # Each reference `sst docs --only` names, and the page it is written to, in the order they render.
@@ -220,11 +220,20 @@ def _artifact_facts(artifact: ArtifactType) -> list[str]:
 # ------------------------------------------------------------------------- error codes
 
 
-def render_error_codes(registry: Mapping[str, ErrorSpec] = ERROR_REGISTRY) -> str:
+def render_error_codes(
+    registry: Mapping[str, ErrorSpec] = ERROR_REGISTRY,
+    tombstones: Mapping[str, Tombstone] = TOMBSTONES,
+    retired_in: Mapping[str, str] = RETIRED_CODES,
+) -> str:
     """Render the error code reference page: every code under its subsystem, with its message and any fix.
 
     Subsystems appear in `SUBSYSTEMS` order, each with its codes sorted; a subsystem with no
-    codes is left out.
+    codes is left out. The retired numbers follow, each with why it was retired and what took
+    its condition over, so the link `sst explain` prints for one has an entry to land on.
+
+    Args:
+        tombstones: The retired numbers, by code.
+        retired_in: The release that retired each number, by code.
 
     Raises:
         ValueError: a code belongs to a subsystem `SUBSYSTEMS` does not list, so the page would
@@ -259,11 +268,35 @@ def render_error_codes(registry: Mapping[str, ErrorSpec] = ERROR_REGISTRY) -> st
     for prefix in ordered:
         title = f"{SUBSYSTEMS[prefix]} ({prefix})"
         lines.append(f"- [{title}](#{_slug(title)}) -- {len(by_subsystem[prefix])} codes")
+    if tombstones:
+        lines.append(f"- [Retired numbers](#retired-numbers) -- {len(tombstones)} numbers")
     for prefix in ordered:
         lines.extend(("", f"## {SUBSYSTEMS[prefix]} ({prefix})"))
         for spec in sorted(by_subsystem[prefix], key=lambda item: item.code):
             lines.extend(_error_entry(spec))
+    if tombstones:
+        lines.extend(
+            (
+                "",
+                "## Retired numbers",
+                "",
+                "A retired number is never raised and never reused, so an old log, baseline, or",
+                "setting that names one still means what it meant.",
+            )
+        )
+        for code in sorted(tombstones):
+            lines.extend(_retired_entry(tombstones[code], retired_in.get(code)))
     return "\n".join(lines) + "\n"
+
+
+def _retired_entry(tombstone: Tombstone, release: str | None) -> list[str]:
+    when = f" (retired in {release})" if release else " (retired)"
+    entry = ["", f"### {tombstone.code}", "", f"**{_prose(tombstone.title)}**{when}", ""]
+    entry.append(f"Retired because {_prose(tombstone.reason)}.")
+    if tombstone.superseded_by:
+        successor = tombstone.superseded_by
+        entry.extend(("", f"Superseded by [`{successor}`](#{error_anchor(successor)})."))
+    return entry
 
 
 def _error_entry(spec: ErrorSpec) -> list[str]:
@@ -335,7 +368,7 @@ def render_coverage(coverage: Mapping[str, CodeCoverage], registry: Mapping[str,
         test = f"`{fact.test_file}`" if fact.test_file else "MISSING"
         lines.append(
             f"| [`{code}`](error-codes.md#{error_anchor(code)}) | {spec.subsystem} | {spec.severity.name.lower()} "
-            f"| {fact.precheck or '-'} | {sites} | {test} |"
+            f"| {spec.precheck.value} | {sites} | {test} |"
         )
     return "\n".join(lines) + "\n"
 

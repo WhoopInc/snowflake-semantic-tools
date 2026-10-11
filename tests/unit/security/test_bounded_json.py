@@ -17,7 +17,6 @@ import pytest
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.adapters import json_files
-from snowflake_semantic_tools.adapters.code_coverage import prechecks
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.baseline import read_baseline
@@ -127,13 +126,6 @@ def test_debug_reports_no_schema_for_a_crafted_dbt_manifest(tmp_path: Path, craf
     path.write_text(crafted, encoding="utf-8")
     reported = _manifest(locate_project(project_copy(tmp_path)), path, DbtSettings())
     assert (reported["schema_version"], reported["supported"]) == (None, None)
-
-
-@pytest.mark.parametrize("crafted", CRAFTED, indirect=True)
-def test_the_coverage_catalog_reads_as_empty_when_crafted(tmp_path: Path, crafted: str) -> None:
-    path = tmp_path / "catalog.json"
-    path.write_text(crafted, encoding="utf-8")
-    assert prechecks(path) == {}
 
 
 @pytest.mark.parametrize("depth", [json_files.MAX_JSON_DEPTH + 50, 50_000])

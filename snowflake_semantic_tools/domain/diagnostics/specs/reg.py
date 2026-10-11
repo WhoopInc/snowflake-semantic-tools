@@ -161,7 +161,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "'{code}' was retired in {version} and cannot be reused",
         "allocate the next free number in the band",
         demotable=False,
-        condition="a diagnostic code is registered under a number the 1.0 catalog retired",
+        condition="a diagnostic code is registered under a number `RETIRED_CODES` lists as retired",
     ),
     spec(
         "SST-REG018",

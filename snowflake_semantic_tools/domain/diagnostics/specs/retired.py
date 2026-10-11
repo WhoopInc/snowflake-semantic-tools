@@ -1,8 +1,9 @@
-"""Retired numbers: codes the 1.0 catalog withdrew, each with the release that withdrew it.
+"""Retired numbers: codes SST no longer raises, each with the release that retired it.
 
 A retired number is burned. It keeps its meaning in user configuration, baselines, and
 history, so `diagnostics.integrity` refuses to register it again (SST-REG017). A code is
-retired here, never deleted and reused.
+retired here, never deleted and reused; `specs/aliases.py` keeps, in `TOMBSTONES`, why it
+was retired and the code that took its condition over.
 """
 
 from __future__ import annotations

@@ -34,8 +34,8 @@ tests/
 │   ├── test_network_guard.py, test_environment_isolation.py  # what offline tests cannot reach
 │   ├── test_live_config.py, test_live_tooling.py, test_ci_tools.py  # live and CI tooling, offline
 │   └── test_*.py                # compile use case, manifest, renderer
-├── codes/                       # diagnostic codes against the 1.0 catalog: parity, emitted, tested (README.md)
-│   ├── catalog.json, allowlist/ # the catalog's declaration rows; shrink-only allowlists
+├── codes/                       # diagnostic-code guards: emitted, tested (README.md)
+│   ├── allowlist/               # shrink-only allowlists
 │   └── <area>/test_<code>.py    # a code's fires/silent pair
 ├── contract/                    # adapters against their ports: offline Snowflake ports, connector helpers, file stores, profile
 ├── contract_live/               # live: the real connector against the same port contract, in a scratch schema
@@ -92,7 +92,7 @@ When a change to rendered output is intended, run the golden suite to see the di
 
 ## Coverage and the code guards
 
-CI holds each layer to a coverage floor and to the ratchet in `coverage_baseline.json`, whose line and branch numbers per layer may rise but never fall; `python -m tests.helpers.coverage_ratchet raise --coverage-json coverage.json` locks in a rise. [CONTRIBUTING.md](../CONTRIBUTING.md#running-the-gates) gives the commands. `codes/` holds every diagnostic code to the 1.0 catalog; its allowlists are empty, and only shrink ([codes/README.md](codes/README.md)).
+CI holds each layer to a coverage floor and to the ratchet in `coverage_baseline.json`, whose line and branch numbers per layer may rise but never fall; `python -m tests.helpers.coverage_ratchet raise --coverage-json coverage.json` locks in a rise. [CONTRIBUTING.md](../CONTRIBUTING.md#running-the-gates) gives the commands. `codes/` requires every registered diagnostic code to be raised and tested both ways; its allowlists are empty, and only shrink ([codes/README.md](codes/README.md)).
 
 ## Live Tests
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
 
 TITLE: str = "Manifest and state"
 
@@ -66,6 +66,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "could not write {path}: {detail}",
         "check the filesystem permissions",
         condition="the manifest could not be persisted",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-MAN008",

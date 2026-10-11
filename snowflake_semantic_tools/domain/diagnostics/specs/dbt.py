@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
 
 TITLE: str = "dbt"
 
@@ -239,6 +239,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dbt parse exited {found}",
         "read dbt's own output above; the failure is in the dbt project",
         condition="the parse subprocess ran and reported failure",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-DBT029",
@@ -247,6 +248,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dbt parse exited 0 and {path} was not written",
         "check --project-dir and dbt's target-path; dbt wrote its manifest elsewhere",
         condition="the parse subprocess exited zero and the expected manifest is absent or unreadable",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-DBT030",

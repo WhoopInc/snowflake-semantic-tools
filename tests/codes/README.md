@@ -1,48 +1,38 @@
 # Diagnostic-code guards
 
-These tests hold the engine's diagnostic codes to the 1.0 error catalog. They are ordinary tests:
-`pytest tests/` runs them, and so does CI.
+These tests hold every code the engine registers to two promises: something raises it, and a
+test shows it firing and staying silent. They are ordinary tests: `pytest tests/` runs them, and
+so does CI.
 
 | Test | Guard |
 |------|-------|
-| `test_catalog_parity.py` | Every live catalog code is registered with the catalog's severity, non-demotable flag, title, message template, and suggestion; no retired code is registered; every registered code is in the catalog. |
 | `test_codes_emitted.py` | Every registered code is named, as a string constant, by some package module outside `domain/diagnostics/specs/`, and every code the package names is registered. A code mentioned only inside longer text, such as a docstring, does not count. |
 | `test_codes_tested.py` | Every registered code has a `test_<code>_fires` and a `test_<code>_silent` test somewhere under `tests/` outside `fixtures/` and `golden/`, such as `test_sst_cfg003_fires`. |
-| `test_guard_machinery.py` | The ratchet, the scans, and the catalog projection each fail on the shape they exist for. |
+| `test_guard_machinery.py` | The ratchet and the scans each fail on the shape they exist for. |
 
-## `catalog.json`
+## Where a code's contract lives
 
-The 1.0 error catalog's declaration rows: for each code, its area, number, severity (`RETIRED` for
-a burned number), whether it is non-demotable, its title, its message template, its suggestion,
-and where its condition is first observable (`precheck`). It is the source of truth for what a code means and how
-severe it is; when the engine disagrees, the engine is what changes, or the disagreement is listed
-in the allowlist below.
+The registry is the source of truth. Each code's `spec(...)` entry in
+[`domain/diagnostics/specs/`](../../snowflake_semantic_tools/domain/diagnostics/specs/) declares its
+severity, whether a setting may demote it, its title, message template, suggestion, when it is
+raised, and where its condition can first be detected (`precheck=`, `local` unless set). A retired
+number is listed in `specs/retired.py`, and `TOMBSTONES` in `specs/aliases.py` says why it was
+retired and which code took its condition over; the registry refuses to register it again
+(SST-REG017).
 
-It is generated, never edited by hand. When the catalog changes, extract its declaration rows to a
-JSON list and regenerate:
-
-```bash
-poetry run python -m tests.helpers.code_guards path/to/extracted-catalog.json
-```
-
-The projection keeps only the columns above, sorted by code. The catalog's rationale columns cite
-design documents that do not ship with this repository, so they are not committed, and the
-projection refuses any row whose kept columns would carry a planning identifier.
-
-The suggestion is projected mechanically (`public_suggestion`): the catalog's `--` reads as none, and
-the rationale its cell carries -- a parenthesised planning identifier, a bold aside, a pointer into
-the design documents, a backticked `<placeholder>` -- is removed, so the registered suggestion is
-exactly the projected one.
+`sst docs` renders all of it into [`docs/reference/error-codes.md`](../../docs/reference/error-codes.md)
+and [`docs/reference/coverage.md`](../../docs/reference/coverage.md), and CI fails on
+`sst docs --check` when either is stale, so a change to a code's contract shows up in review as a
+diff of those pages.
 
 ## Allowlists
 
-`allowlist/` lists, for each guard, the codes it tolerates and why: `catalog_divergence.json`,
-`unemitted.json`, and `untested.json`, each a JSON object of code to reason. All three are empty
-(`{}`): every registered code matches the catalog, is emitted, and has its fires/silent pair.
-Every allowlist only shrinks, so they stay empty. A guard fails on a gap that is not listed, on a
-listed reason that no longer describes the gap, and on a listed code that now conforms; the
-failure names the entry to remove or update. Never add an entry to make a guard pass: fix the code
-instead.
+`allowlist/` lists, for each guard, the codes it tolerates and why: `unemitted.json` and
+`untested.json`, each a JSON object of code to reason. Both are empty (`{}`): every registered code
+is emitted and has its fires/silent pair. Every allowlist only shrinks, so they stay empty. A guard
+fails on a gap that is not listed, on a listed reason that no longer describes the gap, and on a
+listed code that now conforms; the failure names the entry to remove or update. Never add an entry
+to make a guard pass: fix the code instead.
 
 ## Writing a fires/silent pair
 

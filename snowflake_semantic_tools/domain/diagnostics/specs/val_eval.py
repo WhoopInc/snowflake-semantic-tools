@@ -6,7 +6,7 @@ judge prompts and scoring ranges, thresholds, and baselines.
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
 
 TITLE: str = "Validation"
 
@@ -139,6 +139,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "SST mints a dataset as the session's role, so this means ownership moved since, by a "
             "future grant or by hand. Apply as the owning role, or transfer ownership back."
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL714",
@@ -180,6 +181,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "the rendered run config has a top-level `dataset:` block while the dataset already exists, "
             "so every run would try to create it again and fail; the eval is blocked"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL717",
@@ -226,6 +228,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "an eval run finds its `agent_version` does not resolve on the live agent: `committed` "
             "names its LAST alias, `alias:<name>` that alias, and neither points at a version"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL721",
@@ -314,6 +317,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "no further than 16 roles, to the primary role. Grant the privilege to the primary role, or "
             "to a role it inherits."
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL728",
@@ -331,6 +335,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "role hierarchy up from their holders; a grant at the database or account level is not "
             "seen."
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL729",
@@ -343,6 +348,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "(`apply.eval_config_stage.stage`, default EVAL_CONFIGS) declares another file format, "
             "which EXECUTE_AI_EVALUATION cannot read the YAML through"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL730",
@@ -354,6 +360,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "an attempt ends INVOCATION_PARTIALLY_COMPLETED or PARTIALLY_COMPLETED and "
             "`run.accept_statuses` lists that status; reported even when a retry completed"
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-VAL731",
@@ -536,6 +543,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "a baseline is captured; one per system metric, naming the version its judge was recorded "
             "under, so a later score shift can be explained"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL747",
@@ -574,6 +582,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "Snowflake does not coordinate the two, so SST serialises them through the target lock. "
             "Run the evals again once the operation holding the lock finishes."
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL758",
@@ -583,6 +592,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "capture a baseline explicitly with a reason",
         condition="the eval gate finds no baseline stored for the eval on this target; the gate has no signal",
         note='Capture one: `sst test --suite evals --capture-baseline --reason "<why>"`.',
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-VAL759",
@@ -600,6 +610,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             'baseline: `sst test --suite evals --capture-baseline --reason "<why>"`. An edited custom '
             "metric is SST-VAL745 instead."
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-VAL760",
@@ -610,6 +621,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "the eval gate finds the baseline expires within 7 days; a baseline expires 30 days after its capture"
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-VAL761",
@@ -620,6 +632,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         demotable=False,
         condition=("the eval gate finds the baseline is 30 or more days old; the gate has no signal"),
         note='Capture a replacement: `sst test --suite evals --capture-baseline --reason "<why>"`.',
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-VAL762",
@@ -644,5 +657,6 @@ SPECS: tuple[ErrorSpec, ...] = (
             "A report-tier eval lists the same regressions without this error, so its run passes. The "
             "tier is `run.tier`, else `evals.+eval_tier`, else report."
         ),
+        precheck=Precheck.RUNTIME,
     ),
 )
