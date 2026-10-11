@@ -92,6 +92,77 @@ blocks each agent that stages on it when it cannot be used:
 - A tool from a `reference:` group resolves through its `relations:` map; a
   target the map does not cover is an error rather than a fall-through.
 
+## Privilege problems
+
+### Snowflake says an object does not exist or is not authorized
+
+Snowflake answers the same way for an object that is absent and for one the
+role may not see, so the message alone does not say which. Check in this order:
+
+- **It is absent.** The artifact has not been applied to this target, or the
+  dbt model has not been built there. `sst plan` shows the first as a create,
+  and blocks a change that names a relation the target does not hold
+  (`SST-PLN007`) rather than let apply fail on it (`SST-SNO003`).
+- **It is somewhere else.** The target resolves to another database or schema
+  than the one you looked in; see
+  [the entry above](#it-went-to-the-wrong-database-or-schema). Under
+  `--defer-target`, dbt models resolve to the other target's relations.
+- **The role lacks `USAGE` on the database or the schema.** Without both, every
+  object inside reads as absent, whatever the role holds on the object itself.
+  Plan reports a database or schema it cannot see as `SST-PLN011` or
+  `SST-PLN010`, and a warehouse as `SST-PLN012`.
+- **The privilege is on a database role your role does not hold.** A grant to
+  a database role reaches a session only once that database role is granted to
+  the session's role, or to a role it inherits. `SHOW GRANTS TO ROLE <role>`
+  lists the database roles a role holds, and `SHOW GRANTS ON <type> <name>`
+  who holds the object.
+
+Drawn from: [plan preflight](../../snowflake_semantic_tools/domain/plan/preflight.py), [preflight reads](../../snowflake_semantic_tools/app/preflight.py), [plan diagnostics](../../snowflake_semantic_tools/domain/diagnostics/specs/pln.py), [Snowflake error diagnostics](../../snowflake_semantic_tools/domain/diagnostics/specs/sno.py).
+
+### It works in a worksheet and fails in an eval run
+
+A session can draw on its secondary roles as well as its primary role, but a
+task runs as the primary role alone, and an eval runs as tasks. A privilege
+held only through a secondary role therefore works interactively and fails in
+the run. `sst test --suite evals` checks `CREATE TASK`, `CREATE STAGE`, and
+`CREATE FILE FORMAT` on each agent's schema before any run starts:
+`SST-VAL727` when only a secondary role holds one, `SST-VAL728` when no role in
+the session does. Grant them to the primary role, or to a role it inherits;
+SST follows the role hierarchy, database roles included, from the schema's
+grants, and does not see a grant made at the database or account level.
+
+Drawn from: [eval privileges](../../snowflake_semantic_tools/app/evals/privileges.py), [eval diagnostics](../../snowflake_semantic_tools/domain/diagnostics/specs/val_eval.py).
+
+### How SST reports a missing privilege
+
+`sst plan` reads what each write needs before deciding, and blocks a change it
+can show Snowflake would refuse, so apply does not fail part-way:
+
+| Code | What plan found | Grant |
+|---|---|---|
+| [`SST-PLN008`](../reference/error-codes.md#sst-pln008) | no role in the session holds, or owns the schema for, the `CREATE` privilege a create needs; or, for an agent, `CREATE STAGE` for an absent spec stage, or `READ` and `WRITE` on an existing one | that privilege on the schema or stage |
+| [`SST-PLN010`](../reference/error-codes.md#sst-pln010), [`SST-PLN011`](../reference/error-codes.md#sst-pln011) | a schema or database the plan writes to that does not exist or the role cannot see | `USAGE`, or create it |
+| [`SST-PLN012`](../reference/error-codes.md#sst-pln012) | the profile's warehouse does not exist or the role cannot see it | `USAGE` on the warehouse |
+| [`SST-PLN001`](../reference/error-codes.md#sst-pln001) | a read the plan needs failed, such as the state table or an object's grants | check the role and the connection |
+| [`SST-VAL020`](../reference/error-codes.md#sst-val020) (info) | a check skipped because the role may not make its read | optional; see [operating SST](security.md#operating-sst) |
+
+`SST-PLN008` reads the schema's grants to account roles and asks whether each
+holder is in the session. A privilege granted to a database role is not
+counted, so a role that holds a `CREATE` privilege only through a database role
+is reported. An update is not checked for its own `CREATE` privilege: it
+replaces an object the role already owns.
+
+Two warnings concern the people who use an agent rather than the role that
+publishes it: `SST-VAL616`, a consumer without `USAGE` on an object a tool
+calls, and `SST-VAL542`, one without `READ` on an extension the agent pins (see
+[what people who use an agent need](security.md#what-people-who-use-an-agent-need)).
+A statement Snowflake still refuses is reported with its cause:
+`SST-SNO003` for an object that does not exist or is not authorised,
+`SST-SNO004` for insufficient privileges, and `SST-PRT004` for a refusal
+outside the changes apply makes.
+
+Drawn from: [plan preflight](../../snowflake_semantic_tools/domain/plan/preflight.py), [preflight reads](../../snowflake_semantic_tools/app/preflight.py), [connector preflight](../../snowflake_semantic_tools/adapters/snowflake/connector/preflight.py), [connector session](../../snowflake_semantic_tools/adapters/snowflake/connector/session.py), [live-object checks](../../snowflake_semantic_tools/app/compile/agents/observe.py).
+
 ## A column that does not exist was not caught
 
 - The expression uses a raw identifier instead of `{{ ref('model', 'column') }}`.

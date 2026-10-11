@@ -106,7 +106,8 @@ and computes is still the author's, and runs with the target's role.
   `target-path` outside it (`SST-PRT009`). A verified query's `sql_file:` that climbs out of
   the project, is absolute, or is or passes through a symbolic link is refused and never read
   (`SST-PRT009`); so is a tool's `body_file:`, which is read relative to the project. A
-  `define:` member whose body is refused is also reported as missing (`SST-LOD018`).
+  `define:` member whose body is refused is reported once, as that refusal, and does not
+  compile; one whose file is merely absent is `SST-LOD018`.
 - **Checksums are read from the project only.** The input checksums a manifest records skip
   every symbolic link, and every file reached through one, as the loaders refuse them, so no
   checksum is read from outside the project.
@@ -191,5 +192,52 @@ before (see [state and ownership](../concepts.md#state-and-ownership)).
   [troubleshooting](troubleshooting.md#a-command-hangs-while-signing-in)).
 - **Pin what CI runs.** Install SST at an exact version, pin each action by commit SHA, and
   let a dependency bot propose updates.
+
+## What people who use an agent need
+
+SST publishes an agent and the objects its tools call, and grants nobody access to any of
+them; whoever administers the account's roles does. Snowflake checks each call with the
+caller's role, so a person needs `USAGE` on the agent and on the database and schema that
+hold it, and access to what each of its tools reaches:
+
+| Tool or source | What the caller's role needs |
+|---|---|
+| `cortex_search` | `USAGE` on the Cortex Search service |
+| `generic` | `USAGE` on the procedure or function |
+| `agent` | `USAGE` on the agent it delegates to |
+| a skill or plugin the agent pins | `READ` on the Cortex Extension |
+| `cortex_analyst_text_to_sql` | the privileges Snowflake requires to query the semantic view |
+
+Snowflake's [Cortex Agents documentation](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents)
+is the full list, including what a role needs to use Cortex at all and the warehouse each
+tool runs on.
+
+**What SST checks.** With connected validation on, `sst validate` and `sst plan` read the
+grants on the live agent and treat as its consumers the session's role and every role
+granted `USAGE` on it. Each consumer that holds neither `USAGE` nor `OWNERSHIP` on an object a
+tool calls that SST does not publish -- a `reference:` member, or another project's agent --
+is a warning (`SST-VAL616`), and so is each one without `READ` or `OWNERSHIP` on an
+extension the agent pins (`SST-VAL542`). Both compare an object's direct grantees only and do
+not follow the role hierarchy, so a role that holds the privilege through another role is
+reported too. An agent not yet published has no grants to read, so only the session's role
+is checked. Semantic views and the objects `define:` publishes are not checked.
+
+**When a caller lacks a tool.** What the agent does then is Snowflake's behaviour, chosen by
+`spec.orchestration.tool_not_accessible` (`accept`, `reject`, or `legacy`) or
+`agents.+tool_not_accessible`. SST writes the value into the specification as given and
+leaves it out when neither sets one, so set it to keep the behaviour in the project.
+
+**An eval shows one role's view.** An eval runs as the session's primary role (see
+[operating SST](#operating-sst)), so a passing eval says what the agent answers for that
+role, not for a consumer who holds less.
+
+**Publishing keeps the access consumers have.** An agent is never replaced, so its grants
+survive every publish. A procedure, function, or semantic view is replaced with
+`COPY GRANTS`. A Cortex Search service has no such clause: apply reads its explicit grants,
+re-issues them after the replace, and checks that all are back (`SST-APL009`); until they
+are, its grantees cannot use it, which `SST-VAL619` warns of beforehand. None of this adds a
+grant the object did not hold.
+
+Drawn from: [live-object checks](../../snowflake_semantic_tools/app/compile/agents/observe.py), [agent tool resolution](../../snowflake_semantic_tools/app/compile/agents/resolve_tools.py), [agent renderer](../../snowflake_semantic_tools/domain/render/agent.py), [agent diagnostics](../../snowflake_semantic_tools/domain/diagnostics/specs/val_agent.py), [tool diagnostics](../../snowflake_semantic_tools/domain/diagnostics/specs/val_tool.py), [tool renderer](../../snowflake_semantic_tools/domain/render/tool.py).
 
 Report a vulnerability as [SECURITY.md](../../SECURITY.md) describes.
