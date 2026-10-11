@@ -332,6 +332,27 @@ Each command lives in its own module under `snowflake_semantic_tools/cli/command
 - A removed flag stays as a hidden option that refuses with what replaces it, as `cli/commands/enrich.py` does for the 0.3 flags.
 - Run `poetry run sst docs` to regenerate `docs/reference/cli.md` (and `config.md` for a new key), and commit the pages.
 
+### Exit codes
+
+A pipeline branches on the exit code without reading the output, so each code has one meaning, declared in `cli/exit_codes.py` and rendered into the CLI reference:
+
+| Code | Meaning |
+|---:|---|
+| 0 | The run succeeded; for `sst plan`, nothing to change. |
+| 1 | The project was read and something in it is wrong: an error diagnostic, a failed apply, test suite, or check, a statement Snowflake rejected, a file SST could not write, or an internal error. |
+| 2 | Declared and actual state differ: `plan`, `diff`, `enrich --check`, `format --check`, `docs --check`, or `migrate refs` found a difference. |
+| 3 | The command line is refused. |
+| 4 | The project, its configuration, or a saved plan cannot be used. |
+| 5 | Snowflake would not cooperate: a failed login or dropped connection (SST-PRT001), a refused privilege, or a missed deadline. |
+| 130 | The run was interrupted (Ctrl-C, SIGTERM, SIGHUP) or a confirmation was declined. |
+
+- **2 reports a difference; it is not a failure.** A command that asserts never returns it: `validate` and `test` exit 1 when an assertion fails, a golden mismatch included. `--no-detailed-exitcode` turns 2 into 0 on `plan`, `diff`, `enrich`, `format`, and `docs`.
+- **Usage errors exit 3, not click's default 2**, so 2 always means a difference. `cli/group.py` sets the exit code of click's usage errors to 3 and reports each as a diagnostic; a bad value read from an environment variable is a configuration error, exit 4, since the command line itself was fine.
+- **1, 4, and 5 are split by how far the run got,** which tells the reader what to fix: 4, the setup (the run could not use the project, its configuration, or a saved plan); 1, the project; 5, the account (retry, or fix the grants). A manifest SST could not obtain is 4 even when `dbt parse` ran and failed (SST-DBT028): no model was read, and 5 is for Snowflake alone. `cli/runner.py` maps each exception to its code in one place, and `snowflake_failure` decides between 1 and 5 for a Snowflake error.
+- **An interrupt is 130**, never an internal error, from any point in the run.
+
+`tests/unit/cli/test_exit_codes.py` holds the contract: `EXIT_CODES` lists the codes each command may return, every case is a real invocation, and CI runs it as its own step. A new failure path lands in an existing code; changing what a code means is a breaking change.
+
 ### Building SQL
 
 Every statement SST sends to Snowflake is an `Sql` value from `snowflake_semantic_tools.domain.sql`. `Sql` is sealed: constructing one outside that package raises `TypeError`. A statement is composed with `sql("<constant template>", name=<Sql part>, ...)`, where each part comes from a constructor that quotes or refuses its input (`ident`, `qname`, `literal`, `number`, `keyword` from a closed vocabulary, `datatype`, `dollar_quoted`, `guard_expression`, and the rest of the package's exports), and `join` takes a constant separator. The connector turns an `Sql` into text only at the driver boundary (`Sql.for_driver`).
