@@ -1,11 +1,11 @@
 """Observe what Snowflake holds for a plan: each object of the planned types, its marker and grants.
 
 `observe` lists each artifact type's objects in every schema the targets name, once per
-schema, reading an object's grants only when the plan may replace it, and its definition only
-when asked to capture it. A failed read is reported and observation goes on, so one missing
-privilege never hides the rest. Every listing is one unit a `Fanout` may run on a session of
-its own, and then so are the reads of each object listed; both are merged in the order they
-would run one at a time, each listing followed by the reads of what it lists.
+schema, reading an object's grants, and a semantic view's tags, only when the plan may replace
+it, and its definition only when asked to capture it. A failed read is reported and observation
+goes on, so one missing privilege never hides the rest. Every listing is one unit a `Fanout` may
+run on a session of its own, and then so are the reads of each object listed; both are merged in
+the order they would run one at a time, each listing followed by the reads of what it lists.
 """
 
 from __future__ import annotations
@@ -35,6 +35,8 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 _FoldedName = tuple[str, str, str]
 # One listing: an artifact type's objects of one object type in one schema.
 _Unit = tuple[ArtifactType, str, SchemaScope]
+# The object types whose replace drops every tag it does not name (docs/design/snowflake-behaviour.md).
+_TAGS_REPLACED = frozenset(("SEMANTIC VIEW",))
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +45,9 @@ class ObserveOptions:
 
     Attributes:
         grants: Read the grants of each object the plan may replace, one SHOW GRANTS each, so
-            the plan can report what a replace would drop; `plan --no-grants` turns it off.
+            the plan can report what a replace would drop, and for a semantic view its tags, one
+            TAG_REFERENCES read each, so the plan can report the tags a replace would remove;
+            `plan --no-grants` turns both off.
         capture_prior: Read the current definition of each object a rendered artifact names,
             as `plan --capture-prior` asks: one GET_DDL each, or for an agent one SHOW
             VERSIONS IN AGENT; `app.prior` says what each kind's definition is.
@@ -87,7 +91,8 @@ def observe(
         options: Which per-object reads to make, as `ObserveOptions` says.
 
     Diagnostics:
-        SST-PLN001: listing an object type in a schema, or reading an object's grants, failed.
+        SST-PLN001: listing an object type in a schema, or reading an object's grants or tags,
+            failed.
         SST-PLN037: under `capture_prior`, reading an object's definition failed; the
             observation is otherwise whole.
     """
@@ -154,11 +159,14 @@ def _observe_row(
     desired: Mapping[_FoldedName, RenderedArtifact],
     options: ObserveOptions,
 ) -> tuple[ObservedArtifact, tuple[Diagnostic, ...]]:
-    """Observe one listed object: its marker, its grants and definition, and an agent's versions."""
+    """Observe one listed object: its marker, its grants, tags and definition, and an agent's versions."""
     desired_artifact = desired.get(row.qualified_name.folded)
     key = artifact_key(artifact_type.name, row.qualified_name.artifact_component)
     grants, diagnostics = (
         _replaceable_grants(port, artifact_type, object_type, row, desired_artifact) if options.grants else (None, ())
+    )
+    tags, tag_diagnostics = (
+        _replaced_tags(port, artifact_type, object_type, row, desired_artifact) if options.grants else ((), ())
     )
     # One SHOW VERSIONS read serves both the update program and the agent's captured prior.
     versions = port.observe_agent_versions(row.qualified_name) if object_type == "AGENT" else AgentVersions()
@@ -178,8 +186,9 @@ def _observe_row(
         definition=definition,
         has_live_version=versions.has_live_version,
         aliases=versions.aliases,
+        tags=tags,
     )
-    return artifact, (*diagnostics, *definition_diagnostics)
+    return artifact, (*diagnostics, *tag_diagnostics, *definition_diagnostics)
 
 
 def _replaceable_grants(
@@ -200,3 +209,21 @@ def _replaceable_grants(
     except SnowflakePortError as exc:
         return None, (D("SST-PLN001", value=f"grants on {row.qualified_name.sql}", detail=str(exc)),)
     return tuple(sorted(grants)), ()
+
+
+def _replaced_tags(
+    port: CatalogPort,
+    artifact_type: ArtifactType,
+    object_type: str,
+    row: ShowRow,
+    desired_artifact: RenderedArtifact | None,
+) -> tuple[tuple[str, ...], tuple[Diagnostic, ...]]:
+    """Read the tags on a semantic view this plan may replace; empty when they are not read or cannot be."""
+    # A replace keeps only the tags its WITH TAG names, so they matter for the same objects
+    # grants do; only a semantic view is replaced that way.
+    if object_type not in _TAGS_REPLACED or not artifact_type.replaces_on_update or desired_artifact is None:
+        return (), ()
+    try:
+        return port.tag_references(object_type, row.qualified_name), ()
+    except SnowflakePortError as exc:
+        return (), (D("SST-PLN001", value=f"tags on {row.qualified_name.sql}", detail=str(exc)),)

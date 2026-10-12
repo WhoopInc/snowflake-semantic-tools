@@ -113,9 +113,11 @@ class Upload:
 
 @dataclass(frozen=True, slots=True)
 class DesiredMetadata:
-    """The version alias and tags an agent keeps; an update unsets every other one it observes.
+    """The version alias and tags an artifact keeps.
 
-    Both compare casefolded with what Snowflake shows.
+    An agent's update unsets every other alias and tag it observes; a semantic view's replace
+    sets exactly these tags, so plan warns about any other one the view carries. Both compare
+    casefolded with what Snowflake shows.
 
     Attributes:
         alias: The one version alias to keep; None keeps none.

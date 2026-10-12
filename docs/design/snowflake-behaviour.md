@@ -316,7 +316,9 @@ inline in the `CREATE`, and
 `tags` key's summary to that. No test
 proves that the replace drops tags set outside it. The consequence for users is
 that every apply leaves a view with exactly the tags the project declares, and a
-governance tag applied by hand is gone after the next apply. Probe:
+governance tag applied by hand is gone after the next apply. Plan reads the
+tags on each view it may replace, alongside its grants, and warns of each one
+the project does not declare (`SST-PLN039`). Probe:
 
 ```sql
 -- Create probe_view, then:
@@ -329,6 +331,7 @@ SELECT * FROM TABLE(<db>.INFORMATION_SCHEMA.TAG_REFERENCES(
 
 **SST depends on it at**: `_trailing_clauses` in
 [semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py);
+`_removed_tags` in [classify.py](../../snowflake_semantic_tools/domain/plan/classify.py);
 the `tags:` key in [the semantic views guide](../guides/semantic-views.md).
 
 ## Agents

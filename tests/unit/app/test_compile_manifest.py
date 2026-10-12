@@ -13,6 +13,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Metric,
     SemanticView,
     Table,
+    Tag,
     VerifiedQuery,
 )
 from snowflake_semantic_tools.domain.state import MANIFEST_SCHEMA_VERSION
@@ -62,6 +63,17 @@ def test_compiled_view_uses_dimension_probe_and_rejects_view_without_public_memb
     )
     with pytest.raises(ValueError, match="no public dimension or metric"):
         _ = CompiledView(private_only, statement("CREATE SEMANTIC VIEW DB.S.PRIVATE_V")).rendered_artifact
+
+
+def test_a_compiled_view_declares_the_tags_its_replace_sets_as_the_renderer_spells_them() -> None:
+    view = SemanticView(
+        "DB.S.V",
+        (Table("T", "DB.S.T"),),
+        metrics=(Metric("M", authored("COUNT(1)"), "T"),),
+        tags=(Tag("gov.t.pii", "yes"), Tag('GOV."t".OWNER', "me")),
+    )
+    rendered = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS")).rendered_artifact
+    assert rendered.desired_tags == ("GOV.T.PII", 'GOV."t".OWNER')
 
 
 def test_manifest_builder_records_sources_members_and_diagnostics() -> None:

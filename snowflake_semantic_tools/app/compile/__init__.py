@@ -32,7 +32,13 @@ from snowflake_semantic_tools.app.compile.base import (
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
-from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    DesiredMetadata,
+    OwnershipMarker,
+    ProbeKind,
+    RenderedArtifact,
+    SmokeProbe,
+)
 from snowflake_semantic_tools.domain.model.semantic_view import Metric, SemanticView
 from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
 from snowflake_semantic_tools.domain.render.semantic_view import render, render_checked
@@ -215,6 +221,9 @@ class CompiledView(CompiledArtifact):
             ddl=ddl,
             smoke=tuple(probes),
             required_relations=tuple(QualifiedName.parse(table.fqn) for table in self.view.tables),
+            # The tags `WITH TAG` sets, as the renderer spells them, so plan can tell which tags on
+            # the live view a replace removes.
+            metadata=DesiredMetadata(tags=tuple(QualifiedName.parse(tag.name).sql for tag in self.view.tags)),
         )
 
 

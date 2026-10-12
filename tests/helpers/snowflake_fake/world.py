@@ -105,6 +105,10 @@ class SnowflakeWorld:
         # SHOW's rows by (object type upper-cased, `SchemaScope.sql`); `show` files rows here.
         self.objects: dict[tuple[str, str], tuple[ShowRow, ...]] = dict(objects or {})
         self.grants: dict[str, tuple[GrantRow, ...]] = dict(grants or {})
+        # The tags set on each object, by qualified name, as TAG_REFERENCES lists them; and each
+        # object whose tags were read, in order.
+        self.tags: dict[str, tuple[str, ...]] = {}
+        self.tag_reads: list[str] = []
         self.markers: dict[str, OwnershipMarker | None] = dict(markers or {})
         # The type of each object named here, by qualified name: a marker read under another
         # type finds nothing, as SHOW <type> LIKE lists no object of a different type.

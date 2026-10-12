@@ -45,6 +45,13 @@ class FakeCatalog(SnowflakeWorld):
             )
         return self.grants.get(qualified_name.sql, ())
 
+    def tag_references(self, object_type: str, qualified_name: QualifiedName) -> tuple[str, ...]:
+        self._check("tag_references")
+        if " ".join(object_type.upper().split()) != "SEMANTIC VIEW":
+            raise SnowflakePortError(f"tags are read only on a semantic view, not on {object_type.upper()}")
+        self.tag_reads.append(qualified_name.sql)
+        return tuple(sorted(self.tags.get(qualified_name.sql, ())))
+
     def describe_marker(
         self,
         qualified_name: QualifiedName,

@@ -26,7 +26,7 @@ cannot be downgraded by any setting.
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
-- [Planning (PLN)](#planning-pln) -- 38 codes
+- [Planning (PLN)](#planning-pln) -- 39 codes
 - [Apply (APL)](#apply-apl) -- 29 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 22 codes
@@ -6514,6 +6514,18 @@ Raised when under `sst plan --capture-prior`, reading the current definition of 
 Fix: grant the role REFERENCES or OWNERSHIP on the object, or plan without --capture-prior
 
 Note: The plan is otherwise unaffected: the change is planned as without the flag, and its `prior_definition` is null.
+
+### SST-PLN039
+
+**Live view carries tags that a replace would remove** (warning)
+
+`<artifact>: replacing <value> removes tags the project does not declare: <found>`
+
+Raised when a planned update replaces a semantic view that carries tags the project does not declare.
+
+Fix: declare each tag to keep under the view's `tags:`, or set it again after applying
+
+Note: The replace's `WITH TAG` names only the declared tags, and Snowflake removes every other tag set on the view; a tag it inherits from its schema or database is kept. `--no-grants` skips the read of the view's tags, and with it this warning.
 
 ### SST-PLN100
 

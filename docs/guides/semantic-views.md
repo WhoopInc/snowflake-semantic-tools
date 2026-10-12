@@ -66,7 +66,9 @@ semantic_views:
   (`SST-PRS026`). A tag is its entry's `fqn:`, else `default_prefix` and its
   name in upper case; an entry with no `fqn:` is an error when the block sets
   no `default_prefix` or its key is dotted (`SST-CFG036`). They render inline
-  as `WITH TAG (...)`.
+  as `WITH TAG (...)`. Apply replaces the view, which removes any tag on it that
+  `tags:` does not declare, such as one set by hand, and plan warns about each
+  first (`SST-PLN039`).
 - A folder route's `+max_staleness` and `+tags` apply to a view that sets
   neither key; `+enabled` applies to one that does not set `enabled`.
 - `enabled: false` keeps a view in the project without publishing it.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
@@ -594,3 +595,55 @@ def test_an_unchanged_agent_is_not_blocked_by_an_unplanned_pinned_version() -> N
     )
     result = build_changeset({agent.key: agent}, observation, manifest, state, SEMANTIC_REGISTRY, target())
     assert [(change.key, change.action) for change in result.changes] == [(agent.key, Action.NOOP)]
+
+
+def test_only_a_replaced_semantic_view_warns_of_the_tags_it_removes() -> None:
+    view = replace(rendered("v"), desired_tags=("DB.SCH.KEEP",))
+    agent = _versioned("agent:analyst", "agent")
+    manifest, _ = context({view.key: view, agent.key: agent}, {})
+    state = State(
+        STATE_SCHEMA_VERSION,
+        target(),
+        manifest.manifest_id,
+        "cfg",
+        None,
+        MappingProxyType({item.key: applied(item, manifest.manifest_id) for item in (view, agent)}),
+    )
+
+    def planned(stale: bool) -> tuple[tuple[Action, ...], list[str]]:
+        # A stale marker plans an update of both; a current one leaves both unchanged.
+        def seen(item: RenderedArtifact, object_type: str) -> ObservedArtifact:
+            fingerprint = "f" * 64 if stale else item.fingerprint
+            marker = OwnershipMarker(manifest.manifest_id, fingerprint)
+            return replace(live(item, marker=marker, object_type=object_type), tags=("DB.SCH.KEEP", "DB.SCH.HAND"))
+
+        observation = SnowflakeObservation(
+            MappingProxyType({view.key: seen(view, "SEMANTIC VIEW"), agent.key: seen(agent, "AGENT")}), "now"
+        )
+        recorded = (
+            state
+            if not stale
+            else replace(
+                state,
+                applied=MappingProxyType(
+                    {
+                        item.key: replace(applied(item, manifest.manifest_id), fingerprint="f" * 64)
+                        for item in (view, agent)
+                    }
+                ),
+            )
+        )
+        result = build_changeset(
+            {view.key: view, agent.key: agent}, observation, manifest, recorded, SEMANTIC_REGISTRY, target()
+        )
+        return tuple(change.action for change in result.changes), [
+            item.message for item in result.diagnostics if item.code == "SST-PLN039"
+        ]
+
+    # An agent's update unsets the tags itself, so only the view's replace warns, and only the
+    # tag the project does not declare.
+    assert planned(True) == (
+        (Action.UPDATE, Action.UPDATE),
+        ["semantic_view:v: replacing DB.SCH.V removes tags the project does not declare: DB.SCH.HAND"],
+    )
+    assert planned(False) == ((Action.NOOP, Action.NOOP), [])
