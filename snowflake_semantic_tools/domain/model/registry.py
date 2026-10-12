@@ -168,19 +168,22 @@ MEMBER_OWNING_TYPES = frozenset({"semantic_view"})
 # Every template function some resolver in the package handles: `domain.resolve.template` for
 # `ref`, `metric`, `var`, `custom_instructions` and tags, refusing the legacy `table` and
 # `column`, and for `filter`, `relationship` and `verified_query` in custom-instruction text;
-# the semantic loader for `custom_instructions` entries; the agent loader for `file`, `skill`,
-# `plugin` and a skill source's `extension`; agent tool resolution for `semantic_view`, `tool`
-# and `agent`; and the eval config reader for `eval_metric`.
+# the semantic loader for `custom_instructions` entries and a table entry's `source`; the agent
+# loader for `file`, `skill`, `plugin` and a skill source's `extension`; agent tool resolution for
+# `semantic_view`, `tool` and `agent`; and the eval config reader for `eval_metric`.
 RESOLVED_FUNCTIONS = frozenset(
     {
-        *("ref", "table", "column", "metric", "var", "tag", "custom_instructions", "file"),
+        *("ref", "table", "column", "source", "metric", "var", "tag", "custom_instructions", "file"),
         *("eval_metric", "semantic_view", "tool", "agent", "skill", "plugin", "extension"),
         *("filter", "relationship", "verified_query"),
     }
 )
-# Resolved functions that address something outside this registry: dbt models and columns,
-# project variables and files, tags, the shared eval metrics, and extensions published elsewhere.
-NON_ARTIFACT_FUNCTIONS = frozenset({"ref", "table", "column", "var", "tag", "file", "eval_metric", "extension"})
+# Resolved functions that address something outside this registry: dbt models, columns and
+# sources, project variables and files, tags, the shared eval metrics, and extensions published
+# elsewhere.
+NON_ARTIFACT_FUNCTIONS = frozenset(
+    {"ref", "table", "column", "source", "var", "tag", "file", "eval_metric", "extension"}
+)
 # Artifact types nothing references, by design: an eval and a profile are leaves, so they need
 # no template function. Named rather than inferred, so a type that forgot one still fails.
 DELIBERATELY_UNREFERENCED = frozenset({"eval", "profile"})

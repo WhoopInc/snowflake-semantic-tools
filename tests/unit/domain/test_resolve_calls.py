@@ -56,8 +56,19 @@ def test_a_legacy_call_is_located_at_the_call_even_without_an_origin() -> None:
 
 
 def test_every_function_names_its_arity() -> None:
-    assert len(KNOWN_FUNCTIONS) == 18
-    assert (accepted_arity("ref"), accepted_arity("tool"), accepted_arity("tag")) == ((1, 2), (2,), (1,))
+    assert len(KNOWN_FUNCTIONS) == 19
+    assert (accepted_arity("ref"), accepted_arity("source"), accepted_arity("tool"), accepted_arity("tag")) == (
+        (1, 2),
+        (2,),
+        (2,),
+        (1,),
+    )
+
+
+def test_a_source_call_outside_a_table_entry_is_refused_as_not_allowed_there() -> None:
+    (call,) = scan_template_calls("x + {{ source('raw', 'orders') }}")
+    found = call_problem(call, EXPRESSION, ORIGIN, field="expr", artifact="metric:m")
+    assert found is not None and found.code == "SST-REF041"
 
 
 @pytest.mark.parametrize(

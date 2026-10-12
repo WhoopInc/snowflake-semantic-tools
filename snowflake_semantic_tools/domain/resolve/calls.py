@@ -37,6 +37,7 @@ KNOWN_FUNCTIONS: frozenset[str] = frozenset(
         "relationship",
         "semantic_view",
         "skill",
+        "source",
         "table",
         "tag",
         "tool",
@@ -46,7 +47,7 @@ KNOWN_FUNCTIONS: frozenset[str] = frozenset(
 )
 
 # The argument counts a function accepts; a function not listed takes one name.
-_ARITY: Mapping[str, tuple[int, ...]] = MappingProxyType({"ref": (1, 2), "tool": (2,)})
+_ARITY: Mapping[str, tuple[int, ...]] = MappingProxyType({"ref": (1, 2), "source": (2,), "tool": (2,)})
 
 
 def accepted_arity(function: str) -> tuple[int, ...]:
