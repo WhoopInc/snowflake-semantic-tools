@@ -163,8 +163,18 @@ def test_a_guarded_subprocess_holds_the_guard_without_pytest(tmp_path: Path) -> 
 
 def test_a_subprocess_that_cannot_install_the_guard_fails_loudly(tmp_path: Path) -> None:
     hook = network_guard.guarded_environment(os.environ)["PYTHONPATH"].split(os.pathsep)[0]
-    # The guard directory alone: the child cannot import `tests.helpers.network_guard`.
-    environment = {**os.environ, network_guard.GUARD_VARIABLE: "1", "PYTHONPATH": hook}
+    # A stub `tests.helpers.network_guard` that cannot be imported, ahead of site-packages, where
+    # an editable install would otherwise make the real one importable.
+    stub = tmp_path / "stub" / "tests" / "helpers"
+    stub.mkdir(parents=True)
+    (stub.parent / "__init__.py").write_text("", encoding="utf-8")
+    (stub / "__init__.py").write_text("", encoding="utf-8")
+    (stub / "network_guard.py").write_text("raise ImportError('no guard in this interpreter')\n", encoding="utf-8")
+    environment = {
+        **os.environ,
+        network_guard.GUARD_VARIABLE: "1",
+        "PYTHONPATH": os.pathsep.join((hook, str(tmp_path / "stub"))),
+    }
     done = subprocess.run(
         [sys.executable, "-c", "print('ran unguarded')"],
         cwd=tmp_path,
