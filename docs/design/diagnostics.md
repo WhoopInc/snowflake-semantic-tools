@@ -165,8 +165,11 @@ and `apply` refuses a plan that holds a blocked change (`SST-APL003`).
 When a diagnostic is reported because of another, it names that code in `caused_by`, and its cause
 must be in the same run (`SST-INT008` otherwise). A caused diagnostic downgraded to info is a
 cascade: the human output counts it instead of showing it unless `--show-cascade` is given, the
-envelope counts it under `summary.suppressed_cascade`, and no severity override applies to it. A
-producer makes one with `cascade`, which names the cause and downgrades the diagnostic unless its
+envelope counts it under `summary.suppressed_cascade`, and `--show-info` does not show it. A severity
+override that promotes the code above its declared severity reaches its cascades too: the
+diagnostic reports at the override, counts at that severity, and, no longer info, is no longer a
+cascade, so `SST-MEM107: warning` shows every member a poisoned reference skipped. An override that
+keeps or lowers the code leaves its cascades at info. A producer makes one with `cascade`, which names the cause and downgrades the diagnostic unless its
 code is non-demotable. `SST-MEM107` is a cascade of the first unresolved reference of the member
 it skips. A caused diagnostic keeps its severity unless it is downgraded: `SST-MEM005`, raised
 beside `SST-VAL205` for a relationship no view covers, names its cause and is still a warning.
@@ -179,6 +182,7 @@ Drawn from: [poison.py](../../snowflake_semantic_tools/adapters/yaml/semantic/po
 [membership_request.py](../../snowflake_semantic_tools/domain/resolve/membership_request.py),
 [relationships.py](../../snowflake_semantic_tools/adapters/yaml/semantic/relationships.py),
 [\_\_init\_\_.py](../../snowflake_semantic_tools/domain/diagnostics/__init__.py),
+[policy.py](../../snowflake_semantic_tools/domain/diagnostics/policy.py),
 [cli/output.py](../../snowflake_semantic_tools/cli/output.py).
 
 ## Identity
@@ -227,7 +231,8 @@ replaced by one reporting `SST-PRT012`.
 
 The human output lists every diagnostic the envelope does, shaped by the visibility flags: info,
 baselined, and cascade diagnostics are counted rather than shown unless `--show-info`,
-`--show-baselined`, or `--show-cascade` asks for them, four or more of one code collapse to the
+`--show-baselined`, or `--show-cascade` asks for them (a cascade is info, but only `--show-cascade`
+shows it), four or more of one code collapse to the
 first three unless `--show-all-occurrences`, and `--quiet` shows errors only. None of it changes the
 exit code, and its layout may change between releases. A script reads the envelope.
 

@@ -302,7 +302,8 @@ def D(
 def cascade(diagnostic: Diagnostic, cause: str) -> Diagnostic:
     """Return `diagnostic` as a cascade of the code `cause`: caused by it, and downgraded to INFO.
 
-    A cascade is counted rather than shown unless asked for, and no override applies to it. A
+    A cascade is counted rather than shown unless asked for. Only an override that promotes its
+    code reaches it, and the promoted diagnostic is no longer a cascade (`policy`). A
     non-demotable code names its cause and keeps its severity, since nothing may lower it.
     """
     if not ERROR_REGISTRY[diagnostic.code].demotable:
