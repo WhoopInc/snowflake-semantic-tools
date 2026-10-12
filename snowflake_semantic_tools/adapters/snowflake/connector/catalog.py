@@ -67,9 +67,14 @@ _GET_DDL_TYPES: Mapping[str, str] = {
     "TAG": "TAG",
 }
 _ROUTINE_TYPES = frozenset(("PROCEDURE", "FUNCTION"))
-# How TAG_REFERENCES names the domain of each type whose tags are read: only a semantic view's,
-# which a replace without WITH TAG removes (docs/design/snowflake-behaviour.md).
-_TAG_DOMAINS: Mapping[str, str] = {"SEMANTIC VIEW": "SEMANTIC_VIEW"}
+# The object_domain TAG_REFERENCES is asked for a semantic view's tags. UNVERIFIED against a
+# live account: the documented domain list has no semantic-view entry, and says 'TABLE' is for
+# all table-like objects such as views, so 'TABLE' is sent. The probe in
+# docs/design/snowflake-behaviour.md must confirm it before a release.
+_SEMANTIC_VIEW_TAG_DOMAIN = "TABLE"
+# The domain of each type whose tags are read: only a semantic view's, which a replace without
+# WITH TAG removes (docs/design/snowflake-behaviour.md).
+_TAG_DOMAINS: Mapping[str, str] = {"SEMANTIC VIEW": _SEMANTIC_VIEW_TAG_DOMAIN}
 # The levels a tag set on a parent shows at; a replace of the object keeps such a tag.
 _PARENT_TAG_LEVELS = frozenset(("DATABASE", "SCHEMA"))
 

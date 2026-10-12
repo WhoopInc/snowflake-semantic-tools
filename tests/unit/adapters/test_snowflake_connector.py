@@ -843,9 +843,9 @@ def test_tag_references_name_each_tag_set_on_a_view_and_leave_out_inherited_ones
     session = FakeDriverSession(rows={"SELECT * FROM TABLE(DB.INFORMATION_SCHEMA.TAG_REFERENCES": rows})
     connector = FakeDriverConnector(session)
     assert connector.tag_references("semantic view", QualifiedName.parse("DB.S.V")) == ('GOV."t".OWNER', "GOV.T.PII")
-    assert session.statements == [
-        "SELECT * FROM TABLE(DB.INFORMATION_SCHEMA.TAG_REFERENCES('DB.S.V', 'SEMANTIC_VIEW'))"
-    ]
+    # The documented domain for a table-like object; unverified for a semantic view against a
+    # live account (docs/design/snowflake-behaviour.md).
+    assert session.statements == ["SELECT * FROM TABLE(DB.INFORMATION_SCHEMA.TAG_REFERENCES('DB.S.V', 'TABLE'))"]
     with pytest.raises(SnowflakePortError, match="tags are read only on a semantic view, not on AGENT"):
         connector.tag_references("AGENT", QualifiedName.parse("DB.S.A"))
     assert len(session.statements) == 1
