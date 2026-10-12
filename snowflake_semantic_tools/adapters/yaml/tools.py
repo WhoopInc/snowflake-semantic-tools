@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import posixpath
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
@@ -13,6 +14,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import optional_string, refus
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosition
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.tool import (
     CREATION_KEYS,
@@ -88,6 +90,7 @@ def load_tool_catalog(
         try:
             parsed = parse_yaml_bytes(path.read_bytes(), relative)
             loaded = dict(parsed.tree)
+            lines = parsed.line_index
             diagnostics.extend(parsed.diagnostics)
         except ProjectError as exc:
             diagnostics.extend(exc.diagnostics)
@@ -101,7 +104,9 @@ def load_tool_catalog(
             )
             continue
         diagnostics.extend(
-            unknown_field(str(key), TOOLS_FILE_KEYS, artifact=relative, origin=Origin(relative, 1, 1))
+            unknown_field(
+                str(key), TOOLS_FILE_KEYS, artifact=relative, origin=_key_origin(relative, lines, (str(key),))
+            )
             for key in unknown_keys(loaded, TOOLS_FILE_KEYS)
         )
         raw_groups = loaded.get("tools")
@@ -111,7 +116,7 @@ def load_tool_catalog(
             )
             continue
         for group_index, raw_group in enumerate(raw_groups):
-            group, group_diagnostics = _parse_group(project_dir, relative, group_index, raw_group)
+            group, group_diagnostics = _parse_group(project_dir, relative, lines, group_index, raw_group)
             diagnostics.extend(group_diagnostics)
             if group is not None:
                 groups.append(group)
@@ -142,16 +147,28 @@ def _aliased_relations(catalog: ToolCatalog, dbt: DbtCatalog) -> tuple[Diagnosti
     return tuple(found)
 
 
+def _key_origin(
+    source_file: str, lines: Mapping[NodePath, SourcePosition], path: NodePath, fallback: Origin | None = None
+) -> Origin:
+    """Where the key at `path` is written; else `fallback`, or the file's start."""
+    position = lines.get(path)
+    if position is not None:
+        return Origin(source_file, position.line, position.col)
+    return fallback or Origin(source_file, 1, 1)
+
+
 def _parse_group(
     project_dir: Path,
     source_file: str,
+    lines: Mapping[NodePath, SourcePosition],
     index: int,
     value: object,
 ) -> tuple[ToolGroup | None, tuple[Diagnostic, ...]]:
     """Read one `tools:` entry into a group and its members, `define:` before `reference:`.
 
     The group and what it reports point at line `index + 1` of the file: its place in the
-    list, not where it is written. Its name is kept as written.
+    list, not where it is written; an unknown key points where `lines` says it is written.
+    Its name is kept as written.
 
     Returns:
         The group, None when the entry is not a mapping or names no group; with what reading the
@@ -179,7 +196,12 @@ def _parse_group(
         return None, (D("SST-PRS002", artifact=f"tools[{index}]", field="group", origin=origin),)
     members: list[ToolMember] = []
     diagnostics: list[Diagnostic] = [
-        unknown_field(str(key), TOOL_GROUP_KEYS, artifact=f"tool_group:{name}", origin=origin)
+        unknown_field(
+            str(key),
+            TOOL_GROUP_KEYS,
+            artifact=f"tool_group:{name}",
+            origin=_key_origin(source_file, lines, ("tools", index, str(key)), origin),
+        )
         for key in unknown_keys(value, TOOL_GROUP_KEYS)
     ]
     for ownership in ToolOwnership:
@@ -202,6 +224,8 @@ def _parse_group(
             member, member_diagnostics = _parse_member(
                 project_dir,
                 source_file,
+                lines,
+                ("tools", index, ownership.value),
                 name,
                 ownership,
                 member_index,
@@ -227,6 +251,8 @@ def _parse_group(
 def _parse_member(
     project_dir: Path,
     source_file: str,
+    lines: Mapping[NodePath, SourcePosition],
+    parent: NodePath,
     group: str,
     ownership: ToolOwnership,
     index: int,
@@ -234,7 +260,8 @@ def _parse_member(
 ) -> tuple[ToolMember | None, tuple[Diagnostic, ...]]:
     """Read one member of a group's `define:` or `reference:` list; None when it lacks a name or type.
 
-    It points at line `index + 1` of the file: its place in its list. YAML 1.1 reads an unquoted
+    It points at line `index + 1` of the file: its place in its list; an unknown key points
+    where `lines` says it is written, below `parent`, its list's path. YAML 1.1 reads an unquoted
     `on:` key as `true`, so that key counts as `on:`. `body_file:` is read relative to the
     project root, as a project walk reads a file; one refused is None, as is one unreadable,
     which `validate_tool_catalog` reports for a `define:` member. An explicit `search_column` or
@@ -271,7 +298,12 @@ def _parse_member(
     if diagnostics:
         return None, tuple(diagnostics)
     diagnostics.extend(
-        unknown_field(str(key), TOOL_MEMBER_KEYS, artifact=artifact_key("tool", str(name)), origin=origin)
+        unknown_field(
+            str(key),
+            TOOL_MEMBER_KEYS,
+            artifact=artifact_key("tool", str(name)),
+            origin=_key_origin(source_file, lines, (*parent, index, str(key)), origin),
+        )
         for key in unknown_keys((key for key in value if key is not True), TOOL_MEMBER_KEYS)
     )
     on_model, search_column, attributes = _on_fields(value.get("on", value.get(True)), origin, str(name), diagnostics)

@@ -216,7 +216,7 @@ tools:
         target_lags: 1 hour
 """,
     )
-    assert found == [("SST-PRS022", "tool:docs_search: unknown field 'target_lags'; did you mean 'target_lag'?", 1)]
+    assert found == [("SST-PRS022", "tool:docs_search: unknown field 'target_lags'; did you mean 'target_lag'?", 9)]
 
 
 def test_an_unknown_group_or_root_key_is_reported_and_unquoted_on_is_not(tmp_path: Path) -> None:
@@ -236,7 +236,7 @@ tools:
     )
     assert found == [
         ("SST-PRS004", "tools/platform.yml: unknown field 'version'", 1),
-        ("SST-PRS004", "tool_group:platform: unknown field 'colour'", 1),
+        ("SST-PRS004", "tool_group:platform: unknown field 'colour'", 4),
     ]
     assert (
         _unknown(
