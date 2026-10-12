@@ -245,20 +245,18 @@ modules = [
 
 # Round-trip YAML editing lives in adapters.roundtrip, which the dbt and yaml adapters use to
 # write files in place. Every module is covered and the importers are an allow-list, so a new
-# module that reaches for ruamel breaks this contract wherever it sits. The dbt adapter is
-# allowed but imports ruamel only through roundtrip today; an allow-list entry that matches
-# nothing can only fail closed, so it is not reported.
+# module that reaches for ruamel breaks this contract wherever it sits. The dbt adapter edits
+# through roundtrip and is not on the list: an entry no import matches would let one through
+# unnoticed, and import-linter reports any such entry.
 [[tool.importlinter.contracts]]
-name = "only roundtrip and the yaml and dbt adapters import ruamel"
+name = "only roundtrip and the yaml adapter import ruamel"
 type = "forbidden"
 source_modules = ["snowflake_semantic_tools"]
 forbidden_modules = ["ruamel"]
 ignore_imports = [
     "snowflake_semantic_tools.adapters.roundtrip -> ruamel",
     "snowflake_semantic_tools.adapters.yaml.** -> ruamel",
-    "snowflake_semantic_tools.adapters.dbt.** -> ruamel",
 ]
-unmatched_ignore_imports_alerting = "none"
 allow_indirect_imports = true
 
 # YAML is parsed at the edge that owns the file, through adapters.bounded_yaml, the

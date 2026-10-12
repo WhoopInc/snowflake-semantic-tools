@@ -293,7 +293,7 @@ Imports run one way, `cli` → (`app` | `adapters`) → `domain`:
 - `adapters` may use domain models and ports, but not `domain/render`.
 - The adapter subpackages `yaml`, `dbt`, `snowflake`, and `fs` never import one another, so each can be replaced and tested alone; a top-level adapter module such as `project_source.py` composes them.
 - Only `adapters/yaml` (SST's own files), `adapters/dbt` (dbt's), and `adapters/bounded_yaml.py` (the depth-bounded loader both parse through) import `yaml`; everything else reaches YAML through them.
-- Only `adapters/roundtrip.py` and the `yaml` and `dbt` adapters edit YAML in place with `ruamel`.
+- Only `adapters/roundtrip.py` and the `yaml` adapter import `ruamel`; the `dbt` adapter edits YAML in place through `roundtrip.py`.
 
 `poetry run lint-imports` enforces these as eight contracts in `pyproject.toml`, and `tests/unit/test_ring_boundaries.py` proves that each contract rejects a crossing and that the package root holds nothing else:
 
@@ -305,7 +305,7 @@ Imports run one way, `cli` → (`app` | `adapters`) → `domain`:
 | SST never imports dbt -- it runs the executable | no module imports `dbt` |
 | adapters use domain ports and models, not domain renderers | `adapters` never imports `domain.render` |
 | adapter subpackages are independent | `adapters.yaml`, `.dbt`, `.snowflake`, `.fs` never import one another |
-| only roundtrip and the yaml and dbt adapters import ruamel | no other module imports `ruamel` directly |
+| only roundtrip and the yaml adapter import ruamel | no other module imports `ruamel` directly |
 | only bounded_yaml and the yaml and dbt adapters import PyYAML | no other module imports `yaml` directly |
 
 ### Diagnostics
