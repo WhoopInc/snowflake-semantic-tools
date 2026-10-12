@@ -37,7 +37,7 @@ class FakePreflight(SnowflakeWorld):
 
     def missing_role_privileges(self, role: str, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
         self._check("missing_role_privileges")
-        lacking = self.preflight.role_lacking.get(scope.sql, ())
+        lacking = (*self.preflight.role_lacking.get(scope.sql, ()), *self.preflight.lacking.get(scope.sql, ()))
         return tuple(privilege for privilege in privileges if privilege in lacking)
 
     def locked_objects(self, scope: SchemaScope) -> tuple[QualifiedName, ...]:

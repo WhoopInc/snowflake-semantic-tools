@@ -51,7 +51,8 @@ class PreflightAnswers:
     lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # What no role in the session holds on a stage, by the stage's `QualifiedName.sql`.
     stage_lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
-    # What the session's primary role lacks by itself and through its hierarchy, by schema.
+    # What the session's primary role lacks by itself and through its hierarchy, by schema, on
+    # top of `lacking`: what no role in the session holds, the primary role lacks too.
     role_lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
     locked: dict[str, tuple[QualifiedName, ...]] = field(default_factory=dict)
     references: dict[str, tuple[QualifiedName, ...]] = field(default_factory=dict)

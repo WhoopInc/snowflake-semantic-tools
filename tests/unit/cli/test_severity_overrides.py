@@ -24,9 +24,9 @@ def _project(tmp_path: Path, overrides: dict[str, str], *, duplicate: bool = Fal
     if overrides:
         lines = "".join(f"    {code}: {severity}\n" for code, severity in overrides.items())
         config = project / "sst_config.yml"
-        config.write_text(
-            config.read_text(encoding="utf-8") + f"\ndiagnostics:\n  severity_overrides:\n{lines}", encoding="utf-8"
-        )
+        # The fixture already overrides a code; these join its block.
+        block = "diagnostics:\n  severity_overrides:\n"
+        config.write_text(config.read_text(encoding="utf-8").replace(block, block + lines, 1), encoding="utf-8")
     return project
 
 

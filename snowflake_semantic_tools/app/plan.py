@@ -325,8 +325,9 @@ class PreparePlan:
 
         Steps, in order:
 
-        1. Validate the selection, with connected checks when the settings ask for them;
-           without `validate`, take the compile's diagnostics as they are.
+        1. Validate the selection, with connected checks when the settings ask for them, and
+           each extension an agent consumes looked up whenever plan is connected; without
+           `validate`, take the compile's diagnostics as they are.
         2. With `--partial`, split again on what validation reported, narrow the selection
            to what is still healthy, and build the manifest of what is; otherwise refuse on
            an error.
@@ -560,14 +561,19 @@ def _validation(
     readers: Fanout[PlanReadPort] | None,
     overrides: Mapping[str, Severity],
 ) -> DiagnosticBag:
-    """Validate the selection, connected when the settings ask for it; return what validation reported."""
+    """Validate the selection, connected when the settings ask for it; return what validation reported.
+
+    With a port and the connected checks off, each extension an agent consumes is still looked up:
+    Snowflake accepts an agent whose reference dangles, so plan is where it is caught.
+    """
     live = port if candidates.connected else None
     return (
-        ValidateArtifacts(live, catalog=live, target=target.name, readers=readers if candidates.connected else None)
+        ValidateArtifacts(live, catalog=port, target=target.name, readers=readers if candidates.connected else None)
         .run(
             candidates.selected,
             strict=candidates.strict,
             connected=candidates.connected,
+            references=True,
             overrides=overrides,
             reaches=strict_reach(candidates.scope.selection),
         )

@@ -10,7 +10,7 @@ from snowflake_semantic_tools.app.manifest import manifest_for
 from snowflake_semantic_tools.app.plan import PlanCandidates, PlanReady, PlanScope, PreparePlan
 from snowflake_semantic_tools.app.preflight import read_preflight
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ChangeReason,
@@ -24,7 +24,8 @@ from snowflake_semantic_tools.domain.plan.preflight import Preflight
 from snowflake_semantic_tools.domain.ports.project import ValidationDefaults
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
-from tests.helpers.agent_stage import staged_agent
+from tests.helpers.agent_stage import STAGE as AGENT_STAGE
+from tests.helpers.agent_stage import plan_agents, staged_agent
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import change, rendered
 from tests.helpers.clocks import FixedClock
@@ -32,6 +33,8 @@ from tests.helpers.compile_builders import compiled, with_diagnostics
 from tests.helpers.plan_codes import entry, live, manifest_of, plan, state_of, view
 from tests.helpers.project_inputs import EMPTY_SOURCES, InMemoryProjectInputs, dev_target
 from tests.helpers.snowflake_fake import FakeSnowflake
+from tests.helpers.snowflake_fake.driver import FakeDriverConnector
+from tests.helpers.snowflake_fake.grants import GrantGraph
 
 EVERYTHING = PlanScope((), None, None, None, None, False)
 
@@ -269,7 +272,7 @@ def test_a_reference_read_that_fails_for_another_reason_is_still_a_failed_read()
 
 def test_a_schema_or_privilege_read_refused_leaves_the_write_unblocked() -> None:
     port = FakeSnowflake()
-    port.refuse("schema_exists", "missing_privileges")
+    port.refuse("schema_exists", "missing_role_privileges")
     sales = view("sales")
     preflight, failures = read_preflight(
         port, {sales.key: sales}, _observation(), state_of(manifest_of()), dev_target(), include_prune=False
@@ -405,3 +408,85 @@ def test_observation_rows_still_reach_the_plan() -> None:
         state_table=STATE_TABLE,
     )
     assert isinstance(ready, PlanReady)
+
+
+def _granted(graph: GrantGraph) -> FakeSnowflake:
+    """The fake, its privilege reads answered by the real connector over `graph`."""
+    connector = FakeDriverConnector(graph.session())
+
+    class Granted(FakeSnowflake):
+        def missing_privileges(self, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
+            return connector.missing_privileges(scope, privileges)
+
+        def missing_role_privileges(
+            self, role: str, scope: SchemaScope, privileges: tuple[str, ...]
+        ) -> tuple[str, ...]:
+            return connector.missing_role_privileges(role, scope, privileges)
+
+        def missing_stage_privileges(self, stage: QualifiedName, privileges: tuple[str, ...]) -> tuple[str, ...]:
+            return connector.missing_stage_privileges(stage, privileges)
+
+    port = Granted()
+    port.stage_types[AGENT_STAGE.sql] = "INTERNAL NO CSE"
+    return port
+
+
+def _agent_grants() -> GrantGraph:
+    """An agent schema whose spec stage only a secondary role in the session may read and write."""
+    graph = GrantGraph(SchemaScope.from_qualified_name(AGENT_STAGE)).in_session("TEST_ROLE", "SECONDARY")
+    return graph.on_stage("AGENT_SPECS", "READ", role="SECONDARY").on_stage("AGENT_SPECS", "WRITE", role="SECONDARY")
+
+
+def test_a_create_privilege_counts_through_the_primary_role_s_hierarchy() -> None:
+    graph = _agent_grants().on_schema("CREATE AGENT", role="BUILDER").role_to("BUILDER", role_to="TEST_ROLE")
+    [created] = plan_agents(_granted(graph), staged_agent("a")).changes
+    # READ and WRITE on the stage are not CREATE privileges, so the secondary role's count.
+    assert created.action is Action.CREATE and created.diagnostics == ()
+
+
+def test_a_create_privilege_only_a_secondary_role_holds_blocks_the_create_and_says_so() -> None:
+    graph = _agent_grants().on_schema("CREATE AGENT", role="SECONDARY")
+    [blocked] = plan_agents(_granted(graph), staged_agent("a")).changes
+    assert blocked.action is Action.BLOCKED
+    assert [(item.code, item.message) for item in blocked.diagnostics] == [
+        (
+            "SST-PLN008",
+            "TEST_ROLE lacks CREATE AGENT (only a secondary role in the session holds it, and a CREATE uses "
+            "the primary role) on DB.S",
+        )
+    ]
+    [unheld] = plan_agents(_granted(_agent_grants()), staged_agent("a")).changes
+    assert [item.message for item in unheld.diagnostics] == ["TEST_ROLE lacks CREATE AGENT on DB.S"]
+
+
+def test_a_primary_role_that_cannot_be_read_counts_every_role_in_the_session() -> None:
+    port = FakeSnowflake()
+    port.refuse("current_role", "missing_role_privileges")
+    port.preflight.lacking["DB.SCH"] = ("CREATE SEMANTIC VIEW",)
+    sales = view("sales")
+    preflight, failures = read_preflight(
+        port, {sales.key: sales}, _observation(), state_of(manifest_of()), dev_target(), include_prune=False
+    )
+    assert [item.message.split(" failed")[0] for item in failures] == ["observation of the current role"]
+    assert preflight.missing_privileges == {("DB", "SCH"): ("CREATE SEMANTIC VIEW",)}
+    assert preflight.secondary_privileges == {}
+
+
+def test_a_session_read_refused_leaves_what_the_primary_role_lacks_unexplained() -> None:
+    port = FakeSnowflake()
+    port.refuse("missing_privileges")
+    port.preflight.role_lacking["DB.SCH"] = ("CREATE SEMANTIC VIEW",)
+    sales = view("sales")
+    preflight, failures = read_preflight(
+        port,
+        {sales.key: sales},
+        _observation(),
+        state_of(manifest_of()),
+        replace(dev_target(), role="DEPLOYER"),
+        include_prune=False,
+    )
+    assert [item.message.split(" failed")[0] for item in failures] == ["observation of grants on schema DB.SCH"]
+    assert preflight.missing_privileges == {("DB", "SCH"): ("CREATE SEMANTIC VIEW",)}
+    assert preflight.secondary_privileges == {}
+    # The profile's role names the role in the message; CURRENT_ROLE() is what the walk climbs to.
+    assert preflight.role == "DEPLOYER"

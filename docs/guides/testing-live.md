@@ -197,7 +197,8 @@ runs. So the order is: build the dbt models in `verify`, compile and apply again
 that build wrote, then run the suite; the committed `tests/fixtures/reference_project_manifest.json`
 is dbt's for `dev`, and its refs name `SST_REF_DEV`. Apply with `--no-strict`: the fixture keeps
 warnings on purpose, and a connected check reports each object it references but does not
-publish as `SST-VAL531` when it is absent. Those `verify` relations name stand-ins under
+publish as `SST-VAL531` when it is absent, which the fixture's `diagnostics.severity_overrides`
+demotes to a warning. Those `verify` relations name stand-ins under
 `SST_REF_VERIFY`, because a relation is a literal name and cannot follow `DATABASE`; no eval
 question reaches them. The fixture's
 `verify` target signs in with `SST_TEST_SNOWFLAKE_AUTHENTICATOR` (default `externalbrowser`) and

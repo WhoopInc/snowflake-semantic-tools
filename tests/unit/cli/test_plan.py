@@ -350,8 +350,11 @@ def test_capture_prior_reads_every_published_kind_without_failing_the_plan(
     port = published_target(project, payload)
     targets = {str(item["artifact_key"]): str(item["target"]) for item in payload["data"]["changes"]}
     for key, target in targets.items():
-        if key.startswith(("semantic_view:", "tool:")):
+        if key.startswith("tool:"):
             port.definitions[target] = f"create or replace {key}"
+        if key.startswith("semantic_view:"):
+            # A view's GET_DDL text in the restorable form, which the capture keeps as it is.
+            port.definitions[target] = f"create or replace semantic view {target}\n  COPY GRANTS"
         if key.startswith("agent:"):
             port.agent_version_rows[target] = (
                 AgentVersion(None, None, specification="{}"),
@@ -376,7 +379,7 @@ def test_capture_prior_reads_every_published_kind_without_failing_the_plan(
         assert prior.endswith('{\n  "models": {\n    "orchestration": "auto"\n  }\n}\n')
     for key, prior in priors.items():
         if key.startswith(("semantic_view:", "tool:")):
-            assert prior == f"create or replace {key}"
+            assert prior == port.definitions[targets[key]]
         elif not key.startswith("agent:"):
             # A skill, plugin, profile, or eval publishes content-addressed resources.
             assert prior is None, key

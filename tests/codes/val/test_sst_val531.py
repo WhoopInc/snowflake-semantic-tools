@@ -1,7 +1,8 @@
-"""SST-VAL531: an object a tool calls, which SST does not publish, does not exist."""
+"""SST-VAL531: an object a tool calls, or an extension an agent consumes, does not exist; an error."""
 
 from __future__ import annotations
 
+from snowflake_semantic_tools.app.compile.agents.observe import ObserveLiveObjects
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.agent import AgentSkill
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow
@@ -20,7 +21,7 @@ def _called(existing: set[str]) -> list[Diagnostic]:
 
 def test_sst_val531_fires() -> None:
     [diagnostic] = _called(set())
-    assert diagnostic.severity is Severity.WARNING
+    assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "agent 'sales_agent': 'DB.DEV.LOOKUP' does not exist in target 'dev'"
     assert diagnostic.subject == "agent:sales_agent"
 
@@ -60,7 +61,7 @@ def test_sst_val531_fires_for_a_consumed_extension_snowflake_cannot_see() -> Non
 
     [diagnostic] = _consumed(port)
 
-    assert diagnostic.severity is Severity.WARNING
+    assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "agent 'sales_agent': 'DB.EXT.VENDOR_PACK' does not exist in target 'dev'"
     assert diagnostic.subject == "agent:sales_agent"
 
@@ -93,3 +94,28 @@ def test_sst_val531_silent_when_the_read_fails_for_another_reason_or_the_extensi
     unlisted = FakeSnowflake()
     unlisted.refuse("extension_versions")
     assert _consumed(unlisted) == []
+
+
+def _referenced(port: FakeSnowflake, ref: str = "extension", version: str = "VERSION$3") -> list[Diagnostic]:
+    """What the reference-only observation `sst plan` always runs finds for one pinned skill."""
+    skill = AgentSkill("vendor", "CORTEX_EXTENSION", "vendor_pack", version, ref=ref)
+    result = compile_agents(agent("sales_agent", generic_tool(), skills=(skill,)), tools=catalog(procedure_member()))
+    return list(ObserveLiveObjects(port, target="dev").references(result))
+
+
+def test_sst_val531_the_reference_observation_reports_only_a_consumed_extension_or_version() -> None:
+    hidden = FakeSnowflake()
+    hidden.fail("show_grants", _SCHEMA_MISSING)
+    # The procedure the tool calls is absent too, but only the full observation looks it up.
+    assert [item.message for item in _referenced(hidden)] == [
+        "agent 'sales_agent': 'DB.EXT.VENDOR_PACK' does not exist in target 'dev'"
+    ]
+    unpinned = _with_versions(_version("VERSION$1"))
+    assert [item.context["value"] for item in _referenced(unpinned)] == ["DB.EXT.VENDOR_PACK version VERSION$3"]
+    assert _referenced(_with_versions(_version("VERSION$3"))) == []
+    published = FakeSnowflake()
+    published.fail("show_grants", _SCHEMA_MISSING)
+    assert _referenced(published, ref="skill") == []
+    refused = FakeSnowflake()
+    refused.refuse("show_grants")
+    assert _referenced(refused) == []

@@ -29,7 +29,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
     ExtensionVersion,
 )
 from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
-from snowflake_semantic_tools.domain.sql import Sql, datatype, ident, join, keyword, literal, qname, scope, sql
+from snowflake_semantic_tools.domain.sql import Sql, boolean, datatype, ident, join, keyword, literal, qname, scope, sql
 
 # The object types SST observes, each spelled as SHOW spells it once pluralized with an S.
 OBJECT_TYPES = frozenset(
@@ -172,9 +172,18 @@ class CatalogMethods(Session, CatalogPort):
         kind = _GET_DDL_TYPES.get(observed_type)
         if kind is None:
             raise SnowflakePortError(f"GET_DDL cannot read a {observed_type.lower()}")
-        # GET_DDL takes the name as a string, a routine's with its argument types.
+        # GET_DDL takes the name as a string, a routine's with its argument types. The third
+        # argument asks for fully qualified names, so the text re-executes in a session with no
+        # current database; it defaults to FALSE.
         name = str(_routine(qname(qualified_name), routine_signature)) if kind in _ROUTINE_TYPES else qualified_name.sql
-        result = self.query(sql("SELECT GET_DDL({kind}, {name})", kind=literal(kind), name=literal(name)))
+        result = self.query(
+            sql(
+                "SELECT GET_DDL({kind}, {name}, {qualified})",
+                kind=literal(kind),
+                name=literal(name),
+                qualified=boolean(True),
+            )
+        )
         if not result.rows or result.rows[0][0] is None:
             raise SnowflakePortError(f"GET_DDL returned nothing for {object_type} {qualified_name.sql}")
         return str(result.rows[0][0])

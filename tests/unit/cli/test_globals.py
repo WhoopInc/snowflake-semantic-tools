@@ -177,9 +177,9 @@ def test_an_expired_or_unreadable_baseline_fails_the_run(tmp_path: Path) -> None
 def test_severity_overrides_change_what_a_code_reports_and_what_blocks(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
     config = project / "sst_config.yml"
+    block = "diagnostics:\n  severity_overrides:\n"
     config.write_text(
-        config.read_text(encoding="utf-8") + "\ndiagnostics:\n  severity_overrides:\n    SST-CFG018: error\n",
-        encoding="utf-8",
+        config.read_text(encoding="utf-8").replace(block, f"{block}    SST-CFG018: error\n", 1), encoding="utf-8"
     )
     exit_code, envelope = _warnings(project)
     promoted = [item for item in envelope["diagnostics"] if item["code"] == "SST-CFG018"]

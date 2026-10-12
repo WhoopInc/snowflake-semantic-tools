@@ -186,12 +186,20 @@ SELECT GET_DDL('SEMANTIC_VIEW', '<db>.<schema>.probe_view');
 -- the clause order.
 ```
 
-**SST depends on it at**: `prior_definition` in
-[prior.py](../../snowflake_semantic_tools/app/prior.py), which records `GET_DDL`
-as the prior definition for `plan --capture-prior`. The
-[CI/CD guide](../guides/ci-cd.md#recording-what-an-update-replaces) says to
-restore a semantic view by running that text, which this behaviour contradicts
-for a view carrying both clauses. The
+**SST depends on it at**: `get_ddl` in
+[catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py),
+which passes `TRUE` as the third argument so names come back fully qualified, and
+`restorable_semantic_view` in [prior.py](../../snowflake_semantic_tools/app/prior.py),
+which `plan --capture-prior` runs on a semantic view's text: it moves the trailing
+clauses into the order the renderer uses (`TRAILING_CLAUSES` in
+[semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py))
+and appends `COPY GRANTS`. Text of another shape is kept as returned, under a
+comment saying what to fix by hand. The
+[CI/CD guide](../guides/ci-cd.md#recording-what-an-update-replaces) says to run
+the recorded text as it is only for a semantic view, and only for that form; since
+this behaviour is `Observed`, so is that advice. Nothing here records whether
+`GET_DDL`'s text for a search service, procedure or function re-executes, so the
+guide says to review those before running them. The
 [golden README](../../tests/golden/README.md) warns that a golden and a `GET_DDL`
 read-back must not be compared raw.
 
@@ -444,16 +452,24 @@ name does not exist, and a version that is empty. `DESCRIBE`, `SHOW` and
 `COMMIT` all pass on a dangling reference, so nothing at publish time reports it.
 A `generic` tool's `tool_resources` are not checked either.
 
-**Evidence**: `Enforced`. Publish order is the only control. Skills and plugins
-publish before agents (`ddl_position` 250 and 260, before 300, in
+**Evidence**: `Enforced`. For what SST publishes, publish order is the only
+control. Skills and plugins publish before agents (`ddl_position` 250 and 260,
+before 300, in
 [registry.py](../../snowflake_semantic_tools/domain/model/registry.py)), and a
-plan that publishes an agent must include every skill it pins (SST-PLN030).
-SST-RND013 warns on rendered generic tool resources.
+plan that publishes an agent must include every skill it pins (SST-PLN030). An
+extension another project publishes is looked up instead: a connected `sst plan`
+reads it and the version the agent pins, even with the connected checks off, and
+one that is absent or hidden is an error (SST-VAL531). A skill name inside a
+consumed extension is still not checked. SST-RND013 warns on rendered generic
+tool resources.
 [test_sst_pln030.py](../../tests/codes/pln/test_sst_pln030.py),
+[test_sst_val531.py](../../tests/codes/val/test_sst_val531.py),
 [test_sst_rnd013.py](../../tests/codes/rnd/test_sst_rnd013.py).
 
 **SST depends on it at**:
 [plan/prune.py](../../snowflake_semantic_tools/domain/plan/prune.py);
+`references` in
+[agents/observe.py](../../snowflake_semantic_tools/app/compile/agents/observe.py);
 [the agents guide](../guides/agents.md#skills).
 
 ### The orchestration model is not checked
@@ -760,12 +776,13 @@ secondary role.
 
 **Server does**: not probed. SST takes the documented rule as stated.
 
-**Evidence**: neither grade. The rule is documented, not observed, and plan
-does not act on it, so no test holds it there. `SST-PLN008` asks
-`IS_ROLE_IN_SESSION`, so it counts a `CREATE` privilege held only through a
-secondary role, which the create then lacks; the troubleshooting guide states
-the gap. The eval check does act on the same rule for its task privileges
-(`Enforced`); see
+**Evidence**: `Enforced`. The rule is documented, not observed, and SST acts
+on it in two places. `SST-PLN008` counts a `CREATE` privilege only when the
+primary role holds it through its hierarchy, and asks `IS_ROLE_IN_SESSION` only
+to say that a secondary role holds one it reports; `READ` and `WRITE` on a spec
+stage still count for any role in the session
+([test_preflight.py](../../tests/unit/app/test_preflight.py)). The eval check
+acts on the same rule for its task privileges; see
 [An evaluation ignores secondary roles](#an-evaluation-ignores-secondary-roles).
 Probe:
 
@@ -782,9 +799,12 @@ USE SECONDARY ROLES NONE;
 
 **SST depends on it at**: `missing_privileges` and `missing_role_privileges` in
 [ports/snowflake/preflight.py](../../snowflake_semantic_tools/domain/ports/snowflake/preflight.py);
-`_lacking` in
+`_lacking` and `missing_role_privileges` in
 [connector/preflight.py](../../snowflake_semantic_tools/adapters/snowflake/connector/preflight.py);
-[the troubleshooting guide](../guides/troubleshooting.md#how-sst-reports-a-missing-privilege).
+`_missing_privileges` in
+[app/preflight.py](../../snowflake_semantic_tools/app/preflight.py), which splits
+what the primary role lacks into what a secondary role holds and what nothing
+does; [the troubleshooting guide](../guides/troubleshooting.md#how-sst-reports-a-missing-privilege).
 
 ## Procedures and functions
 

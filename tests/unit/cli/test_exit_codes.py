@@ -257,9 +257,8 @@ def _test_update(tmp: Path, monkeypatch: pytest.MonkeyPatch, ci: str) -> Result:
 def _debug_invalid(tmp: Path) -> Result:
     project = project_copy(tmp)
     config = project / "sst_config.yml"
-    config.write_text(
-        config.read_text(encoding="utf-8") + "diagnostics:\n  severity_overrides:\n    SST-REG001: warning\n"
-    )
+    block = "diagnostics:\n  severity_overrides:\n"
+    config.write_text(config.read_text(encoding="utf-8").replace(block, f"{block}    SST-REG001: warning\n", 1))
     return _run("debug", "--project-dir", str(project), "--no-connect")
 
 

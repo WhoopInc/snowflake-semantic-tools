@@ -34,6 +34,20 @@ def test_a_create_needs_the_create_privilege_of_its_object_type_and_nothing_else
     assert required_privilege(replace(created, rendered=None)) is None
 
 
+def test_a_create_privilege_only_a_secondary_role_holds_is_named_as_such() -> None:
+    sales = change(rendered("SALES"))
+    lacking = MappingProxyType({("DB", "SCHEMA"): ("CREATE SEMANTIC VIEW",)})
+    [secondary], _ = check_preflight(
+        (sales,), Preflight("dev", "R", missing_privileges=lacking, secondary_privileges=lacking)
+    )
+    assert [item.message for item in secondary.diagnostics] == [
+        "R lacks CREATE SEMANTIC VIEW (only a secondary role in the session holds it, and a CREATE uses the "
+        "primary role) on DB.SCHEMA"
+    ]
+    [unheld], _ = check_preflight((sales,), Preflight("dev", "R", missing_privileges=lacking))
+    assert [item.message for item in unheld.diagnostics] == ["R lacks CREATE SEMANTIC VIEW on DB.SCHEMA"]
+
+
 def test_one_missing_scope_is_reported_once_and_blocks_every_write_in_it() -> None:
     first, second = change(rendered("SALES")), change(rendered("ORDERS"))
     checked, diagnostics = check_preflight(

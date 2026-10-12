@@ -65,7 +65,7 @@ def test_observe_options_skip_grants_and_capture_the_prior_definition() -> None:
     artifact = rendered()
     port.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now"))
     port.grants[artifact.target.sql] = (GrantRow("SELECT", "ROLE", "R"),)
-    port.definitions[artifact.target.sql] = "create semantic view V"
+    port.definitions[artifact.target.sql] = "create or replace semantic view V copy grants"
     desired = {artifact.key: artifact}
     targets = (artifact.target,)
 
@@ -79,7 +79,9 @@ def test_observe_options_skip_grants_and_capture_the_prior_definition() -> None:
     captured, quiet = observe(
         port, SEMANTIC_REGISTRY, targets, fetched_at="now", desired_artifacts=desired, options=capture
     )
-    assert captured.artifacts[artifact.key].definition == "create semantic view V" and quiet == ()
+    assert (
+        captured.artifacts[artifact.key].definition == "create or replace semantic view V copy grants" and quiet == ()
+    )
     assert captured.artifacts[artifact.key].grants == (GrantRow("SELECT", "ROLE", "R"),)
 
     # Only an object the plan renders is read; a prune candidate never is.

@@ -6,6 +6,7 @@ roles, database roles and users, and answers, through `FakeDriverSession(respond
 - `SHOW GRANTS ON SCHEMA <db>.<schema>`: created_on, privilege, granted_on, name, granted_to
   (ROLE | DATABASE_ROLE), grantee_name -- a database role's unqualified, in the schema's
   database -- grant_option, granted_by, granted_by_role_type.
+- `SHOW GRANTS ON STAGE <db>.<schema>.<stage>`: the same columns, for a stage `on_stage` granted on.
 - `SHOW GRANTS OF ROLE <r>` and `SHOW GRANTS OF DATABASE ROLE <db>.<r>`: created_on, role
   (`<DB>.<NAME>` for a database role), granted_to (ROLE | USER | DATABASE_ROLE),
   grantee_name, granted_by.
@@ -35,6 +36,7 @@ class GrantGraph:
 
     scope: SchemaScope
     _on_schema: list[dict[str, object]] = field(default_factory=list)
+    _on_stage: dict[str, list[dict[str, object]]] = field(default_factory=dict)
     _of: dict[str, list[dict[str, object]]] = field(default_factory=dict)
     _in_session: set[str] = field(default_factory=set)
 
@@ -50,6 +52,25 @@ class GrantGraph:
                 "name": self.scope.sql,
                 "granted_to": kind,
                 "grantee_name": name,
+                "grant_option": "false",
+                "granted_by": "SYSADMIN",
+                "granted_by_role_type": "ROLE",
+            }
+        )
+        return self
+
+    def on_stage(self, stage: str, privilege: str, *, role: str) -> GrantGraph:
+        """Grant a privilege on a stage in the schema, named by its unqualified name, to a role."""
+        self._known("ROLE", role)
+        rows = self._on_stage.setdefault(f"{self.scope.sql}.{Identifier.shown(stage).sql}", [])
+        rows.append(
+            {
+                "created_on": _CREATED,
+                "privilege": privilege,
+                "granted_on": "STAGE",
+                "name": f"{self.scope.sql}.{stage}",
+                "granted_to": "ROLE",
+                "grantee_name": role,
                 "grant_option": "false",
                 "granted_by": "SYSADMIN",
                 "granted_by_role_type": "ROLE",
@@ -96,6 +117,9 @@ class GrantGraph:
             return [(binds[0] in self._in_session,)], 1
         if statement == f"SHOW GRANTS ON SCHEMA {self.scope.sql}":
             return list(self._on_schema), len(self._on_schema)
+        stage = statement.removeprefix("SHOW GRANTS ON STAGE ")
+        if stage != statement and stage in self._on_stage:
+            return list(self._on_stage[stage]), len(self._on_stage[stage])
         for prefix in ("SHOW GRANTS OF DATABASE ROLE ", "SHOW GRANTS OF ROLE "):
             if statement.startswith(prefix):
                 rows = self._of.get(statement)

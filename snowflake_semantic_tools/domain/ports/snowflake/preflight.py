@@ -71,9 +71,9 @@ class PreflightPort(Protocol):
         granted a database role that holds it, directly or through other database roles, no
         further than `ROLE_HIERARCHY_DEPTH` grants. Whether a role is in the session, primary,
         secondary, or inherited, is Snowflake's to answer, so secondary roles count. Snowflake
-        authorises a `CREATE <object>` statement by the primary role alone, so a `CREATE`
-        privilege held only through a secondary role reads as held here and the statement is
-        still refused; `missing_role_privileges` reads one role's hierarchy without them.
+        authorises a `CREATE <object>` statement by the primary role alone, so plan asks
+        `missing_role_privileges` of the primary role for its `CREATE` privileges, and asks this
+        only about what that role lacks: a privilege held here is then held by a secondary role.
 
         Raises:
             SnowflakePortError: the schema's grants could not be read.
@@ -92,7 +92,8 @@ class PreflightPort(Protocol):
         """Return, in the given order, the privileges on a stage no role in the session holds.
 
         A role holds a privilege on the stage when it is granted it, owns the stage, or holds it
-        through a database role, as `missing_privileges` reads a schema's.
+        through a database role, as `missing_privileges` reads a schema's. READ and WRITE are not
+        `CREATE` privileges, so a secondary role's count.
 
         Raises:
             SnowflakePortError: the stage's grants could not be read.
@@ -103,13 +104,15 @@ class PreflightPort(Protocol):
         """Return, in the given order, the schema privileges one role lacks, inheritance included.
 
         Unlike `missing_privileges`, the session's secondary roles do not count: this is what a
-        task running as `role` holds. The role holds a privilege when it, or a role or database
+        task running as `role` holds, and what a `CREATE` the session's primary role `role` runs
+        may use. The role holds a privilege when it, or a role or database
         role granted to it, is granted the privilege or owns the schema. The hierarchy is read
         upward from the schema: SHOW GRANTS ON SCHEMA names the holders, and SHOW GRANTS OF
         ROLE and OF DATABASE ROLE climb from them toward `role`, each role once however often
         it is granted and never `role`'s own grants, no further than `ROLE_HIERARCHY_DEPTH`
-        roles; a privilege only a more distant role holds reads as missing. A privilege no
-        role holds on the schema reads as missing without reading any role.
+        roles; a privilege only a more distant role holds reads as missing. The account roles
+        the grants name are walked first, and database roles only for what those leave missing.
+        A privilege no role holds on the schema reads as missing without reading any role.
 
         Args:
             role: The account role, as CURRENT_ROLE() names it.

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import dataclasses
 
+import pytest
+
 from snowflake_semantic_tools.app.observe import ObserveOptions, observe
-from snowflake_semantic_tools.app.prior import agent_prior, prior_definition
+from snowflake_semantic_tools.app.prior import agent_prior, prior_definition, restorable_semantic_view
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact, ShowRow
@@ -34,12 +36,80 @@ def _desired(*, alias: str | None = None, signature: tuple[str, ...] = ()) -> Re
 
 
 def test_a_replaced_object_s_prior_is_what_get_ddl_prints() -> None:
-    port = FakeSnowflake(definitions={"DB.SCHEMA.V": "create or replace semantic view V"})
-    for object_type in ("SEMANTIC VIEW", "CORTEX SEARCH SERVICE"):
-        assert prior_definition(port, object_type, _row(object_type), _desired()) == (
-            "create or replace semantic view V",
-            (),
-        )
+    port = FakeSnowflake(definitions={"DB.SCHEMA.V": "create or replace cortex search service V"})
+    found = prior_definition(port, "CORTEX SEARCH SERVICE", _row("CORTEX SEARCH SERVICE"), _desired())
+    assert found == ("create or replace cortex search service V", ())
+
+
+# GET_DDL's form of a semantic view: lowercased, without COPY GRANTS, MAX_STALENESS first.
+GET_DDL_VIEW = (
+    "create or replace semantic view DB.SCHEMA.V\n"
+    "\ttables (T as DB.SCHEMA.T primary key (ID) comment='max_staleness copy grants')\n"
+    "\tmetrics (T.N as COUNT(T.ID))\n"
+    "\tcomment='a view; with tag'\n"
+    "\tmax_staleness='300 seconds'\n"
+    "\tai_sql_generation 'use max_staleness = ''1 day'' (never)'\n"
+    "\twith tag (DB.SCHEMA.OWNER='team');\n"
+)
+
+
+def test_a_semantic_view_s_prior_is_put_in_the_form_the_server_re_executes() -> None:
+    port = FakeSnowflake(definitions={"DB.SCHEMA.V": GET_DDL_VIEW})
+    found, quiet = prior_definition(port, "SEMANTIC VIEW", _row("SEMANTIC VIEW"), _desired())
+    assert quiet == ()
+    # The AI clause moves before MAX_STALENESS and COPY GRANTS is appended, as SST renders;
+    # the keywords inside the strings and the TABLES list are left where they are.
+    assert found == (
+        "create or replace semantic view DB.SCHEMA.V\n"
+        "\ttables (T as DB.SCHEMA.T primary key (ID) comment='max_staleness copy grants')\n"
+        "\tmetrics (T.N as COUNT(T.ID))\n"
+        "  comment='a view; with tag'\n"
+        "  ai_sql_generation 'use max_staleness = ''1 day'' (never)'\n"
+        "  max_staleness='300 seconds'\n"
+        "  with tag (DB.SCHEMA.OWNER='team')\n"
+        "  COPY GRANTS;\n"
+    )
+    assert found is not None and found.index("ai_sql_generation") < found.index("max_staleness='")
+
+
+def test_a_semantic_view_already_in_the_rendered_form_is_kept_byte_for_byte() -> None:
+    rendered_form = 'CREATE OR REPLACE SEMANTIC VIEW "my view"\n  AI_SQL_GENERATION $$x$$\n  copy grants'
+    assert restorable_semantic_view(rendered_form) == rendered_form
+    # A view with no trailing clause gains only COPY GRANTS, and a view named like a clause is a name.
+    assert restorable_semantic_view("create or replace semantic view") == (
+        "create or replace semantic view\n  COPY GRANTS"
+    )
+    assert restorable_semantic_view("create or replace semantic view DB.S.COMMENT") == (
+        "create or replace semantic view DB.S.COMMENT\n  COPY GRANTS"
+    )
+    assert restorable_semantic_view("create or replace semantic view V metrics (M as 1)\n") == (
+        "create or replace semantic view V metrics (M as 1)\n  COPY GRANTS\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "reason"),
+    [
+        ("create or replace semantic view V comment='open", "it does not lex"),
+        ("create semantic view V", "it is not a CREATE OR REPLACE SEMANTIC VIEW"),
+        ("create or replace semantic view V comment='x' secure", "it has 'secure' where SST expects a clause"),
+        ("create or replace semantic view V with grants", "its WITH is not WITH TAG"),
+        ("create or replace semantic view V copy", "its COPY is not COPY GRANTS"),
+        ("create or replace semantic view V comment='x' tables (T)", "its TABLES comes after a trailing clause"),
+        ("create or replace semantic view V comment='x' comment='y'", "it gives COMMENT twice"),
+        ("create or replace semantic view V comment='x' -- note\n", "it has a comment between its clauses"),
+        ("create or replace semantic view V tables (T))", "its parentheses do not balance"),
+        ("create or replace semantic view V tables ((T)", "its parentheses do not balance"),
+        ("create or replace semantic view V; select 1", "it has ';' where SST expects a clause"),
+    ],
+)
+def test_a_semantic_view_of_another_shape_is_kept_as_returned_under_a_warning(text: str, reason: str) -> None:
+    kept = restorable_semantic_view(text)
+    first, second, third, rest = kept.split("\n", 3)
+    assert first.startswith(f"-- SST did not put this definition in the form the server re-executes: {reason}")
+    assert second.startswith("-- Before running it, check that it ends with COPY GRANTS")
+    assert third == "-- and that MAX_STALENESS comes after the AI clauses."
+    assert rest == text
 
 
 def test_a_routine_is_read_by_its_name_with_its_argument_types() -> None:
@@ -171,5 +241,5 @@ def test_one_object_s_prior_failing_does_not_stop_the_others_being_observed() ->
         options=ObserveOptions(grants=False, capture_prior=True),
     )
     assert observation.artifacts[first.key].definition is None
-    assert observation.artifacts[second.key].definition == "create or replace semantic view B"
+    assert observation.artifacts[second.key].definition == "create or replace semantic view B\n  COPY GRANTS"
     assert [(item.code, item.severity) for item in diagnostics] == [("SST-PLN037", Severity.WARNING)]

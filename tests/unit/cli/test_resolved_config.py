@@ -22,10 +22,9 @@ def _project(tmp_path: Path) -> Path:
     project = project_copy(tmp_path)
     config = project / "sst_config.yml"
     text = config.read_text(encoding="utf-8").replace("  strict: false\n", f"  strict: {STRICT}\n", 1)
-    config.write_text(
-        text + f"\ndiagnostics:\n  severity_overrides:\n    SST-CFG018: {OVERRIDE}\n",
-        encoding="utf-8",
-    )
+    # The fixture already overrides a code; this one joins its block.
+    block = "diagnostics:\n  severity_overrides:\n"
+    config.write_text(text.replace(block, f"{block}    SST-CFG018: {OVERRIDE}\n", 1), encoding="utf-8")
     return project
 
 
@@ -59,7 +58,7 @@ def test_every_setting_reader_resolves_the_conditional_for_the_run_target(tmp_pa
     for target, strict, severity in (("prod", True, Severity.ERROR), ("dev", False, Severity.WARNING)):
         paths = dataclasses.replace(project_paths(project), target_name=target)
         assert validation_settings(paths, strict=None, connected=None)[0] is strict
-        assert severity_overrides_setting(paths) == {"SST-CFG018": severity}
+        assert severity_overrides_setting(paths) == {"SST-VAL531": Severity.WARNING, "SST-CFG018": severity}
         assert bool(strict_disagreement(paths, False)) is strict
 
 

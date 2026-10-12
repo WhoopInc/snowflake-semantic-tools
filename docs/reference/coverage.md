@@ -579,7 +579,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL528`](error-codes.md#sst-val528) | VAL | warning | local | `snowflake_semantic_tools.app.compile.agents.resolve_tools` | `tests/codes/val/test_sst_val528.py` |
 | [`SST-VAL529`](error-codes.md#sst-val529) | VAL | error | local | `snowflake_semantic_tools.app.compile.agents.resolve_tools`<br>`snowflake_semantic_tools.domain.validate.agent_spec` | `tests/codes/val/test_sst_val529.py` |
 | [`SST-VAL530`](error-codes.md#sst-val530) | VAL | error | local | `snowflake_semantic_tools.domain.validate.agent_spec` | `tests/codes/val/test_sst_val530.py` |
-| [`SST-VAL531`](error-codes.md#sst-val531) | VAL | warning | observe | `snowflake_semantic_tools.app.compile.agents.observe` | `tests/codes/val/test_sst_val531.py` |
+| [`SST-VAL531`](error-codes.md#sst-val531) | VAL | error | observe | `snowflake_semantic_tools.app.compile.agents.observe` | `tests/codes/val/test_sst_val531.py` |
 | [`SST-VAL532`](error-codes.md#sst-val532) | VAL | warning | observe | `snowflake_semantic_tools.app.compile.agents.observe` | `tests/codes/val/test_sst_val532.py` |
 | [`SST-VAL533`](error-codes.md#sst-val533) | VAL | info | observe | `snowflake_semantic_tools.app.compile.agents.observe` | `tests/codes/val/test_sst_val533.py` |
 | [`SST-VAL534`](error-codes.md#sst-val534) | VAL | warning | observe | `snowflake_semantic_tools.app.compile.agents.observe` | `tests/codes/val/test_sst_val534.py` |

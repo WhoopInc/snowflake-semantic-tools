@@ -241,3 +241,13 @@ def test_the_session_climb_through_database_roles_stops_at_the_hierarchy_depth()
     assert within == ()
     beyond, _ = _session_missing(chain(ROLE_HIERARCHY_DEPTH), ("CREATE TASK",))
     assert beyond == ("CREATE TASK",)
+
+
+def test_a_database_role_is_read_only_for_what_no_account_role_passes_up_to_the_role() -> None:
+    graph = GrantGraph(SCOPE).on_schema("CREATE TASK", role="BUILDER").role_to("BUILDER", role_to="RUNNER")
+    graph.on_schema("CREATE TASK", database_role="TASKS").database_role_to("TASKS", role_to="OTHER")
+    graph.on_schema("CREATE STAGE", database_role="WRITER").database_role_to("WRITER", role_to="RUNNER")
+    missing, sent = _missing(graph.forget_database_role("TASKS"), "RUNNER", ("CREATE TASK", "CREATE STAGE"))
+    # TASKS cannot be read, and is never asked: an account role already passes CREATE TASK up.
+    assert missing == ()
+    assert sent == [ON_SCHEMA, "SHOW GRANTS OF ROLE BUILDER", "SHOW GRANTS OF DATABASE ROLE DB.WRITER"]

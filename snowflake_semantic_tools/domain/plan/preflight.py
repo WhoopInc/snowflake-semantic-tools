@@ -55,7 +55,10 @@ class Preflight:
             do not exist, in databases that do.
         missing_relations: By artifact key, the relations it references that do not exist.
         missing_privileges: By folded scope, the privileges the role lacks there, such as
-            `CREATE SEMANTIC VIEW`.
+            `CREATE SEMANTIC VIEW`. A `CREATE` privilege counts only when the session's primary
+            role holds it, directly or through the roles it inherits.
+        secondary_privileges: By folded scope, those of `missing_privileges` a secondary role in
+            the session holds, which Snowflake does not let authorise a `CREATE`.
         occupied: The keys of artifacts nothing observed, whose target name is taken anyway.
         locked: The folded names another session holds a lock on.
         referenced: By observed key, the objects outside the project that name it.
@@ -75,6 +78,7 @@ class Preflight:
     missing_schemas: frozenset[_Scope] = frozenset()
     missing_relations: Mapping[str, tuple[QualifiedName, ...]] = field(default_factory=lambda: MappingProxyType({}))
     missing_privileges: Mapping[_Scope, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
+    secondary_privileges: Mapping[_Scope, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
     occupied: frozenset[str] = frozenset()
     locked: frozenset[_Name] = frozenset()
     referenced: Mapping[str, tuple[QualifiedName, ...]] = field(default_factory=lambda: MappingProxyType({}))
@@ -154,7 +158,7 @@ def _change_findings(
     privilege = required_privilege(change)
     scope = SchemaScope.from_qualified_name(target)
     if not blocking and privilege in preflight.missing_privileges.get(_scope_key(scope), ()):
-        blocking.append(D("SST-PLN008", subject=change.key, value=preflight.role, detail=privilege, target=scope.sql))
+        blocking.append(_lacks(change.key, privilege, scope, preflight))
     stage = change.rendered.upload_stage
     if not blocking and stage is not None:
         blocking.extend(_stage_blocking(change.key, stage, preflight, scoped))
@@ -208,8 +212,16 @@ def _stage_blocking(
     if stage.folded in preflight.absent_stages and CREATE_STAGE in preflight.missing_privileges.get(
         _scope_key(scope), ()
     ):
-        return (D("SST-PLN008", subject=key, value=preflight.role, detail=CREATE_STAGE, target=scope.sql),)
+        return (_lacks(key, CREATE_STAGE, scope, preflight),)
     return ()
+
+
+def _lacks(key: str, privilege: str, scope: SchemaScope, preflight: Preflight) -> Diagnostic:
+    """SST-PLN008 for a CREATE privilege the primary role lacks, saying when a secondary role holds it."""
+    detail = privilege
+    if privilege in preflight.secondary_privileges.get(_scope_key(scope), ()):
+        detail = f"{privilege} (only a secondary role in the session holds it, and a CREATE uses the primary role)"
+    return D("SST-PLN008", subject=key, value=preflight.role, detail=detail, target=scope.sql)
 
 
 def _prune_warnings(change: Change, preflight: Preflight) -> tuple[Diagnostic, ...]:
