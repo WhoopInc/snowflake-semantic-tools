@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics import D, Origin, Severity, override_refusal
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Origin, Severity, override_refusal
 from snowflake_semantic_tools.domain.diagnostics.baseline import (
+    POSITION_KEYS,
     Baseline,
     BaselineEntry,
     baselinable,
     match_baseline,
     stable_fingerprint,
 )
+from snowflake_semantic_tools.domain.diagnostics.core import _placeholders
 
 TODAY, WARN_FROM = "2026-01-01", "2026-01-31"
 
@@ -33,6 +35,15 @@ def test_a_stable_fingerprint_ignores_the_line_and_keys_on_the_artifact_and_cont
     bare = D("SST-CFG003", key="k")
     assert stable_fingerprint(first) == stable_fingerprint(moved) != stable_fingerprint(renamed)
     assert len(stable_fingerprint(bare)) == 16
+
+
+def test_no_baselinable_code_hashes_where_its_finding_sits() -> None:
+    # A code's template may print its line or column; a baseline must not key on either.
+    for code in sorted(code for code in ERROR_REGISTRY if baselinable(code)):
+        context = dict.fromkeys(_placeholders(ERROR_REGISTRY[code].template), "x")
+        here = D(code, **{**context, **dict.fromkeys(POSITION_KEYS, 3)})
+        moved = D(code, **{**context, **dict.fromkeys(POSITION_KEYS, 9)})
+        assert here.code == code and stable_fingerprint(here) == stable_fingerprint(moved), code
 
 
 def test_only_a_demotable_code_below_error_is_baselinable() -> None:

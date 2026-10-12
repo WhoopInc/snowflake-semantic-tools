@@ -8,6 +8,7 @@ from snowflake_semantic_tools.adapters.locations import locate_project
 from snowflake_semantic_tools.adapters.yaml.config import load_project_config
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.domain.diagnostics import Origin, Severity, render_diagnostic
+from snowflake_semantic_tools.domain.diagnostics.baseline import stable_fingerprint
 from snowflake_semantic_tools.domain.validate.config import empty_is_block
 from tests.helpers.seam_projects import parsed
 
@@ -24,6 +25,19 @@ def test_sst_lod016_fires() -> None:
     assert render_diagnostic(diagnostic).splitlines()[0] == (
         "f.yml:1: warning[SST-LOD016]: 'enabled' value 'yes' coerced to true"
     )
+
+
+def test_sst_lod016_keeps_its_baseline_fingerprint_when_the_value_moves_down() -> None:
+    [here] = [item for item in parsed(b"enabled: yes\n").diagnostics if item.code == "SST-LOD016"]
+    [moved] = [item for item in parsed(b"# x\n# y\nenabled: yes\n").diagnostics if item.code == "SST-LOD016"]
+    assert moved.message == "f.yml:3: 'enabled' value 'yes' coerced to true"
+    assert stable_fingerprint(moved) == stable_fingerprint(here)
+
+
+def test_sst_lod016_findings_for_one_key_at_two_paths_keep_distinct_fingerprints() -> None:
+    found = parsed(b"a:\n  enabled: yes\nb:\n  enabled: yes\n").diagnostics
+    assert [item.context["key_path"] for item in found] == ["a.enabled", "b.enabled"]
+    assert len({stable_fingerprint(item) for item in found}) == 2
 
 
 def test_sst_lod016_silent() -> None:

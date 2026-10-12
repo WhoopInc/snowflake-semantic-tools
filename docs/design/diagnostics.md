@@ -187,8 +187,9 @@ fingerprint, the digest of what it renders.
 code, the type and name of the artifact or member the subject names, the file, and the template
 values, sorted by name. The origin's line and column are left out, so a comment inserted above a
 problem keeps its baseline entry, while renaming the artifact or changing a value in the message
-makes a new diagnostic. A code whose message itself names a line, such as `SST-LOD011`, carries the
-line as a value, so its identity does move with it. The JSON envelope reports it as `fingerprint`, `--verbose` prints it, and the
+makes a new diagnostic. A `line` or `col` template value is left out too, so `SST-LOD011` and
+`SST-LOD016`, whose messages print the line, keep their identity when the value moves; each also
+carries the value's dotted `key_path`, so two findings for one key in a file stay apart. The JSON envelope reports it as `fingerprint`, `--verbose` prints it, and the
 baseline matches on it alone. A baseline entry that matches more than one diagnostic in a run holds
 none of them and is reported as `SST-INT009`, since it cannot say which one was meant.
 
@@ -197,6 +198,7 @@ message. It is a determinism check: the golden suite of `sst test` compiles the 
 reports `SST-INT006` for each code whose fingerprints differ between the two runs.
 
 Drawn from: [baseline.py](../../snowflake_semantic_tools/domain/diagnostics/baseline.py),
+[compose.py](../../snowflake_semantic_tools/adapters/yaml/compose.py),
 [\_\_init\_\_.py](../../snowflake_semantic_tools/domain/diagnostics/__init__.py),
 [cli/output.py](../../snowflake_semantic_tools/cli/output.py),
 [cli/commands/test.py](../../snowflake_semantic_tools/cli/commands/test.py).
