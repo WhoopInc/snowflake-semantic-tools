@@ -1,4 +1,4 @@
-"""Reading stored state and manifests: a writer's release, and an incomplete impact index."""
+"""Reading stored state and manifests: a writer's release, and a manifest of an older schema."""
 
 from __future__ import annotations
 
@@ -7,8 +7,14 @@ from types import MappingProxyType
 
 import pytest
 
-from snowflake_semantic_tools.domain.state import ImpactIndex, Manifest, StoredDocumentError, written_by_newer
+from snowflake_semantic_tools.domain.state import (
+    MANIFEST_SCHEMA_VERSION,
+    Manifest,
+    StoredDocumentError,
+    written_by_newer,
+)
 from tests.helpers.artifact_builders import manifest, rendered
+from tests.helpers.stored_documents import schema_2_document
 
 
 @pytest.mark.parametrize(
@@ -29,28 +35,38 @@ def test_a_writer_is_newer_only_by_its_leading_release_numbers(writer: str, curr
     assert written_by_newer(writer, current) is newer
 
 
-def indexed(files: dict[str, tuple[str, ...]]) -> Manifest:
+def sourced() -> Manifest:
     base = manifest({"semantic_view:v": rendered()})
     entry = replace(base.artifacts["semantic_view:v"], source_files=("a.yml", "b.yml"))
-    return replace(
-        base, artifacts=MappingProxyType({"semantic_view:v": entry}), impact=ImpactIndex(MappingProxyType(files))
-    ).with_computed_id()
+    return replace(base, artifacts=MappingProxyType({"semantic_view:v": entry})).with_computed_id()
 
 
-def test_an_artifact_left_out_under_any_of_its_files_is_refused() -> None:
-    complete = indexed({"a.yml": ("semantic_view:v",), "b.yml": ("semantic_view:v",)})
-    assert complete.unindexed() is None
-    assert Manifest.from_dict(complete.as_dict()) == complete
-    partial = indexed({"a.yml": ("semantic_view:v",)})
-    assert partial.unindexed() == "semantic_view:v"
+def test_a_written_manifest_has_no_impact_index() -> None:
+    assert "impact" not in sourced().as_dict()
+    assert sourced().schema_version == MANIFEST_SCHEMA_VERSION == 3
+
+
+def test_a_schema_2_manifest_reads_with_its_impact_index_ignored() -> None:
+    current = sourced()
+    document = schema_2_document(current, {"by_file": {"a.yml": ["semantic_view:v"]}, "by_member": {}})
+    read = Manifest.from_dict(document)
+    assert read == current and read.migrated_from == 2
+    assert "impact" in document and document["schema_version"] == 2
+    # An index that leaves an artifact out under one of its files no longer refuses the read.
+    assert Manifest.from_dict(schema_2_document(current, {"by_file": {}})) == current
+
+
+def test_an_edited_schema_2_manifest_is_still_refused() -> None:
+    document = schema_2_document(sourced())
+    document["impact"] = {"by_file": {"a.yml": ["semantic_view:v"]}}
     with pytest.raises(StoredDocumentError) as raised:
-        Manifest.from_dict(partial.as_dict())
-    assert (raised.value.code, raised.value.context) == ("SST-MAN004", {"artifact": "semantic_view:v"})
+        Manifest.from_dict(document)
+    assert raised.value.code == "SST-MAN005"
 
 
-def test_a_migrated_manifest_records_its_schema_and_skips_the_index_it_never_had() -> None:
-    document = indexed({}).as_dict()
+def test_a_schema_1_manifest_migrates_and_drops_any_impact_key() -> None:
+    document = schema_2_document(sourced())
     document["schema_version"] = 1
     migrated = Manifest.from_dict(document)
-    assert migrated.migrated_from == 1 and migrated.schema_version == 2
-    assert Manifest.from_dict(indexed({"a.yml": ("semantic_view:v",), "b.yml": ("semantic_view:v",)}).as_dict())
+    assert migrated.migrated_from == 1 and migrated.schema_version == MANIFEST_SCHEMA_VERSION
+    assert "impact" not in migrated.as_dict()

@@ -556,9 +556,9 @@ manifest twice and sees two digests reports `SST-MAN031`.
 
 ### Schema versions of SST's own files
 
-The manifest and the state document each carry a `schema_version` (2 for both).
-An older schema with a migration is migrated in memory, and reading it never
-rewrites the file: a
+The manifest and the state document each carry a `schema_version` (3 for the
+manifest, 2 for state). An older schema with a migration is migrated in memory,
+and reading it never rewrites the file: a
 manifest read that way records `migrated_from`, which is never written, hashed,
 or compared, and `read_notes` reports it as `SST-MAN201`. An older schema with no
 migration, and a newer one, are refused (`SST-MAN202` and `SST-MAN203` for a
@@ -567,12 +567,16 @@ release is reported with `SST-MAN024`.
 
 ### The impact index
 
-The manifest also stores an `ImpactIndex` (`domain/state/manifest.py`): for each
-source file, dbt model, and member, the artifacts that use it. `build_manifest`
-writes it, and `Manifest.from_dict` refuses a manifest whose index leaves an
-artifact out under one of its source files (`SST-MAN004`). No plan decision reads
-it. The `state:modified` selector in `domain/plan/impact.py` compares
-fingerprints between the `--state` manifest and the current one instead.
+Manifest schema 2 also stored an impact index: for each source file, dbt model,
+and member, the artifacts that use it. No plan decision read it, so schema 3
+stopped writing it, and `SST-MAN004`, which refused an incomplete index, is
+retired. `migrate_manifest` drops the `impact` key of an older manifest unread;
+it checks a schema-2 id against the document as stored first, so an edited
+schema-2 manifest is still refused (`SST-MAN005`). The reverse maps a consumer
+might want are still recorded: each artifact's `source_files`, each member's
+`attached_to`, and each dbt model's `referenced_by`. The `state:modified`
+selector in `domain/plan/impact.py` compares fingerprints between the `--state`
+manifest and the current one.
 
 Drawn from: [domain/state/manifest.py](../../snowflake_semantic_tools/domain/state/manifest.py), [domain/state/applied.py](../../snowflake_semantic_tools/domain/state/applied.py), [domain/model/lifecycle/rendered.py](../../snowflake_semantic_tools/domain/model/lifecycle/rendered.py), [domain/plan/classify.py](../../snowflake_semantic_tools/domain/plan/classify.py), [domain/plan/impact.py](../../snowflake_semantic_tools/domain/plan/impact.py), [app/manifest.py](../../snowflake_semantic_tools/app/manifest.py), [adapters/project_source.py](../../snowflake_semantic_tools/adapters/project_source.py).
 

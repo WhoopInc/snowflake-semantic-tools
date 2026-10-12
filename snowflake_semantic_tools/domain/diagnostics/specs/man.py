@@ -35,14 +35,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="the manifest is structurally incomplete",
     ),
     spec(
-        "SST-MAN004",
-        Severity.ERROR,
-        "Impact index incomplete",
-        "{artifact} has no reverse-index entry",
-        "re-run sst compile",
-        condition="the impact index of a stored manifest does not list an artifact under a file it came from",
-    ),
-    spec(
         "SST-MAN005",
         Severity.ERROR,
         "manifest_id does not match the recomputed hash",

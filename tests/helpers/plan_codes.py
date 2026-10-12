@@ -19,7 +19,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan import build_changeset
 from snowflake_semantic_tools.domain.plan.preflight import Preflight
-from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, ImpactIndex, Manifest, State
+from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, Manifest, State
 from tests.helpers.manifests import build_minimal_manifest
 from tests.helpers.sql_values import statement
 
@@ -54,7 +54,6 @@ def manifest_of(*artifacts: RenderedArtifact) -> Manifest:
         sources={},
         members={},
         files={},
-        impact=ImpactIndex(),
         diagnostics_summary={},
     )
 

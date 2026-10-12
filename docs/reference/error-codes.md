@@ -25,13 +25,13 @@ cannot be downgraded by any setting.
 - [Validation (VAL)](#validation-val) -- 302 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
-- [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
+- [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
 - [Planning (PLN)](#planning-pln) -- 38 codes
 - [Apply (APL)](#apply-apl) -- 29 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 22 codes
 - [Internal (INT)](#internal-int) -- 12 codes
-- [Retired numbers](#retired-numbers) -- 40 numbers
+- [Retired numbers](#retired-numbers) -- 41 numbers
 
 ## Registry (REG)
 
@@ -5983,16 +5983,6 @@ Raised when the manifest is structurally incomplete.
 
 Fix: re-run sst compile
 
-### SST-MAN004
-
-**Impact index incomplete** (error)
-
-`<artifact> has no reverse-index entry`
-
-Raised when the impact index of a stored manifest does not list an artifact under a file it came from.
-
-Fix: re-run sst compile
-
 ### SST-MAN005
 
 **manifest_id does not match the recomputed hash** (error)
@@ -7571,6 +7561,12 @@ Retired because `meta.sst.database` and `meta.sst.schema` are refused outright (
 **meta.sst location is hardcoded** (retired in 1.0.0)
 
 Retired because the keys it warned against are refused outright (SST-DBT030).
+
+### SST-MAN004
+
+**Impact index incomplete** (retired in 1.0.0)
+
+Retired because the impact index it checked is no longer written.
 
 ### SST-MAN021
 

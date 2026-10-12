@@ -10,7 +10,6 @@ from snowflake_semantic_tools.domain.state import (
     MANIFEST_SCHEMA_VERSION,
     SST_VERSION,
     ArtifactEntry,
-    ImpactIndex,
     Manifest,
 )
 
@@ -22,7 +21,6 @@ def build_minimal_manifest(
     sources: Mapping[str, object],
     members: Mapping[str, object],
     files: Mapping[str, object],
-    impact: ImpactIndex,
     diagnostics_summary: Mapping[str, int],
 ) -> Manifest:
     entries = {
@@ -52,7 +50,6 @@ def build_minimal_manifest(
         members=MappingProxyType(dict(members)),
         dbt_models=MappingProxyType({}),
         files=MappingProxyType(dict(files)),
-        impact=impact,
         diagnostics_summary=MappingProxyType(dict(diagnostics_summary)),
     )
     return manifest.with_computed_id()

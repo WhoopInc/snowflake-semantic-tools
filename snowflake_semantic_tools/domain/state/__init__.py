@@ -40,7 +40,6 @@ from snowflake_semantic_tools.domain.state.documents import (
 from snowflake_semantic_tools.domain.state.manifest import (
     MANIFEST_SCHEMA_VERSION,
     ArtifactEntry,
-    ImpactIndex,
     Manifest,
     migrate_manifest,
 )
@@ -60,7 +59,6 @@ __all__ = [
     "ArtifactEntry",
     "DEACTIVATED",
     "FAILED_AFTER_WRITE",
-    "ImpactIndex",
     "LastRun",
     "MANIFEST_SCHEMA_VERSION",
     "OBSERVATION_TTL_SECONDS",

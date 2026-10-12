@@ -2,9 +2,9 @@
 
 `Manifest.as_dict` is the `manifest.json` document. Its `manifest_id` is the `content_hash`
 of everything but the id and the schema version, so `Manifest.from_dict` detects an edited
-manifest, and it refuses one whose impact index leaves out a file an artifact came from. A
-schema-1 manifest is migrated in memory, and records the schema it was read from; an older
-schema, which has no migration, and a newer one are refused. Nothing here rewrites the file.
+manifest. A schema-1 or schema-2 manifest is migrated in memory, and records the schema it was
+read from; an older schema, which has no migration, and a newer one are refused. Nothing here
+rewrites the file.
 """
 
 from __future__ import annotations
@@ -22,7 +22,9 @@ from snowflake_semantic_tools.domain.state.codec import (
 )
 from snowflake_semantic_tools.domain.state.documents import StoredDocumentError, content_hash
 
-MANIFEST_SCHEMA_VERSION = 2
+MANIFEST_SCHEMA_VERSION = 3
+
+_UNHASHED = ("manifest_id", "schema_version")
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,49 +123,11 @@ class ArtifactEntry:
 
 
 @dataclass(frozen=True, slots=True)
-class ImpactIndex:
-    """Which artifacts use each input: each source file, dbt model, and member, by its key.
-
-    Every value is a tuple of artifact keys; `as_dict` writes each mapping sorted by key.
-    """
-
-    by_file: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
-    by_dbt_model: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
-    by_member: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
-
-    def as_dict(self) -> dict[str, object]:
-        """Return the index as `manifest.json` stores it under `impact`."""
-        return {
-            "by_file": {key: list(value) for key, value in sorted(self.by_file.items())},
-            "by_dbt_model": {key: list(value) for key, value in sorted(self.by_dbt_model.items())},
-            "by_member": {key: list(value) for key, value in sorted(self.by_member.items())},
-        }
-
-    @classmethod
-    def from_dict(cls, value: object) -> ImpactIndex:
-        """Read an index as `as_dict` writes it; a mapping it lacks is empty.
-
-        Raises:
-            ValueError: the index or one of its mappings is not an object.
-        """
-        if not isinstance(value, dict):
-            raise ValueError("impact index must be an object")
-
-        def entries(name: str) -> Mapping[str, tuple[str, ...]]:
-            raw = value.get(name, {})
-            if not isinstance(raw, dict):
-                raise ValueError(f"impact.{name} must be an object")
-            return MappingProxyType({str(key): tuple(str(item) for item in items) for key, items in raw.items()})
-
-        return cls(entries("by_file"), entries("by_dbt_model"), entries("by_member"))
-
-
-@dataclass(frozen=True, slots=True)
 class Manifest:
     """The compile manifest, identified by the hash of its content.
 
     `manifest_id` is empty until `with_computed_id` fills it. The mappings besides `artifacts`
-    and `impact` hold what compile recorded; nothing in this module reads into them.
+    hold what compile recorded; nothing in this module reads into them.
 
     Attributes:
         generator: The writer's name and SST version.
@@ -181,7 +145,6 @@ class Manifest:
     members: Mapping[str, object]
     dbt_models: Mapping[str, object]
     files: Mapping[str, object]
-    impact: ImpactIndex
     diagnostics_summary: Mapping[str, int]
     migrated_from: int | None = field(default=None, compare=False)
 
@@ -208,7 +171,6 @@ class Manifest:
             "members": dict(sorted(self.members.items())),
             "dbt_models": dict(sorted(self.dbt_models.items())),
             "files": dict(sorted(self.files.items())),
-            "impact": self.impact.as_dict(),
             "diagnostics_summary": dict(self.diagnostics_summary),
         }
 
@@ -220,8 +182,7 @@ class Manifest:
             StoredDocumentError: SST-MAN002 when the document is not an object; SST-MAN003 when
                 it lacks an integer `schema_version` or an `artifacts` object; SST-MAN203 when
                 its schema is newer; SST-MAN202 when an older schema has no migration; and
-                SST-MAN005 when its `manifest_id` is not the hash of its content; and SST-MAN004
-                when the impact index does not list an artifact under a file it came from.
+                SST-MAN005 when its `manifest_id` is not the hash of its content.
             ValueError: another part is malformed, such as an artifact entry or the summary.
             KeyError: an artifact entry lacks a required key.
         """
@@ -239,12 +200,12 @@ class Manifest:
                 found=version,
                 expected=MANIFEST_SCHEMA_VERSION,
             )
-        migrated_from = version if version < MANIFEST_SCHEMA_VERSION else None
-        if migrated_from is not None:
-            value = migrate_manifest(value)
         raw_artifacts = value.get("artifacts")
         if not isinstance(raw_artifacts, dict):
             raise StoredDocumentError("SST-MAN003", "manifest artifacts is required", key="artifacts")
+        migrated_from = version if version < MANIFEST_SCHEMA_VERSION else None
+        if migrated_from is not None:
+            value = migrate_manifest(value)
         manifest = _manifest_from_dict_unchecked(value)
         expected = content_hash(manifest.hash_material())
         if manifest.manifest_id != expected:
@@ -255,46 +216,40 @@ class Manifest:
                 expected=expected,
             )
         if migrated_from is not None:
-            # The schema it migrated from had no impact index to be incomplete.
             return replace(manifest, migrated_from=migrated_from)
-        unindexed = manifest.unindexed()
-        if unindexed is not None:
-            raise StoredDocumentError("SST-MAN004", f"{unindexed} has no reverse-index entry", artifact=unindexed)
         return manifest
-
-    def unindexed(self) -> str | None:
-        """Return the first artifact, by key, that the impact index leaves out under a file it came from.
-
-        Returns:
-            The artifact's key; None when the index lists every artifact under each of its files.
-        """
-        for key, entry in sorted(self.artifacts.items()):
-            if any(key not in self.impact.by_file.get(path, ()) for path in entry.source_files):
-                return key
-        return None
 
 
 def migrate_manifest(value: Mapping[str, object]) -> dict[str, object]:
-    """Migrate a schema-1 manifest document to the current schema, leaving the input unchanged.
+    """Migrate a schema-1 or schema-2 manifest document to the current schema, leaving the input unchanged.
 
-    The sections schema 2 added start empty, and the id is recomputed rather than checked, so
-    an edit to a schema-1 manifest goes undetected.
+    The sections schema 2 added start empty. Schema 3 stopped writing the impact index, so an
+    `impact` key is dropped unread. The migrated document's id is recomputed. A schema-2 id is
+    first checked against the document as stored, so an edited schema-2 manifest is still refused;
+    a schema-1 id is not, so an edit to a schema-1 manifest goes undetected.
 
     Raises:
-        StoredDocumentError: SST-MAN202 when the document is not schema 1.
+        StoredDocumentError: SST-MAN202 when the document is neither schema 1 nor schema 2; SST-MAN005
+            when a schema-2 document's `manifest_id` is not the hash of its content.
     """
     version = value.get("schema_version")
-    if version == 1:
-        migrated = dict(value)
-        migrated["schema_version"] = MANIFEST_SCHEMA_VERSION
-        migrated.setdefault("members", {})
-        migrated.setdefault("dbt_models", {})
-        migrated.setdefault("files", {})
-        migrated.setdefault("impact", {"by_file": {}, "by_dbt_model": {}, "by_member": {}})
-        manifest = _manifest_from_dict_unchecked(migrated)
-        migrated["manifest_id"] = content_hash(manifest.hash_material())
-        return migrated
-    raise StoredDocumentError("SST-MAN202", f"manifest schema {version} has no migration", found=version)
+    if version not in (1, 2):
+        raise StoredDocumentError("SST-MAN202", f"manifest schema {version} has no migration", found=version)
+    if version == 2:
+        found = value.get("manifest_id")
+        expected = content_hash({key: item for key, item in value.items() if key not in _UNHASHED})
+        if found != expected:
+            raise StoredDocumentError(
+                "SST-MAN005", f"manifest_id {found}, recomputed {expected}", found=found, expected=expected
+            )
+    migrated = {key: item for key, item in value.items() if key != "impact"}
+    migrated["schema_version"] = MANIFEST_SCHEMA_VERSION
+    migrated.setdefault("members", {})
+    migrated.setdefault("dbt_models", {})
+    migrated.setdefault("files", {})
+    manifest = _manifest_from_dict_unchecked(migrated)
+    migrated["manifest_id"] = content_hash(manifest.hash_material())
+    return migrated
 
 
 def _manifest_from_dict_unchecked(value: Mapping[str, object]) -> Manifest:
@@ -325,7 +280,6 @@ def _manifest_from_dict_unchecked(value: Mapping[str, object]) -> Manifest:
         members=MappingProxyType(_object_map(value.get("members"))),
         dbt_models=MappingProxyType(_object_map(value.get("dbt_models"))),
         files=MappingProxyType(_object_map(value.get("files"))),
-        impact=ImpactIndex.from_dict(value.get("impact", {})),
         diagnostics_summary=MappingProxyType(parsed_summary),
     )
 

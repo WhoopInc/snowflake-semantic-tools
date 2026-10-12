@@ -4,7 +4,8 @@
 files; `stale_manifest` says why a run must not start when `sst compile` wrote another one,
 and `target_mismatch` when it compiled for another target. `read_notes` reports how a stored
 manifest was read, and `dbt_manifest_moved` a dbt manifest rewritten while a run read it.
-`build_manifest` does the building: every index lists its artifact keys sorted, and the id
+`build_manifest` does the building: each member's `attached_to` and each dbt model's
+`referenced_by` list artifact keys sorted, and the id
 hashes the canonical document, so the order of the compiled artifacts never changes the id,
 while the SST version and each recorded checksum do. Artifact names are recorded casefolded,
 and each artifact lists, sorted, the codes of the diagnostics whose subject is its key.
@@ -17,7 +18,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Severity
 from snowflake_semantic_tools.domain.ports.project import ManifestSources
-from snowflake_semantic_tools.domain.state import SST_VERSION, ArtifactEntry, ImpactIndex, Manifest
+from snowflake_semantic_tools.domain.state import MANIFEST_SCHEMA_VERSION, SST_VERSION, ArtifactEntry, Manifest
 
 
 def manifest_for(result: CompileResult, sources: ManifestSources) -> Manifest:
@@ -111,19 +112,13 @@ def build_manifest(
             unless empty.
     """
     artifacts: dict[str, ArtifactEntry] = {}
-    by_file: dict[str, tuple[str, ...]] = {}
-    by_dbt_model: dict[str, tuple[str, ...]] = {}
     by_member: dict[str, tuple[str, ...]] = {}
     dbt_models: dict[str, object] = {}
     for compiled in result.compiled:
-        source_files = compiled.source_files
         members = compiled.member_keys
         artifacts[compiled.artifact_key] = _artifact_entry(compiled, result)
-        for source_file in source_files:
-            by_file[source_file] = tuple(sorted({*by_file.get(source_file, ()), compiled.artifact_key}))
         relation_by_model = dict(compiled.dbt_relations)
         for model_name in compiled.referenced_models:
-            by_dbt_model[model_name] = tuple(sorted({*by_dbt_model.get(model_name, ()), compiled.artifact_key}))
             existing = dbt_models.get(model_name)
             referenced_by = [compiled.artifact_key]
             if isinstance(existing, dict):
@@ -137,7 +132,7 @@ def build_manifest(
 
     files = {path: {"checksum": checksum} for path, checksum in sorted((file_checksums or {}).items())}
     manifest = Manifest(
-        schema_version=2,
+        schema_version=MANIFEST_SCHEMA_VERSION,
         manifest_id="",
         generator=MappingProxyType({"name": "sst", "version": SST_VERSION}),
         project=MappingProxyType(
@@ -164,11 +159,6 @@ def build_manifest(
         members=MappingProxyType({key: {"attached_to": list(value)} for key, value in sorted(by_member.items())}),
         dbt_models=MappingProxyType(dbt_models),
         files=MappingProxyType(files),
-        impact=ImpactIndex(
-            MappingProxyType(by_file),
-            MappingProxyType(by_dbt_model),
-            MappingProxyType(by_member),
-        ),
         diagnostics_summary=MappingProxyType(
             {
                 "error": result.diagnostics.count(Severity.ERROR),

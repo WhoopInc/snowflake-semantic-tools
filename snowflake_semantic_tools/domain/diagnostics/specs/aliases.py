@@ -212,6 +212,7 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         None,
         "the keys it warned against are refused outright (SST-DBT030)",
     ),
+    ("SST-MAN004", "Impact index incomplete", None, "the impact index it checked is no longer written"),
     (
         "SST-MAN021",
         "state.manifest_id does not match the current manifest",
