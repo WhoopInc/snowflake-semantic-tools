@@ -305,8 +305,8 @@ Imports run one way, `cli` → (`app` | `adapters`) → `domain`:
 | SST never imports dbt -- it runs the executable | no module imports `dbt` |
 | adapters use domain ports and models, not domain renderers | `adapters` never imports `domain.render` |
 | adapter subpackages are independent | `adapters.yaml`, `.dbt`, `.snowflake`, `.fs` never import one another |
-| only the roundtrip, dbt and yaml adapters edit YAML | nothing else imports `ruamel` |
-| only the yaml and dbt adapters parse YAML | `cli` and the other adapters never import `yaml` directly |
+| only roundtrip and the yaml and dbt adapters import ruamel | no other module imports `ruamel` directly |
+| only bounded_yaml and the yaml and dbt adapters import PyYAML | no other module imports `yaml` directly |
 
 ### Diagnostics
 

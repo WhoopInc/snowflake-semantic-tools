@@ -46,8 +46,8 @@ protocol in `domain/ports/`, or a union of those declared beside it, so `app` an
 | SST never imports dbt -- it runs the executable | dbt is an optional extra and its Python API is not a stable interface, so SST runs whichever `dbt` is on `PATH` and reads the manifest it writes. |
 | adapters use domain ports and models, not domain renderers | Rendering is domain logic; an adapter reads and writes, it does not decide what SST publishes. |
 | adapter subpackages are independent | `yaml`, `dbt`, `snowflake`, and `fs` never import one another, so each can be tested and swapped on its own; a top-level adapter module such as `project_source.py` composes them. |
-| only the roundtrip, dbt and yaml adapters edit YAML | Writing a file back with `ruamel` preserves comments and layout; confining it keeps that delicate step to `adapters/roundtrip.py` and the formatter in `adapters/yaml/format.py`. |
-| only the yaml and dbt adapters parse YAML | Each file is parsed at the edge that owns its format: `adapters.yaml` for SST's own files, `adapters.dbt` for dbt's. Only direct imports count, so everything above reaches YAML through those two. |
+| only roundtrip and the yaml and dbt adapters import ruamel | Writing a file back with `ruamel` preserves comments and layout; confining it keeps that delicate step to `adapters/roundtrip.py` and the formatter in `adapters/yaml/format.py`. |
+| only bounded_yaml and the yaml and dbt adapters import PyYAML | Each file is parsed at the edge that owns its format, through the depth-bounded loader in `adapters/bounded_yaml.py`: `adapters.yaml` for SST's own files, `adapters.dbt` for dbt's. Every module is covered and the importers are an allow-list, so a new module that imports `yaml` breaks the contract; only direct imports count, so everything else reaches YAML through those. |
 
 A contract that has never rejected anything proves nothing, so
 `tests/unit/test_ring_boundaries.py` writes a module that crosses each boundary

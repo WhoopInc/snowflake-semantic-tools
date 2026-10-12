@@ -96,25 +96,43 @@ CROSSINGS = [
     pytest.param(
         "adapters/snowflake/_boundary_probe.py",
         "import yaml\n",
-        "only the yaml and dbt adapters parse YAML",
+        "only bounded_yaml and the yaml and dbt adapters import PyYAML",
         id="snowflake-adapter-may-not-parse-yaml",
     ),
     pytest.param(
         "app/_boundary_probe.py",
         "import ruamel.yaml\n",
-        "only the roundtrip, dbt and yaml adapters edit YAML",
+        "only roundtrip and the yaml and dbt adapters import ruamel",
         id="app-may-not-edit-yaml",
     ),
     pytest.param(
         "adapters/snowflake/_boundary_probe.py",
         "from ruamel.yaml import YAML\n",
-        "only the roundtrip, dbt and yaml adapters edit YAML",
+        "only roundtrip and the yaml and dbt adapters import ruamel",
         id="snowflake-adapter-may-not-edit-yaml",
+    ),
+    pytest.param(
+        "adapters/_boundary_probe.py",
+        "import yaml\n",
+        "only bounded_yaml and the yaml and dbt adapters import PyYAML",
+        id="top-level-adapter-may-not-parse-yaml",
+    ),
+    pytest.param(
+        "adapters/_boundary_probe.py",
+        "import ruamel.yaml\n",
+        "only roundtrip and the yaml and dbt adapters import ruamel",
+        id="top-level-adapter-may-not-edit-yaml",
+    ),
+    pytest.param(
+        "domain/model/_boundary_probe.py",
+        "from yaml import safe_load\n",
+        "only bounded_yaml and the yaml and dbt adapters import PyYAML",
+        id="nested-module-may-not-parse-yaml",
     ),
     pytest.param(
         "cli/_boundary_probe.py",
         "import yaml\n",
-        "only the yaml and dbt adapters parse YAML",
+        "only bounded_yaml and the yaml and dbt adapters import PyYAML",
         id="cli-may-not-parse-yaml",
     ),
 ]
