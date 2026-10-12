@@ -106,6 +106,22 @@ def test_the_required_gate_parses_the_reference_project_with_every_admitted_dbt_
     )
 
 
+def test_the_required_gate_runs_the_built_wheel_installed_alone_outside_the_checkout() -> None:
+    job = _workflow("test-and-lint.yml")["jobs"]["wheel"]
+    runs = [" ".join(str(step.get("run", "")).split()) for step in job["steps"]]
+    joined = " ".join(runs)
+    assert any(run == "poetry build --no-interaction --format wheel" for run in runs)
+    # Nothing but the wheel is installed: no project install, no editable or source install.
+    assert "poetry install" not in joined and "poetry run" not in joined
+    assert re.findall(r"pip\"? install (?:--\S+ )*(\S+)", joined) == ["dist/*.whl"]
+    smoke = next(run for run in runs if "--suite golden" in run)
+    assert smoke.index('cd "$SMOKE"') < smoke.index("venv/bin/sst --version")
+    assert '"$GITHUB_WORKSPACE"/*) echo "imported from the checkout' in smoke
+    for command in ("validate", "compile", "test --suite golden"):
+        assert f'venv/bin/sst --project-dir project {command} --manifest "$M"' in smoke, command
+    assert 'M="$GITHUB_WORKSPACE/tests/fixtures/reference_project_manifest.json"' in smoke
+
+
 def test_the_live_suites_run_by_hand_before_each_release_and_on_no_schedule() -> None:
     for name in sorted(path.name for path in WORKFLOWS.glob("*.yml")):
         text = (WORKFLOWS / name).read_text(encoding="utf-8")

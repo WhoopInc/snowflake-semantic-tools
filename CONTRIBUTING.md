@@ -109,7 +109,7 @@ date. A new dependency also needs a row, with its license, in [DEPENDENCIES.md](
 
 These are the checks `.github/workflows/test-and-lint.yml` runs on every pull request. A release
 tag runs the same workflow before it builds anything (`publish-to-pypi.yml` calls it). None of them
-needs a secret or a Snowflake account; only the dbt job, the last below, starts a real dbt. `.github/workflows/nightly.yml` adds mutation testing over
+needs a secret or a Snowflake account; only the dbt job, near the end below, starts a real dbt. `.github/workflows/nightly.yml` adds mutation testing over
 `domain/` and the property tests under the deeper `nightly` Hypothesis profile, both offline and
 report-only.
 
@@ -166,6 +166,16 @@ poetry run sst --project-dir tests/fixtures/reference_project test --suite golde
   --golden-dir "$PWD/tests/golden/expected/ddl"
 poetry run pytest tests/contract/test_dbt_manifest_contract.py \
   --dbt-manifest tests/fixtures/reference_project/target/manifest.json
+
+# The wheel job: the built wheel, installed alone into a venv outside the checkout, runs
+# validate, compile and the golden suite on a copy of the reference project with its vendored
+# manifest, from outside the source tree.
+poetry build --format wheel
+python -m venv /tmp/sst-wheel && /tmp/sst-wheel/bin/pip install dist/*.whl
+cp -R tests/fixtures/reference_project /tmp/sst-wheel-project && (cd /tmp && /tmp/sst-wheel/bin/sst \
+  --project-dir /tmp/sst-wheel-project test --suite golden \
+  --manifest "$OLDPWD/tests/fixtures/reference_project_manifest.json" \
+  --golden-dir "$OLDPWD/tests/golden/expected/ddl")
 ```
 
 The ratchet and the three floors are separate checks: the ratchet compares each layer over the

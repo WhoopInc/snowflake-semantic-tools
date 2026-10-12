@@ -85,6 +85,8 @@ poetry run sst test --suite golden --project-dir $P --manifest $M --golden-dir "
 - A relative `--golden-dir` resolves against `--project-dir`, so pass an absolute path.
 - `sst compile` writes `target/sst/` inside the fixture; git ignores it.
 
+The reference project is a conformance fixture, not a template to start a project from. It holds every artifact type and many of their options at once so one copy can exercise the whole engine, and it carries deliberate warnings, folder routes and stand-ins a real project would not. A change to it is a change to what the tests assert: the goldens, the negative overlays and the CLI tests all read it, so keep it as small as that coverage allows.
+
 `fixtures/v1_dialect/` is written in the 0.3 dialect. `expected/converted/` is what `sst migrate refs --write` must turn it into; once its 0.3 key spellings are renamed as well, it renders `expected/ddl/`. Run `--write` only on a copy.
 
 ## Goldens

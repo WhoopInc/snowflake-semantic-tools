@@ -230,6 +230,57 @@ jobs:
           poetry run pytest tests/contract/test_dbt_manifest_contract.py
           --dbt-manifest "$REFERENCE_PROJECT/target/manifest.json"
 
+  wheel:
+    name: Install the built wheel alone and run it
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+        with:
+          version: 2.2.1
+
+      - name: Build the wheel
+        run: poetry build --no-interaction --format wheel
+
+      # Only the wheel, into a venv outside the checkout, resolved as a user's `pip install`
+      # resolves it: a module or data file the wheel leaves out, or a dependency it does not
+      # declare, fails here instead of after a release.
+      - name: Install the wheel into a venv of its own
+        env:
+          SMOKE: ${{ runner.temp }}/wheel-smoke
+        run: |
+          python -m venv "$SMOKE/venv"
+          "$SMOKE/venv/bin/pip" install --disable-pip-version-check dist/*.whl
+
+      # From outside the checkout, on a copy of the reference project with its vendored manifest,
+      # so nothing is imported from the source tree and no dbt is needed.
+      - name: Validate, compile and render the goldens with the installed sst
+        env:
+          SMOKE: ${{ runner.temp }}/wheel-smoke
+        run: |
+          cp -R tests/fixtures/reference_project "$SMOKE/project"
+          cd "$SMOKE"
+          venv/bin/sst --version
+          where=$(venv/bin/python -c "import snowflake_semantic_tools as s; print(s.__file__)")
+          case "$where" in "$GITHUB_WORKSPACE"/*) echo "imported from the checkout: $where"; exit 1;; esac
+          M="$GITHUB_WORKSPACE/tests/fixtures/reference_project_manifest.json"
+          venv/bin/sst --project-dir project validate --manifest "$M" --no-strict --no-snowflake-syntax-check
+          venv/bin/sst --project-dir project compile --manifest "$M" --emit-ddl "$SMOKE/ddl"
+          venv/bin/sst --project-dir project test --suite golden --manifest "$M" --golden-dir "$GITHUB_WORKSPACE/tests/golden/expected/ddl"
+
   semgrep:
     name: Scan with semgrep
     runs-on: ubuntu-latest
