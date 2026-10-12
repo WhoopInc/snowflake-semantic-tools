@@ -6193,7 +6193,7 @@ Note: Plan blocks the change rather than let apply fail with SST-SNO004. An upda
 
 Raised when the name a planned create writes to is held by an object of its type that observation did not list.
 
-Fix: use or_replace, or choose another name
+Fix: drop or rename the existing object, or give the artifact another name
 
 Note: Unless the name is free by then, apply refuses the create (SST-APL012).
 

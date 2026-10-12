@@ -15,7 +15,7 @@ THE CLAUSE ORDER IS THE CONTRACT, and it is Snowflake's:
       AI_VERIFIED_QUERIES (...)
       MAX_STALENESS = '...'
       WITH TAG (...)
-      COPY GRANTS
+      COPY GRANTS               <- only with OR REPLACE: a plain create has no grants to copy
 
 It is the order the server accepts, not the published grammar's, which puts MAX_STALENESS
 before the AI clauses (docs/design/snowflake-behaviour.md).
@@ -329,8 +329,8 @@ def render(view: SemanticView) -> Sql:
     newline -- the caller decides how the statement is terminated.
 
     Raises:
-        ValueError: the view's or a table's name is not a three-part name, or a member name is
-            not an identifier.
+        ValueError: the view's or a table's name is not a three-part name, a member name is
+            not an identifier, or the view is both `or_replace` and `if_not_exists`.
     """
     return _render_counted(view)[0]
 
@@ -342,7 +342,8 @@ def render_checked(view: SemanticView) -> tuple[Sql | None, tuple[Diagnostic, ..
     was found, and the view must not be published.
 
     Raises:
-        ValueError: as `render` does, for a name the checks before rendering let through.
+        ValueError: as `render` does, for a name the checks before rendering let through or
+            for both `or_replace` and `if_not_exists`.
 
     Diagnostics:
         SST-RND001: the view has no tables.
@@ -393,6 +394,9 @@ def _unquotable_names(view: SemanticView, subject: str) -> list[Diagnostic]:
 
 def _render_counted(view: SemanticView) -> tuple[Sql, int]:
     """Render the statement, and count the members its clauses hold."""
+    if view.or_replace and view.if_not_exists:
+        # Snowflake refuses the pair; no project can set either flag, so this is a caller's bug.
+        raise ValueError(f"semantic view {view.fqn!r} is both or_replace and if_not_exists")
     head = [sql("CREATE")]
     if view.or_replace:
         head.append(sql(" OR REPLACE"))
@@ -457,7 +461,8 @@ def _trailing_clauses(view: SemanticView, queries: list[Sql]) -> list[Sql]:
         lines.append(sql("      {tags}", tags=join("\n    , ", tag_lines)))
         lines.append(sql("  )"))
 
-    lines.append(sql("  COPY GRANTS"))
+    if view.or_replace:
+        lines.append(sql("  COPY GRANTS"))
     return lines
 
 
