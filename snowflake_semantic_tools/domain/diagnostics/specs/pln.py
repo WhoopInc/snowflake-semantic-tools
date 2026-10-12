@@ -17,7 +17,8 @@ SPECS: tuple[ErrorSpec, ...] = (
             "a read of the target failed: an object listing, grants, the state table, "
             "a preflight read, or a composite artifact's resources; under `--use-cached-state`, also "
             "each composite artifact, which a recorded observation cannot decide. A definition "
-            "`--capture-prior` cannot read is SST-PLN037 instead"
+            "`--capture-prior` cannot read is SST-PLN037 instead, and the tags on a view a replace "
+            "removes SST-PLN040"
         ),
         precheck=Precheck.OBSERVE,
     ),
@@ -431,7 +432,21 @@ SPECS: tuple[ErrorSpec, ...] = (
         note=(
             "The replace's `WITH TAG` names only the declared tags, and Snowflake removes every other "
             "tag set on the view; a tag it inherits from its schema or database is kept. "
-            "`--no-grants` skips the read of the view's tags, and with it this warning."
+            "`--no-grants` skips the read of the view's tags, and with it this warning; a read that "
+            "fails is `SST-PLN040`."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN040",
+        Severity.WARNING,
+        "Tags on a replaced view not read",
+        "the tags on {value} were not read, so the tags its replace removes are not checked: {detail}",
+        "check that the role can read the view's tags with TAG_REFERENCES, or plan with --no-grants to skip the read",
+        condition="reading the tags on a semantic view a planned update replaces failed",
+        note=(
+            "The plan is otherwise unaffected: the update is planned as before, and `SST-PLN039` is "
+            "not checked for the view."
         ),
         precheck=Precheck.OBSERVE,
     ),

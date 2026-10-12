@@ -325,8 +325,9 @@ inline in the `CREATE`, and
 proves that the replace drops tags set outside it. The consequence for users is
 that every apply leaves a view with exactly the tags the project declares, and a
 governance tag applied by hand is gone after the next apply. Plan reads the
-tags on each view it may replace, alongside its grants, and warns of each one
-the project does not declare (`SST-PLN039`). Probe:
+tags on each view it will replace, once it has decided the update, and warns of
+each one the project does not declare (`SST-PLN039`). A read that fails is a
+warning, `SST-PLN040`, and the plan goes on. Probe:
 
 ```sql
 -- Create probe_view, then:
@@ -340,6 +341,7 @@ SELECT * FROM TABLE(<db>.INFORMATION_SCHEMA.TAG_REFERENCES(
 
 **SST depends on it at**: `_trailing_clauses` in
 [semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py);
+`observe_replaced_tags` in [observe.py](../../snowflake_semantic_tools/app/observe.py);
 `_removed_tags` in [classify.py](../../snowflake_semantic_tools/domain/plan/classify.py);
 the `tags:` key in [the semantic views guide](../guides/semantic-views.md).
 
@@ -358,7 +360,8 @@ An earlier probe sketch named `'SEMANTIC_VIEW'`, but nothing records that it ran
 **Evidence**: `Observed`. The connector test pins the statement SST sends, not
 that the server answers it. If the domain is wrong, plan either reads no tags,
 and `SST-PLN039` stays silent about a hand-applied tag a replace removes, or the
-read fails. The release probe must settle it:
+read fails and plan warns that it skipped the check (`SST-PLN040`). The release
+probe must settle it:
 
 ```sql
 -- With probe_view tagged as in the entry above:

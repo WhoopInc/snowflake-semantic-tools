@@ -26,7 +26,7 @@ cannot be downgraded by any setting.
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
-- [Planning (PLN)](#planning-pln) -- 40 codes
+- [Planning (PLN)](#planning-pln) -- 41 codes
 - [Apply (APL)](#apply-apl) -- 29 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 22 codes
@@ -6147,7 +6147,7 @@ Fix: upgrade SST
 
 `observation of <value> failed: <detail>`
 
-Raised when a read of the target failed: an object listing, grants, the state table, a preflight read, or a composite artifact's resources; under `--use-cached-state`, also each composite artifact, which a recorded observation cannot decide. A definition `--capture-prior` cannot read is SST-PLN037 instead.
+Raised when a read of the target failed: an object listing, grants, the state table, a preflight read, or a composite artifact's resources; under `--use-cached-state`, also each composite artifact, which a recorded observation cannot decide. A definition `--capture-prior` cannot read is SST-PLN037 instead, and the tags on a view a replace removes SST-PLN040.
 
 Fix: check the connection and the role, then re-run plan
 
@@ -6529,7 +6529,19 @@ Raised when a planned update replaces a semantic view that carries tags the proj
 
 Fix: declare each tag to keep under the view's `tags:`, or set it again after applying
 
-Note: The replace's `WITH TAG` names only the declared tags, and Snowflake removes every other tag set on the view; a tag it inherits from its schema or database is kept. `--no-grants` skips the read of the view's tags, and with it this warning.
+Note: The replace's `WITH TAG` names only the declared tags, and Snowflake removes every other tag set on the view; a tag it inherits from its schema or database is kept. `--no-grants` skips the read of the view's tags, and with it this warning; a read that fails is `SST-PLN040`.
+
+### SST-PLN040
+
+**Tags on a replaced view not read** (warning)
+
+`the tags on <value> were not read, so the tags its replace removes are not checked: <detail>`
+
+Raised when reading the tags on a semantic view a planned update replaces failed.
+
+Fix: check that the role can read the view's tags with TAG_REFERENCES, or plan with --no-grants to skip the read
+
+Note: The plan is otherwise unaffected: the update is planned as before, and `SST-PLN039` is not checked for the view.
 
 ### SST-PLN100
 
