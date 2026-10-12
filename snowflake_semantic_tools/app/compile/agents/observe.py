@@ -95,8 +95,8 @@ class ObserveLiveObjects:
 
         This is the part of `run` that a dangling agent reference needs: Snowflake accepts an
         agent whose consumed extension, or pinned version, does not exist, and the agent then
-        has no skill. `sst plan` runs it whenever it is connected, even with the connected
-        checks off, so the reference is seen where the agent is published.
+        has no skill. `sst plan` runs it on every connected plan unless `--no-validate`, even
+        with the connected checks off, so the reference is seen where the agent is published.
 
         Diagnostics:
             SST-VAL531: an extension an agent consumes, or the version it pins, does not exist

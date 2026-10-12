@@ -102,7 +102,8 @@ _OPTION_HELP: Mapping[str, str] = {
     "--sql-out": "Write each create's and update's statements into this directory instead of `target/sst/sql`.",
     "--fail-fast": "Stop at the first failure instead of continuing.",
     "--no-validate": (
-        "Skip validation: no cycle check, connected check, or strict promotion. Only when `sst validate` "
+        "Skip validation: no cycle check, connected check, agent reference lookup, or strict promotion. "
+        "Only when `sst validate` "
         "already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`."
     ),
     "--dbt": "Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`.",
