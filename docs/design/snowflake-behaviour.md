@@ -765,12 +765,13 @@ secondary role.
 
 **Server does**: not probed. SST takes the documented rule as stated.
 
-**Evidence**: neither grade. The rule is documented, not observed, and plan
-does not act on it, so no test holds it there. `SST-PLN008` asks
-`IS_ROLE_IN_SESSION`, so it counts a `CREATE` privilege held only through a
-secondary role, which the create then lacks; the troubleshooting guide states
-the gap. The eval check does act on the same rule for its task privileges
-(`Enforced`); see
+**Evidence**: `Enforced`. The rule is documented, not observed, and SST acts
+on it in two places. `SST-PLN008` counts a `CREATE` privilege only when the
+primary role holds it through its hierarchy, and asks `IS_ROLE_IN_SESSION` only
+to say that a secondary role holds one it reports; `READ` and `WRITE` on a spec
+stage still count for any role in the session
+([test_preflight.py](../../tests/unit/app/test_preflight.py)). The eval check
+acts on the same rule for its task privileges; see
 [An evaluation ignores secondary roles](#an-evaluation-ignores-secondary-roles).
 Probe:
 
@@ -787,9 +788,12 @@ USE SECONDARY ROLES NONE;
 
 **SST depends on it at**: `missing_privileges` and `missing_role_privileges` in
 [ports/snowflake/preflight.py](../../snowflake_semantic_tools/domain/ports/snowflake/preflight.py);
-`_lacking` in
+`_lacking` and `missing_role_privileges` in
 [connector/preflight.py](../../snowflake_semantic_tools/adapters/snowflake/connector/preflight.py);
-[the troubleshooting guide](../guides/troubleshooting.md#how-sst-reports-a-missing-privilege).
+`_missing_privileges` in
+[app/preflight.py](../../snowflake_semantic_tools/app/preflight.py), which splits
+what the primary role lacks into what a secondary role holds and what nothing
+does; [the troubleshooting guide](../guides/troubleshooting.md#how-sst-reports-a-missing-privilege).
 
 ## Procedures and functions
 

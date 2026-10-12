@@ -84,10 +84,23 @@ class PreflightMethods(CatalogMethods, PreflightPort):
         return tuple(missing)
 
     def missing_role_privileges(self, role: str, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
+        """Return the privileges `role` does not hold on the schema, through its hierarchy.
+
+        As `_lacking` does, the account roles the grants name are walked first; database roles
+        are read only for the privileges none of those passes up to `role`.
+        """
         holders = schema_holders(
             self._dict_rows(sql("SHOW GRANTS ON SCHEMA {scope}", scope=scope_sql(scope))), scope, privileges
         )
-        held = held_by(Grantee.role(_shown(role)), holders, self._grantees_of, ROLE_HIERARCHY_DEPTH)
+        grantee = Grantee.role(_shown(role))
+        direct = {holder: held for holder, held in holders.items() if holder.is_account_role}
+        held = held_by(grantee, direct, self._grantees_of, ROLE_HIERARCHY_DEPTH)
+        wanted = {privilege.upper() for privilege in privileges} - held
+        through = {
+            holder: found & wanted for holder, found in holders.items() if not holder.is_account_role and found & wanted
+        }
+        if through:
+            held |= held_by(grantee, through, self._grantees_of, ROLE_HIERARCHY_DEPTH)
         return tuple(privilege for privilege in privileges if privilege.upper() not in held)
 
     def _grantees_of(self, grantee: Grantee) -> tuple[Grantee, ...]:

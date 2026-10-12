@@ -49,6 +49,7 @@ def _preflight() -> Preflight:
         missing_schemas=frozenset({("DB", "MISSING")}),
         missing_relations=MappingProxyType({"semantic_view:a": (QualifiedName.parse("DB.S.T"),)}),
         missing_privileges=MappingProxyType({("DB", "S"): ("CREATE SEMANTIC VIEW",)}),
+        secondary_privileges=MappingProxyType({("DB", "S"): ("CREATE SEMANTIC VIEW",)}),
         occupied=frozenset({"semantic_view:b"}),
         locked=frozenset({("DB", "S", "LOCKED")}),
         referenced=MappingProxyType({"semantic_view:a": (QualifiedName.parse("DB.S.USER_VIEW"),)}),
@@ -89,11 +90,12 @@ def test_a_record_written_before_the_stage_facts_reads_as_holding_none() -> None
     document = _recorded(preflight=_preflight()).as_dict()
     preflight = document["preflight"]
     assert isinstance(preflight, dict)
-    for field in ("stage_types", "absent_stages", "missing_stage_privileges"):
+    for field in ("stage_types", "absent_stages", "missing_stage_privileges", "secondary_privileges"):
         del preflight[field]
     read = RecordedObservation.from_dict(document).preflight
     assert read is not None
     assert (read.stage_types, read.absent_stages, read.missing_stage_privileges) == ({}, frozenset(), {})
+    assert read.secondary_privileges == {}
 
 
 def test_a_record_is_foreign_to_another_account_name_database_or_schema() -> None:
