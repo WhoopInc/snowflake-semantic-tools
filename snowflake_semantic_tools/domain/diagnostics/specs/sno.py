@@ -13,6 +13,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Snowflake refused and SST does not recognise the refusal",
         "Snowflake refused: {detail}",
         "read internal_detail; if this recurs, add a signature",
+        internal_detail=True,
         condition=(
             "Snowflake refused a statement and no SST signature matches the error; also an eval "
             "run whose results could not be read or checked, or an eval the gate finds no "
