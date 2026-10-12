@@ -271,7 +271,9 @@ def test_manifest_schema_versions_reports_each_entry_the_reader_would_drop() -> 
     [empty] = validate_config({"dbt": {"manifest_schema_versions": []}})
     assert (empty.code, empty.subject) == ("SST-CFG008", "config:dbt.manifest_schema_versions")
     assert _codes({"dbt": {"manifest_schema_versions": [11, 12]}}) == []
-    assert _codes({"dbt": {"manifest_schema_versions": "12"}}) == [("SST-CFG004", "config:dbt.manifest_schema_versions")]
+    assert _codes({"dbt": {"manifest_schema_versions": "12"}}) == [
+        ("SST-CFG004", "config:dbt.manifest_schema_versions")
+    ]
     assert _codes({"dbt": {"invoke": False}}) == []
 
 

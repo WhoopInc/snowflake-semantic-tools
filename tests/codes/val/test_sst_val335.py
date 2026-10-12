@@ -20,7 +20,9 @@ def test_sst_val335_fires(tmp_path: Path) -> None:
     manifest = _enum(tmp_path, "order_total")
     [diagnostic] = reported(project, "SST-VAL335", manifest)
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "dbt_model:orders: fact 'order_total' declares is_enum; only a dimension can be an enum"
+    assert (
+        diagnostic.message == "dbt_model:orders: fact 'order_total' declares is_enum; only a dimension can be an enum"
+    )
     assert diagnostic.subject == "dbt_column:orders.order_total"
     assert ERROR_REGISTRY["SST-VAL335"].always_error
 

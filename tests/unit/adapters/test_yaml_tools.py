@@ -191,7 +191,9 @@ def test_a_tools_file_that_cannot_be_read_is_reported_as_unreadable_not_malforme
 def _unknown(tmp_path: Path, text: str) -> list[tuple[str, str, int | None]]:
     """Each unknown-key report loading `text` as a tools file gives: code, message, line."""
     _write(tmp_path / "tools" / "platform.yml", text.strip())
-    catalog = load_tool_catalog(tmp_path, _dbt(), tools_dir="tools", target_name="dev", declared_targets=frozenset(("dev",)))
+    catalog = load_tool_catalog(
+        tmp_path, _dbt(), tools_dir="tools", target_name="dev", declared_targets=frozenset(("dev",))
+    )
     return [
         (item.code, item.message, item.origin.line if item.origin else None)
         for item in catalog.diagnostics

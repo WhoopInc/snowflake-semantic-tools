@@ -315,20 +315,16 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Column access_modifier holds an unrecognised value",
         "{artifact}: column '{member}' declares access_modifier '{found}'",
         "use `public_access`, or remove `access_modifier` from the column",
-        condition=(
-            "a column's `meta.sst.access_modifier` is neither `public_access` nor `private_access`"
-        ),
+        condition=("a column's `meta.sst.access_modifier` is neither `public_access` nor `private_access`"),
     ),
     spec(
         "SST-VAL334",
         Severity.ERROR,
         "Fact declares a private access modifier",
-        "{artifact}: column '{member}' declares access_modifier 'private_access'; SST does not "
-        "render a private fact",
+        "{artifact}: column '{member}' declares access_modifier 'private_access'; SST does not render a private fact",
         "remove `access_modifier` from the column, or hide what it measures behind a private metric",
         condition=(
-            "a column that is not a `dimension` or `time_dimension` carries "
-            "`meta.sst.access_modifier: private_access`"
+            "a column that is not a `dimension` or `time_dimension` carries `meta.sst.access_modifier: private_access`"
         ),
         note=(
             "A fact renders without `PRIVATE`, so it would publish as public; it is refused instead. "

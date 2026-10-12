@@ -9,7 +9,9 @@ from tests.helpers.reference_project import edited_manifest, project_copy, repor
 
 
 def _modifier(tmp_path: Path, column: str, value: str) -> Path:
-    return edited_manifest(tmp_path, lambda document: set_column_meta(document, "orders", column, access_modifier=value))
+    return edited_manifest(
+        tmp_path, lambda document: set_column_meta(document, "orders", column, access_modifier=value)
+    )
 
 
 def test_sst_val334_fires(tmp_path: Path) -> None:
@@ -20,7 +22,10 @@ def test_sst_val334_fires(tmp_path: Path) -> None:
         "SST does not render a private fact"
     )
     assert diagnostic.subject == "dbt_column:orders.order_total"
-    assert reported(project_copy(tmp_path / "again"), "SST-PRS004", _modifier(tmp_path, "order_total", "private_access")) == []
+    assert (
+        reported(project_copy(tmp_path / "again"), "SST-PRS004", _modifier(tmp_path, "order_total", "private_access"))
+        == []
+    )
 
 
 def test_sst_val334_silent(tmp_path: Path) -> None:
