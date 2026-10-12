@@ -257,9 +257,10 @@ or `generic` member has no renderer (`SST-RND040`), so it belongs under
 Every member takes `name:` and `type:` (`SST-PRS002`), and `description:`,
 which becomes the object's comment after SST's ownership marker and is the
 description of a search or generic tool that calls the member and sets none. A member
-other than a stage needs `on:` or `body_file:` (`SST-VAL604`). A tools file is
-not checked for keys SST does not read, as an agent file is: a misspelled key
-is ignored, so check spellings against the tables below.
+other than a stage needs `on:` or `body_file:` (`SST-VAL604`). A key SST does
+not read, at a tools file's root, on a group, or on a member, is a warning
+(`SST-PRS004`), and an error naming the key it resembles when it is a near
+miss of one (`SST-PRS022`), as in an agent file.
 
 A `reference:` member takes `relations:` and may also carry what an agent tool
 reads from it -- `description`, `warehouse`, `columns_and_descriptions`,
@@ -270,8 +271,10 @@ the object needs, such as `on:`, `body_file:`, or `language:` (`SST-VAL605`).
 `tools.<group>` override for its group: `+warehouse` (else the target's
 warehouse), `+target_lag`, and `+embedding_model` for a search service, and
 `+warehouse` and `+execute_as` for a procedure. A function and a stage take no
-defaults. A member left without a value the DDL needs, such as a search
-service with no target lag, does not compile.
+defaults. A member left without a value the DDL needs does not compile: one no
+default can supply, such as a routine's `language:` or `returns:`, is
+`SST-PRS002`, and a warehouse or target lag no default supplied either is
+`SST-RND042`.
 
 **Search service** (`type: cortex_search_service`) renders
 `CREATE OR REPLACE CORTEX SEARCH SERVICE`, whose query selects the declared
