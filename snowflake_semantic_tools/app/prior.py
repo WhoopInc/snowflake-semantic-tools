@@ -39,7 +39,11 @@ _VIEW_HEADER = ("CREATE", "OR", "REPLACE", "SEMANTIC", "VIEW")
 _VIEW_BLOCKS = frozenset(("TABLES", "RELATIONSHIPS", "VARIABLES", "FACTS", "DIMENSIONS", "METRICS"))
 # Each trailing clause by its first keyword, with the keyword a two-word one must have next.
 _TRAILING_STARTS = {clause.split()[0]: clause for clause in TRAILING_CLAUSES}
+# A trailing clause by the keyword it starts with when its optional first one is left out: the
+# grammar is `[ [ WITH ] TAG ( ... ) ]`.
+_BARE_STARTS = {"TAG": "WITH TAG"}
 _NAME_PARTS = frozenset((TokenKind.WORD, TokenKind.QUOTED_IDENTIFIER))
+_VALUES = frozenset((TokenKind.STRING, TokenKind.DOLLAR_STRING, TokenKind.NUMBER))
 
 
 def prior_definition(
@@ -143,15 +147,17 @@ def _view_clauses(tokens: list[Token], index: int) -> tuple[list[tuple[str, int]
             if depth < 0:
                 return "its parentheses do not balance"
             continue
-        if depth > 0 or token.kind in {TokenKind.STRING, TokenKind.DOLLAR_STRING} or token.text == "=":
+        # A value is a string, or a bare number such as `MAX_STALENESS = 300`.
+        if depth > 0 or token.kind in _VALUES or token.text == "=":
             continue
         if token.kind is TokenKind.COMMENT:
             return "it has a comment between its clauses"
         word = token.text.upper() if token.kind is TokenKind.WORD else None
-        name = word if word in _VIEW_BLOCKS else _TRAILING_STARTS.get(word or "")
+        bare = _BARE_STARTS.get(word or "")
+        name = bare or (word if word in _VIEW_BLOCKS else _TRAILING_STARTS.get(word or ""))
         if name is None:
             return f"it has {token.text!r} where SST expects a clause"
-        follow = name.split()[1:]
+        follow = [] if bare else name.split()[1:]
         if follow:
             if index >= end or tokens[index].text.upper() != follow[0]:
                 return f"its {word} is not {name}"
