@@ -429,4 +429,4 @@ def test_a_refused_privilege_exits_5_under_a_privilege_code_as_the_table_documen
     codes = [item["code"] for item in json.loads(result.output)["diagnostics"]]
     privileges = {row.code for row in SIGNATURES if row.kind is ErrorKind.PRIVILEGE}
     assert len(codes) == 1 and codes[0] in privileges
-    assert "privilege" in dict((code, text) for code, _, text in EXIT_CODE_DOCS)[5]
+    assert "privilege" in {code: text for code, _, text in EXIT_CODE_DOCS}[5]
