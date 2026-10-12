@@ -15,14 +15,16 @@ from tests.helpers.reference_project import DBT_MANIFEST
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
-def invoke_with_port(monkeypatch: pytest.MonkeyPatch, port: FakeSnowflake, args: list[str]) -> Result:
+def invoke_with_port(
+    monkeypatch: pytest.MonkeyPatch, port: FakeSnowflake, args: list[str], *, input: str | None = None
+) -> Result:
     if "--project-dir" in args and args[0] in ("plan", "apply"):
         project = Path(args[args.index("--project-dir") + 1])
         if not (project / "target" / "sst" / "manifest.json").is_file():
             compile_project(project)
     monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", lambda params: port)
     port.close = lambda: None  # type: ignore[attr-defined]
-    return CliRunner().invoke(cli, args)
+    return CliRunner().invoke(cli, args, input=input)
 
 
 def common(project: Path) -> list[str]:

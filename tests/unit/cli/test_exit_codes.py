@@ -24,7 +24,7 @@ from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics.signatures import SIGNATURES
 from snowflake_semantic_tools.domain.model.lifecycle import ErrorKind, OwnershipMarker
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from tests.helpers.cli_projects import common, compile_project, invoke_with_port, skills_only_project
+from tests.helpers.cli_projects import common, compile_project, invoke_with_port, on_a_terminal, skills_only_project
 from tests.helpers.enrich_ports import ScriptedEnrich
 from tests.helpers.reference_project import REPO_ROOT, break_menu_view, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
@@ -401,17 +401,35 @@ def _interruptible(name: str, command: click.Command) -> list[list[str]]:
 
 
 @pytest.mark.parametrize("command", sorted(cli.commands))
+@pytest.mark.parametrize(
+    "raised", [KeyboardInterrupt, EOFError, click.exceptions.Abort], ids=["ctrl-c", "end-of-input", "abort"]
+)
 def test_every_command_exits_130_when_its_body_is_interrupted(
-    command: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    command: str, raised: type[BaseException], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def interrupt(self: object) -> None:
-        raise KeyboardInterrupt
+        raise raised
 
     monkeypatch.setattr("snowflake_semantic_tools.cli.runner._Run.execute", interrupt)
     for line in _interruptible(command, cli.commands[command]):
         result = _run(*line, "--project-dir", str(tmp_path))
         assert result.exit_code == INTERRUPTED, (line, result.output)
     assert INTERRUPTED in EXIT_CODES[command]
+
+
+# The table's other 130 triggers, met as a user meets them: the confirmation `apply` asks is
+# declined, or input ends before it is answered. SIGTERM and SIGHUP reach a real `sst` process
+# in test_signals.py.
+@pytest.mark.parametrize(("trigger", "answer"), [("a declined prompt", "n\n"), ("end of input", "")])
+def test_a_declined_or_unanswered_confirmation_exits_130_as_the_table_documents(
+    trigger: str, answer: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert trigger in {code: text for code, _, text in EXIT_CODE_DOCS}[INTERRUPTED]
+    on_a_terminal(monkeypatch)
+    args = ["apply", *common(project_copy(tmp_path)), "--target", "dev"]
+    result = invoke_with_port(monkeypatch, FakeSnowflake(state={}), args, input=answer)
+    assert result.exit_code == INTERRUPTED, result.output
+    assert "Apply this plan?" in result.output and "SST-INT001" not in result.output
 
 
 def test_a_refused_privilege_exits_5_under_a_privilege_code_as_the_table_documents(
