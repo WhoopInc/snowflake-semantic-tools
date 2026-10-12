@@ -75,14 +75,17 @@ def _sample_value_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagno
     """Report an enum without sample values, or sample values whose completeness nobody declared.
 
     An explicit `is_enum: false` declares the values a sample, so it is not reported; nor is a
-    fact, which cannot be an enum.
+    fact, which cannot be an enum: Snowflake takes `IS_ENUM` on a dimension only.
 
     Diagnostics:
+        SST-VAL335: when a fact declares `is_enum: true`.
         SST-VAL314: when an `is_enum` column declares no sample values.
         SST-VAL315: when a column that is not a fact declares five or more sample values and no
             `is_enum`.
     """
     artifact, subject = _column_keys(model, column)
+    if column.is_enum and column.column_type == "fact":
+        return [D("SST-VAL335", artifact=artifact, member=column.name, subject=subject)]
     if column.is_enum and not column.sample_values:
         return [D("SST-VAL314", artifact=artifact, member=column.name, subject=subject)]
     if column.is_enum is None and column.column_type != "fact" and len(column.sample_values) >= 5:

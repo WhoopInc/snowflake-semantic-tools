@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 37 codes
 - [Membership (MEM)](#membership-mem) -- 24 codes
-- [Validation (VAL)](#validation-val) -- 300 codes
+- [Validation (VAL)](#validation-val) -- 301 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
@@ -3370,6 +3370,18 @@ Raised when a column that is not a `dimension` or `time_dimension` carries `meta
 Fix: remove `access_modifier` from the column, or hide what it measures behind a private metric
 
 Note: A fact renders without `PRIVATE`, so it would publish as public; it is refused instead. A private dimension is SST-VAL222.
+
+### SST-VAL335
+
+**Fact declares is_enum** (error, always an error)
+
+`<artifact>: fact '<member>' declares is_enum; only a dimension can be an enum`
+
+Raised when a `fact` column declares `meta.sst.is_enum: true`.
+
+Fix: remove `is_enum`, or change `column_type` to `dimension`
+
+Note: Snowflake refuses `IS_ENUM` on a fact when the view is created, so no setting lowers this.
 
 ### SST-VAL401
 

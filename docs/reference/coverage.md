@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 716
+- Codes: 717
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -535,6 +535,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL332`](error-codes.md#sst-val332) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.scope` | `tests/codes/val/test_sst_val332.py` |
 | [`SST-VAL333`](error-codes.md#sst-val333) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.dbt` | `tests/codes/val/test_sst_val333.py` |
 | [`SST-VAL334`](error-codes.md#sst-val334) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.dbt` | `tests/codes/val/test_sst_val334.py` |
+| [`SST-VAL335`](error-codes.md#sst-val335) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.dbt` | `tests/codes/val/test_sst_val335.py` |
 | [`SST-VAL401`](error-codes.md#sst-val401) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.expressions` | `tests/codes/val/test_sst_val401.py` |
 | [`SST-VAL402`](error-codes.md#sst-val402) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.authored_keys` | `tests/codes/val/test_sst_val402.py` |
 | [`SST-VAL403`](error-codes.md#sst-val403) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.authored_keys` | `tests/codes/val/test_sst_val403.py` |

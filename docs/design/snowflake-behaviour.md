@@ -136,9 +136,9 @@ fact it fails with `Only dimensions can specify the is_enum property`.
 in [test_render_semantic_view.py](../../tests/unit/test_render_semantic_view.py)
 pins them, and the `jaffle_sales` golden carries both on dimensions and
 `SAMPLE_VALUES` on facts. The dimensions-only rule is `Observed`. `enrich` never
-writes `is_enum` on a fact, but no check refuses a hand-authored
-`is_enum: true` on a fact column, so such a column renders `IS_ENUM` on a fact.
-Probe:
+writes `is_enum` on a fact, and a hand-authored `is_enum: true` on a fact column
+is refused before it renders (SST-VAL335).
+[test_sst_val335.py](../../tests/codes/val/test_sst_val335.py). Probe:
 
 ```sql
 CREATE SEMANTIC VIEW <db>.<schema>.probe_view
@@ -151,7 +151,8 @@ CREATE SEMANTIC VIEW <db>.<schema>.probe_view
 **SST depends on it at**: `render_column` in
 [semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py);
 [build.py](../../snowflake_semantic_tools/adapters/yaml/semantic/build.py), which
-passes `is_enum` through for any column kind.
+passes `is_enum` through for any column kind; `_sample_value_diagnostics` in
+[validate/semantic/dbt.py](../../snowflake_semantic_tools/domain/validate/semantic/dbt.py).
 
 ### GET_DDL output does not re-execute
 

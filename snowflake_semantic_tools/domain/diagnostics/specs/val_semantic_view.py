@@ -335,4 +335,14 @@ SPECS: tuple[ErrorSpec, ...] = (
             "A private dimension is SST-VAL222."
         ),
     ),
+    spec(
+        "SST-VAL335",
+        Severity.ERROR,
+        "Fact declares is_enum",
+        "{artifact}: fact '{member}' declares is_enum; only a dimension can be an enum",
+        "remove `is_enum`, or change `column_type` to `dimension`",
+        condition="a `fact` column declares `meta.sst.is_enum: true`",
+        note="Snowflake refuses `IS_ENUM` on a fact when the view is created, so no setting lowers this.",
+        demotable=False,
+    ),
 )
