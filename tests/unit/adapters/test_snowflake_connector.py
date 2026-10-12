@@ -801,7 +801,7 @@ def test_get_ddl_names_the_type_as_get_ddl_spells_it_and_refuses_an_empty_answer
     connector = _DdlConnector((("create semantic view V",),))
     name = QualifiedName.parse("DB.S.V")
     assert connector.get_ddl("semantic view", name) == "create semantic view V"
-    assert connector.statements == ["SELECT GET_DDL('SEMANTIC_VIEW', 'DB.S.V')"]
+    assert connector.statements == ["SELECT GET_DDL('SEMANTIC_VIEW', 'DB.S.V', TRUE)"]
     with pytest.raises(SnowflakePortError, match="GET_DDL returned nothing for AGENT DB.S.V"):
         _DdlConnector(((None,),)).get_ddl("AGENT", name)
     with pytest.raises(SnowflakePortError, match="GET_DDL returned nothing"):
@@ -816,10 +816,10 @@ def test_get_ddl_reads_an_agent_as_a_cortex_agent_and_a_routine_by_its_signature
     connector.get_ddl("PROCEDURE", QualifiedName.parse("DB.S.P"), ("VARCHAR", "NUMBER(38,0)"))
     connector.get_ddl("FUNCTION", QualifiedName.parse("DB.S.F"))
     assert connector.statements == [
-        "SELECT GET_DDL('CORTEX_AGENT', 'DB.S.A')",
-        "SELECT GET_DDL('CORTEX_SEARCH_SERVICE', 'DB.S.SEARCH')",
-        "SELECT GET_DDL('PROCEDURE', 'DB.S.P(VARCHAR, NUMBER(38,0))')",
-        "SELECT GET_DDL('FUNCTION', 'DB.S.F()')",
+        "SELECT GET_DDL('CORTEX_AGENT', 'DB.S.A', TRUE)",
+        "SELECT GET_DDL('CORTEX_SEARCH_SERVICE', 'DB.S.SEARCH', TRUE)",
+        "SELECT GET_DDL('PROCEDURE', 'DB.S.P(VARCHAR, NUMBER(38,0))', TRUE)",
+        "SELECT GET_DDL('FUNCTION', 'DB.S.F()', TRUE)",
     ]
 
 

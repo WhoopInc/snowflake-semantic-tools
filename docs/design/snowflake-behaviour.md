@@ -186,12 +186,20 @@ SELECT GET_DDL('SEMANTIC_VIEW', '<db>.<schema>.probe_view');
 -- the clause order.
 ```
 
-**SST depends on it at**: `prior_definition` in
-[prior.py](../../snowflake_semantic_tools/app/prior.py), which records `GET_DDL`
-as the prior definition for `plan --capture-prior`. The
-[CI/CD guide](../guides/ci-cd.md#recording-what-an-update-replaces) says to
-restore a semantic view by running that text, which this behaviour contradicts
-for a view carrying both clauses. The
+**SST depends on it at**: `get_ddl` in
+[catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py),
+which passes `TRUE` as the third argument so names come back fully qualified, and
+`restorable_semantic_view` in [prior.py](../../snowflake_semantic_tools/app/prior.py),
+which `plan --capture-prior` runs on a semantic view's text: it moves the trailing
+clauses into the order the renderer uses (`TRAILING_CLAUSES` in
+[semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py))
+and appends `COPY GRANTS`. Text of another shape is kept as returned, under a
+comment saying what to fix by hand. The
+[CI/CD guide](../guides/ci-cd.md#recording-what-an-update-replaces) says to run
+the recorded text as it is only for a semantic view, and only for that form; since
+this behaviour is `Observed`, so is that advice. Nothing here records whether
+`GET_DDL`'s text for a search service, procedure or function re-executes, so the
+guide says to review those before running them. The
 [golden README](../../tests/golden/README.md) warns that a golden and a `GET_DDL`
 read-back must not be compared raw.
 

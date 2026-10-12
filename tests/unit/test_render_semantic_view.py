@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from snowflake_semantic_tools.app.prior import restorable_semantic_view
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
     ColumnKind,
@@ -24,6 +25,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Window,
 )
 from snowflake_semantic_tools.domain.render.semantic_view import (
+    TRAILING_CLAUSES,
     render,
     render_column,
     render_metric,
@@ -337,6 +339,10 @@ class TestFullClauseOrder:
         ]
         positions = [out.index(token) for token in order]
         assert positions == sorted(positions), f"clauses out of order: {out}"
+        # The order plan --capture-prior restores a GET_DDL read into is this one, so a view SST
+        # rendered is already restorable as it is.
+        assert [token.rstrip(" =(") for token in order[7:]] == list(TRAILING_CLAUSES)
+        assert restorable_semantic_view(out) == out
 
 
 class TestVerifiedQueries:

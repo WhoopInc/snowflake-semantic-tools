@@ -434,46 +434,52 @@ def _render_counted(view: SemanticView) -> tuple[Sql, int]:
     return join("\n", lines), members
 
 
+# The clauses after `METRICS`, by their leading keywords, in the order the server accepts.
+# Snowflake's docs put MAX_STALENESS before the AI clauses; the server rejects it there
+# (docs/design/snowflake-behaviour.md). `plan --capture-prior` puts a GET_DDL read back
+# into this order, so the render and the restore agree.
+TRAILING_CLAUSES: tuple[str, ...] = (
+    "COMMENT",
+    "AI_SQL_GENERATION",
+    "AI_QUESTION_CATEGORIZATION",
+    "AI_VERIFIED_QUERIES",
+    "MAX_STALENESS",
+    "WITH TAG",
+    "COPY GRANTS",
+)
+
+
 def _trailing_clauses(view: SemanticView, queries: list[Sql]) -> list[Sql]:
-    """The clauses after `METRICS`, in the order the server accepts, ending with any `COPY GRANTS`.
+    """The clauses after `METRICS`, in `TRAILING_CLAUSES` order, ending with any `COPY GRANTS`.
 
     That is not the published grammar's order, which puts `MAX_STALENESS` before the AI
     clauses and is what `GET_DDL` returns: see the module docstring.
     """
-    lines: list[Sql] = []
+    clauses: dict[str, list[Sql]] = {}
     comment = view.comment
     if view.ownership_marker:
         comment = f"{comment.rstrip()} {view.ownership_marker}" if comment else view.ownership_marker
     if comment:
-        lines.append(sql("  COMMENT = {comment}", comment=literal(comment)))
+        clauses["COMMENT"] = [sql("  COMMENT = {comment}", comment=literal(comment))]
     if view.ai_sql_generation:
-        lines.append(sql("  AI_SQL_GENERATION {text}", text=literal(view.ai_sql_generation)))
+        clauses["AI_SQL_GENERATION"] = [sql("  AI_SQL_GENERATION {text}", text=literal(view.ai_sql_generation))]
     if view.ai_question_categorization:
-        lines.append(sql("  AI_QUESTION_CATEGORIZATION {text}", text=literal(view.ai_question_categorization)))
-
+        text = literal(view.ai_question_categorization)
+        clauses["AI_QUESTION_CATEGORIZATION"] = [sql("  AI_QUESTION_CATEGORIZATION {text}", text=text)]
     if queries:
-        lines.append(sql("  AI_VERIFIED_QUERIES ("))
-        lines.append(join(",\n", queries))
-        lines.append(sql("  )"))
-
-    # Snowflake's docs put MAX_STALENESS before the AI clauses; the server rejects it there
-    # (docs/design/snowflake-behaviour.md).
+        clauses["AI_VERIFIED_QUERIES"] = [sql("  AI_VERIFIED_QUERIES ("), join(",\n", queries), sql("  )")]
     if view.max_staleness:
-        lines.append(sql("  MAX_STALENESS = {staleness}", staleness=literal(view.max_staleness)))
-
+        clauses["MAX_STALENESS"] = [sql("  MAX_STALENESS = {staleness}", staleness=literal(view.max_staleness))]
     if view.tags:
         # Leading-comma layout, matching the golden. The indent is deliberately
         # deeper than a member's here; that is what was verified.
         tag_lines = (
             sql("{name} = {value}", name=qname(QualifiedName.parse(t.name)), value=literal(t.value)) for t in view.tags
         )
-        lines.append(sql("  WITH TAG ("))
-        lines.append(sql("      {tags}", tags=join("\n    , ", tag_lines)))
-        lines.append(sql("  )"))
-
+        clauses["WITH TAG"] = [sql("  WITH TAG ("), sql("      {tags}", tags=join("\n    , ", tag_lines)), sql("  )")]
     if view.or_replace:
-        lines.append(sql("  COPY GRANTS"))
-    return lines
+        clauses["COPY GRANTS"] = [sql("  COPY GRANTS")]
+    return [line for name in TRAILING_CLAUSES for line in clauses.get(name, ())]
 
 
 def _sorted_columns(columns: tuple[Column, ...], scope: ViewScope) -> list[Column]:

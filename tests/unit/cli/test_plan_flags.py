@@ -20,7 +20,7 @@ from tests.helpers.snowflake_fake import FakeSnowflake
 VIEW = "jaffle_minimal"
 RECORDED = "c" * 64
 OTHER_MANIFEST = "d" * 64
-DEFINITION = "create or replace semantic view JAFFLE_MINIMAL\n  tables (orders)"
+DEFINITION = "create or replace semantic view JAFFLE_MINIMAL\n  tables (orders)\n  COPY GRANTS"
 
 
 def _target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str]:
