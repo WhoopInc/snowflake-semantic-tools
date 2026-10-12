@@ -301,9 +301,9 @@ BITES = {
     ),
     "dated-measurement": (
         [
-            "# MEASURED, as of 2026-09-24: the view serves the default",
-            "the build was measured on 2026-09-24",
-            "2026-09-24, measured",
+            "# MEASURED, as of 2000-01-01: the view serves the default",
+            "the build was measured on 2000-01-01",
+            "2000-01-01, measured",
         ],
         [
             "# MEASURED: DESCRIBE AGENT answers one row",
