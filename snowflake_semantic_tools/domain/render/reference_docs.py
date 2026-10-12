@@ -201,7 +201,7 @@ def _artifact_facts(artifact: ArtifactType) -> list[str]:
         "- Lifecycle: "
         + ("composite -- several objects, reconciled together" if composite else "one Snowflake object"),
         "- On update: " + ("replaced" if artifact.replaces_on_update else "altered or re-versioned in place"),
-        f"- Grants: {_GRANTS[artifact.grant_preservation]}",
+        _grant_fact(artifact),
         "- `--prune`: " + ("drops it once its source is deleted" if artifact.prunable else "never drops it"),
     ]
     if artifact.dependency_types:
@@ -215,6 +215,14 @@ def _artifact_facts(artifact: ArtifactType) -> list[str]:
     if artifact.member_types:
         facts.append("- Members: " + ", ".join(f"`{name}`" for name in artifact.member_types))
     return facts
+
+
+def _grant_fact(artifact: ArtifactType) -> str:
+    """Say how the type's grants survive an update: for the type, or for each object kind."""
+    if artifact.grant_preservation is not None:
+        return f"- Grants: {_GRANTS[artifact.grant_preservation]}"
+    kinds = "; ".join(f"`{kind}` {_GRANTS[kept]}" for kind, kept in artifact.object_grant_preservation)
+    return f"- Grants, by object type: {kinds}"
 
 
 # ------------------------------------------------------------------------- error codes

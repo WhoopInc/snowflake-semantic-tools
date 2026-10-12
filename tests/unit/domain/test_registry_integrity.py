@@ -30,6 +30,10 @@ COMPOSITE: dict[str, Any] = {
     "grant_preservation": GrantPreservation.NONE,
 }
 
+STAGE_KEPT = (("STAGE", GrantPreservation.NONE),)
+# A type whose kinds keep grants differently declares none for itself.
+PER_KIND: dict[str, Any] = {"grant_preservation": None, "object_grant_preservation": STAGE_KEPT}
+
 
 def owning(*members: str) -> ArtifactType:
     return artifact("semantic_view", member_types=members)
@@ -68,6 +72,40 @@ FAULTS: list[tuple[str, tuple[ArtifactType, ...], tuple[MemberType, ...], str]] 
     ("grants without replacing", (artifact("semantic_view", replaces_on_update=False),), (), "SST-REG021"),
     ("composite object type", (artifact("skill", **{**COMPOSITE, "object_type": "X"}),), (), "SST-REG021"),
     ("composite prunable", (artifact("skill", **{**COMPOSITE, "prunable": True}),), (), "SST-REG021"),
+    (
+        "grants for the type and per kind",
+        (artifact("tool", object_type="", object_types=("STAGE",), object_grant_preservation=STAGE_KEPT),),
+        (),
+        "SST-REG021",
+    ),
+    ("no grant preservation at all", (artifact("tool", grant_preservation=None),), (), "SST-REG021"),
+    (
+        "per-kind grants for other kinds",
+        (artifact("tool", object_type="", object_types=("STAGE", "TABLE"), **PER_KIND),),
+        (),
+        "SST-REG021",
+    ),
+    (
+        "replaces with no kind keeping grants",
+        (artifact("tool", object_type="", object_types=("STAGE",), **PER_KIND),),
+        (),
+        "SST-REG021",
+    ),
+    (
+        "never replaces with a kind keeping grants",
+        (
+            artifact(
+                "tool",
+                object_type="",
+                object_types=("STAGE",),
+                replaces_on_update=False,
+                grant_preservation=None,
+                object_grant_preservation=(("STAGE", GrantPreservation.CLAUSE),),
+            ),
+        ),
+        (),
+        "SST-REG021",
+    ),
     ("unobservable object", (artifact("semantic_view", object_type=""),), (), "SST-REG001"),
     ("ref function twice", (artifact("semantic_view", ref_function="tool"), artifact("tool", 200)), (), "SST-REG005"),
 ]
@@ -91,9 +129,20 @@ def test_a_registry_without_faults_freezes_through_every_check() -> None:
         artifact("skill", 250, dependency_types=("semantic_view",), **COMPOSITE),
         artifact("agent", 300, dependency_types=("tool", "skill"), pins_versions_of=("skill",)),
         artifact("profile", 400, root_key=None, ref_function=None, object_types=("STAGE",), object_type=""),
+        artifact(
+            "search",
+            500,
+            object_type="",
+            object_types=("CORTEX SEARCH SERVICE", "STAGE"),
+            grant_preservation=None,
+            object_grant_preservation=(("CORTEX SEARCH SERVICE", GrantPreservation.REPLAY), *STAGE_KEPT),
+        ),
     )
     registry = freeze(diamond)
-    assert list(registry.artifacts) == ["semantic_view", "tool", "skill", "agent", "profile"]
+    assert list(registry.artifacts) == ["semantic_view", "tool", "skill", "agent", "profile", "search"]
+    search = registry.artifacts["search"]
+    assert search.grant_preservation_of("STAGE") is GrantPreservation.NONE
+    assert search.grant_preservation_of("TABLE") is None
 
 
 def test_the_builder_refuses_duplicates_and_every_registration_after_freeze() -> None:

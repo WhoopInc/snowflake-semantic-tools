@@ -35,7 +35,7 @@ One `define:` member of a tool group: a Snowflake object an agent tool calls, pu
 - Position: 200
 - Lifecycle: one Snowflake object
 - On update: replaced
-- Grants: re-applied after a replace
+- Grants, by object type: `CORTEX SEARCH SERVICE` re-applied after a replace; `PROCEDURE` kept across a replace by `COPY GRANTS`; `FUNCTION` kept across a replace by `COPY GRANTS`; `STAGE` never touched: the object is not replaced
 - `--prune`: never drops it
 - Applied after: `semantic_view`
 

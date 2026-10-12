@@ -10,7 +10,7 @@ import pytest
 
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY, GrantPreservation
 from snowflake_semantic_tools.domain.model.tool import ToolMember, ToolOwnership, ToolParameter
 from snowflake_semantic_tools.domain.render.tool import render_tool, routine_signature, search_service_statement
 from snowflake_semantic_tools.domain.sql import UnsafeSqlError
@@ -214,3 +214,22 @@ def test_a_routine_is_named_with_its_argument_types() -> None:
     assert str(routine_signature("procedure", target, ("NUMBER", "VARCHAR(10)"))) == "DB.S.LOOKUP(NUMBER, VARCHAR(10))"
     with pytest.raises(ValueError, match="not a routine type"):
         routine_signature("TABLE", target, ())
+
+
+def test_each_tool_kind_keeps_its_grants_as_the_registry_declares_for_that_kind() -> None:
+    target = QualifiedName.parse("DB.S.T")
+    rendered = [
+        render_tool(member(search_column="body", warehouse="WH", target_lag="1 hour"), target, target),
+        render_tool(
+            member(type="procedure", language="sql", body="BEGIN RETURN 1; END;", returns="NUMBER", warehouse="WH"),
+            target,
+            None,
+        ),
+        render_tool(member(type="function", language="sql", body="1", returns="NUMBER"), target, None),
+        render_tool(member(type="stage"), target, None),
+    ]
+    tool = ARTIFACT_REGISTRY.artifacts["tool"]
+    assert sorted(item.object_type for item in rendered) == sorted(tool.object_types)
+    for item in rendered:
+        # Apply reads the rendered shape; the registry, and the reference page, must say the same.
+        assert item.grant_preservation is tool.grant_preservation_of(item.object_type), item.object_type

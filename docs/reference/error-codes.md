@@ -221,7 +221,7 @@ Fix: register the type, or remove the resolver
 
 `type '<artifact>' -- <reason>`
 
-Raised when a type that replaces its object declares `NONE` grant preservation, a type that never replaces declares some, or a composite type declares an object type or is prunable or replaced generically.
+Raised when a type that replaces its object declares `NONE` grant preservation, a type that never replaces declares some, a type declares it both for itself and per object kind or per kind for other than exactly its object types, or a composite type declares an object type or is prunable or replaced generically.
 
 Fix: correct the registration against the probe result
 
