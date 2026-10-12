@@ -55,8 +55,9 @@ staged configuration; none has one object to observe.
 
 **Chosen.** Each type's `ddl_position` must follow every type it depends on
 (`SST-REG010`), and a plan orders its changes by dependency, then position,
-then key. Apply runs them in dependency waves, so a view exists before the agent
-that queries it.
+then key. Apply starts a change only once every change it depends on ended, so
+a view exists before the agent that queries it; only `--fail-fast` runs whole
+dependency waves one after another.
 
 **Rejected.** A configurable order. No order other than the one the graph
 implies is correct, so a setting could only be redundant or wrong.
