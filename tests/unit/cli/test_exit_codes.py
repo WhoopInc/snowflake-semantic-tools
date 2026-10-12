@@ -1,13 +1,15 @@
 """The exit-code contract: every code each command documents, from a real invocation.
 
 Exit 0 is OK, 1 an error, 2 a difference between declared and actual state, 3 a refused command
-line, 4 a project that could not be resolved, 5 Snowflake unreachable, and 130 an interrupt.
+line, 4 a project that could not be resolved, 5 Snowflake unreachable or refusing (a credential, a
+privilege, a deadline), and 130 an interrupt.
 Every case below is one real run of `sst`; the table at the bottom says which codes each command
 may return, and every case's code must be one of its command's.
 """
 
 from __future__ import annotations
 
+import json
 import shutil
 from collections.abc import Callable
 from pathlib import Path
@@ -15,9 +17,11 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner, Result
 
+from snowflake_semantic_tools.cli.exit_codes import EXIT_CODE_DOCS
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.wiring.project import target_dir
-from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
+from snowflake_semantic_tools.domain.diagnostics.signatures import SIGNATURES
+from snowflake_semantic_tools.domain.model.lifecycle import ErrorKind, OwnershipMarker
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.cli_projects import common, compile_project, invoke_with_port, skills_only_project
 from tests.helpers.enrich_ports import ScriptedEnrich
@@ -382,3 +386,21 @@ def test_each_flag_exits_with_a_code_its_command_documents(
 
 def test_every_command_is_in_the_exit_code_table() -> None:
     assert set(EXIT_CODES) == set(cli.commands)
+
+
+def test_a_refused_privilege_exits_5_under_a_privilege_code_as_the_table_documents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+
+    def refuse(params: object) -> FakeSnowflake:
+        raise SnowflakePortError("Insufficient privileges to operate on schema", sqlstate="42501")
+
+    monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", refuse)
+    result = _run("plan", *common(project), "--output", "json")
+    assert result.exit_code == 5, result.output
+    codes = [item["code"] for item in json.loads(result.output)["diagnostics"]]
+    privileges = {row.code for row in SIGNATURES if row.kind is ErrorKind.PRIVILEGE}
+    assert len(codes) == 1 and codes[0] in privileges
+    assert "privilege" in dict((code, text) for code, _, text in EXIT_CODE_DOCS)[5]

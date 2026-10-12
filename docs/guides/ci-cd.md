@@ -309,7 +309,7 @@ fields can appear in the same version.
 | 2 | Declared and actual state differ: `plan` found changes, `diff` found the two states differ, or `format --check`, `enrich --check`, `docs --check`, or `migrate refs` found something to rewrite. |
 | 3 | The command line is invalid. |
 | 4 | The project, its configuration, or a saved plan cannot be used. |
-| 5 | Snowflake could not be reached. |
+| 5 | Snowflake could not be reached, rejected the credential, refused a privilege, or did not finish in time. The diagnostic code says which: a refused privilege (`SST-PRT004`, or an `SST-SNO` privilege code) needs a grant, not a retry. |
 | 130 | The run was interrupted: Ctrl-C, `SIGTERM` (a cancelled job), or `SIGHUP`. `apply` records what finished and releases its lock first. |
 
 A pipeline that runs `sst format --check` gates on canonical YAML the same way
