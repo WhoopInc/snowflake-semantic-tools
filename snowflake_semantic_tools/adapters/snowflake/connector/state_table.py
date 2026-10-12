@@ -267,8 +267,8 @@ def _state_timestamp(value: object) -> str:
     """APPLIED_AT in the clock's own form, so a written entry reads back equal.
 
     The column is TIMESTAMP_TZ and the driver returns a datetime, whose `str()`
-    (`2026-09-29 11:56:32.077209+00:00`) never equals the ISO text SST wrote
-    (`2026-09-29T11:56:32.077209Z`); the cache then disagreed after every apply.
+    (`2024-01-01 00:00:00.000001+00:00`) never equals the ISO text SST wrote
+    (`2024-01-01T00:00:00.000001Z`); the cache then disagreed after every apply.
     """
     if isinstance(value, datetime):
         moment = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
