@@ -224,7 +224,7 @@ timings), `diagnostics`, `summary`, and `data`, the command's own result. Each d
 its code, effective and declared severity, `promoted_from` or `demoted_from`, message, suggestion,
 phase, help URL, fingerprint, template values as `params`, the artifact or member it concerns, its
 location and related locations, whether a baseline holds it, `caused_by`, and `internal_detail`,
-the raw `detail` text of a code that declares it and null otherwise. `params` uses a shared
+the `detail` value of a code that declares it, the same text its message shows, and null otherwise. `params` uses a shared
 vocabulary of placeholder names, and the registry refuses a template that names any other
 (`SST-REG016`), so a consumer can act on a value without parsing the message. `schema_version`
 changes only when a field is removed or changes meaning; [CI/CD](../guides/ci-cd.md#json-output)

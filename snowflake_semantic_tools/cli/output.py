@@ -162,7 +162,7 @@ def diagnostic_json(value: Diagnostic, *, baselined: bool = False) -> dict[str, 
 
     A subject that names an artifact type, or `profile`, is reported as `artifact`; any
     other `<type>:<name>` subject is a `member` of one. A code that declares `internal_detail`
-    reports its raw `detail` value, the SST or Snowflake text beyond the template, as
+    reports its `detail` value, the same text its message shows, on its own as
     `internal_detail`; every other code reports None.
     """
     origin = getattr(value, "origin", None)
