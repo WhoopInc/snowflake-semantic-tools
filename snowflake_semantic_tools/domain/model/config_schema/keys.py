@@ -276,7 +276,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "dbt.manifest_schema_versions",
         _L,
-        "Manifest schema version numbers read, such as `[12]`; any other is refused (SST-DBT017) unless "
+        "Manifest schema version numbers read, such as `[12]`. The list replaces the default set rather "
+        "than adding to it, so name every version to accept; any other is refused (SST-DBT017) unless "
         "`--allow-unsupported-manifest-schema` is given.",
         default="the versions this release is tested against",
     ),

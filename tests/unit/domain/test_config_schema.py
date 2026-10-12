@@ -256,3 +256,24 @@ def test_key_summaries_describe_what_the_renderer_and_the_stage_channel_do() -> 
 
 def test_the_execute_as_default_accepts_exactly_what_a_procedure_member_does() -> None:
     assert CONFIG_KEYS["tools.+execute_as"].choices == EXECUTE_AS
+
+
+def test_manifest_schema_versions_reports_each_entry_the_reader_would_drop() -> None:
+    found = validate_config(
+        {"dbt": {"manifest_schema_versions": [12, True, "13"]}},
+        positions={("dbt", "manifest_schema_versions"): (4, 3)},
+    )
+    assert [(item.code, item.message) for item in found] == [
+        ("SST-CFG004", "config key 'dbt.manifest_schema_versions[1]' expects integer, found bool"),
+        ("SST-CFG004", "config key 'dbt.manifest_schema_versions[2]' expects integer, found str"),
+    ]
+    assert {(item.origin.line, item.origin.col) for item in found if item.origin} == {(4, 3)}
+    [empty] = validate_config({"dbt": {"manifest_schema_versions": []}})
+    assert (empty.code, empty.subject) == ("SST-CFG008", "config:dbt.manifest_schema_versions")
+    assert _codes({"dbt": {"manifest_schema_versions": [11, 12]}}) == []
+    assert _codes({"dbt": {"manifest_schema_versions": "12"}}) == [("SST-CFG004", "config:dbt.manifest_schema_versions")]
+    assert _codes({"dbt": {"invoke": False}}) == []
+
+
+def test_manifest_schema_versions_says_it_replaces_the_default_set() -> None:
+    assert "replaces the default set" in CONFIG_KEYS["dbt.manifest_schema_versions"].summary
