@@ -24,11 +24,11 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import (
+    Action,
     GrantRow,
     ObservedArtifact,
     RenderedArtifact,
     ShowRow,
-    Action,
     SnowflakeObservation,
     extract_marker,
 )

@@ -130,7 +130,7 @@ def _artifact_to_json(item: ObservedArtifact) -> dict[str, object]:
         "has_live_version": item.has_live_version,
         "routine_signature": list(item.routine_signature),
         "aliases": list(item.aliases),
-        "tags": list(item.tags),
+        "tags": list(item.tags) if item.tags is not None else None,
     }
 
 
@@ -138,6 +138,7 @@ def _artifact_from_json(value: object) -> ObservedArtifact:
     item = _object(value, "artifact")
     marker = item.get("marker")
     grants = item.get("grants")
+    tags = item.get("tags")
     return ObservedArtifact(
         key=str(item["key"]),
         raw_name=str(item["raw_name"]),
@@ -152,7 +153,7 @@ def _artifact_from_json(value: object) -> ObservedArtifact:
         has_live_version=bool(item.get("has_live_version", False)),
         routine_signature=_texts(item.get("routine_signature")),
         aliases=_texts(item.get("aliases")),
-        tags=_texts(item.get("tags")),
+        tags=_texts(tags) if tags is not None else None,
     )
 
 

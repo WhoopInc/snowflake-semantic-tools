@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.observe import observe_replaced_tags
@@ -33,7 +32,7 @@ def test_sst_pln040_fires() -> None:
         "the tags on DB.SCH.SALES were not read, so the tags its replace removes are not checked: denied"
     )
     # The view is observed all the same; only its tags are unread.
-    assert [replace(item, tags=()) == item for item in observation.artifacts.values()] == [True]
+    assert [item.tags for item in observation.artifacts.values()] == [None]
 
 
 def test_sst_pln040_silent() -> None:

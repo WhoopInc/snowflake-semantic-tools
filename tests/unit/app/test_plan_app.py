@@ -334,7 +334,7 @@ def test_plan_reads_no_tags_on_a_view_it_leaves_unchanged_or_only_observes() -> 
     observation, quiet = observe(
         listed, SEMANTIC_REGISTRY, (artifact.target,), fetched_at="now", desired_artifacts={artifact.key: artifact}
     )
-    assert observation.artifacts[artifact.key].tags == () and quiet == () and listed.tag_reads == []
+    assert observation.artifacts[artifact.key].tags is None and quiet == () and listed.tag_reads == []
 
 
 def test_a_failed_tag_read_warns_and_the_update_is_planned_all_the_same() -> None:
@@ -348,4 +348,4 @@ def test_a_failed_tag_read_warns_and_the_update_is_planned_all_the_same() -> Non
             "the tags on DB.SCHEMA.V were not read, so the tags its replace removes are not checked: denied",
         )
     ]
-    assert planned.changes[0].observed is not None and planned.changes[0].observed.tags == ()
+    assert planned.changes[0].observed is not None and planned.changes[0].observed.tags is None
