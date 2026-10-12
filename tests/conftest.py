@@ -16,8 +16,10 @@ heartbeat or a pool worker that outlives its test holds locks and ports across t
 
 No test outside the `live` marker reaches the network: for the whole session, a connection or a
 name lookup to anything but a Unix socket or a loopback address raises, and a refusal the code under
-test swallowed still fails the test (`tests/helpers/network_guard.py`). A live test, from the setup
-of the fixtures it brings in to its teardown, runs with the guard lifted.
+test swallowed still fails the test (`tests/helpers/network_guard.py`). The guard patches this
+process; a subprocess holds it only when started with `network_guard.guarded_environment`, as
+`run_sst` and the other `sst` children are, and then exits non-zero after any refusal. A live test,
+from the setup of the fixtures it brings in to its teardown, runs with the guard lifted.
 
 A test marked `live` connects to the Snowflake account the live configuration describes -- the
 `SST_TEST_SNOWFLAKE_*` environment, the git-ignored `tests/live.local.env`, or a named connection

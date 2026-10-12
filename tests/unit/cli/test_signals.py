@@ -20,6 +20,7 @@ import pytest
 from snowflake_semantic_tools.cli import signals
 from snowflake_semantic_tools.cli.output import aborted_line
 from tests.helpers.cli_projects import common, compile_project
+from tests.helpers.network_guard import guarded_environment
 from tests.helpers.reference_project import REPO_ROOT, project_copy
 
 posix_only = pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="needs POSIX signals")
@@ -113,7 +114,9 @@ def test_a_signalled_sst_plan_exits_130_with_prt107_naming_the_signal(tmp_path: 
     project = project_copy(tmp_path)
     compile_project(project)
     ready = tmp_path / "ready"
-    environment = {**os.environ, "PYTHONPATH": os.pathsep.join([str(REPO_ROOT), os.environ.get("PYTHONPATH", "")])}
+    environment = guarded_environment(
+        {**os.environ, "PYTHONPATH": os.pathsep.join([str(REPO_ROOT), os.environ.get("PYTHONPATH", "")])}
+    )
     child = subprocess.Popen(
         [sys.executable, "-c", _HELD_AT_CONNECT, str(ready), "plan", *common(project), "--target", "dev"],
         stdin=subprocess.DEVNULL,
