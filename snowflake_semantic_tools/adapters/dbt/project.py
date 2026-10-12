@@ -108,9 +108,15 @@ def model_paths(project_dir: Path, read_yaml: YamlReader) -> tuple[tuple[str, ..
 
 
 def _fresh(path: Path, checksum: str) -> bool:
-    """Report whether a model file still has the checksum dbt recorded, read raw or stripped as dbt may."""
+    """Report whether a model file still has the checksum dbt recorded, in any form dbt hashes it.
+
+    dbt hashes the file raw or stripped up to 1.11, and from 1.12 with every run of whitespace
+    collapsed to one space, so an edit that only changes whitespace is not stale there either.
+    """
     raw = path.read_bytes()
-    return checksum in (sha256(raw).hexdigest(), sha256(raw.decode("utf-8", "replace").strip().encode()).hexdigest())
+    text = raw.decode("utf-8", "replace")
+    forms = (raw, text.strip().encode(), " ".join(text.split()).encode())
+    return checksum in {sha256(form).hexdigest() for form in forms}
 
 
 def stale_models(project_dir: Path, catalog: DbtCatalog, paths: tuple[str, ...]) -> tuple[Diagnostic, ...]:

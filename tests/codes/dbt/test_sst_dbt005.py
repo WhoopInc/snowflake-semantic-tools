@@ -7,8 +7,11 @@ SST did not write a manifest given with `--manifest`, nor one read from disk und
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
+
+import pytest
 
 from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
 from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
@@ -51,6 +54,25 @@ def test_sst_dbt005_fires(tmp_path: Path) -> None:
 
 def test_sst_dbt005_silent(tmp_path: Path) -> None:
     assert coded(_project(tmp_path, SQL).load().diagnostics, "SST-DBT005") == []
+
+
+# How each dbt release hashes a model file: raw, stripped (to 1.11), whitespace-collapsed (1.12).
+FORMS: dict[str, Callable[[str], str]] = {
+    "raw": lambda text: text,
+    "stripped": str.strip,
+    "collapsed": lambda text: " ".join(text.split()),
+}
+
+
+@pytest.mark.parametrize("form", sorted(FORMS))
+def test_sst_dbt005_silent_for_each_form_dbt_hashes_a_model_in(tmp_path: Path, form: str) -> None:
+    on_disk = "-- the products\nselect 1   as products_id\n\n"
+    node = model_node("products", original_file_path="models/products.sql", package_name="fixture")
+    node["checksum"] = {"name": "sha256", "checksum": sha256(FORMS[form](on_disk).encode()).hexdigest()}
+    project = SmallProject(
+        tmp_path, files={"models/products.sql": on_disk}, document=manifest({"model.fixture.products": node})
+    )
+    assert coded(project.load().diagnostics, "SST-DBT005") == []
 
 
 def test_sst_dbt005_fires_for_the_manifest_on_disk_under_dbt_invoke_false(tmp_path: Path) -> None:
