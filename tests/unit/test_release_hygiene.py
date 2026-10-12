@@ -89,8 +89,7 @@ def personal_namespace(line: str, names: frozenset[str] = PERSONAL_NAMES) -> boo
 
 
 # SHA-256 of each path into the document tree that does not ship, case-folded: the
-# files most often cited by name, its top-level directories, and the root of the private
-# planning tree `.gitignore` keeps out. A directory digested
+# files most often cited by name, its top-level directories, and its root. A directory digested
 # as `dir/` is cited by any path under it; one digested as `dir/*doc` only by a
 # document (.md, .yml, .yaml) under it, because this repository has its own `dir/`.
 DESIGN_DOC_PATHS = frozenset(
@@ -109,9 +108,6 @@ DESIGN_DOC_PATHS = frozenset(
         "1f3216ef8377362cd914299691eeb992fd98f005d624a20a7b47a0b43af6e90c",
     )
 )
-# Committed lines a rule would flag that must stay, by file and the digest of the stripped line:
-# the `.gitignore` entry that keeps the private planning tree out has to name its root.
-EXEMPT_LINES = frozenset(((".gitignore", "a480edcc3f25e54ee96a97524bd8a29a686ce2f17b5555494e9a9ef4e15d85e0"),))
 _PATH = re.compile(r"(?<![\w/.-])[\w.-]+(?:/[\w.-]+)*/?")
 _DOCUMENT = re.compile(r"\.(?:md|ya?ml)$")
 # A numbered chapter, `01-registry.md`: the shape of that tree, not a file in this one.
@@ -209,7 +205,7 @@ def test_committable_files_carry_no_environment_specific_content(
         for relative, text in committable
         if text is not None and relative != THIS_FILE
         for number, line in enumerate(text.splitlines(), start=1)
-        if matcher(line) and (relative, _digest(line.strip())) not in EXEMPT_LINES
+        if matcher(line)
     ]
     assert not hits, f"{rule}: a committed line {why}\n" + "\n".join(hits)
 
@@ -242,18 +238,6 @@ def test_the_company_identifier_check_matches_whole_words_case_folded() -> None:
 def test_every_digest_set_is_well_formed() -> None:
     for digests, size in ((PERSONAL_NAMES, 2), (DESIGN_DOC_PATHS, 12)):
         assert len(digests) == size and all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in digests)
-
-
-def test_each_exempt_line_is_still_committed(committable: tuple[tuple[str, str | None], ...]) -> None:
-    # An exemption that matches no committed line would let the same text back in anywhere
-    # else in its file unnoticed once it moved, so a stale one fails.
-    present = {
-        (relative, _digest(line.strip()))
-        for relative, text in committable
-        if text is not None
-        for line in text.splitlines()
-    }
-    assert present >= EXEMPT_LINES
 
 
 def _synthetic(*words: str) -> frozenset[str]:

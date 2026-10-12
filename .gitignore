@@ -217,7 +217,6 @@ staging_tables_backup/
 
 # Development files
 api_test.py
-planning/*
 
 # Snowflake CLI
 .snowflake/
