@@ -587,7 +587,7 @@ These are the commands that connect, and what they do once connected:
 | `test --suite golden` | never | | goldens, with `--update-golden` |
 | `validate` | unless the syntax check is off (`--no-snowflake-syntax-check` or `validation.snowflake_syntax_check: false`) and there is no `--verify-schema` | `EXPLAIN` of each expression and query, verified-query row counts, what exists | nothing |
 | `baseline add --target`, `baseline prune --target` | yes, as `validate --target` | as `validate` | the local baseline file |
-| `debug` | unless `--no-connect` | the session's role and account | nothing |
+| `debug` | unless `--no-connect` or `--snowflake-signatures` | the session's role and account | nothing |
 | `enrich` | when it first reads the warehouse or Cortex | column types, distinct values, Cortex answers | dbt model YAML, locally |
 | `diff` | when either side is a target, as `--to` is by default | the state table and ownership markers | nothing |
 | `plan` | unless `--use-cached-state` | the catalog, grants, the state table | `plan.json` and the observation file, locally |
@@ -598,5 +598,9 @@ These are the commands that connect, and what they do once connected:
 
 Run without `--suite`, `sst test` runs the golden suite and, once a compiled
 manifest exists, each connected suite that applies to the project.
+
+"Never" means SST opens no session. With `dbt.command: compile`, dbt itself connects to the
+warehouse on any command that runs dbt: every one that loads the project, unless `--manifest` is
+given or `dbt.invoke` is false.
 
 Drawn from: [cli/commands/validate.py](../../snowflake_semantic_tools/cli/commands/validate.py), [cli/commands/baseline.py](../../snowflake_semantic_tools/cli/commands/baseline.py), [cli/commands/debug.py](../../snowflake_semantic_tools/cli/commands/debug.py), [cli/wiring/enrich.py](../../snowflake_semantic_tools/cli/wiring/enrich.py), [cli/commands/diff.py](../../snowflake_semantic_tools/cli/commands/diff.py), [cli/wiring/plan.py](../../snowflake_semantic_tools/cli/wiring/plan.py), [cli/commands/apply.py](../../snowflake_semantic_tools/cli/commands/apply.py), [cli/commands/test.py](../../snowflake_semantic_tools/cli/commands/test.py), [cli/commands/drop.py](../../snowflake_semantic_tools/cli/commands/drop.py), [app/validate.py](../../snowflake_semantic_tools/app/validate.py).
