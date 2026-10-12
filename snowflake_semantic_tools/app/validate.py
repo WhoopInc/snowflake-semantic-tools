@@ -438,6 +438,8 @@ def _duplicate_key_query(relationship: Relationship, target: Table) -> Sql:
 
 def _overlap_query(target: Table) -> Sql:
     """Find one pair of distinct ranges of the target that overlap; no row when none do."""
+    # Snowflake's docs say the ranges must not overlap; the server accepts rows that do and
+    # counts a source row against each range it falls in (docs/design/snowflake-behaviour.md).
     assert target.distinct_range is not None
     start, end = (ident(Identifier.parse(name)) for name in target.distinct_range)
     return sql(

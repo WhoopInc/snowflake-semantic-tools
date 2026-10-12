@@ -50,7 +50,8 @@ OBJECT_TYPES = frozenset(
 # The account-level object types SHOW PARAMETERS ... IN <type> is asked about.
 PARAMETER_OBJECT_TYPES = frozenset(("WAREHOUSE",))
 # The observed types SHOW GRANTS ON <type> cannot address: Snowflake reports a dataset's
-# grants only in SHOW GRANTS TO ROLE, and its owner in SHOW DATASETS.
+# grants only in SHOW GRANTS TO ROLE, and its owner in SHOW DATASETS. Snowflake's docs give
+# SHOW GRANTS ON for any object; the server rejects it for a dataset (docs/design/snowflake-behaviour.md).
 _UNLISTED_GRANTS = frozenset(("DATASET",))
 # How GET_DDL spells each observed type it reads. MEASURED: it rejects 'AGENT' as an invalid
 # object type and reads an agent as 'CORTEX_AGENT'. It reads no stage, dataset, or Cortex

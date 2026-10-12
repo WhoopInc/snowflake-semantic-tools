@@ -93,6 +93,8 @@ class StageMethods(Session, StagePort):
         name the location gave, so a stage prefix is compared, exactly, after the first separator.
         """
         location = _validated_location(location)
+        # Snowflake's docs call LIST's `name` the staged file's name; the server starts it with
+        # the stage's own name, so it is no path into the stage (docs/design/snowflake-behaviour.md).
         rows = self._dict_rows(sql("LIST {location}", location=literal(location)))
         if location.startswith("snow://"):
             marker = location[location.index("/versions/") :]

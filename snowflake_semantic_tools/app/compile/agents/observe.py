@@ -311,6 +311,8 @@ class ObserveLiveObjects:
                 for column in member.columns
                 if column.name.casefold() not in live
             )
+        # Snowflake's docs require change tracking on a service's sources; the server reports a
+        # service ACTIVE after a rebuilt source breaks it (docs/design/snowflake-behaviour.md).
         for _, relation in tool.dbt_relations:
             found.extend(self._change_tracking(tool, relation))
         if properties is not None:

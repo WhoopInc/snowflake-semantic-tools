@@ -56,6 +56,8 @@ def prior_definition(
             return None, (D("SST-PLN037", value=row.qualified_name.sql, detail="the agent lists no version"),)
         return prior, ()
     try:
+        # Snowflake's docs do not say GET_DDL rewrites a semantic view; the server's output can fail
+        # to re-execute as returned (docs/design/snowflake-behaviour.md).
         return port.get_ddl(object_type, row.qualified_name, desired_artifact.routine_signature), ()
     except SnowflakePortError as exc:
         return None, (D("SST-PLN037", value=row.qualified_name.sql, detail=str(exc)),)
