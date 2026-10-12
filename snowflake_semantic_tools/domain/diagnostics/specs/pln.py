@@ -91,8 +91,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{value} lacks {detail} on {target}",
         "grant the privilege",
         condition=(
-            "no role in the session holds, or owns the schema for, the CREATE privilege a planned "
-            "create needs on its schema, such as CREATE SEMANTIC VIEW; or, for an agent create or "
+            "no role in the session holds, directly or through a database role, the CREATE "
+            "privilege a planned create needs on its schema, such as CREATE SEMANTIC VIEW, nor owns "
+            "the schema; or, for an agent create or "
             "update, CREATE STAGE on the schema of an absent `apply.agent_spec_stage` stage, or READ "
             "and WRITE on an existing one"
         ),

@@ -140,7 +140,7 @@ can show Snowflake would refuse, so apply does not fail part-way:
 
 | Code | What plan found | Grant |
 |---|---|---|
-| [`SST-PLN008`](../reference/error-codes.md#sst-pln008) | no role in the session holds, or owns the schema for, the `CREATE` privilege a create needs; or, for an agent, `CREATE STAGE` for an absent spec stage, or `READ` and `WRITE` on an existing one | that privilege on the schema or stage |
+| [`SST-PLN008`](../reference/error-codes.md#sst-pln008) | no role in the session holds, directly or through a database role, the `CREATE` privilege a create needs, nor owns the schema; or, for an agent, `CREATE STAGE` for an absent spec stage, or `READ` and `WRITE` on an existing one | that privilege on the schema or stage |
 | [`SST-PLN010`](../reference/error-codes.md#sst-pln010), [`SST-PLN011`](../reference/error-codes.md#sst-pln011) | a schema or database the plan writes to that does not exist or the role cannot see | `USAGE`, or create it |
 | [`SST-PLN012`](../reference/error-codes.md#sst-pln012) | the profile's warehouse does not exist or the role cannot see it | `USAGE` on the warehouse |
 | [`SST-PLN001`](../reference/error-codes.md#sst-pln001) | a read the plan needs failed, such as the state table or an object's grants | check the role and the connection |
