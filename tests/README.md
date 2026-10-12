@@ -98,6 +98,31 @@ CI holds each layer to a coverage floor and to the ratchet in `coverage_baseline
 
 Tests marked `live` connect to a Snowflake account that only configuration names: `SST_TEST_SNOWFLAKE_*`, the git-ignored `live.local.env` (template: `live.example.env`), or a named connection. `SST_TEST_RUN_ID` names the run in its scratch schemas. [docs/guides/testing-live.md](../docs/guides/testing-live.md) explains how to configure and run them, and what each workflow under `.github/workflows/` runs.
 
+## What the tests promise
+
+A test is worth what it cannot be fooled by. Each layer proves one kind of claim, and the rules on what it may not do are what make the claim hold.
+
+- **Domain** (`unit/domain`): the pipeline's logic, as pure functions. The domain does no I/O and reads no clock, environment, or randomness (the ring contracts in [CONTRIBUTING.md](../CONTRIBUTING.md#architecture)), so its tests build values and compare results. `unit/domain/conftest.py` refuses every connection, loopback included. A failure here is a logic bug, never the machine it ran on.
+- **Application** (`unit/app`): use cases over real in-memory ports, never mocks; the dev dependencies hold no mocking library. A fake is working code with state, so a test asserts what the use case left behind, not which calls it made, and a refactor that keeps the behaviour keeps the test green.
+- **Contract** (`contract/`): the offline Snowflake doubles and the file adapters held to their ports' contracts. `contract_live/` holds the real connector to the same results; if the doubles promise something the connector does not, every application test that leans on them is suspect, and that layer is how it shows.
+- **CLI** (`unit/cli`): commands through `CliRunner`, asserting each command's exit codes, its JSON envelope, and what it prints.
+- **Live** (`contract_live/`, `integration/`, `e2e/test_live_lifecycle.py`): the only tests marked `live`, so the only ones that may connect, and only when `-m live` selects them and an account is configured. Without one they skip, or fail under `--require-snowflake`, so a gate that could not connect is never green. Every other test runs under the network guard, which fails a test even when the code under test swallowed the refusal.
+
+Coverage is measured per layer because one global number lets a well-tested layer hide an untested one. Each floor is measured from the layer's own tests, so `app` cannot pass on lines the CLI tests happened to run, and the ratchet holds each layer's line and branch coverage to its baseline, which may rise and never fall. The domain, being pure, is held to every line and branch.
+
+A failing test fails the run. The suite has no retry plugin, and what it does instead makes a flaky test visible rather than lucky: CI's Hypothesis profile is deterministic, so a property failure reproduces on rerun; a test that deadlocks fails at 120 seconds with every thread's stack; a test whose thread outlives it fails; and every offline test starts from an empty home directory and none of the `SST_*` variables `sst` reads.
+
+Some claims cannot be proven offline. The goldens prove SST renders the intended text; only Snowflake can say it accepts it. The live layers prove, in scratch schemas:
+
+- the real connector meets the port contract the doubles meet, including that a statement Snowflake refuses fails with text the signature table recognises, and that state round-trips and the run lock admits one run;
+- `apply` publishes a view that carries its ownership marker and answers a metric query, and a plan after it has nothing left to do;
+- replacing the view keeps the grants on it (when a grantee role is configured);
+- the CLI sequence `validate` with the Snowflake syntax check, `plan`, `apply`, `plan` again, and the smoke suite each exits as documented.
+
+Agent evaluation is the evals suite, run by the manual workflow against a published agent, not by pytest. [docs/guides/testing-live.md](../docs/guides/testing-live.md) says how to configure and run each of these.
+
+Drawn from: [conftest.py](conftest.py), [unit/domain/conftest.py](unit/domain/conftest.py), [helpers/network_guard.py](helpers/network_guard.py), [helpers/coverage_ratchet.py](helpers/coverage_ratchet.py), [contract_live/test_connector_contract.py](contract_live/test_connector_contract.py), [integration/test_apply_live.py](integration/test_apply_live.py), [e2e/test_live_lifecycle.py](e2e/test_live_lifecycle.py), [pyproject.toml](../pyproject.toml).
+
 ## Writing Tests
 
 - Put a test beside the ring it exercises: `unit/domain`, `unit/app`, `unit/adapters`, or `unit/cli/test_<command>.py` for command behavior.
