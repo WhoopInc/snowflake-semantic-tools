@@ -256,8 +256,8 @@ BITES = {
     ),
     "dated-measurement": (
         [
-            "# MEASURED 2026-09-24: the view serves the default",
-            "`MEASURED` 2026-09-24, same project",
+            "# MEASURED, as of 2026-09-24: the view serves the default",
+            "the build was measured on 2026-09-24",
             "2026-09-24, measured",
         ],
         [
