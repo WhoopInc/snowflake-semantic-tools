@@ -268,7 +268,13 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _removed("generation.use_create_or_alter", "SST 1.0 renders DDL directly"),
     _removed("generation.emit_relationship_type", "relationship and join types are never rendered"),
     _key("dbt", _BLOCK, "How SST produces and reads the dbt manifest."),
-    _key("dbt.invoke", _B, "Run dbt before reading the manifest; false reads the one on disk.", default="true"),
+    _key(
+        "dbt.invoke",
+        _B,
+        "Run dbt before reading the manifest; false reads the one on disk and checks it against the "
+        "model files (SST-DBT005).",
+        default="true",
+    ),
     _key(
         "dbt.command",
         KeyKind.ENUM,

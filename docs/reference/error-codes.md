@@ -5505,9 +5505,9 @@ Fix: reconcile the two, or add a contract
 
 `manifest is older than <value>`
 
-Raised when under `--manifest`, a root-project model file's contents no longer match the checksum the manifest recorded; once per file.
+Raised when under `--manifest` or `dbt.invoke: false`, a root-project model file's contents no longer match the checksum the manifest recorded; once per file.
 
-Fix: drop --manifest and let SST parse, or rebuild the manifest you passed
+Fix: let SST run dbt (drop --manifest, or set dbt.invoke: true), or rebuild the manifest
 
 ### SST-DBT006
 

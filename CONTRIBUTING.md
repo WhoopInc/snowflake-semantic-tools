@@ -109,7 +109,7 @@ date. A new dependency also needs a row, with its license, in [DEPENDENCIES.md](
 
 These are the checks `.github/workflows/test-and-lint.yml` runs on every pull request. A release
 tag runs the same workflow before it builds anything (`publish-to-pypi.yml` calls it). None of them
-needs a secret or a Snowflake account. `.github/workflows/nightly.yml` adds mutation testing over
+needs a secret or a Snowflake account; only the dbt job, the last below, starts a real dbt. `.github/workflows/nightly.yml` adds mutation testing over
 `domain/` and the property tests under the deeper `nightly` Hypothesis profile, both offline and
 report-only.
 
@@ -152,6 +152,19 @@ poetry run pip-audit --skip-editable --progress-spinner off   # needs to reach t
 # requirements file, with the rules vendored in .semgrep/ (its README says how to refresh them)
 pip install --require-hashes --only-binary :all: -r .github/requirements/semgrep.txt  # linux x86_64
 semgrep scan --config .semgrep/ --error --metrics off --disable-version-check snowflake_semantic_tools
+
+# The dbt job, once per dbt minor the reference project admits (1.11 and 1.12): real dbt,
+# offline, with no secret. SST runs `dbt parse` itself for the golden suite, and the manifest
+# it wrote is held to the same contract as the committed ones in tests/fixtures/dbt_manifests/.
+# The pin replaces the environment's dbt; `poetry install --extras dbt` restores the locked one
+poetry install --extras dbt
+printf 'dbt-core==1.11.*\ndbt-snowflake==1.11.*\n' > /tmp/dbt.txt   # or 1.12
+poetry run pip install --constraint /tmp/dbt.txt dbt-core dbt-snowflake
+poetry run dbt deps --project-dir tests/fixtures/reference_project
+poetry run sst --project-dir tests/fixtures/reference_project test --suite golden \
+  --golden-dir "$PWD/tests/golden/expected/ddl"
+poetry run pytest tests/contract/test_dbt_manifest_contract.py \
+  --dbt-manifest tests/fixtures/reference_project/target/manifest.json
 ```
 
 The ratchet and the three floors are separate checks: the ratchet compares each layer over the
@@ -367,6 +380,17 @@ Every statement SST sends to Snowflake is an `Sql` value from `snowflake_semanti
 ### Version
 
 `snowflake_semantic_tools/_version.py` holds the one version string, and it must equal `version` in `pyproject.toml`; a test asserts it. Change both together.
+
+### Releasing
+
+A release is a `v<version>` tag on `main`; `publish-to-pypi.yml` runs the required gate on the tagged commit, then builds and publishes it. The required gate never connects to Snowflake, so the checks that notice Snowflake itself changing run here, once per release, by a maintainer with an account:
+
+1. Set the version, as [Version](#version) says.
+2. Run the live suites against the release candidate on `main`: the `live` suite of the manual workflow (`slow.yml`), or locally `poetry run pytest -m live --require-snowflake -n 4 tests/contract_live tests/integration tests/e2e`. Every test must pass; a skip means the account was not configured.
+3. Run the `recording` suite, or locally `poetry run python -m tests.helpers.session_recorder --out capture.json`, and commit the capture (the `--out` file, or the run's `recorded-session` artifact) as `tests/fixtures/recordings/live_project.json`. The first capture creates the file. After that, a capture that differs from the committed recording means Snowflake's behaviour moved: check the difference against [docs/design/snowflake-behaviour.md](docs/design/snowflake-behaviour.md) before the capture replaces the recording, and say what moved in the release notes.
+4. Tag the commit that adds the recording, which changes nothing else, and push the tag.
+
+[docs/guides/testing-live.md](docs/guides/testing-live.md#when-the-live-suites-run) describes this cadence; no schedule runs the live suites.
 
 ## Code Style
 

@@ -121,7 +121,8 @@ and never through a shell, and reads the manifest it just wrote. `--manifest`
 reads a given manifest instead, and on that path a model file that no longer
 matches the manifest's checksum is an error (`SST-DBT005`) unless
 `--allow-stale-manifest` is given. `dbt.invoke: false` opts out of running dbt
-and reads the manifest at dbt's target path. `dbt-snowflake` is an optional
+and reads the manifest at dbt's target path, checked the same way, since SST did
+not write that one either. `dbt-snowflake` is an optional
 extra.
 
 **Rejected.** Reading by default whatever manifest is on disk, which may be
@@ -556,8 +557,9 @@ agent, so a fixed number either flaps or is too loose to fire.
 **Chosen.** Every check a pull request or a release needs runs with no account
 and no secrets, and the test process refuses network access to any test not
 marked `live`.
+Real dbt runs in it only as `dbt parse`, which needs no warehouse.
 Checks against a real account run only in a manually triggered workflow, with
-credentials a maintainer supplies.
+credentials a maintainer supplies, once before every release tag.
 
 **Rejected.** A Snowflake-backed gate on every pull request, which would need
 one organisation's account and credentials in an open-source repository.

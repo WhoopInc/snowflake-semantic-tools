@@ -75,8 +75,8 @@ class YamlProjectSource:
 
     Satisfies `domain.ports.semantic_view_source.SemanticViewSource` structurally;
     it does not import the Protocol, which is what keeps the dependency pointing
-    one way. `allow_stale_manifest` reports a stale `--manifest` (SST-DBT005) as a warning
-    instead of an error, as `--allow-stale-manifest` asks.
+    one way. `allow_stale_manifest` reports a stale manifest SST did not write (SST-DBT005) as a
+    warning instead of an error, as `--allow-stale-manifest` asks.
     """
 
     def __init__(
@@ -100,6 +100,7 @@ class YamlProjectSource:
         self._invoke_dbt = invoke_dbt
         self._runner = dbt_runner
         self._load_cache = load_cache
+        # True once SST has run dbt for this source: only then did SST write the manifest it reads.
         self._parsed = False
         self._parse_warnings: tuple[Diagnostic, ...] = ()
         self._deferred: DbtCatalog | None = None
@@ -208,19 +209,20 @@ class YamlProjectSource:
     def _seam_diagnostics(self, catalog: DbtCatalog) -> tuple[Diagnostic, ...]:
         """What the dbt seam found before any semantic file is checked against the models.
 
-        A manifest given with `--manifest` is checked against the model files, since SST did not
-        produce it; one `dbt parse` just wrote cannot be stale.
+        A manifest SST did not produce, given with `--manifest` or read from disk under
+        `dbt.invoke: false`, is checked against the model files; one `dbt parse` just wrote cannot
+        be stale.
 
         Diagnostics:
             SST-DBT020: from running dbt.
             SST-DBT013, SST-DBT014, SST-DBT012: from reading the manifest.
             SST-DBT001: the manifest holds no model.
             SST-DBT022: `model-paths` cannot be read.
-            SST-DBT005: under `--manifest`, a model file changed after the manifest was written;
-                a warning under `--allow-stale-manifest`.
+            SST-DBT005: SST did not write the manifest and a model file changed after it was
+                written; a warning under `--allow-stale-manifest`.
         """
         found = [*self._parse_warnings, *catalog.diagnostics, *empty_catalog(catalog)]
-        if self._manifest_path is not None and (self._project_dir / "dbt_project.yml").is_file():
+        if not self._parsed and (self._project_dir / "dbt_project.yml").is_file():
             paths, unreadable = model_paths(self._project_dir, read_yaml_mapping)
             if self._files.model_paths is not None:
                 paths, unreadable = self._files.model_paths, ()

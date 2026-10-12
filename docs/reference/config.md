@@ -80,7 +80,7 @@ How SST produces and reads the dbt manifest.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `dbt.invoke` | boolean | `true` | Run dbt before reading the manifest; false reads the one on disk. |
+| `dbt.invoke` | boolean | `true` | Run dbt before reading the manifest; false reads the one on disk and checks it against the model files (SST-DBT005). |
 | `dbt.command` | enum: `parse`, `compile` | `parse` | The dbt command that writes the manifest; `compile` needs a warehouse. |
 | `dbt.manifest_schema_versions` | list | the versions this release is tested against | Manifest schema version numbers read, such as `[12]`. The list replaces the default set rather than adding to it, so name every version to accept; any other is refused (SST-DBT017) unless `--allow-unsupported-manifest-schema` is given. |
 
