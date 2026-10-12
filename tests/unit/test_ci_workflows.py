@@ -85,8 +85,18 @@ def test_the_required_gate_parses_the_reference_project_with_every_admitted_dbt_
     assert job["strategy"]["matrix"]["dbt"] == _admitted_minors()
     captured = sorted({path.parent.name.removeprefix("dbt-").rsplit(".", 1)[0] for path in COMMITTED_MANIFESTS})
     assert captured == _admitted_minors(), "capture a manifest for each minor (tests/helpers/manifest_capture.py)"
+    # Each minor runs the exact dbt Core release a committed manifest was written by, and a
+    # dbt-snowflake release of the same minor; no version floats to a newer patch.
+    pins = {entry["dbt"]: entry for entry in job["strategy"]["matrix"]["include"]}
+    releases = {path.parent.name.removeprefix("dbt-") for path in COMMITTED_MANIFESTS}
+    assert sorted(pins) == _admitted_minors()
+    for minor, entry in pins.items():
+        assert entry["dbt_core"] in releases and entry["dbt_core"].rsplit(".", 1)[0] == minor, entry
+        assert re.fullmatch(rf"{re.escape(minor)}\.\d+", entry["dbt_snowflake"]), entry
     runs = [" ".join(str(step.get("run", "")).split()) for step in job["steps"]]
     assert any("--extras dbt" in run for run in runs)
+    assert any('"dbt-core==$DBT_CORE" "dbt-snowflake==$DBT_SNOWFLAKE"' in run for run in runs)
+    assert not any("--constraint" in run or ".*" in run for run in runs)
     assert any("dbt deps" in run for run in runs)
     golden = next(run for run in runs if "test --suite golden" in run)
     assert "--manifest" not in golden, "SST must run dbt itself here, not read a manifest"
