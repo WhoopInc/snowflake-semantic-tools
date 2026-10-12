@@ -14,10 +14,11 @@ import shutil
 from collections.abc import Callable
 from pathlib import Path
 
+import click
 import pytest
 from click.testing import CliRunner, Result
 
-from snowflake_semantic_tools.cli.exit_codes import EXIT_CODE_DOCS
+from snowflake_semantic_tools.cli.exit_codes import EXIT_CODE_DOCS, INTERRUPTED
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics.signatures import SIGNATURES
@@ -28,26 +29,27 @@ from tests.helpers.enrich_ports import ScriptedEnrich
 from tests.helpers.reference_project import REPO_ROOT, break_menu_view, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
-# Which exit codes each command may return.
-EXIT_CODES = {
+# Which exit codes each command may return, besides 130: any command exits 130 when interrupted.
+_DECLARED = {
     "init": {0, 1, 3, 4},
     "debug": {0, 1, 3, 4, 5},
     "enrich": {0, 1, 2, 3, 4, 5},
     "compile": {0, 1, 3, 4},
     "validate": {0, 1, 3, 4, 5},
-    "plan": {0, 1, 2, 3, 4, 5, 130},
-    "apply": {0, 1, 3, 4, 5, 130},
+    "plan": {0, 1, 2, 3, 4, 5},
+    "apply": {0, 1, 3, 4, 5},
     "list": {0, 1, 3, 4},
     "test": {0, 1, 3, 4, 5},
     "docs": {0, 1, 2, 3, 4},
     "clean": {0, 1, 3, 4},
     "migrate": {0, 1, 2, 3, 4},
     "explain": {0, 3},
-    "drop": {0, 1, 3, 4, 5, 130},
+    "drop": {0, 1, 3, 4, 5},
     "diff": {0, 1, 2, 3, 4, 5},
     "baseline": {0, 1, 3, 4},
     "format": {0, 1, 2, 3, 4},
 }
+EXIT_CODES = {command: codes | {INTERRUPTED} for command, codes in _DECLARED.items()}
 GOLDEN = REPO_ROOT / "tests" / "golden" / "expected" / "ddl"
 DROP = ("DB.S.V", "--type", "semantic_view", "--target", "dev", "--yes")
 PROFILES_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project" / "profiles.yml"
@@ -386,6 +388,30 @@ def test_each_flag_exits_with_a_code_its_command_documents(
 
 def test_every_command_is_in_the_exit_code_table() -> None:
     assert set(EXIT_CODES) == set(cli.commands)
+
+
+# A command line each body is reached by: a group's subcommand, and a command's required arguments.
+_INVOCATIONS = {"explain": ("SST-VAL009",), "drop": DROP}
+
+
+def _interruptible(name: str, command: click.Command) -> list[list[str]]:
+    if isinstance(command, click.Group):
+        return [[name, *line] for sub, child in sorted(command.commands.items()) for line in _interruptible(sub, child)]
+    return [[name, *_INVOCATIONS.get(name, ())]]
+
+
+@pytest.mark.parametrize("command", sorted(cli.commands))
+def test_every_command_exits_130_when_its_body_is_interrupted(
+    command: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def interrupt(self: object) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("snowflake_semantic_tools.cli.runner._Run.execute", interrupt)
+    for line in _interruptible(command, cli.commands[command]):
+        result = _run(*line, "--project-dir", str(tmp_path))
+        assert result.exit_code == INTERRUPTED, (line, result.output)
+    assert INTERRUPTED in EXIT_CODES[command]
 
 
 def test_a_refused_privilege_exits_5_under_a_privilege_code_as_the_table_documents(
