@@ -370,7 +370,7 @@ flowchart TD
 Drawn from: [prune.py](../snowflake_semantic_tools/domain/plan/prune.py), [composite.py](../snowflake_semantic_tools/app/lifecycle/composite.py), [profiles.py](../snowflake_semantic_tools/app/lifecycle/profiles.py).
 
 Then blocking spreads: a write whose dependency the project compiles, the plan
-leaves out, and Snowflake lacks is blocked (`SST-VAL015`), and so, last, is
+leaves out, and Snowflake lacks is blocked (`SST-PLN038`), and so, last, is
 every change that depends, however indirectly, on a blocked one. `sst plan` exits 1 when any change is
 blocked or an error is reported, 2 when apply would write or still has state to
 record, and 0 otherwise; `--no-detailed-exitcode` turns 2 into 0.

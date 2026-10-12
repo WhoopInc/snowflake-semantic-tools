@@ -405,6 +405,21 @@ SPECS: tuple[ErrorSpec, ...] = (
         precheck=Precheck.OBSERVE,
     ),
     spec(
+        "SST-PLN038",
+        Severity.ERROR,
+        "Deploy ordering violated",
+        "{type} '{name}' would publish before {blocker}, which it depends on",
+        "add the dependency to `--select` or drop it from `--exclude`, or apply it first",
+        condition=(
+            "`sst plan` creates or updates an artifact whose dependency `--select` or `--exclude` left "
+            "out and which does not exist yet"
+        ),
+        note=(
+            "Publish order is the registry's type order, so it cannot be authored; only the selection "
+            "can leave a dependency unpublished. A pinned version is `SST-PLN030`."
+        ),
+    ),
+    spec(
         "SST-PLN100",
         Severity.ERROR,
         "Smoke query failed",

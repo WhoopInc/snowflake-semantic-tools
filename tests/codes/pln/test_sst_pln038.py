@@ -1,4 +1,4 @@
-"""SST-VAL015: a write would publish before a dependency the selection leaves out and Snowflake lacks."""
+"""SST-PLN038: a write would publish before a dependency the selection leaves out and Snowflake lacks."""
 
 from __future__ import annotations
 
@@ -11,15 +11,16 @@ from tests.helpers.artifact_builders import change, rendered
 DEPENDENT = change(rendered("A", depends_on=("semantic_view:b",)))
 
 
-def test_sst_val015_fires() -> None:
+def test_sst_pln038_fires() -> None:
     blocked, [found] = block_unpublished_dependencies((DEPENDENT,), (), {"semantic_view:b"}, ARTIFACT_REGISTRY)
     assert found.severity is Severity.ERROR
+    assert found.phase == "pln"
     assert found.message == "semantic_view 'a' would publish before semantic_view:b, which it depends on"
     assert found.subject == "semantic_view:a"
     assert blocked[0].action is Action.BLOCKED
 
 
-def test_sst_val015_silent() -> None:
+def test_sst_pln038_silent() -> None:
     # The dependency exists, so publishing the dependent alone is safe.
     kept, found = block_unpublished_dependencies(
         (DEPENDENT,), {"semantic_view:b"}, {"semantic_view:b"}, ARTIFACT_REGISTRY

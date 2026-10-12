@@ -468,7 +468,7 @@ def test_type_exclusion_removes_semantic_views_from_plan_and_prune_scope(
         "agent",
         "eval",
     }
-    assert {item["params"]["blocker"] for item in payload["diagnostics"] if item["code"] == "SST-VAL015"} == {
+    assert {item["params"]["blocker"] for item in payload["diagnostics"] if item["code"] == "SST-PLN038"} == {
         "semantic_view:jaffle_sales",
         "semantic_view:jaffle_menu",
     }
@@ -517,7 +517,7 @@ def test_an_agent_is_never_planned_without_the_skill_version_it_pins(
         ],
     )
     # With every dependency it does not find in Snowflake selected too, the agent publishes
-    # after them (SST-VAL015 otherwise).
+    # after them (SST-PLN038 otherwise).
     assert together.exit_code == 2, together.output
     changes = [(item["artifact_key"], item["action"]) for item in json.loads(together.output)["data"]["changes"]]
     assert ("skill:jaffle-semantics", "create") in changes

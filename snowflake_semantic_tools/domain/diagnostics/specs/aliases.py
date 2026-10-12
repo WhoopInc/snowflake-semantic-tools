@@ -287,6 +287,12 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         "`generation.publish_via` is removed, so there is one publish path",
     ),
     (
+        "SST-VAL015",
+        "Deploy ordering violated",
+        "SST-PLN038",
+        "raised by plan, so it moved to the PLN area",
+    ),
+    (
         "SST-VAL313",
         "Primary key and unique keys overlap",
         "SST-VAL223",

@@ -22,16 +22,16 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 37 codes
 - [Membership (MEM)](#membership-mem) -- 24 codes
-- [Validation (VAL)](#validation-val) -- 302 codes
+- [Validation (VAL)](#validation-val) -- 301 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
-- [Planning (PLN)](#planning-pln) -- 38 codes
+- [Planning (PLN)](#planning-pln) -- 39 codes
 - [Apply (APL)](#apply-apl) -- 29 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 22 codes
 - [Internal (INT)](#internal-int) -- 12 codes
-- [Retired numbers](#retired-numbers) -- 40 numbers
+- [Retired numbers](#retired-numbers) -- 41 numbers
 
 ## Registry (REG)
 
@@ -2428,18 +2428,6 @@ Fix: promote the key, remove it, or set `snowflake.allow_unknown_keys: true` to 
 Raised when an agent spec renders keys SST does not model and `snowflake.allow_unknown_keys` is `true`, its default; reported once per agent.
 
 Fix: promote the keys to first-class fields if they are load-bearing
-
-### SST-VAL015
-
-**Deploy ordering violated** (error)
-
-`<type> '<name>' would publish before <blocker>, which it depends on`
-
-Raised when `sst plan` creates or updates an artifact whose dependency `--select` or `--exclude` left out and which does not exist yet.
-
-Fix: add the dependency to `--select` or drop it from `--exclude`, or apply it first
-
-Note: Publish order is the registry's type order, so it cannot be authored; only the selection can leave a dependency unpublished. A pinned version is `SST-PLN030`.
 
 ### SST-VAL016
 
@@ -6525,6 +6513,18 @@ Fix: grant the role REFERENCES or OWNERSHIP on the object, or plan without --cap
 
 Note: The plan is otherwise unaffected: the change is planned as without the flag, and its `prior_definition` is null.
 
+### SST-PLN038
+
+**Deploy ordering violated** (error)
+
+`<type> '<name>' would publish before <blocker>, which it depends on`
+
+Raised when `sst plan` creates or updates an artifact whose dependency `--select` or `--exclude` left out and which does not exist yet.
+
+Fix: add the dependency to `--select` or drop it from `--exclude`, or apply it first
+
+Note: Publish order is the registry's type order, so it cannot be authored; only the selection can leave a dependency unpublished. A pinned version is `SST-PLN030`.
+
 ### SST-PLN100
 
 **Smoke query failed** (error)
@@ -7665,6 +7665,14 @@ Superseded by [`SST-REF035`](#sst-ref035).
 **Unsupported clause for the publish path** (retired in 1.0.0)
 
 Retired because `generation.publish_via` is removed, so there is one publish path.
+
+### SST-VAL015
+
+**Deploy ordering violated** (retired in 1.0.0)
+
+Retired because raised by plan, so it moved to the PLN area.
+
+Superseded by [`SST-PLN038`](#sst-pln038).
 
 ### SST-VAL313
 

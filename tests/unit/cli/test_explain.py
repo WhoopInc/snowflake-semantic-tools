@@ -88,6 +88,9 @@ def test_explain_answers_a_retired_number_from_its_tombstone(tmp_path: Path) -> 
     assert "superseded by: nothing; the condition is gone" in output
     exit_code, output = _explain(tmp_path, "SST-REF017")
     assert "superseded by: SST-VAL006" in output
+    exit_code, output = _explain(tmp_path, "SST-VAL015")
+    assert "superseded by: SST-PLN038" in output
+    assert "why: raised by plan, so it moved to the PLN area" in output
 
 
 def test_explain_reports_a_deprecated_code_and_its_replacement(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
