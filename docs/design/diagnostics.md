@@ -196,7 +196,9 @@ values, sorted by name. The origin's line and column are left out, so a comment 
 problem keeps its baseline entry, while renaming the artifact or changing a value in the message
 makes a new diagnostic. A `line` or `col` template value is left out too, so `SST-LOD011` and
 `SST-LOD016`, whose messages print the line, keep their identity when the value moves; each also
-carries the value's dotted `key_path`, so two findings for one key in a file stay apart. The JSON envelope reports it as `fingerprint`, `--verbose` prints it, and the
+carries the value's `key_path`, so two findings for one key in a file stay apart. The path names a
+list item by its `name` when it has one no sibling repeats (`columns[order_id].description`) and by
+its index otherwise, so inserting a named item above keeps the identity too. The JSON envelope reports it as `fingerprint`, `--verbose` prints it, and the
 baseline matches on it alone. A baseline entry that matches more than one diagnostic in a run holds
 none of them and is reported as `SST-INT009`, since it cannot say which one was meant.
 
