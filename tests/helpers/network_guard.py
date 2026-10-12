@@ -125,7 +125,9 @@ def installed() -> Iterator[None]:
     It patches `socket` by hand, not with pytest's `MonkeyPatch`, so a subprocess that has no
     pytest to import can still hold it.
     """
-    originals = [(socket.socket, name, getattr(socket.socket, name)) for name in ("connect", "connect_ex")]
+    originals: list[tuple[object, str, Any]] = [
+        (socket.socket, name, getattr(socket.socket, name)) for name in ("connect", "connect_ex")
+    ]
     originals += [(socket, name, getattr(socket, name)) for name in ("create_connection", "getaddrinfo")]
     for owner, name, original in originals:
         wrap = _guarded_method if owner is socket.socket else _guarded_function
