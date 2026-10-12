@@ -152,16 +152,10 @@ def _view_clauses(tokens: list[Token], index: int) -> tuple[list[tuple[str, int]
             continue
         if token.kind is TokenKind.COMMENT:
             return "it has a comment between its clauses"
-        word = token.text.upper() if token.kind is TokenKind.WORD else None
-        bare = _BARE_STARTS.get(word or "")
-        name = bare or (word if word in _VIEW_BLOCKS else _TRAILING_STARTS.get(word or ""))
-        if name is None:
-            return f"it has {token.text!r} where SST expects a clause"
-        follow = [] if bare else name.split()[1:]
-        if follow:
-            if index >= end or tokens[index].text.upper() != follow[0]:
-                return f"its {word} is not {name}"
-            index += 1
+        clause = _clause_at(tokens, index, end)
+        if isinstance(clause, str):
+            return clause
+        name, index = clause
         if name in _VIEW_BLOCKS and any(started in TRAILING_CLAUSES for started, _ in starts):
             return f"its {name} comes after a trailing clause"
         if any(started == name for started, _ in starts):
@@ -171,6 +165,22 @@ def _view_clauses(tokens: list[Token], index: int) -> tuple[list[tuple[str, int]
         return "its parentheses do not balance"
     last = tokens[end - 1]
     return starts, last.offset + len(last.text)
+
+
+def _clause_at(tokens: list[Token], index: int, end: int) -> tuple[str, int] | str:
+    """The clause the keyword before `index` starts, and the index past it; a reason if it starts none."""
+    token = tokens[index - 1]
+    word = token.text.upper() if token.kind is TokenKind.WORD else None
+    bare = _BARE_STARTS.get(word or "")
+    name = bare or (word if word in _VIEW_BLOCKS else _TRAILING_STARTS.get(word or ""))
+    if name is None:
+        return f"it has {token.text!r} where SST expects a clause"
+    follow = [] if bare else name.split()[1:]
+    if follow:
+        if index >= end or tokens[index].text.upper() != follow[0]:
+            return f"its {word} is not {name}"
+        index += 1
+    return name, index
 
 
 def _unnormalised(text: str, reason: str) -> str:
