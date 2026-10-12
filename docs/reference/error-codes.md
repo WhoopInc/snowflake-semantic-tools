@@ -22,9 +22,9 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 37 codes
 - [Membership (MEM)](#membership-mem) -- 24 codes
-- [Validation (VAL)](#validation-val) -- 298 codes
+- [Validation (VAL)](#validation-val) -- 302 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
-- [Rendering (RND)](#rendering-rnd) -- 16 codes
+- [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 38 codes
 - [Apply (APL)](#apply-apl) -- 29 codes
@@ -3349,6 +3349,40 @@ Raised when a metric left in the view's scope names, in `using_relationships`, a
 
 Fix: include the relationship, or exclude the metric
 
+### SST-VAL333
+
+**Column access_modifier holds an unrecognised value** (error)
+
+`<artifact>: column '<member>' declares access_modifier '<found>'`
+
+Raised when a column's `meta.sst.access_modifier` is neither `public_access` nor `private_access`.
+
+Fix: use `public_access`, or remove `access_modifier` from the column
+
+### SST-VAL334
+
+**Fact declares a private access modifier** (error)
+
+`<artifact>: column '<member>' declares access_modifier 'private_access'; SST does not render a private fact`
+
+Raised when a column that is not a `dimension` or `time_dimension` carries `meta.sst.access_modifier: private_access`.
+
+Fix: remove `access_modifier` from the column, or hide what it measures behind a private metric
+
+Note: A fact renders without `PRIVATE`, so it would publish as public; it is refused instead. A private dimension is SST-VAL222.
+
+### SST-VAL335
+
+**Fact declares is_enum** (error, always an error)
+
+`<artifact>: fact '<member>' declares is_enum; only a dimension can be an enum`
+
+Raised when a `fact` column declares `meta.sst.is_enum: true`.
+
+Fix: remove `is_enum`, or change `column_type` to `dimension`
+
+Note: Snowflake refuses `IS_ENUM` on a fact when the view is created, so no setting lowers this.
+
 ### SST-VAL401
 
 **Filter expression is not boolean** (error)
@@ -4187,7 +4221,7 @@ Note: A warning rather than an error: SST compares the object's direct grantees 
 
 `tool member '<name>' indexes <value>, materialized '<detail>' -- every dbt run rebuilds the relation, disabling change tracking and forcing a full re-embed`
 
-Raised when a search service's source relation is a dbt model whose materialization replaces it on every run, while the service is `INCREMENTAL`.
+Raised when a search service's source relation is a dbt model whose materialization replaces it on every run, and the service's `refresh_mode` is not `FULL` (unset, `AUTO`, or `INCREMENTAL`).
 
 Fix: make the model `incremental`, or set `refresh_mode: FULL` and accept the cost explicitly
 
@@ -4798,6 +4832,18 @@ Raised when a blocking-tier eval regressed: a gated metric passed on a question 
 Fix: fix what regressed, or capture a new baseline with a reason if the change is intended
 
 Note: A report-tier eval lists the same regressions without this error, so its run passes. The tier is `run.tier`, else `evals.+eval_tier`, else report.
+
+### SST-VAL764
+
+**System metric pins version v1, which Snowflake refuses** (error, always an error)
+
+`eval config for '<artifact>': metric '<name>' pins version '<found>', which Snowflake refuses`
+
+Raised when a system metric's version, else `evals.+metric_version`, is v1.
+
+Fix: pin `version: v3`
+
+Note: Snowflake refuses `version: v1` when the run starts, though its docs list it. Unlike SST-PRS013, which reports the same value, no setting lowers this.
 
 ### SST-VAL801
 
@@ -5882,6 +5928,18 @@ Fix: register a renderer, or change the kind
 Raised when a search-service tool has no relation to select from, or a procedure or function tool has no body.
 
 Fix: supply on: or body_file: content
+
+### SST-RND042
+
+**Tool has no value for a field with a default** (error)
+
+`tool '<artifact>': <field> is not set, and no default supplies it`
+
+Raised when once the `tools:` defaults apply, a defined search service has no `warehouse` or `target_lag`, or a defined procedure has no `warehouse`.
+
+Fix: set {field} on the member, or the tools.+{field} default in sst_config.yml
+
+Note: A warehouse falls back to the profile target's when neither the member nor `tools.+warehouse` names one; a target lag has no fallback.
 
 ### SST-RND900
 

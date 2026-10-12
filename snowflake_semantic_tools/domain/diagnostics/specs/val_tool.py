@@ -185,7 +185,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "make the model `incremental`, or set `refresh_mode: FULL` and accept the cost explicitly",
         condition=(
             "a search service's source relation is a dbt model whose materialization replaces it on "
-            "every run, while the service is `INCREMENTAL`"
+            "every run, and the service's `refresh_mode` is not `FULL` (unset, `AUTO`, or "
+            "`INCREMENTAL`)"
         ),
     ),
     spec(

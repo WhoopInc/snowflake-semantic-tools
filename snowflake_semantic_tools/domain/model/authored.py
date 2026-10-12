@@ -18,6 +18,9 @@ from snowflake_semantic_tools.domain.parse.template import TemplateCall, Templat
 
 NodePath: TypeAlias = tuple[str | int, ...]
 
+# The `access_modifier` values a metric or a column may write.
+ACCESS_MODIFIERS = ("public_access", "private_access")
+
 
 @dataclass(frozen=True, slots=True)
 class SourcePosition:

@@ -166,7 +166,8 @@ A `sweep:` block is refused in this release (`SST-CFG044`).
 A system metric pins `version`, so a scoring change on the Snowflake side cannot
 move a gate silently. Only `v3` is accepted: no version here or in
 `evals.+metric_version` is `SST-VAL722`, and any other is `SST-PRS013` (with the
-warning `SST-VAL723`). A system metric's judge comes with its version, so
+warning `SST-VAL723`). `v1`, which Snowflake refuses when a run starts, is also
+`SST-VAL764`, which no severity override lowers. A system metric's judge comes with its version, so
 `judge_model` on one is an error (`SST-VAL724`). `tool_selection_accuracy` uses
 no LLM judge (`SST-VAL725`, info); gating on the reference-free
 `logical_consistency` is a warning (`SST-VAL726`).

@@ -14,6 +14,7 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     KeyStatus,
     routed_block,
 )
+from snowflake_semantic_tools.domain.model.tool import EXECUTE_AS
 from snowflake_semantic_tools.domain.validate.config import validate_config
 
 
@@ -141,6 +142,7 @@ def test_types_domains_bounds_and_fixed_values() -> None:
     assert _codes({"semantic_views": {"core": "flat"}}) == [("SST-CFG004", "config:semantic_views.core")]
     assert _codes({"vars": []}) == [("SST-CFG004", "config:vars")]
     assert _codes({"tools": {"+execute_as": "sudo"}}) == [("SST-CFG008", "config:tools.+execute_as")]
+    assert _codes({"tools": {"+execute_as": "restricted caller"}}) == []
     stage = {"+stage": "S"}
     assert _codes({"skills": {"stage": {**stage, "+layout": "by_profile"}}}) == [
         ("SST-VAL821", "config:skills.stage.+layout")
@@ -250,3 +252,30 @@ def test_key_summaries_describe_what_the_renderer_and_the_stage_channel_do() -> 
     # A profile publishes command and plugin trees beside the others.
     layout = CONFIG_KEYS["skills.stage.+layout"].summary
     assert all(f"`{tree}/`" in layout for tree in ("skills", "prompts", "mcp", "hooks", "commands", "plugins"))
+
+
+def test_the_execute_as_default_accepts_exactly_what_a_procedure_member_does() -> None:
+    assert CONFIG_KEYS["tools.+execute_as"].choices == EXECUTE_AS
+
+
+def test_manifest_schema_versions_reports_each_entry_the_reader_would_drop() -> None:
+    found = validate_config(
+        {"dbt": {"manifest_schema_versions": [12, True, "13"]}},
+        positions={("dbt", "manifest_schema_versions"): (4, 3)},
+    )
+    assert [(item.code, item.message) for item in found] == [
+        ("SST-CFG004", "config key 'dbt.manifest_schema_versions[1]' expects integer, found bool"),
+        ("SST-CFG004", "config key 'dbt.manifest_schema_versions[2]' expects integer, found str"),
+    ]
+    assert {(item.origin.line, item.origin.col) for item in found if item.origin} == {(4, 3)}
+    [empty] = validate_config({"dbt": {"manifest_schema_versions": []}})
+    assert (empty.code, empty.subject) == ("SST-CFG008", "config:dbt.manifest_schema_versions")
+    assert _codes({"dbt": {"manifest_schema_versions": [11, 12]}}) == []
+    assert _codes({"dbt": {"manifest_schema_versions": "12"}}) == [
+        ("SST-CFG004", "config:dbt.manifest_schema_versions")
+    ]
+    assert _codes({"dbt": {"invoke": False}}) == []
+
+
+def test_manifest_schema_versions_says_it_replaces_the_default_set() -> None:
+    assert "replaces the default set" in CONFIG_KEYS["dbt.manifest_schema_versions"].summary

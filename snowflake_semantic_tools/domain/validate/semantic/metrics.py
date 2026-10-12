@@ -10,7 +10,7 @@ from collections.abc import Mapping
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.authored import MetricDef, WindowDef
+from snowflake_semantic_tools.domain.model.authored import ACCESS_MODIFIERS, MetricDef, WindowDef
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.parse.template import TemplateCall
 from snowflake_semantic_tools.domain.resolve.calls import call_problem, variable_problem
@@ -205,7 +205,7 @@ def _structure_diagnostics(metric: MetricDef) -> list[Diagnostic]:
         diagnostics.append(D("SST-VAL113", metric=metric.name, subject=subject))
     if len(metric.using_relationships) > 1:
         diagnostics.append(D("SST-VAL115", metric=metric.name, count=len(metric.using_relationships), subject=subject))
-    if metric.access_modifier not in ("public_access", "private_access"):
+    if metric.access_modifier not in ACCESS_MODIFIERS:
         diagnostics.append(D("SST-VAL121", metric=metric.name, found=metric.access_modifier, subject=subject))
     return diagnostics
 

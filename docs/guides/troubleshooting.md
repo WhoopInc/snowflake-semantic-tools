@@ -146,11 +146,11 @@ can show Snowflake would refuse, so apply does not fail part-way:
 | [`SST-PLN001`](../reference/error-codes.md#sst-pln001) | a read the plan needs failed, such as the state table or an object's grants | check the role and the connection |
 | [`SST-VAL020`](../reference/error-codes.md#sst-val020) (info) | a check skipped because the role may not make its read | optional; see [operating SST](security.md#operating-sst) |
 
-`SST-PLN008` reads the schema's grants to account roles and asks whether each
-holder is in the session. A privilege granted to a database role is not
-counted, so a role that holds a `CREATE` privilege only through a database role
-is reported. An update is not checked for its own `CREATE` privilege: it
-replaces an object the role already owns.
+`SST-PLN008` reads the schema's (or stage's) grants, climbs from each database
+role holding the privilege through `SHOW GRANTS OF DATABASE ROLE` to the
+account roles it is granted to, and asks whether any of those roles is in the
+session. An update is not checked for its own `CREATE` privilege: it replaces
+an object the role already owns.
 
 Two warnings concern the people who use an agent rather than the role that
 publishes it: `SST-VAL616`, a consumer without `USAGE` on an object a tool

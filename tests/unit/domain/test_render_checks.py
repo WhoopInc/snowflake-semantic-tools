@@ -91,6 +91,11 @@ def test_the_skill_checks_hold_the_flattened_skill_md_to_its_budget_only_once() 
         ("agent", {}, None, ["SST-RND040"]),
         ("function", {"body": None}, None, ["SST-RND041"]),
         ("function", {"body": "SELECT 1"}, None, []),
+        ("procedure", {"body": "SELECT 1"}, None, ["SST-RND042"]),
+        ("procedure", {"body": None}, None, ["SST-RND041", "SST-RND042"]),
+        ("procedure", {"body": "SELECT 1", "warehouse": "WH"}, None, []),
+        ("cortex_search_service", {"warehouse": "WH"}, None, ["SST-RND041", "SST-RND042"]),
+        ("cortex_search_service", {"target_lag": "1 hour"}, None, ["SST-RND041", "SST-RND042"]),
         ("stage", {}, None, []),
     ],
 )

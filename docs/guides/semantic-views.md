@@ -180,7 +180,13 @@ models:
 - The column's dbt `description` renders as its `COMMENT`, `synonyms` as
   `WITH SYNONYMS (...)`, and `sample_values` as `SAMPLE_VALUES (...)`.
 - `is_enum: true` declares that `sample_values` is the complete set of values
-  and renders `IS_ENUM`; it needs sample values (`SST-VAL314`).
+  and renders `IS_ENUM`; it needs sample values (`SST-VAL314`), and only a
+  dimension can be an enum (`SST-VAL335`).
+- `access_modifier` may be `public_access`, the default, which every column
+  renders as. A column cannot be private: `private_access` is refused on a
+  dimension or time dimension (`SST-VAL222`) and on a fact (`SST-VAL334`),
+  rather than published as public, and any other value is `SST-VAL333`. A
+  metric can be private (see [Metrics](#metrics)).
 - The model-level `primary_key` (a list of columns) and `unique_keys` (a list of
   column lists) render as the table's `PRIMARY KEY (...)` and `UNIQUE (...)`; a
   column may not be in both (`SST-VAL223`). See

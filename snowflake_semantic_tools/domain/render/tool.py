@@ -41,20 +41,33 @@ RENDERED_KINDS = frozenset(
 
 
 def tool_render_checks(member: ToolMember, source_relation: QualifiedName | None) -> tuple[Diagnostic, ...]:
-    """Report a member `render_tool` cannot render: a kind with no renderer, or no source statement.
+    """Report a member `render_tool` cannot render, once the `tools:` defaults have applied.
+
+    A kind may have no renderer, a member no source statement, or no warehouse or target lag.
 
     Diagnostics:
         SST-RND040: the member's kind has no renderer.
         SST-RND041: a search service has no relation to select from, or a routine has no body.
+        SST-RND042: a search service has no `warehouse` or `target_lag`, or a procedure no
+            `warehouse`.
     """
     key = artifact_key("tool", member.name.casefold())
     if member.type not in RENDERED_KINDS:
         return (D("SST-RND040", origin=member.origin, subject=key, artifact=member.name, found=member.type),)
     searching = member.type == ToolKind.CORTEX_SEARCH_SERVICE.value
     routine = member.type in (ToolKind.PROCEDURE.value, ToolKind.FUNCTION.value)
+    found: list[Diagnostic] = []
     if (searching and source_relation is None) or (routine and not (member.body or "").strip()):
-        return (D("SST-RND041", origin=member.origin, subject=key, artifact=member.name),)
-    return ()
+        found.append(D("SST-RND041", origin=member.origin, subject=key, artifact=member.name))
+    defaulted: tuple[tuple[str, str | None], ...] = ()
+    if searching:
+        defaulted = (("warehouse", member.warehouse), ("target_lag", member.target_lag))
+    elif member.type == ToolKind.PROCEDURE.value:
+        defaulted = (("warehouse", member.warehouse),)
+    for field, value in defaulted:
+        if not value:
+            found.append(D("SST-RND042", origin=member.origin, subject=key, artifact=member.name, field=field))
+    return tuple(found)
 
 
 def render_tool(member: ToolMember, target: QualifiedName, source_relation: QualifiedName | None) -> RenderedArtifact:

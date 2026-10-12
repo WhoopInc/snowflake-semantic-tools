@@ -9,6 +9,8 @@ roles, database roles and users, and answers, through `FakeDriverSession(respond
 - `SHOW GRANTS OF ROLE <r>` and `SHOW GRANTS OF DATABASE ROLE <db>.<r>`: created_on, role
   (`<DB>.<NAME>` for a database role), granted_to (ROLE | USER | DATABASE_ROLE),
   grantee_name, granted_by.
+- `SELECT IS_ROLE_IN_SESSION(%s)`: whether the bound account role is one `in_session` named,
+  as Snowflake answers it for the session's roles and every role they inherit.
 
 A statement naming a role the graph does not know fails as Snowflake fails it; any other
 statement -- SHOW GRANTS TO ROLE included -- fails as unsupported. Names are given as SHOW
@@ -34,6 +36,7 @@ class GrantGraph:
     scope: SchemaScope
     _on_schema: list[dict[str, object]] = field(default_factory=list)
     _of: dict[str, list[dict[str, object]]] = field(default_factory=dict)
+    _in_session: set[str] = field(default_factory=set)
 
     def on_schema(self, privilege: str, *, role: str = "", database_role: str = "") -> GrantGraph:
         """Grant a privilege on the schema (OWNERSHIP included) to a role or a database role."""
@@ -67,6 +70,11 @@ class GrantGraph:
             return self._row("DATABASE_ROLE", name, "DATABASE_ROLE", database_role_to)
         return self._grant("DATABASE_ROLE", name, role_to, user)
 
+    def in_session(self, *roles: str) -> GrantGraph:
+        """Make account roles active in the session, as IS_ROLE_IN_SESSION reports them."""
+        self._in_session.update(roles)
+        return self
+
     def forget(self, role: str) -> GrantGraph:
         """Drop an account role, so SHOW GRANTS OF it fails as for a role that no longer exists."""
         self._of.pop(f"SHOW GRANTS OF ROLE {Identifier.shown(role).sql}", None)
@@ -78,7 +86,8 @@ class GrantGraph:
 
     def respond(self, statement: str, binds: tuple[object, ...]) -> tuple[Rows | None, int]:
         """Answer one statement as Snowflake would from these grants."""
-        del binds
+        if statement == "SELECT IS_ROLE_IN_SESSION(%s)":
+            return [(binds[0] in self._in_session,)], 1
         if statement == f"SHOW GRANTS ON SCHEMA {self.scope.sql}":
             return list(self._on_schema), len(self._on_schema)
         for prefix in ("SHOW GRANTS OF DATABASE ROLE ", "SHOW GRANTS OF ROLE "):

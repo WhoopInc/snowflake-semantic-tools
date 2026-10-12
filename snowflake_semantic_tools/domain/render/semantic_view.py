@@ -220,7 +220,8 @@ def render_column(col: Column) -> Sql:
     parts.append(_synonyms(col.synonyms))
     parts.append(_comment(col.comment))
     # Snowflake's docs omit SAMPLE_VALUES and IS_ENUM; the server accepts both, in this order,
-    # and IS_ENUM on a dimension only, which is not checked here (docs/design/snowflake-behaviour.md).
+    # and IS_ENUM on a dimension only, which validation enforces (SST-VAL335,
+    # docs/design/snowflake-behaviour.md).
     if col.sample_values:
         parts.append(sql(" SAMPLE_VALUES ({values})", values=_quoted_list(col.sample_values)))
     if col.is_enum:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.agent_builders import compile_tools, search_member
 from tests.helpers.diagnostic_filters import coded
@@ -21,3 +23,17 @@ def test_sst_val617_silent() -> None:
     assert coded(compile_tools((search_member(),), product_docs="incremental").diagnostics, "SST-VAL617") == []
     full = search_member(refresh_mode="FULL")
     assert coded(compile_tools((full,), product_docs="table").diagnostics, "SST-VAL617") == []
+
+
+@pytest.mark.parametrize("refresh_mode", [None, "AUTO", "INCREMENTAL", "incremental"])
+def test_sst_val617_fires_for_every_refresh_mode_but_full(refresh_mode: str | None) -> None:
+    member = search_member(refresh_mode=refresh_mode)
+    assert [item.code for item in coded(compile_tools((member,), product_docs="table").diagnostics, "SST-VAL617")] == [
+        "SST-VAL617"
+    ]
+
+
+@pytest.mark.parametrize("refresh_mode", ["FULL", "full"])
+def test_sst_val617_silent_for_a_full_refresh_in_any_case(refresh_mode: str) -> None:
+    member = search_member(refresh_mode=refresh_mode)
+    assert coded(compile_tools((member,), product_docs="table").diagnostics, "SST-VAL617") == []

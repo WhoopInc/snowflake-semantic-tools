@@ -136,9 +136,9 @@ fact it fails with `Only dimensions can specify the is_enum property`.
 in [test_render_semantic_view.py](../../tests/unit/test_render_semantic_view.py)
 pins them, and the `jaffle_sales` golden carries both on dimensions and
 `SAMPLE_VALUES` on facts. The dimensions-only rule is `Observed`. `enrich` never
-writes `is_enum` on a fact, but no check refuses a hand-authored
-`is_enum: true` on a fact column, so such a column renders `IS_ENUM` on a fact.
-Probe:
+writes `is_enum` on a fact, and a hand-authored `is_enum: true` on a fact column
+is refused before it renders (SST-VAL335).
+[test_sst_val335.py](../../tests/codes/val/test_sst_val335.py). Probe:
 
 ```sql
 CREATE SEMANTIC VIEW <db>.<schema>.probe_view
@@ -151,7 +151,8 @@ CREATE SEMANTIC VIEW <db>.<schema>.probe_view
 **SST depends on it at**: `render_column` in
 [semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py);
 [build.py](../../snowflake_semantic_tools/adapters/yaml/semantic/build.py), which
-passes `is_enum` through for any column kind.
+passes `is_enum` through for any column kind; `_sample_value_diagnostics` in
+[validate/semantic/dbt.py](../../snowflake_semantic_tools/domain/validate/semantic/dbt.py).
 
 ### GET_DDL output does not re-execute
 
@@ -610,11 +611,12 @@ reachable only as an unpinned default.
 **Evidence**: `Enforced` for the pin: SST requires every system metric to name a
 version (SST-VAL722), because an unpinned default moves when Snowflake changes
 it. [test_sst_val722.py](../../tests/codes/val/test_sst_val722.py). The refusal
-of `v1` is `Observed`. SST accepts only `v3` (SST-PRS013, SST-VAL723), so it
-sends `v1` only if a project demotes SST-PRS013. The tests refuse `v2`, and none
-would fail if `v1` were admitted beside `v3`:
+of `v1` is `Observed`. SST accepts only `v3` (SST-PRS013, SST-VAL723), and
+refuses `v1` with a code no setting lowers (SST-VAL764), so a project that
+demotes SST-PRS013 still never sends it:
 [test_sst_prs013.py](../../tests/codes/prs/test_sst_prs013.py),
-[test_sst_val723.py](../../tests/codes/val/test_sst_val723.py). Probe:
+[test_sst_val723.py](../../tests/codes/val/test_sst_val723.py),
+[test_sst_val764.py](../../tests/codes/val/test_sst_val764.py). Probe:
 
 ```sql
 -- Stage an evaluation config for <db>.<schema>.probe_agent whose one system

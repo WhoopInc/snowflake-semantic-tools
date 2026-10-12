@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.adapters.snowflake.connector.catalog import CatalogMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.grant_walk import (
-    OWNERSHIP,
     Grantee,
+    account_holders,
     grantees_of,
     held_by,
     schema_holders,
@@ -45,25 +45,25 @@ class PreflightMethods(CatalogMethods, PreflightPort):
         return any(str(row.get("name") or "") == warehouse.folded for row in rows)
 
     def missing_privileges(self, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
-        return self._lacking(sql("SHOW GRANTS ON SCHEMA {scope}", scope=scope_sql(scope)), privileges)
+        return self._lacking(sql("SHOW GRANTS ON SCHEMA {scope}", scope=scope_sql(scope)), scope, privileges)
 
     def missing_stage_privileges(self, stage: QualifiedName, privileges: tuple[str, ...]) -> tuple[str, ...]:
-        return self._lacking(sql("SHOW GRANTS ON STAGE {stage}", stage=qname(stage)), privileges)
+        grants = sql("SHOW GRANTS ON STAGE {stage}", stage=qname(stage))
+        return self._lacking(grants, SchemaScope.from_qualified_name(stage), privileges)
 
-    def _lacking(self, grants: Sql, privileges: tuple[str, ...]) -> tuple[str, ...]:
+    def _lacking(self, grants: Sql, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
         """Return the privileges no role in the session holds, by the grants `grants` lists.
 
-        A role holds a privilege when a grant to it names the privilege or OWNERSHIP.
+        A role holds a privilege when a grant to it names the privilege or OWNERSHIP, or when
+        it is granted a database role that does, directly or through other database roles.
         """
-        rows = self._dict_rows(grants)
-        holders: dict[str, set[str]] = {}
-        for row in rows:
-            if str(row.get("granted_to") or "").upper() == "ROLE":
-                holders.setdefault(str(row.get("privilege") or "").upper(), set()).add(str(row.get("grantee_name")))
+        holders = account_holders(
+            schema_holders(self._dict_rows(grants), scope, privileges), self._grantees_of, ROLE_HIERARCHY_DEPTH
+        )
         in_session: dict[str, bool] = {}
         missing: list[str] = []
         for privilege in privileges:
-            roles = sorted(holders.get(privilege.upper(), set()) | holders.get(OWNERSHIP, set()))
+            roles = sorted(role.names[0].value for role, held in holders.items() if privilege.upper() in held)
             if not any(self._role_in_session(role, in_session) for role in roles):
                 missing.append(privilege)
         return tuple(missing)

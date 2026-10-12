@@ -55,6 +55,7 @@ def validate_eval_config(
         SST-PRS013: a system metric's effective version is not v3, or run.accept_statuses
             lists a status other than COMPLETED.
         SST-VAL723: a system metric pins a legacy version.
+        SST-VAL764: a system metric's effective version is v1, which Snowflake refuses.
         SST-VAL724: a system metric sets judge_model.
         SST-VAL725: tool_selection_accuracy uses no LLM judge (info).
         SST-VAL726: logical_consistency is gated.
@@ -155,8 +156,6 @@ def _system_metric(resolved: ResolvedEval, defaults: EvalDefaults, metric: EvalS
         emit("SST-VAL721", name=name)
         return emit.diagnostics
     version = metric.version or defaults.metric_version
-    # Snowflake's docs list v1 among the versions a metric may name; the server rejects
-    # `version: v1` (docs/design/snowflake-behaviour.md).
     if version is None:
         emit("SST-VAL722", name=name)
     elif version != SYSTEM_EVAL_METRIC_VERSION:
@@ -168,6 +167,10 @@ def _system_metric(resolved: ResolvedEval, defaults: EvalDefaults, metric: EvalS
             expected=SYSTEM_EVAL_METRIC_VERSION,
         )
         emit("SST-VAL723", name=name, found=version)
+        # Snowflake's docs list v1 among the versions a metric may name; the server rejects
+        # `version: v1` (docs/design/snowflake-behaviour.md), so that refusal is not demotable.
+        if version.casefold() == "v1":
+            emit("SST-VAL764", name=name, found=version)
     if metric.judge_model is not None:
         emit("SST-VAL724", name=name)
     if name == "tool_selection_accuracy":

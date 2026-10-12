@@ -143,6 +143,21 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=("a search-service tool has no relation to select from, or a procedure or function tool has no body"),
     ),
     spec(
+        "SST-RND042",
+        Severity.ERROR,
+        "Tool has no value for a field with a default",
+        "tool '{artifact}': {field} is not set, and no default supplies it",
+        "set {field} on the member, or the tools.+{field} default in sst_config.yml",
+        condition=(
+            "once the `tools:` defaults apply, a defined search service has no `warehouse` or "
+            "`target_lag`, or a defined procedure has no `warehouse`"
+        ),
+        note=(
+            "A warehouse falls back to the profile target's when neither the member nor "
+            "`tools.+warehouse` names one; a target lag has no fallback."
+        ),
+    ),
+    spec(
         "SST-RND900",
         Severity.ERROR,
         "Rendered member count differs from the model's",
