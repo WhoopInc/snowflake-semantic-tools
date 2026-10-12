@@ -456,7 +456,7 @@ _ROUTINE_FIELDS = {**_ROUTINE, "runtime_version": "3.11", "handler": "run"}
 @pytest.mark.parametrize("kind", ["procedure", "function"])
 def test_a_defined_routine_lacking_a_field_its_ddl_needs_reports_it_by_name(kind: str, field: str) -> None:
     fields = {key: value for key, value in _ROUTINE_FIELDS.items() if key != field}
-    # A routine with no language is not known to be other than SQL, so only the language is missing.
+    # A routine with no language is not known to need a handler, so only the language is missing.
     assert _required(kind, **fields) == [field]
 
 
@@ -469,3 +469,13 @@ def test_a_sql_routine_needs_no_runtime_version_or_handler_and_a_stage_needs_not
     assert _required("procedure", **{**_ROUTINE, "language": "sql"}) == []
     assert _required("function", **_ROUTINE_FIELDS) == []
     assert _required("stage") == []
+
+
+@pytest.mark.parametrize("kind", ["procedure", "function"])
+def test_a_javascript_routine_needs_no_runtime_version_or_handler_as_its_grammar_has_neither(kind: str) -> None:
+    assert _required(kind, **{**_ROUTINE, "language": "JavaScript"}) == []
+
+
+@pytest.mark.parametrize("language", ["java", "python", "scala"])
+def test_a_java_python_or_scala_routine_still_needs_runtime_version_and_handler(language: str) -> None:
+    assert _required("function", **{**_ROUTINE, "language": language}) == ["runtime_version", "handler"]

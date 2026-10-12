@@ -8,6 +8,7 @@ from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.tool import (
     EXECUTE_AS,
+    HANDLER_LANGUAGES,
     KNOWN_TOOL_TYPES,
     ToolCatalog,
     ToolGroup,
@@ -33,8 +34,8 @@ def validate_tool_catalog(catalog: ToolCatalog, dbt: DbtCatalog) -> DiagnosticBa
         SST-VAL604: a `define:` member declares neither `on:` nor `body_file:`, and is not a stage.
         SST-VAL605: a `define:` member declares `relations`, or a `reference:` member a creation key.
         SST-PRS002: a `reference:` member declares no `relations`; a defined search service no
-            `search_column`; a defined routine no `language` or `returns`, or, in a language
-            other than SQL, no `runtime_version` or `handler`.
+            `search_column`; a defined routine no `language` or `returns`, or, in Java, Python
+            or Scala, no `runtime_version` or `handler`.
         SST-REF018: a relation names a target `profiles.yml` does not declare, or none names the current one.
         SST-REF019: a relation is not a three-part name.
         SST-REF023: a mutable group's reference resolves to one object for both dev and prod.
@@ -259,7 +260,7 @@ def _render_fields(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
         required = (("search_column", member.search_column),)
     elif member.type in (ToolKind.PROCEDURE.value, ToolKind.FUNCTION.value):
         required = (("language", member.language), ("returns", member.returns))
-        if member.language and member.language.casefold() != "sql":
+        if member.language and member.language.strip().casefold() in HANDLER_LANGUAGES:
             required += (("runtime_version", member.runtime_version), ("handler", member.handler))
     for field, value in required:
         if not value:
