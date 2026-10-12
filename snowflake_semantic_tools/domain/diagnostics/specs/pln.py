@@ -420,6 +420,20 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
+        "SST-PLN039",
+        Severity.WARNING,
+        "Live view carries tags that a replace would remove",
+        "{artifact}: replacing {value} removes tags the project does not declare: {found}",
+        "declare each tag to keep under the view's `tags:`, or set it again after applying",
+        condition="a planned update replaces a semantic view that carries tags the project does not declare",
+        note=(
+            "The replace's `WITH TAG` names only the declared tags, and Snowflake removes every other "
+            "tag set on the view; a tag it inherits from its schema or database is kept. "
+            "`--no-grants` skips the read of the view's tags, and with it this warning."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
         "SST-PLN100",
         Severity.ERROR,
         "Smoke query failed",

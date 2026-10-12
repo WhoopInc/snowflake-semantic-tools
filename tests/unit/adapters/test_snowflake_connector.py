@@ -831,6 +831,26 @@ def test_get_ddl_refuses_a_type_it_reads_no_object_of_without_sending_anything(o
     assert connector.statements == []
 
 
+def test_tag_references_name_each_tag_set_on_a_view_and_leave_out_inherited_ones() -> None:
+    rows: tuple[dict[str, object], ...] = (
+        {"tag_database": "GOV", "tag_schema": "T", "tag_name": "PII", "level": "SEMANTIC VIEW"},
+        {"tag_database": "GOV", "tag_schema": "t", "tag_name": "OWNER", "level": None},
+        {"tag_database": "GOV", "tag_schema": "T", "tag_name": "PII", "level": "SEMANTIC VIEW"},
+        {"tag_database": "GOV", "tag_schema": "T", "tag_name": "DOMAIN", "level": "SCHEMA"},
+        {"tag_database": "GOV", "tag_schema": "T", "tag_name": "ZONE", "level": "database"},
+        {"tag_database": None, "tag_schema": None, "tag_name": None, "level": None},
+    )
+    session = FakeDriverSession(rows={"SELECT * FROM TABLE(DB.INFORMATION_SCHEMA.TAG_REFERENCES": rows})
+    connector = FakeDriverConnector(session)
+    assert connector.tag_references("semantic view", QualifiedName.parse("DB.S.V")) == ('GOV."t".OWNER', "GOV.T.PII")
+    assert session.statements == [
+        "SELECT * FROM TABLE(DB.INFORMATION_SCHEMA.TAG_REFERENCES('DB.S.V', 'SEMANTIC_VIEW'))"
+    ]
+    with pytest.raises(SnowflakePortError, match="tags are read only on a semantic view, not on AGENT"):
+        connector.tag_references("AGENT", QualifiedName.parse("DB.S.A"))
+    assert len(session.statements) == 1
+
+
 def test_agent_versions_read_each_version_with_its_alias_default_and_specification() -> None:
     # MEASURED: SHOW VERSIONS IN AGENT names no live version, and `is_default` reads 'true'/'false'.
     rows: tuple[dict[str, object], ...] = (

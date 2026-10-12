@@ -15,10 +15,11 @@ rendered form carries, resolved dependencies included, and the entry and the liv
 name the manifest that last published it, so an artifact whose fingerprint matches is
 unchanged whatever else the project, or the manifest that last stamped state, changed.
 
-A blocking diagnostic travels on the change as well as in the plan's list. Two warnings
+A blocking diagnostic travels on the change as well as in the plan's list. Three warnings
 never change a decision: a declared name whose case differs from the live object's
-(SST-PLN023), reported before the decision's own diagnostic, and an update of an object
-that carries explicit grants (SST-PLN013), reported after it.
+(SST-PLN023), reported before the decision's own diagnostic; and an update of an object that
+carries explicit grants (SST-PLN013), then of a semantic view that carries tags the project
+does not declare (SST-PLN039), reported after it.
 """
 
 from __future__ import annotations
@@ -86,6 +87,8 @@ def classify(
         SST-PLN023: the declared name's case differs from the live object's.
         SST-PLN024: an object holds the name, but state records no entry for it.
         SST-PLN025: state records the artifact at another target.
+        SST-PLN039: an update replaces a semantic view that carries tags the project does not
+            declare, which the replace removes.
         SST-VAL320: the recorded or rendered fingerprint is not a canonical digest, so the
             comparison would not be of normalised definitions.
     """
@@ -161,7 +164,19 @@ def _compare(
         reported.append(
             D("SST-PLN013", artifact=key, count=len(observed.explicit_grants), value=observed.qualified_name.sql)
         )
+    if change.action is Action.UPDATE and (removed := _removed_tags(artifact, observed)):
+        reported.append(D("SST-PLN039", artifact=key, value=observed.qualified_name.sql, found=", ".join(removed)))
     return Decision(change, tuple(reported))
+
+
+def _removed_tags(artifact: RenderedArtifact, observed: ObservedArtifact) -> tuple[str, ...]:
+    """Return the tags on an observed semantic view that its replace does not set, casefolded alike."""
+    # A replace sets exactly the tags its WITH TAG names; an agent's update unsets the others
+    # itself, in statements the plan shows.
+    if observed.object_type.upper() != "SEMANTIC VIEW":
+        return ()
+    declared = {tag.casefold() for tag in artifact.desired_tags}
+    return tuple(tag for tag in sorted(observed.tags) if tag.casefold() not in declared)
 
 
 @dataclass(frozen=True, slots=True)

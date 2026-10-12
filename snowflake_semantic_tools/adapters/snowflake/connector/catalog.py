@@ -67,6 +67,11 @@ _GET_DDL_TYPES: Mapping[str, str] = {
     "TAG": "TAG",
 }
 _ROUTINE_TYPES = frozenset(("PROCEDURE", "FUNCTION"))
+# How TAG_REFERENCES names the domain of each type whose tags are read: only a semantic view's,
+# which a replace without WITH TAG removes (docs/design/snowflake-behaviour.md).
+_TAG_DOMAINS: Mapping[str, str] = {"SEMANTIC VIEW": "SEMANTIC_VIEW"}
+# The levels a tag set on a parent shows at; a replace of the object keeps such a tag.
+_PARENT_TAG_LEVELS = frozenset(("DATABASE", "SCHEMA"))
 
 
 class CatalogMethods(Session, CatalogPort):
@@ -124,6 +129,30 @@ class CatalogMethods(Session, CatalogPort):
                 for row in rows
             )
         )
+
+    def tag_references(self, object_type: str, qualified_name: QualifiedName) -> tuple[str, ...]:
+        kind = _object_type(object_type)
+        domain = _TAG_DOMAINS.get(kind)
+        if domain is None:
+            raise SnowflakePortError(f"tags are read only on a semantic view, not on {kind}")
+        rows = self._dict_rows(
+            sql(
+                "SELECT * FROM TABLE({database}.INFORMATION_SCHEMA.TAG_REFERENCES({name}, {domain}))",
+                database=ident(qualified_name.database),
+                name=literal(qualified_name.sql),
+                domain=literal(domain),
+            )
+        )
+        names = {
+            QualifiedName(
+                Identifier.shown(str(row.get("tag_database") or "")),
+                Identifier.shown(str(row.get("tag_schema") or "")),
+                Identifier.shown(str(row.get("tag_name") or "")),
+            ).sql
+            for row in rows
+            if row.get("tag_name") and str(row.get("level") or "").upper() not in _PARENT_TAG_LEVELS
+        }
+        return tuple(sorted(names))
 
     def describe_marker(
         self,

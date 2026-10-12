@@ -25,13 +25,13 @@ cannot be downgraded by any setting.
 - [Validation (VAL)](#validation-val) -- 301 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
-- [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
-- [Planning (PLN)](#planning-pln) -- 39 codes
+- [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
+- [Planning (PLN)](#planning-pln) -- 40 codes
 - [Apply (APL)](#apply-apl) -- 29 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 22 codes
 - [Internal (INT)](#internal-int) -- 12 codes
-- [Retired numbers](#retired-numbers) -- 41 numbers
+- [Retired numbers](#retired-numbers) -- 42 numbers
 
 ## Registry (REG)
 
@@ -5973,16 +5973,6 @@ Raised when the manifest is structurally incomplete.
 
 Fix: re-run sst compile
 
-### SST-MAN004
-
-**Impact index incomplete** (error)
-
-`<artifact> has no reverse-index entry`
-
-Raised when the impact index of a stored manifest does not list an artifact under a file it came from.
-
-Fix: re-run sst compile
-
 ### SST-MAN005
 
 **manifest_id does not match the recomputed hash** (error)
@@ -6526,6 +6516,18 @@ Raised when `sst plan` creates or updates an artifact whose dependency `--select
 Fix: add the dependency to `--select` or drop it from `--exclude`, or apply it first
 
 Note: Publish order is the registry's type order, so it cannot be authored; only the selection can leave a dependency unpublished. A pinned version is `SST-PLN030`.
+
+### SST-PLN039
+
+**Live view carries tags that a replace would remove** (warning)
+
+`<artifact>: replacing <value> removes tags the project does not declare: <found>`
+
+Raised when a planned update replaces a semantic view that carries tags the project does not declare.
+
+Fix: declare each tag to keep under the view's `tags:`, or set it again after applying
+
+Note: The replace's `WITH TAG` names only the declared tags, and Snowflake removes every other tag set on the view; a tag it inherits from its schema or database is kept. `--no-grants` skips the read of the view's tags, and with it this warning.
 
 ### SST-PLN100
 
@@ -7573,6 +7575,12 @@ Retired because `meta.sst.database` and `meta.sst.schema` are refused outright (
 **meta.sst location is hardcoded** (retired in 1.0.0)
 
 Retired because the keys it warned against are refused outright (SST-DBT030).
+
+### SST-MAN004
+
+**Impact index incomplete** (retired in 1.0.0)
+
+Retired because the impact index it checked is no longer written.
 
 ### SST-MAN021
 

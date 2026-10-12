@@ -111,6 +111,18 @@ class CatalogPort(Protocol):
         """
         ...
 
+    def tag_references(self, object_type: str, qualified_name: QualifiedName) -> tuple[str, ...]:
+        """Return the qualified names of the tags set on one object, sorted, as TAG_REFERENCES lists them.
+
+        A tag the object inherits from its schema or database is left out: it is set on the
+        parent, so replacing the object keeps it. Only a semantic view is read. Never writes.
+
+        Raises:
+            SnowflakePortError: the read failed, or `object_type` is not one this reads, in which
+                case nothing was sent.
+        """
+        ...
+
     def describe_marker(
         self,
         qualified_name: QualifiedName,

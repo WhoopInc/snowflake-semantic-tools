@@ -2,8 +2,9 @@
 
 An update is planned from what the object shows and what the artifact renders, so each
 property compares the two: the object's name, its ownership marker's fingerprint and
-manifest, and for an agent its version aliases and tags. A create writes every property and
-a prune removes the object, so neither names one; nor does an unchanged or blocked artifact.
+manifest, an agent's version aliases, and the tags of an agent or a semantic view. A create
+writes every property and a prune removes the object, so neither names one; nor does an
+unchanged or blocked artifact.
 """
 
 from __future__ import annotations
@@ -27,8 +28,9 @@ def changed_properties(change: Change, manifest_id: str) -> tuple[PropertyChange
 
     `target` when the object's shown name differs from the declared one; `fingerprint` and
     `manifest_id` when its marker records others than the artifact renders and the plan's
-    manifest, `manifest_id`, a missing marker reading as empty; `aliases` and `tags` when an
-    agent shows others than it declares, an update unsetting every alias but the declared one.
+    manifest, `manifest_id`, a missing marker reading as empty; `aliases` when an agent shows
+    others than it declares, an update unsetting every alias but the declared one; and `tags`
+    when an agent or a semantic view shows others, which the update unsets or the replace drops.
     """
     rendered, observed = change.rendered, change.observed
     if change.action is not Action.UPDATE or rendered is None or observed is None:

@@ -3,15 +3,17 @@ from __future__ import annotations
 from dataclasses import replace
 from types import MappingProxyType
 
-from snowflake_semantic_tools.app.observe import ObserveOptions, observe
+from snowflake_semantic_tools.app.observe import DEFAULT_OBSERVE_OPTIONS, ObserveOptions, observe
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
     ApplyOutcome,
     Change,
+    ChangeSet,
     CompositePlan,
     GrantRow,
+    OwnershipMarker,
     RenderedArtifact,
     ShowRow,
 )
@@ -22,6 +24,7 @@ from snowflake_semantic_tools.domain.model.registry import (
     GrantPreservation,
     Registry,
 )
+from snowflake_semantic_tools.domain.plan.properties import changed_properties
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
@@ -268,3 +271,65 @@ class _CompositeHandler:
         del state_entry
         artifact = replace(rendered("OLD"), key=artifact_key, artifact_type="virtual")
         return replace(change(artifact, Action.PRUNE), artifact_type="virtual")
+
+
+def _tag_plan(
+    declared: tuple[str, ...], options: ObserveOptions = DEFAULT_OBSERVE_OPTIONS
+) -> tuple[FakeSnowflake, RenderedArtifact, ChangeSet]:
+    """Plan an update of a view that shows the tag `GOV.T.PII`, declaring `declared`."""
+    artifact = replace(rendered(), desired_tags=declared)
+    planned_manifest = manifest({artifact.key: artifact})
+    recorded = "f" * 64
+    port = FakeSnowflake()
+    port.show(
+        ShowRow("V", "DB", "SCHEMA", "OWNER", "now", OwnershipMarker(planned_manifest.manifest_id, recorded).text)
+    )
+    port.tags[artifact.target.sql] = ("GOV.T.PII",)
+    applied = AppliedEntry(
+        recorded, artifact.target.sql, "then", "run", "applied", recorded, planned_manifest.manifest_id
+    )
+    planned = PlanArtifacts(port, observe_options=options).run(
+        {artifact.key: artifact},
+        planned_manifest,
+        replace(state(), applied=MappingProxyType({artifact.key: applied})),
+        target(),
+        fetched_at="now",
+    )
+    assert planned.changes[0].action is Action.UPDATE
+    return port, artifact, planned
+
+
+def test_plan_warns_of_each_tag_a_view_replace_removes() -> None:
+    port, artifact, planned = _tag_plan(())
+    assert port.tag_reads == [artifact.target.sql]
+    [warning] = [item for item in planned.diagnostics if item.code == "SST-PLN039"]
+    assert warning.message.endswith("removes tags the project does not declare: GOV.T.PII")
+    properties = changed_properties(planned.changes[0], planned.manifest_id)
+    assert ("tags", "GOV.T.PII", "") in [(item.name, item.before, item.after) for item in properties]
+
+
+def test_plan_is_silent_on_declared_tags_and_reads_none_without_grants() -> None:
+    _, _, declared = _tag_plan(("GOV.T.PII",))
+    assert "SST-PLN039" not in {item.code for item in declared.diagnostics}
+    assert "tags" not in [item.name for item in changed_properties(declared.changes[0], declared.manifest_id)]
+    port, _, skipped = _tag_plan((), ObserveOptions(grants=False))
+    assert port.tag_reads == []
+    assert "SST-PLN039" not in {item.code for item in skipped.diagnostics}
+
+
+def test_observe_reads_tags_only_on_a_view_it_may_replace_and_reports_a_failed_read() -> None:
+    port = FakeSnowflake()
+    artifact = rendered()
+    port.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now"))
+    port.tags[artifact.target.sql] = ("GOV.T.PII",)
+    targets = (artifact.target,)
+    unrelated, quiet = observe(port, SEMANTIC_REGISTRY, targets, fetched_at="now")
+    assert unrelated.artifacts[artifact.key].tags == () and quiet == () and port.tag_reads == []
+    port.fail("tag_references", SnowflakePortError("denied"))
+    refused, failed = observe(
+        port, SEMANTIC_REGISTRY, targets, fetched_at="now", desired_artifacts={artifact.key: artifact}
+    )
+    assert refused.artifacts[artifact.key].tags == ()
+    assert [(item.code, item.message) for item in failed] == [
+        ("SST-PLN001", "observation of tags on DB.SCHEMA.V failed: denied")
+    ]

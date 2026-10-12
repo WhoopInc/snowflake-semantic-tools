@@ -12,7 +12,7 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore, StateFileStore
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
-from snowflake_semantic_tools.domain.state import APPLIED, AppliedEntry, LastRun, Manifest, State
+from snowflake_semantic_tools.domain.state import APPLIED, AppliedEntry, LastRun, Manifest, State, content_hash
 from tests.helpers.artifact_builders import manifest, rendered, target
 
 ENTRY = AppliedEntry("f" * 64, "DB.SCHEMA.V", "then", "run", APPLIED, "f" * 64, "m" * 64)
@@ -21,6 +21,17 @@ ENTRY = AppliedEntry("f" * 64, "DB.SCHEMA.V", "then", "run", APPLIED, "f" * 64, 
 def valid_manifest() -> Manifest:
     """A one-view manifest whose id is the hash of its content."""
     return manifest({"semantic_view:v": rendered()})
+
+
+def schema_2_document(manifest: Manifest, impact: dict[str, object] | None = None) -> dict[str, object]:
+    """`manifest` as schema 2 wrote it: with an `impact` index, and an id that hashes the index too."""
+    document = manifest.as_dict()
+    document["schema_version"] = 2
+    document["impact"] = impact if impact is not None else {"by_file": {}, "by_dbt_model": {}, "by_member": {}}
+    document["manifest_id"] = content_hash(
+        {k: v for k, v in document.items() if k not in ("manifest_id", "schema_version")}
+    )
+    return document
 
 
 def written(tmp_path: Path, document: object, name: str = "manifest.json") -> Path:

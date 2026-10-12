@@ -12,11 +12,11 @@ from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, Change, ChangeReason, ChangeSet, RenderedArtifact
 from snowflake_semantic_tools.domain.state import (
+    MANIFEST_SCHEMA_VERSION,
     STATE_SCHEMA_VERSION,
     AppliedEntry,
     AppliedResource,
     ArtifactEntry,
-    ImpactIndex,
     LastRun,
     Manifest,
     ResourceStatus,
@@ -50,11 +50,6 @@ def manifest() -> Manifest:
         sources={"semantic_file_count": 1},
         members={},
         files={"views.yml": {"checksum": "x"}},
-        impact=ImpactIndex(
-            MappingProxyType({"views.yml": ("semantic_view:v",)}),
-            MappingProxyType({}),
-            MappingProxyType({}),
-        ),
         diagnostics_summary={"error": 0, "warning": 0, "info": 0},
     )
 
@@ -66,7 +61,7 @@ def test_canonical_json_is_deterministic_and_rejects_nan() -> None:
         canonical_json({"x": float("nan")})
 
 
-def test_artifact_entry_and_impact_index_round_trip() -> None:
+def test_artifact_entry_round_trip() -> None:
     entry = ArtifactEntry("semantic_view", "v", "a" * 64, ("v.yml",), ("metric:m",), (), "DB.S.V", 10)
     assert ArtifactEntry.from_dict(entry.as_dict()) == entry
     generic = ArtifactEntry(
@@ -84,20 +79,10 @@ def test_artifact_entry_and_impact_index_round_trip() -> None:
         physical_resources=(("AGENT", "DB.S.A"),),
     )
     assert ArtifactEntry.from_dict(generic.as_dict()) == generic
-    impact = ImpactIndex(
-        MappingProxyType({"f": ("a",)}),
-        MappingProxyType({"m": ("a",)}),
-        MappingProxyType({"x": ("a",)}),
-    )
-    assert ImpactIndex.from_dict(impact.as_dict()) == impact
     with pytest.raises(ValueError):
         ArtifactEntry.from_dict([])
     with pytest.raises(ValueError):
         ArtifactEntry.from_dict({"type": "x"})
-    with pytest.raises(ValueError):
-        ImpactIndex.from_dict([])
-    with pytest.raises(ValueError):
-        ImpactIndex.from_dict({"by_file": []})
     malformed = generic.as_dict()
     malformed["component_fingerprints"] = []
     with pytest.raises(ValueError, match="component metadata"):
@@ -125,7 +110,7 @@ def test_manifest_round_trip_detects_tampering_and_versions() -> None:
     with pytest.raises(ValueError, match="schema_version"):
         Manifest.from_dict({})
     with pytest.raises(ValueError, match="artifacts"):
-        Manifest.from_dict({"schema_version": 2})
+        Manifest.from_dict({"schema_version": MANIFEST_SCHEMA_VERSION})
 
 
 def test_manifest_v1_migrates_in_memory_and_bad_migrations_fail() -> None:
@@ -134,15 +119,16 @@ def test_manifest_v1_migrates_in_memory_and_bad_migrations_fail() -> None:
     value.pop("members")
     value.pop("dbt_models")
     value.pop("files")
-    value.pop("impact")
     migrated = migrate_manifest(value)
-    assert migrated["schema_version"] == 2
-    assert Manifest.from_dict(migrated).schema_version == 2
+    assert migrated["schema_version"] == MANIFEST_SCHEMA_VERSION
+    assert Manifest.from_dict(migrated).schema_version == MANIFEST_SCHEMA_VERSION
     legacy = manifest().as_dict()
     legacy["schema_version"] = 1
-    assert Manifest.from_dict(legacy).schema_version == 2
+    assert Manifest.from_dict(legacy).schema_version == MANIFEST_SCHEMA_VERSION
     with pytest.raises(ValueError, match="no migration"):
         migrate_manifest({"schema_version": 0})
+    with pytest.raises(ValueError, match="no migration"):
+        migrate_manifest({"schema_version": MANIFEST_SCHEMA_VERSION})
 
 
 def test_manifest_rejects_malformed_nested_shapes() -> None:

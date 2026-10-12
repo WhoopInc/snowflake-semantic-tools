@@ -168,7 +168,6 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-MAN001`](error-codes.md#sst-man001) | MAN | error | local | `snowflake_semantic_tools.cli.wiring.manifest`<br>`snowflake_semantic_tools.cli.wiring.plan` | `tests/codes/man/test_sst_man001.py` |
 | [`SST-MAN002`](error-codes.md#sst-man002) | MAN | error | local | `snowflake_semantic_tools.adapters.fs.local`<br>`snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man002.py` |
 | [`SST-MAN003`](error-codes.md#sst-man003) | MAN | error | local | `snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man003.py` |
-| [`SST-MAN004`](error-codes.md#sst-man004) | MAN | error | local | `snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man004.py` |
 | [`SST-MAN005`](error-codes.md#sst-man005) | MAN | error | local | `snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man005.py` |
 | [`SST-MAN006`](error-codes.md#sst-man006) | MAN | error | local | `snowflake_semantic_tools.app.manifest` | `tests/codes/man/test_sst_man006.py` |
 | [`SST-MAN007`](error-codes.md#sst-man007) | MAN | error | runtime | `snowflake_semantic_tools.cli.commands.compile` | `tests/codes/man/test_sst_man007.py` |
@@ -245,6 +244,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-PLN035`](error-codes.md#sst-pln035) | PLN | info | observe | `snowflake_semantic_tools.domain.plan.preflight` | `tests/codes/pln/test_sst_pln035.py` |
 | [`SST-PLN037`](error-codes.md#sst-pln037) | PLN | warning | observe | `snowflake_semantic_tools.app.prior` | `tests/codes/pln/test_sst_pln037.py` |
 | [`SST-PLN038`](error-codes.md#sst-pln038) | PLN | error | local | `snowflake_semantic_tools.domain.plan.prune` | `tests/codes/pln/test_sst_pln038.py` |
+| [`SST-PLN039`](error-codes.md#sst-pln039) | PLN | warning | observe | `snowflake_semantic_tools.domain.plan.classify` | `tests/codes/pln/test_sst_pln039.py` |
 | [`SST-PLN100`](error-codes.md#sst-pln100) | PLN | error | observe | `snowflake_semantic_tools.app.smoke` | `tests/codes/pln/test_sst_pln100.py` |
 | [`SST-PLN101`](error-codes.md#sst-pln101) | PLN | info | local | `snowflake_semantic_tools.app.smoke` | `tests/codes/pln/test_sst_pln101.py` |
 | [`SST-PLN900`](error-codes.md#sst-pln900) | PLN | error | local | `snowflake_semantic_tools.domain.plan.order` | `tests/codes/pln/test_sst_pln900.py` |

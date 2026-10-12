@@ -164,7 +164,8 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst plan", "--no-plan-out"): "Do not write a saved plan.",
     ("sst plan", "--grants"): (
         "Read the grants on each object an update replaces, one `SHOW GRANTS` each, to report what a "
-        "replace would drop (SST-PLN013). On by default; `--no-grants` skips the reads."
+        "replace would drop (SST-PLN013), and the tags on each semantic view it replaces, to report "
+        "those the replace removes (SST-PLN039). On by default; `--no-grants` skips the reads."
     ),
     ("sst plan", "--capture-prior"): (
         "Read the current definition of each live object a planned artifact names, so a review can "
