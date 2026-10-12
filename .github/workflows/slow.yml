@@ -1,9 +1,10 @@
 name: Snowflake checks (manual)
 
 # Optional checks against a real Snowflake account, for maintainers who have one. Nothing triggers
-# this workflow but a manual run (Actions > Snowflake checks (manual) > Run workflow), nothing waits
-# on it, and a pull request or a release never needs it: the fast gate in test-and-lint.yml is the
-# whole required gate, and runs offline with no secrets.
+# this workflow but a manual run (Actions > Snowflake checks (manual) > Run workflow), and no pull
+# request or workflow waits on it: the fast gate in test-and-lint.yml is the whole required gate,
+# and runs offline with no secrets. A maintainer runs the `live` and `recording` suites before each
+# release tag, as CONTRIBUTING.md's release checklist says; no schedule runs them.
 #
 # Supply your own account as repository (or fork) secrets:
 #

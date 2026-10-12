@@ -541,7 +541,7 @@ and no secrets, and the test process refuses network access to any test not
 marked `live`.
 Real dbt runs in it only as `dbt parse`, which needs no warehouse.
 Checks against a real account run only in a manually triggered workflow, with
-credentials a maintainer supplies.
+credentials a maintainer supplies, once before every release tag.
 
 **Rejected.** A Snowflake-backed gate on every pull request, which would need
 one organisation's account and credentials in an open-source repository.

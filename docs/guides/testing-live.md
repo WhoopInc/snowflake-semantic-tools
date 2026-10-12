@@ -16,7 +16,7 @@ the goldens.
 |---|---|---|
 | `test-and-lint.yml` | every pull request (the `pull_request` trigger only), each push to `main`, and every release | The required gate, offline and with no secrets: the exit-code conformance tests, `format --check` on the reference project, the whole offline suite with coverage, the per-layer coverage floors and ratchet, strict mypy, ruff, import-linter, `sst docs --check`, bandit, pip-audit, and semgrep; and, in its `dbt` job, a real `dbt parse` of the reference project with dbt 1.11 and with 1.12, the golden suite over what it wrote, and the dbt manifest contract test on that manifest. |
 | `nightly.yml` | 02:00 UTC daily, or by hand | Mutation testing over `domain/` and the suite under the deeper `nightly` Hypothesis profile. Offline and report-only: it blocks nothing. |
-| `slow.yml` | by hand only | The checks that connect to Snowflake; see [the manual workflow](#the-manual-workflow). No pull request or release waits on it. |
+| `slow.yml` | by hand only | The checks that connect to Snowflake; see [the manual workflow](#the-manual-workflow). No pull request and no workflow waits on it; a maintainer runs it [before each release](#when-the-live-suites-run). |
 | `publish-to-pypi.yml` | a `v*.*.*` tag | Runs `test-and-lint.yml` itself, checks the tag matches `pyproject.toml`, builds, and publishes through PyPI's trusted publishing; the publish job holds the only token and runs no project code. |
 
 The coverage floors are measured per layer, as line and branch coverage together: `domain` 100%
@@ -235,3 +235,16 @@ workflow run, and signs in by key pair:
 
 Without the secrets the run skips with a notice and succeeds. The key is written outside the
 checkout, readable only by the runner user, and removed by the last step.
+
+## When the live suites run
+
+At release time, and otherwise whenever a maintainer chooses. The offline gate proves SST still
+relies on the Snowflake behaviours it was written against; only a live run proves Snowflake still
+has them, so the release checklist in [CONTRIBUTING.md](../../CONTRIBUTING.md#releasing) runs the
+`live` suite and the `recording` suite before every tag, and commits the fresh capture as the
+recording. The committed recording is therefore what Snowflake showed at the last release, and a
+later capture that differs names what moved since.
+
+Nothing runs them on a schedule, and no workflow waits on them: a run needs an account's
+secrets, which a fork or a contributor without an account does not have. `evals`, which publishes
+lasting objects and spends warehouse time, and `sweep` stay manual, run when they are needed.
