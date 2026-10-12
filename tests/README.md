@@ -9,6 +9,7 @@ poetry run pytest tests/ -n auto                   # everything offline, in para
 poetry run pytest tests/unit/domain -q             # one ring
 poetry run pytest tests/unit/test_golden_ddl.py -q # one file
 poetry run pytest tests/ -q -k migrate_refs        # by name
+poetry run pytest tests/contract/test_dbt_manifest_contract.py --dbt-manifest <manifest.json>  # also a manifest dbt just wrote
 ```
 
 Run with the dev dependencies installed (`poetry install`): `test_ring_boundaries.py` calls the `lint-imports` script beside the running interpreter. The coverage floors and the other CI gates are in [CONTRIBUTING.md](../CONTRIBUTING.md#running-the-gates). Two markers: `live` tests connect to Snowflake and are deselected by default (`-m live` runs them; see [CONTRIBUTING.md](../CONTRIBUTING.md#testing)), and `e2e` tests drive the `sst` CLI in a subprocess over a whole project. Every other test runs offline under `pytest tests/`.

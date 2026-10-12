@@ -147,6 +147,79 @@ jobs:
       - name: Audit dependencies with pip-audit
         run: poetry run pip-audit --skip-editable --progress-spinner off
 
+  # The one job that starts a real dbt. `dbt parse` needs no warehouse, and the reference project's
+  # default target names a placeholder account with no credential, so this connects to nothing
+  # but the package indexes `poetry` and `dbt deps` install from, and needs no secret.
+  dbt:
+    name: Parse the reference project with dbt ${{ matrix.dbt }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every minor the reference project's require-dbt-version admits, which are the releases
+        # tests/fixtures/dbt_manifests/ holds a manifest of (tests/unit/test_ci_workflows.py).
+        dbt: ["1.11", "1.12"]
+    env:
+      DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
+      REFERENCE_PROJECT: tests/fixtures/reference_project
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+        with:
+          version: 2.2.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      # A key of its own: this venv holds the dbt extra and a pinned dbt the test job's must not.
+      - name: Load cached venv
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-3.11-dbt${{ matrix.dbt }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install the project with the dbt extra
+        run: poetry install --no-interaction --extras dbt
+
+      # The lock resolves one dbt; a constraint file moves dbt Core and its adapter to the
+      # matrix's minor without touching the rest of the locked environment.
+      - name: Pin dbt ${{ matrix.dbt }}
+        env:
+          DBT_MINOR: ${{ matrix.dbt }}
+        run: |
+          printf 'dbt-core==%s.*\ndbt-snowflake==%s.*\n' "$DBT_MINOR" "$DBT_MINOR" > "$RUNNER_TEMP/dbt.txt"
+          poetry run pip install --disable-pip-version-check --constraint "$RUNNER_TEMP/dbt.txt" dbt-core dbt-snowflake
+          poetry run dbt --version
+
+      - name: Install the reference project's dbt packages
+        run: poetry run dbt deps --project-dir "$REFERENCE_PROJECT"
+
+      # No --manifest: SST runs `dbt parse` itself, through the same seam a user's project
+      # goes through, then renders every artifact and compares it with the goldens.
+      - name: Render the goldens from the manifest SST has dbt parse
+        run: >-
+          poetry run sst --project-dir "$REFERENCE_PROJECT" test --suite golden
+          --golden-dir "$PWD/tests/golden/expected/ddl"
+
+      # The same contract the committed manifests are held to: the schema version is accepted,
+      # every path SST reads is present with its type, and the views render as the goldens'.
+      - name: Hold the manifest dbt wrote to the dbt manifest contract
+        run: >-
+          poetry run pytest tests/contract/test_dbt_manifest_contract.py
+          --dbt-manifest "$REFERENCE_PROJECT/target/manifest.json"
+
   semgrep:
     name: Scan with semgrep
     runs-on: ubuntu-latest

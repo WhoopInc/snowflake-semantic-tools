@@ -196,20 +196,33 @@ Drawn from: [manifest.py](../../snowflake_semantic_tools/adapters/dbt/manifest.p
 What the repository runs, and therefore what "supported" can mean:
 
 - The `dbt` extra accepts `dbt-snowflake` from 1.8 up to, not including, 2.0;
-  the lock file resolves it to a 1.12 release with dbt Core 1.12.
-- The required gate never runs dbt. It installs the package without the extra,
-  runs dbt-facing code against a fake runner, and loads the reference project
-  against a committed manifest written by dbt 1.11. It also holds full
-  manifests of the reference project, written by dbt 1.11.15 and 1.12.5, to the
-  read surface above.
+  the lock file resolves it to dbt Core 1.12.5 with `dbt-snowflake` 1.12.1.
+- The required gate's `dbt` job runs real dbt, once for each minor the
+  reference project's `require-dbt-version` admits, 1.11 and 1.12. It installs
+  the extra, moves dbt Core and `dbt-snowflake` to the latest release of that
+  minor with a constraint file, runs `dbt deps`, and runs
+  `sst test --suite golden` without `--manifest`, so SST starts `dbt parse`
+  itself and renders every artifact from the manifest it writes. It then holds
+  that manifest to the contract test above. The reference project's default
+  target carries no credential, so nothing connects to Snowflake and no secret
+  is needed; the job reaches only the package indexes it installs from.
+- The rest of the gate does not run dbt. It installs the package without the
+  extra, runs dbt-facing code against a fake runner, loads the reference
+  project against a committed manifest written by dbt 1.11, and holds the full
+  manifests under `tests/fixtures/dbt_manifests/`, written by dbt 1.11.15 and
+  1.12.5, to the read surface above.
 - The manual evals workflow installs the extra, runs `dbt build` on the
   reference project with the locked dbt, and compiles against the manifest that
   build writes.
-- The reference project pins `require-dbt-version` to 1.11 and 1.12.
+- The reference project pins `require-dbt-version` to 1.11 and 1.12, and
+  `tests/unit/test_ci_workflows.py` fails when the `dbt` job's matrix or the
+  committed manifests stop covering every minor it admits.
 
-So SST is tested with dbt 1.11 and 1.12 on manifest schema v12, the 1.12 path
-only in the manual workflow. Earlier releases the extra allows are not tested;
-any of them that writes manifest v12 passes the gate.
+So every change is checked with dbt 1.11 and 1.12 on manifest schema v12:
+`dbt parse` with the latest release of each, and the committed manifests of
+1.11.15 and 1.12.5. `dbt build` runs only in the manual workflow, with the
+locked 1.12. Earlier releases the extra allows are not tested; any of them that
+writes manifest v12 passes the gate.
 
 The dbt Cloud CLI is recognised from its `dbt --version` output and parsed with
 the same command as dbt Core. One combination is refused: `defer.auto_compile`
@@ -223,7 +236,7 @@ dbt Fusion is not recognised: SST knows only the dbt Core and Cloud CLI
 that starts dbt, and SST still runs `dbt parse` with the same arguments. Whether the result is read then depends only on the schema gate.
 Fusion is not tested; the tests cover only the warning, with a fake executable.
 
-Drawn from: [pyproject.toml](../../pyproject.toml), [test-and-lint.yml](../../.github/workflows/test-and-lint.yml), [slow.yml](../../.github/workflows/slow.yml), [reference_project_manifest.json](../../tests/fixtures/reference_project_manifest.json), [dbt_project.yml](../../tests/fixtures/reference_project/dbt_project.yml), [invoke.py](../../snowflake_semantic_tools/adapters/dbt/invoke.py), [test_dbt_invoke.py](../../tests/unit/adapters/test_dbt_invoke.py).
+Drawn from: [pyproject.toml](../../pyproject.toml), [test-and-lint.yml](../../.github/workflows/test-and-lint.yml), [slow.yml](../../.github/workflows/slow.yml), [reference_project_manifest.json](../../tests/fixtures/reference_project_manifest.json), [dbt_project.yml](../../tests/fixtures/reference_project/dbt_project.yml), [invoke.py](../../snowflake_semantic_tools/adapters/dbt/invoke.py), [test_dbt_invoke.py](../../tests/unit/adapters/test_dbt_invoke.py), [test_ci_workflows.py](../../tests/unit/test_ci_workflows.py), [test_dbt_manifest_contract.py](../../tests/contract/test_dbt_manifest_contract.py).
 
 ## Advice for a dbt project
 
@@ -272,8 +285,10 @@ question about a release is which schema it writes.
 3. If the schema is still v12, the reader needs no change. Widen the `dbt`
    extra in `pyproject.toml` if the release falls outside it, regenerate
    `poetry.lock`, update `DEPENDENCIES.md` with them, and widen the reference
-   project's `require-dbt-version`. Then run the manual evals workflow, which
-   builds the reference project with the locked dbt.
+   project's `require-dbt-version`, the `dbt` job's matrix in
+   `.github/workflows/test-and-lint.yml`, and the manifests under
+   `tests/fixtures/dbt_manifests/` to match. Then run the manual evals
+   workflow, which builds the reference project with the locked dbt.
 4. If the schema changed, walk the table under [What SST reads from the
    manifest](#what-sst-reads-from-the-manifest) against dbt's new schema and
    changelog, one path at a time, before anything else. For a path that moved,

@@ -539,6 +539,7 @@ agent, so a fixed number either flaps or is too loose to fire.
 **Chosen.** Every check a pull request or a release needs runs with no account
 and no secrets, and the test process refuses network access to any test not
 marked `live`.
+Real dbt runs in it only as `dbt parse`, which needs no warehouse.
 Checks against a real account run only in a manually triggered workflow, with
 credentials a maintainer supplies.
 

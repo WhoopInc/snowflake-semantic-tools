@@ -109,7 +109,7 @@ date. A new dependency also needs a row, with its license, in [DEPENDENCIES.md](
 
 These are the checks `.github/workflows/test-and-lint.yml` runs on every pull request. A release
 tag runs the same workflow before it builds anything (`publish-to-pypi.yml` calls it). None of them
-needs a secret or a Snowflake account. `.github/workflows/nightly.yml` adds mutation testing over
+needs a secret or a Snowflake account; only the dbt job, the last below, starts a real dbt. `.github/workflows/nightly.yml` adds mutation testing over
 `domain/` and the property tests under the deeper `nightly` Hypothesis profile, both offline and
 report-only.
 
@@ -152,6 +152,19 @@ poetry run pip-audit --skip-editable --progress-spinner off   # needs to reach t
 # requirements file, with the rules vendored in .semgrep/ (its README says how to refresh them)
 pip install --require-hashes --only-binary :all: -r .github/requirements/semgrep.txt  # linux x86_64
 semgrep scan --config .semgrep/ --error --metrics off --disable-version-check snowflake_semantic_tools
+
+# The dbt job, once per dbt minor the reference project admits (1.11 and 1.12): real dbt,
+# offline, with no secret. SST runs `dbt parse` itself for the golden suite, and the manifest
+# it wrote is held to the same contract as the committed ones in tests/fixtures/dbt_manifests/.
+# The pin replaces the environment's dbt; `poetry install --extras dbt` restores the locked one
+poetry install --extras dbt
+printf 'dbt-core==1.11.*\ndbt-snowflake==1.11.*\n' > /tmp/dbt.txt   # or 1.12
+poetry run pip install --constraint /tmp/dbt.txt dbt-core dbt-snowflake
+poetry run dbt deps --project-dir tests/fixtures/reference_project
+poetry run sst --project-dir tests/fixtures/reference_project test --suite golden \
+  --golden-dir "$PWD/tests/golden/expected/ddl"
+poetry run pytest tests/contract/test_dbt_manifest_contract.py \
+  --dbt-manifest tests/fixtures/reference_project/target/manifest.json
 ```
 
 The ratchet and the three floors are separate checks: the ratchet compares each layer over the
