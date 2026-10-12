@@ -240,7 +240,8 @@ def _view_tables(node: Mapping[str, Any], view: _View) -> tuple[tuple[Table, ...
             names a table that is not in `tables`.
     """
     # Tables keep DECLARATION order -- that is authored information and the golden
-    # preserves it. Members are sorted later, by the renderer.
+    # preserves it. The renderer sorts relationships, facts, dimensions and metrics;
+    # variables, tags and verified queries keep the order they are built in.
     tables: list[Table] = []
     logical_by_model: dict[str, str] = {}
     table_config = node.get("table_config") or {}

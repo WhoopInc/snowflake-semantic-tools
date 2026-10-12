@@ -54,6 +54,9 @@ def test_pages_cover_every_registry_entry() -> None:
         assert artifact.summary and artifact.authored_in and artifact.publishes
     for member in ARTIFACT_REGISTRY.members:
         assert f"| `{member}` |" in artifacts
+    tool = artifacts.split("\n## tool\n", 1)[1].split("\n## ", 1)[0]
+    assert "- Grants, by object type: `CORTEX SEARCH SERVICE` re-applied after a replace;" in tool
+    assert "`PROCEDURE` kept across a replace by `COPY GRANTS`; `FUNCTION` kept across" in tool
     config = pages[f"{REFERENCE_DIR}/config.md"]
     for key in CONFIG_SCHEMA:
         assert f"`{key.path}`" in config or f"\n## {key.path}\n" in config, key.path

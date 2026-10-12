@@ -55,8 +55,9 @@ staged configuration; none has one object to observe.
 
 **Chosen.** Each type's `ddl_position` must follow every type it depends on
 (`SST-REG010`), and a plan orders its changes by dependency, then position,
-then key. Apply runs them in dependency waves, so a view exists before the agent
-that queries it.
+then key. Apply starts a change only once every change it depends on ended, so
+a view exists before the agent that queries it; only `--fail-fast` runs whole
+dependency waves one after another.
 
 **Rejected.** A configurable order. No order other than the one the graph
 implies is correct, so a setting could only be redundant or wrong.
@@ -417,12 +418,14 @@ Drawn from: [manifest](../../snowflake_semantic_tools/domain/state/manifest.py),
 
 **Chosen.** Access to published objects is managed outside SST. The only
 `GRANT` SST issues re-issues an explicit grant an object held before SST
-replaced it. Each type declares how its grants survive an update: a semantic
-view, procedure, or function is replaced with `COPY GRANTS`; a Cortex Search
-service, whose statement cannot carry the clause, has its explicit grants read
-before the replace and re-issued after it (`GrantPreservation.REPLAY`); an
-agent, a stage, and the composite types are never replaced. The registry
-refuses a type whose declaration contradicts how it publishes (`SST-REG021`).
+replaced it. Each rendered object's `PublishShape` declares how its grants
+survive an update, and apply reads that: a semantic view, procedure, or function
+is replaced with `COPY GRANTS`; a Cortex Search service, whose statement cannot
+carry the clause, has its explicit grants read before the replace and re-issued
+after it (`GrantPreservation.REPLAY`); an agent, a stage, and the composite
+types are never replaced. The registry declares the same per type, or per
+object kind for `tool`, whose kinds differ, and refuses a declaration that
+contradicts how the type publishes (`SST-REG021`).
 
 **Rejected.** Managing access from the project, which makes SST a second
 access-control system beside the one that governs the account; and one replace

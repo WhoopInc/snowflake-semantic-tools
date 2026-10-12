@@ -221,7 +221,7 @@ Fix: register the type, or remove the resolver
 
 `type '<artifact>' -- <reason>`
 
-Raised when a type that replaces its object declares `NONE` grant preservation, a type that never replaces declares some, or a composite type declares an object type or is prunable or replaced generically.
+Raised when a type that replaces its object declares `NONE` grant preservation, a type that never replaces declares some, a type declares it both for itself and per object kind or per kind for other than exactly its object types, or a composite type declares an object type or is prunable or replaced generically.
 
 Fix: correct the registration against the probe result
 
@@ -5081,9 +5081,9 @@ Fix: derive the version from the content SHA
 
 ### SST-VAL826
 
-**Grants issued before certification succeeded** (error)
+**Grant sent before certification succeeded, or naming no role type** (error)
 
-`skill '<artifact>': grants would be issued before certification`
+`'<artifact>': a GRANT would be sent before certification succeeded, or naming no role type`
 
 Raised when a GRANT would run while the publish's certification has not yet succeeded, or names no role type (ROLE or DATABASE ROLE).
 
@@ -6193,7 +6193,7 @@ Note: Plan blocks the change rather than let apply fail with SST-SNO004. An upda
 
 Raised when the name a planned create writes to is held by an object of its type that observation did not list.
 
-Fix: use or_replace, or choose another name
+Fix: drop or rename the existing object, or give the artifact another name
 
 Note: Unless the name is free by then, apply refuses the create (SST-APL012).
 

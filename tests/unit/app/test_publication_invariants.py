@@ -7,10 +7,14 @@ grant, no raw string reaches DDL, and each channel reports its own outcome.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
+from snowflake_semantic_tools.app.lifecycle.composite import CompositeHandler
+from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
@@ -18,9 +22,11 @@ from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, OutcomeStatus
+from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY, ArtifactLifecycle
 from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.sql import sql
+from snowflake_semantic_tools.domain.state import AppliedEntry
 from snowflake_semantic_tools.domain.validate.config import validate_config
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import empty_state, target
@@ -98,3 +104,22 @@ def test_each_channel_reports_its_own_outcome_and_one_failure_fails_the_deploy()
     statuses = {outcome.key: outcome.status for outcome in result.outcomes}
     assert statuses == {"skill:month-close": OutcomeStatus.APPLIED, "profile:analyst": OutcomeStatus.FAILED}
     assert not result.success
+
+
+def test_every_composite_prune_sorts_at_its_type_registry_position() -> None:
+    port = FakeSnowflake(existing=())
+    handlers: list[CompositeHandler[Any, Any, Any]] = [
+        ExtensionLifecycleHandler(port, {}, "skill"),
+        ExtensionLifecycleHandler(port, {}, "plugin"),
+        ProfileLifecycleHandler(port, {}),
+        EvalLifecycleHandler(port),
+    ]
+    composite = {
+        name for name, kind in ARTIFACT_REGISTRY.artifacts.items() if kind.lifecycle is ArtifactLifecycle.COMPOSITE
+    }
+    assert {handler.artifact_type for handler in handlers} == composite
+    entry = AppliedEntry("f", "DB.S.GONE", "now", "run", "applied", "f", "m")
+    for handler in handlers:
+        change = handler.report_prune(f"{handler.artifact_type}:gone", entry)
+        # Plan orders a composite prune exactly as it would a generic one of the same type.
+        assert change.order == ARTIFACT_REGISTRY.artifacts[handler.artifact_type].ddl_position

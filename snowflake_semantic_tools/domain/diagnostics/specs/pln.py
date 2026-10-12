@@ -107,7 +107,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "An object already exists at the target name",
         "{artifact}: {value} already exists",
-        "use or_replace, or choose another name",
+        "drop or rename the existing object, or give the artifact another name",
         condition="the name a planned create writes to is held by an object of its type that observation did not list",
         note="Unless the name is free by then, apply refuses the create (SST-APL012).",
         precheck=Precheck.OBSERVE,

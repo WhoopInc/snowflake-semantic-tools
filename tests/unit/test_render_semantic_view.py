@@ -8,6 +8,8 @@ table. Each is a rule a future change could break without disturbing the golden.
 
 from __future__ import annotations
 
+import pytest
+
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
     ColumnKind,
@@ -269,7 +271,7 @@ class TestClauseOmission:
             "  COPY GRANTS"
         )
 
-    def test_copy_grants_is_unconditional(self) -> None:
+    def test_copy_grants_ends_every_replacing_create(self) -> None:
         assert str(render(minimal())).endswith("COPY GRANTS")
 
     def test_ownership_marker_appends_to_or_becomes_comment(self) -> None:
@@ -281,6 +283,18 @@ class TestClauseOmission:
     def test_if_not_exists_replaces_nothing_and_adds_the_clause(self) -> None:
         out = str(render(minimal(or_replace=False, if_not_exists=True)))
         assert out.startswith("CREATE SEMANTIC VIEW IF NOT EXISTS DB.SCH.V")
+        # A create that never replaces has no grants to copy.
+        assert "COPY GRANTS" not in out
+
+    def test_verified_queries_keep_the_order_they_attached_in(self) -> None:
+        queries = tuple(VerifiedQuery(name=name, question="q?", sql=authored_query("SELECT 1")) for name in "BA")
+        out = str(render(minimal(verified_queries=queries)))
+        # Unlike the sorted member clauses, verified queries are not reordered by name.
+        assert out.index("    B AS (") < out.index("    A AS (")
+
+    def test_or_replace_with_if_not_exists_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="both or_replace and if_not_exists"):
+            render(minimal(if_not_exists=True))
 
 
 class TestFullClauseOrder:

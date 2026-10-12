@@ -15,7 +15,7 @@ THE CLAUSE ORDER IS THE CONTRACT, and it is Snowflake's:
       AI_VERIFIED_QUERIES (...)
       MAX_STALENESS = '...'
       WITH TAG (...)
-      COPY GRANTS
+      COPY GRANTS               <- only with OR REPLACE: a plain create has no grants to copy
 
 It is the order the server accepts, not the published grammar's, which puts MAX_STALENESS
 before the AI clauses (docs/design/snowflake-behaviour.md).
@@ -30,11 +30,12 @@ SCOPE. A view's `scope` decides which of its columns, metrics and relationships 
 member it does not admit is left out of its clause, so a view built with every attached
 member still publishes only the subset its author listed.
 
-ORDERING. `TABLES` renders in DECLARATION order, because that is the order the
-author wrote and the golden preserves it. Every other member list renders SORTED
-by its qualified name. The difference is not an inconsistency: table order is
-authored information, member order is not, and sorting members is what keeps a
-re-render byte-identical when an unrelated column is added.
+ORDERING. `RELATIONSHIPS`, `FACTS`, `DIMENSIONS` and `METRICS` render SORTED by
+qualified name: their order is not authored, and sorting them is what keeps a
+re-render byte-identical when an unrelated column is added. `TABLES`, `VARIABLES`
+and `WITH TAG` render in DECLARATION order, and `AI_VERIFIED_QUERIES` in the order
+the queries attached, because the model carries them so; moving a verified query
+between files, or reordering variables or tags, therefore changes the DDL.
 
 TOTALITY. `MEMBER_INDEX` reads each member type `semantic_view` declares off the model, and
 `render_checked` refuses a render whose member count differs from the index's; importing this
@@ -329,8 +330,8 @@ def render(view: SemanticView) -> Sql:
     newline -- the caller decides how the statement is terminated.
 
     Raises:
-        ValueError: the view's or a table's name is not a three-part name, or a member name is
-            not an identifier.
+        ValueError: the view's or a table's name is not a three-part name, a member name is
+            not an identifier, or the view is both `or_replace` and `if_not_exists`.
     """
     return _render_counted(view)[0]
 
@@ -342,7 +343,8 @@ def render_checked(view: SemanticView) -> tuple[Sql | None, tuple[Diagnostic, ..
     was found, and the view must not be published.
 
     Raises:
-        ValueError: as `render` does, for a name the checks before rendering let through.
+        ValueError: as `render` does, for a name the checks before rendering let through or
+            for both `or_replace` and `if_not_exists`.
 
     Diagnostics:
         SST-RND001: the view has no tables.
@@ -393,6 +395,9 @@ def _unquotable_names(view: SemanticView, subject: str) -> list[Diagnostic]:
 
 def _render_counted(view: SemanticView) -> tuple[Sql, int]:
     """Render the statement, and count the members its clauses hold."""
+    if view.or_replace and view.if_not_exists:
+        # Snowflake refuses the pair; no project can set either flag, so this is a caller's bug.
+        raise ValueError(f"semantic view {view.fqn!r} is both or_replace and if_not_exists")
     head = [sql("CREATE")]
     if view.or_replace:
         head.append(sql(" OR REPLACE"))
@@ -425,7 +430,11 @@ def _render_counted(view: SemanticView) -> tuple[Sql, int]:
 
 
 def _trailing_clauses(view: SemanticView, queries: list[Sql]) -> list[Sql]:
-    """The clauses after `METRICS`, in grammar order, ending with `COPY GRANTS`."""
+    """The clauses after `METRICS`, in the order the server accepts, ending with any `COPY GRANTS`.
+
+    That is not the published grammar's order, which puts `MAX_STALENESS` before the AI
+    clauses and is what `GET_DDL` returns: see the module docstring.
+    """
     lines: list[Sql] = []
     comment = view.comment
     if view.ownership_marker:
@@ -457,7 +466,8 @@ def _trailing_clauses(view: SemanticView, queries: list[Sql]) -> list[Sql]:
         lines.append(sql("      {tags}", tags=join("\n    , ", tag_lines)))
         lines.append(sql("  )"))
 
-    lines.append(sql("  COPY GRANTS"))
+    if view.or_replace:
+        lines.append(sql("  COPY GRANTS"))
     return lines
 
 

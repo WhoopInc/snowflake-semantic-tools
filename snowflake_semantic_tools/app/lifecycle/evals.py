@@ -63,7 +63,6 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
 
     artifact_type = "eval"
     _prune_detail = "keep them while an evaluation run or baseline references them"
-    _prune_order = 400
 
     def __init__(self, port: CatalogPublicationPort, config: EvalLifecycleConfig = EvalLifecycleConfig()) -> None:
         super().__init__(port)

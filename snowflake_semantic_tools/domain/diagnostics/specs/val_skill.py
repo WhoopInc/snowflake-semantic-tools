@@ -272,8 +272,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL826",
         Severity.ERROR,
-        "Grants issued before certification succeeded",
-        "skill '{artifact}': grants would be issued before certification",
+        "Grant sent before certification succeeded, or naming no role type",
+        "'{artifact}': a GRANT would be sent before certification succeeded, or naming no role type",
         "grant only after certification succeeds, and name the role TYPE explicitly",
         condition=(
             "a GRANT would run while the publish's certification has not yet succeeded, or names no "

@@ -35,6 +35,7 @@ from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, ident, join, keyword, privilege, qname, sql
+from snowflake_semantic_tools.domain.validate.publication import statement_diagnostic
 
 
 def preserves_grants(change: Change) -> bool:
@@ -342,12 +343,24 @@ class ChangeApplier:
         )
 
     def _replay_grants(self, rendered: RenderedArtifact, grants: tuple[GrantRow, ...]) -> ClassifiedError | None:
-        """Grant again, in identity order, what the object held before the replace; None when all ran."""
+        """Grant again, in identity order, what the object held before the replace; None when all ran.
+
+        Every GRANT passes the publication guards first, as a composite publish's statements do;
+        when one is refused, none is sent.
+
+        Diagnostics:
+            SST-VAL826, SST-VAL827: as `statement_diagnostic` reports them, as the failure's code.
+        """
         statements = tuple(
             _grant_statement(rendered, grant) for grant in sorted(grants, key=lambda item: item.identity)
         )
         if not statements:
             return None
+        for statement in statements:
+            refused = statement_diagnostic(rendered.key, statement, certification_pending=False)
+            if refused is not None:
+                value = str(refused.context.get("value", ""))
+                return ClassifiedError(refused.code, refused.message, ErrorKind.UNKNOWN, value=value)
         result = self._port.execute_script(statements)
         if result.ok:
             return None
