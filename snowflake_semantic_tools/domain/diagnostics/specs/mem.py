@@ -206,6 +206,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{member} skipped: {count} unresolved references",
         None,
         condition="a member whose references did not resolve was not attached",
+        note=(
+            "A cascade of the member's first unresolved reference, which is reported already: "
+            "counted rather than shown unless `--show-cascade`."
+        ),
     ),
     spec(
         "SST-MEM900",

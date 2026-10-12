@@ -152,7 +152,7 @@ def test_conflicting_scope_needs_a_view_with_the_join_and_one_without() -> None:
 def test_a_poisoned_member_is_reported_skipped_only_for_unresolved_references() -> None:
     poisoned = member("metric", "m", ("orders",), poisoned=True)
     healthy = member("metric", "h", ("orders",))
-    result = membership(poisoned, healthy, unresolved={"metric:h": 3})
+    result = membership(poisoned, healthy, unresolved={"metric:h": ("SST-REF001",) * 3})
     assert coded(result.diagnostics, "SST-MEM107") == []
 
 
@@ -259,7 +259,9 @@ FIRES: dict[str, Any] = {
     "SST-MEM011": lambda: membership(member("metric", "m", ("orders",))),
     "SST-MEM012": lambda: membership(member("metric", "m", None, "COUNT({{ ref('orders', 'id') }})")),
     "SST-MEM101": lambda: membership(member("metric", "m", ("orders",), "COUNT({{ ref('customers', 'id') }})")),
-    "SST-MEM107": lambda: membership(member("metric", "m", ("orders",), poisoned=True), unresolved={"metric:m": 1}),
+    "SST-MEM107": lambda: membership(
+        member("metric", "m", ("orders",), poisoned=True), unresolved={"metric:m": ("SST-REF001",)}
+    ),
     "SST-MEM015": lambda: membership(
         member("metric", "secret", ("orders",)),
         member("verified_query", "q", ("orders",)),

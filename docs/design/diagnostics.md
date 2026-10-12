@@ -156,8 +156,8 @@ which disappear when the first is fixed.
 The semantic load prevents most of this by poisoning: a definition a diagnostic proves broken is
 still checked, so every independent error is reported at once, but a poisoned member attaches to
 no view and a poisoned view is not built. A member left unattached because its references did not
-resolve is reported once more, at info (`SST-MEM107`), and the check for members that attach
-nowhere skips poisoned members and the metrics built on them. Planning does the same for artifacts: a change with its
+resolve is reported once more, as a cascade of the first of them (`SST-MEM107`), and the check
+for members that attach nowhere skips poisoned members and the metrics built on them. Planning does the same for artifacts: a change with its
 own validation errors is `BLOCKED` with reason `validation_errors`, every change that depends on a
 blocked one is `BLOCKED` with reason `dependency_blocked`, all the way down the dependency graph,
 and `apply` refuses a plan that holds a blocked change (`SST-APL003`).
@@ -166,14 +166,17 @@ When a diagnostic is reported because of another, it names that code in `caused_
 must be in the same run (`SST-INT008` otherwise). A caused diagnostic downgraded to info is a
 cascade: the human output counts it instead of showing it unless `--show-cascade` is given, the
 envelope counts it under `summary.suppressed_cascade`, and no severity override applies to it. A
-caused diagnostic keeps its severity unless it is downgraded: `SST-MEM005`, raised beside
-`SST-VAL205` for a relationship no view covers, names its cause and is still a warning.
+producer makes one with `cascade`, which names the cause and downgrades the diagnostic unless its
+code is non-demotable. `SST-MEM107` is a cascade of the first unresolved reference of the member
+it skips. A caused diagnostic keeps its severity unless it is downgraded: `SST-MEM005`, raised
+beside `SST-VAL205` for a relationship no view covers, names its cause and is still a warning.
 
 Drawn from: [poison.py](../../snowflake_semantic_tools/adapters/yaml/semantic/poison.py),
 [membership_reach.py](../../snowflake_semantic_tools/domain/resolve/membership_reach.py),
 [fanout.py](../../snowflake_semantic_tools/domain/validate/semantic/fanout.py),
 [prune.py](../../snowflake_semantic_tools/domain/plan/prune.py),
 [action.py](../../snowflake_semantic_tools/domain/model/lifecycle/action.py),
+[membership_request.py](../../snowflake_semantic_tools/domain/resolve/membership_request.py),
 [relationships.py](../../snowflake_semantic_tools/adapters/yaml/semantic/relationships.py),
 [\_\_init\_\_.py](../../snowflake_semantic_tools/domain/diagnostics/__init__.py),
 [cli/output.py](../../snowflake_semantic_tools/cli/output.py).
@@ -187,8 +190,9 @@ fingerprint, the digest of what it renders.
 code, the type and name of the artifact or member the subject names, the file, and the template
 values, sorted by name. The origin's line and column are left out, so a comment inserted above a
 problem keeps its baseline entry, while renaming the artifact or changing a value in the message
-makes a new diagnostic. A code whose message itself names a line, such as `SST-LOD011`, carries the
-line as a value, so its identity does move with it. The JSON envelope reports it as `fingerprint`, `--verbose` prints it, and the
+makes a new diagnostic. A `line` or `col` template value is left out too, so `SST-LOD011` and
+`SST-LOD016`, whose messages print the line, keep their identity when the value moves; each also
+carries the value's dotted `key_path`, so two findings for one key in a file stay apart. The JSON envelope reports it as `fingerprint`, `--verbose` prints it, and the
 baseline matches on it alone. A baseline entry that matches more than one diagnostic in a run holds
 none of them and is reported as `SST-INT009`, since it cannot say which one was meant.
 
@@ -197,6 +201,7 @@ message. It is a determinism check: the golden suite of `sst test` compiles the 
 reports `SST-INT006` for each code whose fingerprints differ between the two runs.
 
 Drawn from: [baseline.py](../../snowflake_semantic_tools/domain/diagnostics/baseline.py),
+[compose.py](../../snowflake_semantic_tools/adapters/yaml/compose.py),
 [\_\_init\_\_.py](../../snowflake_semantic_tools/domain/diagnostics/__init__.py),
 [cli/output.py](../../snowflake_semantic_tools/cli/output.py),
 [cli/commands/test.py](../../snowflake_semantic_tools/cli/commands/test.py).
@@ -212,8 +217,9 @@ are `tool`, `sst_version`, `schema_version`, `command`, `status` (`ok`, `changes
 timings), `diagnostics`, `summary`, and `data`, the command's own result. Each diagnostic carries
 its code, effective and declared severity, `promoted_from` or `demoted_from`, message, suggestion,
 phase, help URL, fingerprint, template values as `params`, the artifact or member it concerns, its
-location and related locations, whether a baseline holds it, and `caused_by`. `params` uses a
-shared vocabulary of placeholder names, and the registry refuses a template that names any other
+location and related locations, whether a baseline holds it, `caused_by`, and `internal_detail`,
+the raw `detail` text of a code that declares it and null otherwise. `params` uses a shared
+vocabulary of placeholder names, and the registry refuses a template that names any other
 (`SST-REG016`), so a consumer can act on a value without parsing the message. `schema_version`
 changes only when a field is removed or changes meaning; [CI/CD](../guides/ci-cd.md#json-output)
 describes the envelope for users. An envelope that would carry a credential the run resolved is

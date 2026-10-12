@@ -184,7 +184,7 @@ def block_unpublished_dependencies(
     dependency the project does not compile is not this plan's to order.
 
     Diagnostics:
-        SST-VAL015: once per such dependency of a create or update.
+        SST-PLN038: once per such dependency of a create or update.
     """
     planned = {change.key for change in changes}
     decided: list[Change] = []
@@ -193,7 +193,7 @@ def block_unpublished_dependencies(
         pinned = registry.artifacts[change.artifact_type].pins_versions_of
         missing = tuple(
             D(
-                "SST-VAL015",
+                "SST-PLN038",
                 subject=change.key,
                 type=change.artifact_type,
                 name=split_artifact_key(change.key)[1],

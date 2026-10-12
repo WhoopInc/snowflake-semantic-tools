@@ -9,12 +9,16 @@ from tests.helpers.resolve_builders import member, membership
 
 def test_sst_mem107_fires() -> None:
     [diagnostic, *_] = coded(
-        membership(member("metric", "m", ("orders",), poisoned=True), unresolved={"metric:m": 2}).diagnostics,
+        membership(
+            member("metric", "m", ("orders",), poisoned=True), unresolved={"metric:m": ("SST-REF001", "SST-REF002")}
+        ).diagnostics,
         "SST-MEM107",
     )
     assert diagnostic.severity is Severity.INFO
     assert diagnostic.message == "metric:m skipped: 2 unresolved references"
     assert diagnostic.subject == "metric:m"
+    # The skip follows from the first unresolved reference, so it is that one's cascade.
+    assert diagnostic.caused_by == "SST-REF001" and diagnostic.cascaded
 
 
 def test_sst_mem107_silent() -> None:

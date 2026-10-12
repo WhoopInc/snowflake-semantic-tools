@@ -49,7 +49,8 @@ class MembershipRequest:
         joins: Each declared relationship's two tables, casefolded.
         instruction_channels: For each custom instruction's casefolded name, the instruction
             channels its text writes.
-        unresolved: For each poisoned member's key, how many of its references did not resolve.
+        unresolved: For each poisoned member's key, the codes reported for its references that did
+            not resolve, in report order.
         view_scopes: Each view's include or exclude lists, by the view's artifact key; a view
             without an entry admits every member its tables attach.
     """
@@ -63,7 +64,7 @@ class MembershipRequest:
     facts: Mapping[MemberKey, MemberFacts] = field(default_factory=lambda: MappingProxyType({}))
     joins: tuple[tuple[str, str], ...] = ()
     instruction_channels: Mapping[str, frozenset[str]] = field(default_factory=lambda: MappingProxyType({}))
-    unresolved: Mapping[MemberKey, int] = field(default_factory=lambda: MappingProxyType({}))
+    unresolved: Mapping[MemberKey, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
     view_scopes: Mapping[ArtifactKey, ViewScope] = field(default_factory=lambda: MappingProxyType({}))
 
     def facts_of(self, member: ParsedMember) -> MemberFacts:

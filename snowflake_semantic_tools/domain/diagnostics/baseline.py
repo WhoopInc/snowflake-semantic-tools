@@ -18,6 +18,10 @@ from hashlib import blake2b
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Diagnostic, Origin, Severity
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 
+# Context keys a message may print but a stable fingerprint never hashes: where a finding sits
+# in its file, which an unrelated edit above it moves.
+POSITION_KEYS = frozenset({"line", "col"})
+
 
 @dataclass(frozen=True, slots=True)
 class BaselineEntry:
@@ -94,13 +98,15 @@ class BaselineMatch:
 def stable_fingerprint(diagnostic: Diagnostic) -> str:
     """Return the 16-hex identity baselining keys on, stable across a reformat that moves a line.
 
-    It hashes the code, the artifact and member the subject names, the file, and the context,
-    and never the line or column, so inserting a comment above a problem keeps its identity
-    while renaming the artifact changes it.
+    It hashes the code, the artifact and member the subject names, the file, and the context
+    but its `POSITION_KEYS`, and never the line or column, so inserting a comment above a
+    problem keeps its identity while renaming the artifact changes it.
     """
     subject = diagnostic.subject or ""
     kind, name = split_artifact_key(subject) if ":" in subject else ("", subject)
-    params = "\x1e".join(f"{key}={diagnostic.context[key]}" for key in sorted(diagnostic.context))
+    params = "\x1e".join(
+        f"{key}={diagnostic.context[key]}" for key in sorted(diagnostic.context) if key not in POSITION_KEYS
+    )
     parts = (diagnostic.code, kind, name, diagnostic.origin.file if diagnostic.origin else "", params)
     return blake2b("\x00".join(parts).encode("utf-8"), digest_size=8).hexdigest()
 

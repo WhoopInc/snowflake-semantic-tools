@@ -161,7 +161,9 @@ def diagnostic_json(value: Diagnostic, *, baselined: bool = False) -> dict[str, 
     """Return one diagnostic as the envelope lists it, with its registered severity and suggestion.
 
     A subject that names an artifact type, or `profile`, is reported as `artifact`; any
-    other `<type>:<name>` subject is a `member` of one.
+    other `<type>:<name>` subject is a `member` of one. A code that declares `internal_detail`
+    reports its raw `detail` value, the SST or Snowflake text beyond the template, as
+    `internal_detail`; every other code reports None.
     """
     origin = getattr(value, "origin", None)
     spec = ERROR_REGISTRY[value.code]
@@ -201,7 +203,7 @@ def diagnostic_json(value: Diagnostic, *, baselined: bool = False) -> dict[str, 
             else None
         ),
         "related": [{"file": item.file, "line": item.line, "column": item.col} for item in value.related],
-        "internal_detail": None,
+        "internal_detail": value.context.get("detail") if spec.internal_detail else None,
         "caused_by": value.caused_by,
     }
 
@@ -498,8 +500,9 @@ def _hidden_reason(diagnostic: Diagnostic, baselined: frozenset[str], policy: Re
         return "quiet"
     if stable_fingerprint(diagnostic) in baselined and not policy.show_baselined:
         return "baselined"
-    if diagnostic.cascaded and not policy.show_cascade:
-        return "cascade"
+    # A cascade is always info, so `--show-cascade` shows it without `--show-info`.
+    if diagnostic.cascaded:
+        return None if policy.show_cascade else "cascade"
     if diagnostic.informational and not policy.show_info:
         return "info"
     return None

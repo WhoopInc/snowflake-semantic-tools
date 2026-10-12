@@ -46,7 +46,6 @@ class ChangeReason(Enum):
     STATE_MANIFEST_MISMATCH = "state_manifest_mismatch"
     UNCHANGED = "unchanged"
     ORPHANED = "orphaned"
-    POISONED_REFS = "poisoned_refs"
     VALIDATION_ERRORS = "validation_errors"
     DEPENDENCY_BLOCKED = "dependency_blocked"
     UNMANAGED_OBJECT = "unmanaged_object"

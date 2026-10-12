@@ -182,13 +182,16 @@ def formatting_findings(
     for key_path, value_node in _keyed_scalars(node, ()):
         key = next(str(part) for part in reversed(key_path) if isinstance(part, str))
         line = value_node.start_mark.line + 1
+        # The dotted key path, not the line, tells two findings for one key in a file apart in a
+        # baseline, so moving a value down keeps its fingerprint.
+        located: dict[str, Any] = {"file": path, "line": line, "key": key, "key_path": ".".join(map(str, key_path))}
         if value_node.style == ">":
-            findings.append(D("SST-LOD011", origin=Origin(path, line), file=path, line=line, key=key))
+            findings.append(D("SST-LOD011", origin=Origin(path, line), **located))
             continue
         coerced = _coercion(value_node)
         if coerced is not None and not (coerced[1] == "null" and null_means is not None and null_means(key_path)):
             found, expected = coerced
-            context: dict[str, Any] = {"file": path, "line": line, "key": key, "found": found, "expected": expected}
+            context: dict[str, Any] = {**located, "found": found, "expected": expected}
             findings.append(D("SST-LOD016", origin=Origin(path, line), **context))
     return tuple(findings)
 

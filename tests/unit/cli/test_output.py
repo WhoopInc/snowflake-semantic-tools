@@ -6,6 +6,7 @@ import dataclasses
 import json
 from pathlib import Path
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -15,14 +16,17 @@ from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.output import (
     RenderPolicy,
     counted,
+    diagnostic_json,
     json_envelope,
     render_diagnostics,
     resolve_invocation,
     start_invocation,
     use_render_policy,
 )
+from snowflake_semantic_tools.cli.runner import _internal_error
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.diagnostics.baseline import stable_fingerprint
+from snowflake_semantic_tools.domain.diagnostics.signatures import UNRECOGNISED, snowflake_diagnostic
 from tests.helpers.cli_projects import common, invoke_with_port
 from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
@@ -96,6 +100,44 @@ def test_validate_json_emits_one_v2_envelope(tmp_path: Path) -> None:
         "connects": 0,
         "connect_s": 0.0,
     }
+
+
+def test_a_member_an_unresolved_ref_poisons_reports_its_skip_as_a_cascade(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
+    metrics = project / "semantic_models" / "metrics" / "metrics.yml"
+    text = metrics.read_text(encoding="utf-8")
+    metrics.write_text(text.replace("{{ ref('orders', 'order_id') }}", "{{ ref('missing', 'order_id') }}", 1))
+    args = ["validate", "--project-dir", str(project), "--manifest", str(DBT_MANIFEST), "--no-snowflake-syntax-check"]
+    payload = json.loads(CliRunner().invoke(cli, [*args, "--output", "json"]).stdout)
+    [skipped] = [item for item in payload["diagnostics"] if item["code"] == "SST-MEM107"]
+    assert (skipped["severity"], skipped["caused_by"]) == ("info", "SST-REF001")
+    assert payload["summary"]["suppressed_cascade"] >= 1
+    hidden = CliRunner().invoke(cli, args).output
+    assert "SST-MEM107" not in hidden and "1 cascade not shown (--show-cascade)" in hidden
+    # A cascade is info, yet `--show-cascade` alone shows it.
+    shown = CliRunner().invoke(cli, [*args, "--show-cascade"]).output
+    assert "info[SST-MEM107]: metric:order_count skipped: 1 unresolved references" in shown
+    assert "cascade not shown" not in shown
+
+
+def test_an_internal_error_reports_the_exception_as_its_internal_detail() -> None:
+    @click.command()
+    def crash() -> None:
+        _internal_error("validate", "json", ValueError("boom"))
+
+    result = CliRunner().invoke(crash)
+    [diagnostic] = json.loads(result.stdout)["diagnostics"]
+    assert (result.exit_code, diagnostic["code"]) == (1, "SST-INT001")
+    assert diagnostic["internal_detail"] == "ValueError: boom"
+
+
+def test_only_a_code_that_declares_internal_detail_reports_it() -> None:
+    message = "999999 (XX000): the warehouse declined the statement"
+    refused = snowflake_diagnostic(UNRECOGNISED.code, message, value="the object", subject="cli")
+    assert diagnostic_json(refused)["internal_detail"] == "the warehouse declined the statement"
+    # PRT008 carries a detail too, but its code does not declare it internal.
+    written = D("SST-PRT008", subject="cli", path="out.yml", detail="disk full")
+    assert diagnostic_json(written)["internal_detail"] is None
 
 
 def test_a_run_that_prints_no_envelope_records_no_timings(tmp_path: Path) -> None:
