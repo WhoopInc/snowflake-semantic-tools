@@ -205,7 +205,7 @@ def test_a_failing_human_report_fails_the_command_like_its_body() -> None:
         pytest.param(
             SnowflakePortError("390100: Incorrect username or password was specified.", errno=390100),
             5,
-            "error[SST-PRT002]: authentication failed for Snowflake",
+            "error[SST-PRT002]: authentication failed for Snowflake: 390100: Incorrect username",
             5,
             ["SST-PRT002"],
             id="port-error-authentication",

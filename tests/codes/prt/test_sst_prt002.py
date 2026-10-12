@@ -19,7 +19,7 @@ def test_sst_prt002_fires() -> None:
     error = _port_error(_failure("Incorrect username or password was specified.", 390100), connecting_to="acme")
     diagnostic = error.diagnostic
     assert diagnostic is not None and (diagnostic.code, diagnostic.severity) == ("SST-PRT002", Severity.ERROR)
-    assert diagnostic.message == "authentication failed for acme"
+    assert diagnostic.message == "authentication failed for acme: Incorrect username or password was specified."
 
 
 def test_sst_prt002_silent() -> None:

@@ -488,7 +488,7 @@ def _classified(exc: SnowflakePortError) -> tuple[Diagnostic, int, Diagnostic]:
     if exc.diagnostic is not None:
         return exc.diagnostic, CONNECTION, matched
     if signature.code == _AUTHENTICATION_SIGNATURE:
-        return D("SST-PRT002", subject="cli", value="Snowflake"), CONNECTION, matched
+        return D("SST-PRT002", subject="cli", value="Snowflake", detail=message), CONNECTION, matched
     if signature.code in _CONNECTION_SIGNATURES:
         return D("SST-PRT001", subject="cli", value="Snowflake", detail=message), CONNECTION, matched
     uncooperative = signature.kind in {ErrorKind.PRIVILEGE, ErrorKind.TRANSIENT} or signature.code == "SST-SNO011"

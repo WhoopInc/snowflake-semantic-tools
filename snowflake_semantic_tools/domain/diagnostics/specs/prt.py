@@ -27,7 +27,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-PRT002",
         Severity.ERROR,
         "Authentication failed",
-        "authentication failed for {value}",
+        "authentication failed for {value}: {detail}",
         "refresh the credential",
         condition="Snowflake rejects the session's credential, while connecting or later in the run",
         precheck=Precheck.RUNTIME,
