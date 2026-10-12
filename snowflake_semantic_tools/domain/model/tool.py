@@ -323,3 +323,12 @@ TOOL_MEMBER_KEYS = frozenset(
         "relations",
     )
 )
+
+
+def vocabulary_key(value: str) -> str:
+    """A value from a closed vocabulary such as `EXECUTE_AS`, spelled as it is: lower-cased, single-spaced.
+
+    Example:
+        vocabulary_key("Restricted   CALLER") == "restricted caller"
+    """
+    return " ".join(value.casefold().split())

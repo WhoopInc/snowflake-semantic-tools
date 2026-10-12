@@ -143,6 +143,13 @@ def test_types_domains_bounds_and_fixed_values() -> None:
     assert _codes({"vars": []}) == [("SST-CFG004", "config:vars")]
     assert _codes({"tools": {"+execute_as": "sudo"}}) == [("SST-CFG008", "config:tools.+execute_as")]
     assert _codes({"tools": {"+execute_as": "restricted caller"}}) == []
+    # Matched as a member's execute_as is, ignoring case and runs of spaces.
+    assert _codes({"tools": {"+execute_as": "OWNER"}}) == []
+    assert _codes({"tools": {"+execute_as": "Restricted   Caller"}}) == []
+    # Every other enum still matches exactly.
+    assert _codes({"diagnostics": {"severity_overrides": {"SST-VAL003": "WARNING"}}}) == [
+        ("SST-CFG008", "config:diagnostics.severity_overrides.SST-VAL003")
+    ]
     stage = {"+stage": "S"}
     assert _codes({"skills": {"stage": {**stage, "+layout": "by_profile"}}}) == [
         ("SST-VAL821", "config:skills.stage.+layout")

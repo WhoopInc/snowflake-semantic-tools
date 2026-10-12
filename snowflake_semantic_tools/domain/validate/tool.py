@@ -15,6 +15,7 @@ from snowflake_semantic_tools.domain.model.tool import (
     ToolKind,
     ToolMember,
     ToolOwnership,
+    vocabulary_key,
 )
 from snowflake_semantic_tools.domain.sql import is_datatype
 from snowflake_semantic_tools.domain.validate.shared import Emitter
@@ -386,7 +387,7 @@ def _sql_values(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
         ("execute_as", member.execute_as, EXECUTE_AS),
         ("refresh_mode", member.refresh_mode, _REFRESH_MODES),
     ):
-        if value and " ".join(value.casefold().split()) not in allowed:
+        if value and vocabulary_key(value) not in allowed:
             emit("SST-PRS013", field=key, found=value, expected=", ".join(allowed))
     if not member.where or "{{" in member.where:
         return emit.diagnostics
