@@ -88,7 +88,6 @@ class ExtensionLifecycleHandler(CompositeHandler[ExtensionRelease, _Observed, Ca
         super().__init__(port)
         self._releases = MappingProxyType(dict(releases))
         self.artifact_type = artifact_type
-        self._prune_order = 250 if artifact_type == "skill" else 260
         self._stage_lock = Lock()
 
     def _subject(self, artifact: RenderedArtifact) -> ExtensionRelease:

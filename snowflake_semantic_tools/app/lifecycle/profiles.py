@@ -97,7 +97,6 @@ class ProfileLifecycleHandler(CompositeHandler[CompiledProfile, _Observed, Profi
     """
 
     artifact_type = "profile"
-    _prune_order = 270
 
     def __init__(self, port: ProfilePublicationPort, releases: Mapping[str, CompiledProfile]) -> None:
         super().__init__(port)

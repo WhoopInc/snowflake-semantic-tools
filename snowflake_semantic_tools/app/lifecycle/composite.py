@@ -33,6 +33,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     OutcomeStatus,
     RenderedArtifact,
 )
+from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
 from snowflake_semantic_tools.domain.model.skill import BundleEntry
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -157,16 +158,20 @@ class CompositeHandler(CompositeLifecycleHandler, Generic[SubjectT, ObservedT, P
     `_publish`: what it observes, how it decides, and how it publishes, with its own
     ownership rules and locks. The other steps have defaults it may override. Prune is
     report-only: `report_prune` reports the artifact with the subclass's `_prune_detail`
-    at its `_prune_order`, and `_apply_prune` skips it. `_apply_unrendered` skips a change
+    at its type's registry `ddl_position`, and `_apply_prune` skips it. `_apply_unrendered` skips a change
     without an artifact, and `merge_physical_resources` records exactly the resources the
     publish verified.
     """
 
     _prune_detail: str
-    _prune_order: int
 
     def __init__(self, port: PortT) -> None:
         self._port = port
+
+    @property
+    def _prune_order(self) -> int:
+        """The order a prune of this type sorts at: its registry `ddl_position`, as a generic prune's."""
+        return ARTIFACT_REGISTRY.artifacts[self.artifact_type].ddl_position
 
     def for_session(self, session: object) -> Self:
         """Return a copy of this handler on `session`, sharing every lock and record of what it created.
