@@ -53,7 +53,10 @@ _OPTION_HELP: Mapping[str, str] = {
         "output on a terminal is ever coloured."
     ),
     "--allow-unsupported-manifest-schema": "Read a dbt manifest of an unsupported schema version, for this run only.",
-    "--allow-stale-manifest": "Accept a `--manifest` older than the files it describes, for this run only.",
+    "--allow-stale-manifest": (
+        "Accept a manifest SST did not write (`--manifest`, or `dbt.invoke: false`) that is older than "
+        "the files it describes, for this run only."
+    ),
     "--baseline": (
         "Read this baseline file of known warnings, which must exist, instead of the project's "
         "`.sst/baseline.json`, read when it exists."

@@ -50,7 +50,7 @@ These go before the command name.
 | `--profiles-dir` | DIRECTORY |  | Look for `profiles.yml` here first, else in `$SST_PROFILES_DIR`; then in `$DBT_PROFILES_DIR`, the project root, and `~/.dbt`. The first that has one wins. |
 | `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
 | `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest of an unsupported schema version, for this run only. |
-| `--allow-stale-manifest` | flag |  | Accept a `--manifest` older than the files it describes, for this run only. |
+| `--allow-stale-manifest` | flag |  | Accept a manifest SST did not write (`--manifest`, or `dbt.invoke: false`) that is older than the files it describes, for this run only. |
 | `--baseline` | FILE |  | Read this baseline file of known warnings, which must exist, instead of the project's `.sst/baseline.json`, read when it exists. |
 | `--no-baseline` | flag |  | Ignore the baseline for this run: every diagnostic is shown and blocks as declared. |
 | `--show-baselined` | flag |  | Show baselined diagnostics instead of counting them. |

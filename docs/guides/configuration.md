@@ -47,7 +47,9 @@ so installing, upgrading or switching dbt makes the next run ask again. An
 installation SST cannot identify is asked every run, and warns every run
 (`SST-DBT020`). `sst debug` always asks. SST still runs `dbt parse` every time;
 pass `--manifest`, or set `dbt.invoke: false`, to read a manifest you keep
-current yourself.
+current yourself. Either way SST compares each model file with the checksum the
+manifest recorded, and a changed one is an error (`SST-DBT005`) unless
+`--allow-stale-manifest` is given.
 
 ## How keys are validated
 

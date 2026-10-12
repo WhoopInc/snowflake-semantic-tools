@@ -47,10 +47,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "dbt manifest is stale relative to the models on disk",
         "manifest is older than {value}",
-        "drop --manifest and let SST parse, or rebuild the manifest you passed",
+        "let SST run dbt (drop --manifest, or set dbt.invoke: true), or rebuild the manifest",
         condition=(
-            "under `--manifest`, a root-project model file's contents no longer match the checksum "
-            "the manifest recorded; once per file"
+            "under `--manifest` or `dbt.invoke: false`, a root-project model file's contents no longer "
+            "match the checksum the manifest recorded; once per file"
         ),
     ),
     spec(

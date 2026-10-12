@@ -21,8 +21,9 @@ Three inputs decide where the manifest comes from:
   recorded, and a changed one is an error (`SST-DBT005`), or a warning under
   `--allow-stale-manifest`.
 - `dbt.invoke: false` reads the manifest already under `dbt_project.yml`'s
-  `target-path` and never runs dbt. It is read as it is: no staleness check
-  runs.
+  `target-path` and never runs dbt. SST did not write that file either, so it
+  gets the same checksum comparison as `--manifest`: a changed model file is
+  `SST-DBT005`, or a warning under `--allow-stale-manifest`.
 - Otherwise, the default, SST runs `dbt.command` before the first read. A
   project source runs it at most once for its target, so a command that reads both the models
   and the tools parses the project once.
@@ -38,9 +39,9 @@ flowchart TD
     invoke -- no --> read
     invoke -- yes --> parse["parse_project, once per source"]
     parse --> read
-    read --> stale{"read from --manifest?"}
-    stale -- yes --> check["stale_models: SST-DBT005"]
-    stale -- no --> done["DbtCatalog"]
+    read --> stale{"did SST run dbt for it?"}
+    stale -- no --> check["stale_models: SST-DBT005"]
+    stale -- yes --> done["DbtCatalog"]
     check --> done
 ```
 
@@ -126,7 +127,7 @@ Paths are relative to the manifest root; `<id>` is a node's unique id.
 | `nodes.<id>.columns.<name>.meta.sst` (or under `config`) | `column_type`, `data_type`, `synonyms`, `sample_values`, `is_enum`, `exclude`; `access_modifier` only to refuse a private dimension | no role: `SST-VAL308`; an unknown role: `SST-DBT003`; enum completeness: `SST-VAL314`, `SST-VAL315`; a sentinel such as `nan` as a sample value: `SST-VAL316`; a private dimension: `SST-VAL222`; any other key, `access_modifier` otherwise included: `SST-PRS004` |
 | `nodes.<id>.columns.<name>.meta.pii_tags` (or under `config`) | enrich never reads a tagged column's values | sample values on a tagged column: `SST-VAL328` |
 | `nodes.<id>.description` | context for the synonyms enrich asks Cortex for | none |
-| `nodes.<id>.checksum.checksum` | the `--manifest` staleness check, and the digest of the dbt side SST records in its own manifest | absent on a model a view uses: `SST-DBT015` |
+| `nodes.<id>.checksum.checksum` | the staleness check of a manifest SST did not write, and the digest of the dbt side SST records in its own manifest | absent on a model a view uses: `SST-DBT015` |
 | `nodes.<id>.contract.enforced`, or under `config` | whether column types are pinned | not enforced while a column's type is left to inference: `SST-DBT024` |
 | `nodes.<id>.original_file_path`, `.patch_path`, `.package_name` | which YAML file enrich edits, where a diagnostic points, and root-project selection | none |
 | test nodes' `attached_node`, else `depends_on.nodes` | how many tests each model has | a model a view uses with none: `SST-DBT023` |
