@@ -5081,9 +5081,9 @@ Fix: derive the version from the content SHA
 
 ### SST-VAL826
 
-**Grants issued before certification succeeded** (error)
+**Grant sent before certification succeeded, or naming no role type** (error)
 
-`skill '<artifact>': grants would be issued before certification`
+`'<artifact>': a GRANT would be sent before certification succeeded, or naming no role type`
 
 Raised when a GRANT would run while the publish's certification has not yet succeeded, or names no role type (ROLE or DATABASE ROLE).
 

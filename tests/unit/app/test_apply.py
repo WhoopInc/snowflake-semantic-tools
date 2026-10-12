@@ -6,7 +6,7 @@ from types import MappingProxyType
 
 import pytest
 
-from snowflake_semantic_tools.app.apply import ApplyArtifacts, classify_error, preserves_grants
+from snowflake_semantic_tools.app.apply import ApplyArtifacts, classify_error, one, preserves_grants
 from snowflake_semantic_tools.app.apply.errors import _outcome_diagnostic
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
@@ -32,7 +32,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from snowflake_semantic_tools.domain.sql import Sql
+from snowflake_semantic_tools.domain.sql import Sql, sql
 from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, AppliedEntry, AppliedResourceInput, Manifest
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import change, changeset, manifest, marker, observed, rendered, state, target
@@ -593,6 +593,43 @@ def test_search_service_update_replays_and_verifies_explicit_grants() -> None:
     # The target's schema is named SCHEMA, a reserved word, so the replayed grant quotes it.
     assert port.scripts[1] == ('GRANT USAGE ON CORTEX SEARCH SERVICE DB."SCHEMA".V TO ROLE READER WITH GRANT OPTION',)
     assert result.outcomes[0].grants is GrantCheck.PRESERVED
+
+
+@pytest.mark.parametrize(
+    ("grant", "code"),
+    [
+        (sql("GRANT USAGE ON CORTEX SEARCH SERVICE DB.SCHEMA.V TO READER"), "SST-VAL826"),
+        ("GRANT USAGE ON CORTEX SEARCH SERVICE DB.SCHEMA.V TO ROLE READER", "SST-VAL827"),
+    ],
+    ids=["untyped", "raw text"],
+)
+def test_search_service_replay_refuses_a_grant_the_publication_guards_refuse(
+    monkeypatch: pytest.MonkeyPatch, grant: object, code: str
+) -> None:
+    monkeypatch.setattr(one, "_grant_statement", lambda rendered, row: grant)
+    artifact = replace(
+        rendered(),
+        object_type="CORTEX SEARCH SERVICE",
+        grant_preservation=GrantPreservation.REPLAY,
+        statements=(
+            statement("CREATE OR REPLACE CORTEX SEARCH SERVICE DB.SCHEMA.V ON BODY AS SELECT BODY FROM DB.SCHEMA.T"),
+        ),
+    )
+    ownership = marker(artifact)
+    live = replace(observed(artifact, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    port.grants[artifact.target.sql] = (GrantRow("USAGE", "ROLE", "READER"),)
+    use_case, _, store, _ = runner(port)
+
+    result = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+
+    assert not result.success
+    assert [item.code for item in result.diagnostics if item.code.startswith("SST-VAL82")] == [code]
+    # The replace ran, so state keeps the object; the refused GRANT was never sent.
+    assert port.scripts == [texts(artifact.statements)]
+    assert result.outcomes[0].write_succeeded
+    assert store.state is not None and store.state.applied[artifact.key].outcome == "failed_after_write"
 
 
 def test_search_service_replay_failure_retains_truthful_write_state() -> None:

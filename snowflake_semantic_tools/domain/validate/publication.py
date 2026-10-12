@@ -148,6 +148,9 @@ def version_coverage_diagnostics(
 def statement_diagnostic(key: str, statement: object, *, certification_pending: bool) -> Diagnostic | None:
     """Report a statement a publisher must not send: raw text, or a grant out of order or untyped.
 
+    Every composite publish calls it on each statement it sends, and apply on each GRANT it
+    replays after replacing a search service.
+
     Args:
         certification_pending: The publish certifies the artifact and has not yet succeeded.
 
