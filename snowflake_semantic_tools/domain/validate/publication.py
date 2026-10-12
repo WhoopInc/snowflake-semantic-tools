@@ -156,15 +156,32 @@ def statement_diagnostic(key: str, statement: object, *, certification_pending: 
 
     Diagnostics:
         SST-VAL827: the statement is not `Sql`, so nothing it interpolates was validated.
-        SST-VAL826: a GRANT, while certification is pending or naming no role type.
+        SST-VAL826: a GRANT, while certification is pending or naming no role type; the
+            detail names which of the two held.
     """
     artifact = split_artifact_key(key)[1]
     if not isinstance(statement, Sql):
         return D("SST-VAL827", subject=key, artifact=artifact, value=str(statement)[:80])
     text = str(statement)
-    if _GRANT.match(text) and (certification_pending or not _ROLE_TYPE.search(text)):
-        return D("SST-VAL826", subject=key, artifact=artifact)
+    if not _GRANT.match(text):
+        return None
+    reasons = []
+    if certification_pending:
+        reasons.append("before certification succeeded")
+    if not _ROLE_TYPE.search(text):
+        reasons.append("naming no role type")
+    if reasons:
+        return D("SST-VAL826", subject=key, artifact=artifact, detail=" and ".join(reasons))
     return None
+
+
+def refused_value(refused: Diagnostic) -> str:
+    """Return the one field of a `statement_diagnostic` refusal that a failed outcome carries.
+
+    SST-VAL827 names the raw statement as its `value`; SST-VAL826 names which condition held
+    as its `detail`.
+    """
+    return str(refused.context.get("value", refused.context.get("detail", "")))
 
 
 def channel_outcome_diagnostics(

@@ -39,7 +39,7 @@ from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHa
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
-from snowflake_semantic_tools.domain.validate.publication import statement_diagnostic
+from snowflake_semantic_tools.domain.validate.publication import refused_value, statement_diagnostic
 
 SubjectT = TypeVar("SubjectT")
 ObservedT = TypeVar("ObservedT")
@@ -377,9 +377,7 @@ class PublicationRun(Generic[PortT]):
         """
         refused = statement_diagnostic(self._change.key, statement, certification_pending=self._certification_pending())
         if refused is not None:
-            raise PublicationRefused(
-                self.fail(refused.message, refused.code, value=str(refused.context.get("value", "")))
-            )
+            raise PublicationRefused(self.fail(refused.message, refused.code, value=refused_value(refused)))
         self._attempts += 1
         result = self._port.execute_script((statement,))
         if result.ok:

@@ -115,8 +115,10 @@ def _outcome_diagnostic(change: Change, outcome: ApplyOutcome) -> Diagnostic:
     assert outcome.error is not None
     error = outcome.error
     code = error.code
-    if code in ("SST-VAL826", "SST-VAL827"):
+    if code == "SST-VAL827":
         return D(code, subject=change.key, artifact=split_artifact_key(change.key)[1], value=error.value)
+    if code == "SST-VAL826":
+        return D(code, subject=change.key, artifact=split_artifact_key(change.key)[1], detail=error.value)
     if code in ("SST-APL004", "SST-APL008", "SST-APL021"):
         return D(code, artifact=change.key)
     if code == "SST-APL009":

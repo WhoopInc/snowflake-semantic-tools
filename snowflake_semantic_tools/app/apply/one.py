@@ -35,7 +35,7 @@ from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, ident, join, keyword, privilege, qname, sql
-from snowflake_semantic_tools.domain.validate.publication import statement_diagnostic
+from snowflake_semantic_tools.domain.validate.publication import refused_value, statement_diagnostic
 
 
 def preserves_grants(change: Change) -> bool:
@@ -359,8 +359,7 @@ class ChangeApplier:
         for statement in statements:
             refused = statement_diagnostic(rendered.key, statement, certification_pending=False)
             if refused is not None:
-                value = str(refused.context.get("value", ""))
-                return ClassifiedError(refused.code, refused.message, ErrorKind.UNKNOWN, value=value)
+                return ClassifiedError(refused.code, refused.message, ErrorKind.UNKNOWN, value=refused_value(refused))
         result = self._port.execute_script(statements)
         if result.ok:
             return None
