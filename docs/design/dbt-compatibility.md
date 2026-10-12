@@ -141,7 +141,16 @@ that is not a list, stops the run with a message naming its manifest path.
 Nodes are read in sorted unique-id order, so the catalog's order never depends
 on the order of keys in the file.
 
-Drawn from: [manifest.py](../../snowflake_semantic_tools/adapters/dbt/manifest.py), [dbt.py](../../snowflake_semantic_tools/domain/model/dbt.py), [dbt_seam.py](../../snowflake_semantic_tools/domain/validate/dbt_seam.py), [semantic/dbt.py](../../snowflake_semantic_tools/domain/validate/semantic/dbt.py), [build.py](../../snowflake_semantic_tools/adapters/yaml/semantic/build.py), [enrich.py](../../snowflake_semantic_tools/app/enrich.py), [columns.py](../../snowflake_semantic_tools/domain/enrich/columns.py), [tool.py](../../snowflake_semantic_tools/domain/validate/tool.py), [views.py](../../snowflake_semantic_tools/domain/validate/semantic/views.py), [phases.py](../../snowflake_semantic_tools/adapters/yaml/semantic/phases.py), [project.py](../../snowflake_semantic_tools/adapters/dbt/project.py).
+`tests/contract/test_dbt_manifest_contract.py` holds every manifest under
+`tests/fixtures/dbt_manifests/` to this table: each path is present, with the
+JSON type SST expects, on the reference project's models, columns, tests and
+sources; each model checksum is one the staleness check recognises; and the
+reference project renders the same semantic views from it as the DDL goldens
+pin. The committed manifests must also read as one catalog apart from the dbt
+version and the checksums, which dbt 1.12 computes over whitespace-collapsed
+code where earlier releases hash the file as read.
+
+Drawn from: [manifest.py](../../snowflake_semantic_tools/adapters/dbt/manifest.py), [dbt.py](../../snowflake_semantic_tools/domain/model/dbt.py), [dbt_seam.py](../../snowflake_semantic_tools/domain/validate/dbt_seam.py), [semantic/dbt.py](../../snowflake_semantic_tools/domain/validate/semantic/dbt.py), [build.py](../../snowflake_semantic_tools/adapters/yaml/semantic/build.py), [enrich.py](../../snowflake_semantic_tools/app/enrich.py), [columns.py](../../snowflake_semantic_tools/domain/enrich/columns.py), [tool.py](../../snowflake_semantic_tools/domain/validate/tool.py), [views.py](../../snowflake_semantic_tools/domain/validate/semantic/views.py), [phases.py](../../snowflake_semantic_tools/adapters/yaml/semantic/phases.py), [project.py](../../snowflake_semantic_tools/adapters/dbt/project.py), [test_dbt_manifest_contract.py](../../tests/contract/test_dbt_manifest_contract.py).
 
 ## The schema-version gate
 
@@ -190,7 +199,9 @@ What the repository runs, and therefore what "supported" can mean:
   the lock file resolves it to a 1.12 release with dbt Core 1.12.
 - The required gate never runs dbt. It installs the package without the extra,
   runs dbt-facing code against a fake runner, and loads the reference project
-  against a committed manifest written by dbt 1.11.
+  against a committed manifest written by dbt 1.11. It also holds full
+  manifests of the reference project, written by dbt 1.11.15 and 1.12.5, to the
+  read surface above.
 - The manual evals workflow installs the extra, runs `dbt build` on the
   reference project with the locked dbt, and compiles against the manifest that
   build writes.
@@ -248,39 +259,55 @@ Drawn from: [profiles.py](../../snowflake_semantic_tools/adapters/dbt/profiles.p
 The manifest schema is what SST feels, not the dbt version number, so the first
 question about a release is which schema it writes.
 
-1. In an environment with the candidate dbt, run `dbt deps` and then
-   `dbt parse` in `tests/fixtures/reference_project`, and read
-   `metadata.dbt_schema_version` from the manifest it writes. The project's
-   default target carries no credential; parsing needs none.
-2. If the schema is still v12, the reader needs no change. Widen the `dbt`
+1. In an environment with the candidate dbt and its Snowflake adapter, run
+   `dbt deps` and then `dbt parse --no-partial-parse` in a copy of
+   `tests/fixtures/reference_project`, and read `metadata.dbt_schema_version`
+   from the manifest it writes. The project's default target carries no
+   credential; parsing needs none.
+2. Capture that manifest as a fixture with `python -m
+   tests.helpers.manifest_capture <copy>/target/manifest.json <copy>`, which
+   scrubs it into `tests/fixtures/dbt_manifests/v<schema>/dbt-<release>/`.
+   Run `tests/contract/test_dbt_manifest_contract.py`: it fails, naming the
+   path, if the release moved or retyped anything SST reads.
+3. If the schema is still v12, the reader needs no change. Widen the `dbt`
    extra in `pyproject.toml` if the release falls outside it, regenerate
    `poetry.lock`, update `DEPENDENCIES.md` with them, and widen the reference
    project's `require-dbt-version`. Then run the manual evals workflow, which
    builds the reference project with the locked dbt.
-3. If the schema changed, walk the table under [What SST reads from the
+4. If the schema changed, walk the table under [What SST reads from the
    manifest](#what-sst-reads-from-the-manifest) against dbt's new schema and
    changelog, one path at a time, before anything else. For a path that moved,
    read it where both versions put it, so neither is selected wrongly. Then add
    the version to `SUPPORTED_SCHEMA_VERSIONS`, keeping the old one while any
-   tested dbt still writes it.
-4. Update the tests that use a version number as the unsupported example:
+   tested dbt still writes it. The contract test refuses a version in the set
+   without a fixture directory, and a fixture directory for a version outside
+   it.
+5. Update the tests that use a version number as the unsupported example:
    `tests/codes/dbt/test_sst_dbt017.py` and
    `tests/unit/adapters/test_dbt_manifest.py` use v13, and
    `tests/unit/cli/test_debug.py` uses v11. Manifests built in tests take their
    schema from `SUPPORTED_SCHEMA` in `adapters/dbt/manifest.py` or the `SCHEMA`
    constant in `tests/helpers/seam_projects.py`.
-5. Compare the output. The DDL goldens are rendered from the committed
+6. Compare the output. The DDL goldens are rendered from the committed
    manifest; render them again from the new one with `sst test --suite golden
    --manifest <new manifest>`, as `tests/README.md` shows. Any difference is a
    change in what SST publishes and needs an explanation, not an updated
    golden.
-6. Run the gates in [CONTRIBUTING.md](../../CONTRIBUTING.md), and update the
+7. Run the gates in [CONTRIBUTING.md](../../CONTRIBUTING.md), and update the
    versions `docs/getting-started.md` names.
 
 The committed `tests/fixtures/reference_project_manifest.json` is a reduced
 copy of a dbt 1.11 manifest: its metadata and its model and test nodes,
-trimmed to little more than the keys SST reads, and no source nodes. Replacing it with a full manifest
-changes which seam diagnostics the reference project reports, so do it as its
+trimmed to little more than the keys SST reads, and no source nodes. The
+goldens and most tests load the project against it. The full manifests under
+`tests/fixtures/dbt_manifests/` are what each release wrote, less the run's
+paths, ids and timestamps and the `macros` map, which SST never reads. Each
+records the reference project as it was captured, and the contract test checks
+it against the code it records, so a later edit to the project does not fail
+it; capture them again when the edit touches something the table lists.
+Replacing the reduced manifest with a full one changes which seam diagnostics
+the reference project reports (a full manifest records each model's
+materialisation, so `SST-VAL617` fires on the search service), so do it as its
 own change.
 
-Drawn from: [manifest.py](../../snowflake_semantic_tools/adapters/dbt/manifest.py), [seam_projects.py](../../tests/helpers/seam_projects.py), [test_sst_dbt017.py](../../tests/codes/dbt/test_sst_dbt017.py), [test_dbt_manifest.py](../../tests/unit/adapters/test_dbt_manifest.py), [test_debug.py](../../tests/unit/cli/test_debug.py), [reference_project.py](../../tests/helpers/reference_project.py), [tests/README.md](../../tests/README.md), [slow.yml](../../.github/workflows/slow.yml).
+Drawn from: [manifest.py](../../snowflake_semantic_tools/adapters/dbt/manifest.py), [seam_projects.py](../../tests/helpers/seam_projects.py), [manifest_capture.py](../../tests/helpers/manifest_capture.py), [test_dbt_manifest_contract.py](../../tests/contract/test_dbt_manifest_contract.py), [test_sst_dbt017.py](../../tests/codes/dbt/test_sst_dbt017.py), [test_dbt_manifest.py](../../tests/unit/adapters/test_dbt_manifest.py), [test_debug.py](../../tests/unit/cli/test_debug.py), [reference_project.py](../../tests/helpers/reference_project.py), [tests/README.md](../../tests/README.md), [slow.yml](../../.github/workflows/slow.yml).

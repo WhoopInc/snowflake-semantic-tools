@@ -37,13 +37,14 @@ tests/
 ├── codes/                       # diagnostic-code guards: emitted, tested (README.md)
 │   ├── allowlist/               # shrink-only allowlists
 │   └── <area>/test_<code>.py    # a code's fires/silent pair
-├── contract/                    # adapters against their ports: offline Snowflake ports, connector helpers, file stores, profile
+├── contract/                    # adapters against their ports: offline Snowflake ports, connector helpers, file stores, profile, the dbt manifest
 ├── contract_live/               # live: the real connector against the same port contract, in a scratch schema
 ├── integration/                 # live: apply in a real account; marker, metric query, re-plan, grants
 ├── e2e/                         # the CLI end to end: the offline negative corpus, and the live lifecycle through smoke
 ├── fixtures/
 │   ├── reference_project/                # a dbt + SST project that uses every artifact type
 │   ├── reference_project_manifest.json   # its dbt manifest, so it compiles offline
+│   ├── dbt_manifests/                    # full manifests of it, one per schema version and dbt release
 │   ├── scoped_views/                     # two include- and exclude-mode views, copied into a project copy
 │   ├── v1_dialect/                       # the 0.3 dialect corpus for `sst migrate refs`
 │   └── negative_overlays/                # one bad file per case, laid over the reference project; expected.json
@@ -55,6 +56,7 @@ tests/
                                  #   app_ports.py, clocks.py -- the in-memory state store and the clock
                                  #   eval_state_store.py, golden_store.py -- more ports
                                  #   project_inputs.py, projects.py, manifests.py -- project inputs and manifests
+                                 #   manifest_capture.py -- scrubs a manifest `dbt parse` wrote into dbt_manifests/
                                  #   artifact_builders.py, compile_builders.py, eval_builders.py -- test values
                                  #   cli_projects.py -- the reference fixture, project copies, CLI invocations
                                  #   code_metrics.py, structure_rules.py, docstring_rules.py, import_rules.py -- the gates

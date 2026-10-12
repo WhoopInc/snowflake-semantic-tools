@@ -155,6 +155,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_true",
         help="Fail, rather than skip, every live test when no Snowflake account is configured.",
     )
+    parser.addoption(
+        "--dbt-manifest",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="Also hold this manifest of the reference project to the dbt manifest contract.",
+    )
 
 
 def _configured_account() -> LiveAccount | None:
