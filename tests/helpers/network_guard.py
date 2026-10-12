@@ -9,11 +9,13 @@ runs inside `allowed`, which lifts the guard for its duration.
 
 A subprocess is a fresh interpreter the patches do not reach, so a test that starts one passes it
 `guarded_environment`: the end-to-end layer's `run_sst` does, as do the tests that run `sst` in a
-child of their own. That environment puts `subprocess_guard/` on the child's `PYTHONPATH`, whose
-`sitecustomize` installs the guard at startup (`install_in_subprocess`). In the child a refusal is
-also written to stderr, and a child that was refused anything exits `REFUSED_EXIT` whatever it
-would have exited with, so a refusal it swallowed still fails the test. While the guard is lifted
-or not installed -- a live test, or a helper run as a script -- the environment is left unguarded.
+child of their own. That environment puts `subprocess_guard/` at the front of the child's
+`PYTHONPATH`, whose `sitecustomize` installs the guard at startup (`install_in_subprocess`), or
+stops the child with `UNGUARDED_EXIT` when it cannot, and then runs any `sitecustomize` it shadows.
+In the child a refusal is also written to stderr, and a child that was refused anything exits
+`REFUSED_EXIT` whatever it would have exited with, so a refusal it swallowed still fails the test.
+While the guard is lifted or not installed -- a live test, or a helper run as a script -- the
+environment is left unguarded.
 """
 
 from __future__ import annotations
@@ -29,12 +31,12 @@ from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 # Set in a subprocess's environment to install the guard there; `subprocess_guard/` reads it.
 GUARD_VARIABLE = "SST_TEST_NETWORK_GUARD"
 # What a guarded subprocess exits with once it has been refused anything.
 REFUSED_EXIT = 86
+# What a subprocess asked for the guard exits with at startup when it cannot install it.
+UNGUARDED_EXIT = 87
 _SUBPROCESS_HOOK = Path(__file__).resolve().parent / "subprocess_guard"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _LOCAL_NAMES = frozenset({"localhost", "localhost.localdomain", "ip6-localhost", "ip6-loopback"})
@@ -118,19 +120,25 @@ def _guarded_function(original: Callable[..., Any], name: str) -> Callable[..., 
 
 @contextmanager
 def installed() -> Iterator[None]:
-    """Refuse every non-local connection and name lookup until the block exits."""
-    with pytest.MonkeyPatch.context() as patch:
-        for method in ("connect", "connect_ex"):
-            patch.setattr(socket.socket, method, _guarded_method(getattr(socket.socket, method), method))
-        for function in ("create_connection", "getaddrinfo"):
-            patch.setattr(socket, function, _guarded_function(getattr(socket, function), function))
+    """Refuse every non-local connection and name lookup until the block exits.
+
+    It patches `socket` by hand, not with pytest's `MonkeyPatch`, so a subprocess that has no
+    pytest to import can still hold it.
+    """
+    originals = [(socket.socket, name, getattr(socket.socket, name)) for name in ("connect", "connect_ex")]
+    originals += [(socket, name, getattr(socket, name)) for name in ("create_connection", "getaddrinfo")]
+    for owner, name, original in originals:
+        wrap = _guarded_method if owner is socket.socket else _guarded_function
+        setattr(owner, name, wrap(original, name))
+    with _STATE.lock:
+        _STATE.installs += 1
+    try:
+        yield
+    finally:
         with _STATE.lock:
-            _STATE.installs += 1
-        try:
-            yield
-        finally:
-            with _STATE.lock:
-                _STATE.installs -= 1
+            _STATE.installs -= 1
+        for owner, name, original in reversed(originals):
+            setattr(owner, name, original)
 
 
 @contextmanager
