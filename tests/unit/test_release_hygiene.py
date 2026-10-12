@@ -253,7 +253,7 @@ def test_each_exempt_line_is_still_committed(committable: tuple[tuple[str, str |
         if text is not None
         for line in text.splitlines()
     }
-    assert EXEMPT_LINES <= present
+    assert present >= EXEMPT_LINES
 
 
 def _synthetic(*words: str) -> frozenset[str]:
