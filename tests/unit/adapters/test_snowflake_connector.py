@@ -619,6 +619,23 @@ def test_a_failed_connection_reports_no_credential_and_chains_no_driver_error(
     assert error.__cause__ is None and error.__context__ is None
 
 
+def test_a_rejected_login_keeps_the_scrubbed_message_and_reports_no_credential(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def connect(**params: object) -> object:
+        failure = _ConnectorFailure(_LEAKY.replace("250001 (08001): Failed to connect", "Incorrect username"), "08001")
+        failure.errno = 390100
+        raise failure
+
+    monkeypatch.setattr("snowflake.connector.connect", connect)
+    with pytest.raises(SnowflakePortError) as raised:
+        SnowflakeConnector({"account": "acme", "password": "hunter2", "private_key_file": "/tmp/rsa_key.p8"})
+    diagnostic = raised.value.diagnostic
+    assert diagnostic is not None and diagnostic.code == "SST-PRT002"
+    assert diagnostic.message.startswith("authentication failed for acme: Incorrect username: password=<redacted>")
+    assert not [secret for secret in _SECRETS if secret in diagnostic.message]
+
+
 def test_a_failed_statement_reports_no_credential() -> None:
     leaky = ProgrammingError(msg=_LEAKY, errno=1003, sqlstate="42000")
     with pytest.raises(SnowflakePortError) as raised:

@@ -205,7 +205,7 @@ def test_a_failing_human_report_fails_the_command_like_its_body() -> None:
         pytest.param(
             SnowflakePortError("390100: Incorrect username or password was specified.", errno=390100),
             5,
-            "error[SST-PRT002]: authentication failed for Snowflake",
+            "error[SST-PRT002]: authentication failed for Snowflake: 390100: Incorrect username",
             5,
             ["SST-PRT002"],
             id="port-error-authentication",
@@ -221,6 +221,7 @@ def test_a_failing_human_report_fails_the_command_like_its_body() -> None:
         pytest.param(ProjectError("broken project"), 4, "error: broken project", 4, [], id="project-error"),
         pytest.param(ValueError("bad value"), 4, "error: bad value", 4, [], id="value-error"),
         pytest.param(RuntimeError("boom"), 1, "error[SST-INT001]", 1, ["SST-INT001"], id="internal-error"),
+        pytest.param(AssertionError("broken"), 1, "error[SST-INT001]", 1, ["SST-INT001"], id="broken-invariant"),
         pytest.param(KeyboardInterrupt(), 130, "Aborted.", 130, ["SST-PRT107"], id="interrupt"),
         pytest.param(
             SstUsageError("not like that"), 3, "error[SST-PRT100]: not like that", None, None, id="usage-error"
@@ -261,8 +262,17 @@ def test_each_exception_ends_the_run_with_its_exit_code(
         ),
         pytest.param(
             SnowflakePortError("refused", diagnostic=D("SST-PRT001", value="acme", detail="refused")),
-            [],
-            id="own-diagnostic",
+            ["SST-SNO001"],
+            id="own-diagnostic-unrecognised",
+        ),
+        pytest.param(
+            SnowflakePortError(
+                "003001 (42501): Insufficient privileges to operate on schema 'S'",
+                errno=3001,
+                diagnostic=D("SST-PRT004", value="the session's role", detail="a privilege"),
+            ),
+            ["SST-SNO004"],
+            id="own-diagnostic-recognised",
         ),
     ],
 )

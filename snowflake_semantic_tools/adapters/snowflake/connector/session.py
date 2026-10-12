@@ -524,7 +524,7 @@ def _port_error(exc: Exception, *, connecting_to: str | None = None) -> Snowflak
     failure = session_failure(message, errno=errno, sqlstate=sqlstate)
     diagnostic: Diagnostic | None = None
     if connecting_to is not None and failure is SessionFailure.AUTHENTICATION:
-        diagnostic = D("SST-PRT002", value=connecting_to)
+        diagnostic = D("SST-PRT002", value=connecting_to, detail=message)
     elif connecting_to is not None:
         diagnostic = D("SST-PRT001", value=connecting_to, detail=message)
     elif failure is SessionFailure.DEADLINE:

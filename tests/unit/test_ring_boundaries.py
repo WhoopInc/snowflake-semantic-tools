@@ -102,14 +102,20 @@ CROSSINGS = [
     pytest.param(
         "app/_boundary_probe.py",
         "import ruamel.yaml\n",
-        "only roundtrip and the yaml and dbt adapters import ruamel",
+        "only roundtrip and the yaml adapter import ruamel",
         id="app-may-not-edit-yaml",
     ),
     pytest.param(
         "adapters/snowflake/_boundary_probe.py",
         "from ruamel.yaml import YAML\n",
-        "only roundtrip and the yaml and dbt adapters import ruamel",
+        "only roundtrip and the yaml adapter import ruamel",
         id="snowflake-adapter-may-not-edit-yaml",
+    ),
+    pytest.param(
+        "adapters/dbt/_boundary_probe.py",
+        "import ruamel.yaml\n",
+        "only roundtrip and the yaml adapter import ruamel",
+        id="dbt-adapter-edits-yaml-only-through-roundtrip",
     ),
     pytest.param(
         "adapters/_boundary_probe.py",
@@ -120,7 +126,7 @@ CROSSINGS = [
     pytest.param(
         "adapters/_boundary_probe.py",
         "import ruamel.yaml\n",
-        "only roundtrip and the yaml and dbt adapters import ruamel",
+        "only roundtrip and the yaml adapter import ruamel",
         id="top-level-adapter-may-not-edit-yaml",
     ),
     pytest.param(

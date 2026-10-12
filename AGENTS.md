@@ -31,7 +31,7 @@ SST is a command-line compiler and publisher for a Snowflake semantic layer kept
 |------|-------|--------------|
 | `cli/` | click commands; the composition root | may import every ring |
 | `app/` | use cases (compile, validate, plan, apply, test suites, migrate refs) | `domain` only, never `adapters`; no `yaml`, `click`, or `snowflake` |
-| `adapters/` | YAML, dbt manifest, Snowflake connector, filesystem, config, profile | `domain` models and ports, never `domain.render` or `app`; the `yaml`, `dbt`, `snowflake`, and `fs` subpackages never import each other; only `yaml`, `dbt`, and `bounded_yaml.py` import `yaml`, and only `roundtrip.py`, `yaml`, and `dbt` import `ruamel` |
+| `adapters/` | YAML, dbt manifest, Snowflake connector, filesystem, config, profile | `domain` models and ports, never `domain.render` or `app`; the `yaml`, `dbt`, `snowflake`, and `fs` subpackages never import each other; only `yaml`, `dbt`, and `bounded_yaml.py` import `yaml`, and only `roundtrip.py` and `yaml` import `ruamel` (`dbt` edits through `roundtrip.py`) |
 | `domain/` | pure, by stage: parse, resolve, validate, render, plan, state; plus model (data types only), diagnostics, enrich, migrate, sql, ports | no I/O, clock, environment, randomness, logging, or SDKs |
 
 No module in any ring imports `dbt`: SST runs the dbt executable and reads its manifest.

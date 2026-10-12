@@ -7171,7 +7171,7 @@ Fix: check the account, the network and the credential
 
 **Authentication failed** (error)
 
-`authentication failed for <value>`
+`authentication failed for <value>: <detail>`
 
 Raised when Snowflake rejects the session's credential, while connecting or later in the run.
 

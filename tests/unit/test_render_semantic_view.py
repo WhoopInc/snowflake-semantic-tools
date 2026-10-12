@@ -293,7 +293,7 @@ class TestClauseOmission:
         assert out.index("    B AS (") < out.index("    A AS (")
 
     def test_or_replace_with_if_not_exists_is_refused(self) -> None:
-        with pytest.raises(ValueError, match="both or_replace and if_not_exists"):
+        with pytest.raises(AssertionError, match="both or_replace and if_not_exists"):
             render(minimal(if_not_exists=True))
 
 
