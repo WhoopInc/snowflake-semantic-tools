@@ -13,8 +13,8 @@ the modules that implement it.
 publish position, the types it depends on, whether prune drops it, how its
 grants survive an update, its lifecycle shape, the rule sets that validate it,
 and its directory. Compile, plan, apply, and `sst docs` read the registry rather
-than switching on type names. `RegistryBuilder.freeze` runs every integrity
-check in a fixed order and raises the first `SST-REG` fault, so a contradictory
+than switching on type names. `RegistryBuilder.freeze` runs its integrity
+checks in a fixed order and raises the first `SST-REG` fault, so a contradictory
 registration fails at import, before any command runs. Among those checks, the
 template functions resolvers handle and the types the registry declares must
 agree in both directions (`SST-REG020`), with the types nothing references
@@ -44,8 +44,8 @@ naming them. Widening `MEMBER_OWNING_TYPES` is that decision, taken by name.
 **Chosen.** An `OBJECT` type is one Snowflake object, observed by its object
 type and planned generically. A `COMPOSITE` type -- skill, plugin, profile, eval
 -- spans several objects and is planned and applied by its own handler. The
-registry refuses a composite that declares an object type or generic replace and
-prune (`SST-REG021`).
+registry refuses a composite that declares an object type, or is pruned or
+replaced generically (`SST-REG021`).
 
 **Rejected.** Forcing every type into one object per artifact. A skill is an
 extension version plus stage files, and an eval is a table, a dataset, and a
@@ -76,8 +76,8 @@ schema as removed, and setting one is an error that says what replaced it
 (`SST-CFG043`, or a dedicated code): `validation.expression_rules`,
 `agents.+create_mode`, `agents.+copy_grants`, `skills.+grant_read_to`, and
 `vars.sha_version` (`SST-CFG040`), which SST supplies from the commit being
-published. A key the schema does not know at all is only a warning
-(`SST-CFG003`).
+published. A key the schema does not know at all is a warning (`SST-CFG003`),
+unless it is a near miss of a top-level block (`SST-CFG007`).
 
 **Rejected.** Keeping removed keys as escape hatches, or treating them like
 unknown keys. A switch on a check that must never be skipped makes it
@@ -114,15 +114,18 @@ Drawn from: [configuration schema](../../snowflake_semantic_tools/domain/model/c
 
 ### SST runs dbt, and never imports it
 
-**Chosen.** By default SST runs `dbt parse` for the selected target, as an
-argument list through a subprocess runner and never through a shell, and reads
-the manifest it just wrote. `--manifest` reads a given manifest instead, and on
-that path a model file that no longer matches the manifest's checksum is an
-error (`SST-DBT005`). `dbt-snowflake` is an optional extra.
+**Chosen.** By default SST runs `dbt parse` (or `dbt compile`, as `dbt.command`
+says) for the selected target, as an argument list through a subprocess runner
+and never through a shell, and reads the manifest it just wrote. `--manifest`
+reads a given manifest instead, and on that path a model file that no longer
+matches the manifest's checksum is an error (`SST-DBT005`) unless
+`--allow-stale-manifest` is given. `dbt.invoke: false` opts out of running dbt
+and reads the manifest at dbt's target path. `dbt-snowflake` is an optional
+extra.
 
-**Rejected.** Reading whatever manifest is on disk, which may be stale or for
-another target; and dbt's Python API, which ties SST to dbt's internals and
-release cadence when the manifest is the interface dbt documents.
+**Rejected.** Reading by default whatever manifest is on disk, which may be
+stale or for another target; and dbt's Python API, which ties SST to dbt's
+internals and release cadence when the manifest is the interface dbt documents.
 
 ### Manifest schema versions are an explicit set
 
@@ -140,8 +143,8 @@ proves it.
 **Chosen.** A model's columns, its `meta.sst` metadata, and its location come
 from the manifest, and a view names each table for its dbt model, using the
 model's `alias:` only in the relation. `primary_key` and `unique_keys` live in
-the model's `config.meta.sst`, so every view that reads the model renders the
-same keys. `meta.sst` `database` and `schema` are read only to be refused
+the model's `meta.sst`, so every view that reads the model renders the same
+keys. `meta.sst` `database` and `schema` are read only to be refused
 (`SST-DBT030`).
 
 **Rejected.** Re-reading dbt's YAML, which can disagree with dbt's own
@@ -159,8 +162,10 @@ relation lacks is reported (`SST-VAL325`) and left in place.
 documented.
 
 Drawn from: [dbt invocation](../../snowflake_semantic_tools/adapters/dbt/invoke.py),
+[project source](../../snowflake_semantic_tools/adapters/project_source.py),
 [dbt manifest reader](../../snowflake_semantic_tools/adapters/dbt/manifest.py),
 [stale models](../../snowflake_semantic_tools/adapters/dbt/project.py),
+[view tables](../../snowflake_semantic_tools/adapters/yaml/semantic/build.py),
 [template resolver](../../snowflake_semantic_tools/domain/resolve/template.py),
 [enrich](../../snowflake_semantic_tools/app/enrich.py).
 
@@ -186,8 +191,8 @@ unmatched text alone, which publishes it verbatim on a green build.
 **Chosen.** `{{ table() }}` and `{{ column() }}` are errors wherever they appear
 (`SST-REF034`, `SST-REF035`), and so are the other hard-deprecated 0.3 forms: a
 0.3 field spelling (`SST-PRS020`), 0.3 key metadata (`SST-DBT032`), and inline
-view filters (`SST-VAL403`). Each names its replacement, and `sst migrate refs`
-performs the reference rename.
+view filters (`SST-VAL403`). Each names its replacement, and
+`sst migrate refs --write` performs the reference rename.
 
 **Rejected.** Accepting 0.3 input with a deprecation warning. The resolver would
 carry two dialects indefinitely, and a project could publish without ever
@@ -208,6 +213,7 @@ Drawn from: [YAML parser](../../snowflake_semantic_tools/adapters/yaml/parse.py)
 [template scanner](../../snowflake_semantic_tools/domain/parse/template.py),
 [template resolver](../../snowflake_semantic_tools/domain/resolve/template.py),
 [member build](../../snowflake_semantic_tools/adapters/yaml/semantic/build_members.py),
+[metric depth](../../snowflake_semantic_tools/domain/resolve/depth.py),
 [reference codes](../../snowflake_semantic_tools/domain/diagnostics/specs/ref.py),
 [reference migration](../../snowflake_semantic_tools/app/migrate_refs.py).
 
@@ -218,8 +224,8 @@ Drawn from: [YAML parser](../../snowflake_semantic_tools/adapters/yaml/parse.py)
 **Chosen.** A metric, relationship, filter, or verified query joins every view
 whose tables include all of its own. A member without `tables:` takes the
 models its expression references; a derived metric takes those of the metrics
-it names. `tables: []` is an error (`SST-PRS102`), and a member that reaches no
-view is a warning (`SST-MEM005`). A view may narrow what it exposes with
+it names. A metric's `tables: []` is an error (`SST-PRS102`), and a member that
+reaches no view is a warning (`SST-MEM005`). A view may narrow what it exposes with
 include or exclude lists of columns, metrics, and relationships.
 
 **Rejected.** Membership by listing, under which every new metric is an edit of
@@ -228,9 +234,11 @@ no author intends.
 
 ### Clause order is Snowflake's; member order is sorted
 
-**Chosen.** Clauses render in the order Snowflake's grammar defines. Tables
-render in the order authored; every other member list renders sorted by
-qualified name.
+**Chosen.** Clauses render in the order the server accepts, which for
+`MAX_STALENESS` is not the published grammar's. Tables render in the order
+authored; relationships, facts, dimensions, and metrics render sorted by
+qualified name. Variables and verified queries render in the order they are
+found.
 
 **Rejected.** Authored order for members. Sorting keeps a re-render
 byte-identical when an unrelated column is added, so the fingerprint changes
@@ -244,11 +252,12 @@ Drawn from: [membership](../../snowflake_semantic_tools/domain/resolve/membershi
 
 ### Rendering is separate from execution
 
-**Chosen.** The domain ring renders each artifact into a payload and the
-statements that publish it, as a pure function; `apply` executes them. Import
-contracts keep I/O, the clock, and the environment out of the domain, and an
-audit hook refuses a file, socket, or process event inside a pure call
-(`SST-INT002`).
+**Chosen.** Compile renders each artifact into a payload and the statements
+that publish it inside a pure phase, from the domain ring's renderers; `apply`
+executes them, and a composite type's handler builds its statements from the
+rendered artifact. Import contracts keep I/O, the clock, and the environment
+out of the domain, and an audit hook refuses a file, socket, or process event
+inside a pure phase (`SST-INT002`).
 
 **Rejected.** Rendering and executing in one call. "What would run" is then
 unavailable offline, and a golden test of rendered SQL needs an account.
@@ -280,8 +289,11 @@ which adds a version per experiment to the object consumers use.
 ### Stages are created when absent, and never changed
 
 **Chosen.** Before its first upload to a stage, a run creates it with
-`CREATE STAGE IF NOT EXISTS` and server-side encryption. A stage of another kind
-fails the change; SST never alters, replaces, or drops a stage.
+`CREATE STAGE IF NOT EXISTS`: with server-side encryption for agent
+specifications, skills, plugins, and profiles, and with the file format eval
+runs read for an eval's configuration. A stage of another kind, or an eval
+configuration stage with another file format (`SST-APL028`), fails the change;
+SST never alters, replaces, or drops a stage.
 
 **Rejected.** Requiring the stage in advance, which lets a plan report success
 on a fresh schema and every agent fail at apply.
@@ -292,7 +304,8 @@ Drawn from: [rendered artifact](../../snowflake_semantic_tools/domain/model/life
 [agent statements](../../snowflake_semantic_tools/app/compile/agents/compiled.py),
 [temporary agents](../../snowflake_semantic_tools/app/apply/temporary.py),
 [extensions](../../snowflake_semantic_tools/app/lifecycle/extensions.py),
-[upload stages](../../snowflake_semantic_tools/app/apply/stages.py).
+[upload stages](../../snowflake_semantic_tools/app/apply/stages.py),
+[eval stage](../../snowflake_semantic_tools/app/lifecycle/evals.py).
 
 ## Manifest, state, and plans
 
@@ -325,7 +338,8 @@ the reviewed plan advisory.
 target, by default in the target's own database and schema; the local file is a
 cache. A run that writes takes the target's row in a lock table beside it,
 receives a fencing token it must present to extend, release, or write state, and
-re-reads state before writing. Both are standard tables.
+once it holds the lock re-reads state, refusing a plan whose state changed
+since. Both are standard tables.
 
 **Rejected.** A local state file, which a fresh CI runner lacks and two machines
 would each believe; and hybrid tables, which would enforce the lock row's key
@@ -352,7 +366,8 @@ SST did not create and cannot vouch for.
 stays published and is recorded in state; apply never rolls back. `--partial`
 plans around errors up front: it goes ahead with every artifact that has none
 and depends on nothing that does, lists each one it leaves out (`SST-PLN032`),
-still exits 1, and cannot be combined with `--prune`.
+still exits 1, and cannot be combined with `--prune`. An error it cannot trace
+to an artifact leaves nothing to exclude, and the run stops (`SST-PLN033`).
 
 **Rejected.** Rolling back a run, which is a second set of writes that can fail
 in its turn when the next plan already shows what remains; all or nothing for
@@ -386,6 +401,7 @@ held and the run unrecorded; and prompting where nobody can answer, which hangs.
 Drawn from: [manifest](../../snowflake_semantic_tools/domain/state/manifest.py),
 [change classification](../../snowflake_semantic_tools/domain/plan/classify.py),
 [saved plan](../../snowflake_semantic_tools/domain/state/saved_plan.py),
+[partial runs](../../snowflake_semantic_tools/app/partial.py),
 [state](../../snowflake_semantic_tools/app/state.py),
 [run lock](../../snowflake_semantic_tools/domain/state/lock.py),
 [lock table](../../snowflake_semantic_tools/adapters/snowflake/connector/lock_table.py),
@@ -417,9 +433,11 @@ and a bare replace drops every explicit grant and reports success.
 
 **Chosen.** Apply compares the explicit grants after a replace with those before
 it, by privilege, grantee, and grant option, and fails the change when one is
-missing (`SST-APL009`). It refuses to run a replace that should carry
-`COPY GRANTS` and does not (`SST-APL004`), and `plan` warns when a replace
-targets an object with explicit grants (`SST-PLN013`).
+missing (`SST-APL009`); grants it cannot read back leave the change applied
+with a warning that they are unverified (`SST-APL008`). It refuses to run a
+replace that should carry `COPY GRANTS` and does not (`SST-APL004`), and
+`plan` warns when a replace targets an object with explicit grants
+(`SST-PLN013`) unless `--no-grants` skips the reads.
 
 **Rejected.** Trusting the statement. A replace that loses a grant succeeds, and
 consumers find out first.
@@ -434,9 +452,9 @@ Drawn from: [artifact registry](../../snowflake_semantic_tools/domain/model/regi
 ### Every problem has a stable code
 
 **Chosen.** Each problem is a registered diagnostic with a code, a severity, a
-message template, and a suggestion. A retired number is never reused, and the
-registry refuses one (`SST-REG017`). `VAL` is one area split by hundreds, one
-band per artifact family.
+message template, and, for most, a suggestion. A retired number is never
+reused, and the registry refuses one (`SST-REG017`). `VAL` is one area split by
+hundreds, one band per artifact or member family.
 
 **Rejected.** Free-form messages, recycled numbers, and separate areas for
 agents, evals, and skills. A code is a contract users write into overrides,
@@ -445,10 +463,10 @@ baselines, and CI scripts, and a new area changes its number.
 ### Severity resolves in one order, and `--strict` has no exemptions
 
 **Chosen.** Declared severity, then the project's per-code override, then
-strict promotion. `--strict` promotes every warning; a code the registry marks
-non-demotable cannot be overridden below error (`SST-CFG033`). A diagnostic the
-baseline holds never blocks, and is counted rather than shown, until the
-baseline expires.
+strict promotion. `--strict` promotes every warning about what the run
+selects; a code the registry marks non-demotable cannot be overridden below
+error (`SST-CFG033`). A diagnostic the baseline holds never blocks, and is
+counted rather than shown, until the baseline expires.
 
 **Rejected.** Exempting rules from `--strict`, which is a second, silent
 severity policy; and turning a rule off while a backlog is fixed, which also
@@ -456,8 +474,9 @@ hides every new instance of it.
 
 ### Reports are complete
 
-**Chosen.** An artifact with an error is still checked, so every error appears
-in one run, but it is not built. A diagnostic that only follows from another is
+**Chosen.** One artifact's error does not stop the others being checked, so a
+run reports every artifact's errors at once; an artifact with an error is not
+built. A diagnostic that only follows from another is
 downgraded to info and counted (`--show-cascade` shows it). A connected rule
 that could not run is reported as `SST-VAL020`. `--output json` lists every
 diagnostic at every severity, baselined or not.
@@ -514,7 +533,8 @@ agent, so a fixed number either flaps or is too loose to fire.
 ### The required gate is offline
 
 **Chosen.** Every check a pull request or a release needs runs with no account
-and no secrets, and no test outside the `live` marker may reach the network.
+and no secrets, and the test process refuses network access to any test not
+marked `live`.
 Checks against a real account run only in a manually triggered workflow, with
 credentials a maintainer supplies.
 

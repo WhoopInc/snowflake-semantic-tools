@@ -43,11 +43,14 @@ SST answers that with one engine for every artifact type:
   publish target, dependencies, and source files, so a view and the agent that
   queries it are nodes in one graph and are published in dependency order.
 - **One reference system.** Authored files name things -- a dbt model, a metric,
-  a tool, a skill -- and never a database or schema. Every name resolves against
-  the target being built, and a name that does not resolve is an error.
+  a tool, a skill -- and not a database or schema; the exception is a tool's
+  `reference:` entry, an object another project owns, named once per target.
+  Every name resolves against the target being built, and a name that does not
+  resolve is an error.
 - **One validation model.** Every problem is a diagnostic with a stable code and
-  a registered severity, and `validate`, `plan`, and `apply` run the same
-  checks, so a project that fails one cannot be applied by another.
+  a registered severity, and `plan` and `apply` run the checks `validate`
+  runs, so a project that fails validation is not applied unless
+  `--no-validate` explicitly skips them.
 - **One publish path.** Every type goes through the same plan, run lock, and
   state table, and one grant policy. A type differs only in what its registry
   entry declares, its renderer, and, for a type that spans several objects, its
@@ -71,8 +74,10 @@ a change on regressions against a captured baseline.
 
 Drawn from: [manifest](../../snowflake_semantic_tools/domain/state/manifest.py),
 [template resolver](../../snowflake_semantic_tools/domain/resolve/template.py),
+[tool references](../../snowflake_semantic_tools/adapters/yaml/tools.py),
 [severity policy](../../snowflake_semantic_tools/domain/diagnostics/policy.py),
 [plan](../../snowflake_semantic_tools/app/plan.py),
+[validation skip](../../snowflake_semantic_tools/cli/wiring/plan.py),
 [purity guard](../../snowflake_semantic_tools/app/purity.py),
 [metric restriction codes](../../snowflake_semantic_tools/domain/diagnostics/specs/val_metric.py),
 [smoke suite](../../snowflake_semantic_tools/app/smoke.py),
@@ -81,18 +86,20 @@ Drawn from: [manifest](../../snowflake_semantic_tools/domain/state/manifest.py),
 ## What SST is not
 
 - **Not a replacement for dbt.** dbt builds the tables and stays the source of
-  truth for what a model is and which columns it has. SST runs `dbt parse` as a
-  subprocess and reads the manifest it writes; it never imports dbt. A project
-  that publishes only skills, plugins, and profiles needs no dbt at all.
+  truth for what a model is and which columns it has. SST runs dbt as a
+  subprocess (`dbt parse` by default) and reads the manifest it writes; it
+  never imports dbt. A project that publishes only skills, plugins, and
+  profiles needs no dbt project or installation, only a `profiles.yml` that
+  declares its targets.
 - **Not an access-control tool.** SST never grants new access. The only grants
   it issues re-issue the explicit grants an object held before SST replaced it,
   where the object's type cannot carry `COPY GRANTS`; otherwise it replaces with
   `COPY GRANTS` or does not replace at all, and it verifies the grants
   afterwards. Who may use a published object is decided outside SST.
 - **Not a query engine.** Snowflake executes every query. SST compiles to
-  Snowflake objects and runs queries only to check them -- syntax checks,
-  connected validation, smoke probes, evaluation runs -- and to read what
-  `sst enrich` derives.
+  Snowflake objects, and beyond publishing them and reading what it publishes
+  to, runs queries only to check them -- syntax checks, connected validation,
+  smoke probes, evaluation runs -- and to read what `sst enrich` derives.
 - **Not a UI.** It is a CLI whose JSON output is a contract for CI.
 - **Not a library.** There is no Python API; new behaviour is a command or an
   option.
@@ -103,6 +110,7 @@ Drawn from: [manifest](../../snowflake_semantic_tools/domain/state/manifest.py),
 
 Drawn from: [dbt invocation](../../snowflake_semantic_tools/adapters/dbt/invoke.py),
 [dbt manifest reader](../../snowflake_semantic_tools/adapters/dbt/manifest.py),
+[profiles without dbt](../../snowflake_semantic_tools/adapters/dbt/profiles.py),
 [artifact registry](../../snowflake_semantic_tools/domain/model/registry.py),
 [grant handling in apply](../../snowflake_semantic_tools/app/apply/one.py),
 [upload stages](../../snowflake_semantic_tools/app/apply/stages.py),
