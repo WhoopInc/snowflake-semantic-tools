@@ -115,6 +115,7 @@ Paths are relative to the manifest root; `<id>` is a node's unique id.
 | Manifest path | What SST uses it for | When it is missing or wrong |
 |---|---|---|
 | `metadata.dbt_schema_version` | the schema-version gate | absent or unparseable: `SST-DBT018`; outside the accepted set: `SST-DBT017` |
+| `metadata.dbt_version` | which forms of a model file the staleness check hashes: whitespace-collapsed from 1.12, raw or stripped before | absent or not a release number: every form is tried, so a whitespace-only edit may read as fresh |
 | `metadata.project_name` | tells the root project's models from a package's: only root-project models are enriched or checked for staleness | absent: only models with no `package_name` count as the root project's |
 | `nodes` | every model and test | not an object: the run stops, naming the path |
 | `nodes.<id>.resource_type` | `model` selects models, `test` selects tests; every other node is ignored | no model at all: `SST-DBT001` |
@@ -148,7 +149,8 @@ sources; each model checksum is one the staleness check recognises; and the
 reference project renders the same semantic views from it as the DDL goldens
 pin. The committed manifests must also read as one catalog apart from the dbt
 version and the checksums, which dbt 1.12 computes over whitespace-collapsed
-code where earlier releases hash the file as read.
+code where earlier releases hash the file as read; the staleness check compares
+each manifest's checksums in the form its `metadata.dbt_version` hashes.
 
 Drawn from: [manifest.py](../../snowflake_semantic_tools/adapters/dbt/manifest.py), [dbt.py](../../snowflake_semantic_tools/domain/model/dbt.py), [dbt_seam.py](../../snowflake_semantic_tools/domain/validate/dbt_seam.py), [semantic/dbt.py](../../snowflake_semantic_tools/domain/validate/semantic/dbt.py), [build.py](../../snowflake_semantic_tools/adapters/yaml/semantic/build.py), [enrich.py](../../snowflake_semantic_tools/app/enrich.py), [columns.py](../../snowflake_semantic_tools/domain/enrich/columns.py), [tool.py](../../snowflake_semantic_tools/domain/validate/tool.py), [views.py](../../snowflake_semantic_tools/domain/validate/semantic/views.py), [phases.py](../../snowflake_semantic_tools/adapters/yaml/semantic/phases.py), [project.py](../../snowflake_semantic_tools/adapters/dbt/project.py), [test_dbt_manifest_contract.py](../../tests/contract/test_dbt_manifest_contract.py).
 

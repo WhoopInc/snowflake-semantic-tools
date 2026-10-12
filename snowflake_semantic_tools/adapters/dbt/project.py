@@ -8,6 +8,7 @@ dbt_project.yml as plain YAML, as dbt does. This package never parses an SST fil
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
 from hashlib import sha256
 from pathlib import Path
@@ -107,16 +108,29 @@ def model_paths(project_dir: Path, read_yaml: YamlReader) -> tuple[tuple[str, ..
     return DEFAULT_MODEL_PATHS, (diagnostic,)
 
 
-def _fresh(path: Path, checksum: str) -> bool:
-    """Report whether a model file still has the checksum dbt recorded, in any form dbt hashes it.
+def _fresh(path: Path, checksum: str, dbt_version: str | None) -> bool:
+    """Report whether a model file still has the checksum dbt recorded, in the form it hashes it.
 
     dbt hashes the file raw or stripped up to 1.11, and from 1.12 with every run of whitespace
-    collapsed to one space, so an edit that only changes whitespace is not stale there either.
+    collapsed to one space, so an edit that only changes whitespace is not stale there. The
+    manifest's `metadata.dbt_version` chooses the forms; every form is tried when it names no
+    version this can read, which may call a whitespace-only edit fresh.
     """
     raw = path.read_bytes()
     text = raw.decode("utf-8", "replace")
-    forms = (raw, text.strip().encode(), " ".join(text.split()).encode())
+    collapsed = " ".join(text.split()).encode()
+    release = _release(dbt_version)
+    if release is None:
+        forms: tuple[bytes, ...] = (raw, text.strip().encode(), collapsed)
+    else:
+        forms = (collapsed,) if release >= (1, 12) else (raw, text.strip().encode())
     return checksum in {sha256(form).hexdigest() for form in forms}
+
+
+def _release(dbt_version: str | None) -> tuple[int, int] | None:
+    """The major and minor release a manifest's `dbt_version` names; None when it names none."""
+    found = re.match(r"(\d+)\.(\d+)", dbt_version or "")
+    return (int(found.group(1)), int(found.group(2))) if found else None
 
 
 def stale_models(project_dir: Path, catalog: DbtCatalog, paths: tuple[str, ...]) -> tuple[Diagnostic, ...]:
@@ -136,7 +150,7 @@ def stale_models(project_dir: Path, catalog: DbtCatalog, paths: tuple[str, ...])
         if not any(file == root or file.startswith(f"{root}/") for root in paths):
             continue
         path = project_dir / file
-        if path.is_file() and not _fresh(path, model.checksum):
+        if path.is_file() and not _fresh(path, model.checksum, catalog.dbt_version):
             found.append(D("SST-DBT005", origin=Origin(file), subject=f"dbt_model:{model.name}", value=file))
     return tuple(found)
 

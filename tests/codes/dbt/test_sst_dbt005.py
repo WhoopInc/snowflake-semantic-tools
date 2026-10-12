@@ -62,17 +62,28 @@ FORMS: dict[str, Callable[[str], str]] = {
     "stripped": str.strip,
     "collapsed": lambda text: " ".join(text.split()),
 }
+# The forms the manifest's `dbt_version` accepts; one that names no readable release accepts all.
+ACCEPTED = {
+    "1.11.15": {"raw", "stripped"},
+    "1.12.5": {"collapsed"},
+    "2.0.0-beta.1": {"collapsed"},
+    None: set(FORMS),
+    "unknown": set(FORMS),
+}
 
 
-@pytest.mark.parametrize("form", sorted(FORMS))
-def test_sst_dbt005_silent_for_each_form_dbt_hashes_a_model_in(tmp_path: Path, form: str) -> None:
+@pytest.mark.parametrize(("version", "form"), [(version, form) for version in ACCEPTED for form in sorted(FORMS)])
+def test_sst_dbt005_compares_the_forms_the_manifests_dbt_release_hashes_a_model_in(
+    tmp_path: Path, version: str | None, form: str
+) -> None:
     on_disk = "-- the products\nselect 1   as products_id\n\n"
     node = model_node("products", original_file_path="models/products.sql", package_name="fixture")
     node["checksum"] = {"name": "sha256", "checksum": sha256(FORMS[form](on_disk).encode()).hexdigest()}
-    project = SmallProject(
-        tmp_path, files={"models/products.sql": on_disk}, document=manifest({"model.fixture.products": node})
-    )
-    assert coded(project.load().diagnostics, "SST-DBT005") == []
+    document = manifest({"model.fixture.products": node})
+    document["metadata"]["dbt_version"] = version
+    project = SmallProject(tmp_path, files={"models/products.sql": on_disk}, document=document)
+    stale = coded(project.load().diagnostics, "SST-DBT005")
+    assert (stale == []) is (form in ACCEPTED[version])
 
 
 def test_sst_dbt005_fires_for_the_manifest_on_disk_under_dbt_invoke_false(tmp_path: Path) -> None:
