@@ -261,8 +261,17 @@ def test_each_exception_ends_the_run_with_its_exit_code(
         ),
         pytest.param(
             SnowflakePortError("refused", diagnostic=D("SST-PRT001", value="acme", detail="refused")),
-            [],
-            id="own-diagnostic",
+            ["SST-SNO001"],
+            id="own-diagnostic-unrecognised",
+        ),
+        pytest.param(
+            SnowflakePortError(
+                "003001 (42501): Insufficient privileges to operate on schema 'S'",
+                errno=3001,
+                diagnostic=D("SST-PRT004", value="the session's role", detail="a privilege"),
+            ),
+            ["SST-SNO004"],
+            id="own-diagnostic-recognised",
         ),
     ],
 )

@@ -478,13 +478,15 @@ def snowflake_failure(exc: SnowflakePortError) -> tuple[Diagnostic, int]:
 def _classified(exc: SnowflakePortError) -> tuple[Diagnostic, int, Diagnostic]:
     """Return `snowflake_failure`'s diagnostic and exit code, and the diagnostic the run log records.
 
-    That is the error's own diagnostic when it carries one, and otherwise the signature it matched.
+    The run log records the signature the error matched even when the error carries its own
+    diagnostic: the session attaches one to every failure it reads, so an unrecognised refusal it
+    reports as SST-PRT001 must still count as SST-SNO001.
     """
-    if exc.diagnostic is not None:
-        return exc.diagnostic, CONNECTION, exc.diagnostic
     message = str(exc)
     signature = match_signature(message, errno=exc.errno, sqlstate=exc.sqlstate)
     matched = snowflake_diagnostic(signature.code, message, value="the object", subject="cli")
+    if exc.diagnostic is not None:
+        return exc.diagnostic, CONNECTION, matched
     if signature.code == _AUTHENTICATION_SIGNATURE:
         return D("SST-PRT002", subject="cli", value="Snowflake"), CONNECTION, matched
     if signature.code in _CONNECTION_SIGNATURES:
