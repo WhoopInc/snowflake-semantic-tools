@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.authored import MetricDef
+from snowflake_semantic_tools.domain.model.authored import ACCESS_MODIFIERS, MetricDef
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.validate.column_metadata import is_numeric, is_sentinel, is_temporal
@@ -111,28 +111,31 @@ def _column_description_diagnostics(model: DbtModel, column: DbtColumn) -> list[
 
 
 def _column_meta_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
-    """Report each `meta.sst` key of a column that SST does not read, and a private dimension.
+    """Report a column's `meta.sst` keys SST does not read, and an access modifier it cannot honour.
 
-    A dimension's `access_modifier: private_access` is reported as unsupported rather than
-    as an unread key: it is read only to refuse it.
+    A column renders as public, so only `public_access` is honoured: a private column is
+    refused rather than published as public.
 
     Diagnostics:
+        SST-VAL333: when a column's `access_modifier` is neither `public_access` nor
+            `private_access`.
         SST-VAL222: when a dimension declares `access_modifier: private_access`.
+        SST-VAL334: when any other column declares `access_modifier: private_access`.
         SST-PRS004: when a column's `meta.sst` holds a key SST does not read, once per key.
     """
     artifact, subject = _column_keys(model, column)
-    # Snowflake's docs say a dimension cannot be private; the server accepts and enforces it,
-    # and SST refuses it anyway (docs/design/snowflake-behaviour.md).
-    private = column.access_modifier == "private_access" and column.column_type in ("dimension", "time_dimension")
+    modifier = column.access_modifier
     diagnostics: list[Diagnostic] = []
-    if private:
-        diagnostics.append(
-            D("SST-VAL222", artifact=artifact, member=column.name, value=column.access_modifier, subject=subject)
-        )
+    if modifier is not None and modifier not in ACCESS_MODIFIERS:
+        diagnostics.append(D("SST-VAL333", artifact=artifact, member=column.name, found=modifier, subject=subject))
+    elif modifier == "private_access" and column.column_type in ("dimension", "time_dimension"):
+        # Snowflake's docs say a dimension cannot be private; the server accepts and enforces it,
+        # and SST refuses it anyway (docs/design/snowflake-behaviour.md).
+        diagnostics.append(D("SST-VAL222", artifact=artifact, member=column.name, value=modifier, subject=subject))
+    elif modifier == "private_access":
+        diagnostics.append(D("SST-VAL334", artifact=artifact, member=column.name, subject=subject))
     diagnostics.extend(
-        D("SST-PRS004", artifact=subject, field=f"meta.sst.{key}", subject=subject)
-        for key in column.unknown_meta_keys
-        if not (private and key == "access_modifier")
+        D("SST-PRS004", artifact=subject, field=f"meta.sst.{key}", subject=subject) for key in column.unknown_meta_keys
     )
     return diagnostics
 

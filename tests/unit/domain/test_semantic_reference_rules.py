@@ -112,9 +112,10 @@ def test_every_column_a_view_uses_declares_its_role_type_samples_and_description
             "VARCHAR",
             "dimension",
             access_modifier="private_access",
-            unknown_meta_keys=("access_modifier", "odd"),
+            unknown_meta_keys=("odd",),
         ),
         column("typed", "NUMBER", "fact", declared_data_type="FLOAT", access_modifier="private_access"),
+        column("loose", "VARCHAR", "dimension", access_modifier="hidden"),
         column("sentinel", "VARCHAR", "dimension", sample_values=("NaN", "ok"), is_enum=False),
     )
     model = DbtModel("model.t.wide", "wide", "DB.S.WIDE", ("no_role",), (), columns)
@@ -129,7 +130,9 @@ def test_every_column_a_view_uses_declares_its_role_type_samples_and_description
         ("SST-VAL003", "bare"),
         ("SST-VAL222", "private"),
         ("SST-PRS004", "private"),
+        ("SST-VAL334", "typed"),
         ("SST-DBT004", "typed"),
+        ("SST-VAL333", "loose"),
         ("SST-VAL316", "sentinel"),
     ]
     unused = dbt_column_diagnostics({"wide": model}, frozenset(("orders",)))

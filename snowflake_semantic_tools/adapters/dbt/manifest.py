@@ -23,7 +23,9 @@ _SCHEMA_URL = re.compile(r"^https?://schemas\.getdbt\.com/dbt/manifest/v(\d+)(?:
 # The `meta.sst` keys SST reads. `database` and `schema` are read only to be
 # refused (SST-DBT030); anything else is reported where a view uses the model.
 MODEL_META_KEYS = frozenset(("primary_key", "unique_keys", "database", "schema"))
-COLUMN_META_KEYS = frozenset(("column_type", "data_type", "synonyms", "sample_values", "is_enum", "exclude"))
+COLUMN_META_KEYS = frozenset(
+    ("column_type", "data_type", "synonyms", "sample_values", "is_enum", "exclude", "access_modifier")
+)
 
 # Tests whose columns hold keys. A numeric column one of them names is an identifier, so
 # enrich derives it as a dimension, not as a fact to sum.

@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 37 codes
 - [Membership (MEM)](#membership-mem) -- 24 codes
-- [Validation (VAL)](#validation-val) -- 298 codes
+- [Validation (VAL)](#validation-val) -- 300 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
@@ -3348,6 +3348,28 @@ Fix: remove the entry; the column is excluded from every view
 Raised when a metric left in the view's scope names, in `using_relationships`, a relationship the view's scope removes, or one whose tables the view does not hold.
 
 Fix: include the relationship, or exclude the metric
+
+### SST-VAL333
+
+**Column access_modifier holds an unrecognised value** (error)
+
+`<artifact>: column '<member>' declares access_modifier '<found>'`
+
+Raised when a column's `meta.sst.access_modifier` is neither `public_access` nor `private_access`.
+
+Fix: use `public_access`, or remove `access_modifier` from the column
+
+### SST-VAL334
+
+**Fact declares a private access modifier** (error)
+
+`<artifact>: column '<member>' declares access_modifier 'private_access'; SST does not render a private fact`
+
+Raised when a column that is not a `dimension` or `time_dimension` carries `meta.sst.access_modifier: private_access`.
+
+Fix: remove `access_modifier` from the column, or hide what it measures behind a private metric
+
+Note: A fact renders without `PRIVATE`, so it would publish as public; it is refused instead. A private dimension is SST-VAL222.
 
 ### SST-VAL401
 
