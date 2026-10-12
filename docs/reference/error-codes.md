@@ -6961,7 +6961,7 @@ Raised when Snowflake rejected a login: error 250001 with authentication wording
 
 Fix: refresh the credential
 
-Note: When a command's own connection fails this way, the command reports SST-PRT001.
+Note: When a command's own session is refused this way, the command reports SST-PRT002.
 
 ### SST-SNO014
 
@@ -7115,7 +7115,7 @@ Fix: check the account, the network and the credential
 
 `authentication failed for <value>`
 
-Raised when Snowflake rejects the session's credential while connecting.
+Raised when Snowflake rejects the session's credential, while connecting or later in the run.
 
 Fix: refresh the credential
 

@@ -29,7 +29,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Authentication failed",
         "authentication failed for {value}",
         "refresh the credential",
-        condition="Snowflake rejects the session's credential while connecting",
+        condition="Snowflake rejects the session's credential, while connecting or later in the run",
         precheck=Precheck.RUNTIME,
     ),
     spec(

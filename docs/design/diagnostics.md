@@ -280,13 +280,15 @@ flowchart TD
     match -- "no row matches" --> unrecognised["UNRECOGNISED"]
     match -- "a row matches" --> row{"which row"}
     unrecognised --> prt["SST-PRT001, exit 5"]
-    row -- "SST-SNO013 or SST-SNO014" --> prt
+    row -- "SST-SNO014" --> prt
+    row -- "SST-SNO013" --> auth["SST-PRT002, exit 5"]
     row -- "a privilege or transient row, or SST-SNO011" --> five["snowflake_diagnostic, exit 5"]
     row -- "any other row" --> one["snowflake_diagnostic, exit 1"]
 ```
 
-A failed login, a dropped connection, and an error no signature recognises are reported as the
-connection failing, `SST-PRT001`. A refused privilege or a missed
+A rejected login is reported as the credential rejected, `SST-PRT002`, as it is when connecting;
+a dropped connection and an error no signature recognises are reported as the connection failing,
+`SST-PRT001`. A refused privilege or a missed
 deadline is Snowflake not cooperating, exit 5; any other refusal, such as an object that does not
 exist or a compilation error, is a statement Snowflake rejected, exit 1.
 

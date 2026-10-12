@@ -205,9 +205,9 @@ def test_a_failing_human_report_fails_the_command_like_its_body() -> None:
         pytest.param(
             SnowflakePortError("390100: Incorrect username or password was specified.", errno=390100),
             5,
-            "error[SST-PRT001]: could not connect to Snowflake",
+            "error[SST-PRT002]: authentication failed for Snowflake",
             5,
-            ["SST-PRT001"],
+            ["SST-PRT002"],
             id="port-error-authentication",
         ),
         pytest.param(
@@ -308,3 +308,28 @@ def test_a_command_logs_a_refusal_that_reaches_its_guard_in_its_project(tmp_path
     result = CliRunner().invoke(command, ["--project-dir", str(tmp_path)])
     assert result.exit_code == 5 and "SST-PRT001" in result.output
     assert signature_report(tmp_path / "target" / "sst")["unmatched"] == 1
+
+
+# One error per signature whose spec note names the code a command reports for it instead.
+_REPORTED_INSTEAD = {
+    "SST-SNO001": SnowflakePortError("some unknown failure"),
+    "SST-SNO013": SnowflakePortError("Incorrect username or password was specified.", errno=390100),
+    "SST-SNO014": SnowflakePortError("250002 (08003): Connection is closed", errno=250002, sqlstate="08003"),
+}
+
+
+def test_a_spec_note_names_the_code_the_runner_reports_for_its_signature() -> None:
+    import re
+
+    from snowflake_semantic_tools.cli.runner import snowflake_failure
+    from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY
+
+    named = {
+        code: found.group(1)
+        for code, entry in ERROR_REGISTRY.items()
+        if (found := re.search(r"the command reports (SST-[A-Z]{3}\d{3})", entry.note or ""))
+    }
+    assert set(named) == set(_REPORTED_INSTEAD)
+    for code, reported in named.items():
+        diagnostic, exit_code = snowflake_failure(_REPORTED_INSTEAD[code])
+        assert (diagnostic.code, exit_code) == (reported, 5), code
