@@ -7,6 +7,7 @@ from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.tool import (
+    EXECUTE_AS,
     KNOWN_TOOL_TYPES,
     ToolCatalog,
     ToolGroup,
@@ -294,7 +295,6 @@ def _refused_body(member: ToolMember, catalog: ToolCatalog) -> bool:
 
 
 _LANGUAGES = ("java", "javascript", "python", "scala", "sql")
-_EXECUTE_AS = ("caller", "owner", "restricted caller")
 _REFRESH_MODES = ("auto", "full", "incremental")
 # dbt materializations that rebuild the relation on every run instead of merging into it.
 _REPLACING_MATERIALIZATIONS = frozenset(("table", "view"))
@@ -382,7 +382,7 @@ def _sql_values(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
             emit("SST-PRS003", field=key, expected="a Snowflake data type", found=repr(value))
     for key, value, allowed in (
         ("language", member.language, _LANGUAGES),
-        ("execute_as", member.execute_as, _EXECUTE_AS),
+        ("execute_as", member.execute_as, EXECUTE_AS),
         ("refresh_mode", member.refresh_mode, _REFRESH_MODES),
     ):
         if value and " ".join(value.casefold().split()) not in allowed:

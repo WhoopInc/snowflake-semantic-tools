@@ -14,6 +14,7 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     KeyStatus,
     routed_block,
 )
+from snowflake_semantic_tools.domain.model.tool import EXECUTE_AS
 from snowflake_semantic_tools.domain.validate.config import validate_config
 
 
@@ -141,6 +142,7 @@ def test_types_domains_bounds_and_fixed_values() -> None:
     assert _codes({"semantic_views": {"core": "flat"}}) == [("SST-CFG004", "config:semantic_views.core")]
     assert _codes({"vars": []}) == [("SST-CFG004", "config:vars")]
     assert _codes({"tools": {"+execute_as": "sudo"}}) == [("SST-CFG008", "config:tools.+execute_as")]
+    assert _codes({"tools": {"+execute_as": "restricted caller"}}) == []
     stage = {"+stage": "S"}
     assert _codes({"skills": {"stage": {**stage, "+layout": "by_profile"}}}) == [
         ("SST-VAL821", "config:skills.stage.+layout")
@@ -250,3 +252,7 @@ def test_key_summaries_describe_what_the_renderer_and_the_stage_channel_do() -> 
     # A profile publishes command and plugin trees beside the others.
     layout = CONFIG_KEYS["skills.stage.+layout"].summary
     assert all(f"`{tree}/`" in layout for tree in ("skills", "prompts", "mcp", "hooks", "commands", "plugins"))
+
+
+def test_the_execute_as_default_accepts_exactly_what_a_procedure_member_does() -> None:
+    assert CONFIG_KEYS["tools.+execute_as"].choices == EXECUTE_AS

@@ -214,6 +214,22 @@ def test_tool_defaults_cover_explicit_values_and_procedure_inheritance() -> None
         dbt_relations={},
     ).run_result()
     assert "EXECUTE AS OWNER" in result.rendered[0].ddl
+    inherited = ToolCatalog(
+        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(replace(procedure, execute_as=None),)),),
+        "dev",
+        frozenset(("dev",)),
+    )
+    restricted = CompileTools(
+        inherited,
+        database="DB",
+        schema="S",
+        warehouse="DEFAULT_WH",
+        target_lag=None,
+        embedding_model=None,
+        execute_as="restricted caller",
+        dbt_relations={},
+    ).run_result()
+    assert "EXECUTE AS RESTRICTED CALLER" in restricted.rendered[0].ddl
 
 
 def test_compiled_tool_publication_replaces_existing_search_comment() -> None:

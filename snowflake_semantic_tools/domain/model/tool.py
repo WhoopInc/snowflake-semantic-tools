@@ -278,6 +278,8 @@ class ToolCatalog:
 
 
 KNOWN_TOOL_TYPES = frozenset(kind.value for kind in ToolKind)
+# The rights a defined procedure runs with, as `EXECUTE AS` takes them, lower-cased with single spaces.
+EXECUTE_AS = ("caller", "owner", "restricted caller")
 CREATION_KEYS = frozenset(
     (
         "on",

@@ -130,10 +130,10 @@ Defaults for tool backing objects.
 |---|---|---|---|
 | `tools.+database` | string | the target database | Database for defined tool objects. |
 | `tools.+schema` | string | the target schema | Schema for defined tool objects. |
-| `tools.+warehouse` | string | the target warehouse | Warehouse for defined search services. |
+| `tools.+warehouse` | string | the target warehouse | Warehouse for defined search services and procedures that name none. |
 | `tools.+target_lag` | string |  | Target lag for defined search services. |
 | `tools.+embedding_model` | string |  | Embedding model for defined search services. |
-| `tools.+execute_as` | enum: `caller`, `owner` | `caller` | Rights a generic tool runs with. |
+| `tools.+execute_as` | enum: `caller`, `owner`, `restricted caller` | `caller` | Rights a defined procedure runs with (`EXECUTE AS`) when it names none. |
 | `tools.<route>` | block |  | Per-group override of the `+` keys above, keyed by group name, for a group with `define:` members (SST-CFG020). |
 
 ## semantic_views

@@ -15,6 +15,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX
+from snowflake_semantic_tools.domain.model.tool import EXECUTE_AS
 
 CONFIG_FILE = "sst_config.yml"
 # How many Snowflake sessions `plan`, `validate` and `apply` work on at once when nothing says.
@@ -317,15 +318,20 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("tools", _BLOCK, "Defaults for tool backing objects.", children=ChildPolicy.ROUTES),
     _key("tools.+database", _S, "Database for defined tool objects.", default="the target database"),
     _key("tools.+schema", _S, "Schema for defined tool objects.", default="the target schema"),
-    _key("tools.+warehouse", _S, "Warehouse for defined search services.", default="the target warehouse"),
+    _key(
+        "tools.+warehouse",
+        _S,
+        "Warehouse for defined search services and procedures that name none.",
+        default="the target warehouse",
+    ),
     _key("tools.+target_lag", _S, "Target lag for defined search services."),
     _key("tools.+embedding_model", _S, "Embedding model for defined search services."),
     _key(
         "tools.+execute_as",
         KeyKind.ENUM,
-        "Rights a generic tool runs with.",
+        "Rights a defined procedure runs with (`EXECUTE AS`) when it names none.",
         default="caller",
-        choices=("caller", "owner"),
+        choices=EXECUTE_AS,
     ),
     _removed("tools.+enabled", "omit the tools instead"),
     _key(
