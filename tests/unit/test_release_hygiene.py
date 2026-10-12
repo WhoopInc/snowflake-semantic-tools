@@ -12,9 +12,11 @@ WHAT IT DELIBERATELY DOES NOT ENCODE. Real company, person, account, role and
 warehouse names, and the names of documents that do not ship, are not listed here
 in the clear: a denylist naming them would republish exactly what it forbids. They
 are listed as SHA-256 digests of the case-folded word or path, and a committed line
-is checked token by token against them; only the places the project genuinely
-lives -- its licence, security policy, code owners and package metadata -- may name
-its owner. Every other pattern below is safe to publish.
+is checked against them: company words token by token, personal names only where
+they name a schema or package someone owns (`personal_namespace`), and document
+paths by their root, name and trailing segments (`design_doc_path`). Only the places
+the project genuinely lives -- its licence, security policy, code owners and package
+metadata -- may name its owner. Every other pattern below is safe to publish.
 """
 
 from __future__ import annotations
@@ -64,21 +66,31 @@ PERSONAL_NAMES = frozenset(
         "f68a241f6260c7607978dd8cb06c0f16364c93e938ed5ea1304bbb1a5aad4138",
     )
 )
-# A schema named for one engineer: `scratch.` or `dbt_` followed by their name.
-_NAMESPACE = re.compile(r"(?i)\b(?:scratch|dbt)[._]([a-z0-9_]+)")
+# A schema named for one engineer: `scratch.`, `dbt_` or `dbt-` followed by their name, quoted or
+# not, or a bare token that puts their name before `_scratch`, as `JDOE_SCRATCH_SST` does.
+_NAMESPACE = re.compile(r"(?i)\b(?:scratch|dbt)\"?[._-]\"?([a-z0-9_]+)")
+_OWNED_SCRATCH = re.compile(r"(?i)\b([a-z0-9]+(?:_[a-z0-9]+)*?)_scratch(?![a-z0-9])")
 
 
 def personal_namespace(line: str, names: frozenset[str] = PERSONAL_NAMES) -> bool:
-    """Whether `line` names a scratch or dbt schema that ends any of its parts in a name in `names`."""
-    for match in _NAMESPACE.finditer(line):
-        for part in match.group(1).casefold().split("_"):
+    """Whether `line` names a schema or package one engineer owns, by a name in `names`.
+
+    The candidates are what follows `scratch.`, `dbt_` or `dbt-` (a quoted identifier included,
+    as in `SCRATCH."JDOE_SST"`) and what precedes `_scratch` in one token. Each `_`-separated
+    part of a candidate matches when any suffix of it digests into `names`, so an initial
+    before the surname (`jdoe`) still matches.
+    """
+    candidates = [match.group(1) for pattern in (_NAMESPACE, _OWNED_SCRATCH) for match in pattern.finditer(line)]
+    for candidate in candidates:
+        for part in candidate.casefold().split("_"):
             if any(_digest(part[start:]) in names for start in range(len(part))):
                 return True
     return False
 
 
 # SHA-256 of each path into the document tree that does not ship, case-folded: the
-# files most often cited by name, and its top-level directories. A directory digested
+# files most often cited by name, its top-level directories, and the root of the private
+# planning tree `.gitignore` keeps out. A directory digested
 # as `dir/` is cited by any path under it; one digested as `dir/*doc` only by a
 # document (.md, .yml, .yaml) under it, because this repository has its own `dir/`.
 DESIGN_DOC_PATHS = frozenset(
@@ -94,8 +106,12 @@ DESIGN_DOC_PATHS = frozenset(
         "dab3991a2dc8dbaf34ce99ad0ed36731f5e827f75ad1247113892c94602ceba3",
         "dfcee006de17459ec1dbb5515e0c7a3386240771cbdfbee5591c668e236fd830",
         "f17dd853e33da0c5b9ff53c3b6b4f9c9a543112c99fd91f67f7f69f4b56f39be",
+        "1f3216ef8377362cd914299691eeb992fd98f005d624a20a7b47a0b43af6e90c",
     )
 )
+# Committed lines a rule would flag that must stay, by file and the digest of the stripped line:
+# the `.gitignore` entry that keeps the private planning tree out has to name its root.
+EXEMPT_LINES = frozenset(((".gitignore", "a480edcc3f25e54ee96a97524bd8a29a686ce2f17b5555494e9a9ef4e15d85e0"),))
 _PATH = re.compile(r"(?<![\w/.-])[\w.-]+(?:/[\w.-]+)*/?")
 _DOCUMENT = re.compile(r"\.(?:md|ya?ml)$")
 # A numbered chapter, `01-registry.md`: the shape of that tree, not a file in this one.
@@ -127,7 +143,7 @@ RULES: tuple[tuple[str, Callable[[str], object], str], ...] = (
     (
         "personal-namespace",
         personal_namespace,
-        "names a single engineer's scratch or dbt development schema",
+        "names a schema or package a single engineer owns",
     ),
     (
         "home-directory-path",
@@ -193,7 +209,7 @@ def test_committable_files_carry_no_environment_specific_content(
         for relative, text in committable
         if text is not None and relative != THIS_FILE
         for number, line in enumerate(text.splitlines(), start=1)
-        if matcher(line)
+        if matcher(line) and (relative, _digest(line.strip())) not in EXEMPT_LINES
     ]
     assert not hits, f"{rule}: a committed line {why}\n" + "\n".join(hits)
 
@@ -224,8 +240,20 @@ def test_the_company_identifier_check_matches_whole_words_case_folded() -> None:
 
 
 def test_every_digest_set_is_well_formed() -> None:
-    for digests, size in ((PERSONAL_NAMES, 2), (DESIGN_DOC_PATHS, 11)):
+    for digests, size in ((PERSONAL_NAMES, 2), (DESIGN_DOC_PATHS, 12)):
         assert len(digests) == size and all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in digests)
+
+
+def test_each_exempt_line_is_still_committed(committable: tuple[tuple[str, str | None], ...]) -> None:
+    # An exemption that matches no committed line would let the same text back in anywhere
+    # else in its file unnoticed once it moved, so a stale one fails.
+    present = {
+        (relative, _digest(line.strip()))
+        for relative, text in committable
+        if text is not None
+        for line in text.splitlines()
+    }
+    assert EXEMPT_LINES <= present
 
 
 def _synthetic(*words: str) -> frozenset[str]:
@@ -245,8 +273,25 @@ SYNTHETIC_MATCHERS: dict[str, Callable[[str], object]] = {
 # on the nearest legitimate line.
 BITES = {
     "personal-namespace": (
-        ["-- TESTED in `SCRATCH.XX_DOE`", "sst extract --schema dbt_jane", "database: scratch.jdoe_sst"],
-        ["dbt_project", "jane and doe", "dbt_utils.unique_combination_of_columns"],
+        [
+            "-- TESTED in `SCRATCH.XX_DOE`",
+            "sst extract --schema dbt_jane",
+            "database: scratch.jdoe_sst",
+            'USE SCHEMA SCRATCH."JDOE_SST"',
+            '"SCRATCH"."DOE_X".ORDERS',
+            "schema: JANE_SCRATCH_SST",
+            "jdoe_scratch",
+            "pip install dbt-jane",
+        ],
+        [
+            "dbt_project",
+            "jane and doe",
+            "dbt_utils.unique_combination_of_columns",
+            "pip install dbt-core dbt-snowflake",
+            'SCRATCH."ANALYTICS"',
+            "<USERNAME>_SCRATCH_SST",
+            "doe_scratchpad",
+        ],
     ),
     "home-directory-path": (["cd /Users/jane.doe/project/"], ["PosixPath('/Users/.../models')"]),
     "private-package-index": (["resolved against an internal CodeArtifact index"], ["pip resolves from PyPI"]),
