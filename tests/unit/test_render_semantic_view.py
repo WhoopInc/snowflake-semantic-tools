@@ -286,6 +286,12 @@ class TestClauseOmission:
         # A create that never replaces has no grants to copy.
         assert "COPY GRANTS" not in out
 
+    def test_verified_queries_keep_the_order_they_attached_in(self) -> None:
+        queries = tuple(VerifiedQuery(name=name, question="q?", sql=authored_query("SELECT 1")) for name in "BA")
+        out = str(render(minimal(verified_queries=queries)))
+        # Unlike the sorted member clauses, verified queries are not reordered by name.
+        assert out.index("    B AS (") < out.index("    A AS (")
+
     def test_or_replace_with_if_not_exists_is_refused(self) -> None:
         with pytest.raises(ValueError, match="both or_replace and if_not_exists"):
             render(minimal(if_not_exists=True))

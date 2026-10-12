@@ -30,11 +30,12 @@ SCOPE. A view's `scope` decides which of its columns, metrics and relationships 
 member it does not admit is left out of its clause, so a view built with every attached
 member still publishes only the subset its author listed.
 
-ORDERING. `TABLES` renders in DECLARATION order, because that is the order the
-author wrote and the golden preserves it. Every other member list renders SORTED
-by its qualified name. The difference is not an inconsistency: table order is
-authored information, member order is not, and sorting members is what keeps a
-re-render byte-identical when an unrelated column is added.
+ORDERING. `RELATIONSHIPS`, `FACTS`, `DIMENSIONS` and `METRICS` render SORTED by
+qualified name: their order is not authored, and sorting them is what keeps a
+re-render byte-identical when an unrelated column is added. `TABLES`, `VARIABLES`
+and `WITH TAG` render in DECLARATION order, and `AI_VERIFIED_QUERIES` in the order
+the queries attached, because the model carries them so; moving a verified query
+between files, or reordering variables or tags, therefore changes the DDL.
 
 TOTALITY. `MEMBER_INDEX` reads each member type `semantic_view` declares off the model, and
 `render_checked` refuses a render whose member count differs from the index's; importing this
