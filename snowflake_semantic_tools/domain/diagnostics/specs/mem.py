@@ -208,7 +208,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="a member whose references did not resolve was not attached",
         note=(
             "A cascade of the member's first unresolved reference, which is reported already: "
-            "counted rather than shown unless `--show-cascade`."
+            "counted rather than shown unless `--show-cascade`. Overriding it to warning reports "
+            "every skip as a warning that is no longer a cascade."
         ),
     ),
     spec(

@@ -288,7 +288,8 @@ shown indented here:
   `promoted_from` or `demoted_from` when they differ), `message`, `location`,
   `suggestion`, `baselined`, a stable `fingerprint`, and `help_url`, a link to
   its entry in the [error code reference](../reference/error-codes.md).
-  `internal_detail` is the raw text from SST or Snowflake behind an internal error
+  `internal_detail` is the diagnostic's `detail` value, the same text its message
+  shows and `params.detail` holds, for an internal error
   (`SST-INT001`) or an unrecognised Snowflake refusal (`SST-SNO001`), and null for
   every other code.
 - `summary` counts a baselined diagnostic under `baselined` and under no

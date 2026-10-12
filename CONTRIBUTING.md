@@ -153,13 +153,14 @@ poetry run pip-audit --skip-editable --progress-spinner off   # needs to reach t
 pip install --require-hashes --only-binary :all: -r .github/requirements/semgrep.txt  # linux x86_64
 semgrep scan --config .semgrep/ --error --metrics off --disable-version-check snowflake_semantic_tools
 
-# The dbt job, once per dbt minor the reference project admits (1.11 and 1.12): real dbt,
+# The dbt job, once per dbt minor the reference project admits, pinned to the releases the
+# committed manifests were captured with (dbt Core 1.11.15 with dbt-snowflake 1.11.6, or
+# 1.12.5 with 1.12.1; only those two are pinned, pip resolves the rest they need): real dbt,
 # offline, with no secret. SST runs `dbt parse` itself for the golden suite, and the manifest
 # it wrote is held to the same contract as the committed ones in tests/fixtures/dbt_manifests/.
 # The pin replaces the environment's dbt; `poetry install --extras dbt` restores the locked one
 poetry install --extras dbt
-printf 'dbt-core==1.11.*\ndbt-snowflake==1.11.*\n' > /tmp/dbt.txt   # or 1.12
-poetry run pip install --constraint /tmp/dbt.txt dbt-core dbt-snowflake
+poetry run pip install dbt-core==1.11.15 dbt-snowflake==1.11.6   # or 1.12.5 and 1.12.1
 poetry run dbt deps --project-dir tests/fixtures/reference_project
 poetry run sst --project-dir tests/fixtures/reference_project test --suite golden \
   --golden-dir "$PWD/tests/golden/expected/ddl"

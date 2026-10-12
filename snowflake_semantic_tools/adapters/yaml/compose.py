@@ -8,6 +8,7 @@ diagnostics; nothing here returns YAML's own exception.
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable, Iterator
 from typing import Any, NoReturn
 
@@ -21,6 +22,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 _MERGE_TAG = "tag:yaml.org,2002:merge"
 _BOOL_TAG = "tag:yaml.org,2002:bool"
 _NULL_TAG = "tag:yaml.org,2002:null"
+_STR_TAG = "tag:yaml.org,2002:str"
 # The YAML 1.1 booleans YAML 1.2 reads as strings. As a key each stays the string it is
 # written as, so `on:` names a field; as a value each is reported, since it reads as a bool.
 _WORD_BOOLEANS = frozenset(("yes", "no", "on", "off", "y", "n"))
@@ -179,12 +181,13 @@ def formatting_findings(
             `~` or empty value as null where null means nothing documented.
     """
     findings: list[Diagnostic] = []
-    for key_path, value_node in _keyed_scalars(node, ()):
+    for key_path, shown, value_node in _keyed_scalars(node, (), ""):
         key = next(str(part) for part in reversed(key_path) if isinstance(part, str))
         line = value_node.start_mark.line + 1
-        # The dotted key path, not the line, tells two findings for one key in a file apart in a
-        # baseline, so moving a value down keeps its fingerprint.
-        located: dict[str, Any] = {"file": path, "line": line, "key": key, "key_path": ".".join(map(str, key_path))}
+        # The key path, not the line, tells two findings for one key in a file apart in a
+        # baseline, so moving a value down keeps its fingerprint; a list item it names by its
+        # `name`, so inserting an item above keeps it too.
+        located: dict[str, Any] = {"file": path, "line": line, "key": key, "key_path": shown.removeprefix(".")}
         if value_node.style == ">":
             findings.append(D("SST-LOD011", origin=Origin(path, line), **located))
             continue
@@ -208,14 +211,33 @@ def _coercion(node: yaml.ScalarNode) -> tuple[str, str] | None:
 
 
 def _keyed_scalars(
-    node: yaml.Node, path: tuple[str | int, ...]
-) -> Iterator[tuple[tuple[str | int, ...], yaml.ScalarNode]]:
-    """Yield each scalar value under a mapping key, with its key path; a list item adds its index."""
+    node: yaml.Node, path: tuple[str | int, ...], shown: str
+) -> Iterator[tuple[tuple[str | int, ...], str, yaml.ScalarNode]]:
+    """Yield each scalar value under a mapping key, with its key path and that path as shown.
+
+    A list item adds its index to the path. As shown, an item is `[<name>]` when it is a mapping
+    with a string `name` no sibling repeats, and its index otherwise: `columns[order_id].description`,
+    `columns.0.description`.
+    """
     if isinstance(node, yaml.MappingNode):
         for key_node, value_node in node.value:
-            yield from _keyed_scalars(value_node, (*path, str(key_node.value)))
+            key = str(key_node.value)
+            yield from _keyed_scalars(value_node, (*path, key), f"{shown}.{key}")
     elif isinstance(node, yaml.SequenceNode):
-        for index, child in enumerate(node.value):
-            yield from _keyed_scalars(child, (*path, index))
+        names = [_item_name(child) for child in node.value]
+        repeats = Counter(names)
+        for index, (child, name) in enumerate(zip(node.value, names, strict=True)):
+            unique = name is not None and repeats[name] == 1
+            yield from _keyed_scalars(child, (*path, index), shown + (f"[{name}]" if unique else f".{index}"))
     elif isinstance(node, yaml.ScalarNode) and any(isinstance(part, str) for part in path):
-        yield path, node
+        yield path, shown, node
+
+
+def _item_name(node: yaml.Node) -> str | None:
+    """The string `name` a list item that is a mapping declares; None when it declares none."""
+    if not isinstance(node, yaml.MappingNode):
+        return None
+    for key_node, value_node in node.value:
+        if key_node.value == "name" and isinstance(value_node, yaml.ScalarNode) and value_node.tag == _STR_TAG:
+            return str(value_node.value)
+    return None

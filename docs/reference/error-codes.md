@@ -2269,7 +2269,7 @@ Fix: use the one membership function
 
 Raised when a member whose references did not resolve was not attached.
 
-Note: A cascade of the member's first unresolved reference, which is reported already: counted rather than shown unless `--show-cascade`.
+Note: A cascade of the member's first unresolved reference, which is reported already: counted rather than shown unless `--show-cascade`. Overriding it to warning reports every skip as a warning that is no longer a cascade.
 
 ### SST-MEM900
 

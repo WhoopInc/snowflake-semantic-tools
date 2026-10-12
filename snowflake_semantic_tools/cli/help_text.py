@@ -63,8 +63,11 @@ _OPTION_HELP: Mapping[str, str] = {
     ),
     "--no-baseline": "Ignore the baseline for this run: every diagnostic is shown and blocks as declared.",
     "--show-baselined": "Show baselined diagnostics instead of counting them.",
-    "--show-info": "Show info diagnostics instead of counting them.",
-    "--show-cascade": "Show cascade diagnostics instead of counting them.",
+    "--show-info": "Show info diagnostics instead of counting them; a cascade needs `--show-cascade`.",
+    "--show-cascade": (
+        "Show cascade diagnostics, follow-ons downgraded to info, instead of counting them. An "
+        "override promoting a cascade's code reports it at that severity, as no longer a cascade."
+    ),
     "--show-all-occurrences": "Show every occurrence of a code, not the first three of four or more.",
     "--select": (
         "Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, "

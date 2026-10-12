@@ -66,8 +66,8 @@ class ErrorSpec:
         subsystem: The three letters after ``SST-``, which place the code in the error reference.
         phase: The subsystem in lowercase, reported as each diagnostic's phase.
         demotable: False for an error that no setting may downgrade ("always an error").
-        internal_detail: Whether its diagnostics carry raw text from SST or Snowflake beyond the
-            template; only INT and SNO codes may.
+        internal_detail: Whether the JSON envelope also reports each of its diagnostics' `detail`
+            value on its own, the same text the message shows; only INT and SNO codes may.
         deprecated_in: The release that deprecated the code; None while it is current.
         superseded_by: The code that replaces a deprecated one; required with `deprecated_in`.
         condition: When the code is raised, as `sst explain` and the error reference state it.

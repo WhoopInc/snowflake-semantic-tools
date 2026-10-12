@@ -165,8 +165,11 @@ and `apply` refuses a plan that holds a blocked change (`SST-APL003`).
 When a diagnostic is reported because of another, it names that code in `caused_by`, and its cause
 must be in the same run (`SST-INT008` otherwise). A caused diagnostic downgraded to info is a
 cascade: the human output counts it instead of showing it unless `--show-cascade` is given, the
-envelope counts it under `summary.suppressed_cascade`, and no severity override applies to it. A
-producer makes one with `cascade`, which names the cause and downgrades the diagnostic unless its
+envelope counts it under `summary.suppressed_cascade`, and `--show-info` does not show it. A severity
+override that promotes the code above its declared severity reaches its cascades too: the
+diagnostic reports at the override, counts at that severity, and, no longer info, is no longer a
+cascade, so `SST-MEM107: warning` shows every member a poisoned reference skipped. An override that
+keeps or lowers the code leaves its cascades at info. A producer makes one with `cascade`, which names the cause and downgrades the diagnostic unless its
 code is non-demotable. `SST-MEM107` is a cascade of the first unresolved reference of the member
 it skips. A caused diagnostic keeps its severity unless it is downgraded: `SST-MEM005`, raised
 beside `SST-VAL205` for a relationship no view covers, names its cause and is still a warning.
@@ -179,6 +182,7 @@ Drawn from: [poison.py](../../snowflake_semantic_tools/adapters/yaml/semantic/po
 [membership_request.py](../../snowflake_semantic_tools/domain/resolve/membership_request.py),
 [relationships.py](../../snowflake_semantic_tools/adapters/yaml/semantic/relationships.py),
 [\_\_init\_\_.py](../../snowflake_semantic_tools/domain/diagnostics/__init__.py),
+[policy.py](../../snowflake_semantic_tools/domain/diagnostics/policy.py),
 [cli/output.py](../../snowflake_semantic_tools/cli/output.py).
 
 ## Identity
@@ -192,7 +196,9 @@ values, sorted by name. The origin's line and column are left out, so a comment 
 problem keeps its baseline entry, while renaming the artifact or changing a value in the message
 makes a new diagnostic. A `line` or `col` template value is left out too, so `SST-LOD011` and
 `SST-LOD016`, whose messages print the line, keep their identity when the value moves; each also
-carries the value's dotted `key_path`, so two findings for one key in a file stay apart. The JSON envelope reports it as `fingerprint`, `--verbose` prints it, and the
+carries the value's `key_path`, so two findings for one key in a file stay apart. The path names a
+list item by its `name` when it has one no sibling repeats (`columns[order_id].description`) and by
+its index otherwise, so inserting a named item above keeps the identity too. The JSON envelope reports it as `fingerprint`, `--verbose` prints it, and the
 baseline matches on it alone. A baseline entry that matches more than one diagnostic in a run holds
 none of them and is reported as `SST-INT009`, since it cannot say which one was meant.
 
@@ -218,7 +224,7 @@ timings), `diagnostics`, `summary`, and `data`, the command's own result. Each d
 its code, effective and declared severity, `promoted_from` or `demoted_from`, message, suggestion,
 phase, help URL, fingerprint, template values as `params`, the artifact or member it concerns, its
 location and related locations, whether a baseline holds it, `caused_by`, and `internal_detail`,
-the raw `detail` text of a code that declares it and null otherwise. `params` uses a shared
+the `detail` value of a code that declares it, the same text its message shows, and null otherwise. `params` uses a shared
 vocabulary of placeholder names, and the registry refuses a template that names any other
 (`SST-REG016`), so a consumer can act on a value without parsing the message. `schema_version`
 changes only when a field is removed or changes meaning; [CI/CD](../guides/ci-cd.md#json-output)
@@ -227,7 +233,8 @@ replaced by one reporting `SST-PRT012`.
 
 The human output lists every diagnostic the envelope does, shaped by the visibility flags: info,
 baselined, and cascade diagnostics are counted rather than shown unless `--show-info`,
-`--show-baselined`, or `--show-cascade` asks for them, four or more of one code collapse to the
+`--show-baselined`, or `--show-cascade` asks for them (a cascade is info, but only `--show-cascade`
+shows it), four or more of one code collapse to the
 first three unless `--show-all-occurrences`, and `--quiet` shows errors only. None of it changes the
 exit code, and its layout may change between releases. A script reads the envelope.
 

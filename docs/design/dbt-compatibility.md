@@ -115,6 +115,7 @@ Paths are relative to the manifest root; `<id>` is a node's unique id.
 | Manifest path | What SST uses it for | When it is missing or wrong |
 |---|---|---|
 | `metadata.dbt_schema_version` | the schema-version gate | absent or unparseable: `SST-DBT018`; outside the accepted set: `SST-DBT017` |
+| `metadata.dbt_version` | which forms of a model file the staleness check hashes: whitespace-collapsed from 1.12, raw or stripped before | absent or not a release number: every form is tried, so a whitespace-only edit may read as fresh |
 | `metadata.project_name` | tells the root project's models from a package's: only root-project models are enriched or checked for staleness | absent: only models with no `package_name` count as the root project's |
 | `nodes` | every model and test | not an object: the run stops, naming the path |
 | `nodes.<id>.resource_type` | `model` selects models, `test` selects tests; every other node is ignored | no model at all: `SST-DBT001` |
@@ -148,7 +149,8 @@ sources; each model checksum is one the staleness check recognises; and the
 reference project renders the same semantic views from it as the DDL goldens
 pin. The committed manifests must also read as one catalog apart from the dbt
 version and the checksums, which dbt 1.12 computes over whitespace-collapsed
-code where earlier releases hash the file as read.
+code where earlier releases hash the file as read; the staleness check compares
+each manifest's checksums in the form its `metadata.dbt_version` hashes.
 
 Drawn from: [manifest.py](../../snowflake_semantic_tools/adapters/dbt/manifest.py), [dbt.py](../../snowflake_semantic_tools/domain/model/dbt.py), [dbt_seam.py](../../snowflake_semantic_tools/domain/validate/dbt_seam.py), [semantic/dbt.py](../../snowflake_semantic_tools/domain/validate/semantic/dbt.py), [build.py](../../snowflake_semantic_tools/adapters/yaml/semantic/build.py), [enrich.py](../../snowflake_semantic_tools/app/enrich.py), [columns.py](../../snowflake_semantic_tools/domain/enrich/columns.py), [tool.py](../../snowflake_semantic_tools/domain/validate/tool.py), [views.py](../../snowflake_semantic_tools/domain/validate/semantic/views.py), [phases.py](../../snowflake_semantic_tools/adapters/yaml/semantic/phases.py), [project.py](../../snowflake_semantic_tools/adapters/dbt/project.py), [test_dbt_manifest_contract.py](../../tests/contract/test_dbt_manifest_contract.py).
 
@@ -199,13 +201,17 @@ What the repository runs, and therefore what "supported" can mean:
   the lock file resolves it to dbt Core 1.12.5 with `dbt-snowflake` 1.12.1.
 - The required gate's `dbt` job runs real dbt, once for each minor the
   reference project's `require-dbt-version` admits, 1.11 and 1.12. It installs
-  the extra, moves dbt Core and `dbt-snowflake` to the latest release of that
-  minor with a constraint file, runs `dbt deps`, and runs
+  the extra, pins dbt Core and `dbt-snowflake` to the releases the committed
+  manifests were captured with (1.11.15 with 1.11.6, 1.12.5 with 1.12.1), runs
+  `dbt deps`, and runs
   `sst test --suite golden` without `--manifest`, so SST starts `dbt parse`
   itself and renders every artifact from the manifest it writes. It then holds
   that manifest to the contract test above. The reference project's default
   target carries no credential, so nothing connects to Snowflake and no secret
-  is needed; the job reaches only the package indexes it installs from.
+  is needed; the job reaches only the package indexes it installs from. Only
+  those two packages are pinned: pip keeps each locked dependency they still
+  accept and resolves any they do not, such as `dbt-adapters` or `dbt-common`,
+  outside the lock.
 - The rest of the gate does not run dbt. It installs the package without the
   extra, runs dbt-facing code against a fake runner, loads the reference
   project against a committed manifest written by dbt 1.11, and holds the full
@@ -219,7 +225,7 @@ What the repository runs, and therefore what "supported" can mean:
   committed manifests stop covering every minor it admits.
 
 So every change is checked with dbt 1.11 and 1.12 on manifest schema v12:
-`dbt parse` with the latest release of each, and the committed manifests of
+`dbt parse` with 1.11.15 and 1.12.5, and the committed manifests of
 1.11.15 and 1.12.5. `dbt build` runs only in the manual workflow, with the
 locked 1.12. Earlier releases the extra allows are not tested; any of them that
 writes manifest v12 passes the gate.
@@ -286,7 +292,8 @@ question about a release is which schema it writes.
    extra in `pyproject.toml` if the release falls outside it, regenerate
    `poetry.lock`, update `DEPENDENCIES.md` with them, and widen the reference
    project's `require-dbt-version`, the `dbt` job's matrix in
-   `.github/workflows/test-and-lint.yml`, and the manifests under
+   `.github/workflows/test-and-lint.yml` (the minor, with the dbt Core and
+   `dbt-snowflake` releases the manifest was captured with), and the manifests under
    `tests/fixtures/dbt_manifests/` to match. Then run the manual evals
    workflow, which builds the reference project with the locked dbt.
 4. If the schema changed, walk the table under [What SST reads from the

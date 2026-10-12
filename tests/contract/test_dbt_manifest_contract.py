@@ -201,6 +201,23 @@ def test_sst_recognises_each_model_checksum_the_release_wrote(manifest_path: Pat
     assert stale_models(project, catalog, ("models",)) == ()
 
 
+@pytest.mark.parametrize("committed", COMMITTED, ids=lambda path: path.parent.name)
+def test_a_whitespace_only_edit_is_stale_only_for_a_release_that_hashes_whitespace(
+    committed: Path, tmp_path: Path
+) -> None:
+    # dbt 1.12 collapses whitespace before hashing, and 1.11 only strips the ends, so doubling a
+    # space inside a model is fresh to the first and an edit to the second.
+    document = _document(committed)
+    project = _hashed_code_project(tmp_path, document)
+    catalog = catalog_from_document(document)
+    edited = next(model for model in catalog.models if model.package_name == PROJECT and model.original_file_path)
+    path = project / str(edited.original_file_path)
+    path.write_text(path.read_text(encoding="utf-8").replace(" ", "  ", 1), encoding="utf-8")
+    stale = [item.context["value"] for item in stale_models(project, catalog, ("models",))]
+    hashes_whitespace = str(document["metadata"]["dbt_version"]).startswith("1.11.")
+    assert stale == ([edited.original_file_path] if hashes_whitespace else [])
+
+
 @cache
 def _golden_views() -> dict[str, str]:
     """The reference project's views as the DDL goldens pin them: rendered from the reduced manifest."""

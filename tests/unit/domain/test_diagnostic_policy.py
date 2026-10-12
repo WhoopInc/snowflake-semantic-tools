@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from types import MappingProxyType
 
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Severity, audit, resolve_severities
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Severity, audit, cascade, resolve_severities
 from snowflake_semantic_tools.domain.diagnostics.policy import SeverityPolicy, apply_overrides, apply_policy
 
 WARNING = D("SST-LOD003", file="a.yml")
@@ -49,11 +49,27 @@ def test_applying_overrides_again_or_with_none_changes_nothing() -> None:
     assert apply_overrides(once, {"SST-REF001": Severity.ERROR}) == once
 
 
-def test_a_forbidden_or_cascaded_override_is_never_applied() -> None:
+def test_a_forbidden_override_or_one_that_does_not_promote_a_cascade_is_never_applied() -> None:
     cascaded = replace(ERROR, severity=Severity.INFO, caused_by="SST-LOD003")
     overrides = {"SST-VAL102": Severity.WARNING, "SST-REF001": Severity.WARNING}
     assert apply_overrides(DiagnosticBag((LOCKED, cascaded)), overrides) == (LOCKED, cascaded)
     assert apply_overrides(DiagnosticBag((ERROR,)), {"SST-REF001": Severity.INFO}) == (ERROR,)
+    skipped = cascade(D("SST-MEM107", member="metric:m", count=1), "SST-REF001")
+    assert apply_overrides(DiagnosticBag((skipped,)), {"SST-MEM107": Severity.INFO}) == (skipped,)
+
+
+def test_an_override_promoting_a_cascades_code_reports_it_and_it_is_no_longer_a_cascade() -> None:
+    skipped = cascade(D("SST-MEM107", member="metric:m", count=1), "SST-REF001")
+    assert skipped.cascaded
+    [promoted] = apply_overrides(DiagnosticBag((skipped,)), {"SST-MEM107": Severity.WARNING})
+    assert (promoted.severity, promoted.override, promoted.promoted_from, promoted.caused_by) == (
+        Severity.WARNING,
+        Severity.WARNING,
+        Severity.INFO,
+        "SST-REF001",
+    )
+    assert not promoted.cascaded and not promoted.informational
+    assert audit(DiagnosticBag((D("SST-REF001", model="orders"), promoted)))[1:] == (promoted,)
 
 
 def test_strict_applies_after_the_override() -> None:

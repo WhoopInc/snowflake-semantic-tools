@@ -54,8 +54,8 @@ These go before the command name.
 | `--baseline` | FILE |  | Read this baseline file of known warnings, which must exist, instead of the project's `.sst/baseline.json`, read when it exists. |
 | `--no-baseline` | flag |  | Ignore the baseline for this run: every diagnostic is shown and blocks as declared. |
 | `--show-baselined` | flag |  | Show baselined diagnostics instead of counting them. |
-| `--show-info` | flag |  | Show info diagnostics instead of counting them. |
-| `--show-cascade` | flag |  | Show cascade diagnostics instead of counting them. |
+| `--show-info` | flag |  | Show info diagnostics instead of counting them; a cascade needs `--show-cascade`. |
+| `--show-cascade` | flag |  | Show cascade diagnostics, follow-ons downgraded to info, instead of counting them. An override promoting a cascade's code reports it at that severity, as no longer a cascade. |
 | `--show-all-occurrences` | flag |  | Show every occurrence of a code, not the first three of four or more. |
 
 ## Exit codes
