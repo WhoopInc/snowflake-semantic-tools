@@ -290,9 +290,7 @@ metric. The same query against a public dimension succeeds.
 **Evidence**: `Enforced`, in the other direction. SST refuses a private dimension
 (SST-VAL222), and the reason is now a house rule rather than the grammar. It
 would depend on behaviour the vendor's docs deny, which could be removed without
-notice. A private dimension would also undo the read-back normalisation that
-treats a dimension's access modifier as always public. Do not loosen SST-VAL222
-on the strength of the server.
+notice. Do not loosen SST-VAL222 on the strength of the server.
 [test_sst_val222.py](../../tests/codes/val/test_sst_val222.py).
 
 **SST depends on it at**: `_column_meta_diagnostics` in
@@ -435,9 +433,9 @@ the upload path, and the agent goldens are JSON
 says nothing about whether a skill reference is checked.
 
 **Server does**: it accepts a skill whose extension, version alias, or skill
-name does not exist, and an empty version. `DESCRIBE`, `SHOW` and `COMMIT` all
-pass on a dangling reference. The agent then behaves as though the skill had no
-content. A `generic` tool's `tool_resources` are not checked either.
+name does not exist, and a version that is empty. `DESCRIBE`, `SHOW` and
+`COMMIT` all pass on a dangling reference, so nothing at publish time reports it.
+A `generic` tool's `tool_resources` are not checked either.
 
 **Evidence**: `Enforced`. Publish order is the only control. Skills and plugins
 publish before agents (`ddl_position` 250 and 260, before 300, in
