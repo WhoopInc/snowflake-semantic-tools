@@ -151,7 +151,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "Snowflake rejected a login: error 250001 with authentication wording, or error "
             "390100, 390144, 390195, 390302, 390303, 390318 or 390422"
         ),
-        note="When a command's own connection fails this way, the command reports SST-PRT001.",
+        note="When a command's own session is refused this way, the command reports SST-PRT002.",
         precheck=Precheck.RUNTIME,
     ),
     spec(

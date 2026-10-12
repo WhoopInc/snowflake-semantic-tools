@@ -67,8 +67,8 @@ These go before the command name.
 | 2 | `CHANGES` | Declared and actual state differ: `sst plan` found changes, `sst diff` found the two states differ, or `enrich --check`, `format --check`, `docs --check`, or `migrate refs` found something to rewrite. |
 | 3 | `USAGE` | The command line is invalid. |
 | 4 | `CONFIG` | The project, its configuration, or a saved plan cannot be used. |
-| 5 | `CONNECTION` | Snowflake could not be reached. |
-| 130 | `INTERRUPTED` | The run was interrupted. |
+| 5 | `CONNECTION` | Snowflake could not be reached, rejected the credential, refused a privilege, or did not finish in time; the diagnostic code says which, so a retry fixes only some of them. |
+| 130 | `INTERRUPTED` | The run was interrupted: Ctrl-C, SIGTERM or SIGHUP, end of input, or a declined prompt. Any command can return it. |
 
 ## sst init
 

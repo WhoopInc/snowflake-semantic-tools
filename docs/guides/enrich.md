@@ -162,7 +162,7 @@ failing, a statement timing out or the connection dropping, a refused privilege:
 | `2` | `--check` found a file that would change. |
 | `3` | The command line is refused, including a target that is not production-like. |
 | `4` | The project, its manifest or its configuration cannot be read, or the selection matches no model. |
-| `5` | Snowflake could not be reached or refused the session. |
+| `5` | Snowflake could not be reached, rejected the credential, refused a privilege, or did not finish in time. |
 
 The run prints one line per model (`orders: 2 columns added, column-types 9, data-types 9`,
 or `unchanged`, or `failed`), then each file it wrote or would write (its diff under

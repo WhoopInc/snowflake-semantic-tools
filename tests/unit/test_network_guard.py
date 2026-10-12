@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import socket
+import subprocess
+import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
@@ -96,3 +99,38 @@ def test_a_unix_socket_and_a_live_test_pass() -> None:
         network_guard.check("live", _REMOTE[0])
     with _expect_refusal():
         network_guard.check("after", _REMOTE[0])
+
+
+def _child(code: str, environ: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-c", code],
+        env=environ,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        stdin=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+_CONNECT = f"import socket; socket.create_connection({_REMOTE!r}, timeout=1)"
+
+
+def test_a_guarded_subprocess_is_refused_and_fails_even_when_it_swallows_the_refusal() -> None:
+    environment = network_guard.guarded_environment(os.environ)
+    refused = _child(_CONNECT, environment)
+    assert refused.returncode != 0 and "NetworkAccessRefused" in refused.stderr, refused.stderr
+    swallowed = _child(f"try:\n    {_CONNECT}\nexcept Exception:\n    pass", environment)
+    assert swallowed.returncode == network_guard.REFUSED_EXIT, swallowed.stderr
+    assert "NetworkAccessRefused" in swallowed.stderr
+    assert _child("import socket; socket.getaddrinfo('localhost', 80)", environment).returncode == 0
+
+
+def test_a_subprocess_runs_unguarded_while_the_guard_is_lifted() -> None:
+    guarded = network_guard.guarded_environment(os.environ)
+    with network_guard.allowed():
+        lifted = network_guard.guarded_environment(guarded)
+    assert network_guard.GUARD_VARIABLE not in lifted
+    checks = "import socket, sys; sys.exit(int(socket.create_connection.__module__ != 'socket'))"
+    assert _child(checks, lifted).returncode == 0
+    assert _child(checks, guarded).returncode == 1

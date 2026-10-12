@@ -22,6 +22,16 @@ EXIT_CODE_DOCS: tuple[tuple[int, str, str], ...] = (
     ),
     (USAGE, "USAGE", "The command line is invalid."),
     (CONFIG, "CONFIG", "The project, its configuration, or a saved plan cannot be used."),
-    (CONNECTION, "CONNECTION", "Snowflake could not be reached."),
-    (INTERRUPTED, "INTERRUPTED", "The run was interrupted."),
+    (
+        CONNECTION,
+        "CONNECTION",
+        "Snowflake could not be reached, rejected the credential, refused a privilege, or did not finish "
+        "in time; the diagnostic code says which, so a retry fixes only some of them.",
+    ),
+    (
+        INTERRUPTED,
+        "INTERRUPTED",
+        "The run was interrupted: Ctrl-C, SIGTERM or SIGHUP, end of input, or a declined prompt. Any "
+        "command can return it.",
+    ),
 )

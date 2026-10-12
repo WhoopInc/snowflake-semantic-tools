@@ -348,7 +348,7 @@ A pipeline branches on the exit code without reading the output, so each code ha
 | 2 | Declared and actual state differ: `plan`, `diff`, `enrich --check`, `format --check`, `docs --check`, or `migrate refs` found a difference. |
 | 3 | The command line is refused. |
 | 4 | The project, its configuration, or a saved plan cannot be used. |
-| 5 | Snowflake would not cooperate: a failed login or dropped connection (SST-PRT001), a refused privilege, or a missed deadline. |
+| 5 | Snowflake would not cooperate: a rejected credential (SST-PRT002), a failed or dropped connection (SST-PRT001), a refused privilege, or a missed deadline. |
 | 130 | The run was interrupted (Ctrl-C, SIGTERM, SIGHUP) or a confirmation was declined. |
 
 - **2 reports a difference; it is not a failure.** A command that asserts never returns it: `validate` and `test` exit 1 when an assertion fails, a golden mismatch included. `--no-detailed-exitcode` turns 2 into 0 on `plan`, `diff`, `enrich`, `format`, and `docs`.

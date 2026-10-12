@@ -263,8 +263,9 @@ and can shrink as numbers are observed.
 An error no row matches is `SST-SNO001`, "Snowflake refused and SST does not recognise the refusal",
 and never a guessed specific code. A wrong specific code sends the user to the wrong fix; `SNO001`
 is honest and countable. Every command appends the `SNO` diagnostics its result reports to
-`target/sst/run_log.jsonl` (one that reaches the exception guard below is not logged), and `sst debug --snowflake-signatures` reports what share went
-unrecognised, which is the signal to add a signature.
+`target/sst/run_log.jsonl`, and a refusal that reaches the exception guard below under the signature
+it matched, so an unrecognised one reported as `SST-PRT001` still counts as `SNO001`. `sst debug
+--snowflake-signatures` reports what share went unrecognised, which is the signal to add a signature.
 
 During `apply`, a failed statement is classified by the same table, and the change's outcome carries
 the code, the kind of failure, and whether a retry may succeed; the run then reports the refusal
@@ -279,13 +280,15 @@ flowchart TD
     match -- "no row matches" --> unrecognised["UNRECOGNISED"]
     match -- "a row matches" --> row{"which row"}
     unrecognised --> prt["SST-PRT001, exit 5"]
-    row -- "SST-SNO013 or SST-SNO014" --> prt
+    row -- "SST-SNO014" --> prt
+    row -- "SST-SNO013" --> auth["SST-PRT002, exit 5"]
     row -- "a privilege or transient row, or SST-SNO011" --> five["snowflake_diagnostic, exit 5"]
     row -- "any other row" --> one["snowflake_diagnostic, exit 1"]
 ```
 
-A failed login, a dropped connection, and an error no signature recognises are reported as the
-connection failing, `SST-PRT001`. A refused privilege or a missed
+A rejected login is reported as the credential rejected, `SST-PRT002`, as it is when connecting;
+a dropped connection and an error no signature recognises are reported as the connection failing,
+`SST-PRT001`. A refused privilege or a missed
 deadline is Snowflake not cooperating, exit 5; any other refusal, such as an object that does not
 exist or a compilation error, is a statement Snowflake rejected, exit 1.
 
