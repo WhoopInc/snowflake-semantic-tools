@@ -71,6 +71,52 @@ semantic_views:
   neither key; `+enabled` applies to one that does not set `enabled`.
 - `enabled: false` keeps a view in the project without publishing it.
 
+### How members attach
+
+A view does not list most of its members: each member finds the views its tables
+fit, and each view then narrows what reached it. How one member reaches its
+views:
+
+```mermaid
+flowchart TD
+    member["a member"] --> poisoned{"has an error?"}
+    poisoned -- yes --> nowhere["attaches to no view"]
+    poisoned -- no --> instruction{"a custom instruction?"}
+    instruction -- yes --> named["every view whose custom_instructions: names it"]
+    instruction -- no --> declared{"declares tables:?"}
+    declared -- yes --> own["effective_tables: its tables:"]
+    declared -- no --> inferred["effective_tables: the models its ref() calls name, SST-MEM012"]
+    own --> subset["attach_members: every view whose tables: hold all of them"]
+    inferred --> subset
+    subset --> built{"built on other metrics?"}
+    built -- yes --> both["only views where each metric it references attached"]
+    built -- no --> scope
+    both --> scope["ViewScope: columns:, metrics:, relationships: or exclude_ drop what they leave out"]
+    scope --> remaining{"any view left?"}
+    remaining -- no --> unattached["SST-MEM005, a warning"]
+    remaining -- yes --> rendered["rendered in each of them"]
+```
+
+Drawn from: [members.py](../../snowflake_semantic_tools/domain/resolve/members.py), [membership.py](../../snowflake_semantic_tools/domain/resolve/membership.py), [semantic_view.py](../../snowflake_semantic_tools/domain/model/semantic_view.py).
+
+- A member's tables must all be in a view's `tables:`; a view that holds only
+  some of them does not get it, even when it joins to the rest. A member left
+  unattached that way is warned about, naming the view that reaches the missing
+  table only through a join (`SST-MEM010`).
+- A member that declares no tables and names no model with `ref()` attaches
+  nowhere (`SST-MEM002`), except a derived metric, which needs none: it lands
+  in every view that holds all the metrics it references.
+- A member with an error is still checked but never attached, and neither is a
+  metric built on it; a member whose references did not resolve is reported as
+  left out (`SST-MEM107`).
+- A relationship that fits no view is an error rather than a warning
+  (`SST-VAL205`), and a custom instruction name no block declares is
+  `SST-REF007`.
+- A member that attaches to more than one view is reported as information
+  (`SST-MEM011`).
+
+Drawn from: [membership_tables.py](../../snowflake_semantic_tools/domain/resolve/membership_tables.py), [membership_reach.py](../../snowflake_semantic_tools/domain/resolve/membership_reach.py).
+
 ### Narrowing what a view exposes
 
 A view publishes every member its tables attach. To expose a relevant subset,
@@ -350,6 +396,43 @@ The right table of an equality join must declare a `primary_key` or
 `unique_keys` (`SST-VAL311`). When no key lies within the join columns the
 cardinality is guessed, and SST warns (`SST-VAL210`); when the join columns are
 only part of a composite key, the join fans out, and SST warns (`SST-VAL208`).
+
+### Modelling relationships so the numbers stay right
+
+A wrong join still publishes, and its metrics come out plausible and wrong. Three
+shapes are worth getting right on purpose.
+
+**An equality join to a snapshot table fans out.** A table with one row per
+customer per day, keyed `[customer_id, status_date]`, joined to `orders` on
+`customer_id` alone matches each order to every day of that customer's history,
+and multiplies every metric that crosses the join. SST warns (`SST-VAL208`). Make
+the join as-of instead, so each order matches the one row in effect when it was
+placed -- the latest whose `status_date` is at or before `ordered_at`:
+
+```yaml
+snowflake_relationships:
+  - name: orders_to_customer_daily_status
+    left_table: orders
+    right_table: customer_daily_status
+    relationship_conditions:
+      - "{{ ref('orders', 'customer_id') }} = {{ ref('customer_daily_status', 'customer_id') }}"
+      - "{{ ref('orders', 'ordered_at') }} >= {{ ref('customer_daily_status', 'status_date') }}"
+```
+
+**A range join has no key.** It matches each row to the one range that contains
+it, across the whole right table: SST renders the range alone, so a key
+equality beside it is refused (`SST-VAL202`). So it suits a table of
+periods that never overlap, such as pricing periods or fiscal quarters. Validity
+ranges kept per customer overlap between customers; join those as-of on the
+customer key and the range's start.
+
+**Keys and ranges are declarations.** SST checks offline that a primary key or
+`distinct_range` is declared, not that the data honours it. When `sst validate`
+connects to Snowflake it reads the joined tables: rows of an equality join's
+target that repeat a join key are `SST-VAL212`, and overlapping ranges are
+`SST-VAL218`.
+
+Drawn from: [joins.py](../../snowflake_semantic_tools/domain/validate/semantic/joins.py), [relationships.py](../../snowflake_semantic_tools/adapters/yaml/semantic/relationships.py), [validate.py](../../snowflake_semantic_tools/app/validate.py).
 
 ## Filters
 
