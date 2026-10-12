@@ -27,6 +27,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import SSE_STAGE_TYPE, Action, Change, ChangeReason
+from snowflake_semantic_tools.domain.ports.snowflake.preflight import ROLE_HIERARCHY_DEPTH
 
 _Scope = tuple[str, str]
 _Name = tuple[str, str, str]
@@ -59,6 +60,9 @@ class Preflight:
             role holds it, directly or through the roles it inherits.
         secondary_privileges: By folded scope, those of `missing_privileges` a secondary role in
             the session holds, which Snowflake does not let authorise a `CREATE`.
+        unreached_privileges: By folded scope, those of `missing_privileges` the session holds
+            but the walk up from the primary role stopped short of, at `ROLE_HIERARCHY_DEPTH`
+            roles: a secondary role may hold them, or a more distant inheritance.
         occupied: The keys of artifacts nothing observed, whose target name is taken anyway.
         locked: The folded names another session holds a lock on.
         referenced: By observed key, the objects outside the project that name it.
@@ -79,6 +83,7 @@ class Preflight:
     missing_relations: Mapping[str, tuple[QualifiedName, ...]] = field(default_factory=lambda: MappingProxyType({}))
     missing_privileges: Mapping[_Scope, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
     secondary_privileges: Mapping[_Scope, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
+    unreached_privileges: Mapping[_Scope, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
     occupied: frozenset[str] = frozenset()
     locked: frozenset[_Name] = frozenset()
     referenced: Mapping[str, tuple[QualifiedName, ...]] = field(default_factory=lambda: MappingProxyType({}))
@@ -217,10 +222,15 @@ def _stage_blocking(
 
 
 def _lacks(key: str, privilege: str, scope: SchemaScope, preflight: Preflight) -> Diagnostic:
-    """SST-PLN008 for a CREATE privilege the primary role lacks, saying when a secondary role holds it."""
+    """SST-PLN008 for a CREATE privilege the primary role lacks, saying when the session holds it."""
     detail = privilege
     if privilege in preflight.secondary_privileges.get(_scope_key(scope), ()):
         detail = f"{privilege} (only a secondary role in the session holds it, and a CREATE uses the primary role)"
+    elif privilege in preflight.unreached_privileges.get(_scope_key(scope), ()):
+        detail = (
+            f"{privilege} (the session holds it, but no inheritance path from the primary role was found "
+            f"within {ROLE_HIERARCHY_DEPTH} levels, and a CREATE uses the primary role)"
+        )
     return D("SST-PLN008", subject=key, value=preflight.role, detail=detail, target=scope.sql)
 
 

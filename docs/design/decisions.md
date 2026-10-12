@@ -515,15 +515,16 @@ definitions it cannot answer queries over and enforces none of the
 derived-metric restrictions itself; and a silent default for syntax checking,
 under which a reader cannot tell what a passing run checked.
 
-### A dangling agent reference is an error, looked up at every connected plan
+### A dangling agent reference is an error, looked up at every connected plan unless --no-validate
 
 **Chosen.** Snowflake accepts an agent whose consumed extension, pinned version,
 or called object does not exist, and the agent then reports success without the
 skill or tool. `SST-VAL531` is therefore an error by default, still demotable
 through `diagnostics.severity_overrides` for a target whose referenced objects
 may be absent. `sst plan` looks up each consumed extension and the version it
-pins whenever it is connected, even with `validation.snowflake_syntax_check`
-off; the rest of the connected checks still follow that key.
+pins on every connected plan unless `--no-validate` skips validation, even with
+`validation.snowflake_syntax_check` off; the rest of the connected checks still
+follow that key.
 
 **Rejected.** A warning that only `--strict` promotes, under which plan and apply
 go ahead and publish an agent with no skill; and looking the references up only

@@ -87,6 +87,29 @@ def test_a_semantic_view_already_in_the_rendered_form_is_kept_byte_for_byte() ->
     )
 
 
+def test_a_tag_clause_without_with_and_a_bare_number_are_clauses_of_the_view() -> None:
+    # The grammar makes WITH optional before TAG, and MAX_STALENESS may be a bare number.
+    text = (
+        "create or replace semantic view V\n"
+        "\tmax_staleness = 300\n"
+        "\ttag (DB.S.OWNER='team')\n"
+        "\tai_sql_generation 'x';\n"
+    )
+    restored = restorable_semantic_view(text)
+    assert restored == (
+        "create or replace semantic view V\n"
+        "  ai_sql_generation 'x'\n"
+        "  max_staleness = 300\n"
+        "  tag (DB.S.OWNER='team')\n"
+        "  COPY GRANTS;\n"
+    )
+    assert restorable_semantic_view(restored) == restored
+    # A bare TAG is the WITH TAG clause, so giving both is giving it twice.
+    assert "it gives WITH TAG twice" in restorable_semantic_view(
+        "create or replace semantic view V tag (A='x') with tag (B='y')"
+    )
+
+
 @pytest.mark.parametrize(
     ("text", "reason"),
     [

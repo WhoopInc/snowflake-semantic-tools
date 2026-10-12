@@ -176,7 +176,7 @@ def _removed_tags(artifact: RenderedArtifact, observed: ObservedArtifact) -> tup
     if observed.object_type.upper() != "SEMANTIC VIEW":
         return ()
     declared = {tag.casefold() for tag in artifact.desired_tags}
-    return tuple(tag for tag in sorted(observed.tags) if tag.casefold() not in declared)
+    return tuple(tag for tag in sorted(observed.tags or ()) if tag.casefold() not in declared)
 
 
 @dataclass(frozen=True, slots=True)

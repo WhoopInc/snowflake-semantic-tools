@@ -325,22 +325,58 @@ inline in the `CREATE`, and
 proves that the replace drops tags set outside it. The consequence for users is
 that every apply leaves a view with exactly the tags the project declares, and a
 governance tag applied by hand is gone after the next apply. Plan reads the
-tags on each view it may replace, alongside its grants, and warns of each one
-the project does not declare (`SST-PLN039`). Probe:
+tags on each view it will replace, once it has decided the update, and warns of
+each one the project does not declare (`SST-PLN039`). A read that fails is a
+warning, `SST-PLN040`, and the plan goes on. Probe:
 
 ```sql
 -- Create probe_view, then:
 ALTER SEMANTIC VIEW <db>.<schema>.probe_view SET TAG <db>.<schema>.probe_tag = 'x';
--- Re-run the same CREATE OR REPLACE without WITH TAG, then:
 SELECT * FROM TABLE(<db>.INFORMATION_SCHEMA.TAG_REFERENCES(
-  '<db>.<schema>.probe_view', 'SEMANTIC_VIEW'));
+  '<db>.<schema>.probe_view', 'TABLE'));
+-- Expect: a row for probe_tag. If not, see the next entry.
+-- Re-run the same CREATE OR REPLACE without WITH TAG, then the same SELECT.
 -- Expect: no row for probe_tag.
 ```
 
 **SST depends on it at**: `_trailing_clauses` in
 [semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py);
+`observe_replaced_tags` in [observe.py](../../snowflake_semantic_tools/app/observe.py);
 `_removed_tags` in [classify.py](../../snowflake_semantic_tools/domain/plan/classify.py);
 the `tags:` key in [the semantic views guide](../guides/semantic-views.md).
+
+### TAG_REFERENCES lists no domain for a semantic view
+
+**Docs say**: the `TAG_REFERENCES` table function takes an object name and an
+`object_domain`. The documented domains have no semantic-view entry. They say
+`'TABLE'` is for all table-like objects, such as views, materialized views, and
+external tables.
+
+**Server does**: not probed. No recorded session shows `TAG_REFERENCES`
+answering for a semantic view under any domain, so which domain lists its tags
+is unknown. SST sends `'TABLE'`, as the docs direct for a table-like object.
+An earlier probe sketch named `'SEMANTIC_VIEW'`, but nothing records that it ran.
+
+**Evidence**: `Observed`. The connector test pins the statement SST sends, not
+that the server answers it. If the domain is wrong, plan either reads no tags,
+and `SST-PLN039` stays silent about a hand-applied tag a replace removes, or the
+read fails and plan warns that it skipped the check (`SST-PLN040`). The release
+probe must settle it:
+
+```sql
+-- With probe_view tagged as in the entry above:
+SELECT * FROM TABLE(<db>.INFORMATION_SCHEMA.TAG_REFERENCES(
+  '<db>.<schema>.probe_view', 'TABLE'));
+SELECT * FROM TABLE(<db>.INFORMATION_SCHEMA.TAG_REFERENCES(
+  '<db>.<schema>.probe_view', 'SEMANTIC_VIEW'));
+-- Expect: the domain SST sends lists probe_tag. If only the other does, change
+-- _SEMANTIC_VIEW_TAG_DOMAIN and its test.
+```
+
+**SST depends on it at**: `_SEMANTIC_VIEW_TAG_DOMAIN` and `tag_references` in
+[catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py);
+`test_tag_references_name_each_tag_set_on_a_view_and_leave_out_inherited_ones`
+in [test_snowflake_connector.py](../../tests/unit/adapters/test_snowflake_connector.py).
 
 ## Agents
 
@@ -803,8 +839,9 @@ USE SECONDARY ROLES NONE;
 [connector/preflight.py](../../snowflake_semantic_tools/adapters/snowflake/connector/preflight.py);
 `_missing_privileges` in
 [app/preflight.py](../../snowflake_semantic_tools/app/preflight.py), which splits
-what the primary role lacks into what a secondary role holds and what nothing
-does; [the troubleshooting guide](../guides/troubleshooting.md#how-sst-reports-a-missing-privilege).
+what the primary role lacks into what a secondary role holds, what the session
+holds past the walk's depth limit, and what nothing does, and which asks the
+session alone when `CURRENT_SECONDARY_ROLES()` names no secondary role; [the troubleshooting guide](../guides/troubleshooting.md#how-sst-reports-a-missing-privilege).
 
 ## Procedures and functions
 

@@ -534,7 +534,8 @@ object an agent calls that SST does not publish, and every extension it consumes
 with the version it pins. One that does not exist, or that the role cannot see,
 is an error (`SST-VAL531`): Snowflake accepts the agent anyway, and it then has
 no tool or skill. `sst plan` looks up the consumed extensions and pinned
-versions whenever it is connected, even with connected validation off. For a
+versions on every connected plan unless `--no-validate`, even with connected
+validation off. For a
 target whose referenced objects may be absent, demote the code to a warning with
 `diagnostics.severity_overrides`; a baseline cannot hold an error. `sst test --suite smoke` describes each published agent to
 confirm it exists as planned; to check what an agent answers, write an

@@ -150,9 +150,13 @@ can show Snowflake would refuse, so apply does not fail part-way:
 `CREATE` statement by the primary role alone, so for a `CREATE` privilege it
 climbs from each role holding it through `SHOW GRANTS OF ROLE` (and, only for
 what no account role passes up, `SHOW GRANTS OF DATABASE ROLE`) until it
-reaches the primary role, `CURRENT_ROLE()`. A `CREATE` privilege that only a
-secondary role in the session holds is still reported, and the message says
-so: grant it to the primary role, or to a role it inherits. `READ` and `WRITE`
+reaches the primary role, `CURRENT_ROLE()`, at most 16 roles up. A `CREATE`
+privilege that only a secondary role in the session holds is still reported,
+and the message says so: grant it to the primary role, or to a role it
+inherits. When the climb stops at 16 roles first, the message says only that
+no inheritance path from the primary role was found within that depth. With no
+secondary role active (`CURRENT_SECONDARY_ROLES()` names none), plan skips the
+climb and asks the session alone, since its roles are then the primary role's. `READ` and `WRITE`
 on an existing spec stage are not `CREATE` privileges, and a secondary role
 does authorise them, so for those plan asks whether any role holding them,
 directly or through a database role, is in the session. An update is not

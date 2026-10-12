@@ -14,7 +14,7 @@ from snowflake_semantic_tools.domain.plan import order
 from snowflake_semantic_tools.domain.plan.impact import impact_scope, modified_keys
 from snowflake_semantic_tools.domain.plan.preflight import Preflight, check_preflight, required_privilege
 from snowflake_semantic_tools.domain.plan.summary import plan_notices, plan_summary
-from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightPort
+from snowflake_semantic_tools.domain.ports.snowflake.preflight import ROLE_HIERARCHY_DEPTH, PreflightPort
 from tests.helpers.artifact_builders import change, rendered
 from tests.helpers.plan_codes import entry, live, manifest_of, plan, view
 from tests.helpers.snowflake_fake import FakeSnowflake
@@ -46,6 +46,18 @@ def test_a_create_privilege_only_a_secondary_role_holds_is_named_as_such() -> No
     ]
     [unheld], _ = check_preflight((sales,), Preflight("dev", "R", missing_privileges=lacking))
     assert [item.message for item in unheld.diagnostics] == ["R lacks CREATE SEMANTIC VIEW on DB.SCHEMA"]
+
+
+def test_a_create_privilege_past_the_walk_s_depth_is_not_said_to_be_a_secondary_role_s() -> None:
+    sales = change(rendered("SALES"))
+    lacking = MappingProxyType({("DB", "SCHEMA"): ("CREATE SEMANTIC VIEW",)})
+    [unreached], _ = check_preflight(
+        (sales,), Preflight("dev", "R", missing_privileges=lacking, unreached_privileges=lacking)
+    )
+    assert [item.message for item in unreached.diagnostics] == [
+        f"R lacks CREATE SEMANTIC VIEW (the session holds it, but no inheritance path from the primary role was "
+        f"found within {ROLE_HIERARCHY_DEPTH} levels, and a CREATE uses the primary role) on DB.SCHEMA"
+    ]
 
 
 def test_one_missing_scope_is_reported_once_and_blocks_every_write_in_it() -> None:

@@ -48,6 +48,19 @@ def test_an_agent_names_the_aliases_and_tags_an_update_sets() -> None:
     )
 
 
+def test_tags_that_were_not_read_are_not_compared() -> None:
+    # Under --no-grants, or when the read fails, a tagged view's tags are unread, not empty;
+    # reporting `tags: - -> X` would claim the update adds tags it may already carry.
+    artifact = replace(rendered(), desired_tags=("DB.SCH.KEEP",))
+    unread = observed(artifact, ownership=marker(artifact))
+    assert unread.tags is None
+    assert changed_properties(change(artifact, Action.UPDATE, live=unread), MANIFEST) == ()
+    untagged = replace(unread, tags=())
+    assert changed_properties(change(artifact, Action.UPDATE, live=untagged), MANIFEST) == (
+        PropertyChange("tags", "", "DB.SCH.KEEP"),
+    )
+
+
 def test_only_an_update_of_an_observed_object_names_properties() -> None:
     artifact = rendered()
     live = observed(artifact)

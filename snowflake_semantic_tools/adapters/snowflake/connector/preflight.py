@@ -6,6 +6,7 @@ ignores case and reads `_` and `%` as wildcards.
 
 from __future__ import annotations
 
+from snowflake_semantic_tools.adapters.json_files import JsonFileError
 from snowflake_semantic_tools.adapters.snowflake.connector.catalog import CatalogMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.grant_walk import (
     Grantee,
@@ -14,8 +15,9 @@ from snowflake_semantic_tools.adapters.snowflake.connector.grant_walk import (
     held_by,
     schema_holders,
 )
+from snowflake_semantic_tools.adapters.snowflake.connector.session import _variant_value
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
-from snowflake_semantic_tools.domain.ports.snowflake.preflight import ROLE_HIERARCHY_DEPTH, PreflightPort
+from snowflake_semantic_tools.domain.ports.snowflake.preflight import ROLE_HIERARCHY_DEPTH, PreflightPort, RoleWalk
 from snowflake_semantic_tools.domain.sql import Sql, ident, literal, qname, sql
 from snowflake_semantic_tools.domain.sql import scope as scope_sql
 
@@ -83,7 +85,22 @@ class PreflightMethods(CatalogMethods, PreflightPort):
                 missing.append(privilege)
         return tuple(missing)
 
+    def has_secondary_roles(self) -> bool:
+        # From the docs, not measured: a JSON object whose `roles` lists the active secondary
+        # roles and whose `value` is `ALL` when every granted role is; both empty for none.
+        rows = self.query(sql("SELECT CURRENT_SECONDARY_ROLES()")).rows
+        try:
+            value = _variant_value(rows[0][0] if rows else None, None)
+        except JsonFileError:
+            return True
+        if not isinstance(value, dict):
+            return True
+        return bool(str(value.get("roles") or "").strip() or str(value.get("value") or "").strip())
+
     def missing_role_privileges(self, role: str, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
+        return self.walk_role_privileges(role, scope, privileges).missing
+
+    def walk_role_privileges(self, role: str, scope: SchemaScope, privileges: tuple[str, ...]) -> RoleWalk:
         """Return the privileges `role` does not hold on the schema, through its hierarchy.
 
         As `_lacking` does, the account roles the grants name are walked first; database roles
@@ -94,14 +111,16 @@ class PreflightMethods(CatalogMethods, PreflightPort):
         )
         grantee = Grantee.role(_shown(role))
         direct = {holder: held for holder, held in holders.items() if holder.is_account_role}
-        held = held_by(grantee, direct, self._grantees_of, ROLE_HIERARCHY_DEPTH)
+        held, cut_short = held_by(grantee, direct, self._grantees_of, ROLE_HIERARCHY_DEPTH)
         wanted = {privilege.upper() for privilege in privileges} - held
         through = {
             holder: found & wanted for holder, found in holders.items() if not holder.is_account_role and found & wanted
         }
         if through:
-            held |= held_by(grantee, through, self._grantees_of, ROLE_HIERARCHY_DEPTH)
-        return tuple(privilege for privilege in privileges if privilege.upper() not in held)
+            more, deeper = held_by(grantee, through, self._grantees_of, ROLE_HIERARCHY_DEPTH)
+            held, cut_short = held | more, cut_short | deeper
+        missing = tuple(privilege for privilege in privileges if privilege.upper() not in held)
+        return RoleWalk(missing, tuple(privilege for privilege in missing if privilege.upper() in cut_short))
 
     def _grantees_of(self, grantee: Grantee) -> tuple[Grantee, ...]:
         return grantees_of(grantee, self._dict_rows(grantee.grants_of))

@@ -26,7 +26,7 @@ cannot be downgraded by any setting.
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
-- [Planning (PLN)](#planning-pln) -- 40 codes
+- [Planning (PLN)](#planning-pln) -- 41 codes
 - [Apply (APL)](#apply-apl) -- 29 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 22 codes
@@ -3839,7 +3839,7 @@ Raised when connected validation finds no object for something an agent uses and
 
 Fix: publish it first, or correct the reference
 
-Note: Snowflake accepts an agent whose reference does not exist, and the agent then reports success and lacks the tool or skill, so this is an error. `sst plan` looks up each consumed extension and pinned version whenever it is connected, even with `validation.snowflake_syntax_check` off. Demote it with `diagnostics.severity_overrides` for a target whose referenced objects may be absent.
+Note: Snowflake accepts an agent whose reference does not exist, and the agent then reports success and lacks the tool or skill, so this is an error. `sst plan` looks up each consumed extension and pinned version on every connected plan unless `--no-validate`, even with `validation.snowflake_syntax_check` off. Demote it with `diagnostics.severity_overrides` for a target whose referenced objects may be absent.
 
 ### SST-VAL532
 
@@ -6147,7 +6147,7 @@ Fix: upgrade SST
 
 `observation of <value> failed: <detail>`
 
-Raised when a read of the target failed: an object listing, grants, the state table, a preflight read, or a composite artifact's resources; under `--use-cached-state`, also each composite artifact, which a recorded observation cannot decide. A definition `--capture-prior` cannot read is SST-PLN037 instead.
+Raised when a read of the target failed: an object listing, grants, the state table, a preflight read, or a composite artifact's resources; under `--use-cached-state`, also each composite artifact, which a recorded observation cannot decide. A definition `--capture-prior` cannot read is SST-PLN037 instead, and the tags on a view a replace removes SST-PLN040.
 
 Fix: check the connection and the role, then re-run plan
 
@@ -6223,7 +6223,7 @@ Raised when the session's primary role does not hold, directly, through a role i
 
 Fix: grant the privilege to the session's primary role, or to a role it inherits
 
-Note: Plan blocks the change rather than let apply fail with SST-SNO004. Snowflake authorises a CREATE by the primary role alone, so a CREATE privilege only a secondary role holds does not count, and the message says a secondary role holds it. An update is not checked for its own CREATE privilege: it replaces an object the role already owns.
+Note: Plan blocks the change rather than let apply fail with SST-SNO004. Snowflake authorises a CREATE by the primary role alone, so a CREATE privilege only a secondary role holds does not count, and the message says a secondary role holds it. The walk up from the primary role stops at 16 roles; a privilege the session holds that it has not reached by then is said to have no inheritance path within that depth instead. With no secondary role active, the session is asked alone. An update is not checked for its own CREATE privilege: it replaces an object the role already owns.
 
 ### SST-PLN009
 
@@ -6529,7 +6529,19 @@ Raised when a planned update replaces a semantic view that carries tags the proj
 
 Fix: declare each tag to keep under the view's `tags:`, or set it again after applying
 
-Note: The replace's `WITH TAG` names only the declared tags, and Snowflake removes every other tag set on the view; a tag it inherits from its schema or database is kept. `--no-grants` skips the read of the view's tags, and with it this warning.
+Note: The replace's `WITH TAG` names only the declared tags, and Snowflake removes every other tag set on the view; a tag it inherits from its schema or database is kept. `--no-grants` skips the read of the view's tags, and with it this warning; a read that fails is `SST-PLN040`.
+
+### SST-PLN040
+
+**Tags on a replaced view not read** (warning)
+
+`the tags on <value> were not read, so the tags its replace removes are not checked: <detail>`
+
+Raised when reading the tags on a semantic view a planned update replaces failed.
+
+Fix: check that the role can read the view's tags with TAG_REFERENCES, or plan with --no-grants to skip the read
+
+Note: The plan is otherwise unaffected: the update is planned as before, and `SST-PLN039` is not checked for the view.
 
 ### SST-PLN100
 

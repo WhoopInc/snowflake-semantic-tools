@@ -5,6 +5,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.app.observe import DEFAULT_OBSERVE_OPTIONS, ObserveOptions, observe
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
+from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
@@ -276,13 +277,16 @@ class _CompositeHandler:
 
 
 def _tag_plan(
-    declared: tuple[str, ...], options: ObserveOptions = DEFAULT_OBSERVE_OPTIONS
+    declared: tuple[str, ...],
+    options: ObserveOptions = DEFAULT_OBSERVE_OPTIONS,
+    *,
+    recorded: str = "f" * 64,
+    port: FakeSnowflake | None = None,
 ) -> tuple[FakeSnowflake, RenderedArtifact, ChangeSet]:
-    """Plan an update of a view that shows the tag `GOV.T.PII`, declaring `declared`."""
+    """Plan a view that shows the tag `GOV.T.PII`, declaring `declared`; an update unless `recorded` is current."""
     artifact = replace(rendered(), desired_tags=declared)
     planned_manifest = manifest({artifact.key: artifact})
-    recorded = "f" * 64
-    port = FakeSnowflake()
+    port = port or FakeSnowflake()
     port.show(
         ShowRow("V", "DB", "SCHEMA", "OWNER", "now", OwnershipMarker(planned_manifest.manifest_id, recorded).text)
     )
@@ -297,7 +301,8 @@ def _tag_plan(
         target(),
         fetched_at="now",
     )
-    assert planned.changes[0].action is Action.UPDATE
+    expected = Action.NOOP if recorded == artifact.fingerprint else Action.UPDATE
+    assert planned.changes[0].action is expected
     return port, artifact, planned
 
 
@@ -319,19 +324,28 @@ def test_plan_is_silent_on_declared_tags_and_reads_none_without_grants() -> None
     assert "SST-PLN039" not in {item.code for item in skipped.diagnostics}
 
 
-def test_observe_reads_tags_only_on_a_view_it_may_replace_and_reports_a_failed_read() -> None:
-    port = FakeSnowflake()
+def test_plan_reads_no_tags_on_a_view_it_leaves_unchanged_or_only_observes() -> None:
+    port, _, unchanged = _tag_plan((), recorded=rendered().fingerprint)
+    assert port.tag_reads == [] and "SST-PLN039" not in {item.code for item in unchanged.diagnostics}
+    # Observation alone never reads tags, whatever the plan may replace.
     artifact = rendered()
-    port.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now"))
-    port.tags[artifact.target.sql] = ("GOV.T.PII",)
-    targets = (artifact.target,)
-    unrelated, quiet = observe(port, SEMANTIC_REGISTRY, targets, fetched_at="now")
-    assert unrelated.artifacts[artifact.key].tags == () and quiet == () and port.tag_reads == []
-    port.fail("tag_references", SnowflakePortError("denied"))
-    refused, failed = observe(
-        port, SEMANTIC_REGISTRY, targets, fetched_at="now", desired_artifacts={artifact.key: artifact}
+    listed = FakeSnowflake()
+    listed.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now"))
+    observation, quiet = observe(
+        listed, SEMANTIC_REGISTRY, (artifact.target,), fetched_at="now", desired_artifacts={artifact.key: artifact}
     )
-    assert refused.artifacts[artifact.key].tags == ()
-    assert [(item.code, item.message) for item in failed] == [
-        ("SST-PLN001", "observation of tags on DB.SCHEMA.V failed: denied")
+    assert observation.artifacts[artifact.key].tags is None and quiet == () and listed.tag_reads == []
+
+
+def test_a_failed_tag_read_warns_and_the_update_is_planned_all_the_same() -> None:
+    refusing = FakeSnowflake()
+    refusing.fail("tag_references", SnowflakePortError("denied"))
+    _, _, planned = _tag_plan((), port=refusing)
+    assert [(item.code, item.severity, item.message) for item in planned.diagnostics] == [
+        (
+            "SST-PLN040",
+            Severity.WARNING,
+            "the tags on DB.SCHEMA.V were not read, so the tags its replace removes are not checked: denied",
+        )
     ]
+    assert planned.changes[0].observed is not None and planned.changes[0].observed.tags is None

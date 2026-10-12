@@ -102,9 +102,11 @@ def held_by(
     holders: Mapping[Grantee, frozenset[str]],
     read: Callable[[Grantee], tuple[Grantee, ...]],
     depth: int,
-) -> frozenset[str]:
-    """Return the privileges `role` holds: a holder reaches it in fewer than `depth` grants.
+) -> tuple[frozenset[str], frozenset[str]]:
+    """Return the privileges `role` holds, and those still travelling when the walk stopped.
 
+    A holder reaches `role` in fewer than `depth` grants; a privilege not held that a frontier
+    node still carries after `depth` grants is cut short, as a deeper path might pass it on.
     One breadth-first walk over every holder at once, each frontier node carrying the
     privileges it passes on. Each grantee is read at most once, so a cycle ends; a pair of
     grantee and privilege travels on only the first, shortest time it is reached, and
@@ -130,7 +132,8 @@ def held_by(
                 elif arriving:
                     following.setdefault(parent, set()).update(arriving)
         frontier = following
-    return frozenset(held)
+    cut_short = {privilege for carried in frontier.values() for privilege in carried - held}
+    return frozenset(held), frozenset(cut_short)
 
 
 def account_holders(

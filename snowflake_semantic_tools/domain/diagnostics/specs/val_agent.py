@@ -279,8 +279,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         note=(
             "Snowflake accepts an agent whose reference does not exist, and the agent then reports "
             "success and lacks the tool or skill, so this is an error. `sst plan` looks up each "
-            "consumed extension and pinned version whenever it is connected, even with "
-            "`validation.snowflake_syntax_check` off. Demote it with "
+            "consumed extension and pinned version on every connected plan unless `--no-validate`, "
+            "even with `validation.snowflake_syntax_check` off. Demote it with "
             "`diagnostics.severity_overrides` for a target whose referenced objects may be absent."
         ),
         precheck=Precheck.OBSERVE,

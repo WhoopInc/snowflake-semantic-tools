@@ -17,7 +17,8 @@ SPECS: tuple[ErrorSpec, ...] = (
             "a read of the target failed: an object listing, grants, the state table, "
             "a preflight read, or a composite artifact's resources; under `--use-cached-state`, also "
             "each composite artifact, which a recorded observation cannot decide. A definition "
-            "`--capture-prior` cannot read is SST-PLN037 instead"
+            "`--capture-prior` cannot read is SST-PLN037 instead, and the tags on a view a replace "
+            "removes SST-PLN040"
         ),
         precheck=Precheck.OBSERVE,
     ),
@@ -100,8 +101,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         note=(
             "Plan blocks the change rather than let apply fail with SST-SNO004. Snowflake authorises "
             "a CREATE by the primary role alone, so a CREATE privilege only a secondary role holds "
-            "does not count, and the message says a secondary role holds it. An update is not "
-            "checked for its own CREATE privilege: it replaces an object the role already owns."
+            "does not count, and the message says a secondary role holds it. The walk up from the "
+            "primary role stops at 16 roles; a privilege the session holds that it has not reached "
+            "by then is said to have no inheritance path within that depth instead. With no "
+            "secondary role active, the session is asked alone. An update is not checked for its "
+            "own CREATE privilege: it replaces an object the role already owns."
         ),
         precheck=Precheck.OBSERVE,
     ),
@@ -431,7 +435,21 @@ SPECS: tuple[ErrorSpec, ...] = (
         note=(
             "The replace's `WITH TAG` names only the declared tags, and Snowflake removes every other "
             "tag set on the view; a tag it inherits from its schema or database is kept. "
-            "`--no-grants` skips the read of the view's tags, and with it this warning."
+            "`--no-grants` skips the read of the view's tags, and with it this warning; a read that "
+            "fails is `SST-PLN040`."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN040",
+        Severity.WARNING,
+        "Tags on a replaced view not read",
+        "the tags on {value} were not read, so the tags its replace removes are not checked: {detail}",
+        "check that the role can read the view's tags with TAG_REFERENCES, or plan with --no-grants to skip the read",
+        condition="reading the tags on a semantic view a planned update replaces failed",
+        note=(
+            "The plan is otherwise unaffected: the update is planned as before, and `SST-PLN039` is "
+            "not checked for the view."
         ),
         precheck=Precheck.OBSERVE,
     ),

@@ -121,6 +121,11 @@ class _Reader:
 
         return self._readers.map(attempt, items)
 
+    def answers_quietly(self, read: Callable[[PreflightPort], bool], *, refused: bool) -> bool:
+        """Return what one yes-or-no read answers, `refused` where Snowflake refuses it, reporting nothing."""
+        [(answer, _)] = self._answers((None,), lambda port, _: read(port))
+        return refused if answer is None else answer
+
     def holds_each(
         self,
         items: Sequence[ItemT],
@@ -177,7 +182,7 @@ def read_preflight(
     needs = _create_needs(created, present, stages, absent_stages)
     # The primary role is read once: the profile's role names it, but CURRENT_ROLE() spells it.
     primary = (current if not target.role else _current_role(reader)) if needs else None
-    missing_privileges, secondary_privileges = _missing_privileges(reader, needs, primary)
+    missing_privileges, secondary_privileges, unreached_privileges = _missing_privileges(reader, needs, primary)
     preflight = Preflight(
         target_name=target.name,
         role=role,
@@ -186,6 +191,7 @@ def read_preflight(
         missing_relations=MappingProxyType(missing_relations),
         missing_privileges=MappingProxyType(missing_privileges),
         secondary_privileges=MappingProxyType(secondary_privileges),
+        unreached_privileges=MappingProxyType(unreached_privileges),
         missing_stage_privileges=MappingProxyType(_missing_stage_privileges(reader, stages, stage_types)),
         occupied=_occupied(reader, created, present),
         locked=_locked(reader, tuple(scope for scope in present if scope in targets)),
@@ -319,27 +325,41 @@ def _create_needs(
 
 def _missing_privileges(
     reader: _Reader, needs: tuple[tuple[SchemaScope, tuple[str, ...]], ...], primary: str | None
-) -> tuple[dict[_Scope, tuple[str, ...]], dict[_Scope, tuple[str, ...]]]:
-    """Return, by scope, the create privileges the primary role lacks, and those a secondary role holds.
+) -> tuple[dict[_Scope, tuple[str, ...]], dict[_Scope, tuple[str, ...]], dict[_Scope, tuple[str, ...]]]:
+    """Return, by scope, the create privileges the primary role lacks, and which the session holds.
 
-    Snowflake authorises `CREATE <object>` by the session's primary role alone, so a create
-    privilege counts only when `primary`, or a role it inherits, holds it. The session is then
-    asked about what it lacks, so a privilege only a secondary role holds is told apart from
-    one nothing holds. When the primary role cannot be read, every role in the session counts.
+    The second map holds those a secondary role holds; the third those the session holds that
+    the walk up from the primary role stopped short of. Snowflake authorises `CREATE <object>`
+    by the session's primary role alone, so a create privilege counts only when `primary`, or a
+    role it inherits, holds it. The session is then asked about what it lacks, so a privilege
+    only a secondary role holds is told apart from one nothing holds, unless the walk stopped at
+    `ROLE_HIERARCHY_DEPTH` before it could tell. When the primary role cannot be read, every
+    role in the session counts; and when no secondary role is active the session's roles are
+    the primary role's hierarchy, so the session is asked alone, without the walk and its
+    depth limit.
     """
-    if primary is None:
+    if primary is None or not reader.answers_quietly(lambda port: port.has_secondary_roles(), refused=True):
         lacking = reader.read_each(needs, lambda port, need: port.missing_privileges(*need), _schema_grants)
-        return {_key(scope): found for (scope, _), found in zip(needs, lacking, strict=True) if found}, {}
+        return {_key(scope): found for (scope, _), found in zip(needs, lacking, strict=True) if found}, {}, {}
     role = primary
-    unheld = reader.read_each(needs, lambda port, need: port.missing_role_privileges(role, *need), _schema_grants)
-    asked = tuple((scope, found) for (scope, _), found in zip(needs, unheld, strict=True) if found)
-    absent = reader.read_each(asked, lambda port, need: port.missing_privileges(*need), _schema_grants)
-    secondary = {
-        _key(scope): held
-        for (scope, found), nothing in zip(asked, absent, strict=True)
-        if nothing is not None and (held := tuple(item for item in found if item not in nothing))
-    }
-    return {_key(scope): found for scope, found in asked}, secondary
+    walks = reader.read_each(needs, lambda port, need: port.walk_role_privileges(role, *need), _schema_grants)
+    asked = tuple(
+        (scope, walk) for (scope, _), walk in zip(needs, walks, strict=True) if walk is not None and walk.missing
+    )
+    absent = reader.read_each(
+        tuple((scope, walk.missing) for scope, walk in asked),
+        lambda port, need: port.missing_privileges(*need),
+        _schema_grants,
+    )
+    secondary: dict[_Scope, tuple[str, ...]] = {}
+    unreached: dict[_Scope, tuple[str, ...]] = {}
+    for (scope, walk), nothing in zip(asked, absent, strict=True):
+        held = () if nothing is None else tuple(item for item in walk.missing if item not in nothing)
+        if found := tuple(item for item in held if item not in walk.beyond_depth):
+            secondary[_key(scope)] = found
+        if found := tuple(item for item in held if item in walk.beyond_depth):
+            unreached[_key(scope)] = found
+    return {_key(scope): walk.missing for scope, walk in asked}, secondary, unreached
 
 
 def _schema_grants(need: tuple[SchemaScope, tuple[str, ...]]) -> str:
