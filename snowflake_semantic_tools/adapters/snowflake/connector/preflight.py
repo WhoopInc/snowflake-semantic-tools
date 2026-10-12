@@ -56,11 +56,26 @@ class PreflightMethods(CatalogMethods, PreflightPort):
 
         A role holds a privilege when a grant to it names the privilege or OWNERSHIP, or when
         it is granted a database role that does, directly or through other database roles.
+        The account roles the grants name are asked about first; database roles are read only
+        for the privileges none of those holds in the session, so a database role that cannot
+        be read matters only when a direct holder does not already answer.
         """
-        holders = account_holders(
-            schema_holders(self._dict_rows(grants), scope, privileges), self._grantees_of, ROLE_HIERARCHY_DEPTH
-        )
+        holders = schema_holders(self._dict_rows(grants), scope, privileges)
         in_session: dict[str, bool] = {}
+        direct = {grantee: held for grantee, held in holders.items() if grantee.is_account_role}
+        missing = self._unheld(direct, privileges, in_session)
+        wanted = {privilege.upper() for privilege in missing}
+        through = {
+            grantee: held & wanted for grantee, held in holders.items() if not grantee.is_account_role and held & wanted
+        }
+        if not through:
+            return missing
+        return self._unheld(account_holders(through, self._grantees_of, ROLE_HIERARCHY_DEPTH), missing, in_session)
+
+    def _unheld(
+        self, holders: dict[Grantee, frozenset[str]], privileges: tuple[str, ...], in_session: dict[str, bool]
+    ) -> tuple[str, ...]:
+        """Return the privileges no account role among `holders` that is in the session holds."""
         missing: list[str] = []
         for privilege in privileges:
             roles = sorted(role.names[0].value for role, held in holders.items() if privilege.upper() in held)

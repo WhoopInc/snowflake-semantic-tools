@@ -82,6 +82,8 @@ class ConfigKey:
             code, or the code for a value outside `choices` or not `fixed`.
         fixed: The only boolean the key accepts, or None when either is accepted.
         one_of: Children of which a present block must declare at least one.
+        folded: An `ENUM` value is matched against `choices` by `vocabulary_key`, ignoring case
+            and runs of spaces, as the member key it is the default for is matched.
     """
 
     path: str
@@ -98,6 +100,7 @@ class ConfigKey:
     code: str | None = None
     fixed: bool | None = None
     one_of: tuple[str, ...] = ()
+    folded: bool = False
 
     @property
     def segments(self) -> tuple[str, ...]:
@@ -333,6 +336,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "Rights a defined procedure runs with (`EXECUTE AS`) when it names none.",
         default="caller",
         choices=EXECUTE_AS,
+        folded=True,
     ),
     _removed("tools.+enabled", "omit the tools instead"),
     _key(

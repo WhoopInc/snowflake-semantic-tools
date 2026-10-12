@@ -3363,13 +3363,13 @@ Fix: use `public_access`, or remove `access_modifier` from the column
 
 **Fact declares a private access modifier** (error)
 
-`<artifact>: column '<member>' declares access_modifier 'private_access'; SST does not render a private fact`
+`<artifact>: fact '<member>' declares access_modifier 'private_access'; SST does not render a private fact`
 
-Raised when a column that is not a `dimension` or `time_dimension` carries `meta.sst.access_modifier: private_access`.
+Raised when a `fact` column that is not excluded carries `meta.sst.access_modifier: private_access`.
 
 Fix: remove `access_modifier` from the column, or hide what it measures behind a private metric
 
-Note: A fact renders without `PRIVATE`, so it would publish as public; it is refused instead. A private dimension is SST-VAL222.
+Note: A fact renders without `PRIVATE`, so it would publish as public; it is refused instead. A private dimension is SST-VAL222. A column with no `column_type`, or one excluded, never renders, so its modifier is not refused.
 
 ### SST-VAL335
 
@@ -3377,7 +3377,7 @@ Note: A fact renders without `PRIVATE`, so it would publish as public; it is ref
 
 `<artifact>: fact '<member>' declares is_enum; only a dimension can be an enum`
 
-Raised when a `fact` column declares `meta.sst.is_enum: true`.
+Raised when a `fact` column that is not excluded declares `meta.sst.is_enum: true`.
 
 Fix: remove `is_enum`, or change `column_type` to `dimension`
 
@@ -4487,7 +4487,7 @@ Note: Set `version: v3` on the metric, or `evals.+metric_version: v3` once for t
 
 `eval config for '<artifact>': metric '<name>' pins legacy version '<found>'`
 
-Raised when a system metric's version, else `evals.+metric_version`, is anything other than v3; SST-PRS013 reports the same value as an error.
+Raised when a system metric's version, else `evals.+metric_version`, is anything other than v3 or v1; SST-PRS013 reports the same value as an error, and SST-VAL764 reports v1.
 
 Fix: move to a current version, and record the score shift
 
@@ -6237,7 +6237,7 @@ Note: Plan blocks the change rather than let apply fail with SST-SNO003.
 
 `<value> lacks <detail> on <target>`
 
-Raised when no role in the session holds, or owns the schema for, the CREATE privilege a planned create needs on its schema, such as CREATE SEMANTIC VIEW; or, for an agent create or update, CREATE STAGE on the schema of an absent `apply.agent_spec_stage` stage, or READ and WRITE on an existing one.
+Raised when no role in the session holds, directly or through a database role, the CREATE privilege a planned create needs on its schema, such as CREATE SEMANTIC VIEW, nor owns the schema; or, for an agent create or update, CREATE STAGE on the schema of an absent `apply.agent_spec_stage` stage, or READ and WRITE on an existing one.
 
 Fix: grant the privilege
 

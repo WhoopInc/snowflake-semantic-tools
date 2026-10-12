@@ -78,17 +78,19 @@ def _sample_value_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagno
     fact, which cannot be an enum: Snowflake takes `IS_ENUM` on a dimension only.
 
     Diagnostics:
-        SST-VAL335: when a fact declares `is_enum: true`.
+        SST-VAL335: when a fact that is not excluded declares `is_enum: true`.
         SST-VAL314: when an `is_enum` column declares no sample values.
         SST-VAL315: when a column that is not a fact declares five or more sample values and no
             `is_enum`.
     """
     artifact, subject = _column_keys(model, column)
-    if column.is_enum and column.column_type == "fact":
-        return [D("SST-VAL335", artifact=artifact, member=column.name, subject=subject)]
+    if column.column_type == "fact":
+        if column.is_enum and not column.excluded:
+            return [D("SST-VAL335", artifact=artifact, member=column.name, subject=subject)]
+        return []
     if column.is_enum and not column.sample_values:
         return [D("SST-VAL314", artifact=artifact, member=column.name, subject=subject)]
-    if column.is_enum is None and column.column_type != "fact" and len(column.sample_values) >= 5:
+    if column.is_enum is None and len(column.sample_values) >= 5:
         return [
             D(
                 "SST-VAL315",
@@ -117,13 +119,14 @@ def _column_meta_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnos
     """Report a column's `meta.sst` keys SST does not read, and an access modifier it cannot honour.
 
     A column renders as public, so only `public_access` is honoured: a private column is
-    refused rather than published as public.
+    refused rather than published as public. A column with no `column_type`, or one excluded,
+    never renders, so its modifier publishes nothing and is not refused.
 
     Diagnostics:
         SST-VAL333: when a column's `access_modifier` is neither `public_access` nor
             `private_access`.
-        SST-VAL222: when a dimension declares `access_modifier: private_access`.
-        SST-VAL334: when any other column declares `access_modifier: private_access`.
+        SST-VAL222: when a dimension not excluded declares `access_modifier: private_access`.
+        SST-VAL334: when a fact not excluded declares `access_modifier: private_access`.
         SST-PRS004: when a column's `meta.sst` holds a key SST does not read, once per key.
     """
     artifact, subject = _column_keys(model, column)
@@ -131,12 +134,13 @@ def _column_meta_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnos
     diagnostics: list[Diagnostic] = []
     if modifier is not None and modifier not in ACCESS_MODIFIERS:
         diagnostics.append(D("SST-VAL333", artifact=artifact, member=column.name, found=modifier, subject=subject))
-    elif modifier == "private_access" and column.column_type in ("dimension", "time_dimension"):
-        # Snowflake's docs say a dimension cannot be private; the server accepts and enforces it,
-        # and SST refuses it anyway (docs/design/snowflake-behaviour.md).
-        diagnostics.append(D("SST-VAL222", artifact=artifact, member=column.name, value=modifier, subject=subject))
-    elif modifier == "private_access":
-        diagnostics.append(D("SST-VAL334", artifact=artifact, member=column.name, subject=subject))
+    elif modifier == "private_access" and not column.excluded:
+        if column.column_type in ("dimension", "time_dimension"):
+            # Snowflake's docs say a dimension cannot be private; the server accepts and enforces
+            # it, and SST refuses it anyway (docs/design/snowflake-behaviour.md).
+            diagnostics.append(D("SST-VAL222", artifact=artifact, member=column.name, value=modifier, subject=subject))
+        elif column.column_type == "fact":
+            diagnostics.append(D("SST-VAL334", artifact=artifact, member=column.name, subject=subject))
     diagnostics.extend(
         D("SST-PRS004", artifact=subject, field=f"meta.sst.{key}", subject=subject) for key in column.unknown_meta_keys
     )

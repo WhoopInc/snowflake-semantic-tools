@@ -233,3 +233,19 @@ def test_each_tool_kind_keeps_its_grants_as_the_registry_declares_for_that_kind(
     for item in rendered:
         # Apply reads the rendered shape; the registry, and the reference page, must say the same.
         assert item.grant_preservation is tool.grant_preservation_of(item.object_type), item.object_type
+
+
+@pytest.mark.parametrize("kind", ["procedure", "function"])
+def test_a_javascript_routine_renders_without_runtime_version_or_handler(kind: str) -> None:
+    routine = member(
+        name="lookup",
+        type=kind,
+        language="javascript",
+        body="return 1;",
+        returns="FLOAT",
+        warehouse="WH",
+    )
+    rendered = render_tool(routine, QualifiedName.parse("DB.S.LOOKUP"), None)
+    assert "LANGUAGE JAVASCRIPT" in rendered.ddl
+    assert "RUNTIME_VERSION" not in rendered.ddl
+    assert "HANDLER" not in rendered.ddl

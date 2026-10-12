@@ -26,3 +26,13 @@ def test_sst_val222_fires(tmp_path: Path) -> None:
 
 def test_sst_val222_silent(tmp_path: Path) -> None:
     assert reported(project_copy(tmp_path), "SST-VAL222", _modifier(tmp_path, "public_access")) == []
+
+
+def test_sst_val222_silent_on_an_excluded_dimension(tmp_path: Path) -> None:
+    manifest = edited_manifest(
+        tmp_path,
+        lambda document: set_column_meta(
+            document, "orders", "order_state", access_modifier="private_access", exclude=True
+        ),
+    )
+    assert reported(project_copy(tmp_path), "SST-VAL222", manifest) == []

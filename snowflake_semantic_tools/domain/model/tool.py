@@ -280,6 +280,9 @@ class ToolCatalog:
 KNOWN_TOOL_TYPES = frozenset(kind.value for kind in ToolKind)
 # The rights a defined procedure runs with, as `EXECUTE AS` takes them, lower-cased with single spaces.
 EXECUTE_AS = ("caller", "owner", "restricted caller")
+# The routine languages whose DDL requires RUNTIME_VERSION and HANDLER, lower-cased. SQL and
+# JavaScript routines take neither clause: the body is the routine.
+HANDLER_LANGUAGES = frozenset(("java", "python", "scala"))
 CREATION_KEYS = frozenset(
     (
         "on",
@@ -320,3 +323,12 @@ TOOL_MEMBER_KEYS = frozenset(
         "relations",
     )
 )
+
+
+def vocabulary_key(value: str) -> str:
+    """A value from a closed vocabulary such as `EXECUTE_AS`, spelled as it is: lower-cased, single-spaced.
+
+    Example:
+        vocabulary_key("Restricted   CALLER") == "restricted caller"
+    """
+    return " ".join(value.casefold().split())

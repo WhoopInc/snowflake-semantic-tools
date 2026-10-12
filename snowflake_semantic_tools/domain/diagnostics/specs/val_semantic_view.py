@@ -321,14 +321,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL334",
         Severity.ERROR,
         "Fact declares a private access modifier",
-        "{artifact}: column '{member}' declares access_modifier 'private_access'; SST does not render a private fact",
+        "{artifact}: fact '{member}' declares access_modifier 'private_access'; SST does not render a private fact",
         "remove `access_modifier` from the column, or hide what it measures behind a private metric",
-        condition=(
-            "a column that is not a `dimension` or `time_dimension` carries `meta.sst.access_modifier: private_access`"
-        ),
+        condition=("a `fact` column that is not excluded carries `meta.sst.access_modifier: private_access`"),
         note=(
             "A fact renders without `PRIVATE`, so it would publish as public; it is refused instead. "
-            "A private dimension is SST-VAL222."
+            "A private dimension is SST-VAL222. A column with no `column_type`, or one excluded, "
+            "never renders, so its modifier is not refused."
         ),
     ),
     spec(
@@ -337,7 +336,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Fact declares is_enum",
         "{artifact}: fact '{member}' declares is_enum; only a dimension can be an enum",
         "remove `is_enum`, or change `column_type` to `dimension`",
-        condition="a `fact` column declares `meta.sst.is_enum: true`",
+        condition="a `fact` column that is not excluded declares `meta.sst.is_enum: true`",
         note="Snowflake refuses `IS_ENUM` on a fact when the view is created, so no setting lowers this.",
         demotable=False,
     ),

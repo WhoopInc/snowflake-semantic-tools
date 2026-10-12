@@ -14,7 +14,7 @@ from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ProbeKind, PublishShape, RenderedArtifact, SmokeProbe
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
-from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember
+from snowflake_semantic_tools.domain.model.tool import HANDLER_LANGUAGES, ToolKind, ToolMember
 from snowflake_semantic_tools.domain.sql import (
     Sql,
     canonical,
@@ -207,8 +207,9 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
     """Render `CREATE OR REPLACE PROCEDURE` or `FUNCTION` with `COPY GRANTS`, its body dollar-quoted.
 
     The clauses come in a fixed order: the signature, COPY GRANTS, RETURNS, and LANGUAGE; then,
-    when set, RUNTIME_VERSION and HANDLER (which any language but SQL requires), PACKAGES,
-    IMPORTS, EXTERNAL_ACCESS_INTEGRATIONS, and SECRETS sorted by name; then a procedure's
+    for Java, Python and Scala, which require them, RUNTIME_VERSION and HANDLER (the SQL and
+    JavaScript grammars have neither clause); then, when set, PACKAGES, IMPORTS,
+    EXTERNAL_ACCESS_INTEGRATIONS, and SECRETS sorted by name; then a procedure's
     EXECUTE AS, CALLER by default; then the body. A procedure also requires `warehouse`,
     which the DDL itself does not name.
 
@@ -217,7 +218,7 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
 
     Raises:
         ValueError: the language, body, or return type is missing, or a procedure has no
-            warehouse; a language other than SQL lacks a runtime version or handler; the body
+            warehouse; a Java, Python or Scala routine lacks a runtime version or handler; the body
             holds `$$`; a parameter or integration name is not an identifier; a type is not a
             Snowflake type; the language or `execute_as` is unknown; or a secret is not a
             three-part name.
@@ -253,7 +254,7 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
         sql("  RETURNS {returns}", returns=_returns(member.returns)),
         sql("  LANGUAGE {language}", language=_language(member.language)),
     ]
-    if member.language.casefold() != "sql":
+    if member.language.strip().casefold() in HANDLER_LANGUAGES:
         if not member.runtime_version or not member.handler:
             raise ValueError(f"routine {member.name!r} requires runtime_version and handler")
         clauses.append(sql("  RUNTIME_VERSION = {version}", version=literal(member.runtime_version)))

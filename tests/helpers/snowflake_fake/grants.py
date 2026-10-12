@@ -80,6 +80,12 @@ class GrantGraph:
         self._of.pop(f"SHOW GRANTS OF ROLE {Identifier.shown(role).sql}", None)
         return self
 
+    def forget_database_role(self, name: str) -> GrantGraph:
+        """Drop a database role, so SHOW GRANTS OF it fails as for one that cannot be read."""
+        database = Identifier.shown(self.scope.database.folded).sql
+        self._of.pop(f"SHOW GRANTS OF DATABASE ROLE {database}.{Identifier.shown(name).sql}", None)
+        return self
+
     def session(self) -> FakeDriverSession:
         """A driver session answering from this graph, recording each statement it is sent."""
         return FakeDriverSession(respond=self.respond)

@@ -70,7 +70,10 @@ class PreflightPort(Protocol):
         A role holds a privilege on the schema when it is granted it, or owns the schema, or is
         granted a database role that holds it, directly or through other database roles, no
         further than `ROLE_HIERARCHY_DEPTH` grants. Whether a role is in the session, primary,
-        secondary, or inherited, is Snowflake's to answer.
+        secondary, or inherited, is Snowflake's to answer, so secondary roles count. Snowflake
+        authorises a `CREATE <object>` statement by the primary role alone, so a `CREATE`
+        privilege held only through a secondary role reads as held here and the statement is
+        still refused; `missing_role_privileges` reads one role's hierarchy without them.
 
         Raises:
             SnowflakePortError: the schema's grants could not be read.

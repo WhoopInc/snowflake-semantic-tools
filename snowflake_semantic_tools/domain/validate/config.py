@@ -32,7 +32,7 @@ from snowflake_semantic_tools.domain.model.config_schema.keys import (
     KeyKind,
     KeyStatus,
 )
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, vocabulary_key
 
 _TYPES: Mapping[KeyKind, tuple[type, ...]] = MappingProxyType(
     {
@@ -496,7 +496,7 @@ def _value_problem(spec: ConfigKey, value: object, path: tuple[str, ...], positi
     mistyped = expected is not None and not isinstance(value, expected)
     if mistyped or spec.kind is KeyKind.INTEGER and isinstance(value, bool):
         return _diagnostic("SST-CFG004", path, positions, key=key, expected=spec.kind.value, found=type(value).__name__)
-    if spec.choices and value not in spec.choices:
+    if spec.choices and (vocabulary_key(str(value)) if spec.folded else value) not in spec.choices:
         code = spec.code or "SST-CFG008"
         return _diagnostic(code, path, positions, key=key, found=repr(value), expected=", ".join(spec.choices))
     if spec.fixed is not None and value is not spec.fixed:

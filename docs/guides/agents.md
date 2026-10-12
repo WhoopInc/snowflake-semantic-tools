@@ -337,8 +337,8 @@ signature, `COPY GRANTS`, `RETURNS`, `LANGUAGE`, `RUNTIME_VERSION`, `HANDLER`,
 | `language` | `sql`, `python`, `java`, `javascript`, or `scala` | yes | `LANGUAGE` (`SST-PRS013`) |
 | `returns` | a Snowflake type, or `TABLE (<column> <type>, ...)` | yes | `RETURNS` (`SST-PRS003`) |
 | `signature` | list of `name:` and `type:` maps | no | the argument list, in order |
-| `runtime_version` | string | for any language but SQL | `RUNTIME_VERSION = '<version>'` |
-| `handler` | string | for any language but SQL | `HANDLER = '<handler>'` |
+| `runtime_version` | string | for Java, Python and Scala; never rendered for SQL or JavaScript | `RUNTIME_VERSION = '<version>'` |
+| `handler` | string | for Java, Python and Scala; never rendered for SQL or JavaScript | `HANDLER = '<handler>'` |
 | `packages` | list of strings | no | `PACKAGES = ('<package>', ...)` |
 | `imports` | list of strings | no | `IMPORTS = ('<path>', ...)` |
 | `external_access_integrations` | list of identifiers | no | `EXTERNAL_ACCESS_INTEGRATIONS = (<name>, ...)` |

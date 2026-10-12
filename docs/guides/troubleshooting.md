@@ -140,7 +140,7 @@ can show Snowflake would refuse, so apply does not fail part-way:
 
 | Code | What plan found | Grant |
 |---|---|---|
-| [`SST-PLN008`](../reference/error-codes.md#sst-pln008) | no role in the session holds, or owns the schema for, the `CREATE` privilege a create needs; or, for an agent, `CREATE STAGE` for an absent spec stage, or `READ` and `WRITE` on an existing one | that privilege on the schema or stage |
+| [`SST-PLN008`](../reference/error-codes.md#sst-pln008) | no role in the session holds, directly or through a database role, the `CREATE` privilege a create needs, nor owns the schema; or, for an agent, `CREATE STAGE` for an absent spec stage, or `READ` and `WRITE` on an existing one | that privilege on the schema or stage |
 | [`SST-PLN010`](../reference/error-codes.md#sst-pln010), [`SST-PLN011`](../reference/error-codes.md#sst-pln011) | a schema or database the plan writes to that does not exist or the role cannot see | `USAGE`, or create it |
 | [`SST-PLN012`](../reference/error-codes.md#sst-pln012) | the profile's warehouse does not exist or the role cannot see it | `USAGE` on the warehouse |
 | [`SST-PLN001`](../reference/error-codes.md#sst-pln001) | a read the plan needs failed, such as the state table or an object's grants | check the role and the connection |
@@ -151,6 +151,13 @@ role holding the privilege through `SHOW GRANTS OF DATABASE ROLE` to the
 account roles it is granted to, and asks whether any of those roles is in the
 session. An update is not checked for its own `CREATE` privilege: it replaces
 an object the role already owns.
+
+`SST-PLN008` counts secondary roles, but Snowflake authorises a `CREATE`
+statement by the primary role alone. A `CREATE` privilege held only through a
+secondary role therefore passes plan, and Snowflake refuses the create when
+apply runs it. Grant it to the primary role, or to a role it inherits. `READ`
+and `WRITE` on an existing spec stage are not `CREATE` privileges, and a
+secondary role does authorise them.
 
 Two warnings concern the people who use an agent rather than the role that
 publishes it: `SST-VAL616`, a consumer without `USAGE` on an object a tool

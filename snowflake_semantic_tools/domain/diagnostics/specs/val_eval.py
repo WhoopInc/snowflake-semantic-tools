@@ -261,8 +261,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "eval config for '{artifact}': metric '{name}' pins legacy version '{found}'",
         "move to a current version, and record the score shift",
         condition=(
-            "a system metric's version, else `evals.+metric_version`, is anything other than v3; "
-            "SST-PRS013 reports the same value as an error"
+            "a system metric's version, else `evals.+metric_version`, is anything other than v3 "
+            "or v1; SST-PRS013 reports the same value as an error, and SST-VAL764 reports v1"
         ),
         note=(
             "Pin v3. Scores from different metric versions are not comparable, so the eval's baseline "

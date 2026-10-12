@@ -12,7 +12,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.eval import EvalDefaults, ResolvedEval
-from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember
+from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember, vocabulary_key
 from snowflake_semantic_tools.domain.validate.relative_date import relative_date
 
 
@@ -73,10 +73,7 @@ def reachable_tool_problems(
         member = tools.get(key)
         if member is None:
             continue
-        if (
-            member.type == ToolKind.PROCEDURE.value
-            and " ".join((member.execute_as or "").casefold().split()) == "owner"
-        ):
+        if member.type == ToolKind.PROCEDURE.value and vocabulary_key(member.execute_as or "") == "owner":
             found.append(D("SST-VAL610", name=member.name, artifact=agent.name, subject=key, origin=member.origin))
         if gated and member.type == ToolKind.CORTEX_SEARCH_SERVICE.value and not member.embedding_model:
             found.append(D("SST-VAL611", name=member.name, subject=key, origin=member.origin))
