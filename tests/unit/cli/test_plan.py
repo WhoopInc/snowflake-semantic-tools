@@ -165,7 +165,31 @@ def test_plan_live_observation_saved_plan_and_detailed_exitcode(
     assert result.exit_code == 2, result.output
     payload = json.loads(result.output)
     assert payload["status"] == "changes"
-    assert [item["action"] for item in payload["data"]["changes"]] == ["create"] * 14
+    # Every artifact, in publish order -- views, tools, skills, plugins, profiles, agents (a
+    # delegate before the agent that calls it), evals -- and where the folder routes send it.
+    assert [
+        (item["artifact_key"], item["action"], item["reason"], item["target"]) for item in payload["data"]["changes"]
+    ] == [
+        ("semantic_view:jaffle_menu", "create", "not_present", "SST_REF_DEV.CORE.JAFFLE_MENU"),
+        ("semantic_view:jaffle_minimal", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_MINIMAL"),
+        ("semantic_view:jaffle_sales", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_SALES"),
+        ("tool:menu_docs_search", "create", "not_present", "SST_REF_DEV.JAFFLE.MENU_DOCS_SEARCH"),
+        ("skill:jaffle-catalogue", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_CATALOGUE"),
+        ("skill:jaffle-operations", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_OPERATIONS"),
+        ("skill:jaffle-semantics", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS"),
+        ("plugin:jaffle-toolkit", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT"),
+        ("profile:jaffle-analyst", "create", "not_present", "SST_REF_DEV.JAFFLE.PROFILE_REGISTRY"),
+        ("profile:jaffle-operator", "create", "not_present", "SST_REF_DEV.JAFFLE.PROFILE_REGISTRY"),
+        ("agent:jaffle_delivery_agent", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_DELIVERY_AGENT"),
+        ("agent:jaffle_minimal_agent", "create", "not_present", "SST_REF_DEV.OPS.JAFFLE_MINIMAL_AGENT"),
+        ("agent:jaffle_analytics_agent", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT"),
+        (
+            "eval:jaffle_analytics_agent",
+            "create",
+            "not_present",
+            "SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANALYTICS_AGENT_DCE1F8A",
+        ),
+    ]
     assert Path(payload["data"]["plan_path"]).is_file()
     assert Path(payload["data"]["sql_path"]).is_dir()
 
