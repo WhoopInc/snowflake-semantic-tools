@@ -103,12 +103,7 @@ def load_tool_catalog(
                 D("SST-PRS003", artifact=relative, field="root", expected="mapping", found=type(loaded).__name__)
             )
             continue
-        diagnostics.extend(
-            unknown_field(
-                str(key), TOOLS_FILE_KEYS, artifact=relative, origin=_key_origin(relative, lines, (str(key),))
-            )
-            for key in unknown_keys(loaded, TOOLS_FILE_KEYS)
-        )
+        diagnostics.extend(_unknown(loaded, TOOLS_FILE_KEYS, relative, relative, lines, ()))
         raw_groups = loaded.get("tools")
         if not isinstance(raw_groups, list):
             diagnostics.append(
@@ -147,14 +142,29 @@ def _aliased_relations(catalog: ToolCatalog, dbt: DbtCatalog) -> tuple[Diagnosti
     return tuple(found)
 
 
-def _key_origin(
-    source_file: str, lines: Mapping[NodePath, SourcePosition], path: NodePath, fallback: Origin | None = None
-) -> Origin:
-    """Where the key at `path` is written; else `fallback`, or the file's start."""
-    position = lines.get(path)
-    if position is not None:
-        return Origin(source_file, position.line, position.col)
-    return fallback or Origin(source_file, 1, 1)
+def _unknown(
+    value: Mapping[object, object],
+    known: frozenset[str],
+    artifact: str,
+    source_file: str,
+    lines: Mapping[NodePath, SourcePosition],
+    path: NodePath,
+    fallback: Origin | None = None,
+) -> list[Diagnostic]:
+    """Report each key of the mapping at `path` that `known` does not model, where it is written.
+
+    A key `lines` has no position for points at `fallback`, else at the file's start.
+
+    Diagnostics:
+        SST-PRS022: the key is a near miss of one `known` holds, which it names.
+        SST-PRS004: otherwise.
+    """
+    found: list[Diagnostic] = []
+    for key in unknown_keys(value, known):
+        position = lines.get((*path, str(key)))
+        origin = Origin(source_file, position.line, position.col) if position else fallback
+        found.append(unknown_field(str(key), known, artifact=artifact, origin=origin or Origin(source_file, 1, 1)))
+    return found
 
 
 def _parse_group(
@@ -195,15 +205,7 @@ def _parse_group(
     if not isinstance(name, str) or not name.strip():
         return None, (D("SST-PRS002", artifact=f"tools[{index}]", field="group", origin=origin),)
     members: list[ToolMember] = []
-    diagnostics: list[Diagnostic] = [
-        unknown_field(
-            str(key),
-            TOOL_GROUP_KEYS,
-            artifact=f"tool_group:{name}",
-            origin=_key_origin(source_file, lines, ("tools", index, str(key)), origin),
-        )
-        for key in unknown_keys(value, TOOL_GROUP_KEYS)
-    ]
+    diagnostics = _unknown(value, TOOL_GROUP_KEYS, f"tool_group:{name}", source_file, lines, ("tools", index), origin)
     for ownership in ToolOwnership:
         raw_members = value.get(ownership.value)
         if raw_members is None:
@@ -297,15 +299,9 @@ def _parse_member(
         diagnostics.append(D("SST-PRS002", artifact=f"tool_group:{group}", field="type", origin=origin))
     if diagnostics:
         return None, tuple(diagnostics)
-    diagnostics.extend(
-        unknown_field(
-            str(key),
-            TOOL_MEMBER_KEYS,
-            artifact=artifact_key("tool", str(name)),
-            origin=_key_origin(source_file, lines, (*parent, index, str(key)), origin),
-        )
-        for key in unknown_keys((key for key in value if key is not True), TOOL_MEMBER_KEYS)
-    )
+    keys = {key: item for key, item in value.items() if key is not True}
+    artifact = artifact_key("tool", str(name))
+    diagnostics.extend(_unknown(keys, TOOL_MEMBER_KEYS, artifact, source_file, lines, (*parent, index), origin))
     on_model, search_column, attributes = _on_fields(value.get("on", value.get(True)), origin, str(name), diagnostics)
     body_file = optional_string(value.get("body_file"))
     body = _body(project_dir, body_file, str(name), origin, diagnostics) if body_file else None
