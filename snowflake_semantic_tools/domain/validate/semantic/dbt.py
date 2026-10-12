@@ -121,6 +121,8 @@ def _column_meta_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnos
         SST-PRS004: when a column's `meta.sst` holds a key SST does not read, once per key.
     """
     artifact, subject = _column_keys(model, column)
+    # Snowflake's docs say a dimension cannot be private; the server accepts and enforces it,
+    # and SST refuses it anyway (docs/design/snowflake-behaviour.md).
     private = column.access_modifier == "private_access" and column.column_type in ("dimension", "time_dimension")
     diagnostics: list[Diagnostic] = []
     if private:

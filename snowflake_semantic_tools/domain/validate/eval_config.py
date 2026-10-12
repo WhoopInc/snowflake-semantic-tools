@@ -155,6 +155,8 @@ def _system_metric(resolved: ResolvedEval, defaults: EvalDefaults, metric: EvalS
         emit("SST-VAL721", name=name)
         return emit.diagnostics
     version = metric.version or defaults.metric_version
+    # Snowflake's docs list v1 among the versions a metric may name; the server rejects
+    # `version: v1` (docs/design/snowflake-behaviour.md).
     if version is None:
         emit("SST-VAL722", name=name)
     elif version != SYSTEM_EVAL_METRIC_VERSION:

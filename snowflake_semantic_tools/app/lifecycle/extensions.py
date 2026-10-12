@@ -326,6 +326,8 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         version = self._version()
         if version is None:
             return self.fail(f"alias {release.alias} is absent from {target} after ADD VERSION", "SST-APL016")
+        # Snowflake publishes no CORTEX EXTENSION reference; the server adds an empty version from a
+        # path that holds nothing, so the files are checked (docs/design/snowflake-behaviour.md).
         published = tuple(sorted(self._port.list_location(version.location)))
         leftover = sorted(set(published) - set(release.paths))
         if leftover and set(published) > set(release.paths):

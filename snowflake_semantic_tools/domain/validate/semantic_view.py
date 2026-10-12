@@ -15,6 +15,8 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind, SemanticView, Table
 
 # The derived-metric restrictions Snowflake enforces at neither validate nor create time.
+# Snowflake's docs state them; the server creates a view that breaks one and fails at query
+# time (docs/design/snowflake-behaviour.md).
 CRITICAL_METRIC_CODES = frozenset(("SST-VAL102", "SST-VAL103", "SST-VAL104", "SST-VAL105", "SST-VAL106", "SST-VAL107"))
 
 

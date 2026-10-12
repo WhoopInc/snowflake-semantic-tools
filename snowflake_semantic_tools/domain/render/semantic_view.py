@@ -17,6 +17,9 @@ THE CLAUSE ORDER IS THE CONTRACT, and it is Snowflake's:
       WITH TAG (...)
       COPY GRANTS
 
+It is the order the server accepts, not the published grammar's, which puts MAX_STALENESS
+before the AI clauses (docs/design/snowflake-behaviour.md).
+
 WHAT IS DELIBERATELY ABSENT. `FILTERS (...)`, `VERIFIED QUERIES (...)` and
 `CUSTOM INSTRUCTIONS (...)` appear in no grammar: filters fold into `DIMENSIONS`
 with `LABELS = (FILTER)`, verified queries become `AI_VERIFIED_QUERIES`, and
@@ -191,6 +194,8 @@ def render_variable(var: Variable) -> Sql:
         name=_name(var.name),
         data_type=var.data_type,
         default=var.default,
+        # Snowflake's docs give a variable's COMMENT without `=`; the server requires it
+        # (docs/design/snowflake-behaviour.md).
         comment=_comment(var.comment),
     )
 
@@ -213,6 +218,8 @@ def render_column(col: Column) -> Sql:
     parts.append(sql(" AS {expression}", expression=expr(col.expr)))
     parts.append(_synonyms(col.synonyms))
     parts.append(_comment(col.comment))
+    # Snowflake's docs omit SAMPLE_VALUES and IS_ENUM; the server accepts both, in this order,
+    # and IS_ENUM on a dimension only (docs/design/snowflake-behaviour.md).
     if col.sample_values:
         parts.append(sql(" SAMPLE_VALUES ({values})", values=_quoted_list(col.sample_values)))
     if col.is_enum:
@@ -435,6 +442,8 @@ def _trailing_clauses(view: SemanticView, queries: list[Sql]) -> list[Sql]:
         lines.append(join(",\n", queries))
         lines.append(sql("  )"))
 
+    # Snowflake's docs put MAX_STALENESS before the AI clauses; the server rejects it there
+    # (docs/design/snowflake-behaviour.md).
     if view.max_staleness:
         lines.append(sql("  MAX_STALENESS = {staleness}", staleness=literal(view.max_staleness)))
 
