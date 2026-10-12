@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
+import pytest
+
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership, ToolParameter
@@ -434,3 +436,36 @@ def test_a_tool_whose_values_render_or_wait_for_a_template_reports_none() -> Non
     assert (
         _validated(ToolMember("group", "s", "stage", ToolOwnership.DEFINE, Origin("t.yml"), "t.yml", where="X")) == []
     )
+
+
+def _required(kind: str, **fields: object) -> list[str]:
+    """The fields SST-PRS002 reports a defined member of `kind` with `fields` lacks."""
+    member = ToolMember("group", "lookup", kind, ToolOwnership.DEFINE, Origin("t.yml"), "t.yml", **fields)  # type: ignore[arg-type]
+    catalog = ToolCatalog(
+        (ToolGroup("group", Origin("t.yml"), "t.yml", members=(member,)),), "dev", frozenset(("dev",))
+    )
+    found = validate_tool_catalog(catalog, DbtCatalog("v12", None, None, ()))
+    return [str(item.context["field"]) for item in found if item.code == "SST-PRS002"]
+
+
+_ROUTINE = {"body_file": "lookup.sql", "body": "RETURN 1", "language": "python", "returns": "NUMBER"}
+_ROUTINE_FIELDS = {**_ROUTINE, "runtime_version": "3.11", "handler": "run"}
+
+
+@pytest.mark.parametrize("field", ["language", "returns", "runtime_version", "handler"])
+@pytest.mark.parametrize("kind", ["procedure", "function"])
+def test_a_defined_routine_lacking_a_field_its_ddl_needs_reports_it_by_name(kind: str, field: str) -> None:
+    fields = {key: value for key, value in _ROUTINE_FIELDS.items() if key != field}
+    # A routine with no language is not known to be other than SQL, so only the language is missing.
+    assert _required(kind, **fields) == [field]
+
+
+def test_a_defined_search_service_lacking_a_search_column_reports_it() -> None:
+    assert _required("cortex_search_service", on_model="docs") == ["search_column"]
+    assert _required("cortex_search_service", on_model="docs", search_column="BODY") == []
+
+
+def test_a_sql_routine_needs_no_runtime_version_or_handler_and_a_stage_needs_nothing() -> None:
+    assert _required("procedure", **{**_ROUTINE, "language": "sql"}) == []
+    assert _required("function", **_ROUTINE_FIELDS) == []
+    assert _required("stage") == []

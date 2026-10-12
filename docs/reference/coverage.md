@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 713
+- Codes: 714
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -402,6 +402,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-RND032`](error-codes.md#sst-rnd032) | RND | warning | local | `snowflake_semantic_tools.domain.render.skill_bundle` | `tests/codes/rnd/test_sst_rnd032.py` |
 | [`SST-RND040`](error-codes.md#sst-rnd040) | RND | error | local | `snowflake_semantic_tools.domain.render.tool` | `tests/codes/rnd/test_sst_rnd040.py` |
 | [`SST-RND041`](error-codes.md#sst-rnd041) | RND | error | local | `snowflake_semantic_tools.domain.render.tool` | `tests/codes/rnd/test_sst_rnd041.py` |
+| [`SST-RND042`](error-codes.md#sst-rnd042) | RND | error | local | `snowflake_semantic_tools.domain.render.tool` | `tests/codes/rnd/test_sst_rnd042.py` |
 | [`SST-RND900`](error-codes.md#sst-rnd900) | RND | error | local | `snowflake_semantic_tools.domain.render.semantic_view` | `tests/codes/rnd/test_sst_rnd900.py` |
 | [`SST-SNO001`](error-codes.md#sst-sno001) | SNO | error | runtime | `snowflake_semantic_tools.app.evals.gate`<br>`snowflake_semantic_tools.app.evals.run`<br>`snowflake_semantic_tools.cli.run_log`<br>`snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno001.py` |
 | [`SST-SNO002`](error-codes.md#sst-sno002) | SNO | error | runtime | `snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno002.py` |

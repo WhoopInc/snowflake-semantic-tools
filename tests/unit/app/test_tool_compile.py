@@ -114,6 +114,7 @@ def test_tool_compiler_skips_poisoned_and_reports_render_invariant() -> None:
         "tools.yml",
         body_file="body.sql",
         body="RETURN 1",
+        warehouse="WH",
     )
     from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 
@@ -135,6 +136,51 @@ def test_tool_compiler_skips_poisoned_and_reports_render_invariant() -> None:
     ).run_result()
     assert result.compiled == ()
     assert {diagnostic.code for diagnostic in result.diagnostics} == {"SST-VAL606", "SST-INT902"}
+
+
+def test_a_member_no_default_completes_is_reported_by_field_not_as_an_internal_error() -> None:
+    search = ToolMember(
+        "platform",
+        "docs_search",
+        "cortex_search_service",
+        ToolOwnership.DEFINE,
+        Origin("tools.yml"),
+        "tools.yml",
+        on_model="docs",
+        search_column="BODY",
+        warehouse="WH",
+    )
+    procedure = ToolMember(
+        "platform",
+        "lookup",
+        "procedure",
+        ToolOwnership.DEFINE,
+        Origin("tools.yml"),
+        "tools.yml",
+        body_file="body.sql",
+        body="RETURN 1",
+        language="sql",
+        returns="NUMBER",
+    )
+    catalog = ToolCatalog(
+        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(search, procedure)),),
+        "dev",
+        frozenset(("dev",)),
+        DiagnosticBag(()),
+    )
+    result = CompileTools(
+        catalog,
+        database="DB",
+        schema="S",
+        warehouse=None,
+        target_lag=None,
+        embedding_model=None,
+        execute_as=None,
+        dbt_relations={"docs": "DB.S.DOCS"},
+    ).run_result()
+    assert result.compiled == ()
+    found = {(diagnostic.code, diagnostic.subject, diagnostic.context["field"]) for diagnostic in result.diagnostics}
+    assert found == {("SST-RND042", "tool:docs_search", "target_lag"), ("SST-RND042", "tool:lookup", "warehouse")}
 
 
 def test_tool_defaults_cover_explicit_values_and_procedure_inheritance() -> None:

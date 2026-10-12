@@ -31,7 +31,9 @@ def validate_tool_catalog(catalog: ToolCatalog, dbt: DbtCatalog) -> DiagnosticBa
         SST-VAL603: a member's type is not a known tool type.
         SST-VAL604: a `define:` member declares neither `on:` nor `body_file:`, and is not a stage.
         SST-VAL605: a `define:` member declares `relations`, or a `reference:` member a creation key.
-        SST-PRS002: a `reference:` member declares no `relations`.
+        SST-PRS002: a `reference:` member declares no `relations`; a defined search service no
+            `search_column`; a defined routine no `language` or `returns`, or, in a language
+            other than SQL, no `runtime_version` or `handler`.
         SST-REF018: a relation names a target `profiles.yml` does not declare, or none names the current one.
         SST-REF019: a relation is not a three-part name.
         SST-REF023: a mutable group's reference resolves to one object for both dev and prod.
@@ -146,6 +148,7 @@ def _validate_member(member: ToolMember, catalog: ToolCatalog, dbt: DbtCatalog) 
         *_object_parameter(member, subject),
         *_search_columns(member, dbt, subject),
         *_body_file(member, catalog, subject),
+        *_render_fields(member, subject),
         *_sql_values(member, subject),
     )
 
@@ -238,6 +241,28 @@ def _search_columns(member: ToolMember, dbt: DbtCatalog, subject: str) -> tuple[
     for column in (member.search_column, *member.attribute_columns):
         if column and model.column(column) is None:
             emit("SST-VAL609", name=member.name, column=column, value=model.name)
+    return emit.diagnostics
+
+
+def _render_fields(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
+    """Report a field a defined member's DDL needs that no `tools:` default can supply.
+
+    A warehouse and a target lag can come from a default, so they are checked once the
+    defaults apply, when the member compiles (SST-RND042).
+    """
+    emit = Emitter(subject=subject, origin=member.origin, artifact=subject)
+    if member.ownership is not ToolOwnership.DEFINE:
+        return emit.diagnostics
+    required: tuple[tuple[str, str | None], ...] = ()
+    if member.type == ToolKind.CORTEX_SEARCH_SERVICE.value:
+        required = (("search_column", member.search_column),)
+    elif member.type in (ToolKind.PROCEDURE.value, ToolKind.FUNCTION.value):
+        required = (("language", member.language), ("returns", member.returns))
+        if member.language and member.language.casefold() != "sql":
+            required += (("runtime_version", member.runtime_version), ("handler", member.handler))
+    for field, value in required:
+        if not value:
+            emit("SST-PRS002", field=field)
     return emit.diagnostics
 
 

@@ -24,7 +24,7 @@ cannot be downgraded by any setting.
 - [Membership (MEM)](#membership-mem) -- 24 codes
 - [Validation (VAL)](#validation-val) -- 298 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
-- [Rendering (RND)](#rendering-rnd) -- 16 codes
+- [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 38 codes
 - [Apply (APL)](#apply-apl) -- 29 codes
@@ -5882,6 +5882,18 @@ Fix: register a renderer, or change the kind
 Raised when a search-service tool has no relation to select from, or a procedure or function tool has no body.
 
 Fix: supply on: or body_file: content
+
+### SST-RND042
+
+**Tool has no value for a field with a default** (error)
+
+`tool '<artifact>': <field> is not set, and no default supplies it`
+
+Raised when once the `tools:` defaults apply, a defined search service has no `warehouse` or `target_lag`, or a defined procedure has no `warehouse`.
+
+Fix: set {field} on the member, or the tools.+{field} default in sst_config.yml
+
+Note: A warehouse falls back to the profile target's when neither the member nor `tools.+warehouse` names one; a target lag has no fallback.
 
 ### SST-RND900
 
