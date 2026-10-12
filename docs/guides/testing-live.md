@@ -1,7 +1,8 @@
 # Testing SST
 
-The test suite has two halves. The offline suite is the whole required gate: it runs on every
-pull request, needs no account and no secrets, and cannot reach the network. The live suite is
+The test suite has two halves. The offline suite, with a `dbt parse` of the reference project
+that needs no warehouse, is the whole required gate: it runs on every pull request, needs no
+account and no secrets, and the suite cannot reach the network. The live suite is
 optional: it runs the real Snowflake connector, `sst apply`, and the CLI end to end against an
 account you configure, and only maintainers with an account of their own need it.
 
@@ -13,7 +14,7 @@ the goldens.
 
 | Workflow | When | What |
 |---|---|---|
-| `test-and-lint.yml` | every pull request (the `pull_request` trigger only), each push to `main`, and every release | The required gate, offline and with no secrets: the exit-code conformance tests, `format --check` on the reference project, the whole offline suite with coverage, the per-layer coverage floors and ratchet, strict mypy, ruff, import-linter, `sst docs --check`, bandit, pip-audit, and semgrep. |
+| `test-and-lint.yml` | every pull request (the `pull_request` trigger only), each push to `main`, and every release | The required gate, offline and with no secrets: the exit-code conformance tests, `format --check` on the reference project, the whole offline suite with coverage, the per-layer coverage floors and ratchet, strict mypy, ruff, import-linter, `sst docs --check`, bandit, pip-audit, and semgrep; and, in its `dbt` job, a real `dbt parse` of the reference project with dbt 1.11 and with 1.12, the golden suite over what it wrote, and the dbt manifest contract test on that manifest. |
 | `nightly.yml` | 02:00 UTC daily, or by hand | Mutation testing over `domain/` and the suite under the deeper `nightly` Hypothesis profile. Offline and report-only: it blocks nothing. |
 | `slow.yml` | by hand only | The checks that connect to Snowflake; see [the manual workflow](#the-manual-workflow). No pull request or release waits on it. |
 | `publish-to-pypi.yml` | a `v*.*.*` tag | Runs `test-and-lint.yml` itself, checks the tag matches `pyproject.toml`, builds, and publishes through PyPI's trusted publishing; the publish job holds the only token and runs no project code. |
