@@ -10,10 +10,10 @@ How to use SST is in the [concepts](../concepts.md) and the guides under
 
 - [Decisions](decisions.md): the design choices, each with the alternative it
   rejected and what would reopen it.
-- architecture.md: the rings, the pipeline, and how an artifact type plugs in.
-- snowflake-behaviour.md: what Snowflake does that the engine compensates for.
-- dbt-compatibility.md: the seam between SST and dbt.
-- diagnostics.md: how problems are coded, ranked, and reported.
+- [Architecture](architecture.md): the rings, the pipeline, and how an artifact type plugs in.
+- [Snowflake behaviour](snowflake-behaviour.md): what Snowflake does that the engine compensates for.
+- [dbt compatibility](dbt-compatibility.md): the seam between SST and dbt.
+- [Diagnostics](diagnostics.md): how problems are coded, ranked, and reported.
 
 ## What SST is
 

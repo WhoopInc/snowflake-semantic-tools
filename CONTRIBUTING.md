@@ -248,6 +248,9 @@ naming the command. The benchmark exits 1 when any run failed.
 
 ## Architecture
 
+Why the engine is shaped this way, with diagrams, is in [docs/design/](docs/design/README.md); start
+with [architecture.md](docs/design/architecture.md). This section is the rules a change must keep.
+
 The CLI is the only interface: the package exports nothing but `__version__`, so new behavior is a command or an option. The package root holds `__init__.py`, `_version.py`, and four rings:
 
 ```text
@@ -391,7 +394,7 @@ Annotations already say what types flow where, so a docstring never restates the
    - `Diagnostics:` for every `SST-` code the function reports, one per line. The test checks each code is registered, so the registry and the code that raises each entry stay linked.
 4. **A `Protocol` method documents the contract**: what it promises, what it returns on failure, whether it raises, and whether it is idempotent. An implementation that overrides a documented method of a base class in this package inherits that docstring and adds one only to say how it differs.
 5. **A private function** needs a docstring once it is 25 lines or longer, scores 10 or more on the decision count, or depends on an ordering, poisoning, or casefolding rule a reader could break.
-6. **Comments say why, not what.** Mark ordering dependencies where they bite (for example, "runs after the view checks: poisoning reads their diagnostics"). Never cite a design document or planning identifier.
+6. **Comments say why, not what.** Mark ordering dependencies where they bite (for example, "runs after the view checks: poisoning reads their diagnostics"). Never cite a planning identifier or a document outside this repository; a comment may point to a page under `docs/design/`, as the code sites that follow Snowflake's server rather than its docs do.
 7. **A renderer** shows an `Example:` of input and output when the grammar it produces is not obvious.
 8. **Use the shared vocabulary** (key, subject, origin, fingerprint, poisoned, ownership marker) in the sense [docs/concepts.md](docs/concepts.md#terms-used-in-the-code) defines.
 
