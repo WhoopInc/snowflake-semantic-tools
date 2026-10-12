@@ -156,8 +156,8 @@ which disappear when the first is fixed.
 The semantic load prevents most of this by poisoning: a definition a diagnostic proves broken is
 still checked, so every independent error is reported at once, but a poisoned member attaches to
 no view and a poisoned view is not built. A member left unattached because its references did not
-resolve is reported once more, at info (`SST-MEM107`), and the check for members that attach
-nowhere skips poisoned members and the metrics built on them. Planning does the same for artifacts: a change with its
+resolve is reported once more, as a cascade of the first of them (`SST-MEM107`), and the check
+for members that attach nowhere skips poisoned members and the metrics built on them. Planning does the same for artifacts: a change with its
 own validation errors is `BLOCKED` with reason `validation_errors`, every change that depends on a
 blocked one is `BLOCKED` with reason `dependency_blocked`, all the way down the dependency graph,
 and `apply` refuses a plan that holds a blocked change (`SST-APL003`).
@@ -166,14 +166,17 @@ When a diagnostic is reported because of another, it names that code in `caused_
 must be in the same run (`SST-INT008` otherwise). A caused diagnostic downgraded to info is a
 cascade: the human output counts it instead of showing it unless `--show-cascade` is given, the
 envelope counts it under `summary.suppressed_cascade`, and no severity override applies to it. A
-caused diagnostic keeps its severity unless it is downgraded: `SST-MEM005`, raised beside
-`SST-VAL205` for a relationship no view covers, names its cause and is still a warning.
+producer makes one with `cascade`, which names the cause and downgrades the diagnostic unless its
+code is non-demotable. `SST-MEM107` is a cascade of the first unresolved reference of the member
+it skips. A caused diagnostic keeps its severity unless it is downgraded: `SST-MEM005`, raised
+beside `SST-VAL205` for a relationship no view covers, names its cause and is still a warning.
 
 Drawn from: [poison.py](../../snowflake_semantic_tools/adapters/yaml/semantic/poison.py),
 [membership_reach.py](../../snowflake_semantic_tools/domain/resolve/membership_reach.py),
 [fanout.py](../../snowflake_semantic_tools/domain/validate/semantic/fanout.py),
 [prune.py](../../snowflake_semantic_tools/domain/plan/prune.py),
 [action.py](../../snowflake_semantic_tools/domain/model/lifecycle/action.py),
+[membership_request.py](../../snowflake_semantic_tools/domain/resolve/membership_request.py),
 [relationships.py](../../snowflake_semantic_tools/adapters/yaml/semantic/relationships.py),
 [\_\_init\_\_.py](../../snowflake_semantic_tools/domain/diagnostics/__init__.py),
 [cli/output.py](../../snowflake_semantic_tools/cli/output.py).

@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from itertools import combinations
 
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, cascade
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.project import ArtifactKey, ParsedMember
 from snowflake_semantic_tools.domain.model.registry import AttachRule
@@ -34,7 +34,8 @@ def reach_diagnostics(request: MembershipRequest, attachment: Attachment) -> tup
         SST-MEM011: an authored member attaches to more than one view.
         SST-MEM015: a verified query references a private metric.
         SST-MEM016: a metric's join path is attached to one of its views and not another.
-        SST-MEM107: a poisoned member was not attached because its references did not resolve.
+        SST-MEM107: a poisoned member was not attached because its references did not resolve; a
+            cascade of the first of them.
         SST-MEM104: a reported view whose tables are all dbt models holds no dimension, fact or
             metric.
         SST-MEM103: what each reported view holds, by member type.
@@ -145,11 +146,16 @@ def _conflicting_scope(
 
 
 def _skipped(request: MembershipRequest) -> Iterator[Diagnostic]:
-    """Report each poisoned member whose references did not resolve, which attachment skipped (SST-MEM107)."""
+    """Report each poisoned member whose references did not resolve, which attachment skipped (SST-MEM107).
+
+    The skip only follows from the first unresolved reference, already reported, so it is that
+    diagnostic's cascade.
+    """
     for member in request.members:
-        count = request.unresolved.get(member.key, 0)
-        if member.poisoned and count:
-            yield D("SST-MEM107", member=member.key, count=count, subject=member.key, origin=member.origin)
+        causes = request.unresolved.get(member.key, ())
+        if member.poisoned and causes:
+            skipped = D("SST-MEM107", member=member.key, count=len(causes), subject=member.key, origin=member.origin)
+            yield cascade(skipped, causes[0])
 
 
 def _held(request: MembershipRequest, attachment: Attachment) -> dict[ArtifactKey, dict[str, int]]:

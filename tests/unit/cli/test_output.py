@@ -98,6 +98,24 @@ def test_validate_json_emits_one_v2_envelope(tmp_path: Path) -> None:
     }
 
 
+def test_a_member_an_unresolved_ref_poisons_reports_its_skip_as_a_cascade(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
+    metrics = project / "semantic_models" / "metrics" / "metrics.yml"
+    text = metrics.read_text(encoding="utf-8")
+    metrics.write_text(text.replace("{{ ref('orders', 'order_id') }}", "{{ ref('missing', 'order_id') }}", 1))
+    args = ["validate", "--project-dir", str(project), "--manifest", str(DBT_MANIFEST), "--no-snowflake-syntax-check"]
+    payload = json.loads(CliRunner().invoke(cli, [*args, "--output", "json"]).stdout)
+    [skipped] = [item for item in payload["diagnostics"] if item["code"] == "SST-MEM107"]
+    assert (skipped["severity"], skipped["caused_by"]) == ("info", "SST-REF001")
+    assert payload["summary"]["suppressed_cascade"] >= 1
+    hidden = CliRunner().invoke(cli, args).output
+    assert "SST-MEM107" not in hidden and "1 cascade not shown (--show-cascade)" in hidden
+    # A cascade is info, yet `--show-cascade` alone shows it.
+    shown = CliRunner().invoke(cli, [*args, "--show-cascade"]).output
+    assert "info[SST-MEM107]: metric:order_count skipped: 1 unresolved references" in shown
+    assert "cascade not shown" not in shown
+
+
 def test_a_run_that_prints_no_envelope_records_no_timings(tmp_path: Path) -> None:
     project = project_copy(tmp_path, offline=False)
     result = CliRunner().invoke(cli, ["validate", *common(project), "--no-strict", "--no-snowflake-syntax-check"])

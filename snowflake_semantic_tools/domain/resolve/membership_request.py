@@ -72,7 +72,7 @@ def membership_request(
         reported_views: The keys of the views that will be built.
         known_models: The casefolded names of the dbt models.
         reported: Every diagnostic reported so far, from which a poisoned member's unresolved
-            references are counted.
+            references are read.
     """
     marked = tuple((replace(member, poisoned=True) if member.key in poisoned else member) for member in members)
     return MembershipRequest(
@@ -123,16 +123,16 @@ def _channels(source: InstructionDef) -> frozenset[str]:
     return frozenset(channel for channel, text in written if text)
 
 
-def _unresolved(keys: set[MemberKey], reported: Iterable[Diagnostic]) -> dict[MemberKey, int]:
-    """Count, for each of `keys`, the reported references to it that did not resolve.
+def _unresolved(keys: set[MemberKey], reported: Iterable[Diagnostic]) -> dict[MemberKey, tuple[str, ...]]:
+    """Return, for each of `keys`, the codes reported for its references that did not resolve.
 
     A reference that did not resolve is reported under a REF code, or as an undeclared
     variable; each diagnostic names its member by its subject, compared casefolded.
     """
-    counts: dict[MemberKey, int] = {}
+    codes: dict[MemberKey, tuple[str, ...]] = {}
     wanted = {key.casefold(): key for key in keys}
     for diagnostic in reported:
         subject = (diagnostic.subject or "").casefold()
         if subject in wanted and (diagnostic.code.startswith("SST-REF") or diagnostic.code == "SST-CFG029"):
-            counts[wanted[subject]] = counts.get(wanted[subject], 0) + 1
-    return counts
+            codes[wanted[subject]] = (*codes.get(wanted[subject], ()), diagnostic.code)
+    return codes

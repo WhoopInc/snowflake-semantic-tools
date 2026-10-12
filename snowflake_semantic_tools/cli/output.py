@@ -498,8 +498,9 @@ def _hidden_reason(diagnostic: Diagnostic, baselined: frozenset[str], policy: Re
         return "quiet"
     if stable_fingerprint(diagnostic) in baselined and not policy.show_baselined:
         return "baselined"
-    if diagnostic.cascaded and not policy.show_cascade:
-        return "cascade"
+    # A cascade is always info, so `--show-cascade` shows it without `--show-info`.
+    if diagnostic.cascaded:
+        return None if policy.show_cascade else "cascade"
     if diagnostic.informational and not policy.show_info:
         return "info"
     return None

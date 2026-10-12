@@ -479,8 +479,9 @@ hides every new instance of it.
 
 **Chosen.** One artifact's error does not stop the others being checked, so a
 run reports every artifact's errors at once; an artifact with an error is not
-built. A diagnostic that only follows from another is
-downgraded to info and counted (`--show-cascade` shows it). A connected rule
+built. A diagnostic that only follows from another names its cause and is
+downgraded to info and counted (`--show-cascade` shows it), as `SST-MEM107` is
+for a member an unresolved reference poisons. A connected rule
 that could not run is reported as `SST-VAL020`. `--output json` lists every
 diagnostic at every severity, baselined or not.
 
