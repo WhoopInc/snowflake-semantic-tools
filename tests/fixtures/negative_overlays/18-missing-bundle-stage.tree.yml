@@ -1,0 +1,6 @@
+---
+# The catalog channel without its bundle stage, which it cannot publish without.
+edits:
+  sst_config.yml:
+    - old: "    +bundle_stage: SKILL_BUNDLE_SRC\n"
+      new: ""

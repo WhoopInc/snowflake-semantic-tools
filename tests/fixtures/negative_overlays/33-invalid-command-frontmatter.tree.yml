@@ -1,0 +1,6 @@
+---
+# A command whose frontmatter sets `hidden` to something that is not a boolean.
+edits:
+  commands/ops/month-check.md:
+    - old: "  - snowflake_sql_execute\n---\n"
+      new: "  - snowflake_sql_execute\nhidden: maybe\n---\n"

@@ -48,7 +48,7 @@ tests/
 │   ├── dbt_manifests/                    # full manifests of it, one per schema version and dbt release
 │   ├── scoped_views/                     # two include- and exclude-mode views, copied into a project copy
 │   ├── v1_dialect/                       # the 0.3 dialect corpus for `sst migrate refs`
-│   └── negative_overlays/                # one bad file per case, laid over the reference project; expected.json
+│   └── negative_overlays/                # one broken change per case, laid over the reference project; expected.json
 ├── golden/
 │   ├── README.md
 │   └── expected/{ddl,agent,tool,eval,skill,plugin,profile,enrich}/

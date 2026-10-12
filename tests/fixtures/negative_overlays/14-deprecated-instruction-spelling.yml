@@ -1,0 +1,8 @@
+---
+# A custom instruction in the 0.3 spelling, `sql_generation`. No view uses it,
+# which is a warning a strict run promotes.
+snowflake_custom_instructions:
+  - name: legacy_spelling
+    description: |-
+      Uses the 0.3 spelling of the SQL-generation instruction.
+    sql_generation: Round every monetary amount to two decimal places.

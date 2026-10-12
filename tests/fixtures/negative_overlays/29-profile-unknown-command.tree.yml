@@ -1,0 +1,6 @@
+---
+# A Desktop profile that lists a command commands/ does not hold.
+edits:
+  profiles/jaffle-operator/profile.yml:
+    - old: "  - ops/month-check\n"
+      new: "  - ops/month-check\n  - ops/restock\n"

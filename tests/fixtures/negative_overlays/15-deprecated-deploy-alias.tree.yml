@@ -1,0 +1,6 @@
+---
+# The apply block under its deprecated name, `deploy:`.
+edits:
+  sst_config.yml:
+    - old: "\napply:\n"
+      new: "\ndeploy:\n"

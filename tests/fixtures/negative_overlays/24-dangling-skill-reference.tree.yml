@@ -1,0 +1,10 @@
+---
+# A skill whose SKILL.md links a file its folder does not hold.
+files:
+  skills/jaffle-draft/SKILL.md: |
+    ---
+    name: jaffle-draft
+    description: |-
+      Use when drafting a jaffle question that does not have a home yet.
+    ---
+    Work through [the checklist](reference/checklist.md) before answering.

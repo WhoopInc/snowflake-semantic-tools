@@ -47,5 +47,140 @@
   "11-nan-sample-value.manifest.json": {
     "into": "manifest",
     "adds": [{"code": "SST-VAL316", "severity": "warning", "count": 1}]
+  },
+  "12-eval-dataset-below-row-floor.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL710", "severity": "warning", "count": 1}],
+    "reaches": ["agents/jaffle_analytics/evals/dataset.yml"]
+  },
+  "13-unknown-config-key.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-CFG003", "severity": "warning", "count": 1}]
+  },
+  "14-deprecated-instruction-spelling.yml": {
+    "into": "semantic_models/custom_instructions",
+    "adds": [
+      {"code": "SST-VAL007", "severity": "warning", "count": 1},
+      {"code": "SST-VAL012", "severity": "error", "count": 1}
+    ]
+  },
+  "15-deprecated-deploy-alias.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-CFG200", "severity": "error", "count": 1}]
+  },
+  "16-multi-path-relationship.yml": {
+    "into": "semantic_models/relationships",
+    "adds": [
+      {"code": "SST-VAL116", "severity": "error", "count": 1},
+      {"code": "SST-VAL209", "severity": "warning", "count": 1}
+    ]
+  },
+  "17-removed-config-key.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-CFG043", "severity": "error", "count": 1}]
+  },
+  "18-missing-bundle-stage.tree.yml": {
+    "into": ".",
+    "adds": [
+      {"code": "SST-CFG006", "severity": "error", "count": 1},
+      {"code": "SST-VAL856", "severity": "error", "count": 1}
+    ],
+    "reaches": ["agents/jaffle_analytics/agent.yml"]
+  },
+  "19-immutable-group-defines.yml": {
+    "into": "tools",
+    "adds": [
+      {"code": "SST-CFG018", "severity": "warning", "count": 1},
+      {"code": "SST-VAL606", "severity": "error", "count": 1}
+    ]
+  },
+  "20-agent-delegation-cycle.tree.yml": {
+    "into": ".",
+    "adds": [
+      {"code": "SST-REF022", "severity": "error", "count": 1},
+      {"code": "SST-VAL528", "severity": "warning", "count": 2}
+    ]
+  },
+  "21-unknown-eval-metric.tree.yml": {
+    "into": ".",
+    "adds": [
+      {"code": "SST-REF026", "severity": "error", "count": 1},
+      {"code": "SST-VAL721", "severity": "error", "count": 1}
+    ]
+  },
+  "22-relative-eval-date.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL706", "severity": "error", "count": 1}]
+  },
+  "23-malformed-custom-judge.tree.yml": {
+    "into": ".",
+    "adds": [
+      {"code": "SST-PRS114", "severity": "error", "count": 1},
+      {"code": "SST-PRS116", "severity": "error", "count": 1},
+      {"code": "SST-VAL741", "severity": "error", "count": 1}
+    ]
+  },
+  "24-dangling-skill-reference.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL808", "severity": "error", "count": 1}]
+  },
+  "25-undeclared-skill-ref.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-REF032", "severity": "error", "count": 1}]
+  },
+  "26-unknown-plugin-member.tree.yml": {
+    "into": ".",
+    "adds": [
+      {"code": "SST-VAL835", "severity": "error", "count": 1},
+      {"code": "SST-VAL855", "severity": "error", "count": 1}
+    ],
+    "reaches": ["profiles/jaffle-operator/profile.yml"]
+  },
+  "27-plugin-member-with-errors.tree.yml": {
+    "into": ".",
+    "adds": [
+      {"code": "SST-VAL808", "severity": "error", "count": 1},
+      {"code": "SST-VAL836", "severity": "error", "count": 1},
+      {"code": "SST-VAL855", "severity": "error", "count": 1}
+    ],
+    "reaches": ["profiles/jaffle-operator/profile.yml"]
+  },
+  "28-profile-unknown-hook.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL846", "severity": "error", "count": 1}]
+  },
+  "29-profile-unknown-command.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL858", "severity": "error", "count": 1}]
+  },
+  "30-profile-skill-with-errors.tree.yml": {
+    "into": ".",
+    "adds": [
+      {"code": "SST-VAL808", "severity": "error", "count": 1},
+      {"code": "SST-VAL855", "severity": "error", "count": 2}
+    ],
+    "reaches": ["profiles/jaffle-analyst/profile.yml", "profiles/jaffle-operator/profile.yml"]
+  },
+  "31-literal-mcp-credential.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL850", "severity": "error", "count": 1}]
+  },
+  "32-ambiguous-hook-script.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL852", "severity": "error", "count": 1}],
+    "reaches": ["hooks/sql-guard/hook.yml"]
+  },
+  "33-invalid-command-frontmatter.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL859", "severity": "error", "count": 1}]
+  },
+  "34-unknown-custom-instruction.tree.yml": {
+    "into": ".",
+    "adds": [
+      {"code": "SST-REF007", "severity": "error", "count": 1},
+      {"code": "SST-REF011", "severity": "error", "count": 1},
+      {"code": "SST-VAL007", "severity": "warning", "count": 1}
+    ],
+    "reaches": ["semantic_models/custom_instructions/custom_instructions.yml"]
   }
 }

@@ -1,0 +1,14 @@
+---
+# An immutable tool group may only reference objects, and this one defines a
+# search service. Nothing references the group either.
+tools:
+  - group: immutable_group
+    immutable: true
+    define:
+      - name: forbidden_search
+        type: cortex_search_service
+        on:
+          table: "{{ ref('product_docs') }}"
+          search_column: product_description
+          attributes: [product_type]
+        target_lag: 1 hour

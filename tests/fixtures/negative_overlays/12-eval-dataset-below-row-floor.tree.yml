@@ -1,0 +1,7 @@
+---
+# A dataset floor above the eval's four questions: a warning, so a strict run
+# promotes it.
+edits:
+  sst_config.yml:
+    - old: "  +baseline_runs: 5\n"
+      new: "  +baseline_runs: 5\n  +min_dataset_rows: 10\n"

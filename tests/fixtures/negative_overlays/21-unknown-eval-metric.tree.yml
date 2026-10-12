@@ -1,0 +1,6 @@
+---
+# The eval config names a custom judge that eval_metrics/ does not hold.
+edits:
+  agents/jaffle_analytics/evals/config.yml:
+    - old: "    - \"{{ eval_metric('answer_grounding') }}\"\n"
+      new: "    - \"{{ eval_metric('answer_grounding') }}\"\n    - \"{{ eval_metric('answer_relevance') }}\"\n"

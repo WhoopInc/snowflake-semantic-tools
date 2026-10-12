@@ -1,0 +1,7 @@
+---
+# A second script beside the hook's, so it is no longer clear which one runs.
+files:
+  hooks/sql-guard/sql-guard.py: |
+    import sys
+    if any(word in sys.stdin.read().lower() for word in ("drop", "delete", "truncate")):
+        sys.exit(2)

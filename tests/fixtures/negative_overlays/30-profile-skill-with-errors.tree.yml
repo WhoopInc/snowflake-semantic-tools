@@ -1,0 +1,7 @@
+---
+# A dangling link in a skill that only the shared profile carries. The error is
+# the skill's, and the profile that ships it reports it too.
+edits:
+  skills/jaffle-catalogue/SKILL.md:
+    - old: "## What it answers\n"
+      new: "Check [the product list](reference/products.md) before answering.\n\n## What it answers\n"

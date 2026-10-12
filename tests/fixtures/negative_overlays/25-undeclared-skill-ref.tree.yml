@@ -1,0 +1,6 @@
+---
+# An agent that references a skill skills/ does not hold.
+edits:
+  agents/jaffle_analytics/agent.yml:
+    - old: "{{ skill('jaffle-semantics') }}"
+      new: "{{ skill('jaffle-reporting') }}"

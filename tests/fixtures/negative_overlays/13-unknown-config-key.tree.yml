@@ -1,0 +1,7 @@
+---
+# A misspelled `+flatten` under skills.catalog: an unknown key is a warning, so a
+# strict run promotes it.
+edits:
+  sst_config.yml:
+    - old: "    +flatten: true\n"
+      new: "    +flatten: true\n    +flaten: true\n"

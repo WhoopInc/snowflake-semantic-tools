@@ -1,0 +1,15 @@
+---
+# A plugin member with a dangling link. The error is the skill's, and the plugin
+# that bundles it, and the profile that carries the plugin, report it too.
+files:
+  skills/jaffle-draft/SKILL.md: |
+    ---
+    name: jaffle-draft
+    description: |-
+      Use when drafting a jaffle question that does not have a home yet.
+    ---
+    Work through [the checklist](reference/checklist.md) before answering.
+edits:
+  plugins/jaffle-toolkit/plugin.yml:
+    - old: "  - jaffle-operations\n"
+      new: "  - jaffle-operations\n  - jaffle-draft\n"

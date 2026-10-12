@@ -20,11 +20,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from tests.helpers.network_guard import guarded_environment
 from tests.helpers.reference_project import DBT_MANIFEST, REPO_ROOT, project_copy, set_column_meta
 
 OVERLAYS = REPO_ROOT / "tests" / "fixtures" / "negative_overlays"
 _MANIFEST_PATCH = ".manifest.json"
+# A change that spans files, or edits one in place: `remove` deletes files, `files` writes them, and
+# `edits` replaces text that must occur exactly once. Text, not a YAML round trip, so the commented
+# fixture keeps its lines and a diagnostic's line number still means what the file says.
+_TREE = ".tree.yml"
+_TREE_KEYS = frozenset({"remove", "files", "edits"})
 # One diagnostic as the corpus counts it: the code, its declared severity, and the file it names.
 Key = tuple[str, str, str | None]
 
@@ -85,14 +92,48 @@ def overlay_files() -> list[str]:
     return sorted(path.name for path in OVERLAYS.iterdir() if path.name != "expected.json")
 
 
+def _tree(overlay: str) -> dict[str, Any]:
+    tree: dict[str, Any] = yaml.safe_load((OVERLAYS / overlay).read_text(encoding="utf-8"))
+    assert tree and set(tree) <= _TREE_KEYS, f"{overlay} may hold only {sorted(_TREE_KEYS)}"
+    return tree
+
+
+def overlay_paths(overlay: str, into: str) -> set[str]:
+    """The project-relative files `overlay` writes, edits or removes; a manifest patch writes none."""
+    if overlay.endswith(_TREE):
+        tree = _tree(overlay)
+        return {*tree.get("remove", ()), *tree.get("files", {}), *tree.get("edits", {})}
+    return set() if overlay.endswith(_MANIFEST_PATCH) else {f"{into}/{overlay}"}
+
+
+def _lay_tree(project: Path, overlay: str) -> None:
+    tree = _tree(overlay)
+    for relative in tree.get("remove", ()):
+        (project / relative).unlink()
+    for relative, text in tree.get("files", {}).items():
+        path = project / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    for relative, edits in tree.get("edits", {}).items():
+        path = project / relative
+        text = path.read_text(encoding="utf-8")
+        for edit in edits:
+            assert text.count(edit["old"]) == 1, f"{overlay}: {edit['old']!r} is not in {relative} once"
+            text = text.replace(edit["old"], edit["new"])
+        path.write_text(text, encoding="utf-8")
+
+
 def overlaid(root: Path, overlay: str, into: str) -> tuple[Path, Path]:
     """Lay `overlay` over a reference copy; return the project and the dbt manifest to read.
 
     A `.manifest.json` overlay patches one column's `meta.sst` in a copy of the manifest, which is
-    where a dbt model's YAML arrives once dbt has parsed it; any other overlay is copied into
-    `into` under the project.
+    where a dbt model's YAML arrives once dbt has parsed it; a `.tree.yml` overlay removes, writes
+    and edits files across the project; any other overlay is copied into `into` under the project.
     """
     project = project_copy(root, offline=False)
+    if overlay.endswith(_TREE):
+        _lay_tree(project, overlay)
+        return project, DBT_MANIFEST
     if not overlay.endswith(_MANIFEST_PATCH):
         shutil.copy(OVERLAYS / overlay, project / into / overlay)
         return project, DBT_MANIFEST
