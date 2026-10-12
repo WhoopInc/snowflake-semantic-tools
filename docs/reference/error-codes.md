@@ -4187,7 +4187,7 @@ Note: A warning rather than an error: SST compares the object's direct grantees 
 
 `tool member '<name>' indexes <value>, materialized '<detail>' -- every dbt run rebuilds the relation, disabling change tracking and forcing a full re-embed`
 
-Raised when a search service's source relation is a dbt model whose materialization replaces it on every run, while the service is `INCREMENTAL`.
+Raised when a search service's source relation is a dbt model whose materialization replaces it on every run, and the service's `refresh_mode` is not `FULL` (unset, `AUTO`, or `INCREMENTAL`).
 
 Fix: make the model `incremental`, or set `refresh_mode: FULL` and accept the cost explicitly
 
