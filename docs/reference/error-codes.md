@@ -4487,7 +4487,7 @@ Note: Set `version: v3` on the metric, or `evals.+metric_version: v3` once for t
 
 `eval config for '<artifact>': metric '<name>' pins legacy version '<found>'`
 
-Raised when a system metric's version, else `evals.+metric_version`, is anything other than v3; SST-PRS013 reports the same value as an error.
+Raised when a system metric's version, else `evals.+metric_version`, is anything other than v3 or v1; SST-PRS013 reports the same value as an error, and SST-VAL764 reports v1.
 
 Fix: move to a current version, and record the score shift
 

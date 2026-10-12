@@ -361,7 +361,7 @@ def test_eval_config_validation_covers_system_metrics_thresholds_statuses_and_bo
     assert "SST-VAL764" not in codes
 
 
-def test_a_system_metric_pinned_to_v1_is_refused_beside_the_legacy_version_warning() -> None:
+def test_a_system_metric_pinned_to_v1_is_refused_in_place_of_the_legacy_version_warning() -> None:
     value = _resolved_eval()
     metric = EvalSystemMetric(value.config.origin, "answer_correctness", "v1")
     config = EvalConfig(
@@ -369,7 +369,9 @@ def test_a_system_metric_pinned_to_v1_is_refused_beside_the_legacy_version_warni
     )
     value = _resolved_eval(config=config)
     codes = _codes(EvalCatalog((value,), value.custom_metrics), allowed_models=("claude-sonnet-4-6",))
-    assert {"SST-PRS013", "SST-VAL723", "SST-VAL764"}.issubset(codes)
+    assert {"SST-PRS013", "SST-VAL764"}.issubset(codes)
+    # A run Snowflake refuses has no score shift to record, so SST-VAL723 would only repeat it.
+    assert "SST-VAL723" not in codes
 
 
 def test_custom_metric_validation_covers_duplicates_models_scale_placeholders_and_rubric() -> None:

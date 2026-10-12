@@ -21,3 +21,6 @@ def test_sst_val723_fires() -> None:
 
 def test_sst_val723_silent() -> None:
     assert "SST-VAL723" not in codes(validate())
+    # v1 is SST-VAL764's to report.
+    refused = sales_eval(eval_config=config(system_metrics=(system_metric(version="v1"),)))
+    assert "SST-VAL723" not in codes(validate(refused))
