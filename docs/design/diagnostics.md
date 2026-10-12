@@ -23,15 +23,15 @@ reports its area, in lowercase, as its `phase`, and the error reference has one 
 registry, configuration, discovery, parsing, loading, references, membership, validation, dbt,
 rendering, manifest and state, planning, apply, Snowflake, external systems, and internal.
 
-`VAL` holds most of the codes, so its hundreds digit is a band, and each band is its own module:
+`VAL` is the largest area, so its hundreds digit is a band, and each band is its own module:
 
 | Band | Checks | Module |
 |---|---|---|
-| `VAL0xx` | names, descriptions, and connected validation | `val_shared` |
+| `VAL0xx` | names, descriptions, prose, files, and references, for every type | `val_shared` |
 | `VAL1xx` | metrics | `val_metric` |
 | `VAL2xx` | relationships | `val_relationship` |
-| `VAL3xx` | column metadata and keys | `val_semantic_view` |
-| `VAL4xx` | filters, custom instructions, and verified queries | `val_filter` |
+| `VAL3xx` | semantic views: their tables, columns, keys, and scope | `val_semantic_view` |
+| `VAL4xx` | filters, custom instructions, verified queries, and compiled SQL | `val_filter` |
 | `VAL5xx` | agents | `val_agent` |
 | `VAL6xx` | tools | `val_tool` |
 | `VAL7xx` | evals | `val_eval` |
@@ -43,14 +43,14 @@ each name to its band.
 The 900 band of any area is for conditions that mean SST itself is wrong, not the project: an
 unregistered code (`SST-INT900`), an attachment that is not idempotent (`SST-MEM900`). A 900-band
 code must be an error, and in `INT` and `REG` one no setting may demote; the registry refuses
-anything else (`SST-REG014`). A failure there means the engine or its registry cannot be trusted, so
-no project setting may quiet it.
+anything else (`SST-REG014`). A failure in INT or REG means the engine or its registry cannot be
+trusted, so no project setting may quiet it.
 
 A number is never reused. Codes appear in CI scripts, severity overrides, baselines, and old issue
 threads, and a number that changed meaning would silently change what each of those says. A code
 that is no longer raised is retired: its number stays in `RETIRED_CODES`, its reason in
 `TOMBSTONES`, and the registry refuses to register it again (`SST-REG017`). `sst explain` still
-answers for a retired number and for an SST 0.3 code, which survives as an alias naming the codes
+answers for a retired number and for an SST 0.3 code, which survives as an alias naming the codes, if any,
 that now report its condition.
 
 Drawn from: [core.py](../../snowflake_semantic_tools/domain/diagnostics/core.py),
@@ -135,7 +135,7 @@ flowchart TD
 
 `D` never raises: a bad code or a missing placeholder becomes an internal error reported in its
 place, so a bug in one raise site cannot hide the rest of a run's diagnostics. `audit` runs once
-over everything a command reports, and a run that would have succeeded exits 1 when it finds a
+over everything a command reports, and a run that would have exited 0 or 2 exits 1 when it finds a
 diagnostic that breaks an emission invariant.
 
 Drawn from: [policy.py](../../snowflake_semantic_tools/domain/diagnostics/policy.py),
@@ -234,8 +234,9 @@ Drawn from: [cli/output.py](../../snowflake_semantic_tools/cli/output.py),
 Each code declares where its condition can first be detected, because that bounds how early SST can
 report it:
 
-- `local` needs no connection. Offline `sst validate` can report it, in an editor or a pull request,
-  before anyone has credentials. Most codes are local.
+- `local` needs no connection, so a command can report it offline; most validation codes reach
+  offline `sst validate`, in an editor or a pull request, before anyone has credentials. Most codes
+  are local.
 - `observe` needs a read of Snowflake but no write. `sst plan`, or a connected `sst validate`, can
   report it before `apply` changes anything.
 - `runtime` is seen only while a statement runs. No check can report it ahead of the statement, so
@@ -253,16 +254,16 @@ Drawn from: [core.py](../../snowflake_semantic_tools/domain/diagnostics/core.py)
 ## Snowflake errors
 
 Snowflake reports failures as a driver error with a message and, usually, an error number and a
-SQLSTATE. SST turns each into an `SNO` code through one table, `SIGNATURES`, which `match_signature`
-alone consults. It tries the error number first, then the SQLSTATE, then the message wording, each
+SQLSTATE. SST turns each into an `SNO` code through one table, `SIGNATURES`, and `match_signature`
+is the only function that matches an error against it. It tries the error number first, then the SQLSTATE, then the message wording, each
 pass in table order, because a number is the most stable evidence and wording the least. A row that
 matches on wording alone is fragile; `fragile_signatures` lists those rows so the set stays visible
 and can shrink as numbers are observed.
 
 An error no row matches is `SST-SNO001`, "Snowflake refused and SST does not recognise the refusal",
 and never a guessed specific code. A wrong specific code sends the user to the wrong fix; `SNO001`
-is honest and countable. Every command appends the `SNO` diagnostics it reports to
-`target/sst/run_log.jsonl`, and `sst debug --snowflake-signatures` reports what share went
+is honest and countable. Every command appends the `SNO` diagnostics its result reports to
+`target/sst/run_log.jsonl` (one that reaches the exception guard below is not logged), and `sst debug --snowflake-signatures` reports what share went
 unrecognised, which is the signal to add a signature.
 
 During `apply`, a failed statement is classified by the same table, and the change's outcome carries
@@ -283,8 +284,8 @@ flowchart TD
     row -- "any other row" --> one["snowflake_diagnostic, exit 1"]
 ```
 
-A failed login, a dropped connection, and an unrecognised error that ends the command's own
-connection are reported as the connection failing, `SST-PRT001`. A refused privilege or a missed
+A failed login, a dropped connection, and an error no signature recognises are reported as the
+connection failing, `SST-PRT001`. A refused privilege or a missed
 deadline is Snowflake not cooperating, exit 5; any other refusal, such as an object that does not
 exist or a compilation error, is a statement Snowflake rejected, exit 1.
 

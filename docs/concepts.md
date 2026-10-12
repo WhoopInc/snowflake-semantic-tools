@@ -321,10 +321,10 @@ are made of several resources, so each type's own handler compares those:
 
 ```mermaid
 flowchart TD
-    start["classify: one rendered artifact"] --> invalid{"validation errors?"}
+    start["one rendered artifact"] --> invalid{"validation errors?"}
     invalid -- yes --> b1["BLOCKED"]
     invalid -- no --> composite{"skill, plugin, profile or eval?"}
-    composite -- yes --> handler["its handler's CompositePlan decides"]
+    composite -- yes --> handler["its type's handler decides"]
     composite -- no --> live{"an object under its name?"}
     live -- no --> create["CREATE"]
     live -- yes --> kind{"of the artifact's type?"}
@@ -332,6 +332,7 @@ flowchart TD
     kind -- yes --> entry{"a state entry for it?"}
     entry -- no --> b3["BLOCKED, unmanaged: SST-PLN024"]
     entry -- yes --> moved{"entry records another target?"}
+    entry -->|"yes, but a fingerprint is not a digest"| b6["BLOCKED, an SST defect: SST-VAL320"]
     moved -- yes --> b4["BLOCKED, target moved: SST-PLN025"]
     moved -- no --> marker{"marker names the recorded manifest and fingerprint?"}
     marker -->|"no, but this definition's"| u1["UPDATE: record an unrecorded publish"]
@@ -343,8 +344,8 @@ flowchart TD
 
 Drawn from: [classify.py](../snowflake_semantic_tools/domain/plan/classify.py), [action.py](../snowflake_semantic_tools/domain/model/lifecycle/action.py).
 
-An object edited outside SST is never overwritten: its marker no longer matches
-what state recorded, so the plan blocks it, with the warning `SST-PLN014`, until
+An object edited outside SST so that its marker no longer matches what state
+recorded is never overwritten: the plan blocks it, with the warning `SST-PLN014`, until
 the object SST wrote is restored or the object is removed. An object whose
 marker names the very definition being planned is updated instead: an apply
 published it and was stopped before it recorded it, so publishing it again
@@ -356,7 +357,7 @@ longer renders:
 ```mermaid
 flowchart TD
     gone["an artifact the project no longer renders"] --> which{"its type"}
-    which -->|"semantic_view or agent"| mark{"plan_prunes: SST ownership marker?"}
+    which -->|"semantic_view or agent"| mark{"SST ownership marker?"}
     mark -- no --> s3["skipped: SST-PLN003"]
     mark -- yes --> agree{"state recorded exactly this object?"}
     agree -- no --> s4["skipped: SST-PLN004"]
@@ -368,9 +369,9 @@ flowchart TD
 
 Drawn from: [prune.py](../snowflake_semantic_tools/domain/plan/prune.py), [composite.py](../snowflake_semantic_tools/app/lifecycle/composite.py), [profiles.py](../snowflake_semantic_tools/app/lifecycle/profiles.py).
 
-Last, blocking spreads: a write whose dependency the plan leaves out and
-Snowflake lacks is blocked (`SST-VAL015`), and so is every change that depends,
-however indirectly, on a blocked one. `sst plan` exits 1 when any change is
+Then blocking spreads: a write whose dependency the project compiles, the plan
+leaves out, and Snowflake lacks is blocked (`SST-VAL015`), and so, last, is
+every change that depends, however indirectly, on a blocked one. `sst plan` exits 1 when any change is
 blocked or an error is reported, 2 when apply would write or still has state to
 record, and 0 otherwise; `--no-detailed-exitcode` turns 2 into 0.
 

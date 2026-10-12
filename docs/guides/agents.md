@@ -287,7 +287,7 @@ the model `on:` names:
 | `id_column`, `title_column` | column name | no | nothing in the DDL; the agent's search tool defaults to them |
 | `where` | one SQL expression | no | `WHERE <expression>` on the query (`SST-VAL418`) |
 | `warehouse` | identifier | yes, defaulted | `WAREHOUSE = <warehouse>` |
-| `target_lag` | string, such as `1 hour` | yes | `TARGET_LAG = '<lag>'` |
+| `target_lag` | string, such as `1 hour` | yes, defaulted | `TARGET_LAG = '<lag>'` |
 | `embedding_model` | string | no | `EMBEDDING_MODEL = '<model>'`; unset leaves Snowflake's default |
 | `refresh_mode` | `AUTO`, `FULL`, or `INCREMENTAL` | no | `REFRESH_MODE = <mode>`; unset leaves it to Snowflake (`SST-PRS013`) |
 
@@ -302,7 +302,8 @@ the model `on:` names:
 - `SST-VAL611`: an agent gated by a blocking eval reads the service and no
   `embedding_model` pins how it retrieves;
 - under connected validation, `SST-VAL613` for a declared column the live
-  service lacks, `SST-VAL618` for a source with change tracking off, and
+  service lacks, `SST-VAL618` for a source with change tracking off unless
+  `refresh_mode` is `FULL`, and
   `SST-VAL619` for explicit grants a replace would have to re-issue.
 
 ```yaml
@@ -340,7 +341,7 @@ signature, `COPY GRANTS`, `RETURNS`, `LANGUAGE`, `RUNTIME_VERSION`, `HANDLER`,
 | `external_access_integrations` | list of identifiers | no | `EXTERNAL_ACCESS_INTEGRATIONS = (<name>, ...)` |
 | `secrets` | map of variable name to three-part secret name | no | `SECRETS = ('<variable>' = <secret>, ...)`, sorted by variable |
 | `execute_as` | `caller`, `owner`, or `restricted caller` | procedure only, defaulted, else `caller` | `EXECUTE AS` (`SST-PRS013`) |
-| `warehouse` | identifier | procedure only, defaulted | nothing in the DDL; the warehouse a generic tool runs the procedure on when the tool sets none |
+| `warehouse` | identifier | for a procedure, defaulted | nothing in the DDL; the warehouse a generic tool runs the routine on when the tool sets none |
 
 `body_file:` is read relative to the project root and may not leave it
 (`SST-PRT009`); a missing file is `SST-LOD018` and an empty one `SST-LOD019`.

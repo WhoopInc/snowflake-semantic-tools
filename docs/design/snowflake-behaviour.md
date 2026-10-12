@@ -73,7 +73,9 @@ the server also accepts a bare integer is not recorded here.
 [test_golden_ddl.py](../../tests/unit/test_golden_ddl.py) compares it.
 [test_sst_val304.py](../../tests/codes/val/test_sst_val304.py) covers the minimum.
 
-**SST depends on it at**: `_trailing_clauses` in
+**SST depends on it at**: `_build_view` in
+[build.py](../../snowflake_semantic_tools/adapters/yaml/semantic/build.py), which
+turns the authored integer into `'<n> seconds'`; `_trailing_clauses` in
 [semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py);
 SST-VAL304 in
 [val_semantic_view.py](../../snowflake_semantic_tools/domain/diagnostics/specs/val_semantic_view.py).
@@ -167,8 +169,8 @@ rejects (see [above](#max_staleness-comes-after-the-ai-clauses)). So for a view
 carrying both, `GET_DDL`'s own output does not parse. With the default name
 form, it also fails in a session that has no current database.
 
-**Evidence**: `Observed`. No test reads `GET_DDL` back, or runs what it returns.
-Probe:
+**Evidence**: `Observed`. No test reads `GET_DDL` from a real account, and none
+runs what it returns. Probe:
 
 ```sql
 CREATE SEMANTIC VIEW <db>.<schema>.probe_view
@@ -208,8 +210,8 @@ message. So the server does enforce some window rules early. SST's note on
 SST-VAL123 says the server enforces none of the derived-metric restrictions.
 Only the window-function case has been probed to query time.
 
-**Evidence**: `Enforced`. The checks are SST-VAL102 to SST-VAL107; SST-VAL102 is
-never demotable, and SST-VAL123 re-checks the compiled view.
+**Evidence**: `Enforced`. The checks are SST-VAL102 to SST-VAL107, none of them
+demotable, and SST-VAL123 re-checks the compiled view.
 [test_sst_val102.py](../../tests/codes/val/test_sst_val102.py) and
 [test_sst_val123.py](../../tests/codes/val/test_sst_val123.py).
 SST-VAL126 is the table-scoped counterpart, refusing a window whose argument is
@@ -306,10 +308,11 @@ earlier with `ALTER SEMANTIC VIEW ... SET TAG`.
 every tag on the view, silently. With `WITH TAG` inline, the replace carries the
 tags in one statement.
 
-**Evidence**: `Observed`. Tests pin that SST renders tags inline in the
-`CREATE`: the clause-order test above, and
+**Evidence**: `Observed`. The clause-order test above pins that SST renders tags
+inline in the `CREATE`, and
 `test_key_summaries_describe_what_the_renderer_and_the_stage_channel_do` in
-[test_config_schema.py](../../tests/unit/domain/test_config_schema.py). No test
+[test_config_schema.py](../../tests/unit/domain/test_config_schema.py) holds the
+`tags` key's summary to that. No test
 proves that the replace drops tags set outside it. The consequence for users is
 that every apply leaves a view with exactly the tags the project declares, and a
 governance tag applied by hand is gone after the next apply. Probe:
@@ -502,8 +505,9 @@ serves it until a version is added.
 
 **Evidence**: `Enforced`. SST creates a skill's extension from its bundle, so the
 first version is the bundle; the create test above asserts no `ADD VERSION`
-follows. A plugin falls back to a bare create plus a live version only when the
-bundled create is refused:
+follows. Only a plugin has a fallback: when the bundled create is refused it is
+created bare and a version added, and when that is refused too a live version is
+built from empty:
 `test_plugin_falls_back_to_a_live_version_built_from_empty`.
 
 **SST depends on it at**: `_create_extension` in
@@ -542,7 +546,8 @@ is rejected.
 every file under `skills/<name>/`. The skill goldens in
 [tests/golden/expected/skill](../../tests/golden/expected/skill) pin that layout,
 and `sst test --suite golden` compares them
-([test_test.py](../../tests/unit/cli/test_test.py)).
+(`test_golden_suite_compares_every_compiled_view` in
+[test_test.py](../../tests/unit/cli/test_test.py)).
 
 **SST depends on it at**:
 [skill_bundle.py](../../snowflake_semantic_tools/domain/render/skill_bundle.py);
@@ -602,12 +607,24 @@ table lists `v1`. Omitting `version`, or `auto`, uses the current default.
 caller to omit the version field to use v1. `v2` and `v3` can be named. So v1 is
 reachable only as an unpinned default.
 
-**Evidence**: `Enforced`. SST requires every system metric to name a version
-(SST-VAL722), because an unpinned default moves when Snowflake changes it, and
-accepts only `v3` (SST-PRS013, SST-VAL723). It never sends `v1`.
-[test_sst_val722.py](../../tests/codes/val/test_sst_val722.py),
+**Evidence**: `Enforced` for the pin: SST requires every system metric to name a
+version (SST-VAL722), because an unpinned default moves when Snowflake changes
+it. [test_sst_val722.py](../../tests/codes/val/test_sst_val722.py). The refusal
+of `v1` is `Observed`. SST accepts only `v3` (SST-PRS013, SST-VAL723), so it
+sends `v1` only if a project demotes SST-PRS013. The tests refuse `v2`, and none
+would fail if `v1` were admitted beside `v3`:
 [test_sst_prs013.py](../../tests/codes/prs/test_sst_prs013.py),
-[test_sst_val723.py](../../tests/codes/val/test_sst_val723.py).
+[test_sst_val723.py](../../tests/codes/val/test_sst_val723.py). Probe:
+
+```sql
+-- Stage an evaluation config for <db>.<schema>.probe_agent whose one system
+-- metric sets `version: v1`, at @<db>.<schema>.probe_stage/probe.yaml, then:
+USE SCHEMA <db>.<schema>;
+CALL EXECUTE_AI_EVALUATION('START', OBJECT_CONSTRUCT('run_name', 'probe_run'),
+  '@<db>.<schema>.probe_stage/probe.yaml');
+-- Expect: refused, telling the caller to omit the version to use v1.
+-- Set `version: v3` and the same START is accepted.
+```
 
 **SST depends on it at**: `_system_metric` in
 [eval_config.py](../../snowflake_semantic_tools/domain/validate/eval_config.py);
@@ -626,7 +643,8 @@ reads `COMPLETED`.
 
 **Evidence**: `Enforced`. A partial status ends a run only once it has persisted
 for `partial_settle_ms`, three minutes by default.
-[test_eval_poll.py](../../tests/unit/app/test_eval_poll.py) covers the window.
+`test_a_partial_status_that_turns_completed_within_the_window_is_kept_without_a_retry`
+in [test_eval_poll.py](../../tests/unit/app/test_eval_poll.py) covers the window.
 
 **SST depends on it at**: the module docstring and polling loop of
 [poll.py](../../snowflake_semantic_tools/app/evals/poll.py);
@@ -685,7 +703,9 @@ SHOW CORTEX SEARCH SERVICES LIKE 'PROBE_SEARCH' IN SCHEMA <db>.<schema>;
 -- Expect: the REFRESH fails while SHOW still reports ACTIVE.
 ```
 
-**SST depends on it at**: `_tool` and `_change_tracking` in
+**SST depends on it at**: `rebuilt_source` in
+[validate/tool.py](../../snowflake_semantic_tools/domain/validate/tool.py);
+`_tool` and `_change_tracking` in
 [agents/observe.py](../../snowflake_semantic_tools/app/compile/agents/observe.py);
 [val_tool.py](../../snowflake_semantic_tools/domain/diagnostics/specs/val_tool.py).
 
@@ -703,10 +723,11 @@ alike. `COPY GRANTS` is a syntax error on `CREATE DATASET` and on
 every form, so a dataset's grants are visible only from the grantee's side
 (`SHOW GRANTS TO ROLE`), and its owner from `SHOW DATASETS`.
 
-**Evidence**: `Enforced`. Each artifact type declares how its grants survive an
-update. A semantic view, procedure and function replace with `COPY GRANTS`. A
-search service is replaced and its explicit grants re-applied. Agents, skills,
-plugins and evals are never replaced. SST never sends `SHOW GRANTS ON DATASET`.
+**Evidence**: `Enforced`. Each rendered object's `PublishShape` declares how its
+grants survive an update. A semantic view, procedure and function replace with
+`COPY GRANTS`. A search service is replaced and its explicit grants re-applied.
+Agents, skills, plugins, profiles and evals are never replaced. SST never sends
+`SHOW GRANTS ON DATASET`.
 `test_search_service_update_replays_and_verifies_explicit_grants` in
 [test_apply.py](../../tests/unit/app/test_apply.py);
 `test_sst_val713_silent` in
@@ -716,7 +737,9 @@ plugins and evals are never replaced. SST never sends `SHOW GRANTS ON DATASET`.
 
 **SST depends on it at**: `GrantPreservation` and each type's
 `grant_preservation` in
-[registry.py](../../snowflake_semantic_tools/domain/model/registry.py);
+[registry.py](../../snowflake_semantic_tools/domain/model/registry.py); the
+`PublishShape` a search service, procedure or function renders with, in
+[render/tool.py](../../snowflake_semantic_tools/domain/render/tool.py);
 `_verify_grants` in [apply/one.py](../../snowflake_semantic_tools/app/apply/one.py);
 `_UNLISTED_GRANTS` in
 [catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py).

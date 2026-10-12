@@ -24,20 +24,20 @@ Three inputs decide where the manifest comes from:
   `target-path` and never runs dbt. It is read as it is: no staleness check
   runs.
 - Otherwise, the default, SST runs `dbt.command` before the first read. A
-  project source runs it at most once, so a command that reads both the models
+  project source runs it at most once for its target, so a command that reads both the models
   and the tools parses the project once.
 
 The flowchart shows the choice.
 
 ```mermaid
 flowchart TD
-    start["YamlProjectSource._parsed_manifest"] --> given{"--manifest given?"}
+    start["YamlProjectSource"] --> given{"--manifest given?"}
     given -- yes --> read["load_manifest_catalog"]
-    given -- no --> invoke{"dbt.invoke true?"}
-    invoke -- no --> path["target_path"]
-    invoke -- yes --> parse["parse_project"]
-    parse --> path
-    path --> read
+    given -- no --> path["target_path"]
+    path --> invoke{"dbt.invoke true?"}
+    invoke -- no --> read
+    invoke -- yes --> parse["parse_project, once per source"]
+    parse --> read
     read --> stale{"read from --manifest?"}
     stale -- yes --> check["stale_models: SST-DBT005"]
     stale -- no --> done["DbtCatalog"]
@@ -70,8 +70,9 @@ sequenceDiagram
     participant M as load_manifest_catalog
     S->>I: project dir, target, manifest path
     I->>I: missing_packages (SST-DBT026)
-    I->>D: dbt --version, unless cached
-    D-->>I: core, cloud, or unknown (SST-DBT020)
+    I->>D: dbt --version, unless cached (SST-DBT027 if it cannot start)
+    D-->>I: core, cloud, or unknown (SST-DBT020, a warning)
+    I->>I: Cloud CLI under defer.auto_compile (SST-DBT021)
     I->>D: dbt parse --project-dir --profiles-dir --target
     D-->>I: exit code (SST-DBT028), manifest.json (SST-DBT029)
     S->>M: manifest path
@@ -87,13 +88,15 @@ and `~/.dbt`, and passes its directory to dbt as `--profiles-dir`; when none
 exists it passes the project root, so dbt reports the absence itself. An SST
 target is a dbt target: `--target` names an output of the profile that
 `dbt_project.yml`'s `profile:` names, SST passes the same name to dbt, and an
-output whose `type` names another adapter is refused (`SST-CFG011`). A deferred target is parsed the
-same way into its own `--target-path` when `defer.auto_compile` is set;
-otherwise its manifest is read from `defer.state_path`. dbt runs in SST's own
+output whose `type` names another adapter is refused (`SST-CFG011`). A deferred
+target's manifest lives under `defer.state_path`, by default
+`target/sst/defer/<target>`: with `defer.auto_compile` SST parses that target
+the same way, passing that directory as `--target-path`; otherwise the manifest
+there is read as supplied. dbt runs in SST's own
 environment, so every variable SST sees reaches dbt too.
 
-A dbt `--version` that cannot be started is `SST-DBT027`; a non-zero `dbt
-parse` passes dbt's own output through, then stops with `SST-DBT028`; a zero
+A `dbt` that cannot be started, for `--version` or for the parse, is
+`SST-DBT027`; a non-zero `dbt parse` passes dbt's own output through, then stops with `SST-DBT028`; a zero
 exit that wrote no manifest where `target-path` says is `SST-DBT029`.
 `sst debug` prints where the manifest comes from, its schema version, the
 versions accepted, and the dbt on `PATH`.
@@ -115,12 +118,12 @@ Paths are relative to the manifest root; `<id>` is a node's unique id.
 | `nodes` | every model and test | not an object: the run stops, naming the path |
 | `nodes.<id>.resource_type` | `model` selects models, `test` selects tests; every other node is ignored | no model at all: `SST-DBT001` |
 | `nodes.<id>.name` | the name `{{ ref() }}` resolves, case-insensitively | empty: the model is skipped (`SST-DBT013`); a ref to a name no model has: `SST-REF001` |
-| `nodes.<id>.relation_name` | the relation a view or tool reads, honouring `alias:` | empty: the model has no relation, and a view that uses it gets `SST-DBT009`; not a three-part name: `SST-REF019`; two models on one relation with different semantic columns: `SST-DBT010`; a literal relation that names a model where dbt builds it under another name: `SST-DBT006` |
+| `nodes.<id>.relation_name` | the relation a view or tool reads, honouring `alias:` | empty: the model has no relation, so a view table that names it gets `SST-VAL303` and any other member that uses it `SST-DBT009`; not a three-part name: `SST-REF019`; two models on one relation with different semantic columns: `SST-DBT010`; a literal relation that names a model where dbt builds it under another name: `SST-DBT006` |
 | `nodes.<id>.database`, `nodes.<id>.schema` | checked only, since the relation already names them | present and empty: the model is skipped (`SST-DBT014`) |
-| `nodes.<id>.config.materialized` | why a model has no relation (`ephemeral` when unset); whether a search service indexes a relation every dbt run rebuilds | a table or view under a search service: `SST-VAL617` |
-| `nodes.<id>.meta.sst`, else `nodes.<id>.config.meta.sst` | `primary_key` and `unique_keys`, as lists of column names | the 0.3 string forms: `SST-DBT032`; neither key: `SST-VAL312`; a key column the model lacks: `SST-VAL310`; `database` or `schema` here: `SST-DBT030`; any other key: `SST-PRS004` |
+| `nodes.<id>.config.materialized` | why a model has no relation (`ephemeral` when unset); whether a search service indexes a relation every dbt run rebuilds | a table or view under an `INCREMENTAL` search service: `SST-VAL617` |
+| `nodes.<id>.meta.sst`, else `nodes.<id>.config.meta.sst` | `primary_key` and `unique_keys`, as lists of column names | the 0.3 forms: `SST-DBT032`; neither key: `SST-VAL312`; a key column the model lacks: `SST-VAL310`; `database` or `schema` here: `SST-DBT030`; any other key: `SST-PRS004` |
 | `nodes.<id>.columns.<name>.name`, `.description`, `.data_type` | the column, its comment in the view, and its type; dbt's `data_type` wins over `meta.sst.data_type` | no description: `SST-VAL003`; no type: `SST-VAL309`; a fact that is not numeric: `SST-VAL305`; a time dimension that is not temporal: `SST-VAL306`; `meta.sst.data_type` disagreeing: `SST-DBT004` |
-| `nodes.<id>.columns.<name>.meta.sst` (or under `config`) | `column_type`, `data_type`, `synonyms`, `sample_values`, `is_enum`, `exclude`, `access_modifier` | no role: `SST-VAL308`; an unknown role: `SST-DBT003`; enum completeness: `SST-VAL314`, `SST-VAL315`; a sentinel such as `nan` as a sample value: `SST-VAL316`; a private dimension: `SST-VAL222`; any other key: `SST-PRS004` |
+| `nodes.<id>.columns.<name>.meta.sst` (or under `config`) | `column_type`, `data_type`, `synonyms`, `sample_values`, `is_enum`, `exclude`; `access_modifier` only to refuse a private dimension | no role: `SST-VAL308`; an unknown role: `SST-DBT003`; enum completeness: `SST-VAL314`, `SST-VAL315`; a sentinel such as `nan` as a sample value: `SST-VAL316`; a private dimension: `SST-VAL222`; any other key, `access_modifier` otherwise included: `SST-PRS004` |
 | `nodes.<id>.columns.<name>.meta.pii_tags` (or under `config`) | enrich never reads a tagged column's values | sample values on a tagged column: `SST-VAL328` |
 | `nodes.<id>.description` | context for the synonyms enrich asks Cortex for | none |
 | `nodes.<id>.checksum.checksum` | the `--manifest` staleness check, and the digest of the dbt side SST records in its own manifest | absent on a model a view uses: `SST-DBT015` |
@@ -128,7 +131,7 @@ Paths are relative to the manifest root; `<id>` is a node's unique id.
 | `nodes.<id>.original_file_path`, `.patch_path`, `.package_name` | which YAML file enrich edits, where a diagnostic points, and root-project selection | none |
 | test nodes' `attached_node`, else `depends_on.nodes` | how many tests each model has | a model a view uses with none: `SST-DBT023` |
 | test nodes' `test_metadata.name`, `column_name`, `test_metadata.kwargs` | the columns a `unique`, `unique_combination_of_columns`, or `relationships` test names, which enrich treats as keys, never as facts | none |
-| `disabled` | the names of disabled models | a view that uses one: `SST-DBT009` |
+| `disabled` | the names of disabled models | a view table that names one: `SST-VAL303`; any other member that uses one: `SST-DBT009` |
 | `sources.<id>.source_name`, `.name`, `.relation_name` | the relation a `{{ source() }}` table reads | undeclared, or without a relation: `SST-DBT011`; a pair declared twice: `SST-DBT012` |
 
 A missing field reads as empty and lands in the column on the right. A part
@@ -137,7 +140,7 @@ that is not a list, stops the run with a message naming its manifest path.
 Nodes are read in sorted unique-id order, so the catalog's order never depends
 on the order of keys in the file.
 
-Drawn from: [manifest.py](../../snowflake_semantic_tools/adapters/dbt/manifest.py), [dbt.py](../../snowflake_semantic_tools/domain/model/dbt.py), [dbt_seam.py](../../snowflake_semantic_tools/domain/validate/dbt_seam.py), [semantic/dbt.py](../../snowflake_semantic_tools/domain/validate/semantic/dbt.py), [build.py](../../snowflake_semantic_tools/adapters/yaml/semantic/build.py), [enrich.py](../../snowflake_semantic_tools/app/enrich.py), [columns.py](../../snowflake_semantic_tools/domain/enrich/columns.py), [tool.py](../../snowflake_semantic_tools/domain/validate/tool.py), [project.py](../../snowflake_semantic_tools/adapters/dbt/project.py).
+Drawn from: [manifest.py](../../snowflake_semantic_tools/adapters/dbt/manifest.py), [dbt.py](../../snowflake_semantic_tools/domain/model/dbt.py), [dbt_seam.py](../../snowflake_semantic_tools/domain/validate/dbt_seam.py), [semantic/dbt.py](../../snowflake_semantic_tools/domain/validate/semantic/dbt.py), [build.py](../../snowflake_semantic_tools/adapters/yaml/semantic/build.py), [enrich.py](../../snowflake_semantic_tools/app/enrich.py), [columns.py](../../snowflake_semantic_tools/domain/enrich/columns.py), [tool.py](../../snowflake_semantic_tools/domain/validate/tool.py), [views.py](../../snowflake_semantic_tools/domain/validate/semantic/views.py), [phases.py](../../snowflake_semantic_tools/adapters/yaml/semantic/phases.py), [project.py](../../snowflake_semantic_tools/adapters/dbt/project.py).
 
 ## The schema-version gate
 
@@ -151,7 +154,7 @@ any model is read.
 
 The gate exists because the reader is deliberately forgiving about absent keys.
 If dbt renamed `relation_name`, every model would read as one with no relation
-and every view would fail with `SST-DBT009`; if it renamed `resource_type` or
+and everything that uses a model would fail (`SST-VAL303`, `SST-DBT009`); if it renamed `resource_type` or
 its values, no model would be selected at all. A renamed key inside `meta` or
 `columns` would be worse: it would drop metadata column by column, and every
 diagnostic would blame the project's YAML instead of the manifest. The gate
@@ -203,9 +206,9 @@ default locally. Running the Cloud CLI through `dbt parse` is not tested. A
 Cloud CLI project can instead produce the manifest itself and give SST
 `--manifest`, or set `dbt.invoke: false`.
 
-dbt Fusion is not recognised: its `dbt --version` names no installation SST
-knows, so every run warns `SST-DBT020` and still runs `dbt parse` with the same
-arguments. Whether the result is read then depends only on the schema gate.
+dbt Fusion is not recognised: SST knows only the dbt Core and Cloud CLI
+`dbt --version` wordings, so any other answer warns `SST-DBT020` on every run
+that starts dbt, and SST still runs `dbt parse` with the same arguments. Whether the result is read then depends only on the schema gate.
 Fusion is not tested; the tests cover only the warning, with a fake executable.
 
 Drawn from: [pyproject.toml](../../pyproject.toml), [test-and-lint.yml](../../.github/workflows/test-and-lint.yml), [slow.yml](../../.github/workflows/slow.yml), [reference_project_manifest.json](../../tests/fixtures/reference_project_manifest.json), [dbt_project.yml](../../tests/fixtures/reference_project/dbt_project.yml), [invoke.py](../../snowflake_semantic_tools/adapters/dbt/invoke.py), [test_dbt_invoke.py](../../tests/unit/adapters/test_dbt_invoke.py).
@@ -274,8 +277,8 @@ question about a release is which schema it writes.
    versions `docs/getting-started.md` names.
 
 The committed `tests/fixtures/reference_project_manifest.json` is a reduced
-copy of a dbt 1.11 manifest: its metadata and model nodes, each with only the
-keys SST reads, and no test or source nodes. Replacing it with a full manifest
+copy of a dbt 1.11 manifest: its metadata and its model and test nodes,
+trimmed to little more than the keys SST reads, and no source nodes. Replacing it with a full manifest
 changes which seam diagnostics the reference project reports, so do it as its
 own change.
 

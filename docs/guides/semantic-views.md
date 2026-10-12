@@ -84,16 +84,16 @@ flowchart TD
     poisoned -- no --> instruction{"a custom instruction?"}
     instruction -- yes --> named["every view whose custom_instructions: names it"]
     instruction -- no --> declared{"declares tables:?"}
-    declared -- yes --> own["effective_tables: its tables:"]
-    declared -- no --> inferred["effective_tables: the models its ref() calls name, SST-MEM012"]
-    own --> subset["attach_members: every view whose tables: hold all of them"]
+    declared -- yes --> own["its tables: those it declares"]
+    declared -- no --> inferred["its tables: the models its ref() calls name, SST-MEM012"]
+    own --> subset["every view whose tables: hold all of them"]
     inferred --> subset
     subset --> built{"built on other metrics?"}
-    built -- yes --> both["only views where each metric it references attached"]
+    built -- yes --> both["only those views, or any view for a metric with no tables, where each metric it references attached"]
     built -- no --> scope
-    both --> scope["ViewScope: columns:, metrics:, relationships:, or their exclude_ forms, drop what they leave out"]
+    both --> scope["a view's metrics: and relationships:, or their exclude_ forms, drop what they leave out"]
     scope --> remaining{"any view left?"}
-    remaining -- no --> unattached["SST-MEM005, a warning"]
+    remaining -- no --> unattached["SST-MEM005, a warning, for a member from SST's files"]
     remaining -- yes --> rendered["rendered in each of them"]
 ```
 
@@ -106,11 +106,11 @@ Drawn from: [members.py](../../snowflake_semantic_tools/domain/resolve/members.p
 - A member that declares no tables and names no model with `ref()` attaches
   nowhere (`SST-MEM002`), except a derived metric, which needs none: it lands
   in every view that holds all the metrics it references.
-- A member with an error is still checked but never attached, and neither is a
-  metric built on it; a member whose references did not resolve is reported as
+- A member with an error is never attached, and neither is a metric built on
+  it; a member whose references did not resolve is reported as
   left out (`SST-MEM107`).
-- A relationship that fits no view is an error rather than a warning
-  (`SST-VAL205`), and a custom instruction name no block declares is
+- A relationship whose two tables share no view is an error (`SST-VAL205`) as
+  well as the warning, and a custom instruction name no block declares is
   `SST-REF007`.
 - A member that attaches to more than one view is reported as information
   (`SST-MEM011`).

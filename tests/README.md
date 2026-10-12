@@ -108,7 +108,7 @@ A test is worth what it cannot be fooled by. Each layer proves one kind of claim
 - **CLI** (`unit/cli`): commands through `CliRunner`, asserting each command's exit codes, its JSON envelope, and what it prints.
 - **Live** (`contract_live/`, `integration/`, `e2e/test_live_lifecycle.py`): the only tests marked `live`, so the only ones that may connect, and only when `-m live` selects them and an account is configured. Without one they skip, or fail under `--require-snowflake`, so a gate that could not connect is never green. Every other test runs under the network guard, which fails a test even when the code under test swallowed the refusal.
 
-Coverage is measured per layer because one global number lets a well-tested layer hide an untested one. Each floor is measured from the layer's own tests, so `app` cannot pass on lines the CLI tests happened to run, and the ratchet holds each layer's line and branch coverage to its baseline, which may rise and never fall. The domain, being pure, is held to every line and branch.
+Coverage is measured per layer because one global number lets a well-tested layer hide an untested one. The domain, application, and CLI floors are each measured from that layer's own tests, so `app` cannot pass on lines the CLI tests happened to run; the adapters floor and the ratchet read the whole suite's run, and the ratchet holds each layer's line and branch coverage to its baseline, which may rise and never fall. The domain, being pure, is held to every line and branch.
 
 A failing test fails the run. The suite has no retry plugin, and what it does instead makes a flaky test visible rather than lucky: CI's Hypothesis profile is deterministic, so a property failure reproduces on rerun; a test that deadlocks fails at 120 seconds with every thread's stack; a test whose thread outlives it fails; and every offline test starts from an empty home directory and none of the `SST_*` variables `sst` reads.
 
@@ -121,7 +121,7 @@ Some claims cannot be proven offline. The goldens prove SST renders the intended
 
 Agent evaluation is the evals suite, run by the manual workflow against a published agent, not by pytest. [docs/guides/testing-live.md](../docs/guides/testing-live.md) says how to configure and run each of these.
 
-Drawn from: [conftest.py](conftest.py), [unit/domain/conftest.py](unit/domain/conftest.py), [helpers/network_guard.py](helpers/network_guard.py), [helpers/coverage_ratchet.py](helpers/coverage_ratchet.py), [contract_live/test_connector_contract.py](contract_live/test_connector_contract.py), [integration/test_apply_live.py](integration/test_apply_live.py), [e2e/test_live_lifecycle.py](e2e/test_live_lifecycle.py), [pyproject.toml](../pyproject.toml).
+Drawn from: [conftest.py](conftest.py), [unit/domain/conftest.py](unit/domain/conftest.py), [helpers/network_guard.py](helpers/network_guard.py), [helpers/coverage_ratchet.py](helpers/coverage_ratchet.py), [contract_live/test_connector_contract.py](contract_live/test_connector_contract.py), [integration/test_apply_live.py](integration/test_apply_live.py), [e2e/test_live_lifecycle.py](e2e/test_live_lifecycle.py), [pyproject.toml](../pyproject.toml), [test-and-lint.yml](../.github/workflows/test-and-lint.yml).
 
 ## Writing Tests
 

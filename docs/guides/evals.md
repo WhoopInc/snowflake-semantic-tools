@@ -462,7 +462,7 @@ retrieval error follow it. With `--output json`, `data` carries `evals` (each
 eval's retention class and attempts, with `metric_summaries` and `cost`),
 `attempt_count`, `cost_totals`, `regression_count`, `regressions`,
 `gate_verdict` (`passed`, `regressed`, `no_signal`, `captured`, or
-`not_evaluated` when nothing was gated or captured, as when a capture falls
+`not_evaluated` when a baseline capture captured nothing, as when it falls
 short), `gate_reasons`, and `captured_baselines`. Credits are not attributed.
 
 ## Baselines
@@ -553,7 +553,7 @@ gives the reason, which fails the run whatever its tier:
 
 ```mermaid
 flowchart TD
-    run["evaluate_gate: one eval's run"] --> stored{"a baseline stored?"}
+    run["one eval's run"] --> stored{"a baseline stored?"}
     stored -- no --> absent["baseline_absent: SST-VAL758"]
     stored -- yes --> version{"completed attempts on one VERSION$n?"}
     version -- no --> current["current_no_signal: SST-SNO001"]

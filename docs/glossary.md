@@ -17,13 +17,15 @@ where it is explained.
 - **Association.** How metrics, relationships, filters, and verified queries
   join views: a member attaches to every view whose `tables:` include all of
   its own. See [association](concepts.md#association-how-members-find-views).
-- **Baseline.** The file `.sst/baseline.json`, holding known warnings that are
-  counted rather than shown and never block. See
+- **Baseline.** The file `.sst/baseline.json` unless `--baseline` names another,
+  holding known warnings that are counted rather than shown and do not block
+  until the baseline expires. See
   [known warnings](guides/ci-cd.md#known-warnings-the-baseline).
 - **Connected validation.** The checks `sst validate` and `sst plan` make
   against Snowflake, such as compiling expressions and reading live objects.
-  They run unless `--no-snowflake-syntax-check` is given or
-  `validation.snowflake_syntax_check` is `false`. See the
+  They run unless `--no-snowflake-syntax-check` is given,
+  `validation.snowflake_syntax_check` is `false`, or `plan` runs with
+  `--no-validate`. See the
   [trust model](guides/security.md#trust-model).
 - **Consumer.** A role that uses a published object, such as one granted
   `USAGE` on an agent. SST grants consumers nothing. See
@@ -114,13 +116,13 @@ Drawn from: [artifact keys](../snowflake_semantic_tools/domain/model/artifact_ke
 
 | Word | In Snowflake | In dbt | In SST |
 |---|---|---|---|
-| model | a language model, such as an agent's orchestration model or a search service's embedding model | a SQL model and the relation it builds | a dbt model, as `{{ ref('<model>') }}` names it; `models.orchestration` and `embedding_model` keep Snowflake's sense |
+| model | a language model, such as an agent's orchestration model or a search service's embedding model | a SQL model and the relation it builds | a dbt model, as `{{ ref('<model>') }}` names it; an agent's `spec.models.orchestration` and a search service's `embedding_model` keep Snowflake's sense |
 | target | no object; `TARGET_LAG` is the freshness a search service keeps | an output of a profile in `profiles.yml` | the same `profiles.yml` target, chosen by `--target`, which decides where every artifact lands |
 | manifest | an application package's `manifest.yml` | `target/manifest.json`, which SST reads | `target/sst/manifest.json`, the record of one SST compile; a plugin's `plugin.yml` is also called its manifest |
 | state | -- | `--state`, a directory of an earlier run's artifacts | the state table apply writes; `--state` also names an earlier build directory, as in dbt |
 | version | a numbered version of an agent or extension, such as `VERSION$1` | a model version, or dbt's own release | an extension version named for its content, or an agent version added by each change |
 | alias | a name on an agent or extension version | the name a model's relation takes instead of the model's | an agent's `alias:`, moved to each new version |
-| profile | an agent's display name, avatar, and color | a connection in `profiles.yml` | dbt's `profiles.yml`, which SST also reads, or a CoCo Desktop profile from `profile.yml` |
+| profile | an agent's display name, avatar, and color | a connection in `profiles.yml` | dbt's `profiles.yml`, which SST also reads, or a CoCo Desktop profile from `profile.yml`; an agent's `profile:` keeps Snowflake's sense |
 | catalog | the catalog that serves Cortex Extensions to users; also a catalog integration for Iceberg tables | `catalog.json`, written by `dbt docs generate` | `skills.catalog`, the block that turns on publishing skills to Cortex Extensions |
 | tool | an entry in an agent specification's `tools` | -- | an agent's tool, or the `tool` artifact a `define:` member publishes |
 | metric | an entry in a semantic view's `METRICS` | a metric in dbt's semantic layer | an entry under `snowflake_metrics:`; an eval's judge metric is a different thing, named with `eval_metric()` |
