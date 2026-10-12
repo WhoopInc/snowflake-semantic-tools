@@ -3363,13 +3363,13 @@ Fix: use `public_access`, or remove `access_modifier` from the column
 
 **Fact declares a private access modifier** (error)
 
-`<artifact>: column '<member>' declares access_modifier 'private_access'; SST does not render a private fact`
+`<artifact>: fact '<member>' declares access_modifier 'private_access'; SST does not render a private fact`
 
-Raised when a column that is not a `dimension` or `time_dimension` carries `meta.sst.access_modifier: private_access`.
+Raised when a `fact` column that is not excluded carries `meta.sst.access_modifier: private_access`.
 
 Fix: remove `access_modifier` from the column, or hide what it measures behind a private metric
 
-Note: A fact renders without `PRIVATE`, so it would publish as public; it is refused instead. A private dimension is SST-VAL222.
+Note: A fact renders without `PRIVATE`, so it would publish as public; it is refused instead. A private dimension is SST-VAL222. A column with no `column_type`, or one excluded, never renders, so its modifier is not refused.
 
 ### SST-VAL335
 
@@ -3377,7 +3377,7 @@ Note: A fact renders without `PRIVATE`, so it would publish as public; it is ref
 
 `<artifact>: fact '<member>' declares is_enum; only a dimension can be an enum`
 
-Raised when a `fact` column declares `meta.sst.is_enum: true`.
+Raised when a `fact` column that is not excluded declares `meta.sst.is_enum: true`.
 
 Fix: remove `is_enum`, or change `column_type` to `dimension`
 

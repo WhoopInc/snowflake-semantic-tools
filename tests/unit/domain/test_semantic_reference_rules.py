@@ -116,6 +116,12 @@ def test_every_column_a_view_uses_declares_its_role_type_samples_and_description
             unknown_meta_keys=("odd",),
         ),
         column("typed", "NUMBER", "fact", declared_data_type="FLOAT", access_modifier="private_access"),
+        # A column with no role, or one excluded, never renders, so neither its modifier nor
+        # its is_enum is refused.
+        column("untyped_private", "NUMBER", None, access_modifier="private_access"),
+        replace(column("excluded_private", "NUMBER", "fact", access_modifier="private_access"), excluded=True),
+        replace(column("excluded_dimension", "VARCHAR", "dimension", access_modifier="private_access"), excluded=True),
+        replace(column("excluded_enum", "NUMBER", "fact", is_enum=True), excluded=True),
         column("loose", "VARCHAR", "dimension", access_modifier="hidden"),
         column("sentinel", "VARCHAR", "dimension", sample_values=("NaN", "ok"), is_enum=False),
     )
@@ -134,6 +140,7 @@ def test_every_column_a_view_uses_declares_its_role_type_samples_and_description
         ("SST-PRS004", "private"),
         ("SST-VAL334", "typed"),
         ("SST-DBT004", "typed"),
+        ("SST-VAL308", "untyped_private"),
         ("SST-VAL333", "loose"),
         ("SST-VAL316", "sentinel"),
     ]

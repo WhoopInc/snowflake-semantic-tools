@@ -18,7 +18,7 @@ def test_sst_val334_fires(tmp_path: Path) -> None:
     [diagnostic] = reported(project_copy(tmp_path), "SST-VAL334", _modifier(tmp_path, "order_total", "private_access"))
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
-        "dbt_model:orders: column 'order_total' declares access_modifier 'private_access'; "
+        "dbt_model:orders: fact 'order_total' declares access_modifier 'private_access'; "
         "SST does not render a private fact"
     )
     assert diagnostic.subject == "dbt_column:orders.order_total"
@@ -33,3 +33,17 @@ def test_sst_val334_silent(tmp_path: Path) -> None:
     assert reported(project, "SST-VAL334", _modifier(tmp_path, "order_total", "public_access")) == []
     # A private dimension is SST-VAL222's to report, not this code's.
     assert reported(project, "SST-VAL334", _modifier(tmp_path, "order_state", "private_access")) == []
+
+
+def test_sst_val334_silent_on_a_column_that_never_renders(tmp_path: Path) -> None:
+    # An excluded column, or one with no column_type, is left out of the view, so its
+    # modifier publishes nothing.
+    for name, values in (("excluded", {"exclude": True}), ("untyped", {"column_type": None})):
+        project = project_copy(tmp_path / name)
+        manifest = edited_manifest(
+            tmp_path / name,
+            lambda document, values=values: set_column_meta(
+                document, "orders", "order_total", access_modifier="private_access", **values
+            ),
+        )
+        assert reported(project, "SST-VAL334", manifest) == []

@@ -29,3 +29,13 @@ def test_sst_val335_fires(tmp_path: Path) -> None:
 
 def test_sst_val335_silent(tmp_path: Path) -> None:
     assert reported(project_copy(tmp_path), "SST-VAL335", _enum(tmp_path, "order_state")) == []
+
+
+def test_sst_val335_silent_on_an_excluded_fact(tmp_path: Path) -> None:
+    manifest = edited_manifest(
+        tmp_path,
+        lambda document: set_column_meta(
+            document, "orders", "order_total", is_enum=True, sample_values=["1", "2"], exclude=True
+        ),
+    )
+    assert reported(project_copy(tmp_path), "SST-VAL335", manifest) == []
