@@ -221,6 +221,7 @@ def test_a_failing_human_report_fails_the_command_like_its_body() -> None:
         pytest.param(ProjectError("broken project"), 4, "error: broken project", 4, [], id="project-error"),
         pytest.param(ValueError("bad value"), 4, "error: bad value", 4, [], id="value-error"),
         pytest.param(RuntimeError("boom"), 1, "error[SST-INT001]", 1, ["SST-INT001"], id="internal-error"),
+        pytest.param(AssertionError("broken"), 1, "error[SST-INT001]", 1, ["SST-INT001"], id="broken-invariant"),
         pytest.param(KeyboardInterrupt(), 130, "Aborted.", 130, ["SST-PRT107"], id="interrupt"),
         pytest.param(
             SstUsageError("not like that"), 3, "error[SST-PRT100]: not like that", None, None, id="usage-error"

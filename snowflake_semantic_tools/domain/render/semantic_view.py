@@ -331,8 +331,10 @@ def render(view: SemanticView) -> Sql:
     newline -- the caller decides how the statement is terminated.
 
     Raises:
-        ValueError: the view's or a table's name is not a three-part name, a member name is
-            not an identifier, or the view is both `or_replace` and `if_not_exists`.
+        ValueError: the view's or a table's name is not a three-part name, or a member name is
+            not an identifier.
+        AssertionError: the view is both `or_replace` and `if_not_exists`, which no project can
+            ask for: the caller is broken, so a command reports it as an internal error.
     """
     return _render_counted(view)[0]
 
@@ -344,8 +346,8 @@ def render_checked(view: SemanticView) -> tuple[Sql | None, tuple[Diagnostic, ..
     was found, and the view must not be published.
 
     Raises:
-        ValueError: as `render` does, for a name the checks before rendering let through or
-            for both `or_replace` and `if_not_exists`.
+        ValueError: as `render` does, for a name the checks before rendering let through.
+        AssertionError: as `render` does, for both `or_replace` and `if_not_exists`.
 
     Diagnostics:
         SST-RND001: the view has no tables.
@@ -397,8 +399,9 @@ def _unquotable_names(view: SemanticView, subject: str) -> list[Diagnostic]:
 def _render_counted(view: SemanticView) -> tuple[Sql, int]:
     """Render the statement, and count the members its clauses hold."""
     if view.or_replace and view.if_not_exists:
-        # Snowflake refuses the pair; no project can set either flag, so this is a caller's bug.
-        raise ValueError(f"semantic view {view.fqn!r} is both or_replace and if_not_exists")
+        # Snowflake refuses the pair; no project can set either flag, so this is a caller's bug,
+        # raised as one rather than as the ValueError a command reports as the project's fault.
+        raise AssertionError(f"semantic view {view.fqn!r} is both or_replace and if_not_exists")
     head = [sql("CREATE")]
     if view.or_replace:
         head.append(sql(" OR REPLACE"))
