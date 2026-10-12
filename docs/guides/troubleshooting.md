@@ -152,6 +152,13 @@ account roles it is granted to, and asks whether any of those roles is in the
 session. An update is not checked for its own `CREATE` privilege: it replaces
 an object the role already owns.
 
+`SST-PLN008` counts secondary roles, but Snowflake authorises a `CREATE`
+statement by the primary role alone. A `CREATE` privilege held only through a
+secondary role therefore passes plan, and Snowflake refuses the create when
+apply runs it. Grant it to the primary role, or to a role it inherits. `READ`
+and `WRITE` on an existing spec stage are not `CREATE` privileges, and a
+secondary role does authorise them.
+
 Two warnings concern the people who use an agent rather than the role that
 publishes it: `SST-VAL616`, a consumer without `USAGE` on an object a tool
 calls, and `SST-VAL542`, one without `READ` on an extension the agent pins (see

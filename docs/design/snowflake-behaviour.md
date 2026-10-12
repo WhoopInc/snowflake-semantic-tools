@@ -746,6 +746,43 @@ Agents, skills, plugins, profiles and evals are never replaced. SST never sends
 `_UNLISTED_GRANTS` in
 [catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py).
 
+## Roles and privileges
+
+### CREATE is authorised by the primary role alone
+
+**Docs say**: a session's secondary roles authorise any SQL action except
+`CREATE <object>`, which is authorised by the primary role alone.
+`IS_ROLE_IN_SESSION` reports a role active through the primary role or a
+secondary role.
+
+**Server does**: not probed. SST takes the documented rule as stated.
+
+**Evidence**: neither grade. The rule is documented, not observed, and plan
+does not act on it, so no test holds it there. `SST-PLN008` asks
+`IS_ROLE_IN_SESSION`, so it counts a `CREATE` privilege held only through a
+secondary role, which the create then lacks; the troubleshooting guide states
+the gap. The eval check does act on the same rule for its task privileges
+(`Enforced`); see
+[An evaluation ignores secondary roles](#an-evaluation-ignores-secondary-roles).
+Probe:
+
+```sql
+-- With CREATE TABLE on <db>.<schema> granted only to <secondary_role>:
+USE ROLE <primary_role>;
+USE SECONDARY ROLES <secondary_role>;
+SELECT IS_ROLE_IN_SESSION('<secondary_role>');
+-- Expect: TRUE.
+CREATE TABLE <db>.<schema>.probe_table (id NUMBER);
+-- Expect: refused for insufficient privileges, if the documented rule holds.
+USE SECONDARY ROLES NONE;
+```
+
+**SST depends on it at**: `missing_privileges` and `missing_role_privileges` in
+[ports/snowflake/preflight.py](../../snowflake_semantic_tools/domain/ports/snowflake/preflight.py);
+`_lacking` in
+[connector/preflight.py](../../snowflake_semantic_tools/adapters/snowflake/connector/preflight.py);
+[the troubleshooting guide](../guides/troubleshooting.md#how-sst-reports-a-missing-privilege).
+
 ## Procedures and functions
 
 ### A JavaScript routine takes no RUNTIME_VERSION or HANDLER
