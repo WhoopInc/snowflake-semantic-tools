@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -46,3 +47,27 @@ def test_defer_auto_compile_in_the_config_is_read_before_dbt_parses(tmp_path: Pa
     with pytest.raises(ProjectError) as raised:
         YamlProjectSource(project_paths(tmp_path), dbt_runner=dbt).dbt_catalog()
     assert [item.code for item in raised.value.diagnostics] == ["SST-DBT021"]
+
+
+def test_a_relative_project_directory_names_the_same_project_inside_dbts_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = SmallProject(tmp_path / "analytics")
+    project.write()
+    seen: list[tuple[Path, Path]] = []
+
+    def dbt(argv: Sequence[str], cwd: Path) -> CompletedRun:
+        # dbt resolves its path options against the directory it runs in, as the real one does.
+        if argv[1] == "parse":
+            option = list(argv)
+            seen.append(
+                (
+                    (cwd / option[option.index("--project-dir") + 1]).resolve(),
+                    (cwd / option[option.index("--profiles-dir") + 1]).resolve(),
+                )
+            )
+        return FakeDbt(writes=(tmp_path / "analytics" / "target" / "manifest.json", manifest()))(argv, cwd)
+
+    monkeypatch.chdir(tmp_path)
+    YamlProjectSource(project_paths(Path("analytics")), dbt_runner=dbt).load_project()
+    assert seen == [((tmp_path / "analytics").resolve(), (tmp_path / "analytics").resolve())]

@@ -251,12 +251,14 @@ def parse_project(
     if missing:
         raise _refuse(D("SST-DBT026", origin=Origin("packages.yml"), count=missing))
     warnings = _installation(runner, project_dir, auto_compile, installation_cache)
-    arguments = ["dbt", command, "--project-dir", str(project_dir), "--profiles-dir", str(profiles_dir or project_dir)]
+    # Absolute, because dbt runs inside the project and would resolve a relative path a second time.
+    root = project_dir.resolve()
+    arguments = ["dbt", command, "--project-dir", str(root), "--profiles-dir", str((profiles_dir or root).resolve())]
     if target_name:
         arguments.extend(("--target", target_name))
     if target_path is not None:
-        arguments.extend(("--target-path", str(target_path)))
-    completed = _run(runner, arguments, project_dir)
+        arguments.extend(("--target-path", str(target_path.resolve())))
+    completed = _run(runner, arguments, root)
     if completed.returncode != 0:
         echo(completed.stdout + completed.stderr)
         raise _refuse(D("SST-DBT028", found=completed.returncode))
