@@ -30,9 +30,10 @@ SCOPE. A view's `scope` decides which of its columns, metrics and relationships 
 member it does not admit is left out of its clause, so a view built with every attached
 member still publishes only the subset its author listed.
 
-ORDERING. `RELATIONSHIPS`, `FACTS`, `DIMENSIONS` and `METRICS` render SORTED by
-qualified name: their order is not authored, and sorting them is what keeps a
-re-render byte-identical when an unrelated column is added. `TABLES`, `VARIABLES`
+ORDERING. `RELATIONSHIPS`, `FACTS`, `DIMENSIONS` and `METRICS` render SORTED: relationships
+by name, facts and dimensions by qualified name, and metrics by qualified name with the
+table-scoped ones before the view-level ones. Their order is not authored, and sorting them is
+what keeps a re-render byte-identical when an unrelated column is added. `TABLES`, `VARIABLES`
 and `WITH TAG` render in DECLARATION order, and `AI_VERIFIED_QUERIES` in the order
 the queries attached, because the model carries them so; moving a verified query
 between files, or reordering variables or tags, therefore changes the DDL.
