@@ -6223,7 +6223,7 @@ Raised when the session's primary role does not hold, directly, through a role i
 
 Fix: grant the privilege to the session's primary role, or to a role it inherits
 
-Note: Plan blocks the change rather than let apply fail with SST-SNO004. Snowflake authorises a CREATE by the primary role alone, so a CREATE privilege only a secondary role holds does not count, and the message says a secondary role holds it. An update is not checked for its own CREATE privilege: it replaces an object the role already owns.
+Note: Plan blocks the change rather than let apply fail with SST-SNO004. Snowflake authorises a CREATE by the primary role alone, so a CREATE privilege only a secondary role holds does not count, and the message says a secondary role holds it. The walk up from the primary role stops at 16 roles; a privilege the session holds that it has not reached by then is said to have no inheritance path within that depth instead. With no secondary role active, the session is asked alone. An update is not checked for its own CREATE privilege: it replaces an object the role already owns.
 
 ### SST-PLN009
 

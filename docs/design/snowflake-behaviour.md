@@ -839,8 +839,9 @@ USE SECONDARY ROLES NONE;
 [connector/preflight.py](../../snowflake_semantic_tools/adapters/snowflake/connector/preflight.py);
 `_missing_privileges` in
 [app/preflight.py](../../snowflake_semantic_tools/app/preflight.py), which splits
-what the primary role lacks into what a secondary role holds and what nothing
-does; [the troubleshooting guide](../guides/troubleshooting.md#how-sst-reports-a-missing-privilege).
+what the primary role lacks into what a secondary role holds, what the session
+holds past the walk's depth limit, and what nothing does, and which asks the
+session alone when `CURRENT_SECONDARY_ROLES()` names no secondary role; [the troubleshooting guide](../guides/troubleshooting.md#how-sst-reports-a-missing-privilege).
 
 ## Procedures and functions
 

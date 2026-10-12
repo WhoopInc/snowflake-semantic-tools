@@ -2,12 +2,27 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol
 
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 
 # How many roles deep `missing_role_privileges` follows the role hierarchy before it stops.
 ROLE_HIERARCHY_DEPTH = 16
+
+
+@dataclass(frozen=True, slots=True)
+class RoleWalk:
+    """What reading one role's schema privileges up its hierarchy found.
+
+    Attributes:
+        missing: The privileges the role was not found to hold, in the order asked.
+        beyond_depth: Those of `missing` still climbing toward the role when the walk stopped
+            at `ROLE_HIERARCHY_DEPTH` roles, which a more distant inheritance may pass on.
+    """
+
+    missing: tuple[str, ...] = ()
+    beyond_depth: tuple[str, ...] = ()
 
 
 class PreflightPort(Protocol):
@@ -72,8 +87,10 @@ class PreflightPort(Protocol):
         further than `ROLE_HIERARCHY_DEPTH` grants. Whether a role is in the session, primary,
         secondary, or inherited, is Snowflake's to answer, so secondary roles count. Snowflake
         authorises a `CREATE <object>` statement by the primary role alone, so plan asks
-        `missing_role_privileges` of the primary role for its `CREATE` privileges, and asks this
-        only about what that role lacks: a privilege held here is then held by a secondary role.
+        `walk_role_privileges` of the primary role for its `CREATE` privileges, and asks this
+        only about what that role lacks: a privilege held here is then held by a secondary role,
+        or by a role further up than the walk climbs. With no secondary role active, plan asks
+        this alone.
 
         Raises:
             SnowflakePortError: the schema's grants could not be read.
@@ -97,6 +114,26 @@ class PreflightPort(Protocol):
 
         Raises:
             SnowflakePortError: the stage's grants could not be read.
+        """
+        ...
+
+    def has_secondary_roles(self) -> bool:
+        """Report whether the session has any secondary role active, as CURRENT_SECONDARY_ROLES() says.
+
+        Without one, every role in the session is the primary role or one it inherits, so
+        `missing_privileges` answers what `missing_role_privileges` would of the primary role.
+        An answer that cannot be read as none reads as some.
+
+        Raises:
+            SnowflakePortError: the query failed.
+        """
+        ...
+
+    def walk_role_privileges(self, role: str, scope: SchemaScope, privileges: tuple[str, ...]) -> RoleWalk:
+        """Return what `missing_role_privileges` returns, and which of it the depth limit cut short.
+
+        Raises:
+            SnowflakePortError: the schema's or a role's grants could not be read.
         """
         ...
 

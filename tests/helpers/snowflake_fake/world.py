@@ -54,6 +54,10 @@ class PreflightAnswers:
     # What the session's primary role lacks by itself and through its hierarchy, by schema, on
     # top of `lacking`: what no role in the session holds, the primary role lacks too.
     role_lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # Those of `role_lacking` the walk up from the primary role stopped short of, by schema.
+    role_beyond_depth: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # Whether the session has a secondary role active; without one, plan asks the session alone.
+    secondary_roles: bool = True
     locked: dict[str, tuple[QualifiedName, ...]] = field(default_factory=dict)
     references: dict[str, tuple[QualifiedName, ...]] = field(default_factory=dict)
 

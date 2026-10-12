@@ -194,6 +194,10 @@ def _preflight_to_json(preflight: Preflight) -> dict[str, object]:
             [database, schema, list(privileges)]
             for (database, schema), privileges in sorted(preflight.secondary_privileges.items())
         ],
+        "unreached_privileges": [
+            [database, schema, list(privileges)]
+            for (database, schema), privileges in sorted(preflight.unreached_privileges.items())
+        ],
         "occupied": sorted(preflight.occupied),
         "locked": [list(name) for name in sorted(preflight.locked)],
         "referenced": _names_to_json(preflight.referenced),
@@ -210,7 +214,8 @@ def _preflight_to_json(preflight: Preflight) -> dict[str, object]:
 def _preflight_from_json(value: Mapping[str, Any]) -> Preflight:
     """Read the preflight facts `_preflight_to_json` wrote; a record without the later facts has none.
 
-    The later facts are the stage facts and the privileges only a secondary role holds.
+    The later facts are the stage facts, the privileges only a secondary role holds, and those
+    the walk up from the primary role stopped short of.
     """
     privileges: dict[_Scope, tuple[str, ...]] = {}
     for entry in _list(value.get("missing_privileges"), "missing_privileges"):
@@ -220,6 +225,10 @@ def _preflight_from_json(value: Mapping[str, Any]) -> Preflight:
     for entry in _list(value.get("secondary_privileges", []), "secondary_privileges"):
         database, schema, held = _list(entry, "secondary privilege")
         secondary[(str(database), str(schema))] = _texts(held)
+    unreached: dict[_Scope, tuple[str, ...]] = {}
+    for entry in _list(value.get("unreached_privileges", []), "unreached_privileges"):
+        database, schema, held = _list(entry, "unreached privilege")
+        unreached[(str(database), str(schema))] = _texts(held)
     stage_types: dict[_Name, str] = {}
     for entry in _list(value.get("stage_types", []), "stage_types"):
         database, schema, name, found = _list(entry, "stage type")
@@ -236,6 +245,7 @@ def _preflight_from_json(value: Mapping[str, Any]) -> Preflight:
         missing_relations=_names_from_json(value.get("missing_relations"), "missing_relations"),
         missing_privileges=MappingProxyType(privileges),
         secondary_privileges=MappingProxyType(secondary),
+        unreached_privileges=MappingProxyType(unreached),
         occupied=frozenset(_texts(value.get("occupied"))),
         locked=frozenset(_triple(name) for name in _list(value.get("locked"), "locked")),
         referenced=_names_from_json(value.get("referenced"), "referenced"),

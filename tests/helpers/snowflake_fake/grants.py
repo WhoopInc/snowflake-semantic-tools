@@ -12,6 +12,8 @@ roles, database roles and users, and answers, through `FakeDriverSession(respond
   grantee_name, granted_by.
 - `SELECT IS_ROLE_IN_SESSION(%s)`: whether the bound account role is one `in_session` named,
   as Snowflake answers it for the session's roles and every role they inherit.
+- `SELECT CURRENT_SECONDARY_ROLES()`: the JSON object Snowflake documents, naming the roles
+  `secondary` made active, or none.
 
 A statement naming a role the graph does not know fails as Snowflake fails it; any other
 statement -- SHOW GRANTS TO ROLE included -- fails as unsupported. Names are given as SHOW
@@ -20,6 +22,7 @@ prints them and matched as the connector must spell them, so a mis-quoted name f
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 
 from snowflake.connector.errors import ProgrammingError
@@ -39,6 +42,7 @@ class GrantGraph:
     _on_stage: dict[str, list[dict[str, object]]] = field(default_factory=dict)
     _of: dict[str, list[dict[str, object]]] = field(default_factory=dict)
     _in_session: set[str] = field(default_factory=set)
+    _secondary: list[str] = field(default_factory=list)
 
     def on_schema(self, privilege: str, *, role: str = "", database_role: str = "") -> GrantGraph:
         """Grant a privilege on the schema (OWNERSHIP included) to a role or a database role."""
@@ -96,6 +100,11 @@ class GrantGraph:
         self._in_session.update(roles)
         return self
 
+    def secondary(self, *roles: str) -> GrantGraph:
+        """Make account roles the session's secondary roles, as CURRENT_SECONDARY_ROLES() lists them."""
+        self._secondary.extend(roles)
+        return self
+
     def forget(self, role: str) -> GrantGraph:
         """Drop an account role, so SHOW GRANTS OF it fails as for a role that no longer exists."""
         self._of.pop(f"SHOW GRANTS OF ROLE {Identifier.shown(role).sql}", None)
@@ -115,6 +124,8 @@ class GrantGraph:
         """Answer one statement as Snowflake would from these grants."""
         if statement == "SELECT IS_ROLE_IN_SESSION(%s)":
             return [(binds[0] in self._in_session,)], 1
+        if statement == "SELECT CURRENT_SECONDARY_ROLES()":
+            return [(json.dumps({"roles": ",".join(self._secondary), "value": ""}),)], 1
         if statement == f"SHOW GRANTS ON SCHEMA {self.scope.sql}":
             return list(self._on_schema), len(self._on_schema)
         stage = statement.removeprefix("SHOW GRANTS ON STAGE ")
