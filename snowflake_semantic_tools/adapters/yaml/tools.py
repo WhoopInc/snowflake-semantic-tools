@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
+from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import walk_refusal
@@ -143,7 +144,7 @@ def _aliased_relations(catalog: ToolCatalog, dbt: DbtCatalog) -> tuple[Diagnosti
 
 
 def _unknown(
-    value: Mapping[object, object],
+    value: Mapping[Any, Any],
     known: frozenset[str],
     artifact: str,
     source_file: str,
