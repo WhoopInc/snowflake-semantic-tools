@@ -41,6 +41,11 @@ class Grantee:
         return cls(_DATABASE_ROLE, (Identifier.shown(database.folded), Identifier.shown(name.folded)))
 
     @property
+    def is_account_role(self) -> bool:
+        """Whether this is an account role, which IS_ROLE_IN_SESSION can answer for."""
+        return self.kind == _ROLE
+
+    @property
     def grants_of(self) -> Sql:
         """The statement listing the roles this grantee is granted to."""
         if self.kind == _DATABASE_ROLE:

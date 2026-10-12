@@ -194,6 +194,24 @@ def test_a_session_holds_a_privilege_granted_to_a_database_role_its_role_is_gran
     assert sent == [ON_SCHEMA, "SHOW GRANTS OF DATABASE ROLE DB.WRITER", "SELECT IS_ROLE_IN_SESSION(%s)"]
 
 
+def test_a_database_role_that_cannot_be_read_does_not_matter_when_a_direct_holder_is_in_session() -> None:
+    graph = GrantGraph(SCOPE).on_schema("CREATE TASK", role="R").on_schema("CREATE TASK", database_role="WRITER")
+    graph.database_role_to("WRITER", role_to="OTHER").forget_database_role("WRITER")
+    missing, sent = _session_missing(graph.in_session("R"), ("CREATE TASK",))
+    assert missing == ()
+    assert sent == [ON_SCHEMA, "SELECT IS_ROLE_IN_SESSION(%s)"]
+
+
+def test_database_roles_are_read_only_for_what_no_direct_holder_in_session_holds() -> None:
+    graph = GrantGraph(SCOPE).on_schema("CREATE TASK", role="R").on_schema("CREATE TASK", database_role="TASKS")
+    graph.on_schema("CREATE STAGE", database_role="WRITER").database_role_to("WRITER", role_to="R")
+    graph.database_role_to("TASKS", role_to="R").forget_database_role("TASKS")
+    missing, sent = _session_missing(graph.in_session("R"), ("CREATE TASK", "CREATE STAGE"))
+    assert missing == ()
+    assert "SHOW GRANTS OF DATABASE ROLE DB.WRITER" in sent
+    assert "SHOW GRANTS OF DATABASE ROLE DB.TASKS" not in sent
+
+
 def test_a_session_holds_privileges_through_a_cycle_of_database_roles_each_read_once() -> None:
     graph = GrantGraph(SCOPE).on_schema("CREATE TASK", database_role="TASKS")
     graph.on_schema("CREATE STAGE", database_role="WRITER")
