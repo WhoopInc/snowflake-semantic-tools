@@ -429,7 +429,11 @@ def _render_counted(view: SemanticView) -> tuple[Sql, int]:
 
 
 def _trailing_clauses(view: SemanticView, queries: list[Sql]) -> list[Sql]:
-    """The clauses after `METRICS`, in grammar order, ending with `COPY GRANTS`."""
+    """The clauses after `METRICS`, in the order the server accepts, ending with any `COPY GRANTS`.
+
+    That is not the published grammar's order, which puts `MAX_STALENESS` before the AI
+    clauses and is what `GET_DDL` returns: see the module docstring.
+    """
     lines: list[Sql] = []
     comment = view.comment
     if view.ownership_marker:
