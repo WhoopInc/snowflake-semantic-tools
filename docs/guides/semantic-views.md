@@ -91,7 +91,7 @@ flowchart TD
     subset --> built{"built on other metrics?"}
     built -- yes --> both["only views where each metric it references attached"]
     built -- no --> scope
-    both --> scope["ViewScope: columns:, metrics:, relationships: or exclude_ drop what they leave out"]
+    both --> scope["ViewScope: columns:, metrics:, relationships:, or their exclude_ forms, drop what they leave out"]
     scope --> remaining{"any view left?"}
     remaining -- no --> unattached["SST-MEM005, a warning"]
     remaining -- yes --> rendered["rendered in each of them"]

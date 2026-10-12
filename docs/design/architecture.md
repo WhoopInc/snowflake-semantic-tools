@@ -261,26 +261,36 @@ read about the files.
 
 Semantic views are the one artifact type with members, so their loading is the
 longest phase. `YamlProjectSource.load_project` reads SST's own files first, then
-the dbt catalog, then runs `load_semantic_views_result`. The diagram shows its
-phases in report order.
+the dbt catalog, then runs `load_semantic_views_result`. The diagram groups its
+twelve phases, in report order, and shows where poisoning takes a member or a
+view out.
 
 ```mermaid
 flowchart TD
-    A["read_semantic_inputs"] --> B["dbt_catalog"]
-    B --> C["parse_semantic_project"]
-    C --> D["_instruction_texts"]
-    D --> E["_typed_members"]
-    E --> F["_structural_checks"]
-    F --> G["_semantic_checks"]
-    G --> H["_member_poison"]
-    H --> I["_relationship_checks and _using_checks"]
-    I --> J["_view_content_checks"]
-    J --> K["_view_poison"]
-    K --> L["_resolve_and_build"]
-    L --> M["ResolvedProject"]
-    M --> N["SemanticViewProject"]
-    N --> O["CompileSemanticViews"]
-    O --> P["render_checked"]
+    subgraph read ["Read: phases 1-2"]
+        A["parse the documents; resolve the member references in instruction text"]
+        A --> B["split members by type; find metric cycles"]
+    end
+    subgraph check ["Check: phases 3-8"]
+        C["structural checks"] --> D["semantic checks"]
+        D --> MP{"member poison"}
+        MP --> E["relationships and using_relationships"]
+        E --> F["view instructions, scope, and rules"]
+    end
+    subgraph build ["Build: phases 9-12"]
+        VP{"view poison: every diagnostic so far"}
+        VP --> G["attach each unpoisoned member"]
+        G --> H["build each unpoisoned view"]
+        H --> I["check each built view against what attached"]
+    end
+    B --> C
+    F --> VP
+    A -. "text does not resolve" .-> XM["member attaches to no view"]
+    MP -. "an error names it" .-> XM
+    E -. "no shared view, or a misrouted using" .-> XM
+    VP -. "an error names it" .-> XV["view checked, not built"]
+    I --> R["SemanticViewProject: built views and every diagnostic"]
+    R --> S["CompileSemanticViews: render_checked per view"]
 ```
 
 Drawn from: [adapters/project_source.py](../../snowflake_semantic_tools/adapters/project_source.py), [adapters/yaml/semantic/pipeline.py](../../snowflake_semantic_tools/adapters/yaml/semantic/pipeline.py), [adapters/yaml/semantic/poison.py](../../snowflake_semantic_tools/adapters/yaml/semantic/poison.py), [domain/model/project.py](../../snowflake_semantic_tools/domain/model/project.py), [domain/render/semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py).
@@ -453,23 +463,46 @@ finishes the job.
 ## Where state lives
 
 SST keeps two kinds of record: what the project compiles to, and what apply
-published. The diagram shows which command writes and reads each file and table.
+published. The diagram shows which command reads and writes each file and table;
+every arrow starts at the command.
 
 ```mermaid
 flowchart LR
-    compile["sst compile"] -->|writes| M["target/sst/manifest.json"]
-    M -->|"read, refused when stale"| plan["sst plan"]
-    plan -->|writes| P["target/sst/plan.json"]
-    plan -->|writes| O["target/sst/observation.TARGET.json"]
-    T["state table: SST_STATE"] -->|read| plan
-    plan -->|"rewrites when it disagrees"| S["target/sst/state.TARGET.json"]
-    P -->|"apply --plan"| apply["sst apply"]
-    apply -->|takes| L["lock table: SST_STATE_LOCK"]
+    subgraph commands ["Commands"]
+        direction TB
+        compile["sst compile"]
+        plan["sst plan"]
+        apply["sst apply"]
+        drop["sst drop"]
+        evals["sst test --suite evals"]
+    end
+    subgraph files ["Local files in target/sst/"]
+        direction TB
+        M["manifest.json"]
+        P["plan.json"]
+        O["observation.TARGET.json"]
+        S["state.TARGET.json: cache"]
+    end
+    subgraph tables ["Tables in the target's schema"]
+        direction TB
+        T["SST_STATE"]
+        L["SST_STATE_LOCK"]
+        E["SST_STATE_EVALS"]
+    end
+    compile -->|writes| M
+    plan -->|"reads; refused when stale"| M
+    plan -->|writes| P
+    plan -->|writes| O
+    plan -->|reads| T
+    plan -->|"rewrites when it disagrees"| S
+    apply -->|"reads with --plan"| P
+    apply -->|takes| L
     apply -->|"writes, fenced"| T
     apply -->|"writes after the table"| S
-    drop["sst drop"] -->|"takes the lock, deletes entries"| T
-    evals["sst test --suite evals"] -->|takes| L
-    evals -->|writes| E["eval table: SST_STATE_EVALS"]
+    drop -->|takes| L
+    drop -->|"deletes entries"| T
+    evals -->|takes| L
+    evals -->|"reads baselines, writes runs"| E
 ```
 
 Drawn from: [cli/commands/compile.py](../../snowflake_semantic_tools/cli/commands/compile.py), [cli/commands/plan.py](../../snowflake_semantic_tools/cli/commands/plan.py), [cli/wiring/plan.py](../../snowflake_semantic_tools/cli/wiring/plan.py), [adapters/fs/local.py](../../snowflake_semantic_tools/adapters/fs/local.py), [app/state.py](../../snowflake_semantic_tools/app/state.py), [domain/state/lock.py](../../snowflake_semantic_tools/domain/state/lock.py), [cli/commands/test.py](../../snowflake_semantic_tools/cli/commands/test.py), [app/drop.py](../../snowflake_semantic_tools/app/drop.py).
