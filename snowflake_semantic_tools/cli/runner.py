@@ -28,6 +28,7 @@ reported beside it as an internal error, and a run that would have succeeded exi
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import dataclasses
 import functools
@@ -155,7 +156,7 @@ def command_body(
             given = {key: value for key, value in params.items() if key not in GLOBAL_NAMES}
             run = _Run(name, body, wanted, options, given, frozenset(outputs), config, refusals, applies_baseline)
             with terminated_as_interrupt():
-                guarded(run.execute, command=name, output=options.output)
+                guarded(run.execute, command=name, output=options.output, project_dir=options.project_dir)
 
         declared = command_global_options()(callback)
         return declared if "selected" in wanted else _no_selector_options(name)(declared)
@@ -404,8 +405,12 @@ def _csv(rows: list[dict[str, object]]) -> str:
     return buffer.getvalue()
 
 
-def guarded(action: Callable[[], None], *, command: str, output: str) -> None:
-    """Run `action`, ending the run with the exit code the module docstring gives each exception."""
+def guarded(action: Callable[[], None], *, command: str, output: str, project_dir: Path | None = None) -> None:
+    """Run `action`, ending the run with the exit code the module docstring gives each exception.
+
+    A Snowflake refusal that reaches the guard is appended to the run log under `project_dir`, as
+    `_report` appends the ones a command returns; with no `project_dir` nothing is logged.
+    """
     try:
         action()
     except click.exceptions.Exit:
@@ -415,7 +420,7 @@ def guarded(action: Callable[[], None], *, command: str, output: str) -> None:
     except (click.exceptions.Abort, KeyboardInterrupt, EOFError) as exc:
         interrupted(command, output, exc)
     except SnowflakePortError as exc:
-        _snowflake_failed(command, output, exc)
+        _snowflake_failed(command, output, exc, project_dir)
     except WriteFailure as exc:
         _write_failed(command, output, exc)
     except (ProjectError, ValueError, OSError, json.JSONDecodeError) as exc:
@@ -424,9 +429,17 @@ def guarded(action: Callable[[], None], *, command: str, output: str) -> None:
         _internal_error(command, output, exc)
 
 
-def _snowflake_failed(command: str, output: str, exc: SnowflakePortError) -> NoReturn:
-    """Exit with the code `snowflake_failure` gives a port error, reporting its diagnostic."""
-    diagnostic, exit_code = snowflake_failure(exc)
+def _snowflake_failed(command: str, output: str, exc: SnowflakePortError, project_dir: Path | None) -> NoReturn:
+    """Exit with the code `snowflake_failure` gives a port error, reporting its diagnostic.
+
+    The run log records the signature the error matched, not the code reported: an unrecognised
+    error reported as SST-PRT001 still counts as SST-SNO001.
+    """
+    diagnostic, exit_code, matched = _classified(exc)
+    # The log is a statistic: failing to write it must not hide the refusal itself.
+    if project_dir is not None:
+        with contextlib.suppress(OSError):
+            append_run_log(project_dir, target_dir(project_dir), (matched,), command=command)
     diagnostics = DiagnosticBag((diagnostic,))
     if output == "json":
         emit_json(
@@ -455,15 +468,24 @@ def snowflake_failure(exc: SnowflakePortError) -> tuple[Diagnostic, int]:
         SST-PRT001: the connection failed, or no signature recognises the error.
         Any SNO code of the signature table, as `snowflake_diagnostic` reports it.
     """
+    diagnostic, exit_code, _ = _classified(exc)
+    return diagnostic, exit_code
+
+
+def _classified(exc: SnowflakePortError) -> tuple[Diagnostic, int, Diagnostic]:
+    """Return `snowflake_failure`'s diagnostic and exit code, and the diagnostic the run log records.
+
+    That is the error's own diagnostic when it carries one, and otherwise the signature it matched.
+    """
     if exc.diagnostic is not None:
-        return exc.diagnostic, CONNECTION
+        return exc.diagnostic, CONNECTION, exc.diagnostic
     message = str(exc)
     signature = match_signature(message, errno=exc.errno, sqlstate=exc.sqlstate)
+    matched = snowflake_diagnostic(signature.code, message, value="the object", subject="cli")
     if signature.code in _CONNECTION_SIGNATURES:
-        return D("SST-PRT001", subject="cli", value="Snowflake", detail=message), CONNECTION
-    diagnostic = snowflake_diagnostic(signature.code, message, value="the object", subject="cli")
+        return D("SST-PRT001", subject="cli", value="Snowflake", detail=message), CONNECTION, matched
     uncooperative = signature.kind in {ErrorKind.PRIVILEGE, ErrorKind.TRANSIENT} or signature.code == "SST-SNO011"
-    return diagnostic, CONNECTION if uncooperative else ERROR
+    return matched, CONNECTION if uncooperative else ERROR, matched
 
 
 class WriteFailure(Exception):

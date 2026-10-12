@@ -229,15 +229,82 @@ def test_a_failing_human_report_fails_the_command_like_its_body() -> None:
     ],
 )
 def test_each_exception_ends_the_run_with_its_exit_code(
-    error: BaseException, human_exit: int, human_text: str, json_exit: int | None, json_codes: list[str] | None
+    error: BaseException,
+    human_exit: int,
+    human_text: str,
+    json_exit: int | None,
+    json_codes: list[str] | None,
+    tmp_path: Path,
 ) -> None:
     command = demo_command(raising(error))
-    human = CliRunner().invoke(command, [])
+    # The project directory is where a Snowflake refusal is logged, so not the working directory.
+    project = ["--project-dir", str(tmp_path)]
+    human = CliRunner().invoke(command, project)
     assert human.exit_code == human_exit and human_text in human.output
     if json_exit is None:
         return
-    machine = CliRunner().invoke(command, ["--output", "json"])
+    machine = CliRunner().invoke(command, [*project, "--output", "json"])
     envelope = json.loads(machine.output)
     assert (machine.exit_code, envelope["exit_code"], envelope["status"]) == (json_exit, json_exit, "error")
     assert [item["code"] for item in envelope["diagnostics"]] == json_codes
     assert envelope["data"]["error"] == ("interrupted" if json_exit == 130 else str(error))
+
+
+@pytest.mark.parametrize(
+    ("error", "logged"),
+    [
+        pytest.param(SnowflakePortError("some unknown failure"), ["SST-SNO001"], id="unrecognised"),
+        pytest.param(
+            SnowflakePortError("003001 (42501): Insufficient privileges to operate on schema 'S'", errno=3001),
+            ["SST-SNO004"],
+            id="recognised",
+        ),
+        pytest.param(
+            SnowflakePortError("refused", diagnostic=D("SST-PRT001", value="acme", detail="refused")),
+            [],
+            id="own-diagnostic",
+        ),
+    ],
+)
+def test_a_refusal_reaching_the_guard_is_logged_under_the_signature_it_matched(
+    error: SnowflakePortError, logged: list[str], tmp_path: Path
+) -> None:
+    from snowflake_semantic_tools.cli.run_log import RUN_LOG, signature_report
+    from snowflake_semantic_tools.cli.runner import guarded
+
+    def fail() -> None:
+        raise error
+
+    with pytest.raises(click.exceptions.Exit) as exited:
+        guarded(fail, command="plan", output="table", project_dir=tmp_path)
+    assert exited.value.exit_code == 5
+    log = tmp_path / "target" / "sst" / RUN_LOG
+    lines = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+    assert [json.loads(line) for line in lines] == [{"command": "plan", "code": code} for code in logged]
+    report = signature_report(tmp_path / "target" / "sst")
+    assert (report["matched"], report["unmatched"]) == (
+        len([code for code in logged if code != "SST-SNO001"]),
+        logged.count("SST-SNO001"),
+    )
+
+
+def test_a_run_log_that_cannot_be_written_does_not_hide_the_refusal(tmp_path: Path) -> None:
+    from snowflake_semantic_tools.cli.runner import guarded
+
+    (tmp_path / "target").write_text("a file where the build directory goes", encoding="utf-8")
+
+    def fail() -> None:
+        raise SnowflakePortError("some unknown failure")
+
+    with pytest.raises(click.exceptions.Exit) as exited:
+        guarded(fail, command="plan", output="table", project_dir=tmp_path)
+    assert exited.value.exit_code == 5
+
+
+def test_a_command_logs_a_refusal_that_reaches_its_guard_in_its_project(tmp_path: Path) -> None:
+    from snowflake_semantic_tools.cli.run_log import signature_report
+
+    command = demo_command(raising(SnowflakePortError("some unknown failure")))
+    result = CliRunner().invoke(command, ["--project-dir", str(tmp_path)])
+    assert result.exit_code == 5 and "SST-PRT001" in result.output
+    assert signature_report(tmp_path / "target" / "sst")["unmatched"] == 1
