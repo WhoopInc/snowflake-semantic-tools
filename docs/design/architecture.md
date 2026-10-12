@@ -377,8 +377,7 @@ and is resolved where that thing is known:
 | `table()`, `column()` | nothing: legacy spellings of `ref()` | refused |
 
 `resolve_scalar` scans a scalar's calls, then resolves them from last to first, so
-each substitution leaves the earlier offsets valid, and records each call it
-resolved as a `RefOrigin` in `Resolved.origins`.
+each substitution leaves the earlier offsets valid.
 
 Drawn from: [domain/resolve/calls.py](../../snowflake_semantic_tools/domain/resolve/calls.py), [domain/resolve/template.py](../../snowflake_semantic_tools/domain/resolve/template.py), [adapters/yaml/agents.py](../../snowflake_semantic_tools/adapters/yaml/agents.py), [app/compile/agents/resolve_tools.py](../../snowflake_semantic_tools/app/compile/agents/resolve_tools.py), [app/compile/agents/resolve_skills.py](../../snowflake_semantic_tools/app/compile/agents/resolve_skills.py), [adapters/yaml/evals/config.py](../../snowflake_semantic_tools/adapters/yaml/evals/config.py).
 
