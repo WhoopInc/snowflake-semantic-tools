@@ -67,7 +67,10 @@ class PreflightPort(Protocol):
     def missing_privileges(self, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
         """Return, in the given order, the schema privileges no role in the session holds.
 
-        A role holds a privilege on the schema when it is granted it, or owns the schema.
+        A role holds a privilege on the schema when it is granted it, or owns the schema, or is
+        granted a database role that holds it, directly or through other database roles, no
+        further than `ROLE_HIERARCHY_DEPTH` grants. Whether a role is in the session, primary,
+        secondary, or inherited, is Snowflake's to answer.
 
         Raises:
             SnowflakePortError: the schema's grants could not be read.
@@ -85,8 +88,8 @@ class PreflightPort(Protocol):
     def missing_stage_privileges(self, stage: QualifiedName, privileges: tuple[str, ...]) -> tuple[str, ...]:
         """Return, in the given order, the privileges on a stage no role in the session holds.
 
-        A role holds a privilege on the stage when it is granted it, or owns the stage, as
-        `missing_privileges` reads a schema's.
+        A role holds a privilege on the stage when it is granted it, owns the stage, or holds it
+        through a database role, as `missing_privileges` reads a schema's.
 
         Raises:
             SnowflakePortError: the stage's grants could not be read.
