@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 from collections.abc import Sequence
 from dataclasses import replace
@@ -36,6 +37,7 @@ from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, AppliedEnt
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import empty_state, target
 from tests.helpers.clocks import FixedClock
+from tests.helpers.docstring_rules import documented_codes
 from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import statement, texts
 
@@ -478,6 +480,18 @@ def test_stale_plan_prune_report_and_resource_merge() -> None:
     assert handler.merge_physical_resources((("STAGE", "DB.S.X"),), entry) == (("STAGE", "DB.S.X"),)
     assert _stale((("stage_type", ""),), (("stage_type", "INTERNAL NO CSE"),)) is False
     assert _stale((("stage_type", ""),), (("stage_type", "INTERNAL"),)) is True
+
+
+def test_a_prune_report_raises_exactly_the_codes_its_docstring_lists() -> None:
+    compiled = compile_catalog(SkillCatalog((skill(),)))
+    handler = ExtensionLifecycleHandler(
+        FakeSnowflake(existing=()), {key: item.release for key, item in compiled.items()}, "skill"
+    )
+    entry = AppliedEntry("f", "DB.S.MONTH_CLOSE", "now", "run", "applied", "f", "m")
+    change = handler.report_prune("skill:gone", entry)
+    codes = [diagnostic.code for diagnostic in change.diagnostics]
+    assert codes == ["SST-PLN034", "SST-VAL805"]
+    assert documented_codes(inspect.getdoc(ExtensionLifecycleHandler.report_prune) or "") == codes
 
 
 def test_prunes_and_changes_without_an_artifact_are_skipped() -> None:

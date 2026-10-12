@@ -138,7 +138,7 @@ class ExtensionLifecycleHandler(CompositeHandler[ExtensionRelease, _Observed, Ca
         """Report an extension the project no longer has a source for, which SST never drops.
 
         Diagnostics:
-            SST-PLN021: the resources SST keeps, and what to do before removing them.
+            SST-PLN034: the resources SST keeps, and what to do before removing them.
             SST-VAL805: the repository and the catalog disagree: the extension has no source.
         """
         change = super().report_prune(artifact_key, state_entry)
