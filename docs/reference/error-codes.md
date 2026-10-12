@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 37 codes
 - [Membership (MEM)](#membership-mem) -- 24 codes
-- [Validation (VAL)](#validation-val) -- 301 codes
+- [Validation (VAL)](#validation-val) -- 302 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
@@ -4832,6 +4832,18 @@ Raised when a blocking-tier eval regressed: a gated metric passed on a question 
 Fix: fix what regressed, or capture a new baseline with a reason if the change is intended
 
 Note: A report-tier eval lists the same regressions without this error, so its run passes. The tier is `run.tier`, else `evals.+eval_tier`, else report.
+
+### SST-VAL764
+
+**System metric pins version v1, which Snowflake refuses** (error, always an error)
+
+`eval config for '<artifact>': metric '<name>' pins version '<found>', which Snowflake refuses`
+
+Raised when a system metric's version, else `evals.+metric_version`, is v1.
+
+Fix: pin `version: v3`
+
+Note: Snowflake refuses `version: v1` when the run starts, though its docs list it. Unlike SST-PRS013, which reports the same value, no setting lowers this.
 
 ### SST-VAL801
 

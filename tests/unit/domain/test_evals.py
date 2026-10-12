@@ -358,6 +358,18 @@ def test_eval_config_validation_covers_system_metrics_thresholds_statuses_and_bo
     assert {"SST-VAL719", "SST-VAL721", "SST-VAL722", "SST-VAL724", "SST-VAL726"}.issubset(codes)
     assert {"SST-VAL723", "SST-VAL731", "SST-VAL733", "SST-VAL735", "SST-VAL718"}.issubset(codes)
     assert {"SST-PRS016", "SST-PRS013"}.issubset(codes)
+    assert "SST-VAL764" not in codes
+
+
+def test_a_system_metric_pinned_to_v1_is_refused_beside_the_legacy_version_warning() -> None:
+    value = _resolved_eval()
+    metric = EvalSystemMetric(value.config.origin, "answer_correctness", "v1")
+    config = EvalConfig(
+        value.config.origin, value.config.source_file, "sales", "LIVE", value.config.dataset, (metric,), (), None
+    )
+    value = _resolved_eval(config=config)
+    codes = _codes(EvalCatalog((value,), value.custom_metrics), allowed_models=("claude-sonnet-4-6",))
+    assert {"SST-PRS013", "SST-VAL723", "SST-VAL764"}.issubset(codes)
 
 
 def test_custom_metric_validation_covers_duplicates_models_scale_placeholders_and_rubric() -> None:

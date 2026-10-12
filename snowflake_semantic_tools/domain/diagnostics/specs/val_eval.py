@@ -659,4 +659,17 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         precheck=Precheck.RUNTIME,
     ),
+    spec(
+        "SST-VAL764",
+        Severity.ERROR,
+        "System metric pins version v1, which Snowflake refuses",
+        "eval config for '{artifact}': metric '{name}' pins version '{found}', which Snowflake refuses",
+        "pin `version: v3`",
+        demotable=False,
+        condition="a system metric's version, else `evals.+metric_version`, is v1",
+        note=(
+            "Snowflake refuses `version: v1` when the run starts, though its docs list it. Unlike "
+            "SST-PRS013, which reports the same value, no setting lowers this."
+        ),
+    ),
 )

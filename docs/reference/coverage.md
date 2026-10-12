@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 717
+- Codes: 718
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -672,6 +672,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL761`](error-codes.md#sst-val761) | VAL | error | runtime | `snowflake_semantic_tools.app.evals.gate` | `tests/codes/val/test_sst_val761.py` |
 | [`SST-VAL762`](error-codes.md#sst-val762) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_config` | `tests/codes/val/test_sst_val762.py` |
 | [`SST-VAL763`](error-codes.md#sst-val763) | VAL | error | runtime | `snowflake_semantic_tools.app.evals.gate` | `tests/codes/val/test_sst_val763.py` |
+| [`SST-VAL764`](error-codes.md#sst-val764) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_config` | `tests/codes/val/test_sst_val764.py` |
 | [`SST-VAL801`](error-codes.md#sst-val801) | VAL | error | local | `snowflake_semantic_tools.adapters.yaml.profiles`<br>`snowflake_semantic_tools.adapters.yaml.skills`<br>`snowflake_semantic_tools.domain.validate.profile`<br>`snowflake_semantic_tools.domain.validate.skill` | `tests/codes/val/test_sst_val801.py` |
 | [`SST-VAL802`](error-codes.md#sst-val802) | VAL | error | local | `snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/val/test_sst_val802.py` |
 | [`SST-VAL803`](error-codes.md#sst-val803) | VAL | error | local | `snowflake_semantic_tools.domain.validate.publication` | `tests/codes/val/test_sst_val803.py` |
