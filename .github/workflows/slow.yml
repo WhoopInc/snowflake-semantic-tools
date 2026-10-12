@@ -229,7 +229,8 @@ jobs:
 
       # The eval suite reads the SST manifest `sst compile` writes (SST-MAN001 without it) and
       # runs the agents `sst apply` published. --no-strict because the fixture keeps warnings on
-      # purpose, and a connected check reports each absent stand-in (SST-VAL531).
+      # purpose, and a connected check reports each absent stand-in (SST-VAL531, which the
+      # fixture demotes to a warning).
       - name: Compile the reference project for the verify target
         if: inputs.suite == 'evals'
         run: >-

@@ -449,16 +449,24 @@ name does not exist, and a version that is empty. `DESCRIBE`, `SHOW` and
 `COMMIT` all pass on a dangling reference, so nothing at publish time reports it.
 A `generic` tool's `tool_resources` are not checked either.
 
-**Evidence**: `Enforced`. Publish order is the only control. Skills and plugins
-publish before agents (`ddl_position` 250 and 260, before 300, in
+**Evidence**: `Enforced`. For what SST publishes, publish order is the only
+control. Skills and plugins publish before agents (`ddl_position` 250 and 260,
+before 300, in
 [registry.py](../../snowflake_semantic_tools/domain/model/registry.py)), and a
-plan that publishes an agent must include every skill it pins (SST-PLN030).
-SST-RND013 warns on rendered generic tool resources.
+plan that publishes an agent must include every skill it pins (SST-PLN030). An
+extension another project publishes is looked up instead: a connected `sst plan`
+reads it and the version the agent pins, even with the connected checks off, and
+one that is absent or hidden is an error (SST-VAL531). A skill name inside a
+consumed extension is still not checked. SST-RND013 warns on rendered generic
+tool resources.
 [test_sst_pln030.py](../../tests/codes/pln/test_sst_pln030.py),
+[test_sst_val531.py](../../tests/codes/val/test_sst_val531.py),
 [test_sst_rnd013.py](../../tests/codes/rnd/test_sst_rnd013.py).
 
 **SST depends on it at**:
 [plan/prune.py](../../snowflake_semantic_tools/domain/plan/prune.py);
+`references` in
+[agents/observe.py](../../snowflake_semantic_tools/app/compile/agents/observe.py);
 [the agents guide](../guides/agents.md#skills).
 
 ### The orchestration model is not checked

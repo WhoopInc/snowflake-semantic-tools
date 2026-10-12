@@ -3841,13 +3841,15 @@ Fix: align the key with the rendered tool name
 
 ### SST-VAL531
 
-**Resolved external object does not exist in the target** (warning)
+**Resolved external object does not exist in the target** (error)
 
 `agent '<artifact>': '<value>' does not exist in target '<target>'`
 
 Raised when connected validation finds no object for something an agent uses and SST does not publish: the object a tool calls, an `extension()` skill source, or the version it pins; an extension SST cannot see reads as absent.
 
 Fix: publish it first, or correct the reference
+
+Note: Snowflake accepts an agent whose reference does not exist, and the agent then reports success and lacks the tool or skill, so this is an error. `sst plan` looks up each consumed extension and pinned version whenever it is connected, even with `validation.snowflake_syntax_check` off. Demote it with `diagnostics.severity_overrides` for a target whose referenced objects may be absent.
 
 ### SST-VAL532
 

@@ -111,6 +111,7 @@ class ValidateArtifacts:
         strict: bool,
         connected: bool,
         verify_schema: bool = False,
+        references: bool = False,
         overrides: Mapping[str, Severity] | None = None,
         reaches: Callable[[str | None], bool] | None = None,
     ) -> ValidationResult:
@@ -137,6 +138,9 @@ class ValidateArtifacts:
             connected: Run the Snowflake checks; False skips them even with a port.
             verify_schema: With a catalog, also look each column a view reads up in the
                 warehouse, as `verify_columns` does.
+            references: With a catalog and the Snowflake checks skipped, still check each
+                extension an agent consumes, as `ObserveLiveObjects.references` does; with
+                them run, the full observation already checks it.
             overrides: The severity each code the project overrides reports at; None for none.
             reaches: Whether strict mode reaches a diagnostic about a subject, as the run's
                 selection decides; None reaches every one.
@@ -149,7 +153,8 @@ class ValidateArtifacts:
             SST-VAL415: a verified query ran and returned no rows.
             SST-VAL212: a relationship's target holds more than one row for a join key.
             SST-VAL218: a distinct range's rows overlap.
-            Those of `ObserveLiveObjects`, with a catalog.
+            Those of `ObserveLiveObjects`, with a catalog; with `references` and the checks
+                skipped, those of its `references`.
             Those of `verify_columns`, with `verify_schema` and a catalog.
         """
         found = [*compiled.diagnostics, *_cycle_diagnostics(compiled.rendered)]
@@ -160,6 +165,8 @@ class ValidateArtifacts:
             )
             found.extend(D("SST-VAL020", rule_id=rule, detail=detail) for rule in CONNECTED_RULES)
             skipped = len(CONNECTED_RULES)
+            if references and self._catalog is not None:
+                found.extend(ObserveLiveObjects(self._catalog, target=self._target).references(compiled))
         else:
             views = tuple(item for item in compiled.compiled if isinstance(item, CompiledView))
             found.extend(_once_per_member(self._connected_checks(self._readers or Fanout(self._port), views)))

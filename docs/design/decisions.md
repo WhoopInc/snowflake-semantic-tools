@@ -513,6 +513,23 @@ definitions it cannot answer queries over and enforces none of the
 derived-metric restrictions itself; and a silent default for syntax checking,
 under which a reader cannot tell what a passing run checked.
 
+### A dangling agent reference is an error, looked up at every connected plan
+
+**Chosen.** Snowflake accepts an agent whose consumed extension, pinned version,
+or called object does not exist, and the agent then reports success without the
+skill or tool. `SST-VAL531` is therefore an error by default, still demotable
+through `diagnostics.severity_overrides` for a target whose referenced objects
+may be absent. `sst plan` looks up each consumed extension and the version it
+pins whenever it is connected, even with `validation.snowflake_syntax_check`
+off; the rest of the connected checks still follow that key.
+
+**Rejected.** A warning that only `--strict` promotes, under which plan and apply
+go ahead and publish an agent with no skill; and looking the references up only
+with the connected checks on, which leaves them unseen in a pipeline that turns
+those checks off.
+
+**Revisit when.** Snowflake refuses a dangling reference at `CREATE AGENT`.
+
 ### Smoke probes are a separate suite, not part of apply
 
 **Chosen.** `sst test --suite smoke` queries the published views, their metrics,
@@ -547,6 +564,7 @@ one organisation's account and credentials in an open-source repository.
 Drawn from: [syntax check key](../../snowflake_semantic_tools/domain/model/config_schema/keys.py),
 [window checks](../../snowflake_semantic_tools/domain/validate/semantic/windows.py),
 [relationship codes](../../snowflake_semantic_tools/domain/diagnostics/specs/val_relationship.py),
+[agent reference lookup](../../snowflake_semantic_tools/app/compile/agents/observe.py),
 [smoke suite](../../snowflake_semantic_tools/app/smoke.py),
 [eval gate](../../snowflake_semantic_tools/app/evals/gate.py),
 [eval runs](../../snowflake_semantic_tools/app/evals/run.py),

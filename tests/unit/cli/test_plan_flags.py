@@ -8,8 +8,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from click.testing import Result
+from click.testing import CliRunner, Result
 
+from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, ShowRow
 from snowflake_semantic_tools.domain.state import AppliedEntry
@@ -133,3 +134,53 @@ def test_no_validate_skips_strict_promotion_and_refuses_a_syntax_check(
     )
     assert refused.exit_code == 3
     assert "SST-PRT104" in refused.output
+
+
+# The extension the reference analytics agent consumes, and the version it pins.
+_CONSUMED = "SST_REF_DEV.PARTNER.PARTNER_GLOSSARY"
+
+
+def _dangling() -> FakeSnowflake:
+    """Snowflake holding the consumed extension without the version the agent pins."""
+    port = FakeSnowflake(state={})
+    location = f"snow://cortex_extension/{_CONSUMED}/versions/version$1/"
+    version: dict[str, object] = {"name": "VERSION$1", "alias": None, "location": location, "files": []}
+    version.update(is_default=True, certification=None)
+    port.extensions[_CONSUMED] = {"type": "SKILL", "comment": None, "versions": [version]}
+    return port
+
+
+def _consumed_findings(result: Result) -> list[tuple[str, str]]:
+    payload = json.loads(result.stdout)
+    return [(item["code"], item["severity"]) for item in payload["diagnostics"] if item["code"] == "SST-VAL531"]
+
+
+def test_plan_looks_up_a_consumed_extension_with_the_syntax_checks_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    config = project / "sst_config.yml"
+    # Without the fixture's demotion, SST-VAL531 is an error and stops the plan.
+    config.write_text(config.read_text(encoding="utf-8").replace("    SST-VAL531: warning\n", ""), encoding="utf-8")
+    args = ["plan", *common(project), "--no-snowflake-syntax-check", "--no-strict", "-o", "json", "--no-plan-out"]
+    stopped = invoke_with_port(monkeypatch, _dangling(), args)
+    assert stopped.exit_code == 1, stopped.output
+    assert _consumed_findings(stopped) == [("SST-VAL531", "error")]
+    assert f"'{_CONSUMED} version VERSION$3' does not exist in target 'dev'" in stopped.stdout
+
+
+def test_a_demoted_dangling_extension_lets_the_plan_through_and_offline_validate_never_looks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    args = ["plan", *common(project), "--no-snowflake-syntax-check", "--no-strict", "-o", "json", "--no-plan-out"]
+    # The fixture's diagnostics.severity_overrides demotes SST-VAL531 to a warning, which, as
+    # every validation warning, a plan that goes ahead does not repeat.
+    passed = invoke_with_port(monkeypatch, _dangling(), args)
+    assert passed.exit_code == 2, passed.output
+    assert _consumed_findings(passed) == []
+    offline = CliRunner().invoke(
+        cli, ["validate", *common(project), "--no-snowflake-syntax-check", "--no-strict", "-o", "json"]
+    )
+    assert offline.exit_code == 0, offline.output
+    assert _consumed_findings(offline) == []
