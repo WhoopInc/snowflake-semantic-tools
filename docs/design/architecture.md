@@ -36,13 +36,14 @@ hands it to a use case. A use case receives everything it touches through a
 protocol in `domain/ports/`, or a union of those declared beside it, so `app` and
 `adapters` meet only in `cli`.
 
-`poetry run lint-imports` enforces seven contracts, by these exact names:
+`poetry run lint-imports` enforces eight contracts, by these exact names:
 
 | Contract | Why it exists |
 |---|---|
 | Rings are layered: cli above (app \| adapters) above domain | A use case cannot reach for a concrete adapter, and an adapter cannot call back into a use case, so either side can be replaced alone. |
 | domain is pure -- no I/O, no clock, no environment, no SDKs | Everything the domain needs arrives as a parameter, so its output is a function of its input. |
 | app imports domain only -- no SDKs, no terminal | Orchestration stays independent of the YAML library, click, and the Snowflake driver; printing is the CLI's job. |
+| SST never imports dbt -- it runs the executable | dbt is an optional extra and its Python API is not a stable interface, so SST runs whichever `dbt` is on `PATH` and reads the manifest it writes. |
 | adapters use domain ports and models, not domain renderers | Rendering is domain logic; an adapter reads and writes, it does not decide what SST publishes. |
 | adapter subpackages are independent | `yaml`, `dbt`, `snowflake`, and `fs` never import one another, so each can be tested and swapped on its own; a top-level adapter module such as `project_source.py` composes them. |
 | only the roundtrip, dbt and yaml adapters edit YAML | Writing a file back with `ruamel` preserves comments and layout; confining it keeps that delicate step to `adapters/roundtrip.py` and the formatter in `adapters/yaml/format.py`. |

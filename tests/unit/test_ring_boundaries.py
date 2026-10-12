@@ -64,6 +64,18 @@ CROSSINGS = [
         id="app-may-not-construct-an-adapter",
     ),
     pytest.param(
+        "adapters/dbt/_boundary_probe.py",
+        "import dbt\n",
+        "SST never imports dbt",
+        id="dbt-adapter-may-not-import-dbt",
+    ),
+    pytest.param(
+        "cli/_boundary_probe.py",
+        "from dbt.cli.main import dbtRunner\n",
+        "SST never imports dbt",
+        id="cli-may-not-import-dbt",
+    ),
+    pytest.param(
         "adapters/_boundary_probe.py",
         "from snowflake_semantic_tools import app\n",
         "Rings are layered",
@@ -153,7 +165,7 @@ def test_contracts_hold_on_the_real_tree() -> None:
     """
     result = _lint_imports()
     assert result.returncode == 0, f"contracts already broken before probing:\n{result.stdout}"
-    assert "Contracts: 7 kept, 0 broken." in result.stdout, result.stdout
+    assert "Contracts: 8 kept, 0 broken." in result.stdout, result.stdout
 
 
 def test_package_root_holds_only_the_rings() -> None:
