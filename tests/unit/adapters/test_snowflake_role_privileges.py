@@ -7,9 +7,9 @@ import pytest
 from snowflake_semantic_tools.adapters.snowflake.connector.grant_walk import Grantee, grantees_of, schema_holders
 from snowflake_semantic_tools.domain.model.identifier import Identifier, SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from snowflake_semantic_tools.domain.ports.snowflake.preflight import ROLE_HIERARCHY_DEPTH
+from snowflake_semantic_tools.domain.ports.snowflake.preflight import ROLE_HIERARCHY_DEPTH, RoleWalk
 from snowflake_semantic_tools.domain.sql import sql
-from tests.helpers.snowflake_fake.driver import FakeDriverConnector
+from tests.helpers.snowflake_fake.driver import FakeDriverConnector, FakeDriverSession
 from tests.helpers.snowflake_fake.grants import GrantGraph
 
 SCOPE = SchemaScope(Identifier.parse("DB"), Identifier.parse("SCH"))
@@ -101,6 +101,46 @@ def test_the_walk_climbs_no_further_than_the_hierarchy_depth() -> None:
     assert f"SHOW GRANTS OF ROLE R{1:02d}" not in sent
 
 
+def test_the_walk_says_which_privileges_it_stopped_short_of() -> None:
+    connector = FakeDriverConnector(_chain(ROLE_HIERARCHY_DEPTH).session())
+    assert connector.walk_role_privileges("R00", SCOPE, ("CREATE TASK",)) == RoleWalk(
+        ("CREATE TASK",), ("CREATE TASK",)
+    )
+    within = FakeDriverConnector(_chain(ROLE_HIERARCHY_DEPTH - 1).session())
+    assert within.walk_role_privileges("R00", SCOPE, ("CREATE TASK",)) == RoleWalk()
+    # A privilege no role holds, or one only a role outside the hierarchy holds, was not cut short.
+    graph = GrantGraph(SCOPE).on_schema("CREATE TASK", role="OTHER").role_to("OTHER", user="SOMEONE")
+    walk = FakeDriverConnector(graph.session()).walk_role_privileges("RUNNER", SCOPE, RUN)
+    assert walk == RoleWalk(RUN, ())
+
+
+def test_a_database_role_climb_cut_short_is_said_to_be() -> None:
+    graph = GrantGraph(SCOPE).on_schema("CREATE TASK", database_role="D00")
+    for level in range(1, ROLE_HIERARCHY_DEPTH + 2):
+        graph.database_role_to(f"D{level - 1:02d}", database_role_to=f"D{level:02d}")
+    walk = FakeDriverConnector(graph.session()).walk_role_privileges("RUNNER", SCOPE, ("CREATE TASK",))
+    assert walk == RoleWalk(("CREATE TASK",), ("CREATE TASK",))
+
+
+@pytest.mark.parametrize(
+    ("answer", "active"),
+    [
+        ('{"roles":"","value":""}', False),
+        ('{"roles":"ANALYST","value":""}', True),
+        ('{"roles":"","value":"ALL"}', True),
+        ("not json", True),
+        ('["ANALYST"]', True),
+        (None, True),
+    ],
+)
+def test_the_session_has_secondary_roles_unless_snowflake_names_none(answer: str | None, active: bool) -> None:
+    session = FakeDriverSession(rows={"SELECT CURRENT_SECONDARY_ROLES()": ((answer,),)})
+    assert FakeDriverConnector(session).has_secondary_roles() is active
+    assert GrantGraph(SCOPE).secondary("ANALYST").respond("SELECT CURRENT_SECONDARY_ROLES()", ())[0] == [
+        ('{"roles": "ANALYST", "value": ""}',)
+    ]
+
+
 def test_a_cycle_ends_and_each_role_is_read_once_for_every_privilege() -> None:
     graph = GrantGraph(SCOPE).on_schema("CREATE TASK", role="A").on_schema("CREATE STAGE", role="B")
     graph.on_schema("CREATE FILE FORMAT", role="A")
@@ -178,3 +218,76 @@ def test_a_schema_holder_database_role_may_be_shown_qualified_or_unqualified() -
         ),
         Grantee.database_role(Identifier.parse("DB"), Identifier.shown("OTHER.READER")): frozenset({"CREATE TASK"}),
     }
+
+
+def _session_missing(graph: GrantGraph, privileges: tuple[str, ...] = RUN) -> tuple[tuple[str, ...], list[str]]:
+    """What no role in the session holds per the connector over `graph`, and every statement it sent."""
+    session = graph.session()
+    missing = FakeDriverConnector(session).missing_privileges(SCOPE, privileges)
+    return missing, session.statements
+
+
+def test_a_session_holds_a_privilege_granted_to_a_database_role_its_role_is_granted() -> None:
+    graph = GrantGraph(SCOPE).on_schema("CREATE TASK", database_role="WRITER").database_role_to("WRITER", role_to="R")
+    missing, sent = _session_missing(graph.in_session("R"), ("CREATE TASK",))
+    assert missing == ()
+    assert sent == [ON_SCHEMA, "SHOW GRANTS OF DATABASE ROLE DB.WRITER", "SELECT IS_ROLE_IN_SESSION(%s)"]
+
+
+def test_a_database_role_that_cannot_be_read_does_not_matter_when_a_direct_holder_is_in_session() -> None:
+    graph = GrantGraph(SCOPE).on_schema("CREATE TASK", role="R").on_schema("CREATE TASK", database_role="WRITER")
+    graph.database_role_to("WRITER", role_to="OTHER").forget_database_role("WRITER")
+    missing, sent = _session_missing(graph.in_session("R"), ("CREATE TASK",))
+    assert missing == ()
+    assert sent == [ON_SCHEMA, "SELECT IS_ROLE_IN_SESSION(%s)"]
+
+
+def test_database_roles_are_read_only_for_what_no_direct_holder_in_session_holds() -> None:
+    graph = GrantGraph(SCOPE).on_schema("CREATE TASK", role="R").on_schema("CREATE TASK", database_role="TASKS")
+    graph.on_schema("CREATE STAGE", database_role="WRITER").database_role_to("WRITER", role_to="R")
+    graph.database_role_to("TASKS", role_to="R").forget_database_role("TASKS")
+    missing, sent = _session_missing(graph.in_session("R"), ("CREATE TASK", "CREATE STAGE"))
+    assert missing == ()
+    assert "SHOW GRANTS OF DATABASE ROLE DB.WRITER" in sent
+    assert "SHOW GRANTS OF DATABASE ROLE DB.TASKS" not in sent
+
+
+def test_a_session_holds_privileges_through_a_cycle_of_database_roles_each_read_once() -> None:
+    graph = GrantGraph(SCOPE).on_schema("CREATE TASK", database_role="TASKS")
+    graph.on_schema("CREATE STAGE", database_role="WRITER")
+    graph.database_role_to("TASKS", database_role_to="WRITER").database_role_to("WRITER", role_to="R")
+    graph.database_role_to("WRITER", database_role_to="TASKS").database_role_to("WRITER", user="ME")
+    missing, sent = _session_missing(graph.in_session("R"))
+    assert missing == ("CREATE FILE FORMAT",)
+    assert sent.count("SHOW GRANTS OF DATABASE ROLE DB.TASKS") == 1
+    assert sent.count("SHOW GRANTS OF DATABASE ROLE DB.WRITER") == 1
+
+
+def test_a_database_role_no_session_role_is_granted_holds_nothing_for_the_session() -> None:
+    graph = GrantGraph(SCOPE).on_schema("CREATE TASK", database_role="WRITER").database_role_to("WRITER", role_to="R")
+    graph.database_role_to("WRITER", user="ME")
+    missing, _ = _session_missing(graph.in_session("OTHER"), ("CREATE TASK",))
+    assert missing == ("CREATE TASK",)
+
+
+def test_the_session_climb_through_database_roles_stops_at_the_hierarchy_depth() -> None:
+    def chain(length: int) -> GrantGraph:
+        graph = GrantGraph(SCOPE).on_schema("CREATE TASK", database_role="D00")
+        for level in range(1, length):
+            graph.database_role_to(f"D{level - 1:02d}", database_role_to=f"D{level:02d}")
+        return graph.database_role_to(f"D{length - 1:02d}", role_to="R").in_session("R")
+
+    within, _ = _session_missing(chain(ROLE_HIERARCHY_DEPTH - 1), ("CREATE TASK",))
+    assert within == ()
+    beyond, _ = _session_missing(chain(ROLE_HIERARCHY_DEPTH), ("CREATE TASK",))
+    assert beyond == ("CREATE TASK",)
+
+
+def test_a_database_role_is_read_only_for_what_no_account_role_passes_up_to_the_role() -> None:
+    graph = GrantGraph(SCOPE).on_schema("CREATE TASK", role="BUILDER").role_to("BUILDER", role_to="RUNNER")
+    graph.on_schema("CREATE TASK", database_role="TASKS").database_role_to("TASKS", role_to="OTHER")
+    graph.on_schema("CREATE STAGE", database_role="WRITER").database_role_to("WRITER", role_to="RUNNER")
+    missing, sent = _missing(graph.forget_database_role("TASKS"), "RUNNER", ("CREATE TASK", "CREATE STAGE"))
+    # TASKS cannot be read, and is never asked: an account role already passes CREATE TASK up.
+    assert missing == ()
+    assert sent == [ON_SCHEMA, "SHOW GRANTS OF ROLE BUILDER", "SHOW GRANTS OF DATABASE ROLE DB.WRITER"]

@@ -51,8 +51,13 @@ class PreflightAnswers:
     lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # What no role in the session holds on a stage, by the stage's `QualifiedName.sql`.
     stage_lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
-    # What the session's primary role lacks by itself and through its hierarchy, by schema.
+    # What the session's primary role lacks by itself and through its hierarchy, by schema, on
+    # top of `lacking`: what no role in the session holds, the primary role lacks too.
     role_lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # Those of `role_lacking` the walk up from the primary role stopped short of, by schema.
+    role_beyond_depth: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # Whether the session has a secondary role active; without one, plan asks the session alone.
+    secondary_roles: bool = True
     locked: dict[str, tuple[QualifiedName, ...]] = field(default_factory=dict)
     references: dict[str, tuple[QualifiedName, ...]] = field(default_factory=dict)
 
@@ -105,6 +110,10 @@ class SnowflakeWorld:
         # SHOW's rows by (object type upper-cased, `SchemaScope.sql`); `show` files rows here.
         self.objects: dict[tuple[str, str], tuple[ShowRow, ...]] = dict(objects or {})
         self.grants: dict[str, tuple[GrantRow, ...]] = dict(grants or {})
+        # The tags set on each object, by qualified name, as TAG_REFERENCES lists them; and each
+        # object whose tags were read, in order.
+        self.tags: dict[str, tuple[str, ...]] = {}
+        self.tag_reads: list[str] = []
         self.markers: dict[str, OwnershipMarker | None] = dict(markers or {})
         # The type of each object named here, by qualified name: a marker read under another
         # type finds nothing, as SHOW <type> LIKE lists no object of a different type.

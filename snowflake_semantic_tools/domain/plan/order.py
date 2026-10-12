@@ -3,8 +3,9 @@
 `render_order` is the order plan classifies rendered artifacts in, before any dependency is
 known. `topological_order` orders the changes of a plan, `order_changes` wraps it with the
 checks that report an order that cannot be computed or is wrong, and `dependency_waves`
-groups the changes for apply, which starts a wave only once the waves before it finish. All
-ignore a dependency on a key outside the changes: it is not this plan's to order.
+groups the changes for apply, which records outcomes wave by wave; only under STOP_ALL
+(`--fail-fast`) does it wait for a wave to finish before starting the next. All ignore a
+dependency on a key outside the changes: it is not this plan's to order.
 """
 
 from __future__ import annotations

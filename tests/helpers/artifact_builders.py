@@ -19,7 +19,6 @@ from snowflake_semantic_tools.domain.state import (
     APPLIED,
     STATE_SCHEMA_VERSION,
     AppliedEntry,
-    ImpactIndex,
     Manifest,
     State,
 )
@@ -98,7 +97,6 @@ def manifest(artifacts: dict[str, RenderedArtifact]) -> Manifest:
         sources={},
         members={},
         files={},
-        impact=ImpactIndex(),
         diagnostics_summary={},
     )
 

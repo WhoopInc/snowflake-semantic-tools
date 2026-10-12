@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
-from snowflake_semantic_tools.adapters.code_coverage import code_tests, prechecks, raise_sites
+from snowflake_semantic_tools.adapters.code_coverage import code_tests, raise_sites
 
 
 def test_raise_sites_names_each_module_once_and_skips_the_registry_and_conflict_copies(tmp_path: Path) -> None:
@@ -32,12 +31,3 @@ def test_code_tests_counts_a_file_only_when_it_holds_both_directions(tmp_path: P
     (codes / "cfg" / "test_sst_cfg003.py").write_text("def (:\n")
     found = code_tests(codes, ("SST-CFG001", "SST-CFG002", "SST-CFG003", "SST-CFG004"))
     assert found == {"SST-CFG001": "tests/codes/cfg/test_sst_cfg001.py"}
-
-
-def test_prechecks_reads_the_catalog_projection_and_tolerates_its_absence(tmp_path: Path) -> None:
-    catalog = tmp_path / "catalog.json"
-    assert prechecks(catalog) == {}
-    catalog.write_text(json.dumps({"rows": []}))
-    assert prechecks(catalog) == {}
-    catalog.write_text(json.dumps([{"code": "SST-CFG001", "precheck": "local"}, {"code": "SST-CFG002"}, "stray"]))
-    assert prechecks(catalog) == {"SST-CFG001": "local", "SST-CFG002": ""}

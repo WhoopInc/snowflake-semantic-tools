@@ -50,7 +50,7 @@
 - [ ] Formatted with ruff, line length 120 (`poetry run ruff format --check snowflake_semantic_tools/ tests/`)
 - [ ] Lint-clean, imports sorted (`poetry run ruff check snowflake_semantic_tools/ tests/`)
 - [ ] Strictly typed (`poetry run mypy snowflake_semantic_tools tests` passes)
-- [ ] Ring boundaries hold (`poetry run lint-imports` passes all seven contracts)
+- [ ] Ring boundaries hold (`poetry run lint-imports` passes all eight contracts)
 - [ ] SQL is composed only through `domain/sql` (`sql()` with a constant template and `Sql` parts)
 - [ ] Security scans pass (`poetry run bandit -r snowflake_semantic_tools -ll`; semgrep with `.semgrep/`)
 - [ ] `poetry.lock` regenerated and `DEPENDENCIES.md` updated (if a dependency changed; `poetry check --lock` passes)
@@ -58,7 +58,7 @@
 
 ### Diagnostics & Documentation
 - [ ] Each new problem has a new `SST-` diagnostic code with an actionable suggestion; no code is reused
-- [ ] Each new code has its row in `tests/codes/catalog.json` and a `test_<code>_fires` / `test_<code>_silent` pair under `tests/codes/<area>/`; no allowlist entry added
+- [ ] Each new code has a `test_<code>_fires` / `test_<code>_silent` pair under `tests/codes/<area>/`; no allowlist entry added; a retired code has its `TOMBSTONES` row
 - [ ] Each new option's help text is in `cli/help_text.py`, not `help=`
 - [ ] Reference pages regenerated with `poetry run sst docs` if diagnostics, config keys, CLI options, or artifact types changed (`poetry run sst docs --check` passes)
 - [ ] Guides and README updated (if needed)

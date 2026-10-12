@@ -7,10 +7,11 @@ from those modules and re-exports the `core` names, so importers never reach int
 submodules. `D`, `Diagnostic`, and `render_diagnostic` look `ERROR_REGISTRY` up as a global
 of this module on each call, so replacing it here changes what all three see.
 
-`audit` and `unstable_fingerprints` check the emission invariants over a finished run: every
-diagnostic came from `D`, carries the location it knows, declares its registered severity, has
-the effective severity a legal override and `resolve_severities` give it, and names a cause
-that is present. `policy` applies a project's severity overrides.
+`cascade` turns a diagnostic into the follow-on of another. `audit` and `unstable_fingerprints`
+check the emission invariants over a finished run: every diagnostic came from `D`, carries the
+location it knows, declares its registered severity, has the effective severity a legal override
+and `resolve_severities` give it, and names a cause that is present. `policy` applies a project's
+severity overrides.
 """
 
 from __future__ import annotations
@@ -70,6 +71,7 @@ __all__ = [
     "RegistryIntegrityError",
     "Severity",
     "audit",
+    "cascade",
     "override_refusal",
     "build_registry",
     "render_diagnostic",
@@ -295,6 +297,18 @@ def D(
         emitted=True,
         declared=spec.severity,
     )
+
+
+def cascade(diagnostic: Diagnostic, cause: str) -> Diagnostic:
+    """Return `diagnostic` as a cascade of the code `cause`: caused by it, and downgraded to INFO.
+
+    A cascade is counted rather than shown unless asked for. Only an override that promotes its
+    code reaches it, and the promoted diagnostic is no longer a cascade (`policy`). A
+    non-demotable code names its cause and keeps its severity, since nothing may lower it.
+    """
+    if not ERROR_REGISTRY[diagnostic.code].demotable:
+        return replace(diagnostic, caused_by=cause)
+    return replace(diagnostic, severity=Severity.INFO, caused_by=cause)
 
 
 def _context_origin(context: Mapping[str, Any]) -> Origin | None:

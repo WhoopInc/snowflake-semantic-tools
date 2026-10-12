@@ -80,9 +80,9 @@ How SST produces and reads the dbt manifest.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `dbt.invoke` | boolean | `true` | Run dbt before reading the manifest; false reads the one on disk. |
+| `dbt.invoke` | boolean | `true` | Run dbt before reading the manifest; false reads the one on disk and checks it against the model files (SST-DBT005). |
 | `dbt.command` | enum: `parse`, `compile` | `parse` | The dbt command that writes the manifest; `compile` needs a warehouse. |
-| `dbt.manifest_schema_versions` | list | the versions this release is tested against | Manifest schema version numbers read, such as `[12]`; any other is refused (SST-DBT017) unless `--allow-unsupported-manifest-schema` is given. |
+| `dbt.manifest_schema_versions` | list | the versions this release is tested against | Manifest schema version numbers read, such as `[12]`. The list replaces the default set rather than adding to it, so name every version to accept; any other is refused (SST-DBT017) unless `--allow-unsupported-manifest-schema` is given. |
 
 ## defer
 
@@ -130,10 +130,10 @@ Defaults for tool backing objects.
 |---|---|---|---|
 | `tools.+database` | string | the target database | Database for defined tool objects. |
 | `tools.+schema` | string | the target schema | Schema for defined tool objects. |
-| `tools.+warehouse` | string | the target warehouse | Warehouse for defined search services. |
+| `tools.+warehouse` | string | the target warehouse | Warehouse for defined search services and procedures that name none. |
 | `tools.+target_lag` | string |  | Target lag for defined search services. |
 | `tools.+embedding_model` | string |  | Embedding model for defined search services. |
-| `tools.+execute_as` | enum: `caller`, `owner` | `caller` | Rights a generic tool runs with. |
+| `tools.+execute_as` | enum: `caller`, `owner`, `restricted caller` | `caller` | Rights a defined procedure runs with (`EXECUTE AS`) when it names none. |
 | `tools.<route>` | block |  | Per-group override of the `+` keys above, keyed by group name, for a group with `define:` members (SST-CFG020). |
 
 ## semantic_views

@@ -53,15 +53,21 @@ _OPTION_HELP: Mapping[str, str] = {
         "output on a terminal is ever coloured."
     ),
     "--allow-unsupported-manifest-schema": "Read a dbt manifest of an unsupported schema version, for this run only.",
-    "--allow-stale-manifest": "Accept a `--manifest` older than the files it describes, for this run only.",
+    "--allow-stale-manifest": (
+        "Accept a manifest SST did not write (`--manifest`, or `dbt.invoke: false`) that is older than "
+        "the files it describes, for this run only."
+    ),
     "--baseline": (
         "Read this baseline file of known warnings, which must exist, instead of the project's "
         "`.sst/baseline.json`, read when it exists."
     ),
     "--no-baseline": "Ignore the baseline for this run: every diagnostic is shown and blocks as declared.",
     "--show-baselined": "Show baselined diagnostics instead of counting them.",
-    "--show-info": "Show info diagnostics instead of counting them.",
-    "--show-cascade": "Show cascade diagnostics instead of counting them.",
+    "--show-info": "Show info diagnostics instead of counting them; a cascade needs `--show-cascade`.",
+    "--show-cascade": (
+        "Show cascade diagnostics, follow-ons downgraded to info, instead of counting them. An "
+        "override promoting a cascade's code reports it at that severity, as no longer a cascade."
+    ),
     "--show-all-occurrences": "Show every occurrence of a code, not the first three of four or more.",
     "--select": (
         "Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, "
@@ -99,7 +105,8 @@ _OPTION_HELP: Mapping[str, str] = {
     "--sql-out": "Write each create's and update's statements into this directory instead of `target/sst/sql`.",
     "--fail-fast": "Stop at the first failure instead of continuing.",
     "--no-validate": (
-        "Skip validation: no cycle check, connected check, or strict promotion. Only when `sst validate` "
+        "Skip validation: no cycle check, connected check, agent reference lookup, or strict promotion. "
+        "Only when `sst validate` "
         "already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`."
     ),
     "--dbt": "Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`.",
@@ -164,7 +171,8 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst plan", "--no-plan-out"): "Do not write a saved plan.",
     ("sst plan", "--grants"): (
         "Read the grants on each object an update replaces, one `SHOW GRANTS` each, to report what a "
-        "replace would drop (SST-PLN013). On by default; `--no-grants` skips the reads."
+        "replace would drop (SST-PLN013), and the tags on each semantic view it replaces, to report "
+        "those the replace removes (SST-PLN039). On by default; `--no-grants` skips the reads."
     ),
     ("sst plan", "--capture-prior"): (
         "Read the current definition of each live object a planned artifact names, so a review can "

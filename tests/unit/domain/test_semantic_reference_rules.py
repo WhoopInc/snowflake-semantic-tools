@@ -104,6 +104,7 @@ def test_every_column_a_view_uses_declares_its_role_type_samples_and_description
         column("text_fact", "VARCHAR", "fact"),
         column("text_time", "VARCHAR", "time_dimension"),
         column("enum", "VARCHAR", "dimension", is_enum=True),
+        column("enum_fact", "NUMBER", "fact", is_enum=True),
         column("many", "VARCHAR", "dimension", sample_values=("a", "b", "c", "d", "e")),
         column("many_facts", "NUMBER", "fact", sample_values=("1", "2", "3", "4", "5")),
         replace(column("bare", "VARCHAR", "dimension"), description=None),
@@ -112,9 +113,16 @@ def test_every_column_a_view_uses_declares_its_role_type_samples_and_description
             "VARCHAR",
             "dimension",
             access_modifier="private_access",
-            unknown_meta_keys=("access_modifier", "odd"),
+            unknown_meta_keys=("odd",),
         ),
         column("typed", "NUMBER", "fact", declared_data_type="FLOAT", access_modifier="private_access"),
+        # A column with no role, or one excluded, never renders, so neither its modifier nor
+        # its is_enum is refused.
+        column("untyped_private", "NUMBER", None, access_modifier="private_access"),
+        replace(column("excluded_private", "NUMBER", "fact", access_modifier="private_access"), excluded=True),
+        replace(column("excluded_dimension", "VARCHAR", "dimension", access_modifier="private_access"), excluded=True),
+        replace(column("excluded_enum", "NUMBER", "fact", is_enum=True), excluded=True),
+        column("loose", "VARCHAR", "dimension", access_modifier="hidden"),
         column("sentinel", "VARCHAR", "dimension", sample_values=("NaN", "ok"), is_enum=False),
     )
     model = DbtModel("model.t.wide", "wide", "DB.S.WIDE", ("no_role",), (), columns)
@@ -125,11 +133,15 @@ def test_every_column_a_view_uses_declares_its_role_type_samples_and_description
         ("SST-VAL305", "text_fact"),
         ("SST-VAL306", "text_time"),
         ("SST-VAL314", "enum"),
+        ("SST-VAL335", "enum_fact"),
         ("SST-VAL315", "many"),
         ("SST-VAL003", "bare"),
         ("SST-VAL222", "private"),
         ("SST-PRS004", "private"),
+        ("SST-VAL334", "typed"),
         ("SST-DBT004", "typed"),
+        ("SST-VAL308", "untyped_private"),
+        ("SST-VAL333", "loose"),
         ("SST-VAL316", "sentinel"),
     ]
     unused = dbt_column_diagnostics({"wide": model}, frozenset(("orders",)))

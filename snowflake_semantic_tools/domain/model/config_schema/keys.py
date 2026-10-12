@@ -15,6 +15,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX
+from snowflake_semantic_tools.domain.model.tool import EXECUTE_AS
 
 CONFIG_FILE = "sst_config.yml"
 # How many Snowflake sessions `plan`, `validate` and `apply` work on at once when nothing says.
@@ -81,6 +82,8 @@ class ConfigKey:
             code, or the code for a value outside `choices` or not `fixed`.
         fixed: The only boolean the key accepts, or None when either is accepted.
         one_of: Children of which a present block must declare at least one.
+        folded: An `ENUM` value is matched against `choices` by `vocabulary_key`, ignoring case
+            and runs of spaces, as the member key it is the default for is matched.
     """
 
     path: str
@@ -97,6 +100,7 @@ class ConfigKey:
     code: str | None = None
     fixed: bool | None = None
     one_of: tuple[str, ...] = ()
+    folded: bool = False
 
     @property
     def segments(self) -> tuple[str, ...]:
@@ -264,7 +268,13 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _removed("generation.use_create_or_alter", "SST 1.0 renders DDL directly"),
     _removed("generation.emit_relationship_type", "relationship and join types are never rendered"),
     _key("dbt", _BLOCK, "How SST produces and reads the dbt manifest."),
-    _key("dbt.invoke", _B, "Run dbt before reading the manifest; false reads the one on disk.", default="true"),
+    _key(
+        "dbt.invoke",
+        _B,
+        "Run dbt before reading the manifest; false reads the one on disk and checks it against the "
+        "model files (SST-DBT005).",
+        default="true",
+    ),
     _key(
         "dbt.command",
         KeyKind.ENUM,
@@ -275,7 +285,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "dbt.manifest_schema_versions",
         _L,
-        "Manifest schema version numbers read, such as `[12]`; any other is refused (SST-DBT017) unless "
+        "Manifest schema version numbers read, such as `[12]`. The list replaces the default set rather "
+        "than adding to it, so name every version to accept; any other is refused (SST-DBT017) unless "
         "`--allow-unsupported-manifest-schema` is given.",
         default="the versions this release is tested against",
     ),
@@ -317,15 +328,21 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("tools", _BLOCK, "Defaults for tool backing objects.", children=ChildPolicy.ROUTES),
     _key("tools.+database", _S, "Database for defined tool objects.", default="the target database"),
     _key("tools.+schema", _S, "Schema for defined tool objects.", default="the target schema"),
-    _key("tools.+warehouse", _S, "Warehouse for defined search services.", default="the target warehouse"),
+    _key(
+        "tools.+warehouse",
+        _S,
+        "Warehouse for defined search services and procedures that name none.",
+        default="the target warehouse",
+    ),
     _key("tools.+target_lag", _S, "Target lag for defined search services."),
     _key("tools.+embedding_model", _S, "Embedding model for defined search services."),
     _key(
         "tools.+execute_as",
         KeyKind.ENUM,
-        "Rights a generic tool runs with.",
+        "Rights a defined procedure runs with (`EXECUTE AS`) when it names none.",
         default="caller",
-        choices=("caller", "owner"),
+        choices=EXECUTE_AS,
+        folded=True,
     ),
     _removed("tools.+enabled", "omit the tools instead"),
     _key(

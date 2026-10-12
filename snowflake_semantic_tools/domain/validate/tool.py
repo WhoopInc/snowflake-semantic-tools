@@ -7,12 +7,15 @@ from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.tool import (
+    EXECUTE_AS,
+    HANDLER_LANGUAGES,
     KNOWN_TOOL_TYPES,
     ToolCatalog,
     ToolGroup,
     ToolKind,
     ToolMember,
     ToolOwnership,
+    vocabulary_key,
 )
 from snowflake_semantic_tools.domain.sql import is_datatype
 from snowflake_semantic_tools.domain.validate.shared import Emitter
@@ -31,7 +34,9 @@ def validate_tool_catalog(catalog: ToolCatalog, dbt: DbtCatalog) -> DiagnosticBa
         SST-VAL603: a member's type is not a known tool type.
         SST-VAL604: a `define:` member declares neither `on:` nor `body_file:`, and is not a stage.
         SST-VAL605: a `define:` member declares `relations`, or a `reference:` member a creation key.
-        SST-PRS002: a `reference:` member declares no `relations`.
+        SST-PRS002: a `reference:` member declares no `relations`; a defined search service no
+            `search_column`; a defined routine no `language` or `returns`, or, in Java, Python
+            or Scala, no `runtime_version` or `handler`.
         SST-REF018: a relation names a target `profiles.yml` does not declare, or none names the current one.
         SST-REF019: a relation is not a three-part name.
         SST-REF023: a mutable group's reference resolves to one object for both dev and prod.
@@ -146,6 +151,7 @@ def _validate_member(member: ToolMember, catalog: ToolCatalog, dbt: DbtCatalog) 
         *_object_parameter(member, subject),
         *_search_columns(member, dbt, subject),
         *_body_file(member, catalog, subject),
+        *_render_fields(member, subject),
         *_sql_values(member, subject),
     )
 
@@ -241,6 +247,28 @@ def _search_columns(member: ToolMember, dbt: DbtCatalog, subject: str) -> tuple[
     return emit.diagnostics
 
 
+def _render_fields(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
+    """Report a field a defined member's DDL needs that no `tools:` default can supply.
+
+    A warehouse and a target lag can come from a default, so they are checked once the
+    defaults apply, when the member compiles (SST-RND042).
+    """
+    emit = Emitter(subject=subject, origin=member.origin, artifact=subject)
+    if member.ownership is not ToolOwnership.DEFINE:
+        return emit.diagnostics
+    required: tuple[tuple[str, str | None], ...] = ()
+    if member.type == ToolKind.CORTEX_SEARCH_SERVICE.value:
+        required = (("search_column", member.search_column),)
+    elif member.type in (ToolKind.PROCEDURE.value, ToolKind.FUNCTION.value):
+        required = (("language", member.language), ("returns", member.returns))
+        if member.language and member.language.strip().casefold() in HANDLER_LANGUAGES:
+            required += (("runtime_version", member.runtime_version), ("handler", member.handler))
+    for field, value in required:
+        if not value:
+            emit("SST-PRS002", field=field)
+    return emit.diagnostics
+
+
 def _body_file(member: ToolMember, catalog: ToolCatalog, subject: str) -> tuple[Diagnostic, ...]:
     """Report a defined member's `body_file:` that could not be read, or that is blank.
 
@@ -269,7 +297,6 @@ def _refused_body(member: ToolMember, catalog: ToolCatalog) -> bool:
 
 
 _LANGUAGES = ("java", "javascript", "python", "scala", "sql")
-_EXECUTE_AS = ("caller", "owner", "restricted caller")
 _REFRESH_MODES = ("auto", "full", "incremental")
 # dbt materializations that rebuild the relation on every run instead of merging into it.
 _REPLACING_MATERIALIZATIONS = frozenset(("table", "view"))
@@ -357,10 +384,10 @@ def _sql_values(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
             emit("SST-PRS003", field=key, expected="a Snowflake data type", found=repr(value))
     for key, value, allowed in (
         ("language", member.language, _LANGUAGES),
-        ("execute_as", member.execute_as, _EXECUTE_AS),
+        ("execute_as", member.execute_as, EXECUTE_AS),
         ("refresh_mode", member.refresh_mode, _REFRESH_MODES),
     ):
-        if value and " ".join(value.casefold().split()) not in allowed:
+        if value and vocabulary_key(value) not in allowed:
             emit("SST-PRS013", field=key, found=value, expected=", ".join(allowed))
     if not member.where or "{{" in member.where:
         return emit.diagnostics

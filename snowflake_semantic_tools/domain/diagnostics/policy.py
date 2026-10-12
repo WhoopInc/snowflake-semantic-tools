@@ -11,6 +11,11 @@ An applied override is recorded on the diagnostic, so `audit` can tell a legal o
 severity changed anywhere else. An override the demotion floor forbids is never applied; the
 configuration check reports it (SST-CFG033). Applying a policy twice changes nothing more.
 
+An override that promotes a code above its declared severity reaches that code's cascades too:
+the user asked to see the code, so a cascade of it reports at the override and, no longer info,
+is no longer a cascade. An override that keeps or lowers a code's severity leaves its cascades at
+info, since it asks for no more noise than the cascade already makes.
+
 Strict promotion is uniform over rules -- no code is exempt -- and follows the run's selection:
 a run `--select` or `--exclude` restricts promotes no warning about an artifact it leaves out,
 as it plans and publishes none of them. A warning that names no artifact concerns the whole
@@ -24,6 +29,7 @@ from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import (
+    ERROR_REGISTRY,
     Diagnostic,
     DiagnosticBag,
     Severity,
@@ -51,9 +57,10 @@ class SeverityPolicy:
 def apply_overrides(diagnostics: DiagnosticBag, overrides: Mapping[str, Severity]) -> DiagnosticBag:
     """Return `diagnostics` with each overridden code at the severity the project sets for it.
 
-    A diagnostic already overridden, cascaded to INFO, or whose override the demotion floor
-    forbids is left as it is. A warning strict mode already promoted is resolved again from its
-    override, so an error demoted to a warning under strict still blocks.
+    A diagnostic already overridden, whose override the demotion floor forbids, or cascaded to
+    INFO with an override that does not promote its code is left as it is. A warning strict mode
+    already promoted is resolved again from its override, so an error demoted to a warning under
+    strict still blocks.
     """
     if not overrides:
         return diagnostics
@@ -61,9 +68,11 @@ def apply_overrides(diagnostics: DiagnosticBag, overrides: Mapping[str, Severity
 
 
 def _overridden(item: Diagnostic, wanted: Severity | None) -> Diagnostic:
-    if wanted is None or item.override is not None or item.cascaded:
+    if wanted is None or item.override is not None:
         return item
     if override_refusal(item.code, wanted) is not None:
+        return item
+    if item.cascaded and wanted <= ERROR_REGISTRY[item.code].severity:
         return item
     promoted = item.severity is Severity.ERROR and item.promoted_from is Severity.WARNING
     effective = Severity.ERROR if promoted and wanted is Severity.WARNING else wanted

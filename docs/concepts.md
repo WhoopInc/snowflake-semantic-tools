@@ -22,6 +22,34 @@ published after the artifacts it depends on, so a view exists before the agent
 that queries it. The [artifact reference](reference/artifacts.md) lists each
 type's position, dependencies, and how it is updated.
 
+Each type and the types it may depend on, with an arrow pointing at the
+dependency and each type's position in brackets; a dotted arrow is a dependency
+whose published version an agent's specification pins:
+
+```mermaid
+flowchart LR
+    tool["tool (200)"] --> semantic_view["semantic_view (100)"]
+    agent["agent (300)"] --> semantic_view
+    agent --> tool
+    agent -.->|pins the version of| skill["skill (250)"]
+    agent -.->|pins the version of| plugin["plugin (260)"]
+    evals["eval (400)"] --> agent
+    profile["profile (270)"]
+```
+
+Drawn from: [registry.py](../snowflake_semantic_tools/domain/model/registry.py).
+
+`sst plan` orders its changes so that each follows every change it depends on,
+then by position, then by key, and `apply` starts a change only once everything
+it depends on has finished. Prunes run first, highest position first, so an
+agent is dropped before the view it queried. A dependency cycle stops the plan
+(`SST-PLN005`). An agent that pins a skill or plugin version is written only
+when the plan also covers that skill or plugin, which proves the version exists
+or publishes it first; one left out by `--select` or `--exclude` blocks the agent
+(`SST-PLN030`).
+
+Drawn from: [order.py](../snowflake_semantic_tools/domain/plan/order.py), [prune.py](../snowflake_semantic_tools/domain/plan/prune.py).
+
 ### Identity and versions
 
 An artifact is identified by its **key**, `<type>:<name>`, such as
@@ -92,6 +120,7 @@ and SST resolves the name for the target being built:
 |---|---|---|
 | `{{ ref('orders') }}` | the dbt model's relation | view and member `tables:` |
 | `{{ ref('orders', 'order_id') }}` | a column of that model | expressions, relationship conditions, a view's `columns:` |
+| `{{ source('raw', 'orders') }}` | a dbt source's relation, a table without columns | view and member `tables:` |
 | `{{ metric('order_count') }}` | another metric's expression | metric expressions, verified query SQL, a view's `metrics:` |
 | `{{ var('name') }}` | a value from `vars:` in `sst_config.yml` | metric and filter expressions, verified query SQL |
 | `{{ custom_instructions('name') }}` | a custom instruction block | a view's `custom_instructions:` |
@@ -281,6 +310,72 @@ is untouched. The command still exits 1 while errors remain, and an error that
 names no artifact, such as a configuration error, still stops the run. A saved
 partial plan applies only with `--partial`, and `--partial` cannot be combined
 with `--prune`, because an artifact left out for errors would look deleted.
+
+### How plan decides each change
+
+`plan` gives every artifact one action -- `create`, `update`, `noop`, `prune`, or
+`blocked` -- and a reason, which the plan prints and saves in `plan.json`. A
+blocked artifact writes nothing, and stays in the plan so that it is reported.
+The first question that applies decides; skills, plugins, profiles, and evals
+are made of several resources, so each type's own handler compares those:
+
+```mermaid
+flowchart TD
+    start["one rendered artifact"] --> invalid{"validation errors?"}
+    invalid -- yes --> b1["BLOCKED"]
+    invalid -- no --> composite{"skill, plugin, profile or eval?"}
+    composite -- yes --> handler["its type's handler decides"]
+    composite -- no --> live{"an object under its name?"}
+    live -- no --> create["CREATE"]
+    live -- yes --> kind{"of the artifact's type?"}
+    kind -- no --> b2["BLOCKED: SST-PLN002"]
+    kind -- yes --> entry{"a state entry for it?"}
+    entry -- no --> b3["BLOCKED, unmanaged: SST-PLN024"]
+    entry -- yes --> moved{"entry records another target?"}
+    entry -->|"yes, but a fingerprint is not a digest"| b6["BLOCKED, an SST defect: SST-VAL320"]
+    moved -- yes --> b4["BLOCKED, target moved: SST-PLN025"]
+    moved -- no --> marker{"marker names the recorded manifest and fingerprint?"}
+    marker -->|"no, but this definition's"| u1["UPDATE: record an unrecorded publish"]
+    marker -- no --> b5["BLOCKED, changed outside SST: SST-PLN014"]
+    marker -- yes --> fp{"fingerprint differs, or last write stopped part way?"}
+    fp -- yes --> u2["UPDATE"]
+    fp -- no --> noop["NOOP"]
+```
+
+Drawn from: [classify.py](../snowflake_semantic_tools/domain/plan/classify.py), [action.py](../snowflake_semantic_tools/domain/model/lifecycle/action.py).
+
+An object edited outside SST so that its marker no longer matches what state
+recorded is never overwritten: the plan blocks it, with the warning `SST-PLN014`, until
+the object SST wrote is restored or the object is removed. An object whose
+marker names the very definition being planned is updated instead: an apply
+published it and was stopped before it recorded it, so publishing it again
+records it.
+
+With `--prune`, the plan then looks at what SST published and the project no
+longer renders:
+
+```mermaid
+flowchart TD
+    gone["an artifact the project no longer renders"] --> which{"its type"}
+    which -->|"semantic_view or agent"| mark{"SST ownership marker?"}
+    mark -- no --> s3["skipped: SST-PLN003"]
+    mark -- yes --> agree{"state recorded exactly this object?"}
+    agree -- no --> s4["skipped: SST-PLN004"]
+    agree -- yes --> drop["PRUNE: dropped"]
+    which -->|"skill, plugin or eval"| report["PRUNE, report-only: SST-PLN034"]
+    which -- profile --> deactivate["PRUNE: its row deactivated"]
+    which -- tool --> kept["never pruned"]
+```
+
+Drawn from: [prune.py](../snowflake_semantic_tools/domain/plan/prune.py), [composite.py](../snowflake_semantic_tools/app/lifecycle/composite.py), [profiles.py](../snowflake_semantic_tools/app/lifecycle/profiles.py).
+
+Then blocking spreads: a write whose dependency the project compiles, the plan
+leaves out, and Snowflake lacks is blocked (`SST-PLN038`), and so, last, is
+every change that depends, however indirectly, on a blocked one. `sst plan` exits 1 when any change is
+blocked or an error is reported, 2 when apply would write or still has state to
+record, and 0 otherwise; `--no-detailed-exitcode` turns 2 into 0.
+
+Drawn from: [changeset.py](../snowflake_semantic_tools/domain/plan/changeset.py), [plan_output.py](../snowflake_semantic_tools/cli/plan_output.py).
 
 ## Diagnostics
 

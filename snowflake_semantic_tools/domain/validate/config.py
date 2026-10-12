@@ -32,7 +32,7 @@ from snowflake_semantic_tools.domain.model.config_schema.keys import (
     KeyKind,
     KeyStatus,
 )
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, vocabulary_key
 
 _TYPES: Mapping[KeyKind, tuple[type, ...]] = MappingProxyType(
     {
@@ -69,11 +69,13 @@ def validate_config(
 
     Diagnostics:
         SST-CFG003: a key is not declared where it is written.
-        SST-CFG004: a value has the wrong type.
+        SST-CFG004: a value has the wrong type, or an entry of `dbt.manifest_schema_versions` is
+            not an integer.
         SST-CFG006: a required key is absent or empty.
         SST-CFG007: an unknown top-level key is within two edits of a declared one.
-        SST-CFG008: a value is outside its choices or bounds, or is not its fixed value; or
-            `enrichment.sample_values_display_limit` exceeds `enrichment.distinct_limit`.
+        SST-CFG008: a value is outside its choices or bounds, or is not its fixed value;
+            `enrichment.sample_values_display_limit` exceeds `enrichment.distinct_limit`; or
+            `dbt.manifest_schema_versions` is an empty list.
         SST-CFG015: `evals` sets `+database` or `+schema`.
         SST-CFG040: `vars` declares `sha_version`, which SST supplies.
         SST-CFG042: `evals` or `skills` declares a folder route.
@@ -344,7 +346,34 @@ def _block_problems(
         problems.append(_diagnostic("SST-VAL817", actual, positions, key=entry_path))
     if entry_path == "enrichment":
         problems.extend(_enrichment_limit_problems(value, actual, positions))
+    if entry_path == "dbt":
+        problems.extend(_schema_version_problems(value, actual, positions))
     return problems
+
+
+def _schema_version_problems(
+    value: Mapping[Any, object], actual: tuple[str, ...], positions: _Located
+) -> list[Diagnostic]:
+    """Diagnose what `dbt.manifest_schema_versions` would drop: an entry that is not an integer.
+
+    The reader keeps only integers and reads an empty result as the default set, so an empty
+    list, or one of only strings or booleans, would silently accept the defaults. A value that
+    is not a list is reported by its type check, and is not looked into.
+    """
+    versions = value.get("manifest_schema_versions")
+    if not isinstance(versions, list):
+        return []
+    path = (*actual, "manifest_schema_versions")
+    key = ".".join(path)
+    if not versions:
+        return [
+            _diagnostic("SST-CFG008", path, positions, key=key, found="[]", expected="a list of one or more versions")
+        ]
+    return [
+        _diagnostic("SST-CFG004", path, positions, key=f"{key}[{index}]", expected="integer", found=type(item).__name__)
+        for index, item in enumerate(versions)
+        if not isinstance(item, int) or isinstance(item, bool)
+    ]
 
 
 def _enrichment_limit_problems(
@@ -467,7 +496,7 @@ def _value_problem(spec: ConfigKey, value: object, path: tuple[str, ...], positi
     mistyped = expected is not None and not isinstance(value, expected)
     if mistyped or spec.kind is KeyKind.INTEGER and isinstance(value, bool):
         return _diagnostic("SST-CFG004", path, positions, key=key, expected=spec.kind.value, found=type(value).__name__)
-    if spec.choices and value not in spec.choices:
+    if spec.choices and (vocabulary_key(str(value)) if spec.folded else value) not in spec.choices:
         code = spec.code or "SST-CFG008"
         return _diagnostic(code, path, positions, key=key, found=repr(value), expected=", ".join(spec.choices))
     if spec.fixed is not None and value is not spec.fixed:

@@ -88,7 +88,6 @@ class ExtensionLifecycleHandler(CompositeHandler[ExtensionRelease, _Observed, Ca
         super().__init__(port)
         self._releases = MappingProxyType(dict(releases))
         self.artifact_type = artifact_type
-        self._prune_order = 250 if artifact_type == "skill" else 260
         self._stage_lock = Lock()
 
     def _subject(self, artifact: RenderedArtifact) -> ExtensionRelease:
@@ -138,7 +137,7 @@ class ExtensionLifecycleHandler(CompositeHandler[ExtensionRelease, _Observed, Ca
         """Report an extension the project no longer has a source for, which SST never drops.
 
         Diagnostics:
-            SST-PLN021: the resources SST keeps, and what to do before removing them.
+            SST-PLN034: the resources SST keeps, and what to do before removing them.
             SST-VAL805: the repository and the catalog disagree: the extension has no source.
         """
         change = super().report_prune(artifact_key, state_entry)
@@ -326,6 +325,8 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         version = self._version()
         if version is None:
             return self.fail(f"alias {release.alias} is absent from {target} after ADD VERSION", "SST-APL016")
+        # Snowflake publishes no CORTEX EXTENSION reference; the server adds an empty version from a
+        # path that holds nothing, so the files are checked (docs/design/snowflake-behaviour.md).
         published = tuple(sorted(self._port.list_location(version.location)))
         leftover = sorted(set(published) - set(release.paths))
         if leftover and set(published) > set(release.paths):

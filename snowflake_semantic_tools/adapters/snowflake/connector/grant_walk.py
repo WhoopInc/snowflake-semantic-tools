@@ -4,6 +4,9 @@ The walk starts at the roles and database roles SHOW GRANTS ON SCHEMA names as h
 privilege or owning the schema, and climbs SHOW GRANTS OF ROLE / OF DATABASE ROLE until it
 reaches the role asked about. It reads only the roles a holder is granted to, never the
 role's own grants: the role's hierarchy may be far larger than the schema's holders.
+
+A session check climbs only as far as the account roles: whether one is in the session is
+Snowflake's to answer, through IS_ROLE_IN_SESSION, and it follows the account-role hierarchy.
 """
 
 from __future__ import annotations
@@ -38,6 +41,11 @@ class Grantee:
         return cls(_DATABASE_ROLE, (Identifier.shown(database.folded), Identifier.shown(name.folded)))
 
     @property
+    def is_account_role(self) -> bool:
+        """Whether this is an account role, which IS_ROLE_IN_SESSION can answer for."""
+        return self.kind == _ROLE
+
+    @property
     def grants_of(self) -> Sql:
         """The statement listing the roles this grantee is granted to."""
         if self.kind == _DATABASE_ROLE:
@@ -48,12 +56,13 @@ class Grantee:
 def schema_holders(
     rows: Iterable[Mapping[str, object]], scope: SchemaScope, privileges: tuple[str, ...]
 ) -> dict[Grantee, frozenset[str]]:
-    """Map each role or database role SHOW GRANTS ON SCHEMA names to the requested privileges it holds.
+    """Map each role or database role SHOW GRANTS ON names to the requested privileges it holds.
 
-    Ownership of the schema holds every requested privilege. A database role's name is
-    printed as `DB.NAME` or, unqualified, in the schema's database -- the only database whose
-    roles hold its privileges; a grant to anything else (a share, an application) confers
-    nothing on a role.
+    The rows are the grants on the schema `scope` names, or on an object in it such as a
+    stage. Ownership holds every requested privilege. A database role's name is printed as
+    `DB.NAME` or, unqualified, in the schema's database -- the only database whose roles hold
+    its privileges; a grant to anything else (a share, an application) confers nothing on a
+    role.
     """
     wanted = {privilege.upper() for privilege in privileges}
     holders: dict[Grantee, set[str]] = {}
@@ -93,9 +102,11 @@ def held_by(
     holders: Mapping[Grantee, frozenset[str]],
     read: Callable[[Grantee], tuple[Grantee, ...]],
     depth: int,
-) -> frozenset[str]:
-    """Return the privileges `role` holds: a holder reaches it in fewer than `depth` grants.
+) -> tuple[frozenset[str], frozenset[str]]:
+    """Return the privileges `role` holds, and those still travelling when the walk stopped.
 
+    A holder reaches `role` in fewer than `depth` grants; a privilege not held that a frontier
+    node still carries after `depth` grants is cut short, as a deeper path might pass it on.
     One breadth-first walk over every holder at once, each frontier node carrying the
     privileges it passes on. Each grantee is read at most once, so a cycle ends; a pair of
     grantee and privilege travels on only the first, shortest time it is reached, and
@@ -121,7 +132,47 @@ def held_by(
                 elif arriving:
                     following.setdefault(parent, set()).update(arriving)
         frontier = following
-    return frozenset(held)
+    cut_short = {privilege for carried in frontier.values() for privilege in carried - held}
+    return frozenset(held), frozenset(cut_short)
+
+
+def account_holders(
+    holders: Mapping[Grantee, frozenset[str]],
+    read: Callable[[Grantee], tuple[Grantee, ...]],
+    depth: int,
+) -> dict[Grantee, frozenset[str]]:
+    """Map each account role to the privileges it holds, directly or through database roles.
+
+    An account role among `holders` keeps what it holds. A database role passes what it holds
+    to each role it is granted to, climbing through database roles until an account role is
+    reached, in fewer than `depth` grants. Each database role is read at most once, so a
+    cycle ends; one reached again carries on only the privileges it had not carried yet.
+    """
+    found: dict[Grantee, set[str]] = {}
+    reached: dict[Grantee, set[str]] = {}
+    edges: dict[Grantee, tuple[Grantee, ...]] = {}
+    frontier: dict[Grantee, set[str]] = {}
+    for grantee, held in holders.items():
+        side = found if grantee.kind == _ROLE else frontier
+        side.setdefault(grantee, set()).update(held)
+        reached.setdefault(grantee, set()).update(held)
+    for _ in range(depth - 1):
+        if not frontier:
+            break
+        following: dict[Grantee, set[str]] = {}
+        for grantee, carried in frontier.items():
+            if grantee not in edges:
+                edges[grantee] = read(grantee)
+            for parent in edges[grantee]:
+                if parent.kind == _ROLE:
+                    found.setdefault(parent, set()).update(carried)
+                    continue
+                arriving = carried - reached.setdefault(parent, set())
+                reached[parent] |= arriving
+                if arriving:
+                    following.setdefault(parent, set()).update(arriving)
+        frontier = following
+    return {grantee: frozenset(held) for grantee, held in found.items()}
 
 
 def _database_role(database: Identifier, name: str) -> Grantee:

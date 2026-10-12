@@ -36,7 +36,7 @@ def catalog() -> DbtCatalog:
     )
 
 
-def test_resolver_retains_origins_and_poisoned_state() -> None:
+def test_resolver_returns_resolved_text_and_poisoned_state() -> None:
     resolved, diagnostics = resolve_scalar(
         "COUNT({{ ref('orders', 'id') }})",
         METRIC_EXPR,
@@ -45,7 +45,6 @@ def test_resolver_retains_origins_and_poisoned_state() -> None:
         field="expression",
     )
     assert resolved.text == "COUNT(ORDERS.ID)"
-    assert resolved.origins[0].model_name == "orders"
     assert not resolved.poisoned
     assert diagnostics == ()
 
@@ -96,7 +95,6 @@ def test_resolver_handles_metric_instruction_var_and_tag_calls() -> None:
         field="expression",
     )
     assert metric.text == "ORDER_COUNT = 'completed'"
-    assert [origin.kind.name for origin in metric.origins] == ["METRIC", "VAR"]
     assert diagnostics == ()
 
     instruction, diagnostics = resolve_scalar(
@@ -321,7 +319,7 @@ def test_resolver_covers_remaining_error_and_value_branches() -> None:
         ResolveContext(catalog(), instruction_names=frozenset(("rules",))),
         field="custom_instructions",
     )
-    assert custom_kind.origins[0].kind.name == "CUSTOM_INSTRUCTION"
+    assert custom_kind.text == "RULES"
     assert diagnostics == ()
 
     table_kind, diagnostics = resolve_scalar(
@@ -331,7 +329,7 @@ def test_resolver_covers_remaining_error_and_value_branches() -> None:
         ResolveContext(catalog()),
         field="expression",
     )
-    assert table_kind.origins[0].kind.name == "TABLE"
+    assert table_kind.text == "DB.SCH.ORDERS"
     assert diagnostics == ()
 
     empty_context = ResolveContext(catalog(), metric_names=frozenset(("m",)), metric_values={"m": ""})

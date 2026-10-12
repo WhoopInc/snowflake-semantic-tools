@@ -67,7 +67,7 @@ def capture_baseline(
         eval_key=compiled.artifact_key,
         dataset_fingerprint=compiled.rendered.dataset_fingerprint,
         config_fingerprint=compiled.rendered.config_fingerprint,
-        agent_version=_attempt_agent_version(selected),
+        agent_version=_attempt_agent_version(selected, "baseline"),
         metric_versions=_metric_versions(compiled),
         metrics=tuple(
             EvalBaselineMetric(
@@ -123,7 +123,7 @@ def evaluate_gate(
     regression, and reports it as SST-VAL763; a report tier passes and lists it. Without a
     usable baseline or a completed current attempt the verdict has no signal: it does not pass,
     and its reason says why -- `baseline_absent`, `current_no_signal`, `baseline_incompatible`,
-    `baseline_incomplete`, `baseline_expired` or `retrieval_no_signal`.
+    `baseline_incomplete` or `baseline_expired`.
 
     Raises:
         ValueError: the tier is invalid, a timestamp does not parse, or a current attempt's
@@ -150,10 +150,6 @@ def evaluate_gate(
         reason, diagnostic = unusable
         return EvalGateVerdict(tier, (), False, reason), DiagnosticBag((diagnostic,))
     warnings = _expiry_warning(compiled, baseline, now)
-    no_signal = _current_no_signal(compiled, result)
-    if no_signal is not None:
-        reason, diagnostic = no_signal
-        return EvalGateVerdict(tier, (), False, reason), DiagnosticBag((*warnings, diagnostic))
     baseline_vectors = {(item.question_key, item.metric_name): item.passed_attempts for item in baseline.metrics}
     current_vectors = _attempt_vectors(_completed_attempts(result))
     if set(baseline_vectors) != set(current_vectors):
@@ -239,18 +235,6 @@ def _expiry_warning(compiled: CompiledEval, baseline: EvalBaselineRecord, now: s
     return ()
 
 
-def _current_no_signal(compiled: CompiledEval, result: EvalRunResult) -> tuple[str, Diagnostic] | None:
-    """Say why the run gives the gate no signal, as a verdict reason and its diagnostic; None when it does.
-
-    The run gives a signal once some attempt completed and was read; the attempts that did not
-    pass carry none, and the run reported each of them.
-    """
-    if not _completed_attempts(result):
-        detail = f"eval '{compiled.artifact_key}' has no retrievable completed attempt"
-        return "retrieval_no_signal", D("SST-SNO001", detail=detail)
-    return None
-
-
 def _regressions(
     compiled: CompiledEval,
     baseline_vectors: dict[tuple[str, str], tuple[bool, ...]],
@@ -324,21 +308,21 @@ def _baseline_runs(compiled: CompiledEval, default: int | None = None) -> int:
     return default or 1
 
 
-def _attempt_agent_version(attempts: tuple[EvalRunAttempt, ...]) -> str:
+def _attempt_agent_version(attempts: tuple[EvalRunAttempt, ...], run: str) -> str:
     versions = {attempt.agent_version for attempt in attempts if attempt.agent_version}
     if len(versions) != 1:
-        raise ValueError("baseline attempts do not identify one immutable agent version")
+        raise ValueError(f"{run} attempts do not identify one immutable agent version")
     version = next(iter(versions))
     if re.fullmatch(r"VERSION\$[1-9]\d*", version) is None:
-        raise ValueError(f"baseline attempt agent version {version!r} is not immutable")
+        raise ValueError(f"{run} attempt agent version {version!r} is not immutable")
     return version
 
 
 def _result_agent_version(result: EvalRunResult) -> str:
     completed = _completed_attempts(result)
     if not completed:
-        raise ValueError("does not identify one immutable current agent version")
-    return _attempt_agent_version(completed)
+        raise ValueError("has no retrievable completed attempt")
+    return _attempt_agent_version(completed, "current")
 
 
 def _metric_versions(compiled: CompiledEval) -> tuple[tuple[str, str], ...]:

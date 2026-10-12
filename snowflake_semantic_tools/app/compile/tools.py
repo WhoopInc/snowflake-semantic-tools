@@ -137,7 +137,7 @@ class CompileTools:
         although it is only referenced is dropped.
 
         Diagnostics:
-            SST-RND040, SST-RND041: as `tool_render_checks` reports them.
+            SST-RND040, SST-RND041, SST-RND042: as `tool_render_checks` reports them.
             SST-INT902: rendering a member raised KeyError, TypeError or ValueError.
             SST-VAL612: a `reference:` member was rendered.
             SST-VAL617: a search service indexes a dbt model that dbt rebuilds every run.

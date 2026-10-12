@@ -350,8 +350,11 @@ def test_capture_prior_reads_every_published_kind_without_failing_the_plan(
     port = published_target(project, payload)
     targets = {str(item["artifact_key"]): str(item["target"]) for item in payload["data"]["changes"]}
     for key, target in targets.items():
-        if key.startswith(("semantic_view:", "tool:")):
+        if key.startswith("tool:"):
             port.definitions[target] = f"create or replace {key}"
+        if key.startswith("semantic_view:"):
+            # A view's GET_DDL text in the restorable form, which the capture keeps as it is.
+            port.definitions[target] = f"create or replace semantic view {target}\n  COPY GRANTS"
         if key.startswith("agent:"):
             port.agent_version_rows[target] = (
                 AgentVersion(None, None, specification="{}"),
@@ -376,7 +379,7 @@ def test_capture_prior_reads_every_published_kind_without_failing_the_plan(
         assert prior.endswith('{\n  "models": {\n    "orchestration": "auto"\n  }\n}\n')
     for key, prior in priors.items():
         if key.startswith(("semantic_view:", "tool:")):
-            assert prior == f"create or replace {key}"
+            assert prior == port.definitions[targets[key]]
         elif not key.startswith("agent:"):
             # A skill, plugin, profile, or eval publishes content-addressed resources.
             assert prior is None, key
@@ -468,7 +471,7 @@ def test_type_exclusion_removes_semantic_views_from_plan_and_prune_scope(
         "agent",
         "eval",
     }
-    assert {item["params"]["blocker"] for item in payload["diagnostics"] if item["code"] == "SST-VAL015"} == {
+    assert {item["params"]["blocker"] for item in payload["diagnostics"] if item["code"] == "SST-PLN038"} == {
         "semantic_view:jaffle_sales",
         "semantic_view:jaffle_menu",
     }
@@ -517,7 +520,7 @@ def test_an_agent_is_never_planned_without_the_skill_version_it_pins(
         ],
     )
     # With every dependency it does not find in Snowflake selected too, the agent publishes
-    # after them (SST-VAL015 otherwise).
+    # after them (SST-PLN038 otherwise).
     assert together.exit_code == 2, together.output
     changes = [(item["artifact_key"], item["action"]) for item in json.loads(together.output)["data"]["changes"]]
     assert ("skill:jaffle-semantics", "create") in changes

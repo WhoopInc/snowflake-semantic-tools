@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
 
 TITLE: str = "Manifest and state"
 
@@ -35,14 +35,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="the manifest is structurally incomplete",
     ),
     spec(
-        "SST-MAN004",
-        Severity.ERROR,
-        "Impact index incomplete",
-        "{artifact} has no reverse-index entry",
-        "re-run sst compile",
-        condition="the impact index of a stored manifest does not list an artifact under a file it came from",
-    ),
-    spec(
         "SST-MAN005",
         Severity.ERROR,
         "manifest_id does not match the recomputed hash",
@@ -66,6 +58,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "could not write {path}: {detail}",
         "check the filesystem permissions",
         condition="the manifest could not be persisted",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-MAN008",

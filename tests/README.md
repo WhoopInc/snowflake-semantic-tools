@@ -9,6 +9,7 @@ poetry run pytest tests/ -n auto                   # everything offline, in para
 poetry run pytest tests/unit/domain -q             # one ring
 poetry run pytest tests/unit/test_golden_ddl.py -q # one file
 poetry run pytest tests/ -q -k migrate_refs        # by name
+poetry run pytest tests/contract/test_dbt_manifest_contract.py --dbt-manifest <manifest.json>  # also a manifest dbt just wrote
 ```
 
 Run with the dev dependencies installed (`poetry install`): `test_ring_boundaries.py` calls the `lint-imports` script beside the running interpreter. The coverage floors and the other CI gates are in [CONTRIBUTING.md](../CONTRIBUTING.md#running-the-gates). Two markers: `live` tests connect to Snowflake and are deselected by default (`-m live` runs them; see [CONTRIBUTING.md](../CONTRIBUTING.md#testing)), and `e2e` tests drive the `sst` CLI in a subprocess over a whole project. Every other test runs offline under `pytest tests/`.
@@ -34,16 +35,17 @@ tests/
 │   ├── test_network_guard.py, test_environment_isolation.py  # what offline tests cannot reach
 │   ├── test_live_config.py, test_live_tooling.py, test_ci_tools.py  # live and CI tooling, offline
 │   └── test_*.py                # compile use case, manifest, renderer
-├── codes/                       # diagnostic codes against the 1.0 catalog: parity, emitted, tested (README.md)
-│   ├── catalog.json, allowlist/ # the catalog's declaration rows; shrink-only allowlists
+├── codes/                       # diagnostic-code guards: emitted, tested (README.md)
+│   ├── allowlist/               # shrink-only allowlists
 │   └── <area>/test_<code>.py    # a code's fires/silent pair
-├── contract/                    # adapters against their ports: offline Snowflake ports, connector helpers, file stores, profile
+├── contract/                    # adapters against their ports: offline Snowflake ports, connector helpers, file stores, profile, the dbt manifest
 ├── contract_live/               # live: the real connector against the same port contract, in a scratch schema
 ├── integration/                 # live: apply in a real account; marker, metric query, re-plan, grants
 ├── e2e/                         # the CLI end to end: the offline negative corpus, and the live lifecycle through smoke
 ├── fixtures/
 │   ├── reference_project/                # a dbt + SST project that uses every artifact type
 │   ├── reference_project_manifest.json   # its dbt manifest, so it compiles offline
+│   ├── dbt_manifests/                    # full manifests of it, one per schema version and dbt release
 │   ├── scoped_views/                     # two include- and exclude-mode views, copied into a project copy
 │   ├── v1_dialect/                       # the 0.3 dialect corpus for `sst migrate refs`
 │   └── negative_overlays/                # one bad file per case, laid over the reference project; expected.json
@@ -55,6 +57,7 @@ tests/
                                  #   app_ports.py, clocks.py -- the in-memory state store and the clock
                                  #   eval_state_store.py, golden_store.py -- more ports
                                  #   project_inputs.py, projects.py, manifests.py -- project inputs and manifests
+                                 #   manifest_capture.py -- scrubs a manifest `dbt parse` wrote into dbt_manifests/
                                  #   artifact_builders.py, compile_builders.py, eval_builders.py -- test values
                                  #   cli_projects.py -- the reference fixture, project copies, CLI invocations
                                  #   code_metrics.py, structure_rules.py, docstring_rules.py, import_rules.py -- the gates
@@ -92,11 +95,36 @@ When a change to rendered output is intended, run the golden suite to see the di
 
 ## Coverage and the code guards
 
-CI holds each layer to a coverage floor and to the ratchet in `coverage_baseline.json`, whose line and branch numbers per layer may rise but never fall; `python -m tests.helpers.coverage_ratchet raise --coverage-json coverage.json` locks in a rise. [CONTRIBUTING.md](../CONTRIBUTING.md#running-the-gates) gives the commands. `codes/` holds every diagnostic code to the 1.0 catalog; its allowlists are empty, and only shrink ([codes/README.md](codes/README.md)).
+CI holds each layer to a coverage floor and to the ratchet in `coverage_baseline.json`, whose line and branch numbers per layer may rise but never fall; `python -m tests.helpers.coverage_ratchet raise --coverage-json coverage.json` locks in a rise. [CONTRIBUTING.md](../CONTRIBUTING.md#running-the-gates) gives the commands. `codes/` requires every registered diagnostic code to be raised and tested both ways; its allowlists are empty, and only shrink ([codes/README.md](codes/README.md)).
 
 ## Live Tests
 
 Tests marked `live` connect to a Snowflake account that only configuration names: `SST_TEST_SNOWFLAKE_*`, the git-ignored `live.local.env` (template: `live.example.env`), or a named connection. `SST_TEST_RUN_ID` names the run in its scratch schemas. [docs/guides/testing-live.md](../docs/guides/testing-live.md) explains how to configure and run them, and what each workflow under `.github/workflows/` runs.
+
+## What the tests promise
+
+A test is worth what it cannot be fooled by. Each layer proves one kind of claim, and the rules on what it may not do are what make the claim hold.
+
+- **Domain** (`unit/domain`): the pipeline's logic, as pure functions. The domain does no I/O and reads no clock, environment, or randomness (the ring contracts in [CONTRIBUTING.md](../CONTRIBUTING.md#architecture)), so its tests build values and compare results. `unit/domain/conftest.py` refuses every connection, loopback included. A failure here is a logic bug, never the machine it ran on.
+- **Application** (`unit/app`): use cases over real in-memory ports, never mocks; the dev dependencies hold no mocking library. A fake is working code with state, so a test asserts what the use case left behind, not which calls it made, and a refactor that keeps the behaviour keeps the test green.
+- **Contract** (`contract/`): the offline Snowflake doubles and the file adapters held to their ports' contracts. `contract_live/` holds the real connector to the same results; if the doubles promise something the connector does not, every application test that leans on them is suspect, and that layer is how it shows.
+- **CLI** (`unit/cli`): commands through `CliRunner`, asserting each command's exit codes, its JSON envelope, and what it prints.
+- **Live** (`contract_live/`, `integration/`, `e2e/test_live_lifecycle.py`): the only tests marked `live`, so the only ones that may connect, and only when `-m live` selects them and an account is configured. Without one they skip, or fail under `--require-snowflake`, so a gate that could not connect is never green. Every other test runs under the network guard, which fails a test even when the code under test swallowed the refusal.
+
+Coverage is measured per layer because one global number lets a well-tested layer hide an untested one. The domain, application, and CLI floors are each measured from that layer's own tests, so `app` cannot pass on lines the CLI tests happened to run; the adapters floor and the ratchet read the whole suite's run, and the ratchet holds each layer's line and branch coverage to its baseline, which may rise and never fall. The domain, being pure, is held to every line and branch.
+
+A failing test fails the run. The suite has no retry plugin, and what it does instead makes a flaky test visible rather than lucky: CI's Hypothesis profile is deterministic, so a property failure reproduces on rerun; a test that deadlocks fails at 120 seconds with every thread's stack; a test whose thread outlives it fails; and every offline test starts from an empty home directory and none of the `SST_*` variables `sst` reads.
+
+Some claims cannot be proven offline. The goldens prove SST renders the intended text; only Snowflake can say it accepts it. The live layers prove, in scratch schemas:
+
+- the real connector meets the port contract the doubles meet, including that a statement Snowflake refuses fails with text the signature table recognises, and that state round-trips and the run lock admits one run;
+- `apply` publishes a view that carries its ownership marker and answers a metric query, and a plan after it has nothing left to do;
+- replacing the view keeps the grants on it (when a grantee role is configured);
+- the CLI sequence `validate` with the Snowflake syntax check, `plan`, `apply`, `plan` again, and the smoke suite each exits as documented.
+
+Agent evaluation is the evals suite, run by the manual workflow against a published agent, not by pytest. [docs/guides/testing-live.md](../docs/guides/testing-live.md) says how to configure and run each of these.
+
+Drawn from: [conftest.py](conftest.py), [unit/domain/conftest.py](unit/domain/conftest.py), [helpers/network_guard.py](helpers/network_guard.py), [helpers/coverage_ratchet.py](helpers/coverage_ratchet.py), [contract_live/test_connector_contract.py](contract_live/test_connector_contract.py), [integration/test_apply_live.py](integration/test_apply_live.py), [e2e/test_live_lifecycle.py](e2e/test_live_lifecycle.py), [pyproject.toml](../pyproject.toml), [test-and-lint.yml](../.github/workflows/test-and-lint.yml).
 
 ## Writing Tests
 

@@ -246,6 +246,163 @@ cannot change in place. SST never grants new access, but it re-issues exactly
 the explicit grants the object held before the replacement, then checks that
 they are all back, so the objects an agent calls keep the access they had.
 
+### Defining tool objects
+
+A `define:` member renders to one object, named after the member, in
+`tools.+database` / `tools.+schema`. Four `type:` values render: a
+`cortex_search_service`, a `procedure`, a `function`, and a `stage`. An `agent`
+or `generic` member has no renderer (`SST-RND040`), so it belongs under
+`reference:`, and a type outside these six is an error (`SST-VAL603`).
+
+Every member takes `name:` and `type:` (`SST-PRS002`), and `description:`,
+which becomes the object's comment after SST's ownership marker and is the
+description of a search or generic tool that calls the member and sets none. A member
+other than a stage needs `on:` or `body_file:` (`SST-VAL604`). A key SST does
+not read, at a tools file's root, on a group, or on a member, is a warning
+(`SST-PRS004`), and an error naming the key it resembles when it is a near
+miss of one (`SST-PRS022`), as in an agent file.
+
+A `reference:` member takes `relations:` and may also carry what an agent tool
+reads from it -- `description`, `warehouse`, `columns_and_descriptions`,
+`id_column`, `title_column`, and `signature` -- but no key that only creating
+the object needs, such as `on:`, `body_file:`, or `language:` (`SST-VAL605`).
+
+`tools:` in `sst_config.yml` fills what a member leaves unset, after any
+`tools.<group>` override for its group: `+warehouse` (else the target's
+warehouse), `+target_lag`, and `+embedding_model` for a search service, and
+`+warehouse` and `+execute_as` for a procedure. A function and a stage take no
+defaults. A member left without a value the DDL needs does not compile: one no
+default can supply, such as a routine's `language:` or `returns:`, is
+`SST-PRS002`, and a warehouse or target lag no default supplied either is
+`SST-RND042`.
+
+**Search service** (`type: cortex_search_service`) renders
+`CREATE OR REPLACE CORTEX SEARCH SERVICE`, whose query selects the declared
+columns, then the attribute columns, then the search column, each once, from
+the model `on:` names:
+
+| Key | Type | Required | Renders to |
+|---|---|---|---|
+| `on.table` | `"{{ ref('<model>') }}"` | yes | the relation the query reads (`SST-VAL608`) |
+| `on.search_column` | column name | yes | `ON <column>` |
+| `on.attributes` | list of column names | no | `ATTRIBUTES <columns>` |
+| `columns_and_descriptions` | map of column to `description`, `type`, `searchable`, `filterable` | no | columns added to the query; the searchable and filterable ones describe the agent's search tool |
+| `id_column`, `title_column` | column name | no | nothing in the DDL; the agent's search tool defaults to them |
+| `where` | one SQL expression | no | `WHERE <expression>` on the query (`SST-VAL418`) |
+| `warehouse` | identifier | yes, defaulted | `WAREHOUSE = <warehouse>` |
+| `target_lag` | string, such as `1 hour` | yes, defaulted | `TARGET_LAG = '<lag>'` |
+| `embedding_model` | string | no | `EMBEDDING_MODEL = '<model>'`; unset leaves Snowflake's default |
+| `refresh_mode` | `AUTO`, `FULL`, or `INCREMENTAL` | no | `REFRESH_MODE = <mode>`; unset leaves it to Snowflake (`SST-PRS013`) |
+
+`on:` may also be the `ref()` string alone, with `search_column:` and
+`attribute_columns:` beside it; written there, they win over the ones inside
+`on:`. The search column and every attribute must be columns of the model
+(`SST-VAL609`). The checks that follow are warnings:
+
+- `SST-VAL617`: dbt materializes the model as a table or a view, so every dbt
+  run rebuilds it and the service re-embeds everything, unless `refresh_mode`
+  is `FULL`;
+- `SST-VAL611`: an agent gated by a blocking eval reads the service and no
+  `embedding_model` pins how it retrieves;
+- under connected validation, `SST-VAL613` for a declared column the live
+  service lacks, `SST-VAL618` for a source with change tracking off unless
+  `refresh_mode` is `FULL`, and
+  `SST-VAL619` for explicit grants a replace would have to re-issue.
+
+```yaml
+tools:
+  - group: docs
+    define:
+      - name: policy_search
+        type: cortex_search_service
+        description: Search over published policy documents.
+        on:
+          table: "{{ ref('policy_docs') }}"
+          search_column: body
+          attributes: [category]
+        target_lag: 1 hour
+        embedding_model: snowflake-arctic-embed-m-v1.5
+```
+
+**Procedure and function** (`type: procedure`, `type: function`) render
+`CREATE OR REPLACE PROCEDURE` or `FUNCTION` with `COPY GRANTS`, then set the
+comment with `ALTER ... SET COMMENT`. Clauses come in a fixed order: the
+signature, `COPY GRANTS`, `RETURNS`, `LANGUAGE`, `RUNTIME_VERSION`, `HANDLER`,
+`PACKAGES`, `IMPORTS`, `EXTERNAL_ACCESS_INTEGRATIONS`, `SECRETS`, a procedure's
+`EXECUTE AS`, and the body.
+
+| Key | Type | Required | Renders to |
+|---|---|---|---|
+| `body_file` | path relative to the project | yes | the body, as `AS $$ ... $$`; it may not contain `$$` |
+| `language` | `sql`, `python`, `java`, `javascript`, or `scala` | yes | `LANGUAGE` (`SST-PRS013`) |
+| `returns` | a Snowflake type, or `TABLE (<column> <type>, ...)` | yes | `RETURNS` (`SST-PRS003`) |
+| `signature` | list of `name:` and `type:` maps | no | the argument list, in order |
+| `runtime_version` | string | for Java, Python and Scala; never rendered for SQL or JavaScript | `RUNTIME_VERSION = '<version>'` |
+| `handler` | string | for Java, Python and Scala; never rendered for SQL or JavaScript | `HANDLER = '<handler>'` |
+| `packages` | list of strings | no | `PACKAGES = ('<package>', ...)` |
+| `imports` | list of strings | no | `IMPORTS = ('<path>', ...)` |
+| `external_access_integrations` | list of identifiers | no | `EXTERNAL_ACCESS_INTEGRATIONS = (<name>, ...)` |
+| `secrets` | map of variable name to three-part secret name | no | `SECRETS = ('<variable>' = <secret>, ...)`, sorted by variable |
+| `execute_as` | `caller`, `owner`, or `restricted caller` | procedure only, defaulted, else `caller` | `EXECUTE AS` (`SST-PRS013`) |
+| `warehouse` | identifier | for a procedure, defaulted | nothing in the DDL; the warehouse a generic tool runs the routine on when the tool sets none |
+
+`body_file:` is read relative to the project root and may not leave it
+(`SST-PRT009`); a missing file is `SST-LOD018` and an empty one `SST-LOD019`.
+Each name the DDL writes must be an identifier and each secret a three-part
+name (`SST-PRS005`), each type a Snowflake type (`SST-PRS003`), and a parameter
+of type `OBJECT` is refused (`SST-PRS032`). A generic tool's `input_schema`
+must match the signature in count, in names ignoring case, and in type
+(`SST-VAL607`). A procedure that runs as `owner` and that an agent reaches is a
+warning (`SST-VAL610`): it lets a conversation act with the owner's privileges.
+
+```yaml
+tools:
+  - group: orders
+    define:
+      - name: order_status
+        type: procedure
+        description: Returns the status of one order.
+        body_file: tools/sql/order_status.sql
+        language: sql
+        returns: VARCHAR
+        signature:
+          - name: order_id
+            type: NUMBER
+```
+
+```yaml
+tools:
+  - group: orders
+    define:
+      - name: shipping_estimate
+        type: function
+        description: Estimates delivery days for a postcode.
+        body_file: tools/python/shipping_estimate.py
+        language: python
+        runtime_version: "3.11"
+        handler: estimate
+        packages: [snowflake-snowpark-python]
+        returns: NUMBER
+        signature:
+          - name: postcode
+            type: VARCHAR
+```
+
+**Stage** (`type: stage`) takes only `name:` and `description:`. It renders
+`CREATE STAGE IF NOT EXISTS` with the description as its comment, so a stage is
+created when it is absent and never replaced.
+
+```yaml
+tools:
+  - group: files
+    define:
+      - name: order_exports
+        type: stage
+        description: Files the export procedures write.
+```
+
+Drawn from: [tool model](../../snowflake_semantic_tools/domain/model/tool.py), [tools loader](../../snowflake_semantic_tools/adapters/yaml/tools.py), [tool renderer](../../snowflake_semantic_tools/domain/render/tool.py), [tool compile](../../snowflake_semantic_tools/app/compile/tools.py), [tool validation](../../snowflake_semantic_tools/domain/validate/tool.py), [tool diagnostics](../../snowflake_semantic_tools/domain/diagnostics/specs/val_tool.py), [configuration keys](../../snowflake_semantic_tools/domain/model/config_schema/keys.py).
+
 ### Delegation
 
 A `type: agent` tool delegates to another agent, in one of two ways:
@@ -373,7 +530,13 @@ refused for a production-like target. A spec over 100,000 bytes is an error
 (`SST-VAL511`), and one over 80% of that a warning (`SST-VAL512`).
 
 With connected validation on, `sst validate` and `sst plan` also look up every
-object an agent calls that SST does not publish, warning when it does not exist
-(`SST-VAL531`). `sst test --suite smoke` describes each published agent to
+object an agent calls that SST does not publish, and every extension it consumes
+with the version it pins. One that does not exist, or that the role cannot see,
+is an error (`SST-VAL531`): Snowflake accepts the agent anyway, and it then has
+no tool or skill. `sst plan` looks up the consumed extensions and pinned
+versions on every connected plan unless `--no-validate`, even with connected
+validation off. For a
+target whose referenced objects may be absent, demote the code to a warning with
+`diagnostics.severity_overrides`; a baseline cannot hold an error. `sst test --suite smoke` describes each published agent to
 confirm it exists as planned; to check what an agent answers, write an
 [eval](evals.md).

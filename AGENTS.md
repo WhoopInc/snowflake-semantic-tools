@@ -14,7 +14,7 @@ SST is a command-line compiler and publisher for a Snowflake semantic layer kept
   Preferred format: `[SST-<issue#>] <description>`
 - **Each PR addresses exactly one GitHub issue.** The PR body MUST contain `Closes #<number>`.
 - **Branch from the line you are changing**: 1.0 work from the 1.0 development branch; a 0.3.x fix from the maintenance branch cut from tag `v0.3.1`, never merged into 1.0 (see `CONTRIBUTING.md`). Name branches `fix/<description>` or `feature/<description>`.
-- **Connect to Snowflake only when the user asks**, and then only to a non-production scratch schema. These connect: `plan`, `apply`, `enrich`, `drop`, `baseline add --target`, `test` unless `--suite golden`, `diff` whenever either side is a dbt target (`--to` defaults to one), `debug` unless `--no-connect`, and `validate` with `--verify-schema` or with syntax checks on, which they are by default (`validation.snowflake_syntax_check: true`); `sst validate --no-snowflake-syntax-check` stays offline. Everything else, including the whole offline test suite, does not.
+- **Connect to Snowflake only when the user asks**, and then only to a non-production scratch schema. These connect: `plan` unless `--use-cached-state`, `apply`, `enrich`, `drop`, `baseline add --target` and `baseline prune --target`, `test` with `--suite smoke` or `--suite evals` and, with no `--suite`, whenever a smoke or eval suite applies (`--suite golden` alone stays offline), `diff` whenever either side is a dbt target (`--to` defaults to one), `debug` unless `--no-connect` or `--snowflake-signatures`, and `validate` with `--verify-schema` or with syntax checks on, which they are by default (`validation.snowflake_syntax_check: true`); `sst validate --no-snowflake-syntax-check` stays offline. Everything else, including the whole offline test suite, opens no session of its own. With `dbt.command: compile`, though, any command that runs dbt (everything that loads the project, unless `--manifest` or `dbt.invoke: false`) also makes dbt connect to the warehouse.
 - **When addressing PR review comments**: reply to the comment explaining the fix, then resolve the thread:
   ```bash
   # Reply to the comment
@@ -31,10 +31,12 @@ SST is a command-line compiler and publisher for a Snowflake semantic layer kept
 |------|-------|--------------|
 | `cli/` | click commands; the composition root | may import every ring |
 | `app/` | use cases (compile, validate, plan, apply, test suites, migrate refs) | `domain` only, never `adapters`; no `yaml`, `click`, or `snowflake` |
-| `adapters/` | YAML, dbt manifest, Snowflake connector, filesystem, config, profile | `domain` models and ports, never `domain.render` or `app`; the `yaml`, `dbt`, `snowflake`, and `fs` subpackages never import each other; only `yaml`, `dbt`, and `bounded_yaml.py` import `yaml`, and only `roundtrip.py`, `yaml`, and `dbt` import `ruamel` |
+| `adapters/` | YAML, dbt manifest, Snowflake connector, filesystem, config, profile | `domain` models and ports, never `domain.render` or `app`; the `yaml`, `dbt`, `snowflake`, and `fs` subpackages never import each other; only `yaml`, `dbt`, and `bounded_yaml.py` import `yaml`, and only `roundtrip.py` and `yaml` import `ruamel` (`dbt` edits through `roundtrip.py`) |
 | `domain/` | pure, by stage: parse, resolve, validate, render, plan, state; plus model (data types only), diagnostics, enrich, migrate, sql, ports | no I/O, clock, environment, randomness, logging, or SDKs |
 
-`poetry run lint-imports` enforces these as the seven contracts in `pyproject.toml`; `tests/unit/test_ring_boundaries.py` proves each one rejects a crossing.
+No module in any ring imports `dbt`: SST runs the dbt executable and reads its manifest.
+
+`poetry run lint-imports` enforces these as the eight contracts in `pyproject.toml`; `tests/unit/test_ring_boundaries.py` proves each one rejects a crossing.
 
 ## Gates
 
@@ -61,7 +63,7 @@ semgrep scan --config .semgrep/ --error --metrics off --disable-version-check sn
 - **Style**: ruff formats, sorts imports, and lints, line length 120; mypy runs in strict mode over the package and the tests.
 - **Imports**: absolute, by full dotted path (`from snowflake_semantic_tools.domain.model.dbt import DbtCatalog`, never `from .dbt import ...`); tests share code only through `tests.helpers`. `tests/unit/test_import_style.py` enforces both.
 - **Docstrings and size**: follow "Docstrings and comments" in `CONTRIBUTING.md`; `tests/unit/test_docstrings.py` and `tests/unit/test_structure.py` enforce it with no exceptions.
-- **Diagnostics**: every problem is registered in `snowflake_semantic_tools/domain/diagnostics/specs/` (one module per code area) with a stable `SST-XXXnnn` code and an actionable suggestion (what is wrong AND how to fix it). Codes are never reused. `tests/codes/` holds each code to the 1.0 catalog (`tests/codes/catalog.json`) and requires it to be emitted and tested both ways (`test_<code>_fires` / `test_<code>_silent`); its allowlists only shrink (`tests/codes/README.md`). The steps are under "Adding a diagnostic code" in `CONTRIBUTING.md`.
+- **Diagnostics**: every problem is registered in `snowflake_semantic_tools/domain/diagnostics/specs/` (one module per code area) with a stable `SST-XXXnnn` code and an actionable suggestion (what is wrong AND how to fix it). Codes are never reused. The registry entry is the code's whole contract, rendered into `docs/reference/error-codes.md`; `tests/codes/` requires each code to be emitted and tested both ways (`test_<code>_fires` / `test_<code>_silent`); its allowlists only shrink (`tests/codes/README.md`). The steps are under "Adding a diagnostic code" in `CONTRIBUTING.md`.
 - **CLI options** are declared without `help=`; the description goes in `cli/help_text.py` (`_OPTION_HELP`, or `_COMMAND_OPTION_HELP` for one command's narrower meaning). See "Adding a CLI option" in `CONTRIBUTING.md`.
 - **SQL** is built only through `snowflake_semantic_tools.domain.sql`: `sql()` with a constant template and `Sql` parts from its quoting constructors. `Sql` cannot be constructed elsewhere, and `tests/unit/security/test_sql_construction.py` refuses SQL built from strings.
 - **Config keys** are declared in `snowflake_semantic_tools/domain/model/config_schema/keys.py`.

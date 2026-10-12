@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
 
 TITLE: str = "Validation"
 
@@ -130,6 +130,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "connected validation finds a column a defined search service declares that the live service does not have"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL614",
@@ -173,6 +174,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "A warning rather than an error: SST compares the object's direct grantees only, without "
             "following the role hierarchy, so a role that inherits the privilege is still reported."
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL617",
@@ -183,7 +185,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "make the model `incremental`, or set `refresh_mode: FULL` and accept the cost explicitly",
         condition=(
             "a search service's source relation is a dbt model whose materialization replaces it on "
-            "every run, while the service is `INCREMENTAL`"
+            "every run, and the service's `refresh_mode` is not `FULL` (unset, `AUTO`, or "
+            "`INCREMENTAL`)"
         ),
     ),
     spec(
@@ -193,6 +196,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{value} has change_tracking = OFF; service '{name}' cannot refresh incrementally and is serving stale data",
         "re-enable change tracking on the source, or replace the service",
         condition=("the observed source relation has change tracking disabled while the service is `INCREMENTAL`"),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL619",
@@ -210,5 +214,6 @@ SPECS: tuple[ErrorSpec, ...] = (
             "then checks none was lost (SST-APL009); between the replace and the replay the grantees "
             "cannot use the service. Plan the replace for a quiet window."
         ),
+        precheck=Precheck.OBSERVE,
     ),
 )

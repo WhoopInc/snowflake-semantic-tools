@@ -91,6 +91,8 @@ class CompiledAgent(StandaloneArtifact):
                 "AGENT", render_dialect="json", grant_preservation=GrantPreservation.NONE, temporary=self.temporary
             ),
             statements=StatementPlan(default=create, create=create, update=update, update_live=update_live),
+            # Snowflake's docs name agent_spec.yaml only when reading a version back; the server
+            # reads a staged spec from that file (docs/design/snowflake-behaviour.md).
             upload=(
                 None
                 if self.temporary
@@ -217,6 +219,8 @@ def _agent_programs(
         )
     ]
     update_live = [
+        # Snowflake's docs do not say ADD VERSION fails beside a live version; the server refuses
+        # it (docs/design/snowflake-behaviour.md).
         # `literal` escapes backslashes, so the JSON's own escapes survive; MEASURED that the
         # committed version's spec then reads back byte for byte.
         sql(
@@ -227,6 +231,8 @@ def _agent_programs(
         sql("ALTER AGENT {agent} COMMIT COMMENT = {comment}", agent=agent, comment=comment),
     ]
     if model.alias:
+        # Snowflake's docs list LAST as a version shortcut; the server rejects it unquoted in
+        # MODIFY VERSION (docs/design/snowflake-behaviour.md).
         alias = sql(
             'ALTER AGENT {agent}\n  MODIFY VERSION "LAST" SET ALIAS = {alias}',
             agent=agent,

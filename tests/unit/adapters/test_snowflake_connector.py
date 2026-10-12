@@ -619,6 +619,23 @@ def test_a_failed_connection_reports_no_credential_and_chains_no_driver_error(
     assert error.__cause__ is None and error.__context__ is None
 
 
+def test_a_rejected_login_keeps_the_scrubbed_message_and_reports_no_credential(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def connect(**params: object) -> object:
+        failure = _ConnectorFailure(_LEAKY.replace("250001 (08001): Failed to connect", "Incorrect username"), "08001")
+        failure.errno = 390100
+        raise failure
+
+    monkeypatch.setattr("snowflake.connector.connect", connect)
+    with pytest.raises(SnowflakePortError) as raised:
+        SnowflakeConnector({"account": "acme", "password": "hunter2", "private_key_file": "/tmp/rsa_key.p8"})
+    diagnostic = raised.value.diagnostic
+    assert diagnostic is not None and diagnostic.code == "SST-PRT002"
+    assert diagnostic.message.startswith("authentication failed for acme: Incorrect username: password=<redacted>")
+    assert not [secret for secret in _SECRETS if secret in diagnostic.message]
+
+
 def test_a_failed_statement_reports_no_credential() -> None:
     leaky = ProgrammingError(msg=_LEAKY, errno=1003, sqlstate="42000")
     with pytest.raises(SnowflakePortError) as raised:
@@ -784,7 +801,7 @@ def test_get_ddl_names_the_type_as_get_ddl_spells_it_and_refuses_an_empty_answer
     connector = _DdlConnector((("create semantic view V",),))
     name = QualifiedName.parse("DB.S.V")
     assert connector.get_ddl("semantic view", name) == "create semantic view V"
-    assert connector.statements == ["SELECT GET_DDL('SEMANTIC_VIEW', 'DB.S.V')"]
+    assert connector.statements == ["SELECT GET_DDL('SEMANTIC_VIEW', 'DB.S.V', TRUE)"]
     with pytest.raises(SnowflakePortError, match="GET_DDL returned nothing for AGENT DB.S.V"):
         _DdlConnector(((None,),)).get_ddl("AGENT", name)
     with pytest.raises(SnowflakePortError, match="GET_DDL returned nothing"):
@@ -799,10 +816,10 @@ def test_get_ddl_reads_an_agent_as_a_cortex_agent_and_a_routine_by_its_signature
     connector.get_ddl("PROCEDURE", QualifiedName.parse("DB.S.P"), ("VARCHAR", "NUMBER(38,0)"))
     connector.get_ddl("FUNCTION", QualifiedName.parse("DB.S.F"))
     assert connector.statements == [
-        "SELECT GET_DDL('CORTEX_AGENT', 'DB.S.A')",
-        "SELECT GET_DDL('CORTEX_SEARCH_SERVICE', 'DB.S.SEARCH')",
-        "SELECT GET_DDL('PROCEDURE', 'DB.S.P(VARCHAR, NUMBER(38,0))')",
-        "SELECT GET_DDL('FUNCTION', 'DB.S.F()')",
+        "SELECT GET_DDL('CORTEX_AGENT', 'DB.S.A', TRUE)",
+        "SELECT GET_DDL('CORTEX_SEARCH_SERVICE', 'DB.S.SEARCH', TRUE)",
+        "SELECT GET_DDL('PROCEDURE', 'DB.S.P(VARCHAR, NUMBER(38,0))', TRUE)",
+        "SELECT GET_DDL('FUNCTION', 'DB.S.F()', TRUE)",
     ]
 
 
@@ -812,6 +829,26 @@ def test_get_ddl_refuses_a_type_it_reads_no_object_of_without_sending_anything(o
     with pytest.raises(SnowflakePortError, match=f"GET_DDL cannot read a {object_type.lower()}"):
         connector.get_ddl(object_type, QualifiedName.parse("DB.S.X"))
     assert connector.statements == []
+
+
+def test_tag_references_name_each_tag_set_on_a_view_and_leave_out_inherited_ones() -> None:
+    rows: tuple[dict[str, object], ...] = (
+        {"tag_database": "GOV", "tag_schema": "T", "tag_name": "PII", "level": "SEMANTIC VIEW"},
+        {"tag_database": "GOV", "tag_schema": "t", "tag_name": "OWNER", "level": None},
+        {"tag_database": "GOV", "tag_schema": "T", "tag_name": "PII", "level": "SEMANTIC VIEW"},
+        {"tag_database": "GOV", "tag_schema": "T", "tag_name": "DOMAIN", "level": "SCHEMA"},
+        {"tag_database": "GOV", "tag_schema": "T", "tag_name": "ZONE", "level": "database"},
+        {"tag_database": None, "tag_schema": None, "tag_name": None, "level": None},
+    )
+    session = FakeDriverSession(rows={"SELECT * FROM TABLE(DB.INFORMATION_SCHEMA.TAG_REFERENCES": rows})
+    connector = FakeDriverConnector(session)
+    assert connector.tag_references("semantic view", QualifiedName.parse("DB.S.V")) == ('GOV."t".OWNER', "GOV.T.PII")
+    # The documented domain for a table-like object; unverified for a semantic view against a
+    # live account (docs/design/snowflake-behaviour.md).
+    assert session.statements == ["SELECT * FROM TABLE(DB.INFORMATION_SCHEMA.TAG_REFERENCES('DB.S.V', 'TABLE'))"]
+    with pytest.raises(SnowflakePortError, match="tags are read only on a semantic view, not on AGENT"):
+        connector.tag_references("AGENT", QualifiedName.parse("DB.S.A"))
+    assert len(session.statements) == 1
 
 
 def test_agent_versions_read_each_version_with_its_alias_default_and_specification() -> None:

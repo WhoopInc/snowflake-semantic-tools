@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 713
+- Codes: 719
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -151,7 +151,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-LOD008`](error-codes.md#sst-lod008) | LOD | error | local | `snowflake_semantic_tools.adapters.yaml.compose` | `tests/codes/lod/test_sst_lod008.py` |
 | [`SST-LOD009`](error-codes.md#sst-lod009) | LOD | error | local | `snowflake_semantic_tools.adapters.yaml.text_checks` | `tests/codes/lod/test_sst_lod009.py` |
 | [`SST-LOD010`](error-codes.md#sst-lod010) | LOD | error | local | `snowflake_semantic_tools.adapters.yaml.text_checks` | `tests/codes/lod/test_sst_lod010.py` |
-| [`SST-LOD011`](error-codes.md#sst-lod011) | LOD | warning | a | `snowflake_semantic_tools.adapters.yaml.compose` | `tests/codes/lod/test_sst_lod011.py` |
+| [`SST-LOD011`](error-codes.md#sst-lod011) | LOD | warning | local | `snowflake_semantic_tools.adapters.yaml.compose` | `tests/codes/lod/test_sst_lod011.py` |
 | [`SST-LOD012`](error-codes.md#sst-lod012) | LOD | warning | local | `snowflake_semantic_tools.adapters.yaml.text_checks` | `tests/codes/lod/test_sst_lod012.py` |
 | [`SST-LOD013`](error-codes.md#sst-lod013) | LOD | error | local | `snowflake_semantic_tools.adapters.yaml.compose` | `tests/codes/lod/test_sst_lod013.py` |
 | [`SST-LOD014`](error-codes.md#sst-lod014) | LOD | error | local | `snowflake_semantic_tools.adapters.yaml.compose` | `tests/codes/lod/test_sst_lod014.py` |
@@ -168,7 +168,6 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-MAN001`](error-codes.md#sst-man001) | MAN | error | local | `snowflake_semantic_tools.cli.wiring.manifest`<br>`snowflake_semantic_tools.cli.wiring.plan` | `tests/codes/man/test_sst_man001.py` |
 | [`SST-MAN002`](error-codes.md#sst-man002) | MAN | error | local | `snowflake_semantic_tools.adapters.fs.local`<br>`snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man002.py` |
 | [`SST-MAN003`](error-codes.md#sst-man003) | MAN | error | local | `snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man003.py` |
-| [`SST-MAN004`](error-codes.md#sst-man004) | MAN | error | local | `snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man004.py` |
 | [`SST-MAN005`](error-codes.md#sst-man005) | MAN | error | local | `snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man005.py` |
 | [`SST-MAN006`](error-codes.md#sst-man006) | MAN | error | local | `snowflake_semantic_tools.app.manifest` | `tests/codes/man/test_sst_man006.py` |
 | [`SST-MAN007`](error-codes.md#sst-man007) | MAN | error | runtime | `snowflake_semantic_tools.cli.commands.compile` | `tests/codes/man/test_sst_man007.py` |
@@ -244,6 +243,9 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-PLN034`](error-codes.md#sst-pln034) | PLN | info | local | `snowflake_semantic_tools.app.lifecycle.composite` | `tests/codes/pln/test_sst_pln034.py` |
 | [`SST-PLN035`](error-codes.md#sst-pln035) | PLN | info | observe | `snowflake_semantic_tools.domain.plan.preflight` | `tests/codes/pln/test_sst_pln035.py` |
 | [`SST-PLN037`](error-codes.md#sst-pln037) | PLN | warning | observe | `snowflake_semantic_tools.app.prior` | `tests/codes/pln/test_sst_pln037.py` |
+| [`SST-PLN038`](error-codes.md#sst-pln038) | PLN | error | local | `snowflake_semantic_tools.domain.plan.prune` | `tests/codes/pln/test_sst_pln038.py` |
+| [`SST-PLN039`](error-codes.md#sst-pln039) | PLN | warning | observe | `snowflake_semantic_tools.domain.plan.classify` | `tests/codes/pln/test_sst_pln039.py` |
+| [`SST-PLN040`](error-codes.md#sst-pln040) | PLN | warning | observe | `snowflake_semantic_tools.app.observe` | `tests/codes/pln/test_sst_pln040.py` |
 | [`SST-PLN100`](error-codes.md#sst-pln100) | PLN | error | observe | `snowflake_semantic_tools.app.smoke` | `tests/codes/pln/test_sst_pln100.py` |
 | [`SST-PLN101`](error-codes.md#sst-pln101) | PLN | info | local | `snowflake_semantic_tools.app.smoke` | `tests/codes/pln/test_sst_pln101.py` |
 | [`SST-PLN900`](error-codes.md#sst-pln900) | PLN | error | local | `snowflake_semantic_tools.domain.plan.order` | `tests/codes/pln/test_sst_pln900.py` |
@@ -306,7 +308,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-PRS125`](error-codes.md#sst-prs125) | PRS | warning | local | `snowflake_semantic_tools.app.enrich` | `tests/codes/prs/test_sst_prs125.py` |
 | [`SST-PRS900`](error-codes.md#sst-prs900) | PRS | error | local | `snowflake_semantic_tools.domain.parse.records` | `tests/codes/prs/test_sst_prs900.py` |
 | [`SST-PRT001`](error-codes.md#sst-prt001) | PRT | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.session`<br>`snowflake_semantic_tools.app.enrich`<br>`snowflake_semantic_tools.cli.commands.debug`<br>`snowflake_semantic_tools.cli.runner` | `tests/codes/prt/test_sst_prt001.py` |
-| [`SST-PRT002`](error-codes.md#sst-prt002) | PRT | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.session`<br>`snowflake_semantic_tools.app.enrich` | `tests/codes/prt/test_sst_prt002.py` |
+| [`SST-PRT002`](error-codes.md#sst-prt002) | PRT | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.session`<br>`snowflake_semantic_tools.app.enrich`<br>`snowflake_semantic_tools.cli.runner` | `tests/codes/prt/test_sst_prt002.py` |
 | [`SST-PRT003`](error-codes.md#sst-prt003) | PRT | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.session`<br>`snowflake_semantic_tools.app.enrich` | `tests/codes/prt/test_sst_prt003.py` |
 | [`SST-PRT004`](error-codes.md#sst-prt004) | PRT | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.session`<br>`snowflake_semantic_tools.app.enrich` | `tests/codes/prt/test_sst_prt004.py` |
 | [`SST-PRT005`](error-codes.md#sst-prt005) | PRT | error | runtime | `snowflake_semantic_tools.app.apply.run`<br>`snowflake_semantic_tools.app.drop`<br>`snowflake_semantic_tools.app.verify_schema` | `tests/codes/prt/test_sst_prt005.py` |
@@ -402,6 +404,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-RND032`](error-codes.md#sst-rnd032) | RND | warning | local | `snowflake_semantic_tools.domain.render.skill_bundle` | `tests/codes/rnd/test_sst_rnd032.py` |
 | [`SST-RND040`](error-codes.md#sst-rnd040) | RND | error | local | `snowflake_semantic_tools.domain.render.tool` | `tests/codes/rnd/test_sst_rnd040.py` |
 | [`SST-RND041`](error-codes.md#sst-rnd041) | RND | error | local | `snowflake_semantic_tools.domain.render.tool` | `tests/codes/rnd/test_sst_rnd041.py` |
+| [`SST-RND042`](error-codes.md#sst-rnd042) | RND | error | local | `snowflake_semantic_tools.domain.render.tool` | `tests/codes/rnd/test_sst_rnd042.py` |
 | [`SST-RND900`](error-codes.md#sst-rnd900) | RND | error | local | `snowflake_semantic_tools.domain.render.semantic_view` | `tests/codes/rnd/test_sst_rnd900.py` |
 | [`SST-SNO001`](error-codes.md#sst-sno001) | SNO | error | runtime | `snowflake_semantic_tools.app.evals.gate`<br>`snowflake_semantic_tools.app.evals.run`<br>`snowflake_semantic_tools.cli.run_log`<br>`snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno001.py` |
 | [`SST-SNO002`](error-codes.md#sst-sno002) | SNO | error | runtime | `snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno002.py` |
@@ -436,14 +439,13 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL005`](error-codes.md#sst-val005) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.views` | `tests/codes/val/test_sst_val005.py` |
 | [`SST-VAL006`](error-codes.md#sst-val006) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.text` | `tests/codes/val/test_sst_val006.py` |
 | [`SST-VAL007`](error-codes.md#sst-val007) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.semantic.fanout` | `tests/codes/val/test_sst_val007.py` |
-| [`SST-VAL008`](error-codes.md#sst-val008) | VAL | error | a | `snowflake_semantic_tools.domain.validate.semantic.files` | `tests/codes/val/test_sst_val008.py` |
+| [`SST-VAL008`](error-codes.md#sst-val008) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.files` | `tests/codes/val/test_sst_val008.py` |
 | [`SST-VAL009`](error-codes.md#sst-val009) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.semantic.files` | `tests/codes/val/test_sst_val009.py` |
 | [`SST-VAL010`](error-codes.md#sst-val010) | VAL | error | local | `snowflake_semantic_tools.app.validate` | `tests/codes/val/test_sst_val010.py` |
 | [`SST-VAL011`](error-codes.md#sst-val011) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.fidelity` | `tests/codes/val/test_sst_val011.py` |
 | [`SST-VAL012`](error-codes.md#sst-val012) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.deprecated` | `tests/codes/val/test_sst_val012.py` |
 | [`SST-VAL013`](error-codes.md#sst-val013) | VAL | error | local | `snowflake_semantic_tools.domain.validate.shared` | `tests/codes/val/test_sst_val013.py` |
 | [`SST-VAL014`](error-codes.md#sst-val014) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.shared` | `tests/codes/val/test_sst_val014.py` |
-| [`SST-VAL015`](error-codes.md#sst-val015) | VAL | error | local | `snowflake_semantic_tools.domain.plan.prune` | `tests/codes/val/test_sst_val015.py` |
 | [`SST-VAL016`](error-codes.md#sst-val016) | VAL | error | local | `snowflake_semantic_tools.app.compile.agents.resolve_tools` | `tests/codes/val/test_sst_val016.py` |
 | [`SST-VAL017`](error-codes.md#sst-val017) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.semantic.text` | `tests/codes/val/test_sst_val017.py` |
 | [`SST-VAL018`](error-codes.md#sst-val018) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.semantic.views` | `tests/codes/val/test_sst_val018.py` |
@@ -532,6 +534,9 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL330`](error-codes.md#sst-val330) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.scope` | `tests/codes/val/test_sst_val330.py` |
 | [`SST-VAL331`](error-codes.md#sst-val331) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.semantic.scope` | `tests/codes/val/test_sst_val331.py` |
 | [`SST-VAL332`](error-codes.md#sst-val332) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.scope` | `tests/codes/val/test_sst_val332.py` |
+| [`SST-VAL333`](error-codes.md#sst-val333) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.dbt` | `tests/codes/val/test_sst_val333.py` |
+| [`SST-VAL334`](error-codes.md#sst-val334) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.dbt` | `tests/codes/val/test_sst_val334.py` |
+| [`SST-VAL335`](error-codes.md#sst-val335) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.dbt` | `tests/codes/val/test_sst_val335.py` |
 | [`SST-VAL401`](error-codes.md#sst-val401) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.expressions` | `tests/codes/val/test_sst_val401.py` |
 | [`SST-VAL402`](error-codes.md#sst-val402) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.authored_keys` | `tests/codes/val/test_sst_val402.py` |
 | [`SST-VAL403`](error-codes.md#sst-val403) | VAL | error | local | `snowflake_semantic_tools.domain.validate.semantic.authored_keys` | `tests/codes/val/test_sst_val403.py` |
@@ -575,7 +580,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL528`](error-codes.md#sst-val528) | VAL | warning | local | `snowflake_semantic_tools.app.compile.agents.resolve_tools` | `tests/codes/val/test_sst_val528.py` |
 | [`SST-VAL529`](error-codes.md#sst-val529) | VAL | error | local | `snowflake_semantic_tools.app.compile.agents.resolve_tools`<br>`snowflake_semantic_tools.domain.validate.agent_spec` | `tests/codes/val/test_sst_val529.py` |
 | [`SST-VAL530`](error-codes.md#sst-val530) | VAL | error | local | `snowflake_semantic_tools.domain.validate.agent_spec` | `tests/codes/val/test_sst_val530.py` |
-| [`SST-VAL531`](error-codes.md#sst-val531) | VAL | warning | observe | `snowflake_semantic_tools.app.compile.agents.observe` | `tests/codes/val/test_sst_val531.py` |
+| [`SST-VAL531`](error-codes.md#sst-val531) | VAL | error | observe | `snowflake_semantic_tools.app.compile.agents.observe` | `tests/codes/val/test_sst_val531.py` |
 | [`SST-VAL532`](error-codes.md#sst-val532) | VAL | warning | observe | `snowflake_semantic_tools.app.compile.agents.observe` | `tests/codes/val/test_sst_val532.py` |
 | [`SST-VAL533`](error-codes.md#sst-val533) | VAL | info | observe | `snowflake_semantic_tools.app.compile.agents.observe` | `tests/codes/val/test_sst_val533.py` |
 | [`SST-VAL534`](error-codes.md#sst-val534) | VAL | warning | observe | `snowflake_semantic_tools.app.compile.agents.observe` | `tests/codes/val/test_sst_val534.py` |
@@ -668,6 +673,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL761`](error-codes.md#sst-val761) | VAL | error | runtime | `snowflake_semantic_tools.app.evals.gate` | `tests/codes/val/test_sst_val761.py` |
 | [`SST-VAL762`](error-codes.md#sst-val762) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_config` | `tests/codes/val/test_sst_val762.py` |
 | [`SST-VAL763`](error-codes.md#sst-val763) | VAL | error | runtime | `snowflake_semantic_tools.app.evals.gate` | `tests/codes/val/test_sst_val763.py` |
+| [`SST-VAL764`](error-codes.md#sst-val764) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_config` | `tests/codes/val/test_sst_val764.py` |
 | [`SST-VAL801`](error-codes.md#sst-val801) | VAL | error | local | `snowflake_semantic_tools.adapters.yaml.profiles`<br>`snowflake_semantic_tools.adapters.yaml.skills`<br>`snowflake_semantic_tools.domain.validate.profile`<br>`snowflake_semantic_tools.domain.validate.skill` | `tests/codes/val/test_sst_val801.py` |
 | [`SST-VAL802`](error-codes.md#sst-val802) | VAL | error | local | `snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/val/test_sst_val802.py` |
 | [`SST-VAL803`](error-codes.md#sst-val803) | VAL | error | local | `snowflake_semantic_tools.domain.validate.publication` | `tests/codes/val/test_sst_val803.py` |

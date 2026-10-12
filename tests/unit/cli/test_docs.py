@@ -69,7 +69,8 @@ def test_coverage_marks_a_code_without_tests_missing(tmp_path: Path) -> None:
     CliRunner().invoke(cli, ["docs", "--project-dir", str(tmp_path), "--only", "coverage"])
     page = (tmp_path / "docs" / "reference" / "coverage.md").read_text(encoding="utf-8")
     assert "- Without a complete test file: 0\n" not in page
-    assert "| [`SST-CFG003`](error-codes.md#sst-cfg003) | CFG | warning | - |" in page
+    # The pre-check comes from the registry, so it shows even where the project has no tests.
+    assert "| [`SST-CFG003`](error-codes.md#sst-cfg003) | CFG | warning | local |" in page
     assert page.count("| MISSING |") > 700
 
 

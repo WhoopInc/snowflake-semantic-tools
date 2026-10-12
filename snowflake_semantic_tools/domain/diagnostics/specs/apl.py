@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
 
 TITLE: str = "Apply"
 
@@ -21,6 +21,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "The message's detail is the error itself; when SST recognises a Snowflake refusal it "
             "also reports it under its SST-SNO code."
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL002",
@@ -32,6 +33,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "a change this one depends on failed or was skipped, so it did not run; with "
             "`--fail-fast` the run instead stops at the first failure and skips every change left"
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL003",
@@ -80,6 +82,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "Smoke queries are not part of a deployment, so this can never fail an `apply`. Each "
             "failed probe is reported above it: SST-PLN100 for a metric, SST-APL100 for anything else."
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL007",
@@ -92,6 +95,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "catalog did not report the version certified afterwards"
         ),
         note="When roles already hold grants on the extension, SST-APL021 is reported instead.",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL008",
@@ -104,6 +108,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "replace, which fails the change with nothing written, or after it, which leaves the "
             "change applied with its grants unverified"
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL009",
@@ -116,6 +121,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "an explicit grant the object carried before a replace is absent after it, compared by "
             "privilege, grantee and grant option, so a changed grantor is no loss"
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL010",
@@ -134,6 +140,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "still be running, it starts no further statement once its heartbeat finds the lock "
             "taken, and reports SST-APL011."
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL011",
@@ -152,6 +159,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "run to end. Only once its lock has expired does `--break-stale-lock` take it over "
             "(SST-APL010). A run that lost its lock starts no further statement and writes no state."
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL012",
@@ -167,6 +175,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "manifest renders it"
         ),
         note="Under `sst test`, run `sst plan` and `sst apply` for the current manifest first.",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL013",
@@ -186,6 +195,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact} shadows a permanent object of the same name for this session",
         "remember the change is local",
         condition="an agent `apply --temporary` published has the name of a permanent agent the plan observed",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL015",
@@ -207,6 +217,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "rendered"
         ),
         note="State keeps the partial write, so the next plan publishes the artifact again.",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL017",
@@ -218,6 +229,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "a Desktop profile's registry row was written, but a stage pointer it carries does not "
             "resolve to a tree the stage holds"
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL018",
@@ -226,6 +238,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: uploaded {path}, pointer write failed: {detail}",
         "re-run apply; the publish is half complete",
         condition="a Desktop profile's trees were uploaded to its stage, then writing its registry row failed",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL019",
@@ -234,6 +247,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: '{path}' could not be removed from the published version",
         "re-publish from empty",
         condition="a published skill or plugin version still holds a file its bundle no longer has",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL020",
@@ -245,6 +259,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "ADD VERSION on a skill or plugin failed because the version name already exists: "
             "another deploy published it between the plan and this statement"
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL021",
@@ -256,6 +271,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "certifying a published skill or plugin version failed while roles already hold "
             "grants on the extension, so they reach a version that is not certified"
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL022",
@@ -264,6 +280,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dataset '{artifact}': ADD VERSION failed: {detail}",
         "check OWNERSHIP on the dataset",
         condition="Snowflake refused the statement that creates an eval's dataset or adds its version",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL023",
@@ -287,6 +304,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "(`run.retry`, else `evals.+retry`) completes in its place, the attempt reports "
             "SST-APL029 instead; a CANCELLED run is not retried."
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL024",
@@ -305,6 +323,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "SST-APL029 replaces this warning. A partial status `run.accept_statuses` names "
             "reports SST-VAL730, an error, instead."
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL027",
@@ -320,6 +339,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "There is no `sst extract` command in 1.0: check that the role may create the table in "
             "the registry's schema and that nothing else defines it with other columns, then re-apply."
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL028",
@@ -329,6 +349,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "run one ALTER STAGE to set the required FILE FORMAT; SST will not alter a stage it did not create",
         condition=("`apply` found an existing eval config stage that does not carry the file format eval runs read"),
         note="`sst test` reports the same stage as SST-VAL729 before any eval run starts.",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-APL029",
@@ -346,6 +367,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "SST-APL024, SST-SNO001), and the gate judges only completed attempts whose results "
             "were read."
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL100",
@@ -358,6 +380,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "failed, observed by `sst test --suite smoke` rather than by `apply`"
         ),
         note="Fix the artifact the probe names; a metric probe reports `SST-PLN100`.",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL900",

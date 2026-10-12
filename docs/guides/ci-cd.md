@@ -39,7 +39,8 @@ What is read depends on how the kind is published:
 
 | Kind | Prior definition | To restore it |
 |---|---|---|
-| Semantic view, Cortex search service, procedure, function | What `GET_DDL` prints (procedures and functions are addressed by their argument types); needs REFERENCES or OWNERSHIP | Run it: it is a `CREATE OR REPLACE` |
+| Semantic view | What `GET_DDL` prints, with names fully qualified, rewritten into the form SST renders: the trailing clauses in the order the server accepts (`MAX_STALENESS` after the AI clauses) and `COPY GRANTS` added, which `GET_DDL` drops; needs REFERENCES or OWNERSHIP | Run it as recorded. If it starts with a `-- SST did not put this definition ...` comment, `GET_DDL` printed a shape SST does not rewrite and the text is as returned: add `COPY GRANTS` and move `MAX_STALENESS` after the AI clauses before running it, or the restore drops the view's grants or is refused |
+| Cortex search service, procedure, function | What `GET_DDL` prints, with names fully qualified (procedures and functions are addressed by their argument types); needs REFERENCES or OWNERSHIP | Review it before running it: it is a `CREATE OR REPLACE`, but SST has not checked that `GET_DDL`'s text for these kinds re-executes or keeps the object's grants |
 | Agent | The version it serves now (the one carrying the agent's alias, else the default, else the last committed), its specification as indented JSON, and the `ALTER AGENT` statements that point the alias and the default version back at it | An update adds a version and keeps every earlier one, so run those statements; never re-create the agent, which would drop its versions and grants |
 | Stage tool | None: apply only creates a stage when it is absent | Nothing to restore |
 | Skill, plugin, profile, eval | None: each publishes content-addressed versions, trees, tables, and datasets beside the earlier ones; a profile's row and an eval's staged configuration are rewritten in place and not captured | Re-publish the earlier source |
@@ -287,6 +288,10 @@ shown indented here:
   `promoted_from` or `demoted_from` when they differ), `message`, `location`,
   `suggestion`, `baselined`, a stable `fingerprint`, and `help_url`, a link to
   its entry in the [error code reference](../reference/error-codes.md).
+  `internal_detail` is the diagnostic's `detail` value, the same text its message
+  shows and `params.detail` holds, for an internal error
+  (`SST-INT001`) or an unrecognised Snowflake refusal (`SST-SNO001`), and null for
+  every other code.
 - `summary` counts a baselined diagnostic under `baselined` and under no
   severity.
 - `data` holds the command's result: the planned changes for `plan`, the
@@ -309,8 +314,8 @@ fields can appear in the same version.
 | 2 | Declared and actual state differ: `plan` found changes, `diff` found the two states differ, or `format --check`, `enrich --check`, `docs --check`, or `migrate refs` found something to rewrite. |
 | 3 | The command line is invalid. |
 | 4 | The project, its configuration, or a saved plan cannot be used. |
-| 5 | Snowflake could not be reached. |
-| 130 | The run was interrupted: Ctrl-C, `SIGTERM` (a cancelled job), or `SIGHUP`. `apply` records what finished and releases its lock first. |
+| 5 | Snowflake could not be reached, rejected the credential, refused a privilege, or did not finish in time. The diagnostic code says which: a refused privilege (`SST-PRT004`, or an `SST-SNO` privilege code) needs a grant, not a retry. |
+| 130 | The run was interrupted: Ctrl-C, `SIGTERM` (a cancelled job), or `SIGHUP`, or a prompt was declined. Any command can return it. `apply` records what finished and releases its lock first. |
 
 A pipeline that runs `sst format --check` gates on canonical YAML the same way
 it gates `plan`: `2` means a file would be rewritten. The

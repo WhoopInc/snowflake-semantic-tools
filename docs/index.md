@@ -11,6 +11,8 @@ dbt project, and publishes them with a reviewed plan.
 - [Concepts](concepts.md): artifacts, members, references, and the
   `validate` / `plan` / `apply` pipeline.
 - Coming from SST 0.3? [Migrating from 0.3](guides/migrating-from-0.3.md).
+- [Glossary](glossary.md): the terms these pages use, and the words that mean
+  different things in Snowflake, dbt, and SST.
 
 ## Guides
 
@@ -43,6 +45,22 @@ release:
   and how to fix it.
 - [Coverage matrix](reference/coverage.md): where each code is raised and the
   test that proves it.
+
+## Design
+
+For maintainers, and anyone weighing SST: how the engine is built and why.
+
+- [Design overview](design/README.md): what SST is for, and what it is not.
+- [Architecture](design/architecture.md): the rings, ports, compile pipeline,
+  and where state lives.
+- [Decisions](design/decisions.md): each design choice and the alternative it
+  rejected.
+- [Snowflake behaviour](design/snowflake-behaviour.md): where the server
+  differs from its documentation, and the code that depends on it.
+- [dbt compatibility](design/dbt-compatibility.md): what SST reads from dbt, and
+  keeping it working when dbt changes.
+- [Diagnostics](design/diagnostics.md): how problems are coded, ranked, and
+  reported.
 
 ## A worked example
 

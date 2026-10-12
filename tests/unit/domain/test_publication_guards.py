@@ -21,6 +21,7 @@ from snowflake_semantic_tools.domain.validate.publication import (
     dataset_metadata_diagnostics,
     eval_publication_diagnostics,
     put_target_diagnostics,
+    refused_value,
     registry_pointer_diagnostics,
     run_config_diagnostics,
     schema_diagnostics,
@@ -124,6 +125,7 @@ def test_each_shipped_tree_prefix_must_be_hashed_into_the_version() -> None:
 def test_a_publisher_sends_typed_sql_and_typed_grants_only() -> None:
     raw = statement_diagnostic("skill:month-close", "DROP TABLE x", certification_pending=False)
     assert raw is not None and (raw.code, raw.context["value"]) == ("SST-VAL827", "DROP TABLE x")
+    assert refused_value(raw) == "DROP TABLE x"
     grant = sql(
         "GRANT USAGE ON CORTEX EXTENSION {target} TO ROLE {role}",
         target=qname(TARGET),
@@ -132,6 +134,7 @@ def test_a_publisher_sends_typed_sql_and_typed_grants_only() -> None:
     assert statement_diagnostic("skill:month-close", grant, certification_pending=False) is None
     early = statement_diagnostic("skill:month-close", grant, certification_pending=True)
     assert early is not None and early.code == "SST-VAL826"
+    assert refused_value(early) == "before certification succeeded"
     assert statement_diagnostic("skill:month-close", sql("SELECT 1"), certification_pending=True) is None
 
 

@@ -64,6 +64,18 @@ CROSSINGS = [
         id="app-may-not-construct-an-adapter",
     ),
     pytest.param(
+        "adapters/dbt/_boundary_probe.py",
+        "import dbt\n",
+        "SST never imports dbt",
+        id="dbt-adapter-may-not-import-dbt",
+    ),
+    pytest.param(
+        "cli/_boundary_probe.py",
+        "from dbt.cli.main import dbtRunner\n",
+        "SST never imports dbt",
+        id="cli-may-not-import-dbt",
+    ),
+    pytest.param(
         "adapters/_boundary_probe.py",
         "from snowflake_semantic_tools import app\n",
         "Rings are layered",
@@ -84,25 +96,49 @@ CROSSINGS = [
     pytest.param(
         "adapters/snowflake/_boundary_probe.py",
         "import yaml\n",
-        "only the yaml and dbt adapters parse YAML",
+        "only bounded_yaml and the yaml and dbt adapters import PyYAML",
         id="snowflake-adapter-may-not-parse-yaml",
     ),
     pytest.param(
         "app/_boundary_probe.py",
         "import ruamel.yaml\n",
-        "only the roundtrip, dbt and yaml adapters edit YAML",
+        "only roundtrip and the yaml adapter import ruamel",
         id="app-may-not-edit-yaml",
     ),
     pytest.param(
         "adapters/snowflake/_boundary_probe.py",
         "from ruamel.yaml import YAML\n",
-        "only the roundtrip, dbt and yaml adapters edit YAML",
+        "only roundtrip and the yaml adapter import ruamel",
         id="snowflake-adapter-may-not-edit-yaml",
+    ),
+    pytest.param(
+        "adapters/dbt/_boundary_probe.py",
+        "import ruamel.yaml\n",
+        "only roundtrip and the yaml adapter import ruamel",
+        id="dbt-adapter-edits-yaml-only-through-roundtrip",
+    ),
+    pytest.param(
+        "adapters/_boundary_probe.py",
+        "import yaml\n",
+        "only bounded_yaml and the yaml and dbt adapters import PyYAML",
+        id="top-level-adapter-may-not-parse-yaml",
+    ),
+    pytest.param(
+        "adapters/_boundary_probe.py",
+        "import ruamel.yaml\n",
+        "only roundtrip and the yaml adapter import ruamel",
+        id="top-level-adapter-may-not-edit-yaml",
+    ),
+    pytest.param(
+        "domain/model/_boundary_probe.py",
+        "from yaml import safe_load\n",
+        "only bounded_yaml and the yaml and dbt adapters import PyYAML",
+        id="nested-module-may-not-parse-yaml",
     ),
     pytest.param(
         "cli/_boundary_probe.py",
         "import yaml\n",
-        "only the yaml and dbt adapters parse YAML",
+        "only bounded_yaml and the yaml and dbt adapters import PyYAML",
         id="cli-may-not-parse-yaml",
     ),
 ]
@@ -153,7 +189,7 @@ def test_contracts_hold_on_the_real_tree() -> None:
     """
     result = _lint_imports()
     assert result.returncode == 0, f"contracts already broken before probing:\n{result.stdout}"
-    assert "Contracts: 7 kept, 0 broken." in result.stdout, result.stdout
+    assert "Contracts: 8 kept, 0 broken." in result.stdout, result.stdout
 
 
 def test_package_root_holds_only_the_rings() -> None:

@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from tests.helpers.network_guard import guarded_environment
 from tests.helpers.reference_project import DBT_MANIFEST, REPO_ROOT, project_copy, set_column_meta
 
 OVERLAYS = REPO_ROOT / "tests" / "fixtures" / "negative_overlays"
@@ -52,9 +53,15 @@ class SstRun:
 
 
 def run_sst(*args: str, environ: Mapping[str, str] | None = None, timeout: float = 600) -> SstRun:
-    """Run `sst` with `args` from the repository root and wait for it to finish."""
-    env = dict(os.environ if environ is None else environ)
-    env["PYTHONPATH"] = os.pathsep.join(filter(None, (str(REPO_ROOT), env.get("PYTHONPATH"))))
+    """Run `sst` with `args` from the repository root and wait for it to finish.
+
+    Outside a live test the child holds the network guard (`network_guard.guarded_environment`),
+    whose directory stays first on `PYTHONPATH`: the repository root is added only when the guard
+    has not put it there already.
+    """
+    env = guarded_environment(os.environ if environ is None else environ)
+    if str(REPO_ROOT) not in env.get("PYTHONPATH", "").split(os.pathsep):
+        env["PYTHONPATH"] = os.pathsep.join(filter(None, (str(REPO_ROOT), env.get("PYTHONPATH"))))
     done = subprocess.run(
         [sys.executable, "-m", "snowflake_semantic_tools.cli.main", *args],
         cwd=REPO_ROOT,

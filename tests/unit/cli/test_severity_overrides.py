@@ -6,10 +6,14 @@ emission audit accepts it: no run here reports SST-INT007.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
-from tests.helpers.cli_projects import validate_json
+from click.testing import CliRunner
+
+from snowflake_semantic_tools.cli.main import cli
+from tests.helpers.cli_projects import common, validate_json
 from tests.helpers.reference_project import project_copy
 
 
@@ -24,9 +28,9 @@ def _project(tmp_path: Path, overrides: dict[str, str], *, duplicate: bool = Fal
     if overrides:
         lines = "".join(f"    {code}: {severity}\n" for code, severity in overrides.items())
         config = project / "sst_config.yml"
-        config.write_text(
-            config.read_text(encoding="utf-8") + f"\ndiagnostics:\n  severity_overrides:\n{lines}", encoding="utf-8"
-        )
+        # The fixture already overrides a code; these join its block.
+        block = "diagnostics:\n  severity_overrides:\n"
+        config.write_text(config.read_text(encoding="utf-8").replace(block, block + lines, 1), encoding="utf-8")
     return project
 
 
@@ -91,3 +95,30 @@ def test_demoting_a_non_demotable_code_is_refused_with_its_catalog_code(tmp_path
     # A refused override is never applied: the duplicate still reports at its declared severity.
     assert _of(diagnostics, "SST-PRS106") == {("error", None, None)}
     assert "SST-INT007" not in _codes(diagnostics)
+
+
+def test_promoting_a_cascade_reports_it_at_the_override_and_counts_it_as_no_cascade(tmp_path: Path) -> None:
+    def broken(root: Path, overrides: dict[str, str]) -> Path:
+        project = _project(root, overrides)
+        metrics = project / "semantic_models" / "metrics" / "metrics.yml"
+        text = metrics.read_text(encoding="utf-8")
+        metrics.write_text(text.replace("{{ ref('orders', 'order_id') }}", "{{ ref('missing', 'order_id') }}", 1))
+        return project
+
+    plain = broken(tmp_path / "a", {})
+    _, before = validate_json(plain, "--no-strict")
+    assert _of(before, "SST-MEM107") == {("info", None, None)}
+    hidden = CliRunner().invoke(cli, ["validate", *common(plain), "--no-strict"]).output
+    assert "SST-MEM107" not in hidden and "cascade not shown (--show-cascade)" in hidden
+
+    promoted = broken(tmp_path / "b", {"SST-MEM107": "warning"})
+    payload = json.loads(
+        CliRunner().invoke(cli, ["validate", *common(promoted), "--no-strict", "--output", "json"]).stdout
+    )
+    assert _of(payload["diagnostics"], "SST-MEM107") == {("warning", "info", None)}
+    assert payload["summary"]["suppressed_cascade"] == 0
+    assert payload["summary"]["warning"] == sum(item["severity"] == "warning" for item in payload["diagnostics"])
+    assert "SST-INT007" not in _codes(payload["diagnostics"])
+    shown = CliRunner().invoke(cli, ["validate", *common(promoted), "--no-strict"]).output
+    assert "warning[SST-MEM107] (promoted from info): metric:order_count skipped" in shown
+    assert "cascade not shown" not in shown

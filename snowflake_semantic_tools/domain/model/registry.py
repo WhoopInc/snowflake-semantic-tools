@@ -81,9 +81,13 @@ class ArtifactType:
             type, or for one that lists several `object_types` instead.
         prunable: Whether `--prune` drops its object once the object's source is deleted.
         replaces_on_update: Whether an update replaces the object rather than altering it in place.
+        grant_preservation: How the type's grants survive an update; None for a type whose
+            object kinds keep them differently, which lists them in `object_grant_preservation`.
         dependency_types: The types it may depend on, which it is planned after.
         pins_versions_of: The dependency types whose published version its payload names.
         object_types: The object types its objects may be, when there are several.
+        object_grant_preservation: How each of `object_types` keeps its grants, when the kinds
+            differ; each rendered object's `PublishShape` declares the same.
         validation_rules: The rule sets, by `RULE_SETS` name, whose codes validate it.
         dir_key: The `project.` configuration key naming the directory its files are under.
         nested_under: The type inside each of whose artifact folders its own files are; "" for
@@ -98,13 +102,14 @@ class ArtifactType:
     object_type: str
     prunable: bool = True
     replaces_on_update: bool = True
-    grant_preservation: GrantPreservation = GrantPreservation.CLAUSE
+    grant_preservation: GrantPreservation | None = GrantPreservation.CLAUSE
     dependency_types: tuple[str, ...] = ()
     # Dependencies whose published version this type's payload names. A write of
     # this type is planned only together with them, so it cannot pin a version
     # that was never created.
     pins_versions_of: tuple[str, ...] = ()
     object_types: tuple[str, ...] = ()
+    object_grant_preservation: tuple[tuple[str, GrantPreservation], ...] = ()
     lifecycle: ArtifactLifecycle = ArtifactLifecycle.OBJECT
     # Reference-page text; the generated artifact reference renders these rows.
     summary: str = ""
@@ -113,6 +118,10 @@ class ArtifactType:
     validation_rules: tuple[str, ...] = ()
     dir_key: str = ""
     nested_under: str = ""
+
+    def grant_preservation_of(self, object_type: str) -> GrantPreservation | None:
+        """Return how an object of `object_type` keeps its grants; None for a kind the type lacks."""
+        return dict(self.object_grant_preservation).get(object_type, self.grant_preservation)
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,18 +167,23 @@ REQUIRED_MEMBER_FIELDS = ("name", "root_key", "owner_type", "validation_rules")
 MEMBER_OWNING_TYPES = frozenset({"semantic_view"})
 # Every template function some resolver in the package handles: `domain.resolve.template` for
 # `ref`, `metric`, `var`, `custom_instructions` and tags, refusing the legacy `table` and
-# `column`; the semantic loader for `custom_instructions` entries; the agent loader for `file`,
-# `skill` and `plugin`; agent tool resolution for `semantic_view`, `tool` and `agent`; and the
-# eval config reader for `eval_metric`.
+# `column`, and for `filter`, `relationship` and `verified_query` in custom-instruction text;
+# the semantic loader for `custom_instructions` entries and a table entry's `source`; the agent
+# loader for `file`, `skill`, `plugin` and a skill source's `extension`; agent tool resolution for
+# `semantic_view`, `tool` and `agent`; and the eval config reader for `eval_metric`.
 RESOLVED_FUNCTIONS = frozenset(
     {
-        *("ref", "table", "column", "metric", "var", "tag", "custom_instructions", "file"),
-        *("eval_metric", "semantic_view", "tool", "agent", "skill", "plugin"),
+        *("ref", "table", "column", "source", "metric", "var", "tag", "custom_instructions", "file"),
+        *("eval_metric", "semantic_view", "tool", "agent", "skill", "plugin", "extension"),
+        *("filter", "relationship", "verified_query"),
     }
 )
-# Resolved functions that address something outside this registry: dbt models and columns,
-# project variables and files, tags, and the shared eval metrics.
-NON_ARTIFACT_FUNCTIONS = frozenset({"ref", "table", "column", "var", "tag", "file", "eval_metric"})
+# Resolved functions that address something outside this registry: dbt models, columns and
+# sources, project variables and files, tags, the shared eval metrics, and extensions published
+# elsewhere.
+NON_ARTIFACT_FUNCTIONS = frozenset(
+    {"ref", "table", "column", "source", "var", "tag", "file", "eval_metric", "extension"}
+)
 # Artifact types nothing references, by design: an eval and a profile are leaves, so they need
 # no template function. Named rather than inferred, so a type that forgot one still fails.
 DELIBERATELY_UNREFERENCED = frozenset({"eval", "profile"})
@@ -393,10 +407,23 @@ def _check_grant_preservation(artifact: ArtifactType) -> None:
 
 
 def _grant_contradiction(artifact: ArtifactType) -> str | None:
-    """Say how the type's grant handling or composite lifecycle contradicts itself; None when it does not."""
-    if artifact.replaces_on_update and artifact.grant_preservation is GrantPreservation.NONE:
+    """Say how the type's grant handling or composite lifecycle contradicts itself; None when it does not.
+
+    A type that keeps grants per object kind declares them for exactly its object types and none
+    for the type; it replaces on update when any kind keeps grants across a replace.
+    """
+    by_kind = dict(artifact.object_grant_preservation)
+    if artifact.grant_preservation is None:
+        if not by_kind or set(by_kind) != set(artifact.object_types):
+            return "its per-kind grant preservation does not list exactly its object types"
+        kept = set(by_kind.values())
+    elif by_kind:
+        return "it declares grant preservation both for the type and per object kind"
+    else:
+        kept = {artifact.grant_preservation}
+    if artifact.replaces_on_update and kept == {GrantPreservation.NONE}:
         return "it replaces its object and declares no grant preservation"
-    if not artifact.replaces_on_update and artifact.grant_preservation is not GrantPreservation.NONE:
+    if not artifact.replaces_on_update and kept != {GrantPreservation.NONE}:
         return "it never replaces its object and declares grant preservation"
     if artifact.lifecycle is ArtifactLifecycle.COMPOSITE:
         if artifact.object_type or artifact.object_types:
@@ -469,9 +496,15 @@ ARTIFACT_REGISTRY = build_registry(
             object_type="",
             prunable=False,
             replaces_on_update=True,
-            grant_preservation=GrantPreservation.REPLAY,
+            grant_preservation=None,
             dependency_types=("semantic_view",),
             object_types=("CORTEX SEARCH SERVICE", "PROCEDURE", "FUNCTION", "STAGE"),
+            object_grant_preservation=(
+                ("CORTEX SEARCH SERVICE", GrantPreservation.REPLAY),
+                ("PROCEDURE", GrantPreservation.CLAUSE),
+                ("FUNCTION", GrantPreservation.CLAUSE),
+                ("STAGE", GrantPreservation.NONE),
+            ),
             summary=(
                 "One `define:` member of a tool group: a Snowflake object an agent tool calls, published "
                 "before any agent that uses it. Grants depend on the kind: a search service is replaced and "
@@ -595,8 +628,8 @@ ARTIFACT_REGISTRY = build_registry(
         ),
     ),
     (
-        # A relationship, filter, or verified query is attached by the tables it reads, and no
-        # template function names one, so none has a ref_function.
+        # A relationship, filter, or verified query is attached by the tables it reads; its
+        # template function names it only from custom-instruction text.
         MemberType(
             "relationship",
             "snowflake_relationships",
@@ -604,7 +637,7 @@ ARTIFACT_REGISTRY = build_registry(
             10,
             AttachRule.TABLE_MEMBERSHIP,
             "semantic_view",
-            None,
+            "relationship",
             ("relationship",),
         ),
         MemberType(
@@ -644,7 +677,7 @@ ARTIFACT_REGISTRY = build_registry(
             60,
             AttachRule.TABLE_MEMBERSHIP,
             "semantic_view",
-            None,
+            "filter",
             ("filter",),
         ),
         MemberType(
@@ -654,7 +687,7 @@ ARTIFACT_REGISTRY = build_registry(
             70,
             AttachRule.TABLE_MEMBERSHIP,
             "semantic_view",
-            None,
+            "verified_query",
             ("filter",),
         ),
         MemberType(

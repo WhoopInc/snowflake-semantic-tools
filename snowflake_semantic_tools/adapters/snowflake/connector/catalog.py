@@ -29,7 +29,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
     ExtensionVersion,
 )
 from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
-from snowflake_semantic_tools.domain.sql import Sql, datatype, ident, join, keyword, literal, qname, scope, sql
+from snowflake_semantic_tools.domain.sql import Sql, boolean, datatype, ident, join, keyword, literal, qname, scope, sql
 
 # The object types SST observes, each spelled as SHOW spells it once pluralized with an S.
 OBJECT_TYPES = frozenset(
@@ -50,7 +50,8 @@ OBJECT_TYPES = frozenset(
 # The account-level object types SHOW PARAMETERS ... IN <type> is asked about.
 PARAMETER_OBJECT_TYPES = frozenset(("WAREHOUSE",))
 # The observed types SHOW GRANTS ON <type> cannot address: Snowflake reports a dataset's
-# grants only in SHOW GRANTS TO ROLE, and its owner in SHOW DATASETS.
+# grants only in SHOW GRANTS TO ROLE, and its owner in SHOW DATASETS. Snowflake's docs give
+# SHOW GRANTS ON for any object; the server rejects it for a dataset (docs/design/snowflake-behaviour.md).
 _UNLISTED_GRANTS = frozenset(("DATASET",))
 # How GET_DDL spells each observed type it reads. MEASURED: it rejects 'AGENT' as an invalid
 # object type and reads an agent as 'CORTEX_AGENT'. It reads no stage, dataset, or Cortex
@@ -66,6 +67,16 @@ _GET_DDL_TYPES: Mapping[str, str] = {
     "TAG": "TAG",
 }
 _ROUTINE_TYPES = frozenset(("PROCEDURE", "FUNCTION"))
+# The object_domain TAG_REFERENCES is asked for a semantic view's tags. UNVERIFIED against a
+# live account: the documented domain list has no semantic-view entry, and says 'TABLE' is for
+# all table-like objects such as views, so 'TABLE' is sent. The probe in
+# docs/design/snowflake-behaviour.md must confirm it before a release.
+_SEMANTIC_VIEW_TAG_DOMAIN = "TABLE"
+# The domain of each type whose tags are read: only a semantic view's, which a replace without
+# WITH TAG removes (docs/design/snowflake-behaviour.md).
+_TAG_DOMAINS: Mapping[str, str] = {"SEMANTIC VIEW": _SEMANTIC_VIEW_TAG_DOMAIN}
+# The levels a tag set on a parent shows at; a replace of the object keeps such a tag.
+_PARENT_TAG_LEVELS = frozenset(("DATABASE", "SCHEMA"))
 
 
 class CatalogMethods(Session, CatalogPort):
@@ -124,6 +135,30 @@ class CatalogMethods(Session, CatalogPort):
             )
         )
 
+    def tag_references(self, object_type: str, qualified_name: QualifiedName) -> tuple[str, ...]:
+        kind = _object_type(object_type)
+        domain = _TAG_DOMAINS.get(kind)
+        if domain is None:
+            raise SnowflakePortError(f"tags are read only on a semantic view, not on {kind}")
+        rows = self._dict_rows(
+            sql(
+                "SELECT * FROM TABLE({database}.INFORMATION_SCHEMA.TAG_REFERENCES({name}, {domain}))",
+                database=ident(qualified_name.database),
+                name=literal(qualified_name.sql),
+                domain=literal(domain),
+            )
+        )
+        names = {
+            QualifiedName(
+                Identifier.shown(str(row.get("tag_database") or "")),
+                Identifier.shown(str(row.get("tag_schema") or "")),
+                Identifier.shown(str(row.get("tag_name") or "")),
+            ).sql
+            for row in rows
+            if row.get("tag_name") and str(row.get("level") or "").upper() not in _PARENT_TAG_LEVELS
+        }
+        return tuple(sorted(names))
+
     def describe_marker(
         self,
         qualified_name: QualifiedName,
@@ -142,9 +177,18 @@ class CatalogMethods(Session, CatalogPort):
         kind = _GET_DDL_TYPES.get(observed_type)
         if kind is None:
             raise SnowflakePortError(f"GET_DDL cannot read a {observed_type.lower()}")
-        # GET_DDL takes the name as a string, a routine's with its argument types.
+        # GET_DDL takes the name as a string, a routine's with its argument types. The third
+        # argument asks for fully qualified names, so the text re-executes in a session with no
+        # current database; it defaults to FALSE.
         name = str(_routine(qname(qualified_name), routine_signature)) if kind in _ROUTINE_TYPES else qualified_name.sql
-        result = self.query(sql("SELECT GET_DDL({kind}, {name})", kind=literal(kind), name=literal(name)))
+        result = self.query(
+            sql(
+                "SELECT GET_DDL({kind}, {name}, {qualified})",
+                kind=literal(kind),
+                name=literal(name),
+                qualified=boolean(True),
+            )
+        )
         if not result.rows or result.rows[0][0] is None:
             raise SnowflakePortError(f"GET_DDL returned nothing for {object_type} {qualified_name.sql}")
         return str(result.rows[0][0])

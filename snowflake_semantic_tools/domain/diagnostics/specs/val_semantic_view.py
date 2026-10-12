@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
 
 TITLE: str = "Validation"
 
@@ -254,6 +254,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "`sst enrich` finds a written `meta.sst.data_type` that differs from the relation's type, "
             "on a column dbt gives no `data_type`"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL328",
@@ -307,5 +308,36 @@ SPECS: tuple[ErrorSpec, ...] = (
             "a metric left in the view's scope names, in `using_relationships`, a relationship the view's "
             "scope removes, or one whose tables the view does not hold"
         ),
+    ),
+    spec(
+        "SST-VAL333",
+        Severity.ERROR,
+        "Column access_modifier holds an unrecognised value",
+        "{artifact}: column '{member}' declares access_modifier '{found}'",
+        "use `public_access`, or remove `access_modifier` from the column",
+        condition=("a column's `meta.sst.access_modifier` is neither `public_access` nor `private_access`"),
+    ),
+    spec(
+        "SST-VAL334",
+        Severity.ERROR,
+        "Fact declares a private access modifier",
+        "{artifact}: fact '{member}' declares access_modifier 'private_access'; SST does not render a private fact",
+        "remove `access_modifier` from the column, or hide what it measures behind a private metric",
+        condition=("a `fact` column that is not excluded carries `meta.sst.access_modifier: private_access`"),
+        note=(
+            "A fact renders without `PRIVATE`, so it would publish as public; it is refused instead. "
+            "A private dimension is SST-VAL222. A column with no `column_type`, or one excluded, "
+            "never renders, so its modifier is not refused."
+        ),
+    ),
+    spec(
+        "SST-VAL335",
+        Severity.ERROR,
+        "Fact declares is_enum",
+        "{artifact}: fact '{member}' declares is_enum; only a dimension can be an enum",
+        "remove `is_enum`, or change `column_type` to `dimension`",
+        condition="a `fact` column that is not excluded declares `meta.sst.is_enum: true`",
+        note="Snowflake refuses `IS_ENUM` on a fact when the view is created, so no setting lowers this.",
+        demotable=False,
     ),
 )

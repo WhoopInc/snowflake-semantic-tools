@@ -6,16 +6,18 @@ ignores case and reads `_` and `%` as wildcards.
 
 from __future__ import annotations
 
+from snowflake_semantic_tools.adapters.json_files import JsonFileError
 from snowflake_semantic_tools.adapters.snowflake.connector.catalog import CatalogMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.grant_walk import (
-    OWNERSHIP,
     Grantee,
+    account_holders,
     grantees_of,
     held_by,
     schema_holders,
 )
+from snowflake_semantic_tools.adapters.snowflake.connector.session import _variant_value
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
-from snowflake_semantic_tools.domain.ports.snowflake.preflight import ROLE_HIERARCHY_DEPTH, PreflightPort
+from snowflake_semantic_tools.domain.ports.snowflake.preflight import ROLE_HIERARCHY_DEPTH, PreflightPort, RoleWalk
 from snowflake_semantic_tools.domain.sql import Sql, ident, literal, qname, sql
 from snowflake_semantic_tools.domain.sql import scope as scope_sql
 
@@ -45,35 +47,80 @@ class PreflightMethods(CatalogMethods, PreflightPort):
         return any(str(row.get("name") or "") == warehouse.folded for row in rows)
 
     def missing_privileges(self, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
-        return self._lacking(sql("SHOW GRANTS ON SCHEMA {scope}", scope=scope_sql(scope)), privileges)
+        return self._lacking(sql("SHOW GRANTS ON SCHEMA {scope}", scope=scope_sql(scope)), scope, privileges)
 
     def missing_stage_privileges(self, stage: QualifiedName, privileges: tuple[str, ...]) -> tuple[str, ...]:
-        return self._lacking(sql("SHOW GRANTS ON STAGE {stage}", stage=qname(stage)), privileges)
+        grants = sql("SHOW GRANTS ON STAGE {stage}", stage=qname(stage))
+        return self._lacking(grants, SchemaScope.from_qualified_name(stage), privileges)
 
-    def _lacking(self, grants: Sql, privileges: tuple[str, ...]) -> tuple[str, ...]:
+    def _lacking(self, grants: Sql, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
         """Return the privileges no role in the session holds, by the grants `grants` lists.
 
-        A role holds a privilege when a grant to it names the privilege or OWNERSHIP.
+        A role holds a privilege when a grant to it names the privilege or OWNERSHIP, or when
+        it is granted a database role that does, directly or through other database roles.
+        The account roles the grants name are asked about first; database roles are read only
+        for the privileges none of those holds in the session, so a database role that cannot
+        be read matters only when a direct holder does not already answer.
         """
-        rows = self._dict_rows(grants)
-        holders: dict[str, set[str]] = {}
-        for row in rows:
-            if str(row.get("granted_to") or "").upper() == "ROLE":
-                holders.setdefault(str(row.get("privilege") or "").upper(), set()).add(str(row.get("grantee_name")))
+        holders = schema_holders(self._dict_rows(grants), scope, privileges)
         in_session: dict[str, bool] = {}
+        direct = {grantee: held for grantee, held in holders.items() if grantee.is_account_role}
+        missing = self._unheld(direct, privileges, in_session)
+        wanted = {privilege.upper() for privilege in missing}
+        through = {
+            grantee: held & wanted for grantee, held in holders.items() if not grantee.is_account_role and held & wanted
+        }
+        if not through:
+            return missing
+        return self._unheld(account_holders(through, self._grantees_of, ROLE_HIERARCHY_DEPTH), missing, in_session)
+
+    def _unheld(
+        self, holders: dict[Grantee, frozenset[str]], privileges: tuple[str, ...], in_session: dict[str, bool]
+    ) -> tuple[str, ...]:
+        """Return the privileges no account role among `holders` that is in the session holds."""
         missing: list[str] = []
         for privilege in privileges:
-            roles = sorted(holders.get(privilege.upper(), set()) | holders.get(OWNERSHIP, set()))
+            roles = sorted(role.names[0].value for role, held in holders.items() if privilege.upper() in held)
             if not any(self._role_in_session(role, in_session) for role in roles):
                 missing.append(privilege)
         return tuple(missing)
 
+    def has_secondary_roles(self) -> bool:
+        # From the docs, not measured: a JSON object whose `roles` lists the active secondary
+        # roles and whose `value` is `ALL` when every granted role is; both empty for none.
+        rows = self.query(sql("SELECT CURRENT_SECONDARY_ROLES()")).rows
+        try:
+            value = _variant_value(rows[0][0] if rows else None, None)
+        except JsonFileError:
+            return True
+        if not isinstance(value, dict):
+            return True
+        return bool(str(value.get("roles") or "").strip() or str(value.get("value") or "").strip())
+
     def missing_role_privileges(self, role: str, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
+        return self.walk_role_privileges(role, scope, privileges).missing
+
+    def walk_role_privileges(self, role: str, scope: SchemaScope, privileges: tuple[str, ...]) -> RoleWalk:
+        """Return the privileges `role` does not hold on the schema, through its hierarchy.
+
+        As `_lacking` does, the account roles the grants name are walked first; database roles
+        are read only for the privileges none of those passes up to `role`.
+        """
         holders = schema_holders(
             self._dict_rows(sql("SHOW GRANTS ON SCHEMA {scope}", scope=scope_sql(scope))), scope, privileges
         )
-        held = held_by(Grantee.role(_shown(role)), holders, self._grantees_of, ROLE_HIERARCHY_DEPTH)
-        return tuple(privilege for privilege in privileges if privilege.upper() not in held)
+        grantee = Grantee.role(_shown(role))
+        direct = {holder: held for holder, held in holders.items() if holder.is_account_role}
+        held, cut_short = held_by(grantee, direct, self._grantees_of, ROLE_HIERARCHY_DEPTH)
+        wanted = {privilege.upper() for privilege in privileges} - held
+        through = {
+            holder: found & wanted for holder, found in holders.items() if not holder.is_account_role and found & wanted
+        }
+        if through:
+            more, deeper = held_by(grantee, through, self._grantees_of, ROLE_HIERARCHY_DEPTH)
+            held, cut_short = held | more, cut_short | deeper
+        missing = tuple(privilege for privilege in privileges if privilege.upper() not in held)
+        return RoleWalk(missing, tuple(privilege for privilege in missing if privilege.upper() in cut_short))
 
     def _grantees_of(self, grantee: Grantee) -> tuple[Grantee, ...]:
         return grantees_of(grantee, self._dict_rows(grantee.grants_of))

@@ -70,6 +70,48 @@ def test_planning_identifier_rule_bites() -> None:
     assert not PLANNING_ID.search("version: VERSION$3 or SST_16D8F6686433")
 
 
+# The diagram types GitHub's Mermaid renders. A fence opening with anything else, such as a
+# misspelled `stateDiagram-1.0`, renders as an error box, which no other check would notice.
+MERMAID_TYPES = frozenset(
+    (
+        "flowchart",
+        "graph",
+        "sequenceDiagram",
+        "classDiagram",
+        "stateDiagram-v2",
+        "erDiagram",
+        "gantt",
+        "pie",
+        "journey",
+        "gitGraph",
+        "mindmap",
+        "timeline",
+    )
+)
+
+
+def _mermaid_type(body: str) -> str:
+    """The first word of a diagram, after any `%%` comment or directive lines."""
+    lines = [line.strip() for line in body.splitlines() if line.strip() and not line.strip().startswith("%%")]
+    return lines[0].split()[0] if lines else ""
+
+
+@pytest.mark.parametrize("page", PAGES, ids=lambda page: page.relative_to(REPO_ROOT).as_posix())
+def test_mermaid_diagrams_open_with_a_type_github_renders(page: Path) -> None:
+    unknown = [
+        _mermaid_type(body)
+        for language, body in FENCE.findall(page.read_text(encoding="utf-8"))
+        if language == "mermaid" and _mermaid_type(body) not in MERMAID_TYPES
+    ]
+    assert not unknown, f"{page.relative_to(REPO_ROOT)}: {unknown}"
+
+
+def test_the_mermaid_type_rule_bites() -> None:
+    assert _mermaid_type("%% the rings\nflowchart TD\n  a --> b\n") == "flowchart"
+    assert _mermaid_type("stateDiagram-1.0\n  [*] --> A\n") not in MERMAID_TYPES
+    assert _mermaid_type("\n") == ""
+
+
 # Files published as content: their bytes are hashed into a bundle, so a golden
 # holds them as they are.
 PUBLISHED_CONTENT = ("skills/", "plugins/", "profiles/", "hooks/", "mcp-servers/", "commands/")

@@ -3,15 +3,18 @@ from __future__ import annotations
 from dataclasses import replace
 from types import MappingProxyType
 
-from snowflake_semantic_tools.app.observe import ObserveOptions, observe
+from snowflake_semantic_tools.app.observe import DEFAULT_OBSERVE_OPTIONS, ObserveOptions, observe
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
+from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
     ApplyOutcome,
     Change,
+    ChangeSet,
     CompositePlan,
     GrantRow,
+    OwnershipMarker,
     RenderedArtifact,
     ShowRow,
 )
@@ -22,6 +25,7 @@ from snowflake_semantic_tools.domain.model.registry import (
     GrantPreservation,
     Registry,
 )
+from snowflake_semantic_tools.domain.plan.properties import changed_properties
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
@@ -62,7 +66,7 @@ def test_observe_options_skip_grants_and_capture_the_prior_definition() -> None:
     artifact = rendered()
     port.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now"))
     port.grants[artifact.target.sql] = (GrantRow("SELECT", "ROLE", "R"),)
-    port.definitions[artifact.target.sql] = "create semantic view V"
+    port.definitions[artifact.target.sql] = "create or replace semantic view V copy grants"
     desired = {artifact.key: artifact}
     targets = (artifact.target,)
 
@@ -76,7 +80,9 @@ def test_observe_options_skip_grants_and_capture_the_prior_definition() -> None:
     captured, quiet = observe(
         port, SEMANTIC_REGISTRY, targets, fetched_at="now", desired_artifacts=desired, options=capture
     )
-    assert captured.artifacts[artifact.key].definition == "create semantic view V" and quiet == ()
+    assert (
+        captured.artifacts[artifact.key].definition == "create or replace semantic view V copy grants" and quiet == ()
+    )
     assert captured.artifacts[artifact.key].grants == (GrantRow("SELECT", "ROLE", "R"),)
 
     # Only an object the plan renders is read; a prune candidate never is.
@@ -268,3 +274,78 @@ class _CompositeHandler:
         del state_entry
         artifact = replace(rendered("OLD"), key=artifact_key, artifact_type="virtual")
         return replace(change(artifact, Action.PRUNE), artifact_type="virtual")
+
+
+def _tag_plan(
+    declared: tuple[str, ...],
+    options: ObserveOptions = DEFAULT_OBSERVE_OPTIONS,
+    *,
+    recorded: str = "f" * 64,
+    port: FakeSnowflake | None = None,
+) -> tuple[FakeSnowflake, RenderedArtifact, ChangeSet]:
+    """Plan a view that shows the tag `GOV.T.PII`, declaring `declared`; an update unless `recorded` is current."""
+    artifact = replace(rendered(), desired_tags=declared)
+    planned_manifest = manifest({artifact.key: artifact})
+    port = port or FakeSnowflake()
+    port.show(
+        ShowRow("V", "DB", "SCHEMA", "OWNER", "now", OwnershipMarker(planned_manifest.manifest_id, recorded).text)
+    )
+    port.tags[artifact.target.sql] = ("GOV.T.PII",)
+    applied = AppliedEntry(
+        recorded, artifact.target.sql, "then", "run", "applied", recorded, planned_manifest.manifest_id
+    )
+    planned = PlanArtifacts(port, observe_options=options).run(
+        {artifact.key: artifact},
+        planned_manifest,
+        replace(state(), applied=MappingProxyType({artifact.key: applied})),
+        target(),
+        fetched_at="now",
+    )
+    expected = Action.NOOP if recorded == artifact.fingerprint else Action.UPDATE
+    assert planned.changes[0].action is expected
+    return port, artifact, planned
+
+
+def test_plan_warns_of_each_tag_a_view_replace_removes() -> None:
+    port, artifact, planned = _tag_plan(())
+    assert port.tag_reads == [artifact.target.sql]
+    [warning] = [item for item in planned.diagnostics if item.code == "SST-PLN039"]
+    assert warning.message.endswith("removes tags the project does not declare: GOV.T.PII")
+    properties = changed_properties(planned.changes[0], planned.manifest_id)
+    assert ("tags", "GOV.T.PII", "") in [(item.name, item.before, item.after) for item in properties]
+
+
+def test_plan_is_silent_on_declared_tags_and_reads_none_without_grants() -> None:
+    _, _, declared = _tag_plan(("GOV.T.PII",))
+    assert "SST-PLN039" not in {item.code for item in declared.diagnostics}
+    assert "tags" not in [item.name for item in changed_properties(declared.changes[0], declared.manifest_id)]
+    port, _, skipped = _tag_plan((), ObserveOptions(grants=False))
+    assert port.tag_reads == []
+    assert "SST-PLN039" not in {item.code for item in skipped.diagnostics}
+
+
+def test_plan_reads_no_tags_on_a_view_it_leaves_unchanged_or_only_observes() -> None:
+    port, _, unchanged = _tag_plan((), recorded=rendered().fingerprint)
+    assert port.tag_reads == [] and "SST-PLN039" not in {item.code for item in unchanged.diagnostics}
+    # Observation alone never reads tags, whatever the plan may replace.
+    artifact = rendered()
+    listed = FakeSnowflake()
+    listed.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now"))
+    observation, quiet = observe(
+        listed, SEMANTIC_REGISTRY, (artifact.target,), fetched_at="now", desired_artifacts={artifact.key: artifact}
+    )
+    assert observation.artifacts[artifact.key].tags is None and quiet == () and listed.tag_reads == []
+
+
+def test_a_failed_tag_read_warns_and_the_update_is_planned_all_the_same() -> None:
+    refusing = FakeSnowflake()
+    refusing.fail("tag_references", SnowflakePortError("denied"))
+    _, _, planned = _tag_plan((), port=refusing)
+    assert [(item.code, item.severity, item.message) for item in planned.diagnostics] == [
+        (
+            "SST-PLN040",
+            Severity.WARNING,
+            "the tags on DB.SCHEMA.V were not read, so the tags its replace removes are not checked: denied",
+        )
+    ]
+    assert planned.changes[0].observed is not None and planned.changes[0].observed.tags is None

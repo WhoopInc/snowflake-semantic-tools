@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
 
 TITLE: str = "Validation"
 
@@ -162,6 +162,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         note=(
             "A verified query several semantic views hold is counted once, and reported once, naming every such view."
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL416",
@@ -210,5 +211,6 @@ SPECS: tuple[ErrorSpec, ...] = (
             "a metric, a filter, or a variable is untyped, and facts are not compiled. A finding is reported "
             "once, its detail naming every semantic view that holds the member."
         ),
+        precheck=Precheck.OBSERVE,
     ),
 )

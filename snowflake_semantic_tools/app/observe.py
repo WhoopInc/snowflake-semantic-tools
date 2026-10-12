@@ -3,16 +3,19 @@
 `observe` lists each artifact type's objects in every schema the targets name, once per
 schema, reading an object's grants only when the plan may replace it, and its definition only
 when asked to capture it. A failed read is reported and observation goes on, so one missing
-privilege never hides the rest. Every listing is one unit a `Fanout` may run on a session of
-its own, and then so are the reads of each object listed; both are merged in the order they
-would run one at a time, each listing followed by the reads of what it lists.
+privilege never hides the rest. Every listing is one unit a `Fanout` may run on a session of its
+own, and then so are the reads of each object listed; both are merged in the order they would
+run one at a time, each listing followed by the reads of what it lists.
+
+`observe_replaced_tags` then reads the tags of each semantic view the plan will replace, which
+only deciding the plan from what `observe` found can tell.
 """
 
 from __future__ import annotations
 
 import itertools
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.fanout import Fanout
@@ -21,6 +24,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import (
+    Action,
     GrantRow,
     ObservedArtifact,
     RenderedArtifact,
@@ -29,12 +33,16 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     extract_marker,
 )
 from snowflake_semantic_tools.domain.model.registry import ArtifactType, Registry
+from snowflake_semantic_tools.domain.plan import classify
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersions, CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.state import AppliedEntry
 
 _FoldedName = tuple[str, str, str]
 # One listing: an artifact type's objects of one object type in one schema.
 _Unit = tuple[ArtifactType, str, SchemaScope]
+# The object types whose replace drops every tag it does not name (docs/design/snowflake-behaviour.md).
+_TAGS_REPLACED = frozenset(("SEMANTIC VIEW",))
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +51,9 @@ class ObserveOptions:
 
     Attributes:
         grants: Read the grants of each object the plan may replace, one SHOW GRANTS each, so
-            the plan can report what a replace would drop; `plan --no-grants` turns it off.
+            the plan can report what a replace would drop, and the tags of each semantic view it
+            will replace, one TAG_REFERENCES read each, so it can report the tags the replace
+            removes; `plan --no-grants` turns both off.
         capture_prior: Read the current definition of each object a rendered artifact names,
             as `plan --capture-prior` asks: one GET_DDL each, or for an agent one SHOW
             VERSIONS IN AGENT; `app.prior` says what each kind's definition is.
@@ -200,3 +210,69 @@ def _replaceable_grants(
     except SnowflakePortError as exc:
         return None, (D("SST-PLN001", value=f"grants on {row.qualified_name.sql}", detail=str(exc)),)
     return tuple(sorted(grants)), ()
+
+
+def observe_replaced_tags(
+    port: CatalogPort,
+    observation: SnowflakeObservation,
+    rendered: Mapping[str, RenderedArtifact],
+    applied: Mapping[str, AppliedEntry],
+    registry: Registry,
+    *,
+    readers: Fanout[CatalogPort] | None = None,
+) -> tuple[SnowflakeObservation, DiagnosticBag]:
+    """Read the tags on each semantic view the plan will replace, into the observation.
+
+    A replace keeps only the tags its WITH TAG names, so they matter only for a view the plan
+    updates: one whose decision, from the observation and the entry state recorded for it, is an
+    update. Every other object keeps the tags it was observed with, None for unread. A failed
+    read leaves the view's tags unread and the plan goes on.
+
+    Args:
+        applied: The entries state recorded, by artifact key.
+        readers: Sessions to run the reads on concurrently; None reads on `port`, one at a time.
+
+    Diagnostics:
+        SST-PLN040: reading a replaced view's tags failed, so the tags its replace removes are
+            not checked.
+    """
+    replaced = tuple(
+        (key, observed)
+        for key, artifact in rendered.items()
+        if (observed := observation.artifacts.get(key)) is not None
+        and observed.object_type.upper() in _TAGS_REPLACED
+        and _decided_update(key, artifact, observed, applied.get(key), registry)
+    )
+    if not replaced:
+        return observation, DiagnosticBag()
+    reads = (readers or Fanout(port)).map(lambda session, item: _read_tags(session, item[1]), replaced)
+    found = dict(observation.artifacts)
+    diagnostics: list[Diagnostic] = []
+    for (key, observed), read in zip(replaced, reads, strict=True):
+        if isinstance(read, Diagnostic):
+            diagnostics.append(read)
+            continue
+        found[key] = replace(observed, tags=read)
+    return replace(observation, artifacts=MappingProxyType(found)), DiagnosticBag(diagnostics)
+
+
+def _decided_update(
+    key: str,
+    artifact: RenderedArtifact,
+    observed: ObservedArtifact,
+    recorded: AppliedEntry | None,
+    registry: Registry,
+) -> bool:
+    """Say whether the plan decides an update of the observed object, before validation blocks it."""
+    decision = classify(
+        key, artifact, registry, observed=observed, recorded=recorded, validation=DiagnosticBag(), composite=None
+    )
+    return decision.change.action is Action.UPDATE
+
+
+def _read_tags(port: CatalogPort, observed: ObservedArtifact) -> tuple[str, ...] | Diagnostic:
+    """Read the tags on one semantic view; SST-PLN040 if the read fails."""
+    try:
+        return port.tag_references(observed.object_type, observed.qualified_name)
+    except SnowflakePortError as exc:
+        return D("SST-PLN040", value=observed.qualified_name.sql, detail=str(exc))

@@ -12,6 +12,7 @@ from snowflake_semantic_tools.domain.diagnostics import (
     Origin,
     Severity,
     audit,
+    cascade,
     resolve_severities,
     unstable_fingerprints,
 )
@@ -35,6 +36,15 @@ def test_blocking_cascade_and_promotion_are_read_off_the_resolved_severity() -> 
     assert (ERROR.blocks, WARNING.blocks, cascaded.cascaded, ERROR.cascaded) == (True, False, True, False)
     assert (promoted[0].promoted_from, ERROR.promoted_from) == (Severity.WARNING, None)
     assert DiagnosticBag((ERROR, WARNING, D("SST-INT902", detail="x"))).blocking_subjects() == frozenset({"metric:m"})
+
+
+def test_a_cascade_is_downgraded_to_info_and_names_its_cause_unless_its_code_is_non_demotable() -> None:
+    follow_on = cascade(ERROR, "SST-LOD003")
+    assert (follow_on.severity, follow_on.caused_by, follow_on.cascaded) == (Severity.INFO, "SST-LOD003", True)
+    assert audit(DiagnosticBag((WARNING, follow_on))) == (WARNING, follow_on)
+    # Nothing may lower a non-demotable code, so it only names its cause.
+    pinned = cascade(D("SST-PLN030", artifact="semantic_view:a", value="agent:b"), "SST-LOD003")
+    assert (pinned.severity, pinned.caused_by, pinned.cascaded) == (Severity.ERROR, "SST-LOD003", False)
 
 
 def test_audit_reports_each_broken_invariant_once_and_leaves_a_clean_run_alone() -> None:

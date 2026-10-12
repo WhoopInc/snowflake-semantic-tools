@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
 
 TITLE: str = "Planning"
 
@@ -17,8 +17,10 @@ SPECS: tuple[ErrorSpec, ...] = (
             "a read of the target failed: an object listing, grants, the state table, "
             "a preflight read, or a composite artifact's resources; under `--use-cached-state`, also "
             "each composite artifact, which a recorded observation cannot decide. A definition "
-            "`--capture-prior` cannot read is SST-PLN037 instead"
+            "`--capture-prior` cannot read is SST-PLN037 instead, and the tags on a view a replace "
+            "removes SST-PLN040"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN002",
@@ -27,6 +29,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: {value} exists as a {found}",
         "rename the artifact, or drop the existing object",
         condition="the target name is occupied by another object kind",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN003",
@@ -38,6 +41,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "under `--prune`, a live object of a prunable type that the project no longer "
             "declares carries no SST ownership marker, so it is not pruned"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN004",
@@ -50,6 +54,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "for it, or its entry's manifest, fingerprint, DDL hash or name disagrees with the "
             "marker, so it is not pruned"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN005",
@@ -78,32 +83,41 @@ SPECS: tuple[ErrorSpec, ...] = (
         "publish it first, or correct the reference",
         condition="a planned create or update references a relation the target does not hold",
         note="Plan blocks the change rather than let apply fail with SST-SNO003.",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN008",
         Severity.ERROR,
         "Deploying role lacks a required privilege",
         "{value} lacks {detail} on {target}",
-        "grant the privilege",
+        "grant the privilege to the session's primary role, or to a role it inherits",
         condition=(
-            "no role in the session holds, or owns the schema for, the CREATE privilege a planned "
-            "create needs on its schema, such as CREATE SEMANTIC VIEW; or, for an agent create or "
-            "update, CREATE STAGE on the schema of an absent `apply.agent_spec_stage` stage, or READ "
-            "and WRITE on an existing one"
+            "the session's primary role does not hold, directly, through a role it inherits, or "
+            "through a database role, the CREATE privilege a planned create needs on its schema, "
+            "such as CREATE SEMANTIC VIEW, nor own the schema; or, for an agent create or "
+            "update, CREATE STAGE on the schema of an absent `apply.agent_spec_stage` stage; or no "
+            "role in the session holds READ and WRITE on an existing one"
         ),
         note=(
-            "Plan blocks the change rather than let apply fail with SST-SNO004. An update is not "
-            "checked for its own CREATE privilege: it replaces an object the role already owns."
+            "Plan blocks the change rather than let apply fail with SST-SNO004. Snowflake authorises "
+            "a CREATE by the primary role alone, so a CREATE privilege only a secondary role holds "
+            "does not count, and the message says a secondary role holds it. The walk up from the "
+            "primary role stops at 16 roles; a privilege the session holds that it has not reached "
+            "by then is said to have no inheritance path within that depth instead. With no "
+            "secondary role active, the session is asked alone. An update is not checked for its "
+            "own CREATE privilege: it replaces an object the role already owns."
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN009",
         Severity.WARNING,
         "An object already exists at the target name",
         "{artifact}: {value} already exists",
-        "use or_replace, or choose another name",
+        "drop or rename the existing object, or give the artifact another name",
         condition="the name a planned create writes to is held by an object of its type that observation did not list",
         note="Unless the name is free by then, apply refuses the create (SST-APL012).",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN010",
@@ -114,6 +128,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "the schema a planned write targets does not exist, or the role cannot see it; reported once per schema"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN011",
@@ -124,6 +139,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "the database a planned write targets does not exist, or the role cannot see it; reported once per database"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN012",
@@ -132,6 +148,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "warehouse {value} does not exist or is not authorised",
         "grant USAGE, or name an existing warehouse",
         condition="the warehouse the profile names does not exist, or the role cannot see it; reported once per plan",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN013",
@@ -141,6 +158,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "confirm COPY GRANTS is emitted before applying",
         condition="a planned update replaces an object that carries explicit grants",
         note="Apply checks every one survives the replace, and fails the change if not (SST-APL009).",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN014",
@@ -157,6 +175,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "The change is blocked, so `apply` refuses the plan (SST-APL003) until the live object "
             "is again the one SST wrote, although this code is a warning."
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN015",
@@ -165,6 +184,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: NOOP",
         None,
         condition="the proposed definition matches the observation",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN016",
@@ -190,6 +210,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "which needs IMPORTED PRIVILEGES on the `SNOWFLAKE` database and lags by up to three hours. "
         "A role without it skips this check for each prune candidate, reported as `SST-VAL020`, "
         "and the prune goes ahead: this is a warning, never what stops a prune.",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN018",
@@ -198,6 +219,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "observation for {value} is {detail}",
         "re-run plan",
         condition="observing and planning in one run took longer than the 15-minute observation lifetime",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN019",
@@ -208,6 +230,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="the observation shows a competing writer",
         note="Reading other sessions' locks needs MONITOR on the account. A role without it skips "
         "this check, reported as `SST-VAL020`, and the plan goes ahead.",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN020",
@@ -229,6 +252,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "not declare, compared case-folded; one per schema, counting every candidate whether "
             "or not it is pruned"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN022",
@@ -245,6 +269,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: declared '{value}', live object is '{found}'",
         "normalise the declaration to the rendered case",
         condition="an unquoted declared identifier matches a live object only after case folding",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN024",
@@ -258,6 +283,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "an object holds the target name and state records no SST entry for it; `sst drop` "
             "also reports it for an object with no trusted SST ownership marker"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN025",
@@ -267,6 +293,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "move the object explicitly, then reconcile state and re-run plan",
         demotable=False,
         condition="state records the artifact (or its resources) at a target other than the one declared",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN026",
@@ -279,6 +306,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "the skill bundle stage, the profile stage, or the `apply.agent_spec_stage` stage exists "
             "but is not INTERNAL with SNOWFLAKE_SSE encryption"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN027",
@@ -288,6 +316,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "an earlier publish left a damaged version under this alias; remove the alias in Snowflake, then plan again",
         demotable=False,
         condition="a version alias SST would reuse holds files that differ from the bundle",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN028",
@@ -297,6 +326,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "another writer changed the row; reconcile it, then plan again",
         demotable=False,
         condition="a profile-registry row carries a VERSION neither state nor this release names",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN029",
@@ -306,6 +336,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST never alters the registry; fix the table or point skills.stage at a compatible one",
         demotable=False,
         condition="the profile registry table lacks a column SST writes, or types it differently",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN030",
@@ -361,6 +392,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "stage before its first upload, and never replaces, alters, or drops the stage. Plan "
             "blocks the agent instead when the role lacks CREATE STAGE on the stage's schema (SST-PLN008)."
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN037",
@@ -376,6 +408,50 @@ SPECS: tuple[ErrorSpec, ...] = (
             "The plan is otherwise unaffected: the change is planned as without the flag, and its "
             "`prior_definition` is null."
         ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN038",
+        Severity.ERROR,
+        "Deploy ordering violated",
+        "{type} '{name}' would publish before {blocker}, which it depends on",
+        "add the dependency to `--select` or drop it from `--exclude`, or apply it first",
+        condition=(
+            "`sst plan` creates or updates an artifact whose dependency `--select` or `--exclude` left "
+            "out and which does not exist yet"
+        ),
+        note=(
+            "Publish order is the registry's type order, so it cannot be authored; only the selection "
+            "can leave a dependency unpublished. A pinned version is `SST-PLN030`."
+        ),
+    ),
+    spec(
+        "SST-PLN039",
+        Severity.WARNING,
+        "Live view carries tags that a replace would remove",
+        "{artifact}: replacing {value} removes tags the project does not declare: {found}",
+        "declare each tag to keep under the view's `tags:`, or set it again after applying",
+        condition="a planned update replaces a semantic view that carries tags the project does not declare",
+        note=(
+            "The replace's `WITH TAG` names only the declared tags, and Snowflake removes every other "
+            "tag set on the view; a tag it inherits from its schema or database is kept. "
+            "`--no-grants` skips the read of the view's tags, and with it this warning; a read that "
+            "fails is `SST-PLN040`."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN040",
+        Severity.WARNING,
+        "Tags on a replaced view not read",
+        "the tags on {value} were not read, so the tags its replace removes are not checked: {detail}",
+        "check that the role can read the view's tags with TAG_REFERENCES, or plan with --no-grants to skip the read",
+        condition="reading the tags on a semantic view a planned update replaces failed",
+        note=(
+            "The plan is otherwise unaffected: the update is planned as before, and `SST-PLN039` is "
+            "not checked for the view."
+        ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN100",
@@ -384,6 +460,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: smoke query for metric '{member}' failed: {detail}",
         "fix the metric; a created view is not a working view",
         condition=("a smoke probe of a metric failed (`sst test --suite smoke`); any other probe reports `SST-APL100`"),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN101",

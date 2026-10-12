@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
+from snowflake_semantic_tools.domain.ports.snowflake.preflight import RoleWalk
 from tests.helpers.snowflake_fake.world import SnowflakeWorld
 
 
@@ -35,10 +36,19 @@ class FakePreflight(SnowflakeWorld):
         lacking = self.preflight.stage_lacking.get(stage.sql, ())
         return tuple(privilege for privilege in privileges if privilege in lacking)
 
+    def has_secondary_roles(self) -> bool:
+        self._check("has_secondary_roles")
+        return self.preflight.secondary_roles
+
     def missing_role_privileges(self, role: str, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
         self._check("missing_role_privileges")
-        lacking = self.preflight.role_lacking.get(scope.sql, ())
+        lacking = (*self.preflight.role_lacking.get(scope.sql, ()), *self.preflight.lacking.get(scope.sql, ()))
         return tuple(privilege for privilege in privileges if privilege in lacking)
+
+    def walk_role_privileges(self, role: str, scope: SchemaScope, privileges: tuple[str, ...]) -> RoleWalk:
+        missing = self.missing_role_privileges(role, scope, privileges)
+        beyond = self.preflight.role_beyond_depth.get(scope.sql, ())
+        return RoleWalk(missing, tuple(privilege for privilege in missing if privilege in beyond))
 
     def locked_objects(self, scope: SchemaScope) -> tuple[QualifiedName, ...]:
         self._check("locked_objects")

@@ -72,6 +72,27 @@ questions:
   and `SST-VAL711` (info) counts the agent's tools no question expects.
 - `description` is for reviewers; it is never sent to Snowflake.
 
+### Writing good questions
+
+The gate catches a question that used to pass and now fails, so a question is
+worth as much as its expectation stays true while nothing about the agent
+changes.
+
+- Assert what survives new data. Which tools are called, with an absolute date
+  range in their input, and a `ground_truth_output` that says what the reply
+  must contain -- both periods, the direction of change -- stay true as rows
+  land; a figure does not, which is why one needs `immutable: true`.
+- Ask what the agent should decline, with `ground_truth_invocations: []` and an
+  output that describes the refusal. `tool_selection_accuracy` scores it with
+  no LLM judge (`SST-VAL725`).
+- Keep a few core questions the agent must always answer right beside broader
+  coverage. SST gates every question alike, so this is a way of writing the
+  dataset, not a key: make sure the core passes before capturing, because a
+  question a gated metric failed in any baseline run cannot regress against
+  that baseline.
+
+Drawn from: [eval_dataset.py](../../snowflake_semantic_tools/domain/validate/eval_dataset.py), [gate.py](../../snowflake_semantic_tools/app/evals/gate.py).
+
 ### How the dataset is published
 
 `sst apply` publishes the dataset in the agent's schema. With `dataset.mint:
@@ -145,7 +166,8 @@ A `sweep:` block is refused in this release (`SST-CFG044`).
 A system metric pins `version`, so a scoring change on the Snowflake side cannot
 move a gate silently. Only `v3` is accepted: no version here or in
 `evals.+metric_version` is `SST-VAL722`, and any other is `SST-PRS013` (with the
-warning `SST-VAL723`). A system metric's judge comes with its version, so
+warning `SST-VAL723`). `v1`, which Snowflake refuses when a run starts, is
+`SST-VAL764` in place of the warning, and no severity override lowers it. A system metric's judge comes with its version, so
 `judge_model` on one is an error (`SST-VAL724`). `tool_selection_accuracy` uses
 no LLM judge (`SST-VAL725`, info); gating on the reference-free
 `logical_consistency` is a warning (`SST-VAL726`).
@@ -440,8 +462,9 @@ counts, and each metric's pass count and average score; status details and any
 retrieval error follow it. With `--output json`, `data` carries `evals` (each
 eval's retention class and attempts, with `metric_summaries` and `cost`),
 `attempt_count`, `cost_totals`, `regression_count`, `regressions`,
-`gate_verdict` (`passed`, `regressed`, `no_signal`, or `captured`),
-`gate_reasons`, and `captured_baselines`. Credits are not attributed.
+`gate_verdict` (`passed`, `regressed`, `no_signal`, `captured`, or
+`not_evaluated` when a baseline capture captured nothing, as when it falls
+short), `gate_reasons`, and `captured_baselines`. Credits are not attributed.
 
 ## Baselines
 
@@ -523,3 +546,38 @@ could not compare, a blocking eval regressed, or a capture fell short; 3 for an
 invalid command line; 4 when the manifest is stale, another run holds the lock,
 or no eval matches the selection; 5 when Snowflake cannot be reached; and 130
 when interrupted.
+
+### How the gate reaches its verdict
+
+The gate checks one eval's run in this order, and the first check that fails
+gives the reason, which fails the run whatever its tier:
+
+```mermaid
+flowchart TD
+    run["one eval's run"] --> stored{"a baseline stored?"}
+    stored -- no --> absent["baseline_absent: SST-VAL758"]
+    stored -- yes --> version{"completed attempts on one VERSION$n?"}
+    version -- no --> current["current_no_signal: SST-SNO001"]
+    version -- yes --> edited{"a custom metric edited in place?"}
+    edited -- yes --> judge["baseline_incompatible: SST-VAL745"]
+    edited -- no --> same{"config, questions, metrics, tier, agent version as recorded?"}
+    same -- no --> incompatible["baseline_incompatible: SST-VAL759"]
+    same -- yes --> runs{"holds baseline_runs runs?"}
+    runs -- no --> incomplete["baseline_incomplete: SST-VAL734"]
+    runs -- yes --> expired{"expired?"}
+    expired -- yes --> stale["baseline_expired: SST-VAL761"]
+    expired -- no --> pairs{"same question and metric pairs?"}
+    pairs -- no --> incompatible
+    pairs -- yes --> regressed{"a gated metric regressed?"}
+    regressed -- no --> passed["passed"]
+    regressed -- yes --> tier{"run.tier"}
+    tier -- report --> listed["passes, regression listed"]
+    tier -- blocking --> fails["fails: SST-VAL763"]
+```
+
+A run that gets past the expiry check against a baseline with 7 days or fewer
+left also warns (`SST-VAL760`). Across the suite, `gate_verdict` is `no_signal`
+when any eval's gate gave a reason, else `regressed` when any eval regressed,
+else `passed`.
+
+Drawn from: [gate.py](../../snowflake_semantic_tools/app/evals/gate.py), [suite.py](../../snowflake_semantic_tools/app/evals/suite.py), [results.py](../../snowflake_semantic_tools/domain/model/eval/results.py).

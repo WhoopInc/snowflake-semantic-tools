@@ -2,9 +2,9 @@
 
 Neither kind is ever raised. A 0.3 code survives as an alias so an old CI log or a suppression
 comment stays readable: `ALIASES` records, for each, its 0.3 title, what became of it, and the 1.0
-codes it now answers to. A retired 1.0 number is burned; `TOMBSTONES` keeps its title, and the
-code that took its condition over when one did, so `sst explain` answers for it rather than
-calling it unknown. Both tables are data and import nothing but the standard library.
+codes it now answers to. A retired 1.0 number is burned; `TOMBSTONES` keeps its title, why it was retired,
+and the code that took its condition over when one did, so `sst explain` and the error reference
+answer for it rather than calling it unknown. Both tables are data and import nothing but the standard library.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ class Alias:
         title: The code's 0.3 title.
         disposition: What 1.0 did with it: `KEPT`, `SPLIT` into several codes, `RETIRED`, or
             `KEPT, then SUPERSEDED`.
-        targets: The 1.0 codes it now answers to, in the order the catalog lists them; empty
+        targets: The 1.0 codes it now answers to, most direct first; empty
             for a code retired with no successor.
     """
 
@@ -38,18 +38,20 @@ class Tombstone:
 
     Attributes:
         superseded_by: The code that took the condition over; None when the condition is gone.
+        reason: Why the number was retired, as `sst explain` and the error reference state it.
     """
 
     code: str
     title: str
-    superseded_by: str | None = None
+    superseded_by: str | None
+    reason: str
 
 
 def _aliases(*rows: tuple[str, str, str, tuple[str, ...]]) -> Mapping[str, Alias]:
     return MappingProxyType({row[0]: Alias(*row) for row in rows})
 
 
-def _tombstones(*rows: tuple[str, str, str | None]) -> Mapping[str, Tombstone]:
+def _tombstones(*rows: tuple[str, str, str | None, str]) -> Mapping[str, Tombstone]:
     return MappingProxyType({row[0]: Tombstone(*row) for row in rows})
 
 
@@ -159,44 +161,227 @@ ALIASES: Mapping[str, Alias] = _aliases(
 )
 
 TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
-    ("SST-APL101", "Rolled back after a smoke failure", None),
-    ("SST-APL102", "Smoke failed and the prior definition was not recoverable", None),
-    ("SST-CFG021", "publish_via is not yaml or ddl", None),
-    ("SST-CFG022", "publish_via incompatible with a declared feature", None),
-    ("SST-CFG024", "spec_version is not recognised", None),
-    ("SST-CFG026", "dependency_order is incomplete or has unknown entries", None),
-    ("SST-CFG027", "Smoke queries disabled", None),
-    ("SST-CFG028", "emit_relationship_type is enabled", None),
-    ("SST-CFG030", "infer_is_enum is enabled", None),
-    ("SST-DBT007", "meta.sst location disagrees with the dbt config", None),
-    ("SST-DBT008", "meta.sst location is hardcoded", None),
-    ("SST-MAN021", "state.manifest_id does not match the current manifest", None),
-    ("SST-MEM102", "Member attached only through a legacy reference", None),
-    ("SST-PRS108", "Role-playing occurrence has no distinct name", None),
-    ("SST-PRT007", "dbt manifest schema version unsupported", "SST-DBT017"),
-    ("SST-REF016", "Two-argument ref used with a dbt cross-project idiom", None),
-    ("SST-REF017", "Hardcoded fully-qualified name", None),
-    ("SST-REF021", "Ref target is declared under both define and reference", None),
-    ("SST-REF024", "Legacy table() reference does not resolve", "SST-REF034"),
-    ("SST-REF025", "Legacy column() reference does not resolve", "SST-REF035"),
-    ("SST-REF038", "Unknown project variable", "SST-CFG029"),
-    ("SST-REF200", "table() is deprecated", "SST-REF034"),
-    ("SST-REF201", "column() is deprecated", "SST-REF035"),
-    ("SST-SNO021", "Unsupported clause for the publish path", None),
-    ("SST-VAL313", "Primary key and unique keys overlap", "SST-VAL223"),
-    ("SST-VAL501", "create_mode holds an unrecognised value", None),
-    ("SST-VAL502", "create_mode and copy_grants combination is illegal", None),
-    ("SST-VAL503", "copy_grants is a no-op for this create mode", None),
-    ("SST-VAL504", "Replace would drop live grants", None),
-    ("SST-VAL505", "Replace would run without COPY GRANTS", None),
-    ("SST-VAL620", "Publishing an artifact type whose grant preservation is unprobed", None),
-    ("SST-VAL736", "Selected verified queries are removed for the duration of a run", None),
-    ("SST-VAL749", "Analyst eval declares the wrong subject or source", None),
-    ("SST-VAL750", "Analyst eval declares more than one semantic view", None),
-    ("SST-VAL751", "Analyst eval requests a metric other than sql_correctness", None),
-    ("SST-VAL752", "min_verified_queries resolved per file instead of per view", None),
-    ("SST-VAL753", "Analyst gate is an absolute pass rate", None),
-    ("SST-VAL754", "A verified query was removed since the last run", None),
-    ("SST-VAL756", "Analyst eval run overlaps a regenerate of the same view", None),
-    ("SST-VAL757", "Analyst evals cannot colocate with their ground truth", None),
+    (
+        "SST-APL101",
+        "Rolled back after a smoke failure",
+        None,
+        "apply runs no smoke probes and never rolls back; smoke is its own suite, `sst test --suite smoke`",
+    ),
+    (
+        "SST-APL102",
+        "Smoke failed and the prior definition was not recoverable",
+        None,
+        "apply runs no smoke probes and never rolls back, so there is no prior definition to recover",
+    ),
+    (
+        "SST-CFG021",
+        "publish_via is not yaml or ddl",
+        None,
+        "`generation.publish_via` is removed: SST renders DDL directly",
+    ),
+    (
+        "SST-CFG022",
+        "publish_via incompatible with a declared feature",
+        None,
+        "`generation.publish_via` is removed, so there is one publish path for every feature",
+    ),
+    ("SST-CFG024", "spec_version is not recognised", None, "configuration carries no spec version to check"),
+    (
+        "SST-CFG026",
+        "dependency_order is incomplete or has unknown entries",
+        None,
+        "publish order comes from the artifact registry and the dependency graph, never from a setting",
+    ),
+    ("SST-CFG027", "Smoke queries disabled", None, "apply runs no smoke probes, so there is nothing to disable"),
+    (
+        "SST-CFG028",
+        "emit_relationship_type is enabled",
+        None,
+        "`generation.emit_relationship_type` is removed: relationship and join types are never rendered",
+    ),
+    ("SST-CFG030", "infer_is_enum is enabled", None, "there is no such setting; `sst enrich` writes `is_enum`"),
+    (
+        "SST-DBT007",
+        "meta.sst location disagrees with the dbt config",
+        None,
+        "`meta.sst.database` and `meta.sst.schema` are refused outright (SST-DBT030), so no copy is left to disagree",
+    ),
+    (
+        "SST-DBT008",
+        "meta.sst location is hardcoded",
+        None,
+        "the keys it warned against are refused outright (SST-DBT030)",
+    ),
+    ("SST-MAN004", "Impact index incomplete", None, "the impact index it checked is no longer written"),
+    (
+        "SST-MAN021",
+        "state.manifest_id does not match the current manifest",
+        None,
+        "no run is refused over a manifest mismatch: each artifact is compared with its own state entry",
+    ),
+    (
+        "SST-MEM102",
+        "Member attached only through a legacy reference",
+        None,
+        "legacy `table()` and `column()` references are refused at parse, so no member can attach through one",
+    ),
+    ("SST-PRS108", "Role-playing occurrence has no distinct name", None, "role-playing tables are not supported"),
+    (
+        "SST-PRT007",
+        "dbt manifest schema version unsupported",
+        "SST-DBT017",
+        "the manifest schema check belongs with the other dbt checks",
+    ),
+    (
+        "SST-REF016",
+        "Two-argument ref used with a dbt cross-project idiom",
+        None,
+        "SST reads the dbt manifest, not model SQL, and in SST YAML a two-argument `ref` always names a model and "
+        "a column, so a misread one is an unknown column (SST-REF002)",
+    ),
+    (
+        "SST-REF017",
+        "Hardcoded fully-qualified name",
+        "SST-VAL006",
+        "SST-VAL006 already reported the same condition, at validation, which sees the literal text",
+    ),
+    (
+        "SST-REF021",
+        "Ref target is declared under both define and reference",
+        "SST-CFG019",
+        "SST-CFG019 already reported the same condition, when configuration is validated",
+    ),
+    (
+        "SST-REF024",
+        "Legacy table() reference does not resolve",
+        "SST-REF034",
+        "`table()` is refused at parse, so it never reaches resolution",
+    ),
+    (
+        "SST-REF025",
+        "Legacy column() reference does not resolve",
+        "SST-REF035",
+        "`column()` is refused at parse, so it never reaches resolution",
+    ),
+    (
+        "SST-REF038",
+        "Unknown project variable",
+        "SST-CFG029",
+        "SST-CFG029 already reported an undeclared `var()`, wherever it appears",
+    ),
+    (
+        "SST-REF200",
+        "table() is deprecated",
+        "SST-REF034",
+        "`table()` is refused, not deprecated; a warning would say it still works",
+    ),
+    (
+        "SST-REF201",
+        "column() is deprecated",
+        "SST-REF035",
+        "`column()` is refused, not deprecated; a warning would say it still works",
+    ),
+    (
+        "SST-SNO021",
+        "Unsupported clause for the publish path",
+        None,
+        "`generation.publish_via` is removed, so there is one publish path",
+    ),
+    (
+        "SST-VAL015",
+        "Deploy ordering violated",
+        "SST-PLN038",
+        "raised by plan, so it moved to the PLN area",
+    ),
+    (
+        "SST-VAL313",
+        "Primary key and unique keys overlap",
+        "SST-VAL223",
+        "SST-VAL223 reports a primary-key column that is also declared unique",
+    ),
+    (
+        "SST-VAL501",
+        "create_mode holds an unrecognised value",
+        None,
+        "`create_mode` is removed: an artifact is created when absent and updated by its type's rule",
+    ),
+    (
+        "SST-VAL502",
+        "create_mode and copy_grants combination is illegal",
+        None,
+        "`create_mode` and `copy_grants` are removed",
+    ),
+    ("SST-VAL503", "copy_grants is a no-op for this create mode", None, "`create_mode` and `copy_grants` are removed"),
+    (
+        "SST-VAL504",
+        "Replace would drop live grants",
+        None,
+        "how grants survive a replace is each artifact type's registered rule, not a setting to get wrong",
+    ),
+    (
+        "SST-VAL505",
+        "Replace would run without COPY GRANTS",
+        None,
+        "how grants survive a replace is each artifact type's registered rule, not a setting to get wrong",
+    ),
+    (
+        "SST-VAL620",
+        "Publishing an artifact type whose grant preservation is unprobed",
+        None,
+        "the artifact registry refuses a type that replaces its object without declaring grant handling (SST-REG021)",
+    ),
+    (
+        "SST-VAL736",
+        "Selected verified queries are removed for the duration of a run",
+        None,
+        "evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST",
+    ),
+    (
+        "SST-VAL749",
+        "Analyst eval declares the wrong subject or source",
+        None,
+        "evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST",
+    ),
+    (
+        "SST-VAL750",
+        "Analyst eval declares more than one semantic view",
+        None,
+        "evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST",
+    ),
+    (
+        "SST-VAL751",
+        "Analyst eval requests a metric other than sql_correctness",
+        None,
+        "evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST",
+    ),
+    (
+        "SST-VAL752",
+        "min_verified_queries resolved per file instead of per view",
+        None,
+        "evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST",
+    ),
+    (
+        "SST-VAL753",
+        "Analyst gate is an absolute pass rate",
+        None,
+        "evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST",
+    ),
+    (
+        "SST-VAL754",
+        "A verified query was removed since the last run",
+        None,
+        "evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST",
+    ),
+    (
+        "SST-VAL756",
+        "Analyst eval run overlaps a regenerate of the same view",
+        None,
+        "evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST",
+    ),
+    (
+        "SST-VAL757",
+        "Analyst evals cannot colocate with their ground truth",
+        None,
+        "evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST",
+    ),
 )

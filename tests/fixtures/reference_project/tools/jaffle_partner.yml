@@ -11,8 +11,9 @@
 # `verify`, the connected target, maps each member to a stand-in under
 # SST_REF_VERIFY. A relation is a literal name, not a template, so it cannot
 # follow the SST_TEST_SNOWFLAKE_* database. No eval question reaches these
-# objects; a connected validate reports each one that is absent as the warning
-# SST-VAL531, so the manual workflow applies this target with --no-strict.
+# objects; a connected validate reports each one that is absent as SST-VAL531,
+# which sst_config.yml demotes to a warning, so the manual workflow applies this
+# target with --no-strict.
 # =============================================================================
 
 tools:

@@ -90,6 +90,30 @@ class ObserveLiveObjects:
             found.extend(self._tool(tool))
         return tuple(found)
 
+    def references(self, compiled: CompileResult) -> tuple[Diagnostic, ...]:
+        """Check only that each extension an agent consumes, and the version it pins, exists.
+
+        This is the part of `run` that a dangling agent reference needs: Snowflake accepts an
+        agent whose consumed extension, or pinned version, does not exist, and the agent then
+        has no skill. `sst plan` runs it on every connected plan unless `--no-validate`, even
+        with the connected checks off, so the reference is seen where the agent is published.
+
+        Diagnostics:
+            SST-VAL531: an extension an agent consumes, or the version it pins, does not exist
+                or is not visible to the session.
+        """
+        found: list[Diagnostic] = []
+        for agent in (item for item in compiled.compiled if isinstance(item, CompiledAgent)):
+            for skill in agent.resolved.model.skills:
+                qualified = _qualified(skill.path, None)
+                if skill.ref != _CONSUMED or qualified is None:
+                    continue
+                grants, absent = self._extension_grants(agent, skill, qualified)
+                found.extend(absent)
+                if grants is not None:
+                    found.extend(self._pinned_version(agent, skill, qualified))
+        return tuple(found)
+
     def _read(self, read: Callable[[], _Read]) -> _Read | None:
         try:
             return read()
@@ -266,12 +290,9 @@ class ObserveLiveObjects:
         qualified = _qualified(skill.path, None)
         if qualified is None:
             return []
-        try:
-            grants = self._port.show_grants("CORTEX EXTENSION", qualified)
-        except SnowflakePortError as exc:
-            if skill.ref == _CONSUMED and _not_visible(exc):
-                return [self._absent(agent, qualified.sql)]
-            return []
+        grants, absent = self._extension_grants(agent, skill, qualified)
+        if grants is None:
+            return absent
         holders = {grant.grantee_name.upper() for grant in grants if grant.privilege.upper() in ("READ", "OWNERSHIP")}
         found = [
             D("SST-VAL542", artifact=agent.name, value=consumer, name=qualified.sql, subject=agent.artifact_key)
@@ -279,6 +300,22 @@ class ObserveLiveObjects:
         ]
         found.extend(self._pinned_version(agent, skill, qualified))
         return found
+
+    def _extension_grants(
+        self, agent: CompiledAgent, skill: AgentSkill, qualified: QualifiedName
+    ) -> tuple[tuple[GrantRow, ...] | None, list[Diagnostic]]:
+        """Read an extension's grants; None when they cannot be read, with SST-VAL531 when consumed.
+
+        SHOW GRANTS saying the extension does not exist or is not authorized -- a missing schema
+        reads the same -- is the one refusal that is evidence: of a consumed extension the agent
+        cannot reach. Any other refusal proves nothing.
+        """
+        try:
+            return self._port.show_grants("CORTEX EXTENSION", qualified), []
+        except SnowflakePortError as exc:
+            if skill.ref == _CONSUMED and _not_visible(exc):
+                return None, [self._absent(agent, qualified.sql)]
+            return None, []
 
     def _pinned_version(self, agent: CompiledAgent, skill: AgentSkill, qualified: QualifiedName) -> list[Diagnostic]:
         """Report a consumed extension's pinned version that SHOW VERSIONS lists by neither name nor alias."""
@@ -311,6 +348,8 @@ class ObserveLiveObjects:
                 for column in member.columns
                 if column.name.casefold() not in live
             )
+        # Snowflake's docs require change tracking on a service's sources; the server reports a
+        # service ACTIVE after a rebuilt source breaks it (docs/design/snowflake-behaviour.md).
         for _, relation in tool.dbt_relations:
             found.extend(self._change_tracking(tool, relation))
         if properties is not None:

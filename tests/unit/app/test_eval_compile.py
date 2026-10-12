@@ -20,7 +20,7 @@ from tests.helpers.eval_builders import ORIGIN, compile_eval, compiled_eval_of, 
 from tests.helpers.sql_values import texts
 
 
-def test_compile_eval_projects_composite_metadata_and_manifest_impact() -> None:
+def test_compile_eval_projects_composite_metadata_into_the_manifest() -> None:
     result = compile_eval()
     compiled = result.compiled[0]
     rendered = compiled.rendered_artifact
@@ -53,7 +53,7 @@ def test_compile_eval_projects_composite_metadata_and_manifest_impact() -> None:
     entry = manifest.artifacts["eval:sales_agent"]
     assert entry.component_fingerprints == rendered.component_fingerprints
     assert tuple(object_type for object_type, _ in entry.physical_resources) == ("TABLE", "DATASET")
-    assert manifest.impact.by_file["eval_metrics/grounding.yml"] == ("eval:sales_agent",)
+    assert "eval_metrics/grounding.yml" in entry.source_files
 
 
 def test_compile_eval_applies_inherited_agent_version() -> None:

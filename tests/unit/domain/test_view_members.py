@@ -124,7 +124,7 @@ def test_the_request_reads_each_records_facts_joins_and_channels() -> None:
     assert "relationship:join" not in request.facts
     assert request.joins == (("orders", "customers"),)
     assert request.instruction_channels == {"tone": frozenset(("ai_question_categorization",))}
-    assert request.unresolved == {"metric:m": 1}
+    assert request.unresolved == {"metric:m": ("SST-REF001",)}
     marked, result = membership(
         (metric, query),
         frozenset(),

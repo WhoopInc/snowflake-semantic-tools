@@ -13,7 +13,7 @@ from pathlib import Path
 
 import click
 
-from snowflake_semantic_tools.adapters.code_coverage import code_tests, prechecks
+from snowflake_semantic_tools.adapters.code_coverage import code_tests
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.cli.commands.explain import package_sites
@@ -26,7 +26,7 @@ from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, comma
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY
 from snowflake_semantic_tools.domain.render.reference_docs import REFERENCES, CodeCoverage, reference_pages
 
-# Where the coverage page reads each code's tests and pre-check, relative to the project.
+# Where the coverage page reads each code's tests, relative to the project.
 CODE_TESTS = Path("tests") / "codes"
 
 
@@ -82,8 +82,7 @@ def code_coverage(root: Path) -> dict[str, CodeCoverage]:
     codes = tuple(sorted(ERROR_REGISTRY))
     sites = package_sites()
     tests = code_tests(root / CODE_TESTS, codes)
-    checks = prechecks(root / CODE_TESTS / "catalog.json")
-    return {code: CodeCoverage(sites.get(code, ()), tests.get(code), checks.get(code, "")) for code in codes}
+    return {code: CodeCoverage(sites.get(code, ()), tests.get(code)) for code in codes}
 
 
 def _print_pages(drifted: list[str], page_count: int, *, check: bool) -> None:

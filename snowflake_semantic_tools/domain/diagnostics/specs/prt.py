@@ -6,7 +6,7 @@ cannot read, refuses to read, or cannot write, and a command-line invocation SST
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
 
 TITLE: str = "External systems"
 
@@ -21,14 +21,16 @@ SPECS: tuple[ErrorSpec, ...] = (
             "connecting to Snowflake fails for a reason other than a rejected credential, or a "
             "Snowflake error matches no more specific code"
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-PRT002",
         Severity.ERROR,
         "Authentication failed",
-        "authentication failed for {value}",
+        "authentication failed for {value}: {detail}",
         "refresh the credential",
-        condition="Snowflake rejects the session's credential while connecting",
+        condition="Snowflake rejects the session's credential, while connecting or later in the run",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-PRT003",
@@ -37,6 +39,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "query timed out after {detail}",
         "retry; this is retryable",
         condition="a statement times out or is cancelled, or the connection drops while it runs",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-PRT004",
@@ -45,6 +48,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{value} lacks {detail}",
         "grant the privilege",
         condition="Snowflake refuses a statement for want of a privilege",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-PRT005",
@@ -53,6 +57,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Snowflake object {value} was not found: {detail}",
         "publish it, or correct the name",
         condition="an object a command reads or drops does not exist, such as a table a semantic view reads",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-PRT006",
@@ -69,6 +74,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "could not write {path}: {detail}",
         "check the permissions and the free space",
         condition="a file SST writes cannot be written",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-PRT009",
@@ -82,6 +88,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "or is reached through one; or dbt's `target-path`, the semantic-models directory, a "
             "verified query's `sql_file`, or a tool's `body_file` resolves outside the project"
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-PRT010",
@@ -90,6 +97,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "could not remove {path}: {detail}",
         "remove it by hand",
         condition="`sst clean` cannot remove the build directory, or it is reached through a link",
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-PRT011",
@@ -189,6 +197,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "definition, so the next apply updates it again, and records it; one it created, which "
             "state never recorded, is refused as SST-PLN024 until it is dropped by hand."
         ),
+        precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-PRT108",

@@ -50,12 +50,12 @@ These go before the command name.
 | `--profiles-dir` | DIRECTORY |  | Look for `profiles.yml` here first, else in `$SST_PROFILES_DIR`; then in `$DBT_PROFILES_DIR`, the project root, and `~/.dbt`. The first that has one wins. |
 | `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
 | `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest of an unsupported schema version, for this run only. |
-| `--allow-stale-manifest` | flag |  | Accept a `--manifest` older than the files it describes, for this run only. |
+| `--allow-stale-manifest` | flag |  | Accept a manifest SST did not write (`--manifest`, or `dbt.invoke: false`) that is older than the files it describes, for this run only. |
 | `--baseline` | FILE |  | Read this baseline file of known warnings, which must exist, instead of the project's `.sst/baseline.json`, read when it exists. |
 | `--no-baseline` | flag |  | Ignore the baseline for this run: every diagnostic is shown and blocks as declared. |
 | `--show-baselined` | flag |  | Show baselined diagnostics instead of counting them. |
-| `--show-info` | flag |  | Show info diagnostics instead of counting them. |
-| `--show-cascade` | flag |  | Show cascade diagnostics instead of counting them. |
+| `--show-info` | flag |  | Show info diagnostics instead of counting them; a cascade needs `--show-cascade`. |
+| `--show-cascade` | flag |  | Show cascade diagnostics, follow-ons downgraded to info, instead of counting them. An override promoting a cascade's code reports it at that severity, as no longer a cascade. |
 | `--show-all-occurrences` | flag |  | Show every occurrence of a code, not the first three of four or more. |
 
 ## Exit codes
@@ -67,8 +67,8 @@ These go before the command name.
 | 2 | `CHANGES` | Declared and actual state differ: `sst plan` found changes, `sst diff` found the two states differ, or `enrich --check`, `format --check`, `docs --check`, or `migrate refs` found something to rewrite. |
 | 3 | `USAGE` | The command line is invalid. |
 | 4 | `CONFIG` | The project, its configuration, or a saved plan cannot be used. |
-| 5 | `CONNECTION` | Snowflake could not be reached. |
-| 130 | `INTERRUPTED` | The run was interrupted. |
+| 5 | `CONNECTION` | Snowflake could not be reached, rejected the credential, refused a privilege, or did not finish in time; the diagnostic code says which, so a retry fixes only some of them. |
+| 130 | `INTERRUPTED` | The run was interrupted: Ctrl-C, SIGTERM or SIGHUP, end of input, or a declined prompt. Any command can return it. |
 
 ## sst init
 
@@ -459,11 +459,11 @@ sst plan [OPTIONS]
 | `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
 | `--plan-out` | FILE |  | Write the saved plan here instead of `target/sst/plan.json`. |
 | `--no-plan-out` | flag |  | Do not write a saved plan. |
-| `--grants / --no-grants` | flag |  | Read the grants on each object an update replaces, one `SHOW GRANTS` each, to report what a replace would drop (SST-PLN013). On by default; `--no-grants` skips the reads. |
+| `--grants / --no-grants` | flag |  | Read the grants on each object an update replaces, one `SHOW GRANTS` each, to report what a replace would drop (SST-PLN013), and the tags on each semantic view it replaces, to report those the replace removes (SST-PLN039). On by default; `--no-grants` skips the reads. |
 | `--use-cached-state` | flag |  | Plan from the observation an earlier `sst plan` recorded in `--state` instead of reading the target, without connecting; the plan says what the target held then, and its age is reported. Requires `--state`; refused with `--snowflake-syntax-check` or `--capture-prior`; composite artifacts are blocked. |
 | `--capture-prior` | flag |  | Read the current definition of each live object a planned artifact names, so a review can see what an update replaces and restore it: `GET_DDL` for a semantic view, search service, procedure or function (needs REFERENCES or OWNERSHIP); for an agent, which an update never replaces, the version it serves, its specification, and the `ALTER AGENT` statements that point back at it. A stage, skill, plugin, profile or eval has none. Shown by `--full` and as `prior_definition` in JSON; a read that fails is a warning (SST-PLN037), not a failed plan. |
 | `--sql-out` | DIRECTORY |  | Write each create's and update's statements into this directory instead of `target/sst/sql`. |
-| `--no-validate` | flag |  | Skip validation: no cycle check, connected check, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`. |
+| `--no-validate` | flag |  | Skip validation: no cycle check, connected check, agent reference lookup, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`. |
 | `--threads` | INTEGER RANGE |  | Sessions to validate and observe on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 4; 1 reads serially. The plan is the same for any count. |
 | `--full` | flag |  | Also print, under each update, the properties it changes on the object, and the definition it replaces when `--capture-prior` read it. |
 | `--names-only` | flag |  | Print the name of each changed artifact, one per line, and nothing else. |
@@ -525,7 +525,7 @@ sst apply [OPTIONS]
 | `--threads` | INTEGER RANGE |  | Sessions to plan and apply on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`. Planning defaults to 4; applying to `skills.+threads`, else 4. |
 | `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 | `--temporary` | flag |  | Publish agents as session-scoped temporary agents; refused for a production-like target. |
-| `--no-validate` | flag |  | Skip validation: no cycle check, connected check, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`. |
+| `--no-validate` | flag |  | Skip validation: no cycle check, connected check, agent reference lookup, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`. |
 | `--sql-out` | DIRECTORY |  | Write each create's and update's statements into this directory instead of `target/sst/sql`. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error; `--no-strict` promotes none. Else `$SST_STRICT`, else `validation.strict`, off when unset. A warning about an artifact the selection leaves out stays one. |
 | `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Connects: compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`, on when unset. |

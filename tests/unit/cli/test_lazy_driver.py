@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.network_guard import guarded_environment
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # Runs `sst <args>` in-process, then reports whether the driver was ever imported.
@@ -25,7 +27,9 @@ print("DRIVER-IMPORTED" if "snowflake.connector" in sys.modules else "DRIVER-ABS
 
 @pytest.mark.parametrize("args", [("explain", "SST-DBT020"), ("--help",), ("list", "--help")])
 def test_an_offline_command_does_not_import_the_snowflake_driver(args: tuple[str, ...], tmp_path: Path) -> None:
-    env = {**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, (str(REPO_ROOT), os.environ.get("PYTHONPATH"))))}
+    env = guarded_environment(
+        {**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, (str(REPO_ROOT), os.environ.get("PYTHONPATH"))))}
+    )
     done = subprocess.run(
         [sys.executable, "-c", _PROBE, *args],
         cwd=tmp_path,

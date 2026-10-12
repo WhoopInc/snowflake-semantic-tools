@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
 
 TITLE: str = "Validation"
 
@@ -130,6 +130,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "connected validate counts rows of an equality relationship's `right_table` that repeat a "
             "join key, so the many-to-one join the relationship implies does not hold"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL213",
@@ -191,6 +192,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "connected validate finds rows of a range relationship's `right_table` whose "
             "`distinct_range` ranges overlap, so one source row joins more than one target row"
         ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL219",

@@ -121,6 +121,11 @@ class _Reader:
 
         return self._readers.map(attempt, items)
 
+    def answers_quietly(self, read: Callable[[PreflightPort], bool], *, refused: bool) -> bool:
+        """Return what one yes-or-no read answers, `refused` where Snowflake refuses it, reporting nothing."""
+        [(answer, _)] = self._answers((None,), lambda port, _: read(port))
+        return refused if answer is None else answer
+
     def holds_each(
         self,
         items: Sequence[ItemT],
@@ -167,19 +172,26 @@ def read_preflight(
     targets = tuple(dict.fromkeys(SchemaScope.from_qualified_name(item.target) for item in rendered.values()))
     stage_scopes = (SchemaScope.from_qualified_name(stage) for stage in stages)
     missing_databases, missing_schemas, present = _containers(reader, tuple(dict.fromkeys((*targets, *stage_scopes))))
-    role = target.role or _current_role(reader) or "the deploying role"
+    current = None if target.role else _current_role(reader)
+    role = target.role or current or "the deploying role"
     missing_relations = _missing_relations(reader, rendered)
     stage_types, absent_stages = _stage_types(reader, stages, present)
     managed = {artifact.target.folded for artifact in rendered.values()} | {
         QualifiedName.parse(entry.qualified_name).folded for entry in state.applied.values() if entry.qualified_name
     }
+    needs = _create_needs(created, present, stages, absent_stages)
+    # The primary role is read once: the profile's role names it, but CURRENT_ROLE() spells it.
+    primary = (current if not target.role else _current_role(reader)) if needs else None
+    missing_privileges, secondary_privileges, unreached_privileges = _missing_privileges(reader, needs, primary)
     preflight = Preflight(
         target_name=target.name,
         role=role,
         missing_databases=missing_databases,
         missing_schemas=missing_schemas,
         missing_relations=MappingProxyType(missing_relations),
-        missing_privileges=MappingProxyType(_missing_privileges(reader, created, present, stages, absent_stages)),
+        missing_privileges=MappingProxyType(missing_privileges),
+        secondary_privileges=MappingProxyType(secondary_privileges),
+        unreached_privileges=MappingProxyType(unreached_privileges),
         missing_stage_privileges=MappingProxyType(_missing_stage_privileges(reader, stages, stage_types)),
         occupied=_occupied(reader, created, present),
         locked=_locked(reader, tuple(scope for scope in present if scope in targets)),
@@ -282,19 +294,18 @@ def _stage_types(
     return types, frozenset(absent)
 
 
-def _missing_privileges(
-    reader: _Reader,
+def _create_needs(
     created: Mapping[str, RenderedArtifact],
     present: tuple[SchemaScope, ...],
     stages: tuple[QualifiedName, ...],
     absent_stages: frozenset[_Name],
-) -> dict[_Scope, tuple[str, ...]]:
-    """Return, by existing scope, the create privileges the role lacks for what it would create there.
+) -> tuple[tuple[SchemaScope, tuple[str, ...]], ...]:
+    """Return, for each existing scope, the create privileges what it would create there needs.
 
     What it would create is each created artifact's object, and each absent upload stage.
     """
     creating_stage = {SchemaScope.from_qualified_name(stage) for stage in stages if stage.folded in absent_stages}
-    needs = tuple(
+    return tuple(
         (scope, needed)
         for scope in present
         if (
@@ -310,16 +321,53 @@ def _missing_privileges(
             )
         )
     )
-    missing = reader.read_each(
-        needs,
-        lambda port, need: port.missing_privileges(need[0], need[1]),
-        lambda need: f"grants on schema {need[0].sql}",
+
+
+def _missing_privileges(
+    reader: _Reader, needs: tuple[tuple[SchemaScope, tuple[str, ...]], ...], primary: str | None
+) -> tuple[dict[_Scope, tuple[str, ...]], dict[_Scope, tuple[str, ...]], dict[_Scope, tuple[str, ...]]]:
+    """Return, by scope, the create privileges the primary role lacks, and which the session holds.
+
+    The second map holds those a secondary role holds; the third those the session holds that
+    the walk up from the primary role stopped short of. Snowflake authorises `CREATE <object>`
+    by the session's primary role alone, so a create privilege counts only when `primary`, or a
+    role it inherits, holds it. The session is then asked about what it lacks, so a privilege
+    only a secondary role holds is told apart from one nothing holds, unless the walk stopped at
+    `ROLE_HIERARCHY_DEPTH` before it could tell. When the primary role cannot be read, every
+    role in the session counts; and when no secondary role is active the session's roles are
+    the primary role's hierarchy, so the session is asked alone, without the walk and its
+    depth limit.
+    """
+    if primary is None or not reader.answers_quietly(lambda port: port.has_secondary_roles(), refused=True):
+        lacking = reader.read_each(needs, lambda port, need: port.missing_privileges(*need), _schema_grants)
+        return {_key(scope): found for (scope, _), found in zip(needs, lacking, strict=True) if found}, {}, {}
+    role = primary
+    walks = reader.read_each(needs, lambda port, need: port.walk_role_privileges(role, *need), _schema_grants)
+    asked = tuple(
+        (scope, walk) for (scope, _), walk in zip(needs, walks, strict=True) if walk is not None and walk.missing
     )
-    return {
-        (scope.database.folded, scope.schema.folded): lacking
-        for (scope, _), lacking in zip(needs, missing, strict=True)
-        if lacking
-    }
+    absent = reader.read_each(
+        tuple((scope, walk.missing) for scope, walk in asked),
+        lambda port, need: port.missing_privileges(*need),
+        _schema_grants,
+    )
+    secondary: dict[_Scope, tuple[str, ...]] = {}
+    unreached: dict[_Scope, tuple[str, ...]] = {}
+    for (scope, walk), nothing in zip(asked, absent, strict=True):
+        held = () if nothing is None else tuple(item for item in walk.missing if item not in nothing)
+        if found := tuple(item for item in held if item not in walk.beyond_depth):
+            secondary[_key(scope)] = found
+        if found := tuple(item for item in held if item in walk.beyond_depth):
+            unreached[_key(scope)] = found
+    return {_key(scope): walk.missing for scope, walk in asked}, secondary, unreached
+
+
+def _schema_grants(need: tuple[SchemaScope, tuple[str, ...]]) -> str:
+    return f"grants on schema {need[0].sql}"
+
+
+def _key(scope: SchemaScope) -> _Scope:
+    return scope.database.folded, scope.schema.folded
 
 
 def _missing_stage_privileges(

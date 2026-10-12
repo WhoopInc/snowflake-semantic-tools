@@ -15,7 +15,10 @@ THE CLAUSE ORDER IS THE CONTRACT, and it is Snowflake's:
       AI_VERIFIED_QUERIES (...)
       MAX_STALENESS = '...'
       WITH TAG (...)
-      COPY GRANTS
+      COPY GRANTS               <- only with OR REPLACE: a plain create has no grants to copy
+
+It is the order the server accepts, not the published grammar's, which puts MAX_STALENESS
+before the AI clauses (docs/design/snowflake-behaviour.md).
 
 WHAT IS DELIBERATELY ABSENT. `FILTERS (...)`, `VERIFIED QUERIES (...)` and
 `CUSTOM INSTRUCTIONS (...)` appear in no grammar: filters fold into `DIMENSIONS`
@@ -27,11 +30,13 @@ SCOPE. A view's `scope` decides which of its columns, metrics and relationships 
 member it does not admit is left out of its clause, so a view built with every attached
 member still publishes only the subset its author listed.
 
-ORDERING. `TABLES` renders in DECLARATION order, because that is the order the
-author wrote and the golden preserves it. Every other member list renders SORTED
-by its qualified name. The difference is not an inconsistency: table order is
-authored information, member order is not, and sorting members is what keeps a
-re-render byte-identical when an unrelated column is added.
+ORDERING. `RELATIONSHIPS`, `FACTS`, `DIMENSIONS` and `METRICS` render SORTED: relationships
+by name, facts and dimensions by qualified name, and metrics by qualified name with the
+table-scoped ones before the view-level ones. Their order is not authored, and sorting them is
+what keeps a re-render byte-identical when an unrelated column is added. `TABLES`, `VARIABLES`
+and `WITH TAG` render in DECLARATION order, and `AI_VERIFIED_QUERIES` in the order
+the queries attached, because the model carries them so; moving a verified query
+between files, or reordering variables or tags, therefore changes the DDL.
 
 TOTALITY. `MEMBER_INDEX` reads each member type `semantic_view` declares off the model, and
 `render_checked` refuses a render whose member count differs from the index's; importing this
@@ -191,6 +196,8 @@ def render_variable(var: Variable) -> Sql:
         name=_name(var.name),
         data_type=var.data_type,
         default=var.default,
+        # Snowflake's docs give a variable's COMMENT without `=`; the server requires it
+        # (docs/design/snowflake-behaviour.md).
         comment=_comment(var.comment),
     )
 
@@ -213,6 +220,9 @@ def render_column(col: Column) -> Sql:
     parts.append(sql(" AS {expression}", expression=expr(col.expr)))
     parts.append(_synonyms(col.synonyms))
     parts.append(_comment(col.comment))
+    # Snowflake's docs omit SAMPLE_VALUES and IS_ENUM; the server accepts both, in this order,
+    # and IS_ENUM on a dimension only, which validation enforces (SST-VAL335,
+    # docs/design/snowflake-behaviour.md).
     if col.sample_values:
         parts.append(sql(" SAMPLE_VALUES ({values})", values=_quoted_list(col.sample_values)))
     if col.is_enum:
@@ -324,6 +334,8 @@ def render(view: SemanticView) -> Sql:
     Raises:
         ValueError: the view's or a table's name is not a three-part name, or a member name is
             not an identifier.
+        AssertionError: the view is both `or_replace` and `if_not_exists`, which no project can
+            ask for: the caller is broken, so a command reports it as an internal error.
     """
     return _render_counted(view)[0]
 
@@ -336,6 +348,7 @@ def render_checked(view: SemanticView) -> tuple[Sql | None, tuple[Diagnostic, ..
 
     Raises:
         ValueError: as `render` does, for a name the checks before rendering let through.
+        AssertionError: as `render` does, for both `or_replace` and `if_not_exists`.
 
     Diagnostics:
         SST-RND001: the view has no tables.
@@ -386,6 +399,10 @@ def _unquotable_names(view: SemanticView, subject: str) -> list[Diagnostic]:
 
 def _render_counted(view: SemanticView) -> tuple[Sql, int]:
     """Render the statement, and count the members its clauses hold."""
+    if view.or_replace and view.if_not_exists:
+        # Snowflake refuses the pair; no project can set either flag, so this is a caller's bug,
+        # raised as one rather than as the ValueError a command reports as the project's fault.
+        raise AssertionError(f"semantic view {view.fqn!r} is both or_replace and if_not_exists")
     head = [sql("CREATE")]
     if view.or_replace:
         head.append(sql(" OR REPLACE"))
@@ -417,39 +434,52 @@ def _render_counted(view: SemanticView) -> tuple[Sql, int]:
     return join("\n", lines), members
 
 
+# The clauses after `METRICS`, by their leading keywords, in the order the server accepts.
+# Snowflake's docs put MAX_STALENESS before the AI clauses; the server rejects it there
+# (docs/design/snowflake-behaviour.md). `plan --capture-prior` puts a GET_DDL read back
+# into this order, so the render and the restore agree.
+TRAILING_CLAUSES: tuple[str, ...] = (
+    "COMMENT",
+    "AI_SQL_GENERATION",
+    "AI_QUESTION_CATEGORIZATION",
+    "AI_VERIFIED_QUERIES",
+    "MAX_STALENESS",
+    "WITH TAG",
+    "COPY GRANTS",
+)
+
+
 def _trailing_clauses(view: SemanticView, queries: list[Sql]) -> list[Sql]:
-    """The clauses after `METRICS`, in grammar order, ending with `COPY GRANTS`."""
-    lines: list[Sql] = []
+    """The clauses after `METRICS`, in `TRAILING_CLAUSES` order, ending with any `COPY GRANTS`.
+
+    That is not the published grammar's order, which puts `MAX_STALENESS` before the AI
+    clauses and is what `GET_DDL` returns: see the module docstring.
+    """
+    clauses: dict[str, list[Sql]] = {}
     comment = view.comment
     if view.ownership_marker:
         comment = f"{comment.rstrip()} {view.ownership_marker}" if comment else view.ownership_marker
     if comment:
-        lines.append(sql("  COMMENT = {comment}", comment=literal(comment)))
+        clauses["COMMENT"] = [sql("  COMMENT = {comment}", comment=literal(comment))]
     if view.ai_sql_generation:
-        lines.append(sql("  AI_SQL_GENERATION {text}", text=literal(view.ai_sql_generation)))
+        clauses["AI_SQL_GENERATION"] = [sql("  AI_SQL_GENERATION {text}", text=literal(view.ai_sql_generation))]
     if view.ai_question_categorization:
-        lines.append(sql("  AI_QUESTION_CATEGORIZATION {text}", text=literal(view.ai_question_categorization)))
-
+        text = literal(view.ai_question_categorization)
+        clauses["AI_QUESTION_CATEGORIZATION"] = [sql("  AI_QUESTION_CATEGORIZATION {text}", text=text)]
     if queries:
-        lines.append(sql("  AI_VERIFIED_QUERIES ("))
-        lines.append(join(",\n", queries))
-        lines.append(sql("  )"))
-
+        clauses["AI_VERIFIED_QUERIES"] = [sql("  AI_VERIFIED_QUERIES ("), join(",\n", queries), sql("  )")]
     if view.max_staleness:
-        lines.append(sql("  MAX_STALENESS = {staleness}", staleness=literal(view.max_staleness)))
-
+        clauses["MAX_STALENESS"] = [sql("  MAX_STALENESS = {staleness}", staleness=literal(view.max_staleness))]
     if view.tags:
         # Leading-comma layout, matching the golden. The indent is deliberately
         # deeper than a member's here; that is what was verified.
         tag_lines = (
             sql("{name} = {value}", name=qname(QualifiedName.parse(t.name)), value=literal(t.value)) for t in view.tags
         )
-        lines.append(sql("  WITH TAG ("))
-        lines.append(sql("      {tags}", tags=join("\n    , ", tag_lines)))
-        lines.append(sql("  )"))
-
-    lines.append(sql("  COPY GRANTS"))
-    return lines
+        clauses["WITH TAG"] = [sql("  WITH TAG ("), sql("      {tags}", tags=join("\n    , ", tag_lines)), sql("  )")]
+    if view.or_replace:
+        clauses["COPY GRANTS"] = [sql("  COPY GRANTS")]
+    return [line for name in TRAILING_CLAUSES for line in clauses.get(name, ())]
 
 
 def _sorted_columns(columns: tuple[Column, ...], scope: ViewScope) -> list[Column]:

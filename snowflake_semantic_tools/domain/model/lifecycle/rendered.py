@@ -113,9 +113,11 @@ class Upload:
 
 @dataclass(frozen=True, slots=True)
 class DesiredMetadata:
-    """The version alias and tags an agent keeps; an update unsets every other one it observes.
+    """The version alias and tags an artifact keeps.
 
-    Both compare casefolded with what Snowflake shows.
+    An agent's update unsets every other alias and tag it observes; a semantic view's replace
+    sets exactly these tags, so plan warns about any other one the view carries. Both compare
+    casefolded with what Snowflake shows.
 
     Attributes:
         alias: The one version alias to keep; None keeps none.
@@ -320,7 +322,9 @@ def _metadata_removals(
     # A name no identifier can spell is not one Snowflake showed, so it is left alone.
     stale_tags = tuple(
         name
-        for name in (_safe_qualified_identifier(tag) for tag in observed.tags if tag.casefold() not in desired_tags)
+        for name in (
+            _safe_qualified_identifier(tag) for tag in observed.tags or () if tag.casefold() not in desired_tags
+        )
         if name is not None
     )
     if stale_tags:

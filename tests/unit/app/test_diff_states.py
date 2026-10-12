@@ -42,10 +42,10 @@ def test_live_states_report_an_unreadable_state_table(monkeypatch: pytest.Monkey
 
 
 def test_the_manifest_state_is_what_it_renders() -> None:
-    from snowflake_semantic_tools.domain.state.manifest import ArtifactEntry, ImpactIndex, Manifest
+    from snowflake_semantic_tools.domain.state.manifest import ArtifactEntry, Manifest
 
     entry = ArtifactEntry("semantic_view", "v", "1" * 64, (), (), (), "DB.S.V", 10)
-    manifest = Manifest(1, "m" * 64, {}, {}, {}, {"semantic_view:v": entry}, {}, {}, {}, ImpactIndex(), {})
+    manifest = Manifest(1, "m" * 64, {}, {}, {}, {"semantic_view:v": entry}, {}, {}, {}, {})
     assert manifest_states(manifest) == {"semantic_view:v": ArtifactState("1" * 64, "DB.S.V", "m" * 64)}
 
 

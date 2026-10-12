@@ -161,7 +161,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "'{code}' was retired in {version} and cannot be reused",
         "allocate the next free number in the band",
         demotable=False,
-        condition="a diagnostic code is registered under a number the 1.0 catalog retired",
+        condition="a diagnostic code is registered under a number `RETIRED_CODES` lists as retired",
     ),
     spec(
         "SST-REG018",
@@ -202,8 +202,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         demotable=False,
         condition=(
             "a type that replaces its object declares `NONE` grant preservation, a type that never "
-            "replaces declares some, or a composite type declares an object type or is prunable or "
-            "replaced generically"
+            "replaces declares some, a type declares it both for itself and per object kind or "
+            "per kind for other than exactly its object types, or a composite type declares an "
+            "object type or is prunable or replaced generically"
         ),
     ),
     spec(

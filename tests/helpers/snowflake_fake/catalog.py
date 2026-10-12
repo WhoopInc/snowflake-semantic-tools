@@ -45,6 +45,13 @@ class FakeCatalog(SnowflakeWorld):
             )
         return self.grants.get(qualified_name.sql, ())
 
+    def tag_references(self, object_type: str, qualified_name: QualifiedName) -> tuple[str, ...]:
+        self._check("tag_references")
+        if " ".join(object_type.upper().split()) != "SEMANTIC VIEW":
+            raise SnowflakePortError(f"tags are read only on a semantic view, not on {object_type.upper()}")
+        self.tag_reads.append(qualified_name.sql)
+        return tuple(sorted(self.tags.get(qualified_name.sql, ())))
+
     def describe_marker(
         self,
         qualified_name: QualifiedName,
@@ -116,7 +123,7 @@ class FakeCatalog(SnowflakeWorld):
             return None
         listed = versions(extension)
         default = next((version for version in listed if version["is_default"]), None)
-        # MEASURED 2026-09-29: once a version is certified, the extension serves the
+        # Once a version is certified, the extension serves the
         # latest certified version instead of the default.
         certified = next((version for version in reversed(listed) if version["certification"] == "CERTIFIED"), None)
         effective = certified or default

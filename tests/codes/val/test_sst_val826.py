@@ -36,11 +36,16 @@ def test_sst_val826_fires() -> None:
         Severity.ERROR,
         "skill:month-close",
     )
-    assert diagnostic.message == "skill 'month-close': grants would be issued before certification"
-    untyped = statement_diagnostic(
-        "skill:month-close", _grant("GRANT USAGE ON CORTEX EXTENSION {target} TO {role}"), certification_pending=False
-    )
+    assert diagnostic.message == "'month-close': a GRANT would be sent before certification succeeded"
+    untyped_grant = _grant("GRANT USAGE ON CORTEX EXTENSION {target} TO {role}")
+    untyped = statement_diagnostic("skill:month-close", untyped_grant, certification_pending=False)
     assert untyped is not None and untyped.code == "SST-VAL826"
+    assert untyped.message == "'month-close': a GRANT would be sent naming no role type"
+    both = statement_diagnostic("skill:month-close", untyped_grant, certification_pending=True)
+    assert both is not None
+    assert both.message == (
+        "'month-close': a GRANT would be sent before certification succeeded and naming no role type"
+    )
 
 
 def test_sst_val826_refuses_a_grant_before_the_version_is_certified(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -50,7 +55,7 @@ def test_sst_val826_refuses_a_grant_before_the_version_is_certified(monkeypatch:
     [outcome] = result.outcomes
     assert outcome.status is OutcomeStatus.FAILED
     assert [item.message for item in result.diagnostics if item.code == "SST-VAL826"] == [
-        "skill 'month-close': grants would be issued before certification"
+        "'month-close': a GRANT would be sent before certification succeeded"
     ]
     assert not any(statement.lstrip().upper().startswith("GRANT") for script in port.scripts for statement in script)
 

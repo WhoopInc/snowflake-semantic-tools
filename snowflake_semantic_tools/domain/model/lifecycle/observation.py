@@ -87,7 +87,9 @@ class ObservedArtifact:
             specification into and commits instead of adding a version beside it.
         routine_signature: The argument types of an observed procedure or function.
         aliases: The version aliases the agent shows; an update unsets all but the desired one.
-        tags: The tags the agent shows; an update unsets those not desired.
+        tags: The tags the object shows: an agent's update unsets those not desired, and a
+            semantic view's replace removes them. Read only for a semantic view plan will
+            replace; None when not read, which is not the same as none set.
     """
 
     key: ArtifactKey
@@ -103,7 +105,7 @@ class ObservedArtifact:
     has_live_version: bool = False
     routine_signature: tuple[str, ...] = ()
     aliases: tuple[str, ...] = ()
-    tags: tuple[str, ...] = ()
+    tags: tuple[str, ...] | None = None
 
     @property
     def explicit_grants(self) -> tuple[GrantRow, ...]:

@@ -6,7 +6,7 @@ profiles with the hooks, MCP configs, and commands they name.
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
 
 TITLE: str = "Validation"
 
@@ -73,6 +73,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "publish the missing sources, and reap the orphan objects",
         condition=("a plan finds an extension SST published whose source is gone from the project; SST never drops it"),
         note="Restore the source, or drop the object yourself once nothing pins it (SST-PLN021 says what is kept).",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL806",
@@ -271,8 +272,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL826",
         Severity.ERROR,
-        "Grants issued before certification succeeded",
-        "skill '{artifact}': grants would be issued before certification",
+        "Grant sent before certification succeeded, or naming no role type",
+        "'{artifact}': a GRANT would be sent {detail}",
         "grant only after certification succeeds, and name the role TYPE explicitly",
         condition=(
             "a GRANT would run while the publish's certification has not yet succeeded, or names no "
@@ -305,6 +306,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "skill '{artifact}': catalog and stage hashes diverge by {value}",
         "compare the two bundles",
         condition="a skill's catalog and stage file sets differ by more than flattening's renames",
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL830",
@@ -409,6 +411,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "agents pin their version and are unaffected; to serve this version in the catalog, "
         "set `+certified: true` and un-certify any later certified version in Snowsight",
         condition=("the catalog will serve a different version than the one published (certification ordering)"),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL843",

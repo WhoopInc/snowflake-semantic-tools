@@ -278,6 +278,11 @@ class ToolCatalog:
 
 
 KNOWN_TOOL_TYPES = frozenset(kind.value for kind in ToolKind)
+# The rights a defined procedure runs with, as `EXECUTE AS` takes them, lower-cased with single spaces.
+EXECUTE_AS = ("caller", "owner", "restricted caller")
+# The routine languages whose DDL requires RUNTIME_VERSION and HANDLER, lower-cased. SQL and
+# JavaScript routines take neither clause: the body is the routine.
+HANDLER_LANGUAGES = frozenset(("java", "python", "scala"))
 CREATION_KEYS = frozenset(
     (
         "on",
@@ -297,3 +302,33 @@ CREATION_KEYS = frozenset(
         "secrets",
     )
 )
+# The keys a tools file's root, a group, and a member may write. YAML 1.1 reads an unquoted
+# `on:` as the boolean `true`, which a member's loader reads as `on:`.
+TOOLS_FILE_KEYS = frozenset(("tools",))
+TOOL_GROUP_KEYS = frozenset(("group", "description", "owner", "immutable", *(kind.value for kind in ToolOwnership)))
+TOOL_MEMBER_KEYS = frozenset(
+    (
+        *CREATION_KEYS,
+        "name",
+        "type",
+        "description",
+        "search_column",
+        "title_column",
+        "id_column",
+        "columns_and_descriptions",
+        "relative_path_column",
+        "warehouse",
+        "signature",
+        "execute_as",
+        "relations",
+    )
+)
+
+
+def vocabulary_key(value: str) -> str:
+    """A value from a closed vocabulary such as `EXECUTE_AS`, spelled as it is: lower-cased, single-spaced.
+
+    Example:
+        vocabulary_key("Restricted   CALLER") == "restricted caller"
+    """
+    return " ".join(value.casefold().split())

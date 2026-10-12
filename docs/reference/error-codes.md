@@ -22,15 +22,16 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 37 codes
 - [Membership (MEM)](#membership-mem) -- 24 codes
-- [Validation (VAL)](#validation-val) -- 298 codes
+- [Validation (VAL)](#validation-val) -- 301 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
-- [Rendering (RND)](#rendering-rnd) -- 16 codes
-- [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
-- [Planning (PLN)](#planning-pln) -- 38 codes
+- [Rendering (RND)](#rendering-rnd) -- 17 codes
+- [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
+- [Planning (PLN)](#planning-pln) -- 41 codes
 - [Apply (APL)](#apply-apl) -- 29 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 22 codes
 - [Internal (INT)](#internal-int) -- 12 codes
+- [Retired numbers](#retired-numbers) -- 42 numbers
 
 ## Registry (REG)
 
@@ -180,7 +181,7 @@ Fix: add the placeholder to the code's params, or correct the template
 
 `'<code>' was retired in <version> and cannot be reused`
 
-Raised when a diagnostic code is registered under a number the 1.0 catalog retired.
+Raised when a diagnostic code is registered under a number `RETIRED_CODES` lists as retired.
 
 Fix: allocate the next free number in the band
 
@@ -220,7 +221,7 @@ Fix: register the type, or remove the resolver
 
 `type '<artifact>' -- <reason>`
 
-Raised when a type that replaces its object declares `NONE` grant preservation, a type that never replaces declares some, or a composite type declares an object type or is prunable or replaced generically.
+Raised when a type that replaces its object declares `NONE` grant preservation, a type that never replaces declares some, a type declares it both for itself and per object kind or per kind for other than exactly its object types, or a composite type declares an object type or is prunable or replaced generically.
 
 Fix: correct the registration against the probe result
 
@@ -2268,6 +2269,8 @@ Fix: use the one membership function
 
 Raised when a member whose references did not resolve was not attached.
 
+Note: A cascade of the member's first unresolved reference, which is reported already: counted rather than shown unless `--show-cascade`. Overriding it to warning reports every skip as a warning that is no longer a cascade.
+
 ### SST-MEM900
 
 **Attachment not idempotent** (error)
@@ -2427,18 +2430,6 @@ Fix: promote the key, remove it, or set `snowflake.allow_unknown_keys: true` to 
 Raised when an agent spec renders keys SST does not model and `snowflake.allow_unknown_keys` is `true`, its default; reported once per agent.
 
 Fix: promote the keys to first-class fields if they are load-bearing
-
-### SST-VAL015
-
-**Deploy ordering violated** (error)
-
-`<type> '<name>' would publish before <blocker>, which it depends on`
-
-Raised when `sst plan` creates or updates an artifact whose dependency `--select` or `--exclude` left out and which does not exist yet.
-
-Fix: add the dependency to `--select` or drop it from `--exclude`, or apply it first
-
-Note: Publish order is the registry's type order, so it cannot be authored; only the selection can leave a dependency unpublished. A pinned version is `SST-PLN030`.
 
 ### SST-VAL016
 
@@ -3348,6 +3339,40 @@ Raised when a metric left in the view's scope names, in `using_relationships`, a
 
 Fix: include the relationship, or exclude the metric
 
+### SST-VAL333
+
+**Column access_modifier holds an unrecognised value** (error)
+
+`<artifact>: column '<member>' declares access_modifier '<found>'`
+
+Raised when a column's `meta.sst.access_modifier` is neither `public_access` nor `private_access`.
+
+Fix: use `public_access`, or remove `access_modifier` from the column
+
+### SST-VAL334
+
+**Fact declares a private access modifier** (error)
+
+`<artifact>: fact '<member>' declares access_modifier 'private_access'; SST does not render a private fact`
+
+Raised when a `fact` column that is not excluded carries `meta.sst.access_modifier: private_access`.
+
+Fix: remove `access_modifier` from the column, or hide what it measures behind a private metric
+
+Note: A fact renders without `PRIVATE`, so it would publish as public; it is refused instead. A private dimension is SST-VAL222. A column with no `column_type`, or one excluded, never renders, so its modifier is not refused.
+
+### SST-VAL335
+
+**Fact declares is_enum** (error, always an error)
+
+`<artifact>: fact '<member>' declares is_enum; only a dimension can be an enum`
+
+Raised when a `fact` column that is not excluded declares `meta.sst.is_enum: true`.
+
+Fix: remove `is_enum`, or change `column_type` to `dimension`
+
+Note: Snowflake refuses `IS_ENUM` on a fact when the view is created, so no setting lowers this.
+
 ### SST-VAL401
 
 **Filter expression is not boolean** (error)
@@ -3806,13 +3831,15 @@ Fix: align the key with the rendered tool name
 
 ### SST-VAL531
 
-**Resolved external object does not exist in the target** (warning)
+**Resolved external object does not exist in the target** (error)
 
 `agent '<artifact>': '<value>' does not exist in target '<target>'`
 
 Raised when connected validation finds no object for something an agent uses and SST does not publish: the object a tool calls, an `extension()` skill source, or the version it pins; an extension SST cannot see reads as absent.
 
 Fix: publish it first, or correct the reference
+
+Note: Snowflake accepts an agent whose reference does not exist, and the agent then reports success and lacks the tool or skill, so this is an error. `sst plan` looks up each consumed extension and pinned version on every connected plan unless `--no-validate`, even with `validation.snowflake_syntax_check` off. Demote it with `diagnostics.severity_overrides` for a target whose referenced objects may be absent.
 
 ### SST-VAL532
 
@@ -4186,7 +4213,7 @@ Note: A warning rather than an error: SST compares the object's direct grantees 
 
 `tool member '<name>' indexes <value>, materialized '<detail>' -- every dbt run rebuilds the relation, disabling change tracking and forcing a full re-embed`
 
-Raised when a search service's source relation is a dbt model whose materialization replaces it on every run, while the service is `INCREMENTAL`.
+Raised when a search service's source relation is a dbt model whose materialization replaces it on every run, and the service's `refresh_mode` is not `FULL` (unset, `AUTO`, or `INCREMENTAL`).
 
 Fix: make the model `incremental`, or set `refresh_mode: FULL` and accept the cost explicitly
 
@@ -4452,7 +4479,7 @@ Note: Set `version: v3` on the metric, or `evals.+metric_version: v3` once for t
 
 `eval config for '<artifact>': metric '<name>' pins legacy version '<found>'`
 
-Raised when a system metric's version, else `evals.+metric_version`, is anything other than v3; SST-PRS013 reports the same value as an error.
+Raised when a system metric's version, else `evals.+metric_version`, is anything other than v3 or v1; SST-PRS013 reports the same value as an error, and SST-VAL764 reports v1.
 
 Fix: move to a current version, and record the score shift
 
@@ -4798,6 +4825,18 @@ Fix: fix what regressed, or capture a new baseline with a reason if the change i
 
 Note: A report-tier eval lists the same regressions without this error, so its run passes. The tier is `run.tier`, else `evals.+eval_tier`, else report.
 
+### SST-VAL764
+
+**System metric pins version v1, which Snowflake refuses** (error, always an error)
+
+`eval config for '<artifact>': metric '<name>' pins version '<found>', which Snowflake refuses`
+
+Raised when a system metric's version, else `evals.+metric_version`, is v1.
+
+Fix: pin `version: v3`
+
+Note: Snowflake refuses `version: v1` when the run starts, though its docs list it. Unlike SST-PRS013, which reports the same value, no setting lowers this.
+
 ### SST-VAL801
 
 **Skill, plugin or profile folder is misnamed** (error)
@@ -5080,9 +5119,9 @@ Fix: derive the version from the content SHA
 
 ### SST-VAL826
 
-**Grants issued before certification succeeded** (error)
+**Grant sent before certification succeeded, or naming no role type** (error)
 
-`skill '<artifact>': grants would be issued before certification`
+`'<artifact>': a GRANT would be sent <detail>`
 
 Raised when a GRANT would run while the publish's certification has not yet succeeded, or names no role type (ROLE or DATABASE ROLE).
 
@@ -5466,9 +5505,9 @@ Fix: reconcile the two, or add a contract
 
 `manifest is older than <value>`
 
-Raised when under `--manifest`, a root-project model file's contents no longer match the checksum the manifest recorded; once per file.
+Raised when under `--manifest` or `dbt.invoke: false`, a root-project model file's contents no longer match the checksum the manifest recorded; once per file.
 
-Fix: drop --manifest and let SST parse, or rebuild the manifest you passed
+Fix: let SST run dbt (drop --manifest, or set dbt.invoke: true), or rebuild the manifest
 
 ### SST-DBT006
 
@@ -5882,6 +5921,18 @@ Raised when a search-service tool has no relation to select from, or a procedure
 
 Fix: supply on: or body_file: content
 
+### SST-RND042
+
+**Tool has no value for a field with a default** (error)
+
+`tool '<artifact>': <field> is not set, and no default supplies it`
+
+Raised when once the `tools:` defaults apply, a defined search service has no `warehouse` or `target_lag`, or a defined procedure has no `warehouse`.
+
+Fix: set {field} on the member, or the tools.+{field} default in sst_config.yml
+
+Note: A warehouse falls back to the profile target's when neither the member nor `tools.+warehouse` names one; a target lag has no fallback.
+
 ### SST-RND900
 
 **Rendered member count differs from the model's** (error)
@@ -5921,16 +5972,6 @@ Fix: delete it and re-run sst compile
 `<path> omits required key '<key>'`
 
 Raised when the manifest is structurally incomplete.
-
-Fix: re-run sst compile
-
-### SST-MAN004
-
-**Impact index incomplete** (error)
-
-`<artifact> has no reverse-index entry`
-
-Raised when the impact index of a stored manifest does not list an artifact under a file it came from.
 
 Fix: re-run sst compile
 
@@ -6106,7 +6147,7 @@ Fix: upgrade SST
 
 `observation of <value> failed: <detail>`
 
-Raised when a read of the target failed: an object listing, grants, the state table, a preflight read, or a composite artifact's resources; under `--use-cached-state`, also each composite artifact, which a recorded observation cannot decide. A definition `--capture-prior` cannot read is SST-PLN037 instead.
+Raised when a read of the target failed: an object listing, grants, the state table, a preflight read, or a composite artifact's resources; under `--use-cached-state`, also each composite artifact, which a recorded observation cannot decide. A definition `--capture-prior` cannot read is SST-PLN037 instead, and the tags on a view a replace removes SST-PLN040.
 
 Fix: check the connection and the role, then re-run plan
 
@@ -6178,11 +6219,11 @@ Note: Plan blocks the change rather than let apply fail with SST-SNO003.
 
 `<value> lacks <detail> on <target>`
 
-Raised when no role in the session holds, or owns the schema for, the CREATE privilege a planned create needs on its schema, such as CREATE SEMANTIC VIEW; or, for an agent create or update, CREATE STAGE on the schema of an absent `apply.agent_spec_stage` stage, or READ and WRITE on an existing one.
+Raised when the session's primary role does not hold, directly, through a role it inherits, or through a database role, the CREATE privilege a planned create needs on its schema, such as CREATE SEMANTIC VIEW, nor own the schema; or, for an agent create or update, CREATE STAGE on the schema of an absent `apply.agent_spec_stage` stage; or no role in the session holds READ and WRITE on an existing one.
 
-Fix: grant the privilege
+Fix: grant the privilege to the session's primary role, or to a role it inherits
 
-Note: Plan blocks the change rather than let apply fail with SST-SNO004. An update is not checked for its own CREATE privilege: it replaces an object the role already owns.
+Note: Plan blocks the change rather than let apply fail with SST-SNO004. Snowflake authorises a CREATE by the primary role alone, so a CREATE privilege only a secondary role holds does not count, and the message says a secondary role holds it. The walk up from the primary role stops at 16 roles; a privilege the session holds that it has not reached by then is said to have no inheritance path within that depth instead. With no secondary role active, the session is asked alone. An update is not checked for its own CREATE privilege: it replaces an object the role already owns.
 
 ### SST-PLN009
 
@@ -6192,7 +6233,7 @@ Note: Plan blocks the change rather than let apply fail with SST-SNO004. An upda
 
 Raised when the name a planned create writes to is held by an object of its type that observation did not list.
 
-Fix: use or_replace, or choose another name
+Fix: drop or rename the existing object, or give the artifact another name
 
 Note: Unless the name is free by then, apply refuses the create (SST-APL012).
 
@@ -6465,6 +6506,42 @@ Raised when under `sst plan --capture-prior`, reading the current definition of 
 Fix: grant the role REFERENCES or OWNERSHIP on the object, or plan without --capture-prior
 
 Note: The plan is otherwise unaffected: the change is planned as without the flag, and its `prior_definition` is null.
+
+### SST-PLN038
+
+**Deploy ordering violated** (error)
+
+`<type> '<name>' would publish before <blocker>, which it depends on`
+
+Raised when `sst plan` creates or updates an artifact whose dependency `--select` or `--exclude` left out and which does not exist yet.
+
+Fix: add the dependency to `--select` or drop it from `--exclude`, or apply it first
+
+Note: Publish order is the registry's type order, so it cannot be authored; only the selection can leave a dependency unpublished. A pinned version is `SST-PLN030`.
+
+### SST-PLN039
+
+**Live view carries tags that a replace would remove** (warning)
+
+`<artifact>: replacing <value> removes tags the project does not declare: <found>`
+
+Raised when a planned update replaces a semantic view that carries tags the project does not declare.
+
+Fix: declare each tag to keep under the view's `tags:`, or set it again after applying
+
+Note: The replace's `WITH TAG` names only the declared tags, and Snowflake removes every other tag set on the view; a tag it inherits from its schema or database is kept. `--no-grants` skips the read of the view's tags, and with it this warning; a read that fails is `SST-PLN040`.
+
+### SST-PLN040
+
+**Tags on a replaced view not read** (warning)
+
+`the tags on <value> were not read, so the tags its replace removes are not checked: <detail>`
+
+Raised when reading the tags on a semantic view a planned update replaces failed.
+
+Fix: check that the role can read the view's tags with TAG_REFERENCES, or plan with --no-grants to skip the read
+
+Note: The plan is otherwise unaffected: the update is planned as before, and `SST-PLN039` is not checked for the view.
 
 ### SST-PLN100
 
@@ -6960,7 +7037,7 @@ Raised when Snowflake rejected a login: error 250001 with authentication wording
 
 Fix: refresh the credential
 
-Note: When a command's own connection fails this way, the command reports SST-PRT001.
+Note: When a command's own session is refused this way, the command reports SST-PRT002.
 
 ### SST-SNO014
 
@@ -7112,9 +7189,9 @@ Fix: check the account, the network and the credential
 
 **Authentication failed** (error)
 
-`authentication failed for <value>`
+`authentication failed for <value>: <detail>`
 
-Raised when Snowflake rejects the session's credential while connecting.
+Raised when Snowflake rejects the session's credential, while connecting or later in the run.
 
 Fix: refresh the credential
 
@@ -7441,3 +7518,280 @@ Fix: report this as a bug
 Raised when rendering an artifact that validated raises an unexpected error, or apply meets a failure the plan should have recorded and did not.
 
 Fix: report this as a bug
+
+## Retired numbers
+
+A retired number is never raised and never reused, so an old log, baseline, or
+setting that names one still means what it meant.
+
+### SST-APL101
+
+**Rolled back after a smoke failure** (retired in 1.0.0)
+
+Retired because apply runs no smoke probes and never rolls back; smoke is its own suite, `sst test --suite smoke`.
+
+### SST-APL102
+
+**Smoke failed and the prior definition was not recoverable** (retired in 1.0.0)
+
+Retired because apply runs no smoke probes and never rolls back, so there is no prior definition to recover.
+
+### SST-CFG021
+
+**publish_via is not yaml or ddl** (retired in 1.0.0)
+
+Retired because `generation.publish_via` is removed: SST renders DDL directly.
+
+### SST-CFG022
+
+**publish_via incompatible with a declared feature** (retired in 1.0.0)
+
+Retired because `generation.publish_via` is removed, so there is one publish path for every feature.
+
+### SST-CFG024
+
+**spec_version is not recognised** (retired in 1.0.0)
+
+Retired because configuration carries no spec version to check.
+
+### SST-CFG026
+
+**dependency_order is incomplete or has unknown entries** (retired in 1.0.0)
+
+Retired because publish order comes from the artifact registry and the dependency graph, never from a setting.
+
+### SST-CFG027
+
+**Smoke queries disabled** (retired in 1.0.0)
+
+Retired because apply runs no smoke probes, so there is nothing to disable.
+
+### SST-CFG028
+
+**emit_relationship_type is enabled** (retired in 1.0.0)
+
+Retired because `generation.emit_relationship_type` is removed: relationship and join types are never rendered.
+
+### SST-CFG030
+
+**infer_is_enum is enabled** (retired in 1.0.0)
+
+Retired because there is no such setting; `sst enrich` writes `is_enum`.
+
+### SST-DBT007
+
+**meta.sst location disagrees with the dbt config** (retired in 1.0.0)
+
+Retired because `meta.sst.database` and `meta.sst.schema` are refused outright (SST-DBT030), so no copy is left to disagree.
+
+### SST-DBT008
+
+**meta.sst location is hardcoded** (retired in 1.0.0)
+
+Retired because the keys it warned against are refused outright (SST-DBT030).
+
+### SST-MAN004
+
+**Impact index incomplete** (retired in 1.0.0)
+
+Retired because the impact index it checked is no longer written.
+
+### SST-MAN021
+
+**state.manifest_id does not match the current manifest** (retired in 1.0.0)
+
+Retired because no run is refused over a manifest mismatch: each artifact is compared with its own state entry.
+
+### SST-MEM102
+
+**Member attached only through a legacy reference** (retired in 1.0.0)
+
+Retired because legacy `table()` and `column()` references are refused at parse, so no member can attach through one.
+
+### SST-PRS108
+
+**Role-playing occurrence has no distinct name** (retired in 1.0.0)
+
+Retired because role-playing tables are not supported.
+
+### SST-PRT007
+
+**dbt manifest schema version unsupported** (retired in 1.0.0)
+
+Retired because the manifest schema check belongs with the other dbt checks.
+
+Superseded by [`SST-DBT017`](#sst-dbt017).
+
+### SST-REF016
+
+**Two-argument ref used with a dbt cross-project idiom** (retired in 1.0.0)
+
+Retired because SST reads the dbt manifest, not model SQL, and in SST YAML a two-argument `ref` always names a model and a column, so a misread one is an unknown column (SST-REF002).
+
+### SST-REF017
+
+**Hardcoded fully-qualified name** (retired in 1.0.0)
+
+Retired because SST-VAL006 already reported the same condition, at validation, which sees the literal text.
+
+Superseded by [`SST-VAL006`](#sst-val006).
+
+### SST-REF021
+
+**Ref target is declared under both define and reference** (retired in 1.0.0)
+
+Retired because SST-CFG019 already reported the same condition, when configuration is validated.
+
+Superseded by [`SST-CFG019`](#sst-cfg019).
+
+### SST-REF024
+
+**Legacy table() reference does not resolve** (retired in 1.0.0)
+
+Retired because `table()` is refused at parse, so it never reaches resolution.
+
+Superseded by [`SST-REF034`](#sst-ref034).
+
+### SST-REF025
+
+**Legacy column() reference does not resolve** (retired in 1.0.0)
+
+Retired because `column()` is refused at parse, so it never reaches resolution.
+
+Superseded by [`SST-REF035`](#sst-ref035).
+
+### SST-REF038
+
+**Unknown project variable** (retired in 1.0.0)
+
+Retired because SST-CFG029 already reported an undeclared `var()`, wherever it appears.
+
+Superseded by [`SST-CFG029`](#sst-cfg029).
+
+### SST-REF200
+
+**table() is deprecated** (retired in 1.0.0)
+
+Retired because `table()` is refused, not deprecated; a warning would say it still works.
+
+Superseded by [`SST-REF034`](#sst-ref034).
+
+### SST-REF201
+
+**column() is deprecated** (retired in 1.0.0)
+
+Retired because `column()` is refused, not deprecated; a warning would say it still works.
+
+Superseded by [`SST-REF035`](#sst-ref035).
+
+### SST-SNO021
+
+**Unsupported clause for the publish path** (retired in 1.0.0)
+
+Retired because `generation.publish_via` is removed, so there is one publish path.
+
+### SST-VAL015
+
+**Deploy ordering violated** (retired in 1.0.0)
+
+Retired because raised by plan, so it moved to the PLN area.
+
+Superseded by [`SST-PLN038`](#sst-pln038).
+
+### SST-VAL313
+
+**Primary key and unique keys overlap** (retired in 1.0.0)
+
+Retired because SST-VAL223 reports a primary-key column that is also declared unique.
+
+Superseded by [`SST-VAL223`](#sst-val223).
+
+### SST-VAL501
+
+**create_mode holds an unrecognised value** (retired in 1.0.0)
+
+Retired because `create_mode` is removed: an artifact is created when absent and updated by its type's rule.
+
+### SST-VAL502
+
+**create_mode and copy_grants combination is illegal** (retired in 1.0.0)
+
+Retired because `create_mode` and `copy_grants` are removed.
+
+### SST-VAL503
+
+**copy_grants is a no-op for this create mode** (retired in 1.0.0)
+
+Retired because `create_mode` and `copy_grants` are removed.
+
+### SST-VAL504
+
+**Replace would drop live grants** (retired in 1.0.0)
+
+Retired because how grants survive a replace is each artifact type's registered rule, not a setting to get wrong.
+
+### SST-VAL505
+
+**Replace would run without COPY GRANTS** (retired in 1.0.0)
+
+Retired because how grants survive a replace is each artifact type's registered rule, not a setting to get wrong.
+
+### SST-VAL620
+
+**Publishing an artifact type whose grant preservation is unprobed** (retired in 1.0.0)
+
+Retired because the artifact registry refuses a type that replaces its object without declaring grant handling (SST-REG021).
+
+### SST-VAL736
+
+**Selected verified queries are removed for the duration of a run** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL749
+
+**Analyst eval declares the wrong subject or source** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL750
+
+**Analyst eval declares more than one semantic view** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL751
+
+**Analyst eval requests a metric other than sql_correctness** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL752
+
+**min_verified_queries resolved per file instead of per view** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL753
+
+**Analyst gate is an absolute pass rate** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL754
+
+**A verified query was removed since the last run** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL756
+
+**Analyst eval run overlaps a regenerate of the same view** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL757
+
+**Analyst evals cannot colocate with their ground truth** (retired in 1.0.0)
+
+Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.

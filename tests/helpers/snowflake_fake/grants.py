@@ -6,9 +6,14 @@ roles, database roles and users, and answers, through `FakeDriverSession(respond
 - `SHOW GRANTS ON SCHEMA <db>.<schema>`: created_on, privilege, granted_on, name, granted_to
   (ROLE | DATABASE_ROLE), grantee_name -- a database role's unqualified, in the schema's
   database -- grant_option, granted_by, granted_by_role_type.
+- `SHOW GRANTS ON STAGE <db>.<schema>.<stage>`: the same columns, for a stage `on_stage` granted on.
 - `SHOW GRANTS OF ROLE <r>` and `SHOW GRANTS OF DATABASE ROLE <db>.<r>`: created_on, role
   (`<DB>.<NAME>` for a database role), granted_to (ROLE | USER | DATABASE_ROLE),
   grantee_name, granted_by.
+- `SELECT IS_ROLE_IN_SESSION(%s)`: whether the bound account role is one `in_session` named,
+  as Snowflake answers it for the session's roles and every role they inherit.
+- `SELECT CURRENT_SECONDARY_ROLES()`: the JSON object Snowflake documents, naming the roles
+  `secondary` made active, or none.
 
 A statement naming a role the graph does not know fails as Snowflake fails it; any other
 statement -- SHOW GRANTS TO ROLE included -- fails as unsupported. Names are given as SHOW
@@ -17,6 +22,7 @@ prints them and matched as the connector must spell them, so a mis-quoted name f
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 
 from snowflake.connector.errors import ProgrammingError
@@ -33,7 +39,10 @@ class GrantGraph:
 
     scope: SchemaScope
     _on_schema: list[dict[str, object]] = field(default_factory=list)
+    _on_stage: dict[str, list[dict[str, object]]] = field(default_factory=dict)
     _of: dict[str, list[dict[str, object]]] = field(default_factory=dict)
+    _in_session: set[str] = field(default_factory=set)
+    _secondary: list[str] = field(default_factory=list)
 
     def on_schema(self, privilege: str, *, role: str = "", database_role: str = "") -> GrantGraph:
         """Grant a privilege on the schema (OWNERSHIP included) to a role or a database role."""
@@ -54,6 +63,25 @@ class GrantGraph:
         )
         return self
 
+    def on_stage(self, stage: str, privilege: str, *, role: str) -> GrantGraph:
+        """Grant a privilege on a stage in the schema, named by its unqualified name, to a role."""
+        self._known("ROLE", role)
+        rows = self._on_stage.setdefault(f"{self.scope.sql}.{Identifier.shown(stage).sql}", [])
+        rows.append(
+            {
+                "created_on": _CREATED,
+                "privilege": privilege,
+                "granted_on": "STAGE",
+                "name": f"{self.scope.sql}.{stage}",
+                "granted_to": "ROLE",
+                "grantee_name": role,
+                "grant_option": "false",
+                "granted_by": "SYSADMIN",
+                "granted_by_role_type": "ROLE",
+            }
+        )
+        return self
+
     def role_to(self, role: str, *, role_to: str = "", user: str = "") -> GrantGraph:
         """Grant an account role to a role or a user."""
         return self._grant("ROLE", role, role_to, user)
@@ -67,9 +95,25 @@ class GrantGraph:
             return self._row("DATABASE_ROLE", name, "DATABASE_ROLE", database_role_to)
         return self._grant("DATABASE_ROLE", name, role_to, user)
 
+    def in_session(self, *roles: str) -> GrantGraph:
+        """Make account roles active in the session, as IS_ROLE_IN_SESSION reports them."""
+        self._in_session.update(roles)
+        return self
+
+    def secondary(self, *roles: str) -> GrantGraph:
+        """Make account roles the session's secondary roles, as CURRENT_SECONDARY_ROLES() lists them."""
+        self._secondary.extend(roles)
+        return self
+
     def forget(self, role: str) -> GrantGraph:
         """Drop an account role, so SHOW GRANTS OF it fails as for a role that no longer exists."""
         self._of.pop(f"SHOW GRANTS OF ROLE {Identifier.shown(role).sql}", None)
+        return self
+
+    def forget_database_role(self, name: str) -> GrantGraph:
+        """Drop a database role, so SHOW GRANTS OF it fails as for one that cannot be read."""
+        database = Identifier.shown(self.scope.database.folded).sql
+        self._of.pop(f"SHOW GRANTS OF DATABASE ROLE {database}.{Identifier.shown(name).sql}", None)
         return self
 
     def session(self) -> FakeDriverSession:
@@ -78,9 +122,15 @@ class GrantGraph:
 
     def respond(self, statement: str, binds: tuple[object, ...]) -> tuple[Rows | None, int]:
         """Answer one statement as Snowflake would from these grants."""
-        del binds
+        if statement == "SELECT IS_ROLE_IN_SESSION(%s)":
+            return [(binds[0] in self._in_session,)], 1
+        if statement == "SELECT CURRENT_SECONDARY_ROLES()":
+            return [(json.dumps({"roles": ",".join(self._secondary), "value": ""}),)], 1
         if statement == f"SHOW GRANTS ON SCHEMA {self.scope.sql}":
             return list(self._on_schema), len(self._on_schema)
+        stage = statement.removeprefix("SHOW GRANTS ON STAGE ")
+        if stage != statement and stage in self._on_stage:
+            return list(self._on_stage[stage]), len(self._on_stage[stage])
         for prefix in ("SHOW GRANTS OF DATABASE ROLE ", "SHOW GRANTS OF ROLE "):
             if statement.startswith(prefix):
                 rows = self._of.get(statement)

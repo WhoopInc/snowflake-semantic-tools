@@ -71,7 +71,7 @@ poetry run sst --project-dir tests/fixtures/reference_project format --check  # 
 poetry run mypy snowflake_semantic_tools tests   # strict
 poetry run ruff format --check snowflake_semantic_tools/ tests/
 poetry run ruff check snowflake_semantic_tools/ tests/
-poetry run lint-imports       # the seven import contracts in pyproject.toml
+poetry run lint-imports       # the eight import contracts in pyproject.toml
 poetry run sst docs --check   # docs/reference/*.md matches the registries
 poetry run bandit -r snowflake_semantic_tools -ll
 ```
@@ -104,7 +104,7 @@ tests/
   unit/adapters/      # YAML, dbt manifest, connector, files, config
   unit/cli/           # commands through click's CliRunner, one module per command
   unit/test_golden_*.py
-  codes/              # diagnostic codes against the 1.0 catalog: one fires/silent pair per code
+  codes/              # diagnostic-code guards: one fires/silent pair per code
   contract/           # adapters against their ports, offline
   contract_live/      # live: the real connector against the same contracts
   integration/        # live: apply in a real account

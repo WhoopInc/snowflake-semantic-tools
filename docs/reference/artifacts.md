@@ -35,7 +35,7 @@ One `define:` member of a tool group: a Snowflake object an agent tool calls, pu
 - Position: 200
 - Lifecycle: one Snowflake object
 - On update: replaced
-- Grants: re-applied after a replace
+- Grants, by object type: `CORTEX SEARCH SERVICE` re-applied after a replace; `PROCEDURE` kept across a replace by `COPY GRANTS`; `FUNCTION` kept across a replace by `COPY GRANTS`; `STAGE` never touched: the object is not replaced
 - `--prune`: never drops it
 - Applied after: `semantic_view`
 
@@ -100,10 +100,10 @@ published on their own. Members read from dbt model metadata come from the
 
 | Member | Owner | Authored as | Attaches by | Reference function |
 |---|---|---|---|---|
-| `relationship` | `semantic_view` | `snowflake_relationships:` files | table membership | none |
+| `relationship` | `semantic_view` | `snowflake_relationships:` files | table membership | `relationship()` |
 | `fact` | `semantic_view` | dbt column metadata | table membership | none |
 | `dimension` | `semantic_view` | dbt column metadata | table membership | none |
 | `metric` | `semantic_view` | `snowflake_metrics:` files | table membership | `metric()` |
-| `filter` | `semantic_view` | `snowflake_filters:` files | table membership | none |
-| `verified_query` | `semantic_view` | `snowflake_verified_queries:` files | table membership | none |
+| `filter` | `semantic_view` | `snowflake_filters:` files | table membership | `filter()` |
+| `verified_query` | `semantic_view` | `snowflake_verified_queries:` files | table membership | `verified_query()` |
 | `custom_instruction` | `semantic_view` | `snowflake_custom_instructions:` files | view name | `custom_instructions()` |

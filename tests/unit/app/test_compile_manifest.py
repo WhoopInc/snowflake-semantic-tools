@@ -13,8 +13,10 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Metric,
     SemanticView,
     Table,
+    Tag,
     VerifiedQuery,
 )
+from snowflake_semantic_tools.domain.state import MANIFEST_SCHEMA_VERSION
 from tests.helpers.sql_values import authored, authored_query, statement
 
 
@@ -63,7 +65,18 @@ def test_compiled_view_uses_dimension_probe_and_rejects_view_without_public_memb
         _ = CompiledView(private_only, statement("CREATE SEMANTIC VIEW DB.S.PRIVATE_V")).rendered_artifact
 
 
-def test_manifest_builder_records_sources_members_impact_and_diagnostics() -> None:
+def test_a_compiled_view_declares_the_tags_its_replace_sets_as_the_renderer_spells_them() -> None:
+    view = SemanticView(
+        "DB.S.V",
+        (Table("T", "DB.S.T"),),
+        metrics=(Metric("M", authored("COUNT(1)"), "T"),),
+        tags=(Tag("gov.t.pii", "yes"), Tag('GOV."t".OWNER', "me")),
+    )
+    rendered = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS")).rendered_artifact
+    assert rendered.desired_tags == ("GOV.T.PII", 'GOV."t".OWNER')
+
+
+def test_manifest_builder_records_sources_members_and_diagnostics() -> None:
     view = SemanticView(
         "DB.S.V",
         (Table("T", "DB.S.T"),),
@@ -86,10 +99,10 @@ def test_manifest_builder_records_sources_members_impact_and_diagnostics() -> No
     assert entry.source_files == ("semantic_models/views.yml", "semantic_models/metrics.yml")
     assert "metric:m" in entry.member_keys
     assert entry.diagnostic_codes == ("SST-LOD003",)
-    assert manifest.impact.by_member["metric:m"] == ("semantic_view:v",)
-    assert manifest.impact.by_file["semantic_models/views.yml"] == ("semantic_view:v",)
-    assert manifest.impact.by_file["semantic_models/metrics.yml"] == ("semantic_view:v",)
-    assert manifest.impact.by_dbt_model["t"] == ("semantic_view:v",)
+    assert manifest.members["metric:m"] == {"attached_to": ["semantic_view:v"]}
+    assert manifest.dbt_models["t"]["referenced_by"] == ["semantic_view:v"]  # type: ignore[index]
+    assert manifest.schema_version == MANIFEST_SCHEMA_VERSION
+    assert "impact" not in manifest.as_dict()
     assert manifest.dbt_models["t"]["relation"] == "DB.S.T"  # type: ignore[index]
     assert manifest.sources["semantic_file_count"] == 1
     assert build_manifest(result).as_dict()["manifest_id"] == build_manifest(result).manifest_id
@@ -143,8 +156,8 @@ def test_generic_compiler_and_manifest_preserve_artifact_metadata() -> None:
     entry = manifest.artifacts["tool:search"]
     assert entry.object_type == "CORTEX SEARCH SERVICE"
     assert entry.depends_on == ("semantic_view:v",)
-    assert manifest.impact.by_file["tools/platform.yml"] == ("tool:search",)
-    assert manifest.impact.by_dbt_model["docs"] == ("tool:search",)
+    assert entry.source_files == ("tools/platform.yml",)
+    assert manifest.dbt_models["docs"]["referenced_by"] == ["tool:search"]  # type: ignore[index]
 
 
 def test_manifest_round_trip_preserves_composite_component_metadata() -> None:

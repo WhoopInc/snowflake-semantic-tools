@@ -1,4 +1,4 @@
-"""The parts every diagnostic code is made of: severity, source origin, and registry entry.
+"""The parts every diagnostic code is made of: severity, pre-check, source origin, and registry entry.
 
 `spec` builds one registry entry; each module under `specs/` calls it once per code. This
 module imports only the standard library, so the spec modules can load it while the
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import IntEnum
+from enum import Enum, IntEnum
 from string import Formatter
 from types import MappingProxyType
 
@@ -23,6 +23,18 @@ class Severity(IntEnum):
     INFO = 10
     WARNING = 20
     ERROR = 30
+
+
+class Precheck(Enum):
+    """Where a code's condition can first be detected, which bounds how early SST can report it.
+
+    `LOCAL` needs no connection; `OBSERVE` needs a read of Snowflake, but no write; `RUNTIME` is
+    seen only while a statement runs, so no check can report it ahead of the statement.
+    """
+
+    LOCAL = "local"
+    OBSERVE = "observe"
+    RUNTIME = "runtime"
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,12 +66,13 @@ class ErrorSpec:
         subsystem: The three letters after ``SST-``, which place the code in the error reference.
         phase: The subsystem in lowercase, reported as each diagnostic's phase.
         demotable: False for an error that no setting may downgrade ("always an error").
-        internal_detail: Whether its diagnostics carry raw text from SST or Snowflake beyond the
-            template; only INT and SNO codes may.
+        internal_detail: Whether the JSON envelope also reports each of its diagnostics' `detail`
+            value on its own, the same text the message shows; only INT and SNO codes may.
         deprecated_in: The release that deprecated the code; None while it is current.
         superseded_by: The code that replaces a deprecated one; required with `deprecated_in`.
         condition: When the code is raised, as `sst explain` and the error reference state it.
         note: What the condition implies beyond itself; None when there is nothing to add.
+        precheck: Where the condition can first be detected; the coverage reference shows it.
     """
 
     code: str
@@ -76,6 +89,7 @@ class ErrorSpec:
     superseded_by: str | None = None
     condition: str | None = None
     note: str | None = None
+    precheck: Precheck = Precheck.LOCAL
 
     @property
     def always_error(self) -> bool:
@@ -119,13 +133,14 @@ def spec(
     superseded_by: str | None = None,
     condition: str | None = None,
     note: str | None = None,
+    precheck: Precheck = Precheck.LOCAL,
 ) -> ErrorSpec:
     """Build the registry entry for one code, deriving its subsystem, phase, and help URL.
 
     Args:
         demotable: False for an error that no setting may downgrade.
-        internal_detail, deprecated_in, superseded_by, condition, note: As `ErrorSpec`
-            documents them.
+        internal_detail, deprecated_in, superseded_by, condition, note, precheck: As
+            `ErrorSpec` documents them; most conditions are `Precheck.LOCAL`.
     """
     return ErrorSpec(
         code=code,
@@ -142,6 +157,7 @@ def spec(
         superseded_by=superseded_by,
         condition=condition,
         note=note,
+        precheck=precheck,
     )
 
 

@@ -109,7 +109,7 @@ date. A new dependency also needs a row, with its license, in [DEPENDENCIES.md](
 
 These are the checks `.github/workflows/test-and-lint.yml` runs on every pull request. A release
 tag runs the same workflow before it builds anything (`publish-to-pypi.yml` calls it). None of them
-needs a secret or a Snowflake account. `.github/workflows/nightly.yml` adds mutation testing over
+needs a secret or a Snowflake account; only the dbt job, the last below, starts a real dbt. `.github/workflows/nightly.yml` adds mutation testing over
 `domain/` and the property tests under the deeper `nightly` Hypothesis profile, both offline and
 report-only.
 
@@ -143,7 +143,7 @@ poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch --cov-repor
 poetry run mypy snowflake_semantic_tools tests   # strict = true in pyproject.toml
 poetry run ruff format --check snowflake_semantic_tools/ tests/
 poetry run ruff check snowflake_semantic_tools/ tests/
-poetry run lint-imports         # the seven ring-boundary contracts
+poetry run lint-imports         # the eight ring-boundary contracts
 poetry run sst docs --check     # generated reference pages are current (exit 2 when not)
 poetry run bandit -r snowflake_semantic_tools -ll
 poetry run pip-audit --skip-editable --progress-spinner off   # needs to reach the vulnerability database
@@ -152,6 +152,20 @@ poetry run pip-audit --skip-editable --progress-spinner off   # needs to reach t
 # requirements file, with the rules vendored in .semgrep/ (its README says how to refresh them)
 pip install --require-hashes --only-binary :all: -r .github/requirements/semgrep.txt  # linux x86_64
 semgrep scan --config .semgrep/ --error --metrics off --disable-version-check snowflake_semantic_tools
+
+# The dbt job, once per dbt minor the reference project admits, pinned to the releases the
+# committed manifests were captured with (dbt Core 1.11.15 with dbt-snowflake 1.11.6, or
+# 1.12.5 with 1.12.1; only those two are pinned, pip resolves the rest they need): real dbt,
+# offline, with no secret. SST runs `dbt parse` itself for the golden suite, and the manifest
+# it wrote is held to the same contract as the committed ones in tests/fixtures/dbt_manifests/.
+# The pin replaces the environment's dbt; `poetry install --extras dbt` restores the locked one
+poetry install --extras dbt
+poetry run pip install dbt-core==1.11.15 dbt-snowflake==1.11.6   # or 1.12.5 and 1.12.1
+poetry run dbt deps --project-dir tests/fixtures/reference_project
+poetry run sst --project-dir tests/fixtures/reference_project test --suite golden \
+  --golden-dir "$PWD/tests/golden/expected/ddl"
+poetry run pytest tests/contract/test_dbt_manifest_contract.py \
+  --dbt-manifest tests/fixtures/reference_project/target/manifest.json
 ```
 
 The ratchet and the three floors are separate checks: the ratchet compares each layer over the
@@ -248,6 +262,9 @@ naming the command. The benchmark exits 1 when any run failed.
 
 ## Architecture
 
+Why the engine is shaped this way, with diagrams, is in [docs/design/](docs/design/README.md); start
+with [architecture.md](docs/design/architecture.md). This section is the rules a change must keep.
+
 The CLI is the only interface: the package exports nothing but `__version__`, so new behavior is a command or an option. The package root holds `__init__.py`, `_version.py`, and four rings:
 
 ```text
@@ -286,22 +303,24 @@ Imports run one way, `cli` → (`app` | `adapters`) → `domain`:
 - `app` and `adapters` are independent: a use case receives adapters through the ports in `domain/ports/`, and an adapter never calls a use case.
 - `domain` does no I/O and reads no clock, environment, or randomness, so rendering is a pure function of its input and goldens can compare bytes.
 - `app` never imports an SDK or touches the terminal (`yaml`, `click`, and `snowflake` are forbidden there).
+- No module imports `dbt`: SST runs the dbt executable and reads the manifest it writes.
 - `adapters` may use domain models and ports, but not `domain/render`.
 - The adapter subpackages `yaml`, `dbt`, `snowflake`, and `fs` never import one another, so each can be replaced and tested alone; a top-level adapter module such as `project_source.py` composes them.
 - Only `adapters/yaml` (SST's own files), `adapters/dbt` (dbt's), and `adapters/bounded_yaml.py` (the depth-bounded loader both parse through) import `yaml`; everything else reaches YAML through them.
-- Only `adapters/roundtrip.py` and the `yaml` and `dbt` adapters edit YAML in place with `ruamel`.
+- Only `adapters/roundtrip.py` and the `yaml` adapter import `ruamel`; the `dbt` adapter edits YAML in place through `roundtrip.py`.
 
-`poetry run lint-imports` enforces these as seven contracts in `pyproject.toml`, and `tests/unit/test_ring_boundaries.py` proves that each contract rejects a crossing and that the package root holds nothing else:
+`poetry run lint-imports` enforces these as eight contracts in `pyproject.toml`, and `tests/unit/test_ring_boundaries.py` proves that each contract rejects a crossing and that the package root holds nothing else:
 
 | Contract | Rule |
 |----------|------|
 | Rings are layered: cli above (app \| adapters) above domain | `cli` → (`app` \| `adapters`) → `domain`; `app` and `adapters` independent |
 | domain is pure -- no I/O, no clock, no environment, no SDKs | `domain` imports none of `yaml`, `click`, `snowflake`, `os`, `pathlib`, `datetime`, `time`, `random`, `tempfile`, `subprocess`, `socket`, `logging` |
 | app imports domain only -- no SDKs, no terminal | `app` imports none of `yaml`, `click`, `snowflake` |
+| SST never imports dbt -- it runs the executable | no module imports `dbt` |
 | adapters use domain ports and models, not domain renderers | `adapters` never imports `domain.render` |
 | adapter subpackages are independent | `adapters.yaml`, `.dbt`, `.snowflake`, `.fs` never import one another |
-| only the roundtrip, dbt and yaml adapters edit YAML | nothing else imports `ruamel` |
-| only the yaml and dbt adapters parse YAML | `cli` and the other adapters never import `yaml` directly |
+| only roundtrip and the yaml adapter import ruamel | no other module imports `ruamel` directly |
+| only bounded_yaml and the yaml and dbt adapters import PyYAML | no other module imports `yaml` directly |
 
 ### Diagnostics
 
@@ -311,9 +330,13 @@ Every problem SST reports is a diagnostic registered in `snowflake_semantic_tool
 
 1. **Register it.** Add a `spec(...)` entry to `SPECS` in the module for its area, kept sorted by code: the code, its `Severity`, a title, a message template, and an actionable suggestion (or `None`), plus `condition=` (when it is raised, which `sst explain` and the error reference print) and, where it helps, `note=`. Pass `demotable=False` for an error no setting may downgrade. Take the next free number; a number in `specs/retired.py` is burned. The registry is built through `domain/diagnostics/integrity.py` at import, which refuses a malformed code (SST-REG012), a duplicate (SST-REG002), a retired number (SST-REG017), a template placeholder outside the shared `PLACEHOLDERS` vocabulary (SST-REG016), a 900-band code that is not an error, or in INT and REG not a non-demotable one (SST-REG014), and `internal_detail` outside INT and SNO (SST-REG019).
 2. **Raise it** with `D("SST-XXXnnn", subject=..., <placeholder>=...)` from a module outside `specs/`, and list it under `Diagnostics:` in the docstring of the function that reports it. `D` reports SST-INT901 instead when a template placeholder is not supplied.
-3. **Add its catalog row.** `tests/codes/catalog.json` is the 1.0 error catalog's projection and the source of truth for each code's severity, demotability, title, template, and suggestion; `tests/codes/test_catalog_parity.py` fails when the registry and the catalog disagree, or when a registered code has no row. The file is regenerated with `python -m tests.helpers.code_guards`, not edited by hand ([tests/codes/README.md](tests/codes/README.md#catalogjson)); agree the row with a maintainer in the issue.
+3. **Say where it is first detectable.** A condition that needs no connection is `local`, the default. Pass `precheck=Precheck.OBSERVE` when it needs a read of Snowflake, or `precheck=Precheck.RUNTIME` when only a running statement shows it; the coverage reference prints it. The registry entry is the code's whole contract, and `sst docs` renders it, so agree the severity, demotability, title, template, and suggestion with a maintainer in the issue.
 4. **Test it both ways.** Add `tests/codes/<area>/test_sst_<area><nnn>.py` with `test_sst_<area><nnn>_fires` (the smallest input that reports it, pinning severity, message, and subject) and `test_sst_<area><nnn>_silent` (the nearest legitimate input), copying `tests/codes/cfg/test_sst_cfg003.py`. `test_codes_tested.py` requires the pair and `test_codes_emitted.py` requires the code to be named outside `specs/`. The allowlists under `tests/codes/allowlist/` are empty and only shrink: never add an entry to make a guard pass.
 5. **Regenerate the reference.** `poetry run sst docs` rewrites `docs/reference/error-codes.md` and `docs/reference/coverage.md`; commit them, then check `poetry run sst explain SST-XXXnnn` reads well.
+
+#### Retiring a diagnostic code
+
+A code whose condition can no longer arise, or that another code already reports, is retired, never deleted and reused. Remove its `spec(...)` entry and its fires/silent pair; add the code with the release to `RETIRED_CODES` in `specs/retired.py`; and add a `TOMBSTONES` row in `specs/aliases.py` with its old title, the code that took its condition over (or `None`), and why it was retired. The registry then refuses the number (SST-REG017), `sst explain` answers for it, and the error reference lists it under "Retired numbers".
 
 ### Generated Reference Pages
 
@@ -328,6 +351,27 @@ Each command lives in its own module under `snowflake_semantic_tools/cli/command
 - A removed flag stays as a hidden option that refuses with what replaces it, as `cli/commands/enrich.py` does for the 0.3 flags.
 - Run `poetry run sst docs` to regenerate `docs/reference/cli.md` (and `config.md` for a new key), and commit the pages.
 
+### Exit codes
+
+A pipeline branches on the exit code without reading the output, so each code has one meaning, declared in `cli/exit_codes.py` and rendered into the CLI reference:
+
+| Code | Meaning |
+|---:|---|
+| 0 | The run succeeded; for `sst plan`, nothing to change. |
+| 1 | The project was read and something in it is wrong: an error diagnostic, a failed apply, test suite, or check, a statement Snowflake rejected, a file SST could not write, or an internal error. |
+| 2 | Declared and actual state differ: `plan`, `diff`, `enrich --check`, `format --check`, `docs --check`, or `migrate refs` found a difference. |
+| 3 | The command line is refused. |
+| 4 | The project, its configuration, or a saved plan cannot be used. |
+| 5 | Snowflake would not cooperate: a rejected credential (SST-PRT002), a failed or dropped connection (SST-PRT001), a refused privilege, or a missed deadline. |
+| 130 | The run was interrupted (Ctrl-C, SIGTERM, SIGHUP) or a confirmation was declined. |
+
+- **2 reports a difference; it is not a failure.** A command that asserts never returns it: `validate` and `test` exit 1 when an assertion fails, a golden mismatch included. `--no-detailed-exitcode` turns 2 into 0 on `plan`, `diff`, `enrich`, `format`, and `docs`.
+- **Usage errors exit 3, not click's default 2**, so 2 always means a difference. `cli/group.py` sets the exit code of click's usage errors to 3 and reports each as a diagnostic; a bad value read from an environment variable is a configuration error, exit 4, since the command line itself was fine.
+- **1, 4, and 5 are split by how far the run got,** which tells the reader what to fix: 4, the setup (the run could not use the project, its configuration, or a saved plan); 1, the project; 5, the account (retry, or fix the grants). A manifest SST could not obtain is 4 even when `dbt parse` ran and failed (SST-DBT028): no model was read, and 5 is for Snowflake alone. `cli/runner.py` maps each exception to its code in one place, and `snowflake_failure` decides between 1 and 5 for a Snowflake error.
+- **An interrupt is 130**, never an internal error, from any point in the run.
+
+`tests/unit/cli/test_exit_codes.py` holds the contract: `EXIT_CODES` lists the codes each command may return, every case is a real invocation, and CI runs it as its own step. A new failure path lands in an existing code; changing what a code means is a breaking change.
+
 ### Building SQL
 
 Every statement SST sends to Snowflake is an `Sql` value from `snowflake_semantic_tools.domain.sql`. `Sql` is sealed: constructing one outside that package raises `TypeError`. A statement is composed with `sql("<constant template>", name=<Sql part>, ...)`, where each part comes from a constructor that quotes or refuses its input (`ident`, `qname`, `literal`, `number`, `keyword` from a closed vocabulary, `datatype`, `dollar_quoted`, `guard_expression`, and the rest of the package's exports), and `join` takes a constant separator. The connector turns an `Sql` into text only at the driver boundary (`Sql.for_driver`).
@@ -337,6 +381,17 @@ Every statement SST sends to Snowflake is an `Sql` value from `snowflake_semanti
 ### Version
 
 `snowflake_semantic_tools/_version.py` holds the one version string, and it must equal `version` in `pyproject.toml`; a test asserts it. Change both together.
+
+### Releasing
+
+A release is a `v<version>` tag on `main`; `publish-to-pypi.yml` runs the required gate on the tagged commit, then builds and publishes it. The required gate never connects to Snowflake, so the checks that notice Snowflake itself changing run here, once per release, by a maintainer with an account:
+
+1. Set the version, as [Version](#version) says.
+2. Run the live suites against the release candidate on `main`: the `live` suite of the manual workflow (`slow.yml`), or locally `poetry run pytest -m live --require-snowflake -n 4 tests/contract_live tests/integration tests/e2e`. Every test must pass; a skip means the account was not configured.
+3. Run the `recording` suite, or locally `poetry run python -m tests.helpers.session_recorder --out capture.json`, and commit the capture (the `--out` file, or the run's `recorded-session` artifact) as `tests/fixtures/recordings/live_project.json`. The first capture creates the file. After that, a capture that differs from the committed recording means Snowflake's behaviour moved: check the difference against [docs/design/snowflake-behaviour.md](docs/design/snowflake-behaviour.md) before the capture replaces the recording, and say what moved in the release notes.
+4. Tag the commit that adds the recording, which changes nothing else, and push the tag.
+
+[docs/guides/testing-live.md](docs/guides/testing-live.md#when-the-live-suites-run) describes this cadence; no schedule runs the live suites.
 
 ## Code Style
 
@@ -366,7 +421,7 @@ Annotations already say what types flow where, so a docstring never restates the
    - `Diagnostics:` for every `SST-` code the function reports, one per line. The test checks each code is registered, so the registry and the code that raises each entry stay linked.
 4. **A `Protocol` method documents the contract**: what it promises, what it returns on failure, whether it raises, and whether it is idempotent. An implementation that overrides a documented method of a base class in this package inherits that docstring and adds one only to say how it differs.
 5. **A private function** needs a docstring once it is 25 lines or longer, scores 10 or more on the decision count, or depends on an ordering, poisoning, or casefolding rule a reader could break.
-6. **Comments say why, not what.** Mark ordering dependencies where they bite (for example, "runs after the view checks: poisoning reads their diagnostics"). Never cite a design document or planning identifier.
+6. **Comments say why, not what.** Mark ordering dependencies where they bite (for example, "runs after the view checks: poisoning reads their diagnostics"). Never cite a planning identifier or a document outside this repository; a comment may point to a page under `docs/design/`, as the code sites that follow Snowflake's server rather than its docs do.
 7. **A renderer** shows an `Example:` of input and output when the grammar it produces is not obvious.
 8. **Use the shared vocabulary** (key, subject, origin, fingerprint, poisoned, ownership marker) in the sense [docs/concepts.md](docs/concepts.md#terms-used-in-the-code) defines.
 
