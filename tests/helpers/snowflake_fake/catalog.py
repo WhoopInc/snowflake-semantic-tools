@@ -116,7 +116,7 @@ class FakeCatalog(SnowflakeWorld):
             return None
         listed = versions(extension)
         default = next((version for version in listed if version["is_default"]), None)
-        # MEASURED 2026-09-29: once a version is certified, the extension serves the
+        # Once a version is certified, the extension serves the
         # latest certified version instead of the default.
         certified = next((version for version in reversed(listed) if version["certification"] == "CERTIFIED"), None)
         effective = certified or default
