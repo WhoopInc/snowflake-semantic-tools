@@ -6,12 +6,15 @@ import pytest
 
 from snowflake_semantic_tools.domain.diagnostics import RULE_SETS
 from snowflake_semantic_tools.domain.model.registry import (
+    RESOLVED_FUNCTIONS,
     SEMANTIC_REGISTRY,
     ArtifactLifecycle,
     ArtifactType,
     MemberType,
     RegistryBuilder,
 )
+from snowflake_semantic_tools.domain.resolve import template
+from snowflake_semantic_tools.domain.resolve.calls import KNOWN_FUNCTIONS
 from tests.helpers.registry_types import artifact, freeze
 
 
@@ -53,6 +56,26 @@ def test_registry_ref_functions_are_unique_when_present() -> None:
         *(value.ref_function for value in SEMANTIC_REGISTRY.members.values() if value.ref_function is not None),
     ]
     assert len(functions) == len(set(functions))
+
+
+def test_every_dialect_function_is_resolved_somewhere() -> None:
+    # A function added to the dialect without a resolver, or a resolver for a function the
+    # dialect lacks, falls outside the SST-REG020 cross-check, so the two sets must agree.
+    assert KNOWN_FUNCTIONS == RESOLVED_FUNCTIONS
+
+
+def test_every_field_policy_calls_only_resolved_functions() -> None:
+    policies = [value for value in vars(template).values() if isinstance(value, template.RefPolicy)]
+    assert policies
+    for policy in policies:
+        assert policy.allowed <= RESOLVED_FUNCTIONS
+
+
+def test_member_reference_functions_name_their_member_types() -> None:
+    members = SEMANTIC_REGISTRY.members
+    for name in ("relationship", "filter", "verified_query"):
+        assert members[name].ref_function == name
+    assert members["custom_instruction"].ref_function == "custom_instructions"
 
 
 def test_every_type_names_registered_rule_sets_and_a_discovery_directory() -> None:

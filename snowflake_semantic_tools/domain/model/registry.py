@@ -158,18 +158,20 @@ REQUIRED_MEMBER_FIELDS = ("name", "root_key", "owner_type", "validation_rules")
 MEMBER_OWNING_TYPES = frozenset({"semantic_view"})
 # Every template function some resolver in the package handles: `domain.resolve.template` for
 # `ref`, `metric`, `var`, `custom_instructions` and tags, refusing the legacy `table` and
-# `column`; the semantic loader for `custom_instructions` entries; the agent loader for `file`,
-# `skill` and `plugin`; agent tool resolution for `semantic_view`, `tool` and `agent`; and the
-# eval config reader for `eval_metric`.
+# `column`, and for `filter`, `relationship` and `verified_query` in custom-instruction text;
+# the semantic loader for `custom_instructions` entries; the agent loader for `file`, `skill`,
+# `plugin` and a skill source's `extension`; agent tool resolution for `semantic_view`, `tool`
+# and `agent`; and the eval config reader for `eval_metric`.
 RESOLVED_FUNCTIONS = frozenset(
     {
         *("ref", "table", "column", "metric", "var", "tag", "custom_instructions", "file"),
-        *("eval_metric", "semantic_view", "tool", "agent", "skill", "plugin"),
+        *("eval_metric", "semantic_view", "tool", "agent", "skill", "plugin", "extension"),
+        *("filter", "relationship", "verified_query"),
     }
 )
 # Resolved functions that address something outside this registry: dbt models and columns,
-# project variables and files, tags, and the shared eval metrics.
-NON_ARTIFACT_FUNCTIONS = frozenset({"ref", "table", "column", "var", "tag", "file", "eval_metric"})
+# project variables and files, tags, the shared eval metrics, and extensions published elsewhere.
+NON_ARTIFACT_FUNCTIONS = frozenset({"ref", "table", "column", "var", "tag", "file", "eval_metric", "extension"})
 # Artifact types nothing references, by design: an eval and a profile are leaves, so they need
 # no template function. Named rather than inferred, so a type that forgot one still fails.
 DELIBERATELY_UNREFERENCED = frozenset({"eval", "profile"})
@@ -595,8 +597,8 @@ ARTIFACT_REGISTRY = build_registry(
         ),
     ),
     (
-        # A relationship, filter, or verified query is attached by the tables it reads, and no
-        # template function names one, so none has a ref_function.
+        # A relationship, filter, or verified query is attached by the tables it reads; its
+        # template function names it only from custom-instruction text.
         MemberType(
             "relationship",
             "snowflake_relationships",
@@ -604,7 +606,7 @@ ARTIFACT_REGISTRY = build_registry(
             10,
             AttachRule.TABLE_MEMBERSHIP,
             "semantic_view",
-            None,
+            "relationship",
             ("relationship",),
         ),
         MemberType(
@@ -644,7 +646,7 @@ ARTIFACT_REGISTRY = build_registry(
             60,
             AttachRule.TABLE_MEMBERSHIP,
             "semantic_view",
-            None,
+            "filter",
             ("filter",),
         ),
         MemberType(
@@ -654,7 +656,7 @@ ARTIFACT_REGISTRY = build_registry(
             70,
             AttachRule.TABLE_MEMBERSHIP,
             "semantic_view",
-            None,
+            "verified_query",
             ("filter",),
         ),
         MemberType(

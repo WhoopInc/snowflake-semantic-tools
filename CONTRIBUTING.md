@@ -143,7 +143,7 @@ poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch --cov-repor
 poetry run mypy snowflake_semantic_tools tests   # strict = true in pyproject.toml
 poetry run ruff format --check snowflake_semantic_tools/ tests/
 poetry run ruff check snowflake_semantic_tools/ tests/
-poetry run lint-imports         # the seven ring-boundary contracts
+poetry run lint-imports         # the eight ring-boundary contracts
 poetry run sst docs --check     # generated reference pages are current (exit 2 when not)
 poetry run bandit -r snowflake_semantic_tools -ll
 poetry run pip-audit --skip-editable --progress-spinner off   # needs to reach the vulnerability database
@@ -289,22 +289,24 @@ Imports run one way, `cli` → (`app` | `adapters`) → `domain`:
 - `app` and `adapters` are independent: a use case receives adapters through the ports in `domain/ports/`, and an adapter never calls a use case.
 - `domain` does no I/O and reads no clock, environment, or randomness, so rendering is a pure function of its input and goldens can compare bytes.
 - `app` never imports an SDK or touches the terminal (`yaml`, `click`, and `snowflake` are forbidden there).
+- No module imports `dbt`: SST runs the dbt executable and reads the manifest it writes.
 - `adapters` may use domain models and ports, but not `domain/render`.
 - The adapter subpackages `yaml`, `dbt`, `snowflake`, and `fs` never import one another, so each can be replaced and tested alone; a top-level adapter module such as `project_source.py` composes them.
 - Only `adapters/yaml` (SST's own files), `adapters/dbt` (dbt's), and `adapters/bounded_yaml.py` (the depth-bounded loader both parse through) import `yaml`; everything else reaches YAML through them.
 - Only `adapters/roundtrip.py` and the `yaml` and `dbt` adapters edit YAML in place with `ruamel`.
 
-`poetry run lint-imports` enforces these as seven contracts in `pyproject.toml`, and `tests/unit/test_ring_boundaries.py` proves that each contract rejects a crossing and that the package root holds nothing else:
+`poetry run lint-imports` enforces these as eight contracts in `pyproject.toml`, and `tests/unit/test_ring_boundaries.py` proves that each contract rejects a crossing and that the package root holds nothing else:
 
 | Contract | Rule |
 |----------|------|
 | Rings are layered: cli above (app \| adapters) above domain | `cli` → (`app` \| `adapters`) → `domain`; `app` and `adapters` independent |
 | domain is pure -- no I/O, no clock, no environment, no SDKs | `domain` imports none of `yaml`, `click`, `snowflake`, `os`, `pathlib`, `datetime`, `time`, `random`, `tempfile`, `subprocess`, `socket`, `logging` |
 | app imports domain only -- no SDKs, no terminal | `app` imports none of `yaml`, `click`, `snowflake` |
+| SST never imports dbt -- it runs the executable | no module imports `dbt` |
 | adapters use domain ports and models, not domain renderers | `adapters` never imports `domain.render` |
 | adapter subpackages are independent | `adapters.yaml`, `.dbt`, `.snowflake`, `.fs` never import one another |
-| only the roundtrip, dbt and yaml adapters edit YAML | nothing else imports `ruamel` |
-| only the yaml and dbt adapters parse YAML | `cli` and the other adapters never import `yaml` directly |
+| only roundtrip and the yaml and dbt adapters import ruamel | no other module imports `ruamel` directly |
+| only bounded_yaml and the yaml and dbt adapters import PyYAML | no other module imports `yaml` directly |
 
 ### Diagnostics
 

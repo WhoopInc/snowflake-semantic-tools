@@ -50,7 +50,7 @@
 - [ ] Formatted with ruff, line length 120 (`poetry run ruff format --check snowflake_semantic_tools/ tests/`)
 - [ ] Lint-clean, imports sorted (`poetry run ruff check snowflake_semantic_tools/ tests/`)
 - [ ] Strictly typed (`poetry run mypy snowflake_semantic_tools tests` passes)
-- [ ] Ring boundaries hold (`poetry run lint-imports` passes all seven contracts)
+- [ ] Ring boundaries hold (`poetry run lint-imports` passes all eight contracts)
 - [ ] SQL is composed only through `domain/sql` (`sql()` with a constant template and `Sql` parts)
 - [ ] Security scans pass (`poetry run bandit -r snowflake_semantic_tools -ll`; semgrep with `.semgrep/`)
 - [ ] `poetry.lock` regenerated and `DEPENDENCIES.md` updated (if a dependency changed; `poetry check --lock` passes)

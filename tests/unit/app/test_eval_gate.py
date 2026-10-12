@@ -473,26 +473,41 @@ def test_gate_without_completed_attempt_has_no_current_signal() -> None:
 
     assert verdict.reason == "current_no_signal"
     assert diagnostics[0].code == "SST-SNO001"
-    assert "immutable current agent version" in diagnostics[0].message
+    assert "no retrievable completed attempt" in diagnostics[0].message
 
 
-def test_gate_without_attempts_has_no_retrieval_signal_after_version_resolution(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_gate_with_no_attempts_says_none_completed() -> None:
     compiled = compiled_eval()
     baseline_result = run_result(
         attempt("base-1", (("q", "answer_correctness", True),)),
         attempt("base-2", (("q", "answer_correctness", True),)),
     )
     baseline = capture_baseline(compiled, baseline_result, reason="initial", captured_at="2026-09-01T00:00:00Z")
-    monkeypatch.setattr("snowflake_semantic_tools.app.evals.gate._result_agent_version", lambda _: "VERSION$1")
-    monkeypatch.setattr("snowflake_semantic_tools.app.evals.gate._incompatibility", lambda *args: None)
 
     verdict, diagnostics = evaluate_gate(compiled, run_result(), baseline, now="2026-09-10T00:00:00Z")
 
-    assert verdict.reason == "retrieval_no_signal"
-    assert diagnostics[-1].code == "SST-SNO001"
-    assert "no retrievable completed attempt" in diagnostics[-1].message
+    assert verdict.reason == "current_no_signal"
+    assert [diagnostic.code for diagnostic in diagnostics] == ["SST-SNO001"]
+    assert "no retrievable completed attempt" in diagnostics[0].message
+
+
+def test_gate_names_the_current_run_when_its_attempts_disagree_on_version() -> None:
+    compiled = compiled_eval()
+    baseline_result = run_result(
+        attempt("base-1", (("q", "answer_correctness", True),)),
+        attempt("base-2", (("q", "answer_correctness", True),)),
+    )
+    baseline = capture_baseline(compiled, baseline_result, reason="initial", captured_at="2026-09-01T00:00:00Z")
+    current = run_result(
+        attempt("cur-1", (("q", "answer_correctness", True),)),
+        replace(attempt("cur-2", (("q", "answer_correctness", True),)), agent_version="VERSION$2"),
+    )
+
+    verdict, diagnostics = evaluate_gate(compiled, current, baseline, now="2026-09-10T00:00:00Z")
+
+    assert verdict.reason == "current_no_signal"
+    assert "current attempts do not identify one immutable agent version" in diagnostics[0].message
+    assert "baseline" not in diagnostics[0].message
 
 
 def test_gate_rejects_changed_question_metric_vector(monkeypatch: pytest.MonkeyPatch) -> None:

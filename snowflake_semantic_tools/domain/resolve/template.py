@@ -1,16 +1,13 @@
-"""Resolve the template calls in one authored scalar, and the records that describe them.
+"""Resolve the template calls in one authored scalar.
 
 `resolve_scalar` replaces each ``{{ function('arg') }}`` call `domain.parse.template` finds
-with its value, checked against the field's `RefPolicy` by `calls.call_problem`. The records
-are shared by the loaders that call it and by attach and validate, which read what each
-scalar referenced.
+with its value, checked against the field's `RefPolicy` by `calls.call_problem`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from enum import Enum, auto
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
@@ -19,52 +16,16 @@ from snowflake_semantic_tools.domain.parse.template import TemplateCall, Templat
 from snowflake_semantic_tools.domain.resolve.calls import call_problem, malformed_field, syntax_problem
 
 
-class RefKind(Enum):
-    """What a resolved template call refers to.
-
-    A one-argument `ref()` is a TABLE and a two-argument one a COLUMN; a `tag()` call is a TAG.
-    """
-
-    TABLE = auto()
-    COLUMN = auto()
-    METRIC = auto()
-    CUSTOM_INSTRUCTION = auto()
-    RELATIONSHIP = auto()
-    FILTER = auto()
-    VERIFIED_QUERY = auto()
-    VAR = auto()
-    TAG = auto()
-
-
-@dataclass(frozen=True, slots=True)
-class RefOrigin:
-    """One template call a scalar resolved, as `Resolved.origins` records it.
-
-    Attributes:
-        raw: The call exactly as written, braces included.
-        model_name: The model a `ref()` names; None for any other function.
-        column_name: The column a two-argument `ref()` names; None otherwise.
-    """
-
-    kind: RefKind
-    raw: str
-    model_name: str | None = None
-    column_name: str | None = None
-    deprecated: bool = False
-
-
 @dataclass(frozen=True, slots=True)
 class Resolved:
     """A scalar with its template calls replaced by their values.
 
     Attributes:
         text: The scalar with each call that resolved replaced; one that did not stays as written.
-        origins: The calls that resolved, in source order.
         poisoned: Resolving it reported a diagnostic, so `text` may still hold unresolved calls.
     """
 
     text: str
-    origins: tuple[RefOrigin, ...] = ()
     poisoned: bool = False
 
 
@@ -95,15 +56,7 @@ INSTRUCTION_TEXT = RefPolicy(frozenset(("filter", "relationship", "verified_quer
 TAG_NAME = RefPolicy(frozenset(("tag",)), required=True, multi=False)
 DESCRIPTION = RefPolicy(frozenset())
 
-# The member-reference functions, by the kind each records and the context names it reads.
-_MEMBER_KINDS: Mapping[str, RefKind] = MappingProxyType(
-    {
-        "custom_instructions": RefKind.CUSTOM_INSTRUCTION,
-        "relationship": RefKind.RELATIONSHIP,
-        "filter": RefKind.FILTER,
-        "verified_query": RefKind.VERIFIED_QUERY,
-    }
-)
+# The member-reference functions, by the code a name none declares is reported under.
 _MEMBER_CODES: Mapping[str, str] = MappingProxyType(
     {
         "custom_instructions": "SST-REF007",
@@ -149,16 +102,6 @@ class ResolveContext:
             "relationship": self.relationship_names,
             "filter": self.filter_names,
         }.get(function, self.verified_query_names)
-
-
-def _kind(function: str, args: tuple[str, ...]) -> RefKind:
-    if function == "ref":
-        return RefKind.TABLE if len(args) == 1 else RefKind.COLUMN
-    if function == "metric":
-        return RefKind.METRIC
-    if function == "var":
-        return RefKind.VAR
-    return _MEMBER_KINDS.get(function, RefKind.TAG)
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,7 +162,6 @@ def resolve_scalar(
 
     diagnostics: list[Diagnostic] = []
     rendered = text
-    origins: list[RefOrigin] = []
     # Last call first: a substitution changes the text's length after it, never before.
     for call in reversed(calls):
         value = _resolve_call(call, policy, site, context, ref_value)
@@ -227,9 +169,8 @@ def resolve_scalar(
             diagnostics.append(value)
             continue
         rendered = rendered[: call.start] + value + rendered[call.end :]
-        origins.insert(0, _ref_origin(call))
     diagnostics.extend(_call_count_problems(text, calls, policy, site))
-    return Resolved(rendered, tuple(origins), bool(diagnostics)), DiagnosticBag(diagnostics)
+    return Resolved(rendered, bool(diagnostics)), DiagnosticBag(diagnostics)
 
 
 def _resolve_call(
@@ -250,7 +191,7 @@ def _resolve_call(
         value = _resolve_ref(call, site, context, ref_value)
     elif function == "metric":
         value = _resolve_metric(call, site, context)
-    elif function in _MEMBER_KINDS:
+    elif function in _MEMBER_CODES:
         value = _resolve_member(call, site, context)
     elif function == "var":
         value = _resolve_var(call, site, context)
@@ -316,16 +257,6 @@ def _resolve_tag(call: TemplateCall, site: _Site, context: ResolveContext) -> st
     if call.args[0] not in context.tags:
         return D("SST-REF028", origin=site.origin, subject=site.subject, name=call.args[0])
     return context.tags[call.args[0]]
-
-
-def _ref_origin(call: TemplateCall) -> RefOrigin:
-    is_ref = call.function == "ref"
-    return RefOrigin(
-        _kind(call.function, call.args),
-        call.raw,
-        call.args[0] if is_ref and call.args else None,
-        call.args[1] if is_ref and len(call.args) == 2 else None,
-    )
 
 
 def _call_count_problems(
