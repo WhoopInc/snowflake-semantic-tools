@@ -11,15 +11,14 @@ description: |-
 # Jaffle menu catalogue
 
 <!--
-THIS SKILL IS THE K0xx CASE, AND ITS VALUE IS WHAT IT DOES NOT HAVE. No bundle, no
-`reference/` directory, no scripts, no second channel -- just `SKILL.md` at the
-folder root, which is what K001 requires.
+The smallest skill: no bundle, no `reference/` directory, no scripts -- only
+`SKILL.md` at the folder root.
 
-DO NOT ADD A BUNDLE TO THIS SKILL. It is the negative-space assertion for the skill
-artifact, the same role `jaffle_minimal` plays among the views and
-`total_revenue_all_time` plays among the verified queries. A publisher that walks a
-bundle unconditionally, or that emits a flattened-catalog payload for a skill with
-nothing to flatten, is caught here and nowhere else.
+Do not add a bundle to this skill. It plays the role `jaffle_minimal` plays among the
+views and `total_revenue_all_time` among the verified queries: a publisher that walks
+a bundle unconditionally, or emits a flattened payload for a skill with nothing to
+flatten, fails its golden (`tests/golden/expected/skill/jaffle-catalogue.bundle.json`)
+and no other.
 -->
 
 Use `JAFFLE_MINIMAL` for catalogue questions. It carries `products` and nothing

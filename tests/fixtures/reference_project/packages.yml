@@ -7,8 +7,6 @@
 #
 # The version is a range, not a pin, so it does not fight `require-dbt-version`
 # in `dbt_project.yml` on every core bump; the macro signature is stable across it.
-#
-# NO DATA VALUES.
 # =============================================================================
 
 packages:

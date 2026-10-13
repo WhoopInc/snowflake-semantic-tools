@@ -1,11 +1,10 @@
 # Join paths and fan-out
 
 <!--
-BUNDLED FILE ONE OF TWO. Reached from `../SKILL.md` by a relative markdown link,
-which is the form K1xx's bundle scan follows. Under the CATALOG channel this file is
-FLATTENED alongside `SKILL.md` because Snowflake does not search subdirectories
-(K101); under the STAGE channel the tree is preserved. Both goldens assert the same
-content at different paths.
+Bundled file one of two, reached from `../SKILL.md` by a relative Markdown link,
+which is the form the bundle scan follows (SST-VAL808 when a link does not resolve).
+The catalog channel publishes it beside `SKILL.md` as `reference__join-paths.md`; the
+stage channel keeps it here.
 -->
 
 ## Why the ASOF join does not fan out

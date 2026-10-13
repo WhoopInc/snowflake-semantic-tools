@@ -1,9 +1,10 @@
 # Metric shapes
 
 <!--
-BUNDLED FILE TWO OF TWO. A second bundled file exists so the flattened golden
-asserts a COLLISION-FREE flatten of more than one file: with a single bundled file,
-flattening is indistinguishable from moving it. See `../SKILL.md`.
+Bundled file two of two. A second bundled file makes the catalog golden
+(`tests/golden/expected/skill/jaffle-semantics.bundle.json`) assert a collision-free
+flatten of more than one file: with a single bundled file, flattening is
+indistinguishable from moving it. See `../SKILL.md`.
 -->
 
 ## Table-scoped versus derived

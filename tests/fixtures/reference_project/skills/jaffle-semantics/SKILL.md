@@ -15,22 +15,15 @@ description: |-
 # Jaffle semantics
 
 <!--
-THIS FILE IS THE ONE ARTIFACT TYPE THAT IS MARKDOWN RATHER THAN YAML, and the one
-that is already a portable external standard -- the Agent Skills format, read by
-Cortex Agents, by CoCo Desktop, and by tools outside Snowflake.
+A skill is Markdown rather than YAML: the Agent Skills format, read by Cortex
+Agents, by CoCo Desktop, and by tools outside Snowflake.
 
-THIS SKILL IS THE K1xx CASE: A BUNDLE. It carries two files under `reference/`, and
-that is what makes the CATALOG channel's flattening observable. K101 states that
-`SKILL.md` sits at the folder root and Snowflake does not search subdirectories, so
-publishing a bundle to the catalog channel cannot preserve the tree -- the bundle is
-FLATTENED. Two goldens follow from one input:
-
-  expected/skill/jaffle-semantics-nested.md     the stage channel, tree preserved
-  expected/skill/jaffle-semantics-flattened.md  the catalog channel, tree collapsed
-
-The flattened golden was previously recorded as
-"determinable, and the golden is simply unwritten". This bundle is what makes it
-writable.
+This skill carries a bundle: two files under `reference/`, which is what makes the
+catalog channel's flattening observable. `SKILL.md` sits at the folder root and Cortex
+Agents do not search subdirectories, so the catalog channel publishes each bundled
+file beside it as `reference__<name>.md`, with every link rewritten to match
+(SST-VAL810); the stage channel keeps the tree. The catalog payload is pinned by
+`tests/golden/expected/skill/jaffle-semantics.bundle.json`.
 -->
 
 ## Which view answers which question

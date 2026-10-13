@@ -12,27 +12,25 @@ description: |-
 # Jaffle operations
 
 <!--
-THIS SKILL IS THE K2xx CASE: DUAL-CHANNEL PUBLISHING. K201 requires at least one
-channel (`catalog` or `stage`) to be configured; this skill configures BOTH, which
-is what the K2xx family is about and what neither of the other two skills reaches.
+Publishing on both channels. A project configures at least one of `catalog` and
+`stage` (SST-VAL817); this skill reaches both, with a bundle and a script.
 
-WHY DUAL-CHANNEL NEEDS ITS OWN SKILL RATHER THAN A FLAG ON AN EXISTING ONE. The two
-channels do not carry the same payload:
+The two channels do not carry the same payload (SST-VAL818):
 
-  catalog   FLAT. Snowflake does not search subdirectories (K101), so a bundle is
-            collapsed and a name collision between two bundled files is fatal here
-            and invisible on the other channel.
-  stage     TREE PRESERVED. The bundle uploads as authored.
+  catalog   Flattened. Cortex Agents do not search subdirectories, so the bundle
+            sits beside `SKILL.md`, and two bundled files whose flattened names
+            collide fail here (SST-VAL809) though the stage channel would hold both.
+  stage     The tree as authored, which CoCo Desktop reads.
 
 A skill on one channel cannot assert the divergence. This one carries a bundle AND a
 script, so the flatten has two distinct file types to collapse, and the goldens
 assert that the catalog payload and the stage payload differ in path while agreeing
 in content.
 
-THE SCRIPT IS WHY `scripts/` SITS AT THE FOLDER ROOT. K001 puts scripts in the same
-folder as `SKILL.md`, not under a subdirectory -- so `check-supply-month.sql` is a
-sibling of this file, while prose reference material lives under `reference/`. That
-asymmetry is authored deliberately: it is the layout the rule describes.
+The script sits at the folder root. A skill keeps its scripts in the same folder as
+`SKILL.md`, not under a subdirectory, so `check-supply-month.sql` is a sibling of this
+file while prose reference material lives under `reference/`. The asymmetry is
+deliberate: it is the layout the Agent Skills format describes.
 -->
 
 Operational questions about the jaffle surface. This skill is about the mechanics of

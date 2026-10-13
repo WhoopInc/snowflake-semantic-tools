@@ -23,7 +23,7 @@
 # bodies are where the multi-line case is covered instead, because prose is what
 # they are.
 #
-# NO DATA VALUES. The enum literals referenced below are the closed sets the dbt
+# The enum literals referenced below are the closed sets the dbt
 # models declare, and each is referred to through its filter rather than written as
 # a literal where a filter exists.
 # =============================================================================

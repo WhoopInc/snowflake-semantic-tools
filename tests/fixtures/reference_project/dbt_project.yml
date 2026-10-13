@@ -5,8 +5,6 @@
 # SST reads exactly TWO keys out of this file directly -- `name` and
 # `model-paths` -- and everything else about a model through target/manifest.json.
 # Nothing here is an SST authoring surface.
-#
-# NO DATA VALUES. This file carries configuration only.
 # =============================================================================
 
 name: sst_reference_impl
@@ -68,7 +66,7 @@ models:
 # lexicographically, which happens to agree with a TIMESTAMP for ISO-8601 text
 # and so hides the defect until a format changes.
 #
-# NO DATA VALUES HERE. The values live in the CSVs, which are synthetic.
+# The data itself lives in the seed CSVs, which are synthetic.
 seeds:
   sst_reference_impl:
     +quote_columns: false

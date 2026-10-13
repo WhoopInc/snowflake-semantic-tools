@@ -1,14 +1,14 @@
 -- ============================================================================
 -- skills/jaffle-operations/check-supply-month.sql
 -- ============================================================================
--- A SCRIPT, AND IT SITS AT THE FOLDER ROOT BESIDE SKILL.md ON PURPOSE. K001:
--- "`SKILL.md` is at the folder ROOT; scripts live in the same folder." Prose
--- reference material goes under `reference/`; executable material does not. This
+-- A SCRIPT, AND IT SITS AT THE FOLDER ROOT BESIDE SKILL.md ON PURPOSE. A skill's
+-- scripts live in the same folder as `SKILL.md`; prose reference material goes under
+-- `reference/`, executable material does not. This
 -- file is what makes that asymmetry observable in the flattened catalog payload,
 -- where a script and a bundled reference file collapse from different origins into
 -- the same flat namespace.
 --
--- NO DATA VALUES. The one literal is the enum member `completed`.
+-- The one literal is the enum member `completed`.
 -- ============================================================================
 
 -- Is a supply month complete? A month is final when every product sold in it has a
