@@ -25,9 +25,9 @@ After a compile, `sst list --project-dir tests/fixtures/reference_project` lists
 | Check | Expected |
 |-------|----------|
 | Exit code | 0 |
-| stdout | `validated 14 artifact(s): 0 errors, 5 warnings` |
+| stdout | `validated 14 artifact(s): 0 errors, 6 warnings` |
 | Last stderr line | `0 errors; 6 warnings; 51 info; 51 info not shown (--show-info)` |
-| Warnings | `SST-VAL528`, `SST-RND010`, `SST-RND013`, and `SST-CFG018` twice (see Known Diagnostics), plus `SST-CFG034` on `sst_config.yml`: `--no-strict` disagrees with `validation.strict: true`. The stdout count leaves out `SST-CFG034`, which is raised while the command's settings resolve, not by validation |
+| Warnings | `SST-VAL528`, `SST-RND010`, `SST-RND013`, and `SST-CFG018` twice (see Known Diagnostics), plus `SST-CFG034` on `sst_config.yml`: `--no-strict` disagrees with `validation.strict: true`. Both count lines include it |
 | Infos (count) | `SST-MEM011` (15), `SST-VAL125` (9), `SST-VAL020` (4), `SST-VAL831` (4), `SST-MEM103` (3), `SST-VAL319` (3), `SST-VAL816` (3), `SST-DBT016` (2), `SST-VAL217` (2), `SST-DBT025`, `SST-VAL216`, `SST-VAL711`, `SST-VAL712`, `SST-VAL725`, `SST-VAL854` (1 each) |
 | Without `--no-strict` | exit 1, `5 errors; 0 warnings; 51 info`: the fixture's `validation.strict: true` promotes the five artifact warnings, and `SST-CFG034` is not raised |
 

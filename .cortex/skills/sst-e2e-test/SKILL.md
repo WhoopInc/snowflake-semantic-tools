@@ -52,7 +52,7 @@ poetry run sst validate --project-dir $P --manifest $M --no-strict --no-snowflak
 
 ### Pass Criteria
 - Exit code 0
-- stdout: `validated 14 artifact(s): 0 errors, 5 warnings`
+- stdout: `validated 14 artifact(s): 0 errors, 6 warnings`
 - stderr ends with `0 errors; 6 warnings; 51 info; 51 info not shown (--show-info)`
 - The warnings and the info codes match `expected-outputs.md`: the five expected artifact warnings, plus `SST-CFG034`, which `--no-strict` itself raises because it contradicts the fixture's `validation.strict: true`
 
@@ -161,7 +161,7 @@ Compile results from all phases into a summary:
 Phase               | Status | Details
 ----------------------------------------------
 1. Test suite       | ...    | all gates / failing gate
-2. Validate         | ...    | 14 artifacts, 0 errors, 5 warnings (+ SST-CFG034)
+2. Validate         | ...    | 14 artifacts, 0 errors, 6 warnings (5 + SST-CFG034)
 3. Compile          | ...    | 14 payload files
 4. Golden suite     | ...    | 14 artifacts match
 5. migrate refs     | ...    | 4 files pending, round trip matches
