@@ -7,6 +7,9 @@ where it is explained.
 
 - **Agent.** A Cortex Agent SST publishes from `agent.yml`, created once and
   then given a new version for each change. See [agents](guides/agents.md).
+- **Agent kit.** The skills `sst agent-kit` installs for a coding agent, Cortex
+  Code or Claude Code, into the project; never published. Not the project's
+  `skills/`. See [the agent kit](guides/agent-kit.md).
 - **Alias.** The version alias an agent's `alias:` names, which apply moves to
   each new version; promotion and rollback are moves of it. See
   [publishing agents](guides/agents.md#publishing).

@@ -360,6 +360,7 @@ Each command lives in its own module under `snowflake_semantic_tools/cli/command
 - `tests/unit/cli/test_docs.py` fails for an option without help text. An exit code the option can produce must be one its command documents: `tests/unit/cli/test_exit_codes.py` holds each command's codes and a scenario per flag that changes them.
 - A removed flag stays as a hidden option that refuses with what replaces it, as `cli/commands/enrich.py` does for the 0.3 flags.
 - Run `poetry run sst docs` to regenerate `docs/reference/cli.md` (and `config.md` for a new key), and commit the pages.
+- A new command, a renamed or removed flag, or a retired code must also be reflected in the agent kit, the skills under `snowflake_semantic_tools/adapters/agent_kit/skills/` that `sst agent-kit` installs for coding agents. `tests/unit/test_agent_kit_content.py` fails when a skill names a command, flag, or code the CLI no longer has, and when `sst-core`'s table of commands by risk does not list every command exactly once.
 
 ### Exit codes
 

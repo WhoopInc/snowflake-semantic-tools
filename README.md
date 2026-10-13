@@ -65,6 +65,7 @@ semantic view end to end.
 | `sst docs` | Regenerate the reference pages from the engine's registries |
 | `sst clean` | Remove local build output |
 | `sst drop` | Break-glass: drop one object SST owns from one target |
+| `sst agent-kit` | Install, upgrade, check, or remove skills that teach Cortex Code or Claude Code to work in an SST project |
 
 Every command that reports results takes `--output json` for one machine-readable
 result on stdout.
@@ -81,6 +82,7 @@ result on stdout.
   [configuration](docs/guides/configuration.md), [CI/CD](docs/guides/ci-cd.md),
   [security](docs/guides/security.md),
   [troubleshooting](docs/guides/troubleshooting.md),
+  [agent kit](docs/guides/agent-kit.md),
   [testing SST](docs/guides/testing-live.md)
 - Reference: [CLI](docs/reference/cli.md), [configuration keys](docs/reference/config.md),
   [error codes](docs/reference/error-codes.md), [artifact types](docs/reference/artifacts.md),

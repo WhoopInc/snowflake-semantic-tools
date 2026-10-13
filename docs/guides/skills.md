@@ -8,6 +8,10 @@ Extension, and pins every agent that uses it to the published version.
 A skill can also ship to CoCo Desktop through a profile; see
 [plugins and profiles](plugins-and-profiles.md).
 
+These are skills SST publishes. The skills `sst agent-kit` installs into `.cortex/skills` or
+`.claude/skills` are a different thing: they teach the coding agent that edits the project,
+are never published, and may not sit inside `skills_dir`; see [the agent kit](agent-kit.md).
+
 ## Layout
 
 ```text
