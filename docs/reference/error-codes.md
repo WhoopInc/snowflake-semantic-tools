@@ -3103,9 +3103,9 @@ Note: Replacing without `COPY GRANTS` drops every grant on the view.
 
 `<artifact>: column '<member>' declares no column_type`
 
-Raised when a column of a dbt model a view uses has no `column_type`.
+Raised when a column of a dbt model a view uses has no `column_type` and is not excluded (`exclude: true`).
 
-Fix: set `column_type` in the column's `meta.sst` to `dimension`, `time_dimension` or `fact`, or run `sst enrich`
+Fix: set `column_type` in the column's `meta.sst` to `dimension`, `time_dimension` or `fact`, set `exclude: true` to keep it out of every view, or run `sst enrich`
 
 ### SST-VAL309
 

@@ -42,12 +42,12 @@ def _column_keys(model: DbtModel, column: DbtColumn) -> tuple[str, str]:
 
 
 def _role_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
-    """Report a column that declares no role.
+    """Report a column that declares no role; an excluded one is in no view, so needs none.
 
     Diagnostics:
-        SST-VAL308: when the column declares no `column_type`.
+        SST-VAL308: when a column that is not excluded declares no `column_type`.
     """
-    if column.column_type is not None:
+    if column.column_type is not None or column.excluded:
         return []
     artifact, subject = _column_keys(model, column)
     return [D("SST-VAL308", artifact=artifact, member=column.name, subject=subject)]

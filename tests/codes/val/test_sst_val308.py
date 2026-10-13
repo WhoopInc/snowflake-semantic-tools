@@ -16,3 +16,9 @@ def test_sst_val308_fires() -> None:
 
 def test_sst_val308_silent() -> None:
     assert dbt_column_findings(DbtColumn("c", "C.", "NUMBER", "fact"), "SST-VAL308") == []
+
+
+def test_sst_val308_silent_for_an_excluded_column() -> None:
+    # `exclude: true` keeps the column out of every view, so it needs no role there.
+    excluded = DbtColumn("c", "C.", "NUMBER", None, excluded=True)
+    assert dbt_column_findings(excluded, "SST-VAL308") == []

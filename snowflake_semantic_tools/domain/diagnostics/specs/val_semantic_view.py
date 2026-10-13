@@ -76,8 +76,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "column_type metadata is absent",
         "{artifact}: column '{member}' declares no column_type",
-        "set `column_type` in the column's `meta.sst` to `dimension`, `time_dimension` or `fact`, or run `sst enrich`",
-        condition="a column of a dbt model a view uses has no `column_type`",
+        "set `column_type` in the column's `meta.sst` to `dimension`, `time_dimension` or `fact`, set `exclude: true` to keep it out of every view, or run `sst enrich`",
+        condition="a column of a dbt model a view uses has no `column_type` and is not excluded (`exclude: true`)",
     ),
     spec(
         "SST-VAL309",
