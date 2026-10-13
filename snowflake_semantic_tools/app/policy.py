@@ -74,15 +74,16 @@ def hold_to_policy(
             `validation.strict`, so a run the flag makes lenient gets no notice that warnings block.
 
     Diagnostics:
-        SST-CFG037: the project declares `validation.strict: true`, the run is strict, the project
-            has no baseline, and it has not run under 1.0 before.
+        SST-CFG037: the project declares `validation.strict: true`, the run is strict and promotes
+            at least one warning, the project has no baseline, and it has not run under 1.0 before.
+            With nothing promoted nothing newly blocks, so there is nothing to baseline.
     """
     overrides = severity_overrides(config.tree)
     held = apply_overrides(diagnostics, overrides)
     blocks = held.has_errors if gated and overrides else None
     declared = config_bool(config_block(config.tree.get("validation")).get("strict"))
     enforced = declared and strict is not False
-    if not (command in STRICT_COMMANDS and enforced and not baselined and notice_due):
+    if not (command in STRICT_COMMANDS and enforced and promoted and not baselined and notice_due):
         return PolicyResult(held, blocks, notice_given=False)
     notice = D("SST-CFG037", origin=Origin(config.file), subject="config:validation.strict", count=promoted)
     return PolicyResult(DiagnosticBag((notice, *held)), blocks, notice_given=True)

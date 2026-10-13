@@ -296,9 +296,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "run sst baseline add to hold the current warning count, then fix them",
         condition=(
             "the first 1.0 `validate`, `plan` or `apply` in a project that declares `strict: true` "
-            "and has no baseline file, unless `--no-strict` is given"
+            "and has no baseline file promotes at least one warning, unless `--no-strict` is given"
         ),
-        note="Given until the project has run under 1.0 once.",
+        note="Given until the project has run under 1.0 once; never when no warning is promoted.",
     ),
     spec(
         "SST-CFG038",

@@ -569,11 +569,11 @@ Fix: set fqn: on the entry under `skills.extensions` or `tags:`, or set default_
 
 `validation.strict: true is enforced from 1.0; <count> warnings now block`
 
-Raised when the first 1.0 `validate`, `plan` or `apply` in a project that declares `strict: true` and has no baseline file, unless `--no-strict` is given.
+Raised when the first 1.0 `validate`, `plan` or `apply` in a project that declares `strict: true` and has no baseline file promotes at least one warning, unless `--no-strict` is given.
 
 Fix: run sst baseline add to hold the current warning count, then fix them
 
-Note: Given until the project has run under 1.0 once.
+Note: Given until the project has run under 1.0 once; never when no warning is promoted.
 
 ### SST-CFG038
 

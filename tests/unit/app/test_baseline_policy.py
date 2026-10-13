@@ -103,6 +103,15 @@ def test_the_strict_notice_is_given_once_to_a_strict_project_without_a_baseline(
         assert not quiet.notice_given and quiet.diagnostics == ()
 
 
+def test_the_strict_notice_is_not_given_when_strict_mode_promotes_no_warning() -> None:
+    # Nothing newly blocks, so there is nothing to baseline: a clean project born on 1.0 hears nothing.
+    config = _config({"validation": {"strict": True}})
+    quiet = hold_to_policy(
+        "validate", DiagnosticBag(), config, gated=True, promoted=0, baselined=False, notice_due=True
+    )
+    assert not quiet.notice_given and quiet.diagnostics == ()
+
+
 def test_a_strict_flag_that_contradicts_the_config_is_reported() -> None:
     config = _config({"validation": {"strict": True}})
     [found] = strict_disagreement(config, False)
