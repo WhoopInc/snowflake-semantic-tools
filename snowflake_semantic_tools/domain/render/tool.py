@@ -203,13 +203,39 @@ def routine_signature(object_type: str, target: QualifiedName, types: tuple[str,
     return sql("{target}({types})", target=qname(target), types=join(", ", (datatype(value) for value in types)))
 
 
+def _handler_clauses(member: ToolMember) -> list[Sql]:
+    """RUNTIME_VERSION, HANDLER, and when set PACKAGES and IMPORTS, for a Java, Python or Scala routine.
+
+    Any other routine gets none: their grammars have no such clauses, and validation reports each
+    of the four keys set on one (SST-VAL621).
+
+    Raises:
+        ValueError: a Java, Python or Scala routine lacks a runtime version or handler.
+    """
+    if (member.language or "").strip().casefold() not in HANDLER_LANGUAGES:
+        return []
+    if not member.runtime_version or not member.handler:
+        raise ValueError(f"routine {member.name!r} requires runtime_version and handler")
+    clauses = [
+        sql("  RUNTIME_VERSION = {version}", version=literal(member.runtime_version)),
+        sql("  HANDLER = {handler}", handler=literal(member.handler)),
+    ]
+    if member.packages:
+        clauses.append(
+            sql("  PACKAGES = ({packages})", packages=join(", ", (literal(value) for value in member.packages)))
+        )
+    if member.imports:
+        clauses.append(sql("  IMPORTS = ({imports})", imports=join(", ", (literal(value) for value in member.imports))))
+    return clauses
+
+
 def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: bool) -> RenderedArtifact:
     """Render `CREATE OR REPLACE PROCEDURE` or `FUNCTION` with `COPY GRANTS`, its body dollar-quoted.
 
     The clauses come in a fixed order: the signature, COPY GRANTS, RETURNS, and LANGUAGE; then,
-    for Java, Python and Scala, which require them, RUNTIME_VERSION and HANDLER (the SQL and
-    JavaScript grammars have neither clause); then, when set, PACKAGES, IMPORTS,
-    EXTERNAL_ACCESS_INTEGRATIONS, and SECRETS sorted by name; then a procedure's
+    for Java, Python and Scala only, RUNTIME_VERSION and HANDLER, which they require, and when
+    set PACKAGES and IMPORTS (the SQL and JavaScript grammars have none of the four); then, when
+    set, EXTERNAL_ACCESS_INTEGRATIONS, and SECRETS sorted by name; then a procedure's
     EXECUTE AS, CALLER by default; then the body. A procedure also requires `warehouse`,
     which the DDL itself does not name.
 
@@ -254,21 +280,7 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
         sql("  RETURNS {returns}", returns=_returns(member.returns)),
         sql("  LANGUAGE {language}", language=_language(member.language)),
     ]
-    # Only Java, Python and Scala take these four clauses; on any other routine validation reports
-    # each key that is set (SST-VAL621), so none is rendered.
-    if member.language.strip().casefold() in HANDLER_LANGUAGES:
-        if not member.runtime_version or not member.handler:
-            raise ValueError(f"routine {member.name!r} requires runtime_version and handler")
-        clauses.append(sql("  RUNTIME_VERSION = {version}", version=literal(member.runtime_version)))
-        clauses.append(sql("  HANDLER = {handler}", handler=literal(member.handler)))
-        if member.packages:
-            clauses.append(
-                sql("  PACKAGES = ({packages})", packages=join(", ", (literal(value) for value in member.packages)))
-            )
-        if member.imports:
-            clauses.append(
-                sql("  IMPORTS = ({imports})", imports=join(", ", (literal(value) for value in member.imports)))
-            )
+    clauses.extend(_handler_clauses(member))
     if member.external_access_integrations:
         clauses.append(
             sql(

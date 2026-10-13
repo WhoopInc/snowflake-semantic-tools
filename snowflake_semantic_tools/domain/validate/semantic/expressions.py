@@ -170,7 +170,7 @@ def _ref_call_diagnostics(
 
 
 def _is_boolean_column(expression: str, models: Mapping[str, DbtModel]) -> bool:
-    """Report whether `expression`, outer whitespace aside, is one `ref()` to a column dbt declares BOOLEAN."""
+    """Report whether `expression` is exactly one `ref()` to a column dbt declares BOOLEAN."""
     text = expression.strip()
     try:
         calls = scan_template_calls(text)
