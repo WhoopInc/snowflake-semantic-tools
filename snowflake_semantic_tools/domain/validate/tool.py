@@ -10,6 +10,7 @@ from snowflake_semantic_tools.domain.model.tool import (
     EXECUTE_AS,
     HANDLER_LANGUAGES,
     KNOWN_TOOL_TYPES,
+    NON_HANDLER_LANGUAGES,
     ToolCatalog,
     ToolGroup,
     ToolKind,
@@ -37,6 +38,8 @@ def validate_tool_catalog(catalog: ToolCatalog, dbt: DbtCatalog) -> DiagnosticBa
         SST-PRS002: a `reference:` member declares no `relations`; a defined search service no
             `search_column`; a defined routine no `language` or `returns`, or, in Java, Python
             or Scala, no `runtime_version` or `handler`.
+        SST-VAL621: a defined JavaScript or SQL routine sets `runtime_version`, `handler`,
+            `packages` or `imports`; once per key.
         SST-REF018: a relation names a target `profiles.yml` does not declare, or none names the current one.
         SST-REF019: a relation is not a three-part name.
         SST-REF023: a mutable group's reference resolves to one object for both dev and prod.
@@ -152,6 +155,7 @@ def _validate_member(member: ToolMember, catalog: ToolCatalog, dbt: DbtCatalog) 
         *_search_columns(member, dbt, subject),
         *_body_file(member, catalog, subject),
         *_render_fields(member, subject),
+        *_handler_keys(member, subject),
         *_sql_values(member, subject),
     )
 
@@ -266,6 +270,31 @@ def _render_fields(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
     for field, value in required:
         if not value:
             emit("SST-PRS002", field=field)
+    return emit.diagnostics
+
+
+def _handler_keys(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
+    """Report each key only a Java, Python or Scala routine takes, set on one in another language.
+
+    A language SST does not recognise is SST-PRS013's, so it is not checked here.
+    """
+    emit = Emitter(subject=subject, origin=member.origin, artifact=subject)
+    language = (member.language or "").strip().casefold()
+    if (
+        member.ownership is not ToolOwnership.DEFINE
+        or member.type not in (ToolKind.PROCEDURE.value, ToolKind.FUNCTION.value)
+        or language not in NON_HANDLER_LANGUAGES
+    ):
+        return emit.diagnostics
+    keys = (
+        ("runtime_version", member.runtime_version),
+        ("handler", member.handler),
+        ("packages", member.packages),
+        ("imports", member.imports),
+    )
+    for key, value in keys:
+        if value:
+            emit("SST-VAL621", name=member.name, value=language, key=key)
     return emit.diagnostics
 
 

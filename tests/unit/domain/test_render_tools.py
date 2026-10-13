@@ -249,3 +249,22 @@ def test_a_javascript_routine_renders_without_runtime_version_or_handler(kind: s
     assert "LANGUAGE JAVASCRIPT" in rendered.ddl
     assert "RUNTIME_VERSION" not in rendered.ddl
     assert "HANDLER" not in rendered.ddl
+
+
+@pytest.mark.parametrize("language", ["javascript", "sql"])
+def test_a_javascript_or_sql_routine_never_renders_packages_or_imports(language: str) -> None:
+    # Their CREATE grammars have no such clauses; validation reports the keys (SST-VAL621).
+    routine = member(
+        name="lookup",
+        type="procedure",
+        language=language,
+        body="return 1;",
+        returns="FLOAT",
+        warehouse="WH",
+        runtime_version="3.11",
+        handler="run",
+        packages=("snowflake-snowpark-python",),
+        imports=("@s/x.py",),
+    )
+    ddl = render_tool(routine, QualifiedName.parse("DB.S.LOOKUP"), None).ddl
+    assert [clause for clause in ("RUNTIME_VERSION", "HANDLER", "PACKAGES", "IMPORTS") if clause in ddl] == []

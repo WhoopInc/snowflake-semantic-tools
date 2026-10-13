@@ -283,6 +283,8 @@ EXECUTE_AS = ("caller", "owner", "restricted caller")
 # The routine languages whose DDL requires RUNTIME_VERSION and HANDLER, lower-cased. SQL and
 # JavaScript routines take neither clause: the body is the routine.
 HANDLER_LANGUAGES = frozenset(("java", "python", "scala"))
+# The routine languages whose DDL has no RUNTIME_VERSION, HANDLER, PACKAGES or IMPORTS.
+NON_HANDLER_LANGUAGES = frozenset(("javascript", "sql"))
 CREATION_KEYS = frozenset(
     (
         "on",

@@ -133,6 +133,21 @@ SPECS: tuple[ErrorSpec, ...] = (
         precheck=Precheck.OBSERVE,
     ),
     spec(
+        "SST-VAL621",
+        Severity.ERROR,
+        "Routine key its language does not take",
+        "tool member '{name}' is written in {value}, which takes no '{key}'",
+        "remove the key, or write the routine in Java, Python or Scala",
+        condition=(
+            "a defined procedure or function in JavaScript or SQL sets `runtime_version`, `handler`, "
+            "`packages` or `imports`, which only Java, Python and Scala routines take; once per key"
+        ),
+        note=(
+            "Snowflake's JavaScript and Snowflake Scripting CREATE PROCEDURE and CREATE FUNCTION have "
+            "no such clauses, so SST would either render a CREATE Snowflake refuses or drop the key."
+        ),
+    ),
+    spec(
         "SST-VAL614",
         Severity.ERROR,
         "Search service publish order violated",

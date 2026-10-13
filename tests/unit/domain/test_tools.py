@@ -479,3 +479,30 @@ def test_a_javascript_routine_needs_no_runtime_version_or_handler_as_its_grammar
 @pytest.mark.parametrize("language", ["java", "python", "scala"])
 def test_a_java_python_or_scala_routine_still_needs_runtime_version_and_handler(language: str) -> None:
     assert _required("function", **{**_ROUTINE, "language": language}) == ["runtime_version", "handler"]
+
+
+def _handler_keys(kind: str, fields: dict[str, object], ownership: ToolOwnership = ToolOwnership.DEFINE) -> list[str]:
+    """The keys SST-VAL621 reports on one member of `kind` with `fields`."""
+    member = ToolMember("group", "lookup", kind, ownership, Origin("t.yml"), "t.yml", **fields)  # type: ignore[arg-type]
+    catalog = ToolCatalog(
+        (ToolGroup("group", Origin("t.yml"), "t.yml", members=(member,)),), "dev", frozenset(("dev",))
+    )
+    found = validate_tool_catalog(catalog, DbtCatalog("v12", None, None, ()))
+    return [str(item.context["key"]) for item in found if item.code == "SST-VAL621"]
+
+
+def test_a_javascript_or_sql_routine_reports_each_key_only_handler_languages_take() -> None:
+    keys: dict[str, object] = {"packages": ("p",), "imports": ("@s/x.py",)}
+    assert _handler_keys("function", {**_ROUTINE_FIELDS, **keys, "language": "JavaScript"}) == [
+        "runtime_version",
+        "handler",
+        "packages",
+        "imports",
+    ]
+    assert _handler_keys("procedure", {**_ROUTINE, **keys, "language": "sql"}) == ["packages", "imports"]
+    # A Python routine takes all four; a reference creates nothing; a search service is no routine.
+    assert _handler_keys("function", {**_ROUTINE_FIELDS, **keys}) == []
+    assert _handler_keys("procedure", {"language": "sql", "packages": ("p",)}, ToolOwnership.REFERENCE) == []
+    assert (
+        _handler_keys("cortex_search_service", {"on_model": "docs", "search_column": "BODY", "packages": ("p",)}) == []
+    )

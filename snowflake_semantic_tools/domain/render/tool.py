@@ -254,17 +254,21 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
         sql("  RETURNS {returns}", returns=_returns(member.returns)),
         sql("  LANGUAGE {language}", language=_language(member.language)),
     ]
+    # Only Java, Python and Scala take these four clauses; on any other routine validation reports
+    # each key that is set (SST-VAL621), so none is rendered.
     if member.language.strip().casefold() in HANDLER_LANGUAGES:
         if not member.runtime_version or not member.handler:
             raise ValueError(f"routine {member.name!r} requires runtime_version and handler")
         clauses.append(sql("  RUNTIME_VERSION = {version}", version=literal(member.runtime_version)))
         clauses.append(sql("  HANDLER = {handler}", handler=literal(member.handler)))
-    if member.packages:
-        clauses.append(
-            sql("  PACKAGES = ({packages})", packages=join(", ", (literal(value) for value in member.packages)))
-        )
-    if member.imports:
-        clauses.append(sql("  IMPORTS = ({imports})", imports=join(", ", (literal(value) for value in member.imports))))
+        if member.packages:
+            clauses.append(
+                sql("  PACKAGES = ({packages})", packages=join(", ", (literal(value) for value in member.packages)))
+            )
+        if member.imports:
+            clauses.append(
+                sql("  IMPORTS = ({imports})", imports=join(", ", (literal(value) for value in member.imports)))
+            )
     if member.external_access_integrations:
         clauses.append(
             sql(

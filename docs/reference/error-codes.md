@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 37 codes
 - [Membership (MEM)](#membership-mem) -- 24 codes
-- [Validation (VAL)](#validation-val) -- 301 codes
+- [Validation (VAL)](#validation-val) -- 302 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
@@ -4238,6 +4238,18 @@ Raised when connected validation finds explicit grants, other than OWNERSHIP, on
 Fix: none -- Snowflake provides no `COPY GRANTS` for this object type
 
 Note: When apply replaces the service it reads those grants first and re-issues them after, then checks none was lost (SST-APL009); between the replace and the replay the grantees cannot use the service. Plan the replace for a quiet window.
+
+### SST-VAL621
+
+**Routine key its language does not take** (error)
+
+`tool member '<name>' is written in <value>, which takes no '<key>'`
+
+Raised when a defined procedure or function in JavaScript or SQL sets `runtime_version`, `handler`, `packages` or `imports`, which only Java, Python and Scala routines take; once per key.
+
+Fix: remove the key, or write the routine in Java, Python or Scala
+
+Note: Snowflake's JavaScript and Snowflake Scripting CREATE PROCEDURE and CREATE FUNCTION have no such clauses, so SST would either render a CREATE Snowflake refuses or drop the key.
 
 ### SST-VAL701
 

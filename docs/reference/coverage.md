@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 719
+- Codes: 720
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -619,6 +619,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL617`](error-codes.md#sst-val617) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.tool` | `tests/codes/val/test_sst_val617.py` |
 | [`SST-VAL618`](error-codes.md#sst-val618) | VAL | warning | observe | `snowflake_semantic_tools.app.compile.agents.observe` | `tests/codes/val/test_sst_val618.py` |
 | [`SST-VAL619`](error-codes.md#sst-val619) | VAL | warning | observe | `snowflake_semantic_tools.app.compile.agents.observe` | `tests/codes/val/test_sst_val619.py` |
+| [`SST-VAL621`](error-codes.md#sst-val621) | VAL | error | local | `snowflake_semantic_tools.domain.validate.tool` | `tests/codes/val/test_sst_val621.py` |
 | [`SST-VAL701`](error-codes.md#sst-val701) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_dataset` | `tests/codes/val/test_sst_val701.py` |
 | [`SST-VAL702`](error-codes.md#sst-val702) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_dataset` | `tests/codes/val/test_sst_val702.py` |
 | [`SST-VAL703`](error-codes.md#sst-val703) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval` | `tests/codes/val/test_sst_val703.py` |
