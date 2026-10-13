@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.validate.column_metadata import (
     base_type,
+    is_boolean_type,
     is_numeric,
     is_sentinel,
     is_temporal,
@@ -21,6 +22,7 @@ def test_a_base_type_drops_parameters_and_case() -> None:
 def test_numeric_and_temporal_types_are_recognised_by_base_type() -> None:
     assert [is_numeric(value) for value in ("NUMBER(10,2)", "float", "TEXT", None)] == [True, True, False, False]
     assert [is_temporal(value) for value in ("timestamp_ntz(9)", "DATE", "BOOLEAN")] == [True, True, False]
+    assert [is_boolean_type(value) for value in ("boolean", "BOOLEAN", "NUMBER", None)] == [True, True, False, False]
 
 
 def test_sentinels_are_missing_values_in_any_case() -> None:

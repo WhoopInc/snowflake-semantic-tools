@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.reference_project import FILTERS, edited, project_copy, reported
+from tests.helpers.reference_project import FILTERS, appended, edited, project_copy, reported
 
 
 def test_sst_val401_fires(tmp_path: Path) -> None:
@@ -23,3 +23,20 @@ def test_sst_val401_fires(tmp_path: Path) -> None:
 
 def test_sst_val401_silent(tmp_path: Path) -> None:
     assert reported(project_copy(tmp_path), "SST-VAL401") == []
+
+
+def test_sst_val401_silent_for_a_filter_that_is_one_boolean_column(tmp_path: Path) -> None:
+    # A lone ref() to a column dbt declares BOOLEAN is a predicate; its declared type says so.
+    project = appended(
+        tmp_path,
+        FILTERS,
+        "  - name: is_perishable_supply\n"
+        "    tables:\n"
+        "      - \"{{ ref('supplies') }}\"\n"
+        "    description: |-\n"
+        "      Restricts to supplies that spoil.\n"
+        "    expr: \"{{ ref('supplies', 'is_perishable') }}\"\n"
+        "    labels:\n"
+        "      - filter\n",
+    )
+    assert reported(project, "SST-VAL401") == []

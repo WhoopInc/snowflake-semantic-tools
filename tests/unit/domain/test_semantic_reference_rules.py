@@ -88,6 +88,26 @@ def test_a_filter_is_boolean_when_labelled_and_labelled_when_boolean_and_names_n
     assert bare_column_identifiers("total", ("nowhere",), MODELS, {}) == ()
 
 
+def test_a_filter_that_is_one_ref_to_a_boolean_column_is_boolean_and_nothing_else_is() -> None:
+    orders = replace(ORDERS, columns=(*ORDERS.columns, column("is_paid", "BOOLEAN", "dimension")))
+    models = {**MODELS, "orders": orders}
+    not_boolean = (
+        "{{ ref('orders', 'total') }}",
+        "{{ ref('orders') }}",
+        "{{ var('is_paid') }}",
+        "{{ ref('orders', 'is_paid') }} AND x",
+        "{{ ref('nowhere', 'is_paid') }}",
+        "{{ ref('orders', 'nothing') }}",
+        "{{ ref('orders', 'is_paid'",
+    )
+    flagged = [
+        expr
+        for expr in ("  {{ ref('orders', 'is_paid') }}  ", *not_boolean)
+        if any(item.code == "SST-VAL401" for item in filter_diagnostics((_filter(expr),), models, {}))
+    ]
+    assert flagged == list(not_boolean)
+
+
 def test_a_verified_query_reads_the_tables_it_names_after_from_or_join_except_its_ctes() -> None:
     sql = (
         "-- FROM ignored\n"

@@ -12,6 +12,7 @@ from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.parse.template import TemplateCall, TemplateSyntaxError, scan_template_calls
 from snowflake_semantic_tools.domain.resolve.calls import call_problem, syntax_problem, variable_problem
 from snowflake_semantic_tools.domain.resolve.template import FILTER_EXPR, VQR_SQL
+from snowflake_semantic_tools.domain.validate.column_metadata import is_boolean_type
 from snowflake_semantic_tools.domain.validate.expression import is_boolean_expression as _is_boolean_expression
 
 
@@ -168,10 +169,27 @@ def _ref_call_diagnostics(
     return []
 
 
+def _is_boolean_column(expression: str, models: Mapping[str, DbtModel]) -> bool:
+    """Report whether `expression`, outer whitespace aside, is one `ref()` to a column dbt declares BOOLEAN."""
+    text = expression.strip()
+    try:
+        calls = scan_template_calls(text)
+    except TemplateSyntaxError:
+        return False
+    if len(calls) != 1 or calls[0].raw != text or calls[0].function != "ref" or len(calls[0].args) != 2:
+        return False
+    model = models.get(calls[0].args[0].casefold())
+    column = model.column(calls[0].args[1]) if model is not None else None
+    return column is not None and is_boolean_type(column.data_type)
+
+
 def filter_diagnostics(
     filters: tuple[FilterDef, ...], models: Mapping[str, DbtModel], variables: Mapping[str, object]
 ) -> tuple[Diagnostic, ...]:
     """Check each filter's shape, then the columns its expression names bare, filter by filter.
+
+    An expression is boolean when its shape says so, or when it is one `ref()` to a column dbt
+    declares BOOLEAN.
 
     Diagnostics:
         SST-VAL401: when a filter labelled `filter` has an expression that is not boolean.
@@ -181,7 +199,7 @@ def filter_diagnostics(
     diagnostics: list[Diagnostic] = []
     for filter_def in filters:
         subject = artifact_key("filter", filter_def.name)
-        boolean = _is_boolean_expression(filter_def.expr)
+        boolean = _is_boolean_expression(filter_def.expr) or _is_boolean_column(filter_def.expr, models)
         code: str | None = None
         if filter_def.entity_level and not boolean:
             code = "SST-VAL401"

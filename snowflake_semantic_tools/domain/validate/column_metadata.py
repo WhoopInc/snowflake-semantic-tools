@@ -65,6 +65,11 @@ def is_temporal(data_type: str | None) -> bool:
     return base_type(data_type) in TEMPORAL_TYPES
 
 
+def is_boolean_type(data_type: str | None) -> bool:
+    """Report whether a data type is Snowflake's BOOLEAN."""
+    return base_type(data_type) == "BOOLEAN"
+
+
 def is_sentinel(value: str) -> bool:
     """Report whether a sample value is a missing value written as text, such as `nan`."""
     return value.casefold() in SAMPLE_SENTINELS
