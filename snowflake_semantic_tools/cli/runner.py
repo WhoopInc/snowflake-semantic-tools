@@ -60,6 +60,7 @@ from snowflake_semantic_tools.cli.output import (
     interrupted,
     json_envelope,
     print_report,
+    record_baselined,
     record_reported,
     render_diagnostics,
     resolve_invocation,
@@ -344,12 +345,7 @@ def _with_baseline(result: CommandResult, baseline: Baseline | None, files: Proj
     diagnostics, exit_code, baselined = with_baseline(
         result.diagnostics, result.exit_code, baseline, gated=result.gated, clock=SystemClock()
     )
-    resolve_invocation(
-        project_dir=files.project_dir,
-        config_file=files.config_file,
-        target=None,
-        baselined=baselined,
-    )
+    record_baselined(baselined)
     return dataclasses.replace(result, diagnostics=diagnostics, exit_code=exit_code)
 
 

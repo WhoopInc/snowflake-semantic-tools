@@ -90,6 +90,15 @@ def resolve_invocation(
     )
 
 
+def record_baselined(baselined: frozenset[str]) -> None:
+    """Record which diagnostics the baseline holds, leaving the rest of the invocation as resolved.
+
+    Args:
+        baselined: The stable fingerprints of the diagnostics the baseline holds.
+    """
+    _INVOCATION["baselined"] = baselined
+
+
 def register_secrets(values: Iterable[str]) -> None:
     """Record credential values this run resolved, which nothing it prints may contain."""
     _SECRETS.update(value for value in values if value)

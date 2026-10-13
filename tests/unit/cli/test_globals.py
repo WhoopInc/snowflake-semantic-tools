@@ -123,6 +123,17 @@ def test_a_baseline_marks_and_counts_what_it_holds_and_never_drops_it(tmp_path: 
     assert shown.output.count("warning[SST-CFG018]") == 2 and "info[SST-VAL854]" in shown.output
 
 
+def test_a_baseline_keeps_the_target_and_overrides_the_invocation_resolved(tmp_path: Path) -> None:
+    # Reading the baseline records what it holds; it does not wipe what the run resolved before it.
+    project = project_copy(tmp_path)
+    _baseline(project, [])
+    _, envelope = _json(
+        ["--output", "json", "validate", *common(project), "--no-strict", "-t", "prod", "--allow-stale-manifest"]
+    )
+    assert envelope["invocation"]["target"] == "prod"
+    assert envelope["invocation"]["overrides"] == ["--allow-stale-manifest"]
+
+
 def test_strict_does_not_block_on_what_the_baseline_holds(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
     _, before = _warnings(project)
