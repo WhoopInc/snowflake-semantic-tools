@@ -132,12 +132,17 @@ def reference_ref(version: str) -> str:
     return f"v{version}" if re.fullmatch(r"\d+\.\d+\.\d+", version) else DEVELOPMENT_REF
 
 
+REPOSITORY_URL = "https://github.com/WhoopInc/snowflake-semantic-tools"
+
+
+def docs_url(version: str) -> str:
+    """Return the URL of the `docs/` folder that documents `version`, at `reference_ref(version)`."""
+    return f"{REPOSITORY_URL}/blob/{reference_ref(version)}/docs"
+
+
 # Every code has a heading in the generated error reference (`sst docs`); the
 # fragment is the code in lowercase, which is the anchor GitHub derives from it.
-ERROR_REFERENCE_URL = (
-    "https://github.com/WhoopInc/snowflake-semantic-tools/blob/"
-    f"{reference_ref(__version__)}/docs/reference/error-codes.md"
-)
+ERROR_REFERENCE_URL = f"{docs_url(__version__)}/reference/error-codes.md"
 
 
 def spec(

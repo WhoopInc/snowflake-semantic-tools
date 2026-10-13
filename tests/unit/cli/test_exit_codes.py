@@ -48,6 +48,7 @@ _DECLARED = {
     "diff": {0, 1, 2, 3, 4, 5},
     "baseline": {0, 1, 3, 4},
     "format": {0, 1, 2, 3, 4},
+    "agent-kit": {0, 1, 2, 3, 4},
 }
 EXIT_CODES = {command: codes | {INTERRUPTED} for command, codes in _DECLARED.items()}
 GOLDEN = REPO_ROOT / "tests" / "golden" / "expected" / "ddl"
@@ -87,6 +88,27 @@ def _yaml_project(root: Path, text: str) -> Path:
     return root
 
 
+def _agent_kit_in_the_way(tmp: Path) -> Result:
+    (tmp / ".claude" / "skills" / "sst-core").mkdir(parents=True)
+    (tmp / ".claude" / "skills" / "sst-core" / "SKILL.md").write_text("mine\n", encoding="utf-8")
+    return _run("agent-kit", "install", "--project-dir", str(tmp))
+
+
+def _agent_kit_outdated(tmp: Path) -> Result:
+    installed = _run("agent-kit", "install", "--agent", "cortex", "--project-dir", str(tmp))
+    assert installed.exit_code == 0, installed.output
+    lock = tmp / ".sst" / "agent-kit.json"
+    document = json.loads(lock.read_text(encoding="utf-8"))
+    document["agents"]["cortex"]["skills"]["sst-core"]["SKILL.md"] = "sha256:an-older-kit"
+    lock.write_text(json.dumps(document), encoding="utf-8")
+    return _run("agent-kit", "status", "--check", "--project-dir", str(tmp))
+
+
+def _agent_kit_overlapping(tmp: Path) -> Result:
+    (tmp / "sst_config.yml").write_text("project:\n  skills_dir: .cortex/skills\n", encoding="utf-8")
+    return _run("agent-kit", "install", "--agent", "cortex", "--project-dir", str(tmp))
+
+
 def _broken(tmp: Path) -> Path:
     project = project_copy(tmp)
     break_menu_view(project)
@@ -105,6 +127,11 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("init", 1): lambda tmp, _: _run("init", "--project-dir", str(_dbt_project(tmp / "p")), "--check-only"),
     ("init", 3): lambda tmp, _: _run("init", "-s"),
     ("init", 4): lambda tmp, _: _run("init", "--project-dir", str(tmp / "not-dbt")),
+    ("agent-kit", 0): lambda tmp, _: _run("agent-kit", "install", "--agent", "claude", "--project-dir", str(tmp)),
+    ("agent-kit", 1): lambda tmp, _: _agent_kit_in_the_way(tmp),
+    ("agent-kit", 2): lambda tmp, _: _agent_kit_outdated(tmp),
+    ("agent-kit", 3): lambda tmp, _: _run("agent-kit", "install", "--only", "sst-nope", "--project-dir", str(tmp)),
+    ("agent-kit", 4): lambda tmp, _: _agent_kit_overlapping(tmp),
     ("debug", 1): lambda tmp, _: _debug_invalid(tmp),
     ("debug", 0): lambda tmp, _: _run("debug", "--project-dir", str(project_copy(tmp)), "--no-connect"),
     ("debug", 3): lambda tmp, _: _run("debug", "--select", "x"),

@@ -32,6 +32,11 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst docs`](#sst-docs) | Write the generated reference pages under docs/reference/. |
 | [`sst clean`](#sst-clean) | Remove local SST build artifacts only; never touch Snowflake. |
 | [`sst drop`](#sst-drop) | Break-glass: drop exactly one object SST owns from one target, and forget it in state. |
+| [`sst agent-kit`](#sst-agent-kit) | Install SST's skills for a coding agent into this project, and keep them current. |
+| [`sst agent-kit install`](#sst-agent-kit-install) | Install the kit's skills for each --agent, writing only files that are not there. |
+| [`sst agent-kit remove`](#sst-agent-kit-remove) | Remove the kit's skills, or those --only names, from each --agent, else every agent installed. |
+| [`sst agent-kit status`](#sst-agent-kit-status) | Show each skill's state against the kit of the SST now installed; change nothing. |
+| [`sst agent-kit upgrade`](#sst-agent-kit-upgrade) | Bring every installed skill to the kit of the SST now installed. |
 
 ## Global options
 
@@ -100,7 +105,8 @@ Reports the SST version and, when SST runs dbt for the manifest, the `dbt` on `P
 runs and that dbt's version; every configuration path discovery checked; the registered
 artifact types; where the dbt manifest comes from (`--manifest`, the file on disk under
 `dbt.invoke: false`, or the `dbt.command` SST runs), its schema, and the schema versions
-`dbt.manifest_schema_versions` accepts; and the resolved target: profile, role, warehouse,
+`dbt.manifest_schema_versions` accepts; which SST installed the project's agent kit, and
+whether it is this one; and the resolved target: profile, role, warehouse,
 database, schema, state table, and how it authenticates, never a credential. The
 connection is then opened, and its role and account reported; with --no-connect nothing
 connects. --snowflake-signatures reports instead how often Snowflake refusals went
@@ -716,3 +722,120 @@ sst drop [OPTIONS] <DB>.<SCHEMA>.<NAME>
 | `--profile` | TEXT |  | Profile in `profiles.yml`; else `dbt_project.yml`'s `profile:`. Needed outside a project. |
 | `--yes / -y` | flag |  | Required on every invocation: it is the confirmation, and there is no prompt. |
 | `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
+
+## sst agent-kit
+
+Install SST's skills for a coding agent into this project, and keep them current.
+
+The kit ships inside the package, so each SST installs the skills written for it. Skills go
+to `.cortex/skills` (--agent cortex) or `.claude/skills` (--agent claude), and
+`.sst/agent-kit.json` records what SST wrote, so `upgrade` and `remove` touch only those
+files and never one you changed, unless --force. Nothing connects to Snowflake and nothing
+is committed: the files are ordinary changes in the working tree. The kit is for a coding
+agent; it is never published, and it may not sit inside a directory SST publishes from.
+
+Subcommands: [`sst agent-kit install`](#sst-agent-kit-install), [`sst agent-kit remove`](#sst-agent-kit-remove), [`sst agent-kit status`](#sst-agent-kit-status), [`sst agent-kit upgrade`](#sst-agent-kit-upgrade).
+
+## sst agent-kit install
+
+Install the kit's skills for each --agent, writing only files that are not there.
+
+Without --agent, the agent whose folder (`.cortex` or `.claude`) the project has; with both
+or neither, --agent is required. --only installs just the skills it names, and adds them to
+those installed before. A skill already installed is left as it is, even when out of date:
+`upgrade` updates it. A folder already holding the kit's files exactly is adopted; any
+other folder or file in the way refuses the whole run, and nothing is written.
+
+Exit 0 when the kit is installed, or with --dry-run would be; 1 when something is in the
+way or cannot be written; 3 when --only names no kit skill or the agent is ambiguous; 4
+when the kit's folder overlaps a directory SST publishes from.
+
+Diagnostics:
+    SST-CFG052: the agent's skills folder overlaps a `project.*_dir` directory.
+    SST-PRT013: a skill folder or file is in the way.
+    SST-PRT100: --only names no kit skill, or no agent can be chosen; raised.
+
+```text
+sst agent-kit install [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--agent` | cortex\|claude, repeatable |  | Repeatable. Install for this coding agent: `cortex` (`.cortex/skills`) or `claude` (`.claude/skills`). Defaults to the one whose folder the project has. |
+| `--only` | TEXT, repeatable |  | Repeatable. Install only this kit skill; adds to those already installed. |
+| `--dry-run` | flag |  | List what would be written; write nothing. |
+
+## sst agent-kit remove
+
+Remove the kit's skills, or those --only names, from each --agent, else every agent installed.
+
+A file SST wrote and nobody changed is removed, with any folder that leaves empty; one you
+changed is kept, and stays recorded, unless --force (SST-PRT014). A file SST did not write
+is never removed. The lock is removed with the last skill it records. After a partial
+removal `upgrade` maintains only the skills still installed; `install` adds others back.
+
+Exit 0 when the skills are removed, kept files included, or with --dry-run would be; 1 when
+a file cannot be removed.
+
+Diagnostics:
+    SST-PRT014: a file you changed is kept.
+
+```text
+sst agent-kit remove [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--agent` | cortex\|claude, repeatable |  | Repeatable. Remove only this agent's skills; defaults to every agent installed. |
+| `--only` | TEXT, repeatable |  | Repeatable. Remove only this installed skill. |
+| `--force` | flag |  | Also remove files you changed since SST wrote them. |
+| `--dry-run` | flag |  | List what would be removed; remove nothing. |
+
+## sst agent-kit status
+
+Show each skill's state against the kit of the SST now installed; change nothing.
+
+Lists, for each --agent, else each agent the lock records, else each agent whose folder the
+project has, else both: every kit skill, and any installed one the kit dropped, as
+`current`, `outdated` (an upgrade would change it), `modified` (you changed a file SST
+wrote), `missing` (its folder is gone), or `not installed`. With --check, exit 2 when any
+skill is outdated or missing, as `sst format --check` does for YAML.
+
+```text
+sst agent-kit status [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--agent` | cortex\|claude, repeatable |  | Repeatable. Show only this agent; defaults to every agent installed. |
+| `--check` | flag |  | Exit 2 when a skill is outdated or missing. |
+
+## sst agent-kit upgrade
+
+Bring every installed skill to the kit of the SST now installed.
+
+Acts for each --agent, else for every agent the lock records. A file SST wrote and nobody
+changed is replaced, added, or removed to match the kit; one you changed or deleted is kept
+as it is (SST-PRT014 when the kit changed it too) unless --force, which makes every file
+match the kit. A skill the kit adds is installed for an agent that installed the whole kit,
+and a skill it drops is removed. A file in the way that SST did not write refuses the whole
+run, even with --force.
+
+Exit 0 when every installed skill is upgraded, kept files included, or with --dry-run would
+be; 1 when something is in the way or cannot be written; 4 when the kit's folder overlaps a
+directory SST publishes from.
+
+Diagnostics:
+    SST-CFG052: the agent's skills folder overlaps a `project.*_dir` directory.
+    SST-PRT013: a file or folder the kit now ships is in the way.
+    SST-PRT014: a file you changed is kept although the kit changed or dropped it.
+
+```text
+sst agent-kit upgrade [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--agent` | cortex\|claude, repeatable |  | Repeatable. Upgrade only this agent's skills; defaults to every agent installed. |
+| `--force` | flag |  | Make every installed file match the kit, overwriting your changes. |
+| `--dry-run` | flag |  | List what would change; write nothing. |

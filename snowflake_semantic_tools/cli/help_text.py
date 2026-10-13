@@ -289,6 +289,27 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "Also repair apostrophes in synonyms and sample values, and Jinja delimiters in descriptions."
     ),
     ("sst format", "--no-detailed-exitcode"): "With `--check`, exit 0 when files would change, instead of 2.",
+    ("sst agent-kit install", "--agent"): (
+        "Repeatable. Install for this coding agent: `cortex` (`.cortex/skills`) or `claude` "
+        "(`.claude/skills`). Defaults to the one whose folder the project has."
+    ),
+    ("sst agent-kit install", "--only"): "Repeatable. Install only this kit skill; adds to those already installed.",
+    ("sst agent-kit install", "--dry-run"): "List what would be written; write nothing.",
+    (
+        "sst agent-kit upgrade",
+        "--agent",
+    ): "Repeatable. Upgrade only this agent's skills; defaults to every agent installed.",
+    ("sst agent-kit upgrade", "--force"): "Make every installed file match the kit, overwriting your changes.",
+    ("sst agent-kit upgrade", "--dry-run"): "List what would change; write nothing.",
+    ("sst agent-kit status", "--agent"): "Repeatable. Show only this agent; defaults to every agent installed.",
+    ("sst agent-kit status", "--check"): "Exit 2 when a skill is outdated or missing.",
+    (
+        "sst agent-kit remove",
+        "--agent",
+    ): "Repeatable. Remove only this agent's skills; defaults to every agent installed.",
+    ("sst agent-kit remove", "--only"): "Repeatable. Remove only this installed skill.",
+    ("sst agent-kit remove", "--force"): "Also remove files you changed since SST wrote them.",
+    ("sst agent-kit remove", "--dry-run"): "List what would be removed; remove nothing.",
 }
 
 

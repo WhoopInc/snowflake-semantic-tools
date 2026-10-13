@@ -202,6 +202,35 @@ def remove_within(root: Path, path: Path) -> None:
         return
 
 
+def remove_empty_folder_within(root: Path, path: Path) -> bool:
+    """Remove the folder at `path`, inside `root`, only when it holds nothing; report whether it went.
+
+    A folder that holds anything, or that is absent, is left as it is. It is removed by name in
+    its parent's descriptor, reached without following a link.
+
+    Raises:
+        UnsafeWrite: `path` lies outside `root`, names `root` itself, or a link or a file is at it
+            or on the way to it.
+        OSError: The folder cannot be removed for another reason.
+    """
+    folders, name = _split(root, path)
+    try:
+        with _folder(root, folders, path, create=False) as parent:
+            found = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            if stat.S_ISLNK(found.st_mode):
+                raise UnsafeWrite(path, "it is a symbolic link, which SST does not remove through")
+            if not stat.S_ISDIR(found.st_mode):
+                raise UnsafeWrite(path, "it is not a folder")
+            os.rmdir(name, dir_fd=parent)
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        if exc.errno in (errno.ENOTEMPTY, errno.EEXIST):
+            return False
+        raise
+    return True
+
+
 @contextmanager
 def scratch_folder(prefix: str) -> Iterator[Path]:
     """Yield a new private temporary folder, removed with everything in it when the block ends."""

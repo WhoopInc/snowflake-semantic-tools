@@ -8,6 +8,7 @@ description, so `--help` and the generated CLI reference agree.
 from __future__ import annotations
 
 from snowflake_semantic_tools.cli.commands import (
+    agent_kit,
     apply,
     baseline,
     clean,
@@ -48,6 +49,7 @@ for _command in (
     baseline.baseline,
     diff.diff,
     drop.drop,
+    agent_kit.agent_kit,
 ):
     cli.add_command(_command)
 document_options(cli)

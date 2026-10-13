@@ -16,7 +16,7 @@ cannot be downgraded by any setting.
 ## Contents
 
 - [Registry (REG)](#registry-reg) -- 23 codes
-- [Configuration (CFG)](#configuration-cfg) -- 44 codes
+- [Configuration (CFG)](#configuration-cfg) -- 45 codes
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
 - [Parsing (PRS)](#parsing-prs) -- 58 codes
 - [Loading (LOD)](#loading-lod) -- 24 codes
@@ -29,7 +29,7 @@ cannot be downgraded by any setting.
 - [Planning (PLN)](#planning-pln) -- 41 codes
 - [Apply (APL)](#apply-apl) -- 29 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
-- [External systems (PRT)](#external-systems-prt) -- 22 codes
+- [External systems (PRT)](#external-systems-prt) -- 24 codes
 - [Internal (INT)](#internal-int) -- 12 codes
 - [Retired numbers](#retired-numbers) -- 42 numbers
 
@@ -708,6 +708,16 @@ Fix: authenticate with a key pair, a password, SSO (authenticator), or an OAuth 
 Raised when a profiles.yml target sets insecure_mode: true.
 
 Fix: remove insecure_mode, or set it to false; it is a debugging switch, and with it on a revoked certificate is still accepted
+
+### SST-CFG052
+
+**Agent kit folder overlaps a published directory** (error, always an error)
+
+`<path> overlaps project.<key> (<value>), a directory SST publishes from`
+
+Raised when `sst agent-kit` would install into a folder that is, contains, or lies inside a directory a `project.*_dir` key names, configured or by default.
+
+Fix: point project.{key} at a folder outside {path}; the agent kit's skills are for a coding agent, and SST would publish them to Snowflake
 
 ### SST-CFG200
 
@@ -7296,6 +7306,28 @@ Fix: set the environment variable, or the profile field
 Raised when a resolved credential reaches command output unredacted.
 
 Fix: the output was withheld; remove the credential's value from the project text it appears in, or report this as a bug
+
+### SST-PRT013
+
+**Agent kit path not owned by SST** (error)
+
+`<path>: <detail>`
+
+Raised when `sst agent-kit` would write a skill folder or file that exists, that its lock does not record, and that does not hold the kit's bytes exactly.
+
+Fix: move or rename it and run the command again; SST never overwrites a file it did not write
+
+Note: nothing is written: the whole run is refused
+
+### SST-PRT014
+
+**Edited agent kit file kept** (warning)
+
+`<path> changed since SST wrote it, so it is kept: <detail>`
+
+Raised when `sst agent-kit upgrade` or `remove` would change or remove a file that differs from what SST last wrote, and --force is not given.
+
+Fix: compare it with the kit and keep your change, or run the command again with --force to take the kit's version
 
 ### SST-PRT100
 

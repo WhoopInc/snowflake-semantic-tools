@@ -117,6 +117,29 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="a resolved credential reaches command output unredacted",
     ),
     spec(
+        "SST-PRT013",
+        Severity.ERROR,
+        "Agent kit path not owned by SST",
+        "{path}: {detail}",
+        "move or rename it and run the command again; SST never overwrites a file it did not write",
+        condition=(
+            "`sst agent-kit` would write a skill folder or file that exists, that its lock does "
+            "not record, and that does not hold the kit's bytes exactly"
+        ),
+        note="nothing is written: the whole run is refused",
+    ),
+    spec(
+        "SST-PRT014",
+        Severity.WARNING,
+        "Edited agent kit file kept",
+        "{path} changed since SST wrote it, so it is kept: {detail}",
+        "compare it with the kit and keep your change, or run the command again with --force to take the kit's version",
+        condition=(
+            "`sst agent-kit upgrade` or `remove` would change or remove a file that differs from "
+            "what SST last wrote, and --force is not given"
+        ),
+    ),
+    spec(
         "SST-PRT100",
         Severity.ERROR,
         "Invalid invocation",

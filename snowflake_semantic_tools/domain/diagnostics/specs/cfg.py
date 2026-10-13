@@ -432,6 +432,19 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="a profiles.yml target sets insecure_mode: true",
     ),
     spec(
+        "SST-CFG052",
+        Severity.ERROR,
+        "Agent kit folder overlaps a published directory",
+        "{path} overlaps project.{key} ({value}), a directory SST publishes from",
+        "point project.{key} at a folder outside {path}; the agent kit's skills are for a coding "
+        "agent, and SST would publish them to Snowflake",
+        demotable=False,
+        condition=(
+            "`sst agent-kit` would install into a folder that is, contains, or lies inside a "
+            "directory a `project.*_dir` key names, configured or by default"
+        ),
+    ),
+    spec(
         "SST-CFG200",
         Severity.ERROR,
         "Deprecated config key",

@@ -15,6 +15,7 @@ from pathlib import Path
 import click
 
 from snowflake_semantic_tools._version import __version__ as VERSION
+from snowflake_semantic_tools.adapters.agent_kit import read_lock
 from snowflake_semantic_tools.adapters.dbt.invoke import DbtRunner, subprocess_runner
 from snowflake_semantic_tools.adapters.dbt.manifest import SUPPORTED_SCHEMA_VERSIONS, schema_version_number
 from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_profile_target
@@ -58,7 +59,8 @@ def debug(
     runs and that dbt's version; every configuration path discovery checked; the registered
     artifact types; where the dbt manifest comes from (`--manifest`, the file on disk under
     `dbt.invoke: false`, or the `dbt.command` SST runs), its schema, and the schema versions
-    `dbt.manifest_schema_versions` accepts; and the resolved target: profile, role, warehouse,
+    `dbt.manifest_schema_versions` accepts; which SST installed the project's agent kit, and
+    whether it is this one; and the resolved target: profile, role, warehouse,
     database, schema, state table, and how it authenticates, never a credential. The
     connection is then opened, and its role and account reported; with --no-connect nothing
     connects. --snowflake-signatures reports instead how often Snowflake refusals went
@@ -84,6 +86,7 @@ def debug(
         "config": _config(paths),
         "registry": sorted(SEMANTIC_REGISTRY.artifacts),
         "manifest": manifest,
+        "agent_kit": _agent_kit(paths.project_dir),
     }
     if paths.config_file is None:
         missing = D("SST-CFG001", subject="config:discovery", path=str(paths.project_dir))
@@ -144,6 +147,24 @@ def _dbt_version(project_dir: Path) -> str | None:
         if "cloud cli" in line.casefold() and " - " in line:
             return line.rsplit(" - ", 1)[1].split()[0]
     return lines[0]
+
+
+def _agent_kit(project_dir: Path) -> dict[str, object]:
+    """Report which SST installed the project's agent kit, and whether that is this one.
+
+    A teammate on another SST sees the kit was written for it; `sst agent-kit status` compares
+    the files themselves. An unreadable lock is reported here, never as the run's failure.
+    """
+    try:
+        lock = read_lock(project_dir)
+    except ProjectError as exc:
+        return {"installed_by": None, "agents": [], "matches_sst": None, "error": str(exc)}
+    agents = [agent.value for agent in lock.agents]
+    return {
+        "installed_by": lock.sst_version or None,
+        "agents": agents,
+        "matches_sst": lock.sst_version == VERSION if agents else None,
+    }
 
 
 def _config(paths: ProjectPaths) -> dict[str, object]:
