@@ -27,7 +27,6 @@ from snowflake_semantic_tools.adapters.yaml.semantic.build_members import (
     _view_verified_queries,
     _with_variable_names,
 )
-from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
@@ -231,39 +230,26 @@ def _member_resolver(view: _View, logical_by_model: dict[str, str], selected: _M
 def _view_tables(node: Mapping[str, Any], view: _View) -> tuple[tuple[Table, ...], dict[str, str]]:
     """Build the view's tables, and each table's logical name by lower-cased model name.
 
-    Diagnostics:
-        SST-PRS109: when a `table_config` key names a model no table entry names.
-
     Raises:
-        ProjectError: A table entry is not a one-argument `ref()`, names no model or one an
-            earlier entry names, or has a malformed `table_config` entry; or `table_config`
-            names a table that is not in `tables`.
+        ProjectError: A table entry is not a one-argument `ref()`, or names no model or one an
+            earlier entry names.
     """
     # Tables keep DECLARATION order -- that is authored information and the golden
     # preserves it. The renderer sorts relationships, facts, dimensions and metrics;
     # variables, tags and verified queries keep the order they are built in.
     tables: list[Table] = []
     logical_by_model: dict[str, str] = {}
-    table_config = node.get("table_config") or {}
     for raw in node.get("tables") or []:
-        model_key, table = _view_table(raw, view, table_config, logical_by_model)
+        model_key, table = _view_table(raw, view, logical_by_model)
         logical_by_model[model_key] = table.logical_name
         tables.append(table)
-    stray = (
-        [str(key) for key in table_config if str(key).lower() not in logical_by_model]
-        if isinstance(table_config, dict)
-        else []
-    )
-    if stray:
-        diagnostic = D("SST-PRS109", artifact=view.key, name=stray[0], subject=view.key)
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     return tuple(tables), logical_by_model
 
 
-def _view_table(
-    raw: object, view: _View, table_config: object, logical_by_model: Mapping[str, str]
-) -> tuple[str, Table]:
+def _view_table(raw: object, view: _View, logical_by_model: Mapping[str, str]) -> tuple[str, Table]:
     """Build one table entry against the dbt models and the entries declared before it.
+
+    Its synonyms, COMMENT and `distinct_range` are the model's: one set for every view that uses it.
 
     Diagnostics:
         SST-DBT011, as `_source_table` reports it, when the entry is one `{{ source() }}` call.
@@ -272,12 +258,11 @@ def _view_table(
         SST-PRS006: when the entry names a model an earlier entry names.
 
     Raises:
-        ProjectError: For each diagnostic above, and when the table's `table_config` entry has
-            malformed synonyms or `distinct_range`.
+        ProjectError: For each diagnostic above.
     """
     source = single_template_call(str(raw), "source")
     if source is not None and len(source.args) == 2:
-        return _source_table(source.args, view, table_config, logical_by_model)
+        return _source_table(source.args, view, logical_by_model)
     call = single_template_call(str(raw), "ref")
     if call is None or len(call.args) != 1:
         diagnostic = D("SST-REF044", artifact=view.key, found=repr(raw))
@@ -293,10 +278,10 @@ def _view_table(
         # cannot appear twice under two logical names.
         diagnostic = D("SST-PRS006", type="table", name=model_name)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    per_table = table_config.get(model_name) if isinstance(table_config, dict) else None
-    table_synonyms = _as_str_tuple(per_table.get("synonyms")) if isinstance(per_table, dict) else ()
-    table_comment = str(per_table.get("description") or "").strip() or None if isinstance(per_table, dict) else None
-    distinct_range = _distinct_range(per_table, path=view.path, view_name=view.name, table_name=model_name)
+    distinct_range = None
+    if model.distinct_range is not None:
+        start, end = _names(model.distinct_range, view.key, None)
+        distinct_range = (start, end)
     (logical,) = _names((logical,), view.key, None)
     if qualified_name_problem(model.relation_name, artifact=view.key, subject=view.key) is not None:
         diagnostic = D("SST-REF019", value=model.relation_name, subject=view.key)
@@ -306,16 +291,16 @@ def _view_table(
         fqn=model.relation_name,
         primary_key=_names(model.primary_key, view.key, None),
         unique_keys=tuple(_names(key, view.key, None) for key in model.unique_keys),
-        synonyms=table_synonyms,
-        comment=table_comment,
+        synonyms=model.synonyms,
+        comment=model.description,
         distinct_range=distinct_range,
     )
 
 
-def _source_table(
-    args: tuple[str, ...], view: _View, table_config: object, logical_by_model: Mapping[str, str]
-) -> tuple[str, Table]:
+def _source_table(args: tuple[str, ...], view: _View, logical_by_model: Mapping[str, str]) -> tuple[str, Table]:
     """Build a table from one `{{ source('<source>', '<table>') }}` entry: a relation without columns.
+
+    Its synonyms and COMMENT are the source table's.
 
     Its key is `<source>.<table>`, casefolded, and its logical name the table's name.
 
@@ -343,32 +328,17 @@ def _source_table(
     if logical in logical_by_model.values():
         diagnostic = D("SST-PRS006", type="table", name=table_name)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    per_table = table_config.get(table_name) if isinstance(table_config, dict) else None
-    synonyms = _as_str_tuple(per_table.get("synonyms")) if isinstance(per_table, dict) else ()
     relation = found.relation_name.upper()
     _require(qualified_name_problem(relation, artifact=view.key, subject=view.key))
     return pair.casefold(), Table(
-        logical_name=logical, fqn=relation, primary_key=(), unique_keys=(), synonyms=synonyms, distinct_range=None
+        logical_name=logical,
+        fqn=relation,
+        primary_key=(),
+        unique_keys=(),
+        synonyms=found.synonyms,
+        comment=found.description,
+        distinct_range=None,
     )
-
-
-def _distinct_range(
-    per_table: object,
-    *,
-    path: Path,
-    view_name: str,
-    table_name: str,
-) -> tuple[str, str] | None:
-    if not isinstance(per_table, dict) or "distinct_range" not in per_table:
-        return None
-    value = per_table["distinct_range"]
-    if not isinstance(value, dict) or not value.get("start") or not value.get("end"):
-        view_key = artifact_key("semantic_view", view_name)
-        detail = f"table_config.{table_name}.distinct_range needs a start and an end column"
-        diagnostic = D("SST-PRS028", artifact=view_key, detail=detail, subject=view_key)
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    start, end = _names((str(value["start"]), str(value["end"])), artifact_key("semantic_view", view_name), None)
-    return start, end
 
 
 def _view_columns(models: Mapping[str, DbtModel], logical_by_model: Mapping[str, str]) -> list[Column]:

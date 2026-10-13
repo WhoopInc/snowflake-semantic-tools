@@ -8,7 +8,9 @@
 -- clauses:
 --   - PRICING_PERIODS keeps its model name as the logical table; its relation is
 --     the model's alias, PRICING_CALENDAR. Its DISTINCT RANGE constraint comes
---     from table_config.distinct_range.
+--     from the model's meta.sst.distinct_range.
+--   - Each table's synonyms and COMMENT are its model's meta.sst.synonyms and
+--     description, so ORDERS and PRODUCTS render them as the other views do.
 --   - ORDER_ITEMS_TO_ORDERS pairs an equality with a `>=`, which renders as
 --     ASOF (`>=` is the only operator SST turns into ASOF).
 --     ORDERS_TO_PRICING_PERIODS is a BETWEEN range join.
@@ -35,11 +37,11 @@
 
 CREATE OR REPLACE SEMANTIC VIEW SST_REF_DEV.CORE.JAFFLE_MENU
   TABLES (
-    ORDER_ITEMS AS SST_REF_DEV.JAFFLE.ORDER_ITEMS PRIMARY KEY (ORDER_ITEM_ID),
-    PRODUCTS AS SST_REF_DEV.JAFFLE.PRODUCTS PRIMARY KEY (PRODUCT_ID) WITH SYNONYMS ('menu item', 'jaffle'),
-    ORDERS AS SST_REF_DEV.JAFFLE.ORDERS PRIMARY KEY (ORDER_ID),
-    PRICING_PERIODS AS SST_REF_DEV.JAFFLE.PRICING_CALENDAR PRIMARY KEY (PRICING_PERIOD_ID) CONSTRAINT PRICING_PERIODS_DISTINCT_RANGE DISTINCT RANGE BETWEEN EFFECTIVE_START_AT AND EFFECTIVE_END_AT EXCLUSIVE,
-    SUPPLIES AS SST_REF_DEV.JAFFLE.SUPPLIES PRIMARY KEY (SUPPLY_ID)
+    ORDER_ITEMS AS SST_REF_DEV.JAFFLE.ORDER_ITEMS PRIMARY KEY (ORDER_ITEM_ID) COMMENT = 'One row per line item on an order. Finer grain than orders, which is why the ASOF join exists.',
+    PRODUCTS AS SST_REF_DEV.JAFFLE.PRODUCTS PRIMARY KEY (PRODUCT_ID) WITH SYNONYMS ('menu item', 'jaffle') COMMENT = 'One row per menu item. Jaffles and drinks.',
+    ORDERS AS SST_REF_DEV.JAFFLE.ORDERS PRIMARY KEY (ORDER_ID) WITH SYNONYMS ('sale', 'transaction') COMMENT = 'One row per order. The primary transaction grain of the jaffle shop.',
+    PRICING_PERIODS AS SST_REF_DEV.JAFFLE.PRICING_CALENDAR PRIMARY KEY (PRICING_PERIOD_ID) CONSTRAINT PRICING_PERIODS_DISTINCT_RANGE DISTINCT RANGE BETWEEN EFFECTIVE_START_AT AND EFFECTIVE_END_AT EXCLUSIVE COMMENT = 'One row per pricing period. Non-overlapping by construction, which the range join relies on.',
+    SUPPLIES AS SST_REF_DEV.JAFFLE.SUPPLIES PRIMARY KEY (SUPPLY_ID) COMMENT = 'One row per product per month, restating the cost of supplying that product. A snapshot grain.'
   )
   RELATIONSHIPS (
     ORDERS_TO_PRICING_PERIODS AS ORDERS (ORDERED_AT) REFERENCES PRICING_PERIODS (BETWEEN EFFECTIVE_START_AT AND EFFECTIVE_END_AT EXCLUSIVE),

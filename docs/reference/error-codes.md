@@ -18,11 +18,11 @@ cannot be downgraded by any setting.
 - [Registry (REG)](#registry-reg) -- 23 codes
 - [Configuration (CFG)](#configuration-cfg) -- 45 codes
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
-- [Parsing (PRS)](#parsing-prs) -- 58 codes
+- [Parsing (PRS)](#parsing-prs) -- 57 codes
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 39 codes
 - [Membership (MEM)](#membership-mem) -- 22 codes
-- [Validation (VAL)](#validation-val) -- 299 codes
+- [Validation (VAL)](#validation-val) -- 298 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
@@ -31,7 +31,7 @@ cannot be downgraded by any setting.
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 24 codes
 - [Internal (INT)](#internal-int) -- 12 codes
-- [Retired numbers](#retired-numbers) -- 51 numbers
+- [Retired numbers](#retired-numbers) -- 53 numbers
 
 ## Registry (REG)
 
@@ -1133,7 +1133,7 @@ Fix: correct the tags block
 
 `<artifact>: constraints block is invalid: <detail>`
 
-Raised when a view's `table_config.<table>.distinct_range` is not a mapping that names both a `start` and an `end` column.
+Raised when a dbt model's `meta.sst.distinct_range` is not a mapping that names both a `start` and an `end` column.
 
 Fix: correct the constraints block
 
@@ -1266,16 +1266,6 @@ Fix: rename one of them
 Raised when a member entry is not a mapping, or has no `name`.
 
 Fix: name the member
-
-### SST-PRS109
-
-**table_config names a table not in tables** (error)
-
-`<artifact>: table_config key '<name>' is not in tables:`
-
-Raised when a view's `table_config` key names a model no `tables` entry names.
-
-Fix: remove the entry, or add the table
 
 ### SST-PRS110
 
@@ -2817,9 +2807,9 @@ Note: The relationship then attaches to no view, which `SST-MEM005` also reports
 
 `relationship '<relationship>' is a range join and '<name>' declares no distinct_range`
 
-Raised when a range relationship attaches to a view whose `table_config` declares no `distinct_range` for its `right_table`.
+Raised when a range relationship's `right_table` is a dbt model that declares no `meta.sst.distinct_range`.
 
-Fix: declare `table_config.<model>.distinct_range` on the target table in the view
+Fix: declare `config.meta.sst.distinct_range` on the target dbt model
 
 ### SST-VAL207
 
@@ -2951,9 +2941,9 @@ Fix: make the ranges disjoint, or narrow the range columns
 
 **A scoped bare column does not exist on its model** (error)
 
-`<artifact>: table_config.<model>.<field> names column '<column>', which does not exist on <model>`
+`<artifact>: <field> names column '<column>', which does not exist on <model>`
 
-Raised when a `start` or `end` column under a view's `table_config.<model>.distinct_range` is absent from `<model>` in the dbt manifest.
+Raised when a `start` or `end` column of a dbt model's `meta.sst.distinct_range` is not a column of the model in the dbt manifest.
 
 Fix: correct the column name, or add it to the dbt model
 
@@ -3204,16 +3194,6 @@ Raised when a `CREATE OR ALTER` statement SST rendered for a view sets tags; thi
 Fix: report this as a bug
 
 Note: `CREATE OR ALTER` cannot set tags, so SST applies them in a separate `ALTER`.
-
-### SST-VAL322
-
-**Two views share a table with contradictory descriptions** (warning)
-
-`<a> and <b> share '<name>' with conflicting descriptions`
-
-Raised when two views give one table different `table_config.<model>.description` values.
-
-Fix: reconcile the two descriptions
 
 ### SST-VAL323
 
@@ -7648,6 +7628,14 @@ Superseded by [`SST-PRS126`](#sst-prs126).
 
 Retired because role-playing tables are not supported.
 
+### SST-PRS109
+
+**table_config names a table not in tables** (retired in 1.0.0)
+
+Retired because a view no longer writes `table_config`; a table's metadata is its dbt model's, and the key is SST-PRS126.
+
+Superseded by [`SST-PRS126`](#sst-prs126).
+
 ### SST-PRT007
 
 **dbt manifest schema version unsupported** (retired in 1.0.0)
@@ -7775,6 +7763,12 @@ Superseded by [`SST-MEM002`](#sst-mem002).
 Retired because SST-VAL223 reports a primary-key column that is also declared unique.
 
 Superseded by [`SST-VAL223`](#sst-val223).
+
+### SST-VAL322
+
+**Two views share a table with contradictory descriptions** (retired in 1.0.0)
+
+Retired because a table's COMMENT is its dbt model's description, one for every view that uses it.
 
 ### SST-VAL412
 

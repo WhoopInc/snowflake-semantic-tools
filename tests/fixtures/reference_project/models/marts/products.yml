@@ -14,10 +14,13 @@ models:
       on_schema_change: fail
       meta:
         sst:
-          # jaffle_minimal declares no table_config and still renders
-          # PRIMARY KEY (PRODUCT_ID): keys belong to the model, not the view.
+          # Keys, synonyms and the table COMMENT (the description above) belong
+          # to the model, so jaffle_minimal renders them as jaffle_menu does.
           primary_key:
             - product_id
+          synonyms:
+            - menu item
+            - jaffle
     columns:
       - name: product_id
         data_type: VARCHAR

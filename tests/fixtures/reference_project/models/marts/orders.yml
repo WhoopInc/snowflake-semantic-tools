@@ -20,6 +20,10 @@ models:
           # (SST-VAL312).
           primary_key:
             - order_id
+          # One set of table synonyms for every view that reads orders.
+          synonyms:
+            - sale
+            - transaction
     columns:
       - name: order_id
         data_type: VARCHAR

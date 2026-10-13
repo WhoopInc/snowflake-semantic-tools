@@ -143,3 +143,13 @@ def set_column_meta(document: dict[str, Any], model: str, column: str, **values:
     entry = reference_node(document, model)["columns"][column]
     for meta in (entry.setdefault("meta", {}), entry.setdefault("config", {}).setdefault("meta", {})):
         meta.setdefault("sst", {}).update(values)
+
+
+def set_model_meta(document: dict[str, Any], model: str, **values: object) -> None:
+    """Set `config.meta.sst` keys on one manifest model; a None value deletes the key."""
+    sst = reference_node(document, model).setdefault("config", {}).setdefault("meta", {}).setdefault("sst", {})
+    for key, value in values.items():
+        if value is None:
+            sst.pop(key, None)
+        else:
+            sst[key] = value

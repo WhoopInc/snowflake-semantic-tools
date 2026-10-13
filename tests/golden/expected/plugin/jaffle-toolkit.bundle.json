@@ -1,7 +1,7 @@
 {
-  "alias": "SST_9730CA4B292F",
+  "alias": "SST_6ED18EEFFC65",
   "comment": "The jaffle analytics toolkit: which semantic view answers which question, and\nthe month-close procedure for supply cost.",
-  "digest": "9730ca4b292fcbfb3ceaf8532ec20cff382a0f426c1c81e9e954215b4601a14c",
+  "digest": "6ed18eeffc65be41a1174e8cbc9b08399ccac2ea7f36b0e8659a4ae7ded09582",
   "extension": "SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT",
   "files": [
     {
@@ -11,8 +11,8 @@
     },
     {
       "path": "skills/jaffle-operations/SKILL.md",
-      "sha256": "93983586a950846309d655e2a2e7d0005856f12624bfedf8f6abee0d2da7bad0",
-      "size": 3051
+      "sha256": "b52ceb6d41c6312a8a324fa6feb31ddf95c40be663f54c32bf0be685d4d39509",
+      "size": 2969
     },
     {
       "path": "skills/jaffle-operations/check-supply-month.sql",

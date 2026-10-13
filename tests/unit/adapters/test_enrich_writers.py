@@ -1,4 +1,4 @@
-"""Enrich's in-place YAML writers: the round trip, dbt model files, and semantic view files."""
+"""Enrich's in-place YAML writers: the round trip and dbt model files."""
 
 from __future__ import annotations
 
@@ -10,8 +10,7 @@ from snowflake_semantic_tools.adapters.dbt.yaml_writer import write_model_update
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import write_within
 from snowflake_semantic_tools.adapters.roundtrip import CommentedMap, insert_key, load_editable, scalar
-from snowflake_semantic_tools.adapters.yaml.view_writer import write_table_synonyms
-from snowflake_semantic_tools.domain.enrich import ColumnUpdate, TableSynonymEdit
+from snowflake_semantic_tools.domain.enrich import ColumnUpdate
 
 DBT = """version: 2
 
@@ -129,57 +128,51 @@ def test_a_file_enrich_cannot_edit_is_refused_with_what_is_wrong(text: str, prob
         write_model_updates(text, "f.yml", {"m": [ColumnUpdate("a", (("column_type", "fact"),))]})
 
 
-VIEWS = """semantic_views:
-  - name: sales
-    tables:
-      - {{ ref('orders') }}
-      - "{{ ref('customers') }}"
-    description: Sales.
-  - name: menu
-    tables:
-      - "{{ ref('orders') }}"
-    table_config:
-      Orders:
+MODELS = """version: 2
+
+models:
+  - name: orders
+    description: Orders.
+    columns:
+      - name: order_id
+  - name: customers
+    config:
+      meta:
+        sst:
+          primary_key: [customer_id]
+          distinct_range: {start: a, end: b}
+  - name: products
+    meta:
+      sst:
         synonyms:
-          - purchase
+          - item
 """
 
 
-def test_table_synonyms_go_into_each_views_table_config_with_templates_kept() -> None:
-    edits = [
-        TableSynonymEdit("v.yml", "SALES", "orders", ("sales order", "yes")),
-        TableSynonymEdit("v.yml", "menu", "orders", ("purchase", "menu order")),
-    ]
-    written = write_table_synonyms(VIEWS, "v.yml", edits)
+def test_table_synonyms_go_into_each_models_sst_block() -> None:
+    synonyms = {"orders": ("sales order", "yes"), "customers": ("buyer",), "products": ("menu item",)}
+    written = write_model_updates(MODELS, "m.yml", {}, synonyms)
     assert not written.reformatted
-    assert written.text == VIEWS.replace(
-        "      - \"{{ ref('customers') }}\"\n",
-        "      - \"{{ ref('customers') }}\"\n    table_config:\n      orders:\n        synonyms:\n"
-        "          - sales order\n          - 'yes'\n",
-    ).replace("          - purchase\n", "          - purchase\n          - menu order\n")
-
-
-@pytest.mark.parametrize(
-    ("text", "problem"),
-    [
-        ("other: 1\n", "has no semantic_views list"),
-        ("semantic_views:\n  - name: other\n", "declares no semantic view 'sales'"),
-        ("semantic_views:\n  - name: sales\n    table_config: []\n", "table_config of view 'sales' must be a mapping"),
-        ("semantic_views:\n  - name: sales\n    table_config:\n      orders: [x]\n", "table_config.orders must be"),
-    ],
-)
-def test_a_view_file_enrich_cannot_edit_is_refused(text: str, problem: str) -> None:
-    with pytest.raises(ProjectError, match=problem):
-        write_table_synonyms(text, "v.yml", [TableSynonymEdit("v.yml", "sales", "orders", ("s",))])
-
-
-def test_a_view_without_tables_gets_table_config_at_its_end() -> None:
-    written = write_table_synonyms(
-        "semantic_views:\n  - name: sales\n", "v.yml", [TableSynonymEdit("v.yml", "sales", "orders", ("s",))]
+    assert written.text == (
+        MODELS.replace(
+            "    description: Orders.\n",
+            "    description: Orders.\n    config:\n      meta:\n        sst:\n          synonyms:\n"
+            "            - sales order\n            - 'yes'\n",
+        )
+        .replace("[customer_id]\n", "[customer_id]\n          synonyms:\n            - buyer\n")
+        .replace("          - item\n", "          - menu item\n")
     )
-    assert (
-        written.text
-        == "semantic_views:\n  - name: sales\n    table_config:\n      orders:\n        synonyms:\n          - s\n"
+
+
+def test_a_model_gains_table_synonyms_and_column_updates_together() -> None:
+    written = write_model_updates(
+        None, "new.yml", {"m": [ColumnUpdate("a", (("column_type", "fact"),), added=True)]}, {"m": ("s",), "n": ("t",)}
+    )
+    assert written.text == (
+        "version: 2\nmodels:\n  - name: m\n    config:\n      meta:\n        sst:\n          synonyms:\n"
+        "            - s\n    columns:\n      - name: a\n        config:\n          meta:\n            sst:\n"
+        "              column_type: fact\n  - name: n\n    config:\n      meta:\n        sst:\n"
+        "          synonyms:\n            - t\n"
     )
 
 

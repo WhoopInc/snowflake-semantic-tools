@@ -24,6 +24,9 @@ models:
           # UNIQUE (CUSTOMER_NAME); a column in both lists is SST-VAL223.
           unique_keys:
             -   - customer_name
+          synonyms:
+            - buyer
+            - guest
     columns:
       # Identifiers are dimensions, never facts.
       - name: customer_id

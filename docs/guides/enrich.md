@@ -25,7 +25,7 @@ it, a run fills `column-types` and `data-types`, which need no row data and no m
 | `sample-values` | `sample_values`, and `is_enum` beside them on a dimension | the column's most frequent distinct values |
 | `enums` | `is_enum` for values already written; includes `sample-values` | the same query |
 | `column-synonyms` | `synonyms` | a Cortex model |
-| `table-synonyms` | `synonyms` in each semantic view's `table_config` for the model | a Cortex model |
+| `table-synonyms` | the model's own `synonyms`, which every view that holds it renders | a Cortex model |
 
 `synonyms` names both synonym components, and `all` names every component. Names are matched
 without case; an unknown one is refused with exit `3`.
@@ -99,10 +99,9 @@ never from a column with `pii_tags`. Each synonym is cleaned before it is writte
 At most `enrichment.synonym_max_count` are kept. A model's synonyms are a proposal: review
 them in the diff before merging (see [Security](security.md#trust-model)).
 
-A table's synonyms are generated once per model and written into every semantic view that
-uses the model and has none for it, each cleaned against that view's other tables;
-`--force table-synonyms` replaces the ones a view has. A model no view uses gets no table
-synonyms and no Cortex call for them.
+A table's synonyms are generated once per model and written into the model's own `meta.sst`
+when it has none, cleaned against the names and synonyms of every other table of each view that
+uses it; `--force table-synonyms` replaces the ones it has.
 
 ## Selecting models
 
@@ -214,6 +213,5 @@ the block's warnings and leaves the rest of the file to `sst validate`.
 | `--allow-non-prod` | `--allow-non-prod`: still needed for a target that is not production-like |
 
 Each removed flag is refused with exit `3` and what replaces it. Some behaviours differ:
-`time_dimension` is no longer derived; table synonyms are written into the semantic views'
-`table_config` rather than the model YAML; and 0.3's `enrichment.generate_synonyms` and `generate_column_synonyms` keys are not
+`time_dimension` is no longer derived; and 0.3's `enrichment.generate_synonyms` and `generate_column_synonyms` keys are not
 read (`SST-CFG003`): synonyms are generated only when `--include` names them.

@@ -253,7 +253,7 @@ def test_every_component_reads_values_and_asks_cortex_through_one_session(
     result = _invoke(monkeypatch, project, port, "--select", "locations", "--include", "all", "--dry-run")
     assert result.exit_code == 0, result.output
     assert result.output.splitlines()[0].startswith("locations: ")
-    assert "table synonyms in 1 view" in result.output.splitlines()[0]
+    assert result.output.splitlines()[0].endswith(", table synonyms 2")
     assert [call[0] for call in port.calls] == ["columns", "values", "cortex", "cortex"]
-    assert "+          - store\n" in result.output and "+                - store manager\n" in result.output
+    assert "+            - store\n" in result.output and "+                - store manager\n" in result.output
     assert port.closed == 1

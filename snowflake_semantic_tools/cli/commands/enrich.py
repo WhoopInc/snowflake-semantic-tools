@@ -154,8 +154,8 @@ def enrich(
     Reads each selected model's relation for its columns and types, and fills what the
     model YAML leaves out: column types and data types by default, and with --include sample
     values, enums (which bring sample values with them), and synonyms, which Cortex proposes.
-    Table synonyms are written into the `table_config` of each semantic view that uses the
-    model. Values already written are kept unless --force names their component. Sample values
+    Table synonyms go into the model's own `meta.sst`, which every semantic view that uses it
+    reads. Values already written are kept unless --force names their component. Sample values
     and enums read row data, which `enrichment.allow_sample_value_collection: false` refuses.
     PATH selects the models whose SQL or YAML file is under it. The relations are the
     manifest's, for the resolved target, which must be production-like unless --allow-non-prod
@@ -228,7 +228,7 @@ def _model_data(item: ModelReport) -> dict[str, object]:
         "status": "failed" if enrichment is None else "enriched" if enrichment.updates else "unchanged",
         "added": list(enrichment.added) if enrichment else [],
         "filled": {name: count for name, count in filled.items() if count},
-        "table_synonyms": [edit.view for edit in item.table_synonyms],
+        "table_synonyms": list(item.table_synonyms),
     }
 
 
@@ -263,7 +263,7 @@ def _model_line(item: ModelReport) -> str:
     if enrichment.added:
         parts.insert(0, f"{_plural(len(enrichment.added), 'column')} added")
     if item.table_synonyms:
-        parts.append(f"table synonyms in {_plural(len(item.table_synonyms), 'view')}")
+        parts.append(f"table synonyms {len(item.table_synonyms)}")
     return f"{item.model}: {', '.join(parts) or 'unchanged'}"
 
 

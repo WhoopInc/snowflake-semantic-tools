@@ -22,7 +22,7 @@ _SCHEMA_URL = re.compile(r"^https?://schemas\.getdbt\.com/dbt/manifest/v(\d+)(?:
 
 # The `meta.sst` keys SST reads. `database` and `schema` are read only to be
 # refused (SST-DBT030); anything else is reported where a view uses the model.
-MODEL_META_KEYS = frozenset(("primary_key", "unique_keys", "database", "schema"))
+MODEL_META_KEYS = frozenset(("primary_key", "unique_keys", "synonyms", "distinct_range", "database", "schema"))
 COLUMN_META_KEYS = frozenset(
     ("column_type", "data_type", "synonyms", "sample_values", "is_enum", "exclude", "access_modifier")
 )
@@ -274,7 +274,18 @@ def _build_model(
         has_contract=_has_contract(node),
         test_count=test_count,
         materialized=_text(config.get("materialized")) if isinstance(config := node.get("config"), Mapping) else None,
+        synonyms=_strings(meta.get("synonyms"), path=f"{path}.config.meta.sst.synonyms"),
+        distinct_range=_distinct_range(meta.get("distinct_range")),
+        malformed_distinct_range="distinct_range" in meta and _distinct_range(meta.get("distinct_range")) is None,
     )
+
+
+def _distinct_range(value: object) -> tuple[str, str] | None:
+    """Return a `distinct_range` as its `(start, end)` columns, or None unless it is a mapping naming both."""
+    if not isinstance(value, dict):
+        return None
+    start, end = _text(value.get("start")), _text(value.get("end"))
+    return (start, end) if start and end else None
 
 
 def _checksum(node: Mapping[str, Any]) -> str | None:
@@ -371,6 +382,11 @@ def _sources(root: Mapping[str, Any]) -> tuple[tuple[DbtSource, ...], tuple[Diag
             source_name=str(node.get("source_name") or ""),
             name=str(node.get("name") or ""),
             relation_name=_text(node.get("relation_name")),
+            description=_text(node.get("description")),
+            synonyms=_strings(
+                _sst_meta(node, path=f"sources.{unique_id}").get("synonyms"),
+                path=f"sources.{unique_id}.config.meta.sst.synonyms",
+            ),
         )
         for unique_id, node in sorted((raw if isinstance(raw, dict) else {}).items())
         if isinstance(node, dict) and node.get("source_name") and node.get("name")

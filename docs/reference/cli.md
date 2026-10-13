@@ -161,8 +161,8 @@ Fill dbt model column metadata from the warehouse, editing the model YAML in pla
 Reads each selected model's relation for its columns and types, and fills what the
 model YAML leaves out: column types and data types by default, and with --include sample
 values, enums (which bring sample values with them), and synonyms, which Cortex proposes.
-Table synonyms are written into the `table_config` of each semantic view that uses the
-model. Values already written are kept unless --force names their component. Sample values
+Table synonyms go into the model's own `meta.sst`, which every semantic view that uses it
+reads. Values already written are kept unless --force names their component. Sample values
 and enums read row data, which `enrichment.allow_sample_value_collection: false` refuses.
 PATH selects the models whose SQL or YAML file is under it. The relations are the
 manifest's, for the resolved target, which must be production-like unless --allow-non-prod

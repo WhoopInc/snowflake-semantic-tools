@@ -206,6 +206,8 @@ def dbt_model_diagnostics(
         SST-VAL312: when the model declares neither `primary_key` nor `unique_keys`, in either form.
         SST-VAL310: when a declared key column is not a column of the model.
         SST-VAL223: when a column is in both `primary_key` and `unique_keys`.
+        SST-PRS028: when `meta.sst.distinct_range` is not a mapping naming a start and an end.
+        SST-VAL219: when a `distinct_range` bound is not a column of the model.
     """
     diagnostics: list[Diagnostic] = []
     for model in sorted(models.values(), key=lambda item: item.name):
@@ -258,7 +260,33 @@ def dbt_model_diagnostics(
                     subject=subject,
                 )
             )
+        diagnostics.extend(_distinct_range_diagnostics(model, subject))
     return tuple(diagnostics)
+
+
+def _distinct_range_diagnostics(model: DbtModel, subject: str) -> list[Diagnostic]:
+    """Report a malformed `distinct_range`, else each of its bounds the model has no column for.
+
+    Diagnostics:
+        SST-PRS028: when `meta.sst.distinct_range` is not a mapping naming a start and an end.
+        SST-VAL219: when a bound is not a column of the model, once per bound.
+    """
+    if model.malformed_distinct_range:
+        detail = "meta.sst.distinct_range needs a start and an end column"
+        return [D("SST-PRS028", artifact=subject, detail=detail, subject=subject)]
+    bounds = zip(("start", "end"), model.distinct_range or (), strict=False)
+    return [
+        D(
+            "SST-VAL219",
+            artifact=subject,
+            model=model.name,
+            field=f"meta.sst.distinct_range.{bound}",
+            column=column,
+            subject=subject,
+        )
+        for bound, column in bounds
+        if model.column(column) is None
+    ]
 
 
 def description_diagnostics(

@@ -12,7 +12,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from snowflake_semantic_tools.domain.enrich import ColumnUpdate, TableSynonymEdit, WarehouseColumn
+from snowflake_semantic_tools.domain.enrich import ColumnUpdate, WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 
 
@@ -84,7 +84,7 @@ class WrittenFile:
 
 
 class EnrichFilesPort(Protocol):
-    """Read and edit the project's dbt and semantic view YAML; paths are relative to the project."""
+    """Read and edit the project's dbt YAML; paths are relative to the project."""
 
     def read(self, path: str) -> str | None:
         """Return a file's text; None when it does not exist.
@@ -94,22 +94,22 @@ class EnrichFilesPort(Protocol):
         """
         ...
 
-    def edit_models(self, text: str | None, path: str, updates: Mapping[str, Sequence[ColumnUpdate]]) -> WrittenFile:
-        """Return a dbt YAML file's text with each model's column updates made; nothing is written.
+    def edit_models(
+        self,
+        text: str | None,
+        path: str,
+        updates: Mapping[str, Sequence[ColumnUpdate]],
+        synonyms: Mapping[str, Sequence[str]],
+    ) -> WrittenFile:
+        """Return a dbt YAML file's text with each model's updates made; nothing is written.
 
         Args:
             text: The file's current text; None for a file enrich creates.
+            updates: The column updates of each model, by model name.
+            synonyms: The table synonyms each model's `meta.sst` gains, by model name.
 
         Raises:
             ProjectError: The file is not YAML, or a part enrich must edit has another shape.
-        """
-        ...
-
-    def edit_views(self, text: str, path: str, edits: Sequence[TableSynonymEdit]) -> WrittenFile:
-        """Return a semantic view file's text with each table-synonym edit made; nothing is written.
-
-        Raises:
-            ProjectError: The file cannot be read as a view file, or lacks a view an edit names.
         """
         ...
 

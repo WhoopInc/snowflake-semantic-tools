@@ -2,7 +2,7 @@
 
 `components` resolves the flags into what a run fills, `infer` holds the derivation rules,
 `prompts` the Cortex prompts and responses, `columns` what one model's columns gain, and
-`tables` what each semantic view gains as table synonyms. Everything here is pure: the use case
+`tables` what a model gains as table synonyms. Everything here is pure: the use case
 reads the warehouse and the files, and passes what it read in.
 """
 
@@ -57,13 +57,7 @@ from snowflake_semantic_tools.domain.enrich.prompts import (
     parse_table_synonyms,
     table_synonyms_prompt,
 )
-from snowflake_semantic_tools.domain.enrich.tables import (
-    TableSynonymEdit,
-    ViewTable,
-    avoided_names,
-    needs_table_synonyms,
-    table_synonym_edits,
-)
+from snowflake_semantic_tools.domain.enrich.tables import needs_table_synonyms, table_synonyms
 
 __all__ = [
     "COLUMNS_PER_PROMPT",
@@ -82,10 +76,7 @@ __all__ = [
     "ModelEnrichment",
     "PromptColumn",
     "SampleDecision",
-    "TableSynonymEdit",
-    "ViewTable",
     "WarehouseColumn",
-    "avoided_names",
     "clean_synonyms",
     "collection_refusal",
     "column_synonyms",
@@ -107,7 +98,7 @@ __all__ = [
     "sample_columns",
     "semantic_data_type",
     "synonym_columns",
-    "table_synonym_edits",
+    "table_synonyms",
     "table_synonyms_prompt",
     "taken_names",
     "usable_sample",

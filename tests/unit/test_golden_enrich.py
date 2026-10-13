@@ -18,12 +18,7 @@ from tests.helpers.enrich_ports import ScriptedEnrich
 from tests.helpers.reference_project import DBT_MANIFEST, REPO_ROOT, project_copy
 
 GOLDEN = REPO_ROOT / "tests" / "golden" / "expected" / "enrich"
-CHANGED = (
-    "models/marts/locations.yml",
-    "models/marts/order_items.yml",
-    "semantic_models/semantic_views/core/semantic_views.yml",
-    "semantic_models/semantic_views/semantic_views.yml",
-)
+CHANGED = ("models/marts/locations.yml", "models/marts/order_items.yml")
 
 COLUMNS = {
     "SST_REF_DEV.JAFFLE.ORDER_ITEMS": [

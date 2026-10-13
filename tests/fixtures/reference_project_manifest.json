@@ -12,6 +12,7 @@
       "alias": "stg_orders",
       "database": "SST_REF_DEV",
       "schema": "JAFFLE",
+      "description": "Light cleanup over the raw order replica. Staging only -- no semantic\nlayer member is built on it.",
       "relation_name": "SST_REF_DEV.JAFFLE.stg_orders",
       "original_file_path": "models/staging/stg_orders.sql",
       "patch_path": "sst_reference_impl://models/staging/stg_orders.yml",
@@ -170,6 +171,7 @@
       "alias": "pricing_calendar",
       "database": "SST_REF_DEV",
       "schema": "JAFFLE",
+      "description": "One row per pricing period. Non-overlapping by construction, which the range join relies on.",
       "relation_name": "SST_REF_DEV.JAFFLE.pricing_calendar",
       "original_file_path": "models/marts/pricing_periods.sql",
       "patch_path": "sst_reference_impl://models/marts/pricing_periods.yml",
@@ -178,7 +180,11 @@
           "sst": {
             "primary_key": [
               "pricing_period_id"
-            ]
+            ],
+            "distinct_range": {
+              "start": "effective_start_at",
+              "end": "effective_end_at"
+            }
           }
         },
         "contract": {
@@ -431,6 +437,7 @@
       "alias": "supplies",
       "database": "SST_REF_DEV",
       "schema": "JAFFLE",
+      "description": "One row per product per month, restating the cost of supplying that product. A snapshot grain.",
       "relation_name": "SST_REF_DEV.JAFFLE.supplies",
       "original_file_path": "models/marts/supplies.sql",
       "patch_path": "sst_reference_impl://models/marts/supplies.yml",
@@ -657,6 +664,7 @@
       "alias": "products",
       "database": "SST_REF_DEV",
       "schema": "JAFFLE",
+      "description": "One row per menu item. Jaffles and drinks.",
       "relation_name": "SST_REF_DEV.JAFFLE.products",
       "original_file_path": "models/marts/products.sql",
       "patch_path": "sst_reference_impl://models/marts/products.yml",
@@ -665,6 +673,10 @@
           "sst": {
             "primary_key": [
               "product_id"
+            ],
+            "synonyms": [
+              "menu item",
+              "jaffle"
             ]
           }
         },
@@ -846,6 +858,7 @@
       "alias": "customers",
       "database": "SST_REF_DEV",
       "schema": "JAFFLE",
+      "description": "One row per customer. A customer is a person who has placed at least one order.",
       "relation_name": "SST_REF_DEV.JAFFLE.customers",
       "original_file_path": "models/marts/customers.sql",
       "patch_path": "sst_reference_impl://models/marts/customers.yml",
@@ -859,6 +872,10 @@
               [
                 "customer_name"
               ]
+            ],
+            "synonyms": [
+              "buyer",
+              "guest"
             ]
           }
         },
@@ -1071,6 +1088,7 @@
       "alias": "orders",
       "database": "SST_REF_DEV",
       "schema": "JAFFLE",
+      "description": "One row per order. The primary transaction grain of the jaffle shop.",
       "relation_name": "SST_REF_DEV.JAFFLE.orders",
       "original_file_path": "models/marts/orders.sql",
       "patch_path": "sst_reference_impl://models/marts/orders.yml",
@@ -1079,6 +1097,10 @@
           "sst": {
             "primary_key": [
               "order_id"
+            ],
+            "synonyms": [
+              "sale",
+              "transaction"
             ]
           }
         },
@@ -1404,6 +1426,7 @@
       "alias": "order_items",
       "database": "SST_REF_DEV",
       "schema": "JAFFLE",
+      "description": "One row per line item on an order. Finer grain than orders, which is why the ASOF join exists.",
       "relation_name": "SST_REF_DEV.JAFFLE.order_items",
       "original_file_path": "models/marts/order_items.sql",
       "patch_path": "sst_reference_impl://models/marts/order_items.yml",
@@ -1548,6 +1571,7 @@
       "alias": "locations",
       "database": "SST_REF_DEV",
       "schema": "JAFFLE",
+      "description": "One row per store location.",
       "relation_name": "SST_REF_DEV.JAFFLE.locations",
       "original_file_path": "models/marts/locations.sql",
       "patch_path": "sst_reference_impl://models/marts/locations.yml",
@@ -1731,6 +1755,7 @@
       "alias": "product_docs",
       "database": "SST_REF_DEV",
       "schema": "JAFFLE",
+      "description": "Menu catalogue prose, one row per product. Backs the `menu_docs_search`\nCortex Search service and NOTHING ELSE -- no semantic view references this\ntable, so none of its columns are semantic members.\n\nBuilt from the same raw relation as `products`, so the two cannot disagree\nabout which products exist. See `product_docs.sql` for why the prose is\nnot simply a fifth column on `products`.",
       "relation_name": "SST_REF_DEV.JAFFLE.product_docs",
       "original_file_path": "models/marts/product_docs.sql",
       "patch_path": "sst_reference_impl://models/marts/product_docs.yml",

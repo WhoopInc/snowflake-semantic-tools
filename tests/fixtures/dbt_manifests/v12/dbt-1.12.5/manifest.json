@@ -393,6 +393,10 @@
       "primary_key": [
        "customer_id"
       ],
+      "synonyms": [
+       "buyer",
+       "guest"
+      ],
       "unique_keys": [
        [
         "customer_name"
@@ -452,6 +456,10 @@
      "primary_key": [
       "customer_id"
      ],
+     "synonyms": [
+      "buyer",
+      "guest"
+     ],
      "unique_keys": [
       [
        "customer_name"
@@ -498,6 +506,12 @@
       "primary_key": [
        "customer_id",
        "customer_id"
+      ],
+      "synonyms": [
+       "buyer",
+       "guest",
+       "buyer",
+       "guest"
       ],
       "unique_keys": [
        [
@@ -1464,6 +1478,10 @@
      "sst": {
       "primary_key": [
        "order_id"
+      ],
+      "synonyms": [
+       "sale",
+       "transaction"
       ]
      }
     },
@@ -1519,6 +1537,10 @@
     "sst": {
      "primary_key": [
       "order_id"
+     ],
+     "synonyms": [
+      "sale",
+      "transaction"
      ]
     }
    },
@@ -1566,6 +1588,12 @@
       "primary_key": [
        "order_id",
        "order_id"
+      ],
+      "synonyms": [
+       "sale",
+       "transaction",
+       "sale",
+       "transaction"
       ]
      }
     },
@@ -1863,6 +1891,10 @@
     "materialized": "table",
     "meta": {
      "sst": {
+      "distinct_range": {
+       "end": "effective_end_at",
+       "start": "effective_start_at"
+      },
       "primary_key": [
        "pricing_period_id"
       ]
@@ -1916,6 +1948,10 @@
    "latest_version": null,
    "meta": {
     "sst": {
+     "distinct_range": {
+      "end": "effective_end_at",
+      "start": "effective_start_at"
+     },
      "primary_key": [
       "pricing_period_id"
      ]
@@ -1952,6 +1988,10 @@
     "materialized": "table",
     "meta": {
      "sst": {
+      "distinct_range": {
+       "end": "effective_end_at",
+       "start": "effective_start_at"
+      },
       "primary_key": [
        "pricing_period_id",
        "pricing_period_id"
@@ -2381,6 +2421,10 @@
      "sst": {
       "primary_key": [
        "product_id"
+      ],
+      "synonyms": [
+       "menu item",
+       "jaffle"
       ]
      }
     },
@@ -2434,6 +2478,10 @@
     "sst": {
      "primary_key": [
       "product_id"
+     ],
+     "synonyms": [
+      "menu item",
+      "jaffle"
      ]
     }
    },
@@ -2470,6 +2518,12 @@
       "primary_key": [
        "product_id",
        "product_id"
+      ],
+      "synonyms": [
+       "menu item",
+       "jaffle",
+       "menu item",
+       "jaffle"
       ]
      }
     },

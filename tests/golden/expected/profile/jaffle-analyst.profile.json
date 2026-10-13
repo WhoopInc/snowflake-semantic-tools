@@ -36,13 +36,13 @@
         "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/skills/shared/365756b27a15/"
       },
       {
-        "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/skills/jaffle-analyst/b3d888572283/"
+        "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/skills/jaffle-analyst/c210c6a9fd06/"
       }
     ],
     "SYSTEM_PROMPT_REPO": {
       "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/prompts/jaffle-analyst/de73ec596abf/AGENTS.md"
     },
-    "VERSION": "SST_174EC14ADE31"
+    "VERSION": "SST_AA562A5B413A"
   },
   "trees": [
     {
@@ -57,12 +57,12 @@
       "prefix": "skills/shared/365756b27a15/"
     },
     {
-      "digest": "b3d8885722833c49407976224c5287badd4b197df5047f4d4a39d5c4c3038f7b",
+      "digest": "c210c6a9fd06754e18ad889e61d40744e14146e57aa9e8f54d963d586fd43493",
       "files": [
         {
           "path": "jaffle-operations/SKILL.md",
-          "sha256": "75d0497bf5948ff57f76ea6ff2dde14580c43bc66172065b62fae55a317f868d",
-          "size": 3050
+          "sha256": "0736c7aa76f64edae2f64fe2b47fa3422c181a57159d88ba89ec2ea5b2a8db6f",
+          "size": 2968
         },
         {
           "path": "jaffle-operations/check-supply-month.sql",
@@ -90,7 +90,7 @@
           "size": 1942
         }
       ],
-      "prefix": "skills/jaffle-analyst/b3d888572283/"
+      "prefix": "skills/jaffle-analyst/c210c6a9fd06/"
     },
     {
       "digest": "de73ec596abf6247f0762e684c8f6141b38ea13130dac07a7c8fd66a68f521c9",

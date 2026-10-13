@@ -1,4 +1,4 @@
-"""What `sst enrich` writes for one model's columns, and the prompts and views it involves."""
+"""What `sst enrich` writes for one model's columns and table, and the prompts it involves."""
 
 from __future__ import annotations
 
@@ -10,9 +10,7 @@ from snowflake_semantic_tools.domain.enrich import (
     EnrichOptions,
     ModelEnrichment,
     PromptColumn,
-    ViewTable,
     WarehouseColumn,
-    avoided_names,
     column_synonyms,
     column_synonyms_prompt,
     enrich_model,
@@ -24,7 +22,7 @@ from snowflake_semantic_tools.domain.enrich import (
     role,
     sample_columns,
     synonym_columns,
-    table_synonym_edits,
+    table_synonyms,
     table_synonyms_prompt,
     yaml_column_name,
 )
@@ -256,22 +254,21 @@ def test_responses_are_read_only_in_the_shape_requested() -> None:
     assert parse_table_synonyms("text") is None
 
 
-def test_table_synonyms_go_to_views_without_them_cleaned_per_view() -> None:
-    bare = ViewTable("sales", "semantic_models/semantic_views/sales.yml", "orders", (), frozenset({"customers"}))
-    named = ViewTable("menu", "semantic_models/semantic_views/menu.yml", "orders", ("purchases",), frozenset())
-    targets = [bare, named]
-    assert not needs_table_synonyms(targets, _options())
-    assert needs_table_synonyms(targets, _options(C.TABLE_SYNONYMS))
-    assert not needs_table_synonyms([named], _options(C.TABLE_SYNONYMS))
-    assert needs_table_synonyms([named], _options(forced=(C.TABLE_SYNONYMS,)))
-    assert avoided_names(targets) == ("customers",)
+def test_table_synonyms_go_to_a_model_without_them_cleaned_against_its_views() -> None:
+    taken = frozenset({"customers"})
     proposals = ["customers", "sales orders", "purchases"]
-    assert table_synonym_edits(targets, proposals, _options(), limit=4) == ()
-    edits = table_synonym_edits(targets, proposals, _options(C.TABLE_SYNONYMS), limit=4)
-    assert [(edit.view, edit.synonyms) for edit in edits] == [("sales", ("sales orders", "purchases"))]
-    forced = table_synonym_edits(targets, ["purchases"], _options(forced=(C.TABLE_SYNONYMS,)), limit=4)
-    assert [edit.view for edit in forced] == ["sales"]
-    assert table_synonym_edits([bare], ["customers"], _options(C.TABLE_SYNONYMS), limit=4) == ()
+    assert not needs_table_synonyms((), _options())
+    assert needs_table_synonyms((), _options(C.TABLE_SYNONYMS))
+    assert not needs_table_synonyms(("purchases",), _options(C.TABLE_SYNONYMS))
+    assert needs_table_synonyms(("purchases",), _options(forced=(C.TABLE_SYNONYMS,)))
+    assert table_synonyms("orders", (), proposals, taken, _options(), limit=4) == ()
+    written = table_synonyms("orders", (), proposals, taken, _options(C.TABLE_SYNONYMS), limit=4)
+    assert written == ("sales orders", "purchases")
+    assert table_synonyms("orders", ("purchases",), proposals, taken, _options(C.TABLE_SYNONYMS), limit=4) == ()
+    forced = _options(forced=(C.TABLE_SYNONYMS,))
+    assert table_synonyms("orders", ("purchases",), ["purchases"], taken, forced, limit=4) == ()
+    assert table_synonyms("orders", ("purchases",), ["sale"], taken, forced, limit=4) == ("sale",)
+    assert table_synonyms("orders", (), ["customers"], taken, _options(C.TABLE_SYNONYMS), limit=4) == ()
 
 
 def _unwritten(result: ModelEnrichment) -> list[str]:

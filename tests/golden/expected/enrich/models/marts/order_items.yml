@@ -21,6 +21,9 @@ models:
         sst:
           primary_key:
             - order_item_id
+          synonyms:
+            - line items
+            - order lines
     columns:
       - name: order_item_id
         data_type: VARCHAR

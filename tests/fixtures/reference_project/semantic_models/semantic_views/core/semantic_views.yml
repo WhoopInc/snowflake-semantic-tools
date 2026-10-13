@@ -40,21 +40,6 @@ semantic_views:
           Whether revenue metrics should include collected tax.
         default_value: false
 
-    # table_config takes only synonyms and distinct_range. Each PRIMARY KEY
-    # comes from the model's config.meta.sst.
-    table_config:
-      products:
-        synonyms:
-          - menu item
-          - jaffle
-      pricing_periods:
-        # Renders as a DISTINCT RANGE ... EXCLUSIVE constraint after the
-        # primary key: half-open periods that do not overlap, which the
-        # orders_to_pricing_periods range join relies on.
-        distinct_range:
-          start: effective_start_at
-          end: effective_end_at
-
     custom_instructions:
       - "{{ custom_instructions('jaffle_sql_conventions') }}"
       - "{{ custom_instructions('jaffle_margin_guidance') }}"

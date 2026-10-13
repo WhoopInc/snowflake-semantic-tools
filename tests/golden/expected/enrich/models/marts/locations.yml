@@ -16,6 +16,10 @@ models:
         sst:
           primary_key:
             - location_id
+          synonyms:
+            - store
+            - shop
+            - branch
     columns:
       - name: location_id
         data_type: VARCHAR

@@ -62,11 +62,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Range relationship target declares no distinct_range",
         "relationship '{relationship}' is a range join and '{name}' declares no distinct_range",
-        "declare `table_config.<model>.distinct_range` on the target table in the view",
-        condition=(
-            "a range relationship attaches to a view whose `table_config` declares no `distinct_range` "
-            "for its `right_table`"
-        ),
+        "declare `config.meta.sst.distinct_range` on the target dbt model",
+        condition="a range relationship's `right_table` is a dbt model that declares no `meta.sst.distinct_range`",
     ),
     spec(
         "SST-VAL207",
@@ -198,11 +195,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL219",
         Severity.ERROR,
         "A scoped bare column does not exist on its model",
-        "{artifact}: table_config.{model}.{field} names column '{column}', which does not exist on {model}",
+        "{artifact}: {field} names column '{column}', which does not exist on {model}",
         "correct the column name, or add it to the dbt model",
         condition=(
-            "a `start` or `end` column under a view's `table_config.<model>.distinct_range` is absent "
-            "from `<model>` in the dbt manifest"
+            "a `start` or `end` column of a dbt model's `meta.sst.distinct_range` is not a column of the "
+            "model in the dbt manifest"
         ),
         note="Primary and unique keys live on the dbt model; their existence check is `SST-VAL310`.",
     ),

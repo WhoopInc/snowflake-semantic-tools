@@ -1,19 +1,16 @@
-"""SST-VAL206: a range relationship attaches to a view whose target table declares no distinct_range."""
+"""SST-VAL206: a range relationship's target dbt model declares no distinct_range."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.reference_project import edited, reported
-
-MENU = "semantic_models/semantic_views/core/semantic_views.yml"
-RANGE = "        distinct_range:\n          start: effective_start_at\n          end: effective_end_at\n"
+from tests.helpers.reference_project import DBT_MANIFEST, edited_manifest, project_copy, reported, set_model_meta
 
 
 def test_sst_val206_fires(tmp_path: Path) -> None:
-    project = edited(tmp_path, MENU, RANGE, "")
-    [diagnostic] = reported(project, "SST-VAL206")
+    manifest = edited_manifest(tmp_path, lambda doc: set_model_meta(doc, "pricing_periods", distinct_range=None))
+    [diagnostic] = reported(project_copy(tmp_path / "project"), "SST-VAL206", manifest)
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
         "relationship 'orders_to_pricing_periods' is a range join and 'pricing_periods' declares no distinct_range"
@@ -22,4 +19,4 @@ def test_sst_val206_fires(tmp_path: Path) -> None:
 
 
 def test_sst_val206_silent(tmp_path: Path) -> None:
-    assert reported(edited(tmp_path, MENU, RANGE, RANGE), "SST-VAL206") == []
+    assert reported(project_copy(tmp_path), "SST-VAL206", DBT_MANIFEST) == []

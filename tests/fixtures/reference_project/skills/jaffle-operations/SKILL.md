@@ -43,9 +43,8 @@ Pricing periods are half-open: `effective_start_at` is inclusive,
 the **next** period, not the one ending. That is what makes adjacent periods
 non-overlapping and why the range relationship renders `EXCLUSIVE`.
 
-`pricing_periods` declares `distinct_range` in `JAFFLE_MENU`'s `table_config`, which
-is a requirement before any range relationship may point at it (R009), and which is
-one of the three things that cannot be derived from a dbt model.
+`pricing_periods` declares `distinct_range` in its dbt model's `meta.sst`, which
+is a requirement before any range relationship may point at it (R009).
 
 ## Reconciling a margin figure
 

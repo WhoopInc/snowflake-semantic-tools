@@ -180,6 +180,12 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         "`tables:` is no longer written on a member; its tables are inferred",
     ),
     (
+        "SST-PRS109",
+        "table_config names a table not in tables",
+        "SST-PRS126",
+        "a view no longer writes `table_config`; a table's metadata is its dbt model's, and the key is SST-PRS126",
+    ),
+    (
         "SST-REF043",
         "Expression references a table outside the member's tables:",
         None,
@@ -215,6 +221,12 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         "Table-scoped metric declares no table list",
         "SST-MEM002",
         "a metric's tables are inferred from its expression; one that names none is SST-MEM002",
+    ),
+    (
+        "SST-VAL322",
+        "Two views share a table with contradictory descriptions",
+        None,
+        "a table's COMMENT is its dbt model's description, one for every view that uses it",
     ),
     (
         "SST-APL101",

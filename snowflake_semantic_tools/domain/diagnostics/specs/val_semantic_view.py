@@ -201,14 +201,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         note="`CREATE OR ALTER` cannot set tags, so SST applies them in a separate `ALTER`.",
     ),
     spec(
-        "SST-VAL322",
-        Severity.WARNING,
-        "Two views share a table with contradictory descriptions",
-        "{a} and {b} share '{name}' with conflicting descriptions",
-        "reconcile the two descriptions",
-        condition="two views give one table different `table_config.<model>.description` values",
-    ),
-    spec(
         "SST-VAL323",
         Severity.ERROR,
         "Base model has no columns block",

@@ -21,6 +21,12 @@ models:
         sst:
           primary_key:
             - pricing_period_id
+          # Renders as a DISTINCT RANGE ... EXCLUSIVE constraint after the
+          # primary key: half-open periods that do not overlap, which the
+          # orders_to_pricing_periods range join relies on.
+          distinct_range:
+            start: effective_start_at
+            end: effective_end_at
     columns:
       - name: pricing_period_id
         data_type: VARCHAR

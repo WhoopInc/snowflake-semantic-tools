@@ -222,7 +222,6 @@ def view_rule_diagnostics(views: tuple[ParsedView, ...], inputs: ViewInputs) -> 
         SST-VAL303: a table names a dbt model that is disabled or ephemeral.
         SST-VAL323: a table's dbt model declares no columns.
         SST-VAL324: a table's dbt model has neither a contract nor a test.
-        SST-VAL322: two views give one table different descriptions.
     """
     readable = tuple(_attached(view, inputs) for view in views if not view.poisoned)
     diagnostics: list[Diagnostic] = []
@@ -231,16 +230,11 @@ def view_rule_diagnostics(views: tuple[ParsedView, ...], inputs: ViewInputs) -> 
         diagnostics.extend(_table_rules(item, inputs))
         diagnostics.extend(_expression_rules(item, inputs))
         diagnostics.extend(_member_rules(item, inputs))
-    diagnostics.extend(_shared_table_descriptions(readable))
     return tuple(diagnostics)
 
 
 def _list(value: object) -> list[object]:
     return value if isinstance(value, list) else []
-
-
-def _mapping(value: object) -> Mapping[str, object]:
-    return value if isinstance(value, dict) else {}
 
 
 def _prose_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
@@ -284,10 +278,11 @@ def _prose_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
 def _table_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
     """Report what each table's model lacks, then each range join whose target declares no range.
 
-    Table by table: a model that produces no relation, one with no columns, one with no contract
-    and no tests, then a `distinct_range` bound naming a column the model does not have.
+    Table by table: a model that produces no relation, one with no columns, then one with no
+    contract and no tests. A range join's target needs a `distinct_range` on its model; a model
+    that writes a malformed one is SST-PRS028's to report.
     """
-    config = _mapping(item.view.source.get("table_config"))
+    ranged: set[str] = set()
     for table in item.view.declared_tables:
         model = inputs.models.get(table)
         if model is None:
@@ -312,21 +307,8 @@ def _table_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
                 name=model.name,
                 detail="no contract and no tests",
             )
-        per_table = _mapping(config.get(model.name)) or _mapping(config.get(table))
-        bounds = _mapping(per_table.get("distinct_range"))
-        for bound in ("start", "end"):
-            column = bounds.get(bound)
-            if isinstance(column, str) and column and model.column(column) is None:
-                yield D(
-                    "SST-VAL219",
-                    origin=item.view.origin,
-                    subject=item.key,
-                    artifact=item.key,
-                    model=model.name,
-                    field=f"distinct_range.{bound}",
-                    column=column,
-                )
-    ranged = {str(name).casefold() for name, value in config.items() if _mapping(value).get("distinct_range")}
+        if model.distinct_range is not None or model.malformed_distinct_range:
+            ranged.add(table.casefold())
     for relationship in item.relationships:
         if relationship.range_bounds is not None and relationship.to_table.casefold() not in ranged:
             yield D(
@@ -423,20 +405,3 @@ def _member_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
     staleness = item.view.source.get("max_staleness")
     if isinstance(staleness, int) and not isinstance(staleness, bool) and staleness < 120:
         yield D("SST-VAL304", origin=item.view.origin, subject=item.key, artifact=item.key, found=staleness)
-
-
-def _shared_table_descriptions(items: tuple[_Attached, ...]) -> Iterator[Diagnostic]:
-    """Report each pair of views that describe one table differently, in view order.
-
-    A view describes a table with `table_config.<model>.description`; a view that does not is
-    not compared.
-    """
-    first: dict[str, tuple[str, str]] = {}
-    for item in items:
-        for model, value in _mapping(item.view.source.get("table_config")).items():
-            description = " ".join(str(_mapping(value).get("description") or "").split())
-            if not description:
-                continue
-            seen = first.setdefault(str(model).casefold(), (item.key, description))
-            if seen[1] != description:
-                yield D("SST-VAL322", origin=item.view.origin, subject=item.key, a=seen[0], b=item.key, name=model)

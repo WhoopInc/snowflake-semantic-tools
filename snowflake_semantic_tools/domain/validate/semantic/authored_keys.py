@@ -26,7 +26,6 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
                 "name",
                 "description",
                 "tables",
-                "table_config",
                 "custom_instructions",
                 "variables",
                 "tags",
@@ -87,11 +86,10 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
         ),
     }
 )
-# Mappings below a node, by the scope that holds them: a block, each item of a list
-# field, or each value of a name map.
+# Mappings below a node, by the scope that holds them: a block, or each item of a list
+# field.
 NESTED_KEYS: Mapping[tuple[str, str], frozenset[str]] = MappingProxyType(
     {
-        ("semantic_view", "table_config"): frozenset(("synonyms", "distinct_range", "description")),
         ("semantic_view", "variables"): frozenset(("name", "data_type", "default_value", "description")),
         ("semantic_view", "tags"): frozenset(("name", "value")),
         ("metric", "non_additive_dimensions"): frozenset(("dimension", "table", "sort_direction", "null_order")),
@@ -99,7 +97,6 @@ NESTED_KEYS: Mapping[tuple[str, str], frozenset[str]] = MappingProxyType(
         ("metric.window", "order_by"): frozenset(("ref", "sort_direction", "null_order")),
     }
 )
-NAME_MAPS = frozenset((("semantic_view", "table_config"),))
 # Fields whose value is one mapping; every other nested field is a list.
 BLOCKS = frozenset((("metric", "window"),))
 # 0.3 spellings, by the node or entry that carries them. Each is an error naming
@@ -124,6 +121,10 @@ REMOVED_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
         ),
         ("filter", "tables"): "a filter's tables are the models its expression names with ref()",
         ("verified_query", "tables"): "a verified query's tables are the models its SQL names with ref()",
+        ("semantic_view", "table_config"): (
+            "a table's synonyms, COMMENT and distinct_range come from its dbt model's "
+            "config.meta.sst.synonyms, description and config.meta.sst.distinct_range"
+        ),
         ("verified_query", "sql_file"): "a verified query loads its SQL from a file with sql: \"{{ file('<path>') }}\"",
     }
 )
@@ -279,8 +280,6 @@ def _unread_keys(
             entries: tuple[tuple[str | int | None, object, str], ...] = tuple(
                 (key, entry, f"{prefix}{field}[{key}].") for key, entry in enumerate(value)
             )
-        elif isinstance(value, dict) and (owner, field) in NAME_MAPS:
-            entries = tuple((str(key), entry, f"{prefix}{field}.{key}.") for key, entry in value.items())
         elif isinstance(value, dict) and (owner, field) in BLOCKS:
             entries = ((None, value, f"{prefix}{field}."),)
         else:

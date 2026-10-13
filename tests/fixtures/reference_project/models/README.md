@@ -89,15 +89,17 @@ type wins and SST reports `SST-DBT004`.
 
 ## Model-level `config.meta.sst`
 
-It holds only the grain: `primary_key` on the seven marts a view reads, and
-`unique_keys` on `customers` alone. A model has one grain, so every view that reads
-it gets the same keys: `products` renders `PRIMARY KEY (PRODUCT_ID)` in both
-`jaffle_menu` and `jaffle_minimal`, though only `jaffle_menu` gives it a
-`table_config`. Key columns must exist (`SST-VAL310`) and may not appear in both
-lists (`SST-VAL223`).
+It holds the grain and the table's metadata: `primary_key` on the seven marts a
+view reads, `unique_keys` on `customers` alone, table `synonyms` on `orders`,
+`customers` and `products`, and `distinct_range` on `pricing_periods`. The
+model's `description` is the table's COMMENT. A model has one of each, so every
+view that reads it renders the same: `products` renders `PRIMARY KEY
+(PRODUCT_ID)` and its synonyms in both `jaffle_menu` and `jaffle_minimal`. Key
+columns must exist (`SST-VAL310`) and may not appear in both lists
+(`SST-VAL223`), and each `distinct_range` bound must be a column of the model
+(`SST-VAL219`).
 
 | Not here | Why |
 |---|---|
-| table-level `synonyms` | set per view, under `table_config.<model>.synonyms` in `semantic_views.yml`, since two views may call one table different things |
 | `cortex_searchable` | not a 1.0 key; an unknown `meta.sst` key on a model a view reads is `SST-PRS004` |
 | `database`, `schema` | rejected (`SST-DBT030`): SST reads each relation's location from the manifest, after dbt has applied `+database` and `+schema` |

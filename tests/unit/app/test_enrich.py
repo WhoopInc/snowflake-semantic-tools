@@ -14,7 +14,7 @@ from snowflake_semantic_tools.app.enrich import (
     model_file,
     relation,
     select_models,
-    view_tables,
+    taken_by_views,
 )
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.enrich import COLUMNS_PER_PROMPT, Component, resolve_options
@@ -220,38 +220,32 @@ def test_column_synonyms_are_asked_in_batches_and_a_malformed_answer_fails_the_m
     assert project.run(_request(C.COLUMN_SYNONYMS)).diagnostics[0].message.endswith("column synonyms failed: no model")
 
 
-VIEW_YML = (
-    "semantic_views:\n  - name: sales\n    tables:\n"
-    "      - \"{{ ref('orders') }}\"\n      - \"{{ ref('customers') }}\"\n"
-)
-
-
-def _view(source_path: str | None = "semantic_models/views.yml", synonyms: tuple[str, ...] = ()) -> SemanticView:
+def _view(synonyms: tuple[str, ...] = ()) -> SemanticView:
     tables = (
         Table("ORDERS", "DB.SCH.ORDERS", synonyms=synonyms),
         Table("CUSTOMERS", "DB.SCH.CUSTOMERS", synonyms=("buyer",)),
     )
-    return SemanticView("DB.SCH.SALES", tables, source_path=source_path, referenced_models=("customers", "orders"))
+    return SemanticView("DB.SCH.SALES", tables, referenced_models=("customers", "orders"))
 
 
-def test_table_synonyms_are_generated_once_and_written_into_each_views_table_config() -> None:
+def test_table_synonyms_are_generated_once_and_written_into_the_models_sst_block() -> None:
     port = ScriptedEnrich(
         columns={"DB.SCH.ORDERS": ORDERS_COLUMNS},
         answer=lambda prompt, schema: {"synonyms": ["buyer", "sales orders", "purchases"]},
     )
-    files = InMemoryFiles({"models/orders.yml": ORDERS_YML, "semantic_models/views.yml": VIEW_YML})
-    project, _, _ = _project(port=port, files=files, views=(_view(), _view(source_path=None)))
+    files = InMemoryFiles({"models/orders.yml": ORDERS_YML})
+    project, _, _ = _project(port=port, files=files, views=(_view(), _view()))
     report = project.run(_request(C.TABLE_SYNONYMS))
-    assert "Avoid: buyer, customers" in port.prompts[0]
-    assert [(edit.view, edit.synonyms) for edit in report.models[0].table_synonyms] == [
-        ("SALES", ("sales orders", "purchases"))
-    ]
+    assert len(port.prompts) == 1 and "Avoid: buyer, customers" in port.prompts[0]
+    assert report.models[0].table_synonyms == ("sales orders", "purchases")
     project.write(report)
-    assert files.texts["semantic_models/views.yml"].endswith(
-        "    table_config:\n      orders:\n        synonyms:\n          - sales orders\n          - purchases\n"
+    assert files.texts["models/orders.yml"] == (
+        "version: 2\nmodels:\n  - name: orders\n    config:\n      meta:\n        sst:\n          synonyms:\n"
+        "            - sales orders\n            - purchases\n    columns:\n      - name: order_id\n"
+        "      - name: total\n"
     )
     project, port, _ = _project(
-        port=ScriptedEnrich(columns={"DB.SCH.ORDERS": ORDERS_COLUMNS}), views=(_view(synonyms=("x",)),)
+        _model(synonyms=("x",)), port=ScriptedEnrich(columns={"DB.SCH.ORDERS": ORDERS_COLUMNS}), views=(_view(),)
     )
     project.run(_request(C.TABLE_SYNONYMS))
     assert [call[0] for call in port.calls] == ["columns"]
@@ -262,6 +256,14 @@ def test_table_synonyms_are_generated_once_and_written_into_each_views_table_con
         .diagnostics[0]
         .message.endswith("table synonyms failed: Cortex answered in another shape than the one requested")
     )
+
+
+def test_a_model_no_view_uses_still_gains_table_synonyms() -> None:
+    port = ScriptedEnrich(columns={"DB.SCH.ORDERS": ORDERS_COLUMNS}, answer=lambda *_: {"synonyms": ["sale"]})
+    project, _, _ = _project(port=port)
+    report = project.run(_request(C.TABLE_SYNONYMS))
+    assert "Avoid: nothing" in port.prompts[0]
+    assert report.models[0].table_synonyms == ("sale",)
 
 
 def test_a_file_written_with_other_formatting_is_reported() -> None:
@@ -287,18 +289,10 @@ def test_new_yaml_files_sit_beside_the_models_sql_and_relations_take_the_overrid
     ]
 
 
-def test_view_tables_describe_only_views_that_use_the_model() -> None:
-    other = SemanticView(
-        "DB.SCH.OTHER", (Table("CUSTOMERS", "DB.SCH.CUSTOMERS"),), source_path="v.yml", referenced_models=("customers",)
-    )
-    (target,) = view_tables([_view(synonyms=("sale",)), other], "orders")
-    assert (target.view, target.path, target.table, target.synonyms) == (
-        "SALES",
-        "semantic_models/views.yml",
-        "orders",
-        ("sale",),
-    )
-    assert target.taken == {"customers", "buyer"}
+def test_taken_names_come_from_the_other_tables_of_each_view_that_uses_the_model() -> None:
+    other = SemanticView("DB.SCH.OTHER", (Table("LOCATIONS", "DB.SCH.LOCATIONS"),), referenced_models=("locations",))
+    assert taken_by_views([_view(synonyms=("sale",)), other], "orders") == {"customers", "buyer"}
+    assert taken_by_views([other], "orders") == frozenset()
 
 
 def test_an_empty_report_has_nothing_to_write() -> None:
@@ -335,8 +329,7 @@ def test_a_proposed_synonym_that_can_never_be_written_is_reported_not_dropped_un
         return {"synonyms": ["sales orders", "rm -rf\u202e"]}
 
     port = ScriptedEnrich(columns={"DB.SCH.ORDERS": ORDERS_COLUMNS}, answer=answer)
-    files = InMemoryFiles({"models/orders.yml": ORDERS_YML, "semantic_models/views.yml": VIEW_YML})
-    project, _, _ = _project(port=port, files=files, views=(_view(),))
+    project, _, _ = _project(port=port, views=(_view(),))
     report = project.run(_request(C.COLUMN_SYNONYMS, C.TABLE_SYNONYMS))
     warnings = [(item.code, item.severity, item.message) for item in report.diagnostics]
     assert warnings == [
@@ -350,4 +343,4 @@ def test_a_proposed_synonym_that_can_never_be_written_is_reported_not_dropped_un
     ]
     enrichment = report.models[0].enrichment
     assert enrichment is not None and enrichment.filled(C.COLUMN_SYNONYMS) == 1
-    assert [edit.synonyms for edit in report.models[0].table_synonyms] == [("sales orders",)]
+    assert report.models[0].table_synonyms == ("sales orders",)

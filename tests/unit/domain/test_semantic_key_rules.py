@@ -23,7 +23,7 @@ def test_every_key_the_loader_does_not_read_is_named_by_what_it_is() -> None:
                 "name": "v",
                 "filters": [{"name": "inline"}, "bare"],
                 "variables": [{"name": "x", "dflt": 1}, "not a mapping"],
-                "table_config": {"orders": {"synonym": ["o"]}, "items": "not a mapping"},
+                "table_config": {"orders": {"synonyms": ["o"]}},
                 "tags": {"name": "wrong shape"},
             },
             {"name": "w", "filters": []},
@@ -47,7 +47,7 @@ def test_every_key_the_loader_does_not_read_is_named_by_what_it_is() -> None:
     assert [(item.code, item.subject, item.context.get("field") or item.context.get("member")) for item in found] == [
         ("SST-VAL403", "semantic_view:v", "inline"),
         ("SST-VAL403", "semantic_view:v", "v.filters[1]"),
-        ("SST-PRS022", "semantic_view:v", "table_config.orders.synonym"),
+        ("SST-PRS126", "semantic_view:v", "table_config"),
         ("SST-PRS004", "semantic_view:v", "variables[0].dflt"),
         ("SST-VAL403", "semantic_view:w", "w.filters[0]"),
         ("SST-VAL402", "metric:m", "m"),

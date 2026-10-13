@@ -23,9 +23,6 @@ semantic_views:
       - "{{ ref('orders') }}"
       - "{{ ref('customers') }}"
       - "{{ ref('locations') }}"
-    table_config:
-      orders:
-        synonyms: [sale, transaction]
     variables:
       - name: large_order_cents
         data_type: NUMBER
@@ -49,10 +46,10 @@ semantic_views:
 - `description:` is what an agent reads to pick this view; say what it answers
   and what it does not, and when to use it (`SST-VAL005`). It renders as the
   view's `COMMENT`.
-- `table_config.<model>` takes `synonyms`, `description` (the table's
-  `COMMENT`) and `distinct_range` (see [Relationships](#relationships)). A key
-  that names no table in `tables:` is an error (`SST-PRS109`). Primary and
-  unique keys come from the model, not from here.
+- A table's keys, synonyms, `COMMENT` and `distinct_range` come from its dbt
+  model (see [Columns](#columns-facts-dimensions-time-dimensions)), so every
+  view that holds the table renders it the same. A view does not write
+  `table_config` (`SST-PRS126`).
 - `variables:` declares view variables that expressions use by bare name. Each
   needs `name`, `data_type` and `default_value`, and a `BOOLEAN`, `NUMBER` or
   string default must be of that type; `description` renders as the variable's
@@ -160,10 +157,12 @@ Columns come from dbt. Each model's YAML carries SST metadata under
 ```yaml
 models:
   - name: orders
+    description: One row per order.
     config:
       meta:
         sst:
           primary_key: [order_id]
+          synonyms: [sale, transaction]
     columns:
       - name: order_state
         description: Where the order is in fulfilment.
@@ -194,6 +193,11 @@ models:
   column lists) render as the table's `PRIMARY KEY (...)` and `UNIQUE (...)`; a
   column may not be in both (`SST-VAL223`). See
   [Relationships](#relationships) for what a join needs from them.
+- The model's `description` renders as the table's `COMMENT`, its
+  model-level `synonyms` as the table's `WITH SYNONYMS (...)`, and
+  `distinct_range` as a `DISTINCT RANGE` constraint (see
+  [Relationships](#relationships)). A dbt source table takes its `description`
+  and `meta.sst.synonyms` the same way.
 
 The `order_state` column above renders as:
 
@@ -375,8 +379,9 @@ which renders as
 `ORDER_ITEMS_TO_ORDERS AS ORDER_ITEMS (ORDER_ID, OCCURRED_AT) REFERENCES ORDERS (ORDER_ID, ASOF ORDERED_AT)`.
 
 A range must be the relationship's only condition (`SST-VAL202`), and its right
-table must declare non-overlapping ranges with `table_config.distinct_range` in
-every view that holds it (`SST-VAL206`):
+table's dbt model must declare non-overlapping ranges with `distinct_range`
+(`SST-VAL206`). Both bounds must be columns of the model (`SST-VAL219`), and a
+`distinct_range` without a `start` and an `end` is an error (`SST-PRS028`):
 
 ```yaml
 snowflake_relationships:
@@ -386,14 +391,16 @@ snowflake_relationships:
     relationship_conditions:
       - "{{ ref('orders', 'ordered_at') }} BETWEEN {{ ref('pricing_periods', 'effective_start_at') }} AND {{ ref('pricing_periods', 'effective_end_at') }}"
 
-semantic_views:
-  - name: menu
-    # ...
-    table_config:
-      pricing_periods:
-        distinct_range:
-          start: effective_start_at
-          end: effective_end_at
+# models/pricing_periods.yml
+models:
+  - name: pricing_periods
+    config:
+      meta:
+        sst:
+          primary_key: [pricing_period_id]
+          distinct_range:
+            start: effective_start_at
+            end: effective_end_at
 ```
 
 The relationship renders as

@@ -31,6 +31,7 @@ models:
       meta:
         sst:
           primary_key: [order_id]
+          synonyms: [sale, transaction]
     columns:
       - name: order_id
         description: Surrogate key for the order.
@@ -55,6 +56,9 @@ models:
 - Every column a view exposes needs a `data_type` (`SST-VAL309`). `sst enrich` can fill
   types from the warehouse, but it connects: ask first.
 - `primary_key` is a list of columns and `unique_keys` a list of column lists.
+- A table's metadata is its model's too: the model `description` is the table's COMMENT, and
+  model-level `synonyms` and `distinct_range: {start, end}` sit beside the keys. A view never
+  writes `table_config` (`SST-PRS126`).
 - `is_enum: true` needs `sample_values` (`SST-VAL314`) and only fits a dimension
   (`SST-VAL335`).
 - Write real descriptions. They are what Cortex Analyst reads to choose a column.
@@ -117,6 +121,7 @@ snowflake_relationships:
 
 - Each endpoint is one `{{ ref('<model>') }}` call (`SST-REF046`).
 - `=` is an equality join, `>=` an as-of join, and `BETWEEN` a range join.
+- The right table of a `BETWEEN` range join needs `distinct_range` on its model (`SST-VAL206`).
 - The right table of an equality join needs a `primary_key` or `unique_keys`
   (`SST-VAL311`). Joining on part of a composite key fans out and inflates every metric
   across the join (`SST-VAL208`); make such a join as-of instead.

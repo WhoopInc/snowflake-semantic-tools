@@ -5,8 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 
 from snowflake_semantic_tools.adapters.dbt.yaml_writer import write_model_updates
-from snowflake_semantic_tools.adapters.yaml.view_writer import write_table_synonyms
-from snowflake_semantic_tools.domain.enrich import ColumnUpdate, TableSynonymEdit, WarehouseColumn
+from snowflake_semantic_tools.domain.enrich import ColumnUpdate, WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.ports.enrich import WrittenFile
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -77,11 +76,14 @@ class InMemoryFiles:
     def read(self, path: str) -> str | None:
         return self.texts.get(path)
 
-    def edit_models(self, text: str | None, path: str, updates: Mapping[str, Sequence[ColumnUpdate]]) -> WrittenFile:
-        return write_model_updates(text, path, updates)
-
-    def edit_views(self, text: str, path: str, edits: Sequence[TableSynonymEdit]) -> WrittenFile:
-        return write_table_synonyms(text, path, edits)
+    def edit_models(
+        self,
+        text: str | None,
+        path: str,
+        updates: Mapping[str, Sequence[ColumnUpdate]],
+        synonyms: Mapping[str, Sequence[str]],
+    ) -> WrittenFile:
+        return write_model_updates(text, path, updates, synonyms)
 
     def write(self, path: str, text: str) -> None:
         self.texts[path] = text

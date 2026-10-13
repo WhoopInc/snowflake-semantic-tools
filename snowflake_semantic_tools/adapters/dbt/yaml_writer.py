@@ -1,8 +1,9 @@
-"""Write enrich's column updates into a dbt model's YAML file, editing it in place.
+"""Write enrich's updates into a dbt model's YAML file, editing it in place.
 
-A column's `sst` block is edited where it already is -- bare `meta.sst` wins over
+A model's or column's `sst` block is edited where it already is -- bare `meta.sst` wins over
 `config.meta.sst`, as the manifest reader reads them -- and a new block goes under
-`config.meta.sst`. Keys enrich adds take their place in `WRITTEN_KEYS` order; a model or column
+`config.meta.sst`, which a model gets before its `columns`. A column's keys take their place in
+`WRITTEN_KEYS` order, and a model's `synonyms` theirs in `MODEL_KEYS` order; a model or column
 the file does not describe yet is appended. Nothing else in the file changes.
 """
 
@@ -24,6 +25,9 @@ from snowflake_semantic_tools.adapters.roundtrip import (
 )
 from snowflake_semantic_tools.domain.enrich import WRITTEN_KEYS, ColumnUpdate
 
+# The order of the model-level `meta.sst` keys, so the table synonyms enrich adds sit after keys.
+MODEL_KEYS = ("primary_key", "unique_keys", "synonyms", "distinct_range")
+
 
 def _value(value: object) -> object:
     if isinstance(value, tuple):
@@ -44,12 +48,17 @@ def _child_map(parent: CommentedMap, key: str, path: str) -> CommentedMap:
     return child
 
 
-def _sst_block(column: CommentedMap, path: str) -> CommentedMap:
-    """Return the column's `sst` mapping where the manifest reads it, creating it under config.meta."""
-    meta = column.get("meta")
+def _sst_block(node: CommentedMap, path: str) -> CommentedMap:
+    """Return the model's or column's `sst` mapping where the manifest reads it, else a new one.
+
+    A new one goes under `config.meta`; a new `config` goes before the node's `columns`.
+    """
+    meta = node.get("meta")
     if isinstance(meta, CommentedMap) and meta.get("sst") is not None:
         return _child_map(meta, "sst", path)
-    config = _child_map(column, "config", path)
+    if "config" not in node and "columns" in node:
+        node.insert(list(node).index("columns"), "config", CommentedMap())
+    config = _child_map(node, "config", path)
     return _child_map(_child_map(config, "meta", path), "sst", path)
 
 
@@ -85,7 +94,12 @@ def _model_entry(root: CommentedMap, model: str, path: str) -> CommentedMap:
     return entry
 
 
-def _apply(entry: CommentedMap, updates: Sequence[ColumnUpdate], path: str) -> None:
+def _apply(entry: CommentedMap, updates: Sequence[ColumnUpdate] | None, synonyms: Sequence[str], path: str) -> None:
+    """Set the model's table synonyms, then make its column updates; None leaves its columns alone."""
+    if synonyms:
+        insert_key(_sst_block(entry, path), "synonyms", block_list(tuple(synonyms)), MODEL_KEYS)
+    if updates is None:
+        return
     columns = _list(entry, "columns", path)
     for update in updates:
         column = _named(columns, update.name)
@@ -106,12 +120,18 @@ def _document(text: str | None, path: str) -> EditableYaml:
     return document
 
 
-def write_model_updates(text: str | None, path: str, updates: Mapping[str, Sequence[ColumnUpdate]]) -> WrittenFile:
-    """Apply each model's column updates to one dbt YAML file's text.
+def write_model_updates(
+    text: str | None,
+    path: str,
+    updates: Mapping[str, Sequence[ColumnUpdate]],
+    synonyms: Mapping[str, Sequence[str]] | None = None,
+) -> WrittenFile:
+    """Apply each model's column updates and table synonyms to one dbt YAML file's text.
 
     Args:
         text: The file's text; None for a file enrich creates.
         updates: The column updates of each model the file describes, by model name.
+        synonyms: The table synonyms of each model the file describes, by model name.
 
     Raises:
         ProjectError: The file is not YAML, or a part enrich must edit has another shape.
@@ -119,6 +139,7 @@ def write_model_updates(text: str | None, path: str, updates: Mapping[str, Seque
     document = _document(text, path)
     root = document.root
     assert isinstance(root, CommentedMap)
-    for model, model_updates in updates.items():
-        _apply(_model_entry(root, model, path), model_updates, path)
+    synonyms = synonyms or {}
+    for model in dict.fromkeys((*updates, *synonyms)):
+        _apply(_model_entry(root, model, path), updates.get(model), synonyms.get(model, ()), path)
     return WrittenFile(document.dump(), document.reformats())

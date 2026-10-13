@@ -1,13 +1,13 @@
 {
-  "alias": "SST_8F2B276C724E",
+  "alias": "SST_E2A6961AA1F2",
   "comment": "Use when a question is about running the jaffle analytics surface rather than\nquerying it -- which pricing period is in effect, how to reconcile a margin figure\nagainst supply snapshots, or how to check whether a supply month is complete.\nInvoke for terms like pricing period, effective date, supply snapshot, month\nclose, reconcile, backfill. Do NOT invoke for ordinary analytical questions about\norders or products; those belong to the jaffle-semantics skill.",
-  "digest": "8f2b276c724ed39d6410a2715314ea1a117c83763a758c80144041d3a5da297d",
+  "digest": "e2a6961aa1f2a23709f11e9c908fa967f18792c3d651cadc4d707fbf5b8e4ae2",
   "extension": "SST_REF_DEV.JAFFLE.JAFFLE_OPERATIONS",
   "files": [
     {
       "path": "skills/jaffle-operations/SKILL.md",
-      "sha256": "93983586a950846309d655e2a2e7d0005856f12624bfedf8f6abee0d2da7bad0",
-      "size": 3051
+      "sha256": "b52ceb6d41c6312a8a324fa6feb31ddf95c40be663f54c32bf0be685d4d39509",
+      "size": 2969
     },
     {
       "path": "skills/jaffle-operations/check-supply-month.sql",

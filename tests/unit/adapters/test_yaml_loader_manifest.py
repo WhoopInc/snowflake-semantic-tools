@@ -26,6 +26,7 @@ from snowflake_semantic_tools.domain.validate.semantic.deprecated import depreca
 from snowflake_semantic_tools.domain.validate.semantic.shape import metric_parse_diagnostics
 from tests.helpers.projects import findings, load_project, load_views
 from tests.helpers.reference_project import DBT_MANIFEST, project_copy
+from tests.helpers.seam_projects import SmallProject, manifest
 
 
 def write_project(root: Path) -> Path:
@@ -377,7 +378,7 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
     assert sorted(found, key=str) == sorted(
         [
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "owner", None),
-            ("SST-PRS004", "WARNING", "semantic_view:catalog", "table_config.products.alias", None),
+            ("SST-PRS126", "ERROR", "semantic_view:catalog", "table_config", None),
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "variables[0].unit", None),
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "tags[0].note", None),
             ("SST-PRS020", "ERROR", "metric:product_count", "non_additive_by", "non_additive_dimensions"),
@@ -751,3 +752,21 @@ def test_a_view_list_outside_the_views_folder_is_reported_not_dropped_silently(t
     ]
     origin = findings(project.diagnostics)[0].origin
     assert origin is not None and (origin.file, origin.line) == (relative, 2)
+
+
+def test_a_source_table_takes_its_description_and_synonyms_from_the_source(tmp_path: Path) -> None:
+    view = (
+        "semantic_views:\n  - name: catalog\n    description: Use this view for questions about orders.\n"
+        "    tables:\n      - \"{{ source('raw', 'orders') }}\"\n"
+    )
+    source = {
+        "source_name": "raw",
+        "name": "orders",
+        "relation_name": "db.raw.orders",
+        "description": "Raw orders.",
+        "config": {"meta": {"sst": {"synonyms": ["purchase"]}}},
+    }
+    document = manifest(sources={"source.fixture.raw.orders": source})
+    project = SmallProject(tmp_path, files={"semantic_models/semantic_views/views.yml": view}, document=document)
+    [table] = project.load().views[0].tables
+    assert (table.comment, table.synonyms) == ("Raw orders.", ("purchase",))

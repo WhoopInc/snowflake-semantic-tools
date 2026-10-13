@@ -82,6 +82,13 @@ class DbtModel:
     test_count: int = 0
     # `config.materialized`, such as `table` or `incremental`; None when the manifest does not say.
     materialized: str | None = None
+    # `meta.sst.synonyms`: what every view that uses the model calls its table besides its name.
+    synonyms: tuple[str, ...] = ()
+    # `meta.sst.distinct_range` as its `(start, end)` columns; None when the model declares none,
+    # or declares one that is not a mapping naming both.
+    distinct_range: tuple[str, str] | None = None
+    # The model writes `meta.sst.distinct_range`, but not as a mapping naming a start and an end.
+    malformed_distinct_range: bool = False
 
     def column(self, name: str) -> DbtColumn | None:
         """Return a column case-insensitively."""
@@ -103,6 +110,10 @@ class DbtSource:
     source_name: str
     name: str
     relation_name: str | None
+    # The source table's `description`, the table's COMMENT in every view that uses it.
+    description: str | None = None
+    # The source table's `meta.sst.synonyms`.
+    synonyms: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

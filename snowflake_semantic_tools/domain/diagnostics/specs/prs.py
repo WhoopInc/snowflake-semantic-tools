@@ -252,8 +252,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: constraints block is invalid: {detail}",
         "correct the constraints block",
         condition=(
-            "a view's `table_config.<table>.distinct_range` is not a mapping that names both a `start` "
-            "and an `end` column"
+            "a dbt model's `meta.sst.distinct_range` is not a mapping that names both a `start` and an `end` column"
         ),
     ),
     spec(
@@ -368,14 +367,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: {member_type} entry {index} has no name",
         "name the member",
         condition="a member entry is not a mapping, or has no `name`",
-    ),
-    spec(
-        "SST-PRS109",
-        Severity.ERROR,
-        "table_config names a table not in tables",
-        "{artifact}: table_config key '{name}' is not in tables:",
-        "remove the entry, or add the table",
-        condition="a view's `table_config` key names a model no `tables` entry names",
     ),
     spec(
         "SST-PRS110",

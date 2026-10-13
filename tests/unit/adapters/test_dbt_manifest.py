@@ -157,13 +157,44 @@ def test_forbidden_model_location_keys_are_retained_for_validation() -> None:
 def test_unknown_meta_sst_keys_are_retained_for_validation() -> None:
     document = manifest_document()
     model = document["nodes"]["model.fixture.products"]  # type: ignore[index]
-    model["config"]["meta"]["sst"].update({"synonyms": ["catalogue"], "cortex_searchable": True})
+    model["config"]["meta"]["sst"].update({"table_synonyms": ["catalogue"], "cortex_searchable": True})
     model["columns"]["product_id"]["meta"]["sst"]["privacy_category"] = "none"
     projected = catalog_from_document(document).model("products")
     assert projected is not None
-    assert projected.unknown_meta_keys == ("cortex_searchable", "synonyms")
+    assert projected.unknown_meta_keys == ("cortex_searchable", "table_synonyms")
     column = projected.column("product_id")
     assert column is not None and column.unknown_meta_keys == ("privacy_category",)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected", "malformed"),
+    [
+        ({"start": "a", "end": "b"}, ("a", "b"), False),
+        ({"start": "a"}, None, True),
+        ({"start": "a", "end": " "}, None, True),
+        ("a..b", None, True),
+    ],
+)
+def test_a_models_table_metadata_is_read_from_its_meta_sst(
+    value: object, expected: tuple[str, str] | None, malformed: bool
+) -> None:
+    document = manifest_document()
+    model = document["nodes"]["model.fixture.products"]  # type: ignore[index]
+    model["config"]["meta"]["sst"].update({"synonyms": ["catalogue", 1], "distinct_range": value})
+    projected = catalog_from_document(document).model("products")
+    assert projected is not None
+    assert (projected.synonyms, projected.distinct_range, projected.malformed_distinct_range) == (
+        ("catalogue", "1"),
+        expected,
+        malformed,
+    )
+    assert projected.unknown_meta_keys == ()
+
+
+def test_a_model_without_table_metadata_has_none() -> None:
+    projected = catalog_from_document(manifest_document()).model("products")
+    assert projected is not None
+    assert (projected.synonyms, projected.distinct_range, projected.malformed_distinct_range) == ((), None, False)
 
 
 def test_a_meta_sst_data_type_is_recorded_only_when_it_disagrees_with_dbt() -> None:

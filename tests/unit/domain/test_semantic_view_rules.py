@@ -1,4 +1,4 @@
-"""The view rules called directly: prose, tables, expressions, members and descriptions shared across views."""
+"""The view rules called directly: prose, tables, expressions and members."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import Relationship
 from snowflake_semantic_tools.domain.resolve.membership import ViewMembers
 from snowflake_semantic_tools.domain.validate.semantic.views import ViewInputs, bare_identifiers, view_rule_diagnostics
 from tests.helpers.authored_documents import ORIGIN
-from tests.helpers.semantic_members import BALANCES, MODELS, ORDERS, column
+from tests.helpers.semantic_members import BALANCES, MODELS, column
 
 DESCRIBED = "Use this view for questions about orders."
 EMPTY = DbtModel("model.t.empty", "empty", "DB.S.EMPTY", (), (), ())
@@ -62,31 +62,30 @@ def test_a_view_is_described_for_routing_and_its_prose_stays_in_budget() -> None
     assert _codes(views[:1], _inputs({})) == [("SST-VAL005", "semantic_view:terse")]
 
 
-def test_each_table_names_a_built_model_with_columns_a_contract_and_real_range_columns() -> None:
-    config = {
-        "orders": {"distinct_range": {"start": "ordered_at", "end": "closed_at"}},
-        "BALANCES": {"distinct_range": {"start": 3}},
+def test_each_table_names_a_built_model_with_columns_and_a_contract_and_range_targets_declare_a_range() -> None:
+    models = {
+        **MODELS,
+        "empty": EMPTY,
+        "balances": replace(BALANCES, distinct_range=("as_of", "as_of")),
+        "odd": replace(ODD, malformed_distinct_range=True),
     }
-    view = _view("v", ("orders", "balances", "empty", "gone", "missing"), table_config=config)
+    view = _view("v", ("orders", "balances", "empty", "odd", "gone", "missing"))
     ranged = Relationship("ranged", "Orders", ("x",), "Balances", ("y",), range_bounds=("as_of", "as_of"))
     unranged = Relationship("unranged", "Balances", ("x",), "Empty", ("y",), range_bounds=("a", "b"))
+    # A malformed range is SST-PRS028's to report on the model, not this view's.
+    malformed = Relationship("malformed", "Orders", ("x",), "Odd", ("y",), range_bounds=("a", "b"))
     plain = Relationship("plain", "Orders", ("x",), "Empty", ("y",))
-    kept = {"semantic_view:v": {"relationship:ranged", "relationship:unranged", "relationship:plain"}}
-    inputs = _inputs(kept, relationships=(ranged, unranged, plain), unavailable={"gone": "ephemeral"})
+    kept = {"semantic_view:v": {f"relationship:{item.name}" for item in (ranged, unranged, malformed, plain)}}
+    inputs = _inputs(
+        kept, models=models, relationships=(ranged, unranged, malformed, plain), unavailable={"gone": "ephemeral"}
+    )
     found = view_rule_diagnostics((view,), inputs)
-    assert [(item.code, item.context.get("name") or item.context.get("column")) for item in found] == [
-        ("SST-VAL219", "closed_at"),
+    assert [(item.code, item.context.get("name")) for item in found] == [
         ("SST-VAL323", "empty"),
         ("SST-VAL324", "empty"),
         ("SST-VAL303", "gone"),
         ("SST-VAL206", "empty"),
     ]
-    assert (
-        _codes(
-            (_view("w", ("balances",), table_config={"balances": {"distinct_range": {"start": "as_of"}}}),), _inputs({})
-        )
-        == []
-    )
 
 
 def test_every_bare_word_a_view_attaches_is_a_column_or_a_variable_it_declares() -> None:
@@ -143,17 +142,3 @@ def test_a_view_needs_something_to_query_and_a_staleness_snowflake_accepts() -> 
         ("SST-VAL304", "semantic_view:bare"),
         ("SST-VAL301", "semantic_view:hidden"),
     ]
-
-
-def test_two_views_describe_one_table_alike_or_are_reported() -> None:
-    views = (
-        _view("a", ("orders",), table_config={"orders": {"description": "Every  order."}, "x": "not a mapping"}),
-        _view("b", ("orders",), table_config={"Orders": {"description": "Every order."}}),
-        _view("c", ("orders",), table_config={"orders": {"description": "Each order."}, "balances": {}}),
-        _view("d", ("orders",), table_config="not a mapping"),
-    )
-    found = view_rule_diagnostics(views, _inputs({}))
-    assert [(item.code, item.context["a"], item.context["b"]) for item in found] == [
-        ("SST-VAL322", "semantic_view:a", "semantic_view:c")
-    ]
-    assert ORDERS.has_contract

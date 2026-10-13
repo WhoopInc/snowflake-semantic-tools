@@ -21,10 +21,7 @@ from snowflake_semantic_tools.domain.enrich import (
     Component,
     EnrichOptions,
     ModelEnrichment,
-    TableSynonymEdit,
-    ViewTable,
     WarehouseColumn,
-    avoided_names,
     collection_refusal,
     column_synonyms,
     column_synonyms_prompt,
@@ -36,7 +33,7 @@ from snowflake_semantic_tools.domain.enrich import (
     rejected_synonyms,
     sample_columns,
     synonym_columns,
-    table_synonym_edits,
+    table_synonyms,
     table_synonyms_prompt,
     taken_names,
     yaml_column_name,
@@ -105,13 +102,13 @@ class ModelReport:
     Attributes:
         path: The YAML file its column updates go to.
         enrichment: What its columns gain; None when one of its reads failed.
-        table_synonyms: The views whose `table_config` gains its synonyms.
+        table_synonyms: The table synonyms its `meta.sst` gains; empty when it gains none.
     """
 
     model: str
     path: str
     enrichment: ModelEnrichment | None
-    table_synonyms: tuple[TableSynonymEdit, ...] = ()
+    table_synonyms: tuple[str, ...] = ()
 
     @property
     def failed(self) -> bool:
@@ -217,19 +214,17 @@ def relation(model: DbtModel, request: EnrichRequest) -> QualifiedName:
     return QualifiedName(request.database or parsed.database, request.schema or parsed.schema, parsed.name)
 
 
-def view_tables(views: Sequence[SemanticView], model: str) -> tuple[ViewTable, ...]:
-    """Describe each view that uses `model` as its table-synonym edit needs, in view order."""
+def taken_by_views(views: Sequence[SemanticView], model: str) -> frozenset[str]:
+    """Return the casefolded names and synonyms of every other table of each view using `model`."""
     wanted = model.casefold()
-    targets = []
-    for view in views:
-        if wanted not in view.referenced_models or view.source_path is None:
-            continue
-        mine = next((table for table in view.tables if table.logical_name.casefold() == wanted), None)
-        others = [table for table in view.tables if table.logical_name.casefold() != wanted]
-        taken = taken_names([table.logical_name for table in others], [s for table in others for s in table.synonyms])
-        name = QualifiedName.parse(view.fqn).name.value
-        targets.append(ViewTable(name, view.source_path, model, mine.synonyms if mine else (), taken))
-    return tuple(targets)
+    others = [
+        table
+        for view in views
+        if wanted in view.referenced_models
+        for table in view.tables
+        if table.logical_name.casefold() != wanted
+    ]
+    return taken_names([table.logical_name for table in others], [s for table in others for s in table.synonyms])
 
 
 class _ModelFailed(Exception):
@@ -317,8 +312,8 @@ class EnrichProject:
             samples = self._samples(model, request, warehouse, settings)
             synonyms, dropped = self._column_synonyms(model, warehouse, samples, request.options, settings)
             enrichment = enrich_model(model, warehouse, request.options, settings, samples=samples, synonyms=synonyms)
-            targets = view_tables(views, model.name)
-            edits, dropped_tables = self._table_synonyms(model, warehouse, targets, request.options, settings)
+            taken = taken_by_views(views, model.name)
+            edits, dropped_tables = self._table_synonyms(model, warehouse, taken, request.options, settings)
         except _ModelFailed as failure:
             return ModelReport(model.name, path, None), [failure.diagnostic]
         return ModelReport(model.name, path, enrichment, edits), [*enrichment.diagnostics, *dropped, *dropped_tables]
@@ -399,16 +394,16 @@ class EnrichProject:
         self,
         model: DbtModel,
         warehouse: Sequence[WarehouseColumn],
-        targets: Sequence[ViewTable],
+        taken: frozenset[str],
         options: EnrichOptions,
         settings: EnrichmentConfig,
-    ) -> tuple[tuple[TableSynonymEdit, ...], tuple[Diagnostic, ...]]:
-        """Ask Cortex for the model's table synonyms; return each view's edit, and the refused ones."""
-        if not needs_table_synonyms(targets, options):
+    ) -> tuple[tuple[str, ...], tuple[Diagnostic, ...]]:
+        """Ask Cortex for the model's table synonyms; return those to write, and the refused ones."""
+        if not needs_table_synonyms(model.synonyms, options):
             return (), ()
         names = [yaml_column_name(column.name) for column in warehouse]
         prompt = table_synonyms_prompt(
-            model.name, model.description, names, avoided_names(targets), max_count=settings.synonym_max_count
+            model.name, model.description, names, sorted(taken), max_count=settings.synonym_max_count
         )
         proposals = parse_table_synonyms(
             self._complete(model, "table synonyms", settings, prompt, TABLE_SYNONYMS_SCHEMA)
@@ -418,25 +413,27 @@ class EnrichProject:
         dropped = rejected_synonyms(
             proposals, artifact=model.name, subject=f"dbt_model:{model.name}", limit=settings.synonym_max_count
         )
-        return table_synonym_edits(targets, proposals, options, limit=settings.synonym_max_count), dropped
+        written = table_synonyms(
+            model.name, model.synonyms, proposals, taken, options, limit=settings.synonym_max_count
+        )
+        return written, dropped
 
     def _edited_files(self, reports: Sequence[ModelReport]) -> tuple[EditedFile, ...]:
-        """Compute every file's text after the run, models' files first, then views', each in path order."""
-        by_model_file: dict[str, dict[str, tuple[ColumnUpdate, ...]]] = {}
-        by_view_file: dict[str, list[TableSynonymEdit]] = {}
+        """Compute every model file's text after the run, in path order."""
+        by_file: dict[str, tuple[dict[str, tuple[ColumnUpdate, ...]], dict[str, tuple[str, ...]]]] = {}
         for report in reports:
-            if report.enrichment is not None and report.enrichment.updates:
-                by_model_file.setdefault(report.path, {})[report.model] = report.enrichment.updates
-            for edit in report.table_synonyms:
-                by_view_file.setdefault(edit.path, []).append(edit)
+            updates = report.enrichment.updates if report.enrichment is not None else ()
+            if not updates and not report.table_synonyms:
+                continue
+            columns, synonyms = by_file.setdefault(report.path, ({}, {}))
+            if updates:
+                columns[report.model] = updates
+            if report.table_synonyms:
+                synonyms[report.model] = report.table_synonyms
         edited = []
-        for path, updates in sorted(by_model_file.items()):
+        for path, (columns, synonyms) in sorted(by_file.items()):
             before = self._files.read(path)
-            written = self._files.edit_models(before, path, updates)
-            edited.append(EditedFile(path, before, written.text, written.reformatted))
-        for path, edits in sorted(by_view_file.items()):
-            before = self._files.read(path) or ""
-            written = self._files.edit_views(before, path, edits)
+            written = self._files.edit_models(before, path, columns, synonyms)
             edited.append(EditedFile(path, before, written.text, written.reformatted))
         return tuple(edited)
 
