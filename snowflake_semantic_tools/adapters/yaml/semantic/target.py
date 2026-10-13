@@ -24,10 +24,21 @@ def _semantic_view_defaults(config: dict[str, Any], path: Path, views_dir: Path)
 
 
 def _semantic_view_target(config: dict[str, Any], path: Path, views_dir: Path, target: DbtTarget) -> DbtTarget:
+    """Return where a view publishes: its folded `+database` and `+schema`, else the target's own.
+
+    A key that is absent, empty (`+schema:`), or renders empty -- a target conditional whose
+    chosen arm is `''` -- is unset, so the target's own value applies, as it does for every
+    other block's location.
+    """
     resolved = _semantic_view_defaults(config, path, views_dir)
-    database = _render_target_value(resolved.get("database", target.database), target)
-    schema = _render_target_value(resolved.get("schema", target.schema), target)
-    return DbtTarget(database=database, schema=schema)
+    return DbtTarget(
+        database=_location(resolved.get("database"), target, target.database),
+        schema=_location(resolved.get("schema"), target, target.schema),
+    )
+
+
+def _location(value: object, target: DbtTarget, own: str) -> str:
+    return own if value is None else _render_target_value(value, target) or own
 
 
 def _folder_route_diagnostics(config: dict[str, Any], views_dir: Path) -> tuple[Diagnostic, ...]:

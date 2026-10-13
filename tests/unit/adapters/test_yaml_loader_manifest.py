@@ -13,8 +13,9 @@ from snowflake_semantic_tools.adapters.yaml.documents import load_documents
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.semantic.file_reads import _verified_query_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import _relationship_parse_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.target import _folder_route_diagnostics
+from snowflake_semantic_tools.adapters.yaml.semantic.target import _folder_route_diagnostics, _semantic_view_target
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY
+from snowflake_semantic_tools.domain.model.dbt import DbtTarget
 from snowflake_semantic_tools.domain.parse.frame import canonical_frame
 from snowflake_semantic_tools.domain.validate.semantic.authored_keys import (
     authored_key_diagnostics,
@@ -24,6 +25,7 @@ from snowflake_semantic_tools.domain.validate.semantic.authored_keys import (
 from snowflake_semantic_tools.domain.validate.semantic.deprecated import deprecated_key_diagnostics
 from snowflake_semantic_tools.domain.validate.semantic.shape import metric_parse_diagnostics
 from tests.helpers.projects import findings, load_project, load_views
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 
 
 def write_project(root: Path) -> Path:
@@ -257,6 +259,47 @@ def test_missing_folder_route_is_a_config_diagnostic(tmp_path: Path) -> None:
     config = {"semantic_views": {"finance": {"+schema": "FINANCE"}}}
     diagnostics = _folder_route_diagnostics(config, views_dir)
     assert [diagnostic.code for diagnostic in diagnostics] == ["SST-CFG041"]
+
+
+@pytest.mark.parametrize(
+    ("block", "expected"),
+    [
+        pytest.param({}, ("TGT_DB", "TGT_SCHEMA"), id="unset"),
+        pytest.param({"+database": "", "+schema": ""}, ("TGT_DB", "TGT_SCHEMA"), id="empty"),
+        pytest.param({"+database": None, "+schema": None}, ("TGT_DB", "TGT_SCHEMA"), id="blank-key"),
+        pytest.param({"+database": "SEMANTIC", "sales": {"+schema": ""}}, ("SEMANTIC", "TGT_SCHEMA"), id="route-empty"),
+        pytest.param({"+schema": "{{ target.schema }}_V"}, ("TGT_DB", "TGT_SCHEMA_V"), id="templated"),
+        pytest.param({"+schema": "OUTER", "sales": {"+schema": "SALES"}}, ("TGT_DB", "SALES"), id="route-wins"),
+    ],
+)
+def test_an_unset_or_empty_view_location_falls_back_to_the_target(
+    tmp_path: Path, block: dict[str, object], expected: tuple[str, str]
+) -> None:
+    views_dir = tmp_path / "semantic_models" / "semantic_views"
+    (views_dir / "sales").mkdir(parents=True)
+    path = views_dir / "sales" / "sales.yml"
+    target = _semantic_view_target({"semantic_views": block}, path, views_dir, DbtTarget("TGT_DB", "TGT_SCHEMA"))
+    assert (target.database, target.schema) == expected
+
+
+def test_a_target_conditional_choosing_empty_publishes_to_the_target(tmp_path: Path) -> None:
+    # The base block sets a database only on prod, and core/ a schema only on prod: on dev
+    # both arms are '', so the views publish where the target says, SST_REF_DEV.JAFFLE.
+    project = project_copy(tmp_path)
+    config = project / "sst_config.yml"
+    text = config.read_text(encoding="utf-8")
+    edited = text.replace(
+        '  +database: "{{ target.database }}"\n  +schema: JAFFLE\n',
+        "  +database: \"{{ 'ELSEWHERE' if target.name == 'prod' else '' }}\"\n",
+        1,
+    ).replace(
+        "  core:\n    +schema: CORE\n", "  core:\n    +schema: \"{{ 'CORE' if target.name == 'prod' else '' }}\"\n", 1
+    )
+    assert edited.count("ELSEWHERE") == 1 and "'CORE' if" in edited
+    config.write_text(edited, encoding="utf-8")
+    views = {view.fqn.rsplit(".", 1)[-1]: view.fqn for view in load_views(project, manifest_path=DBT_MANIFEST)}
+    assert views["JAFFLE_MINIMAL"] == "SST_REF_DEV.JAFFLE.JAFFLE_MINIMAL"
+    assert views["JAFFLE_MENU"] == "SST_REF_DEV.JAFFLE.JAFFLE_MENU"
 
 
 def test_metric_parse_diagnostics_preserve_missing_empty_and_wrong_types(tmp_path: Path) -> None:
