@@ -211,6 +211,10 @@ def refused(project_dir: Path, path: Path, diagnostics: list[Diagnostic], *, sub
     return True
 
 
+# The reason `sibling_within` refuses a path outside the project, which a caller may name apart.
+OUTSIDE_PROJECT = "it resolves outside the project"
+
+
 def sibling_within(document: Path, document_path: str, named: str) -> tuple[Path, str | None]:
     """Return the file `named`, relative to a discovered document, and why SST refuses to read it.
 
@@ -228,5 +232,5 @@ def sibling_within(document: Path, document_path: str, named: str) -> tuple[Path
     relative = posixpath.normpath(posixpath.join(posixpath.dirname(document_path), named))
     path = project / relative
     if posixpath.isabs(relative) or relative == ".." or relative.startswith("../"):
-        return path, "it resolves outside the project"
+        return path, OUTSIDE_PROJECT
     return path, walk_refusal(project, path)

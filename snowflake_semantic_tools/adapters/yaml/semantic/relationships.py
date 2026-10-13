@@ -250,10 +250,7 @@ def _endpoints(node: Mapping[str, Any], subject: str, origin: Origin) -> _Endpoi
     problems: list[Diagnostic] = []
     for field in ("left_table", "right_table"):
         text = str(node.get(field) or "").strip()
-        try:
-            model = member_reference(text, "ref")
-        except TemplateSyntaxError:
-            model = None
+        model = member_reference(text, "ref")
         if model is None:
             problems.append(D("SST-REF046", origin=origin, subject=subject, artifact=subject, field=field, found=text))
         else:

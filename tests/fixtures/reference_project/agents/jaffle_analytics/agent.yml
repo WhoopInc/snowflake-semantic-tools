@@ -167,10 +167,10 @@ spec:
   # SKILLS
   # =========================================================================
   skills:
-      # A skill this project publishes. `name` is required for a SKILL-type
-      # extension (SST-VAL540) and optional for a plugin.
-    - name: jaffle-semantics
-      source:
+      # A skill this project publishes. It is named after the skill skill()
+      # names, so it writes no `name` (SST-VAL540); a plugin entry may name one
+      # of its members.
+    - source:
         # A versioned Cortex Extension; a STAGE source is SST-VAL539.
         type: CORTEX_EXTENSION
         # skill() resolves to the extension `skills.catalog` publishes, so each

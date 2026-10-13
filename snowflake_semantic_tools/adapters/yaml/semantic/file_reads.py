@@ -1,4 +1,4 @@
-"""The semantic checks that read files: each document's text, and the SQL file a verified query names.
+"""The semantic checks that read files: each document's text, and the SQL file a verified query loads.
 
 Reading is edge work, so it stays here; every check of what was read is
 `domain.validate.semantic`'s.
@@ -9,9 +9,11 @@ from __future__ import annotations
 import posixpath
 
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
-from snowflake_semantic_tools.adapters.yaml.fields import sibling_within
+from snowflake_semantic_tools.adapters.yaml.fields import OUTSIDE_PROJECT, sibling_within
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.resolve.calls import malformed_field
 from snowflake_semantic_tools.domain.validate.semantic.nodes import load_nodes, member_root, node_origin
 
 
@@ -27,22 +29,25 @@ def file_texts(documents: RawDocuments) -> dict[str, str]:
 
 
 def _verified_query_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
-    """Check that each `snowflake_verified_queries:` entry has exactly one SQL source, and a usable one.
+    """Check that each `snowflake_verified_queries:` entry has SQL, and that a file it loads is usable.
 
-    Entries come from files in any folder; one with no name is called `<unnamed>`. A
-    `sql_file:` is resolved against the entry's own file, and must stay inside the project
-    without passing through a symbolic link.
+    Entries come from files in any folder; one with no name is called `<unnamed>`. `sql:` is
+    inline SQL, or one `{{ file('<path>') }}` call that is all of it, resolved against the
+    entry's own file, which must stay inside the project without passing through a symbolic
+    link.
 
     Raises:
-        OSError: A `sql_file:` exists and cannot be read.
+        OSError: The file `sql:` names exists and cannot be read.
 
     Diagnostics:
-        SST-VAL412: when an entry declares both `sql` and `sql_file`, or neither.
-        SST-PRT009: when the `sql_file:` is, or is reached through, a symbolic link, or resolves
-            outside the project; it is not read.
-        SST-LOD018: when the `sql_file:` is not a file.
-        SST-LOD019: when the `sql_file:` holds no bytes.
-        SST-LOD006: when the `sql_file:` is not UTF-8.
+        SST-PRS002: when an entry has no `sql`.
+        SST-LOD004, SST-REF033, SST-REF003: when a template in `sql` does not parse.
+        SST-REF003: when `sql` calls `file()` and that call is not all of it.
+        SST-REF027: when the file resolves outside the project; it is not read.
+        SST-PRT009: when the file is, or is reached through, a symbolic link; it is not read.
+        SST-REF014: when the path names no file.
+        SST-LOD019: when the file holds only whitespace.
+        SST-LOD006: when the file is not UTF-8.
     """
     diagnostics: list[Diagnostic] = []
     by_path = documents.by_path
@@ -50,54 +55,46 @@ def _verified_query_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ..
         name = str(node.get("name") or "<unnamed>")
         subject = artifact_key("verified_query", name)
         origin = node_origin(document, member_root("verified_query"), index)
-        has_sql = node.get("sql") is not None
-        has_sql_file = node.get("sql_file") is not None
-        if has_sql == has_sql_file:
-            diagnostics.append(
-                D(
-                    "SST-VAL412",
-                    member=name,
-                    detail=("sql and sql_file are both present" if has_sql else "neither sql nor sql_file is present"),
-                    subject=subject,
-                    origin=origin,
-                )
-            )
+        if node.get("sql") is None:
+            diagnostics.append(D("SST-PRS002", artifact=subject, field="sql", subject=subject, origin=origin))
             continue
-        if has_sql_file:
-            sql_path, refusal = sibling_within(by_path[document.path].abs_path, document.path, str(node["sql_file"]))
-            if refusal is not None:
-                diagnostics.append(
-                    D(
-                        "SST-PRT009",
-                        path=_sibling(document.path, str(node["sql_file"])),
-                        detail=refusal,
-                        subject=subject,
-                        origin=origin,
-                    )
-                )
-            elif not sql_path.is_file():
-                diagnostics.append(
-                    D(
-                        "SST-LOD018",
-                        file=document.path,
-                        path=str(node["sql_file"]),
-                        subject=subject,
-                        origin=origin,
-                    )
-                )
-            elif not (content := sql_path.read_bytes()):
-                diagnostics.append(
-                    D(
-                        "SST-LOD019",
-                        path=str(node["sql_file"]),
-                        file=document.path,
-                        subject=subject,
-                        origin=origin,
-                    )
-                )
-            else:
-                diagnostics.extend(_utf8_diagnostics(content, document.path, str(node["sql_file"]), subject, origin))
+        requested = _sql_file(str(node["sql"]), origin, subject, diagnostics)
+        if requested is None:
+            continue
+        sql_path, refusal = sibling_within(by_path[document.path].abs_path, document.path, requested)
+        if refusal == OUTSIDE_PROJECT:
+            diagnostics.append(D("SST-REF027", path=requested, subject=subject, origin=origin))
+        elif refusal is not None:
+            path = _sibling(document.path, requested)
+            diagnostics.append(D("SST-PRT009", path=path, detail=refusal, subject=subject, origin=origin))
+        elif not sql_path.is_file():
+            diagnostics.append(D("SST-REF014", path=requested, subject=subject, origin=origin))
+        elif not (content := sql_path.read_bytes()).strip():
+            diagnostics.append(D("SST-LOD019", path=requested, file=document.path, subject=subject, origin=origin))
+        else:
+            diagnostics.extend(_utf8_diagnostics(content, document.path, requested, subject, origin))
     return tuple(diagnostics)
+
+
+def _sql_file(sql: str, origin: Origin, subject: str, diagnostics: list[Diagnostic]) -> str | None:
+    """Return the path a verified query's `sql:` loads, or None for inline SQL or a misused `file()`.
+
+    Diagnostics:
+        SST-LOD004, SST-REF033, SST-REF003: when a template in `sql` does not parse; the
+            expression checks report it, so nothing is added here.
+        SST-REF003: when `sql` calls `file()` and that call is not all of it.
+    """
+    try:
+        calls = scan_template_calls(sql)
+    except TemplateSyntaxError:
+        return None
+    files = [call for call in calls if call.function == "file"]
+    if not files:
+        return None
+    if len(calls) != 1 or calls[0].raw != sql.strip() or len(files[0].args) != 1:
+        diagnostics.append(malformed_field(sql, origin, subject=subject))
+        return None
+    return str(files[0].args[0])
 
 
 def _utf8_diagnostics(

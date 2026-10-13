@@ -1,0 +1,10 @@
+---
+# A verified query that names its SQL file with the removed sql_file: key, not
+# sql: "{{ file() }}".
+snowflake_verified_queries:
+  - name: removed_sql_file_key
+    description: |-
+      Loads its SQL through the key 1.0 removed.
+    question: "How many orders are there?"
+    sql: "SELECT COUNT(*) AS order_count FROM {{ ref('orders') }} AS orders"
+    sql_file: sql/product_mix_by_type.sql

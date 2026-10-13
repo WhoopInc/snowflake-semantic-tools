@@ -56,6 +56,11 @@ def test_loads_sql_sidecar_without_its_comment_header(menu: SemanticView) -> Non
     assert "INNER JOIN PRODUCTS AS products" in query.sql.text
 
 
+def test_a_verified_query_file_is_one_of_the_files_its_view_is_built_from(menu: SemanticView) -> None:
+    # Editing the sidecar changes the view, so the view's inputs include it.
+    assert "semantic_models/verified_queries/sql/product_mix_by_type.sql" in menu.source_files
+
+
 def test_derived_metric_depth_is_resolved_to_rendered_metric_names(menu: SemanticView) -> None:
     metrics = {metric.name: metric for metric in menu.metrics}
     assert metrics["GROSS_MARGIN"].expr.text == ("ORDER_ITEMS.TOTAL_LINE_ITEM_REVENUE - SUPPLIES.TOTAL_SUPPLY_COST")

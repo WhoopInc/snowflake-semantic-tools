@@ -615,11 +615,17 @@ def _source_files(
 ) -> tuple[str, tuple[str, ...]]:
     """Return the view file's project-relative path, and every file the view is built from, sorted.
 
-    Those are the view's own file, each attached member's, and each of its models' dbt files.
+    Those are the view's own file, each attached member's, the file each attached verified
+    query loads its SQL from, and each of its models' dbt files.
     """
     source_path = path.resolve().relative_to(project_dir.resolve()).as_posix()
     source_files = {source_path}
     source_files.update(member.origin.file for member in attached)
+    source_files.update(
+        member.source.sql_file
+        for member in attached
+        if isinstance(member.source, VerifiedQueryDef) and member.source.sql_file is not None
+    )
     for model_key in logical_by_model:
         model = models.get(model_key)
         model_path = (model.patch_path or model.original_file_path) if model is not None else None

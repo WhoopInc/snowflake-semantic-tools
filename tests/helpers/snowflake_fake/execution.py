@@ -106,7 +106,9 @@ class FakeExecution(SnowflakeWorld):
                 self.stage_types[name] = "INTERNAL NO CSE"
             self._exists(name)
         elif upper.startswith(("CREATE CORTEX EXTENSION", "ALTER CORTEX EXTENSION")):
-            apply_extension_statement(self.extensions, tuple(self.stage_files), normalized, statement)
+            with self.stage_guard:
+                staged = tuple(self.stage_files)
+            apply_extension_statement(self.extensions, staged, normalized, statement)
         elif upper.startswith("CREATE TABLE "):
             self._exists(normalized.split()[2])
         elif upper.startswith("INSERT INTO "):

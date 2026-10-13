@@ -107,7 +107,7 @@ def test_agent_compiler_resolves_tools_and_renders_complete_spec() -> None:
                 ),
             ),
         ),
-        skills=(AgentSkill("semantics", "CORTEX_EXTENSION", "semantics", "", ref="skill"),),
+        skills=(AgentSkill("", "CORTEX_EXTENSION", "semantics", "", ref="skill"),),
     )
     result = CompileAgents((model,), DiagnosticBag(), context(tools=tools)).run_result()
     assert not result.diagnostics.has_errors
@@ -759,7 +759,7 @@ def test_skill_references_pin_owned_versions_and_check_consumed_ones() -> None:
         Origin("agent.yml"),
         ("agent.yml",),
         skills=(
-            skill("semantics", "semantics"),
+            skill("", "semantics"),
             skill("", "toolkit", ref="plugin"),
             skill("vendor", "vendor-pack", ref="extension", version="V2"),
         ),
@@ -771,7 +771,8 @@ def test_skill_references_pin_owned_versions_and_check_consumed_ones() -> None:
     payload = compiled_as(result, CompiledAgent).payload
     assert '"path": "DB.S.TOOLKIT"' in payload and '"version": "SST_0123456789AB"' in payload
     assert '"path": "DB.EXT.VENDOR_PACK"' in payload and '"version": "V2"' in payload
-    assert payload.count('"name":') == 2  # semantics and vendor; the plugin entry omits name
+    # The skill entry is named after its skill, and vendor names itself; the plugin entry omits name.
+    assert payload.count('"name":') == 2 and '"name": "semantics"' in payload
     assert compiled_as(result, CompiledAgent).rendered_artifact.depends_on == ("skill:semantics", "plugin:toolkit")
 
     broken = AgentModel(
@@ -782,9 +783,8 @@ def test_skill_references_pin_owned_versions_and_check_consumed_ones() -> None:
             skill("ghost", "ghost"),
             skill("", "ghost-kit", ref="plugin"),
             skill("semantics", "semantics", ref="extension", version="V1"),
-            skill("semantics", "semantics", version="V1"),
-            skill("", "semantics"),
-            skill("other", "semantics"),
+            skill("", "semantics", version="V1"),
+            skill("semantics", "semantics"),
             skill("stranger", "toolkit", ref="plugin"),
             skill("vendor", "vendor-pack", ref="extension", var="sha_version"),
             skill("unknown", "nowhere", ref="extension", version="V1"),
@@ -797,7 +797,6 @@ def test_skill_references_pin_owned_versions_and_check_consumed_ones() -> None:
         "SST-REF037",
         "SST-VAL838",
         "SST-VAL540",
-        "SST-VAL840",
         "SST-VAL840",
         "SST-VAL839",
         "SST-REF013",

@@ -58,7 +58,7 @@ def view(name: str) -> SemanticView:
 
 
 def agent(name: str, *skills: str, enabled: bool = True, model: str = "auto") -> AgentModel:
-    references = tuple(AgentSkill(item, "CORTEX_EXTENSION", item, "", ref="skill") for item in skills)
+    references = tuple(AgentSkill("", "CORTEX_EXTENSION", item, "", ref="skill") for item in skills)
     return AgentModel(
         name, Origin("agent.yml"), ("agent.yml",), skills=references, enabled=enabled, orchestration_model=model
     )

@@ -257,8 +257,8 @@ class VerifiedQueryDef:
 
     Attributes:
         name, question: As written.
-        sql: From `sql:` or the `sql_file:` it names, without its leading blank and `--` lines
-            or trailing whitespace.
+        sql: As `sql:` holds it, or the file a `{{ file('<path>') }}` call that is all of it
+            names, without its leading blank and `--` lines or trailing whitespace.
         tables: The models its SQL names with `ref()`, casefolded and in first-seen order;
             `()` when it names none.
         verified_at: In seconds since the epoch: an integer as written, or a `YYYY-MM-DD`
@@ -266,6 +266,7 @@ class VerifiedQueryDef:
         verified_by: Stripped; None when absent or blank.
         onboarding_question: `use_as_onboarding_question` as a truth value; None when absent.
         origin, template_calls, poisoned: As `MetricDef` reads them, with `sql` for `expr`.
+        sql_file: The project-relative path of the file `sql:` loads; None for inline SQL.
     """
 
     name: str
@@ -278,3 +279,4 @@ class VerifiedQueryDef:
     origin: Origin | None = None
     template_calls: tuple[TemplateCall, ...] = ()
     poisoned: bool = False
+    sql_file: str | None = None

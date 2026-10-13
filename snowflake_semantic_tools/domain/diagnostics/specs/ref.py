@@ -125,7 +125,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "file() sidecar does not resolve",
         "{{{{ file('{path}') }}}} does not resolve to a file",
         "create the file, or correct the path",
-        condition="an agent's `file()` reference names a file that does not exist",
+        condition="an agent's or a verified query's `file()` reference names a file that does not exist",
     ),
     spec(
         "SST-REF015",
@@ -201,7 +201,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{{{{ file('{path}') }}}} resolves outside the project root",
         "use a path inside the project",
         condition=(
-            "an agent's `file()` reference, or its eval's dataset or config path, resolves outside the project root"
+            "an agent's or a verified query's `file()` reference, or an eval's dataset or config path, "
+            "resolves outside the project root"
         ),
     ),
     spec(

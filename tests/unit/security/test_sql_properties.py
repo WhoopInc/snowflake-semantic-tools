@@ -207,7 +207,9 @@ def _authored(kind: str) -> list[str]:
         if isinstance(node, Mapping):
             for key, value in node.items():
                 if key in keys and isinstance(value, str):
-                    found.append(value)
+                    # A `sql:` that loads a file is no SQL itself; the files are added below.
+                    if not value.lstrip().startswith("{{ file("):
+                        found.append(value)
                 else:
                     walk(value)
         elif isinstance(node, list):

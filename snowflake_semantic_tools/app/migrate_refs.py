@@ -9,8 +9,8 @@ from snowflake_semantic_tools.domain.migrate.refs import (
     FilterSite,
     MigrationResult,
     add_filter_labels,
-    drop_inferred_keys,
     migrate_refs,
+    rewrite_member_keys,
 )
 
 
@@ -20,7 +20,7 @@ class FileMigration:
 
     Attributes:
         path: The file's key in the files the run was given; a project-relative path for the CLI.
-        result: The reference rewrite, then the dropped inferred keys, then the filter labels;
+        result: The reference rewrite, then the member keys, then the filter labels;
             `result.text` is the whole file, changed or not.
     """
 
@@ -28,11 +28,11 @@ class FileMigration:
     result: MigrationResult
 
     def counts(self) -> dict[str, int]:
-        """Count the file's rewrites by kind: `ref`, `endpoint`, `column`, `inferred`, and `labels`.
+        """Count the file's rewrites by kind: `ref`, `endpoint`, `column`, `inferred`, `file`, `labels`.
 
         Every kind is present, in that order, 0 when the file has none of it.
         """
-        kinds = ("ref", "endpoint", "column", "inferred", "labels")
+        kinds = ("ref", "endpoint", "column", "inferred", "file", "labels")
         return {kind: sum(item.kind == kind for item in self.result.rewrites) for kind in kinds}
 
 
@@ -63,13 +63,13 @@ class MigrateRefs:
     def run(self) -> MigrationReport:
         """Migrate every file in memory, in path order, and report each one; nothing is written.
 
-        A file's references are rewritten first and the keys SST infers dropped; its filters are
+        A file's references are rewritten first, then its member keys; its filters are
         then located in the result, which is what `locate` is given, and each boolean one
         without labels gains them.
         """
         migrated: list[FileMigration] = []
         for path, text in sorted(self._files.items()):
-            result = drop_inferred_keys(migrate_refs(text))
+            result = rewrite_member_keys(migrate_refs(text))
             result = add_filter_labels(result, self._locate(result.text, path))
             migrated.append(FileMigration(path, result))
         return MigrationReport(tuple(migrated))

@@ -37,8 +37,8 @@ def resolve_skills(
         SST-REF032: `skill()` names a skill this project does not declare.
         SST-REF036: `plugin()` names a plugin this project does not declare.
         SST-VAL838: an owned extension's entry sets a version, which SST pins itself.
-        SST-VAL540: a `skill()` entry has no name.
-        SST-VAL840: an entry's name is not the skill, or not a member of the plugin.
+        SST-VAL540: a `skill()` entry writes a name; it is named after the skill.
+        SST-VAL840: a `plugin()` entry's name is not a member of the plugin.
         SST-REF037: `extension()` names an extension this project publishes.
         SST-REF013: `extension()` names no `skills.extensions` entry.
         SST-VAL538: a consumed extension's entry pins no version, or pins LIVE; a `var()`
@@ -64,11 +64,17 @@ def _shadowed(
 ) -> list[Diagnostic]:
     """Claim the member names one resolved entry contributes, reporting each an earlier entry claimed.
 
-    A named entry contributes its name; an unnamed plugin entry, every member of the plugin.
+    A named entry contributes its name, and a `skill()` entry the skill's; an unnamed plugin
+    entry, every member of the plugin.
     """
     label = f"{skill.ref}('{skill.path}')" if not skill.name else skill.name
     pin = context.plugins.get(skill.path) if skill.ref == "plugin" and not skill.name else None
-    names = (skill.name,) if skill.name else (pin.members if pin is not None else ())
+    if skill.name:
+        names: tuple[str, ...] = (skill.name,)
+    elif skill.ref == "skill":
+        names = (skill.path,)
+    else:
+        names = pin.members if pin is not None else ()
     found: list[Diagnostic] = []
     for name in names:
         earlier = contributors.get(name)
@@ -106,7 +112,10 @@ def _pin_owned(
     context: AgentCompileContext,
     diagnostics: list[Diagnostic],
 ) -> tuple[AgentSkill | None, str | None]:
-    """Pin a `skill()` or `plugin()` entry to the extension's published target and alias."""
+    """Pin a `skill()` or `plugin()` entry to the extension's published target and alias.
+
+    A `skill()` entry is named after the skill it names.
+    """
     pin = (context.skills if skill.ref == "skill" else context.plugins).get(skill.path)
     if pin is None:
         diagnostics.append(_unpublished_or_undeclared(model, skill, context))
@@ -115,7 +124,8 @@ def _pin_owned(
     if problem is not None:
         diagnostics.append(problem)
         return None, None
-    return replace(skill, path=pin.target.sql, version=pin.alias), pin.key
+    name = skill.path if skill.ref == "skill" else skill.name
+    return replace(skill, name=name, path=pin.target.sql, version=pin.alias), pin.key
 
 
 def _unpublished_or_undeclared(model: AgentModel, skill: AgentSkill, context: AgentCompileContext) -> Diagnostic:
@@ -135,7 +145,7 @@ def _unpublished_or_undeclared(model: AgentModel, skill: AgentSkill, context: Ag
 
 
 def _owned_entry_problem(model: AgentModel, skill: AgentSkill, pin: ExtensionPin) -> Diagnostic | None:
-    """What keeps an owned entry from pinning: a version of its own, no name, or the wrong name."""
+    """What keeps an owned entry from pinning: a version of its own, a name on a skill, or a wrong name."""
     if skill.version or skill.version_var:
         return D(
             "SST-VAL838",
@@ -145,12 +155,10 @@ def _owned_entry_problem(model: AgentModel, skill: AgentSkill, pin: ExtensionPin
             path=skill.path,
             subject=model.key,
         )
-    if skill.ref == "skill" and not skill.name:
-        return D("SST-VAL540", artifact=model.name, path=skill.path, subject=model.key)
+    if skill.ref == "skill" and skill.name:
+        return D("SST-VAL540", artifact=model.name, path=skill.path, name=skill.name, subject=model.key)
     if skill.name and skill.name not in pin.members:
-        expected = (
-            f"'{skill.path}'" if skill.ref == "skill" else "one of the plugin's members: " + ", ".join(pin.members)
-        )
+        expected = "one of the plugin's members: " + ", ".join(pin.members)
         return D("SST-VAL840", artifact=model.name, name=skill.name, expected=expected, subject=model.key)
     return None
 

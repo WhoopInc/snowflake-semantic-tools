@@ -398,10 +398,10 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL840",
         Severity.ERROR,
-        "Skill source name does not match its extension",
+        "Plugin entry name is not one of its members",
         "agent '{artifact}': skill source name '{name}' must be {expected}",
-        "use the skill's name, or a member name of the plugin",
-        condition="an agent skill source name is not the skill's name or a member of the plugin",
+        "use a member name of the plugin, or remove the name",
+        condition="an agent's `plugin()` entry names a skill that is not a member of the plugin",
     ),
     spec(
         "SST-VAL841",

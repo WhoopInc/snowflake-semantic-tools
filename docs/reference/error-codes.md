@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 36 codes
 - [Membership (MEM)](#membership-mem) -- 22 codes
-- [Validation (VAL)](#validation-val) -- 299 codes
+- [Validation (VAL)](#validation-val) -- 298 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
@@ -31,7 +31,7 @@ cannot be downgraded by any setting.
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 24 codes
 - [Internal (INT)](#internal-int) -- 12 codes
-- [Retired numbers](#retired-numbers) -- 50 numbers
+- [Retired numbers](#retired-numbers) -- 51 numbers
 
 ## Registry (REG)
 
@@ -1619,7 +1619,7 @@ Fix: re-save without a BOM
 
 `<file>: could not read <path>`
 
-Raised when a `file()` sidecar, `body_file:` or `sql_file:` a document references is not a file or cannot be read; also an eval, metric, or project YAML file that cannot be read.
+Raised when a `file()` sidecar or `body_file:` a document references is not a file or cannot be read; also an eval, metric, or project YAML file that cannot be read.
 
 Fix: create the file, correct the path, or make it readable
 
@@ -1815,7 +1815,7 @@ Fix: declare the extension source, or correct the name
 
 `{{ file('<path>') }} does not resolve to a file`
 
-Raised when an agent's `file()` reference names a file that does not exist.
+Raised when an agent's or a verified query's `file()` reference names a file that does not exist.
 
 Fix: create the file, or correct the path
 
@@ -1895,7 +1895,7 @@ Fix: declare the metric in the eval_metrics/ tree, or correct the name
 
 `{{ file('<path>') }} resolves outside the project root`
 
-Raised when an agent's `file()` reference, or its eval's dataset or config path, resolves outside the project root.
+Raised when an agent's or a verified query's `file()` reference, or an eval's dataset or config path, resolves outside the project root.
 
 Fix: use a path inside the project
 
@@ -3441,16 +3441,6 @@ Fix: write the instruction as plain natural language
 
 Note: Unconditional, because every 1.0 consumer is an agent.
 
-### SST-VAL412
-
-**Verified query declares neither sql nor sql_file, or both** (error)
-
-`verified_query '<member>': <detail>`
-
-Raised when a verified query declares both `sql` and `sql_file`, or neither.
-
-Fix: declare exactly one of `sql` or `sql_file`
-
 ### SST-VAL413
 
 **Verified query question text is not unique within a view** (error)
@@ -3873,13 +3863,13 @@ Fix: reference a CORTEX EXTENSION version instead
 
 ### SST-VAL540
 
-**SKILL-type extension source has no name** (error)
+**Skill entry declares a name** (error)
 
-`agent '<artifact>': the skill source for skill('<path>') omits name`
+`agent '<artifact>': skill('<path>') takes no name; it is named after the skill, not '<name>'`
 
-Raised when an agent's `skill('<path>')` source declares no `name`.
+Raised when an agent's `skill('<path>')` entry declares a `name`, which is the skill's own.
 
-Fix: declare name; it is optional only for PLUGIN-type
+Fix: remove name
 
 ### SST-VAL541
 
@@ -5219,13 +5209,13 @@ Fix: use skill() or plugin() with no version, or pin a real version of a consume
 
 ### SST-VAL840
 
-**Skill source name does not match its extension** (error)
+**Plugin entry name is not one of its members** (error)
 
 `agent '<artifact>': skill source name '<name>' must be <expected>`
 
-Raised when an agent skill source name is not the skill's name or a member of the plugin.
+Raised when an agent's `plugin()` entry names a skill that is not a member of the plugin.
 
-Fix: use the skill's name, or a member name of the plugin
+Fix: use a member name of the plugin, or remove the name
 
 ### SST-VAL841
 
@@ -7745,6 +7735,14 @@ Superseded by [`SST-MEM002`](#sst-mem002).
 Retired because SST-VAL223 reports a primary-key column that is also declared unique.
 
 Superseded by [`SST-VAL223`](#sst-val223).
+
+### SST-VAL412
+
+**Verified query declares neither sql nor sql_file, or both** (retired in 1.0.0)
+
+Retired because a verified query writes its SQL in `sql:`, inline or as one file() call; one without it is SST-PRS002, and `sql_file:` is SST-PRS126.
+
+Superseded by [`SST-PRS002`](#sst-prs002).
 
 ### SST-VAL501
 

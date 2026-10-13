@@ -38,7 +38,8 @@ class FakeStage(SnowflakeWorld):
                     files(live).append(stage_path[len(str(live["location"])) :])
                     return
             raise SnowflakePortError(f"no open live version accepts {stage_path}")
-        self.stage_files.add(stage_path)
+        with self.stage_guard:
+            self.stage_files.add(stage_path)
         self.staged_file_contents[stage_path] = content
         self.staged_file_metadata[stage_path] = StagedFileMetadata(
             stage_path=stage_path,
@@ -55,7 +56,9 @@ class FakeStage(SnowflakeWorld):
                     if str(version["location"]).casefold() == location.casefold():
                         return tuple(sorted(files(version)))
             return ()
-        return tuple(sorted(path[len(location) :] for path in self.stage_files if path.startswith(location)))
+        with self.stage_guard:
+            staged = tuple(self.stage_files)
+        return tuple(sorted(path[len(location) :] for path in staged if path.startswith(location)))
 
 
 def _unmeasured(stage_path: str) -> StagedFileMetadata:

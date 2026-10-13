@@ -2,31 +2,38 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin, Severity
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership
+from snowflake_semantic_tools.domain.validate.tool import validate_tool_catalog
 from tests.helpers.diagnostic_filters import coded
-from tests.helpers.seam_projects import SmallProject
 
-VERIFIED_QUERY = (
-    "snowflake_verified_queries:\n"
-    "  - name: how_many\n"
-    "    question: How many?\n"
-    "    sql_file: sql/how_many.sql\n"
-    "    tables: [\"{{ ref('products') }}\"]\n"
-)
-QUERIES = "semantic_models/verified_queries"
+ORIGIN = Origin("tools/tools.yml", 3, 5)
 
 
-def test_sst_lod018_fires(tmp_path: Path) -> None:
-    project = SmallProject(tmp_path, files={f"{QUERIES}/vq.yml": VERIFIED_QUERY}).load()
-    [diagnostic] = coded(project.diagnostics, "SST-LOD018")
+def _findings(body_file: str, *, present: bool) -> list[Diagnostic]:
+    member = ToolMember(
+        "group",
+        "lookup",
+        "procedure",
+        ToolOwnership.DEFINE,
+        ORIGIN,
+        "tools/tools.yml",
+        body_file=body_file,
+        body="SELECT 1" if present else None,
+    )
+    catalog = ToolCatalog(
+        (ToolGroup("group", ORIGIN, "tools/tools.yml", members=(member,)),), "dev", frozenset(("dev",))
+    )
+    return coded(validate_tool_catalog(catalog, DbtCatalog("v12", None, None, ())), "SST-LOD018")
+
+
+def test_sst_lod018_fires() -> None:
+    [diagnostic] = _findings("sql/lookup.sql", present=False)
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == f"{QUERIES}/vq.yml: could not read sql/how_many.sql"
-    assert diagnostic.subject == "verified_query:how_many"
-    assert diagnostic.origin == Origin(f"{QUERIES}/vq.yml", 2, 5)
+    assert diagnostic.message == "tools/tools.yml: could not read sql/lookup.sql"
+    assert diagnostic.subject == "tool:lookup"
 
 
-def test_sst_lod018_silent(tmp_path: Path) -> None:
-    files = {f"{QUERIES}/vq.yml": VERIFIED_QUERY, f"{QUERIES}/sql/how_many.sql": "SELECT 1\n"}
-    assert coded(SmallProject(tmp_path, files=files).load().diagnostics, "SST-LOD018") == []
+def test_sst_lod018_silent() -> None:
+    assert _findings("sql/lookup.sql", present=True) == []

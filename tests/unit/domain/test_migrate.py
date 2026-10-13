@@ -6,8 +6,8 @@ from snowflake_semantic_tools.domain.migrate.refs import (
     FilterSite,
     MigrationResult,
     add_filter_labels,
-    drop_inferred_keys,
     migrate_refs,
+    rewrite_member_keys,
 )
 from snowflake_semantic_tools.domain.validate.expression import is_boolean_expression, outer_parentheses, root_function
 
@@ -176,7 +176,7 @@ def test_the_keys_sst_infers_are_dropped_from_members_only() -> None:
         "    tables: [\"{{ ref('orders') }}\"]\n"
         "    expr: x\n"
     )
-    result = drop_inferred_keys(migrate_refs(text))
+    result = rewrite_member_keys(migrate_refs(text))
     assert result.text == (
         "semantic_views:\n"
         "  - name: v\n"
@@ -194,5 +194,21 @@ def test_the_keys_sst_infers_are_dropped_from_members_only() -> None:
         "    expr: x\n"
     )
     assert [(item.kind, item.line) for item in result.rewrites] == [("inferred", 7), ("inferred", 13), ("inferred", 19)]
-    unchanged = drop_inferred_keys(migrate_refs(result.text))
+    unchanged = rewrite_member_keys(migrate_refs(result.text))
     assert unchanged.text == result.text and not unchanged.changed
+
+
+def test_a_verified_query_sql_file_becomes_a_file_call() -> None:
+    text = (
+        "snowflake_verified_queries:\n"
+        "  - name: q\n"
+        "    sql_file: 'sql/q.sql'  # the sidecar\n"
+        "snowflake_metrics:\n"
+        "  - name: m\n"
+        "    sql_file: untouched\n"
+    )
+    result = rewrite_member_keys(migrate_refs(text))
+    assert "    sql: \"{{ file('sql/q.sql') }}\"  # the sidecar\n" in result.text
+    assert "    sql_file: untouched\n" in result.text
+    assert [(item.kind, item.line) for item in result.rewrites] == [("file", 3)]
+    assert not rewrite_member_keys(migrate_refs(result.text)).changed

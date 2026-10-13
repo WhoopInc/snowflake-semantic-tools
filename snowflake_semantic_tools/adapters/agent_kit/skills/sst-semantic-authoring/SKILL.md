@@ -126,9 +126,9 @@ snowflake_relationships:
 
 - A filter is a boolean `expr` labelled `labels: [filter]`; an unlabelled boolean filter is
   `SST-VAL405`.
-- A verified query has `question` and exactly one of `sql` or `sql_file` (`SST-VAL412`). Its
-  SQL names each table with `{{ ref('<model>') }}`, as a dbt model does (`SST-VAL414`); those
-  models are its tables.
+- A verified query has `question` and `sql` (`SST-PRS002`). Its SQL names each table with
+  `{{ ref('<model>') }}`, as a dbt model does (`SST-VAL414`); those models are its tables. Keep
+  long SQL in a file with `sql: "{{ file('sql/<name>.sql') }}"`, relative to the YAML file.
 - A custom instruction block uses `ai_sql_generation` and `ai_question_categorization`, and
   a view includes it with `"{{ custom_instructions('<name>') }}"`.
 

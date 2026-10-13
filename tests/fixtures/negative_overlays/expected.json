@@ -33,9 +33,9 @@
     "into": "semantic_models/semantic_views",
     "adds": [{"code": "SST-VAL203", "severity": "error", "count": 1}]
   },
-  "09-vq-sql-and-sql-file.yml": {
+  "09-vq-sql-file-key.yml": {
     "into": "semantic_models/verified_queries",
-    "adds": [{"code": "SST-VAL412", "severity": "error", "count": 1}]
+    "adds": [{"code": "SST-PRS126", "severity": "error", "count": 1}]
   },
   "10-legacy-table-global.yml": {
     "into": "semantic_models/metrics",

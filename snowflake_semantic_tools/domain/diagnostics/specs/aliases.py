@@ -113,9 +113,9 @@ ALIASES: Mapping[str, Alias] = _aliases(
     ("SST-V050", "Deprecated filters syntax", "RETIRED", ("SST-VAL403",)),
     ("SST-V051", "Invalid filter expression", "KEPT", ("SST-VAL401",)),
     ("SST-V052", "Deprecated custom instruction key names", "KEPT", ("SST-VAL012", "SST-PRS020")),
-    ("SST-V060", "Missing verified query field", "SPLIT", ("SST-PRS002", "SST-VAL412", "SST-VAL020")),
-    ("SST-V061", "VQR sql_file not found", "KEPT", ("SST-LOD018", "SST-LOD019")),
-    ("SST-V062", "VQR mutual exclusivity violation", "KEPT", ("SST-PRS014", "SST-VAL412")),
+    ("SST-V060", "Missing verified query field", "SPLIT", ("SST-PRS002", "SST-VAL020")),
+    ("SST-V061", "VQR sql_file not found", "KEPT", ("SST-REF014", "SST-LOD019")),
+    ("SST-V062", "VQR mutual exclusivity violation", "KEPT", ("SST-PRS126",)),
     ("SST-V070", "Missing semantic view field", "SPLIT", ("SST-PRS002", "SST-VAL003")),
     ("SST-V071", "Semantic view references unknown table", "KEPT", ("SST-MEM008", "SST-REF001")),
     ("SST-V081", "Quoted template expression", "RETIRED", ()),
@@ -190,6 +190,13 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         "Relationship endpoint is written as a ref() call",
         "SST-REF046",
         "relationship endpoints take a `ref()` call; a bare model name is SST-REF046",
+    ),
+    (
+        "SST-VAL412",
+        "Verified query declares neither sql nor sql_file, or both",
+        "SST-PRS002",
+        "a verified query writes its SQL in `sql:`, inline or as one file() call; one without it is "
+        "SST-PRS002, and `sql_file:` is SST-PRS126",
     ),
     (
         "SST-VAL104",

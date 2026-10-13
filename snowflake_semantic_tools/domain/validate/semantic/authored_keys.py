@@ -69,7 +69,6 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
                 "description",
                 "question",
                 "sql",
-                "sql_file",
                 "verified_at",
                 "verified_by",
                 "use_as_onboarding_question",
@@ -125,6 +124,7 @@ REMOVED_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
         ),
         ("filter", "tables"): "a filter's tables are the models its expression names with ref()",
         ("verified_query", "tables"): "a verified query's tables are the models its SQL names with ref()",
+        ("verified_query", "sql_file"): "a verified query loads its SQL from a file with sql: \"{{ file('<path>') }}\"",
     }
 )
 # The folder under the semantic models directory that owns each member type's files.

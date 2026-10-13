@@ -10,9 +10,10 @@ key order survive byte for byte:
 
 A `table()` call anywhere else is reported and left alone, because rewriting it
 would be a guess. A boolean standalone filter additionally gains
-`labels: [filter]`, classified by the same predicate check validation uses, and a
-metric's, filter's or verified query's `tables:` and `derived:` keys are dropped
-(`drop_inferred_keys`): SST infers both.
+`labels: [filter]`, classified by the same predicate check validation uses. A
+metric's, filter's or verified query's `tables:` and `derived:` keys are dropped,
+since SST infers both, and a verified query's `sql_file: x` becomes
+`sql: "{{ file('x') }}"` (`rewrite_member_keys`).
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ _CALL_NAME = re.compile(r"^\{\{(\s*)(table|column)(\s*)\(")
 _BARE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
 _ROOT_KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:")
 _INFERRED_KEY = re.compile(r"^(\s+)(tables|derived)\s*:")
+_SQL_FILE_KEY = re.compile(r"^(\s+)sql_file(\s*:\s*)(\S.*?)\s*(#.*)?$")
 # The member lists whose `tables:` and `derived:` keys SST now infers.
 _INFERRING_ROOTS = frozenset(("snowflake_metrics", "snowflake_filters", "snowflake_verified_queries"))
 
@@ -47,7 +49,8 @@ class Rewrite:
         after: The replacement; for an inserted `labels:` block, a summary of the block; "" for
             a dropped key.
         kind: `column`, `ref`, or `endpoint` for a rewritten call or name; `labels` for an added
-            filter label; `inferred` for a dropped `tables:` or `derived:` key.
+            filter label; `inferred` for a dropped `tables:` or `derived:` key; `file` for a
+            `sql_file:` rewritten as a `file()` call.
     """
 
     line: int
@@ -199,16 +202,18 @@ def migrate_refs(text: str) -> MigrationResult:
     )
 
 
-def drop_inferred_keys(result: MigrationResult) -> MigrationResult:
-    """Drop each metric's, filter's and verified query's `tables:` and `derived:` key, with its value.
+def rewrite_member_keys(result: MigrationResult) -> MigrationResult:
+    """Drop the member keys SST infers, and write a verified query's `sql_file:` as a `file()` call.
 
-    A key is dropped with the lines indented below it, so a block `tables:` list goes too. A
-    key written as an entry's first line, after its `- `, is left alone: dropping it would
-    leave the entry without its dash.
+    Each metric's, filter's and verified query's `tables:` and `derived:` key is dropped with
+    the lines indented below it, so a block `tables:` list goes too. A verified query's
+    `sql_file: x` becomes `sql: "{{ file('x') }}"`, its comment kept. A key written as an
+    entry's first line, after its `- `, is left alone: dropping it would leave the entry
+    without its dash.
     """
     lines = result.text.splitlines(keepends=True)
     kept: list[str] = []
-    dropped: list[Rewrite] = []
+    changes: list[Rewrite] = []
     root: str | None = None
     skip_below: int | None = None
     for index, line in enumerate(lines):
@@ -222,15 +227,22 @@ def drop_inferred_keys(result: MigrationResult) -> MigrationResult:
             root = top.group(1)
         key = _INFERRED_KEY.match(body)
         if key is not None and root in _INFERRING_ROOTS:
-            dropped.append(Rewrite(index + 1, indent + 1, body.strip(), "", "inferred"))
+            changes.append(Rewrite(index + 1, indent + 1, body.strip(), "", "inferred"))
             skip_below = indent
             continue
+        sql_file = _SQL_FILE_KEY.match(body) if root == "snowflake_verified_queries" else None
+        if sql_file is not None:
+            after = f"sql{sql_file.group(2)}\"{{{{ file('{_unquoted(sql_file.group(3))}') }}}}\""
+            comment = f"  {sql_file.group(4)}" if sql_file.group(4) else ""
+            changes.append(Rewrite(index + 1, indent + 1, body.strip(), after, "file"))
+            kept.append(f"{sql_file.group(1)}{after}{comment}{line[len(body) :]}")
+            continue
         kept.append(line)
-    if not dropped:
+    if not changes:
         return result
     return MigrationResult(
         "".join(kept),
-        tuple(sorted((*result.rewrites, *dropped), key=lambda item: (item.line, item.col))),
+        tuple(sorted((*result.rewrites, *changes), key=lambda item: (item.line, item.col))),
         result.untouched,
     )
 

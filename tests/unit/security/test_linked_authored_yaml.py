@@ -2,8 +2,9 @@
 
 Discovery of semantic models, and the agent, tool, and eval-metric loaders, refuse a linked
 file or folder with SST-PRT009 wherever it points, inside the project or out; a link that
-loops is SST-DIS005. A verified query's `sql_file:` and a tool's `body_file:` are refused the
-same way, and may not climb out of the project with `..` or an absolute path. The input
+loops is SST-DIS005. The file a verified query's `sql:` loads with `file()`, and a tool's
+`body_file:`, are refused the same way, and may not climb out of the project with `..` or an
+absolute path (for a verified query, SST-REF027). The input
 checksums a manifest records skip every link the loaders refuse.
 """
 
@@ -20,6 +21,7 @@ from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
 from snowflake_semantic_tools.adapters.yaml.documents import load_documents
 from snowflake_semantic_tools.adapters.yaml.evals.metrics import load_custom_metrics
+from snowflake_semantic_tools.adapters.yaml.fields import OUTSIDE_PROJECT
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.semantic.file_reads import _verified_query_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.readers import load_verified_queries
@@ -213,11 +215,9 @@ def test_a_linked_eval_metric_file_or_folder_is_refused(tmp_path: Path, linked: 
     assert _refusals(diagnostics) == [(link.relative_to(project).as_posix(), LINKED)]
 
 
-# --- a verified query's sql_file ------------------------------------------------------------
+# --- a verified query's file() ------------------------------------------------------------
 
-QUERY = (
-    "snowflake_verified_queries:\n  - name: q\n    question: How many?\n    tables: [products]\n    sql_file: {path}\n"
-)
+QUERY = "snowflake_verified_queries:\n  - name: q\n    question: How many?\n    sql: \"{{{{ file('{path}') }}}}\"\n"
 
 
 def _query_project(tmp_path: Path, sql_file: str) -> Path:
@@ -228,22 +228,25 @@ def _query_project(tmp_path: Path, sql_file: str) -> Path:
 
 
 def _sql_file_results(project: Path) -> tuple[list[tuple[str, str]], list[str]]:
+    """The refusals, a path outside the project as SST-REF027 names it, and the SQL each query read."""
     documents = load_documents(discover_yaml(project, "semantic_models"), parse_yaml_bytes)
     queries = load_verified_queries(documents, project, "semantic_models")
-    return _refusals(list(_verified_query_diagnostics(documents))), [query.sql for query in queries]
+    found = list(_verified_query_diagnostics(documents))
+    outside = [(item.context["path"], OUTSIDE_PROJECT) for item in coded(found, "SST-REF027")]
+    return [*outside, *_refusals(found)], [query.sql for query in queries]
 
 
 def test_a_sql_file_climbing_out_of_the_project_is_refused_and_never_read(tmp_path: Path) -> None:
     project = _query_project(tmp_path, "../../../secret.sql")
     refusals, sql = _sql_file_results(project)
-    assert refusals == [("../secret.sql", "it resolves outside the project")]
+    assert refusals == [("../../../secret.sql", OUTSIDE_PROJECT)]
     assert sql == []
 
 
 def test_an_absolute_sql_file_is_refused_and_never_read(tmp_path: Path) -> None:
     absolute = str(tmp_path / "secret.sql")
     refusals, sql = _sql_file_results(_query_project(tmp_path, absolute))
-    assert refusals == [(absolute, "it resolves outside the project")]
+    assert refusals == [(absolute, OUTSIDE_PROJECT)]
     assert sql == []
 
 
@@ -263,7 +266,7 @@ def test_a_sql_file_reached_through_a_linked_folder_and_back_up_is_refused(tmp_p
     (tmp_path / "deep" / "a" / "b").mkdir(parents=True)
     (project / "semantic_models" / "queries" / "link").symlink_to(tmp_path / "deep" / "a" / "b")
     refusals, sql = _sql_file_results(project)
-    assert refusals == [("../secret.sql", "it resolves outside the project")]
+    assert refusals == [("link/../../../../secret.sql", OUTSIDE_PROJECT)]
     assert sql == []
 
 

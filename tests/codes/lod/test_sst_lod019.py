@@ -12,8 +12,7 @@ VERIFIED_QUERY = (
     "snowflake_verified_queries:\n"
     "  - name: how_many\n"
     "    question: How many?\n"
-    "    sql_file: sql/how_many.sql\n"
-    "    tables: [\"{{ ref('products') }}\"]\n"
+    "    sql: \"{{ file('sql/how_many.sql') }}\"\n"
 )
 QUERIES = "semantic_models/verified_queries"
 

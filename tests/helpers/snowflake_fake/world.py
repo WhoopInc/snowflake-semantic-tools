@@ -132,6 +132,9 @@ class SnowflakeWorld:
         self.stage_formats: dict[str, str] = dict(stage_formats or {})
         self.stage_types: dict[str, str] = {}
         self.stage_files: set[str] = set(stage_files)
+        # Apply publishes artifacts on several threads, so the staged files are read and
+        # written under one lock; a copy taken while another thread uploads would fail.
+        self.stage_guard = threading.Lock()
         self.staged_file_metadata: dict[str, StagedFileMetadata] = dict(staged_file_metadata or {})
         self.staged_file_contents: dict[str, bytes] = dict(staged_file_contents or {})
         self.stage_files.update(self.staged_file_metadata)

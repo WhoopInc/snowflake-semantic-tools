@@ -3,7 +3,7 @@
 #
 #   order_count_by_state    inline sql, onboarding, verified_at as epoch seconds
 #   revenue_by_location     inline sql, onboarding, verified_at as a date string
-#   product_mix_by_type     sql_file sidecar, no optional keys
+#   product_mix_by_type     a file() sidecar, no optional keys
 #   total_revenue_all_time  inline sql, no optional keys
 #
 # An absent optional key is left out of the rendered entry, not rendered empty.
@@ -50,14 +50,15 @@ snowflake_verified_queries:
     verified_at: "2026-01-01"
     verified_by: "analytics-platform"
 
-  # sql_file: resolves against this file's directory. SST drops the sidecar's
-  # leading comment block, so the rendered SQL starts at SELECT.
+  # file() resolves against this file's directory, and the sidecar's ref()
+  # calls give the query its tables. SST drops the sidecar's leading comment
+  # block, so the rendered SQL starts at SELECT.
   - name: product_mix_by_type
     description: |-
       Units sold split by whether the item is food or drink. Held in a sidecar so
       the fixture exercises the external-SQL path.
     question: "How many units did we sell of food versus drink?"
-    sql_file: sql/product_mix_by_type.sql
+    sql: "{{ file('sql/product_mix_by_type.sql') }}"
 
   # The minimal entry: it renders only QUESTION and SQL. Keep it that way.
   - name: total_revenue_all_time

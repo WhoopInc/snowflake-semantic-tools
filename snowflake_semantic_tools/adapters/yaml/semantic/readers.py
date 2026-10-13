@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import posixpath
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -190,6 +191,14 @@ def _strip_sql_header(sql: str) -> str:
     return "\n".join(lines).rstrip()
 
 
+def _calls_file(text: str) -> bool:
+    """Whether `text` holds a `file()` call; a template that does not parse holds none."""
+    try:
+        return any(call.function == "file" for call in scan_template_calls(text))
+    except TemplateSyntaxError:
+        return False
+
+
 def _verified_at(value: object, *, name: str) -> int | None:
     """Read `verified_at` as epoch seconds: an integer, or an ISO-8601 string, in UTC unless it says.
 
@@ -220,11 +229,13 @@ def load_verified_queries(
 ) -> tuple[VerifiedQueryDef, ...]:
     """Read every document's `snowflake_verified_queries:` entries into records, in document order.
 
-    A file in any folder is read. The SQL is `sql:`, or the `sql_file:` it names relative to the
-    entry's own file. An entry is skipped here when it is not a mapping, has no `name` or no
-    `question`, declares both or neither of `sql` and `sql_file`, or names a file that is, or
-    is reached through, a symbolic link, lies outside the project, cannot be
-    read, is not UTF-8, or holds only whitespace; the shape checks report those files.
+    A file in any folder is read. The SQL is `sql:`, or the file a `{{ file('<path>') }}` call
+    that is all of it names, relative to the entry's own file. Its tables are the models the
+    SQL, the file's when it names one, names with `ref()`. An entry is skipped here when it is
+    not a mapping, has no `name`, `question` or `sql`, calls `file()` in a `sql:` that call is
+    not all of, or names a file that is, or is reached through, a symbolic link, lies outside
+    the project, cannot be read, is not UTF-8, or holds only whitespace; the shape checks
+    report those.
 
     Raises:
         ProjectError: An entry's `verified_at` is neither an integer nor an ISO-8601 string; an
@@ -232,16 +243,17 @@ def load_verified_queries(
     """
     out: list[VerifiedQueryDef] = []
     for document, index, node in load_nodes(documents, member_root("verified_query")):
-        if not node.get("name") or not node.get("question"):
+        if not node.get("name") or not node.get("question") or node.get("sql") is None:
             continue
-        has_sql = node.get("sql") is not None
-        has_sql_file = node.get("sql_file") is not None
-        if has_sql == has_sql_file:
+        sql = str(node["sql"])
+        sql_file = None
+        requested = member_reference(sql.strip(), "file")
+        if requested is None and _calls_file(sql):
+            # A file() that is not all of `sql:` is SST-REF003's to report.
             continue
-        sql = str(node.get("sql") or "")
-        if not sql and node.get("sql_file"):
+        if requested is not None:
             raw = documents.by_path[document.path]
-            sql_path, refusal = sibling_within(raw.abs_path, document.path, str(node["sql_file"]))
+            sql_path, refusal = sibling_within(raw.abs_path, document.path, requested)
             if refusal is not None:
                 continue
             try:
@@ -250,6 +262,7 @@ def load_verified_queries(
                 continue
             if not sql.strip():
                 continue
+            sql_file = posixpath.normpath(posixpath.join(posixpath.dirname(document.path), requested))
         sql = _strip_sql_header(sql)
         name = str(node["name"])
         try:
@@ -271,6 +284,7 @@ def load_verified_queries(
                 origin=node_origin(document, member_root("verified_query"), index),
                 template_calls=template_calls,
                 poisoned=poisoned,
+                sql_file=sql_file,
             )
         )
     return tuple(out)

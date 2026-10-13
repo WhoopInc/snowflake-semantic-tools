@@ -167,7 +167,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{file}: could not read {path}",
         "create the file, correct the path, or make it readable",
         condition=(
-            "a `file()` sidecar, `body_file:` or `sql_file:` a document references is not a file or "
+            "a `file()` sidecar or `body_file:` a document references is not a file or "
             "cannot be read; also an eval, metric, or project YAML file that cannot be read"
         ),
     ),

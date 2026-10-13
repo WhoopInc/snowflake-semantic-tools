@@ -87,16 +87,38 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     assert pending == 2
     files = report["data"]["files"]
     assert {item["path"]: item["rewrites"] for item in files} == {
-        "semantic_models/filters/filters.yml": {"ref": 1, "endpoint": 0, "column": 1, "inferred": 1, "labels": 1},
-        "semantic_models/metrics/metrics.yml": {"ref": 2, "endpoint": 0, "column": 2, "inferred": 2, "labels": 0},
+        "semantic_models/filters/filters.yml": {
+            "ref": 1,
+            "endpoint": 0,
+            "column": 1,
+            "inferred": 1,
+            "file": 0,
+            "labels": 1,
+        },
+        "semantic_models/metrics/metrics.yml": {
+            "ref": 2,
+            "endpoint": 0,
+            "column": 2,
+            "inferred": 2,
+            "file": 0,
+            "labels": 0,
+        },
         "semantic_models/relationships/relationships.yml": {
             "ref": 0,
             "endpoint": 4,
             "column": 4,
             "inferred": 0,
+            "file": 0,
             "labels": 0,
         },
-        "semantic_models/semantic_views/views.yml": {"ref": 3, "endpoint": 0, "column": 0, "inferred": 0, "labels": 0},
+        "semantic_models/semantic_views/views.yml": {
+            "ref": 3,
+            "endpoint": 0,
+            "column": 0,
+            "inferred": 0,
+            "file": 0,
+            "labels": 0,
+        },
     }
     written, _ = invoke("migrate", "refs", "--project-dir", str(project), "--write")
     assert written == 0

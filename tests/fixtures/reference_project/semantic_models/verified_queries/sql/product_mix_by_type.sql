@@ -1,4 +1,4 @@
--- The sidecar of verified query product_mix_by_type, read through sql_file:
+-- The sidecar of verified query product_mix_by_type, read through file()
 -- relative to verified_queries.yml. SST strips this leading comment block, so
 -- the rendered SQL starts at SELECT.
 -- The one data literal, 'completed', is a member of the order_state enum.

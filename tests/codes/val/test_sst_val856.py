@@ -15,7 +15,7 @@ def test_sst_val856_fires() -> None:
     diagnostic = only(
         compile_agents(
             agent(
-                skill_ref("month-close", "month-close"),
+                skill_ref("", "month-close"),
                 skill_ref("", "finance-kit", ref="plugin"),
                 skill_ref("", "ghost-kit", ref="plugin"),
             ),
@@ -30,7 +30,5 @@ def test_sst_val856_fires() -> None:
 
 def test_sst_val856_silent() -> None:
     assert "SST-VAL856" not in codes(
-        compile_agents(
-            agent(skill_ref("month-close", "month-close"), skill_ref("", "finance-kit", ref="plugin"))
-        ).diagnostics
+        compile_agents(agent(skill_ref("", "month-close"), skill_ref("", "finance-kit", ref="plugin"))).diagnostics
     )

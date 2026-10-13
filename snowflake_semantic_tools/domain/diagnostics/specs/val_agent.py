@@ -379,10 +379,10 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL540",
         Severity.ERROR,
-        "SKILL-type extension source has no name",
-        "agent '{artifact}': the skill source for skill('{path}') omits name",
-        "declare name; it is optional only for PLUGIN-type",
-        condition="an agent's `skill('<path>')` source declares no `name`",
+        "Skill entry declares a name",
+        "agent '{artifact}': skill('{path}') takes no name; it is named after the skill, not '{name}'",
+        "remove name",
+        condition="an agent's `skill('<path>')` entry declares a `name`, which is the skill's own",
     ),
     spec(
         "SST-VAL541",

@@ -40,8 +40,7 @@ spec:
       description: |-
         Orders and revenue by customer and location. Do NOT use for product detail.
   skills:
-    - name: sales-semantics
-      source:
+    - source:
         type: CORTEX_EXTENSION
         path: "{{ skill('sales-semantics') }}"
 alias: promoted
@@ -53,8 +52,8 @@ alias: promoted
   bare string. `{{ file('<path>') }}` inlines a Markdown file relative to the agent's folder.
 - Each tool's `description` is what the agent reads to pick it: say when to use it, and when
   not to.
-- Load a project skill with `{{ skill('<name>') }}` and never write `version:` for it
-  (`SST-VAL838`): SST pins the version it publishes. An extension another project publishes
+- Load a project skill with `{{ skill('<name>') }}` and write neither `name:` (`SST-VAL540`),
+  which is the skill's own, nor `version:` (`SST-VAL838`): SST pins the version it publishes. An extension another project publishes
   is `{{ extension('<name>') }}` and must pin a version.
 - Every apply of a changed agent adds a new agent version.
 

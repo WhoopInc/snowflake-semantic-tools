@@ -124,14 +124,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         note="Unconditional, because every 1.0 consumer is an agent.",
     ),
     spec(
-        "SST-VAL412",
-        Severity.ERROR,
-        "Verified query declares neither sql nor sql_file, or both",
-        "verified_query '{member}': {detail}",
-        "declare exactly one of `sql` or `sql_file`",
-        condition="a verified query declares both `sql` and `sql_file`, or neither",
-    ),
-    spec(
         "SST-VAL413",
         Severity.ERROR,
         "Verified query question text is not unique within a view",

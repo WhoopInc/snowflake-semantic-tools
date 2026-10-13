@@ -15,7 +15,7 @@ SKILLS = {"semantics": ExtensionPin("skill:semantics", QualifiedName.parse("DB.S
 def _plugged(*members: str) -> list[Diagnostic]:
     plugins = {"toolkit": ExtensionPin("plugin:toolkit", QualifiedName.parse("DB.S.TOOLKIT"), "SST_B", members)}
     skills = (
-        AgentSkill("semantics", "CORTEX_EXTENSION", "semantics", "", ref="skill"),
+        AgentSkill("", "CORTEX_EXTENSION", "semantics", "", ref="skill"),
         AgentSkill("", "CORTEX_EXTENSION", "toolkit", "", ref="plugin"),
     )
     result = compile_agents(agent("sales_agent", skills=skills), skills=SKILLS, plugins=plugins)
@@ -26,7 +26,7 @@ def test_sst_val541_fires() -> None:
     [diagnostic] = _plugged("semantics", "operations")
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == (
-        "agent 'sales_agent': 'semantics' and 'plugin('toolkit')' both contribute 'semantics'; the later wins"
+        "agent 'sales_agent': 'skill('semantics')' and 'plugin('toolkit')' both contribute 'semantics'; the later wins"
     )
     assert diagnostic.subject == "agent:sales_agent"
 

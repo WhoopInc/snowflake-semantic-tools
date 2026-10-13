@@ -150,32 +150,31 @@ def test_duplicate_view_names_are_diagnosed_and_not_manifest_candidates(tmp_path
     assert [diagnostic.code for diagnostic in project.diagnostics] == ["SST-VAL001"]
 
 
-def test_vq_exclusivity_and_legacy_globals_are_structured_diagnostics(tmp_path: Path) -> None:
+def test_a_misused_vq_file_call_and_legacy_globals_are_structured_diagnostics(tmp_path: Path) -> None:
     write_project(tmp_path)
     root = tmp_path / "semantic_models"
     verified = root / "verified_queries"
     verified.mkdir()
     (verified / "bad.yml").write_text(
         "snowflake_verified_queries:\n"
-        "  - name: both\n"
+        "  - name: inline_file\n"
         "    question: q\n"
-        "    tables: [orders]\n"
-        "    sql: SELECT 1\n"
-        "    sql_file: q.sql\n",
+        "    sql: \"SELECT 1 FROM {{ file('q.sql') }}\"\n",
         encoding="utf-8",
     )
     (root / "metrics" / "legacy.yml").write_text(
         "snowflake_metrics:\n"
         "  - name: legacy\n"
-        "    tables: [\"{{ table('orders') }}\"]\n"
-        "    expr: \"SUM({{ column('orders', 'total') }})\"\n",
+        "    expr: \"SUM({{ column('orders', 'total') }}) + COUNT({{ table('orders') }})\"\n",
         encoding="utf-8",
     )
     documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
-    assert [diagnostic.code for diagnostic in _verified_query_diagnostics(documents)] == ["SST-VAL412"]
+    # file() loads a whole sql: value; inside other SQL it is a malformed field.
+    assert [diagnostic.code for diagnostic in _verified_query_diagnostics(documents)] == ["SST-REF003"]
+    # In source order: the column() call, then the table() call.
     assert [diagnostic.code for diagnostic in legacy_reference_diagnostics(documents)] == [
-        "SST-REF034",
         "SST-REF035",
+        "SST-REF034",
     ]
 
 
@@ -188,15 +187,12 @@ def test_vq_sources_and_relationship_conditions_fail_with_registered_codes(tmp_p
         "snowflake_verified_queries:\n"
         "  - name: absent_source\n"
         "    question: q1\n"
-        "    tables: [products]\n"
         "  - name: missing_file\n"
         "    question: q2\n"
-        "    tables: [products]\n"
-        "    sql_file: missing.sql\n"
+        "    sql: \"{{ file('missing.sql') }}\"\n"
         "  - name: empty_file\n"
         "    question: q3\n"
-        "    tables: [products]\n"
-        "    sql_file: empty.sql\n",
+        "    sql: \"{{ file('empty.sql') }}\"\n",
         encoding="utf-8",
     )
     (verified / "empty.sql").write_text("", encoding="utf-8")
@@ -205,16 +201,16 @@ def test_vq_sources_and_relationship_conditions_fail_with_registered_codes(tmp_p
     (relationships / "invalid.yml").write_text(
         "snowflake_relationships:\n"
         "  - name: no_conditions\n"
-        "    left_table: products\n"
-        "    right_table: products\n"
+        "    left_table: \"{{ ref('products') }}\"\n"
+        "    right_table: \"{{ ref('products') }}\"\n"
         "    relationship_conditions: []\n",
         encoding="utf-8",
     )
     documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
 
     assert [diagnostic.code for diagnostic in _verified_query_diagnostics(documents)] == [
-        "SST-VAL412",
-        "SST-LOD018",
+        "SST-PRS002",
+        "SST-REF014",
         "SST-LOD019",
     ]
     assert [
@@ -232,12 +228,10 @@ def test_a_vq_sql_file_that_is_not_utf8_is_reported_instead_of_raising(
         "snowflake_verified_queries:\n"
         "  - name: latin1\n"
         "    question: q\n"
-        "    tables: [products]\n"
-        "    sql_file: latin1.sql\n"
+        "    sql: \"{{ file('latin1.sql') }}\"\n"
         "  - name: plain\n"
         "    question: q2\n"
-        "    tables: [products]\n"
-        "    sql_file: sql/plain.sql\n",
+        "    sql: \"{{ file('sql/plain.sql') }}\"\n",
         encoding="utf-8",
     )
     (verified / "latin1.sql").write_bytes(b"SELECT 'caf\xe9'\n")
