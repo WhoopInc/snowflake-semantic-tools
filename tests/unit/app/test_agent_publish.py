@@ -143,7 +143,7 @@ def test_agent_publish_appends_profile_comment_marker_and_secure_metadata() -> N
     ).rendered_for_publish("b" * 64)
     assert any("SET PROFILE" in str(statement) for statement in published.statements)
     assert any(
-        f"[sst:{'b' * 64}:{published.fingerprint}] Scope comment" in str(statement)
+        f"Scope comment [sst:{'b' * 64}:{published.fingerprint}]" in str(statement)
         for statement in published.statements
     )
     assert str(published.statements[-1]) == "ALTER AGENT DB.S.AGENT SET SECURE = TRUE"

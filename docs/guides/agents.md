@@ -73,7 +73,7 @@ top-level keys:
 
 | Key | Meaning |
 |---|---|
-| `comment` | Published as the agent's comment, after SST's ownership marker. |
+| `comment` | Published as the agent's comment, before SST's ownership marker. |
 | `profile` | `display_name`, `avatar`, and `color`, set with `ALTER AGENT ... SET PROFILE`. Two agents with one display name is a warning (`SST-VAL549`); a color must be a plain color name or `var(--token)`, and an avatar must be in `snowflake.profile.avatar_allowlist` when that is set (`SST-VAL548`). |
 | `spec` | The Cortex Agent specification, below. |
 | `alias` | The version alias SST moves to each new version. |
@@ -255,7 +255,7 @@ or `generic` member has no renderer (`SST-RND040`), so it belongs under
 `reference:`, and a type outside these six is an error (`SST-VAL603`).
 
 Every member takes `name:` and `type:` (`SST-PRS002`), and `description:`,
-which becomes the object's comment after SST's ownership marker and is the
+which becomes the object's comment before SST's ownership marker and is the
 description of a search or generic tool that calls the member and sets none. A member
 other than a stage needs `on:` or `body_file:` (`SST-VAL604`). A key SST does
 not read, at a tools file's root, on a group, or on a member, is a warning

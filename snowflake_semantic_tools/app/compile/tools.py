@@ -8,7 +8,7 @@ from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneA
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, RenderedArtifact
+from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, RenderedArtifact, marked_comment
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolKind, ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.render.tool import (
     render_tool,
@@ -63,15 +63,14 @@ class CompiledTool(StandaloneArtifact):
         return self.rendered
 
     def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:
-        """Carry the ownership marker, then the member's description, in the object's COMMENT.
+        """Carry the member's description, then the ownership marker, in the object's COMMENT.
 
         A search service takes the comment inside its CREATE statement; a procedure, a
         function, or a stage gets one more statement that sets it. Any other object type
         keeps its statements. Apply expects the marker either way.
         """
         marker = OwnershipMarker(manifest_id, self.rendered.fingerprint).text
-        description = self.member.description
-        comment_value = f"{marker} {description}" if description else marker
+        comment_value = marked_comment(self.member.description, marker)
         statements = self.rendered.statements
         if self.rendered.object_type == "CORTEX SEARCH SERVICE":
             source = self.rendered.required_relations[0] if self.rendered.required_relations else None

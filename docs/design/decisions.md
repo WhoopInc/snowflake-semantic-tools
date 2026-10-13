@@ -353,8 +353,9 @@ behaviour under SST's write pattern is measured.
 
 ### Ownership is a marker on the object
 
-**Chosen.** SST writes `[sst:<manifest id>:<fingerprint>]` into an object's
-comment and reads it from the `SHOW` rows plan already fetches. An object under
+**Chosen.** SST writes `[sst:<manifest id>:<fingerprint>]` at the end of an
+object's comment, after the description a reader sees first, and reads it from
+the `SHOW` rows plan already fetches, wherever in the comment it sits. An object under
 an artifact's name that state does not record is never taken over
 (`SST-PLN024`, which no setting demotes).
 

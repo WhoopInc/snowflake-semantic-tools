@@ -298,7 +298,7 @@ def test_compiled_tool_publication_covers_stage_and_empty_projections() -> None:
     assert compiled.dbt_relations == ()
     published = compiled.rendered_for_publish("b" * 64)
     assert str(published.statements[-1]) == (
-        f"ALTER STAGE DB.S.STAGE SET COMMENT = '[sst:{'b' * 64}:{compiled.rendered.fingerprint}] Owner''s stage.'"
+        f"ALTER STAGE DB.S.STAGE SET COMMENT = 'Owner''s stage. [sst:{'b' * 64}:{compiled.rendered.fingerprint}]'"
     )
 
 

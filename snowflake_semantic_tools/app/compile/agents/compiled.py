@@ -17,6 +17,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     SmokeProbe,
     StatementPlan,
     Upload,
+    marked_comment,
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.sql import (
@@ -291,7 +292,7 @@ def _agent_metadata_statements(
     marker: str,
 ) -> tuple[Sql, ...]:
     agent = qname(target)
-    comment = f"{marker} {model.comment}" if model.comment else marker
+    comment = marked_comment(model.comment, marker)
     return (
         sql("ALTER AGENT {agent} SET PROFILE = {profile}", agent=agent, profile=literal(_profile_json(model))),
         sql("ALTER AGENT {agent} SET COMMENT = {comment}", agent=agent, comment=literal(comment)),

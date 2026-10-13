@@ -51,6 +51,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle.marker import marked_comment
 from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY, check_member_index
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
@@ -491,7 +492,7 @@ def _trailing_clauses(view: SemanticView, queries: list[Sql]) -> list[Sql]:
     clauses: dict[str, list[Sql]] = {}
     comment = view.comment
     if view.ownership_marker:
-        comment = f"{comment.rstrip()} {view.ownership_marker}" if comment else view.ownership_marker
+        comment = marked_comment(comment, view.ownership_marker)
     if comment:
         clauses["COMMENT"] = [sql("  COMMENT = {comment}", comment=literal(comment))]
     if view.ai_sql_generation:

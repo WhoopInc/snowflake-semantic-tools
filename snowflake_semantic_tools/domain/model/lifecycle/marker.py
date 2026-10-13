@@ -3,7 +3,9 @@
 A marker is `[sst:<manifest_id>:<fingerprint>]`: the manifest that published the object
 and the fingerprint of what it published, each a 64-character hex digest. Plan treats an
 object as SST's only when its comment carries a marker that matches state, so this text
-form is a contract with every object SST has already published.
+form is a contract with every object SST has already published. SST writes the marker at
+the end of the comment, after the description a reader sees first; it is read wherever it
+sits, so an object published with the marker first is still SST's.
 """
 
 from __future__ import annotations
@@ -54,3 +56,9 @@ def extract_marker(comment: str | None) -> OwnershipMarker | None:
         return None
     match = matches[-1]
     return OwnershipMarker(match.group(1).lower(), match.group(2).lower())
+
+
+def marked_comment(text: str | None, marker: str) -> str:
+    """Return the comment SST publishes: `text`, then `marker`; the marker alone when `text` is blank."""
+    body = (text or "").rstrip()
+    return f"{body} {marker}" if body else marker

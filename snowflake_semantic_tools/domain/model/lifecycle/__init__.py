@@ -22,7 +22,7 @@ from snowflake_semantic_tools.domain.model.lifecycle.apply import (
     RetryPolicy,
 )
 from snowflake_semantic_tools.domain.model.lifecycle.change import Change, ChangeSet, CompositePlan
-from snowflake_semantic_tools.domain.model.lifecycle.marker import OwnershipMarker, extract_marker
+from snowflake_semantic_tools.domain.model.lifecycle.marker import OwnershipMarker, extract_marker, marked_comment
 from snowflake_semantic_tools.domain.model.lifecycle.observation import (
     ArtifactKey,
     CompositeObservation,
@@ -83,4 +83,5 @@ __all__ = [
     "StatementPlan",
     "Upload",
     "extract_marker",
+    "marked_comment",
 ]

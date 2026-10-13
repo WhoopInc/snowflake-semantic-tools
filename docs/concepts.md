@@ -410,5 +410,6 @@ The engine's docstrings and diagnostics use a few words in one sense each:
 - **poisoned**: a member or view that has an error is poisoned. It is still
   checked, so every error is reported at once, but it is not attached to views
   or built; this is why fixing one error can reveal the next.
-- **ownership marker**: the `[sst:<manifest id>:<fingerprint>]` tag SST writes in
-  an object's comment, which `plan` reads to prove that SST published it.
+- **ownership marker**: the `[sst:<manifest id>:<fingerprint>]` tag SST writes at
+  the end of an object's comment, after its description, which `plan` reads to
+  prove that SST published it. A marker anywhere in the comment is read.

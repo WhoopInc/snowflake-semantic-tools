@@ -37,6 +37,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     SnowflakeObservation,
     StatementPlan,
     extract_marker,
+    marked_comment,
 )
 from tests.helpers.sql_values import statement, statements, texts
 
@@ -61,6 +62,11 @@ def test_ownership_marker_validation_and_extraction() -> None:
     assert extract_marker(None) is None
     assert extract_marker("ordinary comment") is None
     assert extract_marker(f"old [sst:{'c' * 64}:{'d' * 64}] {marker.text}") == marker
+    # SST writes the marker last; one written first, as earlier releases did, still reads.
+    assert extract_marker(f"{marker.text} Orders and revenue.") == marker
+    assert marked_comment("Orders and revenue.  ", marker.text) == f"Orders and revenue. {marker.text}"
+    assert marked_comment(None, marker.text) == marked_comment(" ", marker.text) == marker.text
+    assert extract_marker(marked_comment("Orders [sst:x] and revenue.", marker.text)) == marker
     with pytest.raises(ValueError, match="manifest_id"):
         OwnershipMarker("short", "b" * 64)
     with pytest.raises(ValueError, match="fingerprint"):

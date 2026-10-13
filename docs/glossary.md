@@ -68,7 +68,7 @@ where it is explained.
   verified query, or custom instruction: it reaches Snowflake inside the views
   it attaches to, never on its own. See [members](concepts.md#members).
 - **Ownership marker.** The `[sst:<manifest id>:<fingerprint>]` tag SST writes
-  in a published object's comment. See
+  at the end of a published object's comment. See
   [terms used in the code](concepts.md#terms-used-in-the-code).
 - **Partial.** `--partial`: go ahead with every artifact that has no errors and
   depends on none that has. See
