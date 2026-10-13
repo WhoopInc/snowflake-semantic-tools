@@ -98,15 +98,15 @@ the member's tables. A view need not list its metrics; adding a metric over
 narrows what attached, with `columns:`, `metrics:`, or `relationships:`, or their
 `exclude_` counterparts.
 
-A member's tables are its `tables:`, or, when it declares none, the models its
-expression names with `{{ ref() }}` (`SST-MEM012`, an info diagnostic). A derived
-metric declares none: its tables come from the metrics it references. Some
-consequences:
+A member's tables are the models its templates name with `{{ ref() }}`: a
+metric's or filter's expression, or a verified query's SQL. A member never
+writes `tables:`. A derived metric names no column: its tables come from the
+metrics it references. Some consequences:
 
 - A member whose tables no view covers attaches nowhere, and validation warns
   about it (`SST-MEM005`) instead of dropping it silently.
-- `tables: []` is an error (`SST-PRS102`). An empty list would otherwise mean
-  "every view", which is never what an author meant.
+- A member that names no table, and is not a derived metric, is an error
+  (`SST-MEM002`), since it could attach to no view.
 
 Custom instructions are the exception: a view names the ones it wants with
 `{{ custom_instructions('<name>') }}`.
@@ -118,9 +118,9 @@ and SST resolves the name for the target being built:
 
 | Reference | Resolves to | Where it is accepted |
 |---|---|---|
-| `{{ ref('orders') }}` | the dbt model's relation | view and member `tables:` |
+| `{{ ref('orders') }}` | the dbt model's relation | a view's `tables:`, relationship endpoints, verified query SQL |
 | `{{ ref('orders', 'order_id') }}` | a column of that model | expressions, relationship conditions, a view's `columns:` |
-| `{{ source('raw', 'orders') }}` | a dbt source's relation, a table without columns | view and member `tables:` |
+| `{{ source('raw', 'orders') }}` | a dbt source's relation, a table without columns | a view's `tables:` |
 | `{{ metric('order_count') }}` | another metric's expression | metric expressions, verified query SQL, a view's `metrics:` |
 | `{{ var('name') }}` | a value from `vars:` in `sst_config.yml` | metric and filter expressions, verified query SQL |
 | `{{ custom_instructions('name') }}` | a custom instruction block | a view's `custom_instructions:` |
@@ -128,10 +128,12 @@ and SST resolves the name for the target being built:
 | `{{ tag('name') }}` | a tag from `tags:` in `sst_config.yml` | the `name` of a view's `tags:` entry |
 | `{{ semantic_view('name') }}`, `{{ agent('name') }}` | the published object | agent specs |
 | `{{ tool('group', 'name') }}` | a member of a tool group | agent specs |
-| `{{ skill('name') }}`, `{{ plugin('name') }}` | a skill or plugin this project publishes, pinned to its current version | agent skill sources |
+| `{{ skill('name') }}`, `{{ plugin('name') }}` | a skill or plugin this project publishes, pinned to its current version | agent skill sources, plugin and profile members |
+| `{{ command('path') }}`, `{{ mcp_server('name') }}`, `{{ hook('name') }}` | a command, MCP config or hook the project holds | profile members |
 | `{{ extension('name') }}` | an extension another project publishes, from `skills.extensions` | agent skill sources |
+| `{{ eval_dataset('name') }}`, `{{ eval_config('name') }}` | the dataset or config file of that `name:` in the agent's `evals/` folder | an agent's `evals:` |
 | `{{ eval_metric('name') }}` | a custom judge metric | eval configs |
-| `{{ file('path') }}` | the contents of a file beside the artifact | agent instructions |
+| `{{ file('path') }}` | the contents of a file beside the artifact | agent instructions, a verified query's `sql:` |
 
 A reference that does not resolve is an error. SST's `ref()` resolves against
 the dbt manifest, so it names models and their columns exactly as dbt does.

@@ -224,10 +224,10 @@ Drawn from: [YAML parser](../../snowflake_semantic_tools/adapters/yaml/parse.py)
 ### Members attach by table membership
 
 **Chosen.** A metric, relationship, filter, or verified query joins every view
-whose tables include all of its own. A member without `tables:` takes the
-models its expression references; a derived metric takes those of the metrics
-it names. A metric's `tables: []` is an error (`SST-PRS102`), and a member that
-reaches no view is a warning (`SST-MEM005`). A view may narrow what it exposes with
+whose tables include all of its own. A member's tables are the models its
+templates reference, never a list it writes; a derived metric takes those of the
+metrics it names. A member that names no table is an error (`SST-MEM002`), and
+one that reaches no view is a warning (`SST-MEM005`). A view may narrow what it exposes with
 include or exclude lists of columns, metrics, and relationships.
 
 **Rejected.** Membership by listing, under which every new metric is an edit of

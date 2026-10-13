@@ -261,8 +261,9 @@ and `plan` exits 0 from then on.
 - **`SST-REF015`**: a function has the wrong number of arguments.
 - **`SST-REF033`**: a `{{ ... }}` span is not a call, such as `{{ name }}` or a
   call missing its closing parenthesis.
-- **`SST-REF043`**: an expression's `ref('model')` names a model that is not in
-  the member's own `tables:`. Add the model there, or reference one of them.
+- **`SST-MEM002`**: a metric, filter or verified query names no model with
+  `ref()`, so it has no tables and attaches to no view. Write its columns, or
+  its SQL's tables, as `{{ ref() }}` calls.
 
 ## SST cannot connect, or connects the wrong way
 

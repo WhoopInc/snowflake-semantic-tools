@@ -153,15 +153,14 @@ semantic_views:
 snowflake_metrics:
   - name: order_count
     description: Number of distinct orders placed.
-    tables:
-      - orders
     expr: "COUNT(DISTINCT {{ ref('orders', 'order_id') }})"
 ```
 
 Any YAML file under `semantic_models/` is read, and each member is recognised
-by its root key; only views must live under `semantic_views/`. A metric joins
-every view whose tables include all of the metric's `tables:`, so `order_count`
-lands in `sales` without the view naming it.
+by its root key; only views must live under `semantic_views/`. A metric's tables
+are the models its expression names with `ref()`, and it joins every view whose
+tables include all of them, so `order_count` lands in `sales` without the view
+naming it.
 [Concepts](concepts.md#association-how-members-find-views) explains this
 association rule.
 

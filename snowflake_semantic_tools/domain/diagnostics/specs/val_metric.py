@@ -76,7 +76,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "metric '{metric}' expression contains bare identifier '{column}'",
         "wrap it in `{{ ref('<model>', '<column>') }}` so it is checked",
         condition=(
-            "a metric's expression names a column of one of its `tables:` without `ref()`; only the first "
+            "a metric's expression names a column of one of its tables without `ref()`; only the first "
             "such column is reported"
         ),
     ),
@@ -93,8 +93,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Metric expression touches a table outside the view",
         "metric '{metric}' in {artifact} reaches {outside}",
-        "add the model to the metric's `tables:`, or remove the reference",
-        condition="a metric's expression calls `ref()` on a dbt model that is not in the metric's own `tables:`",
+        "add the model to the view's `tables:`, or remove the reference",
+        condition="a metric's expression calls `ref()` on a dbt model that is not among the metric's own tables",
     ),
     spec(
         "SST-VAL113",
@@ -102,7 +102,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "using_relationships declared on a derived metric",
         "derived metric '{metric}' declares using_relationships",
         "remove `using_relationships`; derived metrics have no join path",
-        condition="a `derived: true` metric declares `using_relationships`",
+        condition="a derived metric declares `using_relationships`",
     ),
     spec(
         "SST-VAL114",

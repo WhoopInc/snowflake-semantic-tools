@@ -69,16 +69,23 @@ project is an error (`SST-CFG005`).
 
 0.3 accepted two global functions that 1.0 rejects: `{{ table('x') }}` and
 `{{ column('x', 'y') }}` (`SST-REF034`, `SST-REF035`). `sst migrate refs`
-rewrites them, rewrites `{{ ref('x') }}` relationship endpoints to the bare model
-name (`SST-REF045`), and labels boolean filters (`SST-VAL405`), in place and
-without touching anything else in the file:
+rewrites them, rewrites bare relationship endpoints to `{{ ref('x') }}`
+(`SST-REF046`), drops the `tables:` and `derived:` keys SST now infers from each
+member's templates, turns a verified query's `sql_file:` into a `file()` call
+(`SST-PRS126`), and labels boolean filters (`SST-VAL405`), in place and without
+touching anything else in the file:
 
 | 0.3 | 1.0 |
 |---|---|
-| `- "{{ table('orders') }}"` in a `tables:` list, or in `tables: [...]` | `- "{{ ref('orders') }}"` |
-| `left_table: "{{ table('orders') }}"` or `"{{ ref('orders') }}"` | `left_table: orders` |
+| `- "{{ table('orders') }}"` in a view's `tables:` list, or in `tables: [...]` | `- "{{ ref('orders') }}"` |
+| `left_table: orders`, or `"{{ table('orders') }}"` | `left_table: "{{ ref('orders') }}"` |
 | `{{ column('orders', 'order_id') }}` | `{{ ref('orders', 'order_id') }}` |
+| a metric's, filter's or verified query's `tables:` or `derived:` | dropped: the models its `ref()` calls name |
+| `sql_file: sql/x.sql` | `sql: "{{ file('sql/x.sql') }}"` |
 | a boolean filter with no `labels:` | the same filter with `labels: [filter]` |
+
+Verified-query SQL is not rewritten: a table it reads by name rather than with
+`{{ ref() }}` is warned about (`SST-VAL414`) at its line, and is yours to change.
 
 It reads every YAML file under `project.semantic_models_dir`, skipping hidden
 directories; it never edits dbt YAML, and needs neither a manifest nor a
@@ -91,7 +98,7 @@ sst migrate refs            # exit 0: nothing left to do
 ```
 
 The report names each file and what it would rewrite, for example
-`would rewrite semantic_models/relationships/relationships.yml: 4 bare, 4 column`.
+`would rewrite semantic_models/relationships/relationships.yml: 4 endpoint, 4 column`.
 A `table()` call anywhere else, such as inside a description, is printed to
 stderr as `file:line:column` and left alone, and the command exits `1` until it
 is fixed by hand; `--write` still rewrites everything else. A file's line endings
@@ -121,7 +128,9 @@ read, and is `SST-PRS020`. The other 0.3 spellings are not read at all.
 In the dbt YAML, `meta.sst.primary_key` is a list of columns and
 `meta.sst.unique_keys` a list of column lists. The 0.3 forms (a column name, a
 comma-separated string, a flat list of names) are errors (`SST-DBT032`) and are
-not read.
+not read. A table's synonyms and `distinct_range` sit beside them, in the
+model's `meta.sst`, and its COMMENT is the model's `description`; a view's
+`table_config` is an error that says so (`SST-PRS126`).
 
 A metric's `window:` block keeps 0.3's structure with 1.0 spellings, and `expr`
 is now the window function itself, applied to a metric or an aggregate; the
@@ -158,7 +167,8 @@ was shipping silently:
 
 - **Unknown references are errors.** 0.3 turned an unresolvable `ref()` into an
   upper-cased name and published it.
-- **Empty `tables:` is an error** (`SST-PRS102`). 0.3 treated an empty list
+- **A member that names no table is an error** (`SST-MEM002`). Its tables are
+  the models its `ref()` calls name; 0.3 treated an empty `tables:` list
   inconsistently, sometimes as every view.
 - **Ambiguous join paths are errors** for the metrics that cross them
   (`SST-VAL116`); add `using_relationships:`.

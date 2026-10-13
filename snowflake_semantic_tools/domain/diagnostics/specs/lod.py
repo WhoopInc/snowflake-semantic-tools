@@ -65,7 +65,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{file}: invalid UTF-8 at byte {offset}",
         "re-save the file as UTF-8",
         condition=(
-            "a file SST reads is not UTF-8: project YAML, an instruction sidecar, a `sql_file:`, or a "
+            "a file SST reads is not UTF-8: project YAML, an instruction or verified-query SQL sidecar, or a "
             "profile's `AGENTS.md` or rule"
         ),
     ),
@@ -177,9 +177,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Sidecar file is empty",
         "{path}, referenced by {file}, is empty",
         "add content, or remove the reference",
-        condition=(
-            "a referenced `sql_file:` has no bytes, or a `file()` sidecar or tool `body_file:` holds only whitespace"
-        ),
+        condition=("a `file()` sidecar or tool `body_file:` holds only whitespace"),
     ),
     spec(
         "SST-LOD020",

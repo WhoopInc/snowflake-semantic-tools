@@ -18,18 +18,25 @@ eval_metrics/
   answer_grounding.yml     # optional custom judges, shared by every eval
 ```
 
-The agent points at its eval files, relative to the agent's own directory:
+Every file in an agent's `evals/` folder is read: one with `questions:` is a
+dataset, any other a run configuration. Each declares a `name:` (`SST-PRS002`),
+unique among the folder's files of its kind (`SST-VAL765`). The agent names the
+pair it runs:
 
 ```yaml
 # agents/sales_analyst/agent.yml
 evals:
-  dataset: evals/dataset.yml
-  config: evals/config.yml
+  dataset: "{{ eval_dataset('sales_questions') }}"
+  config: "{{ eval_config('sales_nightly') }}"
 ```
 
-Both keys are required (`SST-PRS002`), and a path that leaves the project is
-refused (`SST-REF027`). Each file names the agent that points at it with
-`agent:` (`SST-REF012` otherwise).
+Both keys are required (`SST-PRS002`), and each is one reference call: a path or
+any other value is an error (`SST-REF047`). A name that no file of that kind in
+the agent's own `evals/` folder declares is `SST-REF048`; another agent's files
+are not searched. A linked file or folder is refused (`SST-PRT009`). Each file
+names the agent it belongs to with `agent:` (`SST-REF012` otherwise). A file the
+agent does not name is still validated, against the named file of the other
+kind, so a folder can hold the next config before the agent switches to it.
 
 Eval objects always publish into their agent's schema, so an eval and the agent
 it evaluates move between targets together. Neither eval file may set
@@ -40,6 +47,7 @@ it evaluates move between targets together. Neither eval file may set
 
 ```yaml
 agent: sales_analyst
+name: sales_questions
 description: Order and revenue questions the agent must route correctly.
 questions:
   - question: How many orders were placed at each location from January to March 2026?
@@ -119,6 +127,7 @@ are checked against them.
 
 ```yaml
 agent: sales_analyst
+name: sales_nightly
 agent_version: committed
 dataset:
   name_template: EVAL_{{ agent | upper }}_{{ sha7 }}

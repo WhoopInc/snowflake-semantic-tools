@@ -101,11 +101,13 @@ and computes is still the author's, and runs with the target's role.
   back into its tree, or to itself, is `SST-DIS005`. The semantic-models directory itself must
   not be a link, be reached through one, or resolve outside the project (`SST-PRT009`). Only
   the project directory may itself be a link.
-- **Paths a project names stay inside it.** A `{{ file() }}` instructions sidecar or an eval
-  file that resolves outside the project is refused (`SST-REF027`), and so is a dbt
-  `target-path` outside it (`SST-PRT009`). A verified query's `sql_file:` that climbs out of
-  the project, is absolute, or is or passes through a symbolic link is refused and never read
-  (`SST-PRT009`); so is a tool's `body_file:`, which is read relative to the project. A
+- **Paths a project names stay inside it.** A `{{ file() }}` sidecar, an agent's
+  instructions or a verified query's SQL, that resolves outside the project is refused
+  (`SST-REF027`), and so is a dbt `target-path` outside it (`SST-PRT009`). A sidecar that is
+  or passes through a symbolic link is refused and never read (`SST-PRT009`), as is a linked
+  eval file or `evals/` folder; eval files are found in the agent's own `evals/` folder, never
+  by a path. A tool's `body_file:` is read relative to the project, and one that leaves it,
+  is absolute, or passes through a link is refused (`SST-PRT009`). A
   `define:` member whose body is refused is reported once, as that refusal, and does not
   compile; one whose file is merely absent is `SST-LOD018`.
 - **Checksums are read from the project only.** The input checksums a manifest records skip

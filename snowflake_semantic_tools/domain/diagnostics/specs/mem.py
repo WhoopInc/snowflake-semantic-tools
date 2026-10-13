@@ -10,10 +10,10 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-MEM001",
         Severity.WARNING,
-        "Member declares a table present in no artifact",
+        "Member names a table present in no artifact",
         "{member} names table '{name}', which no {type} lists",
         "add the table to a view, or correct the member",
-        condition="a member's declared table is a dbt model that no semantic view lists",
+        condition="a table a member names with ref() is a dbt model that no semantic view lists",
     ),
     spec(
         "SST-MEM002",
@@ -41,7 +41,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{member} attaches to no {type}",
         "add its tables to a view, or delete the member",
         condition=(
-            "a member with tables, declared or inferred, or a derived one, attaches to no "
+            "a member with tables, or a derived one, attaches to no "
             "semantic view; a metric built on one that failed is not reported again"
         ),
     ),
@@ -83,9 +83,9 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-MEM010",
         Severity.WARNING,
-        "Member declares a table the artifact reaches only by relationship",
-        "{member} declares '{name}', reachable from {artifact} only through a join",
-        "declare the joined table explicitly",
+        "Member needs a table the artifact reaches only by relationship",
+        "{member} needs '{name}', reachable from {artifact} only through a join",
+        "add the joined table to the view's `tables:`",
         condition=(
             "a table the member needs is missing from the view closest to holding it, which "
             "reaches it only through a declared relationship"

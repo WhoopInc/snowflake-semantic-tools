@@ -26,8 +26,10 @@ until it is migrated.
    ```
 
    It turns `{{ table('x') }}` into `{{ ref('x') }}` and `{{ column('x', 'y') }}` into
-   `{{ ref('x', 'y') }}`, makes relationship endpoints bare model names, and labels boolean
-   filters. A `table()` call where no rewrite is safe, such as in a description, is printed
+   `{{ ref('x', 'y') }}`, writes relationship endpoints as `{{ ref('x') }}`, drops members'
+   `tables:` and `derived:`, turns `sql_file:` into `sql: "{{ file('...') }}"`, and labels
+   boolean filters. It does not rewrite verified-query SQL: change each table it reads by name
+   to `{{ ref('<model>') }}` (`SST-VAL414`). A `table()` call where no rewrite is safe, such as in a description, is printed
    as `file:line:column` and exits 1 until fixed by hand.
 3. Rename what `sst validate --no-snowflake-syntax-check` reports, one code at a time,
    with `sst explain <CODE>` for each:
@@ -40,6 +42,7 @@ until it is migrated.
    | `non_additive_by`, `order`, `nulls`, window `column` / `direction` | `non_additive_dimensions`, `sort_direction`, `null_order`, `ref` | `SST-PRS020` |
    | `relationship_type`, `join_type` | delete them | `SST-VAL211` |
    | `primary_key` as a string | a list of columns | `SST-DBT032` |
+   | a view's `table_config` | the model's `meta.sst.synonyms`, `distinct_range` and `description` | `SST-PRS126` |
    | `deploy:` in `sst_config.yml` | `apply:` | `SST-CFG200` |
    | a key only 0.3 read | what the message names | `SST-CFG043` |
 

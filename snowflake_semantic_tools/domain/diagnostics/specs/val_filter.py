@@ -43,8 +43,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "filter '{member}' expression contains bare identifier '{column}'",
         "wrap it in `{{ ref('<model>', '<column>') }}`",
         condition=(
-            "a filter's expression names a column of one of its `tables:` without `ref()`, so the "
-            "reference is not checked"
+            "a filter's expression names a column of one of its tables without `ref()`, so the reference is not checked"
         ),
     ),
     spec(

@@ -82,11 +82,8 @@ flowchart TD
     poisoned -- yes --> nowhere["attaches to no view"]
     poisoned -- no --> instruction{"a custom instruction?"}
     instruction -- yes --> named["every view whose custom_instructions: names it"]
-    instruction -- no --> declared{"declares tables:?"}
-    declared -- yes --> own["its tables: those it declares"]
-    declared -- no --> inferred["its tables: the models its ref() calls name, SST-MEM012"]
-    own --> subset["every view whose tables: hold all of them"]
-    inferred --> subset
+    instruction -- no --> inferred["its tables: the models its ref() calls name"]
+    inferred --> subset["every view whose tables: hold all of them"]
     subset --> built{"built on other metrics?"}
     built -- yes --> both["only those views, or any view for a metric with no tables, where each metric it references attached"]
     built -- no --> scope
@@ -102,9 +99,11 @@ Drawn from: [members.py](../../snowflake_semantic_tools/domain/resolve/members.p
   some of them does not get it, even when it joins to the rest. A member left
   unattached that way is warned about, naming the view that reaches the missing
   table only through a join (`SST-MEM010`).
-- A member that declares no tables and names no model with `ref()` attaches
-  nowhere (`SST-MEM002`), except a derived metric, which needs none: it lands
-  in every view that holds all the metrics it references.
+- A member's tables are the models its `ref()` calls name: a metric's or a
+  filter's in its expression, and a verified query's in its SQL. A member never
+  writes `tables:` (`SST-PRS126`). One that names no model is an error and
+  attaches nowhere (`SST-MEM002`), except a derived metric, which needs none:
+  it lands in every view that holds all the metrics it references.
 - A member with an error is never attached, and neither is a metric built on
   it; a member whose references did not resolve is reported as
   left out (`SST-MEM107`).
@@ -211,24 +210,24 @@ ORDERS.ORDER_STATE AS ORDERS.ORDER_STATE WITH SYNONYMS ('order status', 'fulfilm
 snowflake_metrics:
   - name: total_revenue
     description: Order value in cents, including tax.
-    tables: [orders]
     expr: "SUM({{ ref('orders', 'order_total') }})"
     synonyms: [revenue, sales]
 
   - name: revenue_per_order
-    derived: true
     description: Mean revenue per order.
     expr: "DIV0({{ metric('total_revenue') }}, {{ metric('order_count') }})"
 ```
 
-- `tables:` names the models the expression reads, and is required on a metric
-  that is not derived (`SST-VAL109`). Its expression must aggregate
-  (`SST-VAL101`). It renders under its table, as `ORDERS.TOTAL_REVENUE`.
-- A `derived: true` metric combines other metrics with `{{ metric() }}`; SST
-  infers its tables from the metrics it references, so it declares none
-  (`SST-VAL108`). It renders unqualified, after the table-scoped metrics. It
-  cannot use window functions (`SST-VAL102`), and metric references cannot form
-  a cycle (`SST-REF005`).
+- A metric's tables are the models its expression names with `ref()`; a column
+  written without `ref()` is warned about (`SST-VAL110`). A metric with a table
+  must aggregate (`SST-VAL101`), and renders under its table, as
+  `ORDERS.TOTAL_REVENUE`. `tables:` and `derived:` are not written
+  (`SST-PRS126`).
+- A metric whose expression names no column and combines other metrics with
+  `{{ metric() }}` is derived: it renders unqualified, after the table-scoped
+  metrics, in every view that holds all the metrics it references. It cannot
+  use window functions (`SST-VAL102`), and metric references cannot form a
+  cycle (`SST-REF005`).
 - When more than one relationship path joins a metric's table to another table
   in the view, name the path with `using_relationships:`. An ambiguous path is
   an error for the metric (`SST-VAL116`) and a warning for the view (`SST-VAL209`).
@@ -247,13 +246,11 @@ order:
 
 ```yaml
   - name: total_supply_cost
-    tables: [supplies]
     expr: "SUM({{ ref('supplies', 'supply_cost') }})"
     non_additive_dimensions:
       - dimension: snapshot_month        # latest month: the default order
 
   - name: opening_supply_cost
-    tables: [supplies]
     expr: "SUM({{ ref('supplies', 'supply_cost') }})"
     non_additive_dimensions:
       - table: supplies
@@ -285,7 +282,6 @@ total, a moving average, or a value from an earlier row.
 ```yaml
   - name: cumulative_customer_count
     description: Running count of customers, by the date of their first order.
-    tables: [customers]
     expr: "SUM({{ metric('customer_count') }})"
     window:
       partition_by_excluding:
@@ -323,10 +319,10 @@ CUSTOMERS.CUMULATIVE_CUSTOMER_COUNT AS SUM(CUSTOMERS.CUSTOMER_COUNT) OVER (PARTI
   `INTERVAL '<n> <unit>'` followed by `PRECEDING` or `FOLLOWING`. Anything else is
   an error (`SST-PRS124`); a frame is never passed through as free SQL. A frame
   needs an `order_by` (`SST-VAL127`).
-- A window metric cannot also set `using_relationships` or
-  `non_additive_dimensions` (`SST-PRS014`), must belong to exactly one table and
-  cannot be `derived: true` (`SST-VAL102`), and no other metric may reference it
-  (`SST-VAL128`).
+- A window metric's table is the table of the metrics it aggregates, else the
+  model its `window:` entries name. It cannot also set `using_relationships` or
+  `non_additive_dimensions` (`SST-PRS014`), must belong to exactly one table
+  (`SST-VAL102`), and no other metric may reference it (`SST-VAL128`).
 - Writing `OVER (...)` inside a table-scoped metric's `expr` is an error
   (`SST-VAL101`); use `window:`.
 
@@ -340,14 +336,15 @@ partition and order, or Snowflake rejects the query. `SHOW SEMANTIC DIMENSIONS I
 snowflake_relationships:
   - name: orders_to_customers
     description: Each order belongs to exactly one customer.
-    left_table: orders
-    right_table: customers
+    left_table: "{{ ref('orders') }}"
+    right_table: "{{ ref('customers') }}"
     relationship_conditions:
       - "{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'customer_id') }}"
 ```
 
-`left_table` is the many side and `right_table` the one side, named as plain
-model names; a `{{ ref() }}` there is an error (`SST-REF045`). The relationship
+`left_table` is the many side and `right_table` the one side, each one
+`{{ ref('<model>') }}` call; a bare model name, or anything else, is an error
+(`SST-REF046`). The relationship
 attaches to every view that holds both tables; one that fits no view is an
 error (`SST-VAL205`). Its `description` documents the YAML and is not
 published, and `relationship_type` or `join_type` is an error because nothing
@@ -368,8 +365,8 @@ condition (`SST-PRS112`). A condition of any other shape is an error
 
 ```yaml
   - name: order_items_to_orders
-    left_table: order_items
-    right_table: orders
+    left_table: "{{ ref('order_items') }}"
+    right_table: "{{ ref('orders') }}"
     relationship_conditions:
       - "{{ ref('order_items', 'order_id') }} = {{ ref('orders', 'order_id') }}"
       - "{{ ref('order_items', 'occurred_at') }} >= {{ ref('orders', 'ordered_at') }}"
@@ -386,8 +383,8 @@ table's dbt model must declare non-overlapping ranges with `distinct_range`
 ```yaml
 snowflake_relationships:
   - name: orders_to_pricing_periods
-    left_table: orders
-    right_table: pricing_periods
+    left_table: "{{ ref('orders') }}"
+    right_table: "{{ ref('pricing_periods') }}"
     relationship_conditions:
       - "{{ ref('orders', 'ordered_at') }} BETWEEN {{ ref('pricing_periods', 'effective_start_at') }} AND {{ ref('pricing_periods', 'effective_end_at') }}"
 
@@ -428,8 +425,8 @@ placed -- the latest whose `status_date` is at or before `ordered_at`:
 ```yaml
 snowflake_relationships:
   - name: orders_to_customer_daily_status
-    left_table: orders
-    right_table: customer_daily_status
+    left_table: "{{ ref('orders') }}"
+    right_table: "{{ ref('customer_daily_status') }}"
     relationship_conditions:
       - "{{ ref('orders', 'customer_id') }} = {{ ref('customer_daily_status', 'customer_id') }}"
       - "{{ ref('orders', 'ordered_at') }} >= {{ ref('customer_daily_status', 'status_date') }}"
@@ -459,7 +456,6 @@ filter dimension (`LABELS = (FILTER)` in the view's DDL):
 snowflake_filters:
   - name: is_completed_order
     description: Orders that completed; the default lens for revenue.
-    tables: ["{{ ref('orders') }}"]
     expr: "{{ ref('orders', 'order_state') }} = 'completed'"
     labels: [filter]
 ```
@@ -470,12 +466,13 @@ This renders in `DIMENSIONS` as:
 ORDERS.IS_COMPLETED_ORDER LABELS = (FILTER) AS ORDERS.ORDER_STATE = 'completed' COMMENT = 'Orders that completed; the default lens for revenue.'
 ```
 
-- A labelled filter must be boolean (`SST-VAL401`) and must resolve to exactly
-  one table: its `tables:` entry, else the model its `ref()` names.
+- A filter's tables are the models its expression names with `ref()`. A
+  labelled filter must be boolean (`SST-VAL401`) and must name exactly one
+  table.
 - A boolean expression without a `labels:` key is an error (`SST-VAL405`).
 - A filter not labelled `filter` renders as prose instead: one sentence,
   `For <TABLE>, <name> is <expr>. <description>`, appended to the view's
-  `AI_SQL_GENERATION`. It needs exactly one table in `tables:`.
+  `AI_SQL_GENERATION`. Its expression must name exactly one table.
 - A filter cannot carry `synonyms:`; nothing renders them (`SST-VAL406`).
 
 ## Verified queries
@@ -484,26 +481,29 @@ ORDERS.IS_COMPLETED_ORDER LABELS = (FILTER) AS ORDERS.ORDER_STATE = 'completed' 
 snowflake_verified_queries:
   - name: order_count_by_state
     description: Order volume by fulfilment state.
-    tables: [orders]
     question: How many orders are there in each fulfilment state?
     sql: |-
       SELECT orders.order_state, COUNT(DISTINCT orders.order_id) AS order_count
-      FROM orders AS orders
+      FROM {{ ref('orders') }} AS orders
       GROUP BY ALL
     use_as_onboarding_question: true
     verified_at: 1769904000
     verified_by: analytics-team
 ```
 
-- Use `sql_file:` instead of `sql:` to keep the query in a `.sql` file, resolved
-  relative to the YAML file; setting both or neither is an error
-  (`SST-VAL412`). Leading `--` comment lines are dropped from either.
-- The SQL names tables by their logical names in the view, not by relation. It
-  may use `{{ ref() }}`, `{{ metric() }}` and `{{ var() }}`.
+- `sql:` is required (`SST-PRS002`). To keep the query in a `.sql` file, write
+  `sql: "{{ file('sql/order_count_by_state.sql') }}"`, resolved relative to the
+  YAML file. The file must stay inside the project (`SST-REF027`), not be a
+  symbolic link (`SST-PRT009`), and exist (`SST-REF014`); `sql_file:` is not
+  written (`SST-PRS126`). Leading `--` comment lines are dropped either way.
+- The SQL names each table with `{{ ref('<model>') }}`, which renders as the
+  table's logical name in the view, and may use `{{ metric() }}` and
+  `{{ var() }}`. A table read by name instead is warned about (`SST-VAL414`).
 - Connected validation and the smoke suite run the query with each logical
   table bound to the relation the view reads, so it is checked the same way
   whether the view publishes beside its tables or in another schema or database.
-- A query attaches to every view that holds all its `tables:`.
+- A query's tables are the models its `ref()` calls name, and it attaches to
+  every view that holds all of them. `tables:` is not written (`SST-PRS126`).
 - `verified_at` is epoch seconds, or a quoted ISO-8601 date or timestamp (UTC
   unless it says otherwise), which renders as epoch seconds; anything else is an
   error (`SST-PRS017`).

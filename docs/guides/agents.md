@@ -82,7 +82,7 @@ top-level keys:
 | `deprecated` | Retires the agent; a deprecated agent that still has an alias is an error (`SST-VAL550`). |
 | `tags` | A list of `{name, value}` pairs, applied with `ALTER AGENT ... SET TAG`. A tag name is an identifier or a qualified name (`SST-PRS005`) of a tag object that already exists. Unset takes `agents.+tags`. |
 | `meta` | Free-form metadata. It is not published, but changing it changes the agent's fingerprint, so the next plan updates the agent. |
-| `evals` | `dataset:` and `config:` paths, relative to the agent's folder; see the [evals guide](evals.md). |
+| `evals` | `dataset: "{{ eval_dataset('<name>') }}"` and `config: "{{ eval_config('<name>') }}"`, naming files in the agent's `evals/` folder; see the [evals guide](evals.md). |
 
 Under `spec:`:
 
@@ -429,8 +429,7 @@ An agent loads skills published as Cortex Extensions:
 
 ```yaml
   skills:
-    - name: sales-semantics
-      source:
+    - source:
         type: CORTEX_EXTENSION
         path: "{{ skill('sales-semantics') }}"
     - name: partner-glossary
@@ -444,9 +443,9 @@ An agent loads skills published as Cortex Extensions:
   this project publishes (`SST-REF032`, `SST-REF036`). Do not write `version:`
   (`SST-VAL838`): SST pins the version it publishes for the skill's current
   content, so the agent never points at a version that was not created. A
-  `skill()` entry needs `name:`, the skill's name (`SST-VAL540`, `SST-VAL840`);
-  a `plugin()` entry may name one of the plugin's members, or omit `name:` to
-  load them all.
+  `skill()` entry takes the skill's name and writes no `name:` (`SST-VAL540`);
+  a `plugin()` entry may name one of the plugin's members (`SST-VAL840`), or
+  omit `name:` to load them all.
 - **`{{ extension('<name>') }}`** names an extension another project publishes.
   It resolves through `skills.extensions` in `sst_config.yml` (`SST-REF013`;
   one this project publishes is `SST-REF037`) and must pin a version, such as

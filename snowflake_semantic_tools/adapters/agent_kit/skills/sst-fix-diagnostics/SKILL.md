@@ -56,6 +56,8 @@ explains, and names the 1.0 code it became.
 |---|---|---|
 | `SST-REF001` | `ref()` names no model in the dbt manifest | Check the model name; run `dbt deps` if it is in a package. |
 | `SST-MEM005` | A member attached to no view | Add the models its `ref()` calls name to one view's `tables:`. |
+| `SST-MEM002` | A member names no table | Name its columns or tables with `{{ ref() }}`. |
+| `SST-PRS126` | A key SST no longer reads | Delete it; the message says where the value comes from now. |
 | `SST-VAL309` | A column a view exposes has no `data_type` | Add `data_type` in the model YAML. |
 | `SST-VAL005` | A description does not say when to use it | Say what it answers, and when not to use it. |
 | `SST-VAL101` | A metric expression does not aggregate | Wrap it in an aggregate, or make it a fact. |

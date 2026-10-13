@@ -13,7 +13,7 @@ def test_sst_mem010_fires() -> None:
         "SST-MEM010",
     )
     assert diagnostic.severity is Severity.WARNING
-    assert diagnostic.message == "metric:m declares 'customers', reachable from semantic_view:menu only through a join"
+    assert diagnostic.message == "metric:m needs 'customers', reachable from semantic_view:menu only through a join"
     assert diagnostic.subject == "metric:m"
 
 

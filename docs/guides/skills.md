@@ -230,15 +230,14 @@ by hand once nothing uses it.
 
 ```yaml
   skills:
-    - name: sales-semantics
-      source:
+    - source:
         type: CORTEX_EXTENSION
         path: "{{ skill('sales-semantics') }}"
 ```
 
-Leave `version:` out; SST pins the alias it publishes, and an authored version
-on a project skill is an error (`SST-VAL838`). `name:` is required
-(`SST-VAL540`) and must be the skill's name (`SST-VAL840`). A skill that cannot
+Leave `version:` and `name:` out: SST pins the alias it publishes, and an
+authored version on a project skill is an error (`SST-VAL838`); the entry is
+named after the skill, and an authored `name:` is an error (`SST-VAL540`). A skill that cannot
 publish -- it has errors, or `skills.catalog` is not configured -- leaves the
 agent nothing to pin, which is an error on the agent (`SST-VAL856`).
 

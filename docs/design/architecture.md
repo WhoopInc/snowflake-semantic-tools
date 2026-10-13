@@ -365,22 +365,25 @@ and is resolved where that thing is known:
 | Function | Names | Resolved by |
 |---|---|---|
 | `ref('model')`, `ref('model', 'column')` | a dbt model's relation, or one of its columns | `resolve_scalar` |
+| `source('source', 'table')` | a dbt source table | the semantic load for a view's `tables:` |
 | `metric()` | a metric member | `resolve_scalar` |
 | `custom_instructions()` | a custom instruction member | `resolve_scalar`, and the semantic load for a view's entries |
 | `relationship()`, `filter()`, `verified_query()` | that member, by name, in custom instruction text | `resolve_scalar` |
 | `var()` | a project variable from `vars:` | `resolve_scalar` |
 | `tag()` | a tag from `tags:` | `resolve_scalar` |
 | `semantic_view()`, `tool('group', 'name')`, `agent()` | that artifact | the agent loader, then `app/compile/agents/resolve_tools.py` |
-| `skill()`, `plugin()` | a skill or plugin this project publishes | the agent loader, then `app/compile/agents/resolve_skills.py` |
+| `skill()`, `plugin()` | a skill or plugin this project publishes | the agent loader, then `app/compile/agents/resolve_skills.py`; as a plugin or profile member, `member_names` in `adapters/yaml/fields.py` |
+| `command()`, `mcp_server()`, `hook()` | a command, MCP config or hook, as a profile member | `member_names`, in the profile loader |
 | `extension()` | an extension another project publishes, from `skills.extensions` | the agent loader, then `app/compile/agents/resolve_skills.py` |
-| `file()` | a file beside the agent | the agent loader |
+| `file()` | a file beside the agent, or beside a verified query's YAML | the agent loader, and the verified query reader |
+| `eval_dataset()`, `eval_config()` | an eval file in the agent's `evals/` folder, by its `name:` | the eval catalog reader |
 | `eval_metric()` | a custom judge metric | the eval config reader |
 | `table()`, `column()` | nothing: legacy spellings of `ref()` | refused |
 
 `resolve_scalar` scans a scalar's calls, then resolves them from last to first, so
 each substitution leaves the earlier offsets valid.
 
-Drawn from: [domain/resolve/calls.py](../../snowflake_semantic_tools/domain/resolve/calls.py), [domain/resolve/template.py](../../snowflake_semantic_tools/domain/resolve/template.py), [adapters/yaml/agents.py](../../snowflake_semantic_tools/adapters/yaml/agents.py), [app/compile/agents/resolve_tools.py](../../snowflake_semantic_tools/app/compile/agents/resolve_tools.py), [app/compile/agents/resolve_skills.py](../../snowflake_semantic_tools/app/compile/agents/resolve_skills.py), [adapters/yaml/evals/config.py](../../snowflake_semantic_tools/adapters/yaml/evals/config.py).
+Drawn from: [domain/resolve/calls.py](../../snowflake_semantic_tools/domain/resolve/calls.py), [domain/resolve/template.py](../../snowflake_semantic_tools/domain/resolve/template.py), [adapters/yaml/agents.py](../../snowflake_semantic_tools/adapters/yaml/agents.py), [app/compile/agents/resolve_tools.py](../../snowflake_semantic_tools/app/compile/agents/resolve_tools.py), [app/compile/agents/resolve_skills.py](../../snowflake_semantic_tools/app/compile/agents/resolve_skills.py), [adapters/yaml/evals/config.py](../../snowflake_semantic_tools/adapters/yaml/evals/config.py), [adapters/yaml/evals/catalog.py](../../snowflake_semantic_tools/adapters/yaml/evals/catalog.py), [adapters/yaml/fields.py](../../snowflake_semantic_tools/adapters/yaml/fields.py).
 
 ## Plan, apply, and the run
 

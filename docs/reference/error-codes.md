@@ -1489,7 +1489,7 @@ Fix: remove one of the two keys
 
 `<file>: invalid UTF-8 at byte <offset>`
 
-Raised when a file SST reads is not UTF-8: project YAML, an instruction sidecar, a `sql_file:`, or a profile's `AGENTS.md` or rule.
+Raised when a file SST reads is not UTF-8: project YAML, an instruction or verified-query SQL sidecar, or a profile's `AGENTS.md` or rule.
 
 Fix: re-save the file as UTF-8
 
@@ -1619,7 +1619,7 @@ Fix: create the file, correct the path, or make it readable
 
 `<path>, referenced by <file>, is empty`
 
-Raised when a referenced `sql_file:` has no bytes, or a `file()` sidecar or tool `body_file:` holds only whitespace.
+Raised when a `file()` sidecar or tool `body_file:` holds only whitespace.
 
 Fix: add content, or remove the reference
 
@@ -2067,11 +2067,11 @@ Fix: reduce the nesting of metric() references
 
 ### SST-MEM001
 
-**Member declares a table present in no artifact** (warning)
+**Member names a table present in no artifact** (warning)
 
 `<member> names table '<name>', which no <type> lists`
 
-Raised when a member's declared table is a dbt model that no semantic view lists.
+Raised when a table a member names with ref() is a dbt model that no semantic view lists.
 
 Fix: add the table to a view, or correct the member
 
@@ -2101,7 +2101,7 @@ Fix: remove the duplicate entry
 
 `<member> attaches to no <type>`
 
-Raised when a member with tables, declared or inferred, or a derived one, attaches to no semantic view; a metric built on one that failed is not reported again.
+Raised when a member with tables, or a derived one, attaches to no semantic view; a metric built on one that failed is not reported again.
 
 Fix: add its tables to a view, or delete the member
 
@@ -2147,13 +2147,13 @@ Fix: make synonyms unique within the view
 
 ### SST-MEM010
 
-**Member declares a table the artifact reaches only by relationship** (warning)
+**Member needs a table the artifact reaches only by relationship** (warning)
 
-`<member> declares '<name>', reachable from <artifact> only through a join`
+`<member> needs '<name>', reachable from <artifact> only through a join`
 
 Raised when a table the member needs is missing from the view closest to holding it, which reaches it only through a declared relationship.
 
-Fix: declare the joined table explicitly
+Fix: add the joined table to the view's `tables:`
 
 ### SST-MEM011
 
@@ -2549,7 +2549,7 @@ Note: Only a derived metric may reference a semi-additive metric.
 
 `metric '<metric>' expression contains bare identifier '<column>'`
 
-Raised when a metric's expression names a column of one of its `tables:` without `ref()`; only the first such column is reported.
+Raised when a metric's expression names a column of one of its tables without `ref()`; only the first such column is reported.
 
 Fix: wrap it in `{{ ref('<model>', '<column>') }}` so it is checked
 
@@ -2569,9 +2569,9 @@ Fix: wrap the denominator in NULLIF, or use DIV0
 
 `metric '<metric>' in <artifact> reaches <outside>`
 
-Raised when a metric's expression calls `ref()` on a dbt model that is not in the metric's own `tables:`.
+Raised when a metric's expression calls `ref()` on a dbt model that is not among the metric's own tables.
 
-Fix: add the model to the metric's `tables:`, or remove the reference
+Fix: add the model to the view's `tables:`, or remove the reference
 
 ### SST-VAL113
 
@@ -2579,7 +2579,7 @@ Fix: add the model to the metric's `tables:`, or remove the reference
 
 `derived metric '<metric>' declares using_relationships`
 
-Raised when a `derived: true` metric declares `using_relationships`.
+Raised when a derived metric declares `using_relationships`.
 
 Fix: remove `using_relationships`; derived metrics have no join path
 
@@ -3369,7 +3369,7 @@ Note: Reported once per inline entry.
 
 `filter '<member>' expression contains bare identifier '<column>'`
 
-Raised when a filter's expression names a column of one of its `tables:` without `ref()`, so the reference is not checked.
+Raised when a filter's expression names a column of one of its tables without `ref()`, so the reference is not checked.
 
 Fix: wrap it in `{{ ref('<model>', '<column>') }}`
 
@@ -7221,7 +7221,7 @@ Fix: check the permissions and the free space
 
 `could not read <path>: <detail>`
 
-Raised when a file SST reads cannot be read or does not hold what it should (a manifest, baseline, saved plan, or `--state` observation); a file or folder to be read is a symbolic link or is reached through one; or dbt's `target-path`, the semantic-models directory, a verified query's `sql_file`, or a tool's `body_file` resolves outside the project.
+Raised when a file SST reads cannot be read or does not hold what it should (a manifest, baseline, saved plan, or `--state` observation); a file or folder to be read is a symbolic link or is reached through one; or dbt's `target-path`, the semantic-models directory, or a tool's `body_file` resolves outside the project.
 
 Fix: remove the link, or use a path inside the project; otherwise check that the file exists and can be read
 
