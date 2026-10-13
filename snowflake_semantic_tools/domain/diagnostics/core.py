@@ -7,11 +7,14 @@ package `__init__`, which builds the registry from them, is still being imported
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, IntEnum
 from string import Formatter
 from types import MappingProxyType
+
+from snowflake_semantic_tools._version import __version__
 
 
 class Severity(IntEnum):
@@ -115,9 +118,26 @@ class RegistryIntegrityError(RuntimeError):
         self.context: Mapping[str, object] = MappingProxyType(dict(context))
 
 
+# The branch a build that is not a release links its docs to. `main` still serves the 0.3
+# docs, so this is the branch 1.0 is developed on; make it `main` once 1.0 merges there.
+DEVELOPMENT_REF = "sst-1.0-publish"
+
+
+def reference_ref(version: str) -> str:
+    """The git ref whose docs match `version`: `vX.Y.Z` for a release, else `DEVELOPMENT_REF`.
+
+    A release links to its own tag, so a link it printed keeps resolving after later releases;
+    a dev or pre-release build has no tag of its own.
+    """
+    return f"v{version}" if re.fullmatch(r"\d+\.\d+\.\d+", version) else DEVELOPMENT_REF
+
+
 # Every code has a heading in the generated error reference (`sst docs`); the
 # fragment is the code in lowercase, which is the anchor GitHub derives from it.
-ERROR_REFERENCE_URL = "https://github.com/WhoopInc/snowflake-semantic-tools/blob/main/docs/reference/error-codes.md"
+ERROR_REFERENCE_URL = (
+    "https://github.com/WhoopInc/snowflake-semantic-tools/blob/"
+    f"{reference_ref(__version__)}/docs/reference/error-codes.md"
+)
 
 
 def spec(

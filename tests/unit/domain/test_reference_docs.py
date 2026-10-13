@@ -5,8 +5,9 @@ import re
 
 import pytest
 
+from snowflake_semantic_tools._version import __version__
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REFERENCE_URL, ERROR_REGISTRY, ErrorSpec, Severity
-from snowflake_semantic_tools.domain.diagnostics.core import Precheck
+from snowflake_semantic_tools.domain.diagnostics.core import DEVELOPMENT_REF, Precheck, reference_ref
 from snowflake_semantic_tools.domain.diagnostics.specs.aliases import TOMBSTONES, Tombstone
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_SCHEMA, ConfigKey, KeyKind, KeyStatus
 from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
@@ -77,6 +78,20 @@ def test_every_help_url_names_a_heading_in_the_error_reference() -> None:
     for code, spec in ERROR_REGISTRY.items():
         assert spec.help_url == f"{ERROR_REFERENCE_URL}#{error_anchor(code)}"
         assert _slug(code) == error_anchor(code)
+
+
+def test_a_help_url_points_at_the_docs_of_the_version_that_raised_it() -> None:
+    # A release links to its own tag, so its links keep resolving after later releases; anything
+    # else links to the branch 1.0 is developed on, never to `main`, which still serves 0.3.
+    assert [reference_ref(version) for version in ("1.0.0", "1.2.3", "1.0.0.dev0", "1.0.0rc1")] == [
+        "v1.0.0",
+        "v1.2.3",
+        DEVELOPMENT_REF,
+        DEVELOPMENT_REF,
+    ]
+    assert DEVELOPMENT_REF not in {"main", "master"}
+    expected = f"https://github.com/WhoopInc/snowflake-semantic-tools/blob/{reference_ref(__version__)}"
+    assert f"{expected}/docs/reference/error-codes.md" == ERROR_REFERENCE_URL
 
 
 # Retired in 1.0: never raised, or reported by another code. Numbers are not reused.
