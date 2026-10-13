@@ -4,15 +4,15 @@
   snowflake_relationships:
 
   - name: orders_to_customers
-    left_table: orders
-    right_table: customers
+    left_table: "{{ ref('orders') }}"
+    right_table: "{{ ref('customers') }}"
     # The 0.3 pair form: 1.0 rejects it (SST-PRS020) for relationship_conditions.
     relationship_columns:
       - left_column: "{{ ref('orders', 'customer_id') }}"
         right_column: "{{ ref('customers', 'customer_id') }}"
 
   - name: orders_to_locations
-    left_table: orders
-    right_table: locations
+    left_table: "{{ ref('orders') }}"
+    right_table: "{{ ref('locations') }}"
     relationship_conditions:
       - "{{ ref('orders', 'location_id') }} = {{ ref('locations', 'location_id') }}"

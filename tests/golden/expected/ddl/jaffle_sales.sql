@@ -19,8 +19,8 @@
 --   - Derived metrics sort after table-scoped ones and carry no table prefix;
 --     REVENUE_PER_CUSTOMER combines metrics from two tables.
 --   - AI_SQL_GENERATION is jaffle_sql_conventions, a blank line, then prose
---     from high_value_threshold_cents, a filter without labels whose
---     expression is not boolean. AI_QUESTION_CATEGORIZATION is
+--     from shortfall_to_large_order_cents, a filter without labels whose
+--     expression is not boolean, its ref() resolved. AI_QUESTION_CATEGORIZATION is
 --     jaffle_question_scope.
 --   - VERIFIED_AT is epoch seconds whether authored as an integer or as a
 --     date string. TOTAL_REVENUE_ALL_TIME carries only QUESTION and SQL.
@@ -98,9 +98,9 @@ comparing state by hand, and treat a return using is_returned_order.
 Interpret a pricing period as half-open: the start is inclusive and the end
 is exclusive.
 
-For ORDERS, high_value_threshold_cents is large_order_cents. The order value
-above which a sale is treated as high-value in generated narrative. A
-threshold, not a predicate.'
+For ORDERS, shortfall_to_large_order_cents is large_order_cents -
+ORDERS.ORDER_TOTAL. How far an order falls short of the large-order
+threshold, for generated narrative. A measure of distance, not a predicate.'
   AI_QUESTION_CATEGORIZATION 'These views answer questions about orders, the customers who placed them,
 the store locations they were placed at, the menu items sold, and the cost
 of supplying those items.
@@ -122,7 +122,7 @@ from whichever view is to hand.'
       SQL 'SELECT
       orders.order_state                  AS order_state
     , COUNT(DISTINCT orders.order_id)     AS order_count
-FROM orders AS orders
+FROM ORDERS AS orders
 GROUP BY ALL
 ORDER BY order_count DESC'
     ),
@@ -134,8 +134,8 @@ ORDER BY order_count DESC'
       SQL 'SELECT
       locations.location_name                       AS location_name
     , SUM(orders.order_total) / 100                 AS revenue
-FROM orders AS orders
-INNER JOIN locations AS locations
+FROM ORDERS AS orders
+INNER JOIN LOCATIONS AS locations
     ON orders.location_id = locations.location_id
 WHERE orders.order_state = ''completed''
 GROUP BY ALL
@@ -145,7 +145,7 @@ ORDER BY revenue DESC'
       QUESTION 'What is our total revenue?'
       SQL 'SELECT
     SUM(orders.order_total) / 100 AS revenue
-FROM orders AS orders'
+FROM ORDERS AS orders'
     )
   )
   MAX_STALENESS = '300 seconds'

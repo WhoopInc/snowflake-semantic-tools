@@ -71,10 +71,10 @@ def test_explain_aliases_lists_the_0_3_codes_and_what_they_became(tmp_path: Path
     exit_code, output = _explain(tmp_path, "SST-REF001", "--aliases")
     assert exit_code == 0
     assert "from SST 0.3: SST-V002" in output
-    assert "alias SST-V002 (Unknown table reference): split -> SST-DBT002, SST-REF001, SST-MEM003" in output
+    assert "alias SST-V002 (Unknown table reference): split -> SST-DBT002, SST-REF001" in output
     exit_code, output = _explain(tmp_path, "SST-V002")
     assert "SST 0.3 code, split; never raised by 1.0" in output
-    assert "now: SST-DBT002, SST-REF001, SST-MEM003" in output
+    assert "now: SST-DBT002, SST-REF001" in output
     exit_code, output = _explain(tmp_path, "SST-V081")
     assert "now: nothing; the condition is gone" in output
 

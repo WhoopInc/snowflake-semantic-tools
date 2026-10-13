@@ -13,7 +13,7 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst init`](#sst-init) | Scaffold SST into an existing dbt project without overwriting a file. |
 | [`sst debug`](#sst-debug) | Show the resolved configuration, profile, target, and registry, and test the connection. |
 | [`sst migrate`](#sst-migrate) | Rewrite a 0.3 project into the 1.0 dialect. |
-| [`sst migrate refs`](#sst-migrate-refs) | Rewrite legacy table()/column() globals to ref(), and label boolean filters. |
+| [`sst migrate refs`](#sst-migrate-refs) | Rewrite legacy references to ref(), drop the keys SST infers, and label boolean filters. |
 | [`sst enrich`](#sst-enrich) | Fill dbt model column metadata from the warehouse, editing the model YAML in place. |
 | [`sst format`](#sst-format) | Rewrite YAML into canonical form: indentation, key order, and `\|-` block scalars. |
 | [`sst compile`](#sst-compile) | Compile every artifact and write the canonical manifest, offline. |
@@ -139,7 +139,7 @@ Subcommands: [`sst migrate refs`](#sst-migrate-refs).
 
 ## sst migrate refs
 
-Rewrite legacy table()/column() globals to ref(), and label boolean filters.
+Rewrite legacy references to ref(), drop the keys SST infers, and label boolean filters.
 
 Reads every YAML file under `project.semantic_models_dir`. Dry-run by default: exit 2
 when rewrites are pending, 0 when there are none, and 1 when a table() call sits where

@@ -145,12 +145,12 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL414",
         Severity.WARNING,
-        "Verified query SQL references a table not in its table list",
-        "verified_query '{member}' queries '{relation}', absent from tables:",
-        "add the table to `tables:`",
+        "Verified query SQL reads a table it does not name with ref()",
+        "verified_query '{member}' queries '{relation}' without ref()",
+        "write the table as {{ ref('<model>') }}",
         condition=(
-            "a verified query's SQL reads a table that its non-empty `tables:` leaves out; attachment "
-            "is computed from `tables:`, so the query may land on a view that lacks the table"
+            "a verified query's SQL reads a table by name rather than with ref(); its tables are the "
+            "models its ref() calls name, so the query may land on a view that lacks the table"
         ),
     ),
     spec(

@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship
 from snowflake_semantic_tools.domain.parse.names import identifier_problem
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.resolve.calls import member_reference
 from snowflake_semantic_tools.domain.validate.semantic.joins import (
     dropped_condition,
     is_self_loop,
@@ -231,16 +232,33 @@ def _uses_legacy_globals(value: object) -> bool:
     return any(call.function in ("table", "column") for call in calls)
 
 
-_ENDPOINT_REF = re.compile(r"^\{\{\s*ref\(\s*['\"]([^'\"]+)['\"]\s*\)\s*\}\}$")
+@dataclass(frozen=True, slots=True)
+class _Endpoints:
+    """The models a relationship's `left_table` and `right_table` name."""
+
+    left: str
+    right: str
 
 
-def _endpoint_diagnostics(node: Mapping[str, Any], subject: str, origin: Origin) -> tuple[Diagnostic, ...]:
-    """A 0.3 `{{ ref('x') }}` endpoint: `left_table` and `right_table` take the bare model name."""
-    return tuple(
-        D("SST-REF045", origin=origin, subject=subject, artifact=subject, field=field, found=str(node[field]).strip())
-        for field in ("left_table", "right_table")
-        if _ENDPOINT_REF.fullmatch(str(node.get(field) or "").strip())
-    )
+def _endpoints(node: Mapping[str, Any], subject: str, origin: Origin) -> _Endpoints | tuple[Diagnostic, ...]:
+    """Read `left_table` and `right_table`, each one `{{ ref('<model>') }}` call, as the models they name.
+
+    Diagnostics:
+        SST-REF046: when an endpoint is anything but one one-argument `ref()` call.
+    """
+    names: list[str] = []
+    problems: list[Diagnostic] = []
+    for field in ("left_table", "right_table"):
+        text = str(node.get(field) or "").strip()
+        try:
+            model = member_reference(text, "ref")
+        except TemplateSyntaxError:
+            model = None
+        if model is None:
+            problems.append(D("SST-REF046", origin=origin, subject=subject, artifact=subject, field=field, found=text))
+        else:
+            names.append(model.strip())
+    return tuple(problems) if problems else _Endpoints(names[0], names[1])
 
 
 def load_relationships(
@@ -258,7 +276,7 @@ def load_relationships(
     SST-PRS107, SST-VAL201 and SST-REF034/SST-REF035 report those.
 
     Diagnostics:
-        SST-REF045: when an endpoint is written as a `{{ ref() }}` call.
+        SST-REF046: when an endpoint is not one `{{ ref('<model>') }}` call.
         SST-PRS110: when a condition is not an equality, an ASOF comparison or a range.
         SST-PRS111: when a range names one column for both its start and its end.
         SST-VAL204: when a condition's column is on a table other than its side's endpoint.
@@ -326,7 +344,7 @@ def _read_relationship(
     order, then (when `models` is given) the columns each pair names.
 
     Diagnostics:
-        SST-REF045: when an endpoint is written as a `{{ ref() }}` call.
+        SST-REF046: when an endpoint is not one `{{ ref('<model>') }}` call.
         SST-PRS110: when a condition is not an equality, an ASOF comparison or a range.
         SST-PRS111: when a range names one column for both its start and its end.
         SST-VAL204: when a condition's column is on a table other than its side's endpoint.
@@ -337,10 +355,10 @@ def _read_relationship(
         SST-PRS005: when the name, an endpoint, or a column is not a valid identifier.
     """
     subject = artifact_key("relationship", node["name"])
-    endpoint_problems = _endpoint_diagnostics(node, subject, origin)
-    if endpoint_problems:
-        return endpoint_problems
-    endpoints = (str(node.get("left_table")).strip(), str(node.get("right_table")).strip())
+    read = _endpoints(node, subject, origin)
+    if not isinstance(read, _Endpoints):
+        return read
+    endpoints = (read.left, read.right)
     conditions = _parse_conditions(raw_conditions, endpoints, node["name"], origin, subject)
     if isinstance(conditions, Diagnostic):
         return (conditions,)

@@ -6,9 +6,9 @@
 #   a >= b              ASOF      REFERENCES t (key, ASOF col)
 #   a BETWEEN s AND e   range     REFERENCES t (BETWEEN s AND e EXCLUSIVE)
 #
-# left_table is the many side and right_table the one side, written as bare
-# model names; a ref() call there is SST-REF045. A relationship attaches to
-# every view that holds both its tables.
+# left_table is the many side and right_table the one side, each one
+# {{ ref('<model>') }} call; a bare name there is SST-REF046. A relationship
+# attaches to every view that holds both its tables.
 
 snowflake_relationships:
   # Attaches to jaffle_sales, the one view holding both tables. A relationship
@@ -17,8 +17,8 @@ snowflake_relationships:
     description: |-
       Each order belongs to exactly one customer. Many orders to one customer, so
       `orders` is the left table.
-    left_table: orders
-    right_table: customers
+    left_table: "{{ ref('orders') }}"
+    right_table: "{{ ref('customers') }}"
     relationship_conditions:
       - "{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'customer_id') }}"
 
@@ -28,8 +28,8 @@ snowflake_relationships:
     description: |-
       Each order is placed at exactly one store location. Many orders to one
       location, so `orders` is the left table.
-    left_table: orders
-    right_table: locations
+    left_table: "{{ ref('orders') }}"
+    right_table: "{{ ref('locations') }}"
     relationship_conditions:
       - "{{ ref('orders', 'location_id') }} = {{ ref('locations', 'location_id') }}"
 
@@ -40,8 +40,8 @@ snowflake_relationships:
     description: |-
       Each line item is attributed to the order state in effect when the item was
       recorded, rather than to the order's current state.
-    left_table: order_items
-    right_table: orders
+    left_table: "{{ ref('order_items') }}"
+    right_table: "{{ ref('orders') }}"
     relationship_conditions:
       # The key equality, then the ASOF comparison. >= is the only ASOF
       # operator SST parses, and Snowflake allows one ASOF column per
@@ -56,8 +56,8 @@ snowflake_relationships:
     description: |-
       Each order falls inside exactly one pricing period, determined by when it was
       placed.
-    left_table: orders
-    right_table: pricing_periods
+    left_table: "{{ ref('orders') }}"
+    right_table: "{{ ref('pricing_periods') }}"
     relationship_conditions:
       - "{{ ref('orders', 'ordered_at') }} BETWEEN {{ ref('pricing_periods', 'effective_start_at') }} AND {{ ref('pricing_periods', 'effective_end_at') }}"
 
@@ -65,8 +65,8 @@ snowflake_relationships:
     description: |-
       Each line item sells exactly one product. Many line items to one product, so
       `order_items` is the left table.
-    left_table: order_items
-    right_table: products
+    left_table: "{{ ref('order_items') }}"
+    right_table: "{{ ref('products') }}"
     relationship_conditions:
       - "{{ ref('order_items', 'product_id') }} = {{ ref('products', 'product_id') }}"
 
@@ -77,7 +77,7 @@ snowflake_relationships:
     description: |-
       Each supply-cost snapshot row belongs to exactly one product. Many monthly
       snapshots to one product, so `supplies` is the left table.
-    left_table: supplies
-    right_table: products
+    left_table: "{{ ref('supplies') }}"
+    right_table: "{{ ref('products') }}"
     relationship_conditions:
       - "{{ ref('supplies', 'product_id') }} = {{ ref('products', 'product_id') }}"

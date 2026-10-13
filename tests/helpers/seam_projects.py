@@ -170,22 +170,23 @@ RELATIONSHIPS = "semantic_models/relationships/r.yml"
 VIEWS = "semantic_models/semantic_views/views.yml"
 # A relationship condition operand: the `products_id` column of `products`.
 KEY = "{{ ref('products', 'products_id') }}"
+# A metric expression line counting a `products` column, which makes `products` its table.
+COUNTED = "    expr: \"COUNT({{ ref('products', 'products_id') }})\"\n"
 ORDER_BY = "    window:\n      order_by: [\"{{ ref('products', 'products_id') }}\"]\n"
 
 
 def metric_file(body: str, name: str = "total") -> dict[str, str]:
-    """A metrics file with one metric over `products`, `body` its lines after `tables`."""
+    """A metrics file with one metric, `body` its lines after `description`.
+
+    The metric's table is whichever model `body`'s expression names with `ref()`.
+    """
     head = f"snowflake_metrics:\n  - name: {name}\n    description: Total.\n"
-    return {METRICS: head + "    tables: [\"{{ ref('products') }}\"]\n" + body}
+    return {METRICS: head + body}
 
 
 def filter_entry(name: str) -> str:
     """A `snowflake_filters` file declaring one filter over `products`."""
-    return (
-        f"snowflake_filters:\n  - name: {name}\n    description: Cheap.\n"
-        "    tables: [\"{{ ref('products') }}\"]\n"
-        f"    expr: \"{KEY} = 'x'\"\n"
-    )
+    return f"snowflake_filters:\n  - name: {name}\n    description: Cheap.\n    expr: \"{KEY} = 'x'\"\n"
 
 
 def relationship_file(*conditions: str, name: str = "self_join") -> dict[str, str]:
@@ -194,7 +195,8 @@ def relationship_file(*conditions: str, name: str = "self_join") -> dict[str, st
     head = f"snowflake_relationships:\n  - name: {name}\n    description: Self.\n"
     return {
         RELATIONSHIPS: head
-        + f"    left_table: products\n    right_table: products\n    relationship_conditions:\n{lines}"
+        + "    left_table: \"{{ ref('products') }}\"\n    right_table: \"{{ ref('products') }}\"\n"
+        + f"    relationship_conditions:\n{lines}"
     }
 
 

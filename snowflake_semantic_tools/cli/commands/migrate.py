@@ -25,7 +25,7 @@ def migrate(ctx: click.Context) -> None:
 @click.option("--write", "write_files", is_flag=True, help="Rewrite the files in place; without it, only report.")
 @command_body("migrate refs")
 def migrate_refs_command(paths: ProjectPaths, write_files: bool) -> CommandResult:
-    """Rewrite legacy table()/column() globals to ref(), and label boolean filters.
+    """Rewrite legacy references to ref(), drop the keys SST infers, and label boolean filters.
 
     Reads every YAML file under `project.semantic_models_dir`. Dry-run by default: exit 2
     when rewrites are pending, 0 when there are none, and 1 when a table() call sits where

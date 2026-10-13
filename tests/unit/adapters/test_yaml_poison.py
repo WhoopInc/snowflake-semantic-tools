@@ -66,11 +66,9 @@ def test_a_poisoned_metric_leaves_out_what_is_built_on_it_and_nothing_else(tmp_p
     (project / "semantic_models" / "metrics" / "broken.yml").write_text(
         "snowflake_metrics:\n"
         "  - name: broken_revenue\n"
-        "    tables: [orders]\n"
         "    description: Names a column orders does not have.\n"
         "    expr: \"SUM({{ ref('orders', 'no_such_column') }})\"\n"
         "  - name: broken_revenue_per_order\n"
-        "    derived: true\n"
         "    description: Built on the broken metric.\n"
         "    expr: \"DIV0({{ metric('broken_revenue') }}, {{ metric('order_count') }})\"\n",
         encoding="utf-8",

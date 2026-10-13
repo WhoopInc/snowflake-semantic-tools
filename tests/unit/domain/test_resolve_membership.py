@@ -257,7 +257,6 @@ FIRES: dict[str, Any] = {
     "SST-MEM002": lambda: membership(member("filter", "f", ())),
     "SST-MEM006": lambda: membership(member("metric", "m", ("orders",)), facts={"metric:m": MemberFacts(derived=True)}),
     "SST-MEM011": lambda: membership(member("metric", "m", ("orders",))),
-    "SST-MEM012": lambda: membership(member("metric", "m", None, "COUNT({{ ref('orders', 'id') }})")),
     "SST-MEM101": lambda: membership(member("metric", "m", ("orders",), "COUNT({{ ref('customers', 'id') }})")),
     "SST-MEM107": lambda: membership(
         member("metric", "m", ("orders",), poisoned=True), unresolved={"metric:m": ("SST-REF001",)}

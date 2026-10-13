@@ -183,24 +183,15 @@ def _one_metric_diagnostics(
 
 
 def _structure_diagnostics(metric: MetricDef) -> list[Diagnostic]:
-    """Report the `tables:`, `using_relationships` and `access_modifier` a metric's kind rules out.
+    """Report the `using_relationships` and `access_modifier` a metric's kind rules out.
 
     Diagnostics:
-        SST-VAL109: when a table-scoped metric has no `tables:` key.
-        SST-PRS102: when a table-scoped metric's `tables:` is empty.
-        SST-VAL108: when a derived metric declares `tables:`.
         SST-VAL113: when a derived metric declares `using_relationships`.
         SST-VAL115: when a metric declares a chain of more than one relationship.
         SST-VAL121: when `access_modifier` is neither `public_access` nor `private_access`.
     """
     subject = artifact_key("metric", metric.name)
     diagnostics: list[Diagnostic] = []
-    if not metric.derived and not metric.has_tables_key:
-        diagnostics.append(D("SST-VAL109", metric=metric.name, subject=subject))
-    elif not metric.derived and not metric.tables:
-        diagnostics.append(D("SST-PRS102", artifact=subject, subject=subject))
-    if metric.derived and metric.has_tables_key:
-        diagnostics.append(D("SST-VAL108", metric=metric.name, subject=subject))
     if metric.derived and metric.using_relationships:
         diagnostics.append(D("SST-VAL113", metric=metric.name, subject=subject))
     if len(metric.using_relationships) > 1:
@@ -346,7 +337,6 @@ def _derived_diagnostics(metric: MetricDef) -> list[Diagnostic]:
     Diagnostics:
         SST-VAL102: when the expression calls a window function or the metric has a `window:`.
         SST-VAL103: when the expression aggregates a referenced metric, once per metric.
-        SST-VAL104: when the expression refs a column.
         SST-VAL105: when the expression calls `fact()` or `dimension()`.
     """
     subject = artifact_key("metric", metric.name)
@@ -372,11 +362,6 @@ def _derived_diagnostics(metric: MetricDef) -> list[Diagnostic]:
         )
         if re.search(pattern, metric.expr, re.IGNORECASE):
             diagnostics.append(D("SST-VAL103", metric=metric.name, other=referenced_metric, subject=subject))
-    for call in metric.calls:
-        if call.function == "ref" and len(call.args) == 2:
-            diagnostics.append(
-                D("SST-VAL104", metric=metric.name, column=f"{call.args[0]}.{call.args[1]}", subject=subject)
-            )
     for member in re.findall(
         r"\b(?:fact|dimension)\s*\(\s*['\"]([^'\"]+)['\"]\s*\)",
         metric.expr,

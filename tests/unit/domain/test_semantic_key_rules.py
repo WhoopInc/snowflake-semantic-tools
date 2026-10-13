@@ -57,7 +57,7 @@ def test_every_key_the_loader_does_not_read_is_named_by_what_it_is() -> None:
         ("SST-PRS022", "metric:m", "window.frames"),
         ("SST-PRS020", "metric:m", "window.order_by[0].column"),
         ("SST-PRS020", "metric:m", "window.order_by[0].direction"),
-        ("SST-PRS022", "metric:1", "labels"),
+        ("SST-PRS004", "metric:1", "labels"),
         ("SST-PRS022", "metric:1", "descriptin"),
         ("SST-VAL406", "filter:f", "f"),
         ("SST-PRS021", "relationship:r", None),

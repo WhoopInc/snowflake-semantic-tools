@@ -39,9 +39,8 @@ def test_a_malformed_template_ends_its_metrics_checks_before_the_bare_identifier
         (),
         ("orders",),
         access_modifier="hidden",
-        has_tables_key=True,
     )
-    bare = MetricDef("bare", "SUM(amount)", "Bare.", (), ("orders",), has_tables_key=True)
+    bare = MetricDef("bare", "SUM(amount)", "Bare.", (), ("orders",))
     diagnostics = metric_diagnostics((broken, bare), {"orders": ORDERS})
     # `broken` names `amount` bare too, but its template does not scan -- the call lacks its
     # closing parenthesis, so it is not a reference at all -- and only `bare` is reported.
@@ -52,9 +51,9 @@ def test_a_malformed_template_ends_its_metrics_checks_before_the_bare_identifier
 def test_a_repeated_metric_name_is_checked_no_further_but_still_counts_for_equivalence() -> None:
     expression = "SUM({{ ref('orders', 'amount') }})"
     metrics = (
-        MetricDef("dup", expression, "First.", (), ("orders",), has_tables_key=True),
-        MetricDef("DUP", expression, "Second.", (), ("orders",), has_tables_key=True),
-        MetricDef("later", "sum({{ ref('orders',  'amount') }})", "Later.", (), ("orders",), has_tables_key=True),
+        MetricDef("dup", expression, "First.", (), ("orders",)),
+        MetricDef("DUP", expression, "Second.", (), ("orders",)),
+        MetricDef("later", "sum({{ ref('orders',  'amount') }})", "Later.", (), ("orders",)),
     )
     diagnostics = metric_diagnostics(metrics, {"orders": ORDERS})
     assert _codes(diagnostics) == ["SST-VAL001", "SST-VAL124"]
@@ -129,9 +128,8 @@ def test_a_view_reports_its_verified_query_failure_before_a_bad_variable(tmp_pat
     (project / "semantic_models" / "verified_queries" / "extra.yml").write_text(
         "snowflake_verified_queries:\n"
         "  - name: products_per_order\n"
-        "    tables: [orders]\n"
         '    question: "Products per order?"\n'
-        "    sql: \"SELECT {{ metric('product_count') }} FROM orders\"\n",
+        "    sql: \"SELECT {{ metric('product_count') }} FROM {{ ref('orders') }}\"\n",
         encoding="utf-8",
     )
     views = project / "semantic_models" / "semantic_views" / "semantic_views.yml"

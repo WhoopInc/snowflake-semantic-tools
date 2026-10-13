@@ -15,7 +15,7 @@ ORIGIN = Origin("semantic_models/metrics/metrics.yml", 1, 3)
 
 
 def _metric(name: str, expr: str, tables: tuple[str, ...] | None) -> ParsedMember:
-    record = MetricDef(name, expr, None, (), tables or (), has_tables_key=tables is not None, origin=ORIGIN)
+    record = MetricDef(name, expr, None, (), tables or (), origin=ORIGIN)
     return ParsedMember("metric", name, ORIGIN, record, tables, scan_template_calls(expr))
 
 

@@ -41,8 +41,6 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
                 "expr",
                 "description",
                 "synonyms",
-                "tables",
-                "derived",
                 "using_relationships",
                 "non_additive_dimensions",
                 "access_modifier",
@@ -52,7 +50,7 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
             )
         ),
         # `synonyms` is not read: a filter cannot carry them (SST-VAL406).
-        "filter": frozenset(("name", "expr", "description", "tables", "labels")),
+        "filter": frozenset(("name", "expr", "description", "labels")),
         # Snowflake has no clause for a description on the next three: it documents
         # the YAML for its readers and is never published.
         "custom_instruction": frozenset(
@@ -72,7 +70,6 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
                 "question",
                 "sql",
                 "sql_file",
-                "tables",
                 "verified_at",
                 "verified_by",
                 "use_as_onboarding_question",
@@ -115,6 +112,19 @@ RENAMED_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
         ("metric.non_additive_dimensions", "nulls"): "null_order",
         ("metric.window.order_by", "column"): "ref",
         ("metric.window.order_by", "direction"): "sort_direction",
+    }
+)
+# Keys an earlier dialect wrote that SST now works out for itself, by the node that carried
+# them, each with what replaced it. Each is an error, so a project still writing one learns
+# the key does nothing rather than reading it as a typo.
+REMOVED_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
+    {
+        ("metric", "tables"): "a metric's tables are the models its expression names with ref()",
+        ("metric", "derived"): (
+            "a metric is derived when its expression combines other metrics with metric() and names no column"
+        ),
+        ("filter", "tables"): "a filter's tables are the models its expression names with ref()",
+        ("verified_query", "tables"): "a verified query's tables are the models its SQL names with ref()",
     }
 )
 # The folder under the semantic models directory that owns each member type's files.
@@ -252,8 +262,8 @@ def _unread_keys(
     nested field of the wrong shape is left to its own check.
 
     Diagnostics:
-        SST-PRS021, SST-PRS020, SST-VAL402, SST-VAL403, SST-VAL406, SST-PRS022, SST-PRS004: as
-            `_unread_key` reports them.
+        SST-PRS021, SST-PRS020, SST-VAL402, SST-VAL403, SST-VAL406, SST-PRS126, SST-PRS022,
+            SST-PRS004: as `_unread_key` reports them.
     """
     diagnostics = [
         diagnostic
@@ -298,6 +308,7 @@ def _unread_key(
         SST-PRS021: the key is part of the 0.3 relationship column shape.
         SST-VAL402, SST-VAL403, SST-VAL406: the key is a known misuse, as `_known_misuse` says.
         SST-PRS020: the key is the 0.3 spelling of a 1.0 key in its scope.
+        SST-PRS126: the key is one SST now works out for itself, as `REMOVED_KEYS` says.
         SST-PRS022: the key is within edit distance of one `allowed` lists.
         SST-PRS004: any other key.
     """
@@ -316,6 +327,9 @@ def _unread_key(
     renamed = RENAMED_KEYS.get((scope, key))
     if renamed is not None:
         return (D("SST-PRS020", origin=origin, subject=subject, artifact=subject, field=field, expected=renamed),)
+    removed = REMOVED_KEYS.get((scope, key))
+    if removed is not None:
+        return (D("SST-PRS126", origin=origin, subject=subject, artifact=subject, field=field, reason=removed),)
     return (unknown_field(key, allowed, label=field, origin=origin, subject=subject, artifact=subject),)
 
 

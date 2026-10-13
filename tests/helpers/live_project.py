@@ -56,14 +56,10 @@ semantic_views:
 _METRICS = """\
 snowflake_metrics:
   - name: order_count
-    tables:
-      - orders
     description: |-
       Number of distinct orders placed.
     expr: "COUNT(DISTINCT {{ ref('orders', 'order_id') }})"
   - name: total_revenue
-    tables:
-      - orders
     description: |-
       Total order value including tax.
     expr: "SUM({{ ref('orders', 'order_total') }})"

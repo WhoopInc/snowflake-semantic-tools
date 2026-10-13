@@ -13,11 +13,12 @@ def test_sst_val404_fires(tmp_path: Path) -> None:
         tmp_path,
         FILTERS,
         "expr: \"{{ ref('orders', 'order_total') }} > large_order_cents\"",
-        'expr: "order_total > large_order_cents"',
+        # The ref() gives the filter its table; the bare `tax_paid` beside it is the finding.
+        "expr: \"{{ ref('orders', 'order_total') }} > tax_paid\"",
     )
     [diagnostic] = reported(project, "SST-VAL404")
     assert diagnostic.severity is Severity.WARNING
-    assert diagnostic.message == "filter 'is_large_order' expression contains bare identifier 'order_total'"
+    assert diagnostic.message == "filter 'is_large_order' expression contains bare identifier 'tax_paid'"
     assert diagnostic.subject == "filter:is_large_order"
 
 

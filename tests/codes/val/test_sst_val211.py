@@ -7,7 +7,7 @@ from pathlib import Path
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.reference_project import RELATIONSHIPS, edited, reported
 
-LEFT = "    left_table: orders\n    right_table: customers\n"
+LEFT = "    left_table: \"{{ ref('orders') }}\"\n    right_table: \"{{ ref('customers') }}\"\n"
 
 
 def test_sst_val211_fires(tmp_path: Path) -> None:

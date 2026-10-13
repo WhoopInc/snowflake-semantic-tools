@@ -7,9 +7,9 @@
     "into": "semantic_models/metrics",
     "adds": [{"code": "SST-REF002", "severity": "error", "count": 1}]
   },
-  "03-empty-tables.yml": {
+  "03-metric-names-no-table.yml": {
     "into": "semantic_models/metrics",
-    "adds": [{"code": "SST-PRS102", "severity": "error", "count": 1}]
+    "adds": [{"code": "SST-MEM002", "severity": "error", "count": 1}]
   },
   "04-duplicate-name.yml": {
     "into": "semantic_models/metrics",

@@ -1,16 +1,18 @@
-"""`sst migrate refs`: rewrite the legacy reference globals and nothing else.
+"""`sst migrate refs`: rewrite legacy references and drop the keys SST now infers, and nothing else.
 
 The rewrite is textual and position-aware, so comments, quoting, spacing, and
 key order survive byte for byte:
 
 - `{{ table('x') }}` as an item of a `tables:` list becomes `{{ ref('x') }}`;
-- `{{ table('x') }}` or `{{ ref('x') }}` as the whole value of `left_table:` or
-  `right_table:` becomes the bare logical name `x`, which is what those keys take;
+- a bare name `x`, or `{{ table('x') }}`, as the whole value of `left_table:` or
+  `right_table:` becomes `"{{ ref('x') }}"`, which is what those keys take;
 - `{{ column('x', 'y') }}` anywhere becomes `{{ ref('x', 'y') }}`.
 
 A `table()` call anywhere else is reported and left alone, because rewriting it
 would be a guess. A boolean standalone filter additionally gains
-`labels: [filter]`, classified by the same predicate check validation uses.
+`labels: [filter]`, classified by the same predicate check validation uses, and a
+metric's, filter's or verified query's `tables:` and `derived:` keys are dropped
+(`drop_inferred_keys`): SST infers both.
 """
 
 from __future__ import annotations
@@ -27,6 +29,11 @@ _LIST_ITEM = re.compile(r"^(\s*)-\s+(\S.*?)\s*(#.*)?$")
 _BLOCK_KEY = re.compile(r"^(\s*)(?:-\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(#.*)?$")
 _FLOW_TABLES = re.compile(r"^\s*(?:-\s+)?tables\s*:\s*\[.*\]\s*(#.*)?$")
 _CALL_NAME = re.compile(r"^\{\{(\s*)(table|column)(\s*)\(")
+_BARE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
+_ROOT_KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:")
+_INFERRED_KEY = re.compile(r"^(\s+)(tables|derived)\s*:")
+# The member lists whose `tables:` and `derived:` keys SST now infers.
+_INFERRING_ROOTS = frozenset(("snowflake_metrics", "snowflake_filters", "snowflake_verified_queries"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,8 +44,10 @@ class Rewrite:
         line: The 1-based line of the change.
         col: The 1-based column where the change starts.
         before: The text replaced; "" for an insertion.
-        after: The replacement; for an inserted `labels:` block, a summary of the block.
-        kind: `column`, `ref`, or `bare` for a rewritten call; `labels` for an added filter label.
+        after: The replacement; for an inserted `labels:` block, a summary of the block; "" for
+            a dropped key.
+        kind: `column`, `ref`, or `endpoint` for a rewritten call or name; `labels` for an added
+            filter label; `inferred` for a dropped `tables:` or `derived:` key.
     """
 
     line: int
@@ -133,12 +142,18 @@ def migrate_refs(text: str) -> MigrationResult:
     untouched: list[Untouched] = []
     out: list[str] = []
     for index, line in enumerate(lines):
-        if "{{" not in line:
-            out.append(line)
-            continue
         body = line.rstrip("\r\n")
         ending = line[len(body) :]
         relation = _RELATION_KEY.match(body)
+        if relation is not None and _BARE_NAME.fullmatch(_unquoted(relation.group(4))):
+            name = _unquoted(relation.group(4))
+            after = f"\"{{{{ ref('{name}') }}}}\""
+            rewrites.append(Rewrite(index + 1, relation.start(4) + 1, relation.group(4), after, "endpoint"))
+            out.append(body[: relation.start(4)] + after + body[relation.end(4) :] + ending)
+            continue
+        if "{{" not in line:
+            out.append(line)
+            continue
         item = _LIST_ITEM.match(body)
         replacements: list[tuple[int, int, str, str]] = []
         for match in _SPAN.finditer(body):
@@ -151,15 +166,16 @@ def migrate_refs(text: str) -> MigrationResult:
             if call.function == "column" and len(call.args) == 2:
                 replacements.append((match.start(), match.end(), _renamed(span), "column"))
                 continue
-            whole_relation = relation is not None and _unquoted(relation.group(4)) == span
-            if call.function == "ref" and len(call.args) == 1 and relation is not None and whole_relation:
-                replacements.append((relation.start(4), relation.end(4), call.args[0], "bare"))
-                continue
             if call.function != "table" or len(call.args) != 1:
                 continue
+            whole_relation = relation is not None and _unquoted(relation.group(4)) == span
             if relation is not None and whole_relation:
-                start = relation.start(4)
-                replacements.append((start, relation.end(4), call.args[0], "bare"))
+                if relation.group(4) == span:
+                    # Unquoted, the call would read as a YAML mapping, so it is quoted.
+                    after = f"\"{{{{ ref('{call.args[0]}') }}}}\""
+                    replacements.append((relation.start(4), relation.end(4), after, "endpoint"))
+                else:
+                    replacements.append((match.start(), match.end(), _renamed(span), "endpoint"))
             elif (
                 item is not None
                 and _unquoted(item.group(2)) == span
@@ -180,6 +196,42 @@ def migrate_refs(text: str) -> MigrationResult:
         "".join(out),
         tuple(sorted(rewrites, key=lambda item: (item.line, item.col))),
         tuple(untouched),
+    )
+
+
+def drop_inferred_keys(result: MigrationResult) -> MigrationResult:
+    """Drop each metric's, filter's and verified query's `tables:` and `derived:` key, with its value.
+
+    A key is dropped with the lines indented below it, so a block `tables:` list goes too. A
+    key written as an entry's first line, after its `- `, is left alone: dropping it would
+    leave the entry without its dash.
+    """
+    lines = result.text.splitlines(keepends=True)
+    kept: list[str] = []
+    dropped: list[Rewrite] = []
+    root: str | None = None
+    skip_below: int | None = None
+    for index, line in enumerate(lines):
+        body = line.rstrip("\r\n")
+        indent = len(body) - len(body.lstrip())
+        if skip_below is not None:
+            if not body.strip() or indent > skip_below:
+                continue
+            skip_below = None
+        if (top := _ROOT_KEY.match(body)) is not None:
+            root = top.group(1)
+        key = _INFERRED_KEY.match(body)
+        if key is not None and root in _INFERRING_ROOTS:
+            dropped.append(Rewrite(index + 1, indent + 1, body.strip(), "", "inferred"))
+            skip_below = indent
+            continue
+        kept.append(line)
+    if not dropped:
+        return result
+    return MigrationResult(
+        "".join(kept),
+        tuple(sorted((*result.rewrites, *dropped), key=lambda item: (item.line, item.col))),
+        result.untouched,
     )
 
 

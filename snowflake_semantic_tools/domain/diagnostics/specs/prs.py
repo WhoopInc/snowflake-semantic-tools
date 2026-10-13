@@ -327,16 +327,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="an eval config enables no system metric and names no custom metric",
     ),
     spec(
-        "SST-PRS102",
-        Severity.ERROR,
-        "tables is explicitly empty",
-        "{artifact}: 'tables: []' is not accepted",
-        "declare the tables the member attaches to",
-        demotable=False,
-        condition="a table-scoped metric declares `tables: []`",
-        note="An empty list is refused; it is never read as a request to infer the tables.",
-    ),
-    spec(
         "SST-PRS103",
         Severity.ERROR,
         "Value outside the allowed enum",
@@ -504,6 +494,15 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{file}: writing it changes lines sst enrich did not edit",
         "review the change with sst enrich --dry-run; once the file is written, later runs keep its formatting exactly",
         condition="sst enrich would rewrite lines it did not edit while writing a file",
+    ),
+    spec(
+        "SST-PRS126",
+        Severity.ERROR,
+        "Removed field",
+        "{artifact}: '{field}' is no longer written: {reason}",
+        "remove the field",
+        condition="a key that SST now works out for itself, or reads from elsewhere, is written",
+        note="`sst migrate refs --write` removes the member `tables:` and `derived:` keys.",
     ),
     spec(
         "SST-PRS900",

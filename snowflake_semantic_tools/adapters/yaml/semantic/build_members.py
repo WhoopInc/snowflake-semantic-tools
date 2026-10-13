@@ -355,28 +355,32 @@ def _entity_filter(filter_def: FilterDef, resolver: _Resolver) -> Column:
 def _instruction_parts(
     instructions: tuple[InstructionDef, ...],
     standalone_filters: list[FilterDef],
-    logical_by_model: Mapping[str, str],
+    resolver: _Resolver,
 ) -> tuple[list[str], list[str]]:
     """Collect the text of the view's two instruction channels: SQL generation and categorization.
 
     The SQL channel takes each instruction's text in attachment order, then one sentence per
-    unlabelled filter.
+    unlabelled filter, its expression resolved as the view names its columns.
 
     Raises:
-        ProjectError: An unlabelled filter is not attached to exactly one table.
+        ProjectError: An unlabelled filter is not attached to exactly one table, or its
+            expression does not resolve in this view.
     """
     sql_parts = [item.ai_sql_generation for item in instructions if item.ai_sql_generation]
-    sql_parts.extend(_standalone_filter_instruction(item, logical_by_model) for item in standalone_filters)
+    sql_parts.extend(_standalone_filter_instruction(item, resolver) for item in standalone_filters)
     question_parts = [item.ai_question_categorization for item in instructions if item.ai_question_categorization]
     return sql_parts, question_parts
 
 
-def _standalone_filter_instruction(filter_def: FilterDef, logical_by_model: Mapping[str, str]) -> str:
+def _standalone_filter_instruction(filter_def: FilterDef, resolver: _Resolver) -> str:
     if len(filter_def.tables) != 1:
         raise ProjectError(f"standalone filter {filter_def.name!r} must attach to exactly one table")
-    table = logical_by_model[filter_def.tables[0]]
+    table = resolver.logical_by_model[filter_def.tables[0]]
+    expression = resolver.resolve(
+        filter_def.expr, ref_field("filter.expression"), filter_def.origin, "filter.expression"
+    )
     description = filter_def.description or ""
-    return _wrap_text(f"For {table}, {filter_def.name} is {filter_def.expr}. {description}".strip())
+    return _wrap_text(f"For {table}, {filter_def.name} is {expression}. {description}".strip())
 
 
 def _wrap_text(text: str, width: int = 77) -> str:

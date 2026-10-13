@@ -1,8 +1,9 @@
 ---
-# Table-scoped metrics declare tables: and render under their table, as
-# ORDERS.TOTAL_REVENUE. Derived metrics combine metric() calls and render
-# unqualified. A window: block makes a table-scoped metric a window function
-# metric; a derived metric cannot carry one (SST-VAL102).
+# A metric's table is the model its expr names with ref(), and it renders
+# under that table, as ORDERS.TOTAL_REVENUE. A metric whose expr combines
+# metric() calls and names no column is derived, and renders unqualified. A
+# window: block makes a table-scoped metric a window function metric, which is
+# never derived (SST-VAL102).
 
 snowflake_metrics:
 
@@ -10,8 +11,6 @@ snowflake_metrics:
 
   # COUNT DISTINCT over an identifier.
   - name: order_count
-    tables:
-      - orders
     description: |-
       Number of distinct orders placed.
     expr: "COUNT(DISTINCT {{ ref('orders', 'order_id') }})"
@@ -20,8 +19,6 @@ snowflake_metrics:
       - order volume
 
   - name: customer_count
-    tables:
-      - customers
     description: |-
       Number of distinct customers who placed at least one order.
     expr: "COUNT(DISTINCT {{ ref('customers', 'customer_id') }})"
@@ -34,8 +31,6 @@ snowflake_metrics:
   # customers.first_ordered_at, the dimension its window excludes from the
   # partition and orders by.
   - name: cumulative_customer_count
-    tables:
-      - customers
     description: |-
       Running count of customers, by the date of their first order.
     expr: "SUM({{ metric('customer_count') }})"
@@ -50,8 +45,6 @@ snowflake_metrics:
 
   # SUM over a fact.
   - name: total_revenue
-    tables:
-      - orders
     description: |-
       Total order value including tax, in cents.
     expr: "SUM({{ ref('orders', 'order_total') }})"
@@ -60,16 +53,12 @@ snowflake_metrics:
       - gross sales
 
   - name: total_tax_collected
-    tables:
-      - orders
     description: |-
       Total tax collected across all orders, in cents.
     expr: "SUM({{ ref('orders', 'tax_paid') }})"
 
   # AVG, a second aggregate.
   - name: avg_order_value
-    tables:
-      - orders
     description: |-
       Mean order value including tax, in cents.
     expr: "AVG({{ ref('orders', 'order_total') }})"
@@ -80,8 +69,6 @@ snowflake_metrics:
   # Reads the NUMBER view variable large_order_cents as a bare identifier; it
   # renders as LARGE_ORDER_CENTS.
   - name: large_order_count
-    tables:
-      - orders
     description: |-
       Number of orders whose value exceeds the large-order threshold.
     expr: "COUNT(DISTINCT CASE WHEN {{ ref('orders', 'order_total') }} > large_order_cents THEN {{ ref('orders', 'order_id') }} END)"
@@ -90,8 +77,6 @@ snowflake_metrics:
 
   # Reads the BOOLEAN view variable tax_inclusive.
   - name: revenue_on_policy
-    tables:
-      - orders
     description: |-
       Revenue measured with or without collected tax, per the view's tax policy.
     expr: "SUM(CASE WHEN tax_inclusive THEN {{ ref('orders', 'order_total') }} ELSE {{ ref('orders', 'subtotal') }} END)"
@@ -99,8 +84,6 @@ snowflake_metrics:
   # CASE WHEN over the order_state enum; the literal comes from the
   # returned_state var.
   - name: returned_order_count
-    tables:
-      - orders
     description: |-
       Number of orders that were returned.
     expr: "COUNT(DISTINCT CASE WHEN {{ ref('orders', 'order_state') }} = '{{ var('returned_state') }}' THEN {{ ref('orders', 'order_id') }} END)"
@@ -111,8 +94,6 @@ snowflake_metrics:
   # requires using_relationships only when two relationships join a metric's
   # table to the same table (SST-VAL116); here it is optional.
   - name: line_item_count
-    tables:
-      - order_items
     description: |-
       Number of line items sold.
     expr: "COUNT({{ ref('order_items', 'order_item_id') }})"
@@ -123,15 +104,11 @@ snowflake_metrics:
       - items
 
   - name: product_count
-    tables:
-      - products
     description: |-
       Number of distinct products sold.
     expr: "COUNT(DISTINCT {{ ref('products', 'product_id') }})"
 
   - name: total_line_item_revenue
-    tables:
-      - order_items
     description: |-
       Total line-item value, in cents.
     expr: "SUM({{ ref('order_items', 'item_price') }})"
@@ -139,8 +116,6 @@ snowflake_metrics:
   # Rows sort by snapshot_month and only the last month's rows are summed; the
   # default ascending order makes that the latest month.
   - name: total_supply_cost
-    tables:
-      - supplies
     description: |-
       Cost of supplying the products sold, in cents. Not additive across months.
     expr: "SUM({{ ref('supplies', 'supply_cost') }})"
@@ -151,8 +126,6 @@ snowflake_metrics:
   # last in sort order, and `null_order: first` keeps a row with no month from
   # ever being that last row.
   - name: opening_supply_cost
-    tables:
-      - supplies
     description: |-
       Cost of supplying the products sold, in cents, in the earliest month on
       record. Not additive across months.
@@ -167,7 +140,6 @@ snowflake_metrics:
 
   # DIV0 rather than /, so a zero denominator returns zero, not an error.
   - name: revenue_per_order
-    derived: true
     description: |-
       Mean revenue per order, derived from two table-scoped metrics.
     expr: "DIV0({{ metric('total_revenue') }}, {{ metric('order_count') }})"
@@ -175,7 +147,6 @@ snowflake_metrics:
       - revenue per order
 
   - name: revenue_per_customer
-    derived: true
     description: |-
       Mean revenue per customer over the period in scope.
     expr: "DIV0({{ metric('total_revenue') }}, {{ metric('customer_count') }})"
@@ -183,14 +154,12 @@ snowflake_metrics:
   # Only a derived metric may reference the non-additive total_supply_cost
   # (SST-VAL107).
   - name: gross_margin
-    derived: true
     description: |-
       Line-item revenue less the cost of supplying what was sold, in cents.
     expr: "{{ metric('total_line_item_revenue') }} - {{ metric('total_supply_cost') }}"
 
   # Derived from gross_margin, itself derived; it renders GROSS_MARGIN by name.
   - name: gross_margin_rate
-    derived: true
     description: |-
       Gross margin as a share of line-item revenue.
     expr: "DIV0({{ metric('gross_margin') }}, {{ metric('total_line_item_revenue') }})"

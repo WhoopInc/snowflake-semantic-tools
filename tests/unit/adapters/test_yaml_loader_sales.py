@@ -72,7 +72,9 @@ def test_resolves_project_vars_and_derived_metric_dependencies(sales: SemanticVi
 def test_composes_instruction_channels_and_standalone_filter_prose(sales: SemanticView) -> None:
     assert sales.ai_sql_generation is not None
     assert "Round every monetary amount" in sales.ai_sql_generation
-    assert "For ORDERS, high_value_threshold_cents is large_order_cents." in sales.ai_sql_generation
+    # The prose filter's expression is resolved as the view names its columns.
+    prose = " ".join(sales.ai_sql_generation.split())
+    assert "For ORDERS, shortfall_to_large_order_cents is large_order_cents - ORDERS.ORDER_TOTAL." in prose
     assert sales.ai_question_categorization is not None
     assert "A question about staffing" in sales.ai_question_categorization
     assert sales.custom_instruction_names == ("jaffle_sql_conventions", "jaffle_question_scope")
@@ -121,7 +123,7 @@ def test_every_metric_on_a_cycle_is_in_a_reported_cycle() -> None:
     )
 
 
-def test_metric_diagnostics_cover_unknown_columns_empty_tables_and_duplicates() -> None:
+def test_metric_diagnostics_cover_unknown_columns_and_duplicates() -> None:
     model = DbtModel(
         unique_id="model.fixture.orders",
         name="orders",
@@ -140,15 +142,11 @@ def test_metric_diagnostics_cover_unknown_columns_empty_tables_and_duplicates() 
             False,
             (),
             (),
-            has_tables_key=True,
         ),
-        MetricDef("duplicate", "COUNT(1)", None, (), ("orders",), False, (), (), has_tables_key=True),
-        MetricDef("empty", "COUNT(1)", None, ()),
+        MetricDef("duplicate", "COUNT(1)", None, (), ("orders",), False, (), ()),
     )
-    assert [diagnostic.code for diagnostic in metric_diagnostics(metrics, {"orders": model})] == [
-        "SST-VAL001",
-        "SST-VAL109",
-    ]
+    # A metric with no table is the membership check's to report (SST-MEM002), not these.
+    assert [diagnostic.code for diagnostic in metric_diagnostics(metrics, {"orders": model})] == ["SST-VAL001"]
 
 
 def test_table_scoped_metrics_require_an_aggregate_expression() -> None:
@@ -165,7 +163,6 @@ def test_table_scoped_metrics_require_an_aggregate_expression() -> None:
         False,
         (),
         (),
-        has_tables_key=True,
     )
     assert [diagnostic.code for diagnostic in metric_diagnostics((metric,), {})] == [
         "SST-VAL101",
@@ -277,8 +274,8 @@ def test_multi_path_warns_on_view_and_errors_on_unpinned_metric() -> None:
         Relationship("PATH_B", "ORDER_ITEMS", ("ORDER_ID",), "ORDERS", ("ORDER_ID",)),
     )
     metrics = (
-        MetricDef("pinned", "COUNT(1)", None, (), ("order_items",), False, ("PATH_A",), (), has_tables_key=True),
-        MetricDef("unpinned", "COUNT(1)", None, (), ("order_items",), False, (), (), has_tables_key=True),
+        MetricDef("pinned", "COUNT(1)", None, (), ("order_items",), False, ("PATH_A",), ()),
+        MetricDef("unpinned", "COUNT(1)", None, (), ("order_items",), False, (), ()),
     )
     diagnostics = _multipath_diagnostics(
         relationships,
@@ -341,7 +338,6 @@ def test_excluded_columns_are_diagnosed_in_metric_and_filter_references() -> Non
         (),
         (),
         "public_access",
-        True,
     )
     filter_def = FilterDef(
         "secret_filter",
@@ -398,7 +394,6 @@ def test_metric_relationship_and_expression_diagnostics_use_public_codes() -> No
         ("MISSING", "SECOND"),
         (),
         "hidden",
-        True,
     )
     orders_with_amount = DbtModel(
         "model.fixture.orders",
@@ -427,7 +422,6 @@ def test_metric_relationship_and_expression_diagnostics_use_public_codes() -> No
         (),
         (),
         "public_access",
-        True,
     )
     orders = DbtModel("model.fixture.orders", "orders", "DB.SCH.ORDERS", ("id",), (), ())
     customers = DbtModel(
@@ -458,7 +452,6 @@ def test_bare_identifier_warning_uses_manifest_columns_not_sql_tokens() -> None:
         (),
         (),
         "public_access",
-        True,
     )
     orders = DbtModel(
         "model.fixture.orders",
@@ -494,19 +487,15 @@ def test_critical_metric_restrictions_are_non_demotable_diagnostics() -> None:
         False,
         (),
         (NonAdditiveDef("ordered_at", "orders"),),
-        has_tables_key=True,
     )
     derived = MetricDef("derived", "{{ metric('base') }}", None, (), derived=True)
     metrics = (
         base,
         derived,
         MetricDef("agg_metric", "SUM({{ metric('base') }})", None, (), derived=True),
-        MetricDef("physical", "{{ ref('orders', 'order_id') }}", None, (), derived=True),
         MetricDef("member", "{{ fact('orders.total') }}", None, (), derived=True),
-        MetricDef(
-            "regular_derived", "{{ metric('derived') }}", None, (), ("orders",), False, (), (), has_tables_key=True
-        ),
-        MetricDef("regular_nonadd", "{{ metric('base') }}", None, (), ("orders",), False, (), (), has_tables_key=True),
+        MetricDef("regular_derived", "{{ metric('derived') }}", None, (), ("orders",), False, (), ()),
+        MetricDef("regular_nonadd", "{{ metric('base') }}", None, (), ("orders",), False, (), ()),
     )
     model = DbtModel(
         unique_id="model.fixture.orders",
@@ -517,7 +506,7 @@ def test_critical_metric_restrictions_are_non_demotable_diagnostics() -> None:
         columns=(DbtColumn("order_id", None, None, "dimension"),),
     )
     codes = [diagnostic.code for diagnostic in metric_diagnostics(metrics, {"orders": model})]
-    assert {"SST-VAL103", "SST-VAL104", "SST-VAL105", "SST-VAL106", "SST-VAL107"} <= set(codes)
+    assert {"SST-VAL103", "SST-VAL105", "SST-VAL106", "SST-VAL107"} <= set(codes)
 
 
 def _supplies() -> DbtModel:

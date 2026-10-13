@@ -57,7 +57,7 @@ def _tombstones(*rows: tuple[str, str, str | None, str]) -> Mapping[str, Tombsto
 
 ALIASES: Mapping[str, Alias] = _aliases(
     ("SST-V001", "Missing required field", "SPLIT", ("SST-PRS002", "SST-VAL201", "SST-PRS107")),
-    ("SST-V002", "Unknown table reference", "SPLIT", ("SST-DBT002", "SST-REF001", "SST-MEM003")),
+    ("SST-V002", "Unknown table reference", "SPLIT", ("SST-DBT002", "SST-REF001")),
     ("SST-V003", "Unknown column reference", "SPLIT", ("SST-REF002", "SST-DBT004", "SST-VAL020")),
     ("SST-V004", "Duplicate name", "KEPT", ("SST-PRS006", "SST-PRS106", "SST-VAL001")),
     (
@@ -92,9 +92,9 @@ ALIASES: Mapping[str, Alias] = _aliases(
     ("SST-V023", "Fact column must be numeric", "KEPT", ("SST-VAL305",)),
     ("SST-V024", "Time dimension must be temporal", "KEPT", ("SST-VAL306",)),
     ("SST-V025", "Enum without sample_values", "SPLIT", ("SST-VAL314", "SST-VAL315", "SST-MEM103")),
-    ("SST-V032", "Missing metric tables", "SPLIT", ("SST-VAL109", "SST-MEM002")),
+    ("SST-V032", "Missing metric tables", "KEPT", ("SST-MEM002",)),
     ("SST-V033", "Invalid metric expression type", "KEPT", ("SST-PRS113", "SST-PRS002")),
-    ("SST-V034", "Empty metric tables list", "KEPT", ("SST-PRS102",)),
+    ("SST-V034", "Empty metric tables list", "KEPT", ("SST-PRS126",)),
     ("SST-V035", "Invalid visibility value", "SPLIT", ("SST-PRS013", "SST-VAL121", "SST-VAL122")),
     ("SST-V036", "Invalid non_additive_by configuration", "KEPT", ("SST-VAL118",)),
     ("SST-V037", "Invalid window metric configuration", "KEPT", ("SST-VAL102", "SST-PRS003")),
@@ -106,7 +106,7 @@ ALIASES: Mapping[str, Alias] = _aliases(
     ("SST-V043", "Relationship column not found", "KEPT", ("SST-VAL204", "SST-REF002")),
     ("SST-V044", "Using relationship not found", "KEPT", ("SST-VAL214", "SST-VAL204")),
     ("SST-V045", "Derived metric must reference other metrics", "KEPT", ("SST-REF006",)),
-    ("SST-V046", "Invalid field on derived metric", "KEPT", ("SST-VAL108",)),
+    ("SST-V046", "Invalid field on derived metric", "KEPT", ("SST-PRS126",)),
     ("SST-V047", "Excluded column referenced in expression", "KEPT", ("SST-VAL318",)),
     ("SST-V048", "Primary key and unique keys overlap", "KEPT, then SUPERSEDED", ("SST-VAL223",)),
     ("SST-V049", "Unsupported multi-column expression in relationship condition", "KEPT", ("SST-VAL213", "SST-PRS110")),
@@ -161,6 +161,54 @@ ALIASES: Mapping[str, Alias] = _aliases(
 )
 
 TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
+    (
+        "SST-MEM003",
+        "Declared table does not name a known dbt model",
+        "SST-REF001",
+        "a member's tables are the models its ref() calls name, so an unknown one is that ref(), SST-REF001",
+    ),
+    (
+        "SST-MEM012",
+        "Tables inferred for a member",
+        None,
+        "a member's tables are always the models its templates name, so there is nothing to report",
+    ),
+    (
+        "SST-PRS102",
+        "tables is explicitly empty",
+        "SST-PRS126",
+        "`tables:` is no longer written on a member; its tables are inferred",
+    ),
+    (
+        "SST-REF043",
+        "Expression references a table outside the member's tables:",
+        None,
+        "a member's tables are the models its expression names, so none can lie outside them",
+    ),
+    (
+        "SST-REF045",
+        "Relationship endpoint is written as a ref() call",
+        "SST-REF046",
+        "relationship endpoints take a `ref()` call; a bare model name is SST-REF046",
+    ),
+    (
+        "SST-VAL104",
+        "Derived metric references a physical column",
+        None,
+        "a metric whose expression names a column is table-scoped by definition, never derived",
+    ),
+    (
+        "SST-VAL108",
+        "Derived metric declares a table list",
+        "SST-PRS126",
+        "`tables:` is no longer written on a metric; SST-PRS126 names the key",
+    ),
+    (
+        "SST-VAL109",
+        "Table-scoped metric declares no table list",
+        "SST-MEM002",
+        "a metric's tables are inferred from its expression; one that names none is SST-MEM002",
+    ),
     (
         "SST-APL101",
         "Rolled back after a smoke failure",

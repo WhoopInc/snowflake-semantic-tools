@@ -11,26 +11,20 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-MEM001",
         Severity.WARNING,
         "Member declares a table present in no artifact",
-        "{member} declares table '{name}', which no {type} lists",
+        "{member} names table '{name}', which no {type} lists",
         "add the table to a view, or correct the member",
         condition="a member's declared table is a dbt model that no semantic view lists",
     ),
     spec(
         "SST-MEM002",
-        Severity.WARNING,
-        "tables absent and nothing inferable",
-        "{member} declares no tables: and none can be inferred",
-        "declare tables: explicitly",
-        condition="a member that is not derived declares no `tables:`, and its expression references no table",
-    ),
-    spec(
-        "SST-MEM003",
         Severity.ERROR,
-        "Declared table does not name a known dbt model",
-        "{member} declares table '{name}', which is not a known dbt model",
-        "use a dbt model name the manifest knows",
-        condition="a member's declared table names no dbt model in the manifest",
-        note="A table naming a disabled model, or one with no relation, reports SST-DBT009 instead.",
+        "Member names no table",
+        "{member} names no table, so it attaches to no view",
+        "name a column with {{ ref('<model>', '<column>') }}: COUNT({{ ref('orders', 'order_id') }}), not COUNT(*)",
+        condition=(
+            "a metric, filter or verified query that is not a derived metric names no model with ref(), "
+            "so it has no tables"
+        ),
     ),
     spec(
         "SST-MEM004",
@@ -104,14 +98,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{member} attaches to {count} artifacts",
         None,
         condition="a member attaches to more than one semantic view",
-    ),
-    spec(
-        "SST-MEM012",
-        Severity.INFO,
-        "Tables inferred for a member",
-        "{member}: tables inferred as {value}",
-        None,
-        condition="a member declares no `tables:`, so they were inferred from its expression",
     ),
     spec(
         "SST-MEM013",

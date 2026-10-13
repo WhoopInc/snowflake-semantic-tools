@@ -6,12 +6,12 @@ from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.diagnostic_filters import coded
-from tests.helpers.seam_projects import SmallProject, metric_file
+from tests.helpers.seam_projects import COUNTED, SmallProject, metric_file
 
 
 def test_sst_prs022_fires(tmp_path: Path) -> None:
     [diagnostic] = coded(
-        SmallProject(tmp_path, files=metric_file("    expr: COUNT(*)\n    synonym: [all]\n")).load().diagnostics,
+        SmallProject(tmp_path, files=metric_file(COUNTED + "    synonym: [all]\n")).load().diagnostics,
         "SST-PRS022",
     )
     assert diagnostic.severity is Severity.ERROR
@@ -22,7 +22,7 @@ def test_sst_prs022_fires(tmp_path: Path) -> None:
 def test_sst_prs022_silent(tmp_path: Path) -> None:
     assert (
         coded(
-            SmallProject(tmp_path, files=metric_file("    expr: COUNT(*)\n    synonyms: [all]\n")).load().diagnostics,
+            SmallProject(tmp_path, files=metric_file(COUNTED + "    synonyms: [all]\n")).load().diagnostics,
             "SST-PRS022",
         )
         == []

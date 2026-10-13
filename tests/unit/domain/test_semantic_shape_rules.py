@@ -18,7 +18,7 @@ def _metric_findings(*nodes: dict[str, Any]) -> list[tuple[str, str | None]]:
 
 
 def test_a_metric_needs_a_string_expr_and_lists_of_the_right_types() -> None:
-    assert _metric_findings({"tables": "orders"}) == [("SST-PRS002", "expr"), ("SST-PRS003", "tables")]
+    assert _metric_findings({"tables": "orders"}) == [("SST-PRS002", "expr")]
     assert _metric_findings({"name": "m", "expr": 1, "using_relationships": ["a", 2], "access_modifier": "hidden"}) == [
         ("SST-PRS113", "expr"),
         ("SST-PRS003", "using_relationships"),
@@ -27,7 +27,7 @@ def test_a_metric_needs_a_string_expr_and_lists_of_the_right_types() -> None:
     assert _metric_findings(
         {"name": "m", "expr": "x", "using_relationships": "a", "access_modifier": "public_access"}
     ) == [("SST-PRS003", "using_relationships")]
-    assert _metric_findings({"name": "m", "expr": "x", "tables": [], "using_relationships": ["a"]}) == []
+    assert _metric_findings({"name": "m", "expr": "x", "using_relationships": ["a"]}) == []
 
 
 def test_each_non_additive_entry_names_a_dimension_a_bare_table_and_an_allowed_sort() -> None:

@@ -24,8 +24,8 @@
 --     VARIABLES attach through ORDERS, which this view shares with
 --     jaffle_sales, so the view declares the same variables.
 --   - AI_SQL_GENERATION is jaffle_sql_conventions, jaffle_margin_guidance, then
---     prose from the unlabeled filter high_value_threshold_cents, with a blank
---     line between parts. There is no AI_QUESTION_CATEGORIZATION: custom
+--     prose from the unlabeled filter shortfall_to_large_order_cents, its
+--     expression resolved, with a blank line between parts. There is no AI_QUESTION_CATEGORIZATION: custom
 --     instructions attach by name, and this view does not name
 --     jaffle_question_scope.
 --   - No MAX_STALENESS or WITH TAG, since the view sets neither. COPY GRANTS is
@@ -130,9 +130,9 @@ decimal share of line-item revenue.
 A margin question scoped to a single month is answerable; a margin question
 spanning months is answerable only through the metric, never by summing.
 
-For ORDERS, high_value_threshold_cents is large_order_cents. The order value
-above which a sale is treated as high-value in generated narrative. A
-threshold, not a predicate.'
+For ORDERS, shortfall_to_large_order_cents is large_order_cents -
+ORDERS.ORDER_TOTAL. How far an order falls short of the large-order
+threshold, for generated narrative. A measure of distance, not a predicate.'
   AI_VERIFIED_QUERIES (
     ORDER_COUNT_BY_STATE AS (
       QUESTION 'How many orders are there in each fulfilment state?'
@@ -142,7 +142,7 @@ threshold, not a predicate.'
       SQL 'SELECT
       orders.order_state                  AS order_state
     , COUNT(DISTINCT orders.order_id)     AS order_count
-FROM orders AS orders
+FROM ORDERS AS orders
 GROUP BY ALL
 ORDER BY order_count DESC'
     ),
@@ -152,10 +152,10 @@ ORDER BY order_count DESC'
       products.product_type                         AS product_type
     , COUNT(order_items.order_item_id)              AS units_sold
     , SUM(order_items.item_price) / 100             AS line_item_revenue
-FROM order_items AS order_items
-INNER JOIN products AS products
+FROM ORDER_ITEMS AS order_items
+INNER JOIN PRODUCTS AS products
     ON order_items.product_id = products.product_id
-INNER JOIN orders AS orders
+INNER JOIN ORDERS AS orders
     ON order_items.order_id = orders.order_id
 WHERE orders.order_state = ''completed''
 GROUP BY ALL
@@ -165,7 +165,7 @@ ORDER BY units_sold DESC'
       QUESTION 'What is our total revenue?'
       SQL 'SELECT
     SUM(orders.order_total) / 100 AS revenue
-FROM orders AS orders'
+FROM ORDERS AS orders'
     )
   )
   COPY GRANTS

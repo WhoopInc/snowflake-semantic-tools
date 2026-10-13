@@ -22,5 +22,5 @@ def test_sst_val405_fires(tmp_path: Path) -> None:
 
 
 def test_sst_val405_silent(tmp_path: Path) -> None:
-    # The non-boolean `high_value_threshold_cents` declares no labels: key either.
+    # The non-boolean `shortfall_to_large_order_cents` declares no labels: key either.
     assert reported(project_copy(tmp_path), "SST-VAL405") == []

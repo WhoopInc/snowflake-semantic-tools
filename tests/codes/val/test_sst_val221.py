@@ -7,15 +7,15 @@ from pathlib import Path
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.reference_project import FILTERS, edited, reported
 
-PROSE = '    expr: "large_order_cents"\n'
+PROSE = "    expr: \"large_order_cents - {{ ref('orders', 'order_total') }}\"\n"
 
 
 def test_sst_val221_fires(tmp_path: Path) -> None:
-    project = edited(tmp_path, FILTERS, PROSE, '    expr: "large_ordr_cents"\n')
+    project = edited(tmp_path, FILTERS, PROSE, "    expr: \"large_ordr_cents - {{ ref('orders', 'order_total') }}\"\n")
     diagnostic = next(item for item in reported(project, "SST-VAL221") if item.subject == "semantic_view:jaffle_sales")
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == (
-        "semantic_view:jaffle_sales: 'large_ordr_cents' in the expr of 'high_value_threshold_cents' "
+        "semantic_view:jaffle_sales: 'large_ordr_cents' in the expr of 'shortfall_to_large_order_cents' "
         "is neither a column nor a declared variable"
     )
     # The prose fails no create, so the word is not also an error.

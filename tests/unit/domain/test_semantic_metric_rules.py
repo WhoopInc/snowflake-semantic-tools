@@ -46,19 +46,18 @@ def test_a_repeated_name_is_reported_once_and_checked_no_further() -> None:
 
 
 def test_a_metrics_kind_rules_out_the_keys_it_may_not_declare() -> None:
-    assert _codes(MetricDef("no_key", SUM, "The no_key.", ())) == ["SST-VAL109"]
-    assert _codes(MetricDef("empty", SUM, "The empty.", (), (), has_tables_key=True)) == ["SST-PRS102"]
+    # A metric with no table is the membership check's to report (SST-MEM002).
+    assert _codes(MetricDef("no_table", SUM, "The no_table.", ())) == []
     derived = MetricDef(
         "derived",
         "{{ metric('base') }}",
         "The derived.",
         (),
-        has_tables_key=True,
         derived=True,
         using_relationships=("A", "B"),
         access_modifier="hidden",
     )
-    assert _codes(derived, metric("base", SUM)) == ["SST-VAL108", "SST-VAL113", "SST-VAL115", "SST-VAL121"]
+    assert _codes(derived, metric("base", SUM)) == ["SST-VAL113", "SST-VAL115", "SST-VAL121"]
 
 
 def test_non_additive_dimensions_are_dimensions_of_their_table_in_a_stated_order() -> None:
@@ -133,7 +132,6 @@ def test_a_derived_metric_combines_metrics_without_windows_columns_or_members() 
     assert found == [
         ("SST-VAL102", "metric:derived"),
         ("SST-VAL103", "metric:derived"),
-        ("SST-VAL104", "metric:derived"),
         ("SST-VAL105", "metric:derived"),
         ("SST-VAL105", "metric:derived"),
         ("SST-VAL102", "metric:windowed"),

@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.migrate.refs import FilterSite, MigrationResult, add_filter_labels, migrate_refs
+from snowflake_semantic_tools.domain.migrate.refs import (
+    FilterSite,
+    MigrationResult,
+    add_filter_labels,
+    drop_inferred_keys,
+    migrate_refs,
+)
 from snowflake_semantic_tools.domain.validate.expression import is_boolean_expression, outer_parentheses, root_function
 
 SOURCE = """semantic_views:
@@ -33,8 +39,8 @@ def test_codemod_rewrites_list_items_relation_keys_and_columns() -> None:
     text = result.text
     assert "      - {{ ref('orders') }}\n" in text
     assert "      - \"{{ ref('customers')}}\"\n" in text
-    assert "    left_table: orders\n" in text
-    assert "    right_table: customers  # quoted\n" in text
+    assert "    left_table: \"{{ ref('orders') }}\"\n" in text
+    assert "    right_table: \"{{ ref('customers') }}\"  # quoted\n" in text
     assert "{{ ref('orders', 'customer_id') }} = {{ref('customers','id')}}" in text
     assert "tables: [{{ ref('orders') }}]" in text
     assert "SUM({{ ref('orders', 'amount') }}) + {{ ref('orders', 'tax') }}" in text
@@ -43,8 +49,8 @@ def test_codemod_rewrites_list_items_relation_keys_and_columns() -> None:
     assert [(item.kind, item.line) for item in result.rewrites] == [
         ("ref", 4),
         ("ref", 5),
-        ("bare", 10),
-        ("bare", 11),
+        ("endpoint", 10),
+        ("endpoint", 11),
         ("column", 13),
         ("column", 13),
         ("ref", 16),
@@ -126,7 +132,7 @@ def test_expression_classifier_shapes() -> None:
         assert not is_boolean_expression(value), value
 
 
-def test_codemod_turns_a_ref_endpoint_into_the_bare_name() -> None:
+def test_codemod_turns_a_bare_endpoint_into_a_ref_call() -> None:
     text = (
         "snowflake_relationships:\n"
         "  - name: a_to_b\n"
@@ -136,7 +142,57 @@ def test_codemod_turns_a_ref_endpoint_into_the_bare_name() -> None:
         "      - \"{{ ref('a', 'b_id') }} = {{ ref('b', 'id') }}\"\n"
     )
     result = migrate_refs(text)
-    assert "    right_table: b\n" in result.text
+    assert "    left_table: \"{{ ref('a') }}\"\n" in result.text
+    assert "    right_table: \"{{ ref('b') }}\"\n" in result.text
     assert "{{ ref('a', 'b_id') }} = {{ ref('b', 'id') }}" in result.text
-    assert [(item.kind, item.after) for item in result.rewrites] == [("bare", "b")]
+    assert [(item.kind, item.before, item.after) for item in result.rewrites] == [
+        ("endpoint", "a", "\"{{ ref('a') }}\"")
+    ]
     assert migrate_refs(result.text).rewrites == ()
+    # A quoted bare name is rewritten too, and its quotes give way to the call's.
+    assert "left_table: \"{{ ref('a') }}\"" in migrate_refs("    left_table: 'a'\n").text
+
+
+def test_the_keys_sst_infers_are_dropped_from_members_only() -> None:
+    text = (
+        "semantic_views:\n"
+        "  - name: v\n"
+        "    tables:\n"
+        "      - \"{{ ref('orders') }}\"\n"
+        "snowflake_metrics:\n"
+        "  - name: total\n"
+        "    tables:\n"
+        "      - \"{{ ref('orders') }}\"\n"
+        "\n"
+        "      - \"{{ ref('customers') }}\"\n"
+        "    expr: \"SUM({{ ref('orders', 'amount') }})\"\n"
+        "  - name: ratio\n"
+        "    derived: true  # combines metrics\n"
+        "    expr: \"{{ metric('total') }} * 2\"\n"
+        "  - tables: [orders]\n"
+        "    name: first_key\n"
+        "snowflake_filters:\n"
+        "  - name: f\n"
+        "    tables: [\"{{ ref('orders') }}\"]\n"
+        "    expr: x\n"
+    )
+    result = drop_inferred_keys(migrate_refs(text))
+    assert result.text == (
+        "semantic_views:\n"
+        "  - name: v\n"
+        "    tables:\n"
+        "      - \"{{ ref('orders') }}\"\n"
+        "snowflake_metrics:\n"
+        "  - name: total\n"
+        "    expr: \"SUM({{ ref('orders', 'amount') }})\"\n"
+        "  - name: ratio\n"
+        "    expr: \"{{ metric('total') }} * 2\"\n"
+        "  - tables: [orders]\n"
+        "    name: first_key\n"
+        "snowflake_filters:\n"
+        "  - name: f\n"
+        "    expr: x\n"
+    )
+    assert [(item.kind, item.line) for item in result.rewrites] == [("inferred", 7), ("inferred", 13), ("inferred", 19)]
+    unchanged = drop_inferred_keys(migrate_refs(result.text))
+    assert unchanged.text == result.text and not unchanged.changed

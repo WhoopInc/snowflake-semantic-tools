@@ -67,7 +67,7 @@ def metric_parse_diagnostics(
         SST-PRS002: when there is no `expr`, a non-additive entry names no dimension, or a
             window `order_by` mapping has no string `ref`.
         SST-PRS113: when `expr` is not a string.
-        SST-PRS003: when `tables`, `using_relationships`, `non_additive_dimensions`, `window`
+        SST-PRS003: when `using_relationships`, `non_additive_dimensions`, `window`
             or a part of either block has the wrong type.
         SST-PRS103: when `access_modifier`, a `sort_direction` or a `null_order` is not an
             allowed value.
@@ -100,18 +100,6 @@ def metric_parse_diagnostics(
                     artifact=subject,
                     field="expr",
                     found=type(node.get("expr")).__name__,
-                    subject=subject,
-                    origin=origin,
-                )
-            )
-        if "tables" in node and not isinstance(node.get("tables"), list):
-            diagnostics.append(
-                D(
-                    "SST-PRS003",
-                    artifact=subject,
-                    field="tables",
-                    expected="a list",
-                    found=type(node.get("tables")).__name__,
                     subject=subject,
                     origin=origin,
                 )

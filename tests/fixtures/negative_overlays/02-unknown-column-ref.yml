@@ -2,8 +2,6 @@
 # A metric over a column the orders model does not have.
 snowflake_metrics:
   - name: phantom_column_total
-    tables:
-      - orders
     description: |-
       Sums a column that does not exist.
     expr: "SUM({{ ref('orders', 'phantom_cents') }})"

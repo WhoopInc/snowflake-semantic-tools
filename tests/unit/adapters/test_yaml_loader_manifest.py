@@ -308,10 +308,8 @@ def test_metric_parse_diagnostics_preserve_missing_empty_and_wrong_types(tmp_pat
     metrics.write_text(
         "snowflake_metrics:\n"
         "  - name: missing_expr\n"
-        "    tables: [products]\n"
         "  - name: wrong_expr\n"
         "    expr: [COUNT, 1]\n"
-        "    tables: products\n"
         "    using_relationships: rel\n"
         "    access_modifier: hidden\n"
         "    visibility: private\n"
@@ -323,7 +321,6 @@ def test_metric_parse_diagnostics_preserve_missing_empty_and_wrong_types(tmp_pat
     assert [diagnostic.code for diagnostic in diagnostics] == [
         "SST-PRS002",
         "SST-PRS113",
-        "SST-PRS003",
         "SST-PRS003",
         "SST-PRS103",
         "SST-PRS029",
@@ -400,6 +397,10 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
             ),
             ("SST-PRS020", "ERROR", "metric:product_count", "non_additive_dimensions[0].nulls", "null_order"),
             ("SST-PRS004", "WARNING", "metric:product_count", "default_aggregation", None),
+            # A member's tables are inferred, so writing them is named for what it is.
+            ("SST-PRS126", "ERROR", "metric:product_count", "tables", None),
+            ("SST-PRS126", "ERROR", "filter:cheap", "tables", None),
+            ("SST-PRS126", "ERROR", "verified_query:how_many", "tables", None),
             ("SST-PRS004", "WARNING", "custom_instruction:tone", "consumer", None),
             ("SST-VAL406", "WARNING", "filter:cheap", None, None),
             ("SST-PRS004", "WARNING", "verified_query:how_many", "tags", None),
@@ -579,7 +580,6 @@ def test_window_keys_are_checked_and_typos_and_0_3_order_spellings_are_named(tmp
     (tmp_path / "semantic_models" / "metrics" / "windows.yml").write_text(
         "snowflake_metrics:\n"
         "  - name: running\n"
-        "    tables: [products]\n"
         "    expr: SUM(x)\n"
         "    window:\n"
         "      partiton_by: [a]\n"
@@ -632,9 +632,9 @@ def test_a_window_dimension_the_metric_cannot_reach_fails_the_view(tmp_path: Pat
     )
     (tmp_path / "semantic_models" / "metrics" / "metrics.yml").write_text(
         "snowflake_metrics:\n"
-        "  - name: product_count\n    description: Products.\n    tables: [\"{{ ref('products') }}\"]\n"
+        "  - name: product_count\n    description: Products.\n"
         "    expr: \"COUNT({{ ref('products', 'product_id') }})\"\n"
-        "  - name: running_product_count\n    description: Running.\n    tables: [\"{{ ref('products') }}\"]\n"
+        "  - name: running_product_count\n    description: Running.\n"
         "    expr: \"SUM({{ metric('product_count') }})\"\n"
         "    window:\n      order_by: [\"{{ ref('calendar', 'month') }}\"]\n",
         encoding="utf-8",
@@ -676,7 +676,6 @@ def test_a_non_additive_table_outside_the_view_fails_the_view(tmp_path: Path) ->
         "snowflake_metrics:\n"
         "  - name: product_count\n"
         "    description: Products.\n"
-        "    tables: [\"{{ ref('products') }}\"]\n"
         "    expr: \"COUNT({{ ref('products', 'product_id') }})\"\n"
         "    non_additive_dimensions:\n"
         "      - table: calendar\n"
@@ -690,23 +689,23 @@ def test_a_non_additive_table_outside_the_view_fails_the_view(tmp_path: Path) ->
     ]
 
 
-def test_a_ref_relationship_endpoint_is_an_error_naming_the_codemod(tmp_path: Path) -> None:
+def test_a_bare_relationship_endpoint_is_an_error_naming_the_codemod(tmp_path: Path) -> None:
     manifest = write_project(tmp_path)
     relationships = tmp_path / "semantic_models" / "relationships"
     relationships.mkdir()
     (relationships / "relationships.yml").write_text(
         "snowflake_relationships:\n"
         "  - name: self\n"
-        "    left_table: \"{{ ref('products') }}\"\n"
-        "    right_table: products\n"
+        "    left_table: products\n"
+        "    right_table: \"{{ ref('products') }}\"\n"
         "    relationship_conditions:\n"
         "      - \"{{ ref('products', 'product_id') }} = {{ ref('products', 'product_id') }}\"\n",
         encoding="utf-8",
     )
     project = load_project(tmp_path, manifest_path=manifest)
-    endpoint = [item for item in project.diagnostics if item.code == "SST-REF045"]
+    endpoint = [item for item in project.diagnostics if item.code == "SST-REF046"]
     assert [(item.subject, item.context["field"]) for item in endpoint] == [("relationship:self", "left_table")]
-    assert endpoint[0].severity.name == "ERROR" and "sst migrate refs" in str(ERROR_REGISTRY["SST-REF045"].suggestion)
+    assert endpoint[0].severity.name == "ERROR" and "sst migrate refs" in str(ERROR_REGISTRY["SST-REF046"].suggestion)
 
 
 def test_0_3_key_forms_and_unknown_meta_keys_are_reported_where_a_view_uses_the_model(tmp_path: Path) -> None:

@@ -17,7 +17,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind, Sema
 # The derived-metric restrictions, which SST checks itself. Snowflake's docs state them; the
 # server creates a view with a window function in a derived metric and fails it only at query
 # time (docs/design/snowflake-behaviour.md).
-CRITICAL_METRIC_CODES = frozenset(("SST-VAL102", "SST-VAL103", "SST-VAL104", "SST-VAL105", "SST-VAL106", "SST-VAL107"))
+CRITICAL_METRIC_CODES = frozenset(("SST-VAL102", "SST-VAL103", "SST-VAL105", "SST-VAL106", "SST-VAL107"))
 
 
 def statement_diagnostics(ddl: str, *, artifact: str) -> tuple[Diagnostic, ...]:

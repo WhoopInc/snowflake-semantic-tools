@@ -10,12 +10,15 @@ from tests.helpers.reference_project import QUERIES, edited, reported
 
 def test_sst_val416_fires(tmp_path: Path) -> None:
     dated = (
-        "          SUM(orders.order_total) / 100 AS revenue\n      FROM orders AS orders"
+        "          SUM(orders.order_total) / 100 AS revenue\n      FROM {{ ref('orders') }} AS orders"
         + "\n      WHERE orders.ordered_at >= CURRENT_DATE - 30"
     )
     [diagnostic] = reported(
         edited(
-            tmp_path, QUERIES, "          SUM(orders.order_total) / 100 AS revenue\n      FROM orders AS orders", dated
+            tmp_path,
+            QUERIES,
+            "          SUM(orders.order_total) / 100 AS revenue\n      FROM {{ ref('orders') }} AS orders",
+            dated,
         ),
         "SST-VAL416",
     )
@@ -26,7 +29,7 @@ def test_sst_val416_fires(tmp_path: Path) -> None:
 
 def test_sst_val416_silent(tmp_path: Path) -> None:
     pinned = (
-        "          SUM(orders.order_total) / 100 AS revenue\n      FROM orders AS orders"
+        "          SUM(orders.order_total) / 100 AS revenue\n      FROM {{ ref('orders') }} AS orders"
         + "\n      WHERE orders.ordered_at >= '2026-01-01' -- not CURRENT_DATE"
     )
     assert (
@@ -34,7 +37,7 @@ def test_sst_val416_silent(tmp_path: Path) -> None:
             edited(
                 tmp_path,
                 QUERIES,
-                "          SUM(orders.order_total) / 100 AS revenue\n      FROM orders AS orders",
+                "          SUM(orders.order_total) / 100 AS revenue\n      FROM {{ ref('orders') }} AS orders",
                 pinned,
             ),
             "SST-VAL416",

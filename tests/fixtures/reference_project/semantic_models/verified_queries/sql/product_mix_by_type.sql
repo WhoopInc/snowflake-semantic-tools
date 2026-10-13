@@ -7,10 +7,10 @@ SELECT
       products.product_type                         AS product_type
     , COUNT(order_items.order_item_id)              AS units_sold
     , SUM(order_items.item_price) / 100             AS line_item_revenue
-FROM order_items AS order_items
-INNER JOIN products AS products
+FROM {{ ref('order_items') }} AS order_items
+INNER JOIN {{ ref('products') }} AS products
     ON order_items.product_id = products.product_id
-INNER JOIN orders AS orders
+INNER JOIN {{ ref('orders') }} AS orders
     ON order_items.order_id = orders.order_id
 WHERE orders.order_state = 'completed'
 GROUP BY ALL

@@ -20,9 +20,9 @@ cannot be downgraded by any setting.
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
 - [Parsing (PRS)](#parsing-prs) -- 58 codes
 - [Loading (LOD)](#loading-lod) -- 24 codes
-- [References (REF)](#references-ref) -- 37 codes
-- [Membership (MEM)](#membership-mem) -- 24 codes
-- [Validation (VAL)](#validation-val) -- 302 codes
+- [References (REF)](#references-ref) -- 36 codes
+- [Membership (MEM)](#membership-mem) -- 22 codes
+- [Validation (VAL)](#validation-val) -- 299 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
@@ -31,7 +31,7 @@ cannot be downgraded by any setting.
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 24 codes
 - [Internal (INT)](#internal-int) -- 12 codes
-- [Retired numbers](#retired-numbers) -- 42 numbers
+- [Retired numbers](#retired-numbers) -- 50 numbers
 
 ## Registry (REG)
 
@@ -1217,18 +1217,6 @@ Raised when an eval config enables no system metric and names no custom metric.
 
 Fix: declare at least one entry, or remove the key
 
-### SST-PRS102
-
-**tables is explicitly empty** (error, always an error)
-
-`<artifact>: 'tables: []' is not accepted`
-
-Raised when a table-scoped metric declares `tables: []`.
-
-Fix: declare the tables the member attaches to
-
-Note: An empty list is refused; it is never read as a request to infer the tables.
-
 ### SST-PRS103
 
 **Value outside the allowed enum** (error)
@@ -1428,6 +1416,18 @@ Fix: write each bound as UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW, 
 Raised when sst enrich would rewrite lines it did not edit while writing a file.
 
 Fix: review the change with sst enrich --dry-run; once the file is written, later runs keep its formatting exactly
+
+### SST-PRS126
+
+**Removed field** (error)
+
+`<artifact>: '<field>' is no longer written: <reason>`
+
+Raised when a key that SST now works out for itself, or reads from elsewhere, is written.
+
+Fix: remove the field
+
+Note: `sst migrate refs --write` removes the member `tables:` and `derived:` keys.
 
 ### SST-PRS900
 
@@ -2013,16 +2013,6 @@ Raised when a template call uses a function the field does not allow.
 
 Fix: remove the call; each field accepts only the functions its reference page lists
 
-### SST-REF043
-
-**Expression references a table outside the member's tables:** (error)
-
-`<artifact>: ref('<model>') is not one of the member's tables:`
-
-Raised when a member expression's `ref()` names a model outside the member's non-empty `tables:`.
-
-Fix: add the model to the member's tables:, or reference one of them
-
 ### SST-REF044
 
 **View table entry is not a ref()** (error)
@@ -2033,15 +2023,15 @@ Raised when a view tables: entry is not exactly one `{{ ref('<model>') }}` call.
 
 Fix: write each tables: entry as `{{ ref('<model>') }}`
 
-### SST-REF045
+### SST-REF046
 
-**Relationship endpoint is written as a ref() call** (error)
+**Relationship endpoint is not a ref() call** (error)
 
-`<artifact>: <field> is written as <found>; it takes the bare model name`
+`<artifact>: <field> is '<found>'; it takes one {{ ref('<model>') }} call`
 
-Raised when a relationship left_table/right_table is written as a {{ ref() }} call instead of the bare model name.
+Raised when a relationship left_table/right_table is anything but one one-argument {{ ref() }} call.
 
-Fix: run sst migrate refs --write, or write the model name
+Fix: write the endpoint as {{ ref('&lt;model&gt;') }}, or run sst migrate refs --write
 
 ### SST-REF900
 
@@ -2059,7 +2049,7 @@ Fix: reduce the nesting of metric() references
 
 **Member declares a table present in no artifact** (warning)
 
-`<member> declares table '<name>', which no <type> lists`
+`<member> names table '<name>', which no <type> lists`
 
 Raised when a member's declared table is a dbt model that no semantic view lists.
 
@@ -2067,25 +2057,13 @@ Fix: add the table to a view, or correct the member
 
 ### SST-MEM002
 
-**tables absent and nothing inferable** (warning)
+**Member names no table** (error)
 
-`<member> declares no tables: and none can be inferred`
+`<member> names no table, so it attaches to no view`
 
-Raised when a member that is not derived declares no `tables:`, and its expression references no table.
+Raised when a metric, filter or verified query that is not a derived metric names no model with ref(), so it has no tables.
 
-Fix: declare tables: explicitly
-
-### SST-MEM003
-
-**Declared table does not name a known dbt model** (error)
-
-`<member> declares table '<name>', which is not a known dbt model`
-
-Raised when a member's declared table names no dbt model in the manifest.
-
-Fix: use a dbt model name the manifest knows
-
-Note: A table naming a disabled model, or one with no relation, reports SST-DBT009 instead.
+Fix: name a column with {{ ref('&lt;model&gt;', '&lt;column&gt;') }}: COUNT({{ ref('orders', 'order_id') }}), not COUNT(*)
 
 ### SST-MEM004
 
@@ -2164,14 +2142,6 @@ Fix: declare the joined table explicitly
 `<member> attaches to <count> artifacts`
 
 Raised when a member attaches to more than one semantic view.
-
-### SST-MEM012
-
-**Tables inferred for a member** (info)
-
-`<member>: tables inferred as <value>`
-
-Raised when a member declares no `tables:`, so they were inferred from its expression.
 
 ### SST-MEM013
 
@@ -2521,16 +2491,6 @@ Raised when a derived metric's expression wraps a `metric()` reference in SUM, A
 
 Fix: reference the metric without an outer aggregate
 
-### SST-VAL104
-
-**Derived metric references a physical column** (error, always an error)
-
-`derived metric '<metric>' references column '<column>'`
-
-Raised when a derived metric's expression names a column with a two-argument `ref()`.
-
-Fix: reference metrics only, or make the metric table-scoped
-
 ### SST-VAL105
 
 **Derived metric references an un-aggregated fact or dimension** (error, always an error)
@@ -2562,28 +2522,6 @@ Raised when a table-scoped metric's expression calls `metric()` on a metric that
 Fix: make this metric derived, remove the reference, or drop the non-additive declaration
 
 Note: Only a derived metric may reference a semi-additive metric.
-
-### SST-VAL108
-
-**Derived metric declares a table list** (error)
-
-`derived metric '<metric>' declares tables:`
-
-Raised when a `derived: true` metric declares a `tables:` key, even an empty one.
-
-Fix: remove `tables:`; a derived metric is view-scoped by definition
-
-### SST-VAL109
-
-**Table-scoped metric declares no table list** (error)
-
-`metric '<metric>' is table-scoped and declares no tables:`
-
-Raised when a metric that is not `derived: true` has no `tables:` key.
-
-Fix: declare `tables:` explicitly
-
-Note: An empty `tables:` list is `SST-PRS102`.
 
 ### SST-VAL110
 
@@ -3525,13 +3463,13 @@ Fix: make the question text unique
 
 ### SST-VAL414
 
-**Verified query SQL references a table not in its table list** (warning)
+**Verified query SQL reads a table it does not name with ref()** (warning)
 
-`verified_query '<member>' queries '<relation>', absent from tables:`
+`verified_query '<member>' queries '<relation>' without ref()`
 
-Raised when a verified query's SQL reads a table that its non-empty `tables:` leaves out; attachment is computed from `tables:`, so the query may land on a view that lacks the table.
+Raised when a verified query's SQL reads a table by name rather than with ref(); its tables are the models its ref() calls name, so the query may land on a view that lacks the table.
 
-Fix: add the table to `tables:`
+Fix: write the table as {{ ref('&lt;model&gt;') }}
 
 ### SST-VAL415
 
@@ -7646,11 +7584,33 @@ Retired because the impact index it checked is no longer written.
 
 Retired because no run is refused over a manifest mismatch: each artifact is compared with its own state entry.
 
+### SST-MEM003
+
+**Declared table does not name a known dbt model** (retired in 1.0.0)
+
+Retired because a member's tables are the models its ref() calls name, so an unknown one is that ref(), SST-REF001.
+
+Superseded by [`SST-REF001`](#sst-ref001).
+
+### SST-MEM012
+
+**Tables inferred for a member** (retired in 1.0.0)
+
+Retired because a member's tables are always the models its templates name, so there is nothing to report.
+
 ### SST-MEM102
 
 **Member attached only through a legacy reference** (retired in 1.0.0)
 
 Retired because legacy `table()` and `column()` references are refused at parse, so no member can attach through one.
+
+### SST-PRS102
+
+**tables is explicitly empty** (retired in 1.0.0)
+
+Retired because `tables:` is no longer written on a member; its tables are inferred.
+
+Superseded by [`SST-PRS126`](#sst-prs126).
 
 ### SST-PRS108
 
@@ -7712,6 +7672,20 @@ Retired because SST-CFG029 already reported an undeclared `var()`, wherever it a
 
 Superseded by [`SST-CFG029`](#sst-cfg029).
 
+### SST-REF043
+
+**Expression references a table outside the member's tables:** (retired in 1.0.0)
+
+Retired because a member's tables are the models its expression names, so none can lie outside them.
+
+### SST-REF045
+
+**Relationship endpoint is written as a ref() call** (retired in 1.0.0)
+
+Retired because relationship endpoints take a `ref()` call; a bare model name is SST-REF046.
+
+Superseded by [`SST-REF046`](#sst-ref046).
+
 ### SST-REF200
 
 **table() is deprecated** (retired in 1.0.0)
@@ -7741,6 +7715,28 @@ Retired because `generation.publish_via` is removed, so there is one publish pat
 Retired because raised by plan, so it moved to the PLN area.
 
 Superseded by [`SST-PLN038`](#sst-pln038).
+
+### SST-VAL104
+
+**Derived metric references a physical column** (retired in 1.0.0)
+
+Retired because a metric whose expression names a column is table-scoped by definition, never derived.
+
+### SST-VAL108
+
+**Derived metric declares a table list** (retired in 1.0.0)
+
+Retired because `tables:` is no longer written on a metric; SST-PRS126 names the key.
+
+Superseded by [`SST-PRS126`](#sst-prs126).
+
+### SST-VAL109
+
+**Table-scoped metric declares no table list** (retired in 1.0.0)
+
+Retired because a metric's tables are inferred from its expression; one that names none is SST-MEM002.
+
+Superseded by [`SST-MEM002`](#sst-mem002).
 
 ### SST-VAL313
 

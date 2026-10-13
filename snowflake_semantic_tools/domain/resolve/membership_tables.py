@@ -34,14 +34,16 @@ def inferred_tables(member: ParsedMember) -> frozenset[str]:
 
 
 def table_diagnostics(request: MembershipRequest) -> tuple[Diagnostic, ...]:
-    """Check each authored member's declared tables against its expression, the views and the models.
+    """Check each authored member's tables against its expression, the views and the models.
+
+    A metric's, filter's or verified query's tables are the models its templates name, so a
+    member that names none is an error.
 
     Diagnostics, member by member in this order:
         SST-MEM004: the member lists one table more than once.
         SST-MEM006: a derived member declares tables.
         SST-MEM001: a declared table is a dbt model that no view lists.
-        SST-MEM002: the member declares no tables and its expression references none.
-        SST-MEM012: the member declares no tables, so they are inferred from its expression.
+        SST-MEM002: the member names no table.
         SST-MEM101: the expression reaches a table the member's declared tables leave out.
         SST-MEM007: a metric it references reaches a table its declared tables leave out.
     """
@@ -59,8 +61,6 @@ def table_diagnostics(request: MembershipRequest) -> tuple[Diagnostic, ...]:
             diagnostics.extend(_unlisted(member, declared, listed, request.known_models))
         if not declared and not inferred and not facts.derived:
             diagnostics.append(_member_code("SST-MEM002", member))
-        if member.declared_tables is None and inferred:
-            diagnostics.append(_member_code("SST-MEM012", member, value=", ".join(sorted(inferred))))
         if declared and not inferred <= set(declared):
             diagnostics.append(_member_code("SST-MEM101", member, outside=", ".join(sorted(inferred - set(declared)))))
         reached = transitive.get(member.key, frozenset()) - set(declared)
@@ -89,7 +89,7 @@ def _unlisted(
 ) -> list[Diagnostic]:
     """Report each declared table that is a dbt model and that no view lists (SST-MEM001).
 
-    A table that is no dbt model is SST-MEM003's to report, so it is left out here.
+    A table that is no dbt model is its `ref()`'s to report (SST-REF001), so it is left out here.
     """
     return [
         _member_code("SST-MEM001", member, name=table, type="semantic_view")

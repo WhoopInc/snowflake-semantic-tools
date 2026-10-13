@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
 from snowflake_semantic_tools.adapters.yaml.fields import sibling_within
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import _non_additive, _window
-from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple, _safe_table_refs, _table_refs_poisoned
+from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple, _referenced_tables
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
@@ -29,7 +30,10 @@ def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir
 
     A file in any folder is read: the `metrics/` directory the arguments name is not consulted.
     An entry that is not a mapping, or has no `name` or no `expr`, is skipped here, for the checks
-    to report.
+    to report. A metric's tables are the models its expression names with `ref()`; a window
+    metric that names none takes those of the metrics it aggregates, or, failing those, the
+    models its `window:` names. It is derived when its expression combines other metrics with
+    `metric()`, names no column, and it has no `window:`.
 
     Raises:
         ProjectError: An entry's `synonyms` is a mapping, which cannot be read as text.
@@ -43,14 +47,17 @@ def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir
             template_calls = scan_template_calls(expression)
         except TemplateSyntaxError:
             template_calls = ()
+        window = _window(node.get("window"))
+        tables, poisoned = _referenced_tables(expression)
+        _, window_poisoned = _referenced_tables(*(text for _, text in (window.references() if window else ())))
         out.append(
             MetricDef(
                 name=str(node["name"]),
                 expr=expression,
                 description=" ".join(str(node.get("description") or "").splitlines()).strip() or None,
                 synonyms=_as_str_tuple(node.get("synonyms")),
-                tables=_safe_table_refs(node.get("tables")),
-                derived=bool(node.get("derived", False)),
+                tables=tables,
+                derived=window is None and not tables and any(call.function == "metric" for call in template_calls),
                 using_relationships=tuple(
                     _relationship_name(str(value)).upper() for value in node.get("using_relationships") or []
                 ),
@@ -67,14 +74,50 @@ def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir
                     and value["dimension"].strip()
                 ),
                 access_modifier=str(honoured(node, "access_modifier", "metric") or "public_access"),
-                has_tables_key="tables" in node,
                 origin=node_origin(document, member_root("metric"), index),
                 template_calls=template_calls,
-                poisoned=_table_refs_poisoned(node.get("tables")),
-                window=_window(node.get("window")),
+                poisoned=poisoned or window_poisoned,
+                window=window,
             )
         )
-    return tuple(out)
+    return _window_tables(tuple(out))
+
+
+def _window_tables(metrics: tuple[MetricDef, ...]) -> tuple[MetricDef, ...]:
+    """Give each window metric that names no table the tables of the metrics it aggregates.
+
+    `SUM({{ metric('customer_count') }})` over a window reads `customer_count`'s table. The
+    pass repeats until nothing changes, so a window over such a metric resolves too, and a
+    cycle, which SST-REF005 reports, ends it. A window metric that still has none takes the
+    models its `window:` names.
+    """
+    by_name = {metric.name.casefold(): metric for metric in metrics}
+    changed = True
+    while changed:
+        changed = False
+        for name, metric in by_name.items():
+            if metric.window is None or metric.tables:
+                continue
+            inherited = tuple(
+                dict.fromkeys(
+                    table
+                    for referenced in metric.referenced_metrics
+                    if referenced in by_name
+                    for table in by_name[referenced].tables
+                )
+            )
+            if inherited:
+                by_name[name] = replace(metric, tables=inherited)
+                changed = True
+    for name, metric in by_name.items():
+        if metric.window is not None and not metric.tables:
+            by_name[name] = replace(
+                metric, tables=_referenced_tables(*(text for _, text in metric.window.references()))[0]
+            )
+    return tuple(
+        replace(metric, tables=by_name[metric.name.casefold()].tables) if metric.window else metric
+        for metric in metrics
+    )
 
 
 def load_filters(documents: RawDocuments, project_dir: Path, semantic_models_dir: str) -> tuple[FilterDef, ...]:
@@ -82,7 +125,8 @@ def load_filters(documents: RawDocuments, project_dir: Path, semantic_models_dir
 
     A file in any folder is read: the `filters/` directory the arguments name is not consulted.
     An entry that is not a mapping, or has no `name` or no `expr`, is skipped here. `labels`
-    compare casefolded, and a `labels:` value that is not a list holds none.
+    compare casefolded, and a `labels:` value that is not a list holds none. A filter's tables
+    are the models its expression names with `ref()`.
     """
     out: list[FilterDef] = []
     for document, index, node in load_nodes(documents, member_root("filter")):
@@ -95,16 +139,17 @@ def load_filters(documents: RawDocuments, project_dir: Path, semantic_models_dir
             template_calls = scan_template_calls(expression)
         except TemplateSyntaxError:
             template_calls = ()
+        tables, poisoned = _referenced_tables(expression)
         out.append(
             FilterDef(
                 name=str(node["name"]),
                 expr=expression,
                 description=str(node.get("description") or "").strip() or None,
-                tables=_safe_table_refs(node.get("tables")),
+                tables=tables,
                 entity_level="filter" in labels,
                 origin=node_origin(document, member_root("filter"), index),
                 template_calls=template_calls,
-                poisoned=_table_refs_poisoned(node.get("tables")),
+                poisoned=poisoned,
                 labeled="labels" in node,
             )
         )
@@ -211,12 +256,13 @@ def load_verified_queries(
             template_calls = scan_template_calls(sql)
         except TemplateSyntaxError:
             template_calls = ()
+        tables, poisoned = _referenced_tables(sql)
         out.append(
             VerifiedQueryDef(
                 name=name,
                 question=str(node["question"]),
                 sql=sql,
-                tables=_safe_table_refs(node.get("tables")),
+                tables=tables,
                 verified_at=_verified_at(node.get("verified_at"), name=name),
                 verified_by=str(node.get("verified_by") or "").strip() or None,
                 onboarding_question=(
@@ -224,7 +270,7 @@ def load_verified_queries(
                 ),
                 origin=node_origin(document, member_root("verified_query"), index),
                 template_calls=template_calls,
-                poisoned=_table_refs_poisoned(node.get("tables")),
+                poisoned=poisoned,
             )
         )
     return tuple(out)

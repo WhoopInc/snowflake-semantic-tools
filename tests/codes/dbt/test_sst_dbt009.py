@@ -9,9 +9,9 @@ from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.diagnostic_filters import coded
-from tests.helpers.seam_projects import SmallProject, manifest, metric_file, model_node
+from tests.helpers.seam_projects import COUNTED, SmallProject, manifest, metric_file, model_node
 
-METRIC = metric_file("    expr: COUNT(*)\n")
+METRIC = metric_file(COUNTED)
 
 
 def test_sst_dbt009_fires(tmp_path: Path) -> None:

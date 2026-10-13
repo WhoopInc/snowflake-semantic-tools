@@ -10,7 +10,7 @@ from tests.helpers.resolve_builders import member, membership
 def test_sst_mem001_fires() -> None:
     [diagnostic, *_] = coded(membership(member("metric", "m", ("suppliers",))).diagnostics, "SST-MEM001")
     assert diagnostic.severity is Severity.WARNING
-    assert diagnostic.message == "metric:m declares table 'suppliers', which no semantic_view lists"
+    assert diagnostic.message == "metric:m names table 'suppliers', which no semantic_view lists"
     assert diagnostic.subject == "metric:m"
 
 

@@ -296,14 +296,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="a template call uses a function the field does not allow",
     ),
     spec(
-        "SST-REF043",
-        Severity.ERROR,
-        "Expression references a table outside the member's tables:",
-        "{artifact}: ref('{model}') is not one of the member's tables:",
-        "add the model to the member's tables:, or reference one of them",
-        condition="a member expression's `ref()` names a model outside the member's non-empty `tables:`",
-    ),
-    spec(
         "SST-REF044",
         Severity.ERROR,
         "View table entry is not a ref()",
@@ -312,14 +304,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="a view tables: entry is not exactly one `{{ ref('<model>') }}` call",
     ),
     spec(
-        "SST-REF045",
+        "SST-REF046",
         Severity.ERROR,
-        "Relationship endpoint is written as a ref() call",
-        "{artifact}: {field} is written as {found}; it takes the bare model name",
-        "run sst migrate refs --write, or write the model name",
-        condition=(
-            "a relationship left_table/right_table is written as a {{ ref() }} call instead of the bare model name"
-        ),
+        "Relationship endpoint is not a ref() call",
+        "{artifact}: {field} is '{found}'; it takes one {{{{ ref('<model>') }}}} call",
+        "write the endpoint as {{ ref('<model>') }}, or run sst migrate refs --write",
+        condition="a relationship left_table/right_table is anything but one one-argument {{ ref() }} call",
     ),
     spec(
         "SST-REF900",

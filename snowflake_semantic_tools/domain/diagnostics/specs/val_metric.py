@@ -40,15 +40,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=("a derived metric's expression wraps a `metric()` reference in SUM, AVG, MIN, MAX, COUNT or MEDIAN"),
     ),
     spec(
-        "SST-VAL104",
-        Severity.ERROR,
-        "Derived metric references a physical column",
-        "derived metric '{metric}' references column '{column}'",
-        "reference metrics only, or make the metric table-scoped",
-        demotable=False,
-        condition="a derived metric's expression names a column with a two-argument `ref()`",
-    ),
-    spec(
         "SST-VAL105",
         Severity.ERROR,
         "Derived metric references an un-aggregated fact or dimension",
@@ -77,23 +68,6 @@ SPECS: tuple[ErrorSpec, ...] = (
             "a table-scoped metric's expression calls `metric()` on a metric that declares `non_additive_dimensions`"
         ),
         note="Only a derived metric may reference a semi-additive metric.",
-    ),
-    spec(
-        "SST-VAL108",
-        Severity.ERROR,
-        "Derived metric declares a table list",
-        "derived metric '{metric}' declares tables:",
-        "remove `tables:`; a derived metric is view-scoped by definition",
-        condition="a `derived: true` metric declares a `tables:` key, even an empty one",
-    ),
-    spec(
-        "SST-VAL109",
-        Severity.ERROR,
-        "Table-scoped metric declares no table list",
-        "metric '{metric}' is table-scoped and declares no tables:",
-        "declare `tables:` explicitly",
-        condition="a metric that is not `derived: true` has no `tables:` key",
-        note="An empty `tables:` list is `SST-PRS102`.",
     ),
     spec(
         "SST-VAL110",

@@ -57,7 +57,6 @@ def metric(name: str, expr: str, *, tables: tuple[str, ...] = ("orders",), **cha
         f"The {name}.",
         (),
         () if derived else tables,
-        has_tables_key=not derived and bool(tables),
         **changes,
     )
 

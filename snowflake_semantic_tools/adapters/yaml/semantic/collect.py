@@ -125,14 +125,11 @@ def _authored_members(
 ) -> tuple[ParsedMember, ...]:
     """Record the metrics, filters, custom instructions and verified queries, in that order.
 
-    A metric without a `tables:` key declares no tables (None): it attaches by the models
-    its expression refs. A custom instruction declares none either: views attach it by name.
+    A metric, filter or verified query declares the tables its templates name, which the reader
+    inferred. A custom instruction declares none: views attach it by name.
     """
     return (
-        *(
-            _authored("metric", metric, metric.tables if metric.has_tables_key else None, metric.template_calls)
-            for metric in metrics
-        ),
+        *(_authored("metric", metric, metric.tables, metric.template_calls) for metric in metrics),
         *(_authored("filter", filter_def, filter_def.tables, filter_def.template_calls) for filter_def in filters),
         *(_authored("custom_instruction", instruction, None, ()) for instruction in instructions.values()),
         *(_authored("verified_query", query, query.tables, query.template_calls) for query in verified_queries),

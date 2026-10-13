@@ -51,7 +51,9 @@ def test_loads_sql_sidecar_without_its_comment_header(menu: SemanticView) -> Non
     query = next(query for query in menu.verified_queries if query.name == "PRODUCT_MIX_BY_TYPE")
     assert query.sql.text.startswith("SELECT\n")
     assert "semantic_models/verified_queries/sql" not in query.sql.text
-    assert "INNER JOIN products" in query.sql.text
+    # Each {{ ref() }} renders as the table's logical name in the view.
+    assert "FROM ORDER_ITEMS AS order_items" in query.sql.text
+    assert "INNER JOIN PRODUCTS AS products" in query.sql.text
 
 
 def test_derived_metric_depth_is_resolved_to_rendered_metric_names(menu: SemanticView) -> None:

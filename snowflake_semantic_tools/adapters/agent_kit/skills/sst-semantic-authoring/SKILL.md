@@ -64,9 +64,9 @@ models:
 Every YAML file under the semantic models directory is read, and each member is recognised
 by its root key: `semantic_views:` (only under `semantic_views/`), `snowflake_metrics:`,
 `snowflake_relationships:`, `snowflake_filters:`, `snowflake_verified_queries:`, and
-`snowflake_custom_instructions:`. A view does not list most members. A member attaches to
-every view whose `tables:` hold all of the member's `tables:`; a member that lands nowhere is
-`SST-MEM005`. Custom instructions are the exception: a view names them.
+`snowflake_custom_instructions:`. A view does not list most members. A member's tables
+are the models its `ref()` calls name, and it attaches to every view whose `tables:` hold all
+of them; a member that lands nowhere is `SST-MEM005`. Custom instructions are the exception: a view names them.
 
 ```yaml
 semantic_views:
@@ -88,16 +88,17 @@ pick the view.
 snowflake_metrics:
   - name: total_revenue
     description: Order value in cents, including tax.
-    tables: [orders]
     expr: "SUM({{ ref('orders', 'order_total') }})"
   - name: revenue_per_order
-    derived: true
     description: Mean revenue per order.
     expr: "DIV0({{ metric('total_revenue') }}, {{ metric('order_count') }})"
 ```
 
-- A metric that is not derived needs `tables:` (`SST-VAL109`) and an aggregate `expr`
-  (`SST-VAL101`). A derived metric declares no tables (`SST-VAL108`).
+- Never write `tables:` or `derived:` (`SST-PRS126`). A metric's table is the model its `expr`
+  names with `ref()`, and it needs an aggregate `expr` (`SST-VAL101`). A metric whose `expr`
+  combines `metric()` calls and names no column is derived.
+- Every metric, filter and verified query names a column or table with `ref()`, or it attaches
+  to no view (`SST-MEM002`): write `COUNT({{ ref('orders', 'order_id') }})`, never `COUNT(*)`.
 - When two join paths connect a metric's table to another, name one with
   `using_relationships:` (`SST-VAL116`).
 - Use `non_additive_dimensions:` for a balance that must not be summed over a date, and a
@@ -108,13 +109,13 @@ snowflake_metrics:
 ```yaml
 snowflake_relationships:
   - name: orders_to_customers
-    left_table: orders          # the many side, a bare model name
-    right_table: customers      # the one side
+    left_table: "{{ ref('orders') }}"      # the many side
+    right_table: "{{ ref('customers') }}"  # the one side
     relationship_conditions:
       - "{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'customer_id') }}"
 ```
 
-- Endpoints are bare model names, never `ref()` (`SST-REF045`).
+- Each endpoint is one `{{ ref('<model>') }}` call (`SST-REF046`).
 - `=` is an equality join, `>=` an as-of join, and `BETWEEN` a range join.
 - The right table of an equality join needs a `primary_key` or `unique_keys`
   (`SST-VAL311`). Joining on part of a composite key fans out and inflates every metric
@@ -125,8 +126,9 @@ snowflake_relationships:
 
 - A filter is a boolean `expr` labelled `labels: [filter]`; an unlabelled boolean filter is
   `SST-VAL405`.
-- A verified query has `question`, `tables`, and exactly one of `sql` or `sql_file`
-  (`SST-VAL412`). Its SQL names tables by their logical names in the view.
+- A verified query has `question` and exactly one of `sql` or `sql_file` (`SST-VAL412`). Its
+  SQL names each table with `{{ ref('<model>') }}`, as a dbt model does (`SST-VAL414`); those
+  models are its tables.
 - A custom instruction block uses `ai_sql_generation` and `ai_question_categorization`, and
   a view includes it with `"{{ custom_instructions('<name>') }}"`.
 

@@ -188,11 +188,6 @@ def _declaration_diagnostics(parsed: ParsedProject) -> tuple[tuple[Diagnostic, .
         for view in parsed.views
         if view.poisoned
     )
-    diagnostics.extend(
-        _malformed_tables(member.origin, "malformed tables reference", member.key)
-        for member in parsed.members
-        if member.poisoned and member.type_name in ("metric", "filter", "verified_query")
-    )
     return tuple(diagnostics), frozenset(name for name, count in view_counts.items() if count > 1)
 
 
@@ -328,16 +323,17 @@ def _outside_legacy_files(findings: tuple[Diagnostic, ...], legacy_files: frozen
     )
 
 
-def _unknown_table(catalog: DbtCatalog, subject: str, table_name: str) -> Diagnostic:
-    """Report a declared table that is not a readable dbt model.
+def _unknown_table(catalog: DbtCatalog, subject: str, table_name: str) -> tuple[Diagnostic, ...]:
+    """Report a member table that is a disabled or relationless dbt model; the member is left out.
+
+    A table that names no dbt model at all is the `ref()` that names it, which SST-REF001
+    reports, so nothing more is reported here.
 
     Diagnostics:
         SST-DBT009: the table names a disabled or relationless model.
-        SST-MEM003: the table names no dbt model at all.
     """
-    return unreadable_model(catalog, table_name, subject=subject) or D(
-        "SST-MEM003", member=subject, name=table_name, subject=subject
-    )
+    found = unreadable_model(catalog, table_name, subject=subject)
+    return (found,) if found is not None else ()
 
 
 def _unknown_metric_tables(
@@ -350,7 +346,7 @@ def _unknown_metric_tables(
         for table_name in metric.tables:
             if table_name not in models:
                 names.add(metric.name.casefold())
-                diagnostics.append(_unknown_table(catalog, artifact_key("metric", metric.name), table_name))
+                diagnostics.extend(_unknown_table(catalog, artifact_key("metric", metric.name), table_name))
     return tuple(diagnostics), frozenset(names)
 
 
@@ -365,7 +361,7 @@ def _unknown_member_tables(
         for table_name in member.tables:
             if table_name not in models:
                 keys.add(subject.casefold())
-                diagnostics.append(_unknown_table(catalog, subject, table_name))
+                diagnostics.extend(_unknown_table(catalog, subject, table_name))
     return tuple(diagnostics), frozenset(keys)
 
 

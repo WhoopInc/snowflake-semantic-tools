@@ -286,11 +286,12 @@ def _resolve_and_build(
 def _unreported_orphans(orphans: tuple[Diagnostic, ...], decided: tuple[Diagnostic, ...]) -> tuple[Diagnostic, ...]:
     """Drop each SST-VAL007 for a member that member resolution already reported unattached.
 
-    SST-MEM005 names a member with tables that attaches to no view; SST-VAL007 says the same
-    of any authored member, so it is kept only for the members SST-MEM005 does not cover,
-    such as a custom instruction no view names.
+    SST-MEM005 names a member with tables that attaches to no view, and SST-MEM002 one that
+    names no table and so can attach to none; SST-VAL007 says the same of any authored member,
+    so it is kept only for the members neither covers, such as a custom instruction no view
+    names.
     """
-    unattached = {item.subject for item in decided if item.code == "SST-MEM005"}
+    unattached = {item.subject for item in decided if item.code in ("SST-MEM005", "SST-MEM002")}
     return tuple(item for item in orphans if item.subject not in unattached)
 
 

@@ -29,7 +29,7 @@ def test_an_alias_names_what_it_became() -> None:
     assert explanation is not None
     assert (explanation.kind, explanation.title) == ("alias", "Unknown table reference")
     [row] = explanation.aliases
-    assert row.targets == ("SST-DBT002", "SST-REF001", "SST-MEM003")
+    assert row.targets == ("SST-DBT002", "SST-REF001")
     assert explanation.help_url.endswith("#sst-dbt002")
 
 

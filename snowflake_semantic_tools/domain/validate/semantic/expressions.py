@@ -25,8 +25,8 @@ def expression_reference_diagnostics(
 ) -> tuple[Diagnostic, ...]:
     """Check the template calls of every filter expression and verified-query SQL, member by member.
 
-    A verified query's undeclared tables come first, then each call in source order. A template
-    that does not parse ends that member's checks, since no call in it can be read.
+    A verified query's tables read without `ref()` come first, then each call in source order. A
+    template that does not parse ends that member's checks, since no call in it can be read.
 
     Args:
         metric_names: Every metric's name, casefolded.
@@ -38,27 +38,27 @@ def expression_reference_diagnostics(
         subject = artifact_key("filter" if isinstance(member, FilterDef) else "verified_query", member.name)
         declared = {table.casefold() for table in member.tables}
         if isinstance(member, VerifiedQueryDef):
-            diagnostics.extend(_undeclared_table_diagnostics(member, subject, declared, models))
+            diagnostics.extend(_unreferenced_table_diagnostics(member, subject, declared, models))
         calls = scan_expression(text, member.origin, subject)
         if isinstance(calls, Diagnostic):
             diagnostics.append(calls)
             continue
         for call in calls:
-            diagnostics.extend(_call_diagnostics(call, member, subject, declared, models, metric_names, variables))
+            diagnostics.extend(_call_diagnostics(call, member, subject, models, metric_names, variables))
     return tuple(diagnostics)
 
 
-def _undeclared_table_diagnostics(
+def _unreferenced_table_diagnostics(
     member: VerifiedQueryDef, subject: str, declared: set[str], models: Mapping[str, DbtModel]
 ) -> list[Diagnostic]:
-    """Report each table a verified query's SQL reads that its `tables:` leaves out.
+    """Report each table a verified query's SQL reads by name rather than with `ref()`.
 
-    Nothing is reported when the query declares no tables at all. The table is named by the
-    relation its dbt model resolves to, the name compared against `tables:`; a table that is
-    no dbt model is named as written.
+    Its tables are the models its `ref()` calls name, so a table read by name alone is not one
+    of them, and the query may attach to a view that lacks it. The table is named by the
+    relation its dbt model resolves to; a table that is no dbt model is named as written.
 
     Diagnostics:
-        SST-VAL414: when the SQL reads a table outside the query's non-empty `tables:`.
+        SST-VAL414: when the SQL reads a table that it does not name with `ref()`.
     """
     return [
         D(
@@ -69,7 +69,7 @@ def _undeclared_table_diagnostics(
             relation=model.relation_name if (model := models.get(table_name)) is not None else table_name,
         )
         for table_name in sql_tables(member.sql)
-        if declared and table_name not in declared
+        if table_name not in declared
     ]
 
 
@@ -89,7 +89,6 @@ def _call_diagnostics(
     call: TemplateCall,
     member: FilterDef | VerifiedQueryDef,
     subject: str,
-    declared: set[str],
     models: Mapping[str, DbtModel],
     metric_names: frozenset[str],
     variables: Mapping[str, object],
@@ -125,23 +124,21 @@ def _call_diagnostics(
     if call.function == "var":
         found = variable_problem(call.args[0], variables, member.origin, subject=subject)
         return [found] if found is not None else []
-    return _ref_call_diagnostics(call, member, subject, declared, models)
+    return _ref_call_diagnostics(call, member, subject, models)
 
 
 def _ref_call_diagnostics(
     call: TemplateCall,
     member: FilterDef | VerifiedQueryDef,
     subject: str,
-    declared: set[str],
     models: Mapping[str, DbtModel],
 ) -> list[Diagnostic]:
-    """Check one `ref()` call of one or two arguments against the dbt models and the member's tables.
+    """Check one `ref()` call of one or two arguments against the dbt models.
 
     Diagnostics:
         SST-REF001: when the call names no dbt model.
         SST-REF002: when the call names a column its model does not have.
         SST-VAL318: when the call names a column its model excludes.
-        SST-REF043: when a table reference names a model outside the member's non-empty `tables:`.
     """
     model_name = call.args[0]
     model = models.get(model_name.casefold())
@@ -163,9 +160,6 @@ def _ref_call_diagnostics(
                     column=column_name,
                 )
             ]
-        return []
-    if declared and model_name.casefold() not in declared:
-        return [D("SST-REF043", origin=member.origin, subject=subject, artifact=subject, model=model_name)]
     return []
 
 

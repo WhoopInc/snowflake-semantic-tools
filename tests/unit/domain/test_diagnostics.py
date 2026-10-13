@@ -43,7 +43,7 @@ def test_0_3_codes_are_not_registered_and_never_emitted() -> None:
 
 
 def test_hard_deprecated_input_is_an_error_and_retired_codes_are_gone() -> None:
-    for code in ("SST-DBT032", "SST-CFG044", "SST-REF045"):
+    for code in ("SST-DBT032", "SST-CFG044", "SST-REF046"):
         assert ERROR_REGISTRY[code].severity is Severity.ERROR, code
     for code in ("SST-PRS121", "SST-CFG045"):
         assert code not in ERROR_REGISTRY, code

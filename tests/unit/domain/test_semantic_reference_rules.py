@@ -56,7 +56,6 @@ def test_each_template_call_of_a_filter_or_query_is_checked_by_its_function() ->
         "SST-LOD004",
         "SST-VAL414",
         "SST-REF006",
-        "SST-REF043",
     ]
     assert found[7].context["relation"] == "items"
     named = expression_reference_diagnostics(

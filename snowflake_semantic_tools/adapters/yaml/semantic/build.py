@@ -98,7 +98,7 @@ def _build_view(
     metrics = _view_metrics(selected.metrics, selected.relationships, resolver)
     entity_filters, standalone_filters = _view_filters(selected.filters, resolver)
     instructions = tuple(selected.instructions.values())
-    sql_parts, question_parts = _instruction_parts(instructions, standalone_filters, logical_by_model)
+    sql_parts, question_parts = _instruction_parts(instructions, standalone_filters, resolver)
     queries = _view_verified_queries(
         selected.verified_queries, logical_by_model, resolver.metric_names, config, view.catalog
     )

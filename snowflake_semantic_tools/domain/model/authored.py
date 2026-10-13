@@ -137,17 +137,19 @@ class MetricDef:
         name, expr: As written; `expr` keeps its templates.
         description: On one line and stripped; None when absent or blank.
         synonyms: Each as text, a lone scalar as one synonym; `()` when absent.
-        tables: The models `tables:` names, casefolded, in order; `()` when it is absent or
-            cannot be read.
-        derived: Whether the metric is derived, built from other metrics, rather than table-scoped.
+        tables: The models its expression names with `ref()`, casefolded and in first-seen
+            order; for a window metric that names none, those of the metrics it aggregates, or
+            failing those the models its `window:` names. `()` when it names none.
+        derived: Whether the metric is derived: its expression combines other metrics with
+            `metric()`, names no column, and it has no `window:`.
         using_relationships: The relationship names, uppercased, each as written or as the one
             `relationship()` call it is written as.
         non_additive: The `non_additive_dimensions` entries that name a dimension.
         access_modifier: As written; `public_access` when absent.
-        has_tables_key: Whether the entry has a `tables:` key at all, which `tables` cannot tell.
         origin: Where the entry starts; None only for a record not read from a file.
         template_calls: The calls in `expr`, as read; `()` when it has none or one is malformed.
-        poisoned: Whether `tables:` cannot be read, which keeps the metric out of every view.
+        poisoned: Whether a template it reads its tables from is malformed, which keeps the
+            metric out of every view.
         window: The `window:` block; None when absent or not a mapping.
         relationship_refs: Those of `using_relationships` written as a `relationship()` call.
     """
@@ -161,7 +163,6 @@ class MetricDef:
     using_relationships: tuple[str, ...] = ()
     non_additive: tuple[NonAdditiveDef, ...] = ()
     access_modifier: str = "public_access"
-    has_tables_key: bool = False
     origin: Origin | None = None
     template_calls: tuple[TemplateCall, ...] = ()
     poisoned: bool = False
@@ -211,8 +212,8 @@ class FilterDef:
     Attributes:
         name, expr: As written; `expr` keeps its templates.
         description: On one line and stripped; None when absent or blank.
-        tables: The models `tables:` names, casefolded, in order; `()` when it is absent or
-            cannot be read.
+        tables: The models its expression names with `ref()`, casefolded and in first-seen
+            order; `()` when it names none.
         entity_level: Whether `labels:` holds `filter`, in any case: such a filter is built as a
             filter column of its table, and any other filter as prose in the view's instructions.
         origin, template_calls, poisoned: As `MetricDef` reads them.
@@ -258,8 +259,8 @@ class VerifiedQueryDef:
         name, question: As written.
         sql: From `sql:` or the `sql_file:` it names, without its leading blank and `--` lines
             or trailing whitespace.
-        tables: The models `tables:` names, casefolded, in order; `()` when it is absent or
-            cannot be read.
+        tables: The models its SQL names with `ref()`, casefolded and in first-seen order;
+            `()` when it names none.
         verified_at: In seconds since the epoch: an integer as written, or a `YYYY-MM-DD`
             date's midnight UTC; None when absent.
         verified_by: Stripped; None when absent or blank.

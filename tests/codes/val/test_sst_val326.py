@@ -51,7 +51,12 @@ def test_sst_val326_fires_on_a_typo(tmp_path: Path) -> None:
 def test_sst_val326_silent(tmp_path: Path) -> None:
     assert reported(with_view(tmp_path, VIEW + LARGE), "SST-VAL326") == []
     # A typo in a filter that renders as prose fails no create: SST-VAL221's warning, not this.
-    prose = edited(tmp_path / "prose", FILTERS, '    expr: "large_order_cents"\n', '    expr: "large_ordr_cents"\n')
+    prose = edited(
+        tmp_path / "prose",
+        FILTERS,
+        "    expr: \"large_order_cents - {{ ref('orders', 'order_total') }}\"\n",
+        "    expr: \"large_ordr_cents - {{ ref('orders', 'order_total') }}\"\n",
+    )
     assert reported(prose, "SST-VAL326") == []
     # Niladic SQL functions are SQL, not names.
     niladic = edited(

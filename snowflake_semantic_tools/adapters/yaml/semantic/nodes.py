@@ -6,7 +6,11 @@ import re
 from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, single_template_call
+from snowflake_semantic_tools.domain.parse.template import (
+    TemplateSyntaxError,
+    scan_template_calls,
+    single_template_call,
+)
 from snowflake_semantic_tools.domain.resolve.calls import syntax_problem
 
 
@@ -28,12 +32,11 @@ def _as_str_tuple(value: Any) -> tuple[str, ...]:
 
 
 def _table_refs(value: object) -> tuple[str, ...]:
-    """Read a `tables:` list as the models it names, casefolded and in order.
+    """Read a view's `tables:` list as the models it names, casefolded and in order.
 
     Each entry is a `{{ ref('<model>') }}` call, a `{{ source('<source>', '<table>') }}` call,
     named `<source>.<table>`, a legacy `{{ table('<model>') }}` call, or a bare model name; a
-    value that is not a list names none. Both callers swallow the error:
-    `_safe_table_refs` reads it as no tables, and `_table_refs_poisoned` as poison.
+    value that is not a list names none. `_safe_table_refs` reads an error as no tables.
 
     Raises:
         ProjectError: An entry is a `ref()` without exactly one argument, is neither a call nor
@@ -77,9 +80,18 @@ def _safe_table_refs(value: object) -> tuple[str, ...]:
         return ()
 
 
-def _table_refs_poisoned(value: object) -> bool:
-    try:
-        _table_refs(value)
-    except ProjectError:
-        return True
-    return False
+def _referenced_tables(*texts: str) -> tuple[tuple[str, ...], bool]:
+    """Read the models the `ref()` calls in `texts` name: a member's tables, inferred.
+
+    Returns:
+        The models, casefolded, each once in first-seen order; and whether a text holds a
+        malformed template, which names none and poisons the member.
+    """
+    tables: dict[str, None] = {}
+    for text in texts:
+        try:
+            calls = scan_template_calls(text)
+        except TemplateSyntaxError:
+            return (), True
+        tables.update((call.args[0].casefold(), None) for call in calls if call.function == "ref" and call.args)
+    return tuple(tables), False

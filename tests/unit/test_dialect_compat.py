@@ -72,6 +72,8 @@ def test_legacy_globals_are_rejected_with_their_codes_and_render_nothing() -> No
             ("SST-MAN008", "error"): 1,
             ("SST-REF034", "error"): 10,
             ("SST-REF035", "error"): 7,
+            # The metrics' and filter's `tables:`, which 1.0 infers.
+            ("SST-PRS126", "error"): 3,
             ("SST-VAL405", "error"): 1,
             ("SST-PRS021", "error"): 1,
             ("SST-VAL012", "error"): 2,
@@ -85,10 +87,16 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     assert pending == 2
     files = report["data"]["files"]
     assert {item["path"]: item["rewrites"] for item in files} == {
-        "semantic_models/filters/filters.yml": {"ref": 1, "bare": 0, "column": 1, "labels": 1},
-        "semantic_models/metrics/metrics.yml": {"ref": 2, "bare": 0, "column": 2, "labels": 0},
-        "semantic_models/relationships/relationships.yml": {"ref": 0, "bare": 4, "column": 4, "labels": 0},
-        "semantic_models/semantic_views/views.yml": {"ref": 3, "bare": 0, "column": 0, "labels": 0},
+        "semantic_models/filters/filters.yml": {"ref": 1, "endpoint": 0, "column": 1, "inferred": 1, "labels": 1},
+        "semantic_models/metrics/metrics.yml": {"ref": 2, "endpoint": 0, "column": 2, "inferred": 2, "labels": 0},
+        "semantic_models/relationships/relationships.yml": {
+            "ref": 0,
+            "endpoint": 4,
+            "column": 4,
+            "inferred": 0,
+            "labels": 0,
+        },
+        "semantic_models/semantic_views/views.yml": {"ref": 3, "endpoint": 0, "column": 0, "inferred": 0, "labels": 0},
     }
     written, _ = invoke("migrate", "refs", "--project-dir", str(project), "--write")
     assert written == 0
@@ -99,8 +107,9 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     again, report = invoke("migrate", "refs", "--project-dir", str(project))
     assert again == 0 and report["data"]["files"] == []
 
-    # The codemod rewrites references, not keys: the 0.3 spellings remain. The custom
-    # instruction spellings are errors that name the 1.0 key; so is the relationship shape.
+    # The codemod rewrites references and drops the keys 1.0 infers, but renames no key: the 0.3
+    # spellings remain. The custom instruction spellings are errors that name the 1.0 key; so is
+    # the relationship shape.
     exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
     assert exit_code == 1
     assert codes(payload) == Counter(

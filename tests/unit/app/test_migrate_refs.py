@@ -23,7 +23,7 @@ def test_migrate_refs_rewrites_counts_and_reports_untouched_calls() -> None:
     report = MigrateRefs(files, locate).run()
     assert seen == ["a.yml", "b.yml", "c.yml"]
     assert [item.path for item in report.changed] == ["a.yml", "b.yml"]
-    assert report.changed[0].counts() == {"ref": 0, "bare": 0, "column": 1, "labels": 1}
-    assert report.changed[1].counts() == {"ref": 1, "bare": 0, "column": 0, "labels": 0}
+    assert report.changed[0].counts() == {"ref": 0, "endpoint": 0, "column": 1, "inferred": 0, "labels": 1}
+    assert report.changed[1].counts() == {"ref": 1, "endpoint": 0, "column": 0, "inferred": 0, "labels": 0}
     assert report.untouched == 1
     assert "labels:\n      - filter\n" in report.changed[0].result.text
