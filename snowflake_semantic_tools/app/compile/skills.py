@@ -145,6 +145,7 @@ class CompiledExtension(StandaloneArtifact):
                 ),
                 physical_resources=(("CORTEX EXTENSION", release.target), ("STAGE", release.stage)),
             ),
+            references=self.contained_keys,
         )
 
 

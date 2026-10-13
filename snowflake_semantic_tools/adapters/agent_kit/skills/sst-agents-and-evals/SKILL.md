@@ -57,6 +57,26 @@ alias: promoted
   is `{{ extension('<name>') }}` and must pin a version.
 - Every apply of a changed agent adds a new agent version.
 
+## Plugins and profiles
+
+A plugin (`plugins/<name>/plugin.yml`) and a profile (`profiles/<name>/profile.yml`) list their
+members as reference calls, one per entry, never bare names (`SST-REF049`):
+
+```yaml
+skills:
+  - "{{ skill('sales-semantics') }}"
+plugins:
+  - "{{ plugin('sales-toolkit') }}"
+commands:
+  - "{{ command('sql/check') }}"
+mcp_servers:
+  - "{{ mcp_server('sales-docs') }}"
+hooks:
+  - "{{ hook('sql-guard') }}"
+```
+
+A plugin takes only `skills:`. A command is named by its path under `commands/` without `.md`.
+
 ## Evals
 
 An eval runs an agent against fixed questions and scores the answers. Its files live in the

@@ -78,7 +78,9 @@ def _literals(node: ast.expr, bound: dict[str, frozenset[str]]) -> frozenset[str
 
 # The loader entry points that take the one function a field may call as their second argument,
 # and the check that refuses a call a field does not accept, whose second argument is the set.
-_ONE_FUNCTION_ENTRY_POINTS = frozenset(("single_template_call", "replace_template_calls", "_template_args"))
+_ONE_FUNCTION_ENTRY_POINTS = frozenset(
+    ("single_template_call", "replace_template_calls", "_template_args", "member_names")
+)
 _ENTRY_POINTS = _ONE_FUNCTION_ENTRY_POINTS | {"_single_template_arg", "call_problem"}
 
 

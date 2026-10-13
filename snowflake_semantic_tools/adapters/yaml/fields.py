@@ -18,6 +18,8 @@ from typing import Any
 
 from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, single_template_call
+from snowflake_semantic_tools.domain.resolve.calls import syntax_problem
 
 
 def optional_string(value: object) -> str | None:
@@ -89,6 +91,53 @@ def checked_strings(
         sink.append(_wrong_type(value, expected, field=field, artifact=artifact, origin=origin, subject=subject))
         return ()
     return tuple(value)
+
+
+def member_names(
+    value: object,
+    function: str,
+    sink: list[Diagnostic],
+    *,
+    field: str,
+    artifact: str,
+    origin: Origin,
+    subject: str | None = None,
+) -> tuple[str, ...]:
+    """Read a member list whose every entry is one `{{ <function>('<name>') }}` call, as the names.
+
+    Returns:
+        The names, in order and with any repeats; an entry that is not that call is left out.
+
+    Diagnostics:
+        SST-PRS003: the value is present but not a list of strings; it reads as `()`.
+        SST-LOD004, SST-REF033, SST-REF003: an entry's template does not parse.
+        SST-REF049: an entry is a bare name, or a call of another function.
+    """
+    names: list[str] = []
+    expected = f"a list of {{{{ {function}('<name>') }}}} calls"
+    for index, entry in enumerate(
+        checked_strings(value, sink, field=field, artifact=artifact, origin=origin, subject=subject, expected=expected)
+    ):
+        try:
+            call = single_template_call(entry, function)
+        except TemplateSyntaxError as exc:
+            sink.append(syntax_problem(exc, origin.file, subject=subject))
+            continue
+        if call is None or len(call.args) != 1:
+            sink.append(
+                D(
+                    "SST-REF049",
+                    artifact=artifact,
+                    field=f"{field}[{index}]",
+                    found=entry,
+                    function=function,
+                    origin=origin,
+                    subject=subject,
+                )
+            )
+            continue
+        names.append(call.args[0])
+    return tuple(names)
 
 
 def checked_list(

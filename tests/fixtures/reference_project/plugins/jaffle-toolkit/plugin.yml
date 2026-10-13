@@ -16,5 +16,5 @@ description: |-
   the month-close procedure for supply cost.
 owner_team: Jaffle Analytics
 skills:
-  - jaffle-semantics
-  - jaffle-operations
+  - "{{ skill('jaffle-semantics') }}"
+  - "{{ skill('jaffle-operations') }}"

@@ -180,6 +180,7 @@ def _artifact_entry(compiled: CompiledArtifact, result: CompileResult) -> Artifa
         source_files=compiled.source_files,
         member_keys=compiled.member_keys,
         depends_on=rendered.depends_on,
+        references=rendered.references,
         publish_target=rendered.target.sql,
         byte_length=len(rendered.content.encode("utf-8")),
         object_type=rendered.object_type,

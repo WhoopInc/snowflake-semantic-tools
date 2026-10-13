@@ -11,5 +11,5 @@ files:
     Work through [the checklist](reference/checklist.md) before answering.
 edits:
   plugins/jaffle-toolkit/plugin.yml:
-    - old: "  - jaffle-operations\n"
-      new: "  - jaffle-operations\n  - jaffle-draft\n"
+    - old: "  - \"{{ skill('jaffle-operations') }}\"\n"
+      new: "  - \"{{ skill('jaffle-operations') }}\"\n  - \"{{ skill('jaffle-draft') }}\"\n"

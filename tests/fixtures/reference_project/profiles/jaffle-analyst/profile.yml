@@ -12,9 +12,9 @@ description: |-
   semantic views.
 owner_team: Jaffle Analytics
 skills:
-  - jaffle-semantics
-  - jaffle-operations
+  - "{{ skill('jaffle-semantics') }}"
+  - "{{ skill('jaffle-operations') }}"
 mcp_servers:
-  - jaffle-docs
+  - "{{ mcp_server('jaffle-docs') }}"
 hooks:
-  - sql-guard
+  - "{{ hook('sql-guard') }}"

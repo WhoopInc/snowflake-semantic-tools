@@ -85,7 +85,7 @@ def test_compile_writes_deterministic_manifest(tmp_path: Path) -> None:
     result = CliRunner().invoke(cli, ["compile", *common(project)])
     assert result.exit_code == 0, result.output
     document = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
-    assert document["schema_version"] == 3
+    assert document["schema_version"] == 4
     assert "impact" not in document
     assert sorted(document["artifacts"]) == [
         "agent:jaffle_analytics_agent",

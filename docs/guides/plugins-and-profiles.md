@@ -21,8 +21,8 @@ description: |-
   the month-close procedure for supply cost.
 owner_team: Sales Analytics
 skills:
-  - sales-semantics
-  - month-close
+  - "{{ skill('sales-semantics') }}"
+  - "{{ skill('month-close') }}"
 ```
 
 - A plugin is a folder under `project.plugins_dir` (default `plugins/`) holding
@@ -30,8 +30,9 @@ skills:
   (`SST-VAL801`). The folder name names the plugin, follows the skill naming
   rule, and must match `name:` when it is given (`SST-VAL801`).
 - `description` is required, and so is at least one member under `skills`
-  (`SST-PRS002`). A member listed twice is a warning (`SST-VAL837`), and any
-  other key is a warning (`SST-PRS004`).
+  (`SST-PRS002`). Each member is one `{{ skill('<name>') }}` call; a bare name
+  or another function's call is an error (`SST-REF049`). A member listed twice
+  is a warning (`SST-VAL837`), and any other key is a warning (`SST-PRS004`).
 - Each member must be a project skill (`SST-VAL835`), and a member with errors
   stops the plugin from bundling (`SST-VAL836`); a plugin never publishes with a
   member missing.
@@ -76,16 +77,16 @@ name: sales-analyst
 description: "Sales analysts: order, revenue, and month-close questions."
 owner_team: Sales Analytics
 skills:
-  - sales-semantics
-  - month-close
+  - "{{ skill('sales-semantics') }}"
+  - "{{ skill('month-close') }}"
 plugins:
-  - sales-toolkit
+  - "{{ plugin('sales-toolkit') }}"
 commands:
-  - sql/check
+  - "{{ command('sql/check') }}"
 mcp_servers:
-  - sales-docs
+  - "{{ mcp_server('sales-docs') }}"
 hooks:
-  - sql-guard
+  - "{{ hook('sql-guard') }}"
 ```
 
 - Each folder directly under `project.profiles_dir` (default `profiles/`) is a
@@ -93,7 +94,10 @@ hooks:
   `shared` (`SST-VAL801`). The name is the registry row's `CONFIG_NAME`, and
   `name:`, when given, must match it (`SST-VAL801`). `description` and
   `owner_team` are optional and fill the row's columns of those names.
-- `skills`, `plugins`, `commands`, `mcp_servers`, and `hooks` name what is in
+- `skills`, `plugins`, `commands`, `mcp_servers`, and `hooks` list one call
+  each, of `skill()`, `plugin()`, `command()`, `mcp_server()`, and `hook()`
+  respectively; a bare name or another function's call is an error
+  (`SST-REF049`). The calls name what is in
   `project.skills_dir`, `project.plugins_dir`, `project.commands_dir`,
   `project.mcp_servers_dir` (default `mcp-servers/`), and `project.hooks_dir`.
   An unknown name is an error (`SST-VAL844`, `SST-VAL860`, `SST-VAL858`,
@@ -129,8 +133,8 @@ parts are dropped, and a profile with no prompt text has no prompt tree.
 ### Commands
 
 A command is a Markdown file anywhere under `project.commands_dir` (default
-`commands/`). A profile names it by its path without `.md`; Desktop joins nested
-folders with `:`, so `sql/check` is `/sql:check` for the user.
+`commands/`). A profile names it by its path without `.md`, as
+`{{ command('sql/check') }}`; Desktop joins nested folders with `:`, so `sql/check` is `/sql:check` for the user.
 
 ```markdown
 ---

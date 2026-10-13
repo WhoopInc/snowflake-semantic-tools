@@ -2,9 +2,9 @@
 
 `Manifest.as_dict` is the `manifest.json` document. Its `manifest_id` is the `content_hash`
 of everything but the id and the schema version, so `Manifest.from_dict` detects an edited
-manifest. A schema-1 or schema-2 manifest is migrated in memory, and records the schema it was
-read from; an older schema, which has no migration, and a newer one are refused. Nothing here
-rewrites the file.
+manifest. A schema-1, schema-2 or schema-3 manifest is migrated in memory, and records the
+schema it was read from; an older schema, which has no migration, and a newer one are refused.
+Nothing here rewrites the file.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from snowflake_semantic_tools.domain.state.codec import (
 )
 from snowflake_semantic_tools.domain.state.documents import StoredDocumentError, content_hash
 
-MANIFEST_SCHEMA_VERSION = 3
+MANIFEST_SCHEMA_VERSION = 4
 
 _UNHASHED = ("manifest_id", "schema_version")
 
@@ -43,6 +43,8 @@ class ArtifactEntry:
         diagnostic_codes: The codes of the diagnostics compile reported against the artifact.
         component_fingerprints, physical_resources: A composite artifact's parts, and the
             objects it spans as `(object type, qualified name)`; empty for any other artifact.
+        references: What the artifact names but does not wait on, such as a profile's skills
+            and commands; never a publish edge, so `depends_on` does not hold them.
     """
 
     type: str
@@ -59,6 +61,7 @@ class ArtifactEntry:
     status: str = "ok"
     component_fingerprints: tuple[tuple[str, str], ...] = ()
     physical_resources: tuple[tuple[str, str], ...] = ()
+    references: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, object]:
         """Return the entry as `manifest.json` stores it under `artifacts`."""
@@ -69,6 +72,7 @@ class ArtifactEntry:
             "source_files": list(self.source_files),
             "member_keys": list(self.member_keys),
             "depends_on": list(self.depends_on),
+            "references": list(self.references),
             "render": {
                 "dialect": self.render_dialect,
                 "byte_length": self.byte_length,
@@ -119,6 +123,7 @@ class ArtifactEntry:
             status=str(value.get("status", "ok")),
             component_fingerprints=pairs_from_json(components),
             physical_resources=parsed_resources,
+            references=tuple(str(item) for item in value.get("references", [])),
         )
 
 
@@ -221,21 +226,22 @@ class Manifest:
 
 
 def migrate_manifest(value: Mapping[str, object]) -> dict[str, object]:
-    """Migrate a schema-1 or schema-2 manifest document to the current schema, leaving the input unchanged.
+    """Migrate a schema-1, -2 or -3 manifest document to the current schema, leaving the input unchanged.
 
     The sections schema 2 added start empty. Schema 3 stopped writing the impact index, so an
-    `impact` key is dropped unread. The migrated document's id is recomputed. A schema-2 id is
-    first checked against the document as stored, so an edited schema-2 manifest is still refused;
-    a schema-1 id is not, so an edit to a schema-1 manifest goes undetected.
+    `impact` key is dropped unread. Schema 4 records each artifact's `references`, which start
+    empty. The migrated document's id is recomputed. A schema-2 or schema-3 id is first checked
+    against the document as stored, so an edited manifest of either is still refused; a schema-1
+    id is not, so an edit to a schema-1 manifest goes undetected.
 
     Raises:
-        StoredDocumentError: SST-MAN202 when the document is neither schema 1 nor schema 2; SST-MAN005
-            when a schema-2 document's `manifest_id` is not the hash of its content.
+        StoredDocumentError: SST-MAN202 when the document is not schema 1, 2 or 3; SST-MAN005 when
+            a schema-2 or schema-3 document's `manifest_id` is not the hash of its content.
     """
     version = value.get("schema_version")
-    if version not in (1, 2):
+    if version not in (1, 2, 3):
         raise StoredDocumentError("SST-MAN202", f"manifest schema {version} has no migration", found=version)
-    if version == 2:
+    if version in (2, 3):
         found = value.get("manifest_id")
         expected = content_hash({key: item for key, item in value.items() if key not in _UNHASHED})
         if found != expected:

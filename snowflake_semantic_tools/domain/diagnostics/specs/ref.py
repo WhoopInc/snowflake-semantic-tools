@@ -329,6 +329,17 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
+        "SST-REF049",
+        Severity.ERROR,
+        "Plugin or profile member is not its key's reference call",
+        "{artifact}: {field} is '{found}'; it takes one {{{{ {function}('<name>') }}}} call",
+        "write the member as one call of its key's function, such as {{ skill('<name>') }} under skills:",
+        condition=(
+            "an entry of a plugin's or profile's `skills:`, `plugins:`, `commands:`, `mcp_servers:` or "
+            "`hooks:` is a bare name, or a call of another function"
+        ),
+    ),
+    spec(
         "SST-REF900",
         Severity.ERROR,
         "Resolver exceeded max depth",

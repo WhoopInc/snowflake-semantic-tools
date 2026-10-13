@@ -382,7 +382,8 @@ def test_profiles_publish_then_deactivate_under_prune(tmp_path: Path, monkeypatc
     profile = project / "profiles" / "analyst"
     profile.mkdir(parents=True)
     (profile / "profile.yml").write_text(
-        "name: analyst\ndescription: Analyst.\nowner_team: Data\nskills: [month-close]\n", encoding="utf-8"
+        "name: analyst\ndescription: Analyst.\nowner_team: Data\nskills: [\"{{ skill('month-close') }}\"]\n",
+        encoding="utf-8",
     )
     compiled = CliRunner().invoke(cli, ["compile", "--project-dir", str(project), "--output", "json"])
     assert compiled.exit_code == 0, compiled.output

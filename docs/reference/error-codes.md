@@ -20,7 +20,7 @@ cannot be downgraded by any setting.
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
 - [Parsing (PRS)](#parsing-prs) -- 58 codes
 - [Loading (LOD)](#loading-lod) -- 24 codes
-- [References (REF)](#references-ref) -- 38 codes
+- [References (REF)](#references-ref) -- 39 codes
 - [Membership (MEM)](#membership-mem) -- 22 codes
 - [Validation (VAL)](#validation-val) -- 299 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
@@ -2052,6 +2052,16 @@ Fix: name the file with {{ eval_dataset('&lt;name&gt;') }} or {{ eval_config('&l
 Raised when an agent's `eval_dataset()` or `eval_config()` call names no file of that kind in its own `evals/` folder; another agent's files are not searched.
 
 Fix: name a {kind} file in the agent's evals/ folder by its name:, or give one that name
+
+### SST-REF049
+
+**Plugin or profile member is not its key's reference call** (error)
+
+`<artifact>: <field> is '<found>'; it takes one {{ <function>('<name>') }} call`
+
+Raised when an entry of a plugin's or profile's `skills:`, `plugins:`, `commands:`, `mcp_servers:` or `hooks:` is a bare name, or a call of another function.
+
+Fix: write the member as one call of its key's function, such as {{ skill('&lt;name&gt;') }} under skills:
 
 ### SST-REF900
 

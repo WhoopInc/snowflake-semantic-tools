@@ -2,5 +2,5 @@
 # A Desktop profile that lists a command commands/ does not hold.
 edits:
   profiles/jaffle-operator/profile.yml:
-    - old: "  - ops/month-check\n"
-      new: "  - ops/month-check\n  - ops/restock\n"
+    - old: "  - \"{{ command('ops/month-check') }}\"\n"
+      new: "  - \"{{ command('ops/month-check') }}\"\n  - \"{{ command('ops/restock') }}\"\n"

@@ -12,8 +12,8 @@ from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.json_files import JsonFileError, read_json_file
 from snowflake_semantic_tools.adapters.yaml.fields import (
-    checked_strings,
     checked_text,
+    member_names,
     optional_int,
     project_relative,
     refused,
@@ -144,10 +144,9 @@ def _parse(project_dir: Path, path: Path, subject: str, diagnostics: list[Diagno
     return dict(parsed.tree)
 
 
-def _names(value: object, field: str, subject: str, origin: Origin, diagnostics: list[Diagnostic]) -> tuple[str, ...]:
-    return checked_strings(
-        value, diagnostics, field=field, artifact=subject, origin=origin, subject=subject, expected="a list of names"
-    )
+def _located(subject: str, origin: Origin) -> dict[str, Any]:
+    """The artifact, origin and subject a profile's member lists are reported against."""
+    return {"artifact": subject, "origin": origin, "subject": subject}
 
 
 def _text(value: object, field: str, subject: str, origin: Origin, diagnostics: list[Diagnostic]) -> str | None:
@@ -186,7 +185,8 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
             `name` is not the folder's.
         SST-VAL851: when an unread key is one SST refuses, which names the reason.
         SST-PRS004: when any other key is not one SST reads.
-        SST-PRS003: when a text field is not a string, or a name list not a list of strings.
+        SST-PRS003: when a text field is not a string, or a member list not a list of strings.
+        SST-REF049: when a member list's entry is not one call of its key's function.
         SST-LOD006: when `AGENTS.md` is not UTF-8; the profile then has no prompt.
     """
     subject = artifact_key("profile", folder.name)
@@ -236,19 +236,20 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
     sources = [project_relative(project_dir, manifest)]
     if prompt_path.is_file():
         sources.append(project_relative(project_dir, prompt_path))
+    located = _located(subject, origin)
     return DesktopProfile(
         name=folder.name,
         directory=directory,
         description=_text(tree.get("description"), "description", subject, origin, diagnostics),
         owner_team=_text(tree.get("owner_team"), "owner_team", subject, origin, diagnostics),
-        skills=_names(tree.get("skills"), "skills", subject, origin, diagnostics),
-        mcp_servers=_names(tree.get("mcp_servers"), "mcp_servers", subject, origin, diagnostics),
-        hooks=_names(tree.get("hooks"), "hooks", subject, origin, diagnostics),
+        skills=member_names(tree.get("skills"), "skill", diagnostics, field="skills", **located),
+        mcp_servers=member_names(tree.get("mcp_servers"), "mcp_server", diagnostics, field="mcp_servers", **located),
+        hooks=member_names(tree.get("hooks"), "hook", diagnostics, field="hooks", **located),
         prompt=_prompt(project_dir, prompt_path, subject, diagnostics),
         origin=origin,
         source_files=tuple(sources),
-        commands=_names(tree.get("commands"), "commands", subject, origin, diagnostics),
-        plugins=_names(tree.get("plugins"), "plugins", subject, origin, diagnostics),
+        commands=member_names(tree.get("commands"), "command", diagnostics, field="commands", **located),
+        plugins=member_names(tree.get("plugins"), "plugin", diagnostics, field="plugins", **located),
     )
 
 
@@ -267,6 +268,7 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         SST-VAL801: when the folder holds both `profile.yml` and `profile.yaml`.
         SST-PRS004: when the manifest holds a key other than `skills` and `commands`.
         SST-PRS003: when `skills` or `commands` is not a list of strings.
+        SST-REF049: when an entry is not one `skill()` or `command()` call.
         SST-LOD006: when `AGENTS.md` or a rule is not UTF-8; it is left out of the layer.
     """
     subject = "profile:shared"
@@ -284,8 +286,9 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         sources.append(project_relative(project_dir, manifest))
         tree = _parse(project_dir, manifest, subject, diagnostics) or {}
         report_unknown_keys(tree, SHARED_KEYS, diagnostics, artifact=subject, origin=origin, subject=subject)
-        skills = _names(tree.get("skills"), "skills", subject, origin, diagnostics)
-        commands = _names(tree.get("commands"), "commands", subject, origin, diagnostics)
+        located = _located(subject, origin)
+        skills = member_names(tree.get("skills"), "skill", diagnostics, field="skills", **located)
+        commands = member_names(tree.get("commands"), "command", diagnostics, field="commands", **located)
     prompt_path = folder / "AGENTS.md"
     if prompt_path.is_file():
         sources.append(project_relative(project_dir, prompt_path))

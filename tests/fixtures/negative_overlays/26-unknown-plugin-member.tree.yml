@@ -2,5 +2,5 @@
 # A plugin that lists a skill skills/ does not hold.
 edits:
   plugins/jaffle-toolkit/plugin.yml:
-    - old: "  - jaffle-operations\n"
-      new: "  - jaffle-operations\n  - jaffle-reporting\n"
+    - old: "  - \"{{ skill('jaffle-operations') }}\"\n"
+      new: "  - \"{{ skill('jaffle-operations') }}\"\n  - \"{{ skill('jaffle-reporting') }}\"\n"

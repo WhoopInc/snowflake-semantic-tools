@@ -171,31 +171,23 @@ MEMBER_OWNING_TYPES = frozenset({"semantic_view"})
 # the semantic loader for `custom_instructions` entries and a table entry's `source`; the agent
 # loader for `file`, `skill`, `plugin` and a skill source's `extension`; agent tool resolution for
 # `semantic_view`, `tool` and `agent`; the eval config reader for `eval_metric`; and the agent
-# loader for `eval_dataset` and `eval_config`, which the eval catalog resolves.
+# loader for `eval_dataset` and `eval_config`, which the eval catalog resolves; and the plugin
+# and profile loaders for `skill`, `plugin`, `command`, `mcp_server` and `hook` members.
 RESOLVED_FUNCTIONS = frozenset(
     {
         *("ref", "table", "column", "source", "metric", "var", "tag", "custom_instructions", "file"),
         *("eval_metric", "semantic_view", "tool", "agent", "skill", "plugin", "extension"),
-        *("eval_dataset", "eval_config"),
+        *("eval_dataset", "eval_config", "command", "mcp_server", "hook"),
         *("filter", "relationship", "verified_query"),
     }
 )
 # Resolved functions that address something outside this registry: dbt models, columns and
 # sources, project variables and files, tags, the shared eval metrics, an agent's eval dataset and
-# config files, and extensions published elsewhere.
+# config files, a profile's commands, MCP servers and hooks, and extensions published elsewhere.
 NON_ARTIFACT_FUNCTIONS = frozenset(
     {
-        "ref",
-        "table",
-        "column",
-        "source",
-        "var",
-        "tag",
-        "file",
-        "eval_metric",
-        "eval_dataset",
-        "eval_config",
-        "extension",
+        *("ref", "table", "column", "source", "var", "tag", "file", "eval_metric", "eval_dataset", "eval_config"),
+        *("command", "mcp_server", "hook", "extension"),
     }
 )
 # Artifact types nothing references, by design: an eval and a profile are leaves, so they need

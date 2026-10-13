@@ -13,8 +13,8 @@ from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.adapters.yaml.fields import (
-    checked_strings,
     checked_text,
+    member_names,
     optional_string,
     project_relative,
     refused,
@@ -246,6 +246,7 @@ def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         SST-PRS004: when the manifest holds a key SST does not read, at that key.
         SST-PRS003: when `description` or `owner_team` is not a string, or `skills` is not a list
             of strings.
+        SST-REF049: when a `skills` entry is not one `{{ skill('<name>') }}` call.
         SST-PRS002: when there is no non-blank `description`.
     """
     name = folder.name
@@ -302,14 +303,14 @@ def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         diagnostics.append(
             D("SST-PRS002", origin=origin("description"), subject=subject, artifact=subject, field="description")
         )
-    members = checked_strings(
+    members = member_names(
         tree.get("skills"),
+        "skill",
         diagnostics,
         field="skills",
         artifact=subject,
         origin=origin("skills"),
         subject=subject,
-        expected="a list of skill names",
     )
     return Plugin(
         name=name,

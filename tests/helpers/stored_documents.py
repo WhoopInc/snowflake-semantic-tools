@@ -34,6 +34,20 @@ def schema_2_document(manifest: Manifest, impact: dict[str, object] | None = Non
     return document
 
 
+def schema_3_document(manifest: Manifest) -> dict[str, object]:
+    """`manifest` as schema 3 wrote it: with no `references` on its artifacts, and an id that hashes that."""
+    document = manifest.as_dict()
+    document["schema_version"] = 3
+    artifacts = document["artifacts"]
+    assert isinstance(artifacts, dict)
+    for entry in artifacts.values():
+        del entry["references"]
+    document["manifest_id"] = content_hash(
+        {k: v for k, v in document.items() if k not in ("manifest_id", "schema_version")}
+    )
+    return document
+
+
 def written(tmp_path: Path, document: object, name: str = "manifest.json") -> Path:
     """Write `document` as JSON, or as given when it is text, and return its path."""
     path = tmp_path / name

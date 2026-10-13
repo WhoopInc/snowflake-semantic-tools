@@ -91,6 +91,7 @@ class CompiledProfile(StandaloneArtifact):
                 ),
                 physical_resources=(("STAGE", self.channel.stage), ("TABLE", self.channel.registry)),
             ),
+            references=self.contained_keys,
         )
 
 

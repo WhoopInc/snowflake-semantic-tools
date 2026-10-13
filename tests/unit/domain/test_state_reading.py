@@ -14,7 +14,7 @@ from snowflake_semantic_tools.domain.state import (
     written_by_newer,
 )
 from tests.helpers.artifact_builders import manifest, rendered
-from tests.helpers.stored_documents import schema_2_document
+from tests.helpers.stored_documents import schema_2_document, schema_3_document
 
 
 @pytest.mark.parametrize(
@@ -43,7 +43,7 @@ def sourced() -> Manifest:
 
 def test_a_written_manifest_has_no_impact_index() -> None:
     assert "impact" not in sourced().as_dict()
-    assert sourced().schema_version == MANIFEST_SCHEMA_VERSION == 3
+    assert sourced().schema_version == MANIFEST_SCHEMA_VERSION == 4
 
 
 def test_a_schema_2_manifest_reads_with_its_impact_index_ignored() -> None:
@@ -70,3 +70,20 @@ def test_a_schema_1_manifest_migrates_and_drops_any_impact_key() -> None:
     migrated = Manifest.from_dict(document)
     assert migrated.migrated_from == 1 and migrated.schema_version == MANIFEST_SCHEMA_VERSION
     assert "impact" not in migrated.as_dict()
+
+
+def test_a_schema_3_manifest_migrates_with_empty_references() -> None:
+    current = sourced()
+    read = Manifest.from_dict(schema_3_document(current))
+    assert read == current and read.migrated_from == 3
+    assert all(entry.references == () for entry in read.artifacts.values())
+
+
+def test_an_edited_schema_3_manifest_is_still_refused() -> None:
+    document = schema_3_document(sourced())
+    artifacts = document["artifacts"]
+    assert isinstance(artifacts, dict)
+    artifacts["semantic_view:v"]["source_files"] = ["c.yml"]
+    with pytest.raises(StoredDocumentError) as raised:
+        Manifest.from_dict(document)
+    assert raised.value.code == "SST-MAN005"

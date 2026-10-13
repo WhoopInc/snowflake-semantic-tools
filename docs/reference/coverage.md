@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 719
+- Codes: 720
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -367,6 +367,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-REF046`](error-codes.md#sst-ref046) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.relationships` | `tests/codes/ref/test_sst_ref046.py` |
 | [`SST-REF047`](error-codes.md#sst-ref047) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.agents` | `tests/codes/ref/test_sst_ref047.py` |
 | [`SST-REF048`](error-codes.md#sst-ref048) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.evals.catalog` | `tests/codes/ref/test_sst_ref048.py` |
+| [`SST-REF049`](error-codes.md#sst-ref049) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.fields` | `tests/codes/ref/test_sst_ref049.py` |
 | [`SST-REF900`](error-codes.md#sst-ref900) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.phases` | `tests/codes/ref/test_sst_ref900.py` |
 | [`SST-REG001`](error-codes.md#sst-reg001) | REG | error | local | `snowflake_semantic_tools.domain.diagnostics.integrity`<br>`snowflake_semantic_tools.domain.model.registry` | `tests/codes/reg/test_sst_reg001.py` |
 | [`SST-REG002`](error-codes.md#sst-reg002) | REG | error | local | `snowflake_semantic_tools.domain.diagnostics.integrity`<br>`snowflake_semantic_tools.domain.model.registry` | `tests/codes/reg/test_sst_reg002.py` |

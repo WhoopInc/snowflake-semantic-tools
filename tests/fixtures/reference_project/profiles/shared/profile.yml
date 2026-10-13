@@ -3,6 +3,6 @@
 # `commands/shared/<H>/...`) instead of being copied into each profile's tree.
 # Only `skills:` and `commands:` are accepted here.
 skills:
-  - jaffle-catalogue
+  - "{{ skill('jaffle-catalogue') }}"
 commands:
-  - daily-summary
+  - "{{ command('daily-summary') }}"

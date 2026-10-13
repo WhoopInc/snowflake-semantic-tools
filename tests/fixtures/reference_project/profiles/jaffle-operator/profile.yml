@@ -16,6 +16,6 @@ description: |-
   command.
 owner_team: Jaffle Analytics
 plugins:
-  - jaffle-toolkit
+  - "{{ plugin('jaffle-toolkit') }}"
 commands:
-  - ops/month-check
+  - "{{ command('ops/month-check') }}"

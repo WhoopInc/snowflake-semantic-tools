@@ -11,11 +11,11 @@ from tests.helpers.stored_documents import manifest_refusal, valid_manifest, wri
 
 def test_sst_man203_fires(tmp_path: Path) -> None:
     document = valid_manifest().as_dict()
-    document["schema_version"] = 4
+    document["schema_version"] = 5
     path = written(tmp_path, document)
     diagnostic = manifest_refusal(path)
     assert (diagnostic.code, diagnostic.severity) == ("SST-MAN203", Severity.ERROR)
-    assert diagnostic.message == f"{path} schema 4; this binary supports 3"
+    assert diagnostic.message == f"{path} schema 5; this binary supports 4"
 
 
 def test_sst_man203_silent(tmp_path: Path) -> None:

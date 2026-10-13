@@ -2,5 +2,5 @@
 # A Desktop profile that lists a hook hooks/ does not hold.
 edits:
   profiles/jaffle-analyst/profile.yml:
-    - old: "  - sql-guard\n"
-      new: "  - sql-guard\n  - audit-log\n"
+    - old: "  - \"{{ hook('sql-guard') }}\"\n"
+      new: "  - \"{{ hook('sql-guard') }}\"\n  - \"{{ hook('audit-log') }}\"\n"

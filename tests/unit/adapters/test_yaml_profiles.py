@@ -18,14 +18,14 @@ def test_profiles_shared_hooks_and_mcp_configs_load(tmp_path: Path) -> None:
         tmp_path,
         {
             "profiles/analyst/profile.yml": (
-                "name: analyst\ndescription: Analyst.\nowner_team: Data\nskills: [semantics]\n"
-                "mcp_servers: [dbt]\nhooks: [guard]\n"
+                "name: analyst\ndescription: Analyst.\nowner_team: Data\nskills: [\"{{ skill('semantics') }}\"]\n"
+                "mcp_servers: [\"{{ mcp_server('dbt') }}\"]\nhooks: [\"{{ hook('guard') }}\"]\n"
             ),
             "profiles/analyst/AGENTS.md": "Be careful.\n",
             "profiles/shared/AGENTS.md": "Shared.\n",
             "profiles/shared/rules/b.md": "B\n",
             "profiles/shared/rules/a.md": "A\n",
-            "profiles/shared/profile.yaml": "skills: [common]\n",
+            "profiles/shared/profile.yaml": "skills: [\"{{ skill('common') }}\"]\n",
             "hooks/guard/hook.yml": (
                 "name: guard\nevent: PreToolUse\ntype: command\ncommand: bash\nmatcher: snowflake_sql_execute\n"
                 "timeout: 30\ninteractive: false\ndescription: Blocks drops.\n"
@@ -76,7 +76,7 @@ def test_pipeline_keys_and_malformed_inputs_are_diagnosed(tmp_path: Path) -> Non
             "profiles/twice/profile.yaml": "name: twice\n",
             "profiles/none/README.md": "x",
             "profiles/broken/profile.yml": "name: [unclosed\n",
-            "profiles/shared/profile.yml": "skills: [common]\nextra: 1\n",
+            "profiles/shared/profile.yml": "skills: [\"{{ skill('common') }}\"]\nextra: 1\n",
             "profiles/shared/profile.yaml": "skills: []\n",
             "hooks/none/hook.yml": "event: PreToolUse\n",
             "hooks/prompt/hook.yml": "event: Stop\ntype: prompt\ncommand: x\n",
@@ -138,8 +138,12 @@ def test_commands_load_like_a_desktop_command_repository(tmp_path: Path) -> None
     write_tree(
         tmp_path,
         {
-            "profiles/analyst/profile.yml": "name: analyst\ncommands: [review, sql/check]\nplugins: [kit]\n",
-            "profiles/shared/profile.yml": "skills: []\ncommands: [daily]\n",
+            "profiles/analyst/profile.yml": (
+                "name: analyst\n"
+                "commands: [\"{{ command('review') }}\", \"{{ command('sql/check') }}\"]\n"
+                "plugins: [\"{{ plugin('kit') }}\"]\n"
+            ),
+            "profiles/shared/profile.yml": "skills: []\ncommands: [\"{{ command('daily') }}\"]\n",
             "commands/daily.md": "Summarise yesterday.\n",
             "commands/review.md": (
                 "---\ndescription: Review a PR.\nallowed-tools: [Read, Grep]\nhidden: false\n---\nGo.\n"

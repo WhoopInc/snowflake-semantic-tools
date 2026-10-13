@@ -166,6 +166,9 @@ class RenderedArtifact:
             None skips the check.
         desired_alias, desired_tags: As `DesiredMetadata` describes them.
         depends_on: The keys of the artifacts that must be published before this one.
+        references: What the artifact names but does not wait on: a plugin's or profile's
+            members, as artifact keys and component keys such as `command:<name>`,
+            `hook:<name>` and `mcp:<name>`. Recorded in the manifest; never a publish edge.
         smoke: The probes the smoke suite runs once the artifact is published.
         required_relations: The tables and views apply checks exist before it writes anything.
         component_fingerprints, physical_resources: As `CompositeFacts` describes them.
@@ -196,6 +199,7 @@ class RenderedArtifact:
     desired_alias: str | None = None
     desired_tags: tuple[str, ...] = ()
     depends_on: tuple[ArtifactKey, ...] = ()
+    references: tuple[str, ...] = ()
     smoke: tuple[SmokeProbe, ...] = ()
     required_relations: tuple[QualifiedName, ...] = ()
     component_fingerprints: tuple[tuple[str, str], ...] = ()
@@ -217,6 +221,7 @@ class RenderedArtifact:
         metadata: DesiredMetadata = DesiredMetadata(),
         composite: CompositeFacts | None = None,
         depends_on: tuple[ArtifactKey, ...] = (),
+        references: tuple[str, ...] = (),
         smoke: tuple[SmokeProbe, ...] = (),
         required_relations: tuple[QualifiedName, ...] = (),
     ) -> RenderedArtifact:
@@ -266,6 +271,7 @@ class RenderedArtifact:
             desired_alias=metadata.alias,
             desired_tags=metadata.tags,
             depends_on=depends_on,
+            references=references,
             smoke=smoke,
             required_relations=required_relations,
             component_fingerprints=composite.component_fingerprints if composite is not None else (),

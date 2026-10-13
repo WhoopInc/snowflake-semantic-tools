@@ -81,7 +81,8 @@ def test_plugin_manifests_are_parsed_and_checked(tmp_path: Path) -> None:
         tmp_path,
         {
             "plugins/finance-kit/plugin.yml": (
-                "name: finance-kit\ndescription: Finance.\nowner_team: Analytics\nskills:\n  - month-close\n"
+                "name: finance-kit\ndescription: Finance.\nowner_team: Analytics\n"
+                "skills:\n  - \"{{ skill('month-close') }}\"\n"
             ),
             "plugins/odd/plugin.yml": "name: other\ndescription: 3\nowner_team: [a]\nskills: nope\nextra: 1\n",
             "plugins/bare/plugin.yaml": "name: bare\n",
