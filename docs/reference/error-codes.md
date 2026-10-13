@@ -3379,7 +3379,7 @@ Note: Snowflake refuses `IS_ENUM` on a fact when the view is created, so no sett
 
 `filter '<member>' carries labels: [filter] and its expr is not boolean`
 
-Raised when a filter labelled `filter` has an expression SST does not read as boolean.
+Raised when a filter labelled `filter` has an expression SST does not read as boolean: neither a predicate by its shape nor one `ref()` to a column dbt declares BOOLEAN.
 
 Fix: make the expression boolean, or remove `labels: [filter]` so it renders as prose
 
