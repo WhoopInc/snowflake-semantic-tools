@@ -16,6 +16,27 @@ from snowflake_semantic_tools.domain.validate.relative_date import relative_date
 from snowflake_semantic_tools.domain.validate.shared import Emitter
 
 _NUMBER = re.compile(r"(?<![A-Za-z0-9_])[-+]?\d+(?:\.\d+)?%?(?![A-Za-z0-9_])")
+_MONTH = (
+    r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|"
+    r"sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?"
+)
+_YEAR = r"(?:19|20)\d{2}"
+# An absolute date written out, which the evals guide requires (SST-VAL706 rejects a relative
+# one): it scopes the expectation and does not drift as data lands, so it is not a figure. A bare
+# four-digit number with no date word before it still is ("2000 orders").
+_DATE = re.compile(
+    rf"(?<![\w-]){_YEAR}-\d{{2}}(?:-\d{{2}})?(?![\w-])"
+    rf"|\b{_MONTH}\s+(?:\d{{1,2}}(?:st|nd|rd|th)?,?\s+)?{_YEAR}\b"
+    rf"|\b{_MONTH}\s+\d{{1,2}}(?:st|nd|rd|th)?\b"
+    rf"|\b(?:in|during|since|before|after|until|through|from|between|of|for|year|fy|q[1-4]|h[12])\s+{_YEAR}"
+    rf"(?:\s*(?:-|–|to|and|through)\s*{_YEAR})?\b",
+    re.IGNORECASE,
+)
+
+
+def _has_figure(output: str) -> bool:
+    """Report whether `output` holds a number in digits once its absolute dates are set aside."""
+    return bool(_NUMBER.search(_DATE.sub(" ", output)))
 
 
 def validate_eval_dataset(
@@ -95,7 +116,7 @@ def _immutable_ground_truth(
         emit("SST-PRS015", field=f"{field}.immutable", other="immutable_reason")
     if (
         ground_truth.output
-        and _NUMBER.search(ground_truth.output)
+        and _has_figure(ground_truth.output)
         and (not ground_truth.immutable or not ground_truth.immutable_reason)
     ):
         emit("SST-PRS015", field=f"{field}.ground_truth_output", other="immutable: true plus immutable_reason")
