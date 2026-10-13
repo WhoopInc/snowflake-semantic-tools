@@ -26,6 +26,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
 )
 from snowflake_semantic_tools.domain.render.semantic_view import (
     TRAILING_CLAUSES,
+    bound_verified_query,
     render,
     render_column,
     render_metric,
@@ -375,6 +376,20 @@ class TestVerifiedQueries:
         assert "VERIFIED_AT 1" in rendered
         assert "ONBOARDING_QUESTION FALSE" in rendered
         assert "VERIFIED_BY 'owner'" in rendered
+
+    def test_a_bound_query_reads_each_logical_table_from_its_relation(self) -> None:
+        # The view publishes apart from its tables, and one relation is quoted; the query, with
+        # its own WITH and trailing `;`, runs unchanged inside the bindings.
+        view = SemanticView(
+            fqn="SEMANTIC.SALES.SALES",
+            tables=(Table("ORDERS", "ANALYTICS.SALES.ORDERS"), Table("CUSTOMERS", 'ANALYTICS.CORE."Customers"')),
+        )
+        query = VerifiedQuery("Q", "q?", authored_query("WITH o AS (SELECT * FROM orders) SELECT COUNT(*) FROM o;"))
+        assert str(bound_verified_query(view, query)) == (
+            "WITH ORDERS AS (SELECT * FROM ANALYTICS.SALES.ORDERS), "
+            'CUSTOMERS AS (SELECT * FROM ANALYTICS.CORE."Customers") '
+            "SELECT * FROM (WITH o AS (SELECT * FROM orders) SELECT COUNT(*) FROM o) AS SST_VQ"
+        )
 
 
 class TestRelationshipsAndVariables:

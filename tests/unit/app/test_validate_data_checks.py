@@ -98,7 +98,7 @@ def test_a_verified_query_that_compiles_and_returns_no_rows_is_reported() -> Non
     assert _codes(view, {"ROW_COUNT": ()}) == []
     assert _codes(view, {"ROW_COUNT": SnowflakePortError("timeout")}) == []
     # One that does not compile is SST-VAL418's, and is not counted.
-    assert _codes(view, {"EXPLAIN SELECT 1": SnowflakePortError("bad"), "ROW_COUNT": ((0,),)}) == []
+    assert _codes(view, {"EXPLAIN WITH": SnowflakePortError("bad"), "ROW_COUNT": ((0,),)}) == []
     unclocked = CompileResult((CompiledView(view, render(view)),))
     result = ValidateArtifacts(Scripted({"ROW_COUNT": ((0,),)})).run(unclocked, strict=False, connected=True)
     [empty] = [item for item in result.diagnostics if item.code == "SST-VAL415"]

@@ -75,6 +75,7 @@ from snowflake_semantic_tools.domain.sql import (
     literal,
     number,
     qname,
+    query_text,
     sql,
 )
 
@@ -315,6 +316,38 @@ def render_verified_query(vq: VerifiedQuery) -> Sql:
     lines.append(sql("      SQL {query}", query=literal(vq.sql.text)))
     lines.append(sql("    )"))
     return join("\n", lines)
+
+
+def bound_verified_query(view: SemanticView, vq: VerifiedQuery) -> Sql:
+    """Return a verified query that reads the view's own tables, to EXPLAIN, count, or probe.
+
+    A verified query names the view's logical tables, not relations, so run as written it reads
+    whatever the session's schema holds under those names, and fails when the view publishes
+    apart from its tables. Each logical table is bound first, as a CTE over the relation the
+    view reads, and the query runs unchanged inside them: a CTE outranks a table of the same
+    name, and reaches into the query's own subqueries and `WITH`.
+
+    Example:
+        `SELECT orders.order_id FROM orders AS orders`, in a view whose `ORDERS` reads
+        `ANALYTICS.SALES.ORDERS`, becomes `WITH ORDERS AS (SELECT * FROM
+        ANALYTICS.SALES.ORDERS) SELECT * FROM (SELECT orders.order_id FROM orders AS orders)
+        AS SST_VQ`.
+
+    Raises:
+        ValueError: a table's logical name or relation does not parse.
+    """
+    bindings = join(
+        ", ",
+        (
+            sql(
+                "{name} AS (SELECT * FROM {fqn})",
+                name=_name(table.logical_name),
+                fqn=qname(QualifiedName.parse(table.fqn)),
+            )
+            for table in view.tables
+        ),
+    )
+    return sql("WITH {bindings} SELECT * FROM ({query}) AS SST_VQ", bindings=bindings, query=query_text(vq.sql))
 
 
 def _block(head: Sql, members: list[Sql]) -> list[Sql]:

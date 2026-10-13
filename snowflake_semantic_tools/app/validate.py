@@ -38,12 +38,12 @@ from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
+from snowflake_semantic_tools.domain.render.semantic_view import bound_verified_query
 from snowflake_semantic_tools.domain.sql import (
     Sql,
     ident,
     join,
     qname,
-    query_text,
     sql,
 )
 from snowflake_semantic_tools.domain.validate.shared import reference_cycle
@@ -203,7 +203,7 @@ class ValidateArtifacts:
         answered = self._answers(
             readers,
             (
-                *(_count_read(query) for queries in counted.values() for query in queries),
+                *(_count_read(item.view, query) for item in views for query in counted[item.artifact_key]),
                 *(spot[2] for checks in spots.values() for spot in checks),
             ),
         )
@@ -211,7 +211,7 @@ class ValidateArtifacts:
         for item in views:
             found.extend(diagnostics[item.artifact_key])
             for query in counted[item.artifact_key]:
-                empty = _row_count(item, query, answered[_count_read(query)])
+                empty = _row_count(item, query, answered[_count_read(item.view, query)])
                 if empty is not None:
                     found.append(empty)
             found.extend(_spot_findings(item, spots[item.artifact_key], answered))
@@ -289,7 +289,8 @@ def _compile_checks(compiled_view: CompiledView, observed: ObservedTypes) -> lis
         )
         for column in view.dimensions
     )
-    # A verified query is authored SQL that may name objects relative to the view's schema,
+    # A verified query names the view's logical tables, which `bound_verified_query` binds to
+    # the relations the view reads; anything else it names is relative to the view's schema,
     # so it alone is explained in that scope.
     view_scope = SchemaScope.from_qualified_name(QualifiedName.parse(view.fqn))
     checks.extend(
@@ -297,7 +298,7 @@ def _compile_checks(compiled_view: CompiledView, observed: ObservedTypes) -> lis
             "verified_query",
             query.name,
             _origin(view, "verified_query", query.name),
-            _Read(sql("EXPLAIN {query}", query=query_text(query.sql)), view_scope),
+            _Read(sql("EXPLAIN {query}", query=bound_verified_query(view, query)), view_scope),
         )
         for query in view.verified_queries
     )
@@ -329,9 +330,14 @@ def _counted_queries(compiled_view: CompiledView, compile_findings: list[Diagnos
     return [query for query in compiled_view.view.verified_queries if query.name not in failed]
 
 
-def _count_read(query: VerifiedQuery) -> _Read:
-    """Return the row count of a verified query, which runs on the session, whatever view holds it."""
-    return _Read(sql("SELECT COUNT(*) AS ROW_COUNT FROM ({query}) AS SST_VQ", query=query_text(query.sql)))
+def _count_read(view: SemanticView, query: VerifiedQuery) -> _Read:
+    """Return the row count of a verified query over the tables of `view`, the one that holds it.
+
+    Two views whose tables read the same relations count a query they share once.
+    """
+    return _Read(
+        sql("SELECT COUNT(*) AS ROW_COUNT FROM ({query}) AS SST_COUNT", query=bound_verified_query(view, query))
+    )
 
 
 def _row_count(compiled_view: CompiledView, query: VerifiedQuery, answer: _Answer) -> Diagnostic | None:

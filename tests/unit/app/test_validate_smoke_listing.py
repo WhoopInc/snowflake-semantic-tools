@@ -79,9 +79,32 @@ def test_connected_validation_compiles_expressions_and_verified_queries() -> Non
     assert [query for query, _params in port.queries] == [
         "DESCRIBE TABLE DB.S.T",
         "EXPLAIN SELECT SUM(NULL) FROM (SELECT 1 AS SST_VALUE WHERE FALSE) AS SST_VALIDATE",
-        "EXPLAIN SELECT 1",
-        "SELECT COUNT(*) AS ROW_COUNT FROM (SELECT 1) AS SST_VQ",
+        "EXPLAIN WITH T AS (SELECT * FROM DB.S.T) SELECT * FROM (SELECT 1) AS SST_VQ",
+        "SELECT COUNT(*) AS ROW_COUNT FROM (WITH T AS (SELECT * FROM DB.S.T) SELECT * FROM (SELECT 1) AS SST_VQ)"
+        " AS SST_COUNT",
     ]
+
+
+def test_a_verified_query_reads_the_tables_of_a_view_published_apart_from_them() -> None:
+    # The query names the logical table ORDERS; the view publishes to SEMANTIC.SALES and
+    # reads ANALYTICS.SALES.ORDERS, so run as written in the view's schema it would read nothing.
+    query = VerifiedQuery("REVENUE", "Revenue?", authored_query("SELECT SUM(orders.subtotal) FROM orders AS orders"))
+    view = SemanticView(
+        "SEMANTIC.SALES.SALES",
+        (Table("ORDERS", "ANALYTICS.SALES.ORDERS"),),
+        metrics=(Metric("M", authored("SUM(ORDERS.SUBTOTAL)"), "ORDERS"),),
+        verified_queries=(query,),
+    )
+    result = CompileResult((CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW SEMANTIC.SALES.SALES")),))
+    port = FakeSnowflake()
+    assert ValidateArtifacts(port).run(result, strict=False, connected=True).success
+    bound = (
+        "WITH ORDERS AS (SELECT * FROM ANALYTICS.SALES.ORDERS) "
+        "SELECT * FROM (SELECT SUM(orders.subtotal) FROM orders AS orders) AS SST_VQ"
+    )
+    queries = [query for query, _params in port.queries]
+    assert f"EXPLAIN {bound}" in queries
+    assert f"SELECT COUNT(*) AS ROW_COUNT FROM ({bound}) AS SST_COUNT" in queries
 
 
 def test_connected_validation_skips_non_views_and_projects_columns() -> None:

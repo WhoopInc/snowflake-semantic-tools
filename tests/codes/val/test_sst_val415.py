@@ -15,7 +15,11 @@ from tests.helpers.diagnostic_filters import coded
 from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import authored, authored_query, statement
 
-COUNTED = "(SELECT COUNT(*) FROM DB.S.ORDERS) AS SST_VQ"
+# The counted query reads the view's logical table ORDERS bound to its relation.
+COUNTED = (
+    "(WITH ORDERS AS (SELECT * FROM DB.S.ORDERS) SELECT * FROM (SELECT COUNT(*) FROM DB.S.ORDERS) AS SST_VQ)"
+    " AS SST_COUNT"
+)
 
 
 def _validated(port: FakeSnowflake) -> list[Diagnostic]:

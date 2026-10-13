@@ -150,9 +150,14 @@ def test_each_distinct_statement_runs_once_however_many_views_ask_it() -> None:
     found = _diagnostics(warehouse, None)
     assert max(Counter(warehouse.ran).values()) == 1
     texts = [text for _scope, text in warehouse.ran]
-    # The verified query is counted once, and explained once in each schema that holds it.
-    assert texts.count("SELECT COUNT(*) AS ROW_COUNT FROM (SELECT COUNT(*) FROM DB.S.ORDERS) AS SST_VQ") == 1
-    assert [scope for scope, text in warehouse.ran if text.startswith("EXPLAIN SELECT COUNT(*) FROM DB.S")] == [
+    # The verified query reads the same relations in every view, so it is counted once, and
+    # explained once in each schema that holds it.
+    bound = (
+        "WITH ORDERS AS (SELECT * FROM DB.S.ORDERS), CUSTOMERS AS (SELECT * FROM DB.S.CUSTOMERS) "
+        "SELECT * FROM (SELECT COUNT(*) FROM DB.S.ORDERS) AS SST_VQ"
+    )
+    assert texts.count(f"SELECT COUNT(*) AS ROW_COUNT FROM ({bound}) AS SST_COUNT") == 1
+    assert [scope for scope, text in warehouse.ran if text == f"EXPLAIN {bound}"] == [
         "DB.S",
         "DB.T",
     ]

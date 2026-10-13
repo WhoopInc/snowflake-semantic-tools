@@ -3543,7 +3543,7 @@ Raised when connected validate runs a verified query that compiles and it return
 
 Fix: fix the query, or check that the target holds the data it asks about
 
-Note: A verified query several semantic views hold is counted once, and reported once, naming every such view.
+Note: The query runs over its view's own tables, each logical table it names bound to the relation the view reads. One that several semantic views hold over the same relations is counted once, and reported once, naming every such view.
 
 ### SST-VAL416
 
@@ -3577,7 +3577,7 @@ Raised when offline: an expression or a tool member's `where:` is not one SQL ex
 
 Fix: fix the expression or query; the message carries the reason
 
-Note: Offline, verified-query SQL is checked for its shape only, so a misspelt keyword or column needs the connected check. That check compiles a verified query as written, against the target's tables. It compiles a metric, dimension or filter over a projection with no rows, in which each `TABLE.COLUMN` reference is a NULL of the column's type: the type `DESCRIBE TABLE` reports in the target, else the `data_type` the dbt model declares, else none. It therefore catches a syntax error, an unknown function, and an argument type Snowflake refuses when it compiles, such as `SUM` over a timestamp, but not a value that fails only when a query runs, such as `SUM` over text that is not numeric, nor a column the table lacks (`--verify-schema` reports that, SST-VAL325); a reference to a metric, a filter, or a variable is untyped, and facts are not compiled. A finding is reported once, its detail naming every semantic view that holds the member.
+Note: Offline, verified-query SQL is checked for its shape only, so a misspelt keyword or column needs the connected check. That check compiles a verified query over its view's own tables, each logical table it names bound to the relation the view reads, wherever the view publishes. It compiles a metric, dimension or filter over a projection with no rows, in which each `TABLE.COLUMN` reference is a NULL of the column's type: the type `DESCRIBE TABLE` reports in the target, else the `data_type` the dbt model declares, else none. It therefore catches a syntax error, an unknown function, and an argument type Snowflake refuses when it compiles, such as `SUM` over a timestamp, but not a value that fails only when a query runs, such as `SUM` over text that is not numeric, nor a column the table lacks (`--verify-schema` reports that, SST-VAL325); a reference to a metric, a filter, or a variable is untyped, and facts are not compiled. A finding is reported once, its detail naming every semantic view that holds the member.
 
 ### SST-VAL506
 

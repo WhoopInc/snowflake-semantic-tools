@@ -41,8 +41,8 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.semantic_view import Metric, SemanticView
 from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
-from snowflake_semantic_tools.domain.render.semantic_view import render, render_checked
-from snowflake_semantic_tools.domain.sql import AuthoredExpression, Sql, ident, join, qname, query_text, sql
+from snowflake_semantic_tools.domain.render.semantic_view import bound_verified_query, render, render_checked
+from snowflake_semantic_tools.domain.sql import AuthoredExpression, Sql, ident, join, qname, sql
 from snowflake_semantic_tools.domain.validate.semantic_view import (
     fan_out_diagnostics,
     join_graph_diagnostics,
@@ -186,7 +186,7 @@ class CompiledView(CompiledArtifact):
         """Wrap `ddl` as this view's artifact, with a smoke probe for the view and each public member.
 
         The probes are the view itself, then each metric that is not private, then each
-        verified query, in authored order.
+        verified query, in authored order, over the view's tables (`bound_verified_query`).
 
         Raises:
             ValueError: the FQN does not parse, or the view has no public dimension or metric
@@ -210,7 +210,7 @@ class CompiledView(CompiledArtifact):
             SmokeProbe(
                 key=artifact_key("verified_query", query.name.casefold()),
                 kind=ProbeKind.VERIFIED_QUERY,
-                sql=sql("SELECT * FROM ({query}) LIMIT 0", query=query_text(query.sql)),
+                sql=sql("SELECT * FROM ({query}) LIMIT 0", query=bound_verified_query(self.view, query)),
             )
             for query in self.view.verified_queries
         )

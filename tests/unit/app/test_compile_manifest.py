@@ -44,6 +44,21 @@ def test_compiled_view_emits_all_smoke_probe_kinds_and_required_relations() -> N
     assert CompileResult((compiled,)).rendered_for_publish("a" * 64) == (publish,)
 
 
+def test_a_verified_query_probe_reads_the_relations_its_logical_tables_name() -> None:
+    view = SemanticView(
+        "SEMANTIC.SALES.SALES",
+        (Table("ORDERS", "ANALYTICS.SALES.ORDERS"), Table("CUSTOMERS", "ANALYTICS.CORE.CUSTOMERS")),
+        metrics=(Metric("M", authored("COUNT(1)"), "ORDERS"),),
+        verified_queries=(VerifiedQuery("Q", "q?", authored_query("SELECT COUNT(*) FROM orders;")),),
+    )
+    compiled = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW SEMANTIC.SALES.SALES"))
+    assert str(compiled.rendered_artifact.smoke[-1].sql) == (
+        "SELECT * FROM (WITH ORDERS AS (SELECT * FROM ANALYTICS.SALES.ORDERS), "
+        "CUSTOMERS AS (SELECT * FROM ANALYTICS.CORE.CUSTOMERS) "
+        "SELECT * FROM (SELECT COUNT(*) FROM orders) AS SST_VQ) LIMIT 0"
+    )
+
+
 def test_compiled_view_uses_dimension_probe_and_rejects_view_without_public_members() -> None:
     view = SemanticView(
         "DB.S.V",

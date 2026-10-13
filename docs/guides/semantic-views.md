@@ -493,6 +493,9 @@ snowflake_verified_queries:
   (`SST-VAL412`). Leading `--` comment lines are dropped from either.
 - The SQL names tables by their logical names in the view, not by relation. It
   may use `{{ ref() }}`, `{{ metric() }}` and `{{ var() }}`.
+- Connected validation and the smoke suite run the query with each logical
+  table bound to the relation the view reads, so it is checked the same way
+  whether the view publishes beside its tables or in another schema or database.
 - A query attaches to every view that holds all its `tables:`.
 - `verified_at` is epoch seconds, or a quoted ISO-8601 date or timestamp (UTC
   unless it says otherwise), which renders as epoch seconds; anything else is an
