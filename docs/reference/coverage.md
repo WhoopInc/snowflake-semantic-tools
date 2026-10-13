@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 718
+- Codes: 715
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -187,9 +187,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-MAN203`](error-codes.md#sst-man203) | MAN | error | local | `snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man203.py` |
 | [`SST-MEM001`](error-codes.md#sst-mem001) | MEM | warning | local | `snowflake_semantic_tools.domain.resolve.membership_tables` | `tests/codes/mem/test_sst_mem001.py` |
 | [`SST-MEM002`](error-codes.md#sst-mem002) | MEM | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.pipeline`<br>`snowflake_semantic_tools.domain.resolve.membership_tables` | `tests/codes/mem/test_sst_mem002.py` |
-| [`SST-MEM004`](error-codes.md#sst-mem004) | MEM | error | local | `snowflake_semantic_tools.domain.resolve.membership_tables` | `tests/codes/mem/test_sst_mem004.py` |
 | [`SST-MEM005`](error-codes.md#sst-mem005) | MEM | warning | local | `snowflake_semantic_tools.adapters.yaml.semantic.pipeline`<br>`snowflake_semantic_tools.adapters.yaml.semantic.relationships`<br>`snowflake_semantic_tools.domain.resolve.membership_reach` | `tests/codes/mem/test_sst_mem005.py` |
-| [`SST-MEM006`](error-codes.md#sst-mem006) | MEM | error | local | `snowflake_semantic_tools.domain.resolve.membership_tables` | `tests/codes/mem/test_sst_mem006.py` |
 | [`SST-MEM007`](error-codes.md#sst-mem007) | MEM | error | local | `snowflake_semantic_tools.domain.resolve.membership_tables` | `tests/codes/mem/test_sst_mem007.py` |
 | [`SST-MEM008`](error-codes.md#sst-mem008) | MEM | error | local | `snowflake_semantic_tools.domain.resolve.membership` | `tests/codes/mem/test_sst_mem008.py` |
 | [`SST-MEM009`](error-codes.md#sst-mem009) | MEM | error | local | `snowflake_semantic_tools.domain.resolve.rendered` | `tests/codes/mem/test_sst_mem009.py` |
@@ -200,7 +198,6 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-MEM015`](error-codes.md#sst-mem015) | MEM | warning | local | `snowflake_semantic_tools.domain.resolve.membership_reach` | `tests/codes/mem/test_sst_mem015.py` |
 | [`SST-MEM016`](error-codes.md#sst-mem016) | MEM | error | local | `snowflake_semantic_tools.domain.resolve.membership_reach` | `tests/codes/mem/test_sst_mem016.py` |
 | [`SST-MEM100`](error-codes.md#sst-mem100) | MEM | error | local | `snowflake_semantic_tools.domain.resolve.membership` | `tests/codes/mem/test_sst_mem100.py` |
-| [`SST-MEM101`](error-codes.md#sst-mem101) | MEM | warning | local | `snowflake_semantic_tools.domain.resolve.membership_tables` | `tests/codes/mem/test_sst_mem101.py` |
 | [`SST-MEM103`](error-codes.md#sst-mem103) | MEM | info | local | `snowflake_semantic_tools.domain.resolve.membership_reach` | `tests/codes/mem/test_sst_mem103.py` |
 | [`SST-MEM104`](error-codes.md#sst-mem104) | MEM | error | local | `snowflake_semantic_tools.domain.resolve.membership_reach` | `tests/codes/mem/test_sst_mem104.py` |
 | [`SST-MEM105`](error-codes.md#sst-mem105) | MEM | warning | local | `snowflake_semantic_tools.domain.resolve.membership_reach` | `tests/codes/mem/test_sst_mem105.py` |

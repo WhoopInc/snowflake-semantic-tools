@@ -66,18 +66,17 @@ def test_facts_default_and_metric_dependencies_follow_metric_references() -> Non
 
 
 def test_table_checks_skip_poisoned_view_named_and_column_members() -> None:
-    poisoned = member("metric", "bad", ("orders", "orders"), poisoned=True)
+    poisoned = member("metric", "bad", ("suppliers",), poisoned=True)
     instruction = member("custom_instruction", "rules")
     column = member("fact", "orders.amount", ("orders",))
     result = membership(poisoned, instruction, column)
-    assert coded(result.diagnostics, "SST-MEM004") == []
+    assert coded(result.diagnostics, "SST-MEM001") == []
     assert coded(result.diagnostics, "SST-MEM005") == []
 
 
 def test_an_unknown_table_is_left_to_the_known_model_check() -> None:
-    result = membership(member("metric", "m", ("nowhere", "suppliers", "suppliers")))
+    result = membership(member("metric", "m", ("nowhere", "suppliers")))
     assert [item.context["name"] for item in coded(result.diagnostics, "SST-MEM001")] == ["suppliers"]
-    assert [item.context["name"] for item in coded(result.diagnostics, "SST-MEM004")] == ["suppliers"]
 
 
 def test_a_derived_metric_is_neither_unlisted_nor_uninferable_nor_composed() -> None:
@@ -86,7 +85,7 @@ def test_a_derived_metric_is_neither_unlisted_nor_uninferable_nor_composed() -> 
     facts = {"metric:d": MemberFacts(derived=True, referenced_metrics=("m",))}
     result = membership(derived, base, facts=facts)
     reported = codes(result.diagnostics)
-    assert "SST-MEM002" not in reported and "SST-MEM006" not in reported and "SST-MEM007" not in reported
+    assert "SST-MEM002" not in reported and "SST-MEM007" not in reported
     assert result.attachment[derived.key] == ("semantic_view:sales",)
 
 
@@ -255,9 +254,7 @@ SQL = frozenset(("ai_sql_generation",))
 FIRES: dict[str, Any] = {
     "SST-MEM001": lambda: membership(member("metric", "m", ("suppliers",))),
     "SST-MEM002": lambda: membership(member("filter", "f", ())),
-    "SST-MEM006": lambda: membership(member("metric", "m", ("orders",)), facts={"metric:m": MemberFacts(derived=True)}),
     "SST-MEM011": lambda: membership(member("metric", "m", ("orders",))),
-    "SST-MEM101": lambda: membership(member("metric", "m", ("orders",), "COUNT({{ ref('customers', 'id') }})")),
     "SST-MEM107": lambda: membership(
         member("metric", "m", ("orders",), poisoned=True), unresolved={"metric:m": ("SST-REF001",)}
     ),

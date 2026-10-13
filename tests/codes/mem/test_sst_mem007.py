@@ -1,4 +1,4 @@
-"""SST-MEM007: a composed metric references a metric whose tables its own `tables:` leaves out."""
+"""SST-MEM007: a composed metric references a metric whose tables its own tables leave out."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def test_sst_mem007_fires() -> None:
     result = membership(composed, base, facts={"metric:composed": COMPOSED})
     [diagnostic] = coded(result.diagnostics, "SST-MEM007")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "metric:composed: transitive tables customers are not in its own tables:"
+    assert diagnostic.message == "metric:composed: the metrics it references reach customers, outside its own tables"
     assert diagnostic.subject == "metric:composed"
 
 

@@ -73,7 +73,6 @@ ALIASES: Mapping[str, Alias] = _aliases(
             "SST-VAL113",
             "SST-PRS113",
             "SST-PRS029",
-            "SST-MEM101",
         ),
     ),
     ("SST-V006", "Empty required field", "KEPT", ("SST-PRS101", "SST-PRS107")),
@@ -168,10 +167,28 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         "a member's tables are the models its ref() calls name, so an unknown one is that ref(), SST-REF001",
     ),
     (
+        "SST-MEM004",
+        "Member declares one table twice",
+        None,
+        "a member's tables are the models its ref() calls name, each once, so none can repeat",
+    ),
+    (
+        "SST-MEM006",
+        "Derived member declares tables",
+        None,
+        "a metric is derived only when it names no table, so a derived member has none",
+    ),
+    (
         "SST-MEM012",
         "Tables inferred for a member",
         None,
         "a member's tables are always the models its templates name, so there is nothing to report",
+    ),
+    (
+        "SST-MEM101",
+        "Inferred tables exceed declared tables",
+        None,
+        "a member's tables are the ones its expression reaches, so it can reach none beyond them",
     ),
     (
         "SST-PRS102",

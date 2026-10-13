@@ -1,4 +1,4 @@
-"""Membership checks over a member's own tables: what it declares, and what its expression reaches.
+"""Membership checks over a member's own tables, and what the metrics it references reach.
 
 Only a member authored in SST's own files is checked, and only one that is not poisoned: a
 fact or dimension names exactly its model's table, and a poisoned member was reported where it
@@ -40,12 +40,9 @@ def table_diagnostics(request: MembershipRequest) -> tuple[Diagnostic, ...]:
     member that names none is an error.
 
     Diagnostics, member by member in this order:
-        SST-MEM004: the member lists one table more than once.
-        SST-MEM006: a derived member declares tables.
-        SST-MEM001: a declared table is a dbt model that no view lists.
+        SST-MEM001: one of its tables is a dbt model that no view lists.
         SST-MEM002: the member names no table.
-        SST-MEM101: the expression reaches a table the member's declared tables leave out.
-        SST-MEM007: a metric it references reaches a table its declared tables leave out.
+        SST-MEM007: a metric it references reaches a table its own tables leave out.
     """
     listed = frozenset(table for tables in request.view_tables.values() for table in tables)
     transitive = _transitive_tables(request)
@@ -53,16 +50,10 @@ def table_diagnostics(request: MembershipRequest) -> tuple[Diagnostic, ...]:
     for member in authored_members(request):
         facts = request.facts_of(member)
         declared = member.declared_tables or ()
-        inferred = inferred_tables(member)
-        diagnostics.extend(_repeated(member, declared))
-        if facts.derived and declared:
-            diagnostics.append(_member_code("SST-MEM006", member))
         if not facts.derived:
             diagnostics.extend(_unlisted(member, declared, listed, request.known_models))
-        if not declared and not inferred and not facts.derived:
+        if not declared and not inferred_tables(member) and not facts.derived:
             diagnostics.append(_member_code("SST-MEM002", member))
-        if declared and not inferred <= set(declared):
-            diagnostics.append(_member_code("SST-MEM101", member, outside=", ".join(sorted(inferred - set(declared)))))
         reached = transitive.get(member.key, frozenset()) - set(declared)
         if declared and not facts.derived and reached:
             diagnostics.append(_member_code("SST-MEM007", member, outside=", ".join(sorted(reached))))
@@ -71,17 +62,6 @@ def table_diagnostics(request: MembershipRequest) -> tuple[Diagnostic, ...]:
 
 def _member_code(code: str, member: ParsedMember, **context: Any) -> Diagnostic:
     return D(code, member=member.key, subject=member.key, origin=member.origin, **context)
-
-
-def _repeated(member: ParsedMember, declared: tuple[str, ...]) -> list[Diagnostic]:
-    """Report each table the member lists more than once, once, in first-listed order (SST-MEM004)."""
-    seen: set[str] = set()
-    repeated: dict[str, None] = {}
-    for table in declared:
-        if table in seen:
-            repeated[table] = None
-        seen.add(table)
-    return [_member_code("SST-MEM004", member, name=table) for table in repeated]
 
 
 def _unlisted(

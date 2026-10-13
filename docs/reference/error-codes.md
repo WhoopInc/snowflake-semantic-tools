@@ -21,7 +21,7 @@ cannot be downgraded by any setting.
 - [Parsing (PRS)](#parsing-prs) -- 57 codes
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 39 codes
-- [Membership (MEM)](#membership-mem) -- 22 codes
+- [Membership (MEM)](#membership-mem) -- 19 codes
 - [Validation (VAL)](#validation-val) -- 298 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
@@ -31,7 +31,7 @@ cannot be downgraded by any setting.
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 24 codes
 - [Internal (INT)](#internal-int) -- 12 codes
-- [Retired numbers](#retired-numbers) -- 53 numbers
+- [Retired numbers](#retired-numbers) -- 56 numbers
 
 ## Registry (REG)
 
@@ -2085,16 +2085,6 @@ Raised when a metric, filter or verified query that is not a derived metric name
 
 Fix: name a column with {{ ref('&lt;model&gt;', '&lt;column&gt;') }}: COUNT({{ ref('orders', 'order_id') }}), not COUNT(*)
 
-### SST-MEM004
-
-**Member declares one table twice** (error)
-
-`<member> lists table '<name>' more than once`
-
-Raised when a member's `tables:` list names one table more than once.
-
-Fix: remove the duplicate entry
-
 ### SST-MEM005
 
 **Member attached to zero artifacts** (warning)
@@ -2105,25 +2095,15 @@ Raised when a member with tables, or a derived one, attaches to no semantic view
 
 Fix: add its tables to a view, or delete the member
 
-### SST-MEM006
-
-**Derived member declares tables** (error)
-
-`<member> is derived and declares tables:`
-
-Raised when a derived member declares `tables:`.
-
-Fix: remove tables:; derived members are view-scoped
-
 ### SST-MEM007
 
-**Composed member reaches outside its declared tables** (error)
+**Composed member reaches outside its own tables** (error)
 
-`<member>: transitive tables <outside> are not in its own tables:`
+`<member>: the metrics it references reach <outside>, outside its own tables`
 
-Raised when a member declares tables, and a metric it references reaches a table they leave out.
+Raised when a metric names tables with ref(), and a metric it references reaches a table they leave out.
 
-Fix: widen tables:, or narrow the expression
+Fix: reference only metrics of its own tables, or make it a derived metric that names no column
 
 ### SST-MEM008
 
@@ -2212,16 +2192,6 @@ Fix: split the member
 Raised when a member is attached to an artifact whose type has no member types.
 
 Fix: move the member
-
-### SST-MEM101
-
-**Inferred tables exceed declared tables** (warning)
-
-`<member>: expression reaches <outside>, beyond its declared tables:`
-
-Raised when a member's own expression reaches a table its declared `tables:` leave out.
-
-Fix: widen tables:, or narrow the expression
 
 ### SST-MEM103
 
@@ -7602,11 +7572,29 @@ Retired because a member's tables are the models its ref() calls name, so an unk
 
 Superseded by [`SST-REF001`](#sst-ref001).
 
+### SST-MEM004
+
+**Member declares one table twice** (retired in 1.0.0)
+
+Retired because a member's tables are the models its ref() calls name, each once, so none can repeat.
+
+### SST-MEM006
+
+**Derived member declares tables** (retired in 1.0.0)
+
+Retired because a metric is derived only when it names no table, so a derived member has none.
+
 ### SST-MEM012
 
 **Tables inferred for a member** (retired in 1.0.0)
 
 Retired because a member's tables are always the models its templates name, so there is nothing to report.
+
+### SST-MEM101
+
+**Inferred tables exceed declared tables** (retired in 1.0.0)
+
+Retired because a member's tables are the ones its expression reaches, so it can reach none beyond them.
 
 ### SST-MEM102
 
