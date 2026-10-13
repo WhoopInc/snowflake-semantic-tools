@@ -200,10 +200,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "file() path escapes the project root",
         "{{{{ file('{path}') }}}} resolves outside the project root",
         "use a path inside the project",
-        condition=(
-            "an agent's or a verified query's `file()` reference, or an eval's dataset or config path, "
-            "resolves outside the project root"
-        ),
+        condition=("an agent's or a verified query's `file()` reference resolves outside the project root"),
     ),
     spec(
         "SST-REF028",
@@ -311,6 +308,25 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: {field} is '{found}'; it takes one {{{{ ref('<model>') }}}} call",
         "write the endpoint as {{ ref('<model>') }}, or run sst migrate refs --write",
         condition="a relationship left_table/right_table is anything but one one-argument {{ ref() }} call",
+    ),
+    spec(
+        "SST-REF047",
+        Severity.ERROR,
+        "Eval reference is not an eval_dataset() or eval_config() call",
+        "{artifact}: {field} is '{found}'; it takes one {{{{ {function}('<name>') }}}} call",
+        "name the file with {{ eval_dataset('<name>') }} or {{ eval_config('<name>') }}, the name: it declares",
+        condition="an agent's `evals.dataset` or `evals.config` is a path, or anything but one reference call",
+    ),
+    spec(
+        "SST-REF048",
+        Severity.ERROR,
+        "Eval reference names no file",
+        "{artifact}: {{{{ {function}('{name}') }}}} names no eval {kind} in {path}",
+        "name a {kind} file in the agent's evals/ folder by its name:, or give one that name",
+        condition=(
+            "an agent's `eval_dataset()` or `eval_config()` call names no file of that kind in its own "
+            "`evals/` folder; another agent's files are not searched"
+        ),
     ),
     spec(
         "SST-REF900",

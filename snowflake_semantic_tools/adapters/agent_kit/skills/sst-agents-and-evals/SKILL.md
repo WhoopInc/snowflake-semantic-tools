@@ -59,14 +59,19 @@ alias: promoted
 
 ## Evals
 
-An eval runs an agent against fixed questions and scores the answers. The agent points at
-its eval files:
+An eval runs an agent against fixed questions and scores the answers. Its files live in the
+agent's `evals/` folder, each with a `name:`, and the agent names the pair it publishes:
 
 ```yaml
 evals:
-  dataset: evals/dataset.yml
-  config: evals/config.yml
+  dataset: "{{ eval_dataset('sales_questions') }}"
+  config: "{{ eval_config('sales_ci') }}"
 ```
+
+- Never write a path there (`SST-REF047`). A name resolves only in this agent's `evals/` folder
+  (`SST-REF048`), and is unique per kind there (`SST-VAL765`).
+- To change an eval, add a file under a new name and point the reference at it; the old file can
+  stay. Every file in the folder is checked, and only the named pair publishes.
 
 - `sst compile` and `sst test --suite golden` check eval files offline.
 - `sst test --suite evals` runs the agent in Snowflake, costs credits, and can take many

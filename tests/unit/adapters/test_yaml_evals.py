@@ -2,93 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.evals import load_eval_catalog, parse_eval_defaults
 from snowflake_semantic_tools.app.compile.evals import CompiledEval, CompileEvals
 from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, recorded_judges
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
-from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog, EvalDefaults
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from tests.helpers.eval_builders import attempt, run_result
-
-
-def _write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text.strip(), encoding="utf-8")
-
-
-def _project(tmp_path: Path, *, metric_ref: str = "judge") -> tuple[tuple[AgentModel, ...], DiagnosticBag]:
-    _write(
-        tmp_path / "agents" / "sales" / "agent.yml",
-        """
-name: sales
-evals:
-  dataset: evals/dataset.yml
-  config: evals/config.yml
-""",
-    )
-    _write(
-        tmp_path / "agents" / "sales" / "evals" / "dataset.yml",
-        """
-agent: sales
-questions:
-  - question: Decline this request.
-    ground_truth:
-      ground_truth_invocations: []
-      ground_truth_output: Decline cleanly.
-      custom_flag: true
-""",
-    )
-    _write(
-        tmp_path / "agents" / "sales" / "evals" / "config.yml",
-        f"""
-agent: sales
-agent_version: committed
-dataset:
-  mint: auto
-  name_template: "EVAL_{{{{ agent | upper }}}}_{{{{ sha7 }}}}"
-  source_table_template: "EVAL_SRC_{{{{ agent | upper }}}}_{{{{ sha7 }}}}"
-  column_mapping:
-    query_text: input_query
-    ground_truth: ground_truth
-metrics:
-  system:
-    - name: tool_selection_accuracy
-      version: v3
-      gate: true
-      threshold: {{min: 0.8}}
-  custom:
-    - "{{{{ eval_metric('{metric_ref}') }}}}"
-run:
-  name_template: "EVAL_{{{{ agent | upper }}}}_{{{{ sha7 }}}}_{{{{ variant }}}}_{{{{ ts }}}}"
-  variant: ci
-  tier: blocking
-  retry: 1
-  concurrency: 2
-  baseline_runs: 5
-  accept_statuses: [COMPLETED]
-""",
-    )
-    _write(
-        tmp_path / "eval_metrics" / "judge.yml",
-        """
-name: judge
-model: claude-sonnet-4-6
-score_ranges:
-  min_score: [0, 1]
-  median_score: [2, 3]
-  max_score: [4, 5]
-prompt: |-
-  Score {{input}} against {{ground_truth}} from 0 to 5.
-  Return only the numeric score. If evidence is insufficient, score 0.
-gate_default: true
-threshold_default: {min: 4}
-enabled: true
-meta: {owner: data}
-""",
-    )
-    return load_agents(tmp_path)
+from tests.helpers.eval_projects import EVALS
+from tests.helpers.eval_projects import eval_project as _project
+from tests.helpers.eval_projects import write as _write
 
 
 def test_eval_loader_reads_dataset_config_metric_and_preserves_empty_invocations(tmp_path: Path) -> None:
@@ -368,3 +291,42 @@ def test_a_metric_model_wins_and_the_project_judge_model_must_still_be_explicit(
     assert [item.message for item in unset.diagnostics if item.code == "SST-VAL738"] == [
         "eval metric 'judge' names no judge model (model: unset)"
     ]
+
+
+def test_only_the_named_pair_publishes_and_every_other_version_is_checked(tmp_path: Path) -> None:
+    alone = load_eval_catalog(tmp_path / "alone", *_project(tmp_path / "alone")[:1])
+    published_files = {f"{EVALS}/dataset.yml", f"{EVALS}/config.yml"}
+    agents, agent_diagnostics = _project(tmp_path)
+    evals = tmp_path / EVALS
+    # An older dataset, named apart, whose only question carries a relative date.
+    older = (evals / "dataset.yml").read_text().replace("name: questions", "name: questions_v1")
+    (evals / "dataset_v1.yml").write_text(older.replace("Decline this request.", "What sold yesterday?"))
+    # An older config, named apart, that pins a system metric to no version.
+    config = (evals / "config.yml").read_text().replace("name: run", "name: run_v1")
+    (evals / "config_v1.yml").write_text(config.replace("version: v3", "version: v1"))
+    catalog = load_eval_catalog(tmp_path, agents, initial_diagnostics=agent_diagnostics)
+
+    [published] = catalog.evals
+    assert (published.dataset.name, published.config.name) == ("questions", "run")
+    assert published.source_files[:2] == (f"{EVALS}/dataset.yml", f"{EVALS}/config.yml")
+    # Each unpublished file is checked, and its findings name only that file.
+    found = {(item.code, item.origin.file) for item in catalog.diagnostics if item.origin is not None}
+    assert ("SST-VAL706", f"{EVALS}/dataset_v1.yml") in found
+    assert ("SST-VAL764", f"{EVALS}/config_v1.yml") in found
+
+    # What the published pair reports is what it reports with no other version beside it.
+    def on_published(bag: DiagnosticBag) -> list[str]:
+        return sorted(item.message for item in bag if item.origin is not None and item.origin.file in published_files)
+
+    assert on_published(catalog.diagnostics) == on_published(alone.diagnostics)
+
+
+def test_an_eval_file_without_a_name_is_reported_and_cannot_be_named(tmp_path: Path) -> None:
+    agents, agent_diagnostics = _project(tmp_path)
+    dataset = tmp_path / EVALS / "dataset.yml"
+    dataset.write_text(dataset.read_text().replace("name: questions\n", ""))
+    catalog = load_eval_catalog(tmp_path, agents, initial_diagnostics=agent_diagnostics)
+    codes = [(item.code, item.context.get("field")) for item in catalog.diagnostics if item.code.startswith("SST-")]
+    assert ("SST-PRS002", "name") in codes
+    assert ("SST-REF048", None) in codes
+    assert catalog.evals == ()

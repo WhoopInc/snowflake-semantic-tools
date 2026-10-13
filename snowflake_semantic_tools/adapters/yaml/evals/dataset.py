@@ -38,7 +38,7 @@ def parse_dataset(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic])
     the validator to refuse.
 
     Diagnostics:
-        SST-PRS002: `agent` or `questions` is absent.
+        SST-PRS002: `agent`, `name` or `questions` is absent.
         SST-PRS117: a question row has no `question` or no `ground_truth`.
         SST-PRS003: a field has the wrong type, such as a `questions` that is not a list.
         SST-PRS018: a question or an expected invocation is not a mapping.
@@ -48,6 +48,7 @@ def parse_dataset(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic])
     tree = parsed.tree
     origin = origin_at(parsed, (), source_file)
     agent = required_string(tree, "agent", source_file, parsed, diagnostics)
+    name = required_string(tree, "name", source_file, parsed, diagnostics)
     description = optional_string_field(tree, "description", source_file, parsed, diagnostics)
     questions_value = tree.get("questions")
     if questions_value is None:
@@ -77,6 +78,7 @@ def parse_dataset(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic])
         description,
         questions,
         tuple(key for key in ("database", "schema", "enabled") if key in tree),
+        name,
     )
 
 

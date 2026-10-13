@@ -20,9 +20,9 @@ cannot be downgraded by any setting.
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
 - [Parsing (PRS)](#parsing-prs) -- 58 codes
 - [Loading (LOD)](#loading-lod) -- 24 codes
-- [References (REF)](#references-ref) -- 36 codes
+- [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 22 codes
-- [Validation (VAL)](#validation-val) -- 298 codes
+- [Validation (VAL)](#validation-val) -- 299 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
@@ -1895,7 +1895,7 @@ Fix: declare the metric in the eval_metrics/ tree, or correct the name
 
 `{{ file('<path>') }} resolves outside the project root`
 
-Raised when an agent's or a verified query's `file()` reference, or an eval's dataset or config path, resolves outside the project root.
+Raised when an agent's or a verified query's `file()` reference resolves outside the project root.
 
 Fix: use a path inside the project
 
@@ -2032,6 +2032,26 @@ Fix: write each tables: entry as `{{ ref('<model>') }}`
 Raised when a relationship left_table/right_table is anything but one one-argument {{ ref() }} call.
 
 Fix: write the endpoint as {{ ref('&lt;model&gt;') }}, or run sst migrate refs --write
+
+### SST-REF047
+
+**Eval reference is not an eval_dataset() or eval_config() call** (error)
+
+`<artifact>: <field> is '<found>'; it takes one {{ <function>('<name>') }} call`
+
+Raised when an agent's `evals.dataset` or `evals.config` is a path, or anything but one reference call.
+
+Fix: name the file with {{ eval_dataset('&lt;name&gt;') }} or {{ eval_config('&lt;name&gt;') }}, the name: it declares
+
+### SST-REF048
+
+**Eval reference names no file** (error)
+
+`<artifact>: {{ <function>('<name>') }} names no eval <kind> in <path>`
+
+Raised when an agent's `eval_dataset()` or `eval_config()` call names no file of that kind in its own `evals/` folder; another agent's files are not searched.
+
+Fix: name a {kind} file in the agent's evals/ folder by its name:, or give one that name
 
 ### SST-REF900
 
@@ -4786,6 +4806,16 @@ Raised when a system metric's version, else `evals.+metric_version`, is v1.
 Fix: pin `version: v3`
 
 Note: Snowflake refuses `version: v1` when the run starts, though its docs list it. Unlike SST-PRS013, which reports the same value, no setting lowers this.
+
+### SST-VAL765
+
+**Two eval files of one kind share a name** (error)
+
+`<path>: eval <kind> files <a> and <b> are both named '<name>'`
+
+Raised when two dataset files, or two config files, in one agent's `evals/` folder declare the same `name:`, compared casefolded, so a reference to it is ambiguous.
+
+Fix: give each file its own name:
 
 ### SST-VAL801
 

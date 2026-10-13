@@ -145,6 +145,8 @@ class EvalDataset:
 
     Attributes:
         agent: The agent the file declares; it must name the agent that points to it.
+        name: The name `{{ eval_dataset() }}` references it by; None when absent. Never
+            rendered.
         description: For reviewers only; never rendered into anything sent to Snowflake.
         forbidden_keys: Which of `database`, `schema` and `enabled` the file sets; eval
             objects always live in the agent's schema, so each is rejected.
@@ -156,6 +158,7 @@ class EvalDataset:
     description: str | None
     questions: tuple[EvalQuestion, ...]
     forbidden_keys: tuple[str, ...] = ()
+    name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,6 +253,8 @@ class EvalConfig:
             for its block.
         custom_metric_names: The names the `eval_metric()` references give, as written.
         forbidden_keys: Which of `database`, `schema` and `enabled` the file sets.
+        name: The name `{{ eval_config() }}` references it by; None when absent. Never
+            rendered.
     """
 
     origin: Origin
@@ -261,6 +266,7 @@ class EvalConfig:
     custom_metric_names: tuple[str, ...]
     run: EvalRunConfig | None
     forbidden_keys: tuple[str, ...] = ()
+    name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

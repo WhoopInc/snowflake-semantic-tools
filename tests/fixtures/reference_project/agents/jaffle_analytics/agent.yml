@@ -202,11 +202,13 @@ meta:
   owner: analytics-platform
   deprecated: false
 
-# The eval files live in ./evals/. Eval objects publish into this agent's
-# schema; evals take no location of their own (SST-CFG015).
+# The eval files live in ./evals/, and each declares a name: this block names
+# the dataset and config to publish by. Other versions may sit beside them; each
+# is checked, and only the pair named here publishes. Eval objects publish into
+# this agent's schema; evals take no location of their own (SST-CFG015).
 evals:
-  dataset: evals/dataset.yml
-  config: evals/config.yml
+  dataset: "{{ eval_dataset('jaffle_analytics_questions') }}"
+  config: "{{ eval_config('jaffle_analytics_repeat') }}"
 
 # =============================================================================
 # DELIBERATELY ABSENT

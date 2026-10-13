@@ -126,10 +126,10 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
     Custom metrics are returned as the names their `eval_metric()` references give; the caller
     resolves them. `database`, `schema` and `enabled` are recorded as the location keys the
     file sets, for the validator to refuse. Fields are read, and reported, in this order:
-    `agent`, `agent_version`, `dataset`, `metrics`, `run`, `sweep`.
+    `agent`, `name`, `agent_version`, `dataset`, `metrics`, `run`, `sweep`.
 
     Diagnostics:
-        SST-PRS002: `agent` or `metrics` is absent.
+        SST-PRS002: `agent`, `name` or `metrics` is absent.
         SST-PRS003: a field has the wrong type, such as a `run:` block that is not a mapping.
         SST-PRS013: `run.tier` or a `run.accept_statuses` entry is not an accepted value.
         SST-PRS018: an entry of `metrics.system` or `metrics.custom` has the wrong type.
@@ -142,6 +142,7 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
     tree = parsed.tree
     origin = origin_at(parsed, (), source_file)
     agent = required_string(tree, "agent", source_file, parsed, diagnostics)
+    name = required_string(tree, "name", source_file, parsed, diagnostics)
     agent_version = optional_string_field(tree, "agent_version", source_file, parsed, diagnostics)
     dataset = _parse_dataset_config(source_file, parsed, tree.get("dataset"), diagnostics)
     metrics = tree.get("metrics")
@@ -176,6 +177,7 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
         custom_metric_names,
         run,
         tuple(key for key in ("database", "schema", "enabled") if key in tree),
+        name,
     )
 
 

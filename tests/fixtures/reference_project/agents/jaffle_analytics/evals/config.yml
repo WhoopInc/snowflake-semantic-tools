@@ -15,6 +15,10 @@
 # (`SST-REF012`).
 agent: jaffle_analytics_agent
 
+# What the agent's `{{ eval_config() }}` names this file by; unique among the
+# configs in this folder (`SST-VAL765`). Never rendered.
+name: jaffle_analytics_repeat
+
 # `committed`, `alias:<name>` or `VERSION$<n>`. `LIVE`, or no version here or in
 # `evals.+agent_version`, is `SST-VAL719`. `committed` renders as `LAST`, and
 # each run resolves it to a concrete `VERSION$<n>` recorded with the results.

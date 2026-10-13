@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 716
+- Codes: 719
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -365,6 +365,8 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-REF041`](error-codes.md#sst-ref041) | REF | error | local | `snowflake_semantic_tools.domain.resolve.calls` | `tests/codes/ref/test_sst_ref041.py` |
 | [`SST-REF044`](error-codes.md#sst-ref044) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.build` | `tests/codes/ref/test_sst_ref044.py` |
 | [`SST-REF046`](error-codes.md#sst-ref046) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.relationships` | `tests/codes/ref/test_sst_ref046.py` |
+| [`SST-REF047`](error-codes.md#sst-ref047) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.agents` | `tests/codes/ref/test_sst_ref047.py` |
+| [`SST-REF048`](error-codes.md#sst-ref048) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.evals.catalog` | `tests/codes/ref/test_sst_ref048.py` |
 | [`SST-REF900`](error-codes.md#sst-ref900) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.phases` | `tests/codes/ref/test_sst_ref900.py` |
 | [`SST-REG001`](error-codes.md#sst-reg001) | REG | error | local | `snowflake_semantic_tools.domain.diagnostics.integrity`<br>`snowflake_semantic_tools.domain.model.registry` | `tests/codes/reg/test_sst_reg001.py` |
 | [`SST-REG002`](error-codes.md#sst-reg002) | REG | error | local | `snowflake_semantic_tools.domain.diagnostics.integrity`<br>`snowflake_semantic_tools.domain.model.registry` | `tests/codes/reg/test_sst_reg002.py` |
@@ -671,6 +673,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL762`](error-codes.md#sst-val762) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_config` | `tests/codes/val/test_sst_val762.py` |
 | [`SST-VAL763`](error-codes.md#sst-val763) | VAL | error | runtime | `snowflake_semantic_tools.app.evals.gate` | `tests/codes/val/test_sst_val763.py` |
 | [`SST-VAL764`](error-codes.md#sst-val764) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_config` | `tests/codes/val/test_sst_val764.py` |
+| [`SST-VAL765`](error-codes.md#sst-val765) | VAL | error | local | `snowflake_semantic_tools.adapters.yaml.evals.catalog` | `tests/codes/val/test_sst_val765.py` |
 | [`SST-VAL801`](error-codes.md#sst-val801) | VAL | error | local | `snowflake_semantic_tools.adapters.yaml.profiles`<br>`snowflake_semantic_tools.adapters.yaml.skills`<br>`snowflake_semantic_tools.domain.validate.profile`<br>`snowflake_semantic_tools.domain.validate.skill` | `tests/codes/val/test_sst_val801.py` |
 | [`SST-VAL802`](error-codes.md#sst-val802) | VAL | error | local | `snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/val/test_sst_val802.py` |
 | [`SST-VAL803`](error-codes.md#sst-val803) | VAL | error | local | `snowflake_semantic_tools.domain.validate.publication` | `tests/codes/val/test_sst_val803.py` |

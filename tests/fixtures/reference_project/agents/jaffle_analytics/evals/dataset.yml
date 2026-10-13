@@ -20,6 +20,10 @@
 # Must name the agent whose `evals:` block points here (`SST-REF012`).
 agent: jaffle_analytics_agent
 
+# What the agent's `{{ eval_dataset() }}` names this file by; unique among the
+# datasets in this folder (`SST-VAL765`). Never rendered.
+name: jaffle_analytics_questions
+
 # For reviewers only; never rendered into anything sent to Snowflake.
 description: |-
   Four records covering the order analytics agent's dominant failure modes:

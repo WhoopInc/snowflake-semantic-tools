@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import posixpath
 import re
 from collections.abc import Mapping
 from dataclasses import replace
@@ -269,7 +270,7 @@ def _parse_agent(
     diagnostics.extend(
         passthrough_diagnostics(f"{name}.spec", passthrough, AGENT_SPEC_KEYS, subject=subject, origin=origin)
     )
-    eval_files = _parse_eval_files(project_dir, agent_dir, relative, tree.get("evals"), diagnostics)
+    eval_files = _parse_eval_files(relative, tree.get("evals"), diagnostics)
     diagnostics.extend(_unknown_keys(relative, tree, lines, subject))
     return (
         AgentModel(
@@ -326,29 +327,27 @@ def _sample_questions(values: Any, name: str, origin: Origin, diagnostics: list[
     return questions
 
 
-def _parse_eval_files(
-    project_dir: Path,
-    agent_dir: Path,
-    source_file: str,
-    value: object,
-    diagnostics: list[Diagnostic],
-) -> AgentEvalFiles | None:
-    """Resolve an agent's `evals:` dataset and config against its folder, as project-relative paths.
+def _parse_eval_files(source_file: str, value: object, diagnostics: list[Diagnostic]) -> AgentEvalFiles | None:
+    """Read an agent's `evals:` block: the dataset and the config it publishes, each by name.
 
-    Whether the files exist is not checked here.
+    `dataset:` is one `{{ eval_dataset('<name>') }}` call and `config:` one
+    `{{ eval_config('<name>') }}` call; the names resolve among the files in the agent's
+    `evals/` folder, which is not read here.
 
     Returns:
-        None when the agent declares no `evals:`; otherwise both paths, each None when it is
-        absent, of the wrong type, or outside the project root.
+        None when the agent declares no `evals:`; otherwise both names, each None when it is
+        absent or not that one call, with the agent's `evals/` folder.
 
     Diagnostics:
-        SST-PRS003: when `evals:` is not a mapping, or a path is not a non-empty string.
+        SST-PRS003: when `evals:` is not a mapping.
         SST-PRS002: when `dataset` or `config` is absent.
-        SST-REF027: when a path resolves outside the project root.
+        SST-LOD004, SST-REF033, SST-REF003: when a template in a value does not parse.
+        SST-REF047: when a value is anything but one `eval_dataset()` or `eval_config()` call.
     """
     if value is None:
         return None
     origin = Origin(source_file)
+    folder = posixpath.join(posixpath.dirname(source_file), "evals")
     if not isinstance(value, dict):
         diagnostics.append(
             D(
@@ -360,31 +359,29 @@ def _parse_eval_files(
                 origin=origin,
             )
         )
-        return AgentEvalFiles(origin)
-    resolved: dict[str, str | None] = {"dataset": None, "config": None}
-    for field in resolved:
+        return AgentEvalFiles(origin, folder=folder)
+    names: dict[str, str | None] = {}
+    for function in ("eval_dataset", "eval_config"):
+        field = function.removeprefix("eval_")
         raw = value.get(field)
+        names[field] = None
         if raw is None:
             diagnostics.append(D("SST-PRS002", artifact=source_file, field=f"evals.{field}", origin=origin))
             continue
-        if not isinstance(raw, str) or not raw.strip():
+        reported = len(diagnostics)
+        names[field] = _single_template_arg(raw, function, diagnostics, origin)
+        if names[field] is None and len(diagnostics) == reported:
             diagnostics.append(
                 D(
-                    "SST-PRS003",
+                    "SST-REF047",
                     artifact=source_file,
                     field=f"evals.{field}",
-                    expected="non-empty string",
-                    found=type(raw).__name__,
+                    found=str(raw),
+                    function=function,
                     origin=origin,
                 )
             )
-            continue
-        path = resolve_within(project_dir, agent_dir / raw)
-        if path is None:
-            diagnostics.append(D("SST-REF027", path=raw, origin=origin))
-            continue
-        resolved[field] = path.relative_to(project_dir.resolve()).as_posix()
-    return AgentEvalFiles(origin, resolved["dataset"], resolved["config"])
+    return AgentEvalFiles(origin, names["dataset"], names["config"], folder)
 
 
 def _instruction(

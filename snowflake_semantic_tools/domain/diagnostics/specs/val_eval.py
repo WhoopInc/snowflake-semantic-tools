@@ -672,4 +672,15 @@ SPECS: tuple[ErrorSpec, ...] = (
             "SST-PRS013, which reports the same value, no setting lowers this."
         ),
     ),
+    spec(
+        "SST-VAL765",
+        Severity.ERROR,
+        "Two eval files of one kind share a name",
+        "{path}: eval {kind} files {a} and {b} are both named '{name}'",
+        "give each file its own name:",
+        condition=(
+            "two dataset files, or two config files, in one agent's `evals/` folder declare the same "
+            "`name:`, compared casefolded, so a reference to it is ambiguous"
+        ),
+    ),
 )

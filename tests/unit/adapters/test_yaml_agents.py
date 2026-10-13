@@ -29,8 +29,8 @@ spec:
       description: Use for sales. Do not use for support.
 alias: promoted
 evals:
-  dataset: evals/dataset.yml
-  config: evals/config.yml
+  dataset: "{{ eval_dataset('sales_questions') }}"
+  config: "{{ eval_config('sales_run') }}"
 """.strip(),
         encoding="utf-8",
     )
@@ -46,11 +46,11 @@ evals:
     )
     assert agent.tools[0].semantic_view == "sales"
     assert agent.evals is not None
-    assert agent.evals.dataset == "agents/sales/evals/dataset.yml"
-    assert agent.evals.config == "agents/sales/evals/config.yml"
+    assert (agent.evals.dataset, agent.evals.config) == ("sales_questions", "sales_run")
+    assert agent.evals.folder == "agents/sales/evals"
 
 
-def test_agent_loader_reports_eval_pointer_escape(tmp_path: Path) -> None:
+def test_an_eval_file_path_is_refused_for_a_reference(tmp_path: Path) -> None:
     root = tmp_path / "agents" / "bad"
     root.mkdir(parents=True)
     (root / "agent.yml").write_text(
@@ -58,15 +58,20 @@ def test_agent_loader_reports_eval_pointer_escape(tmp_path: Path) -> None:
 name: bad
 evals:
   dataset: ../../../outside.yml
-  config: evals/config.yml
+  config: "{{ eval_config('run') }}"
 """.strip(),
         encoding="utf-8",
     )
     agents, diagnostics = load_agents(tmp_path)
     assert len(agents) == 1
     assert agents[0].evals is not None
-    assert agents[0].evals.dataset is None
-    assert [diagnostic.code for diagnostic in diagnostics] == ["SST-REF027"]
+    assert (agents[0].evals.dataset, agents[0].evals.config) == (None, "run")
+    # A path is never read: the agent names its dataset by the name the file declares.
+    [diagnostic] = diagnostics
+    assert diagnostic.code == "SST-REF047"
+    assert diagnostic.message == (
+        "agents/bad/agent.yml: evals.dataset is '../../../outside.yml'; it takes one {{ eval_dataset('<name>') }} call"
+    )
 
 
 def test_agent_loader_reports_missing_sidecar_and_bad_sample_shape(tmp_path: Path) -> None:
@@ -277,7 +282,7 @@ def test_keys_an_agent_file_does_not_model_are_reported_and_a_near_miss_is_a_typ
         "  skills:\n"
         "    - name: s\n      source: {type: CORTEX_EXTENSION, path: x, pin: 1}\n"
         "meta:\n  anything: goes\n"
-        "evals:\n  dataset: d.yml\n  config: c.yml\n  extra: 1\n"
+        "evals:\n  dataset: \"{{ eval_dataset('d') }}\"\n  config: \"{{ eval_config('c') }}\"\n  extra: 1\n"
     )
     agents, diagnostics = load_agents(_agent_file(tmp_path, text))
 
