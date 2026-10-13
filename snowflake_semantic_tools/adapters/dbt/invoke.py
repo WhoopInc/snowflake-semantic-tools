@@ -82,14 +82,44 @@ def _yaml_mapping(path: Path) -> Mapping[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _package_dir_name(entry: Mapping[str, Any]) -> str | None:
-    """The directory `dbt deps` installs one `packages.yml` entry under, by dbt's naming."""
-    for key in ("package", "git", "local", "tarball"):
+_PACKAGE_SOURCES = ("package", "git", "local", "tarball")
+
+
+def _package_source(entry: Mapping[str, Any]) -> tuple[str, str] | None:
+    """The key and value that say where one `packages.yml` or `package-lock.yml` entry comes from."""
+    for key in _PACKAGE_SOURCES:
         value = entry.get(key)
         if isinstance(value, str) and value.strip():
-            name = value.strip().rstrip("/").rsplit("/", 1)[-1]
-            return name.removesuffix(".git").removesuffix(".tar.gz")
+            return key, value.strip().rstrip("/")
     return None
+
+
+def _locked_names(project_dir: Path) -> dict[tuple[str, str], str]:
+    """The name `dbt deps` installed each package under, by its source, from package-lock.yml.
+
+    dbt installs a package under the `name:` in its own dbt_project.yml, which the lock records;
+    for a git or tarball package that need not be anything its URL says.
+    """
+    locked = _yaml_mapping(project_dir / "package-lock.yml").get("packages")
+    names: dict[tuple[str, str], str] = {}
+    for entry in locked if isinstance(locked, list) else []:
+        if isinstance(entry, dict) and isinstance(entry.get("name"), str) and (source := _package_source(entry)):
+            names[source] = entry["name"]
+    return names
+
+
+def _package_dir_name(entry: Mapping[str, Any], locked: Mapping[tuple[str, str], str]) -> str | None:
+    """The directory `dbt deps` installs one `packages.yml` entry under.
+
+    The lock's name when it records the entry; otherwise the last segment of its source, which is
+    dbt's directory for a hub package and for a git one whose repository is named as the package.
+    """
+    source = _package_source(entry)
+    if source is None:
+        return None
+    if source in locked:
+        return locked[source]
+    return source[1].rsplit("/", 1)[-1].removesuffix(".git").removesuffix(".tar.gz")
 
 
 def missing_packages(project_dir: Path) -> int:
@@ -97,8 +127,9 @@ def missing_packages(project_dir: Path) -> int:
     declared = _yaml_mapping(project_dir / "packages.yml").get("packages")
     install_path = str(_yaml_mapping(project_dir / "dbt_project.yml").get("packages-install-path") or "dbt_packages")
     installed = project_dir / install_path
+    locked = _locked_names(project_dir)
     names = (
-        [_package_dir_name(entry) for entry in declared or [] if isinstance(entry, dict)]
+        [_package_dir_name(entry, locked) for entry in declared or [] if isinstance(entry, dict)]
         if isinstance(declared, list)
         else []
     )
