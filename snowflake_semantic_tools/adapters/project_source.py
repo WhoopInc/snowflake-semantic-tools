@@ -258,7 +258,7 @@ class YamlProjectSource:
         return dataclasses.replace(project, diagnostics=DiagnosticBag((*seam, *project.diagnostics)))
 
     def load_tools(self) -> ToolCatalog:
-        """Load the tool groups under `project.tools_dir`, checked against the dbt manifest and target.
+        """Load the tool members under `project.tools_dir`, checked against the dbt manifest and target.
 
         Without a manifest path, and when dbt may be invoked, `dbt parse` runs first. The target
         is the one this source was given, else the profile's default `target`.
@@ -281,6 +281,7 @@ class YamlProjectSource:
             target_name=selected,
             declared_targets=targets,
             tools_dir=tools_dir,
+            config=config,
         )
 
     def _config_tree(self) -> dict[str, object]:

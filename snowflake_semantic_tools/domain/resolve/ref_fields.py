@@ -39,6 +39,7 @@ REF_FIELDS: Mapping[str, str] = MappingProxyType(
         "metric.expression": "metric_expr",
         "metric.window": "metric_expr",
         "filter.expression": "filter_expr",
+        "tool.where": "filter_expr",
         "verified_query.sql": "vqr_sql",
         "tags.name": "tag_name",
     }

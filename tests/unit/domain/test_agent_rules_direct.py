@@ -13,6 +13,7 @@ from snowflake_semantic_tools.domain.validate.agent_live import names_object, si
 from snowflake_semantic_tools.domain.validate.agent_tool import (
     misplaced_keys,
     overrides,
+    search_tool_columns,
     search_tool_problems,
     signature_mismatch,
 )
@@ -69,7 +70,9 @@ def test_a_member_signature_must_match_the_calling_tools_input_schema() -> None:
 
 
 def test_a_tool_value_over_its_members_is_reported_field_by_field() -> None:
-    member = replace(search_member(warehouse="WH", id_column="ID", title_column="TITLE"), columns=())
+    member = replace(
+        search_member(config=MappingProxyType({"warehouse": "WH"}), id_column="ID", title_column="TITLE"), columns=()
+    )
     tool = search_tool(warehouse="OTHER_WH", id_column="ID", title_column="HEADLINE")
     assert [item.context["value"] for item in overrides(MODEL, tool, "docs", member)] == ["warehouse", "title_column"]
 
@@ -100,10 +103,33 @@ def test_a_token_budget_the_agent_sets_itself_is_reported_unless_documented() ->
 
 def test_a_search_tools_own_columns_and_its_members_both_count() -> None:
     member = search_member()
-    tool = search_tool(columns_and_descriptions=MappingProxyType({"title": {}}))
-    assert [item.context["value"] for item in overrides(MODEL, tool, "docs", member)][-1:] == [
-        "columns_and_descriptions"
+    tool = search_tool(columns=({"column": "title"},))
+    assert [item.context["value"] for item in overrides(MODEL, tool, "docs", member)][-1:] == ["columns"]
+
+
+def test_a_search_tools_own_columns_are_read_as_its_member_reads_its_own() -> None:
+    column = "{{ ref('product_docs', 'doc_name') }}"
+    entries = (
+        "plain",
+        {"description": "No column."},
+        {"column": column, "description": "Title.", "type": "string"},
+        {"column": "doc_id"},
+        {"column": "{{ ref('notes', 'doc_id') }}"},
+    )
+    tool = search_tool(columns=entries, id_column="{{ ref('product_docs', 'doc_id') }}", title_column="doc_name")
+    resolved, columns, found = search_tool_columns(MODEL, tool, "docs", search_member())
+    assert columns == {"DOC_NAME": {"description": "Title.", "type": "string"}}
+    assert (resolved.id_column, resolved.title_column, resolved.relative_path_column) == ("doc_id", None, None)
+    assert [(item.code, item.context.get("field") or item.context.get("detail")) for item in found] == [
+        ("SST-VAL524", "the entry is not a mapping"),
+        ("SST-VAL524", "it names no column"),
+        ("SST-REF050", "tools.docs.columns[3].column"),
+        ("SST-VAL622", "tools.docs.columns[4].column"),
+        ("SST-REF050", "tools.docs.title_column"),
     ]
+    referenced = replace(procedure_member(), type="cortex_search_service")
+    resolved, columns, found = search_tool_columns(MODEL, search_tool(columns=({"column": "body"},)), "d", referenced)
+    assert (columns, found) == ({"BODY": {}}, [])
 
 
 def test_a_live_specification_names_an_object_by_its_qualified_name_anywhere_in_it() -> None:

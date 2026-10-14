@@ -157,6 +157,14 @@ _MOVED: Mapping[tuple[NodePath, str], str] = MappingProxyType(
         ),
     }
 )
+# Keys a `spec.tools` entry wrote before columns became references, with where each is written now.
+_MOVED_TOOL_KEYS: Mapping[str, str] = MappingProxyType(
+    {
+        "columns_and_descriptions": (
+            "a search tool lists its columns under columns:, each column as its member names its own"
+        ),
+    }
+)
 
 
 def _unknown_keys(
@@ -180,6 +188,8 @@ def _unknown_keys(
                 origin = Origin(relative, position.line, position.col) if position else Origin(relative, 1, 1)
                 label = _label((*path, str(key)))
                 moved = _MOVED.get((path, str(key)))
+                if len(path) == 3 and path[:2] == ("spec", "tools"):
+                    moved = _MOVED_TOOL_KEYS.get(str(key))
                 found.append(
                     D("SST-PRS126", origin=origin, subject=subject, artifact=subject, field=label, reason=moved)
                     if moved is not None
@@ -513,9 +523,10 @@ def _parse_tool(
 ) -> AgentTool | None:
     """Read one `spec.tools` entry; None when it is not a mapping or declares no string `type`.
 
-    `search_service`, else `identifier`, is read as the arguments of one `{{ tool() }}` call,
-    and `semantic_view` and `agent` as the one argument of a call of that name; any other value
-    of those fields reads as empty.
+    `search_service`, else `identifier`, is read as the one name of a `{{ tool('<name>') }}`
+    call, and `semantic_view` and `agent` as the one argument of a call of that name; any other
+    value of those fields reads as empty. A search tool's columns are kept as written, since
+    what they must be depends on the member they resolve against.
 
     Args:
         subject: The agent's key, which a mapping field of the wrong type reports against.
@@ -524,7 +535,9 @@ def _parse_tool(
     Diagnostics:
         SST-PRS018: when the entry is not a mapping.
         SST-PRS002: when it declares no string `type`.
-        SST-PRS003: when a mapping field, such as `filter` or `input_schema`, holds another type.
+        SST-PRS003: when a mapping field, such as `filter` or `input_schema`, holds another type,
+            or `columns` is not a list.
+        SST-REF015: when the `tool()` call names other than one member.
         SST-LOD004, SST-REF033, SST-REF003: when a template in a reference field does not parse.
         SST-PRS023, SST-PRS024: as `passthrough_diagnostics` reports `tool_spec_passthrough`.
     """
@@ -554,8 +567,11 @@ def _parse_tool(
         )
         return MappingProxyType(read)
 
-    backing_value = value.get("search_service", value.get("identifier"))
-    backing = _template_args(backing_value, "tool", diagnostics, origin)
+    backing = _backing(value.get("search_service", value.get("identifier")), diagnostics, origin, subject)
+    field = f"tools[{index}].columns"
+    columns = checked_list(
+        value.get("columns"), diagnostics, field=field, artifact=source_file, origin=origin, subject=subject
+    )
     semantic = _single_template_arg(value.get("semantic_view"), "semantic_view", diagnostics, origin)
     agent_ref = _single_template_arg(value.get("agent"), "agent", diagnostics, origin)
     return AgentTool(
@@ -574,7 +590,7 @@ def _parse_tool(
         stage_path=optional_string(value.get("stage_path")),
         relative_path_column=optional_string(value.get("relative_path_column")),
         filter=mapped("filter"),
-        columns_and_descriptions=mapped("columns_and_descriptions"),
+        columns=tuple(columns),
         input_schema=mapped("input_schema"),
         passthrough=mapped("passthrough"),
         tool_spec_passthrough=_checked_passthrough(
@@ -587,6 +603,21 @@ def _parse_tool(
         ),
         declared_keys=tuple(sorted(str(key) for key in value)),
     )
+
+
+def _backing(value: object, diagnostics: list[Diagnostic], origin: Origin, subject: str) -> str | None:
+    """Return the member name the `{{ tool('<name>') }}` call that is all of `value` gives; None for none.
+
+    Diagnostics:
+        SST-LOD004, SST-REF033, SST-REF003: the template does not parse.
+        SST-REF015: the `tool()` call names other than one member.
+    """
+    args = _template_args(value, "tool", diagnostics, origin)
+    if len(args) > 1:
+        diagnostics.append(
+            D("SST-REF015", origin=origin, subject=subject, ref_function="tool", expected="1", found=len(args))
+        )
+    return args[0] if len(args) == 1 else None
 
 
 def _checked_passthrough(

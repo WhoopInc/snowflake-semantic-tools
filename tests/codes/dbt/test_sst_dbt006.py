@@ -15,11 +15,9 @@ CATALOG = catalog_from_document(
 
 
 def _tools(tmp_path: Path, relation: str) -> None:
-    (tmp_path / "tools").mkdir()
-    (tmp_path / "tools" / "partner.yml").write_text(
-        "tools:\n  - group: partner\n    immutable: true\n    reference:\n"
-        "      - name: prices\n        type: generic\n        description: Partner prices.\n"
-        f"        relations:\n          dev: {relation}\n",
+    (tmp_path / "tools" / "partner").mkdir(parents=True)
+    (tmp_path / "tools" / "partner" / "prices.yml").write_text(
+        f"tool:\n  name: prices\n  type: generic\n  description: Partner prices.\n  relations:\n    dev: {relation}\n",
         encoding="utf-8",
     )
 
@@ -30,7 +28,7 @@ def test_sst_dbt006_fires(tmp_path: Path) -> None:
     [diagnostic] = [item for item in catalog.diagnostics if item.code == "SST-DBT006"]
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "model 'pricing_periods' resolves to relation 'DB.SCH.PRICING_CALENDAR'"
-    assert diagnostic.subject == "partner:prices"
+    assert diagnostic.subject == "tool_ref:prices"
 
 
 def test_sst_dbt006_silent(tmp_path: Path) -> None:

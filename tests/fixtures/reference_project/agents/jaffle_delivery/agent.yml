@@ -3,7 +3,7 @@
 # agents/jaffle_delivery/agent.yml -- reference project
 # =============================================================================
 # The toolset agent. Its one tool is an agent toolset over `partner_delivery_agent`:
-# a `reference:` member of the immutable jaffle_partner tool group, so this repo
+# a referenced member in the immutable tools/partner/ folder, so this repo
 # addresses it without ever creating it. At run time Snowflake adds the partner
 # agent's tools to this agent's, which fits because delivery status lives with
 # the partner, not in any semantic view here.

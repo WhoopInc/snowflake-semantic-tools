@@ -170,7 +170,7 @@ class ProjectInputs(SemanticViewSource, Protocol):
         ...
 
     def tool_catalog(self) -> ToolCatalog:
-        """Return the tool groups the project declares, resolved against the dbt target.
+        """Return the tool members the project declares, resolved against the dbt target.
 
         Raises:
             ProjectError: the dbt manifest or a tool file cannot be read.

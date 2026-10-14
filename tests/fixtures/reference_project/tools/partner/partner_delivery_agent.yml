@@ -1,0 +1,31 @@
+---
+# =============================================================================
+# tools/partner/partner_delivery_agent.yml -- reference project
+# =============================================================================
+# The partner/ folder holds partner-owned objects this repo may read and must
+# never write. sst_config.yml routes it `+immutable: true`, so a member here
+# that SST would define is an error (SST-VAL606): each one writes
+# `relations:`, naming its object per target, and no DDL is emitted. The
+# members cover the kinds platform/ does not use: agent, generic and stage.
+#
+# `verify`, the connected target, maps each member to a stand-in under
+# SST_REF_VERIFY. A relation is a literal name, not a template, so it cannot
+# follow the SST_TEST_SNOWFLAKE_* database. No eval question reaches these
+# objects; a connected validate reports each one that is absent as SST-VAL531,
+# which sst_config.yml demotes to a warning, so the manual workflow applies this
+# target with --no-strict.
+# =============================================================================
+
+tool:
+  # ---- agent: whose tools jaffle_delivery_agent's toolset inherits ----------
+  name: partner_delivery_agent
+  type: agent
+  description: |-
+    Partner-operated agent answering delivery-status questions. Referenced so
+    a jaffle agent can inherit its tools; never created here.
+  relations:
+    dev: SST_TEST.REFERENCE.DELIVERY_AGENT
+    prod: SST_REF_PROD.PARTNER.DELIVERY_AGENT
+    verify: SST_REF_VERIFY.PARTNER.DELIVERY_AGENT
+  meta:
+    owner: partner-integrations

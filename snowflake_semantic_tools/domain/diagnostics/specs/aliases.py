@@ -332,8 +332,8 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
     (
         "SST-REF021",
         "Ref target is declared under both define and reference",
-        "SST-CFG019",
-        "SST-CFG019 already reported the same condition, when configuration is validated",
+        "SST-VAL001",
+        "tools have no define: or reference: lists; a member name declared twice is SST-VAL001",
     ),
     (
         "SST-REF024",
@@ -503,5 +503,30 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         "Stage layout is not by_type",
         None,
         "`+layout` was removed: profile trees are always laid out by type",
+    ),
+    (
+        "SST-VAL601",
+        "Tool member name is not unique within its group",
+        "SST-VAL001",
+        "tools have no groups: a member name declared twice anywhere in the project is SST-VAL001",
+    ),
+    (
+        "SST-VAL602",
+        "Tool member name is not globally unique",
+        "SST-VAL001",
+        "tools have no groups: a member name declared twice anywhere in the project is SST-VAL001",
+    ),
+    (
+        "SST-CFG019",
+        "Tool member declared under both define and reference",
+        "SST-VAL001",
+        "tools have no define: or reference: lists: a member that writes relations: is a reference, "
+        "and a name declared twice is SST-VAL001",
+    ),
+    (
+        "SST-CFG020",
+        "Per-group tools override names an unknown or reference-only group",
+        "SST-CFG041",
+        "tools are routed by folder, not group name: a tools: route that names no folder is SST-CFG041",
     ),
 )

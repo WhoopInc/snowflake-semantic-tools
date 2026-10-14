@@ -3,8 +3,8 @@
 # agents/jaffle_analytics/agent.yml -- reference project
 # =============================================================================
 # The full-featured agent: two Cortex Analyst tools (one per semantic view), a
-# Cortex Search tool over a `define:` tool member and a `generic` tool over a
-# `reference:` one, plus two skills and an eval.
+# Cortex Search tool over a defined tool member and a `generic` tool over a
+# referenced one, plus two skills and an eval.
 #
 # SST authors one entry per tool and the renderer splits it into Snowflake's
 # `tools[]` and `tool_resources{}`; read this file beside
@@ -134,25 +134,25 @@ spec:
       warehouse: null
       query_timeout: 60
 
-    # ---- 3. Cortex Search over a `define:` member -------------------------
+    # ---- 3. Cortex Search over a defined member ---------------------------
     - type: cortex_search
       # Unlike an Analyst tool, a search tool is named here.
       name: menu_docs_search
       # tool() takes the same form whether the member is defined in this repo
       # (this one) or only referenced (the generic tool below).
-      search_service: "{{ tool('jaffle_platform', 'menu_docs_search') }}"
-      # The description, id and title columns and columns_and_descriptions come
-      # from the backing member; restate one only where this agent should
-      # differ. `max_results` is this agent's own choice.
+      search_service: "{{ tool('menu_docs_search') }}"
+      # The description, id and title columns and `columns` come from the
+      # backing member; restate one only where this agent should differ, as a
+      # ref of the member's `on:` model. `max_results` is this agent's own choice.
       max_results: 5
       query_timeout: 60
 
-    # ---- 4. A `generic` tool over a `reference:` member -------------------
+    # ---- 4. A `generic` tool over a referenced member ---------------------
     - type: generic
       name: order_tier_lookup
       # The procedure is owned elsewhere. tool() resolves it through the
       # member's per-target `relations:`, so a dev agent calls the dev object.
-      identifier: "{{ tool('jaffle_platform', 'order_tier_lookup') }}"
+      identifier: "{{ tool('order_tier_lookup') }}"
       description: |-
         Resolves the pricing tier a single order falls into under current
         rules. Use only when a question is about one named order and the

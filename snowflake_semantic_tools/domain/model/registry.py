@@ -520,16 +520,17 @@ ARTIFACT_REGISTRY = build_registry(
                 ("STAGE", GrantPreservation.NONE),
             ),
             summary=(
-                "One `define:` member of a tool group: a Snowflake object an agent tool calls, published "
-                "before any agent that uses it. Grants depend on the kind: a search service is replaced and "
-                "its explicit grants re-applied, a procedure or function is replaced with `COPY GRANTS`, "
-                "and a stage is only ever created when absent. A `reference:` member names an object SST "
-                "never writes, and is no artifact."
+                "One defined tool member: a Snowflake object an agent tool calls, published before any "
+                "agent that uses it. Grants depend on the kind: a search service is replaced and its "
+                "explicit grants re-applied, a procedure or function is replaced with `COPY GRANTS`, "
+                "and a stage is only ever created when absent. A member that writes `relations:` names "
+                "an object SST never writes, and is no artifact."
             ),
-            authored_in="a `define:` member of a `tools:` group in `project.tools_dir`",
+            authored_in="a `tool:` file, or an entry of a `tools:` list, under `project.tools_dir`",
             publishes="CORTEX SEARCH SERVICE, PROCEDURE, FUNCTION, or STAGE",
             validation_rules=("shared", "tool"),
             dir_key="tools_dir",
+            routed_block="tools",
         ),
         ArtifactType(
             name="skill",

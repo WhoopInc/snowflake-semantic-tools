@@ -22,7 +22,7 @@ from snowflake_semantic_tools.domain.model.eval import EvalBaselineRecord
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult, RenderedArtifact
 from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, SemanticView, Table
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.render.semantic_view import render
 from snowflake_semantic_tools.domain.sql import Sql
@@ -37,9 +37,9 @@ from tests.helpers.semantic_members import ORDERS
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
-def checked_tools(*groups: ToolGroup) -> list[Diagnostic]:
-    """What validating a tool catalog of `groups` for targets `dev` and `prod` reports."""
-    return list(validate_tool_catalog(ToolCatalog(groups, "dev", frozenset(("dev", "prod"))), dbt_catalog()))
+def checked_tools(*members: ToolMember) -> list[Diagnostic]:
+    """What validating a tool catalog of `members` for targets `dev` and `prod` reports."""
+    return list(validate_tool_catalog(ToolCatalog(members, "dev", frozenset(("dev", "prod"))), dbt_catalog()))
 
 
 def dbt_column_findings(column: DbtColumn, code: str) -> list[Diagnostic]:

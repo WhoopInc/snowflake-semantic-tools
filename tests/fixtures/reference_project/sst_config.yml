@@ -100,7 +100,7 @@ validation:
   # apply overrides this. Offline, the fixture carries deliberate warnings:
   # jaffle_delivery's agent toolset (SST-VAL528), jaffle_minimal's empty tool list
   # (SST-RND010), the analytics agent's generic tool resources (SST-RND013) and
-  # the jaffle_partner members nothing references (SST-CFG018). A strict run
+  # the tools/partner/ members nothing references (SST-CFG018). A strict run
   # fails on them, so the offline CLI tests pass --no-strict.
   strict: true
 
@@ -116,16 +116,15 @@ validation:
 
 diagnostics:
   severity_overrides:
-    # An error by default. The jaffle_partner members call stand-ins that a
+    # An error by default. The tools/partner/ members call stand-ins that a
     # connected target may not hold, so here an absent one is a warning and
-    # --no-strict applies past it (tools/jaffle_partner.yml).
+    # --no-strict applies past it (tools/partner/).
     SST-VAL531: warning
 
 tools:
-  # Defaults for `define:` members only; `reference:` members are never
-  # created. A `<group>:` block overrides them for that group (SST-CFG020
-  # when the group is missing or has no `define:`), and `+enabled` is removed
-  # (SST-CFG043).
+  # Defaults for the members SST defines; a member that writes `relations:` is
+  # a reference and never created. A member overrides any of these in its own
+  # `config:`, and `+enabled` is removed (SST-CFG043).
   +database: "{{ target.database }}"
   +schema: JAFFLE
 
@@ -141,6 +140,16 @@ tools:
   # Defined procedures run with the caller's rights; `owner` would let one read
   # data the calling user cannot.
   +execute_as: caller
+
+  # Folder routes, as under semantic_views: an unprefixed key names a directory
+  # under tools/ (SST-CFG041 if it is missing). Everything in tools/partner/ is
+  # immutable: owned by a partner, so a member there that SST would define is
+  # SST-VAL606, and its relations may name one object for every target.
+  # tools/platform/ restates the root's schema.
+  partner:
+    +immutable: true
+  platform:
+    +schema: JAFFLE
 
 semantic_views:
   +database: "{{ target.database }}"

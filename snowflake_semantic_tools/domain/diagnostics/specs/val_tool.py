@@ -8,22 +8,6 @@ TITLE: str = "Validation"
 
 SPECS: tuple[ErrorSpec, ...] = (
     spec(
-        "SST-VAL601",
-        Severity.ERROR,
-        "Tool member name is not unique within its group",
-        "tool group '{a}': member '{name}' is declared twice",
-        "rename one of them",
-        condition="two members of one tool group share a name, compared ignoring case",
-    ),
-    spec(
-        "SST-VAL602",
-        Severity.WARNING,
-        "Tool member name is not globally unique",
-        "tool member '{name}' is declared in {a} and {b}",
-        "rename one; the single-argument ref form is unavailable for this name",
-        condition="a member name repeats across groups",
-    ),
-    spec(
         "SST-VAL603",
         Severity.ERROR,
         "Tool type is not recognised",
@@ -35,29 +19,32 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL604",
         Severity.ERROR,
         "define member carries no creation properties",
-        "tool member '{name}' is under define: and declares neither on: nor body_file:",
-        "declare on: or body_file:, or move it to reference:",
-        condition="a `define:` member other than a stage declares neither `on:` nor `body_file:`",
+        "tool member '{name}' is defined here and declares neither on: nor body:",
+        "declare on: or body:, or reference an existing object with relations:",
+        condition="a defined member other than a stage declares neither `on:` nor `body:`",
     ),
     spec(
         "SST-VAL605",
         Severity.ERROR,
         "reference member carries creation properties",
-        "tool member '{name}' is under reference: and declares '{key}'",
+        "tool member '{name}' references an existing object and declares '{key}'",
         "remove the creation property; a reference is not owned",
         condition=(
-            "a `reference:` member declares a creation key such as `on:` or `body_file:`, or a "
-            "`define:` member declares `relations`"
+            "a member that writes `relations:`, and so references an existing object, declares a "
+            "creation key such as `on:` or `body:`"
         ),
-        note="For a `define:` member, remove `relations`: SST creates the object, so it has no per-target relation.",
+        note="To have SST create the object instead, remove `relations:`; a member without it is defined.",
     ),
     spec(
         "SST-VAL606",
         Severity.ERROR,
-        "define block present in an immutable group",
-        "tool group '{a}' is immutable: true and declares define:",
-        "remove the define: block",
-        condition="a tool group sets `immutable: true` and declares a member under `define:`",
+        "Immutable tool member is not a reference",
+        "tool member '{name}' is immutable and declares no relations:",
+        "reference the existing object with relations:, or set immutable to false for it",
+        condition=(
+            "a tool member's settings resolve `immutable` to true -- its own `config:`, or a "
+            "`tools:` folder route over its file -- and it writes no `relations:`, so SST would create it"
+        ),
     ),
     spec(
         "SST-VAL607",
@@ -114,10 +101,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL612",
         Severity.ERROR,
         "DDL would be emitted for a reference member",
-        "tool member '{name}' is under reference: and DDL was rendered for it",
+        "tool member '{name}' references an existing object and DDL was rendered for it",
         "emit no DDL for referenced members",
         condition=(
-            "DDL was rendered for a `reference:` member, so SST would create, replace or prune an "
+            "DDL was rendered for a member that writes `relations:`, so SST would create, replace or prune an "
             "object it does not own"
         ),
     ),
@@ -145,6 +132,18 @@ SPECS: tuple[ErrorSpec, ...] = (
         note=(
             "Snowflake's JavaScript and Snowflake Scripting CREATE PROCEDURE and CREATE FUNCTION have "
             "no such clauses, so SST would either render a CREATE Snowflake refuses or drop the key."
+        ),
+    ),
+    spec(
+        "SST-VAL622",
+        Severity.ERROR,
+        "Tool column names another model",
+        "tool member '{name}': {field} names model '{found}', not its on: model '{expected}'",
+        "reference a column of the on: model, as {{ ref('<on model>', '<column>') }}",
+        condition=(
+            "a column a defined search service names -- `search_column`, an attribute, an id, title "
+            "or relative path column, or a `columns:` entry, on the member or on an agent's search "
+            "tool over it -- or a column `ref()` in its `where`, names a model other than its `on:` model"
         ),
     ),
     spec(

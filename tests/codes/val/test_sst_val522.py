@@ -16,5 +16,8 @@ def test_sst_val522_fires() -> None:
 
 
 def test_sst_val522_silent() -> None:
-    model = agent("sales_agent", search_tool(stage_path="@DB.S.DOCS", relative_path_column="FILE_PATH"))
+    model = agent(
+        "sales_agent",
+        search_tool(stage_path="@DB.S.DOCS", relative_path_column="{{ ref('product_docs', 'FILE_PATH') }}"),
+    )
     assert coded(compile_agents(model, tools=catalog(search_member())).diagnostics, "SST-VAL522") == []

@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, compile_checked
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, RenderedArtifact, marked_comment
+from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolKind, ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.render.tool import (
     render_tool,
@@ -21,11 +24,32 @@ from snowflake_semantic_tools.domain.validate.tool import rebuilt_source, refere
 
 
 @dataclass(frozen=True, slots=True)
+class ToolPlacement:
+    """Where one defined tool member publishes, and the settings its DDL renders, resolved for the target.
+
+    Attributes:
+        warehouse, target_lag, embedding_model, execute_as: The member's resolved settings, its
+            own `config:` over the closest folder route over the `tools:` root; None for one no
+            step sets and that has no built-in default.
+        settings: Every setting it resolved, with where each came from, which the manifest records.
+    """
+
+    database: str
+    schema: str
+    warehouse: str | None
+    target_lag: str | None
+    embedding_model: str | None
+    execute_as: str | None
+    settings: tuple[Setting, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class CompiledTool(StandaloneArtifact):
-    """One `define:` tool member, with its configured defaults applied, and the object it renders to."""
+    """One defined tool member, with its resolved settings applied, and the object it renders to."""
 
     member: ToolMember
     rendered: RenderedArtifact
+    settings: tuple[Setting, ...] = ()
 
     @property
     def name(self) -> str:
@@ -98,32 +122,31 @@ class CompiledTool(StandaloneArtifact):
 
 
 class CompileTools:
-    """Compile each `define:` member of a tool catalog; `reference:` members compile to nothing.
+    """Compile each defined member of a tool catalog; a referenced member compiles to nothing.
 
-    The `tools:` defaults fill what a member leaves unset: warehouse, target lag and
-    embedding model for a search service, warehouse and `execute_as` for a procedure.
+    Each member publishes where its placement says, and its placement fills what the member
+    leaves unset: warehouse, target lag and embedding model for a search service, warehouse and
+    `execute_as` for a procedure.
     """
 
     def __init__(
         self,
         catalog: ToolCatalog,
         *,
-        database: str,
-        schema: str,
-        warehouse: str | None,
-        target_lag: str | None,
-        embedding_model: str | None,
-        execute_as: str | None,
+        default: ToolPlacement,
         dbt_relations: dict[str, str],
+        placements: Mapping[str, ToolPlacement] | None = None,
         dbt_materializations: dict[str, str | None] | None = None,
     ) -> None:
+        """Hold what compiling the catalog reads.
+
+        Args:
+            default: The placement of a member `placements` does not name.
+            placements: Each defined member's placement, by casefolded member name.
+        """
         self._catalog = catalog
-        self._database = database
-        self._schema = schema
-        self._warehouse = warehouse
-        self._target_lag = target_lag
-        self._embedding_model = embedding_model
-        self._execute_as = execute_as
+        self._default = default
+        self._placements = placements or MappingProxyType({})
         self._dbt_relations = dbt_relations
         self._dbt_materializations = dbt_materializations or {}
 
@@ -138,7 +161,7 @@ class CompileTools:
         Diagnostics:
             SST-RND040, SST-RND041, SST-RND042: as `tool_render_checks` reports them.
             SST-INT902: rendering a member raised KeyError, TypeError or ValueError.
-            SST-VAL612: a `reference:` member was rendered.
+            SST-VAL612: a referenced member was rendered.
             SST-VAL617: a search service indexes a dbt model that dbt rebuilds every run.
         """
         poisoned = {diagnostic.subject for diagnostic in self._catalog.diagnostics if diagnostic.subject}
@@ -168,14 +191,9 @@ class CompileTools:
         return CompileResult(kept, DiagnosticBag((*result.diagnostics, *leaked, *rebuilt)))
 
     def _compile(self, member: ToolMember) -> tuple[CompiledTool | None, tuple[Diagnostic, ...]]:
-        effective = _defaults(
-            member,
-            warehouse=self._warehouse,
-            target_lag=self._target_lag,
-            embedding_model=self._embedding_model,
-            execute_as=self._execute_as,
-        )
-        target = QualifiedName.from_parts(self._database, self._schema, member.name)
+        placement = self._placements.get(member.name.casefold(), self._default)
+        effective = _defaults(member, placement)
+        target = QualifiedName.from_parts(placement.database, placement.schema, member.name)
         source = (
             QualifiedName.parse(self._dbt_relations[member.on_model])
             if member.on_model in self._dbt_relations
@@ -184,28 +202,22 @@ class CompileTools:
         refused = tool_render_checks(effective, source)
         if refused:
             return None, refused
-        return CompiledTool(effective, render_tool(effective, target, source)), ()
+        return CompiledTool(effective, render_tool(effective, target, source), placement.settings), ()
 
 
-def _defaults(
-    member: ToolMember,
-    *,
-    warehouse: str | None,
-    target_lag: str | None,
-    embedding_model: str | None,
-    execute_as: str | None,
-) -> ToolMember:
+def _defaults(member: ToolMember, placement: ToolPlacement) -> ToolMember:
+    """Fill what the member's DDL renders and it leaves unset from its placement, by its kind."""
     if member.type == ToolKind.CORTEX_SEARCH_SERVICE.value:
         return replace(
             member,
-            warehouse=member.warehouse or warehouse,
-            target_lag=member.target_lag or target_lag,
-            embedding_model=member.embedding_model or embedding_model,
+            warehouse=member.warehouse or placement.warehouse,
+            target_lag=member.target_lag or placement.target_lag,
+            embedding_model=member.embedding_model or placement.embedding_model,
         )
     if member.type == ToolKind.PROCEDURE.value:
         return replace(
             member,
-            warehouse=member.warehouse or warehouse,
-            execute_as=member.execute_as or execute_as or "caller",
+            warehouse=member.warehouse or placement.warehouse,
+            execute_as=member.execute_as or placement.execute_as or "caller",
         )
     return member

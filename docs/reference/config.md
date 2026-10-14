@@ -126,17 +126,18 @@ Tag object names read by `{{ tag('<name>') }}`.
 
 ## tools
 
-Defaults for tool backing objects.
+Defaults for tool members, overridable per folder and by a member's own `config:`.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `tools.+database` | string | the target database | Database for defined tool objects. |
 | `tools.+schema` | string | the target schema | Schema for defined tool objects. |
-| `tools.+warehouse` | string | the target warehouse | Warehouse for defined search services and procedures that name none. |
+| `tools.+warehouse` | string | the target warehouse | Warehouse for defined search services and procedures. |
 | `tools.+target_lag` | string |  | Target lag for defined search services. |
 | `tools.+embedding_model` | string |  | Embedding model for defined search services. |
-| `tools.+execute_as` | enum: `caller`, `owner`, `restricted caller` | `caller` | Rights a defined procedure runs with (`EXECUTE AS`) when it names none. |
-| `tools.<route>` | block |  | Per-group override of the `+` keys above, keyed by group name, for a group with `define:` members (SST-CFG020). |
+| `tools.+execute_as` | enum: `caller`, `owner`, `restricted caller` | `caller` | Rights a defined procedure runs with (`EXECUTE AS`). |
+| `tools.+immutable` | boolean | `false` | Members that may only reference an object (SST-VAL606), and may name one object for every target. |
+| `tools.<route>` | block |  | Folder route: overrides for the tool members under that directory of `project.tools_dir`. |
 
 ## semantic_views
 

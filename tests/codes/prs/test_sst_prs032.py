@@ -6,13 +6,12 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin, Severity
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership, ToolParameter
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember, ToolOwnership, ToolParameter
 from snowflake_semantic_tools.domain.validate.tool import validate_tool_catalog
 
 
 def _found(kind: str) -> list[Diagnostic]:
     member = ToolMember(
-        "group",
         "lookup",
         "procedure",
         ToolOwnership.DEFINE,
@@ -23,9 +22,7 @@ def _found(kind: str) -> list[Diagnostic]:
         signature=(ToolParameter("payload", kind, True),),
         relations=MappingProxyType({}),
     )
-    catalog = ToolCatalog(
-        (ToolGroup("group", Origin("tools.yml"), "tools.yml", members=(member,)),), "dev", frozenset(("dev",))
-    )
+    catalog = ToolCatalog((member,), "dev", frozenset(("dev",)))
     return [
         item for item in validate_tool_catalog(catalog, DbtCatalog("v12", None, None, ())) if item.code == "SST-PRS032"
     ]

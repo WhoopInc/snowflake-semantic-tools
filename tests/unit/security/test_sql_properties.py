@@ -131,7 +131,6 @@ def test_ddl_built_from_any_names_and_prose_is_one_statement(
 def test_tool_ddl_built_from_any_names_and_prose_is_one_statement(name: str, description: str, comment: str) -> None:
     target = QualifiedName.parse(f"DB.S.{Identifier(name, quoted=True).sql}")
     search = ToolMember(
-        group="g",
         name="search",
         type="cortex_search_service",
         ownership=ToolOwnership.DEFINE,

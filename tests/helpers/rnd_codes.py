@@ -23,5 +23,5 @@ def skill(*files: SkillFile, body: str = "Body.\n") -> Skill:
 
 
 def member(kind: str, **fields: object) -> ToolMember:
-    """A defined tool member `platform.lookup` of `kind` with `fields`."""
-    return ToolMember("platform", "lookup", kind, ToolOwnership.DEFINE, Origin("tools/t.yml"), "tools/t.yml", **fields)  # type: ignore[arg-type]
+    """A defined tool member `lookup` of `kind` with `fields`."""
+    return ToolMember("lookup", kind, ToolOwnership.DEFINE, Origin("tools/t.yml"), "tools/t.yml", **fields)  # type: ignore[arg-type]

@@ -23,7 +23,7 @@ from snowflake_semantic_tools.domain.model.agent import (
     ResolvedAgentTool,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolColumn, ToolGroup, ToolMember, ToolOwnership
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolColumn, ToolMember, ToolOwnership
 from tests.helpers.compile_builders import compiled_as
 
 SEMANTICS = ExtensionPin("skill:semantics", QualifiedName.parse("DB.S.SEMANTICS"), "SST_ABCDEF012345", ("semantics",))
@@ -60,7 +60,6 @@ def context(
 
 def test_agent_compiler_resolves_tools_and_renders_complete_spec() -> None:
     backing = ToolMember(
-        "platform",
         "lookup",
         "procedure",
         ToolOwnership.REFERENCE,
@@ -71,7 +70,7 @@ def test_agent_compiler_resolves_tools_and_renders_complete_spec() -> None:
         relations=MappingProxyType({"dev": "DB.S.LOOKUP"}),
     )
     tools = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(backing,)),),
+        (backing,),
         "dev",
         frozenset(("dev",)),
     )
@@ -91,7 +90,7 @@ def test_agent_compiler_resolves_tools_and_renders_complete_spec() -> None:
                 "generic",
                 Origin("agent.yml"),
                 name="lookup",
-                backing=("platform", "lookup"),
+                backing="lookup",
                 input_schema=MappingProxyType(
                     {
                         "type": "object",
@@ -128,7 +127,7 @@ def test_agent_compiler_validates_unknown_refs_names_alias_and_input_schema() ->
                 Origin("agent.yml"),
                 name="missing_tool",
                 description="",
-                backing=("missing", "tool"),
+                backing="tool",
                 input_schema=MappingProxyType(
                     {
                         "type": "object",
@@ -186,7 +185,6 @@ def test_agent_compiler_rejects_delegation_cycle() -> None:
 
 def test_agent_compiler_covers_all_tool_kinds_and_validation_branches() -> None:
     search = ToolMember(
-        "platform",
         "search",
         "cortex_search_service",
         ToolOwnership.REFERENCE,
@@ -196,7 +194,6 @@ def test_agent_compiler_covers_all_tool_kinds_and_validation_branches() -> None:
         relations=MappingProxyType({"dev": "DB.S.SEARCH"}),
     )
     wrong = ToolMember(
-        "platform",
         "wrong",
         "stage",
         ToolOwnership.REFERENCE,
@@ -205,7 +202,7 @@ def test_agent_compiler_covers_all_tool_kinds_and_validation_branches() -> None:
         relations=MappingProxyType({"dev": "DB.S.STAGE"}),
     )
     tools = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(search, wrong)),),
+        (search, wrong),
         "dev",
         frozenset(("dev",)),
     )
@@ -232,13 +229,13 @@ def test_agent_compiler_covers_all_tool_kinds_and_validation_branches() -> None:
                 Origin("agent.yml"),
                 name="wrong",
                 description="bad",
-                backing=("platform", "wrong"),
+                backing="wrong",
             ),
             AgentTool(
                 "cortex_search",
                 Origin("agent.yml"),
                 name="search",
-                backing=("platform", "search"),
+                backing="search",
                 max_results=3,
             ),
             AgentTool(
@@ -246,7 +243,7 @@ def test_agent_compiler_covers_all_tool_kinds_and_validation_branches() -> None:
                 Origin("agent.yml"),
                 name="generic",
                 description="generic",
-                backing=("platform", "search"),
+                backing="search",
                 input_schema=MappingProxyType(
                     {
                         "type": "object",
@@ -362,7 +359,6 @@ def test_agent_compiler_reports_duplicate_identity_and_display_name() -> None:
 
 def test_agent_compiler_resolves_reference_and_managed_tool_fallbacks() -> None:
     missing_search = ToolMember(
-        "platform",
         "missing_search",
         "cortex_search_service",
         ToolOwnership.REFERENCE,
@@ -371,7 +367,6 @@ def test_agent_compiler_resolves_reference_and_managed_tool_fallbacks() -> None:
         relations=MappingProxyType({}),
     )
     managed_search = ToolMember(
-        "platform",
         "managed_search",
         "cortex_search_service",
         ToolOwnership.DEFINE,
@@ -384,7 +379,6 @@ def test_agent_compiler_resolves_reference_and_managed_tool_fallbacks() -> None:
         ),
     )
     managed_procedure = ToolMember(
-        "platform",
         "managed_procedure",
         "procedure",
         ToolOwnership.DEFINE,
@@ -393,7 +387,6 @@ def test_agent_compiler_resolves_reference_and_managed_tool_fallbacks() -> None:
         description="Run the managed procedure.",
     )
     referenced_agent = ToolMember(
-        "platform",
         "delegated",
         "agent",
         ToolOwnership.REFERENCE,
@@ -405,19 +398,12 @@ def test_agent_compiler_resolves_reference_and_managed_tool_fallbacks() -> None:
     managed_agent = replace(referenced_agent, name="managed_agent", ownership=ToolOwnership.DEFINE)
     tools = ToolCatalog(
         (
-            ToolGroup(
-                "platform",
-                Origin("tools.yml"),
-                "tools.yml",
-                members=(
-                    missing_search,
-                    managed_search,
-                    managed_procedure,
-                    referenced_agent,
-                    broken_agent,
-                    managed_agent,
-                ),
-            ),
+            missing_search,
+            managed_search,
+            managed_procedure,
+            referenced_agent,
+            broken_agent,
+            managed_agent,
         ),
         "dev",
         frozenset(("dev",)),
@@ -431,19 +417,19 @@ def test_agent_compiler_resolves_reference_and_managed_tool_fallbacks() -> None:
                 "cortex_search",
                 Origin("agent.yml"),
                 name="missing_search",
-                backing=("platform", "missing_search"),
+                backing="missing_search",
             ),
             AgentTool(
                 "cortex_search",
                 Origin("agent.yml"),
                 name="managed_search",
-                backing=("platform", "managed_search"),
+                backing="managed_search",
             ),
             AgentTool(
                 "generic",
                 Origin("agent.yml"),
                 name="managed_procedure",
-                backing=("platform", "managed_procedure"),
+                backing="managed_procedure",
                 input_schema=MappingProxyType({"type": "object"}),
             ),
             AgentTool("agent_toolset", Origin("agent.yml"), name="delegated", description="Delegate."),
@@ -461,21 +447,21 @@ def test_agent_compiler_resolves_reference_and_managed_tool_fallbacks() -> None:
             replace(
                 model.tools[1],
                 description="Search managed documents.",
-                columns_and_descriptions=MappingProxyType(
+                columns=(
                     {
-                        "DOCUMENT_ID": {
-                            "description": "Document id.",
-                            "type": "string",
-                            "searchable": False,
-                            "filterable": True,
-                        },
-                        "DOCUMENT_NAME": {
-                            "description": "Document name.",
-                            "type": "string",
-                            "searchable": True,
-                            "filterable": False,
-                        },
-                    }
+                        "column": "{{ ref('docs', 'document_id') }}",
+                        "description": "Document id.",
+                        "type": "string",
+                        "searchable": False,
+                        "filterable": True,
+                    },
+                    {
+                        "column": "{{ ref('docs', 'document_name') }}",
+                        "description": "Document name.",
+                        "type": "string",
+                        "searchable": True,
+                        "filterable": False,
+                    },
                 ),
             ),
             model.tools[2],
@@ -498,7 +484,6 @@ def test_agent_compiler_resolves_reference_and_managed_tool_fallbacks() -> None:
 
 def test_agent_compiler_validates_names_timeouts_and_scalar_input_schema() -> None:
     procedure = ToolMember(
-        "platform",
         "procedure",
         "procedure",
         ToolOwnership.REFERENCE,
@@ -509,7 +494,7 @@ def test_agent_compiler_validates_names_timeouts_and_scalar_input_schema() -> No
         relations=MappingProxyType({"dev": "DB.S.PROCEDURE"}),
     )
     tools = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(procedure,)),),
+        (procedure,),
         "dev",
         frozenset(("dev",)),
     )
@@ -522,7 +507,7 @@ def test_agent_compiler_validates_names_timeouts_and_scalar_input_schema() -> No
                 "generic",
                 Origin("agent.yml"),
                 name="x" * 65,
-                backing=("platform", "procedure"),
+                backing="procedure",
                 query_timeout=0,
                 input_schema=MappingProxyType(
                     {"type": "object", "properties": {"flag": {"type": "boolean"}}, "required": "flag"}
@@ -536,7 +521,6 @@ def test_agent_compiler_validates_names_timeouts_and_scalar_input_schema() -> No
 
 def test_agent_compiler_covers_empty_environment_and_input_schema_edge_cases() -> None:
     procedure = ToolMember(
-        "platform",
         "procedure",
         "procedure",
         ToolOwnership.REFERENCE,
@@ -547,7 +531,7 @@ def test_agent_compiler_covers_empty_environment_and_input_schema_edge_cases() -
         relations=MappingProxyType({"dev": "DB.S.PROCEDURE"}),
     )
     tools = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(procedure,)),),
+        (procedure,),
         "dev",
         frozenset(("dev",)),
     )
@@ -560,7 +544,7 @@ def test_agent_compiler_covers_empty_environment_and_input_schema_edge_cases() -
                 "generic",
                 Origin("agent.yml"),
                 name="procedure",
-                backing=("platform", "procedure"),
+                backing="procedure",
                 input_schema=MappingProxyType(
                     {
                         "type": "object",
@@ -627,7 +611,6 @@ def test_agent_cycle_walk_handles_complete_nodes_and_acyclic_edges() -> None:
 def test_agent_search_resources_support_authored_columns_and_partial_environment() -> None:
     origin = Origin("agent.yml")
     backing = ToolMember(
-        "platform",
         "search",
         "cortex_search_service",
         ToolOwnership.REFERENCE,
@@ -637,7 +620,7 @@ def test_agent_search_resources_support_authored_columns_and_partial_environment
         relations=MappingProxyType({"dev": "DB.S.SEARCH"}),
     )
     tools = ToolCatalog(
-        (ToolGroup("platform", origin, "tools.yml", members=(backing,)),),
+        (backing,),
         "dev",
         frozenset(("dev",)),
     )
@@ -651,10 +634,16 @@ def test_agent_search_resources_support_authored_columns_and_partial_environment
                 origin,
                 name="search",
                 description="Search.",
-                backing=("platform", "search"),
+                backing="search",
                 warehouse="LOCAL_WH",
-                columns_and_descriptions=MappingProxyType(
-                    {"BODY": {"description": "Body.", "type": "string", "searchable": True, "filterable": False}}
+                columns=(
+                    {
+                        "column": "body",
+                        "description": "Body.",
+                        "type": "string",
+                        "searchable": True,
+                        "filterable": False,
+                    },
                 ),
             ),
         ),

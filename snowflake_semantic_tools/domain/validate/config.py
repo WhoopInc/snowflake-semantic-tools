@@ -7,7 +7,6 @@ anything else is reported, never ignored.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -33,6 +32,7 @@ from snowflake_semantic_tools.domain.model.config_schema.keys import (
     KeyStatus,
 )
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, vocabulary_key
+from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
 
 _TYPES: Mapping[KeyKind, tuple[type, ...]] = MappingProxyType(
     {
@@ -50,7 +50,6 @@ Positions = Mapping[tuple[str | int, ...], tuple[int, int]]
 _SEVERITIES: Mapping[str, Severity] = MappingProxyType(
     {"error": Severity.ERROR, "warning": Severity.WARNING, "info": Severity.INFO}
 )
-_TOOL_CALL = re.compile(r"\{\{\s*tool\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)\s*\}\}")
 
 
 def validate_config(
@@ -166,57 +165,67 @@ def _route_blocks(block: object, path: tuple[str, ...]) -> list[tuple[tuple[str,
     return found
 
 
-def unreferenced_tool_members(catalog: ToolCatalog, referenced: Iterable[tuple[str, ...]]) -> DiagnosticBag:
+def unreferenced_tool_members(catalog: ToolCatalog, referenced: Iterable[str]) -> DiagnosticBag:
     """Report each declared tool member nothing references.
 
     Args:
-        referenced: Every reference to a member, as `ToolCatalog.resolve` takes it: a group and a
-            member, or a member alone. An agent tool's `{{ tool(...) }}`, an `agent` tool that
-            names a member, and a configuration value's `tool()` each count.
+        referenced: The member name of every reference to one, as `ToolCatalog.resolve` takes
+            it. An agent tool's `{{ tool('<name>') }}`, an `agent` tool that names a member, and a
+            configuration value's `tool()` each count.
 
     Diagnostics:
         SST-CFG018: a declared tool member is referenced by nothing.
     """
-    calls = [tuple(part.casefold() for part in call) for call in referenced]
-    diagnostics = [
+    names = {name.casefold() for name in referenced}
+    return DiagnosticBag(
         D(
             "SST-CFG018",
             origin=member.origin,
-            subject=f"tool_group:{group.name}",
-            group=group.name,
+            subject=f"tool:{member.name.casefold()}",
             name=member.name,
         )
-        for group in catalog.groups
-        for member in group.members
-        if not any(call[-1] == member.name.casefold() and call[:-1] in ((), (group.name.casefold(),)) for call in calls)
-    ]
-    return DiagnosticBag(diagnostics)
+        for member in catalog.members
+        if member.name.casefold() not in names
+    )
 
 
 def config_tool_references(tree: Mapping[str, Any], catalog: ToolCatalog, *, file: str = CONFIG_FILE) -> DiagnosticBag:
-    """Report each `{{ tool(...) }}` in a configuration value that names no declared group and member.
+    """Report each `{{ tool('<name>') }}` in a configuration value that names no declared member.
 
     Values inside lists are read too; an item's subject is its list's key with the index, `key[0]`.
 
     Diagnostics:
-        SST-CFG017: a configuration value's `tool()` names a group or member that is not declared.
+        SST-REF015: a configuration value's `tool()` does not take exactly one name.
+        SST-CFG017: a configuration value's `tool()` names a member that is not declared.
     """
-    declared = {(group.name.casefold(), member.name.casefold()) for group in catalog.groups for member in group.members}
-    return DiagnosticBag(
-        D("SST-CFG017", origin=Origin(file), subject=f"config:{'.'.join(path)}", group=group, name=name)
-        for path, group, name in _config_tool_calls(tree)
-        if (group.casefold(), name.casefold()) not in declared
-    )
+    declared = {member.name.casefold() for member in catalog.members}
+    found: list[Diagnostic] = []
+    for path, args in _config_tool_calls(tree):
+        subject = f"config:{'.'.join(path)}"
+        if len(args) != 1:
+            found.append(
+                D(
+                    "SST-REF015",
+                    origin=Origin(file),
+                    subject=subject,
+                    ref_function="tool",
+                    expected="1",
+                    found=len(args),
+                )
+            )
+        elif args[0].casefold() not in declared:
+            found.append(D("SST-CFG017", origin=Origin(file), subject=subject, name=args[0]))
+    return DiagnosticBag(found)
 
 
-def config_tool_calls(tree: Mapping[str, Any]) -> tuple[tuple[str, str], ...]:
-    """Return the group and member of each configuration value's `{{ tool(...) }}`, in document order."""
-    return tuple((group, name) for _, group, name in _config_tool_calls(tree))
+def config_tool_calls(tree: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return the member each configuration value's one-name `tool()` call names, in document order."""
+    return tuple(args[0] for _, args in _config_tool_calls(tree) if len(args) == 1)
 
 
-def _config_tool_calls(tree: Mapping[str, Any]) -> list[tuple[tuple[str, ...], str, str]]:
-    """Each configuration value's `tool()` calls, with the value's path; a list item is `key[0]`."""
-    calls: list[tuple[tuple[str, ...], str, str]] = []
+def _config_tool_calls(tree: Mapping[str, Any]) -> list[tuple[tuple[str, ...], tuple[str, ...]]]:
+    """Return each configuration value's `tool()` calls' arguments, with its path; a list item is `key[0]`."""
+    calls: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
 
     def walk(path: tuple[str, ...], value: object) -> None:
         if isinstance(value, Mapping):
@@ -227,10 +236,22 @@ def _config_tool_calls(tree: Mapping[str, Any]) -> list[tuple[tuple[str, ...], s
             for index, item in enumerate(value):
                 walk((*path[:-1], f"{path[-1]}[{index}]"), item)
         elif isinstance(value, str):
-            calls.extend((path, group, name) for group, name in _TOOL_CALL.findall(value))
+            calls.extend((path, args) for args in _tool_calls_in(value))
 
     walk((), tree)
     return calls
+
+
+def _tool_calls_in(text: str) -> tuple[tuple[str, ...], ...]:
+    """Return the arguments of each `tool()` call in `text`; none when its templates do not parse.
+
+    A template that does not parse is reported when the value is validated, not here.
+    """
+    try:
+        calls = scan_template_calls(text)
+    except TemplateSyntaxError:
+        return ()
+    return tuple(call.args for call in calls if call.function == "tool")
 
 
 def empty_is_block(path: tuple[str | int, ...]) -> bool:

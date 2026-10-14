@@ -15,8 +15,8 @@ from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
 ROUTED = tuple(name for name, artifact in ARTIFACT_REGISTRY.artifacts.items() if artifact.routed_block)
 
 
-def test_every_artifact_type_but_tools_routes_by_folder() -> None:
-    assert ROUTED == ("semantic_view", "skill", "plugin", "profile", "agent", "eval")
+def test_every_artifact_type_routes_by_folder() -> None:
+    assert ROUTED == ("semantic_view", "tool", "skill", "plugin", "profile", "agent", "eval")
 
 
 @pytest.mark.parametrize("name", ROUTED)

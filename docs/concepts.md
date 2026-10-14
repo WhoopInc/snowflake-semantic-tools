@@ -10,7 +10,7 @@ An **artifact** is one thing SST publishes and tracks. There are seven types:
 | Type | Authored as | Publishes |
 |---|---|---|
 | `semantic_view` | an entry under `semantic_views:` | a semantic view |
-| `tool` | a `define:` member of a `tools:` group | a Cortex Search service, procedure, function, or stage |
+| `tool` | a `tool:` file, or a `tools:` list entry, that writes no `relations:` | a Cortex Search service, procedure, function, or stage |
 | `skill` | a `SKILL.md` folder | a version of a skill-type Cortex Extension |
 | `plugin` | `plugin.yml` | a version of a plugin-type Cortex Extension |
 | `profile` | `profile.yml` | a CoCo Desktop profile: stage trees and one registry row |
@@ -127,7 +127,7 @@ and SST resolves the name for the target being built:
 | `{{ filter('name') }}`, `{{ relationship('name') }}`, `{{ verified_query('name') }}` | that member's name | custom instruction text |
 | `{{ tag('name') }}` | a tag from `tags:` in `sst_config.yml` | the `name` of a view's `tags:` entry |
 | `{{ semantic_view('name') }}`, `{{ agent('name') }}` | the published object | agent specs |
-| `{{ tool('group', 'name') }}` | a member of a tool group | agent specs |
+| `{{ tool('name') }}` | a tool member | agent specs |
 | `{{ skill('name') }}`, `{{ plugin('name') }}` | a skill or plugin this project publishes, pinned to its current version | agent skill sources, plugin and profile members |
 | `{{ command('path') }}`, `{{ mcp_server('name') }}`, `{{ hook('name') }}` | a command, MCP config or hook the project holds | profile members |
 | `{{ extension('name') }}` | an extension another project publishes, from `extensions:` | agent skill sources |
@@ -151,10 +151,10 @@ semantic_views:
 ```
 
 Keys that start with `+` set a default for everything below them. Under
-`semantic_views:` and `agents:`, an unprefixed key names a folder -- below
-`semantic_views/` in the semantic models directory, or below the agents
-directory -- and its `+` keys apply to what is in that folder (`SST-CFG041` when
-the folder does not exist). Under `tools:`, an unprefixed key names a tool group.
+`semantic_views:`, `tools:` and `agents:`, an unprefixed key names a folder --
+below `semantic_views/` in the semantic models directory, or below the tools or
+agents directory -- and its `+` keys apply to what is in that folder
+(`SST-CFG041` when the folder does not exist).
 
 ```yaml
 semantic_views:

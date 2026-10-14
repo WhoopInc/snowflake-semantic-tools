@@ -14,7 +14,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{type} '{name}' is declared more than once",
         "rename one of them",
         condition=(
-            "two semantic views, metrics, agents, tool groups or custom eval metrics share a name, "
+            "two semantic views, metrics, agents, tool members or custom eval metrics share a name, "
             "compared case-insensitively across all files"
         ),
         note=(

@@ -88,9 +88,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-REF010",
         Severity.ERROR,
         "tool() target not found",
-        "{{{{ tool('{group}','{name}') }}}} does not resolve",
-        "declare the member in the tools directory",
-        condition=("a `tool()` reference names no tool member, or, by name alone, more than one"),
+        "{{{{ tool('{name}') }}}} does not resolve",
+        "declare the member in the tools directory, or correct the name",
+        condition="a `tool()` reference names no tool member the project declares",
     ),
     spec(
         "SST-REF011",
@@ -125,7 +125,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "file() sidecar does not resolve",
         "{{{{ file('{path}') }}}} does not resolve to a file",
         "create the file, or correct the path",
-        condition="an agent's or a verified query's `file()` reference names a file that does not exist",
+        condition=(
+            "an agent's, a verified query's, or a tool member's `body:` `file()` reference names a file "
+            "that does not exist"
+        ),
     ),
     spec(
         "SST-REF015",
@@ -142,7 +145,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{{{{ {ref_function}('{name}') }}}} has no entry for target '{target}'",
         "declare a relation for every target you publish to",
         condition=(
-            "a `reference:` tool member has no relation for the current target, or declares one "
+            "a tool member that writes `relations:` has no relation for the current target, or declares one "
             "for a target `profiles.yml` does not declare"
         ),
     ),
@@ -179,8 +182,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{{{{ {ref_function}('{name}') }}}} resolves to {value} for both dev and prod",
         "use per-target relations for anything writable",
         condition=(
-            "a `reference:` tool member, in a group not declared immutable, names one object for "
-            "both its `dev` and its `prod` target"
+            "a tool member that writes `relations:`, and whose settings do not resolve `immutable` "
+            "to true, names one object for both its `dev` and its `prod` target"
         ),
     ),
     spec(
@@ -200,7 +203,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "file() path escapes the project root",
         "{{{{ file('{path}') }}}} resolves outside the project root",
         "use a path inside the project",
-        condition=("an agent's or a verified query's `file()` reference resolves outside the project root"),
+        condition=(
+            "an agent's, a verified query's, or a tool member's `body:` `file()` reference resolves "
+            "outside the project root, or is an absolute path"
+        ),
     ),
     spec(
         "SST-REF028",
@@ -337,6 +343,18 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "an entry of a plugin's or profile's `skills:`, `plugins:`, `commands:`, `mcp_servers:` or "
             "`hooks:` is a bare name, or a call of another function"
+        ),
+    ),
+    spec(
+        "SST-REF050",
+        Severity.ERROR,
+        "Required template call missing",
+        "{artifact}: {field} is '{found}'; it takes a {{{{ {function}(...) }}}} call",
+        "write the value as a {function}() call; a bare value is not read",
+        condition=(
+            "a field that is read only as a template call holds a bare value, such as a defined tool "
+            "member's column written without `{{ ref('<model>', '<column>') }}`, or its `body:` "
+            "without `{{ file('<path>') }}`"
         ),
     ),
     spec(

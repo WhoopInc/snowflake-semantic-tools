@@ -20,7 +20,7 @@ dbt project, and publishes them with a reviewed plan.
 |---|---|
 | [Semantic views](guides/semantic-views.md) | views, columns, metrics, relationships, filters, verified queries, custom instructions |
 | [Enriching models](guides/enrich.md) | `sst enrich`: column types, data types, sample values, enums, and synonyms from the warehouse |
-| [Agents](guides/agents.md) | agent specs, tool groups, and skills an agent loads |
+| [Agents](guides/agents.md) | agent specs, tool members, and skills an agent loads |
 | [Evals](guides/evals.md) | question sets, run configuration, custom judges, running, and baselines |
 | [Skills](guides/skills.md) | `SKILL.md` folders, bundled files, flattening, limits, and versions |
 | [Plugins and profiles](guides/plugins-and-profiles.md) | plugins, CoCo Desktop profiles, commands, hooks, and MCP configs |

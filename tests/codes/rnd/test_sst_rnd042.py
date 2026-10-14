@@ -1,4 +1,4 @@
-"""SST-RND042: a tool member has no value for a field a `tools:` default could supply."""
+"""SST-RND042: a tool member has no value for a field a `tools:` setting could supply."""
 
 from __future__ import annotations
 
@@ -16,7 +16,10 @@ def test_sst_rnd042_fires() -> None:
     [diagnostic] = tool_render_checks(member("procedure", body="SELECT 1"), None)
     assert (diagnostic.code, diagnostic.severity, diagnostic.subject) == ("SST-RND042", Severity.ERROR, "tool:lookup")
     assert diagnostic.message == "tool 'lookup': warehouse is not set, and no default supplies it"
-    assert diagnostic.suggestion == "set warehouse on the member, or the tools.+warehouse default in sst_config.yml"
+    assert (
+        diagnostic.suggestion
+        == "set config.warehouse on the member, or +warehouse in a tools: folder route or the block root"
+    )
     search = tool_render_checks(member("cortex_search_service"), DOCS)
     assert [(item.code, item.context["field"]) for item in search] == [
         ("SST-RND042", "warehouse"),

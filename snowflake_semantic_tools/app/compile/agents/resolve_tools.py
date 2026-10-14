@@ -27,6 +27,7 @@ from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember, Too
 from snowflake_semantic_tools.domain.validate.agent_tool import (
     misplaced_keys,
     overrides,
+    search_tool_columns,
     search_tool_problems,
     signature_mismatch,
 )
@@ -86,6 +87,8 @@ def resolve_tool(
         SST-REF019: a referenced tool member's relation does not parse (from the catalog).
         SST-VAL522: a Cortex Search tool declares half of its document-preview pair.
         SST-VAL524: a Cortex Search tool's column descriptor is malformed.
+        SST-REF050, SST-REF015, SST-REF008, SST-VAL622: a Cortex Search tool's own column is not
+            what its member's columns are (see `search_tool_columns`).
         SST-VAL523: a Cortex Search tool filters on a column not marked filterable.
         SST-VAL615: a Cortex Search or generic tool overrides a value its member declares.
         SST-VAL526: a generic tool's input schema is not an object.
@@ -161,12 +164,14 @@ def _search(
     backing = _backing(agent, authored, context, diagnostics, authored_key="search_service", expected=_SEARCH_SERVICES)
     if backing is None:
         return None
-    warehouse = authored.warehouse or backing.warehouse or context.warehouse
+    warehouse = authored.warehouse or backing.configured_warehouse or context.warehouse
     relation = _member_target(backing, context, diagnostics)
     if relation is None:
         return None
     name = authored.name or ""
-    resources = _search_resources(authored, backing, relation, warehouse, context.query_timeout)
+    authored, own_columns, column_problems = search_tool_columns(agent, authored, name, backing)
+    diagnostics.extend(column_problems)
+    resources = _search_resources(authored, backing, relation, warehouse, context.query_timeout, own_columns)
     columns = resources.get("columns_and_descriptions")
     diagnostics.extend(search_tool_problems(agent, authored, name, columns if isinstance(columns, dict) else {}))
     diagnostics.extend(overrides(agent, authored, name, backing))
@@ -188,7 +193,7 @@ def _generic(
     if backing is None:
         return None
     name = authored.name or ""
-    warehouse = authored.warehouse or backing.warehouse or context.warehouse
+    warehouse = authored.warehouse or backing.configured_warehouse or context.warehouse
     # A referenced member with no relation is reported; the tool's other checks still run.
     relation = _member_target(backing, context, diagnostics) or context.tool_target(backing.name)
     resources: dict[str, object] = {
@@ -239,7 +244,7 @@ def _backing(
     is called after its type.
     """
     name = authored.name or ""
-    missing = tuple(key for key, absent in (("name", not name), (authored_key, not authored.backing)) if absent)
+    missing = tuple(key for key, absent in (("name", not name), (authored_key, authored.backing is None)) if absent)
     if missing:
         diagnostics.append(
             D(
@@ -251,7 +256,7 @@ def _backing(
             )
         )
         return None
-    backing, problems = context.tools.resolve(*authored.backing)
+    backing, problems = context.tools.resolve(str(authored.backing))
     diagnostics.extend(problems)
     if backing is None:
         return None
@@ -294,7 +299,7 @@ def _delegate(
                 (artifact_key("agent", authored.agent_ref.casefold()),),
             )
     elif name:
-        backing, problems = context.tools.resolve(*authored.member_reference)
+        backing, problems = context.tools.resolve(authored.member_reference or name)
         diagnostics.extend(problems)
         if backing is not None and backing.type not in _AGENTS:
             diagnostics.append(
@@ -391,8 +396,8 @@ def _member_target(
 ) -> QualifiedName | None:
     """Locate the object a search or generic tool calls, as its member's ownership places it.
 
-    A `define:` member is where the `tools:` block, or its group's override, publishes it; a
-    `reference:` member is its relation for the target.
+    A defined member is where its resolved settings publish it; a referenced member is its
+    relation for the target.
     """
     if backing.ownership is ToolOwnership.DEFINE:
         return context.tool_target(backing.name)
@@ -423,15 +428,16 @@ def _search_resources(
     relation: QualifiedName,
     warehouse: str | None,
     query_timeout: int | None,
+    own_columns: Mapping[str, object],
 ) -> dict[str, object]:
     """Build a search tool's resources: the service, its columns, and its execution environment.
 
-    Authored columns replace the member's searchable and filterable ones, and an id or
-    title column falls back to the member's, then to its first column ending `_id` or
+    The tool's own columns, resolved, replace the member's searchable and filterable ones, and
+    an id or title column falls back to the member's, then to its first column ending `_id` or
     `_name`. The document-preview pair and the filter are the tool's own. The authored
     `passthrough` keys come last, so they override any of these.
     """
-    columns = authored.columns_and_descriptions or MappingProxyType(
+    columns = own_columns or MappingProxyType(
         {
             column.name.upper(): {
                 "description": column.description,

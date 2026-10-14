@@ -17,7 +17,9 @@ agents/
         response.md
       evals/            # optional; see the evals guide
 tools/
-  platform.yml          # tool groups
+  platform/             # folders route members, as agents/ folders route agents
+    menu_search.yml     # a tool: file, one member
+    sql/order_status.sql
 ```
 
 Each agent is a folder under `project.agents_dir` (default `agents`) holding
@@ -149,8 +151,8 @@ Each `spec.tools` entry is one tool. SST splits it into the spec's `tools` and
 | `type` | What it names |
 |---|---|
 | `cortex_analyst_text_to_sql` | `semantic_view: "{{ semantic_view('<name>') }}"`, a view this project compiles (`SST-REF011`). It takes no `name:` (`SST-VAL520`): the tool is named after the view. |
-| `cortex_search` | `name:` and `search_service: "{{ tool(...) }}"`, a `cortex_search_service` tool member. Optional: `max_results`, `id_column`, `title_column`, `columns_and_descriptions`, `filter`, and `stage_path` with `relative_path_column` (both or neither, `SST-VAL522`). |
-| `generic` | `name:`, `identifier: "{{ tool(...) }}"`, a `procedure` or `function` tool member, and an object `input_schema` (`SST-VAL526`). |
+| `cortex_search` | `name:` and `search_service: "{{ tool('<name>') }}"`, a `cortex_search_service` tool member. Optional: `max_results`, `id_column`, `title_column`, `columns`, `filter`, and `stage_path` with `relative_path_column` (both or neither, `SST-VAL522`). |
+| `generic` | `name:`, `identifier: "{{ tool('<name>') }}"`, a `procedure` or `function` tool member, and an object `input_schema` (`SST-VAL526`). |
 | `agent_toolset` | `agent: "{{ agent('<name>') }}"`, or a `name:` that names an `agent` tool member; see [agent toolsets](#agent-toolsets). |
 | `mcp` | `name:`; its resources are exactly its `passthrough:` keys. |
 | `data_to_chart`, `web_search`, `code_execution` | Built-ins: no resources. Unnamed, a built-in is named after its type, and `web_search` must be named `web_search` (`SST-VAL517`). |
@@ -168,8 +170,10 @@ Each `spec.tools` entry is one tool. SST splits it into the spec's `tools` and
   (`SST-VAL515`).
 - Analyst, search, and generic tools take `warehouse` and `query_timeout`,
   rendered as their `execution_environment`. A search or generic tool with no
-  warehouse takes its member's, then the agent's `warehouse` setting, then the target's; a
-  generic tool that resolves none is an error (`SST-VAL527`).
+  warehouse takes its member's own `config.warehouse`, then the agent's
+  `warehouse` setting, then the target's; a generic tool that resolves none is
+  an error (`SST-VAL527`). A folder route's or the `tools:` root's warehouse is
+  where SST creates the object, not where an agent's tool runs.
 - A key another tool type takes and this one does not is an error
   (`SST-VAL516`). A type SST does not render is an error (`SST-RND012`) unless
   `snowflake.tool_types` lists it.
@@ -178,47 +182,56 @@ Each `spec.tools` entry is one tool. SST splits it into the spec's `tools` and
 - A generic tool's resources are not checked by `CREATE AGENT`, so each is a
   warning (`SST-RND013`): confirm the backing object yourself.
 
-### Tool groups
+### Tool members
 
-Every object a search, generic, or toolset tool calls is declared once in a
-**tool group** under `project.tools_dir` and referenced with
-`{{ tool('<group>', '<name>') }}`, or `{{ tool('<name>') }}` when the member's
-name is unique across groups (`SST-REF010`):
+Every object a search, generic, or toolset tool calls is declared once as a
+**tool member** under `project.tools_dir`, in any folder below it, and
+referenced with `{{ tool('<name>') }}`, which takes exactly one name
+(`SST-REF015`) and names a declared member (`SST-REF010`). A member name is
+unique in the project, ignoring case (`SST-VAL001`). A file's root `tool:` holds
+one member, the norm; its root `tools:` holds a list of them:
 
 ```yaml
-tools:
-  - group: platform
-    description: Search and lookups for the sales agents.
+# tools/platform/menu_search.yml
+tool:
+  name: menu_search
+  type: cortex_search_service
+  description: Full-text search over menu item descriptions.
+  on:
+    table: "{{ ref('product_docs') }}"
+    search_column: "{{ ref('product_docs', 'product_description') }}"
+    attributes: ["{{ ref('product_docs', 'product_type') }}"]
+  meta:
     owner: analytics-team
-    define:
-      - name: menu_search
-        type: cortex_search_service
-        description: Full-text search over menu item descriptions.
-        on:
-          table: "{{ ref('product_docs') }}"
-          search_column: product_description
-          attributes: [product_type]
-    reference:
-      - name: settlement_lookup
-        type: procedure
-        description: Looks up one settlement; owned by another team.
-        relations:
-          dev: DEV_DB.PAYMENTS.SETTLEMENT_LOOKUP
-          prod: PROD_DB.PAYMENTS.SETTLEMENT_LOOKUP
 ```
 
-- **`define:`** entries are objects SST publishes and owns: Cortex Search
-  services, procedures, functions, and stages. They publish into `tools.+database`
-  / `tools.+schema`, or their group's `tools.<group>` override, before any agent
-  that uses them, and an agent's tool calls them there, wherever the agent
-  publishes.
-- **`reference:`** entries are objects someone else owns. SST never creates or
-  changes them; `relations:` maps each target to the object's name. A target the
-  map does not cover is an error for any agent that uses the tool
-  (`SST-REF018`), so a development run cannot fall through to a production
-  object.
-- `immutable: true` marks a group whose objects this project must never change;
-  a `define:` entry in it is an error (`SST-VAL606`).
+```yaml
+# tools/payments/lookups.yml
+tools:
+  - name: settlement_lookup
+    type: procedure
+    description: Looks up one settlement; owned by another team.
+    relations:
+      dev: DEV_DB.PAYMENTS.SETTLEMENT_LOOKUP
+      prod: PROD_DB.PAYMENTS.SETTLEMENT_LOOKUP
+```
+
+- A member that writes **`relations:`** references an object someone else owns.
+  SST never creates or changes it; `relations:` maps each target to the
+  object's name. A target the map does not cover is an error for any agent that
+  uses the tool (`SST-REF018`), so a development run cannot fall through to a
+  production object. One object for both `dev` and `prod` is a warning
+  (`SST-REF023`) unless the member is immutable.
+- Any other member is **defined**: SST publishes and owns it -- a Cortex Search
+  service, procedure, function, or stage -- where its settings place it, before
+  any agent that uses it, and an agent's tool calls it there, wherever the
+  agent publishes.
+- `immutable` is a setting, not a key of the member: a `tools:` folder route,
+  such as `tools: {partner: {+immutable: true}}`, or the member's own
+  `config: {immutable: true}`. An immutable member must reference its object
+  (`SST-VAL606`), and may name one object for every target.
+- `meta:` is free-form and never read; `meta.owner` names who owns the member.
+  `description:` is the member's own.
 - A member of the wrong type for the tool, such as a `generic` member behind a
   `generic` tool, is an error (`SST-REF020`).
 
@@ -228,11 +241,11 @@ In the agent:
   tools:
     - type: cortex_search
       name: menu_search
-      search_service: "{{ tool('platform', 'menu_search') }}"
+      search_service: "{{ tool('menu_search') }}"
       max_results: 5
     - type: generic
       name: settlement_lookup
-      identifier: "{{ tool('platform', 'settlement_lookup') }}"
+      identifier: "{{ tool('settlement_lookup') }}"
       description: Looks up one settlement by order.
       input_schema:
         type: object
@@ -241,45 +254,79 @@ In the agent:
         required: [order_id]
 ```
 
-A search tool's id and title columns and its `columns_and_descriptions` come
-from the member unless the tool sets its own. An `input_schema` property type is
-`string`, `number`, `integer`, `boolean`, or `array` (`SST-PRS032`), and every
-`required` name is a declared property (`SST-PRS033`).
+A search tool's id and title columns and its `columns` come from the member
+unless the tool sets its own, written as the member writes its columns (below).
+An `input_schema` property type is `string`, `number`, `integer`, `boolean`, or
+`array` (`SST-PRS032`), and every `required` name is a declared property
+(`SST-PRS033`).
 
-A tool object that a `define:` entry publishes is replaced when its definition
+A tool object that a defined member publishes is replaced when its definition
 cannot change in place. SST never grants new access, but it re-issues exactly
 the explicit grants the object held before the replacement, then checks that
 they are all back, so the objects an agent calls keep the access they had.
 
+### Tool settings and folders
+
+A member's settings resolve through the one precedence chain the
+[configuration guide](configuration.md#precedence) describes: its own
+`config:`, then the closest `tools:` folder route over its file, then the
+block root, then the built-in default. Its `config:` keys are exactly the
+`tools:` block's `+` keys without the `+`:
+
+| Key | Default | Applies to |
+|---|---|---|
+| `database`, `schema` | the target's | where a defined member publishes |
+| `warehouse` | the target's | a defined search service's `WAREHOUSE`, and a procedure's run warehouse |
+| `target_lag` | none | a defined search service (`SST-RND042` when nothing sets it) |
+| `embedding_model` | Snowflake's | a defined search service |
+| `execute_as` | `caller` | a defined procedure's `EXECUTE AS` |
+| `immutable` | `false` | whether the member may only reference its object |
+
+A folder route names a directory below `tools_dir`, and routes nest as folders
+do, so `tools: {partner: {+immutable: true}}` covers every member under
+`tools/partner/`, and `tools: {platform: {docs: {+schema: DOCS}}}` those under
+`tools/platform/docs/`. A route that names no folder is an error
+(`SST-CFG041`). A key outside the block's settings in `config:` is
+`SST-CFG053`, and one written with no value `SST-CFG054`. `warehouse`,
+`target_lag`, `embedding_model`, `execute_as`, `immutable` and `owner` written
+on the member itself, and a `group:`, `define:` or `reference:` entry of a
+`tools:` list, are errors that say where each is written now (`SST-PRS126`).
+
 ### Defining tool objects
 
-A `define:` member renders to one object, named after the member, in
-`tools.+database` / `tools.+schema`. Four `type:` values render: a
+A defined member renders to one object, named after the member, where its
+`database` and `schema` settings place it. Four `type:` values render: a
 `cortex_search_service`, a `procedure`, a `function`, and a `stage`. An `agent`
-or `generic` member has no renderer (`SST-RND040`), so it belongs under
-`reference:`, and a type outside these six is an error (`SST-VAL603`).
+or `generic` member has no renderer (`SST-RND040`), so it references its
+object, and a type outside these six is an error (`SST-VAL603`).
 
 Every member takes `name:` and `type:` (`SST-PRS002`), and `description:`,
 which becomes the object's comment before SST's ownership marker and is the
-description of a search or generic tool that calls the member and sets none. A member
-other than a stage needs `on:` or `body_file:` (`SST-VAL604`). A key SST does
-not read, at a tools file's root, on a group, or on a member, is a warning
+description of a search or generic tool that calls the member and sets none. A
+member other than a stage needs `on:` or `body:` (`SST-VAL604`). A key SST
+does not read, at a tools file's root or on a member, is a warning
 (`SST-PRS004`), and an error naming the key it resembles when it is a near
 miss of one (`SST-PRS022`), as in an agent file.
 
-A `reference:` member takes `relations:` and may also carry what an agent tool
-reads from it -- `description`, `warehouse`, `columns_and_descriptions`,
-`id_column`, `title_column`, and `signature` -- but no key that only creating
-the object needs, such as `on:`, `body_file:`, or `language:` (`SST-VAL605`).
+A member that references its object may also carry what an agent tool reads
+from it -- `description`, `columns`, `id_column`, `title_column`, and
+`signature` -- but no key that only creating the object needs, such as `on:`,
+`body:`, or `language:` (`SST-VAL605`).
 
-`tools:` in `sst_config.yml` fills what a member leaves unset, after any
-`tools.<group>` override for its group: `+warehouse` (else the target's
-warehouse), `+target_lag`, and `+embedding_model` for a search service, and
-`+warehouse` and `+execute_as` for a procedure. A function and a stage take no
-defaults. A member left without a value the DDL needs does not compile: one no
-default can supply, such as a routine's `language:` or `returns:`, is
-`SST-PRS002`, and a warehouse or target lag no default supplied either is
-`SST-RND042`.
+A member left without a value the DDL needs does not compile: one no setting
+can supply, such as a routine's `language:` or `returns:`, is `SST-PRS002`, and
+a warehouse or target lag no setting supplied either is `SST-RND042`.
+
+**Columns are references.** A defined search service is built from its `on:`
+model, so every column it names is `{{ ref('<on model>', '<column>') }}`: the
+search column, each attribute, `id_column`, `title_column`,
+`relative_path_column`, and each `columns:` entry's `column`. A bare column is
+an error that names `ref()` (`SST-REF050`), and a ref of another model is
+`SST-VAL622`. The rendered DDL and the agent's `tool_resources` still write the
+bare, upper-cased column names. A referenced member is built outside dbt, so
+its columns are the object's own, written bare; a template call there is
+`SST-REF008`. An agent's search tool writes its own columns as its member
+does.
 
 **Search service** (`type: cortex_search_service`) renders
 `CREATE OR REPLACE CORTEX SEARCH SERVICE`, whose query selects the declared
@@ -289,20 +336,19 @@ the model `on:` names:
 | Key | Type | Required | Renders to |
 |---|---|---|---|
 | `on.table` | `"{{ ref('<model>') }}"` | yes | the relation the query reads (`SST-VAL608`) |
-| `on.search_column` | column name | yes | `ON <column>` |
-| `on.attributes` | list of column names | no | `ATTRIBUTES <columns>` |
-| `columns_and_descriptions` | map of column to `description`, `type`, `searchable`, `filterable` | no | columns added to the query; the searchable and filterable ones describe the agent's search tool |
-| `id_column`, `title_column` | column name | no | nothing in the DDL; the agent's search tool defaults to them |
-| `where` | one SQL expression | no | `WHERE <expression>` on the query (`SST-VAL418`) |
-| `warehouse` | identifier | yes, defaulted | `WAREHOUSE = <warehouse>` |
-| `target_lag` | string, such as `1 hour` | yes, defaulted | `TARGET_LAG = '<lag>'` |
-| `embedding_model` | string | no | `EMBEDDING_MODEL = '<model>'`; unset leaves Snowflake's default |
+| `on.search_column` | a column ref | yes | `ON <column>` |
+| `on.attributes` | list of column refs | no | `ATTRIBUTES <columns>` |
+| `columns` | list of `column` (a column ref), `description`, `type`, `searchable`, `filterable` | no | columns added to the query; the searchable and filterable ones describe the agent's search tool |
+| `id_column`, `title_column` | a column ref | no | nothing in the DDL; the agent's search tool defaults to them |
+| `where` | one SQL expression, which may hold `ref()` and `var()` calls | no | `WHERE <expression>` on the query (`SST-VAL418`); a column ref renders as the bare column |
 | `refresh_mode` | `AUTO`, `FULL`, or `INCREMENTAL` | no | `REFRESH_MODE = <mode>`; unset leaves it to Snowflake (`SST-PRS013`) |
 
-`on:` may also be the `ref()` string alone, with `search_column:` and
-`attribute_columns:` beside it; written there, they win over the ones inside
-`on:`. The search column and every attribute must be columns of the model
-(`SST-VAL609`). The checks that follow are warnings:
+`warehouse`, `target_lag` and `embedding_model` are settings (above), rendered
+as `WAREHOUSE`, `TARGET_LAG` and `EMBEDDING_MODEL`. `on:` may also be the
+`ref()` string alone, with `search_column:` and `attribute_columns:` beside
+it; written there, they win over the ones inside `on:`. The search column and
+every attribute must be columns of the model (`SST-VAL609`). The checks that
+follow are warnings:
 
 - `SST-VAL617`: dbt materializes the model as a table or a view, so every dbt
   run rebuilds it and the service re-embeds everything, unless `refresh_mode`
@@ -315,18 +361,18 @@ the model `on:` names:
   `SST-VAL619` for explicit grants a replace would have to re-issue.
 
 ```yaml
-tools:
-  - group: docs
-    define:
-      - name: policy_search
-        type: cortex_search_service
-        description: Search over published policy documents.
-        on:
-          table: "{{ ref('policy_docs') }}"
-          search_column: body
-          attributes: [category]
-        target_lag: 1 hour
-        embedding_model: snowflake-arctic-embed-m-v1.5
+tool:
+  name: policy_search
+  type: cortex_search_service
+  description: Search over published policy documents.
+  on:
+    table: "{{ ref('policy_docs') }}"
+    search_column: "{{ ref('policy_docs', 'body') }}"
+    attributes: ["{{ ref('policy_docs', 'category') }}"]
+  where: "{{ ref('policy_docs', 'is_published') }}"
+  config:
+    target_lag: 1 hour
+    embedding_model: snowflake-arctic-embed-m-v1.5
 ```
 
 **Procedure and function** (`type: procedure`, `type: function`) render
@@ -338,7 +384,7 @@ signature, `COPY GRANTS`, `RETURNS`, `LANGUAGE`, `RUNTIME_VERSION`, `HANDLER`,
 
 | Key | Type | Required | Renders to |
 |---|---|---|---|
-| `body_file` | path relative to the project | yes | the body, as `AS $$ ... $$`; it may not contain `$$` |
+| `body` | `"{{ file('<path>') }}"`, relative to the tool file's folder | yes | the body, as `AS $$ ... $$`; it may not contain `$$` |
 | `language` | `sql`, `python`, `java`, `javascript`, or `scala` | yes | `LANGUAGE` (`SST-PRS013`) |
 | `returns` | a Snowflake type, or `TABLE (<column> <type>, ...)` | yes | `RETURNS` (`SST-PRS003`) |
 | `signature` | list of `name:` and `type:` maps | no | the argument list, in order |
@@ -348,49 +394,51 @@ signature, `COPY GRANTS`, `RETURNS`, `LANGUAGE`, `RUNTIME_VERSION`, `HANDLER`,
 | `imports` | list of strings | no | `IMPORTS = ('<path>', ...)` |
 | `external_access_integrations` | list of identifiers | no | `EXTERNAL_ACCESS_INTEGRATIONS = (<name>, ...)` |
 | `secrets` | map of variable name to three-part secret name | no | `SECRETS = ('<variable>' = <secret>, ...)`, sorted by variable |
-| `execute_as` | `caller`, `owner`, or `restricted caller` | procedure only, defaulted, else `caller` | `EXECUTE AS` (`SST-PRS013`) |
-| `warehouse` | identifier | for a procedure, defaulted | nothing in the DDL; the warehouse a generic tool runs the routine on when the tool sets none |
 
-`body_file:` is read relative to the project root and may not leave it
-(`SST-PRT009`); a missing file is `SST-LOD018` and an empty one `SST-LOD019`.
-Each name the DDL writes must be an identifier and each secret a three-part
-name (`SST-PRS005`), each type a Snowflake type (`SST-PRS003`), and a parameter
-of type `OBJECT` is refused (`SST-PRS032`). A generic tool's `input_schema`
-must match the signature in count, in names ignoring case, and in type
+A procedure's `execute_as` (`caller`, `owner`, or `restricted caller`) and
+`warehouse` are settings: `EXECUTE AS`, `caller` by default, and the warehouse
+a generic tool runs the routine on when neither the tool nor the member's
+`config:` names one. A bare `body:` is `SST-REF050`. Its file is read relative
+to the folder of the tool file that declares it, and joins the member's source
+files and fingerprint; an absolute path or one that leaves the project is
+`SST-REF027`, a symbolic link `SST-PRT009`, a path naming no file `SST-REF014`,
+an unreadable file `SST-LOD018`, and an empty one `SST-LOD019`. Each name the
+DDL writes must be an identifier and each secret a three-part name
+(`SST-PRS005`), each type a Snowflake type (`SST-PRS003`), and a parameter of
+type `OBJECT` is refused (`SST-PRS032`). A generic tool's `input_schema` must
+match the signature in count, in names ignoring case, and in type
 (`SST-VAL607`). A procedure that runs as `owner` and that an agent reaches is a
 warning (`SST-VAL610`): it lets a conversation act with the owner's privileges.
 
 ```yaml
-tools:
-  - group: orders
-    define:
-      - name: order_status
-        type: procedure
-        description: Returns the status of one order.
-        body_file: tools/sql/order_status.sql
-        language: sql
-        returns: VARCHAR
-        signature:
-          - name: order_id
-            type: NUMBER
+# tools/orders/order_status.yml
+tool:
+  name: order_status
+  type: procedure
+  description: Returns the status of one order.
+  body: "{{ file('sql/order_status.sql') }}"
+  language: sql
+  returns: VARCHAR
+  signature:
+    - name: order_id
+      type: NUMBER
 ```
 
 ```yaml
-tools:
-  - group: orders
-    define:
-      - name: shipping_estimate
-        type: function
-        description: Estimates delivery days for a postcode.
-        body_file: tools/python/shipping_estimate.py
-        language: python
-        runtime_version: "3.11"
-        handler: estimate
-        packages: [snowflake-snowpark-python]
-        returns: NUMBER
-        signature:
-          - name: postcode
-            type: VARCHAR
+# tools/orders/shipping_estimate.yml
+tool:
+  name: shipping_estimate
+  type: function
+  description: Estimates delivery days for a postcode.
+  body: "{{ file('python/shipping_estimate.py') }}"
+  language: python
+  runtime_version: "3.11"
+  handler: estimate
+  packages: [snowflake-snowpark-python]
+  returns: NUMBER
+  signature:
+    - name: postcode
+      type: VARCHAR
 ```
 
 **Stage** (`type: stage`) takes only `name:` and `description:`. It renders
@@ -398,15 +446,13 @@ tools:
 created when it is absent and never replaced.
 
 ```yaml
-tools:
-  - group: files
-    define:
-      - name: order_exports
-        type: stage
-        description: Files the export procedures write.
+tool:
+  name: order_exports
+  type: stage
+  description: Files the export procedures write.
 ```
 
-Drawn from: [tool model](../../snowflake_semantic_tools/domain/model/tool.py), [tools loader](../../snowflake_semantic_tools/adapters/yaml/tools.py), [tool renderer](../../snowflake_semantic_tools/domain/render/tool.py), [tool compile](../../snowflake_semantic_tools/app/compile/tools.py), [tool validation](../../snowflake_semantic_tools/domain/validate/tool.py), [tool diagnostics](../../snowflake_semantic_tools/domain/diagnostics/specs/val_tool.py), [configuration keys](../../snowflake_semantic_tools/domain/model/config_schema/keys.py).
+Drawn from: [tool model](../../snowflake_semantic_tools/domain/model/tool.py), [tools loader](../../snowflake_semantic_tools/adapters/yaml/tools.py), [tool columns](../../snowflake_semantic_tools/domain/resolve/tool_column.py), [tool renderer](../../snowflake_semantic_tools/domain/render/tool.py), [tool compile](../../snowflake_semantic_tools/app/compile/tools.py), [tool validation](../../snowflake_semantic_tools/domain/validate/tool.py), [tool diagnostics](../../snowflake_semantic_tools/domain/diagnostics/specs/val_tool.py), [configuration keys](../../snowflake_semantic_tools/domain/model/config_schema/keys.py).
 
 ### Agent toolsets
 
@@ -423,7 +469,7 @@ in one of two ways:
 - `agent: "{{ agent('<name>') }}"` names an enabled agent this project
   publishes (`SST-REF012`), which then publishes first. Unnamed, the tool takes
   that agent's name.
-- With no `agent:`, the tool's `name:` names a `reference:` tool member of type
+- With no `agent:`, the tool's `name:` names a referenced tool member of type
   `agent`, for an agent another project owns; a member of another type is an
   error (`SST-REF020`):
 

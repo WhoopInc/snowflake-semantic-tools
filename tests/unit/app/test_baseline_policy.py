@@ -10,7 +10,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, BaselineEntry, stable_fingerprint
 from snowflake_semantic_tools.domain.ports.project import ProjectConfig
 
-WARNING = D("SST-CFG018", group="g", name="m")
+WARNING = D("SST-CFG018", name="m")
 ERROR = D("SST-REF001", model="orders", subject="metric:m")
 
 

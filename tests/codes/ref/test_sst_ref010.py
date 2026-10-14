@@ -15,23 +15,19 @@ ROUTER = AgentModel("router", ORIGIN, ("agents/router/agent.yml",))
 def test_sst_ref010_fires() -> None:
     _, diagnostics = resolve_tool(
         ROUTER,
-        AgentTool(
-            "cortex_search", ORIGIN, name="search", description="Docs.", backing=("platform", "missing"), max_results=3
-        ),
+        AgentTool("cortex_search", ORIGIN, name="search", description="Docs.", backing="missing", max_results=3),
         agent_context(),
     )
     [diagnostic] = coded(diagnostics, "SST-REF010")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "{{ tool('platform','missing') }} does not resolve"
+    assert diagnostic.message == "{{ tool('missing') }} does not resolve"
     assert diagnostic.subject is None
 
 
 def test_sst_ref010_silent() -> None:
     resolved, diagnostics = resolve_tool(
         ROUTER,
-        AgentTool(
-            "cortex_search", ORIGIN, name="search", description="Docs.", backing=("platform", "search"), max_results=3
-        ),
+        AgentTool("cortex_search", ORIGIN, name="search", description="Docs.", backing="search", max_results=3),
         agent_context(catalog=tools(search_member())),
     )
     assert resolved is not None

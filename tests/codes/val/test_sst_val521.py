@@ -8,7 +8,7 @@ from tests.helpers.diagnostic_filters import coded
 
 
 def test_sst_val521_fires() -> None:
-    model = agent("sales_agent", search_tool(backing=()))
+    model = agent("sales_agent", search_tool(backing=None))
     [diagnostic] = coded(compile_agents(model, tools=catalog(search_member())).diagnostics, "SST-VAL521")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "agent 'sales_agent': tool 'docs' omits search_service"
@@ -16,7 +16,7 @@ def test_sst_val521_fires() -> None:
 
 
 def test_sst_val521_names_every_key_a_tool_omits() -> None:
-    model = agent("sales_agent", search_tool(name="", backing=()), generic_tool(name=""))
+    model = agent("sales_agent", search_tool(name="", backing=None), generic_tool(name=""))
     messages = sorted(
         diagnostic.message
         for diagnostic in coded(compile_agents(model, tools=catalog(search_member())).diagnostics, "SST-VAL521")

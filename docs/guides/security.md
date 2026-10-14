@@ -106,10 +106,10 @@ and computes is still the author's, and runs with the target's role.
   (`SST-REF027`), and so is a dbt `target-path` outside it (`SST-PRT009`). A sidecar that is
   or passes through a symbolic link is refused and never read (`SST-PRT009`), as is a linked
   eval file or `evals/` folder; eval files are found in the agent's own `evals/` folder, never
-  by a path. A tool's `body_file:` is read relative to the project, and one that leaves it,
-  is absolute, or passes through a link is refused (`SST-PRT009`). A
-  `define:` member whose body is refused is reported once, as that refusal, and does not
-  compile; one whose file is merely absent is `SST-LOD018`.
+  by a path. A tool member's `body: "{{ file() }}"` is read relative to its tool
+  file's folder; one that is absolute or leaves the project is refused
+  (`SST-REF027`), and one that is or passes through a link is refused and never
+  read (`SST-PRT009`). A defined member whose body is refused does not compile.
 - **Checksums are read from the project only.** The input checksums a manifest records skip
   every symbolic link, and every file reached through one, as the loaders refuse them, so no
   checksum is read from outside the project.
@@ -217,12 +217,12 @@ tool runs on.
 **What SST checks.** With connected validation on, `sst validate` and `sst plan` read the
 grants on the live agent and treat as its consumers the session's role and every role
 granted `USAGE` on it. Each consumer that holds neither `USAGE` nor `OWNERSHIP` on an object a
-tool calls that SST does not publish -- a `reference:` member, or another project's agent --
+tool calls that SST does not publish -- a referenced tool member, or another project's agent --
 is a warning (`SST-VAL616`), and so is each one without `READ` or `OWNERSHIP` on an
 extension the agent pins (`SST-VAL542`). Both compare an object's direct grantees only and do
 not follow the role hierarchy, so a role that holds the privilege through another role is
 reported too. An agent not yet published has no grants to read, so only the session's role
-is checked. Semantic views and the objects `define:` publishes are not checked.
+is checked. Semantic views and the objects defined tool members publish are not checked.
 
 **When a caller lacks a tool.** What the agent does then is Snowflake's behaviour, chosen by
 the agent's `config.tool_not_accessible` (`accept`, `reject`, or `legacy`), or

@@ -84,7 +84,7 @@
     "adds": [{"code": "SST-VAL856", "severity": "error", "count": 1}],
     "reaches": ["agents/jaffle_analytics/agent.yml"]
   },
-  "19-immutable-group-defines.yml": {
+  "19-immutable-tool-defines.yml": {
     "into": "tools",
     "adds": [
       {"code": "SST-CFG018", "severity": "warning", "count": 1},

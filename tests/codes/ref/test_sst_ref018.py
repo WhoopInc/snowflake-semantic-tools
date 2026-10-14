@@ -9,7 +9,7 @@ from tests.helpers.ref_codes import procedure_relation_findings
 def test_sst_ref018_fires() -> None:
     [diagnostic] = procedure_relation_findings({"prod": "DB.PROD.LOOKUP"}, "SST-REF018")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "{{ tool('platform', 'lookup') }} has no entry for target 'dev'"
+    assert diagnostic.message == "{{ tool('lookup') }} has no entry for target 'dev'"
     assert diagnostic.subject == "tool:lookup"
 
 

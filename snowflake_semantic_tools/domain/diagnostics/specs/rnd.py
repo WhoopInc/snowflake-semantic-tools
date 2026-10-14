@@ -139,7 +139,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Tool source query is empty",
         "tool '{artifact}': rendered source query is empty",
-        "supply on: or body_file: content",
+        "supply on: or body: content",
         condition=("a search-service tool has no relation to select from, or a procedure or function tool has no body"),
     ),
     spec(
@@ -147,14 +147,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Tool has no value for a field with a default",
         "tool '{artifact}': {field} is not set, and no default supplies it",
-        "set {field} on the member, or the tools.+{field} default in sst_config.yml",
+        "set config.{field} on the member, or +{field} in a tools: folder route or the block root",
         condition=(
-            "once the `tools:` defaults apply, a defined search service has no `warehouse` or "
+            "once its settings resolve, a defined search service has no `warehouse` or "
             "`target_lag`, or a defined procedure has no `warehouse`"
         ),
         note=(
-            "A warehouse falls back to the profile target's when neither the member nor "
-            "`tools.+warehouse` names one; a target lag has no fallback."
+            "A warehouse falls back to the profile target's when neither the member's `config:`, a "
+            "folder route nor `tools.+warehouse` names one; a target lag has no fallback."
         ),
     ),
     spec(

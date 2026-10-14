@@ -18,7 +18,6 @@ from snowflake_semantic_tools.domain.sql import UnsafeSqlError
 
 def member(**kwargs: Any) -> ToolMember:
     base: dict[str, Any] = {
-        "group": "platform",
         "name": "search",
         "type": "cortex_search_service",
         "ownership": ToolOwnership.DEFINE,

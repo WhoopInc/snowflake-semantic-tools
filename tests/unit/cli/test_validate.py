@@ -58,11 +58,13 @@ def test_strict_validate_of_a_selection_promotes_only_what_concerns_it(tmp_path:
     base.append("--no-snowflake-syntax-check")
     views = CliRunner().invoke(cli, [*base, "--select", "type:semantic_view"])
     agents = CliRunner().invoke(cli, [*base, "--select", "type:agent"])
-    # The three agent warnings concern only the agents; the two SST-CFG018 warnings name a tool
-    # group, no artifact, so every strict run promotes them.
-    assert views.exit_code == 1 and agents.exit_code == 1
+    tools = CliRunner().invoke(cli, [*base, "--select", "type:tool"])
+    # The three agent warnings concern only the agents, and the two SST-CFG018 warnings only the
+    # tool members they name, so a run selecting neither promotes none of them.
+    assert views.exit_code == 0 and agents.exit_code == 1 and tools.exit_code == 1
     promoted = "(promoted from warning)"
-    assert [line.split("]")[0].split("[")[-1] for line in views.output.splitlines() if promoted in line] == [
+    assert [line.split("]")[0].split("[")[-1] for line in views.output.splitlines() if promoted in line] == []
+    assert [line.split("]")[0].split("[")[-1] for line in tools.output.splitlines() if promoted in line] == [
         "SST-CFG018",
         "SST-CFG018",
     ]

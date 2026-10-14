@@ -89,7 +89,7 @@ blocks each agent that stages on it when it cannot be used:
 - Run `sst debug` and check the database and schema the target resolves to.
 - Check `+database` / `+schema` for the artifact type and any folder route in
   `sst_config.yml`.
-- A tool from a `reference:` group resolves through its `relations:` map; a
+- A tool member that writes `relations:` resolves through that map; a
   target the map does not cover is an error rather than a fall-through.
 
 ## Privilege problems
@@ -235,7 +235,7 @@ is printed as `error[...] (promoted from warning)`, and the JSON envelope's
 `summary.promoted` counts them. A warning the baseline holds stays baselined and
 does not block. A run narrowed by `--select` or `--exclude` promotes no warning
 about an artifact it leaves out; a warning that names no artifact, such as one
-about configuration or a tool group, is promoted whatever the selection.
+about configuration, is promoted whatever the selection.
 
 ## `plan --prune` keeps listing a deleted skill, plugin, or eval
 

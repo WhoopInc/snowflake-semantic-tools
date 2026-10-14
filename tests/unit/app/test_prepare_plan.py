@@ -183,7 +183,7 @@ def test_strict_leaves_a_warning_about_an_unselected_artifact_a_warning() -> Non
 
 
 def test_strict_promotes_a_warning_about_a_selected_artifact_or_the_whole_project() -> None:
-    for subject in ("semantic_view:menu", None, "config:validation.strict", "tool_group:partner"):
+    for subject in ("semantic_view:menu", None, "config:validation.strict", "tool_ref:partner"):
         refused = _strict_plan(D("SST-LOD003", file="a.yml", subject=subject))
         assert isinstance(refused, PlanRefused), subject
         assert [(item.code, item.severity) for item in refused.diagnostics][0] == ("SST-LOD003", Severity.ERROR)

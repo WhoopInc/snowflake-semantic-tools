@@ -4,15 +4,17 @@ from types import MappingProxyType
 
 import pytest
 
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership, ToolParameter
+from snowflake_semantic_tools.domain.model.setting import Setting
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember, ToolOwnership, ToolParameter
 from snowflake_semantic_tools.domain.validate.tool import validate_tool_catalog
+
+_IMMUTABLE = MappingProxyType({"immutable": Setting("immutable", True, "route:vendor")})
 
 
 def test_tool_catalog_reference_resolution_requires_current_target() -> None:
     member = ToolMember(
-        "platform",
         "lookup",
         "procedure",
         ToolOwnership.REFERENCE,
@@ -21,7 +23,7 @@ def test_tool_catalog_reference_resolution_requires_current_target() -> None:
         relations=MappingProxyType({"prod": "DB.S.LOOKUP"}),
     )
     catalog = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(member,)),),
+        (member,),
         "dev",
         frozenset(("dev", "prod")),
     )
@@ -30,11 +32,10 @@ def test_tool_catalog_reference_resolution_requires_current_target() -> None:
     assert diagnostics[0].code == "SST-REF018"
 
 
-def test_tool_member_keys_and_two_argument_resolution_are_case_insensitive() -> None:
+def test_tool_member_keys_and_resolution_are_case_insensitive_and_the_first_declaration_answers() -> None:
     origin = Origin("tools.yml")
-    managed = ToolMember("Platform", "Lookup", "stage", ToolOwnership.DEFINE, origin, "tools.yml")
+    managed = ToolMember("Lookup", "stage", ToolOwnership.DEFINE, origin, "tools.yml")
     referenced = ToolMember(
-        "Other",
         "Lookup",
         "procedure",
         ToolOwnership.REFERENCE,
@@ -42,25 +43,34 @@ def test_tool_member_keys_and_two_argument_resolution_are_case_insensitive() -> 
         "tools.yml",
         relations=MappingProxyType({"dev": "DB.S.LOOKUP"}),
     )
-    catalog = ToolCatalog(
-        (
-            ToolGroup("Platform", origin, "tools.yml", members=(managed,)),
-            ToolGroup("Other", origin, "tools.yml", members=(referenced,)),
-        ),
-        "dev",
-        frozenset(("dev",)),
-    )
-    assert managed.declaration_key == "platform:lookup"
+    catalog = ToolCatalog((managed, referenced), "dev", frozenset(("dev",)))
     assert managed.artifact_key == "tool:lookup"
     assert referenced.artifact_key is None
-    resolved, diagnostics = catalog.resolve("platform", "lookup")
+    resolved, diagnostics = catalog.resolve("LOOKUP")
     assert resolved is managed and diagnostics == catalog.diagnostics
 
 
-def test_tool_validation_covers_reference_creation_keys_targets_and_cross_group_names() -> None:
+def test_a_member_is_immutable_only_when_its_settings_resolve_immutable_true() -> None:
+    origin = Origin("tools.yml")
+    member = ToolMember("lookup", "stage", ToolOwnership.DEFINE, origin, "tools.yml")
+    assert not member.immutable
+    assert ToolMember("lookup", "stage", ToolOwnership.DEFINE, origin, "tools.yml", settings=_IMMUTABLE).immutable
+    mutable = MappingProxyType({"immutable": Setting("immutable", False, "config")})
+    assert not ToolMember("lookup", "stage", ToolOwnership.DEFINE, origin, "tools.yml", settings=mutable).immutable
+
+
+def test_a_member_warehouse_an_agent_tool_runs_on_is_its_own_config_warehouse() -> None:
+    origin = Origin("tools.yml")
+    configured = MappingProxyType({"warehouse": "TOOL_WH"})
+    assert ToolMember("p", "procedure", ToolOwnership.DEFINE, origin, "t", config=configured).configured_warehouse == (
+        "TOOL_WH"
+    )
+    assert ToolMember("p", "procedure", ToolOwnership.DEFINE, origin, "t").configured_warehouse is None
+
+
+def test_tool_validation_covers_reference_creation_keys_targets_and_repeated_names() -> None:
     origin = Origin("tools.yml")
     first = ToolMember(
-        "one",
         "shared",
         "procedure",
         ToolOwnership.REFERENCE,
@@ -70,7 +80,6 @@ def test_tool_validation_covers_reference_creation_keys_targets_and_cross_group_
         creation_keys=("handler",),
     )
     second = ToolMember(
-        "two",
         "shared",
         "procedure",
         ToolOwnership.REFERENCE,
@@ -79,18 +88,14 @@ def test_tool_validation_covers_reference_creation_keys_targets_and_cross_group_
         relations=MappingProxyType({"dev": "DB.S.SHARED"}),
     )
     diagnostics = validate_tool_catalog(
-        ToolCatalog(
-            (
-                ToolGroup("one", origin, "tools.yml", immutable=True, members=(first,)),
-                ToolGroup("two", origin, "tools.yml", immutable=True, members=(second,)),
-            ),
-            "dev",
-            frozenset(("dev",)),
-        ),
+        ToolCatalog((first, second), "dev", frozenset(("dev",))),
         DbtCatalog("v12", None, None, ()),
     )
     codes = {diagnostic.code for diagnostic in diagnostics}
-    assert {"SST-VAL602", "SST-VAL605", "SST-REF018", "SST-REF019"}.issubset(codes)
+    assert {"SST-VAL001", "SST-VAL605", "SST-REF018", "SST-REF019"}.issubset(codes)
+    [repeated] = [diagnostic for diagnostic in diagnostics if diagnostic.code == "SST-VAL001"]
+    assert repeated.message == "tool member 'shared' is declared more than once"
+    assert repeated.subject == "tool:shared"
 
 
 def test_search_validation_accepts_existing_search_and_attribute_columns() -> None:
@@ -103,7 +108,6 @@ def test_search_validation_accepts_existing_search_and_attribute_columns() -> No
         (DbtColumn("body", None, None, None), DbtColumn("title", None, None, None)),
     )
     member = ToolMember(
-        "group",
         "search",
         "cortex_search_service",
         ToolOwnership.DEFINE,
@@ -114,19 +118,14 @@ def test_search_validation_accepts_existing_search_and_attribute_columns() -> No
         attribute_columns=("title",),
     )
     diagnostics = validate_tool_catalog(
-        ToolCatalog(
-            (ToolGroup("group", Origin("tools.yml"), "tools.yml", members=(member,)),),
-            "dev",
-            frozenset(("dev",)),
-        ),
+        ToolCatalog((member,), "dev", frozenset(("dev",))),
         DbtCatalog("v12", None, None, (model,)),
     )
     assert "SST-VAL609" not in {diagnostic.code for diagnostic in diagnostics}
 
 
-def test_tool_catalog_properties_and_resolution_cover_ambiguity_and_invalid_fqn() -> None:
+def test_tool_catalog_properties_and_resolution_cover_an_unknown_name_and_invalid_fqn() -> None:
     managed = ToolMember(
-        "one",
         "search",
         "stage",
         ToolOwnership.DEFINE,
@@ -134,7 +133,6 @@ def test_tool_catalog_properties_and_resolution_cover_ambiguity_and_invalid_fqn(
         "one.yml",
     )
     first = ToolMember(
-        "one",
         "same",
         "procedure",
         ToolOwnership.REFERENCE,
@@ -143,7 +141,6 @@ def test_tool_catalog_properties_and_resolution_cover_ambiguity_and_invalid_fqn(
         relations=MappingProxyType({"dev": "bad"}),
     )
     second = ToolMember(
-        "two",
         "same",
         "procedure",
         ToolOwnership.REFERENCE,
@@ -151,21 +148,12 @@ def test_tool_catalog_properties_and_resolution_cover_ambiguity_and_invalid_fqn(
         "two.yml",
         relations=MappingProxyType({"dev": "DB.S.SAME"}),
     )
-    catalog = ToolCatalog(
-        (
-            ToolGroup("one", Origin("one.yml"), "one.yml", members=(managed, first)),
-            ToolGroup("two", Origin("two.yml"), "two.yml", members=(second,)),
-        ),
-        "dev",
-        frozenset(("dev",)),
-    )
-    assert catalog.members == (managed, first, second)
+    catalog = ToolCatalog((managed, first, second), "dev", frozenset(("dev",)))
     assert catalog.managed == (managed,)
     assert catalog.references == (first, second)
-    unresolved, diagnostics = catalog.resolve("same")
+    unresolved, diagnostics = catalog.resolve("missing")
     assert unresolved is None and diagnostics[0].code == "SST-REF010"
-    unresolved, diagnostics = catalog.resolve()
-    assert unresolved is None and diagnostics[0].code == "SST-REF010"
+    assert diagnostics[0].message == "{{ tool('missing') }} does not resolve"
     relation, diagnostics = catalog.relation(managed)
     assert relation is None and diagnostics == ()
     relation, diagnostics = catalog.relation(first)
@@ -190,7 +178,6 @@ def test_tool_validation_covers_duplicate_unknown_category_signature_and_columns
     )
     origin = Origin("tools.yml")
     broken = ToolMember(
-        "group",
         "broken",
         "unknown",
         ToolOwnership.DEFINE,
@@ -200,7 +187,6 @@ def test_tool_validation_covers_duplicate_unknown_category_signature_and_columns
         signature=(ToolParameter("payload", "object", True),),
     )
     bad_search = ToolMember(
-        "group",
         "search",
         "cortex_search_service",
         ToolOwnership.DEFINE,
@@ -208,29 +194,22 @@ def test_tool_validation_covers_duplicate_unknown_category_signature_and_columns
         "tools.yml",
         on_model="docs",
         search_column="missing",
+        settings=_IMMUTABLE,
     )
-    group = ToolGroup("group", origin, "tools.yml", immutable=True, members=(broken, broken, bad_search))
-    duplicate_group = ToolGroup("group", Origin("other.yml"), "other.yml")
-    diagnostics = validate_tool_catalog(
-        ToolCatalog((group, duplicate_group), "dev", frozenset(("dev",))),
-        dbt,
-    )
+    diagnostics = validate_tool_catalog(ToolCatalog((broken, broken, bad_search), "dev", frozenset(("dev",))), dbt)
     assert {
         "SST-VAL001",
-        "SST-VAL601",
         "SST-VAL603",
         "SST-VAL604",
-        "SST-VAL605",
         "SST-VAL606",
         "SST-VAL609",
         "SST-PRS032",
     }.issubset({diagnostic.code for diagnostic in diagnostics})
 
 
-def test_tool_validation_covers_reference_without_relations_shared_target_warning_and_sidecars() -> None:
+def test_tool_validation_covers_reference_without_relations_and_shared_target_warning() -> None:
     origin = Origin("tools.yml")
     missing_relations = ToolMember(
-        "group",
         "missing",
         "procedure",
         ToolOwnership.REFERENCE,
@@ -238,7 +217,6 @@ def test_tool_validation_covers_reference_without_relations_shared_target_warnin
         "tools.yml",
     )
     shared = ToolMember(
-        "group",
         "shared",
         "procedure",
         ToolOwnership.REFERENCE,
@@ -246,89 +224,24 @@ def test_tool_validation_covers_reference_without_relations_shared_target_warnin
         "tools.yml",
         relations=MappingProxyType({"dev": "DB.S.SHARED", "prod": "DB.S.SHARED"}),
     )
-    missing_sidecar = ToolMember(
-        "group",
-        "missing_body",
+    pinned = ToolMember(
+        "pinned",
         "procedure",
-        ToolOwnership.DEFINE,
+        ToolOwnership.REFERENCE,
         origin,
         "tools.yml",
-        body_file="missing.sql",
-        body=None,
+        relations=MappingProxyType({"dev": "DB.S.PINNED", "prod": "DB.S.PINNED"}),
+        settings=_IMMUTABLE,
     )
-    empty_sidecar = ToolMember(
-        "group",
-        "empty_body",
-        "function",
-        ToolOwnership.DEFINE,
-        origin,
-        "tools.yml",
-        body_file="empty.sql",
-        body="",
-    )
-    healthy_sidecar = ToolMember(
-        "group",
-        "healthy_body",
-        "function",
-        ToolOwnership.DEFINE,
-        origin,
-        "tools.yml",
-        body_file="healthy.sql",
-        body="RETURN 1",
-    )
-    catalog = ToolCatalog(
-        (
-            ToolGroup(
-                "group",
-                origin,
-                "tools.yml",
-                members=(missing_relations, shared, missing_sidecar, empty_sidecar, healthy_sidecar),
-            ),
-        ),
-        "dev",
-        frozenset(("dev", "prod")),
-    )
+    catalog = ToolCatalog((missing_relations, shared, pinned), "dev", frozenset(("dev", "prod")))
     diagnostics = validate_tool_catalog(catalog, DbtCatalog("v12", None, None, ()))
-    assert {
-        "SST-PRS002",
-        "SST-REF018",
-        "SST-REF023",
-        "SST-LOD018",
-        "SST-LOD019",
-    }.issubset({diagnostic.code for diagnostic in diagnostics})
-
-
-def test_a_refused_body_file_is_reported_only_as_refused() -> None:
-    origin = Origin("tools.yml", 1, 1)
-    refused = ToolMember(
-        "group", "Lookup", "procedure", ToolOwnership.DEFINE, origin, "tools.yml", body_file="../secret.sql"
-    )
-    missing = ToolMember(
-        "group", "other", "procedure", ToolOwnership.DEFINE, origin, "tools.yml", body_file="missing.sql"
-    )
-    refusal = D(
-        "SST-PRT009",
-        path="../secret.sql",
-        detail="it resolves outside the project",
-        subject="tool:Lookup",
-        origin=origin,
-    )
-    catalog = ToolCatalog(
-        (ToolGroup("group", origin, "tools.yml", members=(refused, missing)),),
-        "dev",
-        frozenset(("dev",)),
-        DiagnosticBag((refusal,)),
-    )
-    diagnostics = validate_tool_catalog(catalog, DbtCatalog("v12", None, None, ()))
-    assert [(item.code, item.subject) for item in diagnostics if item.code in {"SST-PRT009", "SST-LOD018"}] == [
-        ("SST-LOD018", "tool:other"),
-        ("SST-PRT009", "tool:Lookup"),
-    ]
+    assert {"SST-PRS002", "SST-REF018", "SST-REF023"}.issubset({diagnostic.code for diagnostic in diagnostics})
+    # An immutable member may name one object for every target.
+    assert [item.subject for item in diagnostics if item.code == "SST-REF023"] == ["tool:shared"]
 
 
 def test_tool_validation_reports_unknown_search_model() -> None:
     member = ToolMember(
-        "group",
         "search",
         "cortex_search_service",
         ToolOwnership.DEFINE,
@@ -338,11 +251,7 @@ def test_tool_validation_reports_unknown_search_model() -> None:
         search_column="body",
     )
     diagnostics = validate_tool_catalog(
-        ToolCatalog(
-            (ToolGroup("group", Origin("tools.yml"), "tools.yml", members=(member,)),),
-            "dev",
-            frozenset(("dev",)),
-        ),
+        ToolCatalog((member,), "dev", frozenset(("dev",))),
         DbtCatalog("v12", None, None, ()),
     )
     assert any(diagnostic.code == "SST-VAL608" for diagnostic in diagnostics)
@@ -351,7 +260,6 @@ def test_tool_validation_reports_unknown_search_model() -> None:
 def test_a_relation_with_an_undeclared_target_is_reported_before_the_missing_current_target() -> None:
     origin = Origin("tools.yml")
     member = ToolMember(
-        "group",
         "lookup",
         "procedure",
         ToolOwnership.REFERENCE,
@@ -360,19 +268,17 @@ def test_a_relation_with_an_undeclared_target_is_reported_before_the_missing_cur
         relations=MappingProxyType({"staging": "DB.S.LOOKUP"}),
     )
     diagnostics = validate_tool_catalog(
-        ToolCatalog((ToolGroup("group", origin, "tools.yml", members=(member,)),), "dev", frozenset(("dev",))),
+        ToolCatalog((member,), "dev", frozenset(("dev",))),
         DbtCatalog("v12", None, None, ()),
     )
     assert [item.message for item in diagnostics if item.code == "SST-REF018"] == [
         "{{ tool target('staging') }} has no entry for target 'profiles.yml'",
-        "{{ tool('group', 'lookup') }} has no entry for target 'dev'",
+        "{{ tool('lookup') }} has no entry for target 'dev'",
     ]
 
 
 def _validated(member: ToolMember) -> list[tuple[str, str]]:
-    catalog = ToolCatalog(
-        (ToolGroup("group", Origin("tools.yml"), "tools.yml", members=(member,)),), "dev", frozenset(("dev",))
-    )
+    catalog = ToolCatalog((member,), "dev", frozenset(("dev",)))
     return [
         (diagnostic.code, diagnostic.message)
         for diagnostic in validate_tool_catalog(catalog, DbtCatalog("v12", None, None, ()))
@@ -382,7 +288,6 @@ def _validated(member: ToolMember) -> list[tuple[str, str]]:
 
 def test_every_value_a_defined_tool_writes_unquoted_is_checked_before_it_renders() -> None:
     unsafe = ToolMember(
-        "group",
         "lookup",
         "procedure",
         ToolOwnership.DEFINE,
@@ -412,7 +317,6 @@ def test_every_value_a_defined_tool_writes_unquoted_is_checked_before_it_renders
 
 def test_a_tool_whose_values_render_or_wait_for_a_template_reports_none() -> None:
     safe = ToolMember(
-        "group",
         "lookup",
         "function",
         ToolOwnership.DEFINE,
@@ -429,21 +333,14 @@ def test_a_tool_whose_values_render_or_wait_for_a_template_reports_none() -> Non
         where="{{ var('predicate') }}",
     )
     assert _validated(safe) == []
-    assert (
-        _validated(ToolMember("group", "r", "procedure", ToolOwnership.REFERENCE, Origin("t.yml"), "t.yml", where=";"))
-        == []
-    )
-    assert (
-        _validated(ToolMember("group", "s", "stage", ToolOwnership.DEFINE, Origin("t.yml"), "t.yml", where="X")) == []
-    )
+    assert _validated(ToolMember("r", "procedure", ToolOwnership.REFERENCE, Origin("t.yml"), "t.yml", where=";")) == []
+    assert _validated(ToolMember("s", "stage", ToolOwnership.DEFINE, Origin("t.yml"), "t.yml", where="X")) == []
 
 
 def _required(kind: str, **fields: object) -> list[str]:
     """The fields SST-PRS002 reports a defined member of `kind` with `fields` lacks."""
-    member = ToolMember("group", "lookup", kind, ToolOwnership.DEFINE, Origin("t.yml"), "t.yml", **fields)  # type: ignore[arg-type]
-    catalog = ToolCatalog(
-        (ToolGroup("group", Origin("t.yml"), "t.yml", members=(member,)),), "dev", frozenset(("dev",))
-    )
+    member = ToolMember("lookup", kind, ToolOwnership.DEFINE, Origin("t.yml"), "t.yml", **fields)  # type: ignore[arg-type]
+    catalog = ToolCatalog((member,), "dev", frozenset(("dev",)))
     found = validate_tool_catalog(catalog, DbtCatalog("v12", None, None, ()))
     return [str(item.context["field"]) for item in found if item.code == "SST-PRS002"]
 
@@ -483,10 +380,8 @@ def test_a_java_python_or_scala_routine_still_needs_runtime_version_and_handler(
 
 def _handler_keys(kind: str, fields: dict[str, object], ownership: ToolOwnership = ToolOwnership.DEFINE) -> list[str]:
     """The keys SST-VAL621 reports on one member of `kind` with `fields`."""
-    member = ToolMember("group", "lookup", kind, ownership, Origin("t.yml"), "t.yml", **fields)  # type: ignore[arg-type]
-    catalog = ToolCatalog(
-        (ToolGroup("group", Origin("t.yml"), "t.yml", members=(member,)),), "dev", frozenset(("dev",))
-    )
+    member = ToolMember("lookup", kind, ownership, Origin("t.yml"), "t.yml", **fields)  # type: ignore[arg-type]
+    catalog = ToolCatalog((member,), "dev", frozenset(("dev",)))
     found = validate_tool_catalog(catalog, DbtCatalog("v12", None, None, ()))
     return [str(item.context["key"]) for item in found if item.code == "SST-VAL621"]
 

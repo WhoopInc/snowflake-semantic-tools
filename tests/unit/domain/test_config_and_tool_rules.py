@@ -5,7 +5,7 @@ from __future__ import annotations
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.agent import AgentTool
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolOwnership
+from snowflake_semantic_tools.domain.model.tool import ToolOwnership
 from snowflake_semantic_tools.domain.validate.config import (
     config_tool_calls,
     config_tool_references,
@@ -15,27 +15,34 @@ from snowflake_semantic_tools.domain.validate.config import (
     validate_config,
 )
 from snowflake_semantic_tools.domain.validate.tool import rebuilt_source, reference_ddl, validate_tool_catalog
-from tests.helpers.agent_builders import TOOL_ORIGIN, TOOLS_FILE, catalog, procedure_member, search_member
+from tests.helpers.agent_builders import catalog, procedure_member, search_member
 
 
 def test_a_member_no_tool_call_names_is_referenced_by_nothing() -> None:
     tools = catalog(search_member("docs"), procedure_member("lookup"), procedure_member("audit"))
-    found = unreferenced_tool_members(tools, [("PLATFORM", "docs"), ("lookup",), ("other", "audit")])
+    found = unreferenced_tool_members(tools, ["DOCS", "lookup"])
     assert [item.context["name"] for item in found] == ["audit"]
 
 
 def test_an_agent_tool_references_its_backing_or_by_name_the_member_it_delegates_to() -> None:
     origin = Origin("agents/a.yml")
-    assert AgentTool("generic", origin, name="t", backing=("g", "m")).member_reference == ("g", "m")
-    assert AgentTool("agent_toolset", origin, name="partner").member_reference == ("partner",)
-    assert AgentTool("agent_toolset", origin, name="partner", agent_ref="own").member_reference == ()
-    assert AgentTool("agent_toolset", origin).member_reference == ()
-    assert AgentTool("data_to_chart", origin, name="chart").member_reference == ()
+    assert AgentTool("generic", origin, name="t", backing="m").member_reference == "m"
+    assert AgentTool("agent_toolset", origin, name="partner").member_reference == "partner"
+    assert AgentTool("agent_toolset", origin, name="partner", agent_ref="own").member_reference is None
+    assert AgentTool("agent_toolset", origin).member_reference is None
+    assert AgentTool("data_to_chart", origin, name="chart").member_reference is None
 
 
 def test_a_configuration_value_s_tool_calls_are_read_in_document_order() -> None:
-    tree = {"a": "{{ tool('g', 'one') }}", "b": ["x", "{{ tool('g', 'two') }}"], "c": 3}
-    assert config_tool_calls(tree) == (("g", "one"), ("g", "two"))
+    tree = {
+        "a": "{{ tool('one') }}",
+        "b": ["x", "{{ tool('two') }} {{ var('v') }}"],
+        "c": 3,
+        "d": "{{ tool('a', 'b') }}",
+    }
+    assert config_tool_calls(tree) == ("one", "two")
+    # A value whose templates do not parse holds no call.
+    assert config_tool_calls({"a": "{{ tool('one'"}) == ()
 
 
 def test_an_empty_value_is_meant_only_for_a_declared_block_or_map() -> None:
@@ -52,29 +59,30 @@ def test_an_empty_value_is_meant_only_for_a_declared_block_or_map() -> None:
 def test_a_tool_call_in_a_configuration_value_must_name_a_declared_member() -> None:
     tools = catalog(search_member("docs"))
     tree = {
-        "agents": {"+tool": "{{ tool('platform', 'Docs') }} then {{ tool('platform', 'ghost') }}"},
+        "agents": {"+tool": "{{ tool('Docs') }} then {{ tool('ghost') }}"},
         "count": 3,
         "note": "{{ tool('other', 'docs') }}",
     }
     found = config_tool_references(tree, tools, file="config/sst.yml")
-    assert [(item.subject, item.context["group"], item.context["name"]) for item in found] == [
-        ("config:agents.+tool", "platform", "ghost"),
-        ("config:note", "other", "docs"),
+    assert [(item.code, item.subject) for item in found] == [
+        ("SST-CFG017", "config:agents.+tool"),
+        ("SST-REF015", "config:note"),
     ]
+    assert found[0].message == "{{ tool('ghost') }} does not resolve"
 
 
 def test_a_tool_call_inside_a_list_is_checked_with_its_index() -> None:
     tools = catalog(search_member("docs"))
     tree = {
-        "agents": {"+tools": ["{{ tool('platform', 'docs') }}", {"ref": "{{ tool('platform', 'ghost') }}"}]},
-        "nested": [["{{ tool('other', 'docs') }}"]],
+        "agents": {"+tools": ["{{ tool('docs') }}", {"ref": "{{ tool('ghost') }}"}]},
+        "nested": [["{{ tool('other') }}"]],
     }
     found = config_tool_references(tree, tools, file="config/sst.yml")
-    assert [(item.subject, item.context["group"], item.context["name"]) for item in found] == [
-        ("config:agents.+tools[1].ref", "platform", "ghost"),
-        ("config:nested[0][0]", "other", "docs"),
+    assert [(item.subject, item.context["name"]) for item in found] == [
+        ("config:agents.+tools[1].ref", "ghost"),
+        ("config:nested[0][0]", "other"),
     ]
-    assert config_tool_references({"agents": {"+tools": ["{{ tool('platform', 'docs') }}"]}}, tools) == ()
+    assert config_tool_references({"agents": {"+tools": ["{{ tool('docs') }}"]}}, tools) == ()
 
 
 def test_the_syntax_check_policy_must_be_stated() -> None:
@@ -95,22 +103,10 @@ def test_the_default_orchestration_model_must_be_allowed() -> None:
     assert codes(allowed) == []
 
 
-def test_an_immutable_group_defines_nothing() -> None:
+def test_an_immutable_member_defines_nothing() -> None:
     found = validate_tool_catalog(catalog(search_member(), immutable=True), DbtCatalog("v12", None, None, ()))
     assert "SST-VAL606" in [item.code for item in found]
-    referenced = ToolCatalog(
-        (
-            ToolGroup(
-                "platform",
-                TOOL_ORIGIN,
-                TOOLS_FILE,
-                immutable=True,
-                members=(procedure_member("lookup", reference=True),),
-            ),
-        ),
-        "dev",
-        frozenset(("dev",)),
-    )
+    referenced = catalog(procedure_member("lookup", reference=True), immutable=True)
     assert "SST-VAL606" not in [
         item.code for item in validate_tool_catalog(referenced, DbtCatalog("v12", None, None, ()))
     ]
@@ -133,9 +129,9 @@ def test_a_referenced_member_is_never_rendered() -> None:
     assert procedure_member("x").ownership is ToolOwnership.REFERENCE
 
 
-def test_a_member_both_defined_and_referenced_in_one_group_is_undecidable() -> None:
+def test_a_member_both_defined_and_referenced_is_one_name_declared_twice() -> None:
     tools = catalog(procedure_member("lookup", reference=False), procedure_member("LOOKUP", reference=True))
     found = [
-        item for item in validate_tool_catalog(tools, DbtCatalog("v12", None, None, ())) if item.code == "SST-CFG019"
+        item for item in validate_tool_catalog(tools, DbtCatalog("v12", None, None, ())) if item.code == "SST-VAL001"
     ]
     assert [item.context["name"] for item in found] == ["lookup"]

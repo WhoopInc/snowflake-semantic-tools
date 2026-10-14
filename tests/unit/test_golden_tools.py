@@ -4,7 +4,7 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
 from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
-from snowflake_semantic_tools.app.compile.tools import CompileTools
+from snowflake_semantic_tools.app.compile.tools import CompileTools, ToolPlacement
 from tests.helpers.projects import project_paths
 
 ROOT = Path(__file__).parents[2]
@@ -23,12 +23,9 @@ def test_reference_search_service_matches_golden() -> None:
     dbt = load_manifest_catalog(manifest_path)
     result = CompileTools(
         catalog,
-        database="SST_REF_DEV",
-        schema="JAFFLE",
-        warehouse="SST_REF_WH",
-        target_lag="1 hour",
-        embedding_model="snowflake-arctic-embed-m-v1.5",
-        execute_as="caller",
+        default=ToolPlacement(
+            "SST_REF_DEV", "JAFFLE", "SST_REF_WH", "1 hour", "snowflake-arctic-embed-m-v1.5", "caller"
+        ),
         dbt_relations={
             model.name: ("SST_REF_DEV.JAFFLE.PRODUCT_DOCS" if model.name == "product_docs" else model.relation_name)
             for model in dbt.models

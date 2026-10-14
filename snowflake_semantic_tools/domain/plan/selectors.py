@@ -85,7 +85,7 @@ class SelectionScope:
 
         Only a subject that is an artifact key, `<type>:<name>` of a registered type, can be
         left out, and only when the scope does not choose that artifact. Any other subject --
-        the configuration, a tool group, a semantic view member, none -- cannot be pinned to
+        the configuration, a referenced tool member, a semantic view member, none -- cannot be pinned to
         the artifacts it would change, as `--partial` cannot pin it, so it concerns every run.
 
         Args:

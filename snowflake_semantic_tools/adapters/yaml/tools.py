@@ -1,10 +1,10 @@
-"""Load tool-group YAML into immutable domain declarations."""
+"""Load tool members from YAML into immutable domain declarations."""
 
 from __future__ import annotations
 
 import posixpath
-from collections.abc import Mapping
-from dataclasses import replace
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -13,27 +13,61 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.adapters.yaml.fields import optional_string, refused, strings, unknown_keys
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
+from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosition
+from snowflake_semantic_tools.domain.model.config_schema import resolve_settings
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.tool import (
     CREATION_KEYS,
-    TOOL_GROUP_KEYS,
+    MOVED_TOOL_KEYS,
+    TOOL_COLUMN_KEYS,
     TOOL_MEMBER_KEYS,
     TOOLS_FILE_KEYS,
     ToolCatalog,
     ToolColumn,
-    ToolGroup,
     ToolMember,
     ToolOwnership,
     ToolParameter,
 )
 from snowflake_semantic_tools.domain.parse.fields import unknown_field
-from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
-from snowflake_semantic_tools.domain.resolve.calls import syntax_problem
+from snowflake_semantic_tools.domain.parse.template import TemplateCall, TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.resolve.calls import call_problem, malformed_field, missing_call, syntax_problem
+from snowflake_semantic_tools.domain.resolve.ref_fields import ref_field
+from snowflake_semantic_tools.domain.resolve.template import ResolveContext, resolve_scalar
+from snowflake_semantic_tools.domain.resolve.tool_column import ColumnSite, tool_column
 from snowflake_semantic_tools.domain.validate.dbt_seam import literal_relation_diagnostic
+from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 from snowflake_semantic_tools.domain.validate.tool import validate_tool_catalog
+
+# Keys of a `tools:` list entry that only a tool group wrote; an entry with one is a group.
+_GROUP_KEYS = ("group", "define", "reference")
+
+
+@dataclass(frozen=True, slots=True)
+class _Source:
+    """One tools file being read, and what reading its members resolves against.
+
+    Attributes:
+        source_file: The file, relative to the project root.
+        folder: Its directory below `project.tools_dir`, which the `tools:` folder routes name.
+        block: The `tools:` block of the configuration, as parsed; None without one.
+        variables: What `{{ var('<name>') }}` in a `where` resolves to.
+    """
+
+    project_dir: Path
+    source_file: str
+    lines: Mapping[NodePath, SourcePosition]
+    folder: tuple[str, ...]
+    dbt: DbtCatalog
+    block: object
+    variables: Mapping[str, object]
+
+    def origin(self, path: NodePath) -> Origin:
+        """Place the node at `path` where it is written, else at the file's start."""
+        position = self.lines.get(path)
+        return Origin(self.source_file, position.line, position.col) if position else Origin(self.source_file, 1, 1)
 
 
 def load_tool_catalog(
@@ -43,55 +77,65 @@ def load_tool_catalog(
     target_name: str,
     declared_targets: frozenset[str],
     tools_dir: str = "tools",
+    config: Mapping[str, Any] | None = None,
 ) -> ToolCatalog:
-    """Read every tool group of each `*.yml` or `*.yaml` directly under `tools_dir`, then validate them.
+    """Read every tool member of each `*.yml` or `*.yaml` below `tools_dir`, then validate them.
 
-    Files are read in name order. A missing `tools_dir` gives an empty catalog, unvalidated. A
-    file that cannot be read or parsed, or has no `tools:` list, contributes its diagnostics
-    and no groups.
+    Files are found in every folder below `tools_dir` and read in path order. A file's root
+    `tool:` holds one member, and its root `tools:` a list of them. A member's folder below
+    `tools_dir` is what the `tools:` folder routes name, and its settings resolve over them. A
+    missing `tools_dir` gives an empty catalog, unvalidated. A file that cannot be read or
+    parsed, or holds neither root, contributes its diagnostics and no members.
 
     Args:
         dbt: The dbt models each defined search service's `on:` must name.
         target_name: The target every reference's `relations` must cover.
         declared_targets: Every target `profiles.yml` declares.
+        config: The run's resolved configuration, whose `tools:` block each member's settings
+            resolve against, whose folder routes are checked against the folders under
+            `tools_dir`, and whose `vars:` a `where` may read; None reads no configuration.
 
     Returns:
-        The groups in file order, with every loading diagnostic and every finding of
+        The members in file order, with every loading diagnostic and every finding of
         `validate_tool_catalog`, sorted by origin file (none first), then code.
 
     Diagnostics:
-        SST-PRT009: when a file, or a folder between the project and it, is a symbolic link, or it
+        SST-CFG041: a `tools:` folder route names no folder under `tools_dir`; reported first.
+        SST-PRT009: a file, or a folder between the project and it, is a symbolic link, or it
             resolves outside the project; the file is not read.
-        SST-LOD018: when a file cannot be read.
-        SST-LOD004: when a template in a file or in an `on:` is malformed.
-        SST-LOD006: when a file is not UTF-8.
-        SST-LOD001: when a file is not valid YAML.
-        SST-LOD005: when a file writes a key twice in one mapping.
-        SST-LOD003: when a file holds only whitespace or comments.
-        SST-LOD008: when a file holds more than one document.
-        SST-LOD002: when a file's root is not a mapping.
-        SST-PRS003: when `tools:` is absent or not a list, or a group, member or field of one has
-            the wrong type.
-        SST-PRS002: when a group has no `group`, or a member no `name` or no `type`.
-        SST-PRS022, SST-PRS004: when a file's root, a group, or a member writes a key it does not
-            model; SST-PRS022 when the key is a near miss of one it does, which it names.
-        SST-VAL608: when a member's `on:` is not one `{{ ref('<model>') }}` call.
-        Every code `validate_tool_catalog` lists, for the groups that load.
+        SST-LOD018: a file cannot be read.
+        SST-LOD004: a template in a file or in an `on:` is malformed.
+        SST-LOD006: a file is not UTF-8.
+        SST-LOD001: a file is not valid YAML.
+        SST-LOD005: a file writes a key twice in one mapping.
+        SST-LOD003: a file holds only whitespace or comments.
+        SST-LOD008: a file holds more than one document.
+        SST-LOD002: a file's root is not a mapping.
+        SST-PRS003: a file holds both `tool:` and `tools:`, or neither; `tools:` is not a list;
+            or a member or a field of one has the wrong type.
+        SST-PRS022, SST-PRS004: a file's root or a member writes a key it does not model;
+            SST-PRS022 when the key is a near miss of one it does, which it names.
+        Every code `_parse_member` lists, for each member.
+        Every code `validate_tool_catalog` lists, for the members that load.
         SST-DBT006: a reference relation names a dbt model by the name its alias replaced.
     """
-    groups: list[ToolGroup] = []
-    diagnostics: list[Diagnostic] = []
+    tree = config if config is not None else {}
+    diagnostics: list[Diagnostic] = list(routed_diagnostics(tree, project_dir, "tool")) if config else []
     root = project_dir / tools_dir
     if not root.is_dir():
-        return ToolCatalog((), target_name, declared_targets)
-    for path in sorted(root.glob("*.y*ml")):
+        return ToolCatalog((), target_name, declared_targets, DiagnosticBag(diagnostics))
+    members: list[ToolMember] = []
+    declared = tree.get("vars")
+    variables = (
+        {str(key): value for key, value in declared.items() if value is not None} if isinstance(declared, dict) else {}
+    )
+    for path in sorted(root.glob("**/*.y*ml")):
         if refused(project_dir, path, diagnostics):
             continue
         relative = path.relative_to(project_dir).as_posix()
         try:
             parsed = parse_yaml_bytes(path.read_bytes(), relative)
             loaded = dict(parsed.tree)
-            lines = parsed.line_index
             diagnostics.extend(parsed.diagnostics)
         except ProjectError as exc:
             diagnostics.extend(exc.diagnostics)
@@ -99,47 +143,81 @@ def load_tool_catalog(
         except OSError:
             diagnostics.append(D("SST-LOD018", file=relative, path=relative, origin=Origin(relative)))
             continue
-        if not isinstance(loaded, dict):
-            diagnostics.append(
-                D("SST-PRS003", artifact=relative, field="root", expected="mapping", found=type(loaded).__name__)
-            )
-            continue
-        diagnostics.extend(_unknown(loaded, TOOLS_FILE_KEYS, relative, relative, lines, ()))
-        raw_groups = loaded.get("tools")
-        if not isinstance(raw_groups, list):
-            diagnostics.append(
-                D("SST-PRS003", artifact=relative, field="tools", expected="list", found=type(raw_groups).__name__)
-            )
-            continue
-        for group_index, raw_group in enumerate(raw_groups):
-            group, group_diagnostics = _parse_group(project_dir, relative, lines, group_index, raw_group)
-            diagnostics.extend(group_diagnostics)
-            if group is not None:
-                groups.append(group)
-    catalog = ToolCatalog(tuple(groups), target_name, declared_targets, DiagnosticBag(diagnostics))
-    return ToolCatalog(
-        catalog.groups,
-        catalog.target_name,
-        catalog.declared_targets,
-        DiagnosticBag((*validate_tool_catalog(catalog, dbt), *_aliased_relations(catalog, dbt))),
+        source = _Source(
+            project_dir,
+            relative,
+            parsed.line_index,
+            path.parent.relative_to(root).parts,
+            dbt,
+            tree.get("tools"),
+            MappingProxyType(variables),
+        )
+        diagnostics.extend(_unknown(loaded, TOOLS_FILE_KEYS, relative, source, ()))
+        for node, value in _entries(loaded, source, diagnostics):
+            member, member_diagnostics = _parse_member(source, node, value)
+            diagnostics.extend(member_diagnostics)
+            if member is not None:
+                members.append(member)
+    catalog = ToolCatalog(tuple(members), target_name, declared_targets, DiagnosticBag(diagnostics))
+    return replace(
+        catalog,
+        diagnostics=DiagnosticBag((*validate_tool_catalog(catalog, dbt), *_aliased_relations(catalog, dbt))),
     )
 
 
+def _entries(
+    loaded: Mapping[str, Any], source: _Source, diagnostics: list[Diagnostic]
+) -> tuple[tuple[NodePath, object], ...]:
+    """Return each member entry of a tools file with its node path: `tool:`'s one, or `tools:`'s list.
+
+    Diagnostics:
+        SST-PRS003: the root holds both `tool:` and `tools:`, or neither, or `tools:` is not a list.
+    """
+    file = source.source_file
+    if "tool" in loaded and "tools" in loaded:
+        diagnostics.append(
+            D(
+                "SST-PRS003",
+                artifact=file,
+                field="root",
+                expected="one of tool: and tools:",
+                found="both",
+                origin=Origin(file),
+            )
+        )
+        return ()
+    if "tool" in loaded:
+        return ((("tool",), loaded["tool"]),)
+    listed = loaded.get("tools")
+    if not isinstance(listed, list):
+        expected = "list" if "tools" in loaded else "a tool: mapping or a tools: list"
+        diagnostics.append(
+            D(
+                "SST-PRS003",
+                artifact=file,
+                field="tools",
+                expected=expected,
+                found=type(listed).__name__,
+                origin=Origin(file),
+            )
+        )
+        return ()
+    return tuple((("tools", index), value) for index, value in enumerate(listed))
+
+
 def _aliased_relations(catalog: ToolCatalog, dbt: DbtCatalog) -> tuple[Diagnostic, ...]:
-    """Report each `reference:` relation for the current target that names a dbt model dbt built elsewhere.
+    """Report each relation for the current target that names a dbt model dbt built elsewhere.
 
     Diagnostics:
         SST-DBT006: as `literal_relation_diagnostic` reports it.
     """
     found: list[Diagnostic] = []
-    for group in catalog.groups:
-        for member in group.members:
-            relation = member.relations.get(catalog.target_name)
-            diagnostic = (
-                literal_relation_diagnostic(dbt, relation, subject=member.declaration_key) if relation else None
-            )
-            if diagnostic is not None:
-                found.append(replace(diagnostic, origin=member.origin))
+    for member in catalog.members:
+        relation = member.relations.get(catalog.target_name)
+        subject = f"tool_ref:{member.name.casefold()}"
+        diagnostic = literal_relation_diagnostic(dbt, relation, subject=subject) if relation else None
+        if diagnostic is not None:
+            found.append(replace(diagnostic, origin=member.origin))
     return tuple(found)
 
 
@@ -147,249 +225,335 @@ def _unknown(
     value: Mapping[Any, Any],
     known: frozenset[str],
     artifact: str,
-    source_file: str,
-    lines: Mapping[NodePath, SourcePosition],
+    source: _Source,
     path: NodePath,
-    fallback: Origin | None = None,
+    *,
+    subject: str | None = None,
 ) -> list[Diagnostic]:
     """Report each key of the mapping at `path` that `known` does not model, where it is written.
 
-    A key `lines` has no position for points at `fallback`, else at the file's start.
-
     Diagnostics:
+        SST-PRS126: a member's key is one tools wrote before they lost their groups, which the
+            message says where to write now.
         SST-PRS022: the key is a near miss of one `known` holds, which it names.
         SST-PRS004: otherwise.
     """
     found: list[Diagnostic] = []
     for key in unknown_keys(value, known):
-        position = lines.get((*path, str(key)))
-        origin = Origin(source_file, position.line, position.col) if position else fallback
-        found.append(unknown_field(str(key), known, artifact=artifact, origin=origin or Origin(source_file, 1, 1)))
+        origin = source.origin((*path, str(key)))
+        moved = MOVED_TOOL_KEYS.get(str(key)) if known is TOOL_MEMBER_KEYS else None
+        found.append(
+            D("SST-PRS126", origin=origin, subject=subject, artifact=artifact, field=str(key), reason=moved)
+            if moved is not None
+            else unknown_field(str(key), known, artifact=artifact, origin=origin, subject=subject)
+        )
     return found
 
 
-def _parse_group(
-    project_dir: Path,
-    source_file: str,
-    lines: Mapping[NodePath, SourcePosition],
-    index: int,
-    value: object,
-) -> tuple[ToolGroup | None, tuple[Diagnostic, ...]]:
-    """Read one `tools:` entry into a group and its members, `define:` before `reference:`.
+def _parse_member(source: _Source, path: NodePath, value: object) -> tuple[ToolMember | None, tuple[Diagnostic, ...]]:
+    """Read one member: `tool:`'s mapping, or an entry of `tools:`; None when it lacks a name or type.
 
-    The group and what it reports point at line `index + 1` of the file: its place in the
-    list, not where it is written; an unknown key points where `lines` says it is written.
-    Its name is kept as written.
-
-    Returns:
-        The group, None when the entry is not a mapping or names no group; with what reading the
-        group and each of its members reported.
+    It points where it is written. YAML 1.1 reads an unquoted `on:` key as `true`, so that key
+    counts as `on:`. A member that writes `relations:` is a reference; any other is defined.
+    An explicit `search_column` or `attribute_columns` wins over the one `on:` gives. Its
+    settings resolve over its `config:`, the folder routes over its file, and the block root.
 
     Diagnostics:
-        SST-PRS003: when the entry is not a mapping, or its `define:` or `reference:` not a list.
-        SST-PRS002: when the entry has no non-blank `group`.
-        SST-PRS022, SST-PRS004: when the entry writes a key a group does not model.
+        SST-PRS003: `on:`, `relations`, `secrets`, `signature`, `columns` or `meta` has the wrong
+            type.
+        SST-PRS022, SST-PRS004, SST-PRS126: the entry writes a key a member does not model.
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+            reports its `config:` block.
+        SST-LOD004, SST-REF033, SST-REF003: the template in `on:` does not parse.
+        SST-VAL608: `on:` is not one single-argument `ref()` call.
+        Every code `_header`, `_Columns.read`, `_columns_of`, `_where` and `_body` list.
     """
-    origin = Origin(source_file, index + 1, 1)
-    if not isinstance(value, dict):
-        return None, (
-            D(
-                "SST-PRS003",
-                artifact=source_file,
-                field=f"tools[{index}]",
-                expected="mapping",
-                found=type(value).__name__,
-                origin=origin,
-            ),
+    header, problems = _header(source, path, value)
+    if header is None:
+        return None, problems
+    entry, name, type_name = header
+    diagnostics: list[Diagnostic] = []
+    origin = source.origin(path)
+    subject = artifact_key("tool", name.casefold())
+    keys = {key: item for key, item in entry.items() if key is not True}
+    diagnostics.extend(_unknown(keys, TOOL_MEMBER_KEYS, subject, source, path, subject=subject))
+    referenced = "relations" in entry
+    on_model, on_attributes = _on_fields(entry.get("on", entry.get(True)), origin, name, diagnostics)
+    columns = _Columns(source, path, entry, ColumnSite(name, "", subject, subject, origin), referenced, on_model)
+    config = entry.get("config")
+    diagnostics.extend(
+        item_config_diagnostics(
+            "tools",
+            config,
+            subject=subject,
+            origin_of=lambda key: source.origin((*path, "config", key) if key else (*path, "config")),
         )
-    name = value.get("group")
-    if not isinstance(name, str) or not name.strip():
-        return None, (D("SST-PRS002", artifact=f"tools[{index}]", field="group", origin=origin),)
-    members: list[ToolMember] = []
-    diagnostics = _unknown(value, TOOL_GROUP_KEYS, f"tool_group:{name}", source_file, lines, ("tools", index), origin)
-    for ownership in ToolOwnership:
-        raw_members = value.get(ownership.value)
-        if raw_members is None:
-            continue
-        if not isinstance(raw_members, list):
-            diagnostics.append(
-                D(
-                    "SST-PRS003",
-                    artifact=f"tool_group:{name}",
-                    field=ownership.value,
-                    expected="list",
-                    found=type(raw_members).__name__,
-                    origin=origin,
-                )
-            )
-            continue
-        for member_index, raw_member in enumerate(raw_members):
-            member, member_diagnostics = _parse_member(
-                project_dir,
-                source_file,
-                lines,
-                ("tools", index, ownership.value),
-                name,
-                ownership,
-                member_index,
-                raw_member,
-            )
-            diagnostics.extend(member_diagnostics)
-            if member is not None:
-                members.append(member)
-    return (
-        ToolGroup(
-            name=name,
-            origin=origin,
-            source_file=source_file,
-            description=optional_string(value.get("description")),
-            owner=optional_string(value.get("owner")),
-            immutable=bool(value.get("immutable", False)),
-            members=tuple(members),
-        ),
-        tuple(diagnostics),
     )
+    body_file, body = _body(source, entry.get("body"), name, (*path, "body"), diagnostics)
+    relations = _string_map(entry.get("relations"), "relations", subject, origin, diagnostics)
+    member = ToolMember(
+        name=name,
+        type=type_name,
+        ownership=ToolOwnership.REFERENCE if referenced else ToolOwnership.DEFINE,
+        origin=origin,
+        source_file=source.source_file,
+        description=optional_string(entry.get("description")),
+        on_model=on_model,
+        search_column=columns.written("search_column") or columns.written("on", "search_column"),
+        attribute_columns=columns.attributes(on_attributes),
+        title_column=columns.written("title_column"),
+        id_column=columns.written("id_column"),
+        columns=_columns_of(entry.get("columns"), name, path, source, columns.read, diagnostics),
+        relative_path_column=columns.written("relative_path_column"),
+        signature=_signature(entry.get("signature"), subject, origin, diagnostics),
+        where=_where(source, entry.get("where"), name, on_model, referenced, (*path, "where"), diagnostics),
+        refresh_mode=optional_string(entry.get("refresh_mode")),
+        language=optional_string(entry.get("language")),
+        runtime_version=optional_string(entry.get("runtime_version")),
+        handler=optional_string(entry.get("handler")),
+        body_file=body_file,
+        body=body,
+        returns=optional_string(entry.get("returns")),
+        packages=strings(entry.get("packages")),
+        imports=strings(entry.get("imports")),
+        external_access_integrations=strings(entry.get("external_access_integrations")),
+        secrets=MappingProxyType(_string_map(entry.get("secrets"), "secrets", subject, origin, diagnostics)),
+        relations=MappingProxyType(relations),
+        creation_keys=tuple(
+            sorted(({"on"} if True in entry else set()) | CREATION_KEYS.intersection(str(key) for key in entry))
+        ),
+        folder=source.folder,
+        meta=MappingProxyType(_mapping(entry.get("meta"), "meta", subject, origin, diagnostics)),
+        config=MappingProxyType(dict(config) if isinstance(config, dict) else {}),
+        settings=resolve_settings(source.block, source.folder, config),
+    )
+    return member, (*diagnostics, *columns.diagnostics)
 
 
-def _parse_member(
-    project_dir: Path,
-    source_file: str,
-    lines: Mapping[NodePath, SourcePosition],
-    parent: NodePath,
-    group: str,
-    ownership: ToolOwnership,
-    index: int,
-    value: object,
-) -> tuple[ToolMember | None, tuple[Diagnostic, ...]]:
-    """Read one member of a group's `define:` or `reference:` list; None when it lacks a name or type.
-
-    It points at line `index + 1` of the file: its place in its list; an unknown key points
-    where `lines` says it is written, below `parent`, its list's path. YAML 1.1 reads an unquoted
-    `on:` key as `true`, so that key counts as `on:`. `body_file:` is read relative to the
-    project root, as a project walk reads a file; one refused is None, as is one unreadable,
-    which `validate_tool_catalog` reports for a `define:` member. An explicit `search_column` or
-    `attribute_columns` wins over the one `on:` gives.
+def _header(
+    source: _Source, path: NodePath, value: object
+) -> tuple[tuple[Mapping[Any, Any], str, str] | None, tuple[Diagnostic, ...]]:
+    """Return a member entry with its name and type, or None and why it holds no member.
 
     Diagnostics:
-        SST-PRS003: when the entry is not a mapping, or `on:`, `relations`, `secrets`,
-            `signature` or `columns_and_descriptions` has the wrong type.
-        SST-PRS002: when the entry has no non-blank `name`, or no non-blank `type`.
-        SST-PRS022, SST-PRS004: when the entry writes a key a member does not model.
-        SST-LOD004, SST-REF033, SST-REF003: when the template in `on:` does not parse.
-        SST-VAL608: when `on:` is not one single-argument `ref()` call.
-        SST-PRT009: when `body_file:` is absolute, climbs out of the project, is or is reached
-            through a symbolic link, or resolves outside the project; it is not read.
+        SST-PRS003: the entry is not a mapping.
+        SST-PRS126: the entry is a tool group, once per group key it writes.
+        SST-PRS002: the entry has no non-blank `name`, or no non-blank `type`.
     """
-    origin = Origin(source_file, index + 1, 1)
+    file = source.source_file
+    origin = source.origin(path)
+    label = ".".join(str(part) for part in path)
     if not isinstance(value, dict):
         return None, (
-            D(
-                "SST-PRS003",
-                artifact=f"tool_group:{group}",
-                field=ownership.value,
-                expected="mapping entries",
-                found=type(value).__name__,
-                origin=origin,
-            ),
+            D("SST-PRS003", artifact=file, field=label, expected="mapping", found=type(value).__name__, origin=origin),
+        )
+    if any(key in value for key in _GROUP_KEYS):
+        return None, tuple(
+            D("SST-PRS126", origin=source.origin((*path, key)), artifact=file, field=key, reason=MOVED_TOOL_KEYS[key])
+            for key in _GROUP_KEYS
+            if key in value
         )
     name, type_name = value.get("name"), value.get("type")
-    diagnostics: list[Diagnostic] = []
-    if not isinstance(name, str) or not name.strip():
-        diagnostics.append(D("SST-PRS002", artifact=f"tool_group:{group}", field="name", origin=origin))
-    if not isinstance(type_name, str) or not type_name.strip():
-        diagnostics.append(D("SST-PRS002", artifact=f"tool_group:{group}", field="type", origin=origin))
-    if diagnostics:
-        return None, tuple(diagnostics)
-    keys = {key: item for key, item in value.items() if key is not True}
-    artifact = artifact_key("tool", str(name))
-    diagnostics.extend(_unknown(keys, TOOL_MEMBER_KEYS, artifact, source_file, lines, (*parent, index), origin))
-    on_model, search_column, attributes = _on_fields(value.get("on", value.get(True)), origin, str(name), diagnostics)
-    body_file = optional_string(value.get("body_file"))
-    body = _body(project_dir, body_file, str(name), origin, diagnostics) if body_file else None
-    relations = _string_map(value.get("relations"), "relations", str(name), origin, diagnostics)
-    columns = _columns(value.get("columns_and_descriptions"), str(name), origin, diagnostics)
-    signature = _signature(value.get("signature"), str(name), origin, diagnostics)
-    return (
-        ToolMember(
-            group=group,
-            name=str(name),
-            type=str(type_name),
-            ownership=ownership,
-            origin=origin,
-            source_file=source_file,
-            description=optional_string(value.get("description")),
-            on_model=on_model,
-            search_column=optional_string(value.get("search_column")) or search_column,
-            attribute_columns=strings(value.get("attribute_columns")) or attributes,
-            title_column=optional_string(value.get("title_column")),
-            id_column=optional_string(value.get("id_column")),
-            columns=columns,
-            relative_path_column=optional_string(value.get("relative_path_column")),
-            warehouse=optional_string(value.get("warehouse")),
-            signature=signature,
-            where=optional_string(value.get("where")),
-            target_lag=optional_string(value.get("target_lag")),
-            embedding_model=optional_string(value.get("embedding_model")),
-            refresh_mode=optional_string(value.get("refresh_mode")),
-            language=optional_string(value.get("language")),
-            runtime_version=optional_string(value.get("runtime_version")),
-            handler=optional_string(value.get("handler")),
-            body_file=body_file,
-            body=body,
-            returns=optional_string(value.get("returns")),
-            execute_as=optional_string(value.get("execute_as")),
-            packages=strings(value.get("packages")),
-            imports=strings(value.get("imports")),
-            external_access_integrations=strings(value.get("external_access_integrations")),
-            secrets=MappingProxyType(_string_map(value.get("secrets"), "secrets", str(name), origin, diagnostics)),
-            relations=MappingProxyType(relations),
-            creation_keys=tuple(
-                sorted(({"on"} if True in value else set()) | CREATION_KEYS.intersection(str(key) for key in value))
-            ),
-        ),
-        tuple(diagnostics),
+    problems = tuple(
+        D("SST-PRS002", artifact=file, field=f"{label}.{field}", origin=origin)
+        for field, written in (("name", name), ("type", type_name))
+        if not isinstance(written, str) or not written.strip()
     )
+    if problems or not isinstance(name, str) or not isinstance(type_name, str):
+        return None, problems
+    return (value, name, type_name), ()
 
 
-def _body(project_dir: Path, body_file: str, name: str, origin: Origin, diagnostics: list[Diagnostic]) -> str | None:
-    """Read a member's `body_file:` relative to the project; None when it is refused or unreadable.
+@dataclass(slots=True)
+class _Columns:
+    """Read the columns one member names, as its ownership and `on:` model say they are written.
 
-    Diagnostics:
-        SST-PRT009: when the file is refused as `_body_path` refuses it; it is not read.
+    Attributes:
+        site: Where the member is written; each column's diagnostics name its own field and node.
+        diagnostics: What reading the columns reported, in the order they were read.
     """
-    sidecar, refusal = _body_path(project_dir, body_file)
-    if refusal is not None:
-        diagnostics.append(
-            D(
-                "SST-PRT009",
-                path=posixpath.normpath(body_file),
-                detail=refusal,
-                subject=artifact_key("tool", name),
-                origin=origin,
-            )
-        )
-        return None
-    try:
-        return sidecar.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
+
+    source: _Source
+    path: NodePath
+    entry: Mapping[Any, Any]
+    site: ColumnSite
+    referenced: bool
+    on_model: str | None
+    diagnostics: list[Diagnostic] = field(default_factory=list)
+
+    def read(self, name: str, raw: object, node: NodePath) -> str | None:
+        """Return the column `raw` names under the field `name`, written at `node`; None when it names none.
+
+        Diagnostics:
+            Every code `tool_column` lists.
+        """
+        text = optional_string(raw)
+        if text is None:
+            return None
+        site = replace(self.site, field=name, origin=self.source.origin(node))
+        resolved, problem = tool_column(text, site, referenced=self.referenced, on_model=self.on_model)
+        if problem is not None:
+            self.diagnostics.append(problem)
+        return resolved
+
+    def written(self, *keys: str) -> str | None:
+        """Return the column at `keys` in the member, as `read` reads it."""
+        return self.read(".".join(keys), _at(self.entry, keys), (*self.path, *keys))
+
+    def attributes(self, on_attributes: tuple[str, ...]) -> tuple[str, ...]:
+        """Return the attribute columns: `attribute_columns:` beside `on:`, else `on.attributes`."""
+        key: NodePath = ("attribute_columns",) if "attribute_columns" in self.entry else ("on", "attributes")
+        written = strings(self.entry.get("attribute_columns")) or on_attributes
+        label = ".".join(str(part) for part in key)
+        found = (self.read(f"{label}.{index}", item, (*self.path, *key, index)) for index, item in enumerate(written))
+        return tuple(column for column in found if column is not None)
 
 
-def _body_path(project_dir: Path, body_file: str) -> tuple[Path, str | None]:
-    """Return the file a `body_file:` names, relative to the project, and why SST refuses to read it.
+def _at(value: Mapping[Any, Any], keys: tuple[str, ...]) -> object:
+    """Return what `keys` reach through nested mappings; None when nothing. `on` is also YAML 1.1's `true`."""
+    node: object = value
+    for key in keys:
+        if not isinstance(node, dict):
+            return None
+        node = node.get(key, node.get(True)) if key == "on" else node.get(key)
+    return node
 
-    Its `..` is taken away as written, so the path returned is the one checked. It is refused when
-    absolute or climbing out of the project, and else as `walk_refusal` refuses a path.
+
+def _body(
+    source: _Source, value: object, name: str, path: NodePath, diagnostics: list[Diagnostic]
+) -> tuple[str | None, str | None]:
+    """Read a routine's `body: "{{ file('<path>') }}"`, its path relative to the tool file's folder.
 
     Returns:
-        The file, and the reason, worded to follow "could not read <path>: " in SST-PRT009;
-        None when it may be read.
+        The file relative to the project root, and its text; the file and None when its text
+        cannot be read; and None and None when `body:` is absent or names no file.
+
+    Diagnostics:
+        SST-PRS003: `body:` is not a string.
+        SST-LOD004, SST-REF033, SST-REF003: its template does not parse.
+        SST-REF050: it is a bare value, not a `file()` call.
+        SST-REF003: it holds more than one call, or text beside the call.
+        SST-REF004, SST-REF041, SST-REF015: the call is not one one-path `file()` call.
+        SST-REF027: the path is absolute, or climbs out of the project.
+        SST-PRT009: the file, or a folder between the project and it, is a symbolic link; it is
+            not read.
+        SST-REF014: the path names no file.
+        SST-LOD018: the file is there and cannot be read.
+        SST-LOD006: the file is not UTF-8.
+        SST-LOD019: the file holds only whitespace.
     """
-    relative = posixpath.normpath(body_file)
-    path = project_dir / relative
-    if posixpath.isabs(relative) or relative == ".." or relative.startswith("../"):
-        return path, "it resolves outside the project"
-    return path, walk_refusal(project_dir, path)
+    subject = artifact_key("tool", name.casefold())
+    origin = source.origin(path)
+    file = source.source_file
+    if value is None:
+        return None, None
+    if not isinstance(value, str):
+        found = type(value).__name__
+        diagnostics.append(
+            D("SST-PRS003", artifact=subject, field="body", expected="string", found=found, origin=origin)
+        )
+        return None, None
+    call = _one_call(value, "file", origin, subject, diagnostics)
+    if call is None:
+        return None, None
+    requested = call.args[0]
+    relative = posixpath.normpath(posixpath.join(posixpath.dirname(file), requested))
+    if posixpath.isabs(requested) or relative == ".." or relative.startswith("../"):
+        diagnostics.append(D("SST-REF027", path=requested, origin=origin, subject=subject))
+        return None, None
+    sidecar = source.project_dir / relative
+    refusal = walk_refusal(source.project_dir, sidecar)
+    if refusal is not None:
+        diagnostics.append(D("SST-PRT009", path=relative, detail=refusal, subject=subject, origin=origin))
+        return relative, None
+    if not sidecar.is_file():
+        diagnostics.append(D("SST-REF014", path=requested, origin=origin, subject=subject))
+        return relative, None
+    try:
+        content = sidecar.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        diagnostics.append(D("SST-LOD006", origin=Origin(relative), file=relative, offset=exc.start, subject=subject))
+        return relative, None
+    except OSError:
+        diagnostics.append(D("SST-LOD018", file=file, path=requested, origin=origin, subject=subject))
+        return relative, None
+    if not content.strip():
+        diagnostics.append(D("SST-LOD019", path=requested, file=file, origin=origin, subject=subject))
+    return relative, content
+
+
+def _one_call(
+    value: str, function: str, origin: Origin, subject: str, diagnostics: list[Diagnostic]
+) -> TemplateCall | None:
+    """Return the one `function()` call that is all of `value`; None, reported, when it is anything else."""
+    try:
+        calls = scan_template_calls(value)
+    except TemplateSyntaxError as exc:
+        diagnostics.append(syntax_problem(exc, origin.file, subject=subject))
+        return None
+    if not calls:
+        diagnostics.append(missing_call(value, function, origin, field="body", artifact=subject, subject=subject))
+        return None
+    if len(calls) != 1 or calls[0].raw.strip() != value.strip():
+        diagnostics.append(malformed_field(value, origin, subject=subject))
+        return None
+    problem = call_problem(calls[0], frozenset((function,)), origin, field="body", artifact=subject, subject=subject)
+    if problem is not None:
+        diagnostics.append(problem)
+        return None
+    return calls[0]
+
+
+def _where(
+    source: _Source,
+    value: object,
+    name: str,
+    on_model: str | None,
+    referenced: bool,
+    path: NodePath,
+    diagnostics: list[Diagnostic],
+) -> str | None:
+    """Read a search service's `where:`, its `ref()` and `var()` calls resolved as a filter's are.
+
+    A column ref becomes the bare column, upper-cased, as the service's query selects it; it
+    must name the `on:` model. A referenced member's `where:` is a creation key it may not
+    write (SST-VAL605), so it is kept as written.
+
+    Diagnostics:
+        Every code `resolve_scalar` lists for the filter-expression policy.
+        SST-VAL622: a column ref names a model other than the `on:` model.
+    """
+    text = optional_string(value)
+    if text is None or referenced:
+        return text
+    subject = artifact_key("tool", name.casefold())
+    origin = source.origin(path)
+
+    def column_value(call: TemplateCall, column: str) -> str | Diagnostic:
+        if on_model is not None and call.args[0].casefold() != on_model.casefold():
+            return D(
+                "SST-VAL622",
+                origin=origin,
+                subject=subject,
+                name=name,
+                field="where",
+                found=call.args[0],
+                expected=on_model,
+            )
+        return column.upper()
+
+    resolved, problems = resolve_scalar(
+        text,
+        ref_field("tool.where"),
+        origin,
+        ResolveContext(source.dbt, variables=source.variables),
+        field="tool.where",
+        artifact=subject,
+        subject=subject,
+        column_value=column_value,
+    )
+    diagnostics.extend(problems)
+    return resolved.text
 
 
 def _on_fields(
@@ -397,28 +561,27 @@ def _on_fields(
     origin: Origin,
     name: str,
     diagnostics: list[Diagnostic],
-) -> tuple[str | None, str | None, tuple[str, ...]]:
+) -> tuple[str | None, tuple[str, ...]]:
     """Read `on:`, either a `ref()` string or a mapping of `table`, `search_column` and `attributes`.
 
+    Its `search_column` is read with the member's other columns.
+
     Returns:
-        `(model, search_column, attributes)`: the model as the `ref()` names it, None when
-        `on:` is absent or cannot be read; and the mapping's search column, stripped, and its
-        attributes, else None and `()`.
+        `(model, attributes)`: the model as the `ref()` names it, None when `on:` is absent or
+        cannot be read; and the mapping's attributes as written, else `()`.
 
     Diagnostics:
-        SST-PRS003: when `on:` is neither a string nor a mapping, or its `table` is set and not text.
-        SST-LOD004, SST-REF033, SST-REF003: when its template does not parse.
-        SST-VAL608: when it is not exactly one single-argument `ref()` call.
+        SST-PRS003: `on:` is neither a string nor a mapping, or its `table` is set and not text.
+        SST-LOD004, SST-REF033, SST-REF003: its template does not parse.
+        SST-VAL608: it is not exactly one single-argument `ref()` call.
     """
     raw: object = value
-    search_column: str | None = None
     attributes: tuple[str, ...] = ()
     if isinstance(value, dict):
         raw = value.get("table")
-        search_column = optional_string(value.get("search_column"))
         attributes = strings(value.get("attributes"))
     if raw is None:
-        return None, search_column, attributes
+        return None, attributes
     if not isinstance(raw, str):
         diagnostics.append(
             D(
@@ -430,19 +593,19 @@ def _on_fields(
                 origin=origin,
             )
         )
-        return None, search_column, attributes
+        return None, attributes
     try:
         calls = scan_template_calls(raw)
     except TemplateSyntaxError as exc:
         diagnostics.append(syntax_problem(exc, origin.file))
-        return None, search_column, attributes
+        return None, attributes
     if len(calls) != 1 or calls[0].function != "ref" or len(calls[0].args) != 1 or calls[0].raw.strip() != raw.strip():
         diagnostics.append(D("SST-VAL608", name=name, value=raw, origin=origin))
-        return None, search_column, attributes
-    return calls[0].args[0], search_column, attributes
+        return None, attributes
+    return calls[0].args[0], attributes
 
 
-def _signature(value: object, name: str, origin: Origin, diagnostics: list[Diagnostic]) -> tuple[ToolParameter, ...]:
+def _signature(value: object, subject: str, origin: Origin, diagnostics: list[Diagnostic]) -> tuple[ToolParameter, ...]:
     """Read `signature:` as the routine's parameters, in order, skipping each malformed entry.
 
     A parameter needs a string `name` and `type`; `required` is read as a truth value, False
@@ -458,7 +621,7 @@ def _signature(value: object, name: str, origin: Origin, diagnostics: list[Diagn
         diagnostics.append(
             D(
                 "SST-PRS003",
-                artifact=artifact_key("tool", name),
+                artifact=subject,
                 field="signature",
                 expected="list",
                 found=type(value).__name__,
@@ -472,7 +635,7 @@ def _signature(value: object, name: str, origin: Origin, diagnostics: list[Diagn
             diagnostics.append(
                 D(
                     "SST-PRS003",
-                    artifact=artifact_key("tool", name),
+                    artifact=subject,
                     field="signature",
                     expected="name/type entries",
                     found=type(item).__name__,
@@ -484,46 +647,72 @@ def _signature(value: object, name: str, origin: Origin, diagnostics: list[Diagn
     return tuple(parameters)
 
 
-def _columns(value: object, name: str, origin: Origin, diagnostics: list[Diagnostic]) -> tuple[ToolColumn, ...]:
-    """Read `columns_and_descriptions:`, each column name to its settings, in authored order.
+def _columns_of(
+    value: object,
+    name: str,
+    path: NodePath,
+    source: _Source,
+    column: Callable[[str, object, NodePath], str | None],
+    diagnostics: list[Diagnostic],
+) -> tuple[ToolColumn, ...]:
+    """Read `columns:`, a list of entries each naming its column with `column:`, in authored order.
 
     An absent `description` or `type` reads as `""`, and `searchable` and `filterable` as truth
-    values, False when absent.
+    values, False when absent. An entry whose column does not resolve is left out.
+
+    Args:
+        column: Reads one column as the member names its columns, reporting what it finds.
 
     Diagnostics:
-        SST-PRS003: when the value is not a mapping, or a column's settings are not, once per column.
+        SST-PRS003: the value is not a list, or an entry is not a mapping, once per entry.
+        SST-PRS022, SST-PRS004: an entry writes a key a column does not model.
+        SST-PRS002: an entry names no `column`.
+        Every code `tool_column` lists, for each entry's `column:`.
     """
+    subject = artifact_key("tool", name.casefold())
     if value is None:
         return ()
-    if not isinstance(value, dict):
+    if not isinstance(value, list):
+        origin = source.origin((*path, "columns"))
         diagnostics.append(
             D(
                 "SST-PRS003",
-                artifact=artifact_key("tool", name),
-                field="columns_and_descriptions",
-                expected="mapping",
+                artifact=subject,
+                field="columns",
+                expected="list",
                 found=type(value).__name__,
                 origin=origin,
             )
         )
         return ()
     columns: list[ToolColumn] = []
-    for column_name, raw in value.items():
+    for index, raw in enumerate(value):
+        node = (*path, "columns", index)
         if not isinstance(raw, dict):
+            found = type(raw).__name__
             diagnostics.append(
                 D(
                     "SST-PRS003",
-                    artifact=artifact_key("tool", name),
-                    field=f"columns_and_descriptions.{column_name}",
+                    artifact=subject,
+                    field=f"columns.{index}",
                     expected="mapping",
-                    found=type(raw).__name__,
-                    origin=origin,
+                    found=found,
+                    origin=source.origin(node),
                 )
             )
             continue
+        diagnostics.extend(_unknown(raw, TOOL_COLUMN_KEYS, subject, source, node, subject=subject))
+        if optional_string(raw.get("column")) is None:
+            diagnostics.append(
+                D("SST-PRS002", artifact=subject, field=f"columns.{index}.column", origin=source.origin(node))
+            )
+            continue
+        resolved = column(f"columns.{index}.column", raw.get("column"), (*node, "column"))
+        if resolved is None:
+            continue
         columns.append(
             ToolColumn(
-                str(column_name),
+                str(resolved),
                 str(raw.get("description") or ""),
                 str(raw.get("type") or ""),
                 bool(raw.get("searchable", False)),
@@ -533,10 +722,33 @@ def _columns(value: object, name: str, origin: Origin, diagnostics: list[Diagnos
     return tuple(columns)
 
 
+def _mapping(value: object, field: str, subject: str, origin: Origin, diagnostics: list[Diagnostic]) -> dict[str, Any]:
+    """Return a mapping field with text keys; `{}` when absent, and reported when of another type.
+
+    Diagnostics:
+        SST-PRS003: the value is present and not a mapping.
+    """
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        diagnostics.append(
+            D(
+                "SST-PRS003",
+                artifact=subject,
+                field=field,
+                expected="mapping",
+                found=type(value).__name__,
+                origin=origin,
+            )
+        )
+        return {}
+    return {str(key): item for key, item in value.items()}
+
+
 def _string_map(
     value: object,
     field: str,
-    name: str,
+    subject: str,
     origin: Origin,
     diagnostics: list[Diagnostic],
 ) -> dict[str, str]:
@@ -546,7 +758,7 @@ def _string_map(
         diagnostics.append(
             D(
                 "SST-PRS003",
-                artifact=artifact_key("tool", name),
+                artifact=subject,
                 field=field,
                 expected="string mapping",
                 found=type(value).__name__,

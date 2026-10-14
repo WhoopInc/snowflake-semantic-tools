@@ -156,7 +156,7 @@ def test_an_envelope_printed_before_anything_ran_reports_empty_timings() -> None
 
 
 def _promoted_warning(name: str = "lookup") -> Diagnostic:
-    found = D("SST-CFG018", subject="tool_group:partner", group="partner", name=name)
+    found = D("SST-CFG018", subject=f"tool:{name}", name=name)
     return dataclasses.replace(found, severity=Severity.ERROR)
 
 
@@ -178,7 +178,7 @@ def test_one_baselined_promoted_warning_is_counted_apart_and_counts_are_pluralis
         "0 errors; 0 warnings (1 baselined); 0 info; 1 baselined not shown (--show-baselined)"
     )
     assert _summary_line(tmp_path, capsys, promoted) == "1 error; 0 warnings; 0 info"
-    warning = D("SST-CFG018", subject="tool_group:partner", group="partner", name="other")
+    warning = D("SST-CFG018", subject="tool:other", name="other")
     assert _summary_line(tmp_path, capsys, promoted, _promoted_warning("third"), warning) == (
         "2 errors; 1 warning; 0 info"
     )

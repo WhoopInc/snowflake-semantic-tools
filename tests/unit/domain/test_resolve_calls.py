@@ -60,7 +60,7 @@ def test_every_function_names_its_arity() -> None:
     assert (accepted_arity("ref"), accepted_arity("source"), accepted_arity("tool"), accepted_arity("tag")) == (
         (1, 2),
         (2,),
-        (2,),
+        (1,),
         (1,),
     )
 

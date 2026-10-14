@@ -20,7 +20,7 @@ from snowflake_semantic_tools.app.compile.agents import AgentCompileContext
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember, ToolOwnership
 from tests.helpers.file_trees import write_tree
 from tests.helpers.projects import project_paths
 
@@ -224,17 +224,15 @@ def agent_context(tools: ToolCatalog | None = None) -> AgentCompileContext:
 
 
 def procedure_catalog() -> ToolCatalog:
-    """A tool catalog holding one referenced procedure, `platform.procedure`, for a generic tool."""
+    """A tool catalog holding one referenced procedure, `procedure`, for a generic tool."""
     procedure = ToolMember(
-        "platform",
         "procedure",
         "procedure",
         ToolOwnership.REFERENCE,
         Origin("tools.yml"),
         "tools.yml",
         description="Procedure.",
-        warehouse="WH",
         relations=MappingProxyType({"dev": "DB.S.PROCEDURE"}),
+        config=MappingProxyType({"warehouse": "WH"}),
     )
-    group = ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(procedure,))
-    return ToolCatalog((group,), "dev", frozenset(("dev",)))
+    return ToolCatalog((procedure,), "dev", frozenset(("dev",)))

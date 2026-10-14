@@ -52,7 +52,7 @@ KNOWN_FUNCTIONS: frozenset[str] = frozenset(
 )
 
 # The argument counts a function accepts; a function not listed takes one name.
-_ARITY: Mapping[str, tuple[int, ...]] = MappingProxyType({"ref": (1, 2), "source": (2,), "tool": (2,)})
+_ARITY: Mapping[str, tuple[int, ...]] = MappingProxyType({"ref": (1, 2), "source": (2,)})
 
 
 def accepted_arity(function: str) -> tuple[int, ...]:
@@ -162,6 +162,20 @@ def malformed_field(text: str, origin: Origin | None, *, subject: str | None = N
     line = origin.line if origin is not None and origin.line is not None else 1
     col = origin.col if origin is not None and origin.col is not None else 1
     return D("SST-REF003", origin=origin, subject=subject, file=file, line=line, col=col, value=text)
+
+
+def missing_call(
+    text: str, function: str, origin: Origin | None, *, field: str, artifact: str, subject: str | None = None
+) -> Diagnostic:
+    """Report a bare value in a field that must be a `function()` call (SST-REF050).
+
+    Args:
+        text: The value as written.
+        function: The template function the field takes, which the message names.
+    """
+    return D(
+        "SST-REF050", origin=origin, subject=subject, artifact=artifact, field=field, found=text, function=function
+    )
 
 
 def literal_problem(

@@ -102,7 +102,7 @@ def test_the_skill_checks_hold_the_flattened_skill_md_to_its_budget_only_once() 
 def test_the_tool_checks_refuse_what_render_tool_cannot_render(
     kind: str, fields: dict[str, object], relation: object, codes: list[str]
 ) -> None:
-    member = ToolMember("g", "lookup", kind, ToolOwnership.DEFINE, Origin("t.yml"), "t.yml", **fields)  # type: ignore[arg-type]
+    member = ToolMember("lookup", kind, ToolOwnership.DEFINE, Origin("t.yml"), "t.yml", **fields)  # type: ignore[arg-type]
     assert [item.code for item in tool_render_checks(member, None)] == codes
 
 

@@ -110,7 +110,7 @@ def test_show_lists_entries_by_code_and_expiry(tmp_path: Path) -> None:
     assert _run(project, "add", "--all-warnings", "--yes").exit_code == 0
     shown = _run(project, "show", "--code", "sst-cfg018")
     assert shown.exit_code == 0
-    assert shown.output.count("SST-CFG018 tool_group:jaffle_partner") == 2
+    assert shown.output.count("SST-CFG018 tool:") == 2
     assert "SST-VAL528" not in shown.output
     assert json.loads(_run(project, "show", "--expired", "--output", "json").output)["data"]["entries"] == []
     document = _file(project)

@@ -16,16 +16,16 @@ from snowflake_semantic_tools.app.compile.agents.cross import cross_artifact_res
 from snowflake_semantic_tools.app.compile.agents.observe import ObserveLiveObjects
 from snowflake_semantic_tools.app.compile.base import CompileResult
 from snowflake_semantic_tools.app.compile.project import POSITIONS
-from snowflake_semantic_tools.app.compile.tools import CompiledTool, CompileTools
+from snowflake_semantic_tools.app.compile.tools import CompiledTool, CompileTools, ToolPlacement
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentTool
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog, EvalQuestion, EvalRunConfig, ResolvedEval
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.model.tool import (
     ToolCatalog,
     ToolColumn,
-    ToolGroup,
     ToolMember,
     ToolOwnership,
     ToolParameter,
@@ -40,6 +40,8 @@ TOOL_ORIGIN = Origin(TOOLS_FILE, 1, 1)
 OBJECT_SCHEMA = MappingProxyType(
     {"type": "object", "properties": {"order_id": {"type": "string"}}, "required": ["order_id"]}
 )
+# Where a compiled member publishes, and what fills what it leaves unset, unless a test says otherwise.
+PLACEMENT = ToolPlacement("DB", "S", "WH", "1 hour", None, "caller")
 DOCS_COLUMNS = (
     ToolColumn("DOC_ID", "Document id.", "string", False, True),
     ToolColumn("DOC_NAME", "Document title.", "string", True, False),
@@ -47,9 +49,15 @@ DOCS_COLUMNS = (
 
 
 def catalog(*members: ToolMember, immutable: bool = False) -> ToolCatalog:
-    """Return a dev-target catalog holding `members` in one group, `platform`."""
-    group = ToolGroup("platform", TOOL_ORIGIN, TOOLS_FILE, immutable=immutable, members=members)
-    return ToolCatalog((group,), "dev", frozenset(("dev", "prod")))
+    """Return a dev-target catalog holding `members`, each made immutable when `immutable`."""
+    held = tuple(immutable_member(member) for member in members) if immutable else members
+    return ToolCatalog(held, "dev", frozenset(("dev", "prod")))
+
+
+def immutable_member(member: ToolMember) -> ToolMember:
+    """Return `member` with `immutable: true` resolved from a `tools.platform` folder route."""
+    settings = {**member.settings, "immutable": Setting("immutable", True, "route:platform")}
+    return replace(member, settings=MappingProxyType(settings))
 
 
 def search_member(name: str = "docs_search", **fields: Any) -> ToolMember:
@@ -63,14 +71,20 @@ def search_member(name: str = "docs_search", **fields: Any) -> ToolMember:
         "target_lag": "1 hour",
         **fields,
     }
-    return ToolMember(
-        "platform", name, "cortex_search_service", ToolOwnership.DEFINE, TOOL_ORIGIN, TOOLS_FILE, **values
-    )
+    return ToolMember(name, "cortex_search_service", ToolOwnership.DEFINE, TOOL_ORIGIN, TOOLS_FILE, **values)
 
 
 def procedure_member(name: str = "lookup", *, reference: bool = True, **fields: Any) -> ToolMember:
-    """Return a procedure member: referenced on dev and prod, or defined from a body file."""
-    values: dict[str, Any] = {"description": "Looks up one order.", "warehouse": "WH", **fields}
+    """Return a procedure member: referenced on dev and prod, or defined from a body file.
+
+    Its own `config:` names warehouse `WH`, where an agent's generic tool over it runs.
+    """
+    values: dict[str, Any] = {
+        "description": "Looks up one order.",
+        "warehouse": "WH",
+        "config": MappingProxyType({"warehouse": "WH"}),
+        **fields,
+    }
     if reference:
         values.setdefault("relations", MappingProxyType({"dev": "DB.DEV.LOOKUP", "prod": "DB.PROD.LOOKUP"}))
     else:
@@ -79,7 +93,7 @@ def procedure_member(name: str = "lookup", *, reference: bool = True, **fields: 
         values.setdefault("language", "sql")
         values.setdefault("returns", "VARCHAR")
     ownership = ToolOwnership.REFERENCE if reference else ToolOwnership.DEFINE
-    return ToolMember("platform", name, "procedure", ownership, TOOL_ORIGIN, TOOLS_FILE, **values)
+    return ToolMember(name, "procedure", ownership, TOOL_ORIGIN, TOOLS_FILE, **values)
 
 
 def parameter(name: str, sql_type: str) -> ToolParameter:
@@ -97,7 +111,7 @@ def analyst_tool(**fields: Any) -> AgentTool:
 
 def search_tool(name: str = "docs", **fields: Any) -> AgentTool:
     """Return a Cortex Search tool over the `docs_search` member."""
-    values: dict[str, Any] = {"name": name, "description": "Product documents.", "backing": ("docs_search",), **fields}
+    values: dict[str, Any] = {"name": name, "description": "Product documents.", "backing": "docs_search", **fields}
     keys = (
         "type",
         "name",
@@ -114,7 +128,7 @@ def generic_tool(name: str = "lookup", **fields: Any) -> AgentTool:
     values: dict[str, Any] = {
         "name": name,
         "description": "One order's tier.",
-        "backing": ("lookup",),
+        "backing": "lookup",
         "input_schema": OBJECT_SCHEMA,
         **fields,
     }
@@ -161,12 +175,7 @@ def compile_tools(members: Iterable[ToolMember], **materializations: str) -> Com
     """Compile defined members over `product_docs`, its relation `DB.MARTS.PRODUCT_DOCS`."""
     return CompileTools(
         catalog(*members),
-        database="DB",
-        schema="S",
-        warehouse="WH",
-        target_lag="1 hour",
-        embedding_model=None,
-        execute_as="caller",
+        default=PLACEMENT,
         dbt_relations={"product_docs": "DB.MARTS.PRODUCT_DOCS"},
         dbt_materializations=dict(materializations),
     ).run_result()
@@ -211,9 +220,3 @@ def dbt_catalog() -> DbtCatalog:
     columns = tuple(DbtColumn(name, None, "VARCHAR", None) for name in ("BODY", "DOC_ID", "DOC_NAME"))
     model = DbtModel("model.jaffle.product_docs", "product_docs", "DB.MARTS.PRODUCT_DOCS", (), (), columns)
     return DbtCatalog("v12", None, None, (model,))
-
-
-def group(name: str, *members: ToolMember, immutable: bool = False) -> ToolGroup:
-    """Return a group named `name` holding `members`, each moved into it."""
-    moved = tuple(replace(member, group=name) for member in members)
-    return ToolGroup(name, TOOL_ORIGIN, TOOLS_FILE, immutable=immutable, members=moved)

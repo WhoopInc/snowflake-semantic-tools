@@ -25,7 +25,7 @@ from snowflake_semantic_tools.app.compile.skills import (
     extension_pins,
     unpublished_reasons,
 )
-from snowflake_semantic_tools.app.compile.tools import CompileTools
+from snowflake_semantic_tools.app.compile.tools import CompileTools, ToolPlacement
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.diagnostics.policy import apply_overrides
 from snowflake_semantic_tools.domain.model.agent import AgentModel
@@ -49,7 +49,7 @@ from snowflake_semantic_tools.domain.model.profile import DesktopProfile, Profil
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.model.setting import ROOT_SOURCE, ROUTE_PREFIX
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, Plugin, Skill, extension_identifier
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolOwnership
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
 from snowflake_semantic_tools.domain.validate.config import (
     config_tool_calls,
@@ -245,6 +245,7 @@ class CompileProject:
         what the configuration and the agents say about the tools.
 
         Diagnostics:
+            SST-REF015: a configuration value's `tool()` does not take exactly one name.
             SST-CFG017: a configuration value's `tool()` names no declared member.
             SST-CFG018: a declared tool member is referenced by no agent and no configuration value.
         """
@@ -338,7 +339,12 @@ class CompileProject:
             allow_unknown_keys=settings.block("snowflake").get("allow_unknown_keys") is not False,
             avatar_allowlist=_avatar_allowlist(settings.block("snowflake")),
             extra_tool_types=_extra_tool_types(settings.block("snowflake")),
-            tool_locations=MappingProxyType(_tool_locations(settings, tool_catalog)),
+            tool_locations=MappingProxyType(
+                {
+                    name: (place.database, place.schema)
+                    for name, place in _tool_placements(settings, tool_catalog).items()
+                }
+            ),
         )
 
 
@@ -548,111 +554,51 @@ def _carried_by_profiles(catalog: ProfileCatalog) -> frozenset[str]:
     )
 
 
-def _compile_tools(settings: _Settings, catalog: ToolCatalog, dbt: DbtCatalog) -> CompileResult:
-    """Compile the tools with the `tools:` defaults, a group's own `tools.<group>` block overriding them.
+def _tool_placements(settings: _Settings, catalog: ToolCatalog) -> dict[str, ToolPlacement]:
+    """Return where each defined member publishes and what its DDL renders, by casefolded name.
 
-    Each overridden group compiles on its own, with the catalog's diagnostics about its members,
-    so every diagnostic is reported once.
-
-    Diagnostics:
-        SST-CFG020: a `tools.<group>` override names no declared group, or one with no `define:`.
+    A member's settings resolve through the one precedence chain: its own `config:`, then the
+    closest `tools:` folder route over its file, then the block root. Its database and schema
+    are its settings', else the target's; its warehouse likewise, else the target's; and a
+    procedure runs as its caller unless a setting says otherwise. The first of two members
+    with one name keeps the placement, as SST-VAL001 reports the second.
     """
-    defaults = settings.block("tools")
-    by_name = {group.name.casefold(): group for group in catalog.groups}
-    overrides, problems = _tool_overrides(settings, catalog)
+    placements: dict[str, ToolPlacement] = {}
+    for member in catalog.managed:
+        placements.setdefault(member.name.casefold(), _tool_placement(settings, member))
+    return placements
 
-    def keys(groups: tuple[ToolGroup, ...]) -> frozenset[str]:
-        return frozenset(f"tool:{member.name.casefold()}" for group in groups for member in group.members)
 
-    separate = keys(tuple(by_name[name] for name in overrides))
-    shared = tuple(group for group in catalog.groups if group.name.casefold() not in overrides)
-    results = [
-        _tool_result(
-            settings,
-            replace(
-                catalog,
-                groups=shared,
-                diagnostics=DiagnosticBag(d for d in catalog.diagnostics if d.subject not in separate),
-            ),
-            defaults,
-            dbt,
-        )
-    ]
-    for name, merged in overrides.items():
-        own = keys((by_name[name],))
-        alone = replace(
-            catalog,
-            groups=(by_name[name],),
-            diagnostics=DiagnosticBag(d for d in catalog.diagnostics if d.subject in own),
-        )
-        results.append(_tool_result(settings, alone, merged, dbt))
-    return CompileResult(
-        tuple(item for result in results for item in result.compiled),
-        DiagnosticBag((*problems, *(item for result in results for item in result.diagnostics))),
+def _tool_placement(settings: _Settings, member: ToolMember) -> ToolPlacement:
+    resolved = resolve_settings(settings.tree.get("tools"), member.folder, member.config)
+    target = settings.target
+    database, schema = settings.place(resolved)
+    warehouse = target_text(setting_value(resolved, "warehouse"), target, target.warehouse)
+    defaults: dict[str, object] = {
+        "database": database,
+        "schema": schema,
+        "warehouse": target.warehouse,
+        "execute_as": "caller",
+        "immutable": False,
+    }
+    return ToolPlacement(
+        database=database,
+        schema=schema,
+        warehouse=warehouse or target.warehouse,
+        target_lag=target_text(setting_value(resolved, "target_lag"), target, None),
+        embedding_model=target_text(setting_value(resolved, "embedding_model"), target, None),
+        execute_as=target_text(setting_value(resolved, "execute_as"), target, "caller"),
+        settings=_rendered("tools", resolved, target, defaults),
     )
 
 
-def _tool_overrides(settings: _Settings, catalog: ToolCatalog) -> tuple[dict[str, dict[str, object]], list[Diagnostic]]:
-    """Read each `tools.<group>` override, merged over the `tools:` defaults, by casefolded group name.
-
-    Diagnostics:
-        SST-CFG020: an override names no declared group, or one with no `define:`.
-    """
-    defaults = settings.block("tools")
-    by_name = {group.name.casefold(): group for group in catalog.groups}
-    overrides: dict[str, dict[str, object]] = {}
-    problems: list[Diagnostic] = []
-    for name, block in defaults.items():
-        if name.startswith("+") or not isinstance(block, dict):
-            continue
-        group = by_name.get(name.casefold())
-        reason = (
-            "is not declared"
-            if group is None
-            else "has no define: members, so the override would change nothing"
-            if not any(member.ownership is ToolOwnership.DEFINE for member in group.members)
-            else None
-        )
-        if reason is not None:
-            problems.append(
-                D(
-                    "SST-CFG020",
-                    origin=Origin(settings.file),
-                    subject=f"config:tools.{name}",
-                    group=name,
-                    reason=reason,
-                )
-            )
-        else:
-            overrides[name.casefold()] = {**defaults, **config_block(block)}
-    return overrides, problems
-
-
-def _tool_locations(settings: _Settings, catalog: ToolCatalog) -> dict[str, tuple[str, str]]:
-    """Return where each `define:` member publishes, by casefolded name, as `_compile_tools` places it."""
-    defaults = settings.block("tools")
-    overrides, _ = _tool_overrides(settings, catalog)
-    return {
-        member.name.casefold(): settings.location(overrides.get(group.name.casefold(), defaults))
-        for group in catalog.groups
-        for member in group.members
-        if member.ownership is ToolOwnership.DEFINE
-    }
-
-
-def _tool_result(
-    settings: _Settings, catalog: ToolCatalog, defaults: Mapping[str, object], dbt: DbtCatalog
-) -> CompileResult:
-    """Compile one part of the tool catalog with `defaults`, resolving each dbt model to its relation."""
-    database, schema = settings.location(defaults)
+def _compile_tools(settings: _Settings, catalog: ToolCatalog, dbt: DbtCatalog) -> CompileResult:
+    """Compile the tools, each defined member where its own resolved settings place it."""
+    target = settings.target
     return CompileTools(
         catalog,
-        database=database,
-        schema=schema,
-        warehouse=target_text(defaults.get("+warehouse"), settings.target, settings.target.warehouse),
-        target_lag=target_text(defaults.get("+target_lag"), settings.target, None),
-        embedding_model=target_text(defaults.get("+embedding_model"), settings.target, None),
-        execute_as=target_text(defaults.get("+execute_as"), settings.target, "caller"),
+        default=ToolPlacement(target.database.folded, target.schema.folded, target.warehouse, None, None, "caller"),
+        placements=_tool_placements(settings, catalog),
         dbt_relations={model.name: model.relation_name for model in dbt.models},
         dbt_materializations={model.name: model.materialized for model in dbt.models},
     ).run_result()

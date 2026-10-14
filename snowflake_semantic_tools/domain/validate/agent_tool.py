@@ -7,10 +7,12 @@ each reads only the values it is given and names the agent as its subject.
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
+from dataclasses import replace
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.agent import BUILTIN_AGENT_TOOLS, AgentModel, AgentTool
-from snowflake_semantic_tools.domain.model.tool import ToolMember
+from snowflake_semantic_tools.domain.model.tool import ToolMember, ToolOwnership
+from snowflake_semantic_tools.domain.resolve.tool_column import ColumnSite, tool_column
 
 # The keys every tool type takes; `name` on an Analyst tool is SST-VAL520's to report.
 _COMMON = frozenset(("type", "name", "description", "tool_spec_passthrough"))
@@ -27,7 +29,7 @@ TOOL_KEYS: Mapping[str, frozenset[str]] = {
         "stage_path",
         "relative_path_column",
         "filter",
-        "columns_and_descriptions",
+        "columns",
         "passthrough",
     },
     "generic": _COMMON | _ENVIRONMENT | {"identifier", "input_schema", "passthrough"},
@@ -202,7 +204,7 @@ def overrides(agent: AgentModel, authored: AgentTool, name: str, backing: ToolMe
             member's.
     """
     pairs = (
-        ("warehouse", authored.warehouse, backing.warehouse),
+        ("warehouse", authored.warehouse, backing.configured_warehouse),
         ("id_column", authored.id_column, backing.id_column),
         ("title_column", authored.title_column, backing.title_column),
     )
@@ -211,8 +213,64 @@ def overrides(agent: AgentModel, authored: AgentTool, name: str, backing: ToolMe
         for field, ours, theirs in pairs
         if ours and theirs and ours != theirs
     ]
-    if authored.columns_and_descriptions and backing.columns:
-        found.append(
-            D("SST-VAL615", artifact=agent.name, name=name, value="columns_and_descriptions", subject=agent.key)
-        )
+    if authored.columns and backing.columns:
+        found.append(D("SST-VAL615", artifact=agent.name, name=name, value="columns", subject=agent.key))
     return found
+
+
+def search_tool_columns(
+    agent: AgentModel, authored: AgentTool, name: str, backing: ToolMember
+) -> tuple[AgentTool, dict[str, object], list[Diagnostic]]:
+    """Read a search tool's own columns against its member, as the member reads its own.
+
+    Over a defined member each is a `{{ ref('<on model>', '<column>') }}`; over a referenced
+    one, a bare column. A column that does not resolve reads as unset, and an entry whose column
+    does not resolve is left out.
+
+    Returns:
+        The tool with its id, title and relative path columns resolved; its own columns, each
+        upper-cased column mapped to the rest of its entry, in written order, which replace the
+        member's when there are any; and what reading them reported.
+
+    Diagnostics:
+        SST-VAL524: a `columns:` entry is not a mapping, or names no `column`.
+        Every code `tool_column` lists, for each column.
+    """
+    found: list[Diagnostic] = []
+    referenced = backing.ownership is ToolOwnership.REFERENCE
+
+    def column(field: str, value: str | None) -> str | None:
+        if not value:
+            return None
+        site = ColumnSite(backing.name, f"tools.{name}.{field}", agent.name, agent.key, authored.origin)
+        resolved, problem = tool_column(value, site, referenced=referenced, on_model=backing.on_model)
+        if problem is not None:
+            found.append(problem)
+        return resolved
+
+    columns: dict[str, object] = {}
+    for index, entry in enumerate(authored.columns):
+        raw = entry.get("column") if isinstance(entry, Mapping) else None
+        if not isinstance(entry, Mapping) or not isinstance(raw, str) or not raw.strip():
+            detail = "the entry is not a mapping" if not isinstance(entry, Mapping) else "it names no column"
+            found.append(
+                D(
+                    "SST-VAL524",
+                    artifact=agent.name,
+                    name=name,
+                    column=f"columns[{index}]",
+                    detail=detail,
+                    subject=agent.key,
+                )
+            )
+            continue
+        resolved = column(f"columns[{index}].column", raw.strip())
+        if resolved is not None:
+            columns[resolved.upper()] = {str(key): value for key, value in entry.items() if key != "column"}
+    tool = replace(
+        authored,
+        id_column=column("id_column", authored.id_column),
+        title_column=column("title_column", authored.title_column),
+        relative_path_column=column("relative_path_column", authored.relative_path_column),
+    )
+    return tool, columns, found

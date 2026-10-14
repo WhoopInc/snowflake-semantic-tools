@@ -33,9 +33,6 @@ where it is explained.
 - **Consumer.** A role that uses a published object, such as one granted
   `USAGE` on an agent. SST grants consumers nothing. See
   [what people who use an agent need](guides/security.md#what-people-who-use-an-agent-need).
-- **`define:` and `reference:`.** The two lists of a tool group: objects SST
-  publishes and owns, and objects someone else owns that SST only locates. See
-  [tool groups](guides/agents.md#tool-groups).
 - **Defer target.** A second target whose dbt relations `ref()` resolves to,
   while publishing still goes to `--target`. See [targets](concepts.md#targets).
 - **Diagnostic.** A problem SST reports, with a stable code such as
@@ -102,11 +99,12 @@ where it is explained.
 - **Target.** The `profiles.yml` target a command runs against, which decides
   where everything lands. See [targets](concepts.md#targets).
 - **Tool.** An entry in an agent's `spec.tools`, and also the `tool` artifact a
-  `define:` member publishes for such an entry to call. See
+  defined tool member publishes for such an entry to call. See
   [tools](guides/agents.md#tools).
-- **Tool group.** An entry of a tools file's `tools:` list, named by `group:`,
-  holding `define:` and `reference:` members. See
-  [tool groups](guides/agents.md#tool-groups).
+- **Tool member.** One object an agent tool calls, declared once by a `tool:`
+  file or a `tools:` list entry: defined, which SST publishes, or, when it writes
+  `relations:`, referenced, which SST only locates. See
+  [tool members](guides/agents.md#tool-members).
 - **Unmanaged.** Said of an object at a name SST would publish to that state
   does not record as SST's; plan blocks it (`SST-PLN024`). See
   [ownership, grants, and prune](concepts.md#ownership-grants-and-prune).
@@ -127,7 +125,7 @@ Drawn from: [artifact keys](../snowflake_semantic_tools/domain/model/artifact_ke
 | alias | a name on an agent or extension version | the name a model's relation takes instead of the model's | an agent's `alias:`, moved to each new version |
 | profile | an agent's display name, avatar, and color | a connection in `profiles.yml` | dbt's `profiles.yml`, which SST also reads, or a CoCo Desktop profile from `profile.yml`; an agent's `profile:` keeps Snowflake's sense |
 | catalog | the catalog that serves Cortex Extensions to users; also a catalog integration for Iceberg tables | `catalog.json`, written by `dbt docs generate` | `skills.catalog`, the block that turns on publishing skills to Cortex Extensions |
-| tool | an entry in an agent specification's `tools` | -- | an agent's tool, or the `tool` artifact a `define:` member publishes |
+| tool | an entry in an agent specification's `tools` | -- | an agent's tool, or the `tool` artifact a defined tool member publishes |
 | metric | an entry in a semantic view's `METRICS` | a metric in dbt's semantic layer | an entry under `snowflake_metrics:`; an eval's judge metric is a different thing, named with `eval_metric()` |
 
 Drawn from: [configuration keys](../snowflake_semantic_tools/domain/model/config_schema/keys.py), [agent model](../snowflake_semantic_tools/domain/model/agent.py), [tool model](../snowflake_semantic_tools/domain/model/tool.py), [dbt model](../snowflake_semantic_tools/domain/model/dbt.py), [skill model](../snowflake_semantic_tools/domain/model/skill/model.py), [manifest](../snowflake_semantic_tools/app/manifest.py).

@@ -56,6 +56,9 @@ INSTRUCTION_TEXT = RefPolicy(frozenset(("filter", "relationship", "verified_quer
 TAG_NAME = RefPolicy(frozenset(("tag",)), required=True, multi=False)
 DESCRIPTION = RefPolicy(frozenset())
 
+# The value of a two-argument `ref()`, given the call and its column: a value or a diagnostic.
+ColumnValue = Callable[[TemplateCall, str], "str | Diagnostic"]
+
 # The member-reference functions, by the code a name none declares is reported under.
 _MEMBER_CODES: Mapping[str, str] = MappingProxyType(
     {
@@ -124,6 +127,7 @@ def resolve_scalar(
     artifact: str | None = None,
     subject: str | None = None,
     ref_value: Callable[[TemplateCall], str] | None = None,
+    column_value: ColumnValue | None = None,
 ) -> tuple[Resolved, DiagnosticBag]:
     """Replace each template call in `text` with its value, checked against the field's policy.
 
@@ -138,6 +142,9 @@ def resolve_scalar(
             by `field`.
         subject: The artifact key every diagnostic carries; None for none.
         ref_value: The value of a one-argument `ref()`; None substitutes the model's relation.
+        column_value: The value of a two-argument `ref()` whose column exists, given the call and
+            the column as the model names it, or the diagnostic that refuses it; None
+            substitutes `MODEL.COLUMN`.
 
     Diagnostics:
         SST-LOD004, SST-REF033, SST-REF003: a template span does not parse; nothing else is
@@ -164,7 +171,7 @@ def resolve_scalar(
     rendered = text
     # Last call first: a substitution changes the text's length after it, never before.
     for call in reversed(calls):
-        value = _resolve_call(call, policy, site, context, ref_value)
+        value = _resolve_call(call, policy, site, context, (ref_value, column_value))
         if isinstance(value, Diagnostic):
             diagnostics.append(value)
             continue
@@ -178,7 +185,7 @@ def _resolve_call(
     policy: RefPolicy,
     site: _Site,
     context: ResolveContext,
-    ref_value: Callable[[TemplateCall], str] | None,
+    ref_values: tuple[Callable[[TemplateCall], str] | None, ColumnValue | None],
 ) -> str | Diagnostic:
     """Return one call's value, or the single diagnostic that keeps it from resolving."""
     problem = call_problem(
@@ -188,7 +195,7 @@ def _resolve_call(
         return problem
     function = call.function
     if function == "ref":
-        value = _resolve_ref(call, site, context, ref_value)
+        value = _resolve_ref(call, site, context, *ref_values)
     elif function == "metric":
         value = _resolve_metric(call, site, context)
     elif function in _MEMBER_CODES:
@@ -213,8 +220,9 @@ def _resolve_ref(
     site: _Site,
     context: ResolveContext,
     ref_value: Callable[[TemplateCall], str] | None,
+    column_value: ColumnValue | None,
 ) -> str | Diagnostic:
-    """Resolve `ref('<model>')` through `ref_value` or to the relation, and a column to MODEL.COLUMN."""
+    """Resolve `ref()` to the model's relation or MODEL.COLUMN, unless a callback gives the value."""
     model = context.catalog.model(call.args[0])
     if model is None:
         return D("SST-REF001", origin=site.origin, subject=site.subject, model=call.args[0])
@@ -223,6 +231,8 @@ def _resolve_ref(
     column = model.column(call.args[1])
     if column is None:
         return D("SST-REF002", origin=site.origin, subject=site.subject, model=call.args[0], column=call.args[1])
+    if column_value is not None:
+        return column_value(call, column.name)
     return f"{model.name.upper()}.{column.name.upper()}"
 
 

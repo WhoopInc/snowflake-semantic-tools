@@ -41,7 +41,7 @@ RENDERED_KINDS = frozenset(
 
 
 def tool_render_checks(member: ToolMember, source_relation: QualifiedName | None) -> tuple[Diagnostic, ...]:
-    """Report a member `render_tool` cannot render, once the `tools:` defaults have applied.
+    """Report a member `render_tool` cannot render, once its resolved settings have applied.
 
     A kind may have no renderer, a member no source statement, or no warehouse or target lag.
 
@@ -71,7 +71,7 @@ def tool_render_checks(member: ToolMember, source_relation: QualifiedName | None
 
 
 def render_tool(member: ToolMember, target: QualifiedName, source_relation: QualifiedName | None) -> RenderedArtifact:
-    """Render a `define:` member as the one object it publishes: a search service, routine, or stage.
+    """Render a defined member as the one object it publishes: a search service, routine, or stage.
 
     Args:
         target: The name the object is created under.

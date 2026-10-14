@@ -10,7 +10,7 @@ another artifact with `{{ <function>('<name>') }}`.
 | Type | Position | Authored in | Publishes | Reference function |
 |---|---:|---|---|---|
 | [`semantic_view`](#semantic_view) | 100 | `semantic_views:` in `project.semantic_models_dir` | SEMANTIC VIEW | `semantic_view()` |
-| [`tool`](#tool) | 200 | a `define:` member of a `tools:` group in `project.tools_dir` | CORTEX SEARCH SERVICE, PROCEDURE, FUNCTION, or STAGE | `tool()` |
+| [`tool`](#tool) | 200 | a `tool:` file, or an entry of a `tools:` list, under `project.tools_dir` | CORTEX SEARCH SERVICE, PROCEDURE, FUNCTION, or STAGE | `tool()` |
 | [`skill`](#skill) | 250 | a `SKILL.md` folder in `project.skills_dir` | CORTEX EXTENSION (TYPE = 'SKILL') and its bundle stage | `skill()` |
 | [`plugin`](#plugin) | 260 | `plugin.yml` in `project.plugins_dir` | CORTEX EXTENSION (TYPE = 'PLUGIN') and its bundle stage | `plugin()` |
 | [`profile`](#profile) | 270 | `profile.yml` in `project.profiles_dir` | profile stage trees and one profile registry row | none |
@@ -30,7 +30,7 @@ A Snowflake semantic view built from dbt models and the semantic members attache
 
 ## tool
 
-One `define:` member of a tool group: a Snowflake object an agent tool calls, published before any agent that uses it. Grants depend on the kind: a search service is replaced and its explicit grants re-applied, a procedure or function is replaced with `COPY GRANTS`, and a stage is only ever created when absent. A `reference:` member names an object SST never writes, and is no artifact.
+One defined tool member: a Snowflake object an agent tool calls, published before any agent that uses it. Grants depend on the kind: a search service is replaced and its explicit grants re-applied, a procedure or function is replaced with `COPY GRANTS`, and a stage is only ever created when absent. A member that writes `relations:` names an object SST never writes, and is no artifact.
 
 - Position: 200
 - Lifecycle: one Snowflake object

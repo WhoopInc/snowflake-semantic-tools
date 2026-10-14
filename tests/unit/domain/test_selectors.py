@@ -107,7 +107,7 @@ def test_a_scope_reaches_what_it_chooses_and_every_subject_that_names_no_artifac
     assert views.reaches("semantic_view:orders", artifact_types=TYPES)
     assert not views.reaches("agent:orders", artifact_types=TYPES)
     assert not views.reaches("tool:docs", artifact_types=TYPES)
-    for project_wide in (None, "", "cli", "config:validation.strict", "tool_group:partner", "metric:orders.m"):
+    for project_wide in (None, "", "cli", "config:validation.strict", "tool_ref:partner", "metric:orders.m"):
         assert views.reaches(project_wide, artifact_types=TYPES)
     excluding = SelectionScope(excluded=Selection(None, frozenset(("agent:orders",))))
     assert not excluding.reaches("agent:orders", artifact_types=TYPES)

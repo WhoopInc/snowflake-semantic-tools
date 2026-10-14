@@ -1,4 +1,4 @@
-"""Check a tool catalog: its groups, each member's fields and references, and the SQL its DDL writes."""
+"""Check a tool catalog: each member's fields and references, the SQL its DDL writes, and its name."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from snowflake_semantic_tools.domain.model.tool import (
     KNOWN_TOOL_TYPES,
     NON_HANDLER_LANGUAGES,
     ToolCatalog,
-    ToolGroup,
     ToolKind,
     ToolMember,
     ToolOwnership,
@@ -24,123 +23,60 @@ from snowflake_semantic_tools.domain.validate.sql import checked_expression, nam
 
 
 def validate_tool_catalog(catalog: ToolCatalog, dbt: DbtCatalog) -> DiagnosticBag:
-    """Check every tool group and member, returning the catalog's load diagnostics with the new ones.
+    """Check every tool member, returning the catalog's load diagnostics with the new ones.
 
     Returns:
         Every diagnostic, sorted by origin file (none first), then code; ties keep the
         order they were found in.
 
     Diagnostics:
-        SST-VAL606: an immutable group declares `define:` members.
+        SST-VAL606: a member's settings resolve `immutable` and it writes no `relations:`.
         SST-VAL603: a member's type is not a known tool type.
-        SST-VAL604: a `define:` member declares neither `on:` nor `body_file:`, and is not a stage.
-        SST-VAL605: a `define:` member declares `relations`, or a `reference:` member a creation key.
-        SST-PRS002: a `reference:` member declares no `relations`; a defined search service no
-            `search_column`; a defined routine no `language` or `returns`, or, in Java, Python
-            or Scala, no `runtime_version` or `handler`.
+        SST-VAL604: a defined member declares neither `on:` nor `body:`, and is not a stage.
+        SST-VAL605: a referenced member declares a creation key.
+        SST-PRS002: a referenced member's `relations:` are empty; a defined search service has
+            no `search_column`; a defined routine no `language` or `returns`, or, in Java,
+            Python or Scala, no `runtime_version` or `handler`.
         SST-VAL621: a defined JavaScript or SQL routine sets `runtime_version`, `handler`,
             `packages` or `imports`; once per key.
         SST-REF018: a relation names a target `profiles.yml` does not declare, or none names the current one.
         SST-REF019: a relation is not a three-part name.
-        SST-REF023: a mutable group's reference resolves to one object for both dev and prod.
+        SST-REF023: a mutable member's relations name one object for both dev and prod.
         SST-PRS032: a signature parameter has type OBJECT; only the first is reported.
         SST-VAL608: a defined search service's `on:` is not a dbt model.
         SST-VAL609: a search or attribute column is not on the search service's model.
-        SST-LOD018: a defined member's `body_file:` does not exist, and the loader did not
-            refuse it (SST-PRT009).
-        SST-LOD019: a defined member's `body_file:` is empty.
         SST-PRS005: a name a defined member's DDL writes is not an identifier, or a secret not a
             three-part name.
         SST-PRS003: a defined member's parameter or return type is not a Snowflake data type.
         SST-PRS013: a defined member's language, `execute_as` or `refresh_mode` is not one
             Snowflake accepts.
         SST-VAL418: a defined member's `where:` is not one expression.
-        SST-VAL601: a group declares one member name twice, ignoring case, under one of `define:` and
-            `reference:`.
-        SST-CFG019: a group declares one member name under both `define:` and `reference:`.
-        SST-VAL001: a group name is declared twice, ignoring case.
-        SST-VAL602: one member name is declared in two groups.
+        SST-VAL001: a member name is declared twice anywhere in the project, ignoring case.
     """
     diagnostics: list[Diagnostic] = list(catalog.diagnostics)
-    for group in catalog.groups:
-        diagnostics.extend(_validate_group(group, catalog, dbt))
-    diagnostics.extend(_duplicate_groups(catalog.groups))
-    diagnostics.extend(_names_in_several_groups(catalog.groups))
+    for member in catalog.members:
+        diagnostics.extend(_validate_member(member, catalog, dbt))
+    diagnostics.extend(_duplicate_names(catalog.members))
     return DiagnosticBag(sorted(diagnostics, key=lambda item: (item.origin.file if item.origin else "", item.code)))
 
 
-def _validate_group(group: ToolGroup, catalog: ToolCatalog, dbt: DbtCatalog) -> list[Diagnostic]:
-    """Check one group, then each of its members, then member names it repeats."""
-    diagnostics: list[Diagnostic] = []
-    if group.immutable and any(member.ownership is ToolOwnership.DEFINE for member in group.members):
-        diagnostics.append(D("SST-VAL606", a=group.name, origin=group.origin, subject=f"tool_group:{group.name}"))
-    within: dict[str, list[ToolMember]] = {}
-    for member in group.members:
-        within.setdefault(member.name.casefold(), []).append(member)
-        diagnostics.extend(_validate_member(member, catalog, dbt))
-    for duplicate in within.values():
-        if len(duplicate) > 1 and len({member.ownership for member in duplicate}) > 1:
-            # Owned and referenced at once: which of the two the member is cannot be decided.
-            diagnostics.append(
-                D(
-                    "SST-CFG019",
-                    name=duplicate[0].name,
-                    origin=duplicate[0].origin,
-                    related=tuple(member.origin for member in duplicate[1:]),
-                    subject=f"tool_group:{group.name}",
-                )
-            )
-        elif len(duplicate) > 1:
-            diagnostics.append(
-                D(
-                    "SST-VAL601",
-                    a=group.name,
-                    name=duplicate[0].name,
-                    origin=duplicate[0].origin,
-                    related=tuple(member.origin for member in duplicate[1:]),
-                )
-            )
-    return diagnostics
-
-
-def _duplicate_groups(groups: tuple[ToolGroup, ...]) -> list[Diagnostic]:
-    """Report each group name declared more than once, at its first declaration."""
-    groups_by_name: dict[str, list[ToolGroup]] = {}
-    for group in groups:
-        groups_by_name.setdefault(group.name.casefold(), []).append(group)
+def _duplicate_names(members: tuple[ToolMember, ...]) -> list[Diagnostic]:
+    """Report each member name declared more than once, at its first declaration."""
+    by_name: dict[str, list[ToolMember]] = {}
+    for member in members:
+        by_name.setdefault(member.name.casefold(), []).append(member)
     return [
         D(
             "SST-VAL001",
-            type="tool group",
-            name=duplicate_groups[0].name,
-            origin=duplicate_groups[0].origin,
-            related=tuple(group.origin for group in duplicate_groups[1:]),
+            type="tool member",
+            name=duplicate[0].name,
+            origin=duplicate[0].origin,
+            related=tuple(member.origin for member in duplicate[1:]),
+            subject=artifact_key("tool", duplicate[0].name.casefold()),
         )
-        for duplicate_groups in groups_by_name.values()
-        if len(duplicate_groups) > 1
+        for duplicate in by_name.values()
+        if len(duplicate) > 1
     ]
-
-
-def _names_in_several_groups(groups: tuple[ToolGroup, ...]) -> list[Diagnostic]:
-    """Report each member name declared in more than one group, naming the first two groups."""
-    members_by_name: dict[str, list[ToolMember]] = {}
-    for group in groups:
-        for member in group.members:
-            members_by_name.setdefault(member.name.casefold(), []).append(member)
-    diagnostics: list[Diagnostic] = []
-    for duplicate_members in members_by_name.values():
-        owners = tuple(dict.fromkeys(member.group for member in duplicate_members))
-        if len(owners) > 1:
-            diagnostics.append(
-                D(
-                    "SST-VAL602",
-                    name=duplicate_members[0].name,
-                    a=owners[0],
-                    b=owners[1],
-                    origin=duplicate_members[0].origin,
-                )
-            )
-    return diagnostics
 
 
 def _validate_member(member: ToolMember, catalog: ToolCatalog, dbt: DbtCatalog) -> tuple[Diagnostic, ...]:
@@ -148,12 +84,12 @@ def _validate_member(member: ToolMember, catalog: ToolCatalog, dbt: DbtCatalog) 
     subject = artifact_key("tool", member.name.casefold())
     return (
         *_known_type(member, subject),
+        *_immutable(member, subject),
         *_define_fields(member, subject),
         *_reference_fields(member, subject),
         *_reference_relations(member, catalog, subject),
         *_object_parameter(member, subject),
         *_search_columns(member, dbt, subject),
-        *_body_file(member, catalog, subject),
         *_render_fields(member, subject),
         *_handler_keys(member, subject),
         *_sql_values(member, subject),
@@ -168,20 +104,26 @@ def _known_type(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
     return emit.diagnostics
 
 
+def _immutable(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
+    """Report a member whose settings make it immutable, which SST would nonetheless create."""
+    emit = Emitter(subject=subject, origin=member.origin)
+    if member.immutable and member.ownership is ToolOwnership.DEFINE:
+        emit("SST-VAL606", name=member.name)
+    return emit.diagnostics
+
+
 def _define_fields(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
-    """Report a `define:` member with nothing to create it from, or with `relations`."""
+    """Report a defined member with nothing to create it from."""
     emit = Emitter(subject=subject, origin=member.origin)
     if member.ownership is not ToolOwnership.DEFINE:
         return emit.diagnostics
     if not member.on_model and not member.body_file and member.type != ToolKind.STAGE.value:
         emit("SST-VAL604", name=member.name)
-    if member.relations:
-        emit("SST-VAL605", name=member.name, key="relations")
     return emit.diagnostics
 
 
 def _reference_fields(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
-    """Report a `reference:` member without `relations`, then each creation key it declares."""
+    """Report a referenced member whose `relations:` are empty, then each creation key it declares."""
     emit = Emitter(subject=subject, origin=member.origin)
     if member.ownership is ToolOwnership.DEFINE:
         return emit.diagnostics
@@ -193,7 +135,7 @@ def _reference_fields(member: ToolMember, subject: str) -> tuple[Diagnostic, ...
 
 
 def _reference_relations(member: ToolMember, catalog: ToolCatalog, subject: str) -> tuple[Diagnostic, ...]:
-    """Check each relation of a `reference:` member, then its current target and shared object.
+    """Check each relation of a referenced member, then its current target and shared object.
 
     Each relation's undeclared target is reported before its malformed name.
     """
@@ -208,19 +150,16 @@ def _reference_relations(member: ToolMember, catalog: ToolCatalog, subject: str)
         except ValueError:
             emit("SST-REF019", value=value)
     if catalog.target_name not in member.relations:
-        emit("SST-REF018", ref_function="tool", name=f"{member.group}', '{member.name}", target=catalog.target_name)
-    if _shares_one_object(member, catalog):
-        emit("SST-REF023", ref_function="tool", name=f"{member.group}', '{member.name}", value=member.relations["dev"])
+        emit("SST-REF018", ref_function="tool", name=member.name, target=catalog.target_name)
+    if _shares_one_object(member):
+        emit("SST-REF023", ref_function="tool", name=member.name, value=member.relations["dev"])
     return emit.diagnostics
 
 
-def _shares_one_object(member: ToolMember, catalog: ToolCatalog) -> bool:
-    """Return whether dev and prod name one object although the member's group is not immutable.
-
-    Mutability comes from the first group declared under the member's exact group name.
-    """
+def _shares_one_object(member: ToolMember) -> bool:
+    """Return whether dev and prod name one object although the member's settings do not make it immutable."""
     return (
-        not next(group.immutable for group in catalog.groups if group.name == member.group)
+        not member.immutable
         and "dev" in member.relations
         and "prod" in member.relations
         and member.relations["dev"].casefold() == member.relations["prod"].casefold()
@@ -252,10 +191,10 @@ def _search_columns(member: ToolMember, dbt: DbtCatalog, subject: str) -> tuple[
 
 
 def _render_fields(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
-    """Report a field a defined member's DDL needs that no `tools:` default can supply.
+    """Report a field a defined member's DDL needs that no setting can supply.
 
-    A warehouse and a target lag can come from a default, so they are checked once the
-    defaults apply, when the member compiles (SST-RND042).
+    A warehouse and a target lag are settings, which a folder route or the `tools:` root may
+    set, so they are checked once the member's settings resolve, when it compiles (SST-RND042).
     """
     emit = Emitter(subject=subject, origin=member.origin, artifact=subject)
     if member.ownership is not ToolOwnership.DEFINE:
@@ -296,33 +235,6 @@ def _handler_keys(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
         if value:
             emit("SST-VAL621", name=member.name, value=language, key=key)
     return emit.diagnostics
-
-
-def _body_file(member: ToolMember, catalog: ToolCatalog, subject: str) -> tuple[Diagnostic, ...]:
-    """Report a defined member's `body_file:` that could not be read, or that is blank.
-
-    A `body_file:` the loader refused to read (SST-PRT009) is already reported; it is not
-    reported again as missing.
-    """
-    emit = Emitter(subject=subject, origin=member.origin)
-    if member.ownership is not ToolOwnership.DEFINE or not member.body_file:
-        return emit.diagnostics
-    if member.body is None and _refused_body(member, catalog):
-        return emit.diagnostics
-    if member.body is None:
-        emit("SST-LOD018", file=member.source_file, path=member.body_file)
-    elif not member.body.strip():
-        emit("SST-LOD019", path=member.body_file, file=member.source_file)
-    return emit.diagnostics
-
-
-def _refused_body(member: ToolMember, catalog: ToolCatalog) -> bool:
-    """Return whether the loader reported refusing to read the member's `body_file:`."""
-    subject = artifact_key("tool", member.name).casefold()
-    return any(
-        item.code == "SST-PRT009" and item.subject is not None and item.subject.casefold() == subject
-        for item in catalog.diagnostics
-    )
 
 
 _LANGUAGES = ("java", "javascript", "python", "scala", "sql")
@@ -366,7 +278,7 @@ def reference_ddl(members: tuple[ToolMember, ...]) -> tuple[Diagnostic, ...]:
     SST never creates, replaces or prunes an object it references; compiling one would.
 
     Diagnostics:
-        SST-VAL612: a `reference:` member is among the members rendered.
+        SST-VAL612: a referenced member is among the members rendered.
     """
     return tuple(
         D("SST-VAL612", name=member.name, origin=member.origin, subject=artifact_key("tool", member.name.casefold()))
@@ -395,6 +307,7 @@ def _sql_values(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
         *member.attribute_columns,
         *(column.name for column in member.columns),
         member.warehouse,
+        member.configured_warehouse,
         *(parameter.name for parameter in member.signature),
         *member.external_access_integrations,
     )

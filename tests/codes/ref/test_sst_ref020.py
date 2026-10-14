@@ -15,9 +15,7 @@ ROUTER = AgentModel("router", ORIGIN, ("agents/router/agent.yml",))
 def test_sst_ref020_fires() -> None:
     _, diagnostics = resolve_tool(
         ROUTER,
-        AgentTool(
-            "cortex_search", ORIGIN, name="search", description="Docs.", backing=("platform", "search"), max_results=3
-        ),
+        AgentTool("cortex_search", ORIGIN, name="search", description="Docs.", backing="search", max_results=3),
         agent_context(catalog=tools(search_member("procedure"))),
     )
     [diagnostic] = coded(diagnostics, "SST-REF020")
@@ -29,9 +27,7 @@ def test_sst_ref020_fires() -> None:
 def test_sst_ref020_silent() -> None:
     resolved, diagnostics = resolve_tool(
         ROUTER,
-        AgentTool(
-            "cortex_search", ORIGIN, name="search", description="Docs.", backing=("platform", "search"), max_results=3
-        ),
+        AgentTool("cortex_search", ORIGIN, name="search", description="Docs.", backing="search", max_results=3),
         agent_context(catalog=tools(search_member())),
     )
     assert resolved is not None

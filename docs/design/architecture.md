@@ -373,7 +373,7 @@ and is resolved where that thing is known:
 | `relationship()`, `filter()`, `verified_query()` | that member, by name, in custom instruction text | `resolve_scalar` |
 | `var()` | a project variable from `vars:` | `resolve_scalar` |
 | `tag()` | a tag from `tags:` | `resolve_scalar` |
-| `semantic_view()`, `tool('group', 'name')`, `agent()` | that artifact | the agent loader, then `app/compile/agents/resolve_tools.py` |
+| `semantic_view()`, `tool('name')`, `agent()` | that artifact | the agent loader, then `app/compile/agents/resolve_tools.py` |
 | `skill()`, `plugin()` | a skill or plugin this project publishes | the agent loader, then `app/compile/agents/resolve_skills.py`; as a plugin or profile member, `member_names` in `adapters/yaml/fields.py` |
 | `command()`, `mcp_server()`, `hook()` | a command, MCP config or hook, as a profile member | `member_names`, in the profile loader |
 | `extension()` | an extension another project publishes, from `skills.extensions` | the agent loader, then `app/compile/agents/resolve_skills.py` |

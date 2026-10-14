@@ -41,9 +41,13 @@ class AgentTool:
         type: The tool type as written; resolution reports one it does not know.
         name: None when unset, as an Analyst tool must leave it.
         semantic_view: The name an Analyst tool's `{{ semantic_view('<name>') }}` gives.
-        backing: The arguments of the `{{ tool(...) }}` call that is the whole of
-            `search_service:` or `identifier:`: a group and a member name, or a member name
-            alone; () when there is no such call.
+        backing: The member name the `{{ tool('<name>') }}` call that is the whole of
+            `search_service:` or `identifier:` gives; None when there is no such call.
+        title_column, id_column, relative_path_column: A search tool's own columns, as written:
+            each a `{{ ref('<model>', '<column>') }}` over a defined member's `on:` model, or a
+            bare column of a referenced member; resolution reads them against its member.
+        columns: A search tool's own `columns:` entries, as written, which replace its
+            member's; resolution reads each against its member as it reads the columns above.
         agent_ref: The name an agent toolset's `{{ agent('<name>') }}` gives.
         passthrough: Keys added last to a search or generic tool's resources, so they override
             the computed ones; an MCP tool's resources are exactly these.
@@ -57,7 +61,7 @@ class AgentTool:
     name: str | None = None
     description: str | None = None
     semantic_view: str | None = None
-    backing: tuple[str, ...] = ()
+    backing: str | None = None
     agent_ref: str | None = None
     warehouse: str | None = None
     query_timeout: int | None = None
@@ -67,24 +71,24 @@ class AgentTool:
     stage_path: str | None = None
     relative_path_column: str | None = None
     filter: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
-    columns_and_descriptions: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
+    columns: tuple[object, ...] = ()
     input_schema: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
     passthrough: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
     tool_spec_passthrough: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
     declared_keys: tuple[str, ...] = ()
 
     @property
-    def member_reference(self) -> tuple[str, ...]:
-        """The tool member this tool resolves to, as `ToolCatalog.resolve` takes it; () for none.
+    def member_reference(self) -> str | None:
+        """The name of the tool member this tool resolves to, as `ToolCatalog.resolve` takes it; None for none.
 
-        That is its `{{ tool(...) }}` backing, or, for an `agent_toolset` tool that names no agent
-        of this project, its own name: such a tool resolves the member of that name.
+        That is its `{{ tool('<name>') }}` backing, or, for an `agent_toolset` tool that names no
+        agent of this project, its own name: such a tool resolves the member of that name.
         """
         if self.backing:
             return self.backing
         if self.type == "agent_toolset" and not self.agent_ref and self.name:
-            return (self.name,)
-        return ()
+            return self.name
+        return None
 
 
 @dataclass(frozen=True, slots=True)

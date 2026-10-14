@@ -26,7 +26,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog, SharedProfile
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.skill import Plugin, SkillCatalog
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember, ToolOwnership
 from tests.helpers.compile_builders import CHANNELS, agent, plugin, skill, view
 from tests.helpers.project_inputs import InMemoryProjectInputs, dev_target
 
@@ -219,7 +219,6 @@ def test_only_auto_is_allowed_without_a_list_of_orchestration_models() -> None:
 
 def test_tools_take_the_tools_block_defaults_and_resolve_dbt_models_to_relations() -> None:
     search = ToolMember(
-        "platform",
         "search",
         "cortex_search_service",
         ToolOwnership.DEFINE,
@@ -230,9 +229,7 @@ def test_tools_take_the_tools_block_defaults_and_resolve_dbt_models_to_relations
     )
     inputs = InMemoryProjectInputs(
         tree={"tools": {"+schema": "TOOLS", "+target_lag": "1 hour", "+warehouse": "{{ target.warehouse }}_XL"}},
-        tools=ToolCatalog(
-            (ToolGroup("platform", Origin("t"), "tools.yml", members=(search,)),), "dev", frozenset(("dev",))
-        ),
+        tools=ToolCatalog((search,), "dev", frozenset(("dev",))),
         dbt=DbtCatalog("v12", None, None, (DbtModel("model.docs", "docs", "DB.SCH.DOCS", ("ID",), (), ()),)),
     )
 
@@ -242,6 +239,53 @@ def test_tools_take_the_tools_block_defaults_and_resolve_dbt_models_to_relations
     assert "WAREHOUSE = WH_XL" in rendered.ddl
     assert "TARGET_LAG = '1 hour'" in rendered.ddl
     assert rendered.required_relations[0].sql == "DB.SCH.DOCS"
+
+
+def test_each_tool_member_resolves_its_own_settings_over_its_folder_routes() -> None:
+    def search(name: str, folder: tuple[str, ...], **config: object) -> ToolMember:
+        return ToolMember(
+            name,
+            "cortex_search_service",
+            ToolOwnership.DEFINE,
+            Origin("t"),
+            "t",
+            on_model="docs",
+            search_column="body",
+            folder=folder,
+            config=MappingProxyType(config),
+        )
+
+    tree = {
+        "tools": {
+            "+schema": "TOOLS",
+            "+target_lag": "1 hour",
+            "platform": {"+schema": "PLATFORM", "docs": {"+warehouse": "DOCS_WH"}},
+        }
+    }
+    members = (search("root", ()), search("nested", ("platform", "docs")), search("own", ("platform",), schema="OWN"))
+    inputs = InMemoryProjectInputs(
+        tree=tree,
+        tools=ToolCatalog(members, "dev", frozenset(("dev",))),
+        dbt=DbtCatalog("v12", None, None, (DbtModel("model.docs", "docs", "DB.SCH.DOCS", ("ID",), (), ()),)),
+    )
+
+    compiled = {item.name: item for item in CompileProject(inputs).run().compiled if item.artifact_type == "tool"}
+
+    assert {name: item.rendered_artifact.target.sql for name, item in compiled.items()} == {
+        "root": "DB.TOOLS.ROOT",
+        "nested": "DB.PLATFORM.NESTED",
+        "own": "DB.OWN.OWN",
+    }
+    assert "WAREHOUSE = DOCS_WH" in compiled["nested"].rendered_artifact.ddl
+    assert {item.key: item.source for item in compiled["nested"].settings} == {
+        "database": "default",
+        "execute_as": "default",
+        "immutable": "default",
+        "schema": "route:platform",
+        "target_lag": "root",
+        "warehouse": "route:platform/docs",
+    }
+    assert {item.key: item.source for item in compiled["own"].settings}["schema"] == "config"
 
 
 def test_profiles_carry_their_skills_and_plugins_so_agents_need_not_reference_them() -> None:
@@ -322,24 +366,17 @@ def test_merge_orders_by_type_position_then_key_and_keeps_diagnostic_order() -> 
 
 
 def test_a_tool_over_a_defined_member_calls_it_where_the_tools_block_publishes_it() -> None:
-    search = ToolMember("platform", "search", "cortex_search_service", ToolOwnership.DEFINE, Origin("t"), "t")
-    lookup = ToolMember("ops", "lookup", "procedure", ToolOwnership.DEFINE, Origin("t"), "t", warehouse="WH")
-    catalog = ToolCatalog(
-        (
-            ToolGroup("platform", Origin("t"), "t", members=(search,)),
-            ToolGroup("ops", Origin("t"), "t", members=(lookup,)),
-        ),
-        "dev",
-        frozenset(("dev",)),
-    )
+    search = ToolMember("search", "cortex_search_service", ToolOwnership.DEFINE, Origin("t"), "t")
+    lookup = ToolMember("lookup", "procedure", ToolOwnership.DEFINE, Origin("t"), "t", warehouse="WH", folder=("ops",))
+    catalog = ToolCatalog((search, lookup), "dev", frozenset(("dev",)))
     tools = (
-        AgentTool("cortex_search", Origin("a"), name="search", description="Docs.", backing=("platform", "search")),
+        AgentTool("cortex_search", Origin("a"), name="search", description="Docs.", backing="search"),
         AgentTool(
             "generic",
             Origin("a"),
             name="lookup",
             description="Look one up.",
-            backing=("ops", "lookup"),
+            backing="lookup",
             input_schema=MappingProxyType({"type": "object", "properties": {}}),
         ),
     )

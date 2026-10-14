@@ -1,0 +1,15 @@
+---
+# A member whose settings make it immutable may only reference an object, and
+# this one would be defined: it writes no relations:. Nothing references it
+# either.
+tool:
+  name: forbidden_search
+  type: cortex_search_service
+  on:
+    table: "{{ ref('product_docs') }}"
+    search_column: "{{ ref('product_docs', 'product_description') }}"
+    attributes:
+      - "{{ ref('product_docs', 'product_type') }}"
+  config:
+    immutable: true
+    target_lag: 1 hour

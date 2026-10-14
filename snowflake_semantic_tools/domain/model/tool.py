@@ -1,4 +1,4 @@
-"""Immutable tool declarations: members, groups, and the catalog a project declares."""
+"""Immutable tool declarations: the members a project declares, and the catalog of them."""
 
 from __future__ import annotations
 
@@ -10,14 +10,15 @@ from types import MappingProxyType
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.setting import Setting
 
 
 class ToolOwnership(Enum):
-    """Which list of its group a tool member is declared in, and so whether SST creates it.
+    """Whether SST creates a tool member, which its `relations:` decide.
 
-    A DEFINE member is an object SST creates and publishes. A REFERENCE member is an object that
-    already exists, which SST locates on each target through its `relations` and never publishes.
-    Each value is the group's YAML key for the list.
+    A DEFINE member is an object SST creates and publishes. A REFERENCE member writes
+    `relations:`: an object that already exists, which SST locates on each target through them
+    and never publishes. Each value is how a diagnostic names the kind.
     """
 
     DEFINE = "define"
@@ -56,7 +57,7 @@ class ToolParameter:
 
 @dataclass(frozen=True, slots=True)
 class ToolColumn:
-    """One `columns_and_descriptions:` entry of a search service member.
+    """One `columns:` entry of a search service member.
 
     The service's query selects every such column. An agent's search tool over the member
     describes each searchable or filterable one with these values unless the tool authors its
@@ -64,6 +65,8 @@ class ToolColumn:
     name ends `_id` or `_name`.
 
     Attributes:
+        name: The column its `column:` names, by `{{ ref('<on model>', '<column>') }}` on a
+            defined member and as written on a referenced one.
         description: "" when unset.
         type: The column's type as written; "" when unset.
     """
@@ -77,32 +80,43 @@ class ToolColumn:
 
 @dataclass(frozen=True, slots=True)
 class ToolMember:
-    """One member of a tool group: an object SST defines, or an existing one it references.
+    """One tool member: an object SST defines, or an existing one it references.
 
+    A member is declared once in the project, by a `tool:` file or an entry of a `tools:` list.
     An optional field the entry leaves out is None or empty. Validation, not construction,
     checks which fields a member's type and ownership need.
 
     Attributes:
-        group: The name of the group that declares it, as written.
         type: The `type:` as written; validation reports one that is not a `ToolKind` value.
+        ownership: REFERENCE when the entry writes `relations:`, else DEFINE.
         source_file: The tools file that declares it, relative to the project root.
         on_model: The dbt model `on:` names with `{{ ref('<model>') }}`; None when `on:` is
             absent or is not one such call.
-        search_column: From `search_column:`, or else from `on.search_column`.
-        attribute_columns: From `attribute_columns:`, or else from `on.attributes`.
-        where: A predicate appended verbatim to a search service's query.
+        search_column: The column `search_column:`, or else `on.search_column`, names.
+        attribute_columns: The columns `attribute_columns:`, or else `on.attributes`, names.
+        title_column, id_column, relative_path_column: The column each names.
+        warehouse, target_lag, embedding_model, execute_as: What the DDL renders; None as loaded,
+            and filled when the member compiles, from its resolved settings.
+        where: A predicate appended to a search service's query, its template calls resolved:
+            a column ref becomes the bare column name.
         refresh_mode: How a search service refreshes, `AUTO`, `FULL` or `INCREMENTAL` as
             written; None leaves it to Snowflake, which refreshes incrementally where it can.
-        body: The text `body_file:` names; None when it could not be read, which validation
-            reports.
+        body_file: The file `body:`'s `{{ file() }}` names, relative to the project root; None
+            when `body:` names none.
+        body: The text of `body_file`; None when it could not be read, which loading reports.
         secrets: Each secret variable's name, mapped to the three-part name of its secret.
-        relations: For a `reference:` member, each target's name mapped to the three-part name
+        relations: For a referenced member, each target's name mapped to the three-part name
             of the existing object on that target.
         creation_keys: The creation keys the entry declares, sorted; validation reports any on
-            a `reference:` member.
+            a referenced member.
+        folder: The directory of its file below `project.tools_dir`, one segment per directory,
+            which the `tools:` folder routes name.
+        meta: The `meta:` mapping as written, which SST never reads; `meta.owner` names its owner.
+        config: The `config:` mapping as written; its keys are the `tools:` settings.
+        settings: Its settings, resolved over `config:`, the folder routes and the block root;
+            empty when loaded without a configuration.
     """
 
-    group: str
     name: str
     type: str
     ownership: ToolOwnership
@@ -135,111 +149,90 @@ class ToolMember:
     secrets: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
     relations: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
     creation_keys: tuple[str, ...] = ()
-
-    @property
-    def declaration_key(self) -> str:
-        """`<group>:<name>`, both casefolded; diagnostics on its relations name it in their subject."""
-        return f"{self.group.casefold()}:{self.name.casefold()}"
+    folder: tuple[str, ...] = ()
+    meta: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
+    config: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
+    settings: Mapping[str, Setting] = field(default_factory=lambda: MappingProxyType({}))
 
     @property
     def artifact_key(self) -> str | None:
-        """The key a `define:` member publishes under, `tool:<name>`; None for a `reference:` one.
+        """The key a defined member publishes under, `tool:<name>`; None for a referenced one.
 
-        The name is casefolded, and the group is not part of the key.
+        The name is casefolded.
         """
         if self.ownership is ToolOwnership.REFERENCE:
             return None
         return artifact_key("tool", self.name.casefold())
 
+    @property
+    def immutable(self) -> bool:
+        """Whether its settings resolve `immutable` to true: it may only reference an object."""
+        setting = self.settings.get("immutable")
+        return setting is not None and setting.value is True
 
-@dataclass(frozen=True, slots=True)
-class ToolGroup:
-    """One entry of a tools file's `tools:` list: a named group of tool members.
+    @property
+    def configured_warehouse(self) -> str | None:
+        """The warehouse the member's own `config:` names, as written; None when it names none.
 
-    Attributes:
-        name: The `group:` value as written.
-        immutable: The group only references objects: it may declare no `define:` members, and
-            its references may name one object for both dev and prod.
-    """
-
-    name: str
-    origin: Origin
-    source_file: str
-    description: str | None = None
-    owner: str | None = None
-    immutable: bool = False
-    members: tuple[ToolMember, ...] = ()
+        An agent tool over the member runs there when the tool names no warehouse of its own; a
+        folder route's or the block root's warehouse is where SST creates the object, not where
+        an agent's tool runs.
+        """
+        value = self.config.get("warehouse")
+        return value if isinstance(value, str) else None
 
 
 @dataclass(frozen=True, slots=True)
 class ToolCatalog:
-    """Every tool group a project declares, for the target being compiled.
+    """Every tool member a project declares, for the target being compiled.
 
     Attributes:
+        members: Every member, in file order, then in the order each file lists them.
         target_name: The `profiles.yml` target being compiled, which picks the relation each
-            `reference:` member resolves to.
+            referenced member resolves to.
         declared_targets: Every target `profiles.yml` declares; a relation naming any other is
             reported.
-        diagnostics: What loading the groups reported; `validate_tool_catalog` returns these
+        diagnostics: What loading the members reported; `validate_tool_catalog` returns these
             together with its own.
     """
 
-    groups: tuple[ToolGroup, ...]
+    members: tuple[ToolMember, ...]
     target_name: str
     declared_targets: frozenset[str]
     diagnostics: DiagnosticBag = DiagnosticBag()
 
     @property
-    def members(self) -> tuple[ToolMember, ...]:
-        """Every member of every group, group by group."""
-        return tuple(member for group in self.groups for member in group.members)
-
-    @property
     def managed(self) -> tuple[ToolMember, ...]:
-        """The `define:` members, which SST publishes."""
+        """The defined members, which SST publishes."""
         return tuple(member for member in self.members if member.ownership is ToolOwnership.DEFINE)
 
     @property
     def references(self) -> tuple[ToolMember, ...]:
-        """The `reference:` members, which name objects that already exist."""
+        """The referenced members, which name objects that already exist."""
         return tuple(member for member in self.members if member.ownership is ToolOwnership.REFERENCE)
 
-    def resolve(self, *args: str) -> tuple[ToolMember | None, DiagnosticBag]:
-        """Find the one member a `tool()` reference names, ignoring case.
+    def resolve(self, name: str) -> tuple[ToolMember | None, DiagnosticBag]:
+        """Find the member a `{{ tool('<name>') }}` reference names, ignoring case.
 
-        Args:
-            args: The reference's arguments: a group and a member name, or a member name alone,
-                which matches in any group. Any other count matches nothing.
+        A name declared twice is SST-VAL001, an error; the first declaration answers here.
 
         Returns:
             The member and no diagnostics, or None and the diagnostic.
 
         Diagnostics:
-            SST-REF010: no member matches, or more than one does.
+            SST-REF010: no member has the name.
         """
-        if len(args) == 2:
-            group_name, member_name = (value.casefold() for value in args)
-            matches = tuple(
-                member
-                for member in self.members
-                if member.group.casefold() == group_name and member.name.casefold() == member_name
-            )
-        elif len(args) == 1:
-            member_name = args[0].casefold()
-            matches = tuple(member for member in self.members if member.name.casefold() == member_name)
-        else:
-            matches = ()
-        if len(matches) == 1:
-            return matches[0], DiagnosticBag()
-        group = args[0] if len(args) == 2 else "*"
-        name = args[-1] if args else ""
-        return None, DiagnosticBag((D("SST-REF010", group=group, name=name),))
+        folded = name.casefold()
+        match = next((member for member in self.members if member.name.casefold() == folded), None)
+        if match is not None:
+            return match, DiagnosticBag()
+        return None, DiagnosticBag((D("SST-REF010", name=name),))
 
     def relation(self, member: ToolMember) -> tuple[QualifiedName | None, DiagnosticBag]:
-        """Locate a `reference:` member's existing object on the current target.
+        """Locate a referenced member's existing object on the current target.
 
         Returns:
-            The object's name and no diagnostics; None and no diagnostics for a `define:`
+            The object's name and no diagnostics; None and no diagnostics for a defined
             member, which has no relation; or None and the diagnostic that prevents it.
 
         Diagnostics:
@@ -255,10 +248,10 @@ class ToolCatalog:
                     D(
                         "SST-REF018",
                         ref_function="tool",
-                        name=f"{member.group}', '{member.name}",
+                        name=member.name,
                         target=self.target_name,
                         origin=member.origin,
-                        subject=f"tool_ref:{member.declaration_key}",
+                        subject=f"tool_ref:{member.name.casefold()}",
                     ),
                 )
             )
@@ -271,7 +264,7 @@ class ToolCatalog:
                         "SST-REF019",
                         value=value,
                         origin=member.origin,
-                        subject=f"tool_ref:{member.declaration_key}",
+                        subject=f"tool_ref:{member.name.casefold()}",
                     ),
                 )
             )
@@ -290,13 +283,11 @@ CREATION_KEYS = frozenset(
         "on",
         "where",
         "attribute_columns",
-        "target_lag",
-        "embedding_model",
         "refresh_mode",
         "language",
         "runtime_version",
         "handler",
-        "body_file",
+        "body",
         "returns",
         "packages",
         "imports",
@@ -304,10 +295,10 @@ CREATION_KEYS = frozenset(
         "secrets",
     )
 )
-# The keys a tools file's root, a group, and a member may write. YAML 1.1 reads an unquoted
-# `on:` as the boolean `true`, which a member's loader reads as `on:`.
-TOOLS_FILE_KEYS = frozenset(("tools",))
-TOOL_GROUP_KEYS = frozenset(("group", "description", "owner", "immutable", *(kind.value for kind in ToolOwnership)))
+# The keys a tools file's root and a member may write: `tool:` holds one member, `tools:` a list
+# of them. YAML 1.1 reads an unquoted `on:` as the boolean `true`, which a member's loader reads
+# as `on:`.
+TOOLS_FILE_KEYS = frozenset(("tool", "tools"))
 TOOL_MEMBER_KEYS = frozenset(
     (
         *CREATION_KEYS,
@@ -317,13 +308,34 @@ TOOL_MEMBER_KEYS = frozenset(
         "search_column",
         "title_column",
         "id_column",
-        "columns_and_descriptions",
+        "columns",
         "relative_path_column",
-        "warehouse",
         "signature",
-        "execute_as",
         "relations",
+        "meta",
+        "config",
     )
+)
+# The keys a search service member's `columns:` entry may write.
+TOOL_COLUMN_KEYS = frozenset(("column", "description", "type", "searchable", "filterable"))
+# Keys a member, or an entry of a `tools:` list, wrote before tools lost their groups, with where
+# each is written now. Each is an error, so a file still writing one learns it does nothing.
+MOVED_TOOL_KEYS: Mapping[str, str] = MappingProxyType(
+    {
+        "warehouse": "a tool member sets it under config:, as config.warehouse",
+        "target_lag": "a tool member sets it under config:, as config.target_lag",
+        "embedding_model": "a tool member sets it under config:, as config.embedding_model",
+        "execute_as": "a tool member sets it under config:, as config.execute_as",
+        "immutable": "a tool member sets it under config:, as config.immutable, or a folder route as +immutable",
+        "owner": "a tool member names its owner under meta:, as meta.owner",
+        "body_file": "a routine names its body as body: \"{{ file('<path>') }}\", relative to the tool file",
+        "columns_and_descriptions": (
+            "a search service lists its columns under columns:, each column a {{ ref('<model>', '<column>') }}"
+        ),
+        "group": "tools have no groups: a member's folder under the tools directory routes it",
+        "define": "tools have no groups: write each member as a tool: file or a tools: list entry",
+        "reference": "tools have no groups: a member that writes relations: is a reference",
+    }
 )
 
 

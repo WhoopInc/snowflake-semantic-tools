@@ -30,7 +30,6 @@ ORIGIN = Origin("tools/platform.yml")
 
 def _member(kind: ToolKind, name: str = "t", **fields: object) -> ToolMember:
     return ToolMember(
-        "platform",
         name,
         kind.value,
         ToolOwnership.DEFINE,

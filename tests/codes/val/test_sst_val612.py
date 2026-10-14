@@ -11,7 +11,7 @@ from tests.helpers.diagnostic_filters import coded
 def test_sst_val612_fires() -> None:
     [diagnostic] = coded(reference_ddl((procedure_member(),)), "SST-VAL612")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "tool member 'lookup' is under reference: and DDL was rendered for it"
+    assert diagnostic.message == "tool member 'lookup' references an existing object and DDL was rendered for it"
     assert diagnostic.subject == "tool:lookup"
 
 

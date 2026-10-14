@@ -127,6 +127,7 @@ a mistyped route cannot quietly route nothing.
 | Block | Routes start from | An artifact's folder is |
 |---|---|---|
 | `semantic_views` | `<semantic_models_dir>/semantic_views/` | the view file's directory |
+| `tools` | `tools_dir/` | the tool file's directory |
 | `agents` | `agents_dir/` | the agent's own folder |
 | `evals` | `agents_dir/` | its agent's folder |
 | `skills` | `skills_dir/` | the skill's own folder |
@@ -148,16 +149,16 @@ skills:
 ```
 
 Because a skill's, a plugin's, an agent's, and a profile's folder ends in its
-own name, a route can also name one item. Under `tools:`, an unprefixed key
-names a tool group rather than a folder, and its `+` keys override the block's
-for that group's `define:` members. A group that is not declared, or has no
-`define:` members, is an error (`SST-CFG020`).
+own name, a route can also name one item. Tool members route by the folder of
+their file, so `tools: {partner: {+immutable: true}}` makes every member under
+`tools/partner/` immutable; a project that kept one tool group per folder, named
+for the group, keeps its old `tools.<group>` keys as they were.
 
 ## Precedence
 
-Every setting of an artifact -- a semantic view, an agent, a skill, a plugin, a
-profile, or an eval -- resolves through one chain, the same for every key and
-every type, closest first:
+Every setting of an artifact -- a semantic view, a tool member, an agent, a
+skill, a plugin, a profile, or an eval -- resolves through one chain, the same
+for every key and every type, closest first:
 
 1. the artifact's own `config:` block;
 2. the closest folder route over the artifact's file that sets the `+` key;
@@ -185,7 +186,8 @@ none, and `orchestration_model` to `claude-sonnet-4-6` from the root; any key
 nothing sets takes the default.
 
 - `config:` takes exactly the block's `+` keys, written without the `+`: for a
-  view, the `semantic_views:` keys; for an agent, the `agents:` keys; for a
+  view, the `semantic_views:` keys; for a tool member, the `tools:` keys; for
+  an agent, the `agents:` keys; for a
   skill, in its `SKILL.md` frontmatter, the `skills:` keys; for a plugin, in
   `plugin.yml`, the `plugins:` keys; for a profile, in `profile.yml`, the
   `profiles:` keys; and for an eval, in its config file, the `evals:` keys. Any

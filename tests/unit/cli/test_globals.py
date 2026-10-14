@@ -210,10 +210,10 @@ def test_verbose_quiet_grouping_and_colour_shape_only_the_human_render(tmp_path:
 
 def test_four_or_more_of_one_code_collapse_to_three_and_a_count(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
-    partner = project / "tools" / "jaffle_partner.yml"
+    partner = project / "tools" / "partner" / "partner_objects.yml"
     extra = "\n".join(
-        f"      - name: extra_{index}\n        type: generic\n        description: Extra.\n"
-        f"        relations:\n          dev: A.B.C{index}\n          prod: D.E.F{index}"
+        f"  - name: extra_{index}\n    type: generic\n    description: Extra.\n"
+        f"    relations:\n      dev: A.B.C{index}\n      prod: D.E.F{index}"
         for index in range(3)
     )
     partner.write_text(partner.read_text(encoding="utf-8").rstrip() + "\n" + extra + "\n", encoding="utf-8")

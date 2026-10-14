@@ -4,16 +4,15 @@ from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompileResult
-from snowflake_semantic_tools.app.compile.tools import CompiledTool, CompileTools
+from snowflake_semantic_tools.app.compile.tools import CompiledTool, CompileTools, ToolPlacement
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership, ToolParameter
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember, ToolOwnership, ToolParameter
 from tests.helpers.artifact_builders import rendered
 from tests.helpers.compile_builders import compiled_as
 
 
 def test_tool_compiler_applies_config_defaults_and_emits_only_managed_members() -> None:
     managed = ToolMember(
-        "platform",
         "search",
         "cortex_search_service",
         ToolOwnership.DEFINE,
@@ -23,7 +22,6 @@ def test_tool_compiler_applies_config_defaults_and_emits_only_managed_members() 
         search_column="body",
     )
     reference = ToolMember(
-        "platform",
         "lookup",
         "procedure",
         ToolOwnership.REFERENCE,
@@ -32,18 +30,13 @@ def test_tool_compiler_applies_config_defaults_and_emits_only_managed_members() 
         relations=MappingProxyType({"dev": "DB.S.LOOKUP"}),
     )
     catalog = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(managed, reference)),),
+        (managed, reference),
         "dev",
         frozenset(("dev",)),
     )
     result = CompileTools(
         catalog,
-        database="DB",
-        schema="S",
-        warehouse="WH",
-        target_lag="1 hour",
-        embedding_model="model",
-        execute_as="caller",
+        default=ToolPlacement("DB", "S", "WH", "1 hour", "model", "caller"),
         dbt_relations={"docs": "DB.S.DOCS"},
     ).run_result()
     assert [item.artifact_key for item in result.compiled] == ["tool:search"]
@@ -58,7 +51,6 @@ def test_tool_compiler_applies_config_defaults_and_emits_only_managed_members() 
 
 def test_compiled_tool_projections_cover_sidecars_relations_and_routine_markers() -> None:
     managed = ToolMember(
-        "platform",
         "routine",
         "function",
         ToolOwnership.DEFINE,
@@ -71,18 +63,13 @@ def test_compiled_tool_projections_cover_sidecars_relations_and_routine_markers(
         signature=(ToolParameter("value", "NUMBER", True),),
     )
     catalog = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(managed,)),),
+        (managed,),
         "dev",
         frozenset(("dev",)),
     )
     result = CompileTools(
         catalog,
-        database="DB",
-        schema="S",
-        warehouse=None,
-        target_lag=None,
-        embedding_model=None,
-        execute_as=None,
+        default=ToolPlacement("DB", "S", None, None, None, None),
         dbt_relations={},
     ).run_result()
     compiled = compiled_as(result, CompiledTool)
@@ -98,7 +85,6 @@ def test_compiled_tool_projections_cover_sidecars_relations_and_routine_markers(
 
 def test_tool_compiler_skips_poisoned_and_reports_render_invariant() -> None:
     poisoned = ToolMember(
-        "platform",
         "poisoned",
         "stage",
         ToolOwnership.DEFINE,
@@ -106,7 +92,6 @@ def test_tool_compiler_skips_poisoned_and_reports_render_invariant() -> None:
         "tools.yml",
     )
     invalid = ToolMember(
-        "platform",
         "invalid",
         "procedure",
         ToolOwnership.DEFINE,
@@ -119,19 +104,14 @@ def test_tool_compiler_skips_poisoned_and_reports_render_invariant() -> None:
     from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 
     catalog = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(poisoned, invalid)),),
+        (poisoned, invalid),
         "dev",
         frozenset(("dev",)),
-        DiagnosticBag((D("SST-VAL606", a="platform", subject="tool:poisoned"),)),
+        DiagnosticBag((D("SST-VAL606", name="poisoned", subject="tool:poisoned"),)),
     )
     result = CompileTools(
         catalog,
-        database="DB",
-        schema="S",
-        warehouse=None,
-        target_lag=None,
-        embedding_model=None,
-        execute_as=None,
+        default=ToolPlacement("DB", "S", None, None, None, None),
         dbt_relations={},
     ).run_result()
     assert result.compiled == ()
@@ -140,7 +120,6 @@ def test_tool_compiler_skips_poisoned_and_reports_render_invariant() -> None:
 
 def test_a_member_no_default_completes_is_reported_by_field_not_as_an_internal_error() -> None:
     search = ToolMember(
-        "platform",
         "docs_search",
         "cortex_search_service",
         ToolOwnership.DEFINE,
@@ -151,7 +130,6 @@ def test_a_member_no_default_completes_is_reported_by_field_not_as_an_internal_e
         warehouse="WH",
     )
     procedure = ToolMember(
-        "platform",
         "lookup",
         "procedure",
         ToolOwnership.DEFINE,
@@ -163,19 +141,14 @@ def test_a_member_no_default_completes_is_reported_by_field_not_as_an_internal_e
         returns="NUMBER",
     )
     catalog = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(search, procedure)),),
+        (search, procedure),
         "dev",
         frozenset(("dev",)),
         DiagnosticBag(()),
     )
     result = CompileTools(
         catalog,
-        database="DB",
-        schema="S",
-        warehouse=None,
-        target_lag=None,
-        embedding_model=None,
-        execute_as=None,
+        default=ToolPlacement("DB", "S", None, None, None, None),
         dbt_relations={"docs": "DB.S.DOCS"},
     ).run_result()
     assert result.compiled == ()
@@ -185,7 +158,6 @@ def test_a_member_no_default_completes_is_reported_by_field_not_as_an_internal_e
 
 def test_tool_defaults_cover_explicit_values_and_procedure_inheritance() -> None:
     procedure = ToolMember(
-        "platform",
         "procedure",
         "procedure",
         ToolOwnership.DEFINE,
@@ -199,34 +171,24 @@ def test_tool_defaults_cover_explicit_values_and_procedure_inheritance() -> None
         returns="NUMBER",
     )
     catalog = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(procedure,)),),
+        (procedure,),
         "dev",
         frozenset(("dev",)),
     )
     result = CompileTools(
         catalog,
-        database="DB",
-        schema="S",
-        warehouse="DEFAULT_WH",
-        target_lag="1 hour",
-        embedding_model="model",
-        execute_as="caller",
+        default=ToolPlacement("DB", "S", "DEFAULT_WH", "1 hour", "model", "caller"),
         dbt_relations={},
     ).run_result()
     assert "EXECUTE AS OWNER" in result.rendered[0].ddl
     inherited = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(replace(procedure, execute_as=None),)),),
+        (replace(procedure, execute_as=None),),
         "dev",
         frozenset(("dev",)),
     )
     restricted = CompileTools(
         inherited,
-        database="DB",
-        schema="S",
-        warehouse="DEFAULT_WH",
-        target_lag=None,
-        embedding_model=None,
-        execute_as="restricted caller",
+        default=ToolPlacement("DB", "S", "DEFAULT_WH", None, None, "restricted caller"),
         dbt_relations={},
     ).run_result()
     assert "EXECUTE AS RESTRICTED CALLER" in restricted.rendered[0].ddl
@@ -234,7 +196,6 @@ def test_tool_defaults_cover_explicit_values_and_procedure_inheritance() -> None
 
 def test_compiled_tool_publication_replaces_existing_search_comment() -> None:
     managed = ToolMember(
-        "platform",
         "search",
         "cortex_search_service",
         ToolOwnership.DEFINE,
@@ -245,18 +206,13 @@ def test_compiled_tool_publication_replaces_existing_search_comment() -> None:
         search_column="body",
     )
     catalog = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(managed,)),),
+        (managed,),
         "dev",
         frozenset(("dev",)),
     )
     result = CompileTools(
         catalog,
-        database="DB",
-        schema="S",
-        warehouse="WH",
-        target_lag="1 hour",
-        embedding_model="model",
-        execute_as=None,
+        default=ToolPlacement("DB", "S", "WH", "1 hour", "model", None),
         dbt_relations={"docs": "DB.S.DOCS"},
     ).run_result()
     compiled = compiled_as(result, CompiledTool)
@@ -267,7 +223,6 @@ def test_compiled_tool_publication_replaces_existing_search_comment() -> None:
 
 def test_compiled_tool_publication_covers_stage_and_empty_projections() -> None:
     stage = ToolMember(
-        "platform",
         "stage",
         "stage",
         ToolOwnership.DEFINE,
@@ -276,19 +231,14 @@ def test_compiled_tool_publication_covers_stage_and_empty_projections() -> None:
         description="Owner's stage.",
     )
     catalog = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(stage,)),),
+        (stage,),
         "dev",
         frozenset(("dev",)),
     )
     compiled = compiled_as(
         CompileTools(
             catalog,
-            database="DB",
-            schema="S",
-            warehouse=None,
-            target_lag=None,
-            embedding_model=None,
-            execute_as=None,
+            default=ToolPlacement("DB", "S", None, None, None, None),
             dbt_relations={},
         ).run_result(),
         CompiledTool,
@@ -304,7 +254,6 @@ def test_compiled_tool_publication_covers_stage_and_empty_projections() -> None:
 
 def test_compiled_tool_omits_dbt_relation_without_required_relation() -> None:
     stage = ToolMember(
-        "platform",
         "stage",
         "stage",
         ToolOwnership.DEFINE,
@@ -313,19 +262,14 @@ def test_compiled_tool_omits_dbt_relation_without_required_relation() -> None:
         on_model="docs",
     )
     catalog = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(stage,)),),
+        (stage,),
         "dev",
         frozenset(("dev",)),
     )
     compiled = compiled_as(
         CompileTools(
             catalog,
-            database="DB",
-            schema="S",
-            warehouse=None,
-            target_lag=None,
-            embedding_model=None,
-            execute_as=None,
+            default=ToolPlacement("DB", "S", None, None, None, None),
             dbt_relations={},
         ).run_result(),
         CompiledTool,
@@ -336,7 +280,6 @@ def test_compiled_tool_omits_dbt_relation_without_required_relation() -> None:
 
 def test_compiled_tool_publication_adds_search_comment_when_missing() -> None:
     managed = ToolMember(
-        "platform",
         "search",
         "cortex_search_service",
         ToolOwnership.DEFINE,
@@ -346,19 +289,14 @@ def test_compiled_tool_publication_adds_search_comment_when_missing() -> None:
         search_column="body",
     )
     catalog = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(managed,)),),
+        (managed,),
         "dev",
         frozenset(("dev",)),
     )
     compiled = compiled_as(
         CompileTools(
             catalog,
-            database="DB",
-            schema="S",
-            warehouse="WH",
-            target_lag="1 hour",
-            embedding_model="model",
-            execute_as=None,
+            default=ToolPlacement("DB", "S", "WH", "1 hour", "model", None),
             dbt_relations={"docs": "DB.S.DOCS"},
         ).run_result(),
         CompiledTool,
@@ -373,7 +311,6 @@ def test_compiled_tool_publication_adds_search_comment_when_missing() -> None:
 
 def test_compiled_tool_publication_covers_routine_without_signature() -> None:
     procedure = ToolMember(
-        "platform",
         "procedure",
         "procedure",
         ToolOwnership.DEFINE,
@@ -386,18 +323,13 @@ def test_compiled_tool_publication_covers_routine_without_signature() -> None:
         warehouse="WH",
     )
     catalog = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(procedure,)),),
+        (procedure,),
         "dev",
         frozenset(("dev",)),
     )
     result = CompileTools(
         catalog,
-        database="DB",
-        schema="S",
-        warehouse=None,
-        target_lag=None,
-        embedding_model=None,
-        execute_as=None,
+        default=ToolPlacement("DB", "S", None, None, None, None),
         dbt_relations={},
     ).run_result()
     assert result.compiled
@@ -408,22 +340,17 @@ def test_compiled_tool_publication_covers_routine_without_signature() -> None:
 
 def compile_stage(*diagnostics: Diagnostic) -> CompileResult:
     stage = ToolMember(
-        "platform", "landing", "stage", ToolOwnership.DEFINE, Origin("tools.yml"), "tools.yml", description="Landing."
+        "landing", "stage", ToolOwnership.DEFINE, Origin("tools.yml"), "tools.yml", description="Landing."
     )
     catalog = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(stage,)),),
+        (stage,),
         "dev",
         frozenset(("dev",)),
         DiagnosticBag(diagnostics),
     )
     return CompileTools(
         catalog,
-        database="DB",
-        schema="S",
-        warehouse=None,
-        target_lag=None,
-        embedding_model=None,
-        execute_as=None,
+        default=ToolPlacement("DB", "S", None, None, None, None),
         dbt_relations={},
     ).run_result()
 
@@ -435,7 +362,6 @@ def test_a_tool_over_no_dbt_model_reads_no_relation() -> None:
 
 def test_a_search_service_reports_the_dbt_model_it_reads_with_its_relation() -> None:
     search = ToolMember(
-        "platform",
         "search",
         "cortex_search_service",
         ToolOwnership.DEFINE,
@@ -444,18 +370,11 @@ def test_a_search_service_reports_the_dbt_model_it_reads_with_its_relation() -> 
         on_model="docs",
         search_column="body",
     )
-    catalog = ToolCatalog(
-        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(search,)),), "dev", frozenset(("dev",))
-    )
+    catalog = ToolCatalog((search,), "dev", frozenset(("dev",)))
     compiled = compiled_as(
         CompileTools(
             catalog,
-            database="DB",
-            schema="S",
-            warehouse="WH",
-            target_lag="1 hour",
-            embedding_model=None,
-            execute_as=None,
+            default=ToolPlacement("DB", "S", "WH", "1 hour", None, None),
             dbt_relations={"docs": "DB.S.DOCS"},
         ).run_result(),
         CompiledTool,

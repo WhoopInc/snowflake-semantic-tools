@@ -26,10 +26,11 @@ class AgentCompileContext:
         variables: What `{{ var('<name>') }}` resolves to in a skill's version: the project's
             `vars:`, and `sha_version`.
         database, schema: The `agents:` block's own location: where an agent `agents` does not
-            name publishes, and where a `define:` member `tool_locations` does not place is
+            name publishes, and where a defined member `tool_locations` does not place is
             taken to be.
-        tool_locations: Each `define:` member's database and schema, by casefolded member
-            name: the `tools:` block's location, or its group's `tools.<group>` override.
+        tool_locations: Each defined member's database and schema, by casefolded member name,
+            as its settings resolve: its own `config:`, the `tools:` folder routes over its
+            file, then the block root.
         warehouse, query_timeout: The execution environment a tool gets when it sets none: the
             agent's resolved `warehouse`, else the target's, and its `query_timeout`.
         allowed_models: `snowflake.orchestration_models`, the gate for SST-VAL543.
@@ -67,9 +68,9 @@ class AgentCompileContext:
         return self.agents.get(name.casefold()) or QualifiedName.from_parts(self.database, self.schema, name)
 
     def tool_target(self, name: str) -> QualifiedName:
-        """Return where the `define:` member named `name` publishes.
+        """Return where the defined member named `name` publishes.
 
-        That is its `tool_locations` entry, else the block's location.
+        That is its resolved location in `tool_locations`, else the block's location.
 
         Raises:
             ValueError: a part of the name is not a valid identifier.

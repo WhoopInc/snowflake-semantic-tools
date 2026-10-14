@@ -19,7 +19,7 @@ def _found(required: str) -> list[Diagnostic]:
         Origin("agent.yml"),
         name="procedure",
         description="Runs the procedure.",
-        backing=("platform", "procedure"),
+        backing="procedure",
         input_schema=MappingProxyType(schema),
     )
     _, diagnostics = resolve_tool(AGENT, tool, agent_context(procedure_catalog()))

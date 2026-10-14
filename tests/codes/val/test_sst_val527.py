@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from types import MappingProxyType
+
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.agent_builders import agent, catalog, compile_agents, generic_tool, procedure_member
 from tests.helpers.diagnostic_filters import coded
 
 
 def test_sst_val527_fires() -> None:
-    tools = catalog(procedure_member(warehouse=None))
+    tools = catalog(procedure_member(warehouse=None, config=MappingProxyType({})))
     [diagnostic] = coded(
         compile_agents(agent("sales_agent", generic_tool()), tools=tools, warehouse=None).diagnostics, "SST-VAL527"
     )
@@ -18,5 +20,5 @@ def test_sst_val527_fires() -> None:
 
 
 def test_sst_val527_silent() -> None:
-    tools = catalog(procedure_member(warehouse=None))
+    tools = catalog(procedure_member(warehouse=None, config=MappingProxyType({})))
     assert coded(compile_agents(agent("sales_agent", generic_tool()), tools=tools).diagnostics, "SST-VAL527") == []

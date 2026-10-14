@@ -10,7 +10,8 @@ from snowflake_semantic_tools.app.compile.agents import CompileAgents
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership
+from snowflake_semantic_tools.domain.model.setting import Setting
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.validate.tool import validate_tool_catalog
 from tests.helpers.agent_context import agent_context
 
@@ -26,21 +27,19 @@ ORIGIN = Origin("tools/platform.yml")
 
 
 def procedure_relation_findings(
-    relations: dict[str, str], code: str, *, targets: tuple[str, ...] = ("dev", "prod")
+    relations: dict[str, str], code: str, *, targets: tuple[str, ...] = ("dev", "prod"), immutable: bool = False
 ) -> list[Diagnostic]:
-    """The diagnostics of `code` for a referenced procedure `platform.lookup` with these relations."""
+    """The diagnostics of `code` for a referenced procedure `lookup` with these relations, immutable or not."""
     member = ToolMember(
-        "platform",
         "lookup",
         "procedure",
         ToolOwnership.REFERENCE,
         ORIGIN,
         "tools/platform.yml",
         relations=MappingProxyType(relations),
+        settings=MappingProxyType({"immutable": Setting("immutable", immutable, "route:partner")}),
     )
-    catalog = ToolCatalog(
-        (ToolGroup("platform", ORIGIN, "tools/platform.yml", members=(member,)),), "dev", frozenset(targets)
-    )
+    catalog = ToolCatalog((member,), "dev", frozenset(targets))
     return [item for item in validate_tool_catalog(catalog, DbtCatalog("v12", None, None, ())) if item.code == code]
 
 

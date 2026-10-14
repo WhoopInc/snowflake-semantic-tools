@@ -43,8 +43,8 @@ SST answers that with one engine for every artifact type:
   publish target, dependencies, and source files, so a view and the agent that
   queries it are nodes in one graph and are published in dependency order.
 - **One reference system.** Authored files name things -- a dbt model, a metric,
-  a tool, a skill -- and not a database or schema; the exception is a tool's
-  `reference:` entry, an object another project owns, named once per target.
+  a tool, a skill -- and not a database or schema; the exception is a tool
+  member's `relations:`, an object another project owns, named once per target.
   Every name resolves against the target being built, and a name that does not
   resolve is an error.
 - **One validation model.** Every problem is a diagnostic with a stable code and

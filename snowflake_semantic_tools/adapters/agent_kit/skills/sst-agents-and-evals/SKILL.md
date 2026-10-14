@@ -65,6 +65,39 @@ spec:
   is `{{ extension('<name>') }}` and must pin a version.
 - Every apply of a changed agent adds a new agent version.
 
+## Tool members
+
+A search, generic, or toolset tool calls a tool member, named with one argument:
+`search_service: "{{ tool('<name>') }}"` or `identifier: "{{ tool('<name>') }}"`. A member
+is one file under `project.tools_dir`, in any folder, with a `tool:` root (a `tools:` root
+holds a list of them):
+
+```yaml
+# tools/sales/menu_search.yml
+tool:
+  name: menu_search
+  type: cortex_search_service
+  description: Full-text search over menu descriptions.
+  on:
+    table: "{{ ref('product_docs') }}"
+    search_column: "{{ ref('product_docs', 'description') }}"
+  config:
+    target_lag: 1 hour
+  meta:
+    owner: sales-analytics
+```
+
+- A member that writes `relations:` references an object another team owns; any other is
+  created by SST. A member name is unique in the project (`SST-VAL001`).
+- A defined member writes every column as `{{ ref('<on model>', '<column>') }}`: a bare column
+  is `SST-REF050`, another model `SST-VAL622`. A referenced member writes its columns bare.
+- A routine's body is `body: "{{ file('<path>') }}"`, relative to the tool file's folder.
+- Settings go under `config:`, the `tools:` `+` keys without the `+`: `database`, `schema`,
+  `warehouse`, `target_lag`, `embedding_model`, `execute_as`, `immutable`. Never write them on
+  the member itself, and never write `group:`, `define:`, or `reference:` (`SST-PRS126`).
+- A `tools:` folder route such as `tools: {partner: {+immutable: true}}` covers the members
+  under `tools/partner/`; an immutable member must write `relations:` (`SST-VAL606`).
+
 ## Plugins and profiles
 
 A plugin (`plugins/<name>/plugin.yml`) and a profile (`profiles/<name>/profile.yml`) list their

@@ -1,0 +1,73 @@
+---
+# =============================================================================
+# tools/platform/menu_docs_search.yml -- reference project
+# =============================================================================
+# One tool member per file, under the `tool:` root. A member that writes no
+# `relations:` is defined: SST creates it and emits its DDL. Its folder,
+# platform/, is a `tools:` folder route in sst_config.yml, so its settings
+# resolve over its own `config:`, then that route, then the block root.
+# Renders tests/golden/expected/tool/menu_docs_search.sql.
+# =============================================================================
+
+tool:
+  name: menu_docs_search
+  type: cortex_search_service
+  description: |-
+    Full-text search over menu item DESCRIPTIONS -- the prose saying what
+    is in each item. Answers what an item contains, how items differ, and
+    which items suit a diet. Filter on `dietary_class` for vegan,
+    vegetarian or omnivore rather than searching the prose for the word
+    vegetarian.
+    Does NOT answer questions about how many were sold -- that is an order
+    question and belongs to the Analyst tools.
+  on:
+    # `product_docs` holds the menu prose. Putting that prose on `products`
+    # would make it a member of every view listing that table, where it would
+    # need a column_type (SST-VAL308).
+    table: "{{ ref('product_docs') }}"
+    # The indexed text. Every column is a ref of the `on:` model (another
+    # model is SST-VAL622, a bare name SST-REF050), and the search column and
+    # every attribute must be a column of it (SST-VAL609).
+    search_column: "{{ ref('product_docs', 'product_description') }}"
+    attributes:
+      - "{{ ref('product_docs', 'product_type') }}"
+      # An attribute, so a closed set like diet is filtered exactly rather than
+      # matched by similarity in the prose.
+      - "{{ ref('product_docs', 'dietary_class') }}"
+  # Every column listed is selected into the service. The searchable or
+  # filterable ones also render into the agent's tool resources, and
+  # product_id and product_name supply its default id and title columns.
+  columns:
+    - column: "{{ ref('product_docs', 'product_id') }}"
+      description: Stable product identifier used to join search results.
+      type: string
+      searchable: false
+      filterable: false
+    - column: "{{ ref('product_docs', 'product_name') }}"
+      description: Display name of the menu item.
+      type: string
+      searchable: true
+      filterable: false
+    - column: "{{ ref('product_docs', 'product_type') }}"
+      description: Menu category used to group related products.
+      type: string
+      searchable: false
+      filterable: true
+    - column: "{{ ref('product_docs', 'dietary_class') }}"
+      description: Closed dietary classification for precise filtering.
+      type: string
+      searchable: false
+      filterable: true
+    - column: "{{ ref('product_docs', 'product_description') }}"
+      description: Menu prose indexed for semantic retrieval.
+      type: string
+      searchable: true
+      filterable: false
+  # The member's own settings: the keys of the `tools:` block without their
+  # `+`. Absent keys inherit; `warehouse` comes from tools.+warehouse, and a
+  # null value would be SST-CFG054.
+  config:
+    target_lag: 1 hour
+  # Free-form; SST never reads it.
+  meta:
+    owner: analytics-platform

@@ -322,13 +322,18 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("tags.default_prefix", _S, "`<database>.<schema>` for entries without `fqn:`."),
     _key("tags.<name>", _BLOCK, "One tag reference; empty takes `default_prefix`."),
     _key("tags.<name>.fqn", _S, "The full three-part tag name."),
-    _key("tools", _BLOCK, "Defaults for tool backing objects.", children=ChildPolicy.ROUTES),
+    _key(
+        "tools",
+        _BLOCK,
+        "Defaults for tool members, overridable per folder and by a member's own `config:`.",
+        children=ChildPolicy.ROUTES,
+    ),
     _key("tools.+database", _S, "Database for defined tool objects.", default="the target database"),
     _key("tools.+schema", _S, "Schema for defined tool objects.", default="the target schema"),
     _key(
         "tools.+warehouse",
         _S,
-        "Warehouse for defined search services and procedures that name none.",
+        "Warehouse for defined search services and procedures.",
         default="the target warehouse",
     ),
     _key("tools.+target_lag", _S, "Target lag for defined search services."),
@@ -336,17 +341,22 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "tools.+execute_as",
         KeyKind.ENUM,
-        "Rights a defined procedure runs with (`EXECUTE AS`) when it names none.",
+        "Rights a defined procedure runs with (`EXECUTE AS`).",
         default="caller",
         choices=EXECUTE_AS,
         folded=True,
+    ),
+    _key(
+        "tools.+immutable",
+        _B,
+        "Members that may only reference an object (SST-VAL606), and may name one object for every target.",
+        default="false",
     ),
     _removed("tools.+enabled", "omit the tools instead"),
     _key(
         "tools.<route>",
         _BLOCK,
-        "Per-group override of the `+` keys above, keyed by group name, for a group with `define:` members "
-        "(SST-CFG020).",
+        "Folder route: overrides for the tool members under that directory of `project.tools_dir`.",
     ),
     _key(
         "semantic_views",

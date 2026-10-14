@@ -17,30 +17,29 @@ from tests.helpers.reference_project import project_copy
 
 
 def test_sst_cfg018_fires() -> None:
-    [diagnostic] = unreferenced_tool_members(docs_catalog(), [("other", "docs")])
+    [diagnostic] = unreferenced_tool_members(docs_catalog(), ["other"])
     assert (diagnostic.code, diagnostic.severity) == ("SST-CFG018", Severity.WARNING)
-    assert diagnostic.message == "tool member 'platform.docs' is referenced by nothing"
-    assert (diagnostic.subject, diagnostic.origin) == ("tool_group:platform", Origin("tools/p.yml", 1))
+    assert diagnostic.message == "tool member 'docs' is referenced by nothing"
+    assert (diagnostic.subject, diagnostic.origin) == ("tool:docs", Origin("tools/p.yml", 1))
 
 
 def test_sst_cfg018_silent() -> None:
-    assert unreferenced_tool_members(docs_catalog(), [("platform", "Docs")]) == ()
-    assert unreferenced_tool_members(docs_catalog(), [("docs",)]) == ()
+    assert unreferenced_tool_members(docs_catalog(), ["Docs"]) == ()
 
 
 def test_every_way_an_agent_or_the_config_names_a_member_counts() -> None:
     origin = Origin("agents/a.yml")
-    by_backing = AgentTool("cortex_search", origin, name="search", backing=("platform", "docs"))
+    by_backing = AgentTool("cortex_search", origin, name="search", backing="docs")
     by_name = AgentTool("agent_toolset", origin, name="docs")
     delegating = AgentTool("agent_toolset", origin, name="docs", agent_ref="other_agent")
     assert (by_backing.member_reference, by_name.member_reference, delegating.member_reference) == (
-        ("platform", "docs"),
-        ("docs",),
-        (),
+        "docs",
+        "docs",
+        None,
     )
-    assert unreferenced_tool_members(docs_catalog(), [by_name.member_reference]) == ()
-    config = {"agents": {"+note": "{{ tool('platform', 'docs') }}"}}
-    assert config_tool_calls(config) == (("platform", "docs"),)
+    assert unreferenced_tool_members(docs_catalog(), [str(by_name.member_reference)]) == ()
+    config = {"agents": {"+note": "{{ tool('docs') }}"}}
+    assert config_tool_calls(config) == ("docs",)
     assert unreferenced_tool_members(docs_catalog(), config_tool_calls(config)) == ()
 
 

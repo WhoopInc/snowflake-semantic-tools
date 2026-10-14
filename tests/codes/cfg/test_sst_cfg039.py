@@ -10,7 +10,7 @@ from snowflake_semantic_tools.domain.diagnostics.baseline import (
     stable_fingerprint,
 )
 
-WARNING = D("SST-CFG018", group="platform", name="docs", subject="tool_group:platform")
+WARNING = D("SST-CFG018", name="docs", subject="tool:docs")
 
 
 def _baseline(expires_on: str) -> Baseline:

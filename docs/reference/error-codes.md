@@ -16,13 +16,13 @@ cannot be downgraded by any setting.
 ## Contents
 
 - [Registry (REG)](#registry-reg) -- 23 codes
-- [Configuration (CFG)](#configuration-cfg) -- 47 codes
+- [Configuration (CFG)](#configuration-cfg) -- 45 codes
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
 - [Parsing (PRS)](#parsing-prs) -- 57 codes
 - [Loading (LOD)](#loading-lod) -- 24 codes
-- [References (REF)](#references-ref) -- 39 codes
+- [References (REF)](#references-ref) -- 40 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 293 codes
+- [Validation (VAL)](#validation-val) -- 292 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
@@ -31,7 +31,7 @@ cannot be downgraded by any setting.
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 24 codes
 - [Internal (INT)](#internal-int) -- 12 codes
-- [Retired numbers](#retired-numbers) -- 62 numbers
+- [Retired numbers](#retired-numbers) -- 66 numbers
 
 ## Registry (REG)
 
@@ -423,41 +423,21 @@ Fix: declare the value for every target you publish to
 
 **tool() reference does not resolve from config** (error)
 
-`{{ tool('<group>','<name>') }} does not resolve`
+`{{ tool('<name>') }} does not resolve`
 
-Raised when a `tool()` call in a config value names a group or member the tools directory does not declare.
+Raised when a `tool()` call in a config value names no member the tools directory declares.
 
-Fix: declare the group and member in the tools directory
+Fix: declare the member in the tools directory, or correct the name
 
 ### SST-CFG018
 
 **Declared tool member referenced by nothing** (warning)
 
-`tool member '<group>.<name>' is referenced by nothing`
+`tool member '<name>' is referenced by nothing`
 
 Raised when a declared tool member is referenced by no agent and no config value.
 
 Fix: reference it from an agent, or delete it
-
-### SST-CFG019
-
-**Tool member declared under both define and reference** (error)
-
-`'<name>' appears under both define: and reference:`
-
-Raised when a tool group lists one member name under both `define:` and `reference:`.
-
-Fix: choose one; a member is owned or referenced, never both
-
-### SST-CFG020
-
-**Per-group tools override names an unknown or reference-only group** (error)
-
-`tools: override names group '<group>', which <reason>`
-
-Raised when a `tools.<group>` override names no declared group, or a group with no `define:` members.
-
-Fix: target a group that exists and contains define: members
 
 ### SST-CFG023
 
@@ -1783,11 +1763,11 @@ Fix: check the referenced object's name
 
 **tool() target not found** (error)
 
-`{{ tool('<group>','<name>') }} does not resolve`
+`{{ tool('<name>') }} does not resolve`
 
-Raised when a `tool()` reference names no tool member, or, by name alone, more than one.
+Raised when a `tool()` reference names no tool member the project declares.
 
-Fix: declare the member in the tools directory
+Fix: declare the member in the tools directory, or correct the name
 
 ### SST-REF011
 
@@ -1825,7 +1805,7 @@ Fix: declare the extension source, or correct the name
 
 `{{ file('<path>') }} does not resolve to a file`
 
-Raised when an agent's or a verified query's `file()` reference names a file that does not exist.
+Raised when an agent's, a verified query's, or a tool member's `body:` `file()` reference names a file that does not exist.
 
 Fix: create the file, or correct the path
 
@@ -1845,7 +1825,7 @@ Fix: supply the documented arguments
 
 `{{ <ref_function>('<name>') }} has no entry for target '<target>'`
 
-Raised when a `reference:` tool member has no relation for the current target, or declares one for a target `profiles.yml` does not declare.
+Raised when a tool member that writes `relations:` has no relation for the current target, or declares one for a target `profiles.yml` does not declare.
 
 Fix: declare a relation for every target you publish to
 
@@ -1885,7 +1865,7 @@ Fix: break the cycle
 
 `{{ <ref_function>('<name>') }} resolves to <value> for both dev and prod`
 
-Raised when a `reference:` tool member, in a group not declared immutable, names one object for both its `dev` and its `prod` target.
+Raised when a tool member that writes `relations:`, and whose settings do not resolve `immutable` to true, names one object for both its `dev` and its `prod` target.
 
 Fix: use per-target relations for anything writable
 
@@ -1905,7 +1885,7 @@ Fix: declare the metric in the eval_metrics/ tree, or correct the name
 
 `{{ file('<path>') }} resolves outside the project root`
 
-Raised when an agent's or a verified query's `file()` reference resolves outside the project root.
+Raised when an agent's, a verified query's, or a tool member's `body:` `file()` reference resolves outside the project root, or is an absolute path.
 
 Fix: use a path inside the project
 
@@ -2072,6 +2052,16 @@ Fix: name a {kind} file in the agent's evals/ folder by its name:, or give one t
 Raised when an entry of a plugin's or profile's `skills:`, `plugins:`, `commands:`, `mcp_servers:` or `hooks:` is a bare name, or a call of another function.
 
 Fix: write the member as one call of its key's function, such as {{ skill('&lt;name&gt;') }} under skills:
+
+### SST-REF050
+
+**Required template call missing** (error)
+
+`<artifact>: <field> is '<found>'; it takes a {{ <function>(...) }} call`
+
+Raised when a field that is read only as a template call holds a bare value, such as a defined tool member's column written without `{{ ref('<model>', '<column>') }}`, or its `body:` without `{{ file('<path>') }}`.
+
+Fix: write the value as a {function}() call; a bare value is not read
 
 ### SST-REF900
 
@@ -2279,7 +2269,7 @@ Fix: report this as a bug
 
 `<type> '<name>' is declared more than once`
 
-Raised when two semantic views, metrics, agents, tool groups or custom eval metrics share a name, compared case-insensitively across all files.
+Raised when two semantic views, metrics, agents, tool members or custom eval metrics share a name, compared case-insensitively across all files.
 
 Fix: rename one of them
 
@@ -3967,26 +3957,6 @@ Raised when a deprecated agent still sets an `alias`, which points at a version 
 
 Fix: remove the alias, or stop deprecating the agent
 
-### SST-VAL601
-
-**Tool member name is not unique within its group** (error)
-
-`tool group '<a>': member '<name>' is declared twice`
-
-Raised when two members of one tool group share a name, compared ignoring case.
-
-Fix: rename one of them
-
-### SST-VAL602
-
-**Tool member name is not globally unique** (warning)
-
-`tool member '<name>' is declared in <a> and <b>`
-
-Raised when a member name repeats across groups.
-
-Fix: rename one; the single-argument ref form is unavailable for this name
-
 ### SST-VAL603
 
 **Tool type is not recognised** (error)
@@ -4001,33 +3971,33 @@ Fix: use one of {expected}
 
 **define member carries no creation properties** (error)
 
-`tool member '<name>' is under define: and declares neither on: nor body_file:`
+`tool member '<name>' is defined here and declares neither on: nor body:`
 
-Raised when a `define:` member other than a stage declares neither `on:` nor `body_file:`.
+Raised when a defined member other than a stage declares neither `on:` nor `body:`.
 
-Fix: declare on: or body_file:, or move it to reference:
+Fix: declare on: or body:, or reference an existing object with relations:
 
 ### SST-VAL605
 
 **reference member carries creation properties** (error)
 
-`tool member '<name>' is under reference: and declares '<key>'`
+`tool member '<name>' references an existing object and declares '<key>'`
 
-Raised when a `reference:` member declares a creation key such as `on:` or `body_file:`, or a `define:` member declares `relations`.
+Raised when a member that writes `relations:`, and so references an existing object, declares a creation key such as `on:` or `body:`.
 
 Fix: remove the creation property; a reference is not owned
 
-Note: For a `define:` member, remove `relations`: SST creates the object, so it has no per-target relation.
+Note: To have SST create the object instead, remove `relations:`; a member without it is defined.
 
 ### SST-VAL606
 
-**define block present in an immutable group** (error)
+**Immutable tool member is not a reference** (error)
 
-`tool group '<a>' is immutable: true and declares define:`
+`tool member '<name>' is immutable and declares no relations:`
 
-Raised when a tool group sets `immutable: true` and declares a member under `define:`.
+Raised when a tool member's settings resolve `immutable` to true -- its own `config:`, or a `tools:` folder route over its file -- and it writes no `relations:`, so SST would create it.
 
-Fix: remove the define: block
+Fix: reference the existing object with relations:, or set immutable to false for it
 
 ### SST-VAL607
 
@@ -4087,9 +4057,9 @@ Note: Without a pinned model, retrieval can change between deploys with no chang
 
 **DDL would be emitted for a reference member** (error)
 
-`tool member '<name>' is under reference: and DDL was rendered for it`
+`tool member '<name>' references an existing object and DDL was rendered for it`
 
-Raised when DDL was rendered for a `reference:` member, so SST would create, replace or prune an object it does not own.
+Raised when DDL was rendered for a member that writes `relations:`, so SST would create, replace or prune an object it does not own.
 
 Fix: emit no DDL for referenced members
 
@@ -4178,6 +4148,16 @@ Raised when a defined procedure or function in JavaScript or SQL sets `runtime_v
 Fix: remove the key, or write the routine in Java, Python or Scala
 
 Note: Snowflake's JavaScript and Snowflake Scripting CREATE PROCEDURE and CREATE FUNCTION have no such clauses, so SST would either render a CREATE Snowflake refuses or drop the key.
+
+### SST-VAL622
+
+**Tool column names another model** (error)
+
+`tool member '<name>': <field> names model '<found>', not its on: model '<expected>'`
+
+Raised when a column a defined search service names -- `search_column`, an attribute, an id, title or relative path column, or a `columns:` entry, on the member or on an agent's search tool over it -- or a column `ref()` in its `where`, names a model other than its `on:` model.
+
+Fix: reference a column of the on: model, as {{ ref('&lt;on model&gt;', '&lt;column&gt;') }}
 
 ### SST-VAL701
 
@@ -5823,7 +5803,7 @@ Fix: register a renderer, or change the kind
 
 Raised when a search-service tool has no relation to select from, or a procedure or function tool has no body.
 
-Fix: supply on: or body_file: content
+Fix: supply on: or body: content
 
 ### SST-RND042
 
@@ -5831,11 +5811,11 @@ Fix: supply on: or body_file: content
 
 `tool '<artifact>': <field> is not set, and no default supplies it`
 
-Raised when once the `tools:` defaults apply, a defined search service has no `warehouse` or `target_lag`, or a defined procedure has no `warehouse`.
+Raised when once its settings resolve, a defined search service has no `warehouse` or `target_lag`, or a defined procedure has no `warehouse`.
 
-Fix: set {field} on the member, or the tools.+{field} default in sst_config.yml
+Fix: set config.{field} on the member, or +{field} in a tools: folder route or the block root
 
-Note: A warehouse falls back to the profile target's when neither the member nor `tools.+warehouse` names one; a target lag has no fallback.
+Note: A warehouse falls back to the profile target's when neither the member's `config:`, a folder route nor `tools.+warehouse` names one; a target lag has no fallback.
 
 ### SST-RND900
 
@@ -7155,7 +7135,7 @@ Fix: check the permissions and the free space
 
 `could not read <path>: <detail>`
 
-Raised when a file SST reads cannot be read or does not hold what it should (a manifest, baseline, saved plan, or `--state` observation); a file or folder to be read is a symbolic link or is reached through one; or dbt's `target-path`, the semantic-models directory, or a tool's `body_file` resolves outside the project.
+Raised when a file SST reads cannot be read or does not hold what it should (a manifest, baseline, saved plan, or `--state` observation); a file or folder to be read is a symbolic link or is reached through one, a tool member's `body:` file among them; or dbt's `target-path` or the semantic-models directory resolves outside the project.
 
 Fix: remove the link, or use a path inside the project; otherwise check that the file exists and can be read
 
@@ -7468,6 +7448,22 @@ Retired because apply runs no smoke probes and never rolls back, so there is no 
 
 Retired because no configuration key is required: a stage left unset leaves its skills, plugins, or profiles unpublished.
 
+### SST-CFG019
+
+**Tool member declared under both define and reference** (retired in 1.0.0)
+
+Retired because tools have no define: or reference: lists: a member that writes relations: is a reference, and a name declared twice is SST-VAL001.
+
+Superseded by [`SST-VAL001`](#sst-val001).
+
+### SST-CFG020
+
+**Per-group tools override names an unknown or reference-only group** (retired in 1.0.0)
+
+Retired because tools are routed by folder, not group name: a tools: route that names no folder is SST-CFG041.
+
+Superseded by [`SST-CFG041`](#sst-cfg041).
+
 ### SST-CFG021
 
 **publish_via is not yaml or ddl** (retired in 1.0.0)
@@ -7620,9 +7616,9 @@ Superseded by [`SST-VAL006`](#sst-val006).
 
 **Ref target is declared under both define and reference** (retired in 1.0.0)
 
-Retired because SST-CFG019 already reported the same condition, when configuration is validated.
+Retired because tools have no define: or reference: lists; a member name declared twice is SST-VAL001.
 
-Superseded by [`SST-CFG019`](#sst-cfg019).
+Superseded by [`SST-VAL001`](#sst-val001).
 
 ### SST-REF024
 
@@ -7773,6 +7769,22 @@ Retired because how grants survive a replace is each artifact type's registered 
 **Replace would run without COPY GRANTS** (retired in 1.0.0)
 
 Retired because how grants survive a replace is each artifact type's registered rule, not a setting to get wrong.
+
+### SST-VAL601
+
+**Tool member name is not unique within its group** (retired in 1.0.0)
+
+Retired because tools have no groups: a member name declared twice anywhere in the project is SST-VAL001.
+
+Superseded by [`SST-VAL001`](#sst-val001).
+
+### SST-VAL602
+
+**Tool member name is not globally unique** (retired in 1.0.0)
+
+Retired because tools have no groups: a member name declared twice anywhere in the project is SST-VAL001.
+
+Superseded by [`SST-VAL001`](#sst-val001).
 
 ### SST-VAL620
 
