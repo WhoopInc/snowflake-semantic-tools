@@ -91,7 +91,7 @@ def test_validate_connected_syntax_check_requires_a_connection(tmp_path: Path) -
 
 def test_validate_reports_view_error_but_compile_fails_closed(tmp_path: Path) -> None:
     project = project_copy(tmp_path, offline=False)
-    views_path = project / "semantic_models" / "semantic_views" / "semantic_views.yml"
+    views_path = project / "semantic_models" / "semantic_views" / "jaffle_minimal.yml"
     text = views_path.read_text(encoding="utf-8")
     text = text.replace("{{ ref('products') }}", "{{ ref('missing') }}", 1)
     views_path.write_text(text, encoding="utf-8")

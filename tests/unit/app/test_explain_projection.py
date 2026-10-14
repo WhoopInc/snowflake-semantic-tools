@@ -217,4 +217,4 @@ def test_the_loader_records_declared_types_and_member_origins(tmp_path: Path) ->
     ordered_at = next(column for column in view.columns if column.qualified_name == "ORDERS.ORDERED_AT")
     assert ordered_at.data_type == "TIMESTAMP_NTZ"
     origin = view.member_origins["metric:order_count"]
-    assert (origin.file, origin.line) == ("semantic_models/metrics/metrics.yml", 13)
+    assert (origin.file, origin.line) == ("semantic_models/metrics/metrics.yml", 16)

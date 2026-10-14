@@ -5,13 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.reference_project import METRICS, edited, reported
+from tests.helpers.reference_project import edited, member_file, reported
 
-USING = "    using_relationships:\n      - order_items_to_orders\n"
+METRICS = member_file("metrics", "line_item_count")
+USING = "  using_relationships:\n    - order_items_to_orders\n"
 
 
 def test_sst_val214_fires(tmp_path: Path) -> None:
-    project = edited(tmp_path, METRICS, USING, "    using_relationships:\n      - order_items_to_nowhere\n")
+    project = edited(tmp_path, METRICS, USING, "  using_relationships:\n    - order_items_to_nowhere\n")
     [diagnostic] = reported(project, "SST-VAL214")
     assert diagnostic.severity is Severity.ERROR
     assert (

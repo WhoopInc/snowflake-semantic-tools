@@ -1,0 +1,9 @@
+---
+# Only name, description and one table. Its golden checks that nothing
+# optional renders beyond what attaches through `products`; keep it minimal.
+semantic_view:
+  name: jaffle_minimal
+  description: |-
+    Menu products only. Use it when a question needs nothing but the product catalogue.
+  tables:
+    - "{{ ref('products') }}"

@@ -13,7 +13,7 @@ from snowflake_semantic_tools.domain.parse.fields import unknown_field
 from snowflake_semantic_tools.domain.parse.names import name_warnings
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
 from snowflake_semantic_tools.domain.validate.semantic.deprecated import DEPRECATED_KEYS, INERT_KEYS
-from snowflake_semantic_tools.domain.validate.semantic.nodes import node_origin, node_root
+from snowflake_semantic_tools.domain.validate.semantic.nodes import node_label, node_origin, node_root, written_root
 from snowflake_semantic_tools.domain.validate.semantic.scope import SCOPE_KEYS
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 
@@ -225,6 +225,7 @@ def member_name_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, .
                         D(
                             "SST-PRS107",
                             artifact=document.path,
+                            member=node_label(document, node_type, index),
                             member_type=node_type,
                             index=index,
                             subject=artifact_key(node_type, str(index)),
@@ -241,16 +242,24 @@ def member_name_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, .
 
 
 def _foreign_members(document: AuthoredDocument) -> tuple[Diagnostic, ...]:
-    """Report each member list in a type folder that belongs to another member type.
+    """Report each member a type folder's file declares that belongs to another member type.
 
     Diagnostics:
-        SST-PRS105: a member type's folder holds a list of another member type.
+        SST-PRS105: a member type's folder holds a member of another type, as one item or a list.
     """
     owner = TYPE_FOLDERS.get(document.hint_root or "")
     if owner is None:
         return ()
     return tuple(
-        D("SST-PRS105", origin=Origin(document.path), type=owner, member_type=node_type)
+        D(
+            "SST-PRS105",
+            origin=Origin(document.path),
+            path=document.path,
+            root=document.hint_root,
+            type=owner,
+            member_type=node_type,
+            key=written_root(document, node_type),
+        )
         for node_type in AUTHORED_KEYS
         if node_type not in (owner, "semantic_view") and node_root(node_type) in document.root_keys
     )

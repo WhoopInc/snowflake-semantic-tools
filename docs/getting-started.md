@@ -141,23 +141,25 @@ instead; see [Enriching models](guides/enrich.md).
 
 ```yaml
 # semantic_models/semantic_views/sales.yml
-semantic_views:
-  - name: sales
-    description: Orders and their value. Use for order counts and revenue.
-    tables:
-      - "{{ ref('orders') }}"
+semantic_view:
+  name: sales
+  description: Orders and their value. Use for order counts and revenue.
+  tables:
+    - "{{ ref('orders') }}"
 ```
 
 ```yaml
-# semantic_models/metrics/orders.yml
-snowflake_metrics:
-  - name: order_count
-    description: Number of distinct orders placed.
-    expr: "COUNT(DISTINCT {{ ref('orders', 'order_id') }})"
+# semantic_models/metrics/order_count.yml
+metric:
+  name: order_count
+  description: Number of distinct orders placed.
+  expr: "COUNT(DISTINCT {{ ref('orders', 'order_id') }})"
 ```
 
-Any YAML file under `semantic_models/` is read, and each member is recognised
-by its root key; only views must live under `semantic_views/`. A metric's tables
+Each file holds one item under its type's singular root. A list under the plural
+root (`semantic_views:`, `snowflake_metrics:`) is also read, for several items in
+one file. Any YAML file under `semantic_models/` is read, and each member is
+recognised by its root key; only views must live under `semantic_views/`. A metric's tables
 are the models its expression names with `ref()`, and it joins every view whose
 tables include all of them, so `order_count` lands in `sales` without the view
 naming it.

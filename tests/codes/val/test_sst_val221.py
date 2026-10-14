@@ -5,13 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.reference_project import FILTERS, edited, reported
+from tests.helpers.reference_project import edited, member_file, reported
 
-PROSE = "    expr: \"large_order_cents - {{ ref('orders', 'order_total') }}\"\n"
+SHORTFALL = member_file("filters", "shortfall_to_large_order_cents")
+PROSE = "  expr: \"large_order_cents - {{ ref('orders', 'order_total') }}\"\n"
 
 
 def test_sst_val221_fires(tmp_path: Path) -> None:
-    project = edited(tmp_path, FILTERS, PROSE, "    expr: \"large_ordr_cents - {{ ref('orders', 'order_total') }}\"\n")
+    project = edited(tmp_path, SHORTFALL, PROSE, "  expr: \"large_ordr_cents - {{ ref('orders', 'order_total') }}\"\n")
     diagnostic = next(item for item in reported(project, "SST-VAL221") if item.subject == "semantic_view:jaffle_sales")
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == (
@@ -23,12 +24,12 @@ def test_sst_val221_fires(tmp_path: Path) -> None:
 
 
 def test_sst_val221_silent(tmp_path: Path) -> None:
-    project = edited(tmp_path, FILTERS, PROSE, PROSE)
+    project = edited(tmp_path, SHORTFALL, PROSE, PROSE)
     assert reported(project, "SST-VAL221") == []
     # A typo in an expression the view is created with is SST-VAL326's, never this warning.
     typo = edited(
         tmp_path / "typo",
-        FILTERS,
+        member_file("filters", "is_large_order"),
         "{{ ref('orders', 'order_total') }} > large_order_cents",
         "{{ ref('orders', 'order_total') }} > large_ordr_cents",
     )

@@ -7,6 +7,9 @@
 # A filter's tables are the models its expr names with ref(), and it attaches
 # to every view that holds them. The order_state literals come from the
 # completed_state and returned_state vars in sst_config.yml.
+#
+# This file keeps the list form; is_large_order and
+# shortfall_to_large_order_cents are single-item `filter:` files beside it.
 
 snowflake_filters:
 
@@ -25,22 +28,3 @@ snowflake_filters:
     expr: "{{ ref('orders', 'order_state') }} = '{{ var('returned_state') }}'"
     labels:
       - filter
-
-  # Reads the view variable large_order_cents as a bare identifier; it renders
-  # as ORDERS.ORDER_TOTAL > LARGE_ORDER_CENTS.
-  - name: is_large_order
-    description: |-
-      Restricts to orders above the view's large-order threshold.
-    expr: "{{ ref('orders', 'order_total') }} > large_order_cents"
-    labels:
-      - filter
-
-  # Not boolean and unlabelled, so it renders in AI_SQL_GENERATION as "For
-  # ORDERS, shortfall_to_large_order_cents is ..." followed by its description.
-  # Adding labels: [filter] would make it SST-VAL401. A filter that renders as
-  # prose needs exactly one table, which its ref() names.
-  - name: shortfall_to_large_order_cents
-    description: |-
-      How far an order falls short of the large-order threshold, for generated
-      narrative. A measure of distance, not a predicate.
-    expr: "large_order_cents - {{ ref('orders', 'order_total') }}"

@@ -9,7 +9,7 @@ An **artifact** is one thing SST publishes and tracks. There are seven types:
 
 | Type | Authored as | Publishes |
 |---|---|---|
-| `semantic_view` | an entry under `semantic_views:` | a semantic view |
+| `semantic_view` | a `semantic_view:` file, or a `semantic_views:` list entry | a semantic view |
 | `tool` | a `tool:` file, or a `tools:` list entry, that writes no `relations:` | a Cortex Search service, procedure, function, or stage |
 | `skill` | a `SKILL.md` folder | a version of a skill-type Cortex Extension |
 | `plugin` | `plugin.yml` | a version of a plugin-type Cortex Extension |
@@ -80,10 +80,16 @@ A semantic view is assembled from **members** that are authored separately:
 
 - **facts, dimensions, and time dimensions** come from dbt column metadata
   (`config.meta.sst.column_type`);
-- **metrics, relationships, filters, and verified queries** are YAML entries
-  under `snowflake_metrics:`, `snowflake_relationships:`, `snowflake_filters:`,
-  and `snowflake_verified_queries:`;
-- **custom instructions** are YAML entries under `snowflake_custom_instructions:`.
+- **metrics, relationships, filters, and verified queries** are YAML files,
+  usually one per member under `metric:`, `relationship:`, `filter:` or
+  `verified_query:`, or entries of a `snowflake_metrics:`,
+  `snowflake_relationships:`, `snowflake_filters:` or `snowflake_verified_queries:`
+  list;
+- **custom instructions** are `custom_instruction:` files, or entries of a
+  `snowflake_custom_instructions:` list.
+
+A single-item file is read exactly as a one-item list, so either shape attaches
+the same way; [Semantic views](guides/semantic-views.md#file-shapes) lists them.
 
 A member is not published on its own; it reaches Snowflake inside every view it
 attaches to. Members have keys too: `metric:order_count`, or

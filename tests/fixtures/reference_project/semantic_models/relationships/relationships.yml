@@ -9,6 +9,9 @@
 # left_table is the many side and right_table the one side, each one
 # {{ ref('<model>') }} call; a bare name there is SST-REF046. A relationship
 # attaches to every view that holds both its tables.
+#
+# This file keeps the list form for the two jaffle_sales relationships; the
+# other four are single-item `relationship:` files beside it.
 
 snowflake_relationships:
   # Attaches to jaffle_sales, the one view holding both tables. A relationship
@@ -32,52 +35,3 @@ snowflake_relationships:
     right_table: "{{ ref('locations') }}"
     relationship_conditions:
       - "{{ ref('orders', 'location_id') }} = {{ ref('locations', 'location_id') }}"
-
-  # Renders ORDER_ITEMS (ORDER_ID, OCCURRED_AT) REFERENCES ORDERS (ORDER_ID,
-  # ASOF ORDERED_AT): each line item matches its order as of when the item was
-  # recorded.
-  - name: order_items_to_orders
-    description: |-
-      Each line item is attributed to the order state in effect when the item was
-      recorded, rather than to the order's current state.
-    left_table: "{{ ref('order_items') }}"
-    right_table: "{{ ref('orders') }}"
-    relationship_conditions:
-      # The key equality, then the ASOF comparison. >= is the only ASOF
-      # operator SST parses, and Snowflake allows one ASOF column per
-      # relationship.
-      - "{{ ref('order_items', 'order_id') }} = {{ ref('orders', 'order_id') }}"
-      - "{{ ref('order_items', 'occurred_at') }} >= {{ ref('orders', 'ordered_at') }}"
-
-  # BETWEEN makes this a range relationship. Snowflake requires a DISTINCT
-  # RANGE constraint on the target, which jaffle_menu declares as the
-  # distinct_range of pricing_periods. The end bound renders EXCLUSIVE.
-  - name: orders_to_pricing_periods
-    description: |-
-      Each order falls inside exactly one pricing period, determined by when it was
-      placed.
-    left_table: "{{ ref('orders') }}"
-    right_table: "{{ ref('pricing_periods') }}"
-    relationship_conditions:
-      - "{{ ref('orders', 'ordered_at') }} BETWEEN {{ ref('pricing_periods', 'effective_start_at') }} AND {{ ref('pricing_periods', 'effective_end_at') }}"
-
-  - name: order_items_to_products
-    description: |-
-      Each line item sells exactly one product. Many line items to one product, so
-      `order_items` is the left table.
-    left_table: "{{ ref('order_items') }}"
-    right_table: "{{ ref('products') }}"
-    relationship_conditions:
-      - "{{ ref('order_items', 'product_id') }} = {{ ref('products', 'product_id') }}"
-
-  # The only relationship of the snapshot table. With it, jaffle_menu's five
-  # tables and four relationships form a tree: one path between any two
-  # tables, so no ambiguous path (SST-VAL209) and no cycle (SST-VAL215).
-  - name: supplies_to_products
-    description: |-
-      Each supply-cost snapshot row belongs to exactly one product. Many monthly
-      snapshots to one product, so `supplies` is the left table.
-    left_table: "{{ ref('supplies') }}"
-    right_table: "{{ ref('products') }}"
-    relationship_conditions:
-      - "{{ ref('supplies', 'product_id') }} = {{ ref('products', 'product_id') }}"

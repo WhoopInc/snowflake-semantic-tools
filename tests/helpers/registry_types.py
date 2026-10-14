@@ -31,6 +31,7 @@ def artifact(name: str, position: int = 100, **changes: Any) -> ArtifactType:
     value = ArtifactType(
         name=name,
         root_key=f"{name}s",
+        singular_root=name,
         ddl_position=position,
         ref_function=name,
         member_types=(),
@@ -47,7 +48,7 @@ def artifact(name: str, position: int = 100, **changes: Any) -> ArtifactType:
 def member(name: str, owner: str = "semantic_view", position: int = 10, **changes: Any) -> MemberType:
     """Return a file-sourced member type named `name`, owned by `owner` at clause position `position`."""
     value = MemberType(
-        name, f"{name}s", MemberSource.FILES, position, AttachRule.TABLE_MEMBERSHIP, owner, None, ("shared",)
+        name, f"{name}s", name, MemberSource.FILES, position, AttachRule.TABLE_MEMBERSHIP, owner, None, ("shared",)
     )
     return replace(value, **changes)
 

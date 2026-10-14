@@ -1,0 +1,16 @@
+---
+# The block only jaffle_menu names, which makes attachment per view observable;
+# custom_instructions.yml says why there are three.
+custom_instruction:
+  name: jaffle_margin_guidance
+  description: |-
+    How to reason about margin in the menu view specifically. Attached to
+    jaffle_menu only.
+  ai_sql_generation: |-
+    Supply cost is restated per product per month, so it must never be summed
+    across months -- use the total_supply_cost metric, which declares
+    snapshot_month as non-additive, rather than aggregating the column directly.
+    Margin is line-item revenue less supply cost; express margin rate as a
+    decimal share of line-item revenue.
+    A margin question scoped to a single month is answerable; a margin question
+    spanning months is answerable only through the metric, never by summing.

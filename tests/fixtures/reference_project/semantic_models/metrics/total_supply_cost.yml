@@ -1,0 +1,10 @@
+---
+# Rows sort by snapshot_month and only the last month's rows are summed; the
+# default ascending order makes that the latest month.
+metric:
+  name: total_supply_cost
+  description: |-
+    Cost of supplying the products sold, in cents. Not additive across months.
+  expr: "SUM({{ ref('supplies', 'supply_cost') }})"
+  non_additive_dimensions:
+    - dimension: snapshot_month

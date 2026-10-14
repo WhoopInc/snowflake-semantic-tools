@@ -72,7 +72,7 @@ def test_list_without_manifest_and_failed_compile_json(tmp_path: Path) -> None:
     payload = json.loads(missing.output)
     assert payload["exit_code"] == 4
 
-    views = project / "semantic_models" / "semantic_views" / "semantic_views.yml"
+    views = project / "semantic_models" / "semantic_views" / "jaffle_minimal.yml"
     views.write_text(
         views.read_text(encoding="utf-8").replace("{{ ref('products') }}", "{{ ref('missing') }}", 1), encoding="utf-8"
     )

@@ -298,7 +298,7 @@ def test_plan_noop_uses_remote_state_not_a_prior_manifest(tmp_path: Path, monkey
     ("relative", "old", "new", "updated"),
     [
         pytest.param(
-            "semantic_models/metrics/metrics.yml",
+            "semantic_models/metrics/line_item_count.yml",
             "COUNT({{ ref('order_items', 'order_item_id') }})",
             "COUNT(DISTINCT {{ ref('order_items', 'order_item_id') }})",
             # The agent's Analyst tool names the view, so the view's metrics are not in its spec.
@@ -418,7 +418,7 @@ def test_capture_prior_reads_every_published_kind_without_failing_the_plan(
 def test_selected_plan_refuses_a_stale_canonical_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = project_copy(tmp_path)
     compile_project(project)
-    views = project / "semantic_models" / "semantic_views" / "semantic_views.yml"
+    views = project / "semantic_models" / "semantic_views" / "jaffle_minimal.yml"
     views.write_text(
         views.read_text(encoding="utf-8").replace("Menu products only", "Changed after compile"),
         encoding="utf-8",

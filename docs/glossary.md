@@ -83,8 +83,9 @@ where it is explained.
   deleted. See [ownership, grants, and prune](concepts.md#ownership-grants-and-prune).
 - **Reference.** A `{{ ... }}` call, such as `{{ ref('orders') }}`, that SST
   resolves for the target being built. See [references](concepts.md#references).
-- **Semantic view.** A Snowflake semantic view SST assembles from an entry
-  under `semantic_views:` and the members that attach to it. See
+- **Semantic view.** A Snowflake semantic view SST assembles from a
+  `semantic_view:` file, or an entry under `semantic_views:`, and the members
+  that attach to it. See
   [semantic views](guides/semantic-views.md).
 - **Skill.** A `SKILL.md` folder SST publishes as a version of a skill-type
   Cortex Extension. See [skills](guides/skills.md).
@@ -126,6 +127,6 @@ Drawn from: [artifact keys](../snowflake_semantic_tools/domain/model/artifact_ke
 | profile | an agent's display name, avatar, and color | a connection in `profiles.yml` | dbt's `profiles.yml`, which SST also reads, or a CoCo Desktop profile from `profile.yml`; an agent's `profile:` keeps Snowflake's sense |
 | catalog | the catalog that serves Cortex Extensions to users; also a catalog integration for Iceberg tables | `catalog.json`, written by `dbt docs generate` | `skills.catalog`, the block that turns on publishing skills to Cortex Extensions |
 | tool | an entry in an agent specification's `tools` | -- | an agent's tool, or the `tool` artifact a defined tool member publishes |
-| metric | an entry in a semantic view's `METRICS` | a metric in dbt's semantic layer | an entry under `snowflake_metrics:`; an eval's judge metric is a different thing, named with `eval_metric()` |
+| metric | an entry in a semantic view's `METRICS` | a metric in dbt's semantic layer | a `metric:` file or a `snowflake_metrics:` entry; an eval's judge metric is a different thing, named with `eval_metric()` |
 
 Drawn from: [configuration keys](../snowflake_semantic_tools/domain/model/config_schema/keys.py), [agent model](../snowflake_semantic_tools/domain/model/agent.py), [tool model](../snowflake_semantic_tools/domain/model/tool.py), [dbt model](../snowflake_semantic_tools/domain/model/dbt.py), [skill model](../snowflake_semantic_tools/domain/model/skill/model.py), [manifest](../snowflake_semantic_tools/app/manifest.py).

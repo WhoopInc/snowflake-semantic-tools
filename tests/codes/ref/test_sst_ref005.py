@@ -6,9 +6,9 @@ from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.diagnostic_filters import coded
-from tests.helpers.reference_project import edited, load
+from tests.helpers.reference_project import edited, load, member_file
 
-FILE = "semantic_models/metrics/metrics.yml"
+FILE = member_file("metrics", "total_revenue")
 BEFORE = "expr: \"SUM({{ ref('orders', 'order_total') }})\""
 
 

@@ -1,5 +1,5 @@
 -- jaffle_minimal golden: SST_REF_DEV.JAFFLE.JAFFLE_MINIMAL, rendered from
--- semantic_models/semantic_views/semantic_views.yml on the dev target. The DDL
+-- semantic_models/semantic_views/jaffle_minimal.yml on the dev target. The DDL
 -- below is what SST renders, and tests/unit/test_golden_ddl.py compares it byte
 -- for byte. The statement has been created in Snowflake, in a scratch schema.
 --

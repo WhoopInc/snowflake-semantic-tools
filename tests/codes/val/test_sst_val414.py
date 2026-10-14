@@ -5,16 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.reference_project import QUERIES, edited, project_copy, reported
+from tests.helpers.reference_project import edited, member_file, project_copy, reported
 
 
 def test_sst_val414_fires(tmp_path: Path) -> None:
-    joined = "      FROM {{ ref('orders') }} AS orders\n      CROSS JOIN customers AS customers\n      GROUP BY ALL\n"
+    joined = "    FROM {{ ref('orders') }} AS orders\n    CROSS JOIN customers AS customers\n    GROUP BY ALL\n"
     [diagnostic] = reported(
         edited(
             tmp_path,
-            QUERIES,
-            "      FROM {{ ref('orders') }} AS orders\n      GROUP BY ALL\n      ORDER BY order_count DESC\n",
+            member_file("verified_queries", "order_count_by_state"),
+            "    FROM {{ ref('orders') }} AS orders\n    GROUP BY ALL\n    ORDER BY order_count DESC\n",
             joined,
         ),
         "SST-VAL414",

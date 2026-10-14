@@ -1,0 +1,10 @@
+---
+# SUM over a fact.
+metric:
+  name: total_revenue
+  description: |-
+    Total order value including tax, in cents.
+  expr: "SUM({{ ref('orders', 'order_total') }})"
+  synonyms:
+    - revenue
+    - gross sales

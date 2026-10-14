@@ -1,0 +1,9 @@
+---
+# DIV0 rather than /, so a zero denominator returns zero, not an error.
+metric:
+  name: revenue_per_order
+  description: |-
+    Mean revenue per order, derived from two table-scoped metrics.
+  expr: "DIV0({{ metric('total_revenue') }}, {{ metric('order_count') }})"
+  synonyms:
+    - revenue per order

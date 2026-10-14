@@ -1,0 +1,20 @@
+---
+verified_query:
+  name: revenue_by_location
+  description: |-
+    Total revenue per store location, completed orders only.
+  question: "What is total revenue by store location?"
+  sql: |-
+    SELECT
+          locations.location_name                       AS location_name
+        , SUM(orders.order_total) / 100                 AS revenue
+    FROM {{ ref('orders') }} AS orders
+    INNER JOIN {{ ref('locations') }} AS locations
+        ON orders.location_id = locations.location_id
+    WHERE orders.order_state = 'completed'
+    GROUP BY ALL
+    ORDER BY revenue DESC
+  use_as_onboarding_question: true
+  # A date string, rendered as epoch seconds at midnight UTC (1767225600).
+  verified_at: "2026-01-01"
+  verified_by: "analytics-platform"

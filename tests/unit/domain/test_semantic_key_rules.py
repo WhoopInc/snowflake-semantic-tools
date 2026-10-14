@@ -7,7 +7,7 @@ from snowflake_semantic_tools.domain.validate.semantic.authored_keys import (
     legacy_reference_diagnostics,
     member_name_diagnostics,
 )
-from snowflake_semantic_tools.domain.validate.semantic.nodes import node_root
+from snowflake_semantic_tools.domain.validate.semantic.nodes import node_label, node_root, written_root
 from tests.helpers.authored_documents import document, documents
 
 VIEWS, METRICS, FILTERS, RELATIONSHIPS = (
@@ -94,6 +94,24 @@ def test_each_node_needs_a_name_its_type_uses_once() -> None:
     assert found[4].context["a"] == "metrics/" and found[4].context["b"] == "filters/"
     assert found[5].context["other"] == "the one in metrics/a.yml"
     assert member_name_diagnostics(documents(document("x/a.yml", {METRICS: [{"name": "Select"}]}, hint_root="x"))) != ()
+
+
+def test_a_single_item_file_names_its_node_by_type_and_root_as_written() -> None:
+    single = document(
+        "filters/m.yml", {METRICS: [{"expr": "x"}]}, hint_root="filters", single_item_roots=frozenset({METRICS})
+    )
+    listed = document("filters/n.yml", {METRICS: [{"expr": "x"}]}, hint_root="filters")
+    assert (written_root(single, "metric"), written_root(listed, "metric")) == ("metric", METRICS)
+    assert (node_label(single, "metric", 0), node_label(listed, "metric", 0)) == ("the metric", "metric entry 0")
+    view = document("semantic_views/v.yml", {VIEWS: [{"name": "v"}]}, single_item_roots=frozenset({VIEWS}))
+    assert written_root(view, "semantic_view") == "semantic_view"
+    found = member_name_diagnostics(documents(single, listed))
+    assert [(item.code, item.message) for item in found] == [
+        ("SST-PRS105", "filters/m.yml: filters/ holds filter members, not the metric under 'metric:'"),
+        ("SST-PRS107", "filters/m.yml: the metric has no name"),
+        ("SST-PRS105", f"filters/n.yml: filters/ holds filter members, not the metric under '{METRICS}:'"),
+        ("SST-PRS107", "filters/n.yml: metric entry 0 has no name"),
+    ]
 
 
 def test_a_legacy_table_or_column_call_is_reported_wherever_a_string_holds_it() -> None:

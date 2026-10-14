@@ -26,6 +26,9 @@
 # The enum literals referenced below are the closed sets the dbt
 # models declare, and each is referred to through its filter rather than written as
 # a literal where a filter exists.
+#
+# This file keeps the list form for the two blocks both views share;
+# jaffle_margin_guidance is a single-item `custom_instruction:` file beside it.
 # =============================================================================
 
 snowflake_custom_instructions:
@@ -63,16 +66,3 @@ snowflake_custom_instructions:
       A question that needs both customer attributes and product detail spans two
       views and cannot be answered from either alone; say so rather than answering
       from whichever view is to hand.
-
-  - name: jaffle_margin_guidance
-    description: |-
-      How to reason about margin in the menu view specifically. Attached to
-      jaffle_menu only.
-    ai_sql_generation: |-
-      Supply cost is restated per product per month, so it must never be summed
-      across months -- use the total_supply_cost metric, which declares
-      snapshot_month as non-additive, rather than aggregating the column directly.
-      Margin is line-item revenue less supply cost; express margin rate as a
-      decimal share of line-item revenue.
-      A margin question scoped to a single month is answerable; a margin question
-      spanning months is answerable only through the metric, never by summing.

@@ -1,0 +1,14 @@
+---
+# Plain COUNT, naming its join path: USING (ORDER_ITEMS_TO_ORDERS). SST
+# requires using_relationships only when two relationships join a metric's
+# table to the same table (SST-VAL116); here it is optional.
+metric:
+  name: line_item_count
+  description: |-
+    Number of line items sold.
+  expr: "COUNT({{ ref('order_items', 'order_item_id') }})"
+  using_relationships:
+    - order_items_to_orders
+  synonyms:
+    - units sold
+    - items

@@ -2,6 +2,9 @@
 # Semantic views for the reference project. SST reads every YAML file under
 # semantic_models/semantic_views/, at any depth; jaffle_menu is in core/.
 #
+# This file keeps the list form; jaffle_minimal.yml and core/jaffle_menu.yml
+# each hold one view under a `semantic_view:` mapping, the usual shape.
+#
 # A view names its tables and a few view-level keys. Dimensions and facts come
 # from the dbt models' columns. Metrics, relationships, filters and verified
 # queries attach to every view that holds all the tables they reference; custom
@@ -65,14 +68,6 @@ semantic_views:
     custom_instructions:
       - "{{ custom_instructions('jaffle_sql_conventions') }}"
       - "{{ custom_instructions('jaffle_question_scope') }}"
-
-  # Only name, description and one table. Its golden checks that nothing
-  # optional renders beyond what attaches through `products`; keep it minimal.
-  - name: jaffle_minimal
-    description: |-
-      Menu products only. Use it when a question needs nothing but the product catalogue.
-    tables:
-      - "{{ ref('products') }}"
 
 # Not covered here: role-playing tables (one model under two logical names) are
 # not supported in 1.0, and a model listed twice in `tables:` is rejected

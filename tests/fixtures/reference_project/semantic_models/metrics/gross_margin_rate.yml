@@ -1,0 +1,10 @@
+---
+# Derived from gross_margin, itself derived; it renders GROSS_MARGIN by name.
+metric:
+  name: gross_margin_rate
+  description: |-
+    Gross margin as a share of line-item revenue.
+  expr: "DIV0({{ metric('gross_margin') }}, {{ metric('total_line_item_revenue') }})"
+  synonyms:
+    - margin rate
+    - margin percentage

@@ -1,0 +1,10 @@
+---
+# Reads the NUMBER view variable large_order_cents as a bare identifier; it
+# renders as LARGE_ORDER_CENTS.
+metric:
+  name: large_order_count
+  description: |-
+    Number of orders whose value exceeds the large-order threshold.
+  expr: "COUNT(DISTINCT CASE WHEN {{ ref('orders', 'order_total') }} > large_order_cents THEN {{ ref('orders', 'order_id') }} END)"
+  synonyms:
+    - big orders

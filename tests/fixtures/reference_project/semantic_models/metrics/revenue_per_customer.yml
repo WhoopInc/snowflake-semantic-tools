@@ -1,0 +1,6 @@
+---
+metric:
+  name: revenue_per_customer
+  description: |-
+    Mean revenue per customer over the period in scope.
+  expr: "DIV0({{ metric('total_revenue') }}, {{ metric('customer_count') }})"

@@ -1,0 +1,11 @@
+---
+# Not boolean and unlabelled, so it renders in AI_SQL_GENERATION as "For
+# ORDERS, shortfall_to_large_order_cents is ..." followed by its description.
+# Adding labels: [filter] would make it SST-VAL401. A filter that renders as
+# prose needs exactly one table, which its ref() names.
+filter:
+  name: shortfall_to_large_order_cents
+  description: |-
+    How far an order falls short of the large-order threshold, for generated
+    narrative. A measure of distance, not a predicate.
+  expr: "large_order_cents - {{ ref('orders', 'order_total') }}"

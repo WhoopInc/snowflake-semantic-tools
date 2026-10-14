@@ -4,8 +4,9 @@ The canonical form is a re-layout that never changes what the file means:
 
 - line feeds only, no trailing whitespace, and exactly one newline at the end of a non-empty file;
 - dbt's own indentation: mappings by two spaces, a list item's dash two spaces in;
-- `name` first in every mapping that is a list item and carries no comment, the rest in the
-  order written;
+- `name` first in every mapping that is a list item, or the value of a singular root such as
+  `metric:`, and carries no comment, the rest in the order written: a single-item file is laid
+  out as its list item would be;
 - every multi-line string that is not already a block scalar as a literal block scalar, `|-` (or
   `|` when it ends in a newline); a block scalar keeps the style it was written in, folded or
   literal, so the formatter never rewrites how an author chose to write a value.
@@ -35,6 +36,7 @@ from ruamel.yaml.scalarstring import (
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.roundtrip import check_depth
+from snowflake_semantic_tools.adapters.yaml.documents import SINGULAR_ROOTS
 from snowflake_semantic_tools.domain.diagnostics import D, Origin
 
 # dbt's layout, which enrich also writes new files in.
@@ -97,6 +99,7 @@ def canonical_yaml(text: str, path: str, *, sanitize: bool = False) -> str:
     except YAMLError as exc:
         raise _unparseable(path, exc) from exc
     for document in documents:
+        _name_first_in_roots(document)
         _canonicalise(document, sanitize=sanitize, parent_key=None)
     if sanitize:
         expected = [_sanitised_value(document) for document in documents]
@@ -149,6 +152,15 @@ def _canonicalise(node: object, *, sanitize: bool, parent_key: str | None) -> No
                 item.move_to_end(_FIRST_KEY, last=False)
             node[index] = _canonical_item(item, sanitize=sanitize, parent_key=parent_key)
             _canonicalise(node[index], sanitize=sanitize, parent_key=None)
+
+
+def _name_first_in_roots(document: object) -> None:
+    """Move `name` first in each singular root's mapping, as `_canonicalise` does for a list item."""
+    if not isinstance(document, CommentedMap):
+        return
+    for key in document:
+        if str(key) in SINGULAR_ROOTS and _reorderable(document[key]):
+            document[key].move_to_end(_FIRST_KEY, last=False)
 
 
 def _reorderable(item: object) -> bool:

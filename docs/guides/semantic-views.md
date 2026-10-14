@@ -6,35 +6,78 @@ the [configuration reference](../reference/config.md); every rule below has an
 entry in the [error code reference](../reference/error-codes.md).
 
 Files live under `project.semantic_models_dir` (default `semantic_models/`) and
-can be split and named however you like: SST reads every YAML file there and
-recognises members by their root key. Views themselves live under its
-`semantic_views/` folder, where folder routes apply; a `semantic_views:` list
-anywhere else is not built and is reported (`SST-PRS004`).
+can be split and named however you like: SST reads every YAML file there, at any
+depth, and recognises members by their root key. Views themselves live under its
+`semantic_views/` folder, where folder routes apply; a view anywhere else is not
+built and is reported (`SST-PRS004`).
+
+### File shapes
+
+The usual file holds one item, as a mapping under its type's singular root, and
+is named for it:
+
+```yaml
+# semantic_models/metrics/total_revenue.yml
+metric:
+  name: total_revenue
+  description: Order value in cents, including tax.
+  expr: "SUM({{ ref('orders', 'order_total') }})"
+```
+
+A list under the plural root is still read, and holds any number of items:
+
+```yaml
+# semantic_models/metrics/order_metrics.yml
+snowflake_metrics:
+  - name: order_count
+    description: Number of distinct orders placed.
+    expr: "COUNT(DISTINCT {{ ref('orders', 'order_id') }})"
+  - name: customer_count
+    description: Number of distinct customers who placed an order.
+    expr: "COUNT(DISTINCT {{ ref('customers', 'customer_id') }})"
+```
+
+| Item | Single-item root | List root |
+|---|---|---|
+| View | `semantic_view:` | `semantic_views:` |
+| Metric | `metric:` | `snowflake_metrics:` |
+| Relationship | `relationship:` | `snowflake_relationships:` |
+| Filter | `filter:` | `snowflake_filters:` |
+| Verified query | `verified_query:` | `snowflake_verified_queries:` |
+| Custom instruction | `custom_instruction:` | `snowflake_custom_instructions:` |
+
+SST reads a single-item file exactly as a one-item list, so every rule below
+applies to both shapes, and a diagnostic points at the line the file writes. A
+file may hold items of several types, but not both roots of one type
+(`SST-PRS003`), and a singular root must hold a mapping (`SST-PRS003`).
+`sst format` lays a single-item file out as it lays out a list item, with `name`
+first. The examples below use the single-item shape.
 
 ## Views
 
 ```yaml
-semantic_views:
-  - name: sales
-    description: |-
-      Orders, the customers who placed them, and where. Use for order volume,
-      order value, and revenue by customer or location.
-    tables:
-      - "{{ ref('orders') }}"
-      - "{{ ref('customers') }}"
-      - "{{ ref('locations') }}"
-    variables:
-      - name: large_order_cents
-        data_type: NUMBER
-        description: Threshold above which an order counts as large.
-        default_value: 1000
-    config:
-      max_staleness: 300
-      tags:
-        - name: "{{ tag('cost_center') }}"
-          value: analytics
-    custom_instructions:
-      - "{{ custom_instructions('sql_conventions') }}"
+# semantic_models/semantic_views/sales.yml
+semantic_view:
+  name: sales
+  description: |-
+    Orders, the customers who placed them, and where. Use for order volume,
+    order value, and revenue by customer or location.
+  tables:
+    - "{{ ref('orders') }}"
+    - "{{ ref('customers') }}"
+    - "{{ ref('locations') }}"
+  variables:
+    - name: large_order_cents
+      data_type: NUMBER
+      description: Threshold above which an order counts as large.
+      default_value: 1000
+  config:
+    max_staleness: 300
+    tags:
+      - name: "{{ tag('cost_center') }}"
+        value: analytics
+  custom_instructions:
+    - "{{ custom_instructions('sql_conventions') }}"
 ```
 
 - `tables:` is required and lists models with `{{ ref('<model>') }}`, or dbt
@@ -140,20 +183,20 @@ list what to keep or what to drop, per kind -- never both for one kind
 (`SST-VAL329`):
 
 ```yaml
-semantic_views:
-  - name: product_costs
-    description: |-
-      Use for product margin and supply cost by product.
-    tables:
-      - "{{ ref('order_items') }}"
-      - "{{ ref('products') }}"
-    columns:                       # or exclude_columns:
-      - "{{ ref('order_items', 'item_price') }}"
-      - "{{ ref('products', 'product_name') }}"
-    metrics:                       # or exclude_metrics:
-      - "{{ metric('total_line_item_revenue') }}"
-    relationships:                 # or exclude_relationships:
-      - order_items_to_products
+semantic_view:
+  name: product_costs
+  description: |-
+    Use for product margin and supply cost by product.
+  tables:
+    - "{{ ref('order_items') }}"
+    - "{{ ref('products') }}"
+  columns:                       # or exclude_columns:
+    - "{{ ref('order_items', 'item_price') }}"
+    - "{{ ref('products', 'product_name') }}"
+  metrics:                       # or exclude_metrics:
+    - "{{ metric('total_line_item_revenue') }}"
+  relationships:                 # or exclude_relationships:
+    - order_items_to_products
 ```
 
 - A column entry is a two-argument `ref()`; a metric entry is a `metric()` call
@@ -225,15 +268,20 @@ ORDERS.ORDER_STATE AS ORDERS.ORDER_STATE WITH SYNONYMS ('order status', 'fulfilm
 ## Metrics
 
 ```yaml
-snowflake_metrics:
-  - name: total_revenue
-    description: Order value in cents, including tax.
-    expr: "SUM({{ ref('orders', 'order_total') }})"
-    synonyms: [revenue, sales]
+# semantic_models/metrics/total_revenue.yml
+metric:
+  name: total_revenue
+  description: Order value in cents, including tax.
+  expr: "SUM({{ ref('orders', 'order_total') }})"
+  synonyms: [revenue, sales]
+```
 
-  - name: revenue_per_order
-    description: Mean revenue per order.
-    expr: "DIV0({{ metric('total_revenue') }}, {{ metric('order_count') }})"
+```yaml
+# semantic_models/metrics/revenue_per_order.yml
+metric:
+  name: revenue_per_order
+  description: Mean revenue per order.
+  expr: "DIV0({{ metric('total_revenue') }}, {{ metric('order_count') }})"
 ```
 
 - A metric's tables are the models its expression names with `ref()`; a column
@@ -263,6 +311,8 @@ the listed dimensions and aggregates only the values in the last rows of that
 order:
 
 ```yaml
+# Two metrics over one measure, kept together as a list.
+snowflake_metrics:
   - name: total_supply_cost
     expr: "SUM({{ ref('supplies', 'supply_cost') }})"
     non_additive_dimensions:
@@ -298,17 +348,18 @@ A `window:` block makes a table-scoped metric a window function metric: a runnin
 total, a moving average, or a value from an earlier row.
 
 ```yaml
-  - name: cumulative_customer_count
-    description: Running count of customers, by the date of their first order.
-    expr: "SUM({{ metric('customer_count') }})"
-    window:
-      partition_by_excluding:
-        - "{{ ref('customers', 'first_ordered_at') }}"
-      order_by:
-        - ref: "{{ ref('customers', 'first_ordered_at') }}"
-          sort_direction: ascending        # optional
-          null_order: last                 # optional
-      frame: RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+metric:
+  name: cumulative_customer_count
+  description: Running count of customers, by the date of their first order.
+  expr: "SUM({{ metric('customer_count') }})"
+  window:
+    partition_by_excluding:
+      - "{{ ref('customers', 'first_ordered_at') }}"
+    order_by:
+      - ref: "{{ ref('customers', 'first_ordered_at') }}"
+        sort_direction: ascending        # optional
+        null_order: last                 # optional
+    frame: RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 ```
 
 This renders as one `METRICS` entry:
@@ -351,13 +402,14 @@ partition and order, or Snowflake rejects the query. `SHOW SEMANTIC DIMENSIONS I
 ## Relationships
 
 ```yaml
-snowflake_relationships:
-  - name: orders_to_customers
-    description: Each order belongs to exactly one customer.
-    left_table: "{{ ref('orders') }}"
-    right_table: "{{ ref('customers') }}"
-    relationship_conditions:
-      - "{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'customer_id') }}"
+# semantic_models/relationships/orders_to_customers.yml
+relationship:
+  name: orders_to_customers
+  description: Each order belongs to exactly one customer.
+  left_table: "{{ ref('orders') }}"
+  right_table: "{{ ref('customers') }}"
+  relationship_conditions:
+    - "{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'customer_id') }}"
 ```
 
 `left_table` is the many side and `right_table` the one side, each one
@@ -382,12 +434,13 @@ condition (`SST-PRS112`). A condition of any other shape is an error
 (`SST-PRS110`). An as-of join usually pairs a key equality with the comparison:
 
 ```yaml
-  - name: order_items_to_orders
-    left_table: "{{ ref('order_items') }}"
-    right_table: "{{ ref('orders') }}"
-    relationship_conditions:
-      - "{{ ref('order_items', 'order_id') }} = {{ ref('orders', 'order_id') }}"
-      - "{{ ref('order_items', 'occurred_at') }} >= {{ ref('orders', 'ordered_at') }}"
+relationship:
+  name: order_items_to_orders
+  left_table: "{{ ref('order_items') }}"
+  right_table: "{{ ref('orders') }}"
+  relationship_conditions:
+    - "{{ ref('order_items', 'order_id') }} = {{ ref('orders', 'order_id') }}"
+    - "{{ ref('order_items', 'occurred_at') }} >= {{ ref('orders', 'ordered_at') }}"
 ```
 
 which renders as
@@ -399,12 +452,12 @@ table's dbt model must declare non-overlapping ranges with `distinct_range`
 `distinct_range` without a `start` and an `end` is an error (`SST-PRS028`):
 
 ```yaml
-snowflake_relationships:
-  - name: orders_to_pricing_periods
-    left_table: "{{ ref('orders') }}"
-    right_table: "{{ ref('pricing_periods') }}"
-    relationship_conditions:
-      - "{{ ref('orders', 'ordered_at') }} BETWEEN {{ ref('pricing_periods', 'effective_start_at') }} AND {{ ref('pricing_periods', 'effective_end_at') }}"
+relationship:
+  name: orders_to_pricing_periods
+  left_table: "{{ ref('orders') }}"
+  right_table: "{{ ref('pricing_periods') }}"
+  relationship_conditions:
+    - "{{ ref('orders', 'ordered_at') }} BETWEEN {{ ref('pricing_periods', 'effective_start_at') }} AND {{ ref('pricing_periods', 'effective_end_at') }}"
 
 # models/pricing_periods.yml
 models:
@@ -441,13 +494,13 @@ the join as-of instead, so each order matches the one row in effect when it was
 placed -- the latest whose `status_date` is at or before `ordered_at`:
 
 ```yaml
-snowflake_relationships:
-  - name: orders_to_customer_daily_status
-    left_table: "{{ ref('orders') }}"
-    right_table: "{{ ref('customer_daily_status') }}"
-    relationship_conditions:
-      - "{{ ref('orders', 'customer_id') }} = {{ ref('customer_daily_status', 'customer_id') }}"
-      - "{{ ref('orders', 'ordered_at') }} >= {{ ref('customer_daily_status', 'status_date') }}"
+relationship:
+  name: orders_to_customer_daily_status
+  left_table: "{{ ref('orders') }}"
+  right_table: "{{ ref('customer_daily_status') }}"
+  relationship_conditions:
+    - "{{ ref('orders', 'customer_id') }} = {{ ref('customer_daily_status', 'customer_id') }}"
+    - "{{ ref('orders', 'ordered_at') }} >= {{ ref('customer_daily_status', 'status_date') }}"
 ```
 
 **A range join has no key.** It matches each row to the one range that contains
@@ -471,11 +524,12 @@ A filter is a named boolean expression. Label it so it renders as a native
 filter dimension (`LABELS = (FILTER)` in the view's DDL):
 
 ```yaml
-snowflake_filters:
-  - name: is_completed_order
-    description: Orders that completed; the default lens for revenue.
-    expr: "{{ ref('orders', 'order_state') }} = 'completed'"
-    labels: [filter]
+# semantic_models/filters/is_completed_order.yml
+filter:
+  name: is_completed_order
+  description: Orders that completed; the default lens for revenue.
+  expr: "{{ ref('orders', 'order_state') }} = 'completed'"
+  labels: [filter]
 ```
 
 This renders in `DIMENSIONS` as:
@@ -496,17 +550,18 @@ ORDERS.IS_COMPLETED_ORDER LABELS = (FILTER) AS ORDERS.ORDER_STATE = 'completed' 
 ## Verified queries
 
 ```yaml
-snowflake_verified_queries:
-  - name: order_count_by_state
-    description: Order volume by fulfilment state.
-    question: How many orders are there in each fulfilment state?
-    sql: |-
-      SELECT orders.order_state, COUNT(DISTINCT orders.order_id) AS order_count
-      FROM {{ ref('orders') }} AS orders
-      GROUP BY ALL
-    use_as_onboarding_question: true
-    verified_at: 1769904000
-    verified_by: analytics-team
+# semantic_models/verified_queries/order_count_by_state.yml
+verified_query:
+  name: order_count_by_state
+  description: Order volume by fulfilment state.
+  question: How many orders are there in each fulfilment state?
+  sql: |-
+    SELECT orders.order_state, COUNT(DISTINCT orders.order_id) AS order_count
+    FROM {{ ref('orders') }} AS orders
+    GROUP BY ALL
+  use_as_onboarding_question: true
+  verified_at: 1769904000
+  verified_by: analytics-team
 ```
 
 - `sql:` is required (`SST-PRS002`). To keep the query in a `.sql` file, write
@@ -532,14 +587,15 @@ snowflake_verified_queries:
 ## Custom instructions
 
 ```yaml
-snowflake_custom_instructions:
-  - name: sql_conventions
-    description: How to shape SQL against these views.
-    ai_sql_generation: |-
-      Monetary columns are stored in cents; divide by one hundred before
-      presenting a currency figure.
-    ai_question_categorization: |-
-      Decline questions about individual named customers.
+# semantic_models/custom_instructions/sql_conventions.yml
+custom_instruction:
+  name: sql_conventions
+  description: How to shape SQL against these views.
+  ai_sql_generation: |-
+    Monetary columns are stored in cents; divide by one hundred before
+    presenting a currency figure.
+  ai_question_categorization: |-
+    Decline questions about individual named customers.
 ```
 
 A view includes a block by listing `{{ custom_instructions('<name>') }}`; a name
@@ -582,4 +638,6 @@ Snowflake's order: `TABLES`, `RELATIONSHIPS`, `VARIABLES`, `FACTS`,
 Relationships, facts, dimensions, and metrics are sorted by name, so adding an
 unrelated member does not reorder the rest. Tables keep the order `tables:` lists
 them in, variables and tags the order they are declared in, and verified queries
-the order they attach in, so reordering any of these changes the statement.
+the order they attach in -- their files by path, then each file's entries in
+order -- so reordering any of these, or renaming a verified query's file,
+changes the statement.

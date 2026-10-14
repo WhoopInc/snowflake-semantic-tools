@@ -65,22 +65,29 @@ models:
 
 ## Members find their views
 
-Every YAML file under the semantic models directory is read, and each member is recognised
-by its root key: `semantic_views:` (only under `semantic_views/`), `snowflake_metrics:`,
-`snowflake_relationships:`, `snowflake_filters:`, `snowflake_verified_queries:`, and
-`snowflake_custom_instructions:`. A view does not list most members. A member's tables
-are the models its `ref()` calls name, and it attaches to every view whose `tables:` hold all
-of them; a member that lands nowhere is `SST-MEM005`. Custom instructions are the exception: a view names them.
+Write one item per file, named for it (`metrics/total_revenue.yml`), under its singular root
+as a mapping: `semantic_view:` (only under `semantic_views/`), `metric:`, `relationship:`,
+`filter:`, `verified_query:`, or `custom_instruction:`. A list under the plural root
+(`semantic_views:`, `snowflake_metrics:`, `snowflake_relationships:`, `snowflake_filters:`,
+`snowflake_verified_queries:`, `snowflake_custom_instructions:`) is still read, as several
+items in one file; a file holding both forms of one type is `SST-PRS003`. Every YAML file
+under the semantic models directory is read, at any depth, and each member is recognised by
+its root key.
+
+A view does not list most members. A member's tables are the models its `ref()` calls name,
+and it attaches to every view whose `tables:` hold all of them; a member that lands nowhere is
+`SST-MEM005`. Custom instructions are the exception: a view names them.
 
 ```yaml
-semantic_views:
-  - name: sales
-    description: |-
-      Orders and their value. Use for order counts and revenue by customer. Do not use for
-      product or line-item detail.
-    tables:
-      - "{{ ref('orders') }}"
-      - "{{ ref('customers') }}"
+# semantic_views/sales.yml
+semantic_view:
+  name: sales
+  description: |-
+    Orders and their value. Use for order counts and revenue by customer. Do not use for
+    product or line-item detail.
+  tables:
+    - "{{ ref('orders') }}"
+    - "{{ ref('customers') }}"
 ```
 
 A view's `description` must say when to use it (`SST-VAL005`): it is what an agent reads to
@@ -94,13 +101,19 @@ value is `SST-CFG054`. Never write them beside `tables:` (`SST-PRS126`).
 ## Metrics
 
 ```yaml
-snowflake_metrics:
-  - name: total_revenue
-    description: Order value in cents, including tax.
-    expr: "SUM({{ ref('orders', 'order_total') }})"
-  - name: revenue_per_order
-    description: Mean revenue per order.
-    expr: "DIV0({{ metric('total_revenue') }}, {{ metric('order_count') }})"
+# metrics/total_revenue.yml
+metric:
+  name: total_revenue
+  description: Order value in cents, including tax.
+  expr: "SUM({{ ref('orders', 'order_total') }})"
+```
+
+```yaml
+# metrics/revenue_per_order.yml
+metric:
+  name: revenue_per_order
+  description: Mean revenue per order.
+  expr: "DIV0({{ metric('total_revenue') }}, {{ metric('order_count') }})"
 ```
 
 - Never write `tables:` or `derived:` (`SST-PRS126`). A metric's table is the model its `expr`
@@ -116,12 +129,13 @@ snowflake_metrics:
 ## Relationships
 
 ```yaml
-snowflake_relationships:
-  - name: orders_to_customers
-    left_table: "{{ ref('orders') }}"      # the many side
-    right_table: "{{ ref('customers') }}"  # the one side
-    relationship_conditions:
-      - "{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'customer_id') }}"
+# relationships/orders_to_customers.yml
+relationship:
+  name: orders_to_customers
+  left_table: "{{ ref('orders') }}"      # the many side
+  right_table: "{{ ref('customers') }}"  # the one side
+  relationship_conditions:
+    - "{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'customer_id') }}"
 ```
 
 - Each endpoint is one `{{ ref('<model>') }}` call (`SST-REF046`).

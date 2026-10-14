@@ -19,5 +19,14 @@ def test_sst_prs107_fires(tmp_path: Path) -> None:
     assert diagnostic.subject == "filter:0"
 
 
+def test_sst_prs107_fires_without_a_list_index_in_a_single_item_file(tmp_path: Path) -> None:
+    [diagnostic] = coded(
+        SmallProject(tmp_path, files={FILTERS: "filter:\n  expr: 'TRUE'\n"}).load().diagnostics,
+        "SST-PRS107",
+    )
+    assert diagnostic.message == "semantic_models/filters/f.yml: the filter has no name"
+    assert diagnostic.origin is not None and (diagnostic.origin.line, diagnostic.origin.col) == (2, 3)
+
+
 def test_sst_prs107_silent(tmp_path: Path) -> None:
     assert coded(SmallProject(tmp_path, files={FILTERS: filter_entry("cheap")}).load().diagnostics, "SST-PRS107") == []

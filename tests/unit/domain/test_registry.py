@@ -157,7 +157,9 @@ def test_every_type_names_registered_rule_sets_and_a_discovery_directory() -> No
 
 
 def test_registry_allows_types_without_root_keys_or_reference_functions() -> None:
-    registry = freeze((artifact("semantic_view"), artifact("profile", 200, root_key=None, ref_function=None)))
+    registry = freeze(
+        (artifact("semantic_view"), artifact("profile", 200, root_key=None, singular_root=None, ref_function=None))
+    )
     assert registry.artifacts["profile"].root_key is None
 
 

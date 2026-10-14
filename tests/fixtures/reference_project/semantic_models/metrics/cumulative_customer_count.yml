@@ -1,0 +1,18 @@
+---
+# A window function metric: a running total of customer_count in order of
+# each customer's first order. A query that returns it must also return
+# customers.first_ordered_at, the dimension its window excludes from the
+# partition and orders by.
+metric:
+  name: cumulative_customer_count
+  description: |-
+    Running count of customers, by the date of their first order.
+  expr: "SUM({{ metric('customer_count') }})"
+  window:
+    partition_by_excluding:
+      - "{{ ref('customers', 'first_ordered_at') }}"
+    order_by:
+      - ref: "{{ ref('customers', 'first_ordered_at') }}"
+        sort_direction: ascending
+        null_order: last
+    frame: RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW

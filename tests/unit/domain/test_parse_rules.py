@@ -14,6 +14,7 @@ from snowflake_semantic_tools.domain.parse.records import (
     mutable_records,
     registered_root_keys,
     root_key_diagnostics,
+    singular_roots,
 )
 
 ORIGIN = Origin("agents/a/agent.yml")
@@ -76,6 +77,18 @@ def test_root_keys_no_type_owns_are_reported_one_by_one_or_as_the_whole_document
     partly = root_key_diagnostics("x.yml", ("semantic_views", "dashboards"), known, lambda key: 7)
     assert [(item.code, item.origin) for item in partly] == [("SST-PRS001", Origin("x.yml", 7))]
     assert root_key_diagnostics("x.yml", (), known, lambda key: None) == ()
+
+
+def test_each_singular_root_maps_to_the_list_root_its_one_item_file_reads_as() -> None:
+    assert dict(singular_roots(SEMANTIC_REGISTRY)) == {
+        "semantic_view": "semantic_views",
+        "tool": "tools",
+        "relationship": "snowflake_relationships",
+        "metric": "snowflake_metrics",
+        "filter": "snowflake_filters",
+        "verified_query": "snowflake_verified_queries",
+        "custom_instruction": "snowflake_custom_instructions",
+    }
 
 
 def test_a_parsed_record_must_be_a_frozen_dataclass_or_a_tuple_of_them() -> None:

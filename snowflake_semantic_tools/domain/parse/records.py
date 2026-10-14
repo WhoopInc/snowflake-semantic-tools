@@ -2,17 +2,30 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import is_dataclass
+from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
-from snowflake_semantic_tools.domain.model.registry import Registry
+from snowflake_semantic_tools.domain.model.registry import ArtifactType, MemberType, Registry
 
 
 def registered_root_keys(registry: Registry) -> frozenset[str]:
     """Every YAML root key some artifact or member type of the registry owns."""
     artifacts = (artifact.root_key for artifact in registry.artifacts.values() if artifact.root_key is not None)
     return frozenset((*artifacts, *(member.root_key for member in registry.members.values())))
+
+
+def singular_roots(registry: Registry) -> Mapping[str, str]:
+    """Map each singular root key of the registry to the list root key a one-item file reads as."""
+    entries: tuple[ArtifactType | MemberType, ...] = (*registry.artifacts.values(), *registry.members.values())
+    return MappingProxyType(
+        {
+            entry.singular_root: entry.root_key
+            for entry in entries
+            if entry.singular_root is not None and entry.root_key is not None
+        }
+    )
 
 
 def root_key_diagnostics(

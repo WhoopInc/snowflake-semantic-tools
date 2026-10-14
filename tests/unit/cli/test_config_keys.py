@@ -62,7 +62,7 @@ def test_excluded_directories_are_not_discovered(tmp_path: Path) -> None:
     assert excluded_globs({"validation": {"exclude_dirs": "nope"}}) == ()
     found = {item.path for item in discover_yaml(project, "semantic_models", config=config).files}
     assert "semantic_models/filters/filters.yml" not in found
-    assert "semantic_models/semantic_views/core/semantic_views.yml" not in found
+    assert "semantic_models/semantic_views/core/jaffle_menu.yml" not in found
     assert "semantic_models/metrics/metrics.yml" in found
 
 

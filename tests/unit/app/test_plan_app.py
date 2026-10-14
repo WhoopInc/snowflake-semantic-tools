@@ -132,6 +132,7 @@ def test_observe_skips_types_without_objects_and_merges_healthy_changes_without_
                 "virtual": ArtifactType(
                     "virtual",
                     "virtuals",
+                    "virtual",
                     1,
                     None,
                     (),

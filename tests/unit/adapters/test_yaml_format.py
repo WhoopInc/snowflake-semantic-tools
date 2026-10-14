@@ -111,6 +111,23 @@ def test_a_commented_mapping_keeps_its_key_order() -> None:
     assert canonical_yaml(text, "f.yml") == text
 
 
+def test_a_single_item_file_is_laid_out_as_its_list_item_would_be() -> None:
+    text = '---\n# One metric.\nmetric:\n    expr: x\n    description: "one\\ntwo"\n    name: m\n'
+    formatted = canonical_yaml(text, "m.yml")
+    assert formatted == "---\n# One metric.\nmetric:\n  name: m\n  expr: x\n  description: |-\n    one\n    two\n"
+    assert canonical_yaml(formatted, "m.yml") == formatted
+    listed = canonical_yaml('snowflake_metrics:\n  - expr: x\n    description: "one\\ntwo"\n    name: m\n', "l.yml")
+    assert listed.replace("snowflake_metrics:\n  - ", "metric:\n  ").replace(
+        "\n    ", "\n  "
+    ) == formatted.removeprefix("---\n# One metric.\n")
+    # Only a singular root moves `name`, and only when no comment sits between its keys.
+    assert canonical_yaml("other:\n  expr: x\n  name: m\n", "o.yml") == "other:\n  expr: x\n  name: m\n"
+    commented = "filter:\n  expr: x\n  # about the name\n  name: m\n"
+    assert canonical_yaml(commented, "f.yml") == commented
+    assert canonical_yaml("metric: 1\n", "f.yml") == "metric: 1\n"
+    assert canonical_yaml("- metric\n", "f.yml") == "  - metric\n"
+
+
 def test_whitespace_a_block_scalar_holds_becomes_a_quoted_scalar() -> None:
     assert canonical_yaml("a: |\n  x  \n  y\n", "f.yml") == 'a: "x  \\ny\\n"\n'
     assert canonical_yaml("c: |-\n  \tindented\n  ok\n", "f.yml") == 'c: "\\tindented\\nok"\n'

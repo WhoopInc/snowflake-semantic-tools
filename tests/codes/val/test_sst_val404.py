@@ -5,13 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.reference_project import FILTERS, edited, project_copy, reported
+from tests.helpers.reference_project import edited, member_file, project_copy, reported
 
 
 def test_sst_val404_fires(tmp_path: Path) -> None:
     project = edited(
         tmp_path,
-        FILTERS,
+        member_file("filters", "is_large_order"),
         "expr: \"{{ ref('orders', 'order_total') }} > large_order_cents\"",
         # The ref() gives the filter its table; the bare `tax_paid` beside it is the finding.
         "expr: \"{{ ref('orders', 'order_total') }} > tax_paid\"",

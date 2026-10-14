@@ -28,6 +28,20 @@ def member_root(name: str) -> str:
     return SEMANTIC_REGISTRY.members[name].root_key
 
 
+def written_root(document: AuthoredDocument, node_type: str) -> str:
+    """Return the root key a document wrote a type's nodes under: its singular root, or its list root."""
+    entry = (
+        SEMANTIC_REGISTRY.artifacts[node_type] if node_type == "semantic_view" else SEMANTIC_REGISTRY.members[node_type]
+    )
+    root_key = node_root(node_type)
+    return entry.singular_root or root_key if root_key in document.single_item_roots else root_key
+
+
+def node_label(document: AuthoredDocument, node_type: str, index: int) -> str:
+    """Name a node with no name: `<type> entry <index>` in a list, `the <type>` in a single-item file."""
+    return f"the {node_type}" if node_root(node_type) in document.single_item_roots else f"{node_type} entry {index}"
+
+
 def node_origin(document: AuthoredDocument, root_key: str, index: int, field: str | None = None) -> Origin:
     """Return where the node at `root_key[index]`, or its `field`, starts in its document."""
     path: NodePath = (root_key, index) if field is None else (root_key, index, field)

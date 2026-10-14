@@ -1,5 +1,5 @@
 -- jaffle_menu golden: SST_REF_DEV.CORE.JAFFLE_MENU, rendered from
--- semantic_models/semantic_views/core/semantic_views.yml on the dev target. The
+-- semantic_models/semantic_views/core/jaffle_menu.yml on the dev target. The
 -- core/ folder route sets the view's schema; its tables stay in JAFFLE. The DDL
 -- below is what SST renders, and tests/unit/test_golden_ddl.py compares it byte
 -- for byte. The statement has been created in Snowflake, in a scratch schema.

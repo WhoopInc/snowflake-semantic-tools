@@ -5,14 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, Severity
-from tests.helpers.reference_project import METRICS, edited, reported, view_names
+from tests.helpers.reference_project import edited, member_file, reported, view_names
 
-EXCLUDING = "      partition_by_excluding:\n        - \"{{ ref('customers', 'first_ordered_at') }}\"\n"
+METRICS = member_file("metrics", "cumulative_customer_count")
+EXCLUDING = "    partition_by_excluding:\n      - \"{{ ref('customers', 'first_ordered_at') }}\"\n"
 
 
 def test_sst_val129_fires(tmp_path: Path) -> None:
     # customers is the one side of orders_to_customers, so it reaches no order column.
-    unreachable = "      partition_by:\n        - \"{{ ref('orders', 'order_state') }}\"\n"
+    unreachable = "    partition_by:\n      - \"{{ ref('orders', 'order_state') }}\"\n"
     project = edited(tmp_path, METRICS, EXCLUDING, unreachable)
     [diagnostic] = reported(project, "SST-VAL129")
     assert (diagnostic.severity, ERROR_REGISTRY[diagnostic.code].demotable) == (Severity.ERROR, False)

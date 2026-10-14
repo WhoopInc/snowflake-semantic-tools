@@ -5,13 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.reference_project import METRICS, edited, reported
+from tests.helpers.reference_project import edited, member_file, reported
 
-EXPR = "    expr: \"SUM({{ ref('orders', 'order_total') }})\"\n"
+METRICS = member_file("metrics", "total_revenue")
+EXPR = "  expr: \"SUM({{ ref('orders', 'order_total') }})\"\n"
 
 
 def test_sst_val006_fires(tmp_path: Path) -> None:
-    project = edited(tmp_path, METRICS, EXPR, '    expr: "SUM(SST_REF_DEV.JAFFLE.ORDERS.ORDER_TOTAL)"\n')
+    project = edited(tmp_path, METRICS, EXPR, '  expr: "SUM(SST_REF_DEV.JAFFLE.ORDERS.ORDER_TOTAL)"\n')
     [diagnostic] = reported(project, "SST-VAL006")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "metric 'total_revenue': 'expr' hardcodes 'SST_REF_DEV.JAFFLE.ORDERS.ORDER_TOTAL'"
@@ -24,6 +25,6 @@ def test_sst_val006_silent(tmp_path: Path) -> None:
         tmp_path,
         METRICS,
         EXPR,
-        "    expr: \"SUM(CASE WHEN 'a.b.c' = 'x' THEN 0 END) + SUM({{ ref('orders', 'order_total') }})\"\n",
+        "  expr: \"SUM(CASE WHEN 'a.b.c' = 'x' THEN 0 END) + SUM({{ ref('orders', 'order_total') }})\"\n",
     )
     assert reported(project, "SST-VAL006") == []

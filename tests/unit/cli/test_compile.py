@@ -222,7 +222,7 @@ def test_a_partial_run_still_stops_on_an_error_that_names_no_artifact(tmp_path: 
 
 def test_a_partial_run_refuses_to_publish_a_view_without_a_broken_member(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
-    metrics = project / "semantic_models" / "metrics" / "metrics.yml"
+    metrics = project / "semantic_models" / "metrics" / "total_revenue.yml"
     text = metrics.read_text(encoding="utf-8")
     expression = "expr: \"SUM({{ ref('orders', 'order_total') }})\""
     assert expression in text

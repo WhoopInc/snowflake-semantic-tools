@@ -54,6 +54,15 @@ class AuthoredDocument(Protocol):
         ...
 
     @property
+    def single_item_roots(self) -> frozenset[str]:
+        """Return the list root keys the file wrote in their singular form, as one mapping.
+
+        The tree holds such a node as a one-item list under its list root, so a check reads it
+        as it reads a list entry; this says to name it without a list index.
+        """
+        ...
+
+    @property
     def hint_root(self) -> str | None:
         """Return the type folder the file was found in; None outside every type's folder."""
         ...

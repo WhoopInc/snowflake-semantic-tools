@@ -4,7 +4,8 @@
 (by default made offline: no Snowflake syntax check, not strict). `edited`, `appended`,
 `with_view` and `added` copy it and change one file; `load` and `reported` load a copy the way
 `sst` loads it, against the vendored dbt manifest; `edited_manifest` writes a changed copy of
-that manifest. The paths of its authored files are the constants below.
+that manifest. The paths of its authored files are the constants below: each member folder keeps
+one list file, and every other member is a single-item file `member_file` names.
 """
 
 from __future__ import annotations
@@ -31,6 +32,12 @@ RELATIONSHIPS = "semantic_models/relationships/relationships.yml"
 FILTERS = "semantic_models/filters/filters.yml"
 INSTRUCTIONS = "semantic_models/custom_instructions/custom_instructions.yml"
 QUERIES = "semantic_models/verified_queries/verified_queries.yml"
+MENU_VIEW = "semantic_models/semantic_views/core/jaffle_menu.yml"
+
+
+def member_file(folder: str, name: str) -> str:
+    """The single-item file declaring `name` in `semantic_models/<folder>/`, such as `metrics`."""
+    return f"semantic_models/{folder}/{name}.yml"
 
 
 def project_copy(root: Path, *, offline: bool = True) -> Path:
@@ -90,7 +97,7 @@ def with_view(root: Path, view: str) -> Path:
 
 def break_menu_view(project: Path) -> None:
     """Point the `menu` view of a copy at a bare table name, which does not resolve."""
-    path = project / "semantic_models" / "semantic_views" / "core" / "semantic_views.yml"
+    path = project / MENU_VIEW
     text = path.read_text(encoding="utf-8")
     entry = "- \"{{ ref('products') }}\""
     assert entry in text

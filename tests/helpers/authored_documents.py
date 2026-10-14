@@ -22,6 +22,7 @@ class Document:
     tree: Mapping[str, Any]
     line_index: Mapping[NodePath, SourcePosition] = field(default_factory=dict)
     hint_root: str | None = None
+    single_item_roots: frozenset[str] = frozenset()
 
     @property
     def root_keys(self) -> tuple[str, ...]:
@@ -44,10 +45,18 @@ def documents(*files: Document) -> Documents:
 
 
 def document(
-    path: str, tree: Mapping[str, Any], *lines: tuple[NodePath, int], hint_root: str | None = None
+    path: str,
+    tree: Mapping[str, Any],
+    *lines: tuple[NodePath, int],
+    hint_root: str | None = None,
+    single_item_roots: frozenset[str] = frozenset(),
 ) -> Document:
-    """A file whose node paths start on the lines given, each at column 1."""
-    return Document(path, tree, {node: SourcePosition(line, 1) for node, line in lines}, hint_root)
+    """A file whose node paths start on the lines given, each at column 1.
+
+    `single_item_roots` names the list roots the file wrote as one singular-root mapping.
+    """
+    lines_at = {node: SourcePosition(line, 1) for node, line in lines}
+    return Document(path, tree, lines_at, hint_root, single_item_roots)
 
 
 ORIGIN = Origin("semantic_models/metrics.yml", 2, 3)

@@ -164,7 +164,7 @@ def test_smoke_suite_is_separate_from_apply(tmp_path: Path, monkeypatch: pytest.
     assert unapplied.exit_code == 1
     assert json.loads(unapplied.output)["diagnostics"][0]["code"] == "SST-APL012"
 
-    views = project / "semantic_models" / "semantic_views" / "semantic_views.yml"
+    views = project / "semantic_models" / "semantic_views" / "jaffle_minimal.yml"
     views.write_text(
         views.read_text(encoding="utf-8").replace("Menu products only", "Changed after compile"),
         encoding="utf-8",

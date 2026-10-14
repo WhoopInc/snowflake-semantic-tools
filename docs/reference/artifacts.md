@@ -9,7 +9,7 @@ another artifact with `{{ <function>('<name>') }}`.
 
 | Type | Position | Authored in | Publishes | Reference function |
 |---|---:|---|---|---|
-| [`semantic_view`](#semantic_view) | 100 | `semantic_views:` in `project.semantic_models_dir` | SEMANTIC VIEW | `semantic_view()` |
+| [`semantic_view`](#semantic_view) | 100 | a `semantic_view:` file, or an entry of a `semantic_views:` list, in `project.semantic_models_dir` | SEMANTIC VIEW | `semantic_view()` |
 | [`tool`](#tool) | 200 | a `tool:` file, or an entry of a `tools:` list, under `project.tools_dir` | CORTEX SEARCH SERVICE, PROCEDURE, FUNCTION, or STAGE | `tool()` |
 | [`skill`](#skill) | 250 | a `SKILL.md` folder in `project.skills_dir` | CORTEX EXTENSION (TYPE = 'SKILL') and its bundle stage | `skill()` |
 | [`plugin`](#plugin) | 260 | `plugin.yml` in `project.plugins_dir` | CORTEX EXTENSION (TYPE = 'PLUGIN') and its bundle stage | `plugin()` |
@@ -100,10 +100,10 @@ published on their own. Members read from dbt model metadata come from the
 
 | Member | Owner | Authored as | Attaches by | Reference function |
 |---|---|---|---|---|
-| `relationship` | `semantic_view` | `snowflake_relationships:` files | table membership | `relationship()` |
+| `relationship` | `semantic_view` | `relationship:` files, or `snowflake_relationships:` lists | table membership | `relationship()` |
 | `fact` | `semantic_view` | dbt column metadata | table membership | none |
 | `dimension` | `semantic_view` | dbt column metadata | table membership | none |
-| `metric` | `semantic_view` | `snowflake_metrics:` files | table membership | `metric()` |
-| `filter` | `semantic_view` | `snowflake_filters:` files | table membership | `filter()` |
-| `verified_query` | `semantic_view` | `snowflake_verified_queries:` files | table membership | `verified_query()` |
-| `custom_instruction` | `semantic_view` | `snowflake_custom_instructions:` files | view name | `custom_instructions()` |
+| `metric` | `semantic_view` | `metric:` files, or `snowflake_metrics:` lists | table membership | `metric()` |
+| `filter` | `semantic_view` | `filter:` files, or `snowflake_filters:` lists | table membership | `filter()` |
+| `verified_query` | `semantic_view` | `verified_query:` files, or `snowflake_verified_queries:` lists | table membership | `verified_query()` |
+| `custom_instruction` | `semantic_view` | `custom_instruction:` files, or `snowflake_custom_instructions:` lists | view name | `custom_instructions()` |

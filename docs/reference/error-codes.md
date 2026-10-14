@@ -1241,11 +1241,11 @@ Fix: declare it once
 
 **Member type not accepted by its owner** (error)
 
-`<type> does not accept members of type <member_type>`
+`<path>: <root>/ holds <type> members, not the <member_type> under '<key>:'`
 
-Raised when a member type's folder holds a list of another member type.
+Raised when a file in a member type's folder declares a member of another type, as one item or a list.
 
-Fix: move the member
+Fix: move the {member_type} to the {member_type} folder, or out of {root}/
 
 ### SST-PRS106
 
@@ -1261,9 +1261,9 @@ Fix: rename one of them
 
 **Member declares no distinguishing key** (error)
 
-`<artifact>: <member_type> entry <index> has no name`
+`<artifact>: <member> has no name`
 
-Raised when a member entry is not a mapping, or has no `name`.
+Raised when a member entry is not a mapping, or has no `name`; a single-item file's member is named `the <type>`, a list's by its index.
 
 Fix: name the member
 

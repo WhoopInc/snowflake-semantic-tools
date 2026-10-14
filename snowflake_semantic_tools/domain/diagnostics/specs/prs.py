@@ -348,9 +348,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-PRS105",
         Severity.ERROR,
         "Member type not accepted by its owner",
-        "{type} does not accept members of type {member_type}",
-        "move the member",
-        condition="a member type's folder holds a list of another member type",
+        "{path}: {root}/ holds {type} members, not the {member_type} under '{key}:'",
+        "move the {member_type} to the {member_type} folder, or out of {root}/",
+        condition="a file in a member type's folder declares a member of another type, as one item or a list",
     ),
     spec(
         "SST-PRS106",
@@ -364,9 +364,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-PRS107",
         Severity.ERROR,
         "Member declares no distinguishing key",
-        "{artifact}: {member_type} entry {index} has no name",
+        "{artifact}: {member} has no name",
         "name the member",
-        condition="a member entry is not a mapping, or has no `name`",
+        condition=(
+            "a member entry is not a mapping, or has no `name`; a single-item file's member is named "
+            "`the <type>`, a list's by its index"
+        ),
     ),
     spec(
         "SST-PRS110",

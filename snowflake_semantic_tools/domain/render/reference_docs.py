@@ -182,7 +182,11 @@ def render_artifacts(registry: Registry = ARTIFACT_REGISTRY) -> str:
         )
     )
     for member in members:
-        source = f"`{member.root_key}:` files" if member.source is MemberSource.FILES else "dbt column metadata"
+        source = (
+            f"`{member.singular_root}:` files, or `{member.root_key}:` lists"
+            if member.source is MemberSource.FILES
+            else "dbt column metadata"
+        )
         attaches = "table membership" if member.attaches_by is AttachRule.TABLE_MEMBERSHIP else "view name"
         function = f"`{member.ref_function}()`" if member.ref_function else "none"
         lines.append(f"| `{member.name}` | `{member.owner_type}` | {source} | {attaches} | {function} |")

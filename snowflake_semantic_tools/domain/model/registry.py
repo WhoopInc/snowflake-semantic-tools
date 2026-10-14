@@ -73,6 +73,8 @@ class ArtifactType:
         name: The type's name, which is the kind part of its artifacts' keys.
         root_key: The YAML key its declarations are listed under; None for a type authored some
             other way, such as one folder per artifact.
+        singular_root: The YAML key a file declaring exactly one of them holds it under, as a
+            mapping; None exactly when `root_key` is.
         ddl_position: Where its changes fall in plan order, lowest first; it is higher than the
             position of every type it depends on.
         ref_function: The template function another artifact names it with; None when none can.
@@ -100,6 +102,7 @@ class ArtifactType:
 
     name: str
     root_key: str | None
+    singular_root: str | None
     ddl_position: int
     ref_function: str | None
     member_types: tuple[str, ...]
@@ -137,6 +140,8 @@ class MemberType:
     Attributes:
         name: The type's name, which is the kind part of its members' keys.
         root_key: The YAML key its declarations are listed under; unique across the registry.
+        singular_root: The YAML key a file declaring exactly one member holds it under, as a
+            mapping; unique across the registry. None for a type not authored in files.
         clause_position: Orders its owner's member types, lowest first; unique per owner.
         owner_type: The artifact type whose artifacts it attaches to.
         ref_function: The template function that names a member of this type; None when none can.
@@ -145,6 +150,7 @@ class MemberType:
 
     name: str
     root_key: str
+    singular_root: str | None
     source: MemberSource
     clause_position: int
     attaches_by: AttachRule
@@ -309,21 +315,36 @@ def check_member_index(covered: Iterable[str], registry: Registry) -> None:
 
 
 def _check_required(artifacts: tuple[ArtifactType, ...], members: tuple[MemberType, ...]) -> None:
-    """Refuse a registration that leaves a required field empty (SST-REG001)."""
+    """Refuse a registration that leaves a required field empty (SST-REG001).
+
+    A type authored in files under a list root also names the singular root a one-item file
+    uses; an artifact type with no list root names none.
+    """
     for kind, fields in ((artifacts, REQUIRED_ARTIFACT_FIELDS), (members, REQUIRED_MEMBER_FIELDS)):
         for entry in kind:
             for field in fields:
                 if getattr(entry, field) in (None, "", ()):
                     raise registry_fault("SST-REG001", type=entry.name or "<unnamed>", field=field)
+    for artifact in artifacts:
+        if (artifact.root_key is None) != (artifact.singular_root is None):
+            raise registry_fault("SST-REG001", type=artifact.name, field="singular_root")
+    for member in members:
+        if member.source is MemberSource.FILES and not member.singular_root:
+            raise registry_fault("SST-REG001", type=member.name, field="singular_root")
 
 
 def _check_root_keys(artifacts: tuple[ArtifactType, ...], members: tuple[MemberType, ...]) -> None:
-    """Refuse a YAML root key claimed twice; artifact types without one claim nothing (SST-REG003)."""
+    """Refuse a YAML root key, list or singular, claimed twice; a type without one claims nothing.
+
+    Raises:
+        RegistryIntegrityError: SST-REG003.
+    """
     claims: dict[str, list[str]] = {}
     entries: tuple[ArtifactType | MemberType, ...] = (*artifacts, *members)
     for entry in entries:
-        if entry.root_key is not None:
-            claims.setdefault(entry.root_key, []).append(entry.name)
+        for root in (entry.root_key, entry.singular_root):
+            if root is not None:
+                claims.setdefault(root, []).append(entry.name)
     for root_key, types in claims.items():
         if len(types) > 1:
             raise registry_fault("SST-REG003", root_key=root_key, types=types)
@@ -481,6 +502,7 @@ ARTIFACT_REGISTRY = build_registry(
         ArtifactType(
             name="semantic_view",
             root_key="semantic_views",
+            singular_root="semantic_view",
             ddl_position=100,
             ref_function="semantic_view",
             member_types=(
@@ -494,7 +516,9 @@ ARTIFACT_REGISTRY = build_registry(
             ),
             object_type="SEMANTIC VIEW",
             summary="A Snowflake semantic view built from dbt models and the semantic members attached to them.",
-            authored_in="`semantic_views:` in `project.semantic_models_dir`",
+            authored_in=(
+                "a `semantic_view:` file, or an entry of a `semantic_views:` list, in `project.semantic_models_dir`"
+            ),
             publishes="SEMANTIC VIEW",
             validation_rules=("shared", "semantic_view"),
             dir_key="semantic_models_dir",
@@ -504,6 +528,7 @@ ARTIFACT_REGISTRY = build_registry(
         ArtifactType(
             name="tool",
             root_key="tools",
+            singular_root="tool",
             ddl_position=200,
             ref_function="tool",
             member_types=(),
@@ -535,6 +560,7 @@ ARTIFACT_REGISTRY = build_registry(
         ArtifactType(
             name="skill",
             root_key=None,
+            singular_root=None,
             ddl_position=250,
             ref_function="skill",
             member_types=(),
@@ -558,6 +584,7 @@ ARTIFACT_REGISTRY = build_registry(
         ArtifactType(
             name="plugin",
             root_key=None,
+            singular_root=None,
             ddl_position=260,
             ref_function="plugin",
             member_types=(),
@@ -579,6 +606,7 @@ ARTIFACT_REGISTRY = build_registry(
         ArtifactType(
             name="profile",
             root_key=None,
+            singular_root=None,
             ddl_position=270,
             ref_function=None,
             member_types=(),
@@ -601,6 +629,7 @@ ARTIFACT_REGISTRY = build_registry(
         ArtifactType(
             name="agent",
             root_key=None,
+            singular_root=None,
             ddl_position=300,
             ref_function="agent",
             member_types=(),
@@ -623,6 +652,7 @@ ARTIFACT_REGISTRY = build_registry(
         ArtifactType(
             name="eval",
             root_key=None,
+            singular_root=None,
             ddl_position=400,
             ref_function=None,
             member_types=(),
@@ -653,6 +683,7 @@ ARTIFACT_REGISTRY = build_registry(
         MemberType(
             "relationship",
             "snowflake_relationships",
+            "relationship",
             MemberSource.FILES,
             10,
             AttachRule.TABLE_MEMBERSHIP,
@@ -663,6 +694,7 @@ ARTIFACT_REGISTRY = build_registry(
         MemberType(
             "fact",
             "facts",
+            None,
             MemberSource.DBT_META,
             30,
             AttachRule.TABLE_MEMBERSHIP,
@@ -673,6 +705,7 @@ ARTIFACT_REGISTRY = build_registry(
         MemberType(
             "dimension",
             "dimensions",
+            None,
             MemberSource.DBT_META,
             40,
             AttachRule.TABLE_MEMBERSHIP,
@@ -683,6 +716,7 @@ ARTIFACT_REGISTRY = build_registry(
         MemberType(
             "metric",
             "snowflake_metrics",
+            "metric",
             MemberSource.FILES,
             50,
             AttachRule.TABLE_MEMBERSHIP,
@@ -693,6 +727,7 @@ ARTIFACT_REGISTRY = build_registry(
         MemberType(
             "filter",
             "snowflake_filters",
+            "filter",
             MemberSource.FILES,
             60,
             AttachRule.TABLE_MEMBERSHIP,
@@ -703,6 +738,7 @@ ARTIFACT_REGISTRY = build_registry(
         MemberType(
             "verified_query",
             "snowflake_verified_queries",
+            "verified_query",
             MemberSource.FILES,
             70,
             AttachRule.TABLE_MEMBERSHIP,
@@ -713,6 +749,7 @@ ARTIFACT_REGISTRY = build_registry(
         MemberType(
             "custom_instruction",
             "snowflake_custom_instructions",
+            "custom_instruction",
             MemberSource.FILES,
             80,
             AttachRule.VIEW_NAME,

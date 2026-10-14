@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.reference_project import FILTERS, METRICS, edited, reported, view_names, with_view
+from tests.helpers.reference_project import edited, member_file, reported, view_names, with_view
 
 VIEW = """  - name: v
     description: |-
@@ -21,7 +21,8 @@ LARGE = """      - name: large_order_cents
         data_type: NUMBER
         default_value: 1000
 """
-EXPR = "    expr: \"SUM({{ ref('orders', 'order_total') }})\"\n"
+METRICS = member_file("metrics", "total_revenue")
+EXPR = "  expr: \"SUM({{ ref('orders', 'order_total') }})\"\n"
 
 
 def test_sst_val326_fires(tmp_path: Path) -> None:
@@ -37,7 +38,7 @@ def test_sst_val326_fires(tmp_path: Path) -> None:
 
 
 def test_sst_val326_fires_on_a_typo(tmp_path: Path) -> None:
-    project = edited(tmp_path, METRICS, EXPR, "    expr: \"SUM({{ ref('orders', 'order_total') }}) * fudge_factor\"\n")
+    project = edited(tmp_path, METRICS, EXPR, "  expr: \"SUM({{ ref('orders', 'order_total') }}) * fudge_factor\"\n")
     diagnostic = next(item for item in reported(project, "SST-VAL326") if item.subject == "semantic_view:jaffle_sales")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
@@ -53,9 +54,9 @@ def test_sst_val326_silent(tmp_path: Path) -> None:
     # A typo in a filter that renders as prose fails no create: SST-VAL221's warning, not this.
     prose = edited(
         tmp_path / "prose",
-        FILTERS,
-        "    expr: \"large_order_cents - {{ ref('orders', 'order_total') }}\"\n",
-        "    expr: \"large_ordr_cents - {{ ref('orders', 'order_total') }}\"\n",
+        member_file("filters", "shortfall_to_large_order_cents"),
+        "  expr: \"large_order_cents - {{ ref('orders', 'order_total') }}\"\n",
+        "  expr: \"large_ordr_cents - {{ ref('orders', 'order_total') }}\"\n",
     )
     assert reported(prose, "SST-VAL326") == []
     # Niladic SQL functions are SQL, not names.
@@ -63,6 +64,6 @@ def test_sst_val326_silent(tmp_path: Path) -> None:
         tmp_path / "niladic",
         METRICS,
         EXPR,
-        "    expr: \"SUM({{ ref('orders', 'order_total') }}) + 0 * DATEDIFF(day, CURRENT_DATE, CURRENT_DATE)\"\n",
+        "  expr: \"SUM({{ ref('orders', 'order_total') }}) + 0 * DATEDIFF(day, CURRENT_DATE, CURRENT_DATE)\"\n",
     )
     assert reported(niladic, "SST-VAL326") == []

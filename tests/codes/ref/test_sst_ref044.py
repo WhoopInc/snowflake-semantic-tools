@@ -6,9 +6,9 @@ from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.diagnostic_filters import coded
-from tests.helpers.reference_project import edited, load
+from tests.helpers.reference_project import MENU_VIEW, edited, load
 
-FILE = "semantic_models/semantic_views/core/semantic_views.yml"
+FILE = MENU_VIEW
 BEFORE = "- \"{{ ref('products') }}\""
 
 
