@@ -31,7 +31,7 @@ TOOL_KEYS: Mapping[str, frozenset[str]] = {
         "passthrough",
     },
     "generic": _COMMON | _ENVIRONMENT | {"identifier", "input_schema", "passthrough"},
-    "agent": _COMMON | {"agent"},
+    "agent_toolset": _COMMON | {"agent"},
     "mcp": _COMMON | {"passthrough"},
     **dict.fromkeys(BUILTIN_AGENT_TOOLS, _COMMON),
 }

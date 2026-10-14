@@ -37,7 +37,7 @@ _Read = TypeVar("_Read")
 _EXTERNAL = {
     "cortex_search": ("search_service", "CORTEX SEARCH SERVICE"),
     "generic": ("identifier", None),
-    "agent": ("identifier", "AGENT"),
+    "agent_toolset": ("agent_name", "AGENT"),
 }
 _SHARED_GRANTEES = frozenset(("SHARE", "APPLICATION_ROLE", "APPLICATION ROLE"))
 # The skill reference resolver of an extension this project consumes rather than publishes.

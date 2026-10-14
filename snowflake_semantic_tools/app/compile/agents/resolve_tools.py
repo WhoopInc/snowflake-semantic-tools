@@ -1,7 +1,7 @@
 """Resolve one authored agent tool into the entry its specification carries.
 
 Each modeled tool type has a resolver in `_RESOLVERS`: a Cortex Analyst tool names a
-semantic view, a Cortex Search or generic tool names a tool member, an agent tool names
+semantic view, a Cortex Search or generic tool names a tool member, an agent toolset names
 another agent, and an MCP tool passes its keys through. Every other known type is a
 built-in, such as data_to_chart. A resolver appends what it finds to the diagnostics it
 is given, in order, and returns None for a tool that cannot be rendered; `_finish` then
@@ -33,6 +33,10 @@ from snowflake_semantic_tools.domain.validate.agent_tool import (
 
 _SEARCH_SERVICES = (ToolKind.CORTEX_SEARCH_SERVICE.value,)
 _ROUTINES = (ToolKind.PROCEDURE.value, ToolKind.FUNCTION.value)
+_AGENTS = (ToolKind.AGENT.value,)
+# The tool type that inherits another agent's tools; Snowflake never shows its entry to the
+# orchestrator, so it needs no description.
+_TOOLSET = "agent_toolset"
 _INPUT_TYPES = frozenset(("string", "number", "integer", "boolean", "array"))
 
 # What an agent tool's name may hold: letters, digits, `_` and `-`.
@@ -89,13 +93,13 @@ def resolve_tool(
         SST-PRS033: an input schema requires a property it does not declare.
         SST-VAL607: a generic tool's input schema disagrees with its member's signature.
         SST-VAL527: a generic tool resolves no warehouse.
-        SST-REF012: an agent tool's `agent()` names no enabled agent.
-        SST-VAL528: an agent tool resolved, so this spec no longer fixes the tool surface.
+        SST-REF012: an agent toolset's `agent()` names no enabled agent.
+        SST-VAL528: an agent toolset resolved, so this spec no longer fixes the tool surface.
         SST-VAL529: a built-in tool declares `passthrough` resources, which it may not emit.
         SST-VAL513: the resolved name is empty or longer than 64 characters.
         SST-PRS009: the resolved name holds a character a tool identifier may not.
         SST-VAL517: a web_search tool is not named web_search.
-        SST-VAL518: the resolved tool has no description.
+        SST-VAL518: the resolved tool, other than an agent toolset, has no description.
         SST-PRS016: the tool's `query_timeout` is not positive.
     """
     diagnostics: list[Diagnostic] = []
@@ -269,10 +273,12 @@ def _backing(
 def _delegate(
     agent: AgentModel, authored: AgentTool, context: AgentCompileContext, diagnostics: list[Diagnostic]
 ) -> _Resolution | None:
-    """An agent tool: another agent of this project by `agent()`, or a tool member by its name.
+    """An agent toolset: another agent of this project by `agent()`, or an `agent` tool member by its name.
 
-    An agent reached by `agent()` must publish first, so it is a dependency. A tool member
-    that resolves to no relation drops the tool; for a defined member nothing reports it.
+    Snowflake unions the named agent's tools into this agent's at run time, so the resources
+    are that agent's name alone. An agent reached by `agent()` must publish first, so it is a
+    dependency. A member of another type drops the tool, and so does a member that resolves
+    to no relation; for a defined member, which has none, nothing reports it.
     """
     name = authored.name or ""
     resolution: _Resolution | None = None
@@ -284,16 +290,31 @@ def _delegate(
             resolution = _Resolution(
                 name or target.artifact_name,
                 authored.description or "",
-                {"identifier": target.sql, "type": "agent"},
+                {"agent_name": target.sql},
                 (artifact_key("agent", authored.agent_ref.casefold()),),
             )
     elif name:
-        relation = _member_relation(authored.member_reference, context, diagnostics)
-        if relation is not None:
-            resource: dict[str, object] = {"identifier": relation.sql, "type": "agent"}
-            resolution = _Resolution(name, authored.description or "", resource, external=True)
+        backing, problems = context.tools.resolve(*authored.member_reference)
+        diagnostics.extend(problems)
+        if backing is not None and backing.type not in _AGENTS:
+            diagnostics.append(
+                D(
+                    "SST-REF020",
+                    ref_function="tool",
+                    name=backing.name,
+                    found=backing.type,
+                    expected=" or ".join(_AGENTS),
+                    subject=agent.key,
+                )
+            )
+        elif backing is not None:
+            relation, relation_problems = context.tools.relation(backing)
+            diagnostics.extend(relation_problems)
+            if relation is not None:
+                description = authored.description or backing.description or ""
+                resolution = _Resolution(name, description, {"agent_name": relation.sql}, external=True)
     if resolution is not None:
-        diagnostics.append(D("SST-VAL528", artifact=agent.name, subject=agent.key))
+        diagnostics.append(D("SST-VAL528", artifact=agent.name, name=resolution.name, subject=agent.key))
     return resolution
 
 
@@ -322,7 +343,7 @@ _RESOLVERS: Mapping[str, _Resolver] = MappingProxyType(
         "cortex_analyst_text_to_sql": _analyst,
         "cortex_search": _search,
         "generic": _generic,
-        "agent": _delegate,
+        "agent_toolset": _delegate,
         "mcp": _mcp,
     }
 )
@@ -339,7 +360,7 @@ def _finish(
         diagnostics.append(D("SST-PRS009", name=name, subject=agent.key))
     if authored.type == "web_search" and name != "web_search":
         diagnostics.append(D("SST-VAL517", artifact=agent.name, name=name, subject=agent.key))
-    if not resolution.description:
+    if not resolution.description and authored.type != _TOOLSET:
         diagnostics.append(D("SST-VAL518", artifact=agent.name, name=name, subject=agent.key))
     if authored.query_timeout is not None and authored.query_timeout <= 0:
         diagnostics.append(
@@ -377,18 +398,6 @@ def _member_target(
         return context.tool_target(backing.name)
     relation, problems = context.tools.relation(backing)
     diagnostics.extend(problems)
-    return relation
-
-
-def _member_relation(
-    reference: tuple[str, ...], context: AgentCompileContext, diagnostics: list[Diagnostic]
-) -> QualifiedName | None:
-    backing, problems = context.tools.resolve(*reference)
-    diagnostics.extend(problems)
-    if backing is None:
-        return None
-    relation, relation_problems = context.tools.relation(backing)
-    diagnostics.extend(relation_problems)
     return relation
 
 

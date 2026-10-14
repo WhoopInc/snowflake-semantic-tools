@@ -27,9 +27,9 @@ def test_a_member_no_tool_call_names_is_referenced_by_nothing() -> None:
 def test_an_agent_tool_references_its_backing_or_by_name_the_member_it_delegates_to() -> None:
     origin = Origin("agents/a.yml")
     assert AgentTool("generic", origin, name="t", backing=("g", "m")).member_reference == ("g", "m")
-    assert AgentTool("agent", origin, name="partner").member_reference == ("partner",)
-    assert AgentTool("agent", origin, name="partner", agent_ref="own").member_reference == ()
-    assert AgentTool("agent", origin).member_reference == ()
+    assert AgentTool("agent_toolset", origin, name="partner").member_reference == ("partner",)
+    assert AgentTool("agent_toolset", origin, name="partner", agent_ref="own").member_reference == ()
+    assert AgentTool("agent_toolset", origin).member_reference == ()
     assert AgentTool("data_to_chart", origin, name="chart").member_reference == ()
 
 

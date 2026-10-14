@@ -31,8 +31,8 @@ def test_sst_cfg018_silent() -> None:
 def test_every_way_an_agent_or_the_config_names_a_member_counts() -> None:
     origin = Origin("agents/a.yml")
     by_backing = AgentTool("cortex_search", origin, name="search", backing=("platform", "docs"))
-    by_name = AgentTool("agent", origin, name="docs")
-    delegating = AgentTool("agent", origin, name="docs", agent_ref="other_agent")
+    by_name = AgentTool("agent_toolset", origin, name="docs")
+    delegating = AgentTool("agent_toolset", origin, name="docs", agent_ref="other_agent")
     assert (by_backing.member_reference, by_name.member_reference, delegating.member_reference) == (
         ("platform", "docs"),
         ("docs",),
@@ -45,7 +45,7 @@ def test_every_way_an_agent_or_the_config_names_a_member_counts() -> None:
 
 
 def test_sst_cfg018_silent_for_a_reference_member_an_agent_toolset_names(tmp_path: Path) -> None:
-    # The reference project's delivery agent declares a `type: agent` tool by the member's name.
+    # The reference project's delivery agent declares a `type: agent_toolset` tool by the member's name.
     project = project_copy(tmp_path)
     result = CliRunner().invoke(
         cli, ["validate", *common(project), "--no-snowflake-syntax-check", "--output", "json"], catch_exceptions=False

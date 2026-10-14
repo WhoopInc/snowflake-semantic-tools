@@ -52,7 +52,7 @@ def error(subject: str) -> Diagnostic:
 
 
 def warning(subject: str) -> Diagnostic:
-    return D("SST-VAL528", artifact=subject, subject=subject)
+    return D("SST-VAL528", artifact=subject, name="toolset", subject=subject)
 
 
 def test_standalone_artifact_carries_nothing_and_publishes_its_rendered_artifact_unchanged() -> None:

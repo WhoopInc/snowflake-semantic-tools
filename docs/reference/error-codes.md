@@ -1853,9 +1853,9 @@ Fix: point the reference at a compatible object
 
 **Agent reference graph has a cycle** (error)
 
-`agent delegation cycle: <cycle>`
+`agent toolset cycle: <cycle>`
 
-Raised when agents delegate to one another, through `agent()` tools, in a cycle.
+Raised when agents inherit one another's tools, through `agent_toolset` tools, in a cycle.
 
 Fix: break the cycle
 
@@ -3719,13 +3719,13 @@ Fix: declare a warehouse
 
 **Agent toolset makes the tool surface non-static** (warning)
 
-`agent '<artifact>' declares an agent toolset`
+`agent '<artifact>' inherits the tools of another agent through toolset '<name>'`
 
-Raised when an agent declares an `agent` tool, which delegates to another agent.
+Raised when an agent declares an `agent_toolset` tool, which inherits another agent's tools.
 
 Fix: accept that tool-name uniqueness and eval coverage are incomplete here
 
-Note: The delegate's own tools are not statically knowable from this spec, so tool-name uniqueness and eval coverage cannot be checked across them.
+Note: The inherited tools are not statically knowable from this spec, so tool-name uniqueness and eval coverage cannot be checked across them.
 
 ### SST-VAL529
 

@@ -238,11 +238,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL528",
         Severity.WARNING,
         "Agent toolset makes the tool surface non-static",
-        "agent '{artifact}' declares an agent toolset",
+        "agent '{artifact}' inherits the tools of another agent through toolset '{name}'",
         "accept that tool-name uniqueness and eval coverage are incomplete here",
-        condition="an agent declares an `agent` tool, which delegates to another agent",
+        condition="an agent declares an `agent_toolset` tool, which inherits another agent's tools",
         note=(
-            "The delegate's own tools are not statically knowable from this spec, so tool-name "
+            "The inherited tools are not statically knowable from this spec, so tool-name "
             "uniqueness and eval coverage cannot be checked across them."
         ),
     ),

@@ -13,7 +13,9 @@ AGENTS = {"first": QualifiedName.parse("DB.S.FIRST"), "second": QualifiedName.pa
 
 def _delegating(name: str, *to: str) -> AgentModel:
     origin = Origin(f"agents/{name}/agent.yml")
-    tools = tuple(AgentTool("agent", origin, name=target, agent_ref=target, description="Delegate.") for target in to)
+    tools = tuple(
+        AgentTool("agent_toolset", origin, name=target, agent_ref=target, description="Delegate.") for target in to
+    )
     return AgentModel(name, origin, (origin.file,), tools=tools)
 
 
@@ -25,7 +27,7 @@ def _cycles(*agents: AgentModel) -> list[Diagnostic]:
 def test_sst_ref022_fires() -> None:
     [diagnostic] = _cycles(_delegating("first", "second"), _delegating("second", "first"))
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "agent delegation cycle: first -> second -> first"
+    assert diagnostic.message == "agent toolset cycle: first -> second -> first"
     assert diagnostic.subject is None
 
 

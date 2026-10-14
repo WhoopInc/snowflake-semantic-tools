@@ -15,7 +15,9 @@ ROUTER = AgentModel("router", ORIGIN, ("agents/router/agent.yml",))
 
 def test_sst_ref012_fires() -> None:
     _, diagnostics = resolve_tool(
-        ROUTER, AgentTool("agent", ORIGIN, name="helper", agent_ref="missing", description="Delegate."), agent_context()
+        ROUTER,
+        AgentTool("agent_toolset", ORIGIN, name="helper", agent_ref="missing", description="Delegate."),
+        agent_context(),
     )
     [diagnostic] = coded(diagnostics, "SST-REF012")
     assert diagnostic.severity is Severity.ERROR
@@ -26,7 +28,7 @@ def test_sst_ref012_fires() -> None:
 def test_sst_ref012_silent() -> None:
     resolved, diagnostics = resolve_tool(
         ROUTER,
-        AgentTool("agent", ORIGIN, name="helper", agent_ref="helper", description="Delegate."),
+        AgentTool("agent_toolset", ORIGIN, name="helper", agent_ref="helper", description="Delegate."),
         agent_context(agents={"helper": QualifiedName.parse("DB.S.HELPER")}),
     )
     assert resolved is not None

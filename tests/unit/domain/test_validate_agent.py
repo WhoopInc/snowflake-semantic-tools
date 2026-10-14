@@ -87,8 +87,10 @@ def test_spec_size_errors_at_the_limit_and_warns_near_it() -> None:
     assert spec_size(resolved, "x") == ()
 
 
-def test_delegations_list_each_agent_tool_target_casefolded() -> None:
-    resolved = ResolvedAgent(agent(), (tool("t"), tool("d", "agent", identifier="DB.SCH.Other"), tool("e", "agent")))
+def test_delegations_list_each_agent_toolset_target_casefolded() -> None:
+    toolsets = (tool("d", "agent_toolset", agent_name="DB.SCH.Other"), tool("e", "agent_toolset"))
+    # Snowflake's client-side `agent` tool names no agent whose tools this agent inherits.
+    resolved = ResolvedAgent(agent(), (tool("t"), *toolsets, tool("f", "agent", identifier="DB.SCH.Client")))
     assert delegations(resolved) == ("db.sch.other", "")
 
 

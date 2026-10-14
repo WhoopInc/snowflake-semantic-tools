@@ -94,7 +94,7 @@ tags:
 validation:
   # Every warning becomes an error; --strict/--no-strict on validate, plan and
   # apply overrides this. Offline, the fixture carries deliberate warnings:
-  # jaffle_delivery's agent tool (SST-VAL528), jaffle_minimal's empty tool list
+  # jaffle_delivery's agent toolset (SST-VAL528), jaffle_minimal's empty tool list
   # (SST-RND010), the analytics agent's generic tool resources (SST-RND013) and
   # the jaffle_partner members nothing references (SST-CFG018). A strict run
   # fails on them, so the offline CLI tests pass --no-strict.

@@ -25,12 +25,12 @@ tools:
     immutable: true
 
     reference:
-      # ---- agent: the delegate jaffle_delivery_agent routes to -----------
+      # ---- agent: whose tools jaffle_delivery_agent's toolset inherits ----
       - name: partner_delivery_agent
         type: agent
         description: |-
           Partner-operated agent answering delivery-status questions. Referenced so
-          a jaffle agent can route to it; never created here.
+          a jaffle agent can inherit its tools; never created here.
         relations:
           dev: SST_TEST.REFERENCE.DELIVERY_AGENT
           prod: SST_REF_PROD.PARTNER.DELIVERY_AGENT

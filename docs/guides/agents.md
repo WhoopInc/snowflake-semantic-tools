@@ -149,14 +149,17 @@ Each `spec.tools` entry is one tool. SST splits it into the spec's `tools` and
 | `cortex_analyst_text_to_sql` | `semantic_view: "{{ semantic_view('<name>') }}"`, a view this project compiles (`SST-REF011`). It takes no `name:` (`SST-VAL520`): the tool is named after the view. |
 | `cortex_search` | `name:` and `search_service: "{{ tool(...) }}"`, a `cortex_search_service` tool member. Optional: `max_results`, `id_column`, `title_column`, `columns_and_descriptions`, `filter`, and `stage_path` with `relative_path_column` (both or neither, `SST-VAL522`). |
 | `generic` | `name:`, `identifier: "{{ tool(...) }}"`, a `procedure` or `function` tool member, and an object `input_schema` (`SST-VAL526`). |
-| `agent` | `agent: "{{ agent('<name>') }}"`, or a `name:` that names a tool member; see [delegation](#delegation). |
+| `agent_toolset` | `agent: "{{ agent('<name>') }}"`, or a `name:` that names an `agent` tool member; see [agent toolsets](#agent-toolsets). |
 | `mcp` | `name:`; its resources are exactly its `passthrough:` keys. |
 | `data_to_chart`, `web_search`, `code_execution` | Built-ins: no resources. Unnamed, a built-in is named after its type, and `web_search` must be named `web_search` (`SST-VAL517`). |
 
 - Every tool needs a `description` (`SST-VAL518`); a search or generic tool
   that sets none takes its member's. The description is what the orchestrator
   reads to choose a tool, so say what the tool answers and, just as usefully,
-  what it does not.
+  what it does not. An agent toolset is the exception: Snowflake replaces it
+  with the tools it inherits before the orchestrator sees anything, so its
+  description, which a member-backed toolset takes from its member, is only a
+  note for readers.
 - A resolved tool name is 1 to 64 characters (`SST-VAL513`) of letters,
   digits, `_`, and `-` (`SST-PRS009`), and is unique in the agent
   (`SST-VAL514`); two names that differ only by case are a warning
@@ -175,7 +178,7 @@ Each `spec.tools` entry is one tool. SST splits it into the spec's `tools` and
 
 ### Tool groups
 
-Every object a search, generic, or delegating tool calls is declared once in a
+Every object a search, generic, or toolset tool calls is declared once in a
 **tool group** under `project.tools_dir` and referenced with
 `{{ tool('<group>', '<name>') }}`, or `{{ tool('<name>') }}` when the member's
 name is unique across groups (`SST-REF010`):
@@ -403,25 +406,42 @@ tools:
 
 Drawn from: [tool model](../../snowflake_semantic_tools/domain/model/tool.py), [tools loader](../../snowflake_semantic_tools/adapters/yaml/tools.py), [tool renderer](../../snowflake_semantic_tools/domain/render/tool.py), [tool compile](../../snowflake_semantic_tools/app/compile/tools.py), [tool validation](../../snowflake_semantic_tools/domain/validate/tool.py), [tool diagnostics](../../snowflake_semantic_tools/domain/diagnostics/specs/val_tool.py), [configuration keys](../../snowflake_semantic_tools/domain/model/config_schema/keys.py).
 
-### Delegation
+### Agent toolsets
 
-A `type: agent` tool delegates to another agent, in one of two ways:
+A `type: agent_toolset` tool gives this agent another agent's tools. At run
+time Snowflake reads the named agent's tools and their resources and adds them
+to this agent's own, so the orchestrator sees one flat list; a tool of this
+agent wins over an inherited tool of the same name. The other agent's
+instructions, skills, and model are not inherited, and it does not run as a
+separate agent. The tool renders as Snowflake's
+[agent toolset](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-toolsets),
+its resources the other agent's name alone (`agent_name`). It names the agent
+in one of two ways:
 
 - `agent: "{{ agent('<name>') }}"` names an enabled agent this project
   publishes (`SST-REF012`), which then publishes first. Unnamed, the tool takes
   that agent's name.
-- With no `agent:`, the tool's `name:` names a tool member, normally a
-  `reference:` member of type `agent`, for an agent another project owns:
+- With no `agent:`, the tool's `name:` names a `reference:` tool member of type
+  `agent`, for an agent another project owns; a member of another type is an
+  error (`SST-REF020`):
 
 ```yaml
-    - type: agent
+    - type: agent_toolset
       name: partner_delivery_agent
-      description: The partner's delivery agent. Answers where an order is.
 ```
 
-Delegation cannot form a cycle (`SST-REF022`). Every delegating tool is a
-warning (`SST-VAL528`): the tools the delegate calls are not part of this spec,
-so tool-name checks and eval coverage cannot see them.
+Snowflake checks the caller's `USAGE` on the other agent on every run and, when
+it is missing, drops the inherited tools without an error, so connected
+validation looks up a referenced agent (`SST-VAL531`) and the
+[security guide](security.md#what-people-who-use-an-agent-need) lists the
+grant. Toolsets cannot form a cycle (`SST-REF022`), and Snowflake also limits
+how deep they nest. Every toolset is a warning (`SST-VAL528`), one per tool:
+the inherited tools are not part of this spec, so tool-name checks and eval
+coverage cannot see them.
+
+Snowflake's own `type: agent` is a different tool, a subagent the calling
+client runs. SST does not render it; to use it anyway, add it to
+`snowflake.tool_types`.
 
 ## Skills
 

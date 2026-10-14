@@ -168,9 +168,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-REF022",
         Severity.ERROR,
         "Agent reference graph has a cycle",
-        "agent delegation cycle: {cycle}",
+        "agent toolset cycle: {cycle}",
         "break the cycle",
-        condition="agents delegate to one another, through `agent()` tools, in a cycle",
+        condition="agents inherit one another's tools, through `agent_toolset` tools, in a cycle",
     ),
     spec(
         "SST-REF023",

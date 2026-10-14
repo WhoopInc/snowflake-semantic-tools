@@ -169,13 +169,17 @@ def test_agent_compiler_rejects_delegation_cycle() -> None:
         "first",
         Origin("first.yml"),
         ("first.yml",),
-        tools=(AgentTool("agent", Origin("first.yml"), name="second", agent_ref="second", description="Delegate."),),
+        tools=(
+            AgentTool("agent_toolset", Origin("first.yml"), name="second", agent_ref="second", description="Delegate."),
+        ),
     )
     second = AgentModel(
         "second",
         Origin("second.yml"),
         ("second.yml",),
-        tools=(AgentTool("agent", Origin("second.yml"), name="first", agent_ref="first", description="Delegate."),),
+        tools=(
+            AgentTool("agent_toolset", Origin("second.yml"), name="first", agent_ref="first", description="Delegate."),
+        ),
     )
     agents = {
         "first": QualifiedName.parse("DB.S.FIRST"),
@@ -257,7 +261,9 @@ def test_agent_compiler_covers_all_tool_kinds_and_validation_branches() -> None:
                     }
                 ),
             ),
-            AgentTool("agent", Origin("agent.yml"), name="missing_agent", agent_ref="missing", description="agent"),
+            AgentTool(
+                "agent_toolset", Origin("agent.yml"), name="missing_agent", agent_ref="missing", description="agent"
+            ),
             AgentTool(
                 "mcp", Origin("agent.yml"), name="mcp", description="mcp", passthrough=MappingProxyType({"x": 1})
             ),
@@ -446,9 +452,9 @@ def test_agent_compiler_resolves_reference_and_managed_tool_fallbacks() -> None:
                 backing=("platform", "managed_procedure"),
                 input_schema=MappingProxyType({"type": "object"}),
             ),
-            AgentTool("agent", Origin("agent.yml"), name="delegated", description="Delegate."),
-            AgentTool("agent", Origin("agent.yml"), name="broken", description="Delegate."),
-            AgentTool("agent", Origin("agent.yml"), name="managed_agent", description="Delegate."),
+            AgentTool("agent_toolset", Origin("agent.yml"), name="delegated", description="Delegate."),
+            AgentTool("agent_toolset", Origin("agent.yml"), name="broken", description="Delegate."),
+            AgentTool("agent_toolset", Origin("agent.yml"), name="managed_agent", description="Delegate."),
         ),
     )
     result = CompileAgents((model,), DiagnosticBag(), context(tools=tools, warehouse=None)).run_result()
@@ -493,7 +499,7 @@ def test_agent_compiler_resolves_reference_and_managed_tool_fallbacks() -> None:
     generic = next(tool for tool in resolved if tool.name == "managed_procedure")
     assert generic.resources["identifier"] == "DB.S.MANAGED_PROCEDURE"
     delegated = next(tool for tool in resolved if tool.name == "delegated")
-    assert delegated.resources["identifier"] == "DB.S.DELEGATED"
+    assert dict(delegated.resources) == {"agent_name": "DB.S.DELEGATED"}
 
 
 def test_agent_compiler_validates_names_timeouts_and_scalar_input_schema() -> None:
@@ -611,13 +617,13 @@ def test_agent_cycle_walk_handles_complete_nodes_and_acyclic_edges() -> None:
         "first",
         origin,
         ("agent.yml",),
-        tools=(AgentTool("agent", origin, name="leaf", agent_ref="leaf", description="Delegate."),),
+        tools=(AgentTool("agent_toolset", origin, name="leaf", agent_ref="leaf", description="Delegate."),),
     )
     second = AgentModel(
         "second",
         origin,
         ("agent.yml",),
-        tools=(AgentTool("agent", origin, name="leaf", agent_ref="leaf", description="Delegate."),),
+        tools=(AgentTool("agent_toolset", origin, name="leaf", agent_ref="leaf", description="Delegate."),),
     )
     agents = {name: QualifiedName.parse(f"DB.S.{name}") for name in ("leaf", "first", "second")}
     result = CompileAgents((leaf, first, second), DiagnosticBag(), context(agents=agents)).run_result()
@@ -872,8 +878,10 @@ def test_agent_tools_without_a_reference_or_a_resolving_member_are_dropped() -> 
     origin = Origin("agent.yml")
     model = AgentModel("delegates", origin, ("agent.yml",))
 
-    assert resolve_tool(model, AgentTool("agent", origin, description="Neither."), context()) == (None, ())
-    ghost, diagnostics = resolve_tool(model, AgentTool("agent", origin, name="ghost", description="Gone."), context())
+    assert resolve_tool(model, AgentTool("agent_toolset", origin, description="Neither."), context()) == (None, ())
+    ghost, diagnostics = resolve_tool(
+        model, AgentTool("agent_toolset", origin, name="ghost", description="Gone."), context()
+    )
     assert ghost is None
     assert [item.code for item in diagnostics] == ["SST-REF010"]
 

@@ -234,9 +234,9 @@ def spec_size(resolved: ResolvedAgent, payload: str) -> tuple[Diagnostic, ...]:
 
 
 def delegations(resolved: ResolvedAgent) -> tuple[str, ...]:
-    """Return the casefolded identifier of each agent the resolved agent's agent tools delegate to."""
+    """Return the casefolded name of each agent whose tools the resolved agent's toolsets inherit."""
     return tuple(
-        str(tool.resources.get("identifier", "")).casefold() for tool in resolved.tools if tool.type == "agent"
+        str(tool.resources.get("agent_name", "")).casefold() for tool in resolved.tools if tool.type == "agent_toolset"
     )
 
 

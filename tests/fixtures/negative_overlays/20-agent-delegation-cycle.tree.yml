@@ -1,5 +1,5 @@
 ---
-# Two agents that delegate to each other.
+# Two agents whose toolsets inherit each other's tools.
 files:
   agents/cycle_a/agent.yml: |
     name: cycle_a
@@ -8,9 +8,9 @@ files:
         orchestration: claude-sonnet-4-6
       tools:
         - name: cycle_b
-          type: agent
+          type: agent_toolset
           agent: "{{ agent('cycle_b') }}"
-          description: Delegate every question to the second agent.
+          description: The second agent's tools.
   agents/cycle_b/agent.yml: |
     name: cycle_b
     spec:
@@ -18,6 +18,6 @@ files:
         orchestration: claude-sonnet-4-6
       tools:
         - name: cycle_a
-          type: agent
+          type: agent_toolset
           agent: "{{ agent('cycle_a') }}"
-          description: Delegate every question to the first agent.
+          description: The first agent's tools.

@@ -17,7 +17,7 @@ KNOWN_AGENT_TOOL_TYPES = frozenset(
         *BUILTIN_AGENT_TOOLS,
         "generic",
         "mcp",
-        "agent",
+        "agent_toolset",
     )
 )
 RESERVED_AGENT_ALIASES = frozenset(("LIVE", "FIRST", "LAST", "DEFAULT"))
@@ -43,7 +43,7 @@ class AgentTool:
         backing: The arguments of the `{{ tool(...) }}` call that is the whole of
             `search_service:` or `identifier:`: a group and a member name, or a member name
             alone; () when there is no such call.
-        agent_ref: The name a delegating tool's `{{ agent('<name>') }}` gives.
+        agent_ref: The name an agent toolset's `{{ agent('<name>') }}` gives.
         passthrough: Keys added last to a search or generic tool's resources, so they override
             the computed ones; an MCP tool's resources are exactly these.
         tool_spec_passthrough: Keys added last to the rendered `tool_spec`, so they override it.
@@ -76,12 +76,12 @@ class AgentTool:
     def member_reference(self) -> tuple[str, ...]:
         """The tool member this tool resolves to, as `ToolCatalog.resolve` takes it; () for none.
 
-        That is its `{{ tool(...) }}` backing, or, for an `agent` tool that delegates to no agent of
-        this project, its own name: such a tool resolves the member of that name.
+        That is its `{{ tool(...) }}` backing, or, for an `agent_toolset` tool that names no agent
+        of this project, its own name: such a tool resolves the member of that name.
         """
         if self.backing:
             return self.backing
-        if self.type == "agent" and not self.agent_ref and self.name:
+        if self.type == "agent_toolset" and not self.agent_ref and self.name:
             return (self.name,)
         return ()
 

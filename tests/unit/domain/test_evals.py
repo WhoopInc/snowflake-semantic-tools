@@ -476,7 +476,7 @@ def test_eval_validation_covers_omitted_configs_templates_invocations_and_defaul
             "sales",
             value.agent.origin,
             value.agent.source_files,
-            tools=(AgentTool("mcp", value.agent.origin), AgentTool("agent", value.agent.origin)),
+            tools=(AgentTool("mcp", value.agent.origin), AgentTool("agent_toolset", value.agent.origin)),
         ),
         dataset,
         config,

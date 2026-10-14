@@ -30,7 +30,7 @@ _PINNED_VERSION = re.compile(r"VERSION\$[1-9]\d*")
 _BASELINE_RUNS_MIN = 1
 _DECISION_WINDOW_MIN = 1
 # Agent tool types an eval run skips rather than fails (SST-VAL732).
-_SKIPPED_TOOL_TYPES = ("mcp", "agent")
+_SKIPPED_TOOL_TYPES = ("mcp", "agent_toolset")
 
 
 def validate_eval_config(

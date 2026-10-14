@@ -206,7 +206,7 @@ hold it, and access to what each of its tools reaches:
 |---|---|
 | `cortex_search` | `USAGE` on the Cortex Search service |
 | `generic` | `USAGE` on the procedure or function |
-| `agent` | `USAGE` on the agent it delegates to |
+| `agent_toolset` | `USAGE` on the agent whose tools it inherits, and access to what those tools reach; without it, Snowflake silently drops the inherited tools |
 | a skill or plugin the agent pins | `READ` on the Cortex Extension |
 | `cortex_analyst_text_to_sql` | the privileges Snowflake requires to query the semantic view |
 

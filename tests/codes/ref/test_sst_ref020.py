@@ -1,4 +1,4 @@
-"""SST-REF020: a Cortex Search tool names a tool member that is not a search service."""
+"""SST-REF020: a search, generic, or toolset tool names a tool member of a type it cannot use."""
 
 from __future__ import annotations
 
@@ -35,4 +35,23 @@ def test_sst_ref020_silent() -> None:
         agent_context(catalog=tools(search_member())),
     )
     assert resolved is not None
+    assert coded(diagnostics, "SST-REF020") == []
+
+
+def test_sst_ref020_fires_for_an_agent_toolset_over_a_member_that_is_not_an_agent() -> None:
+    resolved, diagnostics = resolve_tool(
+        ROUTER, AgentTool("agent_toolset", ORIGIN, name="search"), agent_context(catalog=tools(search_member()))
+    )
+    assert resolved is None
+    [diagnostic] = coded(diagnostics, "SST-REF020")
+    assert diagnostic.message == "{{ tool('search') }} resolves to cortex_search_service, expected agent"
+
+
+def test_sst_ref020_silent_for_an_agent_toolset_over_an_agent_member() -> None:
+    resolved, diagnostics = resolve_tool(
+        ROUTER, AgentTool("agent_toolset", ORIGIN, name="search"), agent_context(catalog=tools(search_member("agent")))
+    )
+    assert resolved is not None
+    assert dict(resolved.resources) == {"agent_name": "DB.S.SEARCH"}
+    assert resolved.description == "Search the docs."
     assert coded(diagnostics, "SST-REF020") == []
