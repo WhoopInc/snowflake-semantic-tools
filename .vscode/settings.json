@@ -2,6 +2,9 @@
     "workbench.editorAssociations": {
         "*.md": "vscode.markdown.preview.editor"
     },
+    "files.associations": {
+        "**/docs/guides/agents.md": "markdown"
+    },
     "python.testing.pytestArgs": [
         "tests"
     ],
