@@ -1,4 +1,4 @@
-"""SST-REF013: `extension()` names an extension `skills.extensions:` does not declare."""
+"""SST-REF013: `extension()` names an extension `extensions:` does not declare."""
 
 from __future__ import annotations
 

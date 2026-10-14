@@ -301,7 +301,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "privilege is caught before any run starts (SST-VAL727, SST-VAL728), and a wrong "
             "config stage format too (SST-VAL729). A run that ends partially completed reports "
             "SST-APL024, and a completed run whose results cannot be read SST-SNO001. When a retry "
-            "(`run.retry`, else `evals.+retry`) completes in its place, the attempt reports "
+            "(the eval's `retry` setting) completes in its place, the attempt reports "
             "SST-APL029 instead; a CANCELLED run is not retried."
         ),
         precheck=Precheck.RUNTIME,

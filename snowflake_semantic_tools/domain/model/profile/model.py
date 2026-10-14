@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
@@ -106,6 +107,9 @@ class DesktopProfile:
         name: The folder name, which is also the registry row's CONFIG_NAME.
         prompt: The folder's own `AGENTS.md`; None when it has none.
         source_files: The profile's own files, relative to the project root.
+        config: The manifest's `config:` block: the `profiles:` settings the profile sets for
+            itself, without their `+`; compile resolves them over the folder route over its
+            folder and the block root.
     """
 
     name: str
@@ -120,6 +124,7 @@ class DesktopProfile:
     source_files: tuple[str, ...] = ()
     commands: tuple[str, ...] = ()
     plugins: tuple[str, ...] = ()
+    config: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
 
     @property
     def key(self) -> str:

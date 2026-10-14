@@ -7,7 +7,7 @@ from hashlib import sha256
 
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, compile_checked
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
-from snowflake_semantic_tools.domain.model.eval import EVAL_MINT_NEVER, EvalCatalog, EvalDefaults, ResolvedEval
+from snowflake_semantic_tools.domain.model.eval import EVAL_MINT_NEVER, EvalCatalog, ResolvedEval
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositeFacts,
@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     StatementPlan,
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.render.eval import (
     RenderedEval,
     dataset_version_metadata,
@@ -42,7 +43,7 @@ class CompiledEval(StandaloneArtifact):
     the config's, so a change to either is a change.
 
     Attributes:
-        resolved: The eval with its effective agent version applied.
+        resolved: The eval, with the settings it resolved.
         source_table: The table the dataset payload is loaded into.
         dataset_target: The dataset created over `source_table`; the artifact publishes here.
         git_sha: The commit the dataset version's METADATA records; plan sets it for
@@ -71,6 +72,10 @@ class CompiledEval(StandaloneArtifact):
     @property
     def source_files(self) -> tuple[str, ...]:
         return self.resolved.source_files
+
+    @property
+    def settings(self) -> tuple[Setting, ...]:
+        return tuple(self.resolved.settings[key] for key in sorted(self.resolved.settings))
 
     @property
     def rendered_artifact(self) -> RenderedArtifact:
@@ -201,28 +206,23 @@ class CompileEvals:
         if any(item.blocks for item in found):
             return None, found
         agent_target = self._agent_targets[resolved.agent.name.casefold()]
-        return _render(resolved, agent_target, self._catalog.defaults), found
+        return _render(resolved, agent_target, self._catalog.defaults.agent_version), found
 
 
-def _render(
-    resolved: ResolvedEval,
-    agent_target: QualifiedName,
-    defaults: EvalDefaults,
-) -> CompiledEval:
+def _render(resolved: ResolvedEval, agent_target: QualifiedName, root_version: str | None) -> CompiledEval:
     """Render one eval's dataset and config into `agent_target`'s schema.
 
     The dataset and source table names come from the config's templates, filled with the
     agent name and the first seven characters of the dataset payload's digest, so a new
     dataset publishes under a new name.
 
+    The agent version is the eval's `agent_version` setting, else `root_version`, the block
+    root's.
+
     Raises:
-        ValueError: the config has no dataset name or source table template.
+        ValueError: the config has no dataset name or source table template, or neither names
+            an agent version.
     """
-    effective_agent_version = resolved.config.agent_version or defaults.agent_version
-    resolved = replace(
-        resolved,
-        config=replace(resolved.config, agent_version=effective_agent_version),
-    )
     dataset_config = resolved.config.dataset
     if dataset_config is None or dataset_config.name_template is None or dataset_config.source_table_template is None:
         raise ValueError("eval dataset requires name_template and source_table_template")
@@ -238,6 +238,7 @@ def _render(
         resolved.custom_metrics,
         agent_target=agent_target,
         dataset_target=dataset_target,
+        agent_version=resolved.options.agent_version or root_version,
     )
     rendered = RenderedEval(
         payload,

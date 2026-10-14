@@ -11,9 +11,10 @@ from snowflake_semantic_tools.adapters.dbt.manifest import SUPPORTED_SCHEMA
 from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
 from snowflake_semantic_tools.adapters.yaml.documents import load_documents
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
+from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.file_reads import _verified_query_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import _relationship_parse_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.target import _folder_route_diagnostics, _semantic_view_target
+from snowflake_semantic_tools.adapters.yaml.semantic.target import _semantic_view_target
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY
 from snowflake_semantic_tools.domain.model.dbt import DbtTarget
 from snowflake_semantic_tools.domain.parse.frame import canonical_frame
@@ -253,7 +254,7 @@ def test_missing_folder_route_is_a_config_diagnostic(tmp_path: Path) -> None:
     views_dir = tmp_path / "semantic_models" / "semantic_views"
     views_dir.mkdir(parents=True)
     config = {"semantic_views": {"finance": {"+schema": "FINANCE"}}}
-    diagnostics = _folder_route_diagnostics(config, views_dir)
+    diagnostics = routed_diagnostics(config, tmp_path, "semantic_view")
     assert [diagnostic.code for diagnostic in diagnostics] == ["SST-CFG041"]
 
 

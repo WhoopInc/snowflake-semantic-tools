@@ -19,7 +19,7 @@ def test_sst_val855_fires() -> None:
         profile_catalog(profile()),
         skill_catalog(),
         CHANNEL,
-        catalog_channel=False,
+        catalog_published=frozenset(),
         blocked_skills=frozenset(("month-close",)),
     ).run_result()
     diagnostic = only(result.diagnostics, "SST-VAL855")
@@ -30,6 +30,8 @@ def test_sst_val855_fires() -> None:
 
 
 def test_sst_val855_silent() -> None:
-    result = CompileProfiles(profile_catalog(profile()), skill_catalog(), CHANNEL, catalog_channel=False).run_result()
+    result = CompileProfiles(
+        profile_catalog(profile()), skill_catalog(), CHANNEL, catalog_published=frozenset()
+    ).run_result()
     assert "SST-VAL855" not in codes(result.diagnostics)
     assert [item.artifact_key for item in result.compiled] == ["profile:analyst"]

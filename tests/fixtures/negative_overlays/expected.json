@@ -81,10 +81,7 @@
   },
   "18-missing-bundle-stage.tree.yml": {
     "into": ".",
-    "adds": [
-      {"code": "SST-CFG006", "severity": "error", "count": 1},
-      {"code": "SST-VAL856", "severity": "error", "count": 1}
-    ],
+    "adds": [{"code": "SST-VAL856", "severity": "error", "count": 1}],
     "reaches": ["agents/jaffle_analytics/agent.yml"]
   },
   "19-immutable-group-defines.yml": {

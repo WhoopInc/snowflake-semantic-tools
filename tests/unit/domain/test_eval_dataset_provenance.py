@@ -37,7 +37,9 @@ def test_a_run_config_has_only_evaluation_and_metrics_so_it_never_re_creates_a_d
     assert value.config.dataset is not None
     config = replace(value.config, dataset=replace(value.config.dataset, mint=mint))
     for dataset_config in (config, replace(config, dataset=None), replace(config, dataset=EvalDatasetConfig())):
-        rendered = render_eval_config(dataset_config, value.custom_metrics, agent_target=AGENT, dataset_target=DATASET)
+        rendered = render_eval_config(
+            dataset_config, value.custom_metrics, agent_target=AGENT, dataset_target=DATASET, agent_version="committed"
+        )
         top_level = [line.split(":", 1)[0] for line in rendered.splitlines() if line and not line.startswith(" ")]
         assert top_level == ["evaluation", "metrics"]
 

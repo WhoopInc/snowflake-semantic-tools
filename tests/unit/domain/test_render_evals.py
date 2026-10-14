@@ -72,7 +72,6 @@ def config() -> EvalConfig:
         ORIGIN,
         "agents/a/evals/config.yml",
         "a",
-        "committed",
         EvalDatasetConfig(
             "auto",
             "EVAL_{{ agent | upper }}_{{ sha7 }}",
@@ -146,6 +145,7 @@ def test_repeat_run_yaml_has_closed_schema_and_inlines_custom_metric() -> None:
         (metric(),),
         agent_target=QualifiedName.parse("DB.S.A"),
         dataset_target=QualifiedName.parse("DB.S.EVAL_DATASET"),
+        agent_version="committed",
     )
     top_level = tuple(line[:-1] for line in rendered.splitlines() if line and not line.startswith(" "))
     assert top_level == ("evaluation", "metrics")
@@ -163,7 +163,6 @@ def test_alias_and_explicit_version_are_preserved_in_repeat_run_yaml() -> None:
             ORIGIN,
             "config.yml",
             "a",
-            "alias:promoted",
             None,
             (),
             (),
@@ -172,6 +171,7 @@ def test_alias_and_explicit_version_are_preserved_in_repeat_run_yaml() -> None:
         (),
         agent_target=QualifiedName.parse("DB.S.A"),
         dataset_target=QualifiedName.parse("DB.S.D"),
+        agent_version="alias:promoted",
     )
     explicit = alias.replace('agent_version: "promoted"', 'agent_version: "VERSION$4"')
     assert 'agent_version: "promoted"' in alias
@@ -230,6 +230,7 @@ def test_eval_rendering_covers_empty_dataset_ground_truth_and_optional_metric_va
         (custom, disabled),
         agent_target=QualifiedName.parse("DB.S.A"),
         dataset_target=QualifiedName.parse("DB.S.D"),
+        agent_version="committed",
     )
     assert "run_params:" not in rendered
     assert 'name: ""' in rendered
@@ -238,17 +239,19 @@ def test_eval_rendering_covers_empty_dataset_ground_truth_and_optional_metric_va
 
     with pytest.raises(ValueError, match="immutable agent version"):
         render_eval_config(
-            replace(config(), agent_version=None),
+            config(),
             (),
             agent_target=QualifiedName.parse("DB.S.A"),
             dataset_target=QualifiedName.parse("DB.S.D"),
+            agent_version=None,
         )
 
     explicit = render_eval_config(
-        replace(config(), agent_version="VERSION$4"),
+        config(),
         (),
         agent_target=QualifiedName.parse("DB.S.A"),
         dataset_target=QualifiedName.parse("DB.S.D"),
+        agent_version="VERSION$4",
     )
     assert 'agent_version: "VERSION$4"' in explicit
 

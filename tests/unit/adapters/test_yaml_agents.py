@@ -249,8 +249,10 @@ def test_agents_in_grouping_folders_load_with_their_folder_and_routes_are_checke
     ]
     assert [(item.code, item.subject) for item in diagnostics] == [("SST-CFG041", "config_route:finance.missing")]
     assert load_agents(tmp_path)[1] == ()
-    # Without an agents folder there are no agents, and every route names a missing folder.
-    [missing] = load_agents(tmp_path, agents_dir="bots", config=config)[1]
+    # Without an agents folder there are no agents, and every route names a missing folder: the
+    # routes' root is the configuration's `project.agents_dir`, as for every routed block.
+    moved = {**config, "project": {"agents_dir": "bots"}}
+    [missing] = load_agents(tmp_path, agents_dir="bots", config=moved)[1]
     assert (missing.code, missing.subject) == ("SST-CFG041", "config_route:finance")
 
 

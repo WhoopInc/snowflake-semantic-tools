@@ -31,6 +31,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.sql import Sql
 from tests.helpers.clocks import PollClock
 from tests.helpers.eval_builders import EvalSnowflake, compiled_eval_of, result_rows, status_result
+from tests.helpers.eval_inputs import settled
 
 RUN = "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z"
 DROPPED = SnowflakeTransientError("250003: Failed to execute request: Read timed out.\nretry 4 of 4")
@@ -57,10 +58,7 @@ class SlowReads(EvalSnowflake):
 def retrying_eval() -> CompiledEval:
     """The eval with one retry allowed, so a test can show none was needed."""
     compiled = compiled_eval_of()
-    run = compiled.resolved.config.run
-    assert run is not None
-    config = replace(compiled.resolved.config, run=replace(run, retry=1))
-    return replace(compiled, resolved=replace(compiled.resolved, config=config))
+    return replace(compiled, resolved=settled(compiled.resolved, retry=1))
 
 
 def run_polled(

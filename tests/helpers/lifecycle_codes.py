@@ -112,7 +112,10 @@ def analyst_profile() -> dict[str, CompiledProfile]:
     )
     skills = SkillCatalog((skill("common"), skill("semantics")))
     result = CompileProfiles(
-        catalog, skills, DesktopChannel(PROFILE_STAGE, REGISTRY), catalog_channel=True
+        catalog,
+        skills,
+        DesktopChannel(PROFILE_STAGE, REGISTRY),
+        catalog_published=frozenset(item.key for item in skills.skills),
     ).run_result()
     assert not result.diagnostics.has_errors, result.diagnostics
     return {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledProfile)}

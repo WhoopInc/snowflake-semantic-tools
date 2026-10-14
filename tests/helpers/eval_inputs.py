@@ -2,15 +2,17 @@
 
 `sales_eval` is one agent, `sales`, with an Analyst tool over `SALES_VIEW` and `web_search`;
 one question that expects the Analyst tool; a gated `tool_selection_accuracy`; a run block;
-and the custom metric `grounding`, which validates clean. `validate` checks a catalog the
-way compile does, with that agent's tool names and the judge model allowed. `only` returns
-the single diagnostic a test expects, failing on none or several.
+the custom metric `grounding`, which validates clean; and the settings `SETTINGS`, as its
+config's own `config:` would set them. `settled` gives an eval more settings. `validate`
+checks a catalog the way compile does, with that agent's tool names and the judge model
+allowed. `only` returns the single diagnostic a test expects, failing on none or several.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
+from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentTool
@@ -30,6 +32,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     ResolvedEval,
     ThresholdRange,
 )
+from snowflake_semantic_tools.domain.model.setting import CONFIG_SOURCE, Setting
 from snowflake_semantic_tools.domain.validate.eval import validate_eval_catalog
 
 AGENT_FILE = "agents/sales/agent.yml"
@@ -78,13 +81,27 @@ def system_metric(name: str = "tool_selection_accuracy", **changes: object) -> E
     return replace(value, **changes)  # type: ignore[arg-type]
 
 
+SETTINGS: Mapping[str, object] = MappingProxyType(
+    {"agent_version": "committed", "retry": 1, "concurrency": 2, "baseline_runs": 5}
+)
+
+
+def settings_of(values: Mapping[str, object], source: str = CONFIG_SOURCE) -> Mapping[str, Setting]:
+    """Resolved settings holding `values`, each as though one step of the chain set it."""
+    return MappingProxyType({key: Setting(key, value, source) for key, value in values.items()})
+
+
+def settled(resolved: ResolvedEval, source: str = CONFIG_SOURCE, **values: object) -> ResolvedEval:
+    """The eval with `values` among its resolved settings; a value of None removes the key."""
+    kept = {key: item for key, item in resolved.settings.items() if key not in values}
+    added = {key: Setting(key, value, source) for key, value in values.items() if value is not None}
+    return replace(resolved, settings=MappingProxyType({**kept, **added}))
+
+
 def run_config(**changes: object) -> EvalRunConfig:
     value = EvalRunConfig(
         "EVAL_{{ agent | upper }}_{{ sha7 }}_{{ variant }}_{{ ts }}",
         variant="ci",
-        retry=1,
-        concurrency=2,
-        baseline_runs=5,
         accept_statuses=("COMPLETED",),
     )
     return replace(value, **changes)  # type: ignore[arg-type]
@@ -95,7 +112,6 @@ def config(**changes: object) -> EvalConfig:
         Origin(CONFIG_FILE),
         CONFIG_FILE,
         "sales",
-        "committed",
         EvalDatasetConfig("auto", "EVAL_{{ agent | upper }}_{{ sha7 }}", "SRC_{{ agent }}_{{ sha7 }}"),
         (system_metric(),),
         ("grounding",),
@@ -125,12 +141,14 @@ def sales_eval(
     eval_dataset: EvalDataset | None = None,
     eval_config: EvalConfig | None = None,
     metrics: tuple[CustomEvalMetric, ...] | None = None,
+    settings: Mapping[str, object] = SETTINGS,
 ) -> ResolvedEval:
     return ResolvedEval(
         agent or sales_agent(),
         eval_dataset or dataset(),
         eval_config or config(),
         (judge(),) if metrics is None else metrics,
+        settings_of(settings),
     )
 
 

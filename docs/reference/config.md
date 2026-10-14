@@ -10,9 +10,9 @@ listed here, and nothing else is read:
   misspelled top-level block (`SST-CFG007`);
 - a removed key is an error that says what replaced it.
 
-Keys that start with `+` set a default that nested folder routes inherit; a
-semantic view or an agent overrides one in its own `config:` block, writing
-the key without its `+`. An absent key inherits, and a `+` key written with
+Keys that start with `+` set a default that nested folder routes inherit; an
+artifact overrides one in its own `config:` block, writing the key without
+its `+`. An absent key inherits, and a `+` key written with
 no value is an error (`SST-CFG054`). In a key path, `<route>` stands for a
 folder name and `<name>` for any entry of a name map.
 
@@ -174,50 +174,70 @@ Defaults for Cortex Agents, overridable per folder and by an agent's own `config
 
 ## evals
 
-Defaults for agent evaluations.
+Defaults for agent evaluations, overridable per agent folder and by an eval config's own `config:`.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `evals.+eval_tier` | enum: `blocking`, `report` |  | Whether a regression blocks, for evals whose `run.tier` is unset; unset is `report`. |
-| `evals.+metrics` | list |  | Default system metrics. |
+| `evals.+eval_tier` | enum: `blocking`, `report` |  | Whether a regression blocks; unset is `report`. |
+| `evals.+metrics` | list |  | System metrics, ungated, of an eval config whose `metrics:` lists no `system`. |
 | `evals.+metric_version` | string |  | Version of each system metric that names none; only `v3` is accepted (SST-VAL723), and unset with none named is SST-VAL722. |
-| `evals.+judge_model` | string |  | Custom judge model. |
-| `evals.+agent_version` | string |  | Agent version an eval runs against when its config names none. |
-| `evals.+retry` | integer |  | Retries per run, for evals that set none; unset retries none. Each attempt is reported. |
-| `evals.+concurrency` | integer |  | Eval runs a suite starts and polls at once, and the most an eval's `run.concurrency` may ask (SST-VAL731). |
-| `evals.+baseline_runs` | integer |  | Completed attempts a baseline needs, for evals that set none; unset needs 1. |
+| `evals.+judge_model` | string |  | Judge model of each custom metric that names none. |
+| `evals.+agent_version` | string |  | Agent version an eval runs against. |
+| `evals.+retry` | integer |  | Retries per run; unset retries none. Each attempt is reported. |
+| `evals.+concurrency` | integer |  | Eval runs a suite starts and polls at once. At the root it is also the most a folder route or an eval's `config:` may ask (SST-VAL731). |
+| `evals.+baseline_runs` | integer |  | Completed attempts a baseline needs; unset needs 1. |
 | `evals.+min_dataset_rows` | integer |  | Smallest accepted question set (SST-VAL710); unset checks none. |
-| `evals.+retention` | enum: `audit`, `decision` |  | Retention class of a run whose variant `run.retention` does not list. |
+| `evals.+retention` | enum: `audit`, `decision` |  | Retention class recorded with each run; SST never deletes a run on the strength of it. |
+| `evals.<route>` | block |  | Folder route under `project.agents_dir`: overrides for the evals of the agents under that directory. |
 
 ## skills
 
-Skill and plugin publishing. Omitting a channel block disables that channel.
-
-Declare at least one of `catalog`, `stage`.
+Defaults for skills, overridable per folder and by a skill's own `config:`. A skill publishes as a Cortex Extension only when `+bundle_stage` resolves for it.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `skills.+certified` | boolean | `false` | Tag each new skill and plugin version `SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'`. |
-| `skills.+version_prefix` | string | `SST_` | Prefix of every version alias; the rest is 12 hex characters of the bundle digest. |
-| `skills.+threads` | integer, 1 to 16 | `4` | Changes `apply` applies at once when neither `--threads`, `$SST_THREADS`, nor `generation.threads` says. Profiles always publish one at a time. |
-| `skills.extensions` | block |  | Name map for extensions this project consumes but does not publish. |
-| `skills.extensions.default_prefix` | string |  | `<database>.<schema>` for entries without `fqn:`. |
-| `skills.extensions.<name>` | block |  | One consumed extension; empty takes `default_prefix`. |
-| `skills.extensions.<name>.fqn` | string |  | The full three-part extension name. |
-| `skills.catalog` | block |  | Publish each skill and plugin as a Cortex Extension. |
-| `skills.catalog.+database` | string | the target database | Database for extensions. |
-| `skills.catalog.+schema` | string | the target schema | Schema for extensions. |
-| `skills.catalog.+bundle_stage` | string, required |  | Internal stage that `ADD VERSION` reads from. Created when absent. |
-| `skills.catalog.+flatten` | boolean | `true` | Must be true: agents read supporting files beside `SKILL.md`. |
-| `skills.catalog.+prune_deleted` | boolean | `true` | Must be true: every version is built from the complete bundle, so a deleted file is gone from it. |
-| `skills.stage` | block |  | Publish CoCo Desktop profiles through a stage and the profile registry. |
-| `skills.stage.+database` | string | the target database | Database of the profile stage and registry. |
-| `skills.stage.+schema` | string | the target schema | Schema of the profile stage and registry. |
-| `skills.stage.+stage` | string, required |  | Internal stage that holds profile trees. Created when absent. |
-| `skills.stage.+registry_table` | string | `PROFILE_REGISTRY` | Profile registry table. Desktop reads `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`. |
-| `skills.stage.+flatten` | boolean | `false` | Must be false: Desktop expects the authored nested layout. |
-| `skills.stage.+auto_compress` | boolean | `false` | Must be false: compressed uploads are invisible to Desktop. |
-| `skills.stage.+layout` | enum: `by_type` | `by_type` | Stage layout: content-addressed trees under `skills/`, `prompts/`, `mcp/`, `hooks/`, `commands/`, and `plugins/`. |
+| `skills.+database` | string | the target database | Database for skill extensions. |
+| `skills.+schema` | string | the target schema | Schema for skill extensions. |
+| `skills.+bundle_stage` | string |  | Internal stage that `ADD VERSION` reads from; created when absent. Unset, the skill does not publish. |
+| `skills.+certified` | boolean | `false` | Tag each new skill version `SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'`. |
+| `skills.+version_prefix` | string | `SST_` | Prefix of every version alias, and of each profile's VERSION; the rest is 12 hex characters of the digest. |
+| `skills.+threads` | integer, 1 to 16, root only | `4` | Changes `apply` applies at once when neither `--threads`, `$SST_THREADS`, nor `generation.threads` says. Profiles always publish one at a time. |
+| `skills.<route>` | block |  | Folder route: overrides for the skills under that directory. |
+
+## plugins
+
+Defaults for plugins, overridable per folder and by a plugin's own `config:`. A plugin publishes as a Cortex Extension only when `+bundle_stage` resolves for it.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `plugins.+database` | string | the target database | Database for plugin extensions. |
+| `plugins.+schema` | string | the target schema | Schema for plugin extensions. |
+| `plugins.+bundle_stage` | string |  | Internal stage that `ADD VERSION` reads from; created when absent. Unset, the plugin does not publish. |
+| `plugins.+certified` | boolean | `false` | Tag each new plugin version `SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'`. |
+| `plugins.+version_prefix` | string | `SST_` | Prefix of every plugin version alias; the rest is 12 hex characters of the bundle digest. |
+| `plugins.<route>` | block |  | Folder route: overrides for the plugins under that directory. |
+
+## profiles
+
+Defaults for CoCo Desktop profiles, overridable per folder and by a profile's own `config:`. A profile publishes only when `+stage` resolves for it.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `profiles.+database` | string | the target database | Database of the profile stage and registry. |
+| `profiles.+schema` | string | the target schema | Schema of the profile stage and registry. |
+| `profiles.+stage` | string |  | Internal stage that holds profile trees; created when absent. Unset, the profile does not publish. |
+| `profiles.+registry_table` | string | `PROFILE_REGISTRY` | Profile registry table. Desktop reads `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`. |
+| `profiles.<route>` | block |  | Folder route: overrides for the profile in that directory. |
+
+## extensions
+
+Name map for extensions this project consumes but does not publish.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `extensions.default_prefix` | string |  | `<database>.<schema>` for entries without `fqn:`. |
+| `extensions.<name>` | block |  | One consumed extension; empty takes `default_prefix`. |
+| `extensions.<name>.fqn` | string |  | The full three-part extension name. |
 
 ## apply
 
@@ -277,8 +297,8 @@ as though it still does.
 | `evals.+enabled` | omit the evals instead | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `evals.+database` | eval objects resolve to the agent's schema | [`SST-CFG015`](error-codes.md#sst-cfg015) |
 | `evals.+schema` | eval objects resolve to the agent's schema | [`SST-CFG015`](error-codes.md#sst-cfg015) |
-| `evals.<route>` | eval location is structural | [`SST-CFG042`](error-codes.md#sst-cfg042) |
 | `skills.+grant_read_to` | access is managed outside SST; SST never issues grants | [`SST-CFG043`](error-codes.md#sst-cfg043) |
-| `skills.+enabled` | omit a channel block to disable it | [`SST-CFG043`](error-codes.md#sst-cfg043) |
-| `skills.<route>` | the unprefixed keys of skills: are its channel blocks | [`SST-CFG042`](error-codes.md#sst-cfg042) |
-| `skills.catalog.+registry_table` | SST state records every published version | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `skills.+enabled` | a skill publishes only where +bundle_stage resolves for it | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `skills.catalog` | set +bundle_stage, +database and +schema on skills: and plugins: themselves | [`SST-CFG042`](error-codes.md#sst-cfg042) |
+| `skills.stage` | profiles publish through the profiles: block | [`SST-CFG042`](error-codes.md#sst-cfg042) |
+| `skills.extensions` | consumed extensions are the top-level extensions: block | [`SST-CFG042`](error-codes.md#sst-cfg042) |

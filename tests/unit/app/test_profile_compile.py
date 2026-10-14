@@ -29,7 +29,7 @@ def compile_profiles(
     profiles: tuple[DesktopProfile, ...], skills: SkillCatalog, *, blocked: frozenset[str] = frozenset()
 ) -> tuple[list[str], list[tuple[str, str | None]]]:
     result = CompileProfiles(
-        ProfileCatalog(profiles), skills, CHANNEL, catalog_channel=False, blocked_skills=blocked
+        ProfileCatalog(profiles), skills, CHANNEL, catalog_published=frozenset(), blocked_skills=blocked
     ).run_result()
     codes = [(item.code, item.subject) for item in result.diagnostics]
     return [item.artifact_key for item in result.compiled], codes

@@ -247,8 +247,10 @@ flowchart TD
 
 Drawn from: [app/compile/project.py](../../snowflake_semantic_tools/app/compile/project.py), [app/compile/\_\_init\_\_.py](../../snowflake_semantic_tools/app/compile/__init__.py), [app/compile/base.py](../../snowflake_semantic_tools/app/compile/base.py), [app/manifest.py](../../snowflake_semantic_tools/app/manifest.py).
 
-Skills and plugins compile only when `skills.catalog` or `skills.stage` is
-configured, and profiles only with the stage channel. Each later compiler reads
+Skills, plugins, and profiles compile only when one of the `skills:`,
+`plugins:`, and `profiles:` blocks is written or an item places itself, and each
+publishes only where its own settings resolve a stage; profiles compile when the
+`profiles:` block is written or a profile has a stage. Each later compiler reads
 what the earlier ones produced: tools read the dbt relations, agents the views
 and tools that compiled, evals the tools each agent resolved. The checks that
 span all four run after them, as a result that compiles nothing, and then the

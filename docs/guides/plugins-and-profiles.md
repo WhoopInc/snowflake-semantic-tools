@@ -23,12 +23,16 @@ owner_team: Sales Analytics
 skills:
   - "{{ skill('sales-semantics') }}"
   - "{{ skill('month-close') }}"
+config:
+  certified: true          # this plugin's versions alone
 ```
 
 - A plugin is a folder under `project.plugins_dir` (default `plugins/`) holding
   `plugin.yml` or `plugin.yaml`; no manifest, or both, is an error
-  (`SST-VAL801`). The folder name names the plugin, follows the skill naming
-  rule, and must match `name:` when it is given (`SST-VAL801`).
+  (`SST-VAL801`). A folder with neither a manifest nor a subfolder is a plugin
+  missing its manifest; any other folder only groups plugins, as a grouping
+  folder groups skills. The folder name names the plugin, follows the skill
+  naming rule, and must match `name:` when it is given (`SST-VAL801`).
 - `description` is required, and so is at least one member under `skills`
   (`SST-PRS002`). Each member is one `{{ skill('<name>') }}` call; a bare name
   or another function's call is an error (`SST-REF049`). A member listed twice
@@ -39,9 +43,13 @@ skills:
 - The bundle holds `.cortex-plugin/plugin.json` -- name, description,
   `owner_team` as the author, and `"skills": "./skills/"` -- and each member
   flattened under `skills/<member>/`.
-- A plugin version is named by its content, like a skill's, and publishes
-  through the same catalog channel and bundle stage, as a `TYPE = 'PLUGIN'`
-  extension. Each member also publishes as its own skill extension.
+- A plugin version is named by its content, like a skill's, and publishes as a
+  `TYPE = 'PLUGIN'` extension wherever its `+bundle_stage` resolves. Its
+  settings are the `plugins:` block's -- `+database`, `+schema`,
+  `+bundle_stage`, `+certified`, and `+version_prefix` -- folded like a
+  skill's: the manifest's own `config:` (the keys without their `+`), then the
+  closest folder route under `plugins:`, then the block root. A member skill is
+  bundled into the plugin whether or not it publishes alone.
 - An agent references it with `{{ plugin('sales-toolkit') }}` and no
   `version:` (`SST-VAL838`); the skill entry's `name:` is optional or must be
   one of the members (`SST-VAL840`).
@@ -91,7 +99,8 @@ hooks:
 
 - Each folder directly under `project.profiles_dir` (default `profiles/`) is a
   profile, named by its folder: lowercase letters, digits, `-`, or `_`, and not
-  `shared` (`SST-VAL801`). The name is the registry row's `CONFIG_NAME`, and
+  `shared` (`SST-VAL801`). Its `config:` sets the profile's own `profiles:`
+  settings, such as `stage`, without their `+`. The name is the registry row's `CONFIG_NAME`, and
   `name:`, when given, must match it (`SST-VAL801`). `description` and
   `owner_team` are optional and fill the row's columns of those names.
 - `skills`, `plugins`, `commands`, `mcp_servers`, and `hooks` list one call
@@ -153,8 +162,9 @@ published as written.
 
 A profile that lists a plugin carries that plugin's bundle, byte for byte the
 bundle its catalog extension publishes, and Desktop loads it as a plugin.
-Listing a plugin does not require the catalog channel: without it, the plugin is
-built for the profile alone, and its errors block the profile (`SST-VAL855`).
+Listing a plugin does not require it to publish as an extension: one with no
+`+bundle_stage` is built for the profile alone, and its errors block the
+profile (`SST-VAL855`).
 
 ### Hooks
 
@@ -204,22 +214,25 @@ name contains `token`, `secret`, `password`, `passwd`, `api_key`, or
 ## How a profile publishes
 
 ```yaml
-skills:
-  stage:
-    +database: "{{ target.database }}"
-    +schema: "{{ target.schema }}"
-    +stage: PROFILE_BUNDLES
-    +registry_table: CORTEX_CODE.CONFIG.PROFILE_REGISTRY
+profiles:
+  +database: "{{ target.database }}"
+  +schema: "{{ target.schema }}"
+  +stage: PROFILE_BUNDLES
+  +registry_table: CORTEX_CODE.CONFIG.PROFILE_REGISTRY
+  sales-analyst:           # profiles/sales-analyst/
+    +schema: SALES
 ```
 
-- `+stage` is required. Like `+registry_table`, an unqualified name is in the
-  block's `+database` and `+schema`, which default to the target's; a qualified
-  name is used as written.
+- Each profile resolves these settings through the one
+  [precedence chain](configuration.md#precedence): its `profile.yml`'s
+  `config:`, then the route that names its folder, then the root. A profile
+  publishes only where `+stage` resolves for it. Like `+registry_table`, an
+  unqualified name is in the profile's database and schema, which default to
+  the target's; a qualified name is used as written.
 - `+registry_table` defaults to `PROFILE_REGISTRY` in that database and schema,
   which is a rehearsal registry (see below).
-- `+flatten` must be `false` (`SST-VAL818`), `+auto_compress` must be `false`
-  (`SST-VAL819`), and `+layout` must be `by_type` (`SST-VAL821`); each may be
-  left out.
+- Trees are always uploaded uncompressed and nested as authored, under the
+  prefixes below; none of that is configurable.
 
 A profile is content-addressed files on a stage plus one row in the profile
 registry table that points at them:
@@ -238,7 +251,7 @@ registry table that points at them:
 Each `<hash>` is 12 hex characters of that tree's own digest, so a new version of
 a tree lands at a new path and never overwrites one a published row names. A
 tree with no files is not published, and its column holds an empty value. The
-row's `VERSION` is `skills.+version_prefix` followed by 12 hex characters of a
+row's `VERSION` is the `skills:` root's `+version_prefix` followed by 12 hex characters of a
 digest of every other column, so it changes whenever anything the profile
 carries does.
 
@@ -253,7 +266,8 @@ is a rollback.
 - **The registry table.** CoCo Desktop reads profiles only from
   `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`. Any other `+registry_table`, including
   the default, is useful for rehearsal and gets an info diagnostic saying
-  Desktop will not see it (`SST-VAL854`). SST creates the table only when it is
+  Desktop will not see it (`SST-VAL854`, once per registry the profiles name).
+  SST creates the table only when it is
   absent. One that exists must have every column SST writes, with the right
   type, or the plan stops (`SST-PLN029`); SST never alters it.
 - **What the row holds.** SST writes `CONFIG_NAME`, `DESCRIPTION`,
@@ -275,16 +289,18 @@ is a rollback.
   already gone counts as retired. Stage trees and rows are never deleted, and
   restoring the folder reactivates the row on the next `apply`.
 
-## Choosing channels
+## Choosing where each publishes
 
-Each channel is a block under `skills:`, and omitting a block turns that channel
-off:
+Each item publishes where its own settings say, so the choice is per item, not
+per channel:
 
-- `catalog:` alone publishes skills and plugins as extensions, for agents;
-- `stage:` alone publishes profiles for Desktop;
-- both publish both, from the same folders.
+- a skill or plugin with a `+bundle_stage` publishes as an extension, for
+  agents;
+- a profile with a `+stage` publishes for Desktop;
+- a skill can do both, from the same folder, or only reach Desktop through a
+  profile.
 
-A `skills:` block must declare at least one of the two (`SST-VAL817`). Without
-`catalog:`, a skill that no profile reaches -- directly, through `shared/`, or
-through a plugin a profile lists -- is published nowhere, which is a warning
-(`SST-VAL830`).
+With none of `skills:`, `plugins:`, and `profiles:` written and no item placing
+itself, nothing compiles. A skill that publishes as no extension and that no
+profile reaches -- directly, through `shared/`, or through a plugin a profile
+lists -- is published nowhere, which is a warning (`SST-VAL830`).

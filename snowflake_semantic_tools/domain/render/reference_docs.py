@@ -426,9 +426,9 @@ def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
         "  misspelled top-level block (`SST-CFG007`);",
         "- a removed key is an error that says what replaced it.",
         "",
-        "Keys that start with `+` set a default that nested folder routes inherit; a",
-        "semantic view or an agent overrides one in its own `config:` block, writing",
-        "the key without its `+`. An absent key inherits, and a `+` key written with",
+        "Keys that start with `+` set a default that nested folder routes inherit; an",
+        "artifact overrides one in its own `config:` block, writing the key without",
+        "its `+`. An absent key inherits, and a `+` key written with",
         "no value is an error (`SST-CFG054`). In a key path, `<route>` stands for a",
         "folder name and `<name>` for any entry of a name map.",
     ]
@@ -440,9 +440,6 @@ def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
         lines.extend(("", f"## {block}"))
         if head is not None:
             lines.extend(("", _prose(head.summary)))
-            notes = _notes(head)
-            if notes:
-                lines.extend(("", " ".join(notes)))
         rows = [key for key in keys if key.path != block]
         if not rows:
             continue
@@ -471,28 +468,19 @@ def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _notes(key: ConfigKey) -> list[str]:
-    notes = []
-    if key.one_of:
-        notes.append("Declare at least one of " + ", ".join(f"`{name}`" for name in key.one_of) + ".")
-    return notes
-
-
 def _type(key: ConfigKey) -> str:
     label = _KIND_LABELS[key.kind]
     if key.choices:
         label += ": " + ", ".join(f"`{choice}`" for choice in key.choices)
     if key.minimum is not None and key.maximum is not None:
         label += f", {key.minimum} to {key.maximum}"
-    if key.required:
-        label += ", required"
     if key.root_only:
         label += ", root only"
     return label
 
 
 def _description(key: ConfigKey) -> str:
-    return " ".join((_prose(key.summary), *_notes(key)))
+    return _prose(key.summary)
 
 
 # --------------------------------------------------------------------------------- cli

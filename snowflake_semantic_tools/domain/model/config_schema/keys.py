@@ -73,15 +73,12 @@ class ConfigKey:
     Attributes:
         summary: The reference-page description; for a removed key, why it was removed.
         default: The default as the reference prints it, or None when the key has none.
-        required: A block that is present must set this key; an empty value is unset.
         minimum: Inclusive lower bound of an integer value, or None for no bound.
         maximum: Inclusive upper bound of an integer value, or None for no bound.
         replacement: For a removed key, the reason its diagnostic gives; for a deprecated key,
             the key it is read as.
         code: The code reported instead of the generic one: a removed key's dedicated
-            code, or the code for a value outside `choices` or not `fixed`.
-        fixed: The only boolean the key accepts, or None when either is accepted.
-        one_of: Children of which a present block must declare at least one.
+            code, or the code for a value outside `choices` or bounds.
         folded: An `ENUM` value is matched against `choices` by `vocabulary_key`, ignoring case
             and runs of spaces, as the member key it is the default for is matched.
         root_only: A `+` key that only the block's root may set: a folder route or an artifact's
@@ -94,14 +91,11 @@ class ConfigKey:
     status: KeyStatus = KeyStatus.CURRENT
     default: str | None = None
     choices: tuple[str, ...] = ()
-    required: bool = False
     minimum: int | None = None
     maximum: int | None = None
     children: ChildPolicy = ChildPolicy.DECLARED
     replacement: str | None = None
     code: str | None = None
-    fixed: bool | None = None
-    one_of: tuple[str, ...] = ()
     folded: bool = False
     root_only: bool = False
 
@@ -425,57 +419,74 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _removed("agents.+meta", "put metadata on the agent itself"),
     _removed("agents.+create_mode", "agents are created once and versioned"),
     _key("agents.<route>", _BLOCK, "Folder route: overrides for agents under that directory."),
-    _key("evals", _BLOCK, "Defaults for agent evaluations.", children=ChildPolicy.ROUTES),
+    _key(
+        "evals",
+        _BLOCK,
+        "Defaults for agent evaluations, overridable per agent folder and by an eval config's own `config:`.",
+        children=ChildPolicy.ROUTES,
+    ),
     _key(
         "evals.+eval_tier",
         KeyKind.ENUM,
-        "Whether a regression blocks, for evals whose `run.tier` is unset; unset is `report`.",
+        "Whether a regression blocks; unset is `report`.",
         choices=("blocking", "report"),
     ),
-    _key("evals.+metrics", _L, "Default system metrics."),
+    _key("evals.+metrics", _L, "System metrics, ungated, of an eval config whose `metrics:` lists no `system`."),
     _key(
         "evals.+metric_version",
         _S,
         "Version of each system metric that names none; only `v3` is accepted (SST-VAL723), and unset with "
         "none named is SST-VAL722.",
     ),
-    _key("evals.+judge_model", _S, "Custom judge model."),
-    _key("evals.+agent_version", _S, "Agent version an eval runs against when its config names none."),
-    _key("evals.+retry", _I, "Retries per run, for evals that set none; unset retries none. Each attempt is reported."),
+    _key("evals.+judge_model", _S, "Judge model of each custom metric that names none."),
+    _key("evals.+agent_version", _S, "Agent version an eval runs against."),
+    _key("evals.+retry", _I, "Retries per run; unset retries none. Each attempt is reported."),
     _key(
         "evals.+concurrency",
         _I,
-        "Eval runs a suite starts and polls at once, and the most an eval's `run.concurrency` may ask (SST-VAL731).",
+        "Eval runs a suite starts and polls at once. At the root it is also the most a folder route or an "
+        "eval's `config:` may ask (SST-VAL731).",
     ),
-    _key("evals.+baseline_runs", _I, "Completed attempts a baseline needs, for evals that set none; unset needs 1."),
+    _key("evals.+baseline_runs", _I, "Completed attempts a baseline needs; unset needs 1."),
     _key("evals.+min_dataset_rows", _I, "Smallest accepted question set (SST-VAL710); unset checks none."),
     _key(
         "evals.+retention",
         KeyKind.ENUM,
-        "Retention class of a run whose variant `run.retention` does not list.",
+        "Retention class recorded with each run; SST never deletes a run on the strength of it.",
         choices=("audit", "decision"),
     ),
     _removed("evals.+enabled", "omit the evals instead"),
     _removed("evals.+database", "eval objects resolve to the agent's schema", code="SST-CFG015"),
     _removed("evals.+schema", "eval objects resolve to the agent's schema", code="SST-CFG015"),
-    _removed("evals.<route>", "eval location is structural", code="SST-CFG042"),
+    _key(
+        "evals.<route>",
+        _BLOCK,
+        "Folder route under `project.agents_dir`: overrides for the evals of the agents under that directory.",
+    ),
     _key(
         "skills",
         _BLOCK,
-        "Skill and plugin publishing. Omitting a channel block disables that channel.",
+        "Defaults for skills, overridable per folder and by a skill's own `config:`. A skill publishes as a "
+        "Cortex Extension only when `+bundle_stage` resolves for it.",
         children=ChildPolicy.ROUTES,
-        one_of=("catalog", "stage"),
+    ),
+    _key("skills.+database", _S, "Database for skill extensions.", default="the target database"),
+    _key("skills.+schema", _S, "Schema for skill extensions.", default="the target schema"),
+    _key(
+        "skills.+bundle_stage",
+        _S,
+        "Internal stage that `ADD VERSION` reads from; created when absent. Unset, the skill does not publish.",
     ),
     _key(
         "skills.+certified",
         _B,
-        "Tag each new skill and plugin version `SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'`.",
+        "Tag each new skill version `SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'`.",
         default="false",
     ),
     _key(
         "skills.+version_prefix",
         _S,
-        "Prefix of every version alias; the rest is 12 hex characters of the bundle digest.",
+        "Prefix of every version alias, and of each profile's VERSION; the rest is 12 hex characters of the digest.",
         default=DEFAULT_VERSION_PREFIX,
     ),
     _key(
@@ -486,79 +497,75 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         default=str(DEFAULT_THREADS),
         minimum=1,
         maximum=16,
+        root_only=True,
     ),
     _removed("skills.+grant_read_to", "access is managed outside SST; SST never issues grants"),
-    _removed("skills.+enabled", "omit a channel block to disable it"),
-    _removed("skills.<route>", "the unprefixed keys of skills: are its channel blocks", code="SST-CFG042"),
+    _removed("skills.+enabled", "a skill publishes only where +bundle_stage resolves for it"),
+    _removed(
+        "skills.catalog",
+        "set +bundle_stage, +database and +schema on skills: and plugins: themselves",
+        code="SST-CFG042",
+    ),
+    _removed("skills.stage", "profiles publish through the profiles: block", code="SST-CFG042"),
+    _removed("skills.extensions", "consumed extensions are the top-level extensions: block", code="SST-CFG042"),
+    _key("skills.<route>", _BLOCK, "Folder route: overrides for the skills under that directory."),
     _key(
-        "skills.extensions",
+        "plugins",
         _BLOCK,
-        "Name map for extensions this project consumes but does not publish.",
-        children=ChildPolicy.NAMES,
+        "Defaults for plugins, overridable per folder and by a plugin's own `config:`. A plugin publishes as a "
+        "Cortex Extension only when `+bundle_stage` resolves for it.",
+        children=ChildPolicy.ROUTES,
     ),
-    _key("skills.extensions.default_prefix", _S, "`<database>.<schema>` for entries without `fqn:`."),
-    _key("skills.extensions.<name>", _BLOCK, "One consumed extension; empty takes `default_prefix`."),
-    _key("skills.extensions.<name>.fqn", _S, "The full three-part extension name."),
-    _key("skills.catalog", _BLOCK, "Publish each skill and plugin as a Cortex Extension."),
-    _key("skills.catalog.+database", _S, "Database for extensions.", default="the target database"),
-    _key("skills.catalog.+schema", _S, "Schema for extensions.", default="the target schema"),
+    _key("plugins.+database", _S, "Database for plugin extensions.", default="the target database"),
+    _key("plugins.+schema", _S, "Schema for plugin extensions.", default="the target schema"),
     _key(
-        "skills.catalog.+bundle_stage",
+        "plugins.+bundle_stage",
         _S,
-        "Internal stage that `ADD VERSION` reads from. Created when absent.",
-        required=True,
+        "Internal stage that `ADD VERSION` reads from; created when absent. Unset, the plugin does not publish.",
     ),
     _key(
-        "skills.catalog.+flatten",
+        "plugins.+certified",
         _B,
-        "Must be true: agents read supporting files beside `SKILL.md`.",
-        default="true",
-        fixed=True,
-        code="SST-VAL818",
+        "Tag each new plugin version `SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'`.",
+        default="false",
     ),
-    _removed("skills.catalog.+registry_table", "SST state records every published version"),
     _key(
-        "skills.catalog.+prune_deleted",
-        _B,
-        "Must be true: every version is built from the complete bundle, so a deleted file is gone from it.",
-        default="true",
-        fixed=True,
+        "plugins.+version_prefix",
+        _S,
+        "Prefix of every plugin version alias; the rest is 12 hex characters of the bundle digest.",
+        default=DEFAULT_VERSION_PREFIX,
     ),
-    _key("skills.stage", _BLOCK, "Publish CoCo Desktop profiles through a stage and the profile registry."),
-    _key("skills.stage.+database", _S, "Database of the profile stage and registry.", default="the target database"),
-    _key("skills.stage.+schema", _S, "Schema of the profile stage and registry.", default="the target schema"),
-    _key("skills.stage.+stage", _S, "Internal stage that holds profile trees. Created when absent.", required=True),
+    _key("plugins.<route>", _BLOCK, "Folder route: overrides for the plugins under that directory."),
     _key(
-        "skills.stage.+registry_table",
+        "profiles",
+        _BLOCK,
+        "Defaults for CoCo Desktop profiles, overridable per folder and by a profile's own `config:`. A "
+        "profile publishes only when `+stage` resolves for it.",
+        children=ChildPolicy.ROUTES,
+    ),
+    _key("profiles.+database", _S, "Database of the profile stage and registry.", default="the target database"),
+    _key("profiles.+schema", _S, "Schema of the profile stage and registry.", default="the target schema"),
+    _key(
+        "profiles.+stage",
+        _S,
+        "Internal stage that holds profile trees; created when absent. Unset, the profile does not publish.",
+    ),
+    _key(
+        "profiles.+registry_table",
         _S,
         "Profile registry table. Desktop reads `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`.",
         default="PROFILE_REGISTRY",
     ),
+    _key("profiles.<route>", _BLOCK, "Folder route: overrides for the profile in that directory."),
     _key(
-        "skills.stage.+flatten",
-        _B,
-        "Must be false: Desktop expects the authored nested layout.",
-        default="false",
-        fixed=False,
-        code="SST-VAL818",
+        "extensions",
+        _BLOCK,
+        "Name map for extensions this project consumes but does not publish.",
+        children=ChildPolicy.NAMES,
     ),
-    _key(
-        "skills.stage.+auto_compress",
-        _B,
-        "Must be false: compressed uploads are invisible to Desktop.",
-        default="false",
-        fixed=False,
-        code="SST-VAL819",
-    ),
-    _key(
-        "skills.stage.+layout",
-        KeyKind.ENUM,
-        "Stage layout: content-addressed trees under `skills/`, `prompts/`, `mcp/`, `hooks/`, `commands/`, "
-        "and `plugins/`.",
-        default="by_type",
-        choices=("by_type",),
-        code="SST-VAL821",
-    ),
+    _key("extensions.default_prefix", _S, "`<database>.<schema>` for entries without `fqn:`."),
+    _key("extensions.<name>", _BLOCK, "One consumed extension; empty takes `default_prefix`."),
+    _key("extensions.<name>.fqn", _S, "The full three-part extension name."),
     _key("apply", _BLOCK, "Stages apply uploads through."),
     _key(
         "apply.agent_spec_stage",

@@ -2,8 +2,8 @@
 
 `keys` holds the key table: every key, block, and wildcard slot SST reads, which the
 generated configuration reference renders row by row; `values` reads the values the engine
-uses out of a parsed tree, and `settings` resolves a semantic view's or an agent's settings
-through the one precedence chain; `domain.validate.config` checks a tree against the table.
+uses out of a parsed tree, and `settings` resolves an artifact's settings through the one
+precedence chain; `domain.validate.config` checks a tree against the table.
 This module re-exports their public surfaces, so importers never reach into the submodules.
 """
 
@@ -38,7 +38,7 @@ from snowflake_semantic_tools.domain.model.config_schema.values import (
     configured_dir,
     dbt_settings,
     enrichment_config,
-    skills_configured,
+    route_root,
     target_text,
 )
 
@@ -65,8 +65,8 @@ __all__ = [
     "dbt_settings",
     "enrichment_config",
     "resolve_settings",
+    "route_root",
     "setting_value",
-    "skills_configured",
     "target_text",
     "with_defaults",
 ]

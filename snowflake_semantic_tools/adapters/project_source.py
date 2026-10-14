@@ -39,6 +39,7 @@ from snowflake_semantic_tools.adapters.yaml.evals import load_eval_catalog, pars
 from snowflake_semantic_tools.adapters.yaml.fields import strings
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
 from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
+from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic import load_semantic_views_result, read_semantic_inputs
 from snowflake_semantic_tools.adapters.yaml.skills import _published, load_skill_catalog
 from snowflake_semantic_tools.adapters.yaml.tools import load_tool_catalog
@@ -49,7 +50,6 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     config_bool,
     configured_dir,
     dbt_settings,
-    skills_configured,
 )
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog
@@ -299,7 +299,8 @@ class YamlProjectSource:
         """Load the evals of `agents`, reading every agent again when `agents` is None.
 
         The agents and the custom metrics come from `project.agents_dir` and
-        `project.eval_metrics_dir`, the defaults from `evals:`, and the judge models a custom
+        `project.eval_metrics_dir`, each eval's settings from `evals:` and its folder routes,
+        whose folders are checked under `project.agents_dir`, and the judge models a custom
         metric may name from `snowflake.orchestration_models`. Agents read here bring their own
         diagnostics, ahead of the eval diagnostics, and raise what `load_agents` raises; agents
         passed in do not, since whoever loaded them reports theirs.
@@ -317,6 +318,7 @@ class YamlProjectSource:
         if agents is None:
             agents, agent_diagnostics = load_agents(self._project_dir, agents_dir=agents_dir, config=config)
         defaults, default_diagnostics = parse_eval_defaults(config.get("evals"), file=self._files.config_name)
+        routes = routed_diagnostics(config, self._project_dir, "eval")
         snowflake = config.get("snowflake")
         raw_models = snowflake.get("orchestration_models") if isinstance(snowflake, dict) else None
         allowed_models = strings(raw_models)
@@ -325,7 +327,8 @@ class YamlProjectSource:
             agents,
             eval_metrics_dir=metrics_dir,
             defaults=defaults,
-            initial_diagnostics=DiagnosticBag((*agent_diagnostics, *default_diagnostics)),
+            block=config.get("evals"),
+            initial_diagnostics=DiagnosticBag((*agent_diagnostics, *routes, *default_diagnostics)),
             agent_tool_names=agent_tool_names,
             allowed_models=allowed_models,
         )
@@ -383,7 +386,9 @@ class YamlProjectInputs(ProjectInputs):
         return self._source.load_project()
 
     def skill_catalog(self, *, skills_dir: str, plugins_dir: str) -> SkillCatalog:
-        return load_skill_catalog(self._project_dir, skills_dir=skills_dir, plugins_dir=plugins_dir)
+        return load_skill_catalog(
+            self._project_dir, skills_dir=skills_dir, plugins_dir=plugins_dir, config=self.config().tree
+        )
 
     def profile_catalog(
         self, *, profiles_dir: str, hooks_dir: str, mcp_servers_dir: str, commands_dir: str
@@ -394,6 +399,7 @@ class YamlProjectInputs(ProjectInputs):
             hooks_dir=hooks_dir,
             mcp_servers_dir=mcp_servers_dir,
             commands_dir=commands_dir,
+            config=self.config().tree,
         )
 
     def dbt_catalog(self) -> DbtCatalog:
@@ -506,9 +512,8 @@ def _file_checksums(files: ProjectPaths, tree: Mapping[str, object], cache: Load
     """Checksum every input file the manifest records, by project-relative path.
 
     With a dbt project, each semantic model document discovery finds; then every file under the
-    tools, agents, and eval metric roots; then, when a channel publishes them, the skill and plugin
-    roots, and with the stage channel the profile, hook, and MCP server roots. Those bundled
-    roots skip what publication skips: hidden entries and caches.
+    tools, agents, and eval metric roots; then under the skill, plugin, profile, hook, and MCP
+    server roots. Those bundled roots skip what publication skips: hidden entries and caches.
 
     A symbolic link, or a file reached through one, is skipped, as every loader refuses it: no
     checksum is read from outside the project.
@@ -526,18 +531,15 @@ def _file_checksums(files: ProjectPaths, tree: Mapping[str, object], cache: Load
         configured_dir(config, "agents_dir", "agents"),
         configured_dir(config, "eval_metrics_dir", "eval_metrics"),
     ]
-    bundled: tuple[str, ...] = (
-        (configured_dir(config, "skills_dir", "skills"), configured_dir(config, "plugins_dir", "plugins"))
-        if skills_configured(config)
-        else ()
+    # Any skill, plugin, or profile may publish from its own `config:`, so every root they are
+    # read from is an input whatever `sst_config.yml` says.
+    bundled = (
+        configured_dir(config, "skills_dir", "skills"),
+        configured_dir(config, "plugins_dir", "plugins"),
+        configured_dir(config, "profiles_dir", "profiles"),
+        configured_dir(config, "hooks_dir", "hooks"),
+        configured_dir(config, "mcp_servers_dir", "mcp-servers"),
     )
-    if isinstance(config_block(config.get("skills")).get("stage"), dict):
-        bundled = (
-            *bundled,
-            configured_dir(config, "profiles_dir", "profiles"),
-            configured_dir(config, "hooks_dir", "hooks"),
-            configured_dir(config, "mcp_servers_dir", "mcp-servers"),
-        )
     for directory in (*directories, *bundled):
         root = project_dir / directory
         refused = not root.is_relative_to(project_dir) or walk_refusal(project_dir, root) is not None

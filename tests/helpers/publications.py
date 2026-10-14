@@ -101,7 +101,10 @@ def compiled_profile(*shipped: Skill) -> CompiledProfile:
         (),
     )
     result = CompileProfiles(
-        profiles, SkillCatalog(shipped), DesktopChannel(PROFILE_STAGE, PROFILE_REGISTRY), catalog_channel=True
+        profiles,
+        SkillCatalog(shipped),
+        DesktopChannel(PROFILE_STAGE, PROFILE_REGISTRY),
+        catalog_published=frozenset(item.key for item in shipped),
     ).run_result()
     assert not result.diagnostics.has_errors, result.diagnostics
     [compiled] = [item for item in result.compiled if isinstance(item, CompiledProfile)]

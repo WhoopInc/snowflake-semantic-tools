@@ -60,11 +60,12 @@ starts:
   within two edits of a known one, is an error that names it (`SST-CFG007`),
   because every setting under it would otherwise be ignored;
 - a value of the wrong type is an error (`SST-CFG004`), and so is one outside
-  its choices or range (`SST-CFG008`) and a missing required key
-  (`SST-CFG006`);
+  its choices or range (`SST-CFG008`);
 - a removed key is an error that says why it was removed (`SST-CFG043`, or a
-  dedicated code such as `SST-CFG015` for `evals.+schema`), and `deploy:`, the
-  old name of `apply:`, is an error naming its replacement (`SST-CFG200`);
+  dedicated code such as `SST-CFG015` for `evals.+schema`); a block that moved,
+  such as `skills.stage`, is an error naming the block that holds it now
+  (`SST-CFG042`); and `deploy:`, the old name of `apply:`, is an error naming
+  its replacement (`SST-CFG200`);
 - `validation.snowflake_syntax_check` must be written out, `true` or `false`
   (`SST-CFG031`): whether expressions were compiled against Snowflake decides
   what a passing `sst validate` proves.
@@ -115,14 +116,22 @@ way, each placeholder with the target's own value.
 
 ## Folder routes
 
-Keys that start with `+` set defaults. Under `semantic_views:` and `agents:`, an
-unprefixed key names a folder -- under `semantic_models_dir/semantic_views/` and
-`agents_dir/` -- and its `+` keys apply to the views or agents in that folder
-and below. Routes nest as folders do, and each `+` key folds separately, so the
-closest folder that sets it wins. A view's or an agent's own `config:` block
-still wins over every route ([Precedence](#precedence)). A route to a folder
-that does not exist is an error (`SST-CFG041`), so a mistyped route cannot
-quietly route nothing.
+Keys that start with `+` set defaults. In every artifact block, an unprefixed
+key names a folder below that type's root, and its `+` keys apply to the
+artifacts in that folder and below. Routes nest as folders do, and each `+` key
+folds separately, so the closest folder that sets it wins. An artifact's own
+`config:` block still wins over every route ([Precedence](#precedence)). A route
+to a folder that does not exist is an error (`SST-CFG041`), in every block, so
+a mistyped route cannot quietly route nothing.
+
+| Block | Routes start from | An artifact's folder is |
+|---|---|---|
+| `semantic_views` | `<semantic_models_dir>/semantic_views/` | the view file's directory |
+| `agents` | `agents_dir/` | the agent's own folder |
+| `evals` | `agents_dir/` | its agent's folder |
+| `skills` | `skills_dir/` | the skill's own folder |
+| `plugins` | `plugins_dir/` | the plugin's own folder |
+| `profiles` | `profiles_dir/` | the profile's own folder |
 
 ```yaml
 agents:
@@ -131,19 +140,24 @@ agents:
     +schema: FINANCE_AGENTS
     restricted:         # agents/finance/restricted/<agent>/agent.yml
       +secure: true     # still FINANCE_AGENTS
+
+skills:
+  +bundle_stage: SKILL_BUNDLE_SRC
+  finance:              # skills/finance/<skill>/SKILL.md
+    +certified: true
 ```
 
-Under `tools:`, an unprefixed key names a tool group rather than a folder, and
-its `+` keys override the block's for that group's `define:` members. A group
-that is not declared, or has no `define:` members, is an error (`SST-CFG020`).
-`evals:` and `skills:` take no routes (`SST-CFG042`): evals publish into their
-agent's schema, and the unprefixed keys of `skills:` are its `catalog`,
-`stage`, and `extensions` blocks.
+Because a skill's, a plugin's, an agent's, and a profile's folder ends in its
+own name, a route can also name one item. Under `tools:`, an unprefixed key
+names a tool group rather than a folder, and its `+` keys override the block's
+for that group's `define:` members. A group that is not declared, or has no
+`define:` members, is an error (`SST-CFG020`).
 
 ## Precedence
 
-Every setting of a semantic view or an agent resolves through one chain, the
-same for every key, closest first:
+Every setting of an artifact -- a semantic view, an agent, a skill, a plugin, a
+profile, or an eval -- resolves through one chain, the same for every key and
+every type, closest first:
 
 1. the artifact's own `config:` block;
 2. the closest folder route over the artifact's file that sets the `+` key;
@@ -171,9 +185,12 @@ none, and `orchestration_model` to `claude-sonnet-4-6` from the root; any key
 nothing sets takes the default.
 
 - `config:` takes exactly the block's `+` keys, written without the `+`: for a
-  view, the `semantic_views:` keys; for an agent, the `agents:` keys. Any other
-  key, or one written with its `+`, is an error (`SST-CFG053`). A value is
-  checked by the same rules as the `+` key: its type (`SST-CFG004`), its
+  view, the `semantic_views:` keys; for an agent, the `agents:` keys; for a
+  skill, in its `SKILL.md` frontmatter, the `skills:` keys; for a plugin, in
+  `plugin.yml`, the `plugins:` keys; for a profile, in `profile.yml`, the
+  `profiles:` keys; and for an eval, in its config file, the `evals:` keys. Any
+  other key, or one written with its `+`, is an error (`SST-CFG053`). A value
+  is checked by the same rules as the `+` key: its type (`SST-CFG004`), its
   choices or bounds (`SST-CFG008`), and a key's own code, such as
   `SST-CFG023` for `max_staleness`.
 - An absent key inherits from the next step down. An explicit value is a value
@@ -183,13 +200,15 @@ nothing sets takes the default.
   wherever it is written, under `config:` or as a `+` key in this file
   (`SST-CFG054`). To inherit, delete the key.
 - A key the schema marks root-only may be set only at the root of its block;
-  in a folder route or under `config:` it is an error (`SST-CFG055`). The
-  configuration reference marks each root-only key.
+  in a folder route or under `config:` it is an error (`SST-CFG055`). Only
+  `skills.+threads`, which paces the whole apply, is root-only; the
+  configuration reference marks it.
 - A setting's `{{ target.* }}` templates are rendered after it resolves.
 
-`sst list --long` prints each view's and agent's settings with where each came
-from: `config`, `route:<folder>`, `root`, or `default`. With `--output json`,
-each listed item carries them under `settings`.
+`sst list --long` prints each artifact's settings with where each came from:
+`config`, `route:<folder>`, `root`, or `default`. With `--output json`, each
+listed item carries them under `settings`. A root-only key is the run's, not an
+artifact's, so no artifact lists it.
 
 ## Blocks
 
@@ -207,7 +226,9 @@ each listed item carries them under `settings`.
 | `state` | Where the state table lives (default `SST_STATE` in the target's database and schema). |
 | `semantic_views`, `tools`, `agents` | Location and defaults for each type. |
 | `evals` | Defaults for evaluations; never a location, because evals publish into their agent's schema. |
-| `skills` | Skill, plugin, and profile publishing; see [skills](skills.md) and [plugins and profiles](plugins-and-profiles.md). |
+| `skills`, `plugins` | Where each skill and plugin publishes as a Cortex Extension, if `+bundle_stage` resolves for it; see [skills](skills.md) and [plugins and profiles](plugins-and-profiles.md). |
+| `profiles` | Where each CoCo Desktop profile publishes, if `+stage` resolves for it; see [plugins and profiles](plugins-and-profiles.md). |
+| `extensions` | Extensions this project consumes but does not publish, which `{{ extension() }}` names. |
 | `apply` | The stages apply uploads agent specs and eval configs through, and whether it stops at the first failure. |
 | `snowflake` | Allowlists, such as the orchestration models agents may name. |
 
@@ -244,8 +265,7 @@ project:
 validation:
   snowflake_syntax_check: false
 skills:
-  catalog:
-    +bundle_stage: SKILL_BUNDLE_SRC
+  +bundle_stage: SKILL_BUNDLE_SRC
 ```
 
 Semantic views, tools, agents, and evals are built from dbt models, so their

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import posixpath
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import yaml
@@ -12,6 +14,7 @@ import yaml
 from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import walk_refusal
+from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml
 from snowflake_semantic_tools.adapters.yaml.fields import (
     checked_text,
     member_names,
@@ -21,12 +24,15 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
     report_unknown_keys,
 )
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
+from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.skill import SKILL_FILE, Plugin, Skill, SkillCatalog, SkillFile
+from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 
 PLUGIN_FILES = ("plugin.yml", "plugin.yaml")
-PLUGIN_KEYS = frozenset(("name", "description", "owner_team", "skills"))
+_NONE: Mapping[str, object] = MappingProxyType({})
+PLUGIN_KEYS = frozenset(("name", "description", "owner_team", "skills", "config"))
 
 
 def _published(path: Path, root: Path) -> bool:
@@ -35,18 +41,28 @@ def _published(path: Path, root: Path) -> bool:
     return not any(part.startswith(".") or part == "__pycache__" for part in parts) and path.suffix != ".pyc"
 
 
-def load_skill_catalog(project_dir: Path, *, skills_dir: str, plugins_dir: str) -> SkillCatalog:
+def load_skill_catalog(
+    project_dir: Path, *, skills_dir: str, plugins_dir: str, config: Mapping[str, Any] | None = None
+) -> SkillCatalog:
     """Every `SKILL.md` folder under `skills_dir`, at any grouping depth, plus plugin manifests.
 
-    Nothing reached through a symbolic link is read: a linked file or folder under `skills_dir`,
-    a linked plugin folder, or a linked plugin manifest is reported and left out. Each skill and
-    plugin also reports the codes `_load_skill` and `_load_plugin` list.
+    A plugin is a folder under `plugins_dir` that holds a manifest; a folder with neither a
+    manifest nor a published subfolder is a plugin missing one, and any other folder only groups
+    plugins. Nothing reached through a symbolic link is read: a linked file or folder under
+    `skills_dir`, a linked plugin folder, or a linked plugin manifest is reported and left out.
+    Each skill and plugin also reports the codes `_load_skill` and `_load_plugin` list.
+
+    Args:
+        config: The run's resolved configuration, whose `skills:` and `plugins:` folder routes
+            are checked against the folders under each root; None checks no route. Each item
+            records its folder and its own `config:`, which compile resolves over the routes.
 
     Diagnostics:
+        SST-CFG041: a `skills:` or `plugins:` folder route names no folder under its root.
         SST-PRT009: once per symbolic link under `skills_dir` or `plugins_dir` that would be read.
         SST-PRS120: a folder holds files of its own but its `SKILL.md` sits in a subfolder.
     """
-    diagnostics: list[Diagnostic] = []
+    diagnostics: list[Diagnostic] = list(routed_diagnostics(config, project_dir, "skill", "plugin")) if config else []
     skills: list[Skill] = []
     root = project_dir / skills_dir
     if root.is_dir():
@@ -63,19 +79,40 @@ def load_skill_catalog(project_dir: Path, *, skills_dir: str, plugins_dir: str) 
         for folder in folders:
             if folder in inner:
                 continue
-            skills.append(_load_skill(project_dir, folder, nested[folder], diagnostics))
+            skill = _load_skill(project_dir, folder, nested[folder], diagnostics)
+            skills.append(replace(skill, folder=folder.relative_to(root).parts))
     plugins: list[Plugin] = []
     plugin_root = project_dir / plugins_dir
-    if plugin_root.is_dir():
-        for folder in sorted(path for path in plugin_root.iterdir() if _published(path, plugin_root)):
-            if not folder.is_dir() or refused(
-                project_dir, folder, diagnostics, subject=artifact_key("plugin", folder.name)
-            ):
-                continue
-            plugin = _load_plugin(project_dir, folder, diagnostics)
-            if plugin is not None:
-                plugins.append(plugin)
+    for folder in _plugin_folders(project_dir, plugin_root, plugin_root, diagnostics):
+        plugin = _load_plugin(project_dir, folder, diagnostics)
+        if plugin is not None:
+            plugins.append(replace(plugin, folder=folder.relative_to(plugin_root).parts))
     return SkillCatalog(tuple(skills), tuple(plugins), DiagnosticBag(diagnostics))
+
+
+def _plugin_folders(project_dir: Path, directory: Path, root: Path, diagnostics: list[Diagnostic]) -> Iterator[Path]:
+    """Yield each plugin folder below `directory`, in path order, descending into grouping folders.
+
+    A folder that holds a manifest, or no published subfolder, is a plugin folder; the walk does
+    not descend into one. A linked folder is reported and left out.
+
+    Diagnostics:
+        SST-PRT009: a folder that would be read is a symbolic link.
+    """
+    if not directory.is_dir():
+        return
+    for folder in sorted(path for path in directory.iterdir() if _published(path, root)):
+        if not folder.is_dir() or refused(
+            project_dir, folder, diagnostics, subject=artifact_key("plugin", folder.name)
+        ):
+            continue
+        grouping = not any((folder / name).is_file() for name in PLUGIN_FILES) and any(
+            child.is_dir() and _published(child, root) for child in folder.iterdir()
+        )
+        if grouping:
+            yield from _plugin_folders(project_dir, folder, root, diagnostics)
+        else:
+            yield folder
 
 
 def _misplaced_skill_files(
@@ -109,6 +146,8 @@ def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagn
     are left out of this skill; the caller does not load it as a skill either. The files are in
     path order, relative to the folder, `SKILL.md` among them.
 
+    The frontmatter's `config:` is kept as the skill's own settings when it is a mapping.
+
     Raises:
         OSError: A file in the folder cannot be read.
 
@@ -117,6 +156,8 @@ def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagn
         SST-LOD001: when `SKILL.md` is not UTF-8, or its frontmatter is not valid YAML.
         SST-LOD002: when the frontmatter is not a mapping.
         SST-PRS034: when the frontmatter has no `name` or no `description`, once for each.
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+            reports the frontmatter's `config:` block.
     """
     name = folder.name
     directory = project_relative(project_dir, folder)
@@ -142,30 +183,49 @@ def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagn
         and walk_refusal(project_dir, path) is None
     )
     raw = next(item.content for item in files if item.path == SKILL_FILE)
-    declared_name, description, body = _frontmatter(raw, skill_md, subject, diagnostics)
+    frontmatter, body = _frontmatter(raw, skill_md, subject, diagnostics)
+    item_config = frontmatter.get("config")
+    diagnostics.extend(item_config_diagnostics("skills", item_config, subject=subject, origin_of=_at(skill_md)))
     return Skill(
         name=name,
         directory=directory,
-        declared_name=declared_name,
-        description=description,
+        declared_name=_declared(frontmatter.get("name")),
+        description=optional_string(frontmatter.get("description")),
         body=body,
         files=files,
         origin=Origin(skill_md, 1),
+        config=_own_settings(item_config),
     )
 
 
-def _frontmatter(
-    raw: bytes, file: str, subject: str, diagnostics: list[Diagnostic]
-) -> tuple[str | None, str | None, str]:
-    """Split a `SKILL.md` into its frontmatter's `name` and `description`, and the body after it.
+def _own_settings(value: object) -> Mapping[str, object]:
+    """An item's `config:` block as its own settings; empty when it is absent or not a mapping."""
+    return MappingProxyType({str(key): item for key, item in value.items()}) if isinstance(value, Mapping) else _NONE
+
+
+def _declared(value: object) -> str | None:
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _at(file: str) -> Callable[[str], Origin]:
+    """Place every key of a `SKILL.md` frontmatter's `config:` block at the file's first line."""
+
+    def origin_of(key: str) -> Origin:
+        del key
+        return Origin(file, 1)
+
+    return origin_of
+
+
+def _frontmatter(raw: bytes, file: str, subject: str, diagnostics: list[Diagnostic]) -> tuple[dict[str, object], str]:
+    """Split a `SKILL.md` into its frontmatter and the body after it.
 
     The frontmatter runs from a first line that is exactly `---` to the next such line, and is
     read with `yaml.safe_load`. Without one, the whole text is the body.
 
     Returns:
-        `(name, description, body)`: the name as written and the description stripped, each
-        None when it is absent, blank or not a string, or the frontmatter cannot be read; the
-        body is empty when the file is not UTF-8.
+        `(keys, body)`: the frontmatter's keys as parsed, none when there is no frontmatter or it
+        cannot be read; and the body, empty when the file is not UTF-8.
 
     Diagnostics:
         SST-LOD001: when the file is not UTF-8, at its first line, or the frontmatter is not valid
@@ -180,7 +240,7 @@ def _frontmatter(
         diagnostics.append(
             D("SST-LOD001", origin=Origin(file), subject=subject, file=file, line=1, col=1, detail=f"not UTF-8: {exc}")
         )
-        return None, None, ""
+        return {}, ""
     lines = text.splitlines(keepends=True)
     closing = next(
         (index for index, line in enumerate(lines[1:], start=1) if line.rstrip("\r\n") == "---"),
@@ -189,7 +249,7 @@ def _frontmatter(
     if not lines or lines[0].rstrip("\r\n") != "---" or closing is None:
         for field in ("name", "description"):
             diagnostics.append(D("SST-PRS034", origin=Origin(file, 1), subject=subject, artifact=subject, field=field))
-        return None, None, text
+        return {}, text
     body = "".join(lines[closing + 1 :])
     try:
         value: Any = bounded_yaml.safe_load("".join(lines[1:closing]))
@@ -209,60 +269,40 @@ def _frontmatter(
                 detail=detail,
             )
         )
-        return None, None, body
+        return {}, body
     if value is None:
         value = {}
     if not isinstance(value, dict):
         diagnostics.append(
             D("SST-LOD002", origin=Origin(file, 2), subject=subject, file=file, found=type(value).__name__)
         )
-        return None, None, body
-    declared = value.get("name")
-    description = value.get("description")
-    for field, found in (("name", declared), ("description", description)):
+        return {}, body
+    for field in ("name", "description"):
+        found = value.get(field)
         if not isinstance(found, str) or not found.strip():
             diagnostics.append(D("SST-PRS034", origin=Origin(file, 1), subject=subject, artifact=subject, field=field))
-    return (
-        declared if isinstance(declared, str) and declared.strip() else None,
-        optional_string(description),
-        body,
-    )
+    return {str(key): item for key, item in value.items()}, body
 
 
-def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> Plugin | None:
-    """Read one plugin folder's manifest; None when it has no single manifest or it does not parse.
-
-    The manifest is `plugin.yml` or `plugin.yaml`, and the plugin is named after its folder. A
-    manifest that does not parse reports the codes `parse_yaml_bytes` lists, with the plugin as
-    their subject. `skills` are kept as listed, in order and with any repeats.
+def _plugin_manifest(
+    project_dir: Path, folder: Path, subject: str, diagnostics: list[Diagnostic]
+) -> tuple[str, ParsedYaml] | None:
+    """Parse a plugin folder's one manifest, with its path; None when there is not one that parses.
 
     Raises:
         OSError: The manifest cannot be read.
 
     Diagnostics:
-        SST-VAL801: when the folder holds no manifest or both spellings, or the manifest's
-            `name` is not the folder's.
-        SST-PRT009: when the manifest is a symbolic link; the plugin is left out.
-        SST-PRS004: when the manifest holds a key SST does not read, at that key.
-        SST-PRS003: when `description` or `owner_team` is not a string, or `skills` is not a list
-            of strings.
-        SST-REF049: when a `skills` entry is not one `{{ skill('<name>') }}` call.
-        SST-PRS002: when there is no non-blank `description`.
+        SST-VAL801: when the folder holds no manifest or both spellings.
+        SST-PRT009: when the manifest is a symbolic link.
+        The codes `parse_yaml_bytes` lists, with the plugin as their subject.
     """
-    name = folder.name
-    subject = artifact_key("plugin", name)
     manifests = [folder / candidate for candidate in PLUGIN_FILES if (folder / candidate).is_file()]
-    directory = project_relative(project_dir, folder)
     if len(manifests) != 1:
         detail = "has both plugin.yml and plugin.yaml" if manifests else "has no plugin.yml"
+        origin = Origin(project_relative(project_dir, folder))
         diagnostics.append(
-            D(
-                "SST-VAL801",
-                origin=Origin(directory),
-                subject=subject,
-                artifact=subject,
-                detail=f"plugin folder {detail}",
-            )
+            D("SST-VAL801", origin=origin, subject=subject, artifact=subject, detail=f"plugin folder {detail}")
         )
         return None
     manifest = manifests[0]
@@ -276,13 +316,54 @@ def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         diagnostics.extend(replace(item, subject=subject) for item in found)
         return None
     diagnostics.extend(replace(item, subject=subject) for item in parsed.diagnostics)
+    return file, parsed
+
+
+def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> Plugin | None:
+    """Read one plugin folder's manifest; None when it has no single manifest or it does not parse.
+
+    The manifest is `plugin.yml` or `plugin.yaml`, and the plugin is named after its folder. A
+    manifest that does not parse reports the codes `parse_yaml_bytes` lists, with the plugin as
+    their subject. `skills` are kept as listed, in order and with any repeats, and a `config:`
+    mapping as the plugin's own settings.
+
+    Raises:
+        OSError: The manifest cannot be read.
+
+    Diagnostics:
+        SST-VAL801: when the folder holds no manifest or both spellings, or the manifest's
+            `name` is not the folder's.
+        SST-PRT009: when the manifest is a symbolic link; the plugin is left out.
+        SST-PRS004: when the manifest holds a key SST does not read, at that key.
+        SST-PRS003: when `description` or `owner_team` is not a string, or `skills` is not a list
+            of strings.
+        SST-REF049: when a `skills` entry is not one `{{ skill('<name>') }}` call.
+        SST-PRS002: when there is no non-blank `description`.
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+            reports the manifest's `config:` block.
+    """
+    name = folder.name
+    subject = artifact_key("plugin", name)
+    directory = project_relative(project_dir, folder)
+    found = _plugin_manifest(project_dir, folder, subject, diagnostics)
+    if found is None:
+        return None
+    file, parsed = found
     tree = dict(parsed.tree)
 
     def origin(key: str) -> Origin:
-        position = parsed.line_index.get((key,))
+        position = parsed.line_index.get(tuple(key.split(".")))
         return Origin(file, position.line, position.col) if position is not None else Origin(file)
 
     report_unknown_keys(tree, PLUGIN_KEYS, diagnostics, artifact=subject, origin=origin, subject=subject)
+    diagnostics.extend(
+        item_config_diagnostics(
+            "plugins",
+            tree.get("config"),
+            subject=subject,
+            origin_of=lambda key: origin(f"config.{key}" if key else "config"),
+        )
+    )
     declared = tree.get("name")
     if declared is not None and declared != name:
         diagnostics.append(
@@ -320,4 +401,5 @@ def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         owner_team=text_fields["owner_team"],
         members=members,
         origin=Origin(file, 1),
+        config=_own_settings(tree.get("config")),
     )

@@ -6,7 +6,7 @@ from dataclasses import replace
 
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel
-from snowflake_semantic_tools.domain.model.eval import EvalDefaults, EvalRunConfig
+from snowflake_semantic_tools.domain.model.eval import EvalDefaults
 from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.validate.cross_artifact import (
     agent_eval_problems,
@@ -23,6 +23,7 @@ from snowflake_semantic_tools.domain.validate.instruction import (
     state_keywords,
 )
 from tests.helpers.eval_builders import resolved_eval
+from tests.helpers.eval_inputs import settled
 
 ORIGIN = Origin("tools/platform.yml")
 
@@ -48,7 +49,7 @@ def test_an_eval_blocks_by_its_own_tier_else_the_default() -> None:
     evaluation = resolved_eval()
     assert not blocking(evaluation, EvalDefaults())
     assert blocking(evaluation, EvalDefaults(eval_tier="BLOCKING"))
-    reporting = replace(evaluation, config=replace(evaluation.config, run=EvalRunConfig(tier="report")))
+    reporting = settled(evaluation, eval_tier="report")
     assert not blocking(reporting, EvalDefaults(eval_tier="blocking"))
     unset = replace(evaluation, config=replace(evaluation.config, run=None))
     assert blocking(unset, EvalDefaults(eval_tier="blocking"))

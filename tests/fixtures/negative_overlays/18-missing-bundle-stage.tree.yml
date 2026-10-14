@@ -1,6 +1,7 @@
 ---
-# The catalog channel without its bundle stage, which it cannot publish without.
+# The skills: root without its bundle stage: no skill resolves one, so none
+# publishes, and the agent that references one cannot pin it.
 edits:
   sst_config.yml:
-    - old: "    +bundle_stage: SKILL_BUNDLE_SRC\n"
-      new: ""
+    - old: "  +bundle_stage: SKILL_BUNDLE_SRC\n  # `true`"
+      new: "  # `true`"

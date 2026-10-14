@@ -25,6 +25,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.sql import Sql
 from tests.helpers.clocks import FixedClock
 from tests.helpers.eval_builders import STATUS_COLUMNS, compiled_eval_of, result_rows
+from tests.helpers.eval_inputs import settled
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 BASE = "EVAL_{agent}_abcdef0_ci_20260928T010203Z"
@@ -122,17 +123,11 @@ def _evals(
     agents: tuple[str, ...], *, baseline_runs: int | None = None, retry: int | None = None
 ) -> tuple[CompiledEval, ...]:
     base = compiled_eval_of()
-    config_run = base.resolved.config.run
-    assert config_run is not None
-    run = replace(config_run, baseline_runs=baseline_runs, retry=retry)
+    resolved = settled(base.resolved, baseline_runs=baseline_runs, retry=retry)
     return tuple(
         replace(
             base,
-            resolved=replace(
-                base.resolved,
-                agent=replace(base.resolved.agent, name=agent),
-                config=replace(base.resolved.config, run=run),
-            ),
+            resolved=replace(resolved, agent=replace(resolved.agent, name=agent)),
             agent_target=QualifiedName.parse(f"DB.S.{agent.upper()}"),
         )
         for agent in agents

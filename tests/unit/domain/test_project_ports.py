@@ -11,11 +11,12 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     config_int,
     configured_dir,
     enrichment_config,
-    skills_configured,
+    route_root,
     target_text,
 )
 from snowflake_semantic_tools.domain.model.dbt import DbtTarget
 from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetIdentity
+from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
 from snowflake_semantic_tools.domain.ports.golden import GoldenPath, GoldenStore
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs, ValidationDefaults
 from snowflake_semantic_tools.domain.state import PlanMismatch, SavedChange, SavedPlan
@@ -29,12 +30,9 @@ def test_blocks_and_project_roots_read_as_empty_or_default_when_absent_or_mistyp
     assert configured_dir({"project": {"tools_dir": "t"}}, "tools_dir", "tools") == "t"
     assert configured_dir({"project": {"tools_dir": ""}}, "tools_dir", "tools") == "tools"
     assert configured_dir({"project": "nope"}, "tools_dir", "tools") == "tools"
-    blocks: tuple[dict[str, object], ...] = ({"catalog": {}}, {"stage": {}}, {"extensions": {}})
-    assert [skills_configured({"skills": block}) for block in blocks] == [
-        True,
-        True,
-        False,
-    ]
+    views, skills = ARTIFACT_REGISTRY.artifacts["semantic_view"], ARTIFACT_REGISTRY.artifacts["skill"]
+    assert route_root({}, views) == "semantic_models/semantic_views"
+    assert route_root({"project": {"skills_dir": "kit"}}, skills) == "kit"
 
 
 def test_target_text_replaces_each_template_with_the_targets_own_value() -> None:

@@ -12,7 +12,7 @@ from snowflake_semantic_tools.domain.diagnostics.baseline import stable_fingerpr
 from snowflake_semantic_tools.domain.validate.config import empty_is_block
 from tests.helpers.seam_projects import parsed
 
-_CONFIG = b"skills:\n  extensions:\n    default_prefix: DB.PARTNER\n    partner-glossary:\n    other: ~\n"
+_CONFIG = b"extensions:\n  default_prefix: DB.PARTNER\n  partner-glossary:\n  other: ~\n"
 
 
 def test_sst_lod016_fires() -> None:
@@ -60,12 +60,12 @@ def test_sst_lod016_silent_where_an_empty_config_entry_is_a_documented_empty_blo
 
 
 def test_only_a_declared_block_or_map_reads_an_empty_value_as_meant() -> None:
-    assert empty_is_block(("skills", "extensions", "partner-glossary"))
+    assert empty_is_block(("extensions", "partner-glossary"))
     assert empty_is_block(("semantic_views",))
     # A deprecated block is read as the block it was renamed to; a folder route as its block.
     assert empty_is_block(("deploy",))
     assert empty_is_block(("semantic_views", "marts", "finance"))
     assert not empty_is_block(("semantic_views", "marts", "+schema"))
-    assert not empty_is_block(("skills", "extensions", "default_prefix"))
+    assert not empty_is_block(("extensions", "default_prefix"))
     assert not empty_is_block(("no_such_block",))
     assert not empty_is_block(("skills", 0))

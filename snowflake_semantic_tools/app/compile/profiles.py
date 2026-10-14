@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from hashlib import sha256
 
@@ -19,6 +20,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog, ProfileRelease
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, Plugin, Skill, SkillCatalog
 from snowflake_semantic_tools.domain.render.profile import build_profile, version_input
 from snowflake_semantic_tools.domain.render.skill_bundle import build_plugin_bundle
@@ -37,11 +39,17 @@ from snowflake_semantic_tools.domain.validate.publication import (
 
 @dataclass(frozen=True, slots=True)
 class DesktopChannel:
-    """`skills.stage`: the profile stage and the registry Desktop reads rows from."""
+    """Where one profile publishes: the stage its trees go to and the registry Desktop reads its row from.
+
+    Attributes:
+        settings: The settings the profile resolved, its location rendered and each built-in
+            default it took recorded, sorted by key; what the manifest records for it.
+    """
 
     stage: QualifiedName
     registry: QualifiedName
     version_prefix: str = DEFAULT_VERSION_PREFIX
+    settings: tuple[Setting, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +83,10 @@ class CompiledProfile(StandaloneArtifact):
         return self.release.source_files
 
     @property
+    def settings(self) -> tuple[Setting, ...]:
+        return self.channel.settings
+
+    @property
     def rendered_artifact(self) -> RenderedArtifact:
         prefixes = "\n".join(tree.prefix for tree in self.release.trees)
         return RenderedArtifact.create(
@@ -96,37 +108,51 @@ class CompiledProfile(StandaloneArtifact):
 
 
 class CompileProfiles:
-    """Compile one registry row per profile.
+    """Compile one registry row per profile that has a channel.
 
-    A profile whose skills, plugins, or commands have errors does not publish.
+    `channels` is where each profile publishes: one channel for every profile, or each one's own
+    by artifact key. A profile with none, or whose skills, plugins, or commands have errors, does
+    not publish.
     """
 
     def __init__(
         self,
         catalog: ProfileCatalog,
         skills: SkillCatalog,
-        channel: DesktopChannel | None,
+        channels: DesktopChannel | Mapping[str, DesktopChannel] | None,
         *,
-        catalog_channel: bool,
+        catalog_published: AbstractSet[str],
         blocked_skills: frozenset[str] = frozenset(),
         blocked_plugins: frozenset[str] = frozenset(),
     ) -> None:
+        """Hold what compiling the profiles reads.
+
+        Args:
+            catalog_published: The artifact keys of the skills and plugins that publish as
+                extensions: a skill no profile carries is published elsewhere, and a plugin's
+                bundle was checked there.
+        """
         self._catalog = catalog
         self._skills = skills
-        self._channel = channel
-        self._catalog_channel = catalog_channel
+        self._channels = channels
+        self._published = catalog_published
         self._blocked = blocked_skills
         self._blocked_plugins = blocked_plugins
+
+    def _channel(self, key: str) -> DesktopChannel | None:
+        """Return the channel the profile with artifact key `key` publishes through."""
+        channels = self._channels
+        return channels if channels is None or isinstance(channels, DesktopChannel) else channels.get(key)
 
     def run_result(self) -> CompileResult:
         """Validate the catalog, then compile each profile, in authored order, that nothing blocks.
 
         A profile is blocked by an error on itself, the shared profile, or anything it names:
         a skill or plugin with errors (reported here as SST-VAL855), a command, a hook, or an
-        MCP server. Without a channel, only the catalog's diagnostics are reported.
+        MCP server. A profile without a channel is checked, and does not compile.
 
         Diagnostics:
-            SST-VAL854: the channel's registry is not the one CoCo Desktop reads.
+            SST-VAL854: a channel's registry is not the one CoCo Desktop reads; once per registry.
             SST-VAL855: a profile includes a skill or plugin with errors.
             SST-VAL820, SST-VAL822, SST-VAL823: as `release_checks` reports them; the
                 profile does not compile.
@@ -134,20 +160,21 @@ class CompileProfiles:
         skills = {skill.name: skill for skill in self._skills.skills}
         plugins = {plugin.name: plugin for plugin in self._skills.plugins}
         diagnostics: list[Diagnostic] = list(validate_profile_catalog(self._catalog, skills, plugins))
-        diagnostics.extend(
-            unreached_skills(skills, self._catalog, catalog_channel=self._catalog_channel, plugins=plugins)
-        )
+        diagnostics.extend(unreached_skills(skills, self._catalog, published=self._published, plugins=plugins))
         blocked_plugins = set(self._blocked_plugins)
-        if not self._catalog_channel:
-            flattened_blocked, flatten_diagnostics = self._flatten_plugins(skills, plugins)
-            diagnostics.extend(flatten_diagnostics)
-            blocked_plugins.update(flattened_blocked)
-        channel = self._channel
-        if channel is None:
-            return CompileResult((), DiagnosticBag(diagnostics))
-        diagnostics.extend(desktop_registry_diagnostics(channel.registry))
+        flattened_blocked, flatten_diagnostics = self._flatten_plugins(skills, plugins)
+        diagnostics.extend(flatten_diagnostics)
+        blocked_plugins.update(flattened_blocked)
+        channels = {
+            profile.key: channel for profile in self._catalog.profiles if (channel := self._channel(profile.key))
+        }
+        for registry in dict.fromkeys(channel.registry for channel in channels.values()):
+            diagnostics.extend(desktop_registry_diagnostics(registry))
         compiled: list[CompiledProfile] = []
         for profile in self._catalog.profiles:
+            channel = channels.get(profile.key)
+            if channel is None:
+                continue
             # The SST-VAL855 appended here is an error on the profile, so it blocks it below. Like
             # SST-VAL836 it is a blocking decision over what compile found, so it stays in `app`.
             diagnostics.extend(self._blocking_inputs(profile, blocked_plugins))
@@ -166,11 +193,11 @@ class CompileProfiles:
     ) -> tuple[set[str], list[Diagnostic]]:
         """Check each plugin a profile names, returning the plugins blocked and the problems found.
 
-        Without the catalog channel no plugin bundle has been built yet, so the errors a
-        profile's flattened copy would carry are reported here, once each: for each plugin in
-        first-reference order, its member skills' flattening problems (a skill only the first
-        time), then its bundle problems. A plugin is blocked when it cannot bundle or holds a
-        blocked skill.
+        A plugin that does not publish as an extension has had no bundle built yet, so the errors
+        a profile's flattened copy would carry are reported here, once each: for each such plugin
+        in first-reference order, its member skills' flattening problems (a skill only the first
+        time, and none that publishes as an extension), then its bundle problems. A plugin is
+        blocked when it cannot bundle or holds a blocked skill.
         """
         blocked: set[str] = set()
         diagnostics: list[Diagnostic] = []
@@ -178,10 +205,10 @@ class CompileProfiles:
         referenced = dict.fromkeys(name for profile in self._catalog.profiles for name in profile.plugins)
         for name in referenced:
             plugin = plugins.get(name)
-            if plugin is None:
+            if plugin is None or plugin.key in self._published:
                 continue
             for member in dict.fromkeys(plugin.members):
-                if member in skills and member not in flattened:
+                if member in skills and member not in flattened and skills[member].key not in self._published:
                     flattened.add(member)
                     diagnostics.extend(flatten_skill(skills[member])[2])
             bundle, bundle_diagnostics = build_plugin_bundle(plugin, skills)

@@ -270,7 +270,7 @@ class RunEvalGate:
 
         Diagnostics:
             SST-VAL734: under a capture, an eval completed and read fewer attempts than its
-                `run.baseline_runs`, else `evals.+baseline_runs`, requires; once per such eval.
+                `baseline_runs` setting, else the root's, requires; once per such eval.
         """
         verdicts: list[EvalGateVerdict] = []
         captured: list[EvalBaselineRecord] = []
@@ -312,8 +312,8 @@ class RunEvalGate:
 
 def _required_attempts(item: CompiledEval, defaults: EvalDefaults) -> int | None:
     """Return the completed attempts a capture of `item` needs: its `baseline_runs`, else the default."""
-    run = item.resolved.config.run
-    return run.baseline_runs if run is not None and run.baseline_runs is not None else defaults.baseline_runs
+    resolved = item.resolved.options.baseline_runs
+    return resolved if resolved is not None else defaults.baseline_runs
 
 
 def _short_captures(

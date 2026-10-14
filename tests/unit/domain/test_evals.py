@@ -22,16 +22,17 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalInvocation,
     EvalQuestion,
     EvalRegression,
-    EvalRetention,
     EvalRunConfig,
     EvalScoreRanges,
     EvalSystemMetric,
     ResolvedEval,
     ThresholdRange,
+    eval_defaults,
     eval_status_is_provisional,
     eval_status_is_terminal,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
 from snowflake_semantic_tools.domain.validate.eval import eval_placement, validate_eval_catalog
 
@@ -40,7 +41,7 @@ def test_resolved_eval_identity_sources_and_dependency_are_deterministic() -> No
     origin = Origin("agent.yml")
     agent = AgentModel("sales", origin, ("agent.yml",))
     dataset = EvalDataset(origin, "dataset.yml", "sales", None, (EvalQuestion(origin, "q", EvalGroundTruth(origin)),))
-    config = EvalConfig(origin, "config.yml", "sales", "committed", None, (), ("judge",), None)
+    config = EvalConfig(origin, "config.yml", "sales", None, (), ("judge",), None)
     judge = CustomEvalMetric(
         origin,
         "judge.yml",
@@ -107,11 +108,20 @@ def _valid_metric(name: str = "judge", **changes: object) -> CustomEvalMetric:
     return CustomEvalMetric(**values)  # type: ignore[arg-type, unused-ignore]
 
 
+# The settings `_resolved_eval` resolves, as its config's own `config:` would set them.
+_SETTINGS: Mapping[str, object] = {"agent_version": "committed", "retry": 1, "concurrency": 2, "baseline_runs": 5}
+
+
+def _settings(values: Mapping[str, object], source: str = "config") -> dict[str, Setting]:
+    return {key: Setting(key, value, source) for key, value in values.items()}
+
+
 def _resolved_eval(
     *,
     dataset: EvalDataset | None = None,
     config: EvalConfig | None = None,
     metric: CustomEvalMetric | None = None,
+    settings: Mapping[str, object] = _SETTINGS,
 ) -> ResolvedEval:
     agent_origin = Origin("agents/sales/agent.yml")
     agent = AgentModel(
@@ -146,7 +156,6 @@ def _resolved_eval(
         Origin("agents/sales/evals/config.yml"),
         "agents/sales/evals/config.yml",
         "sales",
-        "committed",
         EvalDatasetConfig("auto", "EVAL_{{ agent | upper }}_{{ sha7 }}", "SRC_{{ agent }}_{{ sha7 }}"),
         (
             EvalSystemMetric(
@@ -161,13 +170,10 @@ def _resolved_eval(
         EvalRunConfig(
             "EVAL_{{ agent | upper }}_{{ sha7 }}_{{ variant }}_{{ ts }}",
             variant="ci",
-            retry=1,
-            concurrency=2,
-            baseline_runs=5,
             accept_statuses=("COMPLETED",),
         ),
     )
-    return ResolvedEval(agent, eval_dataset, eval_config, (judge,))
+    return ResolvedEval(agent, eval_dataset, eval_config, (judge,), _settings(settings))
 
 
 def _codes(
@@ -265,7 +271,6 @@ def test_dataset_name_template_bounds_and_collisions_are_checked_when_renderable
         Origin("agents/other/evals/config.yml"),
         "agents/other/evals/config.yml",
         "other",
-        "committed",
         EvalDatasetConfig("auto", shared_template, "SRC_{{ agent }}_{{ sha7 }}"),
         (EvalSystemMetric(Origin("config.yml"), "answer_correctness", "v3"),),
         (),
@@ -278,18 +283,17 @@ def test_dataset_name_template_bounds_and_collisions_are_checked_when_renderable
         None,
         first.dataset.questions,
     )
-    second = ResolvedEval(second_agent, dataset, config, ())
+    second = ResolvedEval(second_agent, dataset, config, (), first.settings)
     first_config = EvalConfig(
         first.config.origin,
         first.config.source_file,
         first.config.agent,
-        first.config.agent_version,
         EvalDatasetConfig("auto", shared_template, "SRC_{{ agent }}_{{ sha7 }}"),
         first.config.system_metrics,
         first.config.custom_metric_names,
         first.config.run,
     )
-    first = ResolvedEval(first.agent, first.dataset, first_config, first.custom_metrics)
+    first = ResolvedEval(first.agent, first.dataset, first_config, first.custom_metrics, first.settings)
     codes = _codes(EvalCatalog((first, second), first.custom_metrics), allowed_models=("claude-sonnet-4-6",))
     assert {"SST-VAL701", "SST-VAL702", "SST-PRS002"}.issubset(codes)
     # An over-long dataset name is VAL702 alone, never PRS010 as well.
@@ -298,7 +302,7 @@ def test_dataset_name_template_bounds_and_collisions_are_checked_when_renderable
     assert first_config.dataset is not None
     long_source = replace(first_config, dataset=replace(first_config.dataset, source_table_template="SRC_" + "X" * 130))
     source_codes = _codes(
-        EvalCatalog((ResolvedEval(first.agent, first.dataset, long_source, first.custom_metrics),), ()),
+        EvalCatalog((ResolvedEval(first.agent, first.dataset, long_source, first.custom_metrics, first.settings),), ()),
         allowed_models=("claude-sonnet-4-6",),
     )
     assert "SST-PRS010" in source_codes
@@ -310,13 +314,12 @@ def test_rendered_run_names_must_be_unique_per_agent() -> None:
         first.config.origin,
         first.config.source_file,
         first.config.agent,
-        first.config.agent_version,
         first.config.dataset,
         first.config.system_metrics,
         first.config.custom_metric_names,
         first.config.run,
     )
-    second = ResolvedEval(first.agent, first.dataset, second_config, first.custom_metrics)
+    second = ResolvedEval(first.agent, first.dataset, second_config, first.custom_metrics, first.settings)
     codes = _codes(EvalCatalog((first, second), first.custom_metrics), allowed_models=("claude-sonnet-4-6",))
     assert "SST-VAL717" in codes
 
@@ -327,7 +330,6 @@ def test_eval_config_validation_covers_system_metrics_thresholds_statuses_and_bo
         value.config.origin,
         value.config.source_file,
         "sales",
-        "LIVE",
         value.config.dataset,
         (
             EvalSystemMetric(value.config.origin, "unknown", "v3"),
@@ -341,16 +343,11 @@ def test_eval_config_validation_covers_system_metrics_thresholds_statuses_and_bo
             ),
         ),
         ("missing",),
-        EvalRunConfig(
-            "RUN_{{ ts }}",
-            variant="ci",
-            retry=-1,
-            concurrency=9,
-            baseline_runs=0,
-            accept_statuses=("PARTIALLY_COMPLETED", "CANCELLED"),
-        ),
+        EvalRunConfig("RUN_{{ ts }}", variant="ci", accept_statuses=("PARTIALLY_COMPLETED", "CANCELLED")),
     )
-    value = _resolved_eval(config=config)
+    value = _resolved_eval(
+        config=config, settings={"agent_version": "LIVE", "retry": -1, "concurrency": 9, "baseline_runs": 0}
+    )
     codes = _codes(
         EvalCatalog((value,), value.custom_metrics, EvalDefaults(concurrency=8)),
         allowed_models=("claude-sonnet-4-6",),
@@ -365,9 +362,9 @@ def test_a_system_metric_pinned_to_v1_is_refused_in_place_of_the_legacy_version_
     value = _resolved_eval()
     metric = EvalSystemMetric(value.config.origin, "answer_correctness", "v1")
     config = EvalConfig(
-        value.config.origin, value.config.source_file, "sales", "LIVE", value.config.dataset, (metric,), (), None
+        value.config.origin, value.config.source_file, "sales", value.config.dataset, (metric,), (), None
     )
-    value = _resolved_eval(config=config)
+    value = _resolved_eval(config=config, settings={"agent_version": "LIVE"})
     codes = _codes(EvalCatalog((value,), value.custom_metrics), allowed_models=("claude-sonnet-4-6",))
     assert {"SST-PRS013", "SST-VAL764"}.issubset(codes)
     # A run Snowflake refuses has no score shift to record, so SST-VAL723 would only repeat it.
@@ -465,12 +462,12 @@ def test_eval_validation_covers_omitted_configs_templates_invocations_and_defaul
         value.config.origin,
         value.config.source_file,
         "sales",
-        "VERSION$2",
         None,
         (),
         (),
         None,
     )
+    pinned = _settings({"agent_version": "VERSION$2"})
     resolved = ResolvedEval(
         AgentModel(
             "sales",
@@ -481,6 +478,7 @@ def test_eval_validation_covers_omitted_configs_templates_invocations_and_defaul
         dataset,
         config,
         (),
+        pinned,
     )
     codes = _codes(EvalCatalog((resolved,), ()), agent_tool_names={"sales": ()})
     assert {"SST-PRS015", "SST-PRS101"}.issubset(codes)
@@ -495,32 +493,34 @@ def test_eval_validation_covers_omitted_configs_templates_invocations_and_defaul
         system_metrics=(
             EvalSystemMetric(value.config.origin, "answer_correctness", "v3", False, ThresholdRange(min=0.5)),
         ),
-        run=EvalRunConfig("{{ unknown }}", concurrency=0),
+        run=EvalRunConfig("{{ unknown }}"),
     )
-    codes = _codes(EvalCatalog((ResolvedEval(resolved.agent, dataset, run_config, ()),), ()))
+    no_concurrency = {**pinned, **_settings({"concurrency": 0})}
+    codes = _codes(EvalCatalog((ResolvedEval(resolved.agent, dataset, run_config, (), no_concurrency),), ()))
     assert {"SST-VAL733", "SST-PRS016", "SST-VAL732"}.issubset(codes)
 
     forbidden = replace(config, forbidden_keys=("database",))
-    codes = _codes(EvalCatalog((ResolvedEval(resolved.agent, dataset, forbidden, ()),), ()))
+    codes = _codes(EvalCatalog((ResolvedEval(resolved.agent, dataset, forbidden, (), pinned),), ()))
     assert "SST-VAL703" in codes
 
     missing_source_template = replace(config, dataset=EvalDatasetConfig("auto", "{{ agent }}", None))
-    codes = _codes(EvalCatalog((ResolvedEval(resolved.agent, dataset, missing_source_template, ()),), ()))
+    codes = _codes(EvalCatalog((ResolvedEval(resolved.agent, dataset, missing_source_template, (), pinned),), ()))
     assert "SST-PRS101" in codes
 
     concrete_run = replace(
         config,
         system_metrics=(EvalSystemMetric(value.config.origin, "answer_correctness", "v3"),),
-        run=EvalRunConfig("RUN_{{ sha7 }}", concurrency=1),
+        run=EvalRunConfig("RUN_{{ sha7 }}"),
     )
-    codes = _codes(EvalCatalog((ResolvedEval(resolved.agent, dataset, concrete_run, ()),), ()))
+    one = {**pinned, **_settings({"concurrency": 1})}
+    codes = _codes(EvalCatalog((ResolvedEval(resolved.agent, dataset, concrete_run, (), one),), ()))
     assert "SST-PRS016" not in codes
 
     nameless_run = replace(
         concrete_run,
-        run=EvalRunConfig(None, concurrency=1),
+        run=EvalRunConfig(None),
     )
-    codes = _codes(EvalCatalog((ResolvedEval(resolved.agent, dataset, nameless_run, ()),), ()))
+    codes = _codes(EvalCatalog((ResolvedEval(resolved.agent, dataset, nameless_run, (), one),), ()))
     assert "SST-VAL717" not in codes
 
 
@@ -598,9 +598,12 @@ def test_eval_validation_covers_ground_truth_free_rows_valid_unique_runs_and_no_
     config = replace(
         value.config,
         custom_metric_names=(),
-        run=EvalRunConfig("RUN_{{ sha7 }}", concurrency=1, baseline_runs=1),
+        run=EvalRunConfig("RUN_{{ sha7 }}"),
     )
-    diagnostics = validate_eval_catalog(EvalCatalog((replace(value, dataset=dataset, config=config),), ()))
+    settings = {**value.settings, **_settings({"concurrency": 1, "baseline_runs": 1})}
+    diagnostics = validate_eval_catalog(
+        EvalCatalog((replace(value, dataset=dataset, config=config, settings=settings),), ())
+    )
     assert "SST-VAL705" in {diagnostic.code for diagnostic in diagnostics}
     assert "SST-VAL717" not in {diagnostic.code for diagnostic in diagnostics}
 
@@ -647,22 +650,43 @@ def test_eval_placement_accepts_bare_and_same_schema_names_and_reports_any_other
     assert eval_placement(replace(value, config=replace(value.config, dataset=None)), target) == ()
 
 
-def test_a_variant_belongs_to_one_retention_class_and_a_decision_window_is_a_day_or_more() -> None:
+def test_a_setting_is_named_where_it_was_written_and_the_ceiling_is_the_roots() -> None:
     value = _resolved_eval()
-    run = value.config.run
-    assert run is not None
 
-    def found(retention: EvalRetention) -> list[tuple[str, object]]:
-        config = replace(value.config, run=replace(run, retention=retention))
-        diagnostics = validate_eval_catalog(EvalCatalog((replace(value, config=config),), value.custom_metrics))
+    def found(source: str, **values: object) -> list[tuple[str, object, object]]:
+        settings = {**value.settings, **_settings(values, source)}
+        diagnostics = validate_eval_catalog(
+            EvalCatalog((replace(value, settings=settings),), value.custom_metrics, EvalDefaults(concurrency=4))
+        )
         return [
-            (item.code, item.context["found"])
+            (item.code, item.context.get("field"), item.context["found"])
             for item in diagnostics
-            if str(item.context.get("field", "")).startswith("run.retention")
+            if item.code in {"SST-PRS016", "SST-VAL731"}
         ]
 
-    assert found(EvalRetention(("ci",), ("sweep",), 30)) == []
-    assert found(EvalRetention(("ci", "sweep"), ("sweep",), 0)) == [("SST-PRS013", "sweep"), ("SST-PRS016", 0)]
+    assert found("config", retry=-1) == [("SST-PRS016", "config.retry", -1)]
+    assert found("root", retry=-1) == [("SST-PRS016", "evals.+retry", -1)]
+    assert found("route:finance/close", baseline_runs=0) == [("SST-PRS016", "evals.finance.close.+baseline_runs", 0)]
+    assert found("route:finance", concurrency=6) == [("SST-VAL731", None, 6)]
+    assert found("root", concurrency=4) == []
+
+
+def test_eval_defaults_read_each_setting_and_drop_what_is_not_its_type() -> None:
+    settings = _settings(
+        {
+            "eval_tier": "blocking",
+            "metrics": ["answer_correctness", "unknown", "answer_correctness", 3],
+            "metric_version": "",
+            "retry": True,
+            "baseline_runs": 2,
+            "retention": "audit",
+        }
+    )
+    assert eval_defaults(settings) == EvalDefaults(
+        eval_tier="blocking", metrics=("answer_correctness",), baseline_runs=2, retention="audit"
+    )
+    assert eval_defaults(_settings({"metrics": "answer_correctness"})) == EvalDefaults()
+    assert _resolved_eval().options.agent_version == "committed"
 
 
 def test_a_custom_metric_definition_digest_moves_with_its_judge_prompt_and_bands_only() -> None:

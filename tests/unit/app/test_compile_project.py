@@ -6,6 +6,7 @@ What it reads, in what order, and what it builds.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompileArtifacts, CompileResult
@@ -46,7 +47,7 @@ def with_broken_skill(*plugins: Plugin) -> SkillCatalog:
     return SkillCatalog((skill("draft"), skill("broken", None)), plugins, DiagnosticBag((missing,)))
 
 
-def test_a_project_without_dbt_reads_only_its_configuration_and_skill_catalog() -> None:
+def test_a_project_without_dbt_reads_only_its_configuration_and_skill_and_profile_catalogs() -> None:
     inputs = InMemoryProjectInputs(
         has_dbt_project=False,
         config_diagnostics=DiagnosticBag((D("SST-CFG003", key="x", origin=Origin("sst_config.yml")),)),
@@ -54,7 +55,12 @@ def test_a_project_without_dbt_reads_only_its_configuration_and_skill_catalog() 
 
     result = CompileProject(inputs).run()
 
-    assert inputs.reads == ["config", "target", "skill_catalog:skills,plugins"]
+    assert inputs.reads == [
+        "config",
+        "target",
+        "skill_catalog:skills,plugins",
+        "profile_catalog:profiles,hooks,mcp-servers,commands",
+    ]
     assert result.compiled == ()
     assert [item.code for item in result.diagnostics] == ["SST-CFG003"]
 
@@ -63,7 +69,7 @@ def test_a_dbt_project_is_read_in_a_fixed_order_from_its_configured_roots() -> N
     inputs = InMemoryProjectInputs(
         tree={
             "project": {"skills_dir": "sk", "agents_dir": "ag", "hooks_dir": "hk", "commands_dir": "cm"},
-            "skills": CHANNELS,
+            **CHANNELS,
         },
         views=SemanticViewProject((view("SALES"),)),
         agent_models=(agent("helper"),),
@@ -88,7 +94,7 @@ def test_a_dbt_project_is_read_in_a_fixed_order_from_its_configured_roots() -> N
 def test_results_merge_in_ddl_order_after_the_configuration_and_target_diagnostics() -> None:
     profile = DesktopProfile("analyst", "profiles/analyst", "P.", "Data", ("month-close",), (), (), None, Origin("p"))
     inputs = InMemoryProjectInputs(
-        tree={"skills": CHANNELS},
+        tree=dict(CHANNELS),
         config_diagnostics=DiagnosticBag((D("SST-CFG003", key="x", origin=Origin("sst_config.yml")),)),
         target_diagnostics=(D("SST-CFG048", target="dev", key="threads"),),
         skills=SkillCatalog((skill("month-close"),)),
@@ -111,29 +117,33 @@ def test_results_merge_in_ddl_order_after_the_configuration_and_target_diagnosti
 
 
 def test_declared_skills_that_cannot_publish_name_the_reason_to_the_agents_that_reference_them() -> None:
-    def compile_with(skills_block: dict[str, object]) -> dict[str, str]:
+    def compile_with(tree: dict[str, object], skills: SkillCatalog | None = None) -> dict[str, str]:
         inputs = InMemoryProjectInputs(
-            tree={"skills": skills_block},
-            skills=with_broken_skill(),
+            tree=tree,
+            skills=skills or with_broken_skill(),
             agent_models=(agent("router", "draft", "broken"),),
         )
         return reasons(CompileProject(inputs).run())
 
-    missing = "skills.catalog is not configured"
+    missing = "no +bundle_stage resolves for it"
     assert compile_with({}) == {"draft": missing, "broken": missing}
-    assert compile_with({"stage": {"+stage": "P"}}) == {"draft": missing, "broken": "it has errors"}
-    assert compile_with({"catalog": {}}) == {
-        "draft": "skills.catalog sets no +bundle_stage",
-        "broken": "it has errors",
-    }
-    assert compile_with({"catalog": {"+bundle_stage": "B"}}) == {"broken": "it has errors"}
-    bad_prefix = compile_with({"+version_prefix": "1", "catalog": {"+bundle_stage": "B"}})
+    assert compile_with({"profiles": {"+stage": "P"}}) == {"draft": missing, "broken": "it has errors"}
+    assert compile_with({"skills": {}}) == {"draft": missing, "broken": "it has errors"}
+    assert compile_with({"skills": {"+bundle_stage": "B"}}) == {"broken": "it has errors"}
+    bad_prefix = compile_with({"skills": {"+version_prefix": "1", "+bundle_stage": "B"}})
     assert bad_prefix["draft"] == "the catalog channel cannot publish it"
+    # A route over the skill's folder, or its own `config:`, places it with no block root at all.
+    base = with_broken_skill()
+    draft, broken = base.skills
+    routed = replace(base, skills=(replace(draft, folder=("ops", "draft")), broken))
+    assert compile_with({"skills": {"ops": {"+bundle_stage": "B"}}}, routed) == {"broken": "it has errors"}
+    own = replace(base, skills=(replace(draft, config={"bundle_stage": "B"}), broken))
+    assert compile_with({}, own) == {"broken": "it has errors"}
 
 
 def test_an_extension_entry_that_cannot_be_qualified_is_unpublished_for_that_reason() -> None:
     inputs = InMemoryProjectInputs(
-        tree={"skills": {"extensions": {"glossary": None}}},
+        tree={"extensions": {"glossary": None}},
         agent_models=(
             AgentModel(
                 "router",
@@ -146,20 +156,18 @@ def test_an_extension_entry_that_cannot_be_qualified_is_unpublished_for_that_rea
 
     result = CompileProject(inputs).run()
 
-    assert reasons(result) == {"glossary": "its skills.extensions entry cannot be qualified"}
+    assert reasons(result) == {"glossary": "its extensions: entry cannot be qualified"}
     assert result.diagnostics[0].code == "SST-CFG036"
 
 
 def test_consumed_extensions_resolve_from_fqn_or_default_prefix() -> None:
     config: dict[str, object] = {
-        "skills": {
-            "extensions": {
-                "default_prefix": "{{ target.database }}.SHARED",
-                "vendor-pack": None,
-                "pinned": {"fqn": "OTHER.EXT.PINNED"},
-                "dotted.name": None,
-                "broken": {"fqn": "not a name"},
-            }
+        "extensions": {
+            "default_prefix": "{{ target.database }}.SHARED",
+            "vendor-pack": None,
+            "pinned": {"fqn": "OTHER.EXT.PINNED"},
+            "dotted.name": None,
+            "broken": {"fqn": "not a name"},
         }
     }
     resolved, diagnostics = consumed_extensions(config, dev_target())
@@ -171,7 +179,7 @@ def test_consumed_extensions_resolve_from_fqn_or_default_prefix() -> None:
         ("SST-CFG036", "dotted.name"),
         ("SST-CFG036", "broken"),
     ]
-    without_prefix, diagnostics = consumed_extensions({"skills": {"extensions": {"x": None}}}, dev_target())
+    without_prefix, diagnostics = consumed_extensions({"extensions": {"x": None}}, dev_target())
     assert without_prefix == {}
     assert "no default_prefix" in diagnostics[0].message
 
@@ -242,7 +250,7 @@ def test_profiles_carry_their_skills_and_plugins_so_agents_need_not_reference_th
         "analyst", "profiles/analyst", "P.", "Data", ("solo",), (), (), None, Origin("p"), plugins=("kit",)
     )
     inputs = InMemoryProjectInputs(
-        tree={"skills": CHANNELS},
+        tree=dict(CHANNELS),
         skills=SkillCatalog((skill("solo"), skill("shared-skill"), skill("lonely")), (plugin("kit", "solo"),)),
         profiles=ProfileCatalog((profile,), shared),
         agent_models=(agent("helper"),),
@@ -254,10 +262,10 @@ def test_profiles_carry_their_skills_and_plugins_so_agents_need_not_reference_th
     assert unreferenced == {"skill:lonely"}
 
 
-def test_a_stage_block_without_a_stage_compiles_profiles_without_the_desktop_channel() -> None:
+def test_a_profiles_block_without_a_stage_compiles_no_profile() -> None:
     profile = DesktopProfile("analyst", "profiles/analyst", "P.", "Data", (), (), (), None, Origin("p"))
     inputs = InMemoryProjectInputs(
-        tree={"skills": {"catalog": {"+bundle_stage": "OTHER.SCHEMA.BUNDLES"}, "stage": {"+registry_table": "R"}}},
+        tree={"skills": {"+bundle_stage": "OTHER.SCHEMA.BUNDLES"}, "profiles": {"+registry_table": "R"}},
         profiles=ProfileCatalog((profile,)),
         skills=SkillCatalog((skill("solo"),)),
         has_dbt_project=False,
@@ -275,16 +283,17 @@ def test_unpublished_reasons_name_errors_first_then_the_channel_problem() -> Non
     catalog = with_broken_skill(plugin("kit", "draft"))
     channel = CatalogChannel("DB", "S", QualifiedName.parse("DB.S.BUNDLES"))
     compiled = CompileSkills(catalog, channel).run_result()
+    placed = frozenset(("skill:draft", "skill:broken", "plugin:kit"))
 
-    assert unpublished_reasons(catalog, compiled, None) == {"skill:broken": "it has errors"}
+    assert unpublished_reasons(catalog, compiled, placed) == {"skill:broken": "it has errors"}
     nothing = CompileResult((), compiled.diagnostics)
-    assert unpublished_reasons(catalog, nothing, "no channel") == {
-        "skill:draft": "no channel",
+    assert unpublished_reasons(catalog, nothing, frozenset()) == {
+        "skill:draft": "no +bundle_stage resolves for it",
         "skill:broken": "it has errors",
-        "plugin:kit": "no channel",
+        "plugin:kit": "no +bundle_stage resolves for it",
     }
     assert (
-        unpublished_reasons(catalog, CompileResult(()), None)["plugin:kit"] == "the catalog channel cannot publish it"
+        unpublished_reasons(catalog, CompileResult(()), placed)["plugin:kit"] == "the catalog channel cannot publish it"
     )
 
 
@@ -351,7 +360,7 @@ def test_a_tool_over_a_defined_member_calls_it_where_the_tools_block_publishes_i
 def _consuming(tree: dict[str, object]) -> CompileResult:
     pinned = AgentSkill("glossary", "CORTEX_EXTENSION", "glossary", "", version_var="glossary_version")
     model = AgentModel("helper", Origin("agent.yml"), ("agent.yml",), skills=(pinned,))
-    extensions = {"skills": {"extensions": {"default_prefix": "DB.EXT", "glossary": None}}}
+    extensions = {"extensions": {"default_prefix": "DB.EXT", "glossary": None}}
     return CompileProject(InMemoryProjectInputs(tree={**extensions, **tree}, agent_models=(model,))).run()
 
 

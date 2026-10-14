@@ -60,14 +60,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
-        "SST-CFG006",
-        Severity.ERROR,
-        "Required config key missing",
-        "required config key '{key}' is absent",
-        "add {key} to sst_config.yml",
-        condition="a required config key is absent; one written with no value is SST-CFG054",
-    ),
-    spec(
         "SST-CFG007",
         Severity.ERROR,
         "Unknown top-level key near a known key",
@@ -284,9 +276,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Name-map entry cannot be qualified",
         "{block}: '{name}' cannot be qualified -- no fqn: and {reason}",
-        "set fqn: on the entry under `skills.extensions` or `tags:`, or set default_prefix on that block",
+        "set fqn: on the entry under `extensions:` or `tags:`, or set default_prefix on that block",
         condition=(
-            "a `skills.extensions` entry, or a `tags` entry a view's `tag()` names, has no `fqn:` and "
+            "an `extensions` entry, or a `tags` entry a view's `tag()` names, has no `fqn:` and "
             "either the block sets no `default_prefix` or the entry key contains a dot, which would "
             "render a four-part name; or the name it qualifies to does not parse"
         ),
@@ -350,11 +342,13 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-CFG042",
         Severity.ERROR,
-        "Folder route declared under `evals:` or `skills:`",
-        "{block}: declares a folder route '{key}'",
-        "remove it -- `evals:` location is structural, and `skills:`'s unprefixed keys are its `catalog`/`stage` "
-        "sub-blocks",
-        condition="an unprefixed path-segment key appears inside `evals:` or `skills:`",
+        "Block key moved to another block",
+        "{block}: '{key}' is no longer read here; {reason}",
+        "move its settings where the message says, and delete the key",
+        condition=(
+            "a block sets a key it no longer takes because another block now holds its settings: "
+            "`skills.catalog`, `skills.stage`, or `skills.extensions`"
+        ),
     ),
     spec(
         "SST-CFG043",
@@ -454,8 +448,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "'{key}' is not a setting of {block}",
         "use one of {expected}, written without its `+`; any other key belongs outside `config:`",
         condition=(
-            "a semantic view's or an agent's `config:` block sets a key its block does not declare as a "
-            "`+` key, or writes a key with its `+`"
+            "an artifact's `config:` block sets a key its block does not declare as a `+` key, or writes a "
+            "key with its `+`"
         ),
     ),
     spec(
@@ -466,7 +460,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "delete the key to inherit its value from the folder routes, the block root, or the default, or "
         "give it a value",
         condition=(
-            "a key of a semantic view's or an agent's `config:` block, or a `+` key in `sst_config.yml`, "
+            "a key of an artifact's `config:` block, or a `+` key in `sst_config.yml`, "
             "is written with no value or as `null`; an absent key inherits, and null is not a value"
         ),
     ),
@@ -477,8 +471,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "'{key}' can be set only at the root of {block}",
         "set {expected} once, at the root of {block}, and remove it here",
         condition=(
-            "a `+` key the configuration schema marks root-only is set in a folder route, or in a semantic "
-            "view's or an agent's `config:` block"
+            "a `+` key the configuration schema marks root-only, such as `skills.+threads`, is set in a folder "
+            "route, or in an artifact's `config:` block"
         ),
     ),
     spec(

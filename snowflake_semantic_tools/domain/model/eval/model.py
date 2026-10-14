@@ -19,6 +19,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.setting import Setting
 
 SYSTEM_EVAL_METRICS = frozenset(
     ("tool_selection_accuracy", "tool_execution_accuracy", "answer_correctness", "logical_consistency")
@@ -192,8 +193,8 @@ class EvalSystemMetric:
 
     Attributes:
         name: None when omitted; an unknown name is reported, not dropped.
-        version: None when neither the metric nor `evals.+metric_version` sets one; the loader
-            fills an unset one from `evals.+metric_version`.
+        version: None when neither the metric nor its eval's `metric_version` setting names one;
+            the loader fills an unset one from that setting.
         gate: Whether the metric gates the eval; None reads as ungated.
         judge_model: Must stay None: a system metric's judge comes with its version.
     """
@@ -207,26 +208,12 @@ class EvalSystemMetric:
 
 
 @dataclass(frozen=True, slots=True)
-class EvalRetention:
-    """Which run variants are kept as the audit trail, and which only for a decision window.
-
-    SST never deletes eval runs or eval objects on the strength of it.
-    """
-
-    audit: tuple[str, ...] = ()
-    decision: tuple[str, ...] = ()
-    decision_window_days: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class EvalRunConfig:
     """How an eval runs, from the config's `run:` block.
 
     Attributes:
         name_template: The run name template; None uses the runner's default template.
         variant: Why the run happened; fills the `variant` token, and None reads as "ci".
-        tier: `blocking` or `report`; None falls back to `evals.+eval_tier`, then `report`.
-        retry: None falls back to `evals.+retry`; likewise `concurrency` and `baseline_runs`.
         accept_statuses: Terminal statuses the author accepts; only COMPLETED passes.
     """
 
@@ -234,11 +221,6 @@ class EvalRunConfig:
     label: str | None = None
     description: str | None = None
     variant: str | None = None
-    retention: EvalRetention = EvalRetention()
-    tier: str | None = None
-    retry: int | None = None
-    concurrency: int | None = None
-    baseline_runs: int | None = None
     accept_statuses: tuple[str, ...] = ()
 
 
@@ -247,26 +229,26 @@ class EvalConfig:
     """An agent's eval run configuration, as authored in its config file.
 
     Attributes:
-        agent_version: `committed`, `alias:<name>` or `VERSION$<n>`; None falls back to
-            `evals.+agent_version`.
         dataset: None when the `dataset:` block is absent or not a mapping; likewise `run`
             for its block.
         custom_metric_names: The names the `eval_metric()` references give, as written.
         forbidden_keys: Which of `database`, `schema` and `enabled` the file sets.
         name: The name `{{ eval_config() }}` references it by; None when absent. Never
             rendered.
+        config: The file's `config:` block as parsed, whose keys are the `evals:` settings
+            written without their `+`; None when it writes none.
     """
 
     origin: Origin
     source_file: str
     agent: str | None
-    agent_version: str | None
     dataset: EvalDatasetConfig | None
     system_metrics: tuple[EvalSystemMetric, ...]
     custom_metric_names: tuple[str, ...]
     run: EvalRunConfig | None
     forbidden_keys: tuple[str, ...] = ()
     name: str | None = None
+    config: object = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -321,12 +303,17 @@ class CustomEvalMetric:
 
 @dataclass(frozen=True, slots=True)
 class EvalDefaults:
-    """The project's `evals:` defaults from `sst_config.yml`; None, or `()`, means the key is unset.
+    """The `evals:` settings, as the block root or one eval resolves them; None, or `()`, is unset.
 
     Attributes:
+        eval_tier: Whether a regression blocks, `blocking` or `report`; unset reads as `report`.
         metrics: The system metrics, ungated, of a config whose `metrics:` block has no
             `system` key; only system metric names, each once.
         judge_model: The judge model of a custom metric that sets no `model`.
+        agent_version: `committed`, `alias:<name>` or `VERSION$<n>`: the version a run targets.
+        concurrency: At the block root, how many runs a suite starts at once and the most an
+            eval may ask; on an eval, what it asks.
+        retention: The class recorded with each run, `audit` or `decision`.
     """
 
     eval_tier: str | None = None
@@ -347,12 +334,23 @@ class ResolvedEval:
 
     A metric the config names but the catalog lacks is absent from `custom_metrics`; the
     loader reports it, and validation reports it again against the config.
+
+    Attributes:
+        settings: Each `evals:` setting the eval resolved -- its config's `config:`, then the
+            folder routes over its agent's folder, then the block root -- by key without its
+            `+`, with where its value came from.
     """
 
     agent: AgentModel
     dataset: EvalDataset
     config: EvalConfig
     custom_metrics: tuple[CustomEvalMetric, ...]
+    settings: Mapping[str, Setting] = field(default_factory=lambda: MappingProxyType({}))
+
+    @property
+    def options(self) -> EvalDefaults:
+        """Return the eval's resolved settings as the values a run, its gate and its checks read."""
+        return eval_defaults(self.settings)
 
     @property
     def name(self) -> str:
@@ -383,9 +381,43 @@ class ResolvedEval:
         return (self.agent.key,)
 
 
+def eval_defaults(settings: Mapping[str, Setting]) -> EvalDefaults:
+    """Read resolved `evals:` settings into their values; one of the wrong type reads as unset.
+
+    `metrics` keeps only system metric names, each once, in the order the setting lists them.
+    """
+
+    def value(key: str) -> object:
+        found = settings.get(key)
+        return found.value if found is not None else None
+
+    def text(key: str) -> str | None:
+        found = value(key)
+        return found if isinstance(found, str) and found else None
+
+    def number(key: str) -> int | None:
+        found = value(key)
+        return found if isinstance(found, int) and not isinstance(found, bool) else None
+
+    listed = value("metrics")
+    names = listed if isinstance(listed, list) else []
+    return EvalDefaults(
+        eval_tier=text("eval_tier"),
+        metrics=tuple(dict.fromkeys(name for name in names if name in SYSTEM_EVAL_METRICS)),
+        metric_version=text("metric_version"),
+        judge_model=text("judge_model"),
+        agent_version=text("agent_version"),
+        retry=number("retry"),
+        concurrency=number("concurrency"),
+        baseline_runs=number("baseline_runs"),
+        min_dataset_rows=number("min_dataset_rows"),
+        retention=text("retention"),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class EvalCatalog:
-    """Every eval and custom metric in a project, with the `evals:` defaults.
+    """Every eval and custom metric in a project, with the `evals:` block root's settings.
 
     Attributes:
         diagnostics: Reported about the catalog so far; validation returns these first, then its own.

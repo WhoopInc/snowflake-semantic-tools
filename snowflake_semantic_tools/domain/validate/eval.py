@@ -89,7 +89,7 @@ def validate_eval_catalog(
         SST-VAL718: the rendered run name does not include the commit SHA.
         SST-VAL717: two evals of one agent render the same run name.
         SST-PRS016: retry, concurrency or baseline_runs is below its minimum.
-        SST-VAL731: run concurrency exceeds `evals.+concurrency`.
+        SST-VAL731: an eval's concurrency setting exceeds the `evals.+concurrency` root.
         SST-VAL735: a threshold is set with no baseline runs.
         SST-VAL732: the agent has tool types an eval run skips (info).
     """

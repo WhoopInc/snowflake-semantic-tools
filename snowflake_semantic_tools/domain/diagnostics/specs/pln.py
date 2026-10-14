@@ -333,7 +333,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Registry table has the wrong shape",
         "{artifact}: {value} {detail}",
-        "SST never alters the registry; fix the table or point skills.stage at a compatible one",
+        "SST never alters the registry; fix the table or point profiles.+registry_table at a compatible one",
         demotable=False,
         condition="the profile registry table lacks a column SST writes, or types it differently",
         precheck=Precheck.OBSERVE,

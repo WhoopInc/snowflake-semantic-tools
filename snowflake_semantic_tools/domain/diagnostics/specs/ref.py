@@ -117,7 +117,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "extension() target not found",
         "{{{{ extension('{name}') }}}} does not resolve",
         "declare the extension source, or correct the name",
-        condition="an agent's `extension()` entry names no extension `skills.extensions` declares",
+        condition="an agent's `extension()` entry names no extension the `extensions:` block declares",
     ),
     spec(
         "SST-REF014",

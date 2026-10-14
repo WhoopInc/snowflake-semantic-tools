@@ -1,7 +1,7 @@
 """Skills, plugins, semantic views, agents, and compile results small enough to build inline.
 
-Shared by the compile, plan, smoke, and golden tests. `CHANNELS` is a `skills:` block that
-publishes through both channels, the catalog and a stage.
+Shared by the compile, plan, smoke, and golden tests. `CHANNELS` is the part of a configuration
+that publishes every skill and plugin as an extension, and every profile through a stage.
 """
 
 from __future__ import annotations
@@ -36,7 +36,11 @@ def compiled_as(result: CompileResult, kind: type[_Compiled], index: int = 0) ->
     return compiled
 
 
-CHANNELS = {"catalog": {"+bundle_stage": "BUNDLES"}, "stage": {"+stage": "PROFILES"}}
+CHANNELS: Mapping[str, object] = {
+    "skills": {"+bundle_stage": "BUNDLES"},
+    "plugins": {"+bundle_stage": "BUNDLES"},
+    "profiles": {"+stage": "PROFILES"},
+}
 
 
 def skill(name: str, description: str | None = "Close the month.") -> Skill:

@@ -41,7 +41,7 @@ One `define:` member of a tool group: a Snowflake object an agent tool calls, pu
 
 ## skill
 
-One `SKILL.md` folder, flattened and published as a version of a skill-type Cortex Extension. The version alias is `skills.+version_prefix` and 12 hex characters of the bundle digest, so a version is never rewritten: a change adds a new one, and `--prune` only reports one whose folder was deleted.
+One `SKILL.md` folder, flattened and published as a version of a skill-type Cortex Extension wherever its `+bundle_stage` resolves. The version alias is its `+version_prefix` and 12 hex characters of the bundle digest, so a version is never rewritten: a change adds a new one, and `--prune` only reports one whose folder was deleted.
 
 - Position: 250
 - Lifecycle: composite -- several objects, reconciled together

@@ -15,6 +15,7 @@ from typing import Any
 
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
 from snowflake_semantic_tools.adapters.yaml.fields import mapping
+from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.file_reads import _verified_query_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import (
     _multipath_diagnostics,
@@ -22,7 +23,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.relationships import (
     _relationship_diagnostics,
     _relationship_parse_diagnostics,
 )
-from snowflake_semantic_tools.adapters.yaml.semantic.target import _folder_route_diagnostics, _stray_view_diagnostics
+from snowflake_semantic_tools.adapters.yaml.semantic.target import _stray_view_diagnostics
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
@@ -215,7 +216,7 @@ def _document_diagnostics(
     return (
         *consumed_model_diagnostics(context.catalog, referenced_models),
         *collapse_diagnostics(context.catalog, referenced_models),
-        *_folder_route_diagnostics(context.config, context.views_dir),
+        *routed_diagnostics(context.config, context.project_dir, "semantic_view"),
         *_stray_view_diagnostics(documents, context.views_dir),
         *authored_key_diagnostics(documents),
         *view_config_diagnostics(documents),

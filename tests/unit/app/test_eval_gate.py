@@ -8,6 +8,7 @@ from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, persist_gate
 from snowflake_semantic_tools.domain.model.eval import EvalMetricResult, EvalResultRow, EvalRunAttempt, ThresholdRange
 from tests.helpers.eval_builders import compiled_eval_of, run_result
+from tests.helpers.eval_inputs import settled
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 
 
@@ -26,19 +27,12 @@ def attempt(name: str, values: tuple[tuple[str, str, bool], ...]) -> EvalRunAtte
 
 def compiled_eval() -> CompiledEval:
     compiled = compiled_eval_of()
-    run = compiled.resolved.config.run
-    assert run is not None
-    return replace(
-        compiled,
-        resolved=replace(
-            compiled.resolved,
-            config=replace(
-                compiled.resolved.config,
-                system_metrics=(replace(compiled.resolved.config.system_metrics[0], gate=True),),
-                run=replace(run, baseline_runs=2, tier="blocking"),
-            ),
-        ),
+    config = replace(
+        compiled.resolved.config,
+        system_metrics=(replace(compiled.resolved.config.system_metrics[0], gate=True),),
     )
+    resolved = settled(replace(compiled.resolved, config=config), baseline_runs=2, eval_tier="blocking")
+    return replace(compiled, resolved=resolved)
 
 
 def test_capture_baseline_requires_reason_and_configured_attempts() -> None:
@@ -190,15 +184,7 @@ def test_report_tier_does_not_block_and_gate_state_is_retrospective() -> None:
         attempt("current-1", (("q", "answer_correctness", False), ("q", "grounding", True))),
         attempt("current-2", (("q", "answer_correctness", False), ("q", "grounding", True))),
     )
-    run = compiled.resolved.config.run
-    assert run is not None
-    report_compiled = replace(
-        compiled,
-        resolved=replace(
-            compiled.resolved,
-            config=replace(compiled.resolved.config, run=replace(run, tier="report")),
-        ),
-    )
+    report_compiled = replace(compiled, resolved=settled(compiled.resolved, eval_tier="report"))
     report_baseline = capture_baseline(
         report_compiled,
         baseline_result,
@@ -217,14 +203,7 @@ def test_report_tier_does_not_block_and_gate_state_is_retrospective() -> None:
 
 def test_default_tier_and_default_baseline_runs_are_honored() -> None:
     compiled = compiled_eval()
-    run = compiled.resolved.config.run
-    assert run is not None
-    inherited = replace(
-        compiled,
-        resolved=replace(
-            compiled.resolved, config=replace(compiled.resolved.config, run=replace(run, tier=None, baseline_runs=None))
-        ),
-    )
+    inherited = replace(compiled, resolved=settled(compiled.resolved, eval_tier=None, baseline_runs=None))
     attempts = run_result(
         attempt("base-1", (("q", "answer_correctness", True), ("q", "grounding", True))),
         attempt("base-2", (("q", "answer_correctness", True), ("q", "grounding", True))),
@@ -260,11 +239,7 @@ def test_local_baseline_run_count_overrides_global_default() -> None:
         baseline_result,
         reason="initial",
         captured_at="2026-09-01T00:00:00Z",
-        required_attempts=(
-            compiled.resolved.config.run.baseline_runs
-            if compiled.resolved.config.run is not None and compiled.resolved.config.run.baseline_runs is not None
-            else 5
-        ),
+        required_attempts=compiled.resolved.options.baseline_runs or 5,
     )
 
     assert len(baseline.run_names) == 2
@@ -579,15 +554,7 @@ def test_capture_baseline_rejects_duplicate_incomplete_and_empty_metric_vectors(
 
 def test_invalid_tier_is_rejected() -> None:
     compiled = compiled_eval()
-    run = compiled.resolved.config.run
-    assert run is not None
-    invalid = replace(
-        compiled,
-        resolved=replace(
-            compiled.resolved,
-            config=replace(compiled.resolved.config, run=replace(run, tier="advisory")),
-        ),
-    )
+    invalid = replace(compiled, resolved=settled(compiled.resolved, eval_tier="advisory"))
 
     with pytest.raises(ValueError, match="invalid eval tier 'advisory'"):
         capture_baseline(

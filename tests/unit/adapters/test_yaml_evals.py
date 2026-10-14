@@ -98,7 +98,7 @@ def test_eval_loader_uses_inherited_agent_version_for_validation(tmp_path: Path)
     config = tmp_path / "agents" / "sales" / "evals" / "config.yml"
     _write(
         config,
-        config.read_text(encoding="utf-8").replace("agent_version: committed\n", ""),
+        config.read_text(encoding="utf-8").replace("  agent_version: committed\n", ""),
     )
     catalog = load_eval_catalog(
         tmp_path,
@@ -129,13 +129,14 @@ def test_run_block_problems_are_reported_in_read_order(tmp_path: Path) -> None:
         for item in catalog.diagnostics
         if item.context.get("artifact") == "agents/sales/evals/config.yml"
     ]
-    # Retention, accepted statuses and tier come first, then the fields in EvalRunConfig's order.
+    # Accepted statuses come first, then the fields in EvalRunConfig's order, then each setting
+    # the block still writes, which moved under `config:`.
     assert found[:5] == [
-        ("SST-PRS003", "run.retention"),
         ("SST-PRS013", "run.accept_statuses"),
-        ("SST-PRS013", "run.tier"),
         ("SST-PRS003", "label"),
-        ("SST-PRS003", "retry"),
+        ("SST-PRS126", "run.tier"),
+        ("SST-PRS126", "run.retry"),
+        ("SST-PRS126", "run.retention"),
     ]
 
 
@@ -330,3 +331,47 @@ def test_an_eval_file_without_a_name_is_reported_and_cannot_be_named(tmp_path: P
     assert ("SST-PRS002", "name") in codes
     assert ("SST-REF048", None) in codes
     assert catalog.evals == ()
+
+
+def test_an_eval_resolves_its_config_over_the_routes_of_its_agents_folder(tmp_path: Path) -> None:
+    agents, agent_diagnostics = _project(tmp_path)
+    block = {"+retry": 1, "+min_dataset_rows": 1, "sales": {"+retry": 2, "+eval_tier": "report"}, "other": {}}
+    catalog = load_eval_catalog(tmp_path, agents, block=block, initial_diagnostics=agent_diagnostics)
+    [value] = catalog.evals
+    settings = {key: (item.value, item.source) for key, item in value.settings.items()}
+    # The config's own `config:` writes retry 1 and blocking; the route's tier loses to it.
+    assert settings["retry"] == (1, "config")
+    assert settings["eval_tier"] == ("blocking", "config")
+    assert settings["min_dataset_rows"] == (1, "root")
+    assert value.options.baseline_runs == 5
+
+    config = tmp_path / "agents" / "sales" / "evals" / "config.yml"
+    _write(config, config.read_text(encoding="utf-8").replace("  eval_tier: blocking\n  retry: 1\n", ""))
+    [routed] = load_eval_catalog(tmp_path, agents, block=block, initial_diagnostics=agent_diagnostics).evals
+    assert (routed.settings["retry"].source, routed.settings["eval_tier"].value) == ("route:sales", "report")
+
+
+def test_an_eval_configs_own_settings_are_checked_and_old_spellings_are_refused(tmp_path: Path) -> None:
+    agents, agent_diagnostics = _project(tmp_path)
+    config = tmp_path / "agents" / "sales" / "evals" / "config.yml"
+    text = config.read_text(encoding="utf-8").replace(
+        "config:\n", "agent_version: committed\nconfig:\n  metrics: [answer_relevance]\n  database: DB\n"
+    )
+    _write(config, text)
+    catalog = load_eval_catalog(tmp_path, agents, initial_diagnostics=agent_diagnostics)
+    found = [
+        (item.code, item.context.get("key") or item.context.get("field"))
+        for item in catalog.diagnostics
+        if item.origin is not None and item.origin.file == "agents/sales/evals/config.yml"
+    ]
+    assert ("SST-CFG053", "config.database") in found
+    assert ("SST-PRS013", "config.metrics") in found
+    assert ("SST-PRS126", "agent_version") in found
+
+
+def test_a_routes_metrics_are_checked_like_the_roots() -> None:
+    defaults, diagnostics = parse_eval_defaults(
+        {"+metrics": ["answer_correctness"], "ops": {"+metrics": ["answer_relevance"], "deep": {"+retry": 1}}}
+    )
+    assert defaults.metrics == ("answer_correctness",)
+    assert [(item.code, item.context["field"]) for item in diagnostics] == [("SST-PRS013", "evals.ops.+metrics")]

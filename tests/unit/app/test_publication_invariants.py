@@ -1,8 +1,9 @@
 """Invariants of skill and profile publication that keep several failure shapes from arising.
 
 Each test pins the property that rules a condition out, so a change that broke it would fail
-here: versions are named by content, every extension lands in one schema, SST issues no
-grant, no raw string reaches DDL, and each channel reports its own outcome.
+here: versions are named by content, an extension lands where its settings place it and no
+grouping folder moves it, SST issues no grant, no raw string reaches DDL, and each channel
+reports its own outcome.
 """
 
 from __future__ import annotations
@@ -55,12 +56,15 @@ def test_a_version_alias_is_the_prefix_and_the_bundle_digest_so_one_name_means_o
     assert first.release.alias == again.release.alias != edited.release.alias
 
 
-def test_every_extension_publishes_into_the_one_catalog_schema_whatever_its_folder() -> None:
+def test_a_grouping_folder_alone_never_moves_an_extension_out_of_its_channel_schema() -> None:
     compiled = _extensions(_skill_in("skills/finance/close", "close"), _skill_in("skills/ops/triage", "triage"))
     assert {item.release.target.folded[:2] for item in compiled} == {("DB", "S")}
-    # Nor can a folder route a skill elsewhere.
-    codes = [item.code for item in validate_config({"skills": {"finance": {"+schema": "FINANCE"}}})]
-    assert "SST-CFG042" in codes
+    # Only a route over its folder, or its own `config:`, places a skill elsewhere, and SST-VAL806
+    # says so whenever that leaves its block root's schema.
+    assert validate_config({"skills": {"finance": {"+schema": "FINANCE"}}}) == ()
+    placed = CatalogChannel("DB", "FINANCE", SKILL_STAGE, home=("DB", "S"))
+    result = CompileSkills(SkillCatalog((_skill_in("skills/finance/close", "close"),)), placed).run_result()
+    assert "SST-VAL806" in [item.code for item in result.diagnostics]
 
 
 def test_a_certified_publish_tags_the_version_and_issues_no_grant() -> None:

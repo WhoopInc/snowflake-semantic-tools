@@ -8,17 +8,19 @@ the same keys through these functions, so they agree on what a configuration mea
 
 from __future__ import annotations
 
+import posixpath
 from collections.abc import Mapping
 from dataclasses import dataclass
 
 from snowflake_semantic_tools.domain.model.config_schema.keys import CONFIG_KEYS
 from snowflake_semantic_tools.domain.model.dbt import DbtTarget
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
+from snowflake_semantic_tools.domain.model.registry import ArtifactType
 
 
 def config_block(value: object) -> dict[str, object]:
     """Return a block of the tree as a dict with text keys; anything but a mapping reads as empty."""
-    return {str(key): item for key, item in value.items()} if isinstance(value, dict) else {}
+    return {str(key): item for key, item in value.items()} if isinstance(value, Mapping) else {}
 
 
 def configured_dir(config: Mapping[str, object], key: str, default: str) -> str:
@@ -27,14 +29,15 @@ def configured_dir(config: Mapping[str, object], key: str, default: str) -> str:
     return str(project.get(key) or default) if isinstance(project, dict) else default
 
 
-def skills_configured(config: Mapping[str, object]) -> bool:
-    """Report whether `skills:` declares a publishing channel, `catalog` or `stage`.
+def route_root(config: Mapping[str, object], artifact: ArtifactType) -> str:
+    """Return the directory an artifact type's folder routes start from, relative to the project root.
 
-    Without one, skills and plugins are not compiled at all, and their folders are not part
-    of the manifest's file checksums.
+    It is the type's `project.<dir_key>`, else that key's default, then its `route_dir` below it;
+    an artifact's folder, which its routes fold along, is its directory below this one.
     """
-    skills = config_block(config.get("skills"))
-    return "catalog" in skills or "stage" in skills
+    default = CONFIG_KEYS[f"project.{artifact.dir_key}"].default or artifact.dir_key
+    directory = configured_dir(config, artifact.dir_key, default)
+    return posixpath.join(directory, artifact.route_dir) if artifact.route_dir else directory
 
 
 def target_text(value: object, target: TargetIdentity | DbtTarget, default: str | None) -> str | None:

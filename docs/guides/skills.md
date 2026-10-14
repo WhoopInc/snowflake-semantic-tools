@@ -119,8 +119,8 @@ In the published bundle each skill's files sit under `skills/<name>/`, so
 `skills/sales-semantics/reference__join-paths.md`.
 
 CoCo Desktop reads the authored, nested layout, so profiles publish skills
-unflattened. `skills.catalog.+flatten` must be `true` and
-`skills.stage.+flatten` must be `false` (`SST-VAL818`).
+unflattened. Neither is configurable: an extension bundle is always flattened,
+and a profile tree never is.
 
 ## Limits
 
@@ -133,7 +133,8 @@ rewritten it (`SST-RND032`), and when the flattened bundle exceeds 1 MiB
 
 ## Versions
 
-A version is named by its content: `skills.+version_prefix` (default `SST_`)
+A version is named by its content: the skill's `version_prefix` setting
+(`skills.+version_prefix`, default `SST_`)
 followed by the first 12 hex characters, in upper case, of the flattened
 bundle's digest, for example `SST_16D8F6686433`. The digest is a SHA-256 over
 every file's path, size, and content hash, so it changes exactly when the
@@ -152,24 +153,41 @@ letters, digits, and underscores (`SST-CFG008`).
 
 ```yaml
 skills:
+  +database: "{{ target.database }}"
+  +schema: "{{ target.schema }}"
+  +bundle_stage: SKILL_BUNDLE_SRC
   +version_prefix: "SST_"
   +certified: false
-  catalog:
-    +database: "{{ target.database }}"
-    +schema: "{{ target.schema }}"
-    +bundle_stage: SKILL_BUNDLE_SRC
-    +flatten: true
+  finance:                 # skills/finance/<skill>/SKILL.md
+    +schema: FINANCE
 ```
 
-- `catalog:` turns on publishing to Cortex Extensions. `+database` and
-  `+schema` default to the target's. `+bundle_stage` is required: the internal
-  stage that versions are built from, in the block's database and schema unless
-  the name is qualified. SST creates it when it is absent, with server-side
-  encryption; an existing stage that is not an internal server-side encrypted
-  stage blocks the plan (`SST-PLN026`). SST never alters a stage.
-- `+flatten` must be `true` (`SST-VAL818`), and `+prune_deleted`, which may be
-  left out, can only be `true` (`SST-CFG008`): every version is built from the
-  complete bundle, so a deleted file is gone from the next version.
+```markdown
+---
+name: month-close
+description: Close the month.
+config:
+  certified: true          # this skill's versions alone
+---
+```
+
+Each skill resolves these settings through the one
+[precedence chain](configuration.md#precedence): its frontmatter's `config:`
+(the keys without their `+`), then the closest folder route over its folder,
+then the `skills:` root, then the default. The frontmatter is published with
+the rest of `SKILL.md`, so a `config:` there is part of the bundle's content.
+
+- A skill publishes as a Cortex Extension only where `+bundle_stage` resolves
+  for it: the internal stage that versions are built from, in the skill's
+  database and schema unless the name is qualified. SST creates it when it is
+  absent, with server-side encryption; an existing stage that is not an
+  internal server-side encrypted stage blocks the plan (`SST-PLN026`). SST
+  never alters a stage.
+- `+database` and `+schema` default to the target's. A route or a skill's own
+  `config:` that places it outside the root's database and schema is a warning
+  (`SST-VAL806`): agents then need USAGE on that schema too.
+- Every version is built from the complete, flattened bundle, so a deleted
+  file is gone from the next version; neither is configurable.
 - `+certified: true` tags each new version with
   `SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'` and reads the tag back.
   There is no un-certify step.
@@ -181,16 +199,19 @@ skills:
 - `+certified: true` on an extension that state records in another schema
   blocks the plan (`SST-VAL807`): moving it would change the name every pinned
   reference uses.
-- `+threads` caps concurrent catalog publishes (default 4, 1 to 16). Profiles
-  always publish one at a time.
-- `skills:` takes no folder routes: an unprefixed key other than `catalog`,
-  `stage`, and `extensions` is an error (`SST-CFG042`). Every skill publishes to
-  the one catalog location. `+grant_read_to`, `+enabled`, and
-  `catalog.+registry_table` were removed (`SST-CFG043`): SST issues no grants,
-  omitting a channel block disables it, and SST's state records every published
-  version.
-- `skills.extensions` names extensions this project consumes but does not
-  publish; see the [agents guide](agents.md#skills).
+- `+threads` caps concurrent catalog publishes (default 4, 1 to 16). It is
+  root-only: in a folder route or a skill's `config:` it is an error
+  (`SST-CFG055`). Profiles always publish one at a time.
+- An unprefixed key of `skills:` is a folder route; one that names no folder
+  under `skills_dir` is an error (`SST-CFG041`). `skills.catalog`,
+  `skills.stage`, and `skills.extensions` moved to `skills:` itself,
+  `profiles:`, and `extensions:` (`SST-CFG042`). `+grant_read_to` and
+  `+enabled` were removed (`SST-CFG043`): SST issues no grants, and a skill
+  with no `+bundle_stage` does not publish.
+- The top-level `extensions:` block names extensions this project consumes but
+  does not publish; see the [agents guide](agents.md#skills).
+- `sst list skill --long` prints each skill's settings and where each came
+  from.
 
 ## Publishing
 
@@ -238,7 +259,7 @@ by hand once nothing uses it.
 Leave `version:` and `name:` out: SST pins the alias it publishes, and an
 authored version on a project skill is an error (`SST-VAL838`); the entry is
 named after the skill, and an authored `name:` is an error (`SST-VAL540`). A skill that cannot
-publish -- it has errors, or `skills.catalog` is not configured -- leaves the
+publish -- it has errors, or no `+bundle_stage` resolves for it -- leaves the
 agent nothing to pin, which is an error on the agent (`SST-VAL856`).
 
 Because the pin names a version, a plan that creates or updates the agent must

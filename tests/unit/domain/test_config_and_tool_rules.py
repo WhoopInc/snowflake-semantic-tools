@@ -39,11 +39,11 @@ def test_a_configuration_value_s_tool_calls_are_read_in_document_order() -> None
 
 
 def test_an_empty_value_is_meant_only_for_a_declared_block_or_map() -> None:
-    assert empty_is_block(("skills", "extensions", "partner-glossary"))
+    assert empty_is_block(("extensions", "partner-glossary"))
     assert empty_is_block(("deploy",))
     assert empty_is_block(("semantic_views", "marts", "finance"))
     assert not empty_is_block(("semantic_views", "marts", "+schema"))
-    assert not empty_is_block(("skills", "extensions", "default_prefix"))
+    assert not empty_is_block(("extensions", "default_prefix"))
     assert not empty_is_block(("no_such_block",))
     assert not empty_is_block(("skills", 0))
     assert not empty_is_block(())

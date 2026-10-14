@@ -188,7 +188,7 @@ Drawn from: [plan preflight](../../snowflake_semantic_tools/domain/plan/prefligh
 - **`SST-REF032`** or **`SST-REF036`**: the project has no skill or plugin by that
   name. Check the spelling against the folder name.
 - **`SST-VAL856`**: the skill exists but has no version to publish. The message
-  names the cause: the skill has its own errors, or `skills.catalog` is missing
+  names the cause: the skill has its own errors, or no `+bundle_stage` resolves
   or incomplete.
 - **`SST-VAL838`**: the reference sets `version:`. Remove it; SST pins project
   skills itself.
@@ -207,7 +207,7 @@ the bundle. Check the validation output for the file:
 
 - **`SST-VAL854`** is reported: the project publishes to a registry table other
   than the one Desktop reads. That is right for rehearsal; point
-  `skills.stage.+registry_table` at Desktop's table to publish for real.
+  `profiles.+registry_table` at Desktop's table to publish for real.
 - The profile was deactivated by a `--prune` run after its folder was deleted.
 - A pointer in the row does not resolve. `apply` checks every pointer after the
   write and reports the one that failed.

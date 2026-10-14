@@ -19,6 +19,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Variable,
     VerifiedQuery,
 )
+from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import datatype
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
@@ -206,6 +207,7 @@ class _NonViewArtifact:
     member_keys: tuple[str, ...] = ()
     referenced_models: tuple[str, ...] = ()
     dbt_relations: tuple[tuple[str, str], ...] = ()
+    settings: tuple[Setting, ...] = ()
 
     @property
     def rendered_artifact(self) -> RenderedArtifact:

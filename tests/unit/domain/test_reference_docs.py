@@ -174,12 +174,13 @@ def test_error_codes_refuse_a_subsystem_without_a_section() -> None:
         render_error_codes({stray.code: stray})
 
 
-def test_config_page_renders_notes_types_and_removed_keys() -> None:
+def test_config_page_renders_types_root_only_keys_and_removed_keys() -> None:
     schema = (
         ConfigKey("orphan.key", KeyKind.STRING, "A key whose block has no row."),
         ConfigKey("bare", KeyKind.BLOCK, "A block with no keys."),
-        ConfigKey("pick", KeyKind.BLOCK, "Pick one.", one_of=("a", "b")),
-        ConfigKey("pick.mode", KeyKind.ENUM, "Mode.", default="fast", choices=("fast", "slow"), required=True),
+        ConfigKey("pick", KeyKind.BLOCK, "Pick one."),
+        ConfigKey("pick.+runs", KeyKind.INTEGER, "Runs.", root_only=True),
+        ConfigKey("pick.mode", KeyKind.ENUM, "Mode.", default="fast", choices=("fast", "slow")),
         ConfigKey("pick.count", KeyKind.INTEGER, "How many.", default="the default", minimum=1, maximum=9),
         ConfigKey("pick.gone", KeyKind.ANY, "no longer read", status=KeyStatus.REMOVED),
         ConfigKey("pick.named", KeyKind.ANY, "has its own code", status=KeyStatus.REMOVED, code="SST-CFG040"),
@@ -187,8 +188,9 @@ def test_config_page_renders_notes_types_and_removed_keys() -> None:
     page = render_config(schema)
     assert "## orphan\n\n| Key |" in page
     assert "## bare\n\nA block with no keys.\n\n## pick" in page
-    assert "Declare at least one of `a`, `b`." in page
-    assert "| `pick.mode` | enum: `fast`, `slow`, required | `fast` | Mode. |" in page
+    assert "## pick\n\nPick one.\n\n| Key |" in page
+    assert "| `pick.+runs` | integer, root only |  | Runs. |" in page
+    assert "| `pick.mode` | enum: `fast`, `slow` | `fast` | Mode. |" in page
     assert "| `pick.count` | integer, 1 to 9 | the default | How many. |" in page
     removed = page.split("## Removed keys", 1)[1]
     assert "`pick.gone`" not in page.split("## Removed keys", 1)[0]
@@ -203,12 +205,6 @@ def test_cli_usage_shows_positional_arguments_and_config_page_names_the_other_fi
     assert "```text\nsst migrate refs [OPTIONS]\n```" in cli_page
     intro = render_config(()).split("\n## ", 1)[0]
     assert "`sst_config.yaml`" in intro and "`--config`" in intro
-
-
-def test_fixed_keys_state_their_value_in_their_summary() -> None:
-    for key in CONFIG_SCHEMA:
-        if key.fixed is not None:
-            assert key.summary.startswith(f"Must be {str(key.fixed).lower()}"), key.path
 
 
 def test_prose_and_code_spans_stay_markdown_safe() -> None:

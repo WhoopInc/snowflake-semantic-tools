@@ -1,4 +1,4 @@
-"""One resolved setting of a semantic view or an agent, and where its value came from.
+"""One resolved setting of an artifact, and where its value came from.
 
 A data type only: `domain.model.config_schema.settings` resolves settings, and the artifact
 models carry them, so this module imports nothing of either.

@@ -210,7 +210,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "eval config for '{artifact}': agent_version is '{found}'",
         "use committed or alias:<name>",
         condition=(
-            "the eval's `agent_version`, else `evals.+agent_version`, is not `committed`, "
+            "the eval's `agent_version` setting, its config's `config:`, else a folder route, else "
+            "`evals.+agent_version`, is not `committed`, "
             "`alias:<name>` or `VERSION$<n>`; LIVE or an omitted version targets the default version"
         ),
         note=(
@@ -368,7 +369,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Eval concurrency exceeds the configured ceiling",
         "eval config for '{artifact}': concurrency {found} exceeds {expected}",
         "lower concurrency; runs re-invoke the agent, so this is real load and real spend",
-        condition="an eval's `run.concurrency` is greater than `evals.+concurrency`",
+        condition=(
+            "the `concurrency` an eval's `config:`, or a folder route over its agent, sets is greater than the "
+            "`evals.+concurrency` root"
+        ),
     ),
     spec(
         "SST-VAL732",
@@ -402,8 +406,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "eval config for '{artifact}': {count} baseline_runs completed, {expected} required",
         "complete the baseline first",
         condition=(
-            "the eval gate finds the stored baseline holds fewer runs than the eval's `run.baseline_runs`, "
-            "else `evals.+baseline_runs`, now requires; the gate has no signal"
+            "the eval gate finds the stored baseline holds fewer runs than the eval's `baseline_runs` "
+            "setting now requires; the gate has no signal"
         ),
         note=(
             'Capture a new baseline: `sst test --suite evals --capture-baseline --reason "<why>"`. '
@@ -417,7 +421,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "eval config for '{artifact}': metric '{name}' has a threshold and no baseline",
         "measure first, then set the threshold",
         condition=(
-            "a system metric sets a threshold while the effective `run.baseline_runs` is unset or zero; "
+            "a system metric sets a threshold while the eval's `baseline_runs` setting is unset or zero; "
             "one per such metric"
         ),
         note="A threshold set before any baseline is measured is a guess wearing the costume of a measurement.",
@@ -655,7 +659,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         note=(
             "A report-tier eval lists the same regressions without this error, so its run passes. The "
-            "tier is `run.tier`, else `evals.+eval_tier`, else report."
+            "tier is the eval's `eval_tier` setting, else report."
         ),
         precheck=Precheck.RUNTIME,
     ),

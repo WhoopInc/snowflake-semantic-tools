@@ -315,15 +315,15 @@ def test_command_and_plugin_references_are_validated() -> None:
 
 def test_a_skill_reached_only_through_a_profile_plugin_is_reached() -> None:
     catalog = ProfileCatalog((profile(skills=(), plugins=("kit",)),))
-    unreached = unreached_skills(SKILLS, catalog, catalog_channel=False, plugins={"kit": KIT})
+    unreached = unreached_skills(SKILLS, catalog, published=frozenset(), plugins={"kit": KIT})
     assert [item.subject for item in unreached] == ["skill:common", "skill:semantics"]
 
 
-def test_unreached_skills_only_when_the_catalog_channel_is_off() -> None:
+def test_unreached_skills_are_those_that_publish_as_no_extension() -> None:
     catalog = ProfileCatalog((profile(),), SHARED)
-    assert unreached_skills(SKILLS, catalog, catalog_channel=True) == ()
-    assert [item.subject for item in unreached_skills(SKILLS, catalog, catalog_channel=False)] == ["skill:operations"]
-    assert [item.subject for item in unreached_skills(SKILLS, ProfileCatalog(), catalog_channel=False)] == [
+    assert unreached_skills(SKILLS, catalog, published=frozenset(item.key for item in SKILLS.values())) == ()
+    assert [item.subject for item in unreached_skills(SKILLS, catalog, published=frozenset())] == ["skill:operations"]
+    assert [item.subject for item in unreached_skills(SKILLS, ProfileCatalog(), published=frozenset())] == [
         "skill:common",
         "skill:operations",
         "skill:semantics",

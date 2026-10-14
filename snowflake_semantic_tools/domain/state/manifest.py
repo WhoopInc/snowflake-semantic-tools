@@ -46,9 +46,8 @@ class ArtifactEntry:
             objects it spans as `(object type, qualified name)`; empty for any other artifact.
         references: What the artifact names but does not wait on, such as a profile's skills
             and commands; never a publish edge, so `depends_on` does not hold them.
-        settings: A semantic view's or an agent's resolved settings, each with where its value
-            came from, sorted by key; empty for any other artifact, and in a manifest written
-            before they were recorded.
+        settings: The artifact's resolved settings, each with where its value came from, sorted
+            by key; empty for a tool, and in a manifest written before they were recorded.
     """
 
     type: str

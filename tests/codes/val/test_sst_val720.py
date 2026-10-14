@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionN
 from tests.helpers.clocks import FixedClock
 from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.eval_builders import EvalSnowflake, compiled_eval_of, result_rows, status_result
+from tests.helpers.eval_inputs import settled
 
 
 class DroppedAliasSnowflake(EvalSnowflake):
@@ -25,8 +26,7 @@ class DroppedAliasSnowflake(EvalSnowflake):
 
 def pinned(selector: str) -> CompiledEval:
     compiled = compiled_eval_of()
-    config = replace(compiled.resolved.config, agent_version=selector)
-    return replace(compiled, resolved=replace(compiled.resolved, config=config))
+    return replace(compiled, resolved=settled(compiled.resolved, agent_version=selector))
 
 
 def test_sst_val720_fires() -> None:

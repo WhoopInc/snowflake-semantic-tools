@@ -1,28 +1,28 @@
-"""Parse an agent's eval config file, and the `evals:` defaults block of `sst_config.yml`.
+"""Parse an agent's eval config file, and the `evals:` block of `sst_config.yml`.
 
-The defaults are returned apart and never merged into a config here. The catalog loader
-fills in the defaults that only stand in for an unset value -- `+metrics`, `+metric_version`
-and `+judge_model` -- before validation; the others are read by whoever needs them, so the
-validator can tell a value the config sets from one it inherits.
+A config's own settings are its `config:` block, keyed as the `evals:` `+` keys without their
+`+`; the catalog loader resolves them over the folder routes of the config's agent and the
+block root, and fills in what stands in for an unset value -- `metrics`, `metric_version` and
+`judge_model` -- before validation.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from types import MappingProxyType
 
 from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml
 from snowflake_semantic_tools.adapters.yaml.evals.readers import (
     optional_bool_field,
-    optional_int_field,
     optional_string_field,
     origin_at,
     parse_threshold,
     required_string,
     string_tuple,
 )
-from snowflake_semantic_tools.adapters.yaml.fields import optional_int, optional_string
+from snowflake_semantic_tools.adapters.yaml.fields import optional_string
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
-from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
+from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE, resolve_settings
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_KNOWN_TERMINAL_STATUSES,
     EVAL_MINT_POLICIES,
@@ -31,29 +31,43 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalConfig,
     EvalDatasetConfig,
     EvalDefaults,
-    EvalRetention,
     EvalRunConfig,
     EvalSystemMetric,
+    eval_defaults,
 )
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, single_template_call
 from snowflake_semantic_tools.domain.resolve.calls import call_problem, malformed_field, syntax_problem
+from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
+
+# Settings an earlier draft read outside `config:`, by the path that held them, with where each is
+# set now. Each is an error, so a file still writing one learns it no longer does anything.
+_MOVED: Mapping[tuple[str, ...], str] = MappingProxyType(
+    {
+        ("agent_version",): "an eval config sets it under config:, as config.agent_version",
+        ("run", "tier"): "an eval config sets it under config:, as config.eval_tier",
+        ("run", "retry"): "an eval config sets it under config:, as config.retry",
+        ("run", "concurrency"): "an eval config sets it under config:, as config.concurrency",
+        ("run", "baseline_runs"): "an eval config sets it under config:, as config.baseline_runs",
+        ("run", "retention"): "an eval config sets its retention class under config:, as config.retention",
+    }
+)
 
 
 def parse_eval_defaults(value: object, *, file: str = CONFIG_FILE) -> tuple[EvalDefaults, DiagnosticBag]:
-    """Parse the `evals:` block of the configuration file into the defaults every eval inherits.
+    """Parse the `evals:` block of the configuration file into its root's settings.
 
     `file` is how diagnostics name the configuration file the run read.
 
-    An absent block reads as the empty defaults. `+metrics` is checked for its type and each
-    name it lists, and a string `+eval_tier` for its value; any other value of the wrong type
-    reads as unset, unreported. A `+metrics` name that is not a system metric is reported and
-    left out, and a repeated one is kept once.
+    An absent block reads as no settings. The root's and each folder route's `+metrics` are
+    checked for their type and each name they list, and a string `+eval_tier` at the root for
+    its value; any other value of the wrong type reads as unset, unreported. A `+metrics` name
+    that is not a system metric is reported and left out, and a repeated one is kept once.
 
     Returns:
-        The defaults, and the diagnostics about the block.
+        The root's settings, and the diagnostics about the block.
 
     Diagnostics:
-        SST-PRS003: the block is not a mapping, or `+metrics` is not a list of strings.
+        SST-PRS003: the block is not a mapping, or a `+metrics` is not a list of strings.
         SST-PRS013: a `+metrics` name is not a system metric, or `+eval_tier` is neither
             `blocking` nor `report`.
     """
@@ -65,7 +79,9 @@ def parse_eval_defaults(value: object, *, file: str = CONFIG_FILE) -> tuple[Eval
         )
     diagnostics: list[Diagnostic] = []
     origin = Origin(file)
-    metrics = _default_metrics(value.get("+metrics"), file, origin, diagnostics)
+    for path, block in _route_blocks(value, ("evals",)):
+        if "+metrics" in block:
+            _default_metrics(block.get("+metrics"), ".".join((*path, "+metrics")), file, origin, diagnostics)
     eval_tier = optional_string(value.get("+eval_tier"))
     if eval_tier is not None and eval_tier not in {"blocking", "report"}:
         diagnostics.append(
@@ -78,38 +94,37 @@ def parse_eval_defaults(value: object, *, file: str = CONFIG_FILE) -> tuple[Eval
                 origin=origin,
             )
         )
-    return (
-        EvalDefaults(
-            eval_tier=eval_tier,
-            metrics=metrics,
-            metric_version=optional_string(value.get("+metric_version")),
-            judge_model=optional_string(value.get("+judge_model")),
-            agent_version=optional_string(value.get("+agent_version")),
-            retry=optional_int(value.get("+retry")),
-            concurrency=optional_int(value.get("+concurrency")),
-            baseline_runs=optional_int(value.get("+baseline_runs")),
-            min_dataset_rows=optional_int(value.get("+min_dataset_rows")),
-            retention=optional_string(value.get("+retention")),
-        ),
-        DiagnosticBag(tuple(diagnostics)),
-    )
+    return eval_defaults(resolve_settings(value, ())), DiagnosticBag(tuple(diagnostics))
 
 
-def _default_metrics(value: object, file: str, origin: Origin, diagnostics: list[Diagnostic]) -> tuple[str, ...]:
-    """Read `evals.+metrics`: the system metrics it names, in order, each once.
+def _route_blocks(
+    block: Mapping[str, object], path: tuple[str, ...]
+) -> list[tuple[tuple[str, ...], dict[str, object]]]:
+    """Return the block and each folder route below it, with its path, depth first."""
+    found: list[tuple[tuple[str, ...], dict[str, object]]] = [(path, {str(key): item for key, item in block.items()})]
+    for key, child in block.items():
+        if not str(key).startswith("+") and isinstance(child, dict):
+            found.extend(_route_blocks(child, (*path, str(key))))
+    return found
+
+
+def _default_metrics(
+    value: object, field: str, file: str, origin: Origin, diagnostics: list[Diagnostic]
+) -> tuple[str, ...]:
+    """Read one `+metrics`, or an eval config's `config.metrics`: the system metrics it names, each once.
 
     Diagnostics:
         SST-PRS003: the value is not a list of strings.
         SST-PRS013: a name is not a system metric; it is left out.
     """
     names: list[str] = []
-    for name in string_tuple(value, "evals.+metrics", origin, diagnostics):
+    for name in string_tuple(value, field, origin, diagnostics):
         if name not in SYSTEM_EVAL_METRICS:
             diagnostics.append(
                 D(
                     "SST-PRS013",
                     artifact=file,
-                    field="evals.+metrics",
+                    field=field,
                     found=name,
                     expected=", ".join(sorted(SYSTEM_EVAL_METRICS)),
                     origin=origin,
@@ -125,13 +140,18 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
 
     Custom metrics are returned as the names their `eval_metric()` references give; the caller
     resolves them. `database`, `schema` and `enabled` are recorded as the location keys the
-    file sets, for the validator to refuse. Fields are read, and reported, in this order:
-    `agent`, `name`, `agent_version`, `dataset`, `metrics`, `run`, `sweep`.
+    file sets, for the validator to refuse, and the `config:` block as written, for the caller
+    to resolve. Fields are read, and reported, in this order: `agent`, `name`, `config`,
+    `dataset`, `metrics`, `run`, `sweep`; then the settings written outside `config:`.
 
     Diagnostics:
         SST-PRS002: `agent`, `name` or `metrics` is absent.
         SST-PRS003: a field has the wrong type, such as a `run:` block that is not a mapping.
-        SST-PRS013: `run.tier` or a `run.accept_statuses` entry is not an accepted value.
+        SST-PRS013: a `run.accept_statuses` entry, or a `config.metrics` name, is not an
+            accepted value.
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+            reports the `config:` block.
+        SST-PRS126: the file writes `agent_version`, or a `run:` setting, outside `config:`.
         SST-PRS018: an entry of `metrics.system` or `metrics.custom` has the wrong type.
         SST-PRS019: a boolean field, such as a system metric's `gate`, is not a boolean.
         SST-LOD004, SST-REF033, SST-REF003, SST-REF015: a `metrics.custom` entry is not exactly
@@ -143,7 +163,8 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
     origin = origin_at(parsed, (), source_file)
     agent = required_string(tree, "agent", source_file, parsed, diagnostics)
     name = required_string(tree, "name", source_file, parsed, diagnostics)
-    agent_version = optional_string_field(tree, "agent_version", source_file, parsed, diagnostics)
+    item_config = tree.get("config")
+    _check_item_config(source_file, parsed, item_config, diagnostics)
     dataset = _parse_dataset_config(source_file, parsed, tree.get("dataset"), diagnostics)
     metrics = tree.get("metrics")
     system_metrics: tuple[EvalSystemMetric, ...] = ()
@@ -167,18 +188,62 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
         custom_metric_names = _parse_custom_refs(source_file, parsed, metrics.get("custom"), diagnostics)
     run = _parse_run(source_file, parsed, tree.get("run"), diagnostics)
     _reject_sweep(source_file, parsed, tree.get("sweep"), diagnostics)
+    diagnostics.extend(_moved_settings(source_file, parsed))
     return EvalConfig(
         origin,
         source_file,
         agent,
-        agent_version,
         dataset,
         system_metrics,
         custom_metric_names,
         run,
         tuple(key for key in ("database", "schema", "enabled") if key in tree),
         name,
+        item_config,
     )
+
+
+def _check_item_config(source_file: str, parsed: ParsedYaml, value: object, diagnostics: list[Diagnostic]) -> None:
+    """Check a config's `config:` block against the `evals:` settings, and the system metrics it names.
+
+    Diagnostics:
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+            reports them.
+        SST-PRS013: a `config.metrics` name is not a system metric.
+    """
+    diagnostics.extend(
+        item_config_diagnostics(
+            "evals",
+            value,
+            subject=source_file,
+            origin_of=lambda key: origin_at(parsed, ("config", key) if key else ("config",), source_file),
+        )
+    )
+    if isinstance(value, Mapping) and isinstance(value.get("metrics"), list):
+        origin = origin_at(parsed, ("config", "metrics"), source_file)
+        _default_metrics(value["metrics"], "config.metrics", source_file, origin, diagnostics)
+
+
+def _moved_settings(source_file: str, parsed: ParsedYaml) -> tuple[Diagnostic, ...]:
+    """Report each setting the file writes where an earlier draft read it, outside `config:`.
+
+    Diagnostics:
+        SST-PRS126: once per such setting, naming the `config:` key that replaced it.
+    """
+    found: list[Diagnostic] = []
+    for path, reason in _MOVED.items():
+        holder = parsed.tree.get(path[0]) if len(path) > 1 else parsed.tree
+        if isinstance(holder, Mapping) and path[-1] in holder:
+            found.append(
+                D(
+                    "SST-PRS126",
+                    origin=origin_at(parsed, path, source_file),
+                    artifact=source_file,
+                    field=".".join(path),
+                    reason=reason,
+                )
+            )
+    return tuple(found)
 
 
 def _parse_dataset_config(
@@ -371,13 +436,13 @@ def _parse_run(
 ) -> EvalRunConfig | None:
     """Parse the `run:` block, or return None when it is absent or not a mapping.
 
-    Retention, the accepted statuses and the tier are read first, in that order, then the
-    remaining fields in the order `EvalRunConfig` takes them; reports follow the same order.
+    The accepted statuses are read first, then the remaining fields in the order
+    `EvalRunConfig` takes them; reports follow the same order.
 
     Diagnostics:
-        SST-PRS003: the block or its `retention` is not a mapping, a status or retention list
-            is not a list of strings, or a string or integer field has the wrong type.
-        SST-PRS013: `tier` or an accepted status is not an accepted value.
+        SST-PRS003: the block is not a mapping, the status list is not a list of strings, or a
+            string field has the wrong type.
+        SST-PRS013: an accepted status is not an accepted value.
     """
     origin = origin_at(parsed, ("run",), source_file)
     if value is None:
@@ -394,54 +459,14 @@ def _parse_run(
             )
         )
         return None
-    retention = _parse_retention(source_file, value.get("retention"), origin, diagnostics)
     accept_statuses = _parse_accept_statuses(source_file, value, origin, diagnostics)
-    tier = _parse_tier(source_file, parsed, value, origin, diagnostics)
     return EvalRunConfig(
         optional_string_field(value, "name_template", source_file, parsed, diagnostics, ("run",)),
         optional_string_field(value, "label", source_file, parsed, diagnostics, ("run",)),
         optional_string_field(value, "description", source_file, parsed, diagnostics, ("run",)),
         optional_string_field(value, "variant", source_file, parsed, diagnostics, ("run",)),
-        retention,
-        tier,
-        optional_int_field(value, "retry", source_file, origin, diagnostics),
-        optional_int_field(value, "concurrency", source_file, origin, diagnostics),
-        optional_int_field(value, "baseline_runs", source_file, origin, diagnostics),
         accept_statuses,
     )
-
-
-def _parse_retention(
-    source_file: str,
-    retention_value: object,
-    origin: Origin,
-    diagnostics: list[Diagnostic],
-) -> EvalRetention:
-    """Parse `run.retention`; an absent block, or one that is not a mapping, reads as the default.
-
-    Diagnostics:
-        SST-PRS003: the block is not a mapping, or `audit` or `decision` is not a list of strings.
-    """
-    retention = EvalRetention()
-    if retention_value is not None:
-        if not isinstance(retention_value, dict):
-            diagnostics.append(
-                D(
-                    "SST-PRS003",
-                    artifact=source_file,
-                    field="run.retention",
-                    expected="mapping",
-                    found=type(retention_value).__name__,
-                    origin=origin,
-                )
-            )
-        else:
-            retention = EvalRetention(
-                string_tuple(retention_value.get("audit"), "run.retention.audit", origin, diagnostics),
-                string_tuple(retention_value.get("decision"), "run.retention.decision", origin, diagnostics),
-                optional_int(retention_value.get("decision_window_days")),
-            )
-    return retention
 
 
 def _parse_accept_statuses(
@@ -470,34 +495,6 @@ def _parse_accept_statuses(
                 )
             )
     return accept_statuses
-
-
-def _parse_tier(
-    source_file: str,
-    parsed: ParsedYaml,
-    value: Mapping[str, object],
-    origin: Origin,
-    diagnostics: list[Diagnostic],
-) -> str | None:
-    """Parse `run.tier`; a tier other than `blocking` or `report` is reported and still kept.
-
-    Diagnostics:
-        SST-PRS003: the field is not a non-empty string.
-        SST-PRS013: the tier is neither `blocking` nor `report`.
-    """
-    tier = optional_string_field(value, "tier", source_file, parsed, diagnostics, ("run",))
-    if tier is not None and tier not in {"blocking", "report"}:
-        diagnostics.append(
-            D(
-                "SST-PRS013",
-                artifact=source_file,
-                field="run.tier",
-                found=tier,
-                expected="blocking, report",
-                origin=origin,
-            )
-        )
-    return tier
 
 
 def _reject_sweep(source_file: str, parsed: ParsedYaml, value: object, diagnostics: list[Diagnostic]) -> None:

@@ -284,13 +284,22 @@ def render_eval_config(
     *,
     agent_target: QualifiedName,
     dataset_target: QualifiedName,
+    agent_version: str | None,
 ) -> str:
-    """Emit only Snowflake's closed evaluation and metrics schema; disabled custom metrics are left out."""
+    """Emit only Snowflake's closed evaluation and metrics schema; disabled custom metrics are left out.
+
+    Args:
+        agent_version: The eval's resolved `agent_version` setting: `committed`, `alias:<name>`
+            or `VERSION$<n>`.
+
+    Raises:
+        ValueError: `agent_version` is None.
+    """
     evaluation: dict[str, object] = {
         "agent_params": {
             "agent_name": agent_target.sql,
             "agent_type": "CORTEX AGENT",
-            "agent_version": _agent_version(config.agent_version),
+            "agent_version": _agent_version(agent_version),
         },
     }
     if config.run is not None:

@@ -8,7 +8,6 @@ from types import MappingProxyType
 from typing import Any
 
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
-from snowflake_semantic_tools.adapters.yaml.routes import folder_route_diagnostics
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.config_schema import (
     Setting,
@@ -61,15 +60,6 @@ def _view_provenance(settings: Mapping[str, Setting], location: DbtTarget) -> Ma
         {**settings, **rendered}, {"database": location.database, "schema": location.schema, "enabled": True}
     )
     return MappingProxyType({item.key: item for item in filled})
-
-
-def _folder_route_diagnostics(config: dict[str, Any], views_dir: Path) -> tuple[Diagnostic, ...]:
-    """Report each folder route under `semantic_views:` that names no directory under `views_dir`.
-
-    Diagnostics:
-        SST-CFG041: as `folder_route_diagnostics` reports it.
-    """
-    return folder_route_diagnostics(config, "semantic_views", views_dir)
 
 
 def _stray_view_diagnostics(documents: RawDocuments, views_dir: Path) -> tuple[Diagnostic, ...]:

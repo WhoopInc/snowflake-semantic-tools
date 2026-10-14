@@ -603,7 +603,7 @@ sst test [OPTIONS]
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
 | `--golden-dir` | DIRECTORY | `expected/ddl` | Directory of the semantic view DDL goldens, taken from the project directory when relative; the other types' goldens sit in directories beside it. |
 | `--update-golden` | flag |  | Rewrite each golden the current output no longer equals, and create missing ones; runs the golden suite only. Refused with `--suite smoke` or `evals`, and when `$CI` is set to anything but empty, `0`, `false` or `no`. |
-| `--threads` | INTEGER RANGE |  | Smoke probes, and eval runs neither `evals.+concurrency` nor an eval's `run.concurrency` paces, run at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1. |
+| `--threads` | INTEGER RANGE |  | Smoke probes, and eval runs neither `evals.+concurrency` nor an eval's `concurrency` setting paces, run at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1. |
 | `--fail-fast` | flag |  | Stop the smoke or eval suite at its first failing probe or eval, running them one at a time, and run no suite after one that fails. The golden suite always compares every golden. |
 | `--capture-baseline` | flag |  | Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires `--reason`, and a run of the eval suite: refused with `--update-golden`, a `--suite` that does not name `evals`, or no `--suite` when the eval suite does not apply. |
 | `--reason` | TEXT |  | Why the baseline is changing; stored with it. Requires `--capture-baseline`. |

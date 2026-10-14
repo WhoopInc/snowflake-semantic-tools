@@ -1,4 +1,4 @@
-"""SST-CFG036: a `skills.extensions` or `tags` entry cannot be qualified to a three-part name."""
+"""SST-CFG036: an `extensions` or `tags` entry cannot be qualified to a three-part name."""
 
 from __future__ import annotations
 
@@ -13,23 +13,21 @@ from tests.helpers.seam_projects import SmallProject, view_file
 
 
 def test_sst_cfg036_fires() -> None:
-    resolved, [diagnostic] = consumed_extensions(
-        {"skills": {"extensions": {"glossary": None}}}, target(), file="sst_config.yaml"
-    )
+    resolved, [diagnostic] = consumed_extensions({"extensions": {"glossary": None}}, target(), file="sst_config.yaml")
     assert (diagnostic.code, diagnostic.severity) == ("SST-CFG036", Severity.ERROR)
     assert diagnostic.message == (
-        "skills.extensions: 'glossary' cannot be qualified -- no fqn: and the block sets no default_prefix"
+        "extensions: 'glossary' cannot be qualified -- no fqn: and the block sets no default_prefix"
     )
     assert diagnostic.suggestion == (
-        "set fqn: on the entry under `skills.extensions` or `tags:`, or set default_prefix on that block"
+        "set fqn: on the entry under `extensions:` or `tags:`, or set default_prefix on that block"
     )
-    assert (diagnostic.subject, diagnostic.origin) == ("config:skills.extensions.glossary", Origin("sst_config.yaml"))
+    assert (diagnostic.subject, diagnostic.origin) == ("config:extensions.glossary", Origin("sst_config.yaml"))
     assert resolved == {}
 
 
 def test_sst_cfg036_silent() -> None:
     resolved, diagnostics = consumed_extensions(
-        {"skills": {"extensions": {"default_prefix": "DB.EXT", "glossary": None}}}, target()
+        {"extensions": {"default_prefix": "DB.EXT", "glossary": None}}, target()
     )
     assert (resolved["glossary"].sql, diagnostics) == ("DB.EXT.GLOSSARY", ())
 

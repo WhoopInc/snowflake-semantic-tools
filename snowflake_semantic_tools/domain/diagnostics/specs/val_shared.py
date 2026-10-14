@@ -30,7 +30,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "rename one of them",
         condition=(
             "a skill or plugin this project publishes has the name of an extension it consumes under "
-            "`skills.extensions`, compared case-insensitively"
+            "`extensions:`, compared case-insensitively"
         ),
     ),
     spec(

@@ -1,6 +1,6 @@
 """Check an artifact's `config:` block: each key it sets must be a setting of its block, with a value.
 
-A semantic view's or an agent's `config:` block is the only place the artifact overrides the
+An artifact's `config:` block is the only place the artifact overrides the
 defaults its block and folder routes give it. Its keys are exactly the block's `+` keys,
 written without the `+`, and a value is checked by the rules the configuration file applies
 to that `+` key, so the two cannot drift.

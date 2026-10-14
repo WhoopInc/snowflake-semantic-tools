@@ -48,6 +48,7 @@ from tests.helpers.eval_builders import (
     result_rows,
     status_result,
 )
+from tests.helpers.eval_inputs import settled
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from tests.helpers.project_inputs import InMemoryProjectInputs
 
@@ -159,9 +160,7 @@ def gated_eval(tier: str | None = None) -> CompileResult:
         resolved.config.system_metrics[0].origin, "answer_correctness", "v3", True, ThresholdRange(0.5)
     )
     config = replace(resolved.config, system_metrics=(metric,))
-    if tier is not None and config.run is not None:
-        config = replace(config, run=replace(config.run, tier=tier))
-    return compile_eval(replace(resolved, config=config))
+    return compile_eval(settled(replace(resolved, config=config), eval_tier=tier))
 
 
 def test_a_captured_baseline_lets_the_next_gate_pass_then_report_a_regression() -> None:
@@ -214,9 +213,8 @@ def retried_eval(*, retry: int, baseline_runs: int | None = None) -> CompileResu
     metric = EvalSystemMetric(
         resolved.config.system_metrics[0].origin, "answer_correctness", "v3", True, ThresholdRange(0.5)
     )
-    assert resolved.config.run is not None
-    run = replace(resolved.config.run, tier="blocking", retry=retry, baseline_runs=baseline_runs)
-    return compile_eval(replace(resolved, config=replace(resolved.config, system_metrics=(metric,), run=run)))
+    gating = replace(resolved, config=replace(resolved.config, system_metrics=(metric,)))
+    return compile_eval(settled(gating, eval_tier="blocking", retry=retry, baseline_runs=baseline_runs))
 
 
 def settle_reads() -> int:
@@ -325,7 +323,9 @@ def test_a_baseline_with_too_few_completed_attempts_is_refused() -> None:
 
 def test_a_capture_takes_the_baseline_runs_of_the_eval_before_the_default() -> None:
     resolved = resolved_eval()
-    eval_with_runs = replace(resolved, config=replace(resolved.config, run=EvalRunConfig(label="ci", baseline_runs=2)))
+    eval_with_runs = settled(
+        replace(resolved, config=replace(resolved.config, run=EvalRunConfig(label="ci"))), baseline_runs=2
+    )
     result = compile_eval(eval_with_runs)
     capture = EvalGateRequest(capture_baseline=True, reason="initial")
     second = status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R2")

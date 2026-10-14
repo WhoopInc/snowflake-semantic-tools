@@ -26,7 +26,7 @@ def project() -> CompileResult:
         "analyst", "profiles/analyst", "P.", "Data", ("solo",), (), (), "Be brief.\n", Origin("p"), plugins=("kit",)
     )
     inputs = InMemoryProjectInputs(
-        tree={"skills": CHANNELS},
+        tree=dict(CHANNELS),
         views=SemanticViewProject((view("SALES"),)),
         skills=SkillCatalog((skill("solo"),), (plugin("kit", "solo"),)),
         profiles=ProfileCatalog((profile,)),

@@ -123,7 +123,7 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "else 4; 1 reads serially. The plan is the same for any count."
     ),
     ("sst test", "--threads"): (
-        "Smoke probes, and eval runs neither `evals.+concurrency` nor an eval's `run.concurrency` paces, "
+        "Smoke probes, and eval runs neither `evals.+concurrency` nor an eval's `concurrency` setting paces, "
         "run at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1."
     ),
     ("sst compile", "--database"): "Resolve refs against this database instead of the target's.",

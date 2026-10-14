@@ -92,6 +92,10 @@ class ArtifactType:
         dir_key: The `project.` configuration key naming the directory its files are under.
         nested_under: The type inside each of whose artifact folders its own files are; "" for
             a type whose directory is `dir_key` itself.
+        routed_block: The `sst_config.yml` block whose `+` keys and folder routes its artifacts'
+            settings resolve through; "" for a type routed some other way.
+        route_dir: The directory below `dir_key` that `routed_block`'s folder routes start from;
+            "" when they start from `dir_key` itself.
     """
 
     name: str
@@ -118,6 +122,8 @@ class ArtifactType:
     validation_rules: tuple[str, ...] = ()
     dir_key: str = ""
     nested_under: str = ""
+    routed_block: str = ""
+    route_dir: str = ""
 
     def grant_preservation_of(self, object_type: str) -> GrantPreservation | None:
         """Return how an object of `object_type` keeps its grants; None for a kind the type lacks."""
@@ -492,6 +498,8 @@ ARTIFACT_REGISTRY = build_registry(
             publishes="SEMANTIC VIEW",
             validation_rules=("shared", "semantic_view"),
             dir_key="semantic_models_dir",
+            routed_block="semantic_views",
+            route_dir="semantic_views",
         ),
         ArtifactType(
             name="tool",
@@ -536,14 +544,15 @@ ARTIFACT_REGISTRY = build_registry(
             lifecycle=ArtifactLifecycle.COMPOSITE,
             summary=(
                 "One `SKILL.md` folder, flattened and published as a version of a skill-type Cortex "
-                "Extension. The version alias is `skills.+version_prefix` and 12 hex characters of the "
-                "bundle digest, so a version is never rewritten: a change adds a new one, and `--prune` "
-                "only reports one whose folder was deleted."
+                "Extension wherever its `+bundle_stage` resolves. The version alias is its "
+                "`+version_prefix` and 12 hex characters of the bundle digest, so a version is never "
+                "rewritten: a change adds a new one, and `--prune` only reports one whose folder was deleted."
             ),
             authored_in="a `SKILL.md` folder in `project.skills_dir`",
             publishes="CORTEX EXTENSION (TYPE = 'SKILL') and its bundle stage",
             validation_rules=("shared", "skill"),
             dir_key="skills_dir",
+            routed_block="skills",
         ),
         ArtifactType(
             name="plugin",
@@ -564,6 +573,7 @@ ARTIFACT_REGISTRY = build_registry(
             publishes="CORTEX EXTENSION (TYPE = 'PLUGIN') and its bundle stage",
             validation_rules=("shared", "skill"),
             dir_key="plugins_dir",
+            routed_block="plugins",
         ),
         ArtifactType(
             name="profile",
@@ -585,6 +595,7 @@ ARTIFACT_REGISTRY = build_registry(
             publishes="profile stage trees and one profile registry row",
             validation_rules=("shared", "skill"),
             dir_key="profiles_dir",
+            routed_block="profiles",
         ),
         ArtifactType(
             name="agent",
@@ -606,6 +617,7 @@ ARTIFACT_REGISTRY = build_registry(
             publishes="AGENT",
             validation_rules=("shared", "agent"),
             dir_key="agents_dir",
+            routed_block="agents",
         ),
         ArtifactType(
             name="eval",
@@ -631,6 +643,7 @@ ARTIFACT_REGISTRY = build_registry(
             validation_rules=("shared", "eval"),
             dir_key="agents_dir",
             nested_under="agent",
+            routed_block="evals",
         ),
     ),
     (

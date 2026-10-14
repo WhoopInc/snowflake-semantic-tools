@@ -130,7 +130,7 @@ and SST resolves the name for the target being built:
 | `{{ tool('group', 'name') }}` | a member of a tool group | agent specs |
 | `{{ skill('name') }}`, `{{ plugin('name') }}` | a skill or plugin this project publishes, pinned to its current version | agent skill sources, plugin and profile members |
 | `{{ command('path') }}`, `{{ mcp_server('name') }}`, `{{ hook('name') }}` | a command, MCP config or hook the project holds | profile members |
-| `{{ extension('name') }}` | an extension another project publishes, from `skills.extensions` | agent skill sources |
+| `{{ extension('name') }}` | an extension another project publishes, from `extensions:` | agent skill sources |
 | `{{ eval_dataset('name') }}`, `{{ eval_config('name') }}` | the dataset or config file of that `name:` in the agent's `evals/` folder | an agent's `evals:` |
 | `{{ eval_metric('name') }}` | a custom judge metric | eval configs |
 | `{{ file('path') }}` | the contents of a file beside the artifact | agent instructions, a verified query's `sql:` |

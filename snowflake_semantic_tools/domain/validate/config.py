@@ -71,14 +71,13 @@ def validate_config(
         SST-CFG003: a key is not declared where it is written.
         SST-CFG004: a value has the wrong type, or an entry of `dbt.manifest_schema_versions` is
             not an integer.
-        SST-CFG006: a required key is absent.
         SST-CFG007: an unknown top-level key is within two edits of a declared one.
-        SST-CFG008: a value is outside its choices or bounds, or is not its fixed value;
+        SST-CFG008: a value is outside its choices or bounds;
             `enrichment.sample_values_display_limit` exceeds `enrichment.distinct_limit`; or
             `dbt.manifest_schema_versions` is an empty list.
         SST-CFG015: `evals` sets `+database` or `+schema`.
         SST-CFG040: `vars` declares `sha_version`, which SST supplies.
-        SST-CFG042: `evals` or `skills` declares a folder route.
+        SST-CFG042: a block sets a key it no longer takes, which another block now holds.
         SST-CFG043: a removed key is set; the message says what replaced it.
         SST-CFG023: `semantic_views.+max_staleness` is below 120 seconds.
         SST-CFG054: a `+` key is written with no value.
@@ -88,10 +87,6 @@ def validate_config(
             `snowflake.orchestration_models`.
         SST-CFG033: a severity override demotes a non-demotable code, an error below warning, or
             promotes an info code to error.
-        SST-VAL817: `skills` configures neither the catalog nor the stage channel.
-        SST-VAL818: a channel's `+flatten` is not the value that channel requires.
-        SST-VAL819: `skills.stage.+auto_compress` is true.
-        SST-VAL821: `skills.stage.+layout` is not `by_type`.
     """
     diagnostics: list[Diagnostic] = []
     located = _Located(positions or {}, file)
@@ -301,7 +296,7 @@ def _walk(
     positions: _Located,
     diagnostics: list[Diagnostic],
 ) -> None:
-    """Check each entry of one block, then what the block as a whole leaves out.
+    """Check each entry of one block, then what its values imply together.
 
     `entry_path` is the declared path whose children apply, which for a folder route
     is the routed block's own path; `actual` is the path as written in the file.
@@ -323,7 +318,7 @@ def _walk(
             )
             continue
         _check(spec, child, path, positions, diagnostics, route_of=entry_path if route else None)
-    diagnostics.extend(_block_problems(entry_path, declared, value, actual, positions))
+    diagnostics.extend(_block_problems(entry_path, value, actual, positions))
 
 
 def _child_spec(declared: Mapping[str, ConfigKey], policy: ChildPolicy, key: str) -> tuple[ConfigKey | None, bool]:
@@ -338,27 +333,14 @@ def _child_spec(declared: Mapping[str, ConfigKey], policy: ChildPolicy, key: str
 
 
 def _block_problems(
-    entry_path: str,
-    declared: Mapping[str, ConfigKey],
-    value: Mapping[Any, object],
-    actual: tuple[str, ...],
-    positions: _Located,
+    entry_path: str, value: Mapping[Any, object], actual: tuple[str, ...], positions: _Located
 ) -> list[Diagnostic]:
-    """Diagnose the required children a block leaves out, then a missing `one_of` alternative."""
-    present = {str(key) for key in value}
-    problems = [
-        _diagnostic("SST-CFG006", (*actual, spec.name), positions, key=spec.path)
-        for spec in declared.values()
-        if spec.required and spec.name not in present
-    ]
-    block = CONFIG_KEYS.get(entry_path)
-    if block is not None and block.one_of and not any(name in present for name in block.one_of):
-        problems.append(_diagnostic("SST-VAL817", actual, positions, key=entry_path))
+    """Diagnose what one block's values imply together: the enrichment limits, the manifest versions."""
     if entry_path == "enrichment":
-        problems.extend(_enrichment_limit_problems(value, actual, positions))
+        return _enrichment_limit_problems(value, actual, positions)
     if entry_path == "dbt":
-        problems.extend(_schema_version_problems(value, actual, positions))
-    return problems
+        return _schema_version_problems(value, actual, positions)
+    return []
 
 
 def _schema_version_problems(
@@ -475,8 +457,7 @@ def _check(
         return
     if value is None:
         # An empty YAML value means unset: a scalar keeps its default, and a block
-        # is checked as an empty block so its required children are still named.
-        # Every required key is a `+` key, so an empty one was reported above.
+        # is checked as an empty block.
         if spec.kind not in (KeyKind.BLOCK, KeyKind.MAP):
             return
         value = {}
@@ -494,7 +475,7 @@ def _check(
 def _status_problem(spec: ConfigKey, path: tuple[str, ...], positions: _Located) -> Diagnostic:
     """Diagnose a key that is set although SST no longer reads it."""
     if spec.code == "SST-CFG042":
-        return _diagnostic(spec.code, path, positions, block=path[0], key=path[-1])
+        return _diagnostic(spec.code, path, positions, block=path[0], key=path[-1], reason=spec.replacement)
     if spec.code == "SST-CFG015":
         return _diagnostic(spec.code, path, positions, key=path[-1])
     if spec.code == "SST-CFG040":
@@ -508,7 +489,7 @@ def _value_problem(spec: ConfigKey, value: object, path: tuple[str, ...], positi
 
 
 def value_problem(spec: ConfigKey, value: object, *, key: str, origin: Origin, subject: str) -> Diagnostic | None:
-    """Return the first rule a declared key's value breaks: its type, choices, fixed value, then bounds.
+    """Return the first rule a declared key's value breaks: its type, its choices, then its bounds.
 
     The configuration file and an artifact's `config:` block check a value by the same rules,
     each reporting it where it is written.
@@ -518,8 +499,8 @@ def value_problem(spec: ConfigKey, value: object, *, key: str, origin: Origin, s
 
     Diagnostics:
         SST-CFG004: the value is not of the key's type; an integer key never takes a boolean.
-        SST-CFG008: the value is outside the key's choices or bounds, or is not its fixed value,
-            unless the key names its own code for that, such as SST-CFG023.
+        SST-CFG008: the value is outside the key's choices or bounds, unless the key names its own
+            code for that, such as SST-CFG023.
     """
     expected = _TYPES.get(spec.kind)
     mistyped = expected is not None and not isinstance(value, expected)
@@ -530,9 +511,6 @@ def value_problem(spec: ConfigKey, value: object, *, key: str, origin: Origin, s
     code = spec.code or "SST-CFG008"
     if spec.choices and (vocabulary_key(str(value)) if spec.folded else value) not in spec.choices:
         return D(code, origin=origin, subject=subject, key=key, found=repr(value), expected=", ".join(spec.choices))
-    if spec.fixed is not None and value is not spec.fixed:
-        found, wanted = str(value).lower(), str(spec.fixed).lower()
-        return D(code, origin=origin, subject=subject, key=key, found=found, expected=wanted)
     if isinstance(value, int) and not isinstance(value, bool) and _out_of_bounds(spec, value):
         bounds = f"{spec.minimum}..{spec.maximum}"
         return D(code, origin=origin, subject=subject, key=key, found=str(value), expected=bounds)

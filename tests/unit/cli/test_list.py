@@ -101,6 +101,18 @@ def test_list_long_prints_each_setting_with_where_it_came_from(tmp_path: Path) -
     items = {item["key"]: item for item in json.loads(listed.output)["data"]["items"]}
     assert items["semantic_view:jaffle_sales"]["settings"]["max_staleness"] == {"value": 300, "source": "config"}
     assert items["agent:jaffle_minimal_agent"]["settings"]["schema"] == {"value": "OPS", "source": "route:ops"}
-    assert items["skill:jaffle-semantics"]["settings"] == {}
+    assert items["skill:jaffle-semantics"]["settings"]["bundle_stage"] == {
+        "value": "SKILL_BUNDLE_SRC",
+        "source": "root",
+    }
+    assert items["skill:jaffle-operations"]["settings"]["schema"] == {
+        "value": "JAFFLE",
+        "source": "route:jaffle-operations",
+    }
+    # A root-only key paces the run, not the skill, so no skill reports it.
+    assert "threads" not in items["skill:jaffle-semantics"]["settings"]
+    assert items["plugin:jaffle-toolkit"]["settings"]["certified"] == {"value": False, "source": "config"}
+    assert items["profile:jaffle-analyst"]["settings"]["registry_table"]["source"] == "root"
+    assert items["eval:jaffle_analytics_agent"]["settings"]["retention"] == {"value": "audit", "source": "config"}
     short = CliRunner().invoke(cli, ["list", "--project-dir", str(project), "-o", "json"])
     assert all("settings" not in item for item in json.loads(short.output)["data"]["items"])

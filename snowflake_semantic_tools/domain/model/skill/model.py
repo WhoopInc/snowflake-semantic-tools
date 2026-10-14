@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import json
 import posixpath
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from hashlib import sha256
+from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
@@ -63,6 +65,10 @@ class Skill:
         declared_name: The frontmatter `name`; None when the frontmatter declares none.
         body: The Markdown after the frontmatter; blank when the skill gives no instructions.
         files: Every published file of the folder, `SKILL.md` included, by path relative to it.
+        folder: The folder below `project.skills_dir`, one segment per directory, its own name
+            last; the `skills:` folder routes along it apply to the skill.
+        config: The frontmatter's `config:` block: the `skills:` settings the skill sets for
+            itself, without their `+`; compile resolves them over the folder routes and the root.
     """
 
     name: str
@@ -72,6 +78,8 @@ class Skill:
     body: str
     files: tuple[SkillFile, ...]
     origin: Origin
+    folder: tuple[str, ...] = ()
+    config: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
 
     @property
     def key(self) -> str:
@@ -105,6 +113,9 @@ class Plugin:
     Attributes:
         directory: The plugin folder, relative to the project root; its name is the plugin's.
         members: The skill names the manifest lists, in its order and with any repeats.
+        folder: The folder below `project.plugins_dir`, one segment per directory, its own name
+            last; the `plugins:` folder routes along it apply to the plugin.
+        config: The manifest's `config:` block, as `Skill.config` is the skill's.
     """
 
     name: str
@@ -114,6 +125,8 @@ class Plugin:
     owner_team: str | None
     members: tuple[str, ...]
     origin: Origin
+    folder: tuple[str, ...] = ()
+    config: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
 
     @property
     def key(self) -> str:

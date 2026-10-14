@@ -82,8 +82,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "skill '{artifact}' would land in schema '{value}'",
         "split for confidentiality, not tidiness; the agent owner then needs USAGE per schema",
         condition=(
-            "a skill's or plugin's extension target is outside the catalog channel's database and "
-            "schema (`skills.catalog.+database`, `+schema`)"
+            "a folder route or a skill's or plugin's own `config:` places its extension outside the "
+            "database and schema its block's root gives (`skills.+database`, `+schema`, or `plugins:`'s)"
         ),
         note="A new skill schema has to be provisioned before any agent can use it.",
     ),
@@ -185,47 +185,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="any skill bundle builds; reports how its bytes split between SKILL.md and the rest",
     ),
     spec(
-        "SST-VAL817",
-        Severity.ERROR,
-        "No publication channel configured",
-        "{key}: configures neither the catalog nor the stage channel",
-        "configure at least one channel",
-        condition="the `skills:` block configures neither `skills.catalog` nor `skills.stage`",
-    ),
-    spec(
-        "SST-VAL818",
-        Severity.ERROR,
-        "Flatten settings are wrong for a channel",
-        "config key '{key}' is {found}; it must be {expected}",
-        "set catalog flatten true and stage flatten false",
-        condition=("`skills.catalog.+flatten` is not true, or `skills.stage.+flatten` is not false"),
-        note="A nested catalog bundle is unreadable by agents; a flattened stage bundle breaks Desktop.",
-    ),
-    spec(
-        "SST-VAL819",
-        Severity.ERROR,
-        "Stage auto_compress is enabled",
-        "config key '{key}' is {found}; it must be {expected}",
-        "set it false",
-        condition="`skills.stage.+auto_compress` is true",
-        note="A compressed upload lands as `<file>.gz`, which hides the skill from Desktop's local cache.",
-    ),
-    spec(
         "SST-VAL820",
         Severity.ERROR,
         "Stage PUT target does not end in a separator",
         "skill '{artifact}': PUT target '{path}' does not end in '/'",
         "append a trailing slash",
         condition="a bundle's or profile tree's stage upload location does not end in '/'",
-    ),
-    spec(
-        "SST-VAL821",
-        Severity.ERROR,
-        "Stage layout is not by_type",
-        "config key '{key}' value {found} is outside {expected}",
-        "set layout to by_type",
-        condition="`skills.stage.+layout` is not by_type",
-        note="The prompts/, mcp/, hooks/ and skills/ prefixes are what Desktop reads and are not configurable.",
     ),
     spec(
         "SST-VAL822",
@@ -313,10 +278,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Skill reaches neither channel",
         "skill '{artifact}' is published nowhere",
-        "reference it from a profile, or enable a channel",
+        "reference it from a profile, or give it a +bundle_stage",
         condition=(
-            "`skills.catalog` is not configured and no profile, plugin a profile names, or the shared "
-            "layer includes the skill"
+            "no `+bundle_stage` resolves for the skill, and no profile, plugin a profile names, or the "
+            "shared layer includes it"
         ),
     ),
     spec(
@@ -506,10 +471,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.INFO,
         "Profile registry is not the one Desktop reads",
         "profiles publish to {value}; CoCo Desktop reads only {expected}",
-        "point skills.stage at the Desktop registry to publish for real, or keep this for rehearsal",
+        "point profiles.+registry_table at the Desktop registry to publish for real, or keep this for rehearsal",
         condition=(
             "profiles publish to a registry other than CORTEX_CODE.CONFIG.PROFILE_REGISTRY, the one "
-            "CoCo Desktop reads (`skills.stage.+database`, `+schema` and `+registry_table`)"
+            "CoCo Desktop reads (`profiles.+database`, `+schema` and `+registry_table`, or a profile's "
+            "own `config:`)"
         ),
     ),
     spec(

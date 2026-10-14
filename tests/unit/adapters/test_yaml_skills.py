@@ -155,3 +155,57 @@ def test_a_skills_root_reached_through_a_link_inside_the_project_is_refused(tmp_
         "could not read skills/kept: skills is a symbolic link, which SST does not follow",
         "could not read skills/kept/SKILL.md: skills is a symbolic link, which SST does not follow",
     }
+
+
+def test_each_item_records_its_folder_and_its_own_settings_and_each_route_is_checked(tmp_path: Path) -> None:
+    owned = "---\nname: close\ndescription: Close.\nconfig:\n  certified: true\n  schema: FIN\n---\nBody.\n"
+    write_tree(
+        tmp_path,
+        {
+            "skills/finance/close/SKILL.md": owned,
+            "skills/top/SKILL.md": GOOD.format(name="top"),
+            # A grouping folder holds only plugin folders; a leaf without a manifest is still one.
+            "plugins/finance/kit/plugin.yml": (
+                "name: kit\ndescription: Kit.\nskills: [\"{{ skill('close') }}\"]\nconfig:\n  version_prefix: KIT_\n"
+            ),
+            "plugins/finance/empty/notes.txt": "x",
+            "plugins/solo/plugin.yml": "name: solo\ndescription: Solo.\nskills: [\"{{ skill('top') }}\"]\n",
+        },
+    )
+    config = {"skills": {"finance": {"+schema": "F"}, "missing": {}}, "plugins": {"finance": {"kit": {}}}}
+    catalog = load_skill_catalog(tmp_path, skills_dir="skills", plugins_dir="plugins", config=config)
+
+    assert [(skill.name, skill.folder, dict(skill.config)) for skill in catalog.skills] == [
+        ("close", ("finance", "close"), {"certified": True, "schema": "FIN"}),
+        ("top", ("top",), {}),
+    ]
+    assert [(item.name, item.folder, dict(item.config)) for item in catalog.plugins] == [
+        ("kit", ("finance", "kit"), {"version_prefix": "KIT_"}),
+        ("solo", ("solo",), {}),
+    ]
+    assert [(item.code, item.subject) for item in catalog.diagnostics] == [
+        ("SST-CFG041", "config_route:missing"),
+        ("SST-VAL801", "plugin:empty"),
+    ]
+
+
+def test_an_items_own_settings_are_checked_against_its_block(tmp_path: Path) -> None:
+    bad = "---\nname: close\ndescription: Close.\nconfig:\n  threads: 2\n  stage: S\n  certified: null\n---\nBody.\n"
+    write_tree(
+        tmp_path,
+        {
+            "skills/close/SKILL.md": bad,
+            "plugins/kit/plugin.yml": "name: kit\ndescription: Kit.\nskills: []\nconfig:\n  bundle_stage: 3\n",
+        },
+    )
+    catalog = load_skill_catalog(tmp_path, skills_dir="skills", plugins_dir="plugins")
+    found = [(item.code, item.subject, item.context.get("key")) for item in catalog.diagnostics]
+    assert ("SST-CFG055", "skill:close", "config.threads") in found
+    assert ("SST-CFG053", "skill:close", "config.stage") in found
+    assert ("SST-CFG054", "skill:close", "config.certified") in found
+    [mistyped] = [item for item in catalog.diagnostics if item.code == "SST-CFG004"]
+    assert (mistyped.subject, mistyped.context["key"], mistyped.origin) == (
+        "plugin:kit",
+        "config.bundle_stage",
+        Origin("plugins/kit/plugin.yml", 5, 17),
+    )

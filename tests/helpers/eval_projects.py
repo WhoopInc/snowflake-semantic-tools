@@ -48,7 +48,12 @@ questions:
         f"""
 agent: sales
 name: run
-agent_version: committed
+config:
+  agent_version: committed
+  eval_tier: blocking
+  retry: 1
+  concurrency: 2
+  baseline_runs: 5
 dataset:
   mint: auto
   name_template: "EVAL_{{{{ agent | upper }}}}_{{{{ sha7 }}}}"
@@ -67,10 +72,6 @@ metrics:
 run:
   name_template: "EVAL_{{{{ agent | upper }}}}_{{{{ sha7 }}}}_{{{{ variant }}}}_{{{{ ts }}}}"
   variant: ci
-  tier: blocking
-  retry: 1
-  concurrency: 2
-  baseline_runs: 5
   accept_statuses: [COMPLETED]
 """,
     )

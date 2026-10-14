@@ -31,7 +31,6 @@ from snowflake_semantic_tools.app.evals.run import (
     _StartedRuns,
     empty_eval_suite_json,
     eval_suite_json,
-    retention_class,
     suite_concurrency,
     validate_eval_publication,
 )
@@ -43,7 +42,6 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalDefaults,
     EvalMetricResult,
     EvalResultRow,
-    EvalRetention,
     EvalRunAttempt,
     ThresholdRange,
 )
@@ -66,6 +64,7 @@ from tests.helpers.eval_builders import (
     seed_dataset_version,
     status_result,
 )
+from tests.helpers.eval_inputs import settled
 from tests.helpers.snowflake_fake import FakeSnowflake, Sent
 
 
@@ -161,12 +160,7 @@ def test_eval_runner_polls_retrieves_scores_and_costs() -> None:
 
 def test_eval_runner_reports_every_retry_and_partial_status() -> None:
     compiled = compiled_eval_of()
-    run = compiled.resolved.config.run
-    assert run is not None
-    compiled = replace(
-        compiled,
-        resolved=replace(compiled.resolved, config=replace(compiled.resolved.config, run=replace(run, retry=1))),
-    )
+    compiled = replace(compiled, resolved=settled(compiled.resolved, retry=1))
     port = EvalSnowflake(
         [
             status_result("PARTIALLY_COMPLETED"),
@@ -211,12 +205,7 @@ def test_eval_runner_stops_after_cancellation_and_preserves_details() -> None:
         ]
     )
     use_case, compiled = runner(port)
-    run = compiled.resolved.config.run
-    assert run is not None
-    compiled = replace(
-        compiled,
-        resolved=replace(compiled.resolved, config=replace(compiled.resolved.config, run=replace(run, retry=2))),
-    )
+    compiled = replace(compiled, resolved=settled(compiled.resolved, retry=2))
 
     result = use_case.run((compiled,), options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"))
 
@@ -225,11 +214,12 @@ def test_eval_runner_stops_after_cancellation_and_preserves_details() -> None:
     assert result.evals[0].attempts[0].status_details == ("user cancelled",)
 
 
-def with_run(compiled: CompiledEval, **changes: Any) -> CompiledEval:
+def with_run(compiled: CompiledEval, *, retry: int, **changes: Any) -> CompiledEval:
+    """The eval with `retry` among its settings and `changes` made to its run block."""
     run = compiled.resolved.config.run
     assert run is not None
     config = replace(compiled.resolved.config, run=replace(run, **changes))
-    return replace(compiled, resolved=replace(compiled.resolved, config=config))
+    return replace(compiled, resolved=settled(replace(compiled.resolved, config=config), retry=retry))
 
 
 def test_a_gate_run_stops_at_its_first_attempt_that_completed_and_was_read() -> None:
@@ -337,15 +327,7 @@ def test_a_gate_run_retries_an_unread_attempt_until_its_retries_run_out() -> Non
 
 def test_baseline_capture_runs_until_configured_completed_attempt_count() -> None:
     compiled = compiled_eval_of()
-    run = compiled.resolved.config.run
-    assert run is not None
-    compiled = replace(
-        compiled,
-        resolved=replace(
-            compiled.resolved,
-            config=replace(compiled.resolved.config, run=replace(run, retry=1, baseline_runs=3)),
-        ),
-    )
+    compiled = replace(compiled, resolved=settled(compiled.resolved, retry=1, baseline_runs=3))
     port = EvalSnowflake(
         [
             status_result("COMPLETED"),
@@ -609,10 +591,7 @@ def test_eval_runner_reports_missing_run_version_and_config_failures() -> None:
 
 def test_a_config_without_an_agent_version_runs_the_project_agent_version() -> None:
     compiled = compiled_eval_of()
-    unpinned = replace(
-        compiled,
-        resolved=replace(compiled.resolved, config=replace(compiled.resolved.config, agent_version=None)),
-    )
+    unpinned = replace(compiled, resolved=settled(compiled.resolved, agent_version=None))
     port = EvalSnowflake([status_result("COMPLETED"), result_rows()])
     port.agent_versions[("DB.S.SALES_AGENT", "alias:prod")] = "VERSION$7"
 
@@ -1273,12 +1252,8 @@ def test_eval_suite_json_normalizes_metrics_costs_and_empty_results() -> None:
 
 def test_suite_concurrency_prefers_the_project_setting_then_the_largest_request() -> None:
     first = compiled_eval_of()
-    run = first.resolved.config.run
-    assert run is not None and run.concurrency is None
-    requesting = replace(
-        first,
-        resolved=replace(first.resolved, config=replace(first.resolved.config, run=replace(run, concurrency=3))),
-    )
+    assert first.resolved.options.concurrency is None
+    requesting = replace(first, resolved=settled(first.resolved, concurrency=3))
     without_run = replace(first, resolved=replace(first.resolved, config=replace(first.resolved.config, run=None)))
 
     assert suite_concurrency((first, requesting), EvalDefaults(concurrency=5)) == 5
@@ -1349,32 +1324,25 @@ def test_eval_runner_rejects_a_record_answering_two_questions_and_an_unanswered_
 
 def test_each_run_reports_its_retention_class_for_whoever_reaps_decision_runs() -> None:
     compiled = compiled_eval_of()
-    run = compiled.resolved.config.run
-    assert run is not None
-    retention = EvalRetention(("ci",), ("sweep",), 30)
-    assert retention_class(replace(run, retention=retention), None) == "audit"
-    assert retention_class(replace(run, variant="sweep", retention=retention), None) == "decision"
-    assert retention_class(replace(run, variant="adhoc", retention=retention), "audit") == "audit"
-    assert retention_class(run, None) is None
-
-    sweep = replace(compiled.resolved.config, run=replace(run, variant="sweep", retention=retention))
-    port = EvalSnowflake([status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_sweep_20260928T010203Z"), result_rows()])
+    deciding = replace(compiled, resolved=settled(compiled.resolved, retention="decision"))
+    port = EvalSnowflake([status_result("COMPLETED"), result_rows()])
     result = RunEvalSuite(port, FixedClock()).run(
-        (replace(compiled, resolved=replace(compiled.resolved, config=sweep)),),
+        (deciding,),
+        defaults=EvalDefaults(retention="audit"),
         options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"),
     )
     payload = eval_suite_json(result)["evals"]
     assert isinstance(payload, list)
-    assert payload[0]["retention"] == {"class": "decision", "decision_window_days": 30}
+    assert payload[0]["retention"] == {"class": "decision"}
 
 
-def test_a_config_without_a_run_block_takes_the_project_retention_class() -> None:
+def test_an_eval_without_its_own_retention_takes_the_project_retention_class() -> None:
     compiled = compiled_eval_of()
     bare = replace(compiled, resolved=replace(compiled.resolved, config=replace(compiled.resolved.config, run=None)))
     result = RunEvalSuite(EvalSnowflake([]), FixedClock()).run(
         (bare,), defaults=EvalDefaults(retention="audit"), options=EvalRunOptions("abcdef0")
     )
-    assert (result.evals[0].retention, result.evals[0].decision_window_days) == ("audit", None)
+    assert result.evals[0].retention == "audit"
 
 
 def test_flattened_ground_truth_matches_as_sent_or_parsed_and_an_absent_one_only_when_none_is_expected() -> None:

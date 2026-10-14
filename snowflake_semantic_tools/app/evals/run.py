@@ -63,10 +63,9 @@ class EvalRunResult:
 
     Attributes:
         accepted: Whether some attempt completed and its results were read.
-        retention: The run's retention class, `audit` or `decision`, from its variant and
-            `run.retention`, else `evals.+retention`; None when neither classifies it. SST never
-            deletes a run, so this is reported for whoever reaps decision runs.
-        decision_window_days: How long a decision run is kept; None for any other class.
+        retention: The run's retention class, `audit` or `decision`: its eval's `retention`
+            setting; None when nothing sets one. SST never deletes a run, so this is reported for
+            whoever reaps decision runs.
     """
 
     eval_key: str
@@ -74,7 +73,6 @@ class EvalRunResult:
     diagnostics: DiagnosticBag
     accepted: bool = False
     retention: str | None = None
-    decision_window_days: int | None = None
 
     @property
     def success(self) -> bool:
@@ -348,8 +346,8 @@ class RunEvalSuite:
 
         A baseline capture needs its `baseline_runs` completed attempts, else the project's, else
         one, and allows that many plus the retries; any other run needs one, and allows it plus
-        the retries. The agent version selector is the config's `agent_version`, else
-        `evals.+agent_version`, as validation reads it.
+        the retries. The agent version selector is the eval's `agent_version` setting, as
+        validation reads it.
 
         Diagnostics:
             SST-APL023: the eval has no run configuration, its agent version cannot be read, or
@@ -361,8 +359,9 @@ class RunEvalSuite:
         if run is None:
             return D("SST-APL023", artifact=compiled.artifact_key, detail="run configuration is absent")
         timestamp = context.options.timestamp or _compact_timestamp()
-        retry_count = run.retry if run.retry is not None else context.defaults.retry or 0
-        selector = compiled.resolved.config.agent_version or context.defaults.agent_version or ""
+        options = compiled.resolved.options
+        retry_count = options.retry if options.retry is not None else context.defaults.retry or 0
+        selector = options.agent_version or context.defaults.agent_version or ""
         try:
             agent_version = self._port.resolve_agent_version(compiled.agent_target, selector)
         except AgentVersionNotFound:
@@ -372,7 +371,7 @@ class RunEvalSuite:
         stage_problem = self._stage_format_problem(compiled)
         if stage_problem is not None:
             return stage_problem
-        baseline_runs = run.baseline_runs or context.defaults.baseline_runs or 1
+        baseline_runs = options.baseline_runs or context.defaults.baseline_runs or 1
         required_completed = baseline_runs if context.baseline_capture else 1
         config_path = EvalLifecycleHandler(self._port, self._lifecycle_config).config_path(compiled.rendered_artifact)
         try:
@@ -558,10 +557,7 @@ def eval_suite_json(result: EvalSuiteResult) -> dict[str, object]:
         "evals": [
             {
                 "eval_key": eval_result.eval_key,
-                "retention": {
-                    "class": eval_result.retention,
-                    "decision_window_days": eval_result.decision_window_days,
-                },
+                "retention": {"class": eval_result.retention},
                 "attempts": [
                     {
                         "run_name": attempt.run_name,
@@ -609,25 +605,18 @@ def _in_order(
 
 
 def _with_retention(result: EvalRunResult, compiled: CompiledEval, defaults: EvalDefaults) -> EvalRunResult:
-    """Classify the eval's runs for retention, from its run configuration else the project's."""
-    run = compiled.resolved.config.run
-    retention = retention_class(run, defaults.retention) if run is not None else defaults.retention
-    window = run.retention.decision_window_days if run is not None and retention == "decision" else None
-    return replace(result, retention=retention, decision_window_days=window)
+    """Classify the eval's runs for retention: its `retention` setting, else the project's."""
+    return replace(result, retention=compiled.resolved.options.retention or defaults.retention)
 
 
 def suite_concurrency(compiled: Sequence[CompiledEval], defaults: EvalDefaults, threads: int = 1) -> int:
     """Return how many runs a suite starts and polls at once, across all of its evals.
 
-    The project's `evals.+concurrency`, else the most any eval's `run.concurrency` asks; with
-    neither, `threads`: `--threads` paces the runs no setting paces. The session pool the
+    The project's `evals.+concurrency`, else the most any eval's `concurrency` setting asks;
+    with neither, `threads`: `--threads` paces the runs no setting paces. The session pool the
     suite leases from holds this many sessions.
     """
-    requested: list[int] = []
-    for item in compiled:
-        run = item.resolved.config.run
-        if run is not None and run.concurrency is not None:
-            requested.append(run.concurrency)
+    requested = [asked for item in compiled if (asked := item.resolved.options.concurrency) is not None]
     if defaults.concurrency:
         return max(1, defaults.concurrency)
     return max(1, max(requested, default=threads))
@@ -649,20 +638,6 @@ def _run_name(compiled: CompiledEval, setup: _RunSetup, options: EvalRunOptions,
         ts=setup.timestamp,
     )
     return base_name if attempt_number == 1 else f"{base_name}_R{attempt_number}"
-
-
-def retention_class(run: EvalRunConfig, default: str | None) -> str | None:
-    """Classify a run by its variant: `audit` or `decision` as `run.retention` lists it, else `default`.
-
-    The variant defaults to `ci`, as it does in the run name. A variant both lists name is
-    rejected by validation; here the audit list, which keeps the run, wins.
-    """
-    variant = run.variant or "ci"
-    if variant in run.retention.audit:
-        return "audit"
-    if variant in run.retention.decision:
-        return "decision"
-    return default
 
 
 def _partial_status(compiled: CompiledEval, run: EvalRunConfig, terminal_status: str) -> tuple[Diagnostic, ...]:

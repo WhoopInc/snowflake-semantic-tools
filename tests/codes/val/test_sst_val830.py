@@ -24,7 +24,7 @@ TARGET = QualifiedName.parse("DB.S.KIT")
 
 def test_sst_val830_fires() -> None:
     diagnostic = only(
-        unreached_skills({"month-close": skill()}, profile_catalog(profile(skills=())), catalog_channel=False),
+        unreached_skills({"month-close": skill()}, profile_catalog(profile(skills=())), published=frozenset()),
         "SST-VAL830",
     )
     assert diagnostic.severity is Severity.WARNING
@@ -34,5 +34,5 @@ def test_sst_val830_fires() -> None:
 
 def test_sst_val830_silent() -> None:
     assert "SST-VAL830" not in codes(
-        unreached_skills({"month-close": skill()}, profile_catalog(), catalog_channel=False)
+        unreached_skills({"month-close": skill()}, profile_catalog(), published=frozenset())
     )

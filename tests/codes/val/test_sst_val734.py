@@ -13,6 +13,7 @@ from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_g
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.eval_builders import attempt, gated_eval, run_result
+from tests.helpers.eval_inputs import settled
 
 PASSING = (("q", "answer_correctness", True), ("q", "grounding", True))
 BASELINE = capture_baseline(
@@ -25,10 +26,7 @@ BASELINE = capture_baseline(
 
 def requiring(runs: int) -> CompiledEval:
     compiled = gated_eval()
-    run = compiled.resolved.config.run
-    assert run is not None
-    config = replace(compiled.resolved.config, run=replace(run, baseline_runs=runs))
-    return replace(compiled, resolved=replace(compiled.resolved, config=config))
+    return replace(compiled, resolved=settled(compiled.resolved, baseline_runs=runs))
 
 
 def test_sst_val734_fires() -> None:

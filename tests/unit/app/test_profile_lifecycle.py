@@ -57,6 +57,8 @@ def skill(name: str) -> Skill:
 
 
 SKILLS = SkillCatalog((skill("common"), skill("semantics")))
+# Every skill of `SKILLS` publishes as an extension too.
+PUBLISHED = frozenset(item.key for item in SKILLS.skills)
 
 
 def catalog(**profile_fields: object) -> ProfileCatalog:
@@ -85,7 +87,7 @@ def catalog(**profile_fields: object) -> ProfileCatalog:
 
 
 def compile_profiles(profiles: ProfileCatalog) -> dict[str, CompiledProfile]:
-    result = CompileProfiles(profiles, SKILLS, CHANNEL, catalog_channel=True).run_result()
+    result = CompileProfiles(profiles, SKILLS, CHANNEL, catalog_published=PUBLISHED).run_result()
     assert not result.diagnostics.has_errors, result.diagnostics
     return {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledProfile)}
 
@@ -124,14 +126,16 @@ def test_compile_reports_desktop_registry_and_blocks_on_broken_members() -> None
     artifact = item.rendered_for_publish("a" * 64)
     assert artifact.target == REGISTRY and artifact.statements == ()
     assert dict(artifact.component_fingerprints)["version"] == item.release.version
-    notes = CompileProfiles(catalog(), SKILLS, CHANNEL, catalog_channel=True).run_result().diagnostics
+    notes = CompileProfiles(catalog(), SKILLS, CHANNEL, catalog_published=PUBLISHED).run_result().diagnostics
     assert [note.code for note in notes] == ["SST-VAL854"]
     desktop = replace(CHANNEL, registry=QualifiedName.parse("CORTEX_CODE.CONFIG.PROFILE_REGISTRY"))
-    assert CompileProfiles(catalog(), SKILLS, desktop, catalog_channel=True).run_result().diagnostics == ()
-    blocked = CompileProfiles(catalog(), SKILLS, CHANNEL, catalog_channel=True, blocked_skills=frozenset(("common",)))
+    assert CompileProfiles(catalog(), SKILLS, desktop, catalog_published=PUBLISHED).run_result().diagnostics == ()
+    blocked = CompileProfiles(
+        catalog(), SKILLS, CHANNEL, catalog_published=PUBLISHED, blocked_skills=frozenset(("common",))
+    )
     result = blocked.run_result()
     assert result.compiled == () and [note.code for note in result.diagnostics] == ["SST-VAL854", "SST-VAL855"]
-    assert CompileProfiles(catalog(), SKILLS, None, catalog_channel=False).run_result().compiled == ()
+    assert CompileProfiles(catalog(), SKILLS, None, catalog_published=frozenset()).run_result().compiled == ()
 
 
 def test_a_profile_whose_plugin_cannot_be_bundled_does_not_publish() -> None:
@@ -147,8 +151,8 @@ def test_a_profile_whose_plugin_cannot_be_bundled_does_not_publish() -> None:
     kit = Plugin("kit", "plugins/kit", "plugins/kit/plugin.yml", "Kit.", "Data", ("dangling",), Origin("p"))
     skills = SkillCatalog((*SKILLS.skills, dangling), (kit,))
     profiles = catalog(plugins=("kit",))
-    # Without the catalog channel the profile compile bundles the plugin itself.
-    alone = CompileProfiles(profiles, skills, CHANNEL, catalog_channel=False).run_result()
+    # A plugin that does not publish as an extension is bundled by the profile compile itself.
+    alone = CompileProfiles(profiles, skills, CHANNEL, catalog_published=frozenset()).run_result()
     # With it, the CLI passes the plugins the skill compile could not bundle.
     extensions = CompileSkills(skills, CatalogChannel("DB", "S", QualifiedName.parse("DB.S.BUNDLES"))).run_result()
     blocked = frozenset(
@@ -156,7 +160,9 @@ def test_a_profile_whose_plugin_cannot_be_bundled_does_not_publish() -> None:
         for item in extensions.diagnostics
         if item.severity is Severity.ERROR and str(item.subject).startswith("plugin:")
     )
-    shared = CompileProfiles(profiles, skills, CHANNEL, catalog_channel=True, blocked_plugins=blocked).run_result()
+    shared = CompileProfiles(
+        profiles, skills, CHANNEL, catalog_published=frozenset((*PUBLISHED, "plugin:kit")), blocked_plugins=blocked
+    ).run_result()
 
     for bundle_errors, result in ((alone.diagnostics, alone), (extensions.diagnostics, shared)):
         assert ("SST-VAL836", "plugin:kit") in {(item.code, item.subject) for item in bundle_errors}

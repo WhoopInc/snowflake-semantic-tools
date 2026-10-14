@@ -1,4 +1,4 @@
-"""Resolve the settings of one semantic view or agent through the one precedence chain.
+"""Resolve the settings of one artifact through the one precedence chain.
 
 Every key of a routed block resolves the same way, closest first:
 

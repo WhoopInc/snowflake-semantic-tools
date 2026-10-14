@@ -10,16 +10,17 @@ validator runs last, over the whole catalog, so its diagnostics follow every par
 Each file the agent does not name is then checked alone, paired with the one it names of the
 other kind, and only what is found in that file is kept.
 
-The `evals:` defaults that stand in for an unset value are filled in before validation, so the
-validator, the renderer and the gate all read the same effective value: `+judge_model` for a
-custom metric's absent `model`, `+metrics` for a config's absent `metrics.system`, and
-`+metric_version` for a system metric's absent `version`.
+Each eval resolves its `evals:` settings -- its config's own `config:`, then the folder routes
+over its agent's folder, then the block root -- and the ones that stand in for an unset value
+are filled in before validation, so the validator, the renderer and the gate all read the same
+value: `judge_model` for a custom metric's absent `model`, `metrics` for a config's absent
+`metrics.system`, and `metric_version` for a system metric's absent `version`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import Path
 from typing import TypeVar
 
@@ -33,6 +34,7 @@ from snowflake_semantic_tools.adapters.yaml.parse import read_yaml_file
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.config_schema import resolve_settings
 from snowflake_semantic_tools.domain.model.eval import (
     CustomEvalMetric,
     EvalCatalog,
@@ -41,6 +43,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalDefaults,
     EvalSystemMetric,
     ResolvedEval,
+    eval_defaults,
 )
 from snowflake_semantic_tools.domain.validate.eval import validate_eval_catalog
 
@@ -48,6 +51,9 @@ from snowflake_semantic_tools.domain.validate.eval import validate_eval_catalog
 _Candidate = tuple[ResolvedEval, str]
 # A config file, parsed, with the file it was parsed from, which the defaults read again.
 _Loaded = tuple[EvalConfig, tuple[str, ParsedYaml]]
+# The `evals:` block as parsed, which each eval resolves its settings over, and its root's
+# settings, which stand in for any the block does not resolve.
+_Root = tuple[object, EvalDefaults]
 _T = TypeVar("_T")
 
 
@@ -57,6 +63,7 @@ def load_eval_catalog(
     *,
     eval_metrics_dir: str = "eval_metrics",
     defaults: EvalDefaults = EvalDefaults(),
+    block: object = None,
     initial_diagnostics: DiagnosticBag = DiagnosticBag(),
     agent_tool_names: Mapping[str, tuple[str, ...]] | None = None,
     allowed_models: tuple[str, ...] = (),
@@ -66,13 +73,17 @@ def load_eval_catalog(
     An agent whose named dataset or config is missing, unreadable or ambiguous is left out. A custom metric reference
     that names no loaded metric is reported and dropped, and the eval kept; names match
     casefolded, and of two metrics sharing one, the later file's wins. A custom metric with no
-    `model` takes `evals.+judge_model`; a config whose `metrics:` block has no `system` key
-    enables, ungated, each system metric `evals.+metrics` lists; and a system metric with no
-    `version` takes `evals.+metric_version`. `defaults`, `agent_tool_names` and
-    `allowed_models` are for `validate_eval_catalog`, which runs last and reports the codes it
-    lists.
+    `model` takes its eval's `judge_model` setting, and in the catalog's own list the root's;
+    a config whose `metrics:` block has no `system` key enables, ungated, each system metric
+    its `metrics` setting lists; and a system metric with no `version` takes its eval's
+    `metric_version`. `defaults`, `agent_tool_names` and `allowed_models` are for
+    `validate_eval_catalog`, which runs last and reports the codes it lists.
 
     Args:
+        defaults: The `evals:` block root's settings.
+        block: The `evals:` block as parsed, whose root and folder routes each eval's settings
+            resolve through, below its config's `config:`; None resolves them from `config:`
+            alone.
         initial_diagnostics: Diagnostics to place ahead of the loader's own, such as those of
             loading the agents and the defaults.
 
@@ -98,21 +109,22 @@ def load_eval_catalog(
         SST-PRS002: a required field is absent.
         SST-PRS003: a field has the wrong type.
         SST-PRS004: a custom metric sets a key SST does not read.
-        SST-PRS013: a config's `run.tier` or an accepted status is not an accepted value.
+        SST-PRS013: a config's accepted status, or a `config.metrics` name, is not an accepted value.
+        SST-PRS126: a config writes `agent_version`, or a `run:` setting, outside `config:`.
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+            reports a config's `config:` block.
         SST-PRS018: a question, an expected invocation, or a metric entry has the wrong type.
         SST-PRS019: a boolean field is not a boolean.
         SST-REF026: a config references a custom metric that no metric file defines.
     """
     diagnostics: list[Diagnostic] = list(initial_diagnostics)
-    metrics = tuple(
-        replace(metric, model=defaults.judge_model) if metric.model is None else metric
-        for metric in load_custom_metrics(project_dir, eval_metrics_dir, diagnostics)
-    )
-    metric_index = {metric.name.casefold(): metric for metric in metrics}
+    authored = load_custom_metrics(project_dir, eval_metrics_dir, diagnostics)
+    metrics = _judged(authored, defaults.judge_model)
+    metric_index = {metric.name.casefold(): metric for metric in authored}
     evals: list[ResolvedEval] = []
     candidates: list[_Candidate] = []
     for agent in agents:
-        resolved, unpublished = _load_eval(project_dir, agent, metric_index, defaults, diagnostics)
+        resolved, unpublished = _load_eval(project_dir, agent, metric_index, (block, defaults), diagnostics)
         if resolved is not None:
             evals.append(resolved)
         candidates.extend(unpublished)
@@ -133,14 +145,22 @@ def load_eval_catalog(
     )
 
 
+def _judged(metrics: tuple[CustomEvalMetric, ...], judge_model: str | None) -> tuple[CustomEvalMetric, ...]:
+    """Give each custom metric that names no `model` the judge model a setting resolved."""
+    return tuple(replace(metric, model=judge_model) if metric.model is None else metric for metric in metrics)
+
+
 def _load_eval(
     project_dir: Path,
     agent: AgentModel,
     metric_index: Mapping[str, CustomEvalMetric],
-    defaults: EvalDefaults,
+    root: _Root,
     diagnostics: list[Diagnostic],
 ) -> tuple[ResolvedEval | None, tuple[_Candidate, ...]]:
     """Read every eval file in one agent's `evals/` folder; return its published eval and the rest.
+
+    Each config's settings resolve over the `evals:` block along the agent's folder, below its own
+    `config:`, as `_settled` does.
 
     Returns:
         The eval of the dataset and config the agent names, None when it has no `evals:` or
@@ -160,23 +180,38 @@ def _load_eval(
     )
     dataset = _named(dataset_index, files.dataset, "eval_dataset", agent, diagnostics)
     loaded = _named(config_index, files.config, "eval_config", agent, diagnostics)
-    config = _with_system_defaults(*loaded, defaults) if loaded is not None else None
     candidates: list[_Candidate] = []
-    if config is not None:
+    if loaded is not None:
+        bare = _settled(agent, loaded, root)
         candidates.extend(
-            (ResolvedEval(agent, other, config, ()), other.source_file) for other in datasets if other is not dataset
+            (replace(bare, dataset=other), other.source_file) for other in datasets if other is not dataset
         )
     if dataset is not None:
         for other in configs:
             if other is loaded:
                 continue
-            other_config = _with_system_defaults(*other, defaults)
-            metrics = _resolve_metrics(agent, other_config, metric_index, diagnostics)
-            candidates.append((ResolvedEval(agent, dataset, other_config, metrics), other_config.source_file))
-    if dataset is None or config is None:
+            candidate = _settled(agent, other, root, dataset)
+            metrics = _resolve_metrics(agent, candidate, metric_index, root, diagnostics)
+            candidates.append((replace(candidate, custom_metrics=metrics), candidate.config.source_file))
+    if dataset is None or loaded is None:
         return None, tuple(candidates)
-    resolved = ResolvedEval(agent, dataset, config, _resolve_metrics(agent, config, metric_index, diagnostics))
-    return resolved, tuple(candidates)
+    resolved = _settled(agent, loaded, root, dataset)
+    return replace(resolved, custom_metrics=_resolve_metrics(agent, resolved, metric_index, root, diagnostics)), tuple(
+        candidates
+    )
+
+
+def _settled(agent: AgentModel, loaded: _Loaded, root: _Root, dataset: EvalDataset | None = None) -> ResolvedEval:
+    """Pair a config with the agent and a dataset, resolve its settings, and fill its system metrics.
+
+    Without a dataset, the pair is the config's alone, until the caller gives it one; it names no
+    custom metric until the caller resolves them.
+    """
+    config, source = loaded
+    settings = resolve_settings(root[0], agent.folder, config.config)
+    filled = _with_system_defaults(config, source, _options(eval_defaults(settings), root))
+    placeholder = dataset or EvalDataset(config.origin, config.source_file, None, None, ())
+    return ResolvedEval(agent, placeholder, filled, (), settings)
 
 
 def _folder_files(
@@ -276,9 +311,9 @@ def _named(
 
 
 def _with_system_defaults(config: EvalConfig, loaded: tuple[str, ParsedYaml], defaults: EvalDefaults) -> EvalConfig:
-    """Fill a config's system metrics from `evals.+metrics`, and their versions from `+metric_version`.
+    """Fill a config's system metrics from its `metrics` setting, and their versions from `metric_version`.
 
-    The metrics `+metrics` lists stand in only when the `metrics:` block is a mapping with no
+    The metrics the setting lists stand in only when the `metrics:` block is a mapping with no
     `system` key: an explicit `system: []` enables none. Each is ungated, with no threshold,
     and placed at the `metrics:` block. Only a version the metric does not set is filled.
     """
@@ -296,17 +331,27 @@ def _with_system_defaults(config: EvalConfig, loaded: tuple[str, ParsedYaml], de
     )
 
 
+def _options(resolved: EvalDefaults, root: _Root) -> EvalDefaults:
+    """Return the settings an eval resolved, each one it left unset taken from the root's defaults."""
+    values = {item.name: getattr(resolved, item.name) for item in fields(EvalDefaults)}
+    return replace(root[1], **{name: value for name, value in values.items() if value is not None and value != ()})
+
+
 def _resolve_metrics(
     agent: AgentModel,
-    config: EvalConfig,
+    resolved: ResolvedEval,
     metric_index: Mapping[str, CustomEvalMetric],
+    root: _Root,
     diagnostics: list[Diagnostic],
 ) -> tuple[CustomEvalMetric, ...]:
     """Resolve a config's custom metric names, casefolded; a name no metric has is dropped.
 
+    A metric that names no `model` takes the eval's `judge_model` setting, else the root's.
+
     Diagnostics:
         SST-REF026: a name that no loaded custom metric has.
     """
+    config = resolved.config
     resolved_metrics: list[CustomEvalMetric] = []
     for name in config.custom_metric_names:
         metric = metric_index.get(name.casefold())
@@ -321,4 +366,4 @@ def _resolve_metrics(
             )
         else:
             resolved_metrics.append(metric)
-    return tuple(resolved_metrics)
+    return _judged(tuple(resolved_metrics), _options(resolved.options, root).judge_model)

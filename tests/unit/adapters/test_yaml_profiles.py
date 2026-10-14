@@ -260,3 +260,30 @@ def test_nothing_reached_through_a_symbolic_link_is_read(tmp_path: Path) -> None
     assert catalog.shared is not None and [name for name, _ in catalog.shared.rules] == ["kept.md"]
     assert [command.path for command in catalog.commands] == ["kept.md"]
     assert catalog.hooks == () and catalog.mcp_configs == ()
+
+
+def test_a_profile_records_its_own_settings_and_its_route_is_checked(tmp_path: Path) -> None:
+    write_tree(
+        tmp_path,
+        {
+            "profiles/analyst/profile.yml": (
+                "name: analyst\ndescription: Analyst.\nconfig:\n  stage: TREES\n  registry_table: R\n"
+            ),
+            "profiles/operator/profile.yml": "name: operator\ndescription: Operator.\nconfig:\n  bundle_stage: B\n",
+            "profiles/plain/profile.yml": "name: plain\ndescription: Plain.\nconfig: [stage]\n",
+        },
+    )
+    config = {"profiles": {"analyst": {"+schema": "A"}, "gone": {}}}
+    catalog = load_profile_catalog(
+        tmp_path, profiles_dir="profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers", config=config
+    )
+    assert [(item.name, dict(item.config)) for item in catalog.profiles] == [
+        ("analyst", {"stage": "TREES", "registry_table": "R"}),
+        ("operator", {"bundle_stage": "B"}),
+        ("plain", {}),
+    ]
+    assert [(item.code, item.subject) for item in catalog.diagnostics] == [
+        ("SST-CFG041", "config_route:gone"),
+        ("SST-CFG053", "profile:operator"),
+        ("SST-CFG004", "profile:plain"),
+    ]

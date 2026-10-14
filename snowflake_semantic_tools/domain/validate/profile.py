@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Container, Iterable, Mapping
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
@@ -251,18 +252,19 @@ def unreached_skills(
     skills: Mapping[str, Skill],
     catalog: ProfileCatalog,
     *,
-    catalog_channel: bool,
+    published: AbstractSet[str],
     plugins: Mapping[str, Plugin] | None = None,
 ) -> tuple[Diagnostic, ...]:
-    """Report each skill no channel publishes, when the catalog channel is off.
+    """Report each skill that neither publishes as an extension nor reaches Desktop.
 
     A skill reaches Desktop through the shared layer, a profile, or a plugin a profile names.
 
+    Args:
+        published: The artifact keys of the skills that publish as extensions.
+
     Diagnostics:
-        SST-VAL830: a skill no channel publishes, in name order.
+        SST-VAL830: a skill published nowhere, in name order.
     """
-    if catalog_channel:
-        return ()
     plugins = plugins or {}
     reached = set(catalog.shared.skills) if catalog.shared is not None else set()
     for profile in catalog.profiles:
@@ -271,7 +273,7 @@ def unreached_skills(
     return tuple(
         D("SST-VAL830", origin=skill.origin, subject=skill.key, artifact=skill.name)
         for name, skill in sorted(skills.items())
-        if name not in reached
+        if name not in reached and skill.key not in published
     )
 
 

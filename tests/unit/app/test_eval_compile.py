@@ -17,6 +17,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from tests.helpers.compile_builders import compiled_as
 from tests.helpers.eval_builders import ORIGIN, compile_eval, compiled_eval_of, resolved_eval
+from tests.helpers.eval_inputs import settled
 from tests.helpers.sql_values import texts
 
 
@@ -58,7 +59,7 @@ def test_compile_eval_projects_composite_metadata_into_the_manifest() -> None:
 
 def test_compile_eval_applies_inherited_agent_version() -> None:
     value = resolved_eval()
-    value = replace(value, config=replace(value.config, agent_version=None))
+    value = settled(value, agent_version=None)
     result = CompileEvals(
         EvalCatalog(
             (value,),

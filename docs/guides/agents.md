@@ -469,7 +469,7 @@ An agent loads skills published as Cortex Extensions:
   a `plugin()` entry may name one of the plugin's members (`SST-VAL840`), or
   omit `name:` to load them all.
 - **`{{ extension('<name>') }}`** names an extension another project publishes.
-  It resolves through `skills.extensions` in `sst_config.yml` (`SST-REF013`;
+  It resolves through `extensions:` in `sst_config.yml` (`SST-REF013`;
   one this project publishes is `SST-REF037`) and must pin a version, such as
   `VERSION$3`, or `{{ var('<name>') }}` naming a value under `vars:`; no
   version, a `var()` that `vars:` gives no value, or `LIVE` is refused

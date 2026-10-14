@@ -57,7 +57,9 @@ def test_sst_val823_keeps_the_profile_from_compiling(monkeypatch: pytest.MonkeyP
         (),
     )
     channel = profiles.DesktopChannel(PROFILE_STAGE, PROFILE_REGISTRY)
-    result = profiles.CompileProfiles(catalog, SkillCatalog((skill(),)), channel, catalog_channel=True).run_result()
+    result = profiles.CompileProfiles(
+        catalog, SkillCatalog((skill(),)), channel, catalog_published=frozenset((skill().key,))
+    ).run_result()
     assert result.compiled == ()
     assert {item.subject for item in result.diagnostics if item.code == "SST-VAL823"} == {"profile:analyst"}
 

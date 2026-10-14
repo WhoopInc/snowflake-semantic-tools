@@ -16,13 +16,13 @@ cannot be downgraded by any setting.
 ## Contents
 
 - [Registry (REG)](#registry-reg) -- 23 codes
-- [Configuration (CFG)](#configuration-cfg) -- 48 codes
+- [Configuration (CFG)](#configuration-cfg) -- 47 codes
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
 - [Parsing (PRS)](#parsing-prs) -- 57 codes
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 39 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 297 codes
+- [Validation (VAL)](#validation-val) -- 293 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
@@ -31,7 +31,7 @@ cannot be downgraded by any setting.
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 24 codes
 - [Internal (INT)](#internal-int) -- 12 codes
-- [Retired numbers](#retired-numbers) -- 57 numbers
+- [Retired numbers](#retired-numbers) -- 62 numbers
 
 ## Registry (REG)
 
@@ -317,16 +317,6 @@ Raised when both `sst_config.yml` and `sst_config.yaml` exist at the project roo
 
 Fix: delete the shadowed files, or pass --project-dir
 
-### SST-CFG006
-
-**Required config key missing** (error)
-
-`required config key '<key>' is absent`
-
-Raised when a required config key is absent; one written with no value is SST-CFG054.
-
-Fix: add {key} to sst_config.yml
-
 ### SST-CFG007
 
 **Unknown top-level key near a known key** (error)
@@ -559,9 +549,9 @@ Fix: fix the baselined diagnostics, or run sst baseline renew --reason
 
 `<block>: '<name>' cannot be qualified -- no fqn: and <reason>`
 
-Raised when a `skills.extensions` entry, or a `tags` entry a view's `tag()` names, has no `fqn:` and either the block sets no `default_prefix` or the entry key contains a dot, which would render a four-part name; or the name it qualifies to does not parse.
+Raised when an `extensions` entry, or a `tags` entry a view's `tag()` names, has no `fqn:` and either the block sets no `default_prefix` or the entry key contains a dot, which would render a four-part name; or the name it qualifies to does not parse.
 
-Fix: set fqn: on the entry under `skills.extensions` or `tags:`, or set default_prefix on that block
+Fix: set fqn: on the entry under `extensions:` or `tags:`, or set default_prefix on that block
 
 ### SST-CFG037
 
@@ -621,13 +611,13 @@ Fix: create the directory, or remove the key
 
 ### SST-CFG042
 
-**Folder route declared under `evals:` or `skills:`** (error)
+**Block key moved to another block** (error)
 
-`<block>: declares a folder route '<key>'`
+`<block>: '<key>' is no longer read here; <reason>`
 
-Raised when an unprefixed path-segment key appears inside `evals:` or `skills:`.
+Raised when a block sets a key it no longer takes because another block now holds its settings: `skills.catalog`, `skills.stage`, or `skills.extensions`.
 
-Fix: remove it -- `evals:` location is structural, and `skills:`'s unprefixed keys are its `catalog`/`stage` sub-blocks
+Fix: move its settings where the message says, and delete the key
 
 ### SST-CFG043
 
@@ -725,7 +715,7 @@ Fix: point project.{key} at a folder outside {path}; the agent kit's skills are 
 
 `'<key>' is not a setting of <block>`
 
-Raised when a semantic view's or an agent's `config:` block sets a key its block does not declare as a `+` key, or writes a key with its `+`.
+Raised when an artifact's `config:` block sets a key its block does not declare as a `+` key, or writes a key with its `+`.
 
 Fix: use one of {expected}, written without its `+`; any other key belongs outside `config:`
 
@@ -735,7 +725,7 @@ Fix: use one of {expected}, written without its `+`; any other key belongs outsi
 
 `'<key>' is set to null`
 
-Raised when a key of a semantic view's or an agent's `config:` block, or a `+` key in `sst_config.yml`, is written with no value or as `null`; an absent key inherits, and null is not a value.
+Raised when a key of an artifact's `config:` block, or a `+` key in `sst_config.yml`, is written with no value or as `null`; an absent key inherits, and null is not a value.
 
 Fix: delete the key to inherit its value from the folder routes, the block root, or the default, or give it a value
 
@@ -745,7 +735,7 @@ Fix: delete the key to inherit its value from the folder routes, the block root,
 
 `'<key>' can be set only at the root of <block>`
 
-Raised when a `+` key the configuration schema marks root-only is set in a folder route, or in a semantic view's or an agent's `config:` block.
+Raised when a `+` key the configuration schema marks root-only, such as `skills.+threads`, is set in a folder route, or in an artifact's `config:` block.
 
 Fix: set {expected} once, at the root of {block}, and remove it here
 
@@ -1825,7 +1815,7 @@ Fix: declare the agent, or correct the name
 
 `{{ extension('<name>') }} does not resolve`
 
-Raised when an agent's `extension()` entry names no extension `skills.extensions` declares.
+Raised when an agent's `extension()` entry names no extension the `extensions:` block declares.
 
 Fix: declare the extension source, or correct the name
 
@@ -2301,7 +2291,7 @@ Note: A repeated filter, relationship, verified query or custom instruction name
 
 `<type> '<name>' collides with <other> in another namespace`
 
-Raised when a skill or plugin this project publishes has the name of an extension it consumes under `skills.extensions`, compared case-insensitively.
+Raised when a skill or plugin this project publishes has the name of an extension it consumes under `extensions:`, compared case-insensitively.
 
 Fix: rename one of them
 
@@ -3911,7 +3901,7 @@ Fix: add it to the config allowlist, or use an allowed model
 
 `agent '<artifact>': orchestration_model is auto and a blocking eval is configured`
 
-Raised when an agent's orchestration model is `auto` and its eval's tier, `run.tier` else `evals.+eval_tier`, is blocking.
+Raised when an agent's orchestration model is `auto` and its eval's `eval_tier` setting, its config's `config:`, else a folder route, else `evals.+eval_tier`, is blocking.
 
 Fix: pin the model explicitly
 
@@ -4385,7 +4375,7 @@ Fix: include the SHA so a score is attributable to a commit
 
 `eval config for '<artifact>': agent_version is '<found>'`
 
-Raised when the eval's `agent_version`, else `evals.+agent_version`, is not `committed`, `alias:<name>` or `VERSION$<n>`; LIVE or an omitted version targets the default version.
+Raised when the eval's `agent_version` setting, its config's `config:`, else a folder route, else `evals.+agent_version`, is not `committed`, `alias:<name>` or `VERSION$<n>`; LIVE or an omitted version targets the default version.
 
 Fix: use committed or alias:&lt;name&gt;
 
@@ -4517,7 +4507,7 @@ Fix: treat INVOCATION_PARTIALLY_COMPLETED and PARTIALLY_COMPLETED as failures
 
 `eval config for '<artifact>': concurrency <found> exceeds <expected>`
 
-Raised when an eval's `run.concurrency` is greater than `evals.+concurrency`.
+Raised when the `concurrency` an eval's `config:`, or a folder route over its agent, sets is greater than the `evals.+concurrency` root.
 
 Fix: lower concurrency; runs re-invoke the agent, so this is real load and real spend
 
@@ -4549,7 +4539,7 @@ Note: For a threshold on an ungated metric, gate the metric or remove the thresh
 
 `eval config for '<artifact>': <count> baseline_runs completed, <expected> required`
 
-Raised when the eval gate finds the stored baseline holds fewer runs than the eval's `run.baseline_runs`, else `evals.+baseline_runs`, now requires; the gate has no signal.
+Raised when the eval gate finds the stored baseline holds fewer runs than the eval's `baseline_runs` setting now requires; the gate has no signal.
 
 Fix: complete the baseline first
 
@@ -4561,7 +4551,7 @@ Note: Capture a new baseline: `sst test --suite evals --capture-baseline --reaso
 
 `eval config for '<artifact>': metric '<name>' has a threshold and no baseline`
 
-Raised when a system metric sets a threshold while the effective `run.baseline_runs` is unset or zero; one per such metric.
+Raised when a system metric sets a threshold while the eval's `baseline_runs` setting is unset or zero; one per such metric.
 
 Fix: measure first, then set the threshold
 
@@ -4773,7 +4763,7 @@ Raised when a blocking-tier eval regressed: a gated metric passed on a question 
 
 Fix: fix what regressed, or capture a new baseline with a reason if the change is intended
 
-Note: A report-tier eval lists the same regressions without this error, so its run passes. The tier is `run.tier`, else `evals.+eval_tier`, else report.
+Note: A report-tier eval lists the same regressions without this error, so its run passes. The tier is the eval's `eval_tier` setting, else report.
 
 ### SST-VAL764
 
@@ -4863,7 +4853,7 @@ Note: Restore the source, or drop the object yourself once nothing pins it (SST-
 
 `skill '<artifact>' would land in schema '<value>'`
 
-Raised when a skill's or plugin's extension target is outside the catalog channel's database and schema (`skills.catalog.+database`, `+schema`).
+Raised when a folder route or a skill's or plugin's own `config:` places its extension outside the database and schema its block's root gives (`skills.+database`, `+schema`, or `plugins:`'s).
 
 Fix: split for confidentiality, not tidiness; the agent owner then needs USAGE per schema
 
@@ -4979,40 +4969,6 @@ Fix: parameterise it; a path that resolves locally will not resolve in the sandb
 
 Raised when any skill bundle builds; reports how its bytes split between SKILL.md and the rest.
 
-### SST-VAL817
-
-**No publication channel configured** (error)
-
-`<key>: configures neither the catalog nor the stage channel`
-
-Raised when the `skills:` block configures neither `skills.catalog` nor `skills.stage`.
-
-Fix: configure at least one channel
-
-### SST-VAL818
-
-**Flatten settings are wrong for a channel** (error)
-
-`config key '<key>' is <found>; it must be <expected>`
-
-Raised when `skills.catalog.+flatten` is not true, or `skills.stage.+flatten` is not false.
-
-Fix: set catalog flatten true and stage flatten false
-
-Note: A nested catalog bundle is unreadable by agents; a flattened stage bundle breaks Desktop.
-
-### SST-VAL819
-
-**Stage auto_compress is enabled** (error)
-
-`config key '<key>' is <found>; it must be <expected>`
-
-Raised when `skills.stage.+auto_compress` is true.
-
-Fix: set it false
-
-Note: A compressed upload lands as `<file>.gz`, which hides the skill from Desktop's local cache.
-
 ### SST-VAL820
 
 **Stage PUT target does not end in a separator** (error)
@@ -5022,18 +4978,6 @@ Note: A compressed upload lands as `<file>.gz`, which hides the skill from Deskt
 Raised when a bundle's or profile tree's stage upload location does not end in '/'.
 
 Fix: append a trailing slash
-
-### SST-VAL821
-
-**Stage layout is not by_type** (error)
-
-`config key '<key>' value <found> is outside <expected>`
-
-Raised when `skills.stage.+layout` is not by_type.
-
-Fix: set layout to by_type
-
-Note: The prompts/, mcp/, hooks/ and skills/ prefixes are what Desktop reads and are not configurable.
 
 ### SST-VAL822
 
@@ -5123,9 +5067,9 @@ Fix: compare the two bundles
 
 `skill '<artifact>' is published nowhere`
 
-Raised when `skills.catalog` is not configured and no profile, plugin a profile names, or the shared layer includes the skill.
+Raised when no `+bundle_stage` resolves for the skill, and no profile, plugin a profile names, or the shared layer includes it.
 
-Fix: reference it from a profile, or enable a channel
+Fix: reference it from a profile, or give it a +bundle_stage
 
 ### SST-VAL831
 
@@ -5353,9 +5297,9 @@ Fix: write mcp.json as `{"mcpServers": {"<name>": {...}}}`
 
 `profiles publish to <value>; CoCo Desktop reads only <expected>`
 
-Raised when profiles publish to a registry other than CORTEX_CODE.CONFIG.PROFILE_REGISTRY, the one CoCo Desktop reads (`skills.stage.+database`, `+schema` and `+registry_table`).
+Raised when profiles publish to a registry other than CORTEX_CODE.CONFIG.PROFILE_REGISTRY, the one CoCo Desktop reads (`profiles.+database`, `+schema` and `+registry_table`, or a profile's own `config:`).
 
-Fix: point skills.stage at the Desktop registry to publish for real, or keep this for rehearsal
+Fix: point profiles.+registry_table at the Desktop registry to publish for real, or keep this for rehearsal
 
 ### SST-VAL855
 
@@ -6401,7 +6345,7 @@ Fix: another writer changed the row; reconcile it, then plan again
 
 Raised when the profile registry table lacks a column SST writes, or types it differently.
 
-Fix: SST never alters the registry; fix the table or point skills.stage at a compatible one
+Fix: SST never alters the registry; fix the table or point profiles.+registry_table at a compatible one
 
 ### SST-PLN030
 
@@ -6779,7 +6723,7 @@ Raised when an eval could not run, or one of its attempts failed: it has no run 
 
 Fix: fix what the detail names, then re-run the eval
 
-Note: The detail carries Snowflake's error or the run's status details. A missing run privilege is caught before any run starts (SST-VAL727, SST-VAL728), and a wrong config stage format too (SST-VAL729). A run that ends partially completed reports SST-APL024, and a completed run whose results cannot be read SST-SNO001. When a retry (`run.retry`, else `evals.+retry`) completes in its place, the attempt reports SST-APL029 instead; a CANCELLED run is not retried.
+Note: The detail carries Snowflake's error or the run's status details. A missing run privilege is caught before any run starts (SST-VAL727, SST-VAL728), and a wrong config stage format too (SST-VAL729). A run that ends partially completed reports SST-APL024, and a completed run whose results cannot be read SST-SNO001. When a retry (the eval's `retry` setting) completes in its place, the attempt reports SST-APL029 instead; a CANCELLED run is not retried.
 
 ### SST-APL024
 
@@ -7518,6 +7462,12 @@ Retired because apply runs no smoke probes and never rolls back; smoke is its ow
 
 Retired because apply runs no smoke probes and never rolls back, so there is no prior definition to recover.
 
+### SST-CFG006
+
+**Required config key missing** (retired in 1.0.0)
+
+Retired because no configuration key is required: a stage left unset leaves its skills, plugins, or profiles unpublished.
+
 ### SST-CFG021
 
 **publish_via is not yaml or ddl** (retired in 1.0.0)
@@ -7883,3 +7833,27 @@ Retired because evals evaluate agents only; the Cortex Analyst evaluation this g
 **Analyst evals cannot colocate with their ground truth** (retired in 1.0.0)
 
 Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL817
+
+**No publication channel configured** (retired in 1.0.0)
+
+Retired because there are no channel blocks: a skill, plugin, or profile publishes wherever its own stage setting resolves.
+
+### SST-VAL818
+
+**Flatten settings are wrong for a channel** (retired in 1.0.0)
+
+Retired because `+flatten` was removed: extension bundles are always flattened and profile trees never are.
+
+### SST-VAL819
+
+**Stage auto_compress is enabled** (retired in 1.0.0)
+
+Retired because `+auto_compress` was removed: profile trees always upload uncompressed.
+
+### SST-VAL821
+
+**Stage layout is not by_type** (retired in 1.0.0)
+
+Retired because `+layout` was removed: profile trees are always laid out by type.

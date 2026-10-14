@@ -177,14 +177,16 @@ def _ground_truth_text(value: EvalGroundTruth) -> tuple[str, ...]:
 
 def _row_floor(resolved: ResolvedEval, defaults: EvalDefaults) -> tuple[Diagnostic, ...]:
     dataset = resolved.dataset
-    if defaults.min_dataset_rows is None or len(dataset.questions) >= defaults.min_dataset_rows:
+    floor = resolved.options.min_dataset_rows
+    floor = floor if floor is not None else defaults.min_dataset_rows
+    if floor is None or len(dataset.questions) >= floor:
         return ()
     return (
         D(
             "SST-VAL710",
             artifact=dataset.source_file,
             count=len(dataset.questions),
-            expected=defaults.min_dataset_rows,
+            expected=floor,
             origin=dataset.origin,
             subject=resolved.key,
         ),

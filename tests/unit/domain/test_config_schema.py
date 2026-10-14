@@ -31,7 +31,7 @@ def test_schema_rows_are_unique_registered_and_self_describing() -> None:
         if key.code is not None:
             assert key.code in ERROR_REGISTRY
     assert {key.status for key in CONFIG_SCHEMA} == set(KeyStatus)
-    assert CONFIG_KEYS["skills.catalog.+bundle_stage"].parent == "skills.catalog"
+    assert CONFIG_KEYS["extensions.<name>.fqn"].parent == "extensions.<name>"
     assert CONFIG_KEYS["skills"].children is ChildPolicy.ROUTES
 
 
@@ -45,14 +45,16 @@ def test_a_complete_current_configuration_is_clean() -> None:
         "tools": {"+execute_as": "owner"},
         "semantic_views": {"+schema": "SV", "+enabled": True, "core": {"+schema": "CORE", "deep": {"+schema": "D"}}},
         "agents": {"+query_timeout": 60, "+tool_not_accessible": "accept"},
-        "evals": {"+retry": 1, "+eval_tier": "report"},
+        "evals": {"+retry": 1, "+eval_tier": "report", "ops": {"+eval_tier": "blocking"}},
         "skills": {
             "+certified": False,
             "+threads": 16,
-            "extensions": {"default_prefix": "DB.EXT", "consumed": None},
-            "catalog": {"+bundle_stage": "SKILL_BUNDLE_SRC", "+flatten": True},
-            "stage": {"+stage": "SKILL_BUNDLES", "+flatten": False, "+auto_compress": False, "+layout": "by_type"},
+            "+bundle_stage": "SKILL_BUNDLE_SRC",
+            "finance": {"+schema": "FINANCE", "close": {"+certified": True}},
         },
+        "plugins": {"+bundle_stage": "SKILL_BUNDLE_SRC", "kits": {"+version_prefix": "KIT_"}},
+        "profiles": {"+stage": "SKILL_BUNDLES", "+registry_table": "PROFILE_REGISTRY", "analyst": {"+schema": "A"}},
+        "extensions": {"default_prefix": "DB.EXT", "consumed": None},
         "apply": {"agent_spec_stage": {"stage": "AGENT_SPECS"}},
         "snowflake": {"orchestration_models": ["auto"]},
     }
@@ -75,17 +77,25 @@ def test_positions_become_origins_when_known() -> None:
 
 
 def test_removed_keys_carry_a_reason_or_a_dedicated_code() -> None:
-    assert _codes({"skills": {"+grant_read_to": [], "stage": {"+stage": "S"}}}) == [
+    assert _codes({"skills": {"+grant_read_to": [], "+bundle_stage": "S"}}) == [
         ("SST-CFG043", "config:skills.+grant_read_to")
     ]
-    message = validate_config({"skills": {"+grant_read_to": [], "stage": {"+stage": "S"}}})[0].message
+    message = validate_config({"skills": {"+grant_read_to": [], "+bundle_stage": "S"}})[0].message
     assert "managed outside SST" in message
     assert _codes({"vars": {"sha_version": "abc"}}) == [("SST-CFG040", "config:vars.sha_version")]
     assert _codes({"evals": {"+database": "X"}}) == [("SST-CFG015", "config:evals.+database")]
-    assert _codes({"evals": {"nightly": {}}}) == [("SST-CFG042", "config:evals.nightly")]
-    assert _codes({"skills": {"finance": {}, "catalog": {"+bundle_stage": "S"}}}) == [
-        ("SST-CFG042", "config:skills.finance")
+    assert _codes({"evals": {"nightly": {}}}) == []
+    # A block that moved is reported where it was written, naming where it went.
+    moved = validate_config({"skills": {"finance": {}, "catalog": {"+bundle_stage": "S"}, "stage": {}}})
+    assert [(item.code, item.subject) for item in moved] == [
+        ("SST-CFG042", "config:skills.catalog"),
+        ("SST-CFG042", "config:skills.stage"),
     ]
+    assert moved[0].message == (
+        "skills: 'catalog' is no longer read here; set +bundle_stage, +database and +schema on skills: and "
+        "plugins: themselves"
+    )
+    assert _codes({"skills": {"extensions": {"x": None}}}) == [("SST-CFG042", "config:skills.extensions")]
 
 
 def test_agent_folder_routes_are_checked_as_the_agents_block_at_every_depth() -> None:
@@ -99,12 +109,16 @@ def test_agent_folder_routes_are_checked_as_the_agents_block_at_every_depth() ->
     assert _codes({"tools": {"finance": {"+bogus": 1}}}) == [("SST-CFG003", "config:tools.finance.+bogus")]
 
 
-def test_routed_models_meet_the_allowlist_and_evals_and_skills_take_no_routes() -> None:
+def test_routed_models_meet_the_allowlist_and_every_publishing_block_takes_routes() -> None:
     tree = {"agents": {"+orchestration_model": "auto", "finance": {"core": {"+orchestration_model": "claude-x"}}}}
     assert _codes(tree) == [("SST-CFG025", "config:agents.finance.core.+orchestration_model")]
     assert _codes({**tree, "snowflake": {"orchestration_models": ["auto", "claude-x"]}}) == []
-    assert _codes({"evals": {"finance": {"+retry": 1}}}) == [("SST-CFG042", "config:evals.finance")]
-    assert _codes({"skills": {"finance": {}, "stage": {"+stage": "S"}}}) == [("SST-CFG042", "config:skills.finance")]
+    assert _codes({"evals": {"finance": {"+retry": 1}}}) == []
+    assert _codes({"skills": {"finance": {"+bundle_stage": "S"}}}) == []
+    assert _codes({"profiles": {"analyst": {"+stage": 1}}}) == [("SST-CFG004", "config:profiles.analyst.+stage")]
+    # Root-only keys may be set only at the root of their block.
+    assert _codes({"skills": {"finance": {"+threads": 2}}}) == [("SST-CFG055", "config:skills.finance.+threads")]
+    assert _codes({"plugins": {"+threads": 2}}) == [("SST-CFG003", "config:plugins.+threads")]
     assert _codes({"semantic_views": {"+tags": [], "+max_staleness": 60}}) == [
         ("SST-CFG023", "config:semantic_views.+max_staleness"),
     ]
@@ -116,16 +130,13 @@ def test_0_3_blocks_are_removed_with_their_reasons_and_deploy_is_deprecated() ->
     ]
     assert _codes({"validation": {"exclude_dirs": []}}) == []
     assert _codes({"defer": {"auto_compile": "yes"}}) == [("SST-CFG004", "config:defer.auto_compile")]
-    assert _codes({"skills": {"catalog": {"+bundle_stage": "S", "+prune_deleted": False}}}) == [
-        ("SST-CFG008", "config:skills.catalog.+prune_deleted")
-    ]
     assert _codes({"deploy": {"agent_spec_stage": {"stage": "S"}}}) == [("SST-CFG200", "config:deploy")]
     assert _codes({"deploy": {"bogus": 1}}) == [("SST-CFG200", "config:deploy"), ("SST-CFG003", "config:deploy.bogus")]
     assert _codes({"apply": {"fail_fast": True}}) == []
     assert _codes({"apply": {"fail_fast": "yes"}}) == [("SST-CFG004", "config:apply.fail_fast")]
 
 
-def test_types_domains_bounds_and_fixed_values() -> None:
+def test_types_domains_and_bounds() -> None:
     assert _codes({"project": {"skills_dir": 3}}) == [("SST-CFG004", "config:project.skills_dir")]
     assert _codes({"agents": {"+query_timeout": True}}) == [("SST-CFG004", "config:agents.+query_timeout")]
     assert _codes({"tags": {"pii": "not-a-block"}}) == [("SST-CFG004", "config:tags.pii")]
@@ -140,38 +151,27 @@ def test_types_domains_bounds_and_fixed_values() -> None:
     assert _codes({"diagnostics": {"severity_overrides": {"SST-VAL003": "WARNING"}}}) == [
         ("SST-CFG008", "config:diagnostics.severity_overrides.SST-VAL003")
     ]
-    stage = {"+stage": "S"}
-    assert _codes({"skills": {"stage": {**stage, "+layout": "by_profile"}}}) == [
-        ("SST-VAL821", "config:skills.stage.+layout")
-    ]
-    assert _codes({"skills": {"catalog": {"+bundle_stage": "S", "+flatten": False}}}) == [
-        ("SST-VAL818", "config:skills.catalog.+flatten")
-    ]
-    assert _codes({"skills": {"stage": {**stage, "+flatten": True}}}) == [
-        ("SST-VAL818", "config:skills.stage.+flatten")
-    ]
-    assert _codes({"skills": {"stage": {**stage, "+auto_compress": True}}}) == [
-        ("SST-VAL819", "config:skills.stage.+auto_compress")
+    # The keys every channel once had to fix are gone: their behaviour is the only one there is.
+    assert _codes({"profiles": {"+layout": "by_type", "+flatten": False}}) == [
+        ("SST-CFG003", "config:profiles.+layout"),
+        ("SST-CFG003", "config:profiles.+flatten"),
     ]
     for threads in (0, 17):
-        assert _codes({"skills": {"+threads": threads, "stage": stage}}) == [("SST-CFG008", "config:skills.+threads")]
-    assert "1..16" in validate_config({"skills": {"+threads": 0, "stage": stage}})[0].message
+        assert _codes({"skills": {"+threads": threads}}) == [("SST-CFG008", "config:skills.+threads")]
+    assert "1..16" in validate_config({"skills": {"+threads": 0}})[0].message
 
 
-def test_required_keys_and_one_of_channel_blocks() -> None:
-    assert _codes({"skills": {"catalog": {}}}) == [("SST-CFG006", "config:skills.catalog.+bundle_stage")]
-    assert _codes({"skills": {"+certified": True}}) == [("SST-VAL817", "config:skills")]
-    assert _codes({"skills": {"extensions": {"x": {"fqn": "A.B.C", "other": 1}}, "stage": {"+stage": "S"}}}) == [
-        ("SST-CFG003", "config:skills.extensions.x.other")
-    ]
+def test_no_key_is_required_and_an_extension_entry_takes_only_fqn() -> None:
+    assert _codes({"skills": {"+certified": True}, "profiles": {}}) == []
+    assert _codes({"extensions": {"x": {"fqn": "A.B.C", "other": 1}}}) == [("SST-CFG003", "config:extensions.x.other")]
 
 
 def test_empty_values_mean_unset_except_for_a_plus_key() -> None:
     assert _codes({"tags": {"pii": None}, "apply": {"agent_spec_stage": {"schema": None}}}) == []
-    assert _codes({"skills": None}) == [("SST-VAL817", "config:skills")]
+    assert _codes({"skills": None}) == []
     assert _codes({"agents": {"+warehouse": None}}) == [("SST-CFG054", "config:agents.+warehouse")]
-    assert _codes({"skills": {"catalog": {"+bundle_stage": None}}}) == [
-        ("SST-CFG054", "config:skills.catalog.+bundle_stage")
+    assert _codes({"skills": {"finance": {"+bundle_stage": None}}}) == [
+        ("SST-CFG054", "config:skills.finance.+bundle_stage")
     ]
 
 
@@ -243,13 +243,14 @@ def test_only_legal_severity_overrides_take_effect() -> None:
     assert severity_overrides({"diagnostics": []}) == {}
 
 
-def test_key_summaries_describe_what_the_renderer_and_the_stage_channel_do() -> None:
+def test_key_summaries_describe_what_the_renderer_and_the_publishing_blocks_do() -> None:
     # Tags render inline in the view's CREATE, not in a statement after it.
     tags = CONFIG_KEYS["semantic_views.+tags"].summary
     assert "WITH TAG" in tags and "after the CREATE" not in tags
-    # A profile publishes command and plugin trees beside the others.
-    layout = CONFIG_KEYS["skills.stage.+layout"].summary
-    assert all(f"`{tree}/`" in layout for tree in ("skills", "prompts", "mcp", "hooks", "commands", "plugins"))
+    # A profile publishes only where its stage resolves; `+threads` is set once, for the run.
+    profiles = CONFIG_KEYS["profiles"].summary
+    assert "`+stage` resolves" in profiles
+    assert CONFIG_KEYS["skills.+threads"].root_only and not CONFIG_KEYS["skills.+bundle_stage"].root_only
 
 
 def test_the_execute_as_default_accepts_exactly_what_a_procedure_member_does() -> None:

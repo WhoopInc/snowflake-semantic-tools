@@ -22,7 +22,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
     unknown_keys,
 )
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
-from snowflake_semantic_tools.adapters.yaml.routes import folder_route_diagnostics
+from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentEvalFiles, AgentModel, AgentProfile, AgentSkill, AgentTool
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
@@ -91,7 +91,7 @@ def load_agents(
         SST-LOD019: when a sidecar holds only whitespace.
     """
     root = project_dir / agents_dir
-    routes = folder_route_diagnostics(dict(config), "agents", root) if config is not None else ()
+    routes = routed_diagnostics(config, project_dir, "agent") if config is not None else ()
     if not root.is_dir():
         return (), DiagnosticBag(routes)
     agents: list[AgentModel] = []

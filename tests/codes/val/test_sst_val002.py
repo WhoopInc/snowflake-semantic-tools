@@ -6,11 +6,11 @@ from pathlib import Path
 
 from tests.helpers.reference_project import CONFIG, compiled_diagnostics, edited
 
-CONSUMED = "    partner-glossary: {}\n"
+CONSUMED = "  partner-glossary: {}\n"
 
 
 def test_sst_val002_fires(tmp_path: Path) -> None:
-    project = edited(tmp_path, CONFIG, CONSUMED, CONSUMED + "    jaffle-semantics: {}\n")
+    project = edited(tmp_path, CONFIG, CONSUMED, CONSUMED + "  jaffle-semantics: {}\n")
     [found] = compiled_diagnostics(project, "SST-VAL002")
     assert found["severity"] == "error"
     assert found["message"] == (

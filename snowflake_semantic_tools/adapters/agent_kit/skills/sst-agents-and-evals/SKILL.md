@@ -83,7 +83,16 @@ hooks:
   - "{{ hook('sql-guard') }}"
 ```
 
-A plugin takes only `skills:`. A command is named by its path under `commands/` without `.md`.
+A plugin's members are only `skills:`. A command is named by its path under `commands/` without
+`.md`.
+
+A skill (in its `SKILL.md` frontmatter), a plugin, and a profile set their own settings under
+`config:`: the `skills:`, `plugins:`, or `profiles:` `+` keys of `sst_config.yml` without the `+`.
+A skill or plugin publishes as an extension only where `bundle_stage` resolves for it, and a
+profile only where `stage` does; `config: {certified: true}` certifies one skill alone. Folder
+routes under those blocks name folders below `skills_dir`, `plugins_dir`, and `profiles_dir`
+(`SST-CFG041` for one that names none). `skills.+threads` may be set only at the root
+(`SST-CFG055`).
 
 ## Evals
 
@@ -98,6 +107,10 @@ evals:
 
 - Never write a path there (`SST-REF047`). A name resolves only in this agent's `evals/` folder
   (`SST-REF048`), and is unique per kind there (`SST-VAL765`).
+- An eval config's own settings go under `config:`: the `evals:` `+` keys without the `+`, such
+  as `agent_version`, `eval_tier`, `retry`, `baseline_runs`, and `retention`. Written at the top
+  level or under `run:` they are an error (`SST-PRS126`). Folder routes under `evals:` name the
+  agent folders below `agents_dir`.
 - To change an eval, add a file under a new name and point the reference at it; the old file can
   stay. Every file in the folder is checked, and only the named pair publishes.
 

@@ -302,10 +302,8 @@ def _incompatibility(
 
 
 def _baseline_runs(compiled: CompiledEval, default: int | None = None) -> int:
-    run = compiled.resolved.config.run
-    if run is not None and run.baseline_runs is not None:
-        return run.baseline_runs
-    return default or 1
+    resolved = compiled.resolved.options.baseline_runs
+    return resolved if resolved is not None else default or 1
 
 
 def _attempt_agent_version(attempts: tuple[EvalRunAttempt, ...], run: str) -> str:
@@ -371,8 +369,7 @@ def _gate_policy(compiled: CompiledEval) -> tuple[tuple[str, bool], ...]:
 
 
 def _resolved_tier(compiled: CompiledEval, default_tier: str | None) -> str:
-    run_tier = compiled.resolved.config.run.tier if compiled.resolved.config.run is not None else None
-    tier = (run_tier or default_tier or "report").casefold()
+    tier = (compiled.resolved.options.eval_tier or default_tier or "report").casefold()
     if tier not in {"blocking", "report"}:
         raise ValueError(f"invalid eval tier {tier!r}")
     return tier

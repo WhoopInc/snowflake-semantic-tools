@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import yaml
@@ -21,6 +23,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
     unknown_keys,
 )
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
+from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.adapters.yaml.skills import _published
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
@@ -36,8 +39,11 @@ from snowflake_semantic_tools.domain.model.profile import (
     SharedProfile,
 )
 from snowflake_semantic_tools.domain.model.skill import SkillFile
+from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 
-PROFILE_KEYS = frozenset(("name", "description", "owner_team", "skills", "mcp_servers", "hooks", "commands", "plugins"))
+PROFILE_KEYS = frozenset(
+    ("name", "description", "owner_team", "skills", "mcp_servers", "hooks", "commands", "plugins", "config")
+)
 SHARED_KEYS = frozenset(("skills", "commands"))
 HOOK_KEYS = frozenset(
     ("name", "event", "type", "command", "matcher", "timeout", "interactive", "description", "script")
@@ -53,6 +59,7 @@ def load_profile_catalog(
     hooks_dir: str,
     mcp_servers_dir: str,
     commands_dir: str = "commands",
+    config: Mapping[str, Any] | None = None,
 ) -> ProfileCatalog:
     """Read a project's Desktop profiles, the shared layer, and the hooks, MCP configs and commands.
 
@@ -63,10 +70,18 @@ def load_profile_catalog(
     directory contributes nothing. A profile, hook or MCP config that cannot be read is
     reported and left out, and so is anything reached through a symbolic link.
 
+    Args:
+        config: The run's resolved configuration, whose `profiles:` folder routes are checked
+            against the folders under `profiles_dir`; None checks no route. Each profile records
+            its own `config:`, which compile resolves over the routes.
+
     Raises:
         OSError: A manifest, script, prompt, rule or command file cannot be read.
 
     Diagnostics:
+        SST-CFG041: a `profiles:` folder route names no folder under `profiles_dir`.
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+            reports a profile manifest's `config:` block.
         SST-VAL801: when a profile folder holds no manifest or both spellings, or its manifest's
             `name` is not the folder's; or `shared/` holds both spellings.
         SST-VAL851: when a profile declares a key SST refuses.
@@ -87,7 +102,7 @@ def load_profile_catalog(
         SST-PRT009: when a folder or file that would be read is a symbolic link, or lies in a
             linked folder; it is left out.
     """
-    diagnostics: list[Diagnostic] = []
+    diagnostics: list[Diagnostic] = list(routed_diagnostics(config, project_dir, "profile")) if config else []
     profiles: list[DesktopProfile] = []
     shared: SharedProfile | None = None
     root = project_dir / profiles_dir
@@ -104,9 +119,9 @@ def load_profile_catalog(
         if (hook := _load_hook(project_dir, folder, diagnostics)) is not None
     ]
     configs = [
-        config
+        mcp
         for folder in _folders(project_dir, project_dir / mcp_servers_dir, diagnostics)
-        if (config := _load_mcp(project_dir, folder, diagnostics)) is not None
+        if (mcp := _load_mcp(project_dir, folder, diagnostics)) is not None
     ]
     commands = _load_commands(project_dir, project_dir / commands_dir, diagnostics)
     return ProfileCatalog(tuple(profiles), shared, tuple(hooks), tuple(configs), DiagnosticBag(diagnostics), commands)
@@ -175,7 +190,8 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
     The profile is named after its folder, whatever its manifest's `name` says. A problem in the
     manifest is reported at its first line, and one that stops it parsing with the codes
     `parse_yaml_bytes` lists. `prompt` is the folder's `AGENTS.md`, and the source files are the
-    manifest, then that prompt when there is one.
+    manifest, then that prompt when there is one. A `config:` mapping is kept as the profile's
+    own settings.
 
     Raises:
         OSError: The manifest or `AGENTS.md` cannot be read.
@@ -188,6 +204,8 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
         SST-PRS003: when a text field is not a string, or a member list not a list of strings.
         SST-REF049: when a member list's entry is not one call of its key's function.
         SST-LOD006: when `AGENTS.md` is not UTF-8; the profile then has no prompt.
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+            reports the manifest's `config:` block, each at its first line.
     """
     subject = artifact_key("profile", folder.name)
     manifest, problem = _manifest(folder, PROFILE_FILES)
@@ -221,6 +239,9 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
             )
         else:
             diagnostics.append(D("SST-PRS004", origin=origin, subject=subject, artifact=subject, field=key))
+    diagnostics.extend(
+        item_config_diagnostics("profiles", tree.get("config"), subject=subject, origin_of=lambda key: origin)
+    )
     declared = tree.get("name")
     if declared is not None and declared != folder.name:
         diagnostics.append(
@@ -237,6 +258,7 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
     if prompt_path.is_file():
         sources.append(project_relative(project_dir, prompt_path))
     located = _located(subject, origin)
+    item_config = tree.get("config")
     return DesktopProfile(
         name=folder.name,
         directory=directory,
@@ -250,6 +272,7 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
         source_files=tuple(sources),
         commands=member_names(tree.get("commands"), "command", diagnostics, field="commands", **located),
         plugins=member_names(tree.get("plugins"), "plugin", diagnostics, field="plugins", **located),
+        config=MappingProxyType(dict(item_config)) if isinstance(item_config, Mapping) else MappingProxyType({}),
     )
 
 

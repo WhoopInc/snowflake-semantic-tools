@@ -38,6 +38,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName, Sche
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult, RenderedArtifact
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
+from tests.helpers.eval_inputs import settings_of, settled
 from tests.helpers.snowflake_fake import FakeSnowflake, Sent
 
 ORIGIN = Origin("agent.yml", 1, 1)
@@ -56,7 +57,6 @@ def resolved_eval() -> ResolvedEval:
         ORIGIN,
         "agents/sales/evals/config.yml",
         "sales_agent",
-        "committed",
         EvalDatasetConfig(
             "auto",
             "EVAL_{{ agent | upper }}_{{ sha7 }}",
@@ -75,7 +75,7 @@ def resolved_eval() -> ResolvedEval:
         EvalScoreRanges((0, 1), (2, 3), (4, 5)),
         "Score from 0 to 5. If tied, choose the lower score.",
     )
-    return ResolvedEval(agent, dataset, config, (metric,))
+    return ResolvedEval(agent, dataset, config, (metric,), settings_of({"agent_version": "committed"}))
 
 
 # The commit plan stamps on an eval for publication, which its dataset version records.
@@ -114,17 +114,10 @@ def gated_eval(resolved: ResolvedEval | None = None) -> CompiledEval:
     """Compile an eval whose system metric gates, as a blocking eval with two baseline runs."""
     compiled = compiled_eval_of(resolved)
     config = compiled.resolved.config
-    run = config.run or EvalRunConfig()
+    gated = replace(config, system_metrics=(replace(config.system_metrics[0], gate=True),))
     return replace(
         compiled,
-        resolved=replace(
-            compiled.resolved,
-            config=replace(
-                config,
-                system_metrics=(replace(config.system_metrics[0], gate=True),),
-                run=replace(run, baseline_runs=2, tier="blocking"),
-            ),
-        ),
+        resolved=settled(replace(compiled.resolved, config=gated), baseline_runs=2, eval_tier="blocking"),
     )
 
 

@@ -31,6 +31,7 @@ from snowflake_semantic_tools.domain.model.tool import (
     ToolParameter,
 )
 from tests.helpers.eval_builders import resolved_eval
+from tests.helpers.eval_inputs import settled
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 ORIGIN = Origin("agents/sales/agent.yml", 1, 1)
@@ -185,12 +186,13 @@ def evaluation(model: AgentModel, *questions: str, tier: str | None = "blocking"
     """Return an eval of `model` asking `questions`, run at `tier`."""
     base = resolved_eval()
     rows = tuple(EvalQuestion(ORIGIN, question, None) for question in questions)
-    return replace(
+    evaluation = replace(
         base,
         agent=model,
         dataset=replace(base.dataset, agent=model.name, questions=rows),
-        config=replace(base.config, agent=model.name, run=EvalRunConfig(tier=tier)),
+        config=replace(base.config, agent=model.name, run=EvalRunConfig()),
     )
+    return settled(evaluation, eval_tier=tier)
 
 
 def cross(*results: CompileResult, evals: tuple[ResolvedEval, ...] = ()) -> tuple[Diagnostic, ...]:

@@ -1,4 +1,4 @@
-"""SST-CFG042: `evals:` or `skills:` declares a folder route."""
+"""SST-CFG042: a block sets a key it no longer takes, because another block now holds its settings."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from snowflake_semantic_tools.domain.validate.config import validate_config
 
 
 def test_sst_cfg042_fires() -> None:
-    [diagnostic] = [item for item in validate_config({"evals": {"finance": {}}}) if item.code == "SST-CFG042"]
-    assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "evals: declares a folder route 'finance'"
-    assert diagnostic.subject == "config:evals.finance"
+    [diagnostic] = validate_config({"skills": {"stage": {"+stage": "PROFILES"}}})
+    assert (diagnostic.code, diagnostic.severity) == ("SST-CFG042", Severity.ERROR)
+    assert diagnostic.message == "skills: 'stage' is no longer read here; profiles publish through the profiles: block"
+    assert diagnostic.subject == "config:skills.stage"
 
 
 def test_sst_cfg042_silent() -> None:
-    assert "SST-CFG042" not in [item.code for item in validate_config({"evals": {"+retry": 1}})]
+    assert validate_config({"skills": {"+bundle_stage": "B"}, "profiles": {"+stage": "PROFILES"}}) == ()

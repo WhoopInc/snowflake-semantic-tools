@@ -31,8 +31,8 @@ def shared_questions(
 
 
 def blocking(evaluation: ResolvedEval, defaults: EvalDefaults) -> bool:
-    """Report whether an eval blocks: its run tier, else the `evals:` default tier, is `blocking`."""
-    tier = (evaluation.config.run.tier if evaluation.config.run is not None else None) or defaults.eval_tier
+    """Report whether an eval blocks: its `eval_tier` setting, else the `evals:` root's, is `blocking`."""
+    tier = evaluation.options.eval_tier or defaults.eval_tier
     return (tier or "report").casefold() == "blocking"
 
 

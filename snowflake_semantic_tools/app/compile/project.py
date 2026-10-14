@@ -32,18 +32,23 @@ from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
 from snowflake_semantic_tools.domain.model.config_schema import (
     CONFIG_FILE,
+    Setting,
+    block_settings,
     config_block,
     config_bool,
     config_int,
     configured_dir,
-    skills_configured,
+    resolve_settings,
+    setting_value,
     target_text,
+    with_defaults,
 )
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
-from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
+from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
-from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, extension_identifier
+from snowflake_semantic_tools.domain.model.setting import ROOT_SOURCE, ROUTE_PREFIX
+from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, Plugin, Skill, extension_identifier
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolOwnership
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
 from snowflake_semantic_tools.domain.validate.config import (
@@ -66,7 +71,7 @@ class Publishing:
 
     Attributes:
         skills: The skills and plugins, as extension versions.
-        profiles: The Desktop profiles; empty without the stage channel.
+        profiles: The Desktop profiles; empty when no profile has a stage.
         desktop_consumed: The artifact keys of the skills and plugins a profile carries, which
             have a consumer even when no agent references them.
         unpublished: Why each declared skill or plugin has no version, by artifact key.
@@ -103,6 +108,15 @@ class _Settings:
             target_text(block.get("+schema"), self.target, schema) or schema,
         )
 
+    def place(self, resolved: Mapping[str, Setting]) -> tuple[str, str]:
+        """Return the `database` and `schema` an item's settings name, each else the target's own."""
+        database = self.target.database.folded
+        schema = self.target.schema.folded
+        return (
+            target_text(setting_value(resolved, "database"), self.target, database) or database,
+            target_text(setting_value(resolved, "schema"), self.target, schema) or schema,
+        )
+
 
 class CompileProject:
     """Compile every artifact a project declares into one result, reading it through its inputs.
@@ -120,15 +134,15 @@ class CompileProject:
         Steps, in order:
 
         1. Read `sst_config.yml` and the dbt target.
-        2. Resolve the extensions agents consume, from `skills.extensions`.
-        3. Compile skills and plugins, then Desktop profiles, as far as the channels allow.
+        2. Resolve the extensions agents consume, from `extensions:`.
+        3. Compile skills and plugins, then Desktop profiles, each where its settings place it.
         4. With a dbt project, compile the semantic views, the tools, the agents, and then the
            evals; each reads what the compilers before it produced.
         5. Merge the results. The diagnostics of the configuration, the target, and
-           `skills.extensions` come first, then each compiler's in the order it ran.
+           `extensions:` come first, then each compiler's in the order it ran.
 
         Diagnostics:
-            SST-CFG036: a `skills.extensions` entry cannot be qualified.
+            SST-CFG036: an `extensions:` entry cannot be qualified.
             SST-VAL002: a skill or plugin this project publishes takes the name of an extension
                 it consumes.
             Each typed compiler's, as it documents them.
@@ -142,7 +156,7 @@ class CompileProject:
         unpublished = {
             **publishing.unpublished,
             **{
-                f"extension:{str(item.context['name']).casefold()}": "its skills.extensions entry cannot be qualified"
+                f"extension:{str(item.context['name']).casefold()}": "its extensions: entry cannot be qualified"
                 for item in consumed_diagnostics
                 if item.code == "SST-CFG036"
             },
@@ -169,38 +183,48 @@ class CompileProject:
         return replace(merged, diagnostics=apply_overrides(merged.diagnostics, severity_overrides(config.tree)))
 
     def _publishing(self, settings: _Settings) -> Publishing:
-        """Compile skills, plugins, and Desktop profiles, as far as the configured channels allow.
+        """Compile skills, plugins, and Desktop profiles, each where its resolved settings place it.
 
-        The catalog is read whatever is configured, so every declared skill and plugin can be
-        reported as unpublished with its reason. Without a `skills.catalog` or `skills.stage`
-        block nothing compiles; profiles compile only with the stage channel.
+        A skill or plugin publishes where its `+bundle_stage` resolves, and a profile where its
+        `+stage` does. The catalogs are read whatever is configured, so every declared skill and
+        plugin can be reported as unpublished with its reason. When no block of the three is
+        written and no item places itself, nothing compiles; profiles compile when the
+        `profiles:` block is written or a profile has a stage.
         """
         catalog = self._inputs.skill_catalog(
             skills_dir=settings.directory("skills_dir", "skills"),
             plugins_dir=settings.directory("plugins_dir", "plugins"),
         )
-        if not skills_configured(settings.tree):
-            empty = CompileResult(())
-            return Publishing(empty, empty, frozenset(), unpublished_reasons(catalog, empty, _NO_CATALOG))
-        skills_config = settings.block("skills")
-        catalog_config = skills_config.get("catalog")
-        channel = _catalog_channel(settings, skills_config)
-        skills = CompileSkills(catalog, channel, config_file=settings.file).run_result()
-        unpublished = unpublished_reasons(catalog, skills, _channel_problem(catalog_config, channel))
-        stage_config = skills_config.get("stage")
-        if not isinstance(stage_config, dict):
-            return Publishing(skills, CompileResult(()), frozenset(), unpublished)
         profiles_catalog = self._inputs.profile_catalog(
             profiles_dir=settings.directory("profiles_dir", "profiles"),
             hooks_dir=settings.directory("hooks_dir", "hooks"),
             mcp_servers_dir=settings.directory("mcp_servers_dir", "mcp-servers"),
             commands_dir=settings.directory("commands_dir", "commands"),
         )
+        channels = {
+            item.key: channel
+            for block, items in (("skills", catalog.skills), ("plugins", catalog.plugins))
+            for item in items
+            if (channel := _catalog_channel(settings, block, item)) is not None
+        }
+        desktop = {
+            profile.key: place
+            for profile in profiles_catalog.profiles
+            if (place := _desktop_channel(settings, profile)) is not None
+        }
+        written = {name for name in ("skills", "plugins", "profiles") if name in settings.tree}
+        if not (written or channels or desktop):
+            empty = CompileResult(())
+            return Publishing(empty, empty, frozenset(), unpublished_reasons(catalog, empty, frozenset()))
+        skills = CompileSkills(catalog, channels, config_file=settings.file).run_result()
+        unpublished = unpublished_reasons(catalog, skills, frozenset(channels))
+        if not desktop and "profiles" not in written:
+            return Publishing(skills, CompileResult(()), frozenset(), unpublished)
         profiles = CompileProfiles(
             profiles_catalog,
             catalog,
-            _desktop_channel(settings, skills_config, stage_config),
-            catalog_channel=channel is not None,
+            desktop,
+            catalog_published=frozenset(channels),
             blocked_skills=_blocked(skills, "skill"),
             blocked_plugins=_blocked(skills, "plugin"),
         ).run_result()
@@ -344,7 +368,7 @@ def _extra_tool_types(snowflake: Mapping[str, object]) -> frozenset[str]:
 
 
 def _consumed_collisions(skills: CompileResult, consumed: Mapping[str, QualifiedName]) -> tuple[Diagnostic, ...]:
-    """Report each published skill or plugin whose name an extension under `skills.extensions` holds."""
+    """Report each published skill or plugin whose name an extension under `extensions:` holds."""
     return namespace_collisions(
         ((item.artifact_key, item.artifact_type, item.name) for item in skills.compiled),
         {name: f"extension '{location.sql}'" for name, location in consumed.items()},
@@ -360,7 +384,7 @@ def _avatar_allowlist(snowflake: Mapping[str, object]) -> frozenset[str] | None:
 def consumed_extensions(
     config: Mapping[str, object], target: TargetIdentity, *, file: str = CONFIG_FILE
 ) -> tuple[dict[str, QualifiedName], tuple[Diagnostic, ...]]:
-    """Resolve `skills.extensions`: the extensions agents consume and this project does not publish.
+    """Resolve `extensions:`: the extensions agents consume and this project does not publish.
 
     An entry resolves to its `fqn:`, else to `default_prefix` plus its name as an identifier;
     both may name `{{ target.* }}`.
@@ -373,7 +397,7 @@ def consumed_extensions(
         SST-CFG036: an entry's name does not parse, the block sets no `default_prefix`, or
             the entry's key is not a single identifier.
     """
-    block = config_block(config_block(config.get("skills")).get("extensions"))
+    block = config_block(config.get("extensions"))
     prefix = target_text(block.get("default_prefix"), target, None)
     resolved: dict[str, QualifiedName] = {}
     diagnostics: list[Diagnostic] = []
@@ -396,23 +420,15 @@ def consumed_extensions(
     return resolved, tuple(diagnostics)
 
 
-_NO_CATALOG = "skills.catalog is not configured"
-
-
 def _unqualified_extension(name: str, reason: str, file: str) -> Diagnostic:
     return D(
         "SST-CFG036",
         origin=Origin(file),
-        subject=f"config:skills.extensions.{name}",
-        block="skills.extensions",
+        subject=f"config:extensions.{name}",
+        block="extensions",
         name=name,
         reason=reason,
     )
-
-
-def _version_prefix(skills_config: Mapping[str, object], target: TargetIdentity) -> str:
-    prefix = target_text(skills_config.get("+version_prefix"), target, DEFAULT_VERSION_PREFIX)
-    return prefix or DEFAULT_VERSION_PREFIX
 
 
 def _object_in(name: str, database: str, schema: str) -> QualifiedName:
@@ -420,42 +436,94 @@ def _object_in(name: str, database: str, schema: str) -> QualifiedName:
     return QualifiedName.parse(name) if "." in name else QualifiedName.from_parts(database, schema, name)
 
 
-def _catalog_channel(settings: _Settings, skills_config: Mapping[str, object]) -> CatalogChannel | None:
-    """Return the catalog channel `skills.catalog` configures; None without a `+bundle_stage`."""
-    catalog_config = skills_config.get("catalog")
-    if not isinstance(catalog_config, dict) or not isinstance(catalog_config.get("+bundle_stage"), str):
+def _setting_key(block: str, setting: Setting) -> str:
+    """Name where a setting was written: `<block>.+<key>`, a route's dotted path, or `config.<key>`."""
+    if setting.source == ROOT_SOURCE:
+        return f"{block}.+{setting.key}"
+    if setting.source.startswith(ROUTE_PREFIX):
+        route = setting.source.removeprefix(ROUTE_PREFIX).replace("/", ".")
+        return f"{block}.{route}.+{setting.key}"
+    return f"config.{setting.key}"
+
+
+def _rendered(
+    block: str, settings: Mapping[str, Setting], target: TargetIdentity, defaults: Mapping[str, object]
+) -> tuple[Setting, ...]:
+    """Return an item's settings rendered for the target, with each built-in default it took.
+
+    A root-only key, such as `skills.+threads`, paces the whole run rather than the item, so the
+    item does not report it.
+    """
+    keys = block_settings(block)
+    own = {key: item for key, item in settings.items() if key in keys and not keys[key].root_only}
+    rendered = {
+        key: Setting(key, target_text(item.value, target, "") or "", item.source)
+        for key, item in own.items()
+        if isinstance(item.value, str)
+    }
+    return with_defaults({**own, **rendered}, defaults)
+
+
+def _catalog_channel(settings: _Settings, block: str, item: Skill | Plugin) -> CatalogChannel | None:
+    """Return where a skill or plugin publishes, as its settings resolve; None without a `+bundle_stage`.
+
+    Its settings resolve through the one precedence chain: its own `config:`, then the closest
+    folder route over its folder, then `block`'s root. Its database and schema are its settings',
+    else the target's; its version prefix and certification likewise, else the defaults. Its
+    block's root location is its home.
+    """
+    resolved = resolve_settings(settings.tree.get(block), item.folder, item.config)
+    bundle_stage = setting_value(resolved, "bundle_stage")
+    if not isinstance(bundle_stage, str):
         return None
-    database, schema = settings.location(catalog_config)
+    target = settings.target
+    database, schema = settings.place(resolved)
+    prefix = target_text(setting_value(resolved, "version_prefix"), target, DEFAULT_VERSION_PREFIX)
+    prefix_setting = resolved.get("version_prefix")
+    defaults: dict[str, object] = {
+        "database": database,
+        "schema": schema,
+        "certified": False,
+        "version_prefix": DEFAULT_VERSION_PREFIX,
+    }
     return CatalogChannel(
         database=database,
         schema=schema,
-        bundle_stage=_object_in(str(catalog_config["+bundle_stage"]), database, schema),
-        version_prefix=_version_prefix(skills_config, settings.target),
-        certified=config_bool(skills_config.get("+certified")) or False,
+        bundle_stage=_object_in(target_text(bundle_stage, target, "") or "", database, schema),
+        version_prefix=prefix or DEFAULT_VERSION_PREFIX,
+        certified=config_bool(setting_value(resolved, "certified")) is True,
+        home=settings.location(settings.block(block)),
+        prefix_key=_setting_key(block, prefix_setting) if prefix_setting else f"{block}.+version_prefix",
+        settings=_rendered(block, resolved, target, defaults),
     )
 
 
-def _channel_problem(catalog_config: object, channel: CatalogChannel | None) -> str | None:
-    """Say why the catalog channel cannot publish anything; None when it can."""
-    if not isinstance(catalog_config, dict):
-        return _NO_CATALOG
-    if channel is None:
-        return "skills.catalog sets no +bundle_stage"
-    return None
+def _desktop_channel(settings: _Settings, profile: DesktopProfile) -> DesktopChannel | None:
+    """Return where a profile publishes, from the settings it resolves; None without a `+stage`.
 
-
-def _desktop_channel(
-    settings: _Settings, skills_config: Mapping[str, object], stage_config: Mapping[str, object]
-) -> DesktopChannel | None:
-    """Return the stage channel `skills.stage` configures; None without a `+stage`."""
-    if not isinstance(stage_config.get("+stage"), str):
+    Its settings resolve over the `profiles:` route of its folder and the block root, below its
+    own `config:`. The stage and registry are qualified in its database and schema unless written
+    qualified; its VERSION takes the `skills:` block root's version prefix.
+    """
+    resolved = resolve_settings(settings.tree.get("profiles"), (profile.name,), profile.config)
+    stage = setting_value(resolved, "stage")
+    if not isinstance(stage, str):
         return None
-    database, schema = settings.location(stage_config)
+    target = settings.target
+    database, schema = settings.place(resolved)
+    registry = target_text(setting_value(resolved, "registry_table"), target, "PROFILE_REGISTRY") or "PROFILE_REGISTRY"
+    defaults: dict[str, object] = {"database": database, "schema": schema, "registry_table": "PROFILE_REGISTRY"}
     return DesktopChannel(
-        stage=_object_in(str(stage_config["+stage"]), database, schema),
-        registry=_object_in(str(stage_config.get("+registry_table") or "PROFILE_REGISTRY"), database, schema),
-        version_prefix=_version_prefix(skills_config, settings.target),
+        stage=_object_in(target_text(stage, target, "") or "", database, schema),
+        registry=_object_in(registry, database, schema),
+        version_prefix=_version_prefix(settings.block("skills"), target),
+        settings=_rendered("profiles", resolved, target, defaults),
     )
+
+
+def _version_prefix(skills_config: Mapping[str, object], target: TargetIdentity) -> str:
+    prefix = target_text(skills_config.get("+version_prefix"), target, DEFAULT_VERSION_PREFIX)
+    return prefix or DEFAULT_VERSION_PREFIX
 
 
 def _blocked(skills: CompileResult, kind: str) -> frozenset[str]:

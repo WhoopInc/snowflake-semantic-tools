@@ -128,7 +128,12 @@ are checked against them.
 ```yaml
 agent: sales_analyst
 name: sales_nightly
-agent_version: committed
+config:
+  agent_version: committed
+  eval_tier: blocking
+  retry: 1
+  concurrency: 2
+  baseline_runs: 5
 dataset:
   name_template: EVAL_{{ agent | upper }}_{{ sha7 }}
   source_table_template: EVAL_SRC_{{ agent | upper }}_{{ sha7 }}
@@ -147,15 +152,12 @@ metrics:
 run:
   name_template: EVAL_{{ agent | upper }}_{{ sha7 }}_{{ variant }}_{{ ts }}
   variant: ci
-  tier: blocking
-  retry: 1
-  concurrency: 2
-  baseline_runs: 5
 ```
 
 | Key | Meaning |
 |---|---|
-| `agent_version` | `committed` (the agent's `LAST` version), `alias:<name>`, or `VERSION$<n>`; else `evals.+agent_version`. `LIVE`, or no version at all, is refused (`SST-VAL719`): an eval must run against a version that cannot change under it. Each run resolves the selector to a concrete `VERSION$<n>`. |
+| `config` | The eval's own settings: the `evals:` keys of `sst_config.yml` without their `+` (`SST-CFG053` for any other). Each wins over the [folder routes](#settings-and-folder-routes) over its agent's folder and the block root. `agent_version`, or a `run:` setting such as `run.retry`, written outside `config:` is an error naming its `config:` key (`SST-PRS126`). |
+| `config.agent_version` | `committed` (the agent's `LAST` version), `alias:<name>`, or `VERSION$<n>`. `LIVE`, or no version set anywhere, is refused (`SST-VAL719`): an eval must run against a version that cannot change under it. Each run resolves the selector to a concrete `VERSION$<n>`. |
 | `dataset.name_template`, `dataset.source_table_template` | Both required (`SST-VAL762`). They take `{{ agent }}` or `{{ agent \| upper }}`, which the dataset name must use (`SST-PRS002`), and `{{ sha7 }}`. Names are capped at 128 characters (`SST-VAL702`, `SST-PRS010`). |
 | `dataset.mint` | `auto` (default) or `never`; see above. |
 | `metrics.system` | Snowflake's metrics: `tool_selection_accuracy`, `tool_execution_accuracy`, `answer_correctness`, `logical_consistency`. Each takes `name`, `version`, `gate` and `threshold`. |
@@ -163,12 +165,7 @@ run:
 | `run.name_template` | Takes `{{ agent }}`, `{{ sha7 }}` (the commit's first seven characters; outside a git work tree, the eval's fingerprint's), `{{ variant }}` and `{{ ts }}` (compact UTC, `YYYYMMDDTHHMMSSZ`). It must carry `{{ sha7 }}` (`SST-VAL718`) and be unique per agent (`SST-VAL717`). A retry appends `_R2`, `_R3`, and so on. |
 | `run.variant` | Why the run happened; fills `{{ variant }}`. Default `ci`. |
 | `run.label`, `run.description` | Rendered into the run's `run_params`. |
-| `run.tier` | `blocking` or `report`; else `evals.+eval_tier`, else `report`. See [tiers](#tiers-and-exit-codes). |
-| `run.retry` | Extra attempts allowed after attempts that did not pass; else `evals.+retry`, else 0. |
-| `run.concurrency` | Runs in flight at once; see [concurrency](#attempts-retries-and-concurrency). Above `evals.+concurrency` is a warning (`SST-VAL731`). |
-| `run.baseline_runs` | Completed runs a baseline captures; else `evals.+baseline_runs`, else 1. |
 | `run.accept_statuses` | Only `COMPLETED` (`SST-PRS013` otherwise). A partial status is never a pass (`SST-VAL730`). |
-| `run.retention` | `audit` and `decision` lists of variants, and `decision_window_days`. Each run's class is reported with its results; SST never deletes runs or eval objects. |
 
 A `sweep:` block is refused in this release (`SST-CFG044`).
 
@@ -262,22 +259,37 @@ filed under. So once an eval using it is applied, `sst plan` refuses an edit to
 its model, prompt or bands under the same name (`SST-VAL744`). Publish the
 edited judge under a new name, such as `answer_grounding_v2`.
 
-## Project defaults
+## Settings and folder routes
 
-The `evals:` block of `sst_config.yml` sets what an eval config leaves unset:
+An eval's settings are the `evals:` block's keys, and each resolves through the
+one [precedence chain](configuration.md#precedence): the config file's own
+`config:`, then the closest folder route over its agent's folder under
+`agents_dir/`, then the block root, then the default below. Evals always
+publish into their agent's schema, so `+database` and `+schema` are refused
+(`SST-CFG015`); a route that names no folder is `SST-CFG041`.
 
-| Key | Default for |
+```yaml
+evals:
+  +eval_tier: blocking
+  +retry: 1
+  ops:                     # the evals of the agents under agents/ops/
+    +eval_tier: report
+```
+
+| Key | What it sets |
 |---|---|
-| `+agent_version` | `agent_version` |
+| `+agent_version` | the agent version a run targets |
 | `+metrics` | `metrics.system`, when the `metrics:` block has no `system` key: each listed system metric, ungated and without a threshold. `system: []` enables none. A name that is not a system metric is `SST-PRS013`. |
 | `+metric_version` | each system metric's `version` |
 | `+judge_model` | each custom metric's `model`; a system metric's judge comes with its version |
-| `+eval_tier` | `run.tier` |
-| `+retry` | `run.retry` |
-| `+concurrency` | the runs in flight at once, across the suite; also the ceiling `run.concurrency` is checked against |
-| `+baseline_runs` | `run.baseline_runs` |
+| `+eval_tier` | `blocking` or `report`, else `report`; see [tiers](#tiers-and-exit-codes) |
+| `+retry` | extra attempts allowed after attempts that did not pass, else 0 |
+| `+concurrency` | the runs in flight at once; at the root, across the suite, and the ceiling a route or an eval's `config:` is checked against (`SST-VAL731`) |
+| `+baseline_runs` | completed runs a baseline captures, else 1 |
 | `+min_dataset_rows` | the dataset size below which `SST-VAL710` warns |
-| `+retention` | the retention class of a run whose variant `run.retention` does not list |
+| `+retention` | the retention class, `audit` or `decision`, reported with each run's results; SST never deletes runs or eval objects |
+
+`sst list eval --long` prints each eval's settings and where each came from.
 
 `apply.eval_config_stage.stage` names the stage, in each agent's schema, that
 holds the rendered run configurations (default `EVAL_CONFIGS`).
@@ -357,8 +369,8 @@ than with what it reports on its own (`SST-APL023`, `SST-APL024`,
 own diagnostic, and the suite fails.
 
 A round runs at most this many attempts at once, across all evals, each on a
-session of its own: `evals.+concurrency`, else the largest `run.concurrency` of
-any eval, else `--threads` (else `$SST_THREADS`, else `generation.threads`),
+session of its own: `evals.+concurrency`, else the largest `concurrency` any
+eval resolves, else `--threads` (else `$SST_THREADS`, else `generation.threads`),
 else 1. Every attempt re-invokes the agent on every question, so concurrency is
 real load and real spend. With `--fail-fast`, evals run one after another, and
 the suite stops after the first one that did not pass.
@@ -547,7 +559,7 @@ error (`SST-VAL761`) until a new one is captured.
 
 ### Tiers and exit codes
 
-`run.tier`, else `evals.+eval_tier`, else `report`, decides what a regression
+The eval's `eval_tier` setting, else `report`, decides what a regression
 does: `blocking` fails the run with `SST-VAL763` (exit 1); `report` lists it in
 `regressions` with `gate_verdict: regressed`, and the run passes.
 
@@ -581,7 +593,7 @@ flowchart TD
     pairs -- no --> incompatible
     pairs -- yes --> regressed{"a gated metric regressed?"}
     regressed -- no --> passed["passed"]
-    regressed -- yes --> tier{"run.tier"}
+    regressed -- yes --> tier{"eval_tier"}
     tier -- report --> listed["passes, regression listed"]
     tier -- blocking --> fails["fails: SST-VAL763"]
 ```

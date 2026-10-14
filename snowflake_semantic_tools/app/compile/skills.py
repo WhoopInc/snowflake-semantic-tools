@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from hashlib import sha256
 
@@ -24,6 +25,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     StatementPlan,
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, Plugin, Skill, SkillBundle, SkillCatalog
 from snowflake_semantic_tools.domain.render.skill_bundle import build_plugin_bundle, build_skill_bundle
 from snowflake_semantic_tools.domain.sql import Sql, stage_path
@@ -41,13 +43,26 @@ _ALIAS_PREFIX = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 @dataclass(frozen=True, slots=True)
 class CatalogChannel:
-    """Where the catalog channel publishes: `skills.catalog` plus the shared `skills` keys."""
+    """Where one skill or plugin publishes as a Cortex Extension, from the settings it resolved.
+
+    Attributes:
+        home: The database and schema of its block's root, which a skill placed elsewhere by a
+            route or its `config:` is reported against (SST-VAL806); None is its own location.
+        prefix_key: Where `version_prefix` was set, as SST-CFG008 names it: a key of
+            `sst_config.yml` such as `skills.+version_prefix`, or `config.version_prefix` for
+            the item's own `config:`.
+        settings: The settings the item resolved, its location rendered and each built-in
+            default it took recorded, sorted by key; what the manifest records for it.
+    """
 
     database: str
     schema: str
     bundle_stage: QualifiedName
     version_prefix: str = DEFAULT_VERSION_PREFIX
     certified: bool = False
+    home: tuple[str, str] | None = None
+    prefix_key: str = "skills.+version_prefix"
+    settings: tuple[Setting, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +118,7 @@ class CompiledExtension(StandaloneArtifact):
     source_files: tuple[str, ...] = field()
     scripts: tuple[tuple[str, str], ...] = ()
     contained_keys: tuple[str, ...] = ()
+    settings: tuple[Setting, ...] = ()
 
     @property
     def has_scripts(self) -> bool:
@@ -150,24 +166,40 @@ class CompiledExtension(StandaloneArtifact):
 
 
 class CompileSkills:
-    """One SKILL-type extension per skill and one PLUGIN-type extension per plugin."""
+    """One SKILL-type extension per skill and one PLUGIN-type extension per plugin that has a channel.
+
+    `channels` is where each publishes: one channel for every skill and plugin, or each one's own
+    by artifact key, so one can be placed or certified alone. A skill or plugin with none does
+    not compile.
+    """
 
     def __init__(
-        self, catalog: SkillCatalog, channel: CatalogChannel | None, *, config_file: str = CONFIG_FILE
+        self,
+        catalog: SkillCatalog,
+        channels: CatalogChannel | Mapping[str, CatalogChannel] | None,
+        *,
+        config_file: str = CONFIG_FILE,
     ) -> None:
         self._catalog = catalog
-        self._channel = channel
+        self._channels = channels
         self._config_file = config_file
+
+    def _channel(self, key: str) -> CatalogChannel | None:
+        """Return the channel the skill or plugin with artifact key `key` publishes through."""
+        channels = self._channels
+        return channels if channels is None or isinstance(channels, CatalogChannel) else channels.get(key)
 
     def run_result(self) -> CompileResult:
         """Validate the catalog, then compile each skill and then each plugin; the result is sorted by key.
 
-        Diagnostics come in that order: `validate_skill_catalog`'s, then each bundle's and its
-        extension name's. Without a channel, or with a version prefix no alias can start with,
-        nothing compiles. Skills compile first, so a plugin sees what its members reported.
+        Diagnostics come in that order: `validate_skill_catalog`'s, the version prefixes', then
+        each bundle's and its extension name's. A skill or plugin without a channel, or whose
+        version prefix no alias can start with, does not compile. Skills compile first, so a
+        plugin sees what its members reported.
 
         Diagnostics:
-            SST-CFG008: `skills.+version_prefix` cannot start an alias.
+            SST-CFG008: a `version_prefix` cannot start an alias; once per configuration key that
+                sets it, or per item whose own `config:` does.
             SST-VAL801: a skill or plugin's extension name starts with a digit, so it cannot
                 name a Snowflake object; it does not compile.
             SST-VAL836: a plugin member has errors, so the plugin is blocked.
@@ -178,29 +210,19 @@ class CompileSkills:
                 the later one does not compile.
         """
         diagnostics: list[Diagnostic] = list(validate_skill_catalog(self._catalog))
-        channel = self._channel
-        if channel is None:
-            return CompileResult((), DiagnosticBag(diagnostics))
-        if not _ALIAS_PREFIX.fullmatch(channel.version_prefix):
-            diagnostics.append(
-                D(
-                    "SST-CFG008",
-                    origin=Origin(self._config_file),
-                    subject="config:skills.+version_prefix",
-                    key="skills.+version_prefix",
-                    found=repr(channel.version_prefix),
-                    expected="a letter or underscore, then letters, digits, or underscores",
-                )
-            )
-            return CompileResult((), DiagnosticBag(diagnostics))
+        items = (
+            *((item.key, item.origin) for item in self._catalog.skills),
+            *((item.key, item.origin) for item in self._catalog.plugins),
+        )
+        bad_prefix = self._prefix_problems(items, diagnostics)
         compiled: list[CompiledExtension] = []
         members = {skill.name: skill for skill in self._catalog.skills}
         for skill in self._catalog.skills:
-            extension = self._compile_skill(skill, diagnostics)
+            extension = self._compile_skill(skill, diagnostics) if skill.key not in bad_prefix else None
             if extension is not None:
                 compiled.append(extension)
         for plugin in self._catalog.plugins:
-            extension = self._compile_plugin(plugin, members, diagnostics)
+            extension = self._compile_plugin(plugin, members, diagnostics) if plugin.key not in bad_prefix else None
             if extension is not None:
                 compiled.append(extension)
         collisions = version_collision_diagnostics(item.release.minted for item in compiled)
@@ -211,7 +233,42 @@ class CompileSkills:
         )
         return CompileResult(tuple(kept), DiagnosticBag(diagnostics))
 
+    def _prefix_problems(self, items: Iterable[tuple[str, Origin]], diagnostics: list[Diagnostic]) -> set[str]:
+        """Report each version prefix no alias can start with, and return the items it blocks.
+
+        A prefix the configuration file sets is reported once, at that file; one an item's own
+        `config:` sets is reported on that item.
+
+        Diagnostics:
+            SST-CFG008: a channel's version prefix cannot start an alias.
+        """
+        blocked: set[str] = set()
+        reported: set[str] = set()
+        for key, origin in items:
+            channel = self._channel(key)
+            if channel is None or _ALIAS_PREFIX.fullmatch(channel.version_prefix):
+                continue
+            blocked.add(key)
+            own = channel.prefix_key.startswith("config.")
+            if not own and channel.prefix_key in reported:
+                continue
+            reported.add(channel.prefix_key)
+            diagnostics.append(
+                D(
+                    "SST-CFG008",
+                    origin=origin if own else Origin(self._config_file),
+                    subject=key if own else f"config:{channel.prefix_key}",
+                    key=channel.prefix_key,
+                    found=repr(channel.version_prefix),
+                    expected="a letter or underscore, then letters, digits, or underscores",
+                )
+            )
+        return blocked
+
     def _compile_skill(self, skill: Skill, diagnostics: list[Diagnostic]) -> CompiledExtension | None:
+        channel = self._channel(skill.key)
+        if channel is None:
+            return None
         bundle, bundle_diagnostics = build_skill_bundle(skill)
         diagnostics.extend(bundle_diagnostics)
         if bundle is None or has_error(skill.key, diagnostics):
@@ -220,11 +277,11 @@ class CompileSkills:
         if unnamed:
             diagnostics.extend(unnamed)
             return None
-        release = self._release(skill.key, "SKILL", skill.extension_name, skill.description or "", bundle)
-        if self._release_checks(release, diagnostics):
+        release = _release(channel, skill.key, "SKILL", skill.extension_name, skill.description or "", bundle)
+        if _release_checks(channel, release, diagnostics):
             return None
         diagnostics.append(_extension_surface(release, skill.name, skill.origin))
-        return CompiledExtension(release, skill.source_files, scripts=_scripts_of((skill,)))
+        return CompiledExtension(release, skill.source_files, scripts=_scripts_of((skill,)), settings=channel.settings)
 
     def _compile_plugin(
         self, plugin: Plugin, members: Mapping[str, Skill], diagnostics: list[Diagnostic]
@@ -232,8 +289,11 @@ class CompileSkills:
         """Bundle a plugin unless it, or a member skill, has an error; diagnostics are appended in order.
 
         The error check reads every diagnostic so far, the members' included, so it must run
-        after the skills compile.
+        after the skills compile. A member is bundled whether or not it publishes alone.
         """
+        channel = self._channel(plugin.key)
+        if channel is None:
+            return None
         # SST-VAL836 stays here, not in `domain.validate`: it is a blocking decision read off
         # the diagnostics this compile has gathered so far, not a check of authored input.
         # A member that fails catalog validation (say, a file a stage rejects) would
@@ -258,8 +318,8 @@ class CompileSkills:
         sources = tuple(
             dict.fromkeys((plugin.manifest_file, *(path for skill in carried for path in skill.source_files)))
         )
-        release = self._release(plugin.key, "PLUGIN", plugin.extension_name, plugin.description or "", bundle)
-        if self._release_checks(release, diagnostics):
+        release = _release(channel, plugin.key, "PLUGIN", plugin.extension_name, plugin.description or "", bundle)
+        if _release_checks(channel, release, diagnostics):
             return None
         diagnostics.append(_extension_surface(release, plugin.name, plugin.origin))
         return CompiledExtension(
@@ -267,44 +327,48 @@ class CompileSkills:
             sources,
             scripts=_scripts_of(carried),
             contained_keys=tuple(artifact_key("skill", name) for name in dict.fromkeys(plugin.members)),
+            settings=channel.settings,
         )
 
-    def _release(self, key: str, kind: str, name: str, comment: str, bundle: SkillBundle) -> ExtensionRelease:
-        channel = self._channel
-        assert channel is not None
-        return ExtensionRelease(
-            key=key,
-            extension_type=kind,
-            target=QualifiedName.from_parts(channel.database, channel.schema, name),
-            stage=channel.bundle_stage,
-            alias=bundle.alias(channel.version_prefix),
-            comment=comment,
-            certified=channel.certified,
-            bundle=bundle,
-        )
 
-    def _release_checks(self, release: ExtensionRelease, diagnostics: list[Diagnostic]) -> bool:
-        """Append what the publication guards report for a release; True when one is an error.
+def _release(
+    channel: CatalogChannel, key: str, kind: str, name: str, comment: str, bundle: SkillBundle
+) -> ExtensionRelease:
+    """Name one version on its channel: in the channel's schema, aliased by its prefix and the digest."""
+    return ExtensionRelease(
+        key=key,
+        extension_type=kind,
+        target=QualifiedName.from_parts(channel.database, channel.schema, name),
+        stage=channel.bundle_stage,
+        alias=bundle.alias(channel.version_prefix),
+        comment=comment,
+        certified=channel.certified,
+        bundle=bundle,
+    )
 
-        `_release` names the version by its digest, in the channel's schema, under a prefix that
-        ends in a separator; these report a release that is not so, which then does not compile.
 
-        Diagnostics:
-            SST-VAL803: the alias is not the version prefix and the bundle digest.
-            SST-VAL806: the target is outside the catalog channel's schema (a warning).
-            SST-VAL820: the bundle's stage prefix does not end in `/`.
-        """
-        channel = self._channel
-        assert channel is not None
-        version = release.minted
-        catalog = QualifiedName.from_parts(channel.database, channel.schema, "X").folded[:2]
-        found = (
-            *version_diagnostics(version, channel.version_prefix),
-            *schema_diagnostics(version, catalog),
-            *put_target_diagnostics(release.key, release.bundle.name, (release.prefix,)),
-        )
-        diagnostics.extend(found)
-        return any(item.blocks for item in found)
+def _release_checks(channel: CatalogChannel, release: ExtensionRelease, diagnostics: list[Diagnostic]) -> bool:
+    """Append what the publication guards report for a release; True when one is an error.
+
+    `_release` names the version by its digest, in the channel's schema, under a prefix that
+    ends in a separator; these report a release that is not so, which then does not compile,
+    and one its settings placed outside its block root's schema.
+
+    Diagnostics:
+        SST-VAL803: the alias is not the version prefix and the bundle digest.
+        SST-VAL806: the target is outside its block root's database and schema (a warning).
+        SST-VAL820: the bundle's stage prefix does not end in `/`.
+    """
+    version = release.minted
+    database, schema = channel.home or (channel.database, channel.schema)
+    home = QualifiedName.from_parts(database, schema, "X").folded[:2]
+    found = (
+        *version_diagnostics(version, channel.version_prefix),
+        *schema_diagnostics(version, home),
+        *put_target_diagnostics(release.key, release.bundle.name, (release.prefix,)),
+    )
+    diagnostics.extend(found)
+    return any(item.blocks for item in found)
 
 
 def _extension_surface(release: ExtensionRelease, name: str, origin: Origin) -> Diagnostic:
@@ -320,11 +384,18 @@ def _scripts_of(skills: Iterable[Skill]) -> tuple[tuple[str, str], ...]:
     return tuple((skill.name, script.path) for skill in unique.values() for script in skill.scripts)
 
 
-def unpublished_reasons(catalog: SkillCatalog, skills: CompileResult, channel_problem: str | None) -> dict[str, str]:
+# Why a skill or plugin no setting gives a bundle stage has no version.
+UNPLACED = "no +bundle_stage resolves for it"
+
+
+def unpublished_reasons(catalog: SkillCatalog, skills: CompileResult, placed: AbstractSet[str]) -> dict[str, str]:
     """Say why each declared skill and plugin produced no extension version, by artifact key.
 
-    One an error names "has errors"; any other is held back by `channel_problem`, or, when the
-    channel is configured, by the channel itself.
+    One an error names "has errors"; one whose key `placed` lacks has no bundle stage; any other
+    was held back by its channel, such as a version prefix no alias can start with.
+
+    Args:
+        placed: The artifact keys of the skills and plugins a channel publishes.
 
     Returns:
         The reason by artifact key, the skills in catalog order and then the plugins; a skill
@@ -333,7 +404,11 @@ def unpublished_reasons(catalog: SkillCatalog, skills: CompileResult, channel_pr
     compiled = {item.artifact_key for item in skills.compiled}
     failed = {item.subject for item in skills.diagnostics if item.blocks}
     return {
-        key: "it has errors" if key in failed else channel_problem or "the catalog channel cannot publish it"
+        key: "it has errors"
+        if key in failed
+        else "the catalog channel cannot publish it"
+        if key in placed
+        else UNPLACED
         for key in (*(item.key for item in catalog.skills), *(item.key for item in catalog.plugins))
         if key not in compiled
     }

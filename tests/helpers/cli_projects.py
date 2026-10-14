@@ -85,8 +85,7 @@ project:
   target_profile: skills
 skills:
   +version_prefix: "SST_"
-  catalog:
-    +bundle_stage: SKILL_BUNDLES
+  +bundle_stage: SKILL_BUNDLES
 """
 
 
@@ -105,9 +104,8 @@ def skill_project(root: Path) -> Path:
 PROFILE_CONFIG = """
 project:
   target_profile: skills
-skills:
-  stage:
-    +stage: PROFILES
+profiles:
+  +stage: PROFILES
 """
 
 
