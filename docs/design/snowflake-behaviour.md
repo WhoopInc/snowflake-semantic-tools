@@ -416,17 +416,30 @@ unconditionally, and must read before it writes. A fresh agent's `COMMIT` is
 always `VERSION$2`. The live version shows only in `SHOW VERSIONS IN AGENT`, as
 the row whose `name` is null; `DESCRIBE AGENT`'s version list omits it.
 
-**Evidence**: `Enforced`. On create, SST commits the live copy as `VERSION$2`
-while the default is pinned to `VERSION$1`, drops it, and returns the default to
-`LAST`. On update, an agent with a live version gets the spec written into it
-and committed, instead of an `ADD VERSION`.
-[test_agent_publish.py](../../tests/unit/app/test_agent_publish.py) (the create
-test above, and
+An agent needs its live version all the same. Snowsight's agent page shows the
+live version (as DRAFT), and `DESCRIBE AGENT`'s `agent_spec` is the live
+version's spec, empty when there is none. A request that names no version is
+served the live version while the agent has one committed version. Measured on
+an agent with only `VERSION$1` and no live version: Snowsight showed no
+instructions, tools or skills; an unversioned `DATA_AGENT_RUN` ran without the
+agent's tools or skills; the same request naming `!VERSION$1` or `!DEFAULT` was
+served the full spec. `ALTER AGENT ... ADD LIVE VERSION FROM LAST` opens a live
+version holding `LAST`'s spec.
+
+**Evidence**: `Enforced`. On create, SST keeps the live copy `CREATE AGENT`
+opens. On update, an agent with a live version gets the spec written into it
+and committed, instead of an `ADD VERSION`; one without gets an `ADD VERSION`.
+Either way the agent has no live version after that, so `ADD LIVE VERSION FROM
+LAST` opens one holding what was just committed.
+[test_agent_publish.py](../../tests/unit/app/test_agent_publish.py)
+(`test_permanent_agent_create_keeps_the_live_version_then_alias_and_tags`,
+`test_permanent_agent_update_adds_exactly_one_version_and_a_live_copy_then_alias_and_tags`,
+and
 `test_permanent_agent_update_writes_a_live_version_and_commits_it_as_the_one_new_version`);
 `test_agent_versions_report_the_live_row_and_every_shown_alias` in
 [test_snowflake_connector.py](../../tests/unit/adapters/test_snowflake_connector.py).
 
-**SST depends on it at**: `_agent_programs` and `_consume_created_live_version`
+**SST depends on it at**: `_agent_programs`
 in [compiled.py](../../snowflake_semantic_tools/app/compile/agents/compiled.py);
 `observe_agent_versions` in
 [catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py);

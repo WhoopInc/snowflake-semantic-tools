@@ -168,17 +168,19 @@ def _agent_programs(
 
     A temporary agent is one CREATE OR REPLACE TEMPORARY AGENT from the inline
     specification for all three. A staged agent ends each program with exactly one committed
-    version more than it began with and no live version, then its alias and tags are set:
+    version more than it began with and a live version holding the same specification, then
+    its alias and tags are set. Snowsight shows the live version, and a request naming no
+    version is served it, so an agent without one shows and runs with no instructions,
+    tools, or skills (docs/design/snowflake-behaviour.md):
 
     - create: CREATE AGENT commits VERSION$1 and also opens a live version of the same
-      specification, which Snowflake can neither drop nor abort. It is committed as VERSION$2
-      while the default is pinned to VERSION$1, so the copy is never served, then dropped,
-      and the default is returned to LAST. VERSION$1 takes the `git:<sha>` comment an added
+      specification, which is kept. VERSION$1 takes the `git:<sha>` comment an added
       version carries.
-    - update: ADD VERSION from the stage directory.
+    - update: ADD VERSION from the stage directory, then a live version from it.
     - update-live: an agent with a live version gets the specification written into it
       and committed, since ADD VERSION beside a live version fails and committing it first
-      would publish the stale draft as a version of its own.
+      would publish the stale draft as a version of its own; then a live version is opened
+      from the commit, since COMMIT closes the one it committed.
 
     An agent with no stage directory has no statements.
 
@@ -208,16 +210,19 @@ def _agent_programs(
     comment = literal(f"git:{git_sha}")
     create = [
         sql("CREATE AGENT {agent}\n  FROM {directory}", agent=agent, directory=directory),
-        *_consume_created_live_version(agent),
         sql("ALTER AGENT {agent} MODIFY VERSION VERSION$1 SET COMMENT = {comment}", agent=agent, comment=comment),
     ]
+    # MEASURED: the live version this opens holds LAST's specification, and DESCRIBE AGENT
+    # then reports it as `agent_spec`.
+    open_live = sql("ALTER AGENT {agent} ADD LIVE VERSION FROM LAST", agent=agent)
     update = [
         sql(
             "ALTER AGENT {agent}\n  ADD VERSION FROM {directory}\n  COMMENT = {comment}",
             agent=agent,
             directory=directory,
             comment=comment,
-        )
+        ),
+        open_live,
     ]
     update_live = [
         # Snowflake's docs do not say ADD VERSION fails beside a live version; the server refuses
@@ -230,18 +235,25 @@ def _agent_programs(
             specification=literal(payload.rstrip()),
         ),
         sql("ALTER AGENT {agent} COMMIT COMMENT = {comment}", agent=agent, comment=comment),
+        open_live,
     ]
+    metadata = _version_metadata(model, agent)
+    return (*create, *metadata), (*update, *metadata), (*update_live, *metadata)
+
+
+def _version_metadata(model: AgentModel, agent: Sql) -> tuple[Sql, ...]:
+    """Return the statements that move the agent's alias to the last committed version and set its tags."""
+    statements: list[Sql] = []
     if model.alias:
         # Snowflake's docs list LAST as a version shortcut; the server rejects it unquoted in
         # MODIFY VERSION (docs/design/snowflake-behaviour.md).
-        alias = sql(
-            'ALTER AGENT {agent}\n  MODIFY VERSION "LAST" SET ALIAS = {alias}',
-            agent=agent,
-            alias=_alias(model.alias),
+        statements.append(
+            sql(
+                'ALTER AGENT {agent}\n  MODIFY VERSION "LAST" SET ALIAS = {alias}',
+                agent=agent,
+                alias=_alias(model.alias),
+            )
         )
-        create.append(alias)
-        update.append(alias)
-        update_live.append(alias)
     if model.tags:
         pairs = join(
             ", ",
@@ -250,27 +262,8 @@ def _agent_programs(
                 for name, value in model.tags
             ),
         )
-        tag = sql("ALTER AGENT {agent}\n  SET TAG {pairs}", agent=agent, pairs=pairs)
-        create.append(tag)
-        update.append(tag)
-        update_live.append(tag)
-    return tuple(create), tuple(update), tuple(update_live)
-
-
-def _consume_created_live_version(agent: Sql) -> tuple[Sql, ...]:
-    """Commit and drop the live copy CREATE AGENT opens, leaving VERSION$1 the only version.
-
-    MEASURED: a fresh agent's COMMIT is always VERSION$2. The default must not be the version
-    dropped, and DEFAULT_VERSION cannot be unset, so it is pinned and then set back to LAST,
-    which follows each version added later. VERSION$1 cannot go instead: it is the base the
-    committed copy was made from.
-    """
-    return (
-        sql("ALTER AGENT {agent} SET DEFAULT_VERSION = 'VERSION$1'", agent=agent),
-        sql("ALTER AGENT {agent} COMMIT", agent=agent),
-        sql("ALTER AGENT {agent} DROP VERSION VERSION$2", agent=agent),
-        sql("ALTER AGENT {agent} SET DEFAULT_VERSION = 'LAST'", agent=agent),
-    )
+        statements.append(sql("ALTER AGENT {agent}\n  SET TAG {pairs}", agent=agent, pairs=pairs))
+    return tuple(statements)
 
 
 def _profile_json(model: AgentModel) -> str:

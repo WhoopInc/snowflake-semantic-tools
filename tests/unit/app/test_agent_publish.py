@@ -27,7 +27,7 @@ def compiled(*, alias: str | None = "promoted") -> CompiledAgent:
     )
 
 
-def test_permanent_agent_create_leaves_one_committed_version_then_alias_and_tags() -> None:
+def test_permanent_agent_create_keeps_the_live_version_then_alias_and_tags() -> None:
     value = for_publication(
         compiled(),
         stage=QualifiedName.parse("DB.S.AGENT_SPECS"),
@@ -35,22 +35,19 @@ def test_permanent_agent_create_leaves_one_committed_version_then_alias_and_tags
     ).rendered_artifact
     assert value.upload_path == "@DB.S.AGENT_SPECS/agent/abc1234/agent_spec.yaml"
     assert value.upload_content == value.ddl.encode("utf-8")
-    # CREATE also opens a live copy of VERSION$1; it is committed as VERSION$2 while the
-    # default is pinned to VERSION$1, dropped, and the default handed back to LAST.
+    # CREATE commits VERSION$1 and opens a live copy of it, which is kept: Snowsight shows the
+    # live version, and a request naming no version is served it.
     assert texts(value.statements) == (
         "CREATE AGENT DB.S.AGENT\n  FROM @DB.S.AGENT_SPECS/agent/abc1234/",
-        "ALTER AGENT DB.S.AGENT SET DEFAULT_VERSION = 'VERSION$1'",
-        "ALTER AGENT DB.S.AGENT COMMIT",
-        "ALTER AGENT DB.S.AGENT DROP VERSION VERSION$2",
-        "ALTER AGENT DB.S.AGENT SET DEFAULT_VERSION = 'LAST'",
         "ALTER AGENT DB.S.AGENT MODIFY VERSION VERSION$1 SET COMMENT = 'git:abc1234'",
         'ALTER AGENT DB.S.AGENT\n  MODIFY VERSION "LAST" SET ALIAS = PROMOTED',
         "ALTER AGENT DB.S.AGENT\n  SET TAG DOMAIN = 'sales'",
     )
+    assert not any("COMMIT" in text or "DROP VERSION" in text for text in texts(value.statements))
     assert value.for_action(Action.CREATE, None).statements == value.statements
 
 
-def test_permanent_agent_update_adds_exactly_one_version_then_alias_and_tags() -> None:
+def test_permanent_agent_update_adds_exactly_one_version_and_a_live_copy_then_alias_and_tags() -> None:
     value = for_publication(
         compiled(),
         stage=QualifiedName.parse("DB.S.AGENT_SPECS"),
@@ -61,6 +58,7 @@ def test_permanent_agent_update_adds_exactly_one_version_then_alias_and_tags() -
     )
     assert texts(value.for_action(Action.UPDATE, observed).statements) == (
         "ALTER AGENT DB.S.AGENT\n  ADD VERSION FROM @DB.S.AGENT_SPECS/agent/abc1234/\n  COMMENT = 'git:abc1234'",
+        "ALTER AGENT DB.S.AGENT ADD LIVE VERSION FROM LAST",
         'ALTER AGENT DB.S.AGENT\n  MODIFY VERSION "LAST" SET ALIAS = PROMOTED',
         "ALTER AGENT DB.S.AGENT\n  SET TAG DOMAIN = 'sales'",
     )
@@ -88,10 +86,12 @@ def test_permanent_agent_update_writes_a_live_version_and_commits_it_as_the_one_
     assert update.statements == value.update_live_statements
     # Committing the live version first would publish it as a version of its own, and ADD
     # VERSION beside it fails: the spec goes into it, escaped so its JSON reads back exactly.
+    # COMMIT closes the live version, so a new one is opened from what was committed.
     assert texts(update.statements) == (
         "ALTER AGENT DB.S.AGENT\n  MODIFY LIVE VERSION SET SPECIFICATION = "
         '\'{\n  "instructions": {\n    "response": "it\'\'s \\\\"one\\\\"\\\\nline"\n  }\n}\'',
         "ALTER AGENT DB.S.AGENT COMMIT COMMENT = 'git:abc1234'",
+        "ALTER AGENT DB.S.AGENT ADD LIVE VERSION FROM LAST",
         'ALTER AGENT DB.S.AGENT\n  MODIFY VERSION "LAST" SET ALIAS = PROMOTED',
         "ALTER AGENT DB.S.AGENT\n  SET TAG DOMAIN = 'sales'",
     )

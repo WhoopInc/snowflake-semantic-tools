@@ -469,17 +469,21 @@ uploads the rendered spec to `@<stage>/<agent>/<commit>/agent_spec.yaml` under
 and schema), then:
 
 1. When the agent is absent, `CREATE AGENT ... FROM` that folder. Snowflake
-   commits `VERSION$1` and also opens a live version holding the same spec,
-   which it can neither drop nor abort, so apply commits that copy while the
-   default is pinned to `VERSION$1`, drops it, and sets the default back to
-   `LAST`. The agent is left with exactly one version, `VERSION$1`, commented
-   `git:<commit>`, and no live version.
+   commits `VERSION$1`, commented `git:<commit>`, and also opens a live version
+   holding the same spec, which apply keeps.
 2. When the agent exists, `ALTER AGENT ... ADD VERSION FROM` that folder,
-   commented `git:<commit>`. An agent with a live version, such as one created
-   before this release or edited in Snowsight, has the spec written into its
-   live version instead (`MODIFY LIVE VERSION SET SPECIFICATION`), which is then
+   commented `git:<commit>`. An agent with a live version, which is every agent
+   SST has published since this release, has the spec written into its live
+   version instead (`MODIFY LIVE VERSION SET SPECIFICATION`), which is then
    committed with that comment, so an update always adds exactly one version.
-   A draft edited outside SST is replaced, not kept.
+   A draft edited outside SST is replaced, not kept. Then
+   `ADD LIVE VERSION FROM LAST` opens a new live version holding the version
+   just committed.
+
+   Apply leaves every agent with a live version because Snowsight's agent page
+   shows the live version (as DRAFT), and a request that names no version is
+   served it while the agent has one committed version. Without one, the agent
+   shows, and runs with, no instructions, tools, or skills.
 3. `ALTER AGENT ... MODIFY VERSION "LAST" SET ALIAS = <alias>`, when the agent
    has an alias, and `SET TAG` for its tags. The new version becomes the
    default.
