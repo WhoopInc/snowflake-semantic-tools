@@ -188,6 +188,14 @@ def test_every_model_a_view_uses_declares_valid_keys_in_the_1_0_form() -> None:
     assert len(dbt_model_diagnostics(models)) == len(found) + 1
 
 
+def test_a_malformed_distinct_range_is_reported_once_and_its_bounds_are_not_checked() -> None:
+    malformed = replace(BALANCES, distinct_range=("ghost", "ghost"), malformed_distinct_range=True)
+    found = dbt_model_diagnostics({"balances": malformed})
+    assert [(item.code, item.context["detail"]) for item in found] == [
+        ("SST-PRS028", "meta.sst.distinct_range needs a start and an end column")
+    ]
+
+
 def test_each_view_and_metric_needs_a_description() -> None:
     views = (
         ParsedView("v", ORIGIN, "v.yml", {"description": "  "}, ()),
