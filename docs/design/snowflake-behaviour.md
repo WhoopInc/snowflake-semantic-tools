@@ -65,20 +65,22 @@ list in [the semantic views guide](../guides/semantic-views.md#checking-the-rend
 **Docs say**: `MAX_STALENESS = <integer>`, minimum 120.
 
 **Server does**: it accepts `MAX_STALENESS = '300 seconds'`, the form SST
-renders. The documented minimum holds: SST-VAL304 refuses less than 120. Whether
+renders. The documented minimum holds: SST-CFG023 refuses less than 120, as a
+view's `config.max_staleness` or as `semantic_views.+max_staleness`. Whether
 the server also accepts a bare integer is not recorded here.
 
 **Evidence**: `Enforced`. The `jaffle_sales` golden carries
 `MAX_STALENESS = '300 seconds'` and was created in Snowflake;
 [test_golden_ddl.py](../../tests/unit/test_golden_ddl.py) compares it.
-[test_sst_val304.py](../../tests/codes/val/test_sst_val304.py) covers the minimum.
+[test_sst_cfg023.py](../../tests/codes/cfg/test_sst_cfg023.py) covers the minimum.
 
 **SST depends on it at**: `_build_view` in
 [build.py](../../snowflake_semantic_tools/adapters/yaml/semantic/build.py), which
-turns the authored integer into `'<n> seconds'`; `_trailing_clauses` in
+turns the resolved integer into `'<n> seconds'`; `_trailing_clauses` in
 [semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py);
-SST-VAL304 in
-[val_semantic_view.py](../../snowflake_semantic_tools/domain/diagnostics/specs/val_semantic_view.py).
+SST-CFG023 in
+[cfg.py](../../snowflake_semantic_tools/domain/diagnostics/specs/cfg.py), raised by
+`value_problem` in [config.py](../../snowflake_semantic_tools/domain/validate/config.py).
 
 ### A variable's COMMENT needs `=`; the AI clauses take none
 

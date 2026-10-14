@@ -12,10 +12,10 @@ from snowflake_semantic_tools.domain.model.tool import ToolCatalog
 
 @dataclass(frozen=True, slots=True)
 class AgentCompileContext:
-    """Everything outside the agents that compiling them reads, and the `agents:` defaults.
+    """Everything outside the agents that compiling them reads, and the tools' execution environment.
 
-    Compiling a project gives each agent its own context, with the defaults the folder routes
-    over its file resolve to; the rest is shared.
+    Compiling a project gives each agent its own context, with the warehouse and query timeout
+    its settings resolve to; the rest is shared.
 
     Attributes:
         semantic_views: The views that compiled, by casefolded name; an Analyst tool over
@@ -30,10 +30,8 @@ class AgentCompileContext:
             taken to be.
         tool_locations: Each `define:` member's database and schema, by casefolded member
             name: the `tools:` block's location, or its group's `tools.<group>` override.
-        warehouse, query_timeout: The execution environment a tool gets when it sets none.
-        orchestration_model, budget_seconds, budget_tokens, tool_not_accessible,
-            analytical_search, alias: What an agent inherits when it sets none; an
-            orchestration model of `auto` also inherits.
+        warehouse, query_timeout: The execution environment a tool gets when it sets none: the
+            agent's resolved `warehouse`, else the target's, and its `query_timeout`.
         allowed_models: `snowflake.orchestration_models`, the gate for SST-VAL543.
         skills, plugins: What `skill()` and `plugin()` references pin to, by name.
     """
@@ -47,12 +45,6 @@ class AgentCompileContext:
     schema: str
     warehouse: str | None
     query_timeout: int | None
-    orchestration_model: str
-    budget_seconds: int | None
-    budget_tokens: int | None
-    tool_not_accessible: str | None
-    analytical_search: bool | None
-    alias: str | None
     allowed_models: frozenset[str]
     skills: Mapping[str, ExtensionPin] = field(default_factory=lambda: MappingProxyType({}))
     plugins: Mapping[str, ExtensionPin] = field(default_factory=lambda: MappingProxyType({}))
@@ -66,9 +58,6 @@ class AgentCompileContext:
     allow_unknown_keys: bool = True
     # `snowflake.profile.avatar_allowlist`; None when it is not configured (SST-VAL548).
     avatar_allowlist: frozenset[str] | None = None
-    # `agents.+secure` and `agents.+tags`: what an agent that sets neither inherits.
-    secure: bool = False
-    tags: tuple[tuple[str, str], ...] = ()
     # `snowflake.tool_types`: tool types this project adds to the ones SST renders (SST-RND012).
     extra_tool_types: frozenset[str] = frozenset()
     tool_locations: Mapping[str, tuple[str, str]] = field(default_factory=lambda: MappingProxyType({}))

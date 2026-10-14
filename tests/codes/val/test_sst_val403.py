@@ -7,12 +7,12 @@ from pathlib import Path
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, Severity
 from tests.helpers.reference_project import VIEWS, edited, project_copy, reported
 
-STALENESS = "    max_staleness: 300\n"
+SETTINGS = "    config:\n"
 
 
 def test_sst_val403_fires(tmp_path: Path) -> None:
-    inline = STALENESS + "    filters:\n      - name: completed_only\n        expr: order_state = 'completed'\n"
-    [diagnostic] = reported(edited(tmp_path, VIEWS, STALENESS, inline), "SST-VAL403")
+    inline = "    filters:\n      - name: completed_only\n        expr: order_state = 'completed'\n" + SETTINGS
+    [diagnostic] = reported(edited(tmp_path, VIEWS, SETTINGS, inline), "SST-VAL403")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "filter 'completed_only' uses the legacy inline form"
     assert diagnostic.subject == "semantic_view:jaffle_sales"

@@ -30,6 +30,9 @@ Each agent is a folder under `project.agents_dir` (default `agents`) holding `ag
 ```yaml
 name: sales_analyst
 comment: Order and revenue questions across all locations.
+config:
+  orchestration_model: claude-sonnet-4-6
+  alias: promoted
 spec:
   instructions:
     orchestration: "{{ file('instructions/orchestration.md') }}"
@@ -43,11 +46,16 @@ spec:
     - source:
         type: CORTEX_EXTENSION
         path: "{{ skill('sales-semantics') }}"
-alias: promoted
 ```
 
 - `name:` is the only required key. A key SST does not model is a warning (`SST-PRS004`) and
   is not rendered.
+- `config:` holds the agent's settings: the `agents:` `+` keys of `sst_config.yml` without the
+  `+` (`orchestration_model`, `budget_seconds`, `budget_tokens`, `tool_not_accessible`,
+  `analytical_search`, `alias`, `secure`, `enabled`, `tags`, `warehouse`, `query_timeout`,
+  `database`, `schema`). It wins over every folder route and the block root; an absent key
+  inherits, any other key is `SST-CFG053`, and a key with no value is `SST-CFG054`. Never
+  write these at the top level or under `spec:` (`SST-PRS126`).
 - `instructions` is a map of `orchestration`, `response`, and `sample_questions`; never a
   bare string. `{{ file('<path>') }}` inlines a Markdown file relative to the agent's folder.
 - Each tool's `description` is what the agent reads to pick it: say when to use it, and when

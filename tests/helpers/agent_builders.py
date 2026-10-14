@@ -146,12 +146,6 @@ def context(tools: ToolCatalog | None = None, **fields: Any) -> AgentCompileCont
         schema="S",
         warehouse="WH",
         query_timeout=None,
-        orchestration_model="claude",
-        budget_seconds=None,
-        budget_tokens=None,
-        tool_not_accessible=None,
-        analytical_search=None,
-        alias=None,
         allowed_models=frozenset(("claude", "auto")),
     )
     return replace(base, **fields)

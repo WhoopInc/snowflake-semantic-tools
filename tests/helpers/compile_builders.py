@@ -6,7 +6,9 @@ publishes through both channels, the catalog and a stage.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
+from types import MappingProxyType
 from typing import TypeVar
 
 from snowflake_semantic_tools.app.compile import CompileResult
@@ -15,6 +17,7 @@ from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.semantic_view import Column, ColumnKind, SemanticView, Table
+from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillFile
 from tests.helpers.project_inputs import InMemoryProjectInputs
 from tests.helpers.sql_values import authored
@@ -57,10 +60,23 @@ def view(name: str) -> SemanticView:
     )
 
 
+def own_settings(**values: object) -> Mapping[str, Setting]:
+    """An agent's settings as its own `config:` block sets them."""
+    return MappingProxyType({key: Setting(key, value, "config") for key, value in values.items()})
+
+
 def agent(name: str, *skills: str, enabled: bool = True, model: str = "auto") -> AgentModel:
+    """An agent pinning `skills`; a `model` other than `auto` is set in its own `config:`."""
     references = tuple(AgentSkill("", "CORTEX_EXTENSION", item, "", ref="skill") for item in skills)
+    settings = own_settings(orchestration_model=model) if model != "auto" else own_settings()
     return AgentModel(
-        name, Origin("agent.yml"), ("agent.yml",), skills=references, enabled=enabled, orchestration_model=model
+        name,
+        Origin("agent.yml"),
+        ("agent.yml",),
+        skills=references,
+        enabled=enabled,
+        orchestration_model=model,
+        settings=settings,
     )
 
 

@@ -69,7 +69,10 @@ starts:
   (`SST-CFG031`): whether expressions were compiled against Snowflake decides
   what a passing `sst validate` proves.
 
-An empty value (`key:` with nothing after it) means the key is unset.
+An empty value (`key:` with nothing after it) means the key is unset, except
+for a `+` key: one written with no value is an error (`SST-CFG054`), because
+an absent `+` key inherits and an empty one would read as a value it is not
+(see [Precedence](#precedence)).
 
 ## Locations and targets
 
@@ -107,7 +110,8 @@ agents:
 ```
 
 Every other template, `{{ target.* }}` among them, is left as written for the
-key that reads it.
+key that reads it; every key that takes `{{ target.* }}` renders it the same
+way, each placeholder with the target's own value.
 
 ## Folder routes
 
@@ -115,10 +119,10 @@ Keys that start with `+` set defaults. Under `semantic_views:` and `agents:`, an
 unprefixed key names a folder -- under `semantic_models_dir/semantic_views/` and
 `agents_dir/` -- and its `+` keys apply to the views or agents in that folder
 and below. Routes nest as folders do, and each `+` key folds separately, so the
-closest folder that sets it wins. A view's own `enabled:`, `tags:`, and
-`max_staleness:`, and an agent's own `secure:` and `tags:`, still win over
-every route. A route to a folder that does not exist is an error
-(`SST-CFG041`), so a mistyped route cannot quietly route nothing.
+closest folder that sets it wins. A view's or an agent's own `config:` block
+still wins over every route ([Precedence](#precedence)). A route to a folder
+that does not exist is an error (`SST-CFG041`), so a mistyped route cannot
+quietly route nothing.
 
 ```yaml
 agents:
@@ -135,6 +139,57 @@ that is not declared, or has no `define:` members, is an error (`SST-CFG020`).
 `evals:` and `skills:` take no routes (`SST-CFG042`): evals publish into their
 agent's schema, and the unprefixed keys of `skills:` are its `catalog`,
 `stage`, and `extensions` blocks.
+
+## Precedence
+
+Every setting of a semantic view or an agent resolves through one chain, the
+same for every key, closest first:
+
+1. the artifact's own `config:` block;
+2. the closest folder route over the artifact's file that sets the `+` key;
+3. the block root's `+` key;
+4. SST's built-in default, which the
+   [configuration reference](../reference/config.md) lists.
+
+```yaml
+# sst_config.yml
+agents:
+  +orchestration_model: claude-sonnet-4-6
+  +budget_seconds: 120
+  finance:
+    +budget_seconds: 60
+
+# agents/finance/close/agent.yml
+name: close_agent
+config:
+  budget_seconds: 0        # its own value wins, though it is 0
+  tags: []                 # and an empty list is a value: no tags
+```
+
+`close_agent` resolves `budget_seconds` to 0 from its `config:`, `tags` to
+none, and `orchestration_model` to `claude-sonnet-4-6` from the root; any key
+nothing sets takes the default.
+
+- `config:` takes exactly the block's `+` keys, written without the `+`: for a
+  view, the `semantic_views:` keys; for an agent, the `agents:` keys. Any other
+  key, or one written with its `+`, is an error (`SST-CFG053`). A value is
+  checked by the same rules as the `+` key: its type (`SST-CFG004`), its
+  choices or bounds (`SST-CFG008`), and a key's own code, such as
+  `SST-CFG023` for `max_staleness`.
+- An absent key inherits from the next step down. An explicit value is a value
+  whatever it is -- `0`, `false`, `[]`, `auto` -- so it never falls through to
+  a route or the root.
+- A key written with no value, `null` or nothing after the colon, is an error
+  wherever it is written, under `config:` or as a `+` key in this file
+  (`SST-CFG054`). To inherit, delete the key.
+- A key the schema marks root-only may be set only at the root of its block;
+  in a folder route or under `config:` it is an error (`SST-CFG055`). The
+  configuration reference marks each root-only key.
+- A setting's `{{ target.* }}` templates are rendered after it resolves.
+
+`sst list --long` prints each view's and agent's settings with where each came
+from: `config`, `route:<folder>`, `root`, or `default`. With `--output json`,
+each listed item carries them under `settings`.
 
 ## Blocks
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import posixpath
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
@@ -27,12 +27,13 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.agent import AgentEvalFiles, AgentModel, AgentProfile, AgentSkill, AgentTool
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosition
-from snowflake_semantic_tools.domain.model.config_schema import routed_block
+from snowflake_semantic_tools.domain.model.config_schema import resolve_settings, setting_value
 from snowflake_semantic_tools.domain.parse.fields import unknown_field
 from snowflake_semantic_tools.domain.parse.passthrough import AGENT_SPEC_KEYS, TOOL_SPEC_KEYS, passthrough_diagnostics
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
 from snowflake_semantic_tools.domain.resolve.calls import call_problem, malformed_field, syntax_problem
 from snowflake_semantic_tools.domain.validate.agent_tool import TOOL_KEYS
+from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 
 _Block = TypeVar("_Block", bound=Mapping[Any, Any])
 
@@ -52,9 +53,10 @@ def load_agents(
 
     Args:
         config: The run's resolved configuration, whose `agents:` folder routes are checked
-            against the folders under `agents_dir`, and whose `+enabled`, as the routes over an
-            agent's file resolve it, is the `enabled` of an agent that sets none; None checks no
-            route, and an agent that sets no `enabled` is enabled.
+            against the folders under `agents_dir`, and whose `agents:` block each agent's
+            settings resolve through, below its own `config:`; None checks no route and resolves
+            each agent's settings from its `config:` alone. An agent whose `enabled` resolves to
+            anything but false is enabled.
 
     Diagnostics:
         SST-CFG041: when an `agents:` folder route names no folder under `agents_dir`; reported
@@ -71,12 +73,15 @@ def load_agents(
         SST-PRS002: when the agent has no `name`, a tool no `type`, a skill no `source.type`, or
             `evals:` no `dataset` or `config`.
         SST-PRS003: when `evals:` is not a mapping, or one of its paths not a non-empty string;
-            when `spec.tools`, `spec.skills`, `tags` or the sample questions are not a list;
+            when `spec.tools`, `spec.skills` or the sample questions are not a list;
             when `spec.instructions`, `meta`, `spec.passthrough` or a tool's mapping field, such
             as `filter`, is not a mapping; or when an `orchestration` or `response` instruction
             is not a string. The agent is kept back, and the field reads as empty.
         SST-PRS004: when a block SST models holds a key it does not model.
         SST-PRS022: when that key is within edit distance of one the block models.
+        SST-PRS126: when the agent writes a setting where it is no longer read, outside `config:`.
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+            reports the agent's `config:` block.
         SST-PRS018: when a `spec.tools` or `spec.skills` entry has the wrong shape.
         SST-PRS118: when a sample question is not a mapping with a string `question`.
         SST-REF003: when an instruction holds templates other than one whole `{{ file() }}` call.
@@ -109,36 +114,47 @@ def load_agents(
         if agent is not None:
             documented = _comment_mentions(raw, parsed.line_index.get(_TOKENS), "orchestration")
             folder = path.parent.relative_to(root).parts
-            enabled = agent.enabled
-            # The agent's own `enabled` wins; only an unset one takes the folder routes' `+enabled`.
-            if "enabled" not in parsed.tree and config is not None:
-                enabled = routed_block(config.get("agents"), folder).get("+enabled", True) is not False
-            agents.append(replace(agent, budget_tokens_documented=documented, folder=folder, enabled=enabled))
+            block = config.get("agents") if config is not None else None
+            settings = resolve_settings(block, folder, parsed.tree.get("config"))
+            enabled = setting_value(settings, "enabled") is not False
+            agents.append(
+                replace(agent, budget_tokens_documented=documented, folder=folder, enabled=enabled, settings=settings)
+            )
     return tuple(agents), DiagnosticBag(diagnostics)
 
 
-_TOKENS: NodePath = ("spec", "orchestration", "budget", "tokens")
+_TOKENS: NodePath = ("config", "budget_tokens")
 
 # The keys each block of an agent file models, by the block's path; `*` stands for any list index.
 # `meta` and the passthrough blocks are free-form, and a tool's own mapping fields are its type's.
 _TOOL_KEYS = frozenset(key for keys in TOOL_KEYS.values() for key in keys)
 _AGENT_KEYS: Mapping[NodePath, frozenset[str]] = MappingProxyType(
     {
-        (): frozenset(
-            ("name", "comment", "profile", "spec", "alias", "secure", "enabled", "deprecated", "tags", "meta", "evals")
-        ),
+        (): frozenset(("name", "comment", "profile", "spec", "config", "deprecated", "meta", "evals")),
         ("profile",): frozenset(("display_name", "avatar", "color")),
-        ("spec",): frozenset(("models", "orchestration", "instructions", "tools", "skills", "passthrough")),
-        ("spec", "models"): frozenset(("orchestration",)),
-        ("spec", "orchestration"): frozenset(("budget", "tool_not_accessible", "capabilities")),
-        ("spec", "orchestration", "budget"): frozenset(("seconds", "tokens")),
-        ("spec", "orchestration", "capabilities"): frozenset(("analytical_search",)),
+        ("spec",): frozenset(("instructions", "tools", "skills", "passthrough")),
         ("spec", "instructions"): frozenset(("orchestration", "response", "sample_questions")),
         ("spec", "tools", "*"): _TOOL_KEYS,
         ("spec", "skills", "*"): frozenset(("name", "source")),
         ("spec", "skills", "*", "source"): frozenset(("type", "path", "version")),
-        ("tags", "*"): frozenset(("name", "value")),
+        # `config:`'s own keys are the `agents:` settings, which `item_config_diagnostics` checks.
+        ("config", "tags", "*"): frozenset(("name", "value")),
         ("evals",): frozenset(("dataset", "config")),
+    }
+)
+# Settings an earlier draft read outside `config:`, by the block that held them, with where each
+# is set now. Each is an error, so a file still writing one learns it no longer does anything.
+_MOVED: Mapping[tuple[NodePath, str], str] = MappingProxyType(
+    {
+        ((), "alias"): "an agent sets it under config:, as config.alias",
+        ((), "secure"): "an agent sets it under config:, as config.secure",
+        ((), "enabled"): "an agent sets it under config:, as config.enabled",
+        ((), "tags"): "an agent sets it under config:, as config.tags",
+        (("spec",), "models"): "an agent sets its model under config:, as config.orchestration_model",
+        (("spec",), "orchestration"): (
+            "an agent sets these under config:, as config.budget_seconds, config.budget_tokens, "
+            "config.tool_not_accessible and config.analytical_search"
+        ),
     }
 )
 
@@ -152,6 +168,7 @@ def _unknown_keys(
     against every key some tool type takes; one of another type's is SST-VAL516's to report.
 
     Diagnostics:
+        SST-PRS126: the key is a setting that moved under `config:`, which the message says.
         SST-PRS022: the key is within edit distance of one the block models, which it names.
         SST-PRS004: otherwise.
     """
@@ -162,8 +179,11 @@ def _unknown_keys(
                 position = lines.get((*path, key))
                 origin = Origin(relative, position.line, position.col) if position else Origin(relative, 1, 1)
                 label = _label((*path, str(key)))
+                moved = _MOVED.get((path, str(key)))
                 found.append(
-                    unknown_field(str(key), known, label=label, artifact=relative, origin=origin, subject=subject)
+                    D("SST-PRS126", origin=origin, subject=subject, artifact=subject, field=label, reason=moved)
+                    if moved is not None
+                    else unknown_field(str(key), known, label=label, artifact=relative, origin=origin, subject=subject)
                 )
     return found
 
@@ -188,6 +208,16 @@ def _label(path: NodePath) -> str:
     for part in path:
         text += f"[{part}]" if isinstance(part, int) else (f".{part}" if text else part)
     return text
+
+
+def _placed(relative: str, lines: Mapping[NodePath, SourcePosition]) -> Callable[[str], Origin]:
+    """Place a key of the agent's `config:` block where it is written, else at the file's start."""
+
+    def origin_of(key: str) -> Origin:
+        position = lines.get(("config", key) if key else ("config",))
+        return Origin(relative, position.line, position.col) if position is not None else Origin(relative, 1, 1)
+
+    return origin_of
 
 
 def _comment_mentions(raw: bytes, position: SourcePosition | None, word: str) -> bool:
@@ -233,10 +263,6 @@ def _parse_agent(
 
     profile_node = mapping(tree.get("profile"))
     spec = mapping(tree.get("spec"))
-    models = mapping(spec.get("models"))
-    orchestration = mapping(spec.get("orchestration"))
-    budget = mapping(orchestration.get("budget"))
-    capabilities = mapping(orchestration.get("capabilities"))
     instructions = mapped(spec.get("instructions"), "spec.instructions")
     source_files = [relative]
     orchestration_text, response_text = (
@@ -260,11 +286,6 @@ def _parse_agent(
     )
     questions = listed(instructions.get("sample_questions"), "spec.instructions.sample_questions")
     sample_questions = _sample_questions(questions, name, origin, diagnostics)
-    tags = tuple(
-        (str(value.get("name")), str(value.get("value")))
-        for value in listed(tree.get("tags"), "tags")
-        if isinstance(value, dict) and value.get("name") is not None and value.get("value") is not None
-    )
     meta = mapped(tree.get("meta"), "meta")
     passthrough = mapped(spec.get("passthrough"), "spec.passthrough")
     diagnostics.extend(
@@ -272,34 +293,26 @@ def _parse_agent(
     )
     eval_files = _parse_eval_files(relative, tree.get("evals"), diagnostics)
     diagnostics.extend(_unknown_keys(relative, tree, lines, subject))
+    diagnostics.extend(
+        item_config_diagnostics("agents", tree.get("config"), subject=subject, origin_of=_placed(relative, lines))
+    )
     return (
         AgentModel(
             name=name,
             origin=origin,
             source_files=tuple(dict.fromkeys(source_files)),
             comment=optional_string(tree.get("comment")),
-            secure=bool(tree["secure"]) if "secure" in tree else None,
             profile=AgentProfile(
                 optional_string(profile_node.get("display_name")),
                 optional_string(profile_node.get("avatar")),
                 optional_string(profile_node.get("color")),
-            ),
-            orchestration_model=str(models.get("orchestration") or "auto"),
-            budget_seconds=optional_int(budget.get("seconds")),
-            budget_tokens=optional_int(budget.get("tokens")),
-            tool_not_accessible=optional_string(orchestration.get("tool_not_accessible")),
-            analytical_search=(
-                bool(capabilities.get("analytical_search")) if "analytical_search" in capabilities else None
             ),
             orchestration_instructions=orchestration_text,
             response_instructions=response_text,
             sample_questions=tuple(sample_questions),
             tools=tools,
             skills=skills,
-            alias=optional_string(tree.get("alias")),
-            enabled=bool(tree.get("enabled", True)),
             meta=MappingProxyType(meta),
-            tags=tags,
             passthrough=MappingProxyType(passthrough),
             evals=eval_files,
             deprecated=bool(tree.get("deprecated", False)),

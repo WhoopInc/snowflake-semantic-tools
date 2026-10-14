@@ -416,10 +416,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL543",
         Severity.ERROR,
         "Orchestration model is not in the allowlist",
-        "agent '{artifact}': models.orchestration '{found}' is not in the allowlist",
+        "agent '{artifact}': orchestration_model '{found}' is not in the allowlist",
         "add it to the config allowlist, or use an allowed model",
         condition=(
-            "an agent's orchestration model, its own or inherited, is not listed in "
+            "an agent's resolved orchestration model, from its `config:` or the `agents:` block, is not listed in "
             "`snowflake.orchestration_models`, which defaults to [auto]; compared exactly"
         ),
     ),
@@ -427,7 +427,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL544",
         Severity.ERROR,
         "Orchestration model is auto while a blocking eval exists",
-        "agent '{artifact}': models.orchestration is auto and a blocking eval is configured",
+        "agent '{artifact}': orchestration_model is auto and a blocking eval is configured",
         "pin the model explicitly",
         condition=(
             "an agent's orchestration model is `auto` and its eval's tier, `run.tier` else "
@@ -438,10 +438,10 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL545",
         Severity.ERROR,
-        "tool_not_accessible is misplaced or invalid",
+        "tool_not_accessible is invalid",
         "agent '{artifact}': tool_not_accessible {detail}",
-        "set it to accept, reject or legacy on the top-level orchestration key",
-        condition="an agent's `tool_not_accessible` is set to a value other than accept, reject or legacy",
+        "set config.tool_not_accessible, or agents.+tool_not_accessible, to accept, reject or legacy",
+        condition="an agent's resolved `tool_not_accessible` is a value other than accept, reject or legacy",
     ),
     spec(
         "SST-VAL546",
@@ -455,11 +455,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL547",
         Severity.WARNING,
         "Token budget read as a cost ceiling",
-        "agent '{artifact}': budget.tokens covers orchestration only",
-        "treat it as an orchestration bound, not a spend cap",
+        "agent '{artifact}': config.budget_tokens covers orchestration only",
+        "treat it as an orchestration bound, not a spend cap, and say so in a comment beside it",
         condition=(
-            "the agent sets budget.tokens itself, with no comment saying it bounds orchestration "
-            "only; a project-wide agents: default is not reported per agent"
+            "the agent sets `config.budget_tokens` itself, with no comment on or just above it saying it "
+            "bounds orchestration only; an `agents:` default or folder route is not reported per agent"
         ),
     ),
     spec(

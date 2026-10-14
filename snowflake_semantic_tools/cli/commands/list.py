@@ -11,6 +11,8 @@ and `json`, `list` prints `yaml`, the envelope as YAML, and `csv`, one row per i
 from __future__ import annotations
 
 import dataclasses
+import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import click
@@ -36,6 +38,7 @@ from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBa
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan.selectors import SelectionScope
+from snowflake_semantic_tools.domain.state.manifest import ArtifactEntry
 
 LIST_OUTPUTS = ("table", "plain", "json", "yaml", "csv")
 
@@ -101,29 +104,36 @@ def list_command(
         if (registered is None or split_artifact_key(item.key)[0] == registered)
         and scope.covers(split_artifact_key(item.key)[0], item.key)
     )
-    items = [_item(item, manifest.artifacts[item.key].source_files if long_format else None) for item in summaries]
+    entries = {item.key: manifest.artifacts[item.key] for item in summaries} if long_format else {}
+    items = [_item(item, entries.get(item.key)) for item in summaries]
     data = {"type": artifact_type, "items": items, "count": len(items)}
     return CommandResult(
         diagnostics=DiagnosticBag(notes),
         data=data,
-        human=lambda: _print_summaries(summaries, long_format),
+        human=lambda: _print_summaries(summaries, entries),
         rows=items,
     )
 
 
-def _item(summary: ArtifactSummary, source_files: tuple[str, ...] | None) -> dict[str, object]:
+def _item(summary: ArtifactSummary, entry: ArtifactEntry | None) -> dict[str, object]:
+    """One listed artifact; with `--long`, its source files and its settings with their sources too."""
     item = dataclasses.asdict(summary)
-    if source_files is not None:
-        item["source_files"] = list(source_files)
+    if entry is not None:
+        item["source_files"] = list(entry.source_files)
+        item["settings"] = {setting.key: setting.as_dict() for setting in entry.settings}
     return item
 
 
-def _print_summaries(summaries: tuple[ArtifactSummary, ...], long_format: bool) -> None:
+def _print_summaries(summaries: tuple[ArtifactSummary, ...], entries: Mapping[str, ArtifactEntry]) -> None:
+    """Print one line per artifact; with `--long`, then one indented line per setting and its source."""
     for item in summaries:
         line = f"{item.key} {item.status} {item.target} {item.fingerprint}"
-        if long_format:
+        entry = entries.get(item.key)
+        if entry is not None:
             line += f" applied={item.applied_fingerprint or '-'} version={item.version or '-'}"
         click.echo(line)
+        for setting in entry.settings if entry is not None else ():
+            click.echo(f"  {setting.key}={json.dumps(setting.value, sort_keys=True)} ({setting.source})")
 
 
 def _member_result(

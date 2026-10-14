@@ -16,9 +16,10 @@ def test_agent_loader_reads_complete_documents_and_sidecars(tmp_path: Path) -> N
 name: sales_agent
 profile:
   display_name: Sales
+config:
+  orchestration_model: model
+  alias: promoted
 spec:
-  models:
-    orchestration: model
   instructions:
     orchestration: "{{ file('instructions.md') }}"
     sample_questions:
@@ -27,7 +28,6 @@ spec:
     - type: cortex_analyst_text_to_sql
       semantic_view: "{{ semantic_view('sales') }}"
       description: Use for sales. Do not use for support.
-alias: promoted
 evals:
   dataset: "{{ eval_dataset('sales_questions') }}"
   config: "{{ eval_config('sales_run') }}"
@@ -48,6 +48,10 @@ evals:
     assert agent.evals is not None
     assert (agent.evals.dataset, agent.evals.config) == ("sales_questions", "sales_run")
     assert agent.evals.folder == "agents/sales/evals"
+    assert {key: (item.value, item.source) for key, item in agent.settings.items()} == {
+        "orchestration_model": ("model", "config"),
+        "alias": ("promoted", "config"),
+    }
 
 
 def test_an_eval_file_path_is_refused_for_a_reference(tmp_path: Path) -> None:
@@ -96,7 +100,6 @@ spec:
 WRONG_TYPES = [
     pytest.param("spec:\n  tools: 5\n", "spec.tools", "a list", "int", id="tools"),
     pytest.param("spec:\n  skills: {a: 1}\n", "spec.skills", "a list", "dict", id="skills"),
-    pytest.param("tags: 5\n", "tags", "a list", "int", id="tags"),
     pytest.param(
         "spec:\n  instructions:\n    sample_questions: What is revenue?\n",
         "spec.instructions.sample_questions",
@@ -212,21 +215,19 @@ def test_a_bare_string_instructions_block_is_refused_rather_than_dropped(tmp_pat
 def test_a_token_budget_documented_beside_it_is_marked_so(tmp_path: Path) -> None:
     text = (
         "name: sales_agent\n"
-        "spec:\n"
-        "  orchestration:\n"
-        "    budget:\n"
-        "      seconds: 60  # wall clock\n"
-        "      # Bounds orchestration tokens only,\n"
-        "      # not what the tools spend.\n"
-        "      tokens: 16000\n"
+        "config:\n"
+        "  budget_seconds: 60  # wall clock\n"
+        "  # Bounds orchestration tokens only,\n"
+        "  # not what the tools spend.\n"
+        "  budget_tokens: 16000\n"
     )
     [documented], _ = load_agents(_agent_file(tmp_path / "a", text))
-    assert documented.budget_tokens == 16000 and documented.budget_tokens_documented
-    trailing = text.replace("      # Bounds orchestration tokens only,\n      # not what the tools spend.\n", "")
-    trailing = trailing.replace("tokens: 16000", "tokens: 16000  # orchestration only")
+    assert documented.settings["budget_tokens"].value == 16000 and documented.budget_tokens_documented
+    trailing = text.replace("  # Bounds orchestration tokens only,\n  # not what the tools spend.\n", "")
+    trailing = trailing.replace("budget_tokens: 16000", "budget_tokens: 16000  # orchestration only")
     [inline], _ = load_agents(_agent_file(tmp_path / "b", trailing))
     assert inline.budget_tokens_documented
-    bare = text.replace("      # Bounds orchestration tokens only,\n      # not what the tools spend.\n", "")
+    bare = text.replace("  # Bounds orchestration tokens only,\n  # not what the tools spend.\n", "")
     [undocumented], _ = load_agents(_agent_file(tmp_path / "c", bare))
     assert not undocumented.budget_tokens_documented
 
@@ -254,7 +255,11 @@ def test_agents_in_grouping_folders_load_with_their_folder_and_routes_are_checke
 
 
 def test_an_agents_own_enabled_wins_over_its_routes_and_an_unset_one_takes_them(tmp_path: Path) -> None:
-    for folder, extra in (("retired/kept", "enabled: true\n"), ("retired/gone", ""), ("live/dark", "enabled: false\n")):
+    for folder, extra in (
+        ("retired/kept", "config:\n  enabled: true\n"),
+        ("retired/gone", ""),
+        ("live/dark", "config:\n  enabled: false\n"),
+    ):
         (tmp_path / "agents" / folder).mkdir(parents=True)
         name = folder.rsplit("/")[-1]
         (tmp_path / "agents" / folder / "agent.yml").write_text(f"name: {name}\n{extra}", encoding="utf-8")
@@ -272,8 +277,9 @@ def test_keys_an_agent_file_does_not_model_are_reported_and_a_near_miss_is_a_typ
         "name: sales_agent\n"
         "owner: data\n"
         "profile:\n  display_name: Sales\n  colour: red\n"
+        "config:\n  budget_seconds: 60\n  tags:\n    - {name: t, value: v, note: x}\n"
         "spec:\n"
-        "  orchestration:\n    budget:\n      seconds: 60\n      minutes: 1\n"
+        "  models:\n    orchestration: m\n"
         "  tools:\n"
         "    - type: cortex_analyst_text_to_sql\n"
         "      semantic_view: \"{{ semantic_view('sales') }}\"\n"
@@ -290,9 +296,9 @@ def test_keys_an_agent_file_does_not_model_are_reported_and_a_near_miss_is_a_typ
     found = sorted((item.code, item.message, item.subject) for item in diagnostics)
     file = "agents/sales/agent.yml"
     assert found == [
+        ("SST-PRS004", f"{file}: unknown field 'config.tags[0].note'", "agent:sales_agent"),
         ("SST-PRS004", f"{file}: unknown field 'evals.extra'", "agent:sales_agent"),
         ("SST-PRS004", f"{file}: unknown field 'owner'", "agent:sales_agent"),
-        ("SST-PRS004", f"{file}: unknown field 'spec.orchestration.budget.minutes'", "agent:sales_agent"),
         ("SST-PRS004", f"{file}: unknown field 'spec.skills[0].source.pin'", "agent:sales_agent"),
         (
             "SST-PRS022",
@@ -304,9 +310,15 @@ def test_keys_an_agent_file_does_not_model_are_reported_and_a_near_miss_is_a_typ
             f"{file}: unknown field 'spec.tools[0].warehosue'; did you mean 'spec.tools[0].warehouse'?",
             "agent:sales_agent",
         ),
+        (
+            "SST-PRS126",
+            "agent:sales_agent: 'spec.models' is no longer written: an agent sets its model under config:, "
+            "as config.orchestration_model",
+            "agent:sales_agent",
+        ),
     ]
     lines = {item.message.split("'")[1]: item.origin.line for item in diagnostics if item.origin is not None}
-    assert (lines["spec.tools[0].warehosue"], lines["owner"]) == (15, 2)
+    assert (lines["spec.tools[0].warehosue"], lines["owner"]) == (17, 2)
 
 
 def test_an_instruction_that_is_not_a_string_is_refused_rather_than_dropped(tmp_path: Path) -> None:

@@ -9,14 +9,14 @@ from tests.helpers.diagnostic_filters import coded
 
 def _tiered(tier: str) -> list[Diagnostic]:
     model = agent("sales_agent", orchestration_model="auto")
-    result = compile_agents(model, orchestration_model="auto")
+    result = compile_agents(model)
     return coded(cross(result, evals=(evaluation(model, "How many orders?", tier=tier),)), "SST-VAL544")
 
 
 def test_sst_val544_fires() -> None:
     [diagnostic] = _tiered("blocking")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "agent 'sales_agent': models.orchestration is auto and a blocking eval is configured"
+    assert diagnostic.message == "agent 'sales_agent': orchestration_model is auto and a blocking eval is configured"
     assert diagnostic.subject == "agent:sales_agent"
 
 

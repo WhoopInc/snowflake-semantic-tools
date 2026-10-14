@@ -8,7 +8,10 @@
 #
 # Every database is written `{{ target.database }}`, so each dbt target in
 # profiles.yml publishes to its own database; the goldens resolve against `dev`.
-# A `+` key sets a default that folder routes and individual artifacts inherit.
+# A `+` key sets a default that folder routes inherit. A semantic view or an
+# agent overrides it in its own `config:` block, writing the key without its
+# `+`: its own value, then the closest folder route, then the block root, then
+# SST's default. An absent key inherits; a `+` key with no value is SST-CFG054.
 #
 # An unknown key is a warning (SST-CFG003) and a misspelled top-level block an
 # error (SST-CFG007). A removed key is SST-CFG043 unless it has its own
@@ -145,14 +148,16 @@ semantic_views:
   # A folder route. An unprefixed key names a directory under
   # semantic_models/semantic_views/ (SST-CFG041 if it is missing), and its `+`
   # keys override per key: views in core/ publish to <db>.CORE and still inherit
-  # +database and +enabled from this block.
+  # +database and +enabled from this block. A view's own `config:` wins over
+  # both.
   core:
     +schema: CORE
   +enabled: true
 
   # Views publish as CREATE OR REPLACE SEMANTIC VIEW ... COPY GRANTS, so explicit
-  # grants survive a republish. `+tags` and `+max_staleness` are the defaults of
-  # views that set neither; `+meta` is removed (SST-CFG043).
+  # grants survive a republish. `+tags` and `+max_staleness` would apply to
+  # every view that does not set its own under `config:`; `+meta` is removed
+  # (SST-CFG043).
 
 agents:
   # Evals publish into their agent's schema, so these also place the evals.
@@ -166,9 +171,9 @@ agents:
   # a blocking eval could not attribute a score change.
   +orchestration_model: claude-sonnet-4-6
 
-  # Unset: agent tools run on the target warehouse (SST_REF_WH on dev). A
+  # `+warehouse` is absent: agent tools run on the target warehouse
+  # (SST_REF_WH on dev). Written with no value it would be SST-CFG054. A
   # generic tool must resolve some warehouse (SST-VAL527).
-  +warehouse: null
 
   +query_timeout: 60
 
@@ -188,7 +193,7 @@ agents:
 
   # A folder route, as under semantic_views: the agents under agents/ops/
   # publish to <db>.OPS and inherit every other key above (SST-CFG041 if the
-  # folder is missing). An agent's own setting still wins over any route.
+  # folder is missing). An agent's own `config:` still wins over any route.
   ops:
     +schema: OPS
 

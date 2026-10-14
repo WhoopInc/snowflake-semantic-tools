@@ -10,9 +10,7 @@ ENABLED = "  - name: jaffle_sales\n"
 
 
 def test_sst_val016_fires(tmp_path: Path) -> None:
-    project = edited(tmp_path, VIEWS, ENABLED, ENABLED + "    enabled: false\n")
-    project_views = project / VIEWS
-    project_views.write_text(project_views.read_text().replace("    enabled: true\n", "", 1))
+    project = edited(tmp_path, VIEWS, "      enabled: true\n", "      enabled: false\n")
     [found] = compiled_diagnostics(project, "SST-VAL016")
     assert found["severity"] == "error"
     assert found["message"] == (

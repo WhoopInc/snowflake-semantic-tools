@@ -30,7 +30,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.build_members import (
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
-from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
+from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE, Setting, setting_value, target_text
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtSource, DbtTarget
 from snowflake_semantic_tools.domain.model.project import ParsedMember
 from snowflake_semantic_tools.domain.model.semantic_view import (
@@ -62,6 +62,8 @@ def _build_view(
     attachment: Mapping[str, tuple[str, ...]],
     config: dict[str, Any],
     sources: tuple[DbtSource, ...] = (),
+    *,
+    settings: Mapping[str, Setting] = MappingProxyType({}),
 ) -> SemanticView:
     """Build one view from its node and the members attached to it, one phase at a time.
 
@@ -70,6 +72,9 @@ def _build_view(
     view's scope admits, set up the context, then tables, columns, metric names, metrics and their windows, filters,
     instructions, verified queries, variables, tags, and assemble. A phase reads only what the
     earlier phases returned.
+
+    Args:
+        settings: The view's resolved settings, which give its tags and `max_staleness`.
 
     Raises:
         ProjectError: A table, column, member, variable or tag does not resolve. Its diagnostics
@@ -104,8 +109,8 @@ def _build_view(
     variables = _view_variables(node, view)
     # Rewrites the resolved expressions, so it runs once the metrics and filters are built.
     metrics, entity_filters = _with_variable_names(variables, metrics, entity_filters)
-    tags = _view_tags(node, view, config, target)
-    max_staleness = node.get("max_staleness")
+    tags = _view_tags(setting_value(settings, "tags"), view, config, target)
+    max_staleness = setting_value(settings, "max_staleness")
     source_path, source_files = _source_files(path, project_dir, selected.attached, models, logical_by_model)
     fqn = target.fqn(name)
     _require(qualified_name_problem(fqn, artifact=view.key, subject=view.key))
@@ -128,6 +133,7 @@ def _build_view(
         referenced_models=tuple(sorted(logical_by_model)),
         scope=scope,
         member_origins=MappingProxyType({member.key: member.origin for member in selected.attached}),
+        settings=tuple(settings[key] for key in sorted(settings)),
     )
 
 
@@ -465,16 +471,15 @@ def _variable(value: object, *, path: Path, view_name: str) -> Variable:
     )
 
 
-def _view_tags(node: Mapping[str, Any], view: _View, config: dict[str, Any], target: DbtTarget) -> tuple[Tag, ...]:
-    """Build the view's tags in declaration order.
+def _view_tags(raw_tags: object, view: _View, config: dict[str, Any], target: DbtTarget) -> tuple[Tag, ...]:
+    """Build the view's resolved tags in declaration order.
 
     Diagnostics:
-        SST-PRS027: when `tags:` is not a list.
+        SST-PRS027: when the tags are not a list.
 
     Raises:
-        ProjectError: `tags:` is not a list, or a tag does not build (see `_tag`).
+        ProjectError: the tags are not a list, or a tag does not build (see `_tag`).
     """
-    raw_tags = node.get("tags")
     if raw_tags is not None and not isinstance(raw_tags, list):
         diagnostic = D("SST-PRS027", artifact=view.key, found=type(raw_tags).__name__)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
@@ -497,14 +502,14 @@ def _tag_names(config: dict[str, Any], target: DbtTarget) -> tuple[dict[str, str
     block = config.get("tags") or {}
     if not isinstance(block, dict):
         return {}, {}
-    prefix = _with_target(block.get("default_prefix"), target)
+    prefix = target_text(block.get("default_prefix"), target, "") or ""
     names: dict[str, str] = {}
     unqualified: dict[str, Diagnostic] = {}
     for key, entry in block.items():
         name = str(key)
         if name == "default_prefix":
             continue
-        fqn = _with_target(entry.get("fqn"), target) if isinstance(entry, dict) else ""
+        fqn = (target_text(entry.get("fqn"), target, "") or "") if isinstance(entry, dict) else ""
         if fqn:
             names[name] = fqn
         elif prefix and "." not in name:
@@ -520,13 +525,6 @@ def _tag_names(config: dict[str, Any], target: DbtTarget) -> tuple[dict[str, str
                 reason=reason,
             )
     return names, unqualified
-
-
-def _with_target(value: object, target: DbtTarget) -> str:
-    """Return a `tags:` value as text with `{{ target.database }}` and `{{ target.schema }}` replaced."""
-    if value is None:
-        return ""
-    return str(value).replace("{{ target.database }}", target.database).replace("{{ target.schema }}", target.schema)
 
 
 def _tag(value: object, *, view: _View, tag_names: Mapping[str, str], unqualified: Mapping[str, Diagnostic]) -> Tag:

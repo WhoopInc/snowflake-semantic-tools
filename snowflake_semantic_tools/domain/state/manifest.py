@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 
+from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.state.codec import (
     optional_object,
     pairs_from_json,
@@ -45,6 +46,9 @@ class ArtifactEntry:
             objects it spans as `(object type, qualified name)`; empty for any other artifact.
         references: What the artifact names but does not wait on, such as a profile's skills
             and commands; never a publish edge, so `depends_on` does not hold them.
+        settings: A semantic view's or an agent's resolved settings, each with where its value
+            came from, sorted by key; empty for any other artifact, and in a manifest written
+            before they were recorded.
     """
 
     type: str
@@ -62,6 +66,7 @@ class ArtifactEntry:
     component_fingerprints: tuple[tuple[str, str], ...] = ()
     physical_resources: tuple[tuple[str, str], ...] = ()
     references: tuple[str, ...] = ()
+    settings: tuple[Setting, ...] = ()
 
     def as_dict(self) -> dict[str, object]:
         """Return the entry as `manifest.json` stores it under `artifacts`."""
@@ -86,6 +91,7 @@ class ArtifactEntry:
             "diagnostic_codes": list(self.diagnostic_codes),
             "component_fingerprints": pairs_to_json(self.component_fingerprints),
             "physical_resources": resources_to_json(self.physical_resources),
+            "settings": {item.key: item.as_dict() for item in self.settings},
         }
 
     @classmethod
@@ -108,6 +114,9 @@ class ArtifactEntry:
         if not isinstance(components, dict) or not isinstance(resources, list):
             raise ValueError("artifact entry component metadata must be structured")
         parsed_resources = resources_from_json(resources, "artifact physical resource must be an object")
+        settings = value.get("settings", {})
+        if not isinstance(settings, dict) or not all(isinstance(item, dict) for item in settings.values()):
+            raise ValueError("artifact settings must be an object of objects")
         return cls(
             type=str(value["type"]),
             name=str(value["name"]),
@@ -124,6 +133,9 @@ class ArtifactEntry:
             component_fingerprints=pairs_from_json(components),
             physical_resources=parsed_resources,
             references=tuple(str(item) for item in value.get("references", [])),
+            settings=tuple(
+                Setting(str(key), item.get("value"), str(item.get("source", ""))) for key, item in settings.items()
+            ),
         )
 
 

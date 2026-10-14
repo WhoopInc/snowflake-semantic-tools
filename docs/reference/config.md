@@ -10,9 +10,11 @@ listed here, and nothing else is read:
   misspelled top-level block (`SST-CFG007`);
 - a removed key is an error that says what replaced it.
 
-Keys that start with `+` set a default that nested folder routes and
-individual artifacts inherit. In a key path, `<route>` stands for a folder
-name and `<name>` for any entry of a name map.
+Keys that start with `+` set a default that nested folder routes inherit; a
+semantic view or an agent overrides one in its own `config:` block, writing
+the key without its `+`. An absent key inherits, and a `+` key written with
+no value is an error (`SST-CFG054`). In a key path, `<route>` stands for a
+folder name and `<name>` for any entry of a name map.
 
 ## project
 
@@ -138,36 +140,36 @@ Defaults for tool backing objects.
 
 ## semantic_views
 
-Defaults for semantic views, overridable per folder.
+Defaults for semantic views, overridable per folder and by a view's own `config:`.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `semantic_views.+database` | string | the target database | Database for semantic views. |
 | `semantic_views.+schema` | string | the target schema | Schema for semantic views. |
-| `semantic_views.+enabled` | boolean | `true` | Default for views that do not set `enabled` themselves. |
-| `semantic_views.+tags` | list |  | Tags, as a view's own `tags:` lists them, for views that set none; rendered in the CREATE's WITH TAG. |
-| `semantic_views.+max_staleness` | integer |  | Default `max_staleness`, in seconds, for views that set none; at least 120 (SST-CFG023). |
+| `semantic_views.+enabled` | boolean | `true` | Whether views are built; false leaves them out of the project. |
+| `semantic_views.+tags` | list |  | Tags, as `name` and `value` entries, rendered in the CREATE's WITH TAG; a closer setting replaces the list. |
+| `semantic_views.+max_staleness` | integer |  | `MAX_STALENESS` of views, in seconds; at least 120 (SST-CFG023). |
 | `semantic_views.<route>` | block |  | Folder route: overrides for views under that directory. |
 
 ## agents
 
-Defaults for Cortex Agents, overridable per folder.
+Defaults for Cortex Agents, overridable per folder and by an agent's own `config:`.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `agents.+database` | string | the target database | Database for agents. |
 | `agents.+schema` | string | the target schema | Schema for agents. |
-| `agents.+warehouse` | string | the target warehouse | Warehouse for agent tool execution. |
-| `agents.+orchestration_model` | string | `auto` | Orchestration model of agents that name none or `auto`; must be in `snowflake.orchestration_models` (SST-CFG025). |
-| `agents.+query_timeout` | integer |  | Tool query timeout in seconds. |
+| `agents.+warehouse` | string | the target warehouse | Warehouse an agent's Analyst, search, and generic tools run on when they name none. |
+| `agents.+orchestration_model` | string | `auto` | Orchestration model; must be in `snowflake.orchestration_models` (SST-CFG025 here, SST-VAL543 for the value an agent resolves). `auto` lets Snowflake choose. |
+| `agents.+query_timeout` | integer |  | Query timeout, in seconds, of an agent's tools that set none. |
 | `agents.+budget_seconds` | integer |  | Orchestration time budget. |
 | `agents.+budget_tokens` | integer |  | Orchestration token budget. |
 | `agents.+tool_not_accessible` | enum: `accept`, `reject`, `legacy` |  | Behavior when a tool is not accessible. |
 | `agents.+analytical_search` | boolean |  | Enable analytical search. |
 | `agents.+alias` | string |  | Version alias assigned after publication. |
-| `agents.+enabled` | boolean | `true` | Default for agents that do not set `enabled` themselves. |
-| `agents.+secure` | boolean | `false` | Default for agents that do not set `secure` themselves. |
-| `agents.+tags` | list |  | Tags, as an agent's own `tags:` lists them, for agents that set none. |
+| `agents.+enabled` | boolean | `true` | Whether agents are compiled; false leaves them out of the project. |
+| `agents.+secure` | boolean | `false` | Publish agents with `SECURE = TRUE`. |
+| `agents.+tags` | list |  | Tags, as `name` and `value` entries, set with ALTER AGENT ... SET TAG; a closer setting replaces the list. |
 | `agents.<route>` | block |  | Folder route: overrides for agents under that directory. |
 
 ## evals

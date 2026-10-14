@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.agent import AgentModel
+from snowflake_semantic_tools.domain.model.config_schema import resolve_settings
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog
 from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetIdentity
@@ -89,8 +90,23 @@ class InMemoryProjectInputs:
         return self.tools
 
     def agents(self, *, agents_dir: str) -> tuple[tuple[AgentModel, ...], DiagnosticBag]:
+        """Return the agents with their settings resolved as loading resolves them.
+
+        Each agent's own `settings` stand for its `config:`; the tree's `agents:` block and the
+        routes over its folder fill the rest. `enabled` is kept as the agent gives it.
+        """
         self.reads.append(f"agents:{agents_dir}")
-        return self.agent_models, self.agent_diagnostics
+        block = self.tree.get("agents")
+        resolved = tuple(
+            replace(
+                model,
+                settings=resolve_settings(
+                    block, model.folder, {key: item.value for key, item in model.settings.items()}
+                ),
+            )
+            for model in self.agent_models
+        )
+        return resolved, self.agent_diagnostics
 
     def eval_catalog(
         self,

@@ -119,7 +119,7 @@ Drawn from: [artifact keys](../snowflake_semantic_tools/domain/model/artifact_ke
 
 | Word | In Snowflake | In dbt | In SST |
 |---|---|---|---|
-| model | a language model, such as an agent's orchestration model or a search service's embedding model | a SQL model and the relation it builds | a dbt model, as `{{ ref('<model>') }}` names it; an agent's `spec.models.orchestration` and a search service's `embedding_model` keep Snowflake's sense |
+| model | a language model, such as an agent's orchestration model or a search service's embedding model | a SQL model and the relation it builds | a dbt model, as `{{ ref('<model>') }}` names it; an agent's `orchestration_model` setting and a search service's `embedding_model` keep Snowflake's sense |
 | target | no object; `TARGET_LAG` is the freshness a search service keeps | an output of a profile in `profiles.yml` | the same `profiles.yml` target, chosen by `--target`, which decides where every artifact lands |
 | manifest | an application package's `manifest.yml` | `target/manifest.json`, which SST reads | `target/sst/manifest.json`, the record of one SST compile; a plugin's `plugin.yml` is also called its manifest |
 | state | -- | `--state`, a directory of an earlier run's artifacts | the state table apply writes; `--state` also names an earlier build directory, as in dbt |

@@ -11,7 +11,7 @@
 # accepts them unquoted (tests/unit/adapters/test_yaml_documents.py).
 
 semantic_views:
-  # Sets every view-level key. Equality joins only.
+  # Sets every view-level key and every setting. Equality joins only.
   - name: jaffle_sales
     description: |-
       Orders, the customers who placed them, and the locations they were placed at.
@@ -21,7 +21,6 @@ semantic_views:
 
       Does NOT cover what was ON an order -- line items, products and supply costs
       live in `jaffle_menu`. Does not cover menu catalogue detail at all.
-    enabled: true
     tables:
       - "{{ ref('orders') }}"
       - "{{ ref('customers') }}"
@@ -42,17 +41,26 @@ semantic_views:
           Whether revenue metrics should include collected tax.
         default_value: false
 
-    # In seconds; renders as MAX_STALENESS = '300 seconds'.
-    max_staleness: 300
+    # The view's own settings. Each key is a `semantic_views:` `+` key without
+    # its `+`, and wins over every folder route and the block root; a key left
+    # out inherits, and one written with no value is SST-CFG054. Any other key
+    # here is SST-CFG053.
+    config:
+      # Restates the block's `+enabled: true`; `false` leaves the view out.
+      enabled: true
 
-    # Each `name:` is a tag() call resolved against the top-level `tags:` block
-    # in sst_config.yml (SST-REF028 if it names no tag there). Tags render
-    # inline as WITH TAG (...) in the CREATE statement.
-    tags:
-      - name: "{{ tag('cost_center') }}"
-        value: analytics
-      - name: "{{ tag('data_domain') }}"
-        value: jaffle_sales
+      # In seconds; renders as MAX_STALENESS = '300 seconds'. Under 120 is
+      # SST-CFG023, as it is for `+max_staleness`.
+      max_staleness: 300
+
+      # Each `name:` is a tag() call resolved against the top-level `tags:`
+      # block in sst_config.yml (SST-REF028 if it names no tag there). Tags
+      # render inline as WITH TAG (...) in the CREATE statement.
+      tags:
+        - name: "{{ tag('cost_center') }}"
+          value: analytics
+        - name: "{{ tag('data_domain') }}"
+          value: jaffle_sales
 
     custom_instructions:
       - "{{ custom_instructions('jaffle_sql_conventions') }}"

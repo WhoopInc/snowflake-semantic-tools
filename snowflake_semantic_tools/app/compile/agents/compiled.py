@@ -20,6 +20,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     marked_comment,
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.sql import (
     Sql,
     boolean,
@@ -73,6 +74,11 @@ class CompiledAgent(StandaloneArtifact):
     @property
     def source_files(self) -> tuple[str, ...]:
         return tuple(self.resolved.model.source_files)
+
+    @property
+    def settings(self) -> tuple[Setting, ...]:
+        settings = self.resolved.model.settings
+        return tuple(settings[key] for key in sorted(settings))
 
     @property
     def rendered_artifact(self) -> RenderedArtifact:

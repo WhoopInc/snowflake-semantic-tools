@@ -40,6 +40,7 @@ from snowflake_semantic_tools.domain.validate.semantic.authored_keys import (
     authored_key_diagnostics,
     legacy_reference_diagnostics,
     member_name_diagnostics,
+    view_config_diagnostics,
 )
 from snowflake_semantic_tools.domain.validate.semantic.dbt import (
     dbt_column_diagnostics,
@@ -148,7 +149,7 @@ def _structural_checks(context: LoadContext, parsed: ParsedProject, metrics: tup
     """Check what the project declares, before any reference in it is resolved.
 
     Reports, in order: repeated view names, malformed table references, the folder routes,
-    view lists outside semantic_views/, authored keys and member names, descriptions, the
+    view lists outside semantic_views/, authored keys, each view's `config:`, member names, descriptions, the
     shape of metrics, filters and relationships, the dbt models and columns the views use,
     the legacy globals, and the verified queries.
     """
@@ -217,6 +218,7 @@ def _document_diagnostics(
         *_folder_route_diagnostics(context.config, context.views_dir),
         *_stray_view_diagnostics(documents, context.views_dir),
         *authored_key_diagnostics(documents),
+        *view_config_diagnostics(documents),
         *renderer_fidelity_diagnostics(documents),
         *deprecated_key_diagnostics(documents),
         *member_name_diagnostics(documents),

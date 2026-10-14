@@ -117,12 +117,12 @@ def test_every_bare_word_a_view_attaches_is_a_column_or_a_variable_it_declares()
     ]
 
 
-def test_a_view_needs_something_to_query_and_a_staleness_snowflake_accepts() -> None:
+def test_a_view_needs_something_to_query() -> None:
     no_dimensions = replace(BALANCES, name="facts", columns=(column("balance", "NUMBER", "fact"),))
     models = {**MODELS, "facts": no_dimensions, "odd": ODD}
     views = (
-        _view("bare", ("facts",), max_staleness=60),
-        _view("filtered", ("facts",), max_staleness=True),
+        _view("bare", ("facts",)),
+        _view("filtered", ("facts",)),
         _view("odd", ("odd",)),
         _view("unknown", ("nothing",)),
         _view(
@@ -132,13 +132,12 @@ def test_a_view_needs_something_to_query_and_a_staleness_snowflake_accepts() -> 
                 f"{{{{ ref('orders', '{name}') }}}}" for name in ("order_id", "customer_id", "ordered_at", "state")
             ],
         ),
-        _view("fine", ("orders",), max_staleness=600),
+        _view("fine", ("orders",)),
     )
     entity = FilterDef("entity", "{{ ref('facts', 'balance') }} > 0", None, ("facts",), True)
     kept = {"semantic_view:filtered": {"filter:entity"}}
     found = _codes(views, _inputs(kept, models=models, filters=(entity,)))
     assert found == [
         ("SST-VAL301", "semantic_view:bare"),
-        ("SST-VAL304", "semantic_view:bare"),
         ("SST-VAL301", "semantic_view:hidden"),
     ]

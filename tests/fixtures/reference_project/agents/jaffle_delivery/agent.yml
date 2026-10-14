@@ -29,10 +29,16 @@ profile:
   avatar: TruckAgentIcon
   color: green
 
-spec:
-  models:
-    orchestration: claude-sonnet-4-5
+# The agent's own settings, each an `agents:` `+` key without its `+`. A key
+# set here wins over the `agents.+orchestration_model` default; the rest
+# inherit from sst_config.yml.
+config:
+  orchestration_model: claude-sonnet-4-5
+  # The `agents.+alias` default, restated.
+  alias: promoted
+  enabled: true
 
+spec:
   # `instructions:` is a map of orchestration, response and sample_questions.
   # These are inline while jaffle_analytics uses file() sidecars, so both forms
   # render.
@@ -68,11 +74,6 @@ spec:
       description: |-
         The partner's delivery agent's tools. They answer where an order is and
         when it will arrive, and nothing about order contents or value.
-
-# The `agents.+alias` default, restated.
-alias: promoted
-
-enabled: true
 
 meta:
   owner: analytics-platform

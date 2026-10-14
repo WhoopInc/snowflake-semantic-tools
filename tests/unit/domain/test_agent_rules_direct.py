@@ -7,6 +7,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.model.agent import AgentProfile
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.validate.agent import agent_rules, token_budget
 from snowflake_semantic_tools.domain.validate.agent_live import names_object, signature_disagreement
 from snowflake_semantic_tools.domain.validate.agent_tool import (
@@ -89,8 +90,11 @@ def test_the_profile_colour_must_be_a_name_or_a_token_and_a_deprecated_agent_kee
 
 
 def test_a_token_budget_the_agent_sets_itself_is_reported_unless_documented() -> None:
-    assert [item.code for item in token_budget(agent(budget_tokens=1000))] == ["SST-VAL547"]
-    assert token_budget(agent(budget_tokens=1000, budget_tokens_documented=True)) == ()
+    own = MappingProxyType({"budget_tokens": Setting("budget_tokens", 1000, "config")})
+    routed = MappingProxyType({"budget_tokens": Setting("budget_tokens", 1000, "root")})
+    assert [item.code for item in token_budget(agent(budget_tokens=1000, settings=own))] == ["SST-VAL547"]
+    assert token_budget(agent(budget_tokens=1000, settings=own, budget_tokens_documented=True)) == ()
+    assert token_budget(agent(budget_tokens=1000, settings=routed)) == ()
     assert token_budget(agent()) == ()
 
 

@@ -1,7 +1,7 @@
 """Check a routed block's folder routes against the directories they name.
 
 `semantic_views:` and `agents:` route by folder: an unprefixed key names a directory below the
-block's artifact root. What a route resolves to is `domain.model.config_schema.routed_block`;
+block's artifact root. What a route resolves to is `domain.model.config_schema.resolve_settings`;
 whether its directory exists is a question for the filesystem, so it is answered here.
 """
 

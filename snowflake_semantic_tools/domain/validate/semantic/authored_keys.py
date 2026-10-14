@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from types import MappingProxyType
 from typing import Any
 
@@ -15,6 +15,7 @@ from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, 
 from snowflake_semantic_tools.domain.validate.semantic.deprecated import DEPRECATED_KEYS, INERT_KEYS
 from snowflake_semantic_tools.domain.validate.semantic.nodes import node_origin, node_root
 from snowflake_semantic_tools.domain.validate.semantic.scope import SCOPE_KEYS
+from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 
 # The keys the loader reads, per semantic-model node. Anything else is reported,
 # because a key the loader skips changes nothing in the DDL and would otherwise
@@ -28,9 +29,7 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
                 "tables",
                 "custom_instructions",
                 "variables",
-                "tags",
-                "max_staleness",
-                "enabled",
+                "config",
                 *SCOPE_KEYS,
             )
         ),
@@ -91,14 +90,19 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
 NESTED_KEYS: Mapping[tuple[str, str], frozenset[str]] = MappingProxyType(
     {
         ("semantic_view", "variables"): frozenset(("name", "data_type", "default_value", "description")),
-        ("semantic_view", "tags"): frozenset(("name", "value")),
+        # A view's own keys under `config:` are its block's settings, which
+        # `view_config_diagnostics` checks; only the tag entries are checked here.
+        ("semantic_view", "config"): frozenset(),
+        ("semantic_view.config", "tags"): frozenset(("name", "value")),
         ("metric", "non_additive_dimensions"): frozenset(("dimension", "table", "sort_direction", "null_order")),
         ("metric", "window"): frozenset(("partition_by", "partition_by_excluding", "order_by", "frame")),
         ("metric.window", "order_by"): frozenset(("ref", "sort_direction", "null_order")),
     }
 )
 # Fields whose value is one mapping; every other nested field is a list.
-BLOCKS = frozenset((("metric", "window"),))
+BLOCKS = frozenset((("metric", "window"), ("semantic_view", "config")))
+# Blocks whose own keys another check reports, so only what nests in them is checked here.
+_CHECKED_ELSEWHERE = frozenset((("semantic_view", "config"),))
 # 0.3 spellings, by the node or entry that carries them. Each is an error naming
 # the 1.0 key: reading the old spelling would keep two dialects alive.
 RENAMED_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
@@ -126,6 +130,9 @@ REMOVED_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
             "config.meta.sst.synonyms, description and config.meta.sst.distinct_range"
         ),
         ("verified_query", "sql_file"): "a verified query loads its SQL from a file with sql: \"{{ file('<path>') }}\"",
+        ("semantic_view", "enabled"): "a view sets it under config:, as config.enabled",
+        ("semantic_view", "tags"): "a view sets it under config:, as config.tags",
+        ("semantic_view", "max_staleness"): "a view sets it under config:, as config.max_staleness",
     }
 )
 # The folder under the semantic models directory that owns each member type's files.
@@ -140,6 +147,43 @@ TYPE_FOLDERS: Mapping[str, str] = MappingProxyType(
 )
 # The 0.3 relationship shape, which 1.0 replaced with `relationship_conditions` rather than renamed.
 LEGACY_RELATIONSHIP_KEYS = frozenset(("relationship_columns", "left_column", "right_column"))
+
+
+def view_config_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, ...]:
+    """Report each key of a view's `config:` block that is not a `semantic_views:` setting with a value.
+
+    Every document is read, as the authored keys are, so a view outside semantic_views/ is
+    checked too. Each key is placed where it is written, else at the view.
+
+    Diagnostics:
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008, SST-CFG023: as
+            `item_config_diagnostics` reports them.
+    """
+    root_key = node_root("semantic_view")
+    diagnostics: list[Diagnostic] = []
+    for document in documents.documents:
+        nodes = document.tree.get(root_key) if root_key in document.root_keys else None
+        for index, node in enumerate(nodes if isinstance(nodes, list) else ()):
+            if not isinstance(node, dict) or "config" not in node:
+                continue
+            subject = artifact_key("semantic_view", str(node.get("name") or index))
+            origin_of = _config_origins(document, (root_key, index))
+            diagnostics.extend(
+                item_config_diagnostics("semantic_views", node["config"], subject=subject, origin_of=origin_of)
+            )
+    return tuple(diagnostics)
+
+
+def _config_origins(document: AuthoredDocument, node: NodePath) -> Callable[[str], Origin]:
+    """Place a key of the node's `config:` block where it is written, else at the node itself."""
+    start = document.position(node)
+    fallback = Origin(document.path, start.line if start else None, start.col if start else None)
+
+    def origin_of(key: str) -> Origin:
+        position = document.position((*node, "config", key) if key else (*node, "config"))
+        return Origin(document.path, position.line, position.col) if position is not None else fallback
+
+    return origin_of
 
 
 def authored_key_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, ...]:
@@ -288,7 +332,8 @@ def _unread_keys(
         for key, entry, label in entries:
             if isinstance(entry, dict):
                 where: NodePath = (*path, field) if key is None else (*path, field, key)
-                diagnostics.extend(_unread_keys(document, subject, f"{owner}.{field}", where, label, entry, keys))
+                known = frozenset(map(str, entry)) if (owner, field) in _CHECKED_ELSEWHERE else keys
+                diagnostics.extend(_unread_keys(document, subject, f"{owner}.{field}", where, label, entry, known))
     return diagnostics
 
 

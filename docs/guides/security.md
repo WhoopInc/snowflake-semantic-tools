@@ -225,7 +225,7 @@ reported too. An agent not yet published has no grants to read, so only the sess
 is checked. Semantic views and the objects `define:` publishes are not checked.
 
 **When a caller lacks a tool.** What the agent does then is Snowflake's behaviour, chosen by
-`spec.orchestration.tool_not_accessible` (`accept`, `reject`, or `legacy`) or
+the agent's `config.tool_not_accessible` (`accept`, `reject`, or `legacy`), or
 `agents.+tool_not_accessible`. SST writes the value into the specification as given and
 leaves it out when neither sets one, so set it to keep the behaviour in the project.
 

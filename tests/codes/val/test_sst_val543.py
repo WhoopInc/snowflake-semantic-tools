@@ -10,7 +10,7 @@ from tests.helpers.diagnostic_filters import coded
 def test_sst_val543_fires() -> None:
     [diagnostic] = coded(compile_agents(agent("sales_agent", orchestration_model="gpt-x")).diagnostics, "SST-VAL543")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "agent 'sales_agent': models.orchestration 'gpt-x' is not in the allowlist"
+    assert diagnostic.message == "agent 'sales_agent': orchestration_model 'gpt-x' is not in the allowlist"
     assert diagnostic.subject == "agent:sales_agent"
 
 

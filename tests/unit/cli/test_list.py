@@ -79,3 +79,28 @@ def test_list_without_manifest_and_failed_compile_json(tmp_path: Path) -> None:
     failed = CliRunner().invoke(cli, ["compile", *common(project), "--output", "json"])
     assert failed.exit_code == 1
     assert json.loads(failed.output)["status"] == "error"
+
+
+def test_list_long_prints_each_setting_with_where_it_came_from(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    run = ["list", "--project-dir", str(project), "--long"]
+    printed = CliRunner().invoke(cli, run)
+    assert printed.exit_code == 0, printed.output
+    lines = printed.output.splitlines()
+    menu = lines.index(next(line for line in lines if line.startswith("semantic_view:jaffle_menu ")))
+    assert lines[menu + 1 : menu + 4] == [
+        '  database="SST_REF_DEV" (root)',
+        "  enabled=true (root)",
+        '  schema="CORE" (route:core)',
+    ]
+    assert '  orchestration_model="claude-sonnet-4-6" (config)' in lines
+    assert "  secure=false (default)" in lines
+
+    listed = CliRunner().invoke(cli, [*run, "-o", "json"])
+    items = {item["key"]: item for item in json.loads(listed.output)["data"]["items"]}
+    assert items["semantic_view:jaffle_sales"]["settings"]["max_staleness"] == {"value": 300, "source": "config"}
+    assert items["agent:jaffle_minimal_agent"]["settings"]["schema"] == {"value": "OPS", "source": "route:ops"}
+    assert items["skill:jaffle-semantics"]["settings"] == {}
+    short = CliRunner().invoke(cli, ["list", "--project-dir", str(project), "-o", "json"])
+    assert all("settings" not in item for item in json.loads(short.output)["data"]["items"])

@@ -16,13 +16,13 @@ cannot be downgraded by any setting.
 ## Contents
 
 - [Registry (REG)](#registry-reg) -- 23 codes
-- [Configuration (CFG)](#configuration-cfg) -- 45 codes
+- [Configuration (CFG)](#configuration-cfg) -- 48 codes
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
 - [Parsing (PRS)](#parsing-prs) -- 57 codes
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 39 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 298 codes
+- [Validation (VAL)](#validation-val) -- 297 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
@@ -31,7 +31,7 @@ cannot be downgraded by any setting.
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 24 codes
 - [Internal (INT)](#internal-int) -- 12 codes
-- [Retired numbers](#retired-numbers) -- 56 numbers
+- [Retired numbers](#retired-numbers) -- 57 numbers
 
 ## Registry (REG)
 
@@ -323,7 +323,7 @@ Fix: delete the shadowed files, or pass --project-dir
 
 `required config key '<key>' is absent`
 
-Raised when a required config key is absent or empty.
+Raised when a required config key is absent; one written with no value is SST-CFG054.
 
 Fix: add {key} to sst_config.yml
 
@@ -473,9 +473,9 @@ Fix: target a group that exists and contains define: members
 
 **max_staleness below the accepted floor** (error)
 
-`+max_staleness is <found>; the minimum is 120`
+`<key> is <found>; the minimum is 120`
 
-Raised when `semantic_views.+max_staleness` is set below 120 seconds.
+Raised when `semantic_views.+max_staleness`, a folder route's, or a view's `config.max_staleness` is set below 120 seconds, Snowflake's minimum.
 
 Fix: raise max_staleness to at least 120
 
@@ -718,6 +718,36 @@ Fix: remove insecure_mode, or set it to false; it is a debugging switch, and wit
 Raised when `sst agent-kit` would install into a folder that is, contains, or lies inside a directory a `project.*_dir` key names, configured or by default.
 
 Fix: point project.{key} at a folder outside {path}; the agent kit's skills are for a coding agent, and SST would publish them to Snowflake
+
+### SST-CFG053
+
+**Unknown setting under config:** (error)
+
+`'<key>' is not a setting of <block>`
+
+Raised when a semantic view's or an agent's `config:` block sets a key its block does not declare as a `+` key, or writes a key with its `+`.
+
+Fix: use one of {expected}, written without its `+`; any other key belongs outside `config:`
+
+### SST-CFG054
+
+**Setting written with no value** (error)
+
+`'<key>' is set to null`
+
+Raised when a key of a semantic view's or an agent's `config:` block, or a `+` key in `sst_config.yml`, is written with no value or as `null`; an absent key inherits, and null is not a value.
+
+Fix: delete the key to inherit its value from the folder routes, the block root, or the default, or give it a value
+
+### SST-CFG055
+
+**Root-only setting set below the block root** (error)
+
+`'<key>' can be set only at the root of <block>`
+
+Raised when a `+` key the configuration schema marks root-only is set in a folder route, or in a semantic view's or an agent's `config:` block.
+
+Fix: set {expected} once, at the root of {block}, and remove it here
 
 ### SST-CFG200
 
@@ -2993,16 +3023,6 @@ Raised when a view's `tables:` names a dbt model that is `enabled: false` or mat
 
 Fix: enable the model, or change its materialisation
 
-### SST-VAL304
-
-**max_staleness below the accepted floor** (error)
-
-`<artifact>: max_staleness is <found>; the minimum is 120`
-
-Raised when a view declares an integer `max_staleness` under 120 seconds, Snowflake's minimum.
-
-Fix: raise `max_staleness` to at least 120
-
 ### SST-VAL305
 
 **Fact column is not numeric** (error)
@@ -3879,9 +3899,9 @@ Note: A warning rather than an error: SST compares the extension's direct grante
 
 **Orchestration model is not in the allowlist** (error)
 
-`agent '<artifact>': models.orchestration '<found>' is not in the allowlist`
+`agent '<artifact>': orchestration_model '<found>' is not in the allowlist`
 
-Raised when an agent's orchestration model, its own or inherited, is not listed in `snowflake.orchestration_models`, which defaults to [auto]; compared exactly.
+Raised when an agent's resolved orchestration model, from its `config:` or the `agents:` block, is not listed in `snowflake.orchestration_models`, which defaults to [auto]; compared exactly.
 
 Fix: add it to the config allowlist, or use an allowed model
 
@@ -3889,7 +3909,7 @@ Fix: add it to the config allowlist, or use an allowed model
 
 **Orchestration model is auto while a blocking eval exists** (error)
 
-`agent '<artifact>': models.orchestration is auto and a blocking eval is configured`
+`agent '<artifact>': orchestration_model is auto and a blocking eval is configured`
 
 Raised when an agent's orchestration model is `auto` and its eval's tier, `run.tier` else `evals.+eval_tier`, is blocking.
 
@@ -3899,13 +3919,13 @@ Note: With `auto`, a score change cannot be told from a change of model.
 
 ### SST-VAL545
 
-**tool_not_accessible is misplaced or invalid** (error)
+**tool_not_accessible is invalid** (error)
 
 `agent '<artifact>': tool_not_accessible <detail>`
 
-Raised when an agent's `tool_not_accessible` is set to a value other than accept, reject or legacy.
+Raised when an agent's resolved `tool_not_accessible` is a value other than accept, reject or legacy.
 
-Fix: set it to accept, reject or legacy on the top-level orchestration key
+Fix: set config.tool_not_accessible, or agents.+tool_not_accessible, to accept, reject or legacy
 
 ### SST-VAL546
 
@@ -3921,11 +3941,11 @@ Fix: declare a cortex_search tool, or disable analytical_search
 
 **Token budget read as a cost ceiling** (warning)
 
-`agent '<artifact>': budget.tokens covers orchestration only`
+`agent '<artifact>': config.budget_tokens covers orchestration only`
 
-Raised when the agent sets budget.tokens itself, with no comment saying it bounds orchestration only; a project-wide agents: default is not reported per agent.
+Raised when the agent sets `config.budget_tokens` itself, with no comment on or just above it saying it bounds orchestration only; an `agents:` default or folder route is not reported per agent.
 
-Fix: treat it as an orchestration bound, not a spend cap
+Fix: treat it as an orchestration bound, not a spend cap, and say so in a comment beside it
 
 ### SST-VAL548
 
@@ -7743,6 +7763,14 @@ Superseded by [`SST-PRS126`](#sst-prs126).
 Retired because a metric's tables are inferred from its expression; one that names none is SST-MEM002.
 
 Superseded by [`SST-MEM002`](#sst-mem002).
+
+### SST-VAL304
+
+**max_staleness below the accepted floor** (retired in 1.0.0)
+
+Retired because a view sets max_staleness under `config:`, and SST-CFG023 checks it there as it does the `+` key.
+
+Superseded by [`SST-CFG023`](#sst-cfg023).
 
 ### SST-VAL313
 

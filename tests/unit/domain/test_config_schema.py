@@ -12,7 +12,6 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     ChildPolicy,
     KeyKind,
     KeyStatus,
-    routed_block,
 )
 from snowflake_semantic_tools.domain.model.tool import EXECUTE_AS
 from snowflake_semantic_tools.domain.validate.config import validate_config
@@ -100,15 +99,6 @@ def test_agent_folder_routes_are_checked_as_the_agents_block_at_every_depth() ->
     assert _codes({"tools": {"finance": {"+bogus": 1}}}) == [("SST-CFG003", "config:tools.finance.+bogus")]
 
 
-def test_routed_block_folds_per_key_and_stops_at_the_first_folder_without_a_route() -> None:
-    block = {"+schema": "A", "+database": "D", "x": {"+schema": "B", "y": {"+schema": "C"}}, "z": "not a route"}
-    assert routed_block(block, ()) == {"+schema": "A", "+database": "D"}
-    assert routed_block(block, ("x", "y")) == {"+schema": "C", "+database": "D"}
-    assert routed_block(block, ("x", "other", "y")) == {"+schema": "B", "+database": "D"}
-    assert routed_block(block, ("z",)) == {"+schema": "A", "+database": "D"}
-    assert routed_block(None, ("x",)) == {}
-
-
 def test_routed_models_meet_the_allowlist_and_evals_and_skills_take_no_routes() -> None:
     tree = {"agents": {"+orchestration_model": "auto", "finance": {"core": {"+orchestration_model": "claude-x"}}}}
     assert _codes(tree) == [("SST-CFG025", "config:agents.finance.core.+orchestration_model")]
@@ -176,11 +166,12 @@ def test_required_keys_and_one_of_channel_blocks() -> None:
     ]
 
 
-def test_empty_values_mean_unset() -> None:
-    assert _codes({"agents": {"+warehouse": None}, "tags": {"pii": None}}) == []
+def test_empty_values_mean_unset_except_for_a_plus_key() -> None:
+    assert _codes({"tags": {"pii": None}, "apply": {"agent_spec_stage": {"schema": None}}}) == []
     assert _codes({"skills": None}) == [("SST-VAL817", "config:skills")]
+    assert _codes({"agents": {"+warehouse": None}}) == [("SST-CFG054", "config:agents.+warehouse")]
     assert _codes({"skills": {"catalog": {"+bundle_stage": None}}}) == [
-        ("SST-CFG006", "config:skills.catalog.+bundle_stage")
+        ("SST-CFG054", "config:skills.catalog.+bundle_stage")
     ]
 
 

@@ -16,6 +16,7 @@ from typing import Protocol, TypeVar
 from snowflake_semantic_tools.app.purity import ImpureCall, pure_phase
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
+from snowflake_semantic_tools.domain.model.setting import Setting
 
 # What rendering an input that validated may still raise; anything else escapes.
 RENDER_ERRORS: tuple[type[Exception], ...] = (KeyError, TypeError, ValueError)
@@ -93,6 +94,15 @@ class CompiledArtifact(Protocol):
         ...
 
     @property
+    def settings(self) -> tuple[Setting, ...]:
+        """Return the artifact's resolved settings, each with where its value came from, sorted by key.
+
+        Empty for an artifact whose block has no settings an artifact resolves. The manifest
+        records them, and `sst list --long` prints them; nothing renders from them.
+        """
+        ...
+
+    @property
     def rendered_artifact(self) -> RenderedArtifact:
         """Return the artifact as rendered, carrying no ownership marker.
 
@@ -135,6 +145,11 @@ class StandaloneArtifact(CompiledArtifact):
     @property
     def dbt_relations(self) -> tuple[tuple[str, str], ...]:
         """Return no relations: the artifact reads no dbt model."""
+        return ()
+
+    @property
+    def settings(self) -> tuple[Setting, ...]:
+        """Return no settings: the artifact resolves none."""
         return ()
 
     def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:

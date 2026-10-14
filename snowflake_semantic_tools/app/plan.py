@@ -41,7 +41,7 @@ from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
 from snowflake_semantic_tools.domain.diagnostics.policy import apply_overrides
-from snowflake_semantic_tools.domain.model.config_schema import config_block, config_text
+from snowflake_semantic_tools.domain.model.config_schema import config_block, target_text
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import ChangeSet, CompositePlan, RenderedArtifact
@@ -487,8 +487,8 @@ class PreparePlan:
         database = target.database.folded
         schema = target.schema.folded
         stage = QualifiedName.from_parts(
-            config_text(stage_config.get("database"), database) or database,
-            config_text(stage_config.get("schema"), schema) or schema,
+            target_text(stage_config.get("database"), target, database) or database,
+            target_text(stage_config.get("schema"), target, schema) or schema,
             str(stage_config.get("stage") or "AGENT_SPECS"),
         )
         git_sha = self._inputs.git_sha()

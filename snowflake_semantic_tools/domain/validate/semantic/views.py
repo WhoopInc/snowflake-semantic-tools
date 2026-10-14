@@ -218,7 +218,6 @@ def view_rule_diagnostics(views: tuple[ParsedView, ...], inputs: ViewInputs) -> 
         SST-VAL221: an attached prose filter's expression holds a bare word the view cannot resolve.
         SST-VAL326: an expression the view is created with holds a bare word the view cannot resolve.
         SST-VAL301: the view resolves no dimension and no metric.
-        SST-VAL304: `max_staleness` is under 120 seconds.
         SST-VAL303: a table names a dbt model that is disabled or ephemeral.
         SST-VAL323: a table's dbt model declares no columns.
         SST-VAL324: a table's dbt model has neither a contract nor a test.
@@ -376,7 +375,7 @@ def _expression_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnosti
 
 
 def _member_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
-    """Report a view with nothing to query, then a `max_staleness` under Snowflake's floor.
+    """Report a view with nothing to query.
 
     A view naming a table that is not a dbt model is not checked for members: SST-REF001
     reports the table, and its members cannot be known. Nor is one whose model has a column of
@@ -402,6 +401,3 @@ def _member_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
     )
     if known and not dimensions and not item.metrics and not any(f.entity_level for f in item.filters):
         yield D("SST-VAL301", origin=item.view.origin, subject=item.key, artifact=item.key)
-    staleness = item.view.source.get("max_staleness")
-    if isinstance(staleness, int) and not isinstance(staleness, bool) and staleness < 120:
-        yield D("SST-VAL304", origin=item.view.origin, subject=item.key, artifact=item.key, found=staleness)

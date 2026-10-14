@@ -71,7 +71,7 @@ def validate_config(
         SST-CFG003: a key is not declared where it is written.
         SST-CFG004: a value has the wrong type, or an entry of `dbt.manifest_schema_versions` is
             not an integer.
-        SST-CFG006: a required key is absent or empty.
+        SST-CFG006: a required key is absent.
         SST-CFG007: an unknown top-level key is within two edits of a declared one.
         SST-CFG008: a value is outside its choices or bounds, or is not its fixed value;
             `enrichment.sample_values_display_limit` exceeds `enrichment.distinct_limit`; or
@@ -81,6 +81,8 @@ def validate_config(
         SST-CFG042: `evals` or `skills` declares a folder route.
         SST-CFG043: a removed key is set; the message says what replaced it.
         SST-CFG023: `semantic_views.+max_staleness` is below 120 seconds.
+        SST-CFG054: a `+` key is written with no value.
+        SST-CFG055: a folder route sets a `+` key only the block root may set.
         SST-CFG200: a deprecated key is set; it is checked as the key it is read as.
         SST-CFG025: `agents.+orchestration_model`, or a folder route's, is not in
             `snowflake.orchestration_models`.
@@ -305,12 +307,20 @@ def _walk(
     is the routed block's own path; `actual` is the path as written in the file.
     """
     declared = CHILDREN.get(entry_path, {})
+    # A folder route is walked as its routed block, so it is written deeper than the block's path.
+    in_route = len(actual) > (len(entry_path.split(".")) if entry_path else 0)
     for raw_key, child in value.items():
         key = str(raw_key)
         path = (*actual, key)
         spec, route = _child_spec(declared, policy, key)
         if spec is None:
             diagnostics.append(_unknown(path, positions))
+            continue
+        if spec.root_only and in_route:
+            block = entry_path
+            diagnostics.append(
+                _diagnostic("SST-CFG055", path, positions, key=".".join(path), block=block, expected=spec.path)
+            )
             continue
         _check(spec, child, path, positions, diagnostics, route_of=entry_path if route else None)
     diagnostics.extend(_block_problems(entry_path, declared, value, actual, positions))
@@ -459,12 +469,15 @@ def _check(
     if spec.status is not KeyStatus.CURRENT:
         diagnostics.append(_status_problem(spec, path, positions))
         return
+    if value is None and spec.name.startswith("+"):
+        # A `+` key inherits when it is absent; written empty, it would read as a value it is not.
+        diagnostics.append(_diagnostic("SST-CFG054", path, positions, key=".".join(path)))
+        return
     if value is None:
         # An empty YAML value means unset: a scalar keeps its default, and a block
         # is checked as an empty block so its required children are still named.
+        # Every required key is a `+` key, so an empty one was reported above.
         if spec.kind not in (KeyKind.BLOCK, KeyKind.MAP):
-            if spec.required:
-                diagnostics.append(_diagnostic("SST-CFG006", path, positions, key=spec.path))
             return
         value = {}
     problem = _value_problem(spec, value, path, positions)
@@ -490,33 +503,39 @@ def _status_problem(spec: ConfigKey, path: tuple[str, ...], positions: _Located)
 
 
 def _value_problem(spec: ConfigKey, value: object, path: tuple[str, ...], positions: _Located) -> Diagnostic | None:
-    """Return the first rule a set value breaks: its type, choices, fixed value, then bounds."""
     key = ".".join(path)
+    return value_problem(spec, value, key=key, origin=_origin(path, positions), subject=f"config:{key}")
+
+
+def value_problem(spec: ConfigKey, value: object, *, key: str, origin: Origin, subject: str) -> Diagnostic | None:
+    """Return the first rule a declared key's value breaks: its type, choices, fixed value, then bounds.
+
+    The configuration file and an artifact's `config:` block check a value by the same rules,
+    each reporting it where it is written.
+
+    Args:
+        key: The key as the diagnostic names it, such as `agents.+schema` or `config.schema`.
+
+    Diagnostics:
+        SST-CFG004: the value is not of the key's type; an integer key never takes a boolean.
+        SST-CFG008: the value is outside the key's choices or bounds, or is not its fixed value,
+            unless the key names its own code for that, such as SST-CFG023.
+    """
     expected = _TYPES.get(spec.kind)
     mistyped = expected is not None and not isinstance(value, expected)
     if mistyped or spec.kind is KeyKind.INTEGER and isinstance(value, bool):
-        return _diagnostic("SST-CFG004", path, positions, key=key, expected=spec.kind.value, found=type(value).__name__)
+        return D(
+            "SST-CFG004", origin=origin, subject=subject, key=key, expected=spec.kind.value, found=type(value).__name__
+        )
+    code = spec.code or "SST-CFG008"
     if spec.choices and (vocabulary_key(str(value)) if spec.folded else value) not in spec.choices:
-        code = spec.code or "SST-CFG008"
-        return _diagnostic(code, path, positions, key=key, found=repr(value), expected=", ".join(spec.choices))
+        return D(code, origin=origin, subject=subject, key=key, found=repr(value), expected=", ".join(spec.choices))
     if spec.fixed is not None and value is not spec.fixed:
-        return _diagnostic(
-            spec.code or "SST-CFG008",
-            path,
-            positions,
-            key=key,
-            found=str(value).lower(),
-            expected=str(spec.fixed).lower(),
-        )
+        found, wanted = str(value).lower(), str(spec.fixed).lower()
+        return D(code, origin=origin, subject=subject, key=key, found=found, expected=wanted)
     if isinstance(value, int) and not isinstance(value, bool) and _out_of_bounds(spec, value):
-        return _diagnostic(
-            spec.code or "SST-CFG008",
-            path,
-            positions,
-            key=key,
-            found=str(value),
-            expected=f"{spec.minimum}..{spec.maximum}",
-        )
+        bounds = f"{spec.minimum}..{spec.maximum}"
+        return D(code, origin=origin, subject=subject, key=key, found=str(value), expected=bounds)
     return None
 
 

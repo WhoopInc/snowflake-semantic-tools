@@ -28,10 +28,11 @@ semantic_views:
         data_type: NUMBER
         description: Threshold above which an order counts as large.
         default_value: 1000
-    max_staleness: 300
-    tags:
-      - name: "{{ tag('cost_center') }}"
-        value: analytics
+    config:
+      max_staleness: 300
+      tags:
+        - name: "{{ tag('cost_center') }}"
+          value: analytics
     custom_instructions:
       - "{{ custom_instructions('sql_conventions') }}"
 ```
@@ -56,19 +57,36 @@ semantic_views:
   `COMMENT`. A member that reads a variable must find it declared on every view
   it attaches to (`SST-VAL326`); a variable nothing reads is warned about
   (`SST-VAL220`).
-- `max_staleness:` is in seconds, at least 120 (`SST-VAL304`), and renders as
+- `config:` holds the view's own settings, described next.
+
+### Settings
+
+`config:` is the only place a view overrides the `semantic_views:` block of
+`sst_config.yml`. Its keys are exactly the block's `+` keys without the `+`, and
+each resolves through one chain: the view's own `config:`, then the closest
+folder route over its file, then the block root, then SST's default. A key the
+view leaves out inherits; a key written with no value is an error
+(`SST-CFG054`), and any other key under `config:` is an error (`SST-CFG053`). A
+value is checked by the rules its `+` key follows. `sst list --long` prints each
+view's settings with where each came from (see
+[Configuration](configuration.md#precedence)).
+
+- `database` and `schema` are where the view publishes; unset, the target's.
+- `enabled: false` keeps a view in the project without publishing it.
+- `max_staleness` is in seconds, at least 120 (`SST-CFG023`), and renders as
   `MAX_STALENESS = '300 seconds'`.
-- `tags:` entries each name one `{{ tag('<name>') }}` declared under `tags:` in
+- `tags` entries each name one `{{ tag('<name>') }}` declared under `tags:` in
   `sst_config.yml` (`SST-REF028`) and a value of at most 256 characters
-  (`SST-PRS026`). A tag is its entry's `fqn:`, else `default_prefix` and its
+  (`SST-PRS026`); an entry that is not a `name` and `value` mapping is
+  `SST-PRS027`. A tag is its entry's `fqn:`, else `default_prefix` and its
   name in upper case; an entry with no `fqn:` is an error when the block sets
   no `default_prefix` or its key is dotted (`SST-CFG036`). They render inline
-  as `WITH TAG (...)`. Apply replaces the view, which removes any tag on it that
-  `tags:` does not declare, such as one set by hand, and plan warns about each
-  first (`SST-PLN039`).
-- A folder route's `+max_staleness` and `+tags` apply to a view that sets
-  neither key; `+enabled` applies to one that does not set `enabled`.
-- `enabled: false` keeps a view in the project without publishing it.
+  as `WITH TAG (...)`. A closer setting replaces the whole list. Apply replaces
+  the view, which removes any tag on it that its `tags` do not declare, such as
+  one set by hand, and plan warns about each first (`SST-PLN039`).
+
+`enabled`, `tags`, and `max_staleness` written beside `tables:` rather than
+under `config:` are an error that names their `config:` key (`SST-PRS126`).
 
 ### How members attach
 

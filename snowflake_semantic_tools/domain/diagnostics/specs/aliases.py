@@ -378,6 +378,12 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         "raised by plan, so it moved to the PLN area",
     ),
     (
+        "SST-VAL304",
+        "max_staleness below the accepted floor",
+        "SST-CFG023",
+        "a view sets max_staleness under `config:`, and SST-CFG023 checks it there as it does the `+` key",
+    ),
+    (
         "SST-VAL313",
         "Primary key and unique keys overlap",
         "SST-VAL223",

@@ -65,7 +65,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Required config key missing",
         "required config key '{key}' is absent",
         "add {key} to sst_config.yml",
-        condition="a required config key is absent or empty",
+        condition="a required config key is absent; one written with no value is SST-CFG054",
     ),
     spec(
         "SST-CFG007",
@@ -196,9 +196,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-CFG023",
         Severity.ERROR,
         "max_staleness below the accepted floor",
-        "+max_staleness is {found}; the minimum is 120",
+        "{key} is {found}; the minimum is 120",
         "raise max_staleness to at least 120",
-        condition="`semantic_views.+max_staleness` is set below 120 seconds",
+        condition=(
+            "`semantic_views.+max_staleness`, a folder route's, or a view's `config.max_staleness` is set "
+            "below 120 seconds, Snowflake's minimum"
+        ),
     ),
     spec(
         "SST-CFG025",
@@ -442,6 +445,40 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "`sst agent-kit` would install into a folder that is, contains, or lies inside a "
             "directory a `project.*_dir` key names, configured or by default"
+        ),
+    ),
+    spec(
+        "SST-CFG053",
+        Severity.ERROR,
+        "Unknown setting under config:",
+        "'{key}' is not a setting of {block}",
+        "use one of {expected}, written without its `+`; any other key belongs outside `config:`",
+        condition=(
+            "a semantic view's or an agent's `config:` block sets a key its block does not declare as a "
+            "`+` key, or writes a key with its `+`"
+        ),
+    ),
+    spec(
+        "SST-CFG054",
+        Severity.ERROR,
+        "Setting written with no value",
+        "'{key}' is set to null",
+        "delete the key to inherit its value from the folder routes, the block root, or the default, or "
+        "give it a value",
+        condition=(
+            "a key of a semantic view's or an agent's `config:` block, or a `+` key in `sst_config.yml`, "
+            "is written with no value or as `null`; an absent key inherits, and null is not a value"
+        ),
+    ),
+    spec(
+        "SST-CFG055",
+        Severity.ERROR,
+        "Root-only setting set below the block root",
+        "'{key}' can be set only at the root of {block}",
+        "set {expected} once, at the root of {block}, and remove it here",
+        condition=(
+            "a `+` key the configuration schema marks root-only is set in a folder route, or in a semantic "
+            "view's or an agent's `config:` block"
         ),
     ),
     spec(

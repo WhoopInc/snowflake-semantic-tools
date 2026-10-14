@@ -8,6 +8,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.setting import Setting
 
 BUILTIN_AGENT_TOOLS = frozenset(("data_to_chart", "web_search", "code_execution"))
 KNOWN_AGENT_TOOL_TYPES = frozenset(
@@ -125,29 +126,33 @@ class AgentEvalFiles:
 class AgentModel:
     """One agent as its `agent.yml` declares it, before its tools and skills resolve.
 
-    Compile fills what the agent leaves unset from the `agents:` defaults, as the folder routes
-    over its file override them: the orchestration model, budget, `tool_not_accessible`,
-    `analytical_search`, alias, `secure`, and tags.
+    Loading resolves the agent's `settings` -- its own `config:`, then the `agents:` folder
+    routes over its file, then the block root -- and its `enabled` from them. Compile then sets
+    the fields below that a setting gives, rendered for the target: the orchestration model,
+    budget, `tool_not_accessible`, `analytical_search`, alias, `secure`, and tags. Until it
+    does, each holds its default.
 
     Attributes:
         source_files: The `agent.yml` and each instruction file it reads, relative to the
             project root, in the order they were read.
-        orchestration_model: "auto" when unset.
-        secure: None when unset, which compile resolves from `agents.+secure`, else False.
+        orchestration_model: "auto" when no setting names one.
+        secure: None until compile resolves it; then False when no setting says true.
         analytical_search: None when unset, which is not the same as False.
         orchestration_instructions: The instruction text, or the content of the file its
             `{{ file('<path>') }}` names; None when unset or the file cannot be used.
         response_instructions: As `orchestration_instructions`, for the response instructions.
         enabled: False leaves the agent out of the compiled project.
         meta: Free-form metadata; it counts toward the agent's definition fingerprint.
-        tags: `(tag name, value)` pairs, in authored order; none takes `agents.+tags`.
+        tags: `(tag name, value)` pairs, in the order the resolved `tags` setting lists them.
         passthrough: Keys added last to the rendered spec, so they override the computed ones.
         evals: None when the agent declares no `evals:`.
         deprecated: The agent is retired from use; no alias may still point at a version of it.
-        budget_tokens_documented: A comment on or just above `budget.tokens` says it bounds
-            orchestration, so the budget is not read as a spend ceiling.
+        budget_tokens_documented: A comment on or just above `config.budget_tokens` says it
+            bounds orchestration, so the budget is not read as a spend ceiling.
         folder: The agent file's directory below `project.agents_dir`, one segment per directory;
             the `agents:` folder routes along it apply to the agent.
+        settings: Each `agents:` setting the agent resolved, by key without its `+`, with where
+            its value came from; compile adds the defaults it applies and renders the location.
     """
 
     name: str
@@ -175,6 +180,7 @@ class AgentModel:
     deprecated: bool = False
     budget_tokens_documented: bool = False
     folder: tuple[str, ...] = ()
+    settings: Mapping[str, Setting] = field(default_factory=lambda: MappingProxyType({}))
 
     @property
     def key(self) -> str:

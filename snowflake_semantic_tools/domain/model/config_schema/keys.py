@@ -84,6 +84,8 @@ class ConfigKey:
         one_of: Children of which a present block must declare at least one.
         folded: An `ENUM` value is matched against `choices` by `vocabulary_key`, ignoring case
             and runs of spaces, as the member key it is the default for is matched.
+        root_only: A `+` key that only the block's root may set: a folder route or an artifact's
+            `config:` that sets it is an error (SST-CFG055).
     """
 
     path: str
@@ -101,6 +103,7 @@ class ConfigKey:
     fixed: bool | None = None
     one_of: tuple[str, ...] = ()
     folded: bool = False
+    root_only: bool = False
 
     @property
     def segments(self) -> tuple[str, ...]:
@@ -354,7 +357,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "semantic_views",
         _BLOCK,
-        "Defaults for semantic views, overridable per folder.",
+        "Defaults for semantic views, overridable per folder and by a view's own `config:`.",
         children=ChildPolicy.ROUTES,
     ),
     _key("semantic_views.+database", _S, "Database for semantic views.", default="the target database"),
@@ -362,35 +365,45 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "semantic_views.+enabled",
         _B,
-        "Default for views that do not set `enabled` themselves.",
+        "Whether views are built; false leaves them out of the project.",
         default="true",
     ),
     _key(
         "semantic_views.+tags",
         _L,
-        "Tags, as a view's own `tags:` lists them, for views that set none; rendered in the CREATE's WITH TAG.",
+        "Tags, as `name` and `value` entries, rendered in the CREATE's WITH TAG; a closer setting replaces the list.",
     ),
     _key(
         "semantic_views.+max_staleness",
         _I,
-        "Default `max_staleness`, in seconds, for views that set none; at least 120 (SST-CFG023).",
+        "`MAX_STALENESS` of views, in seconds; at least 120 (SST-CFG023).",
         minimum=120,
         code="SST-CFG023",
     ),
     _removed("semantic_views.+meta", "put metadata on the view itself"),
     _key("semantic_views.<route>", _BLOCK, "Folder route: overrides for views under that directory."),
-    _key("agents", _BLOCK, "Defaults for Cortex Agents, overridable per folder.", children=ChildPolicy.ROUTES),
+    _key(
+        "agents",
+        _BLOCK,
+        "Defaults for Cortex Agents, overridable per folder and by an agent's own `config:`.",
+        children=ChildPolicy.ROUTES,
+    ),
     _key("agents.+database", _S, "Database for agents.", default="the target database"),
     _key("agents.+schema", _S, "Schema for agents.", default="the target schema"),
-    _key("agents.+warehouse", _S, "Warehouse for agent tool execution.", default="the target warehouse"),
+    _key(
+        "agents.+warehouse",
+        _S,
+        "Warehouse an agent's Analyst, search, and generic tools run on when they name none.",
+        default="the target warehouse",
+    ),
     _key(
         "agents.+orchestration_model",
         _S,
-        "Orchestration model of agents that name none or `auto`; must be in `snowflake.orchestration_models` "
-        "(SST-CFG025).",
+        "Orchestration model; must be in `snowflake.orchestration_models` (SST-CFG025 here, SST-VAL543 for the "
+        "value an agent resolves). `auto` lets Snowflake choose.",
         default="auto",
     ),
-    _key("agents.+query_timeout", _I, "Tool query timeout in seconds."),
+    _key("agents.+query_timeout", _I, "Query timeout, in seconds, of an agent's tools that set none."),
     _key("agents.+budget_seconds", _I, "Orchestration time budget."),
     _key("agents.+budget_tokens", _I, "Orchestration token budget."),
     _key(
@@ -401,9 +414,13 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     ),
     _key("agents.+analytical_search", _B, "Enable analytical search."),
     _key("agents.+alias", _S, "Version alias assigned after publication."),
-    _key("agents.+enabled", _B, "Default for agents that do not set `enabled` themselves.", default="true"),
-    _key("agents.+secure", _B, "Default for agents that do not set `secure` themselves.", default="false"),
-    _key("agents.+tags", _L, "Tags, as an agent's own `tags:` lists them, for agents that set none."),
+    _key("agents.+enabled", _B, "Whether agents are compiled; false leaves them out of the project.", default="true"),
+    _key("agents.+secure", _B, "Publish agents with `SECURE = TRUE`.", default="false"),
+    _key(
+        "agents.+tags",
+        _L,
+        "Tags, as `name` and `value` entries, set with ALTER AGENT ... SET TAG; a closer setting replaces the list.",
+    ),
     _removed("agents.+copy_grants", "agents are never replaced, so there are no grants to copy"),
     _removed("agents.+meta", "put metadata on the agent itself"),
     _removed("agents.+create_mode", "agents are created once and versioned"),

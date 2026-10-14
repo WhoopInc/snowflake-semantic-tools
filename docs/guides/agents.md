@@ -22,19 +22,18 @@ tools/
 
 Each agent is a folder under `project.agents_dir` (default `agents`) holding
 `agent.yml` or `agent.yaml`; a file directly in `agents_dir` is not read. The
-agent's name comes from `name:`, not from the folder, and it publishes into
-`agents.+database` / `agents.+schema`, which default to the target's database
-and schema.
+agent's name comes from `name:`, not from the folder, and it publishes into its
+resolved `database` and `schema` settings (below), which default to the target's
+database and schema.
 
 Agent folders may sit in grouping folders, `agents/<domain>/<agent>/agent.yml`.
 An `agents.<domain>:` folder route overrides any `agents:` `+` key for the
 agents below it, so `agents: {sales: {+schema: SALES_AGENTS}}` publishes every
 agent under `agents/sales/` into that schema. Routes nest as folders do, an
-agent's own setting still wins over every route, and a route that names no
+agent's own `config:` still wins over every route, and a route that names no
 folder is an error (`SST-CFG041`). Evals publish into their agent's schema, so
 a route moves an agent's eval with it. The
-[configuration guide](configuration.md#locations-and-targets) covers how routes
-fold.
+[configuration guide](configuration.md#precedence) covers how settings resolve.
 
 ## The agent file
 
@@ -43,13 +42,12 @@ name: sales_analyst
 comment: Order and revenue questions across all locations.
 profile:
   display_name: Sales Analyst
+config:
+  orchestration_model: claude-sonnet-4-6
+  budget_seconds: 120
+  budget_tokens: 16000  # bounds orchestration only, not tool spend
+  alias: promoted
 spec:
-  models:
-    orchestration: claude-sonnet-4-6
-  orchestration:
-    budget:
-      seconds: 120
-      tokens: 16000     # bounds orchestration only, not tool spend
   instructions:
     orchestration: "{{ file('instructions/orchestration.md') }}"
     response: "{{ file('instructions/response.md') }}"
@@ -61,7 +59,6 @@ spec:
       description: |-
         Orders and revenue by customer and location. Do NOT use for product
         or line-item detail.
-alias: promoted
 ```
 
 `name:` is the only required key (`SST-PRS002`). A key SST does not model, in
@@ -75,36 +72,21 @@ top-level keys:
 |---|---|
 | `comment` | Published as the agent's comment, before SST's ownership marker. |
 | `profile` | `display_name`, `avatar`, and `color`, set with `ALTER AGENT ... SET PROFILE`. Two agents with one display name is a warning (`SST-VAL549`); a color must be a plain color name or `var(--token)`, and an avatar must be in `snowflake.profile.avatar_allowlist` when that is set (`SST-VAL548`). |
+| `config` | The agent's own settings, [below](#settings). |
 | `spec` | The Cortex Agent specification, below. |
-| `alias` | The version alias SST moves to each new version. |
-| `secure` | Published with `ALTER AGENT ... SET SECURE`; unset takes `agents.+secure`, else false. |
-| `enabled` | `false` leaves the agent out of the compiled project. Unset, it takes `agents.+enabled` as the folder routes over the agent resolve it, so `enabled: true` keeps an agent under a route that sets `+enabled: false`. |
 | `deprecated` | Retires the agent; a deprecated agent that still has an alias is an error (`SST-VAL550`). |
-| `tags` | A list of `{name, value}` pairs, applied with `ALTER AGENT ... SET TAG`. A tag name is an identifier or a qualified name (`SST-PRS005`) of a tag object that already exists. Unset takes `agents.+tags`. |
 | `meta` | Free-form metadata. It is not published, but changing it changes the agent's fingerprint, so the next plan updates the agent. |
 | `evals` | `dataset: "{{ eval_dataset('<name>') }}"` and `config: "{{ eval_config('<name>') }}"`, naming files in the agent's `evals/` folder; see the [evals guide](evals.md). |
 
 Under `spec:`:
 
-- `models.orchestration` must be in `snowflake.orchestration_models`
-  (`SST-VAL543`), which defaults to `[auto]` alone, so a project that names a
-  model lists it there. Unset, or `auto`, takes `agents.+orchestration_model`.
-- `orchestration.budget.seconds` and `orchestration.budget.tokens` bound
-  orchestration. Tokens spent inside tools are not counted, so the token budget
-  is not a spend ceiling: an agent that sets `budget.tokens` itself is warned
-  (`SST-VAL547`) unless a comment on that line, or just above it, says
-  `orchestration`. A budget set through `agents.+budget_tokens` is not warned.
-- `orchestration.tool_not_accessible` is `accept`, `reject`, or `legacy`
-  (`SST-VAL545`).
-- `orchestration.capabilities.analytical_search: true` needs a `cortex_search`
-  tool (`SST-VAL546`).
 - `instructions`, `tools`, and `skills` are described below.
 - `passthrough` holds keys SST does not model; they are added to the rendered
   spec last, unchecked, and reported (`SST-PRS024`). A key SST renders itself
   is an error there (`SST-PRS023`).
 
 An agent with only a `name:` is valid. Its spec holds only what the `agents:`
-defaults supply, and with no tools it is a warning (`SST-RND010`).
+settings supply, and with no tools it is a warning (`SST-RND010`).
 
 ### Instructions
 
@@ -129,15 +111,35 @@ not compile; write it as `instructions: {response: Answer briefly.}`.
   (`SST-VAL535`). An Analyst tool's name is its view's name in upper case, such
   as `SALES`.
 
-### Defaults
+### Settings
 
-An agent inherits each of these from `agents:` in `sst_config.yml`, as the
-folder routes over it resolve, when it does not set them itself: the
-orchestration model, `budget.seconds`, `budget.tokens`, `tool_not_accessible`,
-`analytical_search`, `alias`, `secure`, and `tags`. `agents.+warehouse` and
-`agents.+query_timeout` are the execution environment of every Analyst, search,
-and generic tool that sets none; with no `+warehouse`, they run on the target's
-warehouse.
+`config:` is the only place an agent overrides the `agents:` block of
+`sst_config.yml`. Its keys are exactly the block's `+` keys without the `+`, and
+each resolves through one chain: the agent's own `config:`, then the closest
+folder route over its file, then the block root, then SST's default. A key the
+agent leaves out inherits; an explicit value, `0`, `false`, `[]`, or `auto`
+among them, is a value; and a key written with no value is an error
+(`SST-CFG054`). Any other key under `config:` is an error (`SST-CFG053`), and a
+value is checked by the rules the `+` key follows, such as `SST-CFG008` for a
+`tool_not_accessible` outside its choices. `sst list --long` prints each
+agent's settings with where each came from.
+
+| Key | Meaning |
+|---|---|
+| `database`, `schema` | Where the agent publishes. Unset, the target's. |
+| `warehouse`, `query_timeout` | The execution environment of every Analyst, search, and generic tool of the agent that sets none. With no `warehouse`, they run on the target's warehouse. |
+| `orchestration_model` | Rendered as `models.orchestration`. It must be in `snowflake.orchestration_models` (`SST-VAL543`), which defaults to `[auto]` alone, so a project that names a model lists it there. Unset, `auto`. |
+| `budget_seconds`, `budget_tokens` | Rendered as `orchestration.budget`. Tokens spent inside tools are not counted, so the token budget is not a spend ceiling: an agent that sets `config.budget_tokens` itself is warned (`SST-VAL547`) unless a comment on that line, or just above it, says `orchestration`. A budget an agent inherits from `agents:` is not warned. |
+| `tool_not_accessible` | Rendered as `orchestration.tool_not_accessible`: `accept`, `reject`, or `legacy` (`SST-VAL545`). |
+| `analytical_search` | Rendered as `orchestration.capabilities.analytical_search`; `true` needs a `cortex_search` tool (`SST-VAL546`). |
+| `alias` | The version alias SST moves to each new version. |
+| `secure` | Published with `ALTER AGENT ... SET SECURE`; unset, false. |
+| `enabled` | `false` leaves the agent out of the compiled project, so `enabled: true` keeps an agent under a route that sets `+enabled: false`. |
+| `tags` | A list of `{name, value}` pairs, applied with `ALTER AGENT ... SET TAG`. A tag name is an identifier or a qualified name (`SST-PRS005`) of a tag object that already exists. A closer setting replaces the whole list. |
+
+The keys an earlier draft read elsewhere -- `alias`, `secure`, `enabled` and
+`tags` at the top level, and `spec.models` and `spec.orchestration` -- are an
+error that names their `config:` key (`SST-PRS126`).
 
 ## Tools
 
@@ -166,7 +168,7 @@ Each `spec.tools` entry is one tool. SST splits it into the spec's `tools` and
   (`SST-VAL515`).
 - Analyst, search, and generic tools take `warehouse` and `query_timeout`,
   rendered as their `execution_environment`. A search or generic tool with no
-  warehouse takes its member's, then `agents.+warehouse`, then the target's; a
+  warehouse takes its member's, then the agent's `warehouse` setting, then the target's; a
   generic tool that resolves none is an error (`SST-VAL527`).
 - A key another tool type takes and this one does not is an error
   (`SST-VAL516`). A type SST does not render is an error (`SST-RND012`) unless
@@ -508,9 +510,10 @@ and schema), then:
    has an alias, and `SET TAG` for its tags. The new version becomes the
    default.
 4. `MODIFY VERSION <alias> UNSET ALIAS` for every other alias the agent shows,
-   so after apply the agent carries only the alias its file declares: changing
-   `alias: promoted` to `alias: candidate` moves the agent to `CANDIDATE` and
-   leaves no `PROMOTED`, and removing `alias:` removes the alias. `plan --full`
+   so after apply the agent carries only the alias its settings resolve to:
+   changing `alias: promoted` to `alias: candidate` moves the agent to
+   `CANDIDATE` and leaves no `PROMOTED`, and an agent whose `alias` resolves to
+   none, under `config:` or `agents:`, has none. `plan --full`
    shows the `aliases` that change.
 5. `SET PROFILE`, `SET COMMENT`, and `SET SECURE`.
 

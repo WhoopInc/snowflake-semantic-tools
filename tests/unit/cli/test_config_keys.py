@@ -149,7 +149,8 @@ def test_agents_inherit_secure_and_tags_they_do_not_set(tmp_path: Path) -> None:
     _replace(project / "sst_config.yml", "\nagents:\n", "\nagents:\n  +secure: true\n")
     assert _minimal_agent(project).secure is True
     agent = project / "agents" / "ops" / "jaffle_minimal" / "agent.yml"
-    agent.write_text(agent.read_text(encoding="utf-8") + "secure: false\n", encoding="utf-8")
+    agent.write_text(agent.read_text(encoding="utf-8") + "config:\n  secure: false\n", encoding="utf-8")
+    # The agent's own `config:` wins over the block, and an explicit false is a value.
     assert _minimal_agent(project).secure is False
     _replace(
         project / "sst_config.yml",

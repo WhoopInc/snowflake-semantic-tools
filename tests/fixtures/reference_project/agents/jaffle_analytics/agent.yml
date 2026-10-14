@@ -44,28 +44,41 @@ profile:
   avatar: SparklesAgentIcon
   color: blue
 
+# =============================================================================
+# SETTINGS -- the agent's own values for the `agents:` keys
+# =============================================================================
+# Each key is an `agents:` `+` key without its `+`, and wins over every folder
+# route and the block root; a key left out inherits, an explicit value -- `0`,
+# `false`, `[]`, `auto` -- is a value, and a key written with no value is
+# SST-CFG054. Any other key here is SST-CFG053. The renderer writes the spec's
+# `models` and `orchestration` sections from these.
+config:
+  # Must be in snowflake.orchestration_models (SST-VAL543). Pinned rather than
+  # `auto`, so the blocking eval can attribute a score change to this repo.
+  orchestration_model: claude-sonnet-4-6
+
+  # Either budget limit ends generation.
+  budget_seconds: 120
+  # Orchestration tokens only: tokens spent inside tools are not counted, so
+  # this is not a spend ceiling (SST-VAL547).
+  budget_tokens: 16000
+
+  # `reject`: a caller who lacks access to a tool gets an error instead of an
+  # answer from fewer tools. The values are accept, reject and legacy
+  # (SST-CFG008, and SST-VAL545 for the value the agent resolves).
+  tool_not_accessible: reject
+
+  # Allowed, since the agent has a cortex_search tool (SST-VAL546), but off:
+  # it adds AI function cost and nothing in the fixture needs it.
+  analytical_search: false
+
+  # Moved to each newly published version, so promotion and rollback are alias
+  # moves. LIVE, FIRST, LAST and DEFAULT are reserved (SST-PRS025).
+  alias: promoted
+
+  enabled: true
+
 spec:
-  models:
-    # Must be in snowflake.orchestration_models (SST-VAL543). Pinned rather than
-    # `auto`, so the blocking eval can attribute a score change to this repo.
-    orchestration: claude-sonnet-4-6
-
-  orchestration:
-    budget:
-      # Either limit ends generation.
-      seconds: 120
-      # Orchestration tokens only: tokens spent inside tools are not counted, so
-      # this is not a spend ceiling (SST-VAL547).
-      tokens: 16000
-    # `reject`: a caller who lacks access to a tool gets an error instead of an
-    # answer from fewer tools. The values are accept, reject and legacy
-    # (SST-VAL545).
-    tool_not_accessible: reject
-    capabilities:
-      # Allowed, since the agent has a cortex_search tool (SST-VAL546), but off:
-      # it adds AI function cost and nothing in the fixture needs it.
-      analytical_search: false
-
   instructions:
     # Markdown sidecars keep long instructions reviewable as ordinary diffs. A
     # missing or empty sidecar is SST-LOD018 or SST-LOD019.
@@ -100,8 +113,8 @@ spec:
 
         Do NOT use for line-item or product detail -- use JAFFLE_MENU for
         units sold, product mix and margin.
-      # Unset: the tool runs on `agents.+warehouse`, which falls back to the
-      # target warehouse (SST_REF_WH on dev).
+      # Unset: the tool runs on the agent's `warehouse` setting, which falls
+      # back to the target warehouse (SST_REF_WH on dev).
       warehouse: null
       # Rendered into `execution_environment` with `type: warehouse`.
       query_timeout: 60
@@ -159,8 +172,9 @@ spec:
               The order to resolve a tier for.
         required:
           - order_id
-      # No `warehouse:`. It resolves from the backing member, else from
-      # `agents.+warehouse` (here the target's SST_REF_WH); none is SST-VAL527.
+      # No `warehouse:`. It resolves from the backing member, else from the
+      # agent's `warehouse` setting (here the target's SST_REF_WH); none is
+      # SST-VAL527.
       query_timeout: 60
 
   # =========================================================================
@@ -190,13 +204,8 @@ spec:
 # =============================================================================
 # SST-APPLIED KEYS -- like `comment` and `profile`, not part of the spec
 # =============================================================================
-# None of these appears in the golden spec JSON.
-
-# Moved to each newly published version, so promotion and rollback are alias
-# moves. LIVE, FIRST, LAST and DEFAULT are reserved (SST-PRS025).
-alias: promoted
-
-enabled: true
+# None of these appears in the golden spec JSON; neither do `config.alias` and
+# `config.enabled`.
 
 meta:
   owner: analytics-platform
@@ -213,7 +222,7 @@ evals:
 # =============================================================================
 # DELIBERATELY ABSENT
 # =============================================================================
-# `tags`: would publish as a separate ALTER AGENT ... SET TAG.
+# `config.tags`: would publish as a separate ALTER AGENT ... SET TAG.
 # `passthrough` / `tool_spec_passthrough`: copied into the spec with their
 #   values unchecked (a non-empty one is SST-PRS024, one repeating a key SST
 #   renders SST-PRS023), so using one would assert a key SST does not model.

@@ -10,7 +10,7 @@ from snowflake_semantic_tools.app.compile.project import CompileProject
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentTool
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
-from tests.helpers.compile_builders import view
+from tests.helpers.compile_builders import own_settings, view
 from tests.helpers.project_inputs import InMemoryProjectInputs
 
 MODELS = ["auto", "block-model", "route-model", "own-model"]
@@ -60,7 +60,13 @@ def test_the_closest_route_wins_per_key_and_the_agent_file_wins_over_every_route
         _agent("top", "top"),
         _agent("fin", "finance", "fin"),
         _agent("sec", "finance", "restricted", "sec"),
-        _agent("own", "finance", "restricted", "own", orchestration_model="own-model", secure=False, alias="mine"),
+        _agent(
+            "own",
+            "finance",
+            "restricted",
+            "own",
+            settings=own_settings(orchestration_model="own-model", secure=False, alias="mine"),
+        ),
         # Loading resolves the `retired` route's `+enabled: false` for an agent that sets none.
         _agent("gone", "retired", "gone", enabled=False),
     )

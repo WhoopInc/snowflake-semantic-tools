@@ -24,7 +24,8 @@ def test_every_key_the_loader_does_not_read_is_named_by_what_it_is() -> None:
                 "filters": [{"name": "inline"}, "bare"],
                 "variables": [{"name": "x", "dflt": 1}, "not a mapping"],
                 "table_config": {"orders": {"synonyms": ["o"]}},
-                "tags": {"name": "wrong shape"},
+                # Its own keys are checked as settings; only what nests in them is checked here.
+                "config": {"tags": [{"name": "t", "value": "v", "extra": 1}, "x"], "bogus": 1},
             },
             {"name": "w", "filters": []},
             "not a node",
@@ -49,6 +50,7 @@ def test_every_key_the_loader_does_not_read_is_named_by_what_it_is() -> None:
         ("SST-VAL403", "semantic_view:v", "v.filters[1]"),
         ("SST-PRS126", "semantic_view:v", "table_config"),
         ("SST-PRS004", "semantic_view:v", "variables[0].dflt"),
+        ("SST-PRS004", "semantic_view:v", "config.tags[0].extra"),
         ("SST-VAL403", "semantic_view:w", "w.filters[0]"),
         ("SST-VAL402", "metric:m", "m"),
         ("SST-PRS020", "metric:m", "non_additive_by"),
@@ -62,7 +64,7 @@ def test_every_key_the_loader_does_not_read_is_named_by_what_it_is() -> None:
         ("SST-VAL406", "filter:f", "f"),
         ("SST-PRS021", "relationship:r", None),
     ]
-    assert found[0].origin.line == 4 and found[10].origin.line == 9  # type: ignore[union-attr]
+    assert found[0].origin.line == 4 and found[11].origin.line == 9  # type: ignore[union-attr]
     assert found[2].origin.line is None  # type: ignore[union-attr]
 
 

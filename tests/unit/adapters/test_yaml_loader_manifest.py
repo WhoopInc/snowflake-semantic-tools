@@ -107,7 +107,8 @@ def test_semantic_views_enabled_default_follows_folder_routes(tmp_path: Path) ->
     (views_dir / "archive" / "old.yml").write_text(
         "semantic_views:\n  - name: retired\n    description: Use for retired.\n"
         "    tables: [\"{{ ref('products') }}\"]\n"
-        "  - name: kept\n    enabled: true\n    description: Use for kept.\n    tables: [\"{{ ref('products') }}\"]\n",
+        "  - name: kept\n    config:\n      enabled: true\n    description: Use for kept.\n"
+        "    tables: [\"{{ ref('products') }}\"]\n",
         encoding="utf-8",
     )
     (tmp_path / "sst_config.yml").write_text(
@@ -334,7 +335,8 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
         "    table_config:\n      products:\n        synonyms: [items]\n        alias: goods\n"
         "    variables:\n      - name: floor\n        data_type: NUMBER\n"
         "        default_value: 1\n        unit: cents\n"
-        "    tags:\n      - name: \"{{ tag('tier') }}\"\n        value: gold\n        note: x\n",
+        "    config:\n      tags:\n        - name: \"{{ tag('tier') }}\"\n          value: gold\n          note: x\n"
+        "    max_staleness: 300\n",
         encoding="utf-8",
     )
     (root / "metrics" / "metrics.yml").write_text(
@@ -380,7 +382,9 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "owner", None),
             ("SST-PRS126", "ERROR", "semantic_view:catalog", "table_config", None),
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "variables[0].unit", None),
-            ("SST-PRS004", "WARNING", "semantic_view:catalog", "tags[0].note", None),
+            ("SST-PRS004", "WARNING", "semantic_view:catalog", "config.tags[0].note", None),
+            # A setting is written under `config:`, which the message says.
+            ("SST-PRS126", "ERROR", "semantic_view:catalog", "max_staleness", None),
             ("SST-PRS020", "ERROR", "metric:product_count", "non_additive_by", "non_additive_dimensions"),
             ("SST-PRS004", "WARNING", "metric:product_count", "non_additive_dimensions[0].grain", None),
             (
@@ -454,7 +458,7 @@ def test_view_tags_must_be_a_list_and_an_empty_file_only_warns(tmp_path: Path) -
     views = tmp_path / "semantic_models" / "semantic_views"
     (views / "views.yml").write_text(
         "semantic_views:\n  - name: catalog\n    description: Use for product catalog.\n"
-        "    tables: [\"{{ ref('products') }}\"]\n    tags: {tier: gold}\n",
+        "    tables: [\"{{ ref('products') }}\"]\n    config:\n      tags: {tier: gold}\n",
         encoding="utf-8",
     )
     (views / "empty.yml").write_text("# nothing here yet\n", encoding="utf-8")
@@ -462,8 +466,11 @@ def test_view_tags_must_be_a_list_and_an_empty_file_only_warns(tmp_path: Path) -
     assert project.views == ()
     assert [(item.code, item.severity.name) for item in findings(project.diagnostics)] == [
         ("SST-LOD003", "WARNING"),
-        ("SST-PRS027", "ERROR"),
+        ("SST-CFG004", "ERROR"),
     ]
+    [mistyped] = [item for item in project.diagnostics if item.code == "SST-CFG004"]
+    assert mistyped.message == "config key 'config.tags' expects list, found dict"
+    assert (mistyped.subject, mistyped.origin and mistyped.origin.line) == ("semantic_view:catalog", 6)
 
 
 def test_a_meta_sst_data_type_that_disagrees_with_dbt_warns(tmp_path: Path) -> None:

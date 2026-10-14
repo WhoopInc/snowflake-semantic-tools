@@ -19,6 +19,7 @@ from enum import Enum
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.sql import AuthoredExpression, AuthoredQuery, Sql
 
 
@@ -244,6 +245,9 @@ class SemanticView:
         member_origins: Where each attached member is declared, by member key such as
             `metric:order_count`; a member the loader recorded no origin for is absent. Not
             rendered and not compared: it locates a connected check's finding.
+        settings: The view's resolved settings, each with where its value came from, sorted by
+            key, as `sst list --long` reports them. Not rendered and not compared: the values
+            that render are the fields above.
     """
 
     fqn: str
@@ -269,6 +273,7 @@ class SemanticView:
     member_origins: Mapping[str, Origin] = field(
         default_factory=lambda: MappingProxyType({}), repr=False, compare=False
     )
+    settings: tuple[Setting, ...] = field(default=(), repr=False, compare=False)
 
     facts: tuple[Column, ...] = field(init=False, repr=False, compare=False)
     dimensions: tuple[Column, ...] = field(init=False, repr=False, compare=False)

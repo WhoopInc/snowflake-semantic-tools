@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Tag,
     VerifiedQuery,
 )
+from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.state import MANIFEST_SCHEMA_VERSION
 from tests.helpers.sql_values import authored, authored_query, statement
 
@@ -133,6 +134,7 @@ class _CompiledTool:
     member_keys: tuple[str, ...] = ()
     referenced_models = ("docs",)
     dbt_relations = (("docs", "DB.S.DOCS"),)
+    settings: tuple[Setting, ...] = ()
 
     @property
     def rendered_artifact(self) -> RenderedArtifact:
@@ -204,6 +206,7 @@ class _CompiledComposite:
     member_keys: tuple[str, ...] = ()
     referenced_models: tuple[str, ...] = ()
     dbt_relations: tuple[tuple[str, str], ...] = ()
+    settings: tuple[Setting, ...] = ()
 
     def __init__(self, rendered: RenderedArtifact) -> None:
         self._rendered = rendered

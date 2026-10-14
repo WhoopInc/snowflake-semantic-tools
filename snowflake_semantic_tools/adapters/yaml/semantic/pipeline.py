@@ -33,10 +33,11 @@ from snowflake_semantic_tools.adapters.yaml.semantic.phases import (
     _view_tables,
 )
 from snowflake_semantic_tools.adapters.yaml.semantic.poison import Poison, _member_poison, _view_poison
-from snowflake_semantic_tools.adapters.yaml.semantic.target import _semantic_view_defaults, _semantic_view_target
+from snowflake_semantic_tools.adapters.yaml.semantic.target import _view_location, _view_provenance, _view_settings
 from snowflake_semantic_tools.adapters.yaml.semantic.view_instructions import _instruction_texts, _view_instructions
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.config_schema import setting_value
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtTarget
 from snowflake_semantic_tools.domain.model.project import (
     ParsedMember,
@@ -349,17 +350,8 @@ def _build_views(
     views: dict[str, SemanticView] = {}
     diagnostics: list[Diagnostic] = []
     for path, node in nodes:
-        view_target = _semantic_view_target(context.config, path, context.views_dir, context.target)
-        defaults = _semantic_view_defaults(context.config, path, context.views_dir)
-        # A view's own max_staleness and tags win; only an unset one takes the folder routes' default.
-        node = {
-            **node,
-            **{
-                key: defaults[key]
-                for key in ("max_staleness", "tags")
-                if key not in node and defaults.get(key) is not None
-            },
-        }
+        settings = _view_settings(context.config, path, context.views_dir, node)
+        view_target = _view_location(settings, context.target)
         try:
             views[artifact_key("semantic_view", str(node["name"]).casefold())] = _build_view(
                 node,
@@ -371,6 +363,7 @@ def _build_views(
                 attachment,
                 context.config,
                 context.catalog.sources,
+                settings=_view_provenance(settings, view_target),
             )
         except ProjectError as exc:
             # A member several views hold fails the same way in each; it is reported once.
@@ -381,46 +374,36 @@ def _build_views(
 
 
 def _buildable_nodes(context: LoadContext, poison: Poison) -> Iterator[tuple[Path, dict[str, Any]]]:
-    """Yield, in document order, each named view under semantic_views/ that is enabled and not poisoned.
+    """Yield, in document order, each named view under semantic_views/ that is enabled and not poisoned."""
+    for path, node, enabled in _named_views(context):
+        if not enabled:
+            continue
+        if str(node["name"]).casefold() in poison.view_names:
+            continue
+        if artifact_key("semantic_view", node["name"]).casefold() in poison.view_keys:
+            continue
+        yield path, node
 
-    A view's own `enabled` wins; only an unset one falls back to the folder routes' `+enabled`.
+
+def _named_views(context: LoadContext) -> Iterator[tuple[Path, dict[str, Any], bool]]:
+    """Yield, in document order, each named view under semantic_views/ and whether it is enabled.
+
+    Only a resolved `enabled` of false disables a view: its own `config.enabled`, else the
+    closest folder route's `+enabled`, else the root's.
     """
     root_key = SEMANTIC_REGISTRY.artifacts["semantic_view"].root_key
     assert root_key is not None
     for document in context.documents.under(context.views_dir, root_key):
-        path = document.abs_path
         for node in document.tree.get(root_key) or []:
             if not isinstance(node, dict) or not node.get("name"):
                 continue
-            if node.get("enabled") is False:
-                continue
-            if (
-                node.get("enabled") is None
-                and _semantic_view_defaults(context.config, path, context.views_dir).get("enabled") is False
-            ):
-                continue
-            if str(node["name"]).casefold() in poison.view_names:
-                continue
-            if artifact_key("semantic_view", node["name"]).casefold() in poison.view_keys:
-                continue
-            yield path, node
+            settings = _view_settings(context.config, document.abs_path, context.views_dir, node)
+            yield document.abs_path, node, setting_value(settings, "enabled") is not False
 
 
 def _disabled_views(context: LoadContext) -> tuple[str, ...]:
     """The casefolded names of the views under semantic_views/ that are disabled, in document order."""
-    root_key = SEMANTIC_REGISTRY.artifacts["semantic_view"].root_key
-    assert root_key is not None
-    names: list[str] = []
-    for document in context.documents.under(context.views_dir, root_key):
-        for node in document.tree.get(root_key) or []:
-            if not isinstance(node, dict) or not node.get("name"):
-                continue
-            enabled = node.get("enabled")
-            if enabled is None:
-                enabled = _semantic_view_defaults(context.config, document.abs_path, context.views_dir).get("enabled")
-            if enabled is False:
-                names.append(str(node["name"]).casefold())
-    return tuple(names)
+    return tuple(str(node["name"]).casefold() for _, node, enabled in _named_views(context) if not enabled)
 
 
 def _build_failure(project_dir: Path, path: Path, node: dict[str, Any], exc: ProjectError) -> tuple[Diagnostic, ...]:

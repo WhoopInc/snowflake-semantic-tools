@@ -8,10 +8,11 @@ the same keys through these functions, so they agree on what a configuration mea
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from snowflake_semantic_tools.domain.model.config_schema.keys import CONFIG_KEYS
+from snowflake_semantic_tools.domain.model.dbt import DbtTarget
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
 
 
@@ -26,32 +27,6 @@ def configured_dir(config: Mapping[str, object], key: str, default: str) -> str:
     return str(project.get(key) or default) if isinstance(project, dict) else default
 
 
-def routed_block(block: object, folder: Sequence[str]) -> dict[str, object]:
-    """Return the `+` keys that apply to an artifact in `folder`, folded down a block's folder routes.
-
-    A folder route is an unprefixed key whose value is a mapping, naming a directory below the
-    block's root; routes nest as directories do. The fold is per key: the block's own `+` keys come
-    first, and each route along `folder` overrides only the keys it sets, so the closest folder
-    wins. The fold stops at the first directory with no route.
-
-    Args:
-        block: The routed block as parsed; anything but a mapping reads as empty.
-        folder: The artifact file's directory below the block's root, one segment per directory.
-
-    Returns:
-        Each applying `+` key, with its prefix, and its value.
-    """
-    cursor = config_block(block)
-    resolved = {key: value for key, value in cursor.items() if key.startswith("+")}
-    for part in folder:
-        child = cursor.get(part)
-        if not isinstance(child, dict):
-            break
-        cursor = config_block(child)
-        resolved.update({key: value for key, value in cursor.items() if key.startswith("+")})
-    return resolved
-
-
 def skills_configured(config: Mapping[str, object]) -> bool:
     """Report whether `skills:` declares a publishing channel, `catalog` or `stage`.
 
@@ -62,44 +37,28 @@ def skills_configured(config: Mapping[str, object]) -> bool:
     return "catalog" in skills or "stage" in skills
 
 
-def config_text(value: object, default: str | None) -> str | None:
-    """Return a value as text with every `{{ target.* }}` template replaced by `default`.
-
-    `{{ target.database }}`, `{{ target.schema }}` and `{{ target.warehouse }}` all become
-    `default`, whichever the key names. A non-text value reads as its `str()`.
-
-    Returns:
-        The text; `default` when the value is None or the replaced text is empty.
-    """
-    if value is None:
-        return default
-    if not isinstance(value, str):
-        return str(value)
-    replacements = {
-        "{{ target.database }}": default or "",
-        "{{ target.schema }}": default or "",
-        "{{ target.warehouse }}": default or "",
-    }
-    for raw, resolved in replacements.items():
-        value = value.replace(raw, resolved)
-    return value or default
-
-
-def target_text(value: object, target: TargetIdentity, default: str | None) -> str | None:
+def target_text(value: object, target: TargetIdentity | DbtTarget, default: str | None) -> str | None:
     """Return a value as text with each `{{ target.* }}` template replaced by the target's own value.
 
-    The database and schema are replaced casefolded, and the warehouse as written, or empty
-    when the target sets none. A non-text value reads as its `str()`.
+    This is the one renderer of `{{ target.database }}`, `{{ target.schema }}` and
+    `{{ target.warehouse }}`, each replaced by the value of the key it names. A profile target's
+    database and schema are replaced casefolded and its warehouse as written, or empty when it
+    sets none; a dbt target's database and schema are replaced as dbt resolved them, and it has
+    no warehouse. A non-text value reads as its `str()`.
 
     Returns:
         The text; `default` when the value is None or the replaced text is empty.
     """
     if not isinstance(value, str):
         return default if value is None else str(value)
+    if isinstance(target, DbtTarget):
+        database, schema, warehouse = target.database, target.schema, ""
+    else:
+        database, schema, warehouse = target.database.folded, target.schema.folded, target.warehouse or ""
     return (
-        value.replace("{{ target.database }}", target.database.folded)
-        .replace("{{ target.schema }}", target.schema.folded)
-        .replace("{{ target.warehouse }}", target.warehouse or "")
+        value.replace("{{ target.database }}", database)
+        .replace("{{ target.schema }}", schema)
+        .replace("{{ target.warehouse }}", warehouse)
         or default
     )
 

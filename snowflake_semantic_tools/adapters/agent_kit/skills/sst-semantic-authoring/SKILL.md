@@ -86,6 +86,11 @@ semantic_views:
 A view's `description` must say when to use it (`SST-VAL005`): it is what an agent reads to
 pick the view.
 
+A view's own settings go under `config:`: the `semantic_views:` `+` keys without the `+`
+(`enabled`, `tags`, `max_staleness`, `database`, `schema`). They win over every folder route
+and the block root; an absent key inherits, any other key is `SST-CFG053`, and a key with no
+value is `SST-CFG054`. Never write them beside `tables:` (`SST-PRS126`).
+
 ## Metrics
 
 ```yaml

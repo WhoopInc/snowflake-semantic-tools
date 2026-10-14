@@ -1,8 +1,9 @@
 ---
 # jaffle_menu lives in core/ to exercise folder routing: sst_config.yml sets
 # `+schema: CORE` under `semantic_views.core`, which applies to every view in
-# this directory and below. Config folds one key at a time, so `+database` and
-# `+enabled` still come from the block and the view renders as
+# this directory and below. Settings resolve one key at a time -- the view's
+# own `config:`, then the closest route, then the block root -- so `+database`
+# and `+enabled` still come from the block and the view renders as
 # SST_REF_DEV.CORE.JAFFLE_MENU. Its tables stay in SST_REF_DEV.JAFFLE.
 
 semantic_views:
@@ -17,7 +18,6 @@ semantic_views:
 
       Does NOT cover customer attributes -- there is no join to customers here, so
       a question about new versus returning belongs in `jaffle_sales`.
-    enabled: true
     tables:
       - "{{ ref('order_items') }}"
       - "{{ ref('products') }}"

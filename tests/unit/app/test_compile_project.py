@@ -189,14 +189,16 @@ def test_agents_follow_the_agents_block_and_disabled_agents_are_left_out() -> No
     assert compiled.rendered_artifact.target.sql == "DB_AGENTS.BOTS.HELPER"
     assert '"orchestration": "fast"' in compiled.payload
     agents, tool_names = inputs.eval_requests[0]
-    assert agents == (agent("helper"),) and tool_names == {"helper": ()}
+    assert isinstance(agents, tuple) and [model.name for model in agents] == ["helper"]
+    assert tool_names == {"helper": ()}
     assert "SST-VAL543" not in {item.code for item in result.diagnostics}
 
     # Loading resolves `agents.+enabled` into each agent's `enabled`, so compiling trusts the
     # agent's own value: one that sets `enabled: true` compiles under a disabling default.
     kept = InMemoryProjectInputs(tree={"agents": {"+enabled": False}}, agent_models=(agent("helper"),))
     assert [item.artifact_type for item in CompileProject(kept).run().compiled] == ["agent"]
-    assert kept.eval_requests[0][0] == (agent("helper"),)
+    requested = kept.eval_requests[0][0]
+    assert isinstance(requested, tuple) and [model.name for model in requested] == ["helper"]
 
 
 def test_only_auto_is_allowed_without_a_list_of_orchestration_models() -> None:

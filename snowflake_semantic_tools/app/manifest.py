@@ -190,4 +190,5 @@ def _artifact_entry(compiled: CompiledArtifact, result: CompileResult) -> Artifa
         ),
         component_fingerprints=rendered.component_fingerprints,
         physical_resources=tuple((object_type, name.sql) for object_type, name in rendered.physical_resources),
+        settings=compiled.settings,
     )

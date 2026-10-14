@@ -14,7 +14,7 @@ CONFIG = "project:\n  semantic_models_dir: semantic_models\ntags:\n  default_pre
 def _tagged(value: str) -> dict[str, str]:
     return {
         "sst_config.yml": CONFIG,
-        **view_file(f"    tags:\n      - name: \"{{{{ tag('tier') }}}}\"\n        value: {value}\n"),
+        **view_file(f"    config:\n      tags:\n        - name: \"{{{{ tag('tier') }}}}\"\n          value: {value}\n"),
     }
 
 

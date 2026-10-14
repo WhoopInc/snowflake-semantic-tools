@@ -1,4 +1,8 @@
-"""SST-PRS027: a view's `tags` is not a list of name and value entries."""
+"""SST-PRS027: a view's `config.tags` is not a list of name and value entries.
+
+A `config.tags` that is not a list is reported by the setting's own type check (SST-CFG004),
+so this code is for an entry of the list.
+"""
 
 from __future__ import annotations
 
@@ -10,16 +14,17 @@ from tests.helpers.seam_projects import SmallProject, view_file
 
 
 def test_sst_prs027_fires(tmp_path: Path) -> None:
-    [diagnostic] = coded(
-        SmallProject(tmp_path, files=view_file("    tags: {tier: gold}\n")).load().diagnostics, "SST-PRS027"
-    )
+    files = view_file("    config:\n      tags:\n        - name: tier\n")
+    [diagnostic] = coded(SmallProject(tmp_path, files=files).load().diagnostics, "SST-PRS027")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "semantic_view:catalog: tags must be a list of name and value entries, found dict"
+    assert diagnostic.message == (
+        "semantic_view:catalog: tags must be a list of name and value entries, found {'name': 'tier'}"
+    )
     assert diagnostic.subject == "semantic_view:catalog"
 
 
 def test_sst_prs027_fires_for_a_tag_name_that_is_not_a_call(tmp_path: Path) -> None:
-    files = view_file("    tags:\n      - name: tier\n        value: gold\n")
+    files = view_file("    config:\n      tags:\n        - name: tier\n          value: gold\n")
     [diagnostic] = coded(SmallProject(tmp_path, files=files).load().diagnostics, "SST-PRS027")
     assert diagnostic.message == (
         "semantic_view:catalog: tags must be a list of name and value entries, "

@@ -426,9 +426,11 @@ def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
         "  misspelled top-level block (`SST-CFG007`);",
         "- a removed key is an error that says what replaced it.",
         "",
-        "Keys that start with `+` set a default that nested folder routes and",
-        "individual artifacts inherit. In a key path, `<route>` stands for a folder",
-        "name and `<name>` for any entry of a name map.",
+        "Keys that start with `+` set a default that nested folder routes inherit; a",
+        "semantic view or an agent overrides one in its own `config:` block, writing",
+        "the key without its `+`. An absent key inherits, and a `+` key written with",
+        "no value is an error (`SST-CFG054`). In a key path, `<route>` stands for a",
+        "folder name and `<name>` for any entry of a name map.",
     ]
     blocks: dict[str, list[ConfigKey]] = {}
     for key in current:
@@ -484,6 +486,8 @@ def _type(key: ConfigKey) -> str:
         label += f", {key.minimum} to {key.maximum}"
     if key.required:
         label += ", required"
+    if key.root_only:
+        label += ", root only"
     return label
 
 

@@ -9,12 +9,12 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     config_block,
     config_bool,
     config_int,
-    config_text,
     configured_dir,
     enrichment_config,
     skills_configured,
     target_text,
 )
+from snowflake_semantic_tools.domain.model.dbt import DbtTarget
 from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetIdentity
 from snowflake_semantic_tools.domain.ports.golden import GoldenPath, GoldenStore
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs, ValidationDefaults
@@ -37,21 +37,19 @@ def test_blocks_and_project_roots_read_as_empty_or_default_when_absent_or_mistyp
     ]
 
 
-def test_config_text_replaces_every_target_template_with_the_default() -> None:
-    template = "{{ target.database }}.{{ target.schema }}.{{ target.warehouse }}"
-    assert config_text(template, "X") == "X.X.X"
-    assert config_text(None, "X") == "X"
-    assert config_text(7, "X") == "7"
-    assert config_text("{{ target.database }}", None) is None
-    assert config_text("", "fallback") == "fallback"
-
-
 def test_target_text_replaces_each_template_with_the_targets_own_value() -> None:
     template = "{{ target.database }}.{{ target.schema }}.{{ target.warehouse }}"
     assert target_text(template, TARGET, None) == "DB.SCH.WH"
     assert target_text("{{ target.warehouse }}", replace(TARGET, warehouse=None), "default") == "default"
     assert target_text(None, TARGET, "default") == "default"
     assert target_text(3, TARGET, "default") == "3"
+    assert target_text("", TARGET, "fallback") == "fallback"
+
+
+def test_target_text_renders_a_dbt_target_as_dbt_resolved_it() -> None:
+    template = "{{ target.database }}.{{ target.schema }}.{{ target.warehouse }}"
+    assert target_text(template, DbtTarget("db", "sch"), None) == "db.sch."
+    assert target_text("{{ target.schema }}_V", DbtTarget("db", "sch"), None) == "sch_V"
 
 
 def test_integers_and_flags_read_only_their_own_type() -> None:

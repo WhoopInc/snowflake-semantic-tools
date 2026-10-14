@@ -18,6 +18,7 @@ from snowflake_semantic_tools.domain.model.agent import (
     ResolvedAgentTool,
 )
 from snowflake_semantic_tools.domain.model.identifier import Identifier
+from snowflake_semantic_tools.domain.model.setting import CONFIG_SOURCE
 from snowflake_semantic_tools.domain.parse.names import RESERVED_WORDS
 from snowflake_semantic_tools.domain.sql import ident
 from snowflake_semantic_tools.domain.validate.sql import name_problem, qualified_name_problem
@@ -203,19 +204,20 @@ def _profile_problems(model: AgentModel, avatar_allowlist: frozenset[str] | None
     return found
 
 
-def token_budget(authored: AgentModel) -> tuple[Diagnostic, ...]:
+def token_budget(agent: AgentModel) -> tuple[Diagnostic, ...]:
     """Report a token budget the agent sets for itself, which bounds orchestration and not spend.
 
-    Read before the `agents:` defaults fill the budget, so a project-wide default is not
-    reported once per agent. A budget documented beside it as orchestration-only is not
-    being read as a spend ceiling, and is not reported.
+    Only the agent's own `config.budget_tokens` counts, so a project-wide default from the
+    `agents:` block or a folder route is not reported once per agent. A budget documented
+    beside it as orchestration-only is not being read as a spend ceiling, and is not reported.
 
     Diagnostics:
-        SST-VAL547: the agent sets `budget.tokens` and does not say it bounds orchestration.
+        SST-VAL547: the agent sets `config.budget_tokens` and does not say it bounds orchestration.
     """
-    if authored.budget_tokens is None or authored.budget_tokens_documented:
+    own = agent.settings.get("budget_tokens")
+    if own is None or own.source != CONFIG_SOURCE or agent.budget_tokens_documented:
         return ()
-    return (D("SST-VAL547", artifact=authored.name, subject=authored.key),)
+    return (D("SST-VAL547", artifact=agent.name, subject=agent.key),)
 
 
 def spec_size(resolved: ResolvedAgent, payload: str) -> tuple[Diagnostic, ...]:

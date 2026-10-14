@@ -38,14 +38,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="a view's `tables:` names a dbt model that is `enabled: false` or materialised as `ephemeral`",
     ),
     spec(
-        "SST-VAL304",
-        Severity.ERROR,
-        "max_staleness below the accepted floor",
-        "{artifact}: max_staleness is {found}; the minimum is 120",
-        "raise `max_staleness` to at least 120",
-        condition="a view declares an integer `max_staleness` under 120 seconds, Snowflake's minimum",
-    ),
-    spec(
         "SST-VAL305",
         Severity.ERROR,
         "Fact column is not numeric",

@@ -20,6 +20,8 @@ from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.config_schema import target_text
+from snowflake_semantic_tools.domain.model.dbt import DbtTarget
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 
 _ENV_VAR = re.compile(
@@ -586,19 +588,15 @@ def _state_table(state_config: Mapping[str, object] | None, database: str, schem
     """Locate the state table: `SST_STATE` in the target's database and schema by default.
 
     The `state:` block overrides each part: `+table` with `env_var()` rendered, and
-    `+database` and `+schema` with `{{ target.database }}` and `{{ target.schema }}` replaced.
+    `+database` and `+schema` with their `{{ target.* }}` templates rendered as written in the
+    profile; a part that is unset or renders empty keeps its default.
     """
-    state_name = "SST_STATE"
-    state_database = database
-    state_schema = schema
-    if isinstance(state_config, Mapping):
-        raw_table = state_config.get("+table")
-        raw_database = state_config.get("+database")
-        raw_schema = state_config.get("+schema")
-        if raw_table:
-            state_name = str(_resolve_env(raw_table))
-        if raw_database:
-            state_database = str(raw_database).replace("{{ target.database }}", database)
-        if raw_schema:
-            state_schema = str(raw_schema).replace("{{ target.schema }}", schema)
-    return QualifiedName.from_parts(state_database, state_schema, state_name)
+    block = state_config if isinstance(state_config, Mapping) else {}
+    raw_table = block.get("+table")
+    state_name = str(_resolve_env(raw_table)) if raw_table else "SST_STATE"
+    target = DbtTarget(database, schema)
+    return QualifiedName.from_parts(
+        target_text(block.get("+database"), target, database) or database,
+        target_text(block.get("+schema"), target, schema) or schema,
+        state_name,
+    )

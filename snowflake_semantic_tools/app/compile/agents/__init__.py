@@ -54,12 +54,13 @@ __all__ = ["AgentCompileContext", "CompileAgents", "CompiledAgent", "ExtensionPi
 
 
 class CompileAgents:
-    """Compile each agent: inherit the `agents:` defaults, resolve it, check it, render its spec.
+    """Compile each agent: resolve its tools and skills, check it, render its spec.
 
-    `diagnostics` are the loader's; they come first, and an error among them that names an
-    agent keeps that agent back like one found here. `routed` holds the context an agent
-    compiles against instead of `context`, by the agent's folder: the one whose defaults the
-    folder routes over it resolve to.
+    Each model arrives with its settings applied (`settled.settled_agent`). `diagnostics` are
+    the loader's; they come first, and an error among them that names an agent keeps that
+    agent back like one found here. `contexts` holds the context an agent compiles against
+    instead of `context`, by the agent's artifact key: the one with the execution environment
+    its settings resolve to.
     """
 
     def __init__(
@@ -68,12 +69,12 @@ class CompileAgents:
         diagnostics: DiagnosticBag,
         context: AgentCompileContext,
         *,
-        routed: Mapping[tuple[str, ...], AgentCompileContext] | None = None,
+        contexts: Mapping[str, AgentCompileContext] | None = None,
     ) -> None:
         self._models = models
         self._diagnostics = diagnostics
         self._context = context
-        self._routed: Mapping[tuple[str, ...], AgentCompileContext] = routed or {}
+        self._contexts: Mapping[str, AgentCompileContext] = contexts or {}
 
     def run_result(self) -> CompileResult:
         """Compile the agents in authored order, then check what spans all of them.
@@ -92,7 +93,7 @@ class CompileAgents:
         Diagnostics:
             SST-VAL001: an agent name repeats, ignoring case.
             SST-VAL549: an agent's display name repeats, ignoring case.
-            SST-VAL547: an agent sets its own token budget, which bounds orchestration only.
+            SST-VAL547: an agent sets its own `config.budget_tokens`, which bounds orchestration only.
             SST-VAL514: an agent declares one tool name twice.
             SST-VAL515: two of an agent's tool names differ only by case.
             SST-VAL519: two of an agent's tools have near-identical descriptions.
@@ -143,16 +144,16 @@ class CompileAgents:
         return CompileResult(tuple(compiled), DiagnosticBag(diagnostics))
 
     def _context_of(self, model: AgentModel) -> AgentCompileContext:
-        return self._routed.get(model.folder, self._context)
+        return self._contexts.get(model.key, self._context)
 
     def _resolve(self, model: AgentModel) -> tuple[ResolvedAgent, str, tuple[Diagnostic, ...]]:
-        """Resolve the agent with its inherited defaults, then render its spec and check it whole.
+        """Resolve the agent, then render its spec and check it whole.
 
-        The authored token budget is read before the defaults fill it; the rendered spec is
-        checked for completeness, its resource keys, and its size, in that order.
+        The rendered spec is checked for completeness, its resource keys, and its size, in that
+        order.
         """
         context = self._context_of(model)
-        resolved, problems = _resolve_agent(_inherit(model, context), context)
+        resolved, problems = _resolve_agent(model, context)
         document = render_agent_spec(resolved.model, resolved.tools)
         payload = render_agent_json(resolved.model, resolved.tools)
         checks = agent_render_checks(resolved.model, resolved.tools, payload)
@@ -188,28 +189,6 @@ def _passthrough_keys(model: AgentModel) -> tuple[str, ...]:
         keys.extend(f"tools.{tool.name}.passthrough.{key}" for key in tool.passthrough)
         keys.extend(f"tools.{tool.name}.tool_spec_passthrough.{key}" for key in tool.tool_spec_passthrough)
     return tuple(keys)
-
-
-def _inherit(model: AgentModel, context: AgentCompileContext) -> AgentModel:
-    """Fill what the agent leaves unset from the `agents:` defaults.
-
-    A model of `auto`, and no tags, count as unset.
-    """
-    return replace(
-        model,
-        orchestration_model=(
-            model.orchestration_model if model.orchestration_model != "auto" else context.orchestration_model
-        ),
-        budget_seconds=model.budget_seconds or context.budget_seconds,
-        budget_tokens=model.budget_tokens or context.budget_tokens,
-        tool_not_accessible=model.tool_not_accessible or context.tool_not_accessible,
-        analytical_search=(
-            model.analytical_search if model.analytical_search is not None else context.analytical_search
-        ),
-        alias=model.alias or context.alias,
-        secure=model.secure if model.secure is not None else context.secure,
-        tags=model.tags or context.tags,
-    )
 
 
 def _resolve_agent(model: AgentModel, context: AgentCompileContext) -> tuple[ResolvedAgent, tuple[Diagnostic, ...]]:

@@ -40,6 +40,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     SmokeProbe,
 )
 from snowflake_semantic_tools.domain.model.semantic_view import Metric, SemanticView
+from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
 from snowflake_semantic_tools.domain.render.semantic_view import bound_verified_query, render, render_checked
 from snowflake_semantic_tools.domain.sql import AuthoredExpression, Sql, ident, join, qname, sql
@@ -124,6 +125,10 @@ class CompiledView(CompiledArtifact):
     @property
     def source_files(self) -> tuple[str, ...]:
         return self.view.source_files or ((self.view.source_path,) if self.view.source_path else ())
+
+    @property
+    def settings(self) -> tuple[Setting, ...]:
+        return self.view.settings
 
     @property
     def member_keys(self) -> tuple[str, ...]:

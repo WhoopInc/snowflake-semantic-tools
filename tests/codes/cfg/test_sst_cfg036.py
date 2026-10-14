@@ -39,7 +39,9 @@ def _tagged(root: Path, tags: str, ref: str = "tier") -> SemanticViewProject:
         root,
         files={
             "sst_config.yml": f"project:\n  semantic_models_dir: semantic_models\ntags:\n{tags}",
-            **view_file(f"    tags:\n      - name: \"{{{{ tag('{ref}') }}}}\"\n        value: gold\n"),
+            **view_file(
+                f"    config:\n      tags:\n        - name: \"{{{{ tag('{ref}') }}}}\"\n          value: gold\n"
+            ),
         },
     ).load()
 

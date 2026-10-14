@@ -3,9 +3,9 @@
 files:
   agents/cycle_a/agent.yml: |
     name: cycle_a
+    config:
+      orchestration_model: claude-sonnet-4-6
     spec:
-      models:
-        orchestration: claude-sonnet-4-6
       tools:
         - name: cycle_b
           type: agent_toolset
@@ -13,9 +13,9 @@ files:
           description: The second agent's tools.
   agents/cycle_b/agent.yml: |
     name: cycle_b
+    config:
+      orchestration_model: claude-sonnet-4-6
     spec:
-      models:
-        orchestration: claude-sonnet-4-6
       tools:
         - name: cycle_a
           type: agent_toolset
