@@ -1,0 +1,79 @@
+---
+# =============================================================================
+# agents/jaffle_delivery/agent.yml -- reference project
+# =============================================================================
+# The toolset agent. Its one tool is an agent toolset over `partner_delivery_agent`:
+# a `reference:` member of the immutable jaffle_partner tool group, so this repo
+# addresses it without ever creating it. At run time Snowflake adds the partner
+# agent's tools to this agent's, which fits because delivery status lives with
+# the partner, not in any semantic view here.
+#
+#   jaffle_delivery_agent ---> partner_delivery_agent (outside this project)
+#
+# The toolset graph must be acyclic (SST-REF022); this edge leaves the project,
+# so it cannot close a cycle.
+#
+# Every agent toolset raises SST-VAL528, a warning that the tool surface is no
+# longer fixed by this spec. It is one of the fixture's deliberate offline
+# warnings, listed under `validation.strict` in sst_config.yml.
+# =============================================================================
+
+name: jaffle_delivery_agent
+
+comment: |-
+  Answers questions about the delivery status of a jaffle order with the partner
+  delivery agent's tools. Holds no semantic views of its own.
+
+profile:
+  display_name: Jaffle Delivery
+  avatar: TruckAgentIcon
+  color: green
+
+spec:
+  models:
+    orchestration: claude-sonnet-4-5
+
+  # `instructions:` is a map of orchestration, response and sample_questions.
+  # These are inline while jaffle_analytics uses file() sidecars, so both forms
+  # render.
+  instructions:
+    orchestration: |-
+      Decide whether the question is about DELIVERY or about the ORDER ITSELF.
+
+      A question about where an order is, when it will arrive, or why it is late is a
+      delivery question: answer it with the partner delivery tools and return what
+      they say.
+
+      A question about what was ordered, what it cost, or how many were sold is NOT a
+      delivery question. Do not answer it. Say that it belongs to the jaffle analytics
+      agent and stop -- you hold no semantic view and cannot answer it even
+      approximately.
+
+      Never invent a delivery status. If the partner tools return nothing, say the
+      status is unavailable.
+
+    response: |-
+      Report a delivery status exactly as the partner returns it, including any
+      timestamp, and name the partner as the source.
+
+      If the partner's answer and the question disagree about which order is meant,
+      say so rather than guessing which order the user intended.
+
+  tools:
+    # Resolved by name through the tool registry to the partner's object for
+    # the current target. No DDL is emitted for it. The orchestrator never sees
+    # a toolset's description, only the tools it inherits.
+    - name: partner_delivery_agent
+      type: agent_toolset
+      description: |-
+        The partner's delivery agent's tools. They answer where an order is and
+        when it will arrive, and nothing about order contents or value.
+
+# The `agents.+alias` default, restated.
+alias: promoted
+
+enabled: true
+
+meta:
+  owner: analytics-platform
+  deprecated: false

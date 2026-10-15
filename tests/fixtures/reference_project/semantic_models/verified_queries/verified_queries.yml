@@ -1,13 +1,12 @@
 ---
 # Four verified queries, one per authoring variant. This file lists the last
 # two; order_count_by_state and revenue_by_location are single-item
-# `verified_query:` files beside it. Verified queries render in the order SST
-# reads them -- files by path, then entries in file order -- so these names
-# keep the order below.
+# `verified_query:` files beside it. Verified queries render sorted by name,
+# whichever file holds them:
 #
 #   order_count_by_state    inline sql, onboarding, verified_at as epoch seconds
-#   revenue_by_location     inline sql, onboarding, verified_at as a date string
 #   product_mix_by_type     a file() sidecar, no optional keys
+#   revenue_by_location     inline sql, onboarding, verified_at as a date string
 #   total_revenue_all_time  inline sql, no optional keys
 #
 # An absent optional key is left out of the rendered entry, not rendered empty.

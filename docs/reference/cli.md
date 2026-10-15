@@ -12,8 +12,9 @@ versioned JSON envelope on stdout and nothing else.
 |---|---|
 | [`sst init`](#sst-init) | Scaffold SST into an existing dbt project without overwriting a file. |
 | [`sst debug`](#sst-debug) | Show the resolved configuration, profile, target, and registry, and test the connection. |
-| [`sst migrate`](#sst-migrate) | Rewrite a 0.3 project into the 1.0 dialect. |
-| [`sst migrate refs`](#sst-migrate-refs) | Rewrite legacy references to ref(), drop the keys SST infers, and label boolean filters. |
+| [`sst migrate`](#sst-migrate) | Rewrite an earlier project into the 1.0 dialect: `split` its lists, then rewrite its `refs`. |
+| [`sst migrate refs`](#sst-migrate-refs) | Rewrite references as template calls, move old settings under config:, and label filters. |
+| [`sst migrate split`](#sst-migrate-split) | Write each listed member to a file of its own, tool group members to their group's folder. |
 | [`sst enrich`](#sst-enrich) | Fill dbt model column metadata from the warehouse, editing the model YAML in place. |
 | [`sst format`](#sst-format) | Rewrite YAML into canonical form: indentation, key order, and `\|-` block scalars. |
 | [`sst compile`](#sst-compile) | Compile every artifact and write the canonical manifest, offline. |
@@ -69,7 +70,7 @@ These go before the command name.
 |---:|---|---|
 | 0 | `OK` | Success. For `sst plan`, nothing to change. |
 | 1 | `ERROR` | Errors were reported, or an apply, a test suite, or a check failed. |
-| 2 | `CHANGES` | Declared and actual state differ: `sst plan` found changes, `sst diff` found the two states differ, or `enrich --check`, `format --check`, `docs --check`, or `migrate refs` found something to rewrite. |
+| 2 | `CHANGES` | Declared and actual state differ: `sst plan` found changes, `sst diff` found the two states differ, or `enrich --check`, `format --check`, `docs --check`, `migrate refs`, or `migrate split` found something to rewrite. |
 | 3 | `USAGE` | The command line is invalid. |
 | 4 | `CONFIG` | The project, its configuration, or a saved plan cannot be used. |
 | 5 | `CONNECTION` | Snowflake could not be reached, rejected the credential, refused a privilege, or did not finish in time; the diagnostic code says which, so a retry fixes only some of them. |
@@ -133,18 +134,22 @@ sst debug [OPTIONS]
 
 ## sst migrate
 
-Rewrite a 0.3 project into the 1.0 dialect.
+Rewrite an earlier project into the 1.0 dialect: `split` its lists, then rewrite its `refs`.
 
-Subcommands: [`sst migrate refs`](#sst-migrate-refs).
+The two commands are independent and either may run first; each is a dry run until --write.
+
+Subcommands: [`sst migrate refs`](#sst-migrate-refs), [`sst migrate split`](#sst-migrate-split).
 
 ## sst migrate refs
 
-Rewrite legacy references to ref(), drop the keys SST infers, and label boolean filters.
+Rewrite references as template calls, move old settings under config:, and label filters.
 
-Reads every YAML file under `project.semantic_models_dir`. Dry-run by default: exit 2
-when rewrites are pending, 0 when there are none, and 1 when a table() call sits where
-no rewrite is safe, each such call named on stderr. With --write the files are
-rewritten, and the command exits 0, or 1 while such a call remains.
+Reads every YAML file under `project.semantic_models_dir` and `project.tools_dir`, each agent
+file and eval file under `project.agents_dir`, each hook manifest under `project.hooks_dir`,
+each command under `project.commands_dir`, and the configuration file's `tool()` calls.
+Dry-run by default: exit 2 when rewrites are pending, 0 when there are none, and 1 when
+something sits where no rewrite is safe, each such place named on stderr. With --write the
+files are rewritten, and the command exits 0, or 1 while such a place remains.
 
 ```text
 sst migrate refs [OPTIONS]
@@ -153,6 +158,26 @@ sst migrate refs [OPTIONS]
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--write` | flag |  | Rewrite the files in place; without it, only report. |
+
+## sst migrate split
+
+Write each listed member to a file of its own, tool group members to their group's folder.
+
+Reads every YAML file under `project.semantic_models_dir` and `project.tools_dir`, and the
+configuration file, whose `skills.catalog`, `skills.stage` and `skills.extensions` move to
+the `skills:` root and the `plugins:`, `profiles:` and `extensions:` blocks. A file that
+would overwrite one already there is left whole and named on stderr. Dry-run by default:
+exit 2 when a split is pending, 0 when there is none, and 1 when a file is left whole or a
+configuration key needs a hand edit. With --write the files are written, then the lists
+they came from removed, and the command exits 0, or 1 while such a file remains.
+
+```text
+sst migrate split [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--write` | flag |  | Write the new files and remove the old; without it, only report. |
 
 ## sst enrich
 

@@ -2,7 +2,7 @@
 name: sst-migrate-from-0-3
 description: |-
   Use when moving a project written for SST 0.3 to this SST: replacing `sst deploy`,
-  `sst generate`, and `sst extract`, running `sst migrate refs`, renaming the 0.3 keys
+  `sst generate`, and `sst extract`, running `sst migrate split` and `sst migrate refs`, renaming the 0.3 keys
   `sst validate` reports, and publishing alongside a 0.3 deployment. Do NOT use for a
   project already on 1.0 (use sst-core), or for fixing 1.0 diagnostics unrelated to 0.3
   spellings (use sst-fix-diagnostics).
@@ -17,7 +17,19 @@ until it is migrated.
 ## The order
 
 1. Work on a branch, with this SST installed.
-2. Rewrite references, reviewing the report before writing:
+2. Split each member list into one file per member, reviewing the report before writing:
+
+   ```bash
+   sst migrate split           # report only: exit 2 when a split is pending
+   sst migrate split --write   # write <name>.yml per member, then remove the list
+   ```
+
+   It also moves tool group members to `tools/<group>/<name>.yml` (a group's `immutable`
+   becomes a `tools.<group>.+immutable` route) and moves `skills.catalog`, `skills.stage`
+   and `skills.extensions` in `sst_config.yml` to the `skills:` root and the `plugins:`,
+   `profiles:` and `extensions:` blocks. It never overwrites a file: one in the way leaves
+   that list whole and exits 1.
+3. Rewrite references, reviewing the report before writing (either command may run first):
 
    ```bash
    sst migrate refs            # report only: exit 2 when rewrites are pending
@@ -25,13 +37,15 @@ until it is migrated.
    sst migrate refs            # exit 0: nothing left
    ```
 
-   It turns `{{ table('x') }}` into `{{ ref('x') }}` and `{{ column('x', 'y') }}` into
+   It writes every bare reference as its template call (`relationship()`, `metric()`,
+   `tag()`, `skill()`, `file()`, `tool()` with one argument), moves old item settings under
+   `config:`, writes tool columns as refs, and turns `{{ table('x') }}` into `{{ ref('x') }}` and `{{ column('x', 'y') }}` into
    `{{ ref('x', 'y') }}`, writes relationship endpoints as `{{ ref('x') }}`, drops members'
    `tables:` and `derived:`, turns `sql_file:` into `sql: "{{ file('...') }}"`, and labels
    boolean filters. It does not rewrite verified-query SQL: change each table it reads by name
    to `{{ ref('<model>') }}` (`SST-VAL414`). A `table()` call where no rewrite is safe, such as in a description, is printed
    as `file:line:column` and exits 1 until fixed by hand.
-3. Rename what `sst validate --no-snowflake-syntax-check` reports, one code at a time,
+4. Rename what `sst validate --no-snowflake-syntax-check` reports, one code at a time,
    with `sst explain <CODE>` for each:
 
    | 0.3 | This SST | Code |
@@ -46,14 +60,14 @@ until it is migrated.
    | `deploy:` in `sst_config.yml` | `apply:` | `SST-CFG200` |
    | a key only 0.3 read | what the message names | `SST-CFG043` |
 
-4. Read the warnings before turning on `validation.strict: true`: 0.3 never enforced it,
+5. Read the warnings before turning on `validation.strict: true`: 0.3 never enforced it,
    so it promotes every accumulated warning at once.
-5. Publish into a **new schema**: objects 0.3 published carry no 1.0 ownership record, so
+6. Publish into a **new schema**: objects 0.3 published carry no 1.0 ownership record, so
    the first plan over them reports each as unmanaged (`SST-PLN024`) and will not apply.
    Change `semantic_views.+schema` (and the other types'), then `sst compile` and
    `sst plan`; applying is the user's call. The 0.3 objects are dropped by hand once nothing
    reads them.
-6. In CI, replace `sst deploy` and `sst generate` with `sst compile`, `sst plan`, then
+7. In CI, replace `sst deploy` and `sst generate` with `sst compile`, `sst plan`, then
    `sst apply --plan target/sst/plan.json --yes`.
 
 ## Commands that changed

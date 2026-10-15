@@ -46,7 +46,8 @@ skills, and CoCo Desktop profiles, then publishes them. This kit was installed b
 | `sst format` | offline, edits files | `--check` exits 2 when a file would change; run it after editing SST YAML. |
 | `sst init` | offline, edits files | Scaffolds `sst_config.yml`; never overwrites a file. |
 | `sst clean` | offline, edits files | Removes `target/sst` only. |
-| `sst migrate refs` | offline, edits files | Dry run by default; `--write` rewrites 0.3 references. |
+| `sst migrate refs` | offline, edits files | Dry run by default; `--write` rewrites references and moves old settings under `config:`. |
+| `sst migrate split` | offline, edits files | Dry run by default; `--write` writes one file per listed member and removes the list. |
 | `sst docs` | offline, edits files | Regenerates SST's own reference pages; for SST maintainers, not projects. |
 | `sst baseline show` | offline | Lists the baseline file's entries. |
 | `sst baseline add` | offline, edits files | Writes `.sst/baseline.json`; `--target` connects. Ask before using it. |

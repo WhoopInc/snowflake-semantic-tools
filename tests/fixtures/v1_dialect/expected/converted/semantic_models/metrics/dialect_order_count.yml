@@ -1,0 +1,4 @@
+metric:
+  name: dialect_order_count
+  description: Distinct orders placed.
+  expr: COUNT(DISTINCT {{ ref('orders', 'order_id') }})

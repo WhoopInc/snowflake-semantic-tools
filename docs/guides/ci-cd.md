@@ -311,7 +311,7 @@ fields can appear in the same version.
 |---:|---|
 | 0 | Success. For `plan`, nothing to change. |
 | 1 | Errors were reported, or an apply, a test suite, or a check failed. |
-| 2 | Declared and actual state differ: `plan` found changes, `diff` found the two states differ, or `format --check`, `enrich --check`, `docs --check`, or `migrate refs` found something to rewrite. |
+| 2 | Declared and actual state differ: `plan` found changes, `diff` found the two states differ, or `format --check`, `enrich --check`, `docs --check`, `migrate refs`, or `migrate split` found something to rewrite. |
 | 3 | The command line is invalid. |
 | 4 | The project, its configuration, or a saved plan cannot be used. |
 | 5 | Snowflake could not be reached, rejected the credential, refused a privilege, or did not finish in time. The diagnostic code says which: a refused privilege (`SST-PRT004`, or an `SST-SNO` privilege code) needs a grant, not a retry. |

@@ -1,0 +1,228 @@
+---
+# =============================================================================
+# agents/jaffle_analytics/agent.yml -- reference project
+# =============================================================================
+# The full-featured agent: two Cortex Analyst tools (one per semantic view), a
+# Cortex Search tool over a `define:` tool member and a `generic` tool over a
+# `reference:` one, plus two skills and an eval.
+#
+# SST authors one entry per tool and the renderer splits it into Snowflake's
+# `tools[]` and `tool_resources{}`; read this file beside
+# tests/golden/expected/agent/jaffle_analytics_agent.json for the mapping. Each
+# published version carries the complete specification, so the golden is
+# compared whole. A spec over 100,000 bytes is SST-VAL511, and one over 80% of
+# that is SST-VAL512.
+#
+# Templates are quoted by choice; the loader also accepts them unquoted.
+# Multi-line strings use `|-`: `>` folds lines, so a list in an instruction
+# would arrive as one paragraph. Nothing below contains member data.
+# =============================================================================
+
+name: jaffle_analytics_agent
+
+# Apply creates the agent from its staged spec when it is absent and adds a
+# version when it exists. `secure` is omitted, so SST sets SECURE = FALSE.
+
+# Published as the agent COMMENT, after SST's ownership marker. Saying what the
+# agent does not cover lets a person or router pick another agent.
+comment: |-
+  Covers order populations: how many customers and orders exist, how they
+  distribute across lifecycle status and location, monthly recurring revenue totals
+  and averages, and order event volume over a calendar spine.
+
+  Does not cover anything about an individual customer, and does not cover the menu
+  catalogue beyond plan descriptions.
+
+profile:
+  # Published with ALTER AGENT ... SET PROFILE. A display name shared with
+  # another agent is SST-VAL549.
+  display_name: Jaffle Analytics
+  # SST-VAL548 checks both: the color must be a plain color name or a
+  # `var(--token)`, and the avatar must be in `snowflake.profile.avatar_allowlist`
+  # when that is set (this fixture sets none). A plain color name reads better
+  # in review than a theme token.
+  avatar: SparklesAgentIcon
+  color: blue
+
+spec:
+  models:
+    # Must be in snowflake.orchestration_models (SST-VAL543). Pinned rather than
+    # `auto`, so the blocking eval can attribute a score change to this repo.
+    orchestration: claude-sonnet-4-6
+
+  orchestration:
+    budget:
+      # Either limit ends generation.
+      seconds: 120
+      # Orchestration tokens only: tokens spent inside tools are not counted, so
+      # this is not a spend ceiling (SST-VAL547).
+      tokens: 16000
+    # `reject`: a caller who lacks access to a tool gets an error instead of an
+    # answer from fewer tools. The values are accept, reject and legacy
+    # (SST-VAL545).
+    tool_not_accessible: reject
+    capabilities:
+      # Allowed, since the agent has a cortex_search tool (SST-VAL546), but off:
+      # it adds AI function cost and nothing in the fixture needs it.
+      analytical_search: false
+
+  instructions:
+    # Markdown sidecars keep long instructions reviewable as ordinary diffs. A
+    # missing or empty sidecar is SST-LOD018 or SST-LOD019.
+    orchestration: "{{ file('instructions/orchestration.md') }}"
+    response: "{{ file('instructions/response.md') }}"
+    # Onboarding prompts, not eval ground truth, written as `question:` maps
+    # (SST-PRS118). An eval question identical to one of these is SST-VAL707.
+    sample_questions:
+      - question: How many orders are open across all locations?
+      - question: Which location contributes the most monthly recurring revenue?
+      - question: Which menu item has the most ingredients?
+
+  # =========================================================================
+  # TOOLS -- one entry per tool, resources inline
+  # =========================================================================
+  tools:
+    # ---- 1. Cortex Analyst over jaffle_sales ------------------------------
+    - type: cortex_analyst_text_to_sql
+      # The tool name is the view name (JAFFLE_SALES), so there is no `name:`
+      # (SST-VAL520). A resolved name must be 1-64 characters (SST-VAL513).
+      semantic_view: "{{ semantic_view('jaffle_sales') }}"
+      # The orchestrator picks tools by description, so each one says what the
+      # tool is for and which tool to use instead. Required (SST-VAL518).
+      description: |-
+        Customers and the orders they placed. Use for counts of customers or
+        orders, lifecycle status breakdowns, and revenue totals and averages
+        sliced by customer attributes such as customer type, or by store
+        location.
+
+        THE ONLY TOOL THAT CARRIES LOCATION NAMES. `jaffle_menu` has
+        `location_id` and no locations table, so ask for names here.
+
+        Do NOT use for line-item or product detail -- use JAFFLE_MENU for
+        units sold, product mix and margin.
+      # Unset: the tool runs on `agents.+warehouse`, which falls back to the
+      # target warehouse (SST_REF_WH on dev).
+      warehouse: null
+      # Rendered into `execution_environment` with `type: warehouse`.
+      query_timeout: 60
+
+    # ---- 2. Cortex Analyst over jaffle_menu -------------------------------
+    - type: cortex_analyst_text_to_sql
+      semantic_view: "{{ semantic_view('jaffle_menu') }}"
+      description: |-
+        Order line items, the products sold on them, the pricing period in
+        effect when the order was placed, and the monthly supply cost of each
+        product. Use for product mix, units sold, line-item revenue, and margin
+        against supply cost.
+
+        Do NOT use for customer attributes -- there is no join to customers
+        here, so a question about customer type belongs to JAFFLE_SALES. It has
+        `location_id` but no location NAMES.
+      warehouse: null
+      query_timeout: 60
+
+    # ---- 3. Cortex Search over a `define:` member -------------------------
+    - type: cortex_search
+      # Unlike an Analyst tool, a search tool is named here.
+      name: menu_docs_search
+      # tool() takes the same form whether the member is defined in this repo
+      # (this one) or only referenced (the generic tool below).
+      search_service: "{{ tool('jaffle_platform', 'menu_docs_search') }}"
+      # The description, id and title columns and columns_and_descriptions come
+      # from the backing member; restate one only where this agent should
+      # differ. `max_results` is this agent's own choice.
+      max_results: 5
+      query_timeout: 60
+
+    # ---- 4. A `generic` tool over a `reference:` member -------------------
+    - type: generic
+      name: order_tier_lookup
+      # The procedure is owned elsewhere. tool() resolves it through the
+      # member's per-target `relations:`, so a dev agent calls the dev object.
+      identifier: "{{ tool('jaffle_platform', 'order_tier_lookup') }}"
+      description: |-
+        Resolves the pricing tier a single order falls into under current
+        rules. Use only when a question is about one named order and the
+        answer is a tier rather than a count.
+
+        Do NOT use for population questions -- any question phrased "how many" or
+        "which location" belongs to an Analyst tool.
+      # Required for a generic tool (SST-VAL526). Property types must be string,
+      # number, integer, boolean or array (SST-PRS032), and every `required`
+      # name must be a declared property (SST-PRS033).
+      input_schema:
+        type: object
+        properties:
+          order_id:
+            type: string
+            description: |-
+              The order to resolve a tier for.
+        required:
+          - order_id
+      # No `warehouse:`. It resolves from the backing member, else from
+      # `agents.+warehouse` (here the target's SST_REF_WH); none is SST-VAL527.
+      query_timeout: 60
+
+  # =========================================================================
+  # SKILLS
+  # =========================================================================
+  skills:
+      # A skill this project publishes. It is named after the skill skill()
+      # names, so it writes no `name` (SST-VAL540); a plugin entry may name one
+      # of its members.
+    - source:
+        # A versioned Cortex Extension; a STAGE source is SST-VAL539.
+        type: CORTEX_EXTENSION
+        # skill() resolves to the extension `skills.catalog` publishes, so each
+        # target resolves its own. extension() is for other projects' extensions.
+        path: "{{ skill('jaffle-semantics') }}"
+        # No `version:`: SST pins the published content alias
+        # (`skills.+version_prefix` plus 12 hex characters of the bundle digest).
+        # An authored version is SST-VAL838; a sha_version pin is SST-VAL839.
+      # A consumed extension: another project publishes it, so this reference
+      # pins a version itself. No version, or LIVE, is SST-VAL538.
+    - name: partner-glossary
+      source:
+        type: CORTEX_EXTENSION
+        path: "{{ extension('partner-glossary') }}"
+        version: VERSION$3
+
+# =============================================================================
+# SST-APPLIED KEYS -- like `comment` and `profile`, not part of the spec
+# =============================================================================
+# None of these appears in the golden spec JSON.
+
+# Moved to each newly published version, so promotion and rollback are alias
+# moves. LIVE, FIRST, LAST and DEFAULT are reserved (SST-PRS025).
+alias: promoted
+
+enabled: true
+
+meta:
+  owner: analytics-platform
+  deprecated: false
+
+# The eval files live in ./evals/, and each declares a name: this block names
+# the dataset and config to publish by. Other versions may sit beside them; each
+# is checked, and only the pair named here publishes. Eval objects publish into
+# this agent's schema; evals take no location of their own (SST-CFG015).
+evals:
+  dataset: "{{ eval_dataset('jaffle_analytics_questions') }}"
+  config: "{{ eval_config('jaffle_analytics_repeat') }}"
+
+# =============================================================================
+# DELIBERATELY ABSENT
+# =============================================================================
+# `tags`: would publish as a separate ALTER AGENT ... SET TAG.
+# `passthrough` / `tool_spec_passthrough`: copied into the spec with their
+#   values unchecked (a non-empty one is SST-PRS024, one repeating a key SST
+#   renders SST-PRS023), so using one would assert a key SST does not model.
+# An `mcp` tool: MCP and agent tools are skipped during evals (SST-VAL732), so
+#   this agent's eval gate could not see it.
+# A `web_search` tool: it must be named `web_search` (SST-VAL517), and eval
+#   expectations must use that name (SST-VAL709).
+# `data_to_chart` / `code_execution`: built-ins, which get no tool_resources
+#   entry.
+# `temporary`: not an agent key. Temporary is a way of publishing, not part of
+#   the definition.
+# =============================================================================

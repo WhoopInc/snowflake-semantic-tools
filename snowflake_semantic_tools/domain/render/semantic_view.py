@@ -30,13 +30,12 @@ SCOPE. A view's `scope` decides which of its columns, metrics and relationships 
 member it does not admit is left out of its clause, so a view built with every attached
 member still publishes only the subset its author listed.
 
-ORDERING. `RELATIONSHIPS`, `FACTS`, `DIMENSIONS` and `METRICS` render SORTED: relationships
-by name, facts and dimensions by qualified name, and metrics by qualified name with the
-table-scoped ones before the view-level ones. Their order is not authored, and sorting them is
-what keeps a re-render byte-identical when an unrelated column is added. `TABLES`, `VARIABLES`
-and `WITH TAG` render in DECLARATION order, and `AI_VERIFIED_QUERIES` in the order
-the queries attached, because the model carries them so; moving a verified query
-between files, or reordering variables or tags, therefore changes the DDL.
+ORDERING. `RELATIONSHIPS`, `FACTS`, `DIMENSIONS`, `METRICS` and `AI_VERIFIED_QUERIES` render
+SORTED: relationships and verified queries by name, facts and dimensions by qualified name, and
+metrics by qualified name with the table-scoped ones before the view-level ones. Their order is
+not authored, and sorting them is what keeps a re-render byte-identical when an unrelated column
+is added or a member moves to another file. `TABLES`, `VARIABLES` and `WITH TAG` render in
+DECLARATION order, so reordering tables, variables or tags changes the DDL.
 
 TOTALITY. `MEMBER_INDEX` reads each member type `semantic_view` declares off the model, and
 `render_checked` refuses a render whose member count differs from the index's; importing this
@@ -453,7 +452,7 @@ def _render_counted(view: SemanticView) -> tuple[Sql, int]:
     facts = [render_column(c) for c in _sorted_columns(view.facts, scope)]
     dimensions = [render_column(c) for c in _sorted_columns(view.dimensions, scope)]
     metrics = [render_metric(m) for m in _sorted_metrics(view.metrics, scope)]
-    queries = [render_verified_query(q) for q in view.verified_queries]
+    queries = [render_verified_query(q) for q in sorted(view.verified_queries, key=lambda q: q.name)]
     lines += _block(sql("TABLES"), [render_table(t) for t in view.tables])
     lines += _block(sql("RELATIONSHIPS"), relationships)
     lines += _block(sql("VARIABLES"), [render_variable(v) for v in view.variables])

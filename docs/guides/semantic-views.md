@@ -638,9 +638,9 @@ Snowflake's order: `TABLES`, `RELATIONSHIPS`, `VARIABLES`, `FACTS`,
 `DIMENSIONS`, `METRICS`, `COMMENT`, `AI_SQL_GENERATION`,
 `AI_QUESTION_CATEGORIZATION`, `AI_VERIFIED_QUERIES`, `MAX_STALENESS`,
 `WITH TAG`, and always `COPY GRANTS`. A clause with nothing in it is left out.
-Relationships, facts, dimensions, and metrics are sorted by name, so adding an
-unrelated member does not reorder the rest. Tables keep the order `tables:` lists
-them in, variables and tags the order they are declared in, and verified queries
-the order they attach in -- their files by path, then each file's entries in
-order -- so reordering any of these, or renaming a verified query's file,
-changes the statement.
+Relationships, facts, dimensions, metrics, and verified queries are sorted by
+name, so adding an unrelated member, or moving one to another file, does not
+reorder the rest. Tables keep the order `tables:` lists them in, variables and
+tags the order they are declared in, and the custom instructions' text joins in
+the order the view's `custom_instructions:` lists them, so reordering any of
+these changes the statement.

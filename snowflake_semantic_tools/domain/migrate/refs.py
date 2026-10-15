@@ -34,8 +34,11 @@ _BARE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
 _ROOT_KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:")
 _INFERRED_KEY = re.compile(r"^(\s+)(tables|derived)\s*:")
 _SQL_FILE_KEY = re.compile(r"^(\s+)sql_file(\s*:\s*)(\S.*?)\s*(#.*)?$")
-# The member lists whose `tables:` and `derived:` keys SST now infers.
-_INFERRING_ROOTS = frozenset(("snowflake_metrics", "snowflake_filters", "snowflake_verified_queries"))
+# The member roots, list and singular, whose `tables:` and `derived:` keys SST now infers.
+_INFERRING_ROOTS = frozenset(
+    ("snowflake_metrics", "metric", "snowflake_filters", "filter", "snowflake_verified_queries", "verified_query")
+)
+_QUERY_ROOTS = frozenset(("snowflake_verified_queries", "verified_query"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,7 +233,7 @@ def rewrite_member_keys(result: MigrationResult) -> MigrationResult:
             changes.append(Rewrite(index + 1, indent + 1, body.strip(), "", "inferred"))
             skip_below = indent
             continue
-        sql_file = _SQL_FILE_KEY.match(body) if root == "snowflake_verified_queries" else None
+        sql_file = _SQL_FILE_KEY.match(body) if root in _QUERY_ROOTS else None
         if sql_file is not None:
             after = f"sql{sql_file.group(2)}\"{{{{ file('{_unquoted(sql_file.group(3))}') }}}}\""
             comment = f"  {sql_file.group(4)}" if sql_file.group(4) else ""

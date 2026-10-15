@@ -43,7 +43,11 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Variable,
     ViewScope,
 )
-from snowflake_semantic_tools.domain.parse.template import single_template_call
+from snowflake_semantic_tools.domain.parse.template import (
+    TemplateSyntaxError,
+    scan_template_calls,
+    single_template_call,
+)
 from snowflake_semantic_tools.domain.resolve.tags import DeclaredTags, declared_tags, tag_reference
 from snowflake_semantic_tools.domain.sql import Sql, boolean, datatype, is_datatype, literal, number
 from snowflake_semantic_tools.domain.validate.semantic.scope import view_scope
@@ -100,7 +104,7 @@ def _build_view(
     resolver = _member_resolver(view, logical_by_model, selected)
     metrics = _view_metrics(selected.metrics, selected.relationships, resolver)
     entity_filters, standalone_filters = _view_filters(selected.filters, resolver)
-    instructions = tuple(selected.instructions.values())
+    instructions = _listed_instructions(node, selected.instructions)
     sql_parts, question_parts = _instruction_parts(instructions, standalone_filters, resolver)
     queries = _view_verified_queries(
         selected.verified_queries, logical_by_model, resolver.metric_names, config, view.catalog
@@ -183,6 +187,24 @@ def _scoped(selected: _Members, scope: ViewScope) -> _Members:
         metrics=tuple(metric for metric in selected.metrics if scope.admits_metric(metric.name)),
         relationships=tuple(item for item in selected.relationships if scope.admits_relationship(item.name)),
     )
+
+
+def _listed_instructions(node: Mapping[str, Any], attached: Mapping[str, InstructionDef]) -> tuple[InstructionDef, ...]:
+    """Return the attached custom instructions in the order the view's `custom_instructions` lists them.
+
+    Their text joins in this order, so it is the author's, not the order the files were read in.
+    An instruction attached and not listed, which loading never produces, follows by name.
+    """
+    order: list[str] = []
+    raw = node.get("custom_instructions")
+    for entry in raw if isinstance(raw, list) else []:
+        try:
+            calls = scan_template_calls(str(entry))
+        except TemplateSyntaxError:
+            continue
+        order.extend(call.args[0].casefold() for call in calls if call.args and call.args[0].casefold() in attached)
+    names = [*dict.fromkeys(order), *sorted(name for name in attached if name not in order)]
+    return tuple(attached[name] for name in names)
 
 
 _Source = TypeVar("_Source")

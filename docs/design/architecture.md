@@ -592,7 +592,7 @@ These are the commands that connect, and what they do once connected:
 
 | Command | Connects | Reads | Writes |
 |---|---|---|---|
-| `compile`, `format`, `list`, `explain`, `docs`, `clean`, `init`, `migrate refs`, `baseline show`, `baseline renew` | never | | local files only |
+| `compile`, `format`, `list`, `explain`, `docs`, `clean`, `init`, `migrate refs`, `migrate split`, `baseline show`, `baseline renew` | never | | local files only |
 | `test --suite golden` | never | | goldens, with `--update-golden` |
 | `validate` | unless the syntax check is off (`--no-snowflake-syntax-check` or `validation.snowflake_syntax_check: false`) and there is no `--verify-schema` | `EXPLAIN` of each expression and query, verified-query row counts, what exists | nothing |
 | `baseline add --target`, `baseline prune --target` | yes, as `validate --target` | as `validate` | the local baseline file |

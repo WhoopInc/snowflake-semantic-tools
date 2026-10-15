@@ -1,4 +1,4 @@
-"""The 0.3 authoring dialect: rejected as authored, converted by `sst migrate refs`.
+"""The 0.3 authoring dialect: rejected as authored, converted by `sst migrate split` and `refs`.
 
 The corpus is synthetic, so the guarantee is asserted in public CI without any
 production content. Assertion numbers follow the compatibility suite contract:
@@ -6,7 +6,8 @@ converted files parse with no errors (1) and render the committed DDL (2); the
 legacy globals are rejected with their specific codes and render nothing (3, 6);
 the codemod is idempotent (4); an indented root key still yields its
 relationships (5); and the 0.3 key spellings, which the codemod leaves alone, are
-errors naming the 1.0 keys (7).
+errors naming the 1.0 keys (7). The split leaves one file per member, as the
+migration guide runs it: `split`, then `refs`.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from typing import Any
 
 from click.testing import CliRunner
 
+from snowflake_semantic_tools.app.migrate_refs import KINDS
 from snowflake_semantic_tools.cli.main import cli
 
 ROOT = Path(__file__).parents[2]
@@ -44,21 +46,25 @@ def converted_copy(tmp_path: Path) -> Path:
     return project
 
 
+def counts(**found: int) -> dict[str, int]:
+    return {kind: found.get(kind, 0) for kind in KINDS}
+
+
 def rename_0_3_keys(project: Path) -> None:
     """The hand edit SST-PRS020 asks for after the codemod: the 1.0 key names."""
     models = project / "semantic_models"
-    instructions = models / "custom_instructions" / "custom_instructions.yml"
+    instructions = models / "custom_instructions" / "dialect_conventions.yml"
     text = instructions.read_text(encoding="utf-8")
-    text = text.replace("    sql_generation:", "    ai_sql_generation:")
-    instructions.write_text(text.replace("    question_categorization:", "    ai_question_categorization:"), "utf-8")
-    relationships = models / "relationships" / "relationships.yml"
+    text = text.replace("  sql_generation:", "  ai_sql_generation:")
+    instructions.write_text(text.replace("  question_categorization:", "  ai_question_categorization:"), "utf-8")
+    relationships = models / "relationships" / "orders_to_customers.yml"
     relationships.write_text(
         relationships.read_text(encoding="utf-8").replace(
-            "    relationship_columns:\n"
-            "      - left_column: \"{{ ref('orders', 'customer_id') }}\"\n"
-            "        right_column: \"{{ ref('customers', 'customer_id') }}\"\n",
-            "    relationship_conditions:\n"
-            "      - \"{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'customer_id') }}\"\n",
+            "  relationship_columns:\n"
+            "    - left_column: \"{{ ref('orders', 'customer_id') }}\"\n"
+            "      right_column: \"{{ ref('customers', 'customer_id') }}\"\n",
+            "  relationship_conditions:\n"
+            "    - \"{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'customer_id') }}\"\n",
         ),
         encoding="utf-8",
     )
@@ -83,51 +89,39 @@ def test_legacy_globals_are_rejected_with_their_codes_and_render_nothing() -> No
 
 def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(tmp_path: Path) -> None:
     project = converted_copy(tmp_path)
+    pending, plan = invoke("migrate", "split", "--project-dir", str(project))
+    assert pending == 2
+    assert {item["path"]: len(item["into"]) for item in plan["data"]["files"]} == {
+        "semantic_models/custom_instructions/custom_instructions.yml": 1,
+        "semantic_models/filters/filters.yml": 1,
+        "semantic_models/metrics/metrics.yml": 2,
+        "semantic_models/relationships/relationships.yml": 2,
+        "semantic_models/semantic_views/views.yml": 1,
+    }
+    split, _ = invoke("migrate", "split", "--project-dir", str(project), "--write")
+    assert split == 0
     pending, report = invoke("migrate", "refs", "--project-dir", str(project))
     assert pending == 2
     files = report["data"]["files"]
     assert {item["path"]: item["rewrites"] for item in files} == {
-        "semantic_models/filters/filters.yml": {
-            "ref": 1,
-            "endpoint": 0,
-            "column": 1,
-            "inferred": 1,
-            "file": 0,
-            "labels": 1,
-        },
-        "semantic_models/metrics/metrics.yml": {
-            "ref": 2,
-            "endpoint": 0,
-            "column": 2,
-            "inferred": 2,
-            "file": 0,
-            "labels": 0,
-        },
-        "semantic_models/relationships/relationships.yml": {
-            "ref": 0,
-            "endpoint": 4,
-            "column": 4,
-            "inferred": 0,
-            "file": 0,
-            "labels": 0,
-        },
-        "semantic_models/semantic_views/views.yml": {
-            "ref": 3,
-            "endpoint": 0,
-            "column": 0,
-            "inferred": 0,
-            "file": 0,
-            "labels": 0,
-        },
+        "semantic_models/filters/dialect_completed_order.yml": counts(ref=1, column=1, inferred=1, labels=1),
+        "semantic_models/metrics/dialect_order_count.yml": counts(ref=1, column=1, inferred=1),
+        "semantic_models/metrics/dialect_revenue.yml": counts(ref=1, column=1, inferred=1),
+        "semantic_models/relationships/orders_to_customers.yml": counts(endpoint=2, column=2),
+        "semantic_models/relationships/orders_to_locations.yml": counts(endpoint=2, column=2),
+        "semantic_models/semantic_views/dialect_sales.yml": counts(ref=3),
     }
     written, _ = invoke("migrate", "refs", "--project-dir", str(project), "--write")
     assert written == 0
     expected = CORPUS / "expected" / "converted"
-    for path in sorted(expected.rglob("*.yml")):
-        relative = path.relative_to(expected)
-        assert (project / relative).read_bytes() == path.read_bytes(), relative
+    converted = sorted(path.relative_to(project) for path in (project / "semantic_models").rglob("*.yml"))
+    assert converted == sorted(path.relative_to(expected) for path in expected.rglob("*.yml"))
+    for relative in converted:
+        assert (project / relative).read_bytes() == (expected / relative).read_bytes(), relative
     again, report = invoke("migrate", "refs", "--project-dir", str(project))
     assert again == 0 and report["data"]["files"] == []
+    again, plan = invoke("migrate", "split", "--project-dir", str(project))
+    assert again == 0 and plan["data"]["files"] == []
 
     # The codemod rewrites references and drops the keys 1.0 infers, but renames no key: the 0.3
     # spellings remain. The custom instruction spellings are errors that name the 1.0 key; so is
@@ -165,12 +159,13 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
 
 def test_a_0_3_spelling_beside_its_1_0_key_is_an_error(tmp_path: Path) -> None:
     project = converted_copy(tmp_path)
+    CliRunner().invoke(cli, ["migrate", "split", "--project-dir", str(project), "--write"])
     CliRunner().invoke(cli, ["migrate", "refs", "--project-dir", str(project), "--write"])
     rename_0_3_keys(project)
-    instructions = project / "semantic_models" / "custom_instructions" / "custom_instructions.yml"
+    instructions = project / "semantic_models" / "custom_instructions" / "dialect_conventions.yml"
     instructions.write_text(
         instructions.read_text(encoding="utf-8").replace(
-            "    ai_sql_generation: |-", "    sql_generation: Older text.\n    ai_sql_generation: |-"
+            "  ai_sql_generation: |-", "  sql_generation: Older text.\n  ai_sql_generation: |-"
         ),
         encoding="utf-8",
     )

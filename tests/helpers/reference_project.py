@@ -24,6 +24,7 @@ from tests.helpers.projects import load_project
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"
 DBT_MANIFEST = REPO_ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
+PRE_SPLIT = REPO_ROOT / "tests" / "fixtures" / "pre_split_reference"
 
 CONFIG = "sst_config.yml"
 VIEWS = "semantic_models/semantic_views/semantic_views.yml"
@@ -51,14 +52,33 @@ def project_copy(root: Path, *, offline: bool = True) -> Path:
     # stays out of the copy.
     shutil.copytree(FIXTURE, project, ignore=shutil.ignore_patterns("target"))
     if offline:
-        config = project / CONFIG
-        config.write_text(
-            config.read_text(encoding="utf-8")
-            .replace("snowflake_syntax_check: true", "snowflake_syntax_check: false")
-            .replace("strict: true", "strict: false"),
-            encoding="utf-8",
-        )
+        _offline(project)
     return project
+
+
+def pre_split_copy(root: Path) -> Path:
+    """A copy of the reference project as it was written before `sst migrate split` and `refs`.
+
+    The files those commands rewrite come from `tests/fixtures/pre_split_reference`: member lists,
+    tool groups, settings outside `config:`, bare references, and the old `skills:` blocks. The
+    copy is offline, as `project_copy` makes it.
+    """
+    project = project_copy(root, offline=False)
+    for folder in ("semantic_models", "tools"):
+        shutil.rmtree(project / folder)
+    shutil.copytree(PRE_SPLIT, project, dirs_exist_ok=True)
+    _offline(project)
+    return project
+
+
+def _offline(project: Path) -> None:
+    config = project / CONFIG
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        .replace("snowflake_syntax_check: true", "snowflake_syntax_check: false")
+        .replace("strict: true", "strict: false"),
+        encoding="utf-8",
+    )
 
 
 def edited(root: Path, relative: str, old: str, new: str) -> Path:

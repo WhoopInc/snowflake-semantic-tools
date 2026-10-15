@@ -2,7 +2,7 @@
 
 SST is a command-line compiler and publisher for a Snowflake semantic layer kept as code in a dbt project: semantic views, agent tools, Cortex Agents, evals, skills, plugins, and CoCo Desktop profiles. It validates offline, saves a reviewable plan, and applies exactly that plan.
 
-**Commands**: `sst init`, `debug`, `migrate refs`, `enrich`, `format`, `compile`, `validate`, `baseline add|prune|renew|show`, `list`, `plan`, `apply`, `diff`, `test --suite golden|smoke|evals`, `explain`, `docs [--check]`, `clean`, `drop`. The CLI is the only interface; there is no Python API. Options and exit codes are in `docs/reference/cli.md` (generated).
+**Commands**: `sst init`, `debug`, `migrate refs|split`, `enrich`, `format`, `compile`, `validate`, `baseline add|prune|renew|show`, `list`, `plan`, `apply`, `diff`, `test --suite golden|smoke|evals`, `explain`, `docs [--check]`, `clean`, `drop`. The CLI is the only interface; there is no Python API. Options and exit codes are in `docs/reference/cli.md` (generated).
 
 ## Critical Rules
 
@@ -30,7 +30,7 @@ SST is a command-line compiler and publisher for a Snowflake semantic layer kept
 | Ring | Holds | Import rules |
 |------|-------|--------------|
 | `cli/` | click commands; the composition root | may import every ring |
-| `app/` | use cases (compile, validate, plan, apply, test suites, migrate refs) | `domain` only, never `adapters`; no `yaml`, `click`, or `snowflake` |
+| `app/` | use cases (compile, validate, plan, apply, test suites, migrate refs and split) | `domain` only, never `adapters`; no `yaml`, `click`, or `snowflake` |
 | `adapters/` | YAML, dbt manifest, Snowflake connector, filesystem, config, profile | `domain` models and ports, never `domain.render` or `app`; the `yaml`, `dbt`, `snowflake`, and `fs` subpackages never import each other; only `yaml`, `dbt`, and `bounded_yaml.py` import `yaml`, and only `roundtrip.py` and `yaml` import `ruamel` (`dbt` edits through `roundtrip.py`) |
 | `domain/` | pure, by stage: parse, resolve, validate, render, plan, state; plus model (data types only), diagnostics, enrich, migrate, sql, ports | no I/O, clock, environment, randomness, logging, or SDKs |
 

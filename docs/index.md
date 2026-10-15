@@ -30,7 +30,7 @@ dbt project, and publishes them with a reviewed plan.
 | [Security](guides/security.md) | the trust model, what SST checks, and running it with least privilege |
 | [Troubleshooting](guides/troubleshooting.md) | symptoms and their causes |
 | [Agent kit](guides/agent-kit.md) | `sst agent-kit`: skills that teach Cortex Code or Claude Code to work in an SST project |
-| [Migrating from 0.3](guides/migrating-from-0.3.md) | renamed commands and keys, `sst migrate refs`, and publishing over a 0.3 deployment |
+| [Migrating from 0.3](guides/migrating-from-0.3.md) | renamed commands and keys, `sst migrate split` and `sst migrate refs`, and publishing over a 0.3 deployment |
 | [Testing SST](guides/testing-live.md) | for contributors: the offline suite, and configuring and running the live tests |
 
 ## Reference

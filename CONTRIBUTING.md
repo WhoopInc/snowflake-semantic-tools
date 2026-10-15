@@ -280,7 +280,7 @@ The CLI is the only interface: the package exports nothing but `__version__`, so
 ```text
 snowflake_semantic_tools/
 ├── cli/        # click commands: the composition root that wires adapters into use cases
-├── app/        # use cases: compile, validate, plan, apply, the test suites, migrate refs
+├── app/        # use cases: compile, validate, plan, apply, the test suites, migrate refs and split
 ├── adapters/   # the edges: YAML, the dbt manifest, the Snowflake connector, files, config, profile
 └── domain/     # pure: the pipeline's logic by stage, its data types, and the ports adapters implement
 ```
@@ -298,7 +298,7 @@ domain/
 ├── plan/         # what apply must change, and in what order
 ├── state/        # the manifest, the applied state, and saved plans
 ├── enrich/       # the rules `sst enrich` derives column metadata by
-├── migrate/      # the `sst migrate refs` rewrite
+├── migrate/      # the `sst migrate refs` rewrites and the `sst migrate split` plan
 ├── sql/          # typed SQL: the one way SST builds statement text
 ├── ports/        # the protocols adapters implement; ports/snowflake/ holds one module per role
 └── file_names.py # the one file name each artifact name maps to
@@ -370,7 +370,7 @@ A pipeline branches on the exit code without reading the output, so each code ha
 |---:|---|
 | 0 | The run succeeded; for `sst plan`, nothing to change. |
 | 1 | The project was read and something in it is wrong: an error diagnostic, a failed apply, test suite, or check, a statement Snowflake rejected, a file SST could not write, or an internal error. |
-| 2 | Declared and actual state differ: `plan`, `diff`, `enrich --check`, `format --check`, `docs --check`, or `migrate refs` found a difference. |
+| 2 | Declared and actual state differ: `plan`, `diff`, `enrich --check`, `format --check`, `docs --check`, `migrate refs`, or `migrate split` found a difference. |
 | 3 | The command line is refused. |
 | 4 | The project, its configuration, or a saved plan cannot be used. |
 | 5 | Snowflake would not cooperate: a rejected credential (SST-PRT002), a failed or dropped connection (SST-PRT001), a refused privilege, or a missed deadline. |
