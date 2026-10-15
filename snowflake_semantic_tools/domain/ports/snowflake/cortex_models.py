@@ -59,8 +59,36 @@ class AgentProbe:
     detail: str = ""
 
 
-class CortexModelsPort(Protocol):
-    """Read the account's Cortex base models, and run an agent on one model."""
+# SHOW's preview statuses, by what each is called in a message.
+PREVIEW_STATUSES = {"PUPR": "public preview", "PRPR": "private preview"}
+
+
+def lifecycle_concern(row: CortexBaseModel | None) -> str | None:
+    """Say what about a model's `SHOW CORTEX BASE MODELS` row makes it a risk to depend on.
+
+    Args:
+        row: The model's row; None when SHOW does not list it.
+
+    Returns:
+        A phrase completing "model 'x' is ...": not listed, INTERNAL, past end-of-life,
+        legacy, or in preview; None for a GA model, or a status SST does not know.
+    """
+    if row is None:
+        return "not in SHOW CORTEX BASE MODELS"
+    status = (row.lifecycle_status or "").upper()
+    if status == "INTERNAL":
+        return "marked INTERNAL by SHOW CORTEX BASE MODELS"
+    if status == "EOL":
+        return f"past end-of-life ({row.eol_date or 'no date listed'})"
+    if status == "LEGACY":
+        return f"legacy; end-of-life: {row.eol_date or 'no date announced'}"
+    if status in PREVIEW_STATUSES:
+        return f"in {PREVIEW_STATUSES[status]}"
+    return None
+
+
+class BaseModelsPort(Protocol):
+    """Read the account's Cortex base models."""
 
     def base_models(self) -> tuple[CortexBaseModel, ...]:
         """Return every row `SHOW CORTEX BASE MODELS IN SCHEMA SNOWFLAKE.MODELS` prints.
@@ -71,6 +99,10 @@ class CortexModelsPort(Protocol):
             SnowflakePortError: the SHOW failed.
         """
         ...
+
+
+class CortexModelsPort(BaseModelsPort, Protocol):
+    """Read the account's Cortex base models, and run an agent on one model."""
 
     def probe_orchestration_model(self, scope: SchemaScope, model: str) -> AgentProbe:
         """Run a throwaway agent orchestrated by `model` once, and report whether it answered.

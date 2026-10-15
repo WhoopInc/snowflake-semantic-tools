@@ -63,7 +63,7 @@ What `sst enrich` collects from the warehouse, and how much.
 |---|---|---|---|
 | `enrichment.distinct_limit` | integer, 1 to 1000 | `25` | Distinct values sampled per column. A column with no more than this many is an enum. |
 | `enrichment.sample_values_display_limit` | integer, 1 to 1000 | `10` | Sample values written for a column that is not an enum. At most `distinct_limit`. |
-| `enrichment.synonym_model` | string | `mistral-large2` | Cortex model that writes synonyms. |
+| `enrichment.synonym_model` | string | `claude-sonnet-4-5` | Cortex model that writes synonyms. |
 | `enrichment.synonym_max_count` | integer, 1 to 20 | `4` | Synonyms written per column and per table. |
 | `enrichment.allow_sample_value_collection` | boolean | `true` | False refuses every run that reads row data, one that includes `sample-values` or `enums` (SST-CFG038). |
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
-from snowflake_semantic_tools.adapters.snowflake.connector.cortex import completion_sql, object_constant
+from snowflake_semantic_tools.adapters.snowflake.connector.cortex import completion_sql, object_constant, probe_sql
 from snowflake_semantic_tools.adapters.snowflake.connector.profiler import (
     COLUMNS_PER_QUERY,
     columns_sql,
@@ -123,3 +123,23 @@ def test_the_offline_double_follows_the_profiler_contract() -> None:
     with pytest.raises(SnowflakePortError, match="no model"):
         failing.complete_json("m", "p", {})
     assert failing.prompts == ["p"] and double.calls[0] == ("columns", ORDERS.sql)
+
+
+def test_the_probe_asks_for_one_token_with_model_and_prompt_bound() -> None:
+    port = _Recorded(QueryResult(("RESPONSE",), (("OK",),)))
+    assert port.probe_completion("claude-sonnet-4-5") is None
+    assert port.statements == [(str(probe_sql()), ("claude-sonnet-4-5", "Reply with OK."))]
+    assert str(probe_sql()) == "SELECT AI_COMPLETE(%s, %s, {'max_tokens': 1}) AS RESPONSE"
+
+
+def test_a_refused_probe_returns_the_first_line_of_the_refusal() -> None:
+    refusal = SnowflakePortError("400 'unknown model \"snowflake-arctic-embed-m-v1.5\"'\nrequests batch-id: 1")
+    assert _Recorded(refusal).probe_completion("snowflake-arctic-embed-m-v1.5") == (
+        "400 'unknown model \"snowflake-arctic-embed-m-v1.5\"'"
+    )
+
+
+def test_a_probe_of_a_name_that_is_no_model_name_sends_nothing() -> None:
+    port = _Recorded()
+    assert port.probe_completion("x'; DROP TABLE T; --") == '"x\'; DROP TABLE T; --" is not a Cortex model name'
+    assert port.statements == []

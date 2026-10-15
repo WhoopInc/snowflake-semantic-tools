@@ -1,7 +1,8 @@
 """The warehouse reads, the Cortex call, and the file edits `sst enrich` makes.
 
 Enrich reads a relation's columns, a few of their distinct values, and asks Cortex for
-synonyms; it never writes to Snowflake, only to the project's YAML files. These ports are
+synonyms, first checking once that the synonym model answers and how SHOW CORTEX BASE MODELS
+lists it; it never writes to Snowflake, only to the project's YAML files. These ports are
 separate from `SnowflakePort`, which the publishing commands use, so the doubles of one need
 not implement the other.
 """
@@ -14,6 +15,7 @@ from typing import Protocol
 
 from snowflake_semantic_tools.domain.enrich import ColumnUpdate, WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.ports.snowflake.cortex_models import BaseModelsPort
 
 
 class RelationProfilerPort(Protocol):
@@ -65,8 +67,15 @@ class CortexPort(Protocol):
         """
         ...
 
+    def probe_completion(self, model: str) -> str | None:
+        """Ask `model` for one token, and return why Snowflake refused it; None when it answered.
 
-class EnrichPort(RelationProfilerPort, CortexPort, Protocol):
+        Never raises for a refusal: a model name that is not a plain name is refused too.
+        """
+        ...
+
+
+class EnrichPort(RelationProfilerPort, CortexPort, BaseModelsPort, Protocol):
     """Everything enrich reads from Snowflake, through one session."""
 
 

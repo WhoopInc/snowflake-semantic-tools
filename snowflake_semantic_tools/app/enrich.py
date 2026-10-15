@@ -44,6 +44,7 @@ from snowflake_semantic_tools.domain.model.identifier import Identifier, Qualifi
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.ports.enrich import EnrichFilesPort, EnrichPort
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
+from snowflake_semantic_tools.domain.ports.snowflake.cortex_models import lifecycle_concern
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
 # A failure no other model would escape: the connection, a transient fault, or a privilege.
@@ -227,6 +228,11 @@ def taken_by_views(views: Sequence[SemanticView], model: str) -> frozenset[str]:
     return taken_names([table.logical_name for table in others], [s for table in others for s in table.synonyms])
 
 
+def _asks_cortex(request: EnrichRequest) -> bool:
+    """Report whether the run may ask Cortex anything: it fills column or table synonyms."""
+    return request.options.includes(Component.COLUMN_SYNONYMS) or request.options.includes(Component.TABLE_SYNONYMS)
+
+
 class _ModelFailed(Exception):
     """One model's read failed; the diagnostic says which and why."""
 
@@ -257,6 +263,10 @@ class EnrichProject:
             SST-CFG038: the run reads row data and the project forbids collecting it.
             SST-DBT031: a model selected by name has no relation.
             SST-DBT002: a name selected without a wildcard is no model the manifest knows.
+            SST-SNO032: the synonym model refused a one-token completion; the run stops before
+                any read.
+            SST-SNO033: SHOW CORTEX BASE MODELS lists the synonym model as INTERNAL, past
+                end-of-life, legacy or in preview, or does not list it.
             SST-SNO030: a model's relation is missing or not visible.
             SST-SNO031: reading a model's values or asking Cortex failed; or a column's name, or
                 a value enrich would write for it, holds template syntax, and it is not written.
@@ -274,6 +284,11 @@ class EnrichProject:
             return EnrichReport(diagnostics=DiagnosticBag((*problems, refusal)), stopped=True)
         models, diagnostics = select_models(self._inputs.dbt_catalog(), request)
         diagnostics[:0] = problems
+        if models and _asks_cortex(request):
+            checked = self._synonym_model(settings.synonym_model)
+            diagnostics.extend(checked)
+            if DiagnosticBag(checked).has_errors:
+                return EnrichReport(diagnostics=DiagnosticBag(diagnostics), stopped=True, selected=len(models))
         views = self._inputs.load_project().views if request.options.includes(Component.TABLE_SYNONYMS) else ()
         reports: list[ModelReport] = []
         stopped = False
@@ -317,6 +332,23 @@ class EnrichProject:
         except _ModelFailed as failure:
             return ModelReport(model.name, path, None), [failure.diagnostic]
         return ModelReport(model.name, path, enrichment, edits), [*enrichment.diagnostics, *dropped, *dropped_tables]
+
+    def _synonym_model(self, model: str) -> list[Diagnostic]:
+        """Check once that the synonym model answers, and how SHOW lists it, before any read.
+
+        A model Cortex refuses would fail every model's synonyms after its warehouse reads,
+        so the run stops on it. A SHOW that cannot be read says nothing about the model.
+        """
+        subject = "config:enrichment.synonym_model"
+        refused = self._port.probe_completion(model)
+        if refused is not None:
+            return [D("SST-SNO032", model=model, detail=refused, subject=subject)]
+        try:
+            listed = {row.name.casefold(): row for row in self._port.base_models()}
+        except SnowflakePortError:
+            return []
+        concern = lifecycle_concern(listed.get(model.casefold()))
+        return [D("SST-SNO033", model=model, reason=concern, subject=subject)] if concern else []
 
     def _failure(self, model: DbtModel, step: str, error: SnowflakePortError) -> _ModelFailed:
         if error.diagnostic is not None and error.diagnostic.code in _RUN_FAILURES:

@@ -8,6 +8,7 @@ from snowflake_semantic_tools.adapters.dbt.yaml_writer import write_model_update
 from snowflake_semantic_tools.domain.enrich import ColumnUpdate, WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.ports.enrich import WrittenFile
+from snowflake_semantic_tools.domain.ports.snowflake.cortex_models import CortexBaseModel
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
 Answer = Callable[[str, Mapping[str, object]], object]
@@ -19,6 +20,9 @@ class ScriptedEnrich:
     Relations are keyed by their SQL name, such as `DB.SCH.ORDERS`. A relation in `failures`
     raises its error from whichever read reaches it first; Cortex raises `cortex_failure`
     when one is set, and otherwise returns what `answer` makes of the prompt and schema.
+    The synonym-model check is recorded apart, in `probed`, so `calls` holds the reads alone:
+    the probe answers unless `refused_model` gives Snowflake's reason, and SHOW lists `listed`,
+    or else every model probed so far as GA.
     """
 
     def __init__(
@@ -29,6 +33,9 @@ class ScriptedEnrich:
         answer: Answer | None = None,
         failures: Mapping[str, SnowflakePortError] | None = None,
         cortex_failure: SnowflakePortError | None = None,
+        refused_model: str | None = None,
+        listed: Sequence[CortexBaseModel] | None = None,
+        show_failure: SnowflakePortError | None = None,
     ) -> None:
         self._columns = {
             relation: tuple(WarehouseColumn(name, data_type) for name, data_type in described)
@@ -38,6 +45,10 @@ class ScriptedEnrich:
         self._answer = answer or (lambda _prompt, _schema: {})
         self._failures = dict(failures or {})
         self._cortex_failure = cortex_failure
+        self._refused_model = refused_model
+        self._listed = None if listed is None else tuple(listed)
+        self._show_failure = show_failure
+        self.probed: list[str] = []
         self.calls: list[tuple[object, ...]] = []
         self.prompts: list[str] = []
 
@@ -64,6 +75,17 @@ class ScriptedEnrich:
         if self._cortex_failure is not None:
             raise self._cortex_failure
         return self._answer(prompt, schema)
+
+    def probe_completion(self, model: str) -> str | None:
+        self.probed.append(model)
+        return self._refused_model
+
+    def base_models(self) -> tuple[CortexBaseModel, ...]:
+        if self._show_failure is not None:
+            raise self._show_failure
+        if self._listed is not None:
+            return self._listed
+        return tuple(CortexBaseModel(model, "GA") for model in self.probed)
 
 
 class InMemoryFiles:

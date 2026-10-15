@@ -1,6 +1,7 @@
 """Structured completions from Cortex, which write enrich's synonyms.
 
-One AI_COMPLETE call per prompt, at temperature 0, asking for JSON that follows a schema. The
+One AI_COMPLETE call per prompt, at temperature 0, asking for JSON that follows a schema; and,
+once per run, one call for a single token, which shows whether the model answers at all. The
 model and the prompt are bound as parameters. The schema is written into the statement as an
 OBJECT constant, which AI_COMPLETE requires, built from SST's own schema values with every
 string quoted, so nothing a project writes reaches the statement unquoted.
@@ -16,7 +17,7 @@ from snowflake_semantic_tools.domain.ports.enrich import CortexPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, boolean, join, literal, null, number, sql
 
-# A model name as Cortex spells one, such as `mistral-large2` or `claude-sonnet-4-6`.
+# A model name as Cortex spells one, such as `claude-sonnet-4-5` or `llama3.1-70b`.
 _MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
@@ -61,8 +62,23 @@ def completion_sql(schema: Mapping[str, object]) -> Sql:
     )
 
 
+def probe_sql() -> Sql:
+    """Return the statement asking one model for a single token; it binds model and prompt."""
+    return sql("SELECT AI_COMPLETE(%s, %s, {{'max_tokens': 1}}) AS RESPONSE")
+
+
 class CortexMethods(Session, CortexPort):
     """Ask Cortex models for structured answers."""
+
+    def probe_completion(self, model: str) -> str | None:
+        if not _MODEL_NAME.fullmatch(model):
+            return f"{model!r} is not a Cortex model name"
+        try:
+            self.query(probe_sql(), (model, "Reply with OK."))
+        except SnowflakePortError as error:
+            text = str(error).strip()
+            return next((line.strip() for line in text.splitlines() if line.strip()), type(error).__name__)
+        return None
 
     def complete_json(self, model: str, prompt: str, schema: Mapping[str, object]) -> object:
         if not _MODEL_NAME.fullmatch(model):

@@ -5,7 +5,9 @@ Snowflake keeps no list of the models Cortex Agents accept, so each model the pr
 first agent the project publishes. `SHOW CORTEX BASE MODELS` is read once beside that for each
 model's lifecycle: it lists every model, but marks none as one agents accept, so it cannot
 stand in for the run. The runs are independent, so a `Fanout` runs them concurrently, and the
-findings come back in model order whatever the thread count.
+findings come back in model order whatever the thread count. The same SHOW also says whether
+`enrichment.synonym_model` is at risk; enrich itself asks that model for a token before it
+runs, so validate does not.
 """
 
 from __future__ import annotations
@@ -17,12 +19,14 @@ from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.agents.compiled import CompiledAgent
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.model.config_schema import enrichment_config
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake.cortex_models import (
     AgentProbe,
     CortexBaseModel,
     CortexModelsPort,
     ProbeOutcome,
+    lifecycle_concern,
 )
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
@@ -42,10 +46,17 @@ class ModelCheck:
     Attributes:
         models: `snowflake.orchestration_models` as configured, `auto` included.
         probes: Sessions to run the probe agents on, concurrently when it has a pool.
+        synonym_model: `enrichment.synonym_model`, its default when unset; None checks none.
     """
 
     models: tuple[str, ...]
     probes: Fanout[CortexModelsPort]
+    synonym_model: str | None = None
+
+
+def model_check(config: Mapping[str, object], probes: Fanout[CortexModelsPort]) -> ModelCheck:
+    """Return the check of the models the config tree names, run on `probes`."""
+    return ModelCheck(configured_models(config), probes, enrichment_config(config).synonym_model)
 
 
 def configured_models(config: Mapping[str, object]) -> tuple[str, ...]:
@@ -84,13 +95,15 @@ def check_orchestration_models(check: ModelCheck, compiled: CompileResult, *, ta
         SST-VAL555: the model is in preview.
         SST-VAL556: the model could not be fully checked: no agent schema, a probe or the
             SHOW refused.
+        SST-VAL557: SHOW lists the synonym model as INTERNAL, past end-of-life, legacy or in
+            preview, or does not list it; after the orchestration models' findings.
     """
     firsts: dict[str, str] = {}
     for model in check.models:
         if model.casefold() != AUTO:
             firsts.setdefault(model.casefold(), model)
     distinct = tuple(firsts.values())
-    if not distinct:
+    if not distinct and check.synonym_model is None:
         return []
     listed, unread = _listed(check.probes.port)
     scope = probe_scope(compiled)
@@ -102,6 +115,12 @@ def check_orchestration_models(check: ModelCheck, compiled: CompileResult, *, ta
     found: list[Diagnostic] = []
     for model, probe in zip(distinct, probes, strict=True):
         found.extend(_findings(model, probe, listed, unread, target=target))
+    if check.synonym_model is not None and unread is None:
+        concern = lifecycle_concern(listed.get(check.synonym_model.casefold()))
+        if concern is not None:
+            found.append(
+                D("SST-VAL557", model=check.synonym_model, reason=concern, subject="config:enrichment.synonym_model")
+            )
     return found
 
 

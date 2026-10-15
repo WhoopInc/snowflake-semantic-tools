@@ -83,6 +83,15 @@ a run that includes `sample-values` or `enums` then stops before reading anythin
 
 ## Synonyms
 
+Before a run that fills synonyms reads anything, it asks the synonym model for a single
+token. A model `AI_COMPLETE` refuses, such as an embedding model, a misspelt name, or a legacy
+model the account never used, stops the run with `SST-SNO032`, and nothing is written; without
+the check, every model would read the warehouse and then fail its synonyms. A model that
+answers but that `SHOW CORTEX BASE MODELS` lists as legacy, past end-of-life, in preview,
+`INTERNAL`, or not at all, is reported with `SST-SNO033` and the run goes on. Connected
+`sst validate` reports the same lifecycle with `SST-VAL557`, without asking the model anything.
+The default, `claude-sonnet-4-5`, is the GA model with the widest cross-region availability.
+
 Synonyms are written by `enrichment.synonym_model` through `AI_COMPLETE`, at temperature 0,
 with structured output, inside the account. A prompt describes up to 50 columns, and a wider
 model is asked in batches: each column's name, type, description, and up to five example
@@ -148,6 +157,7 @@ in one consistent style; review the diff with `--dry-run`.
 | `--dry-run` | Write nothing; print each change as a unified diff. |
 | `--fail-fast` | Stop at the first model that fails, and write nothing. |
 
+A synonym model that refuses the test completion (`SST-SNO032`) stops the run before any read.
 A model whose relation is missing or not visible (`SST-SNO030`), or whose sampling or Cortex
 call fails or answers in another shape (`SST-SNO031`), gains nothing; the others are still
 written, and the run exits `1`. A failure no model would get past (the connection or login
@@ -186,7 +196,7 @@ run.
 enrichment:
   distinct_limit: 25                 # distinct values sampled; no more than this is an enum
   sample_values_display_limit: 10    # values written for a column that is not an enum
-  synonym_model: mistral-large2      # Cortex model for synonyms
+  synonym_model: claude-sonnet-4-5   # Cortex model for synonyms
   synonym_max_count: 4               # synonyms per column and per table
   allow_sample_value_collection: true
 ```

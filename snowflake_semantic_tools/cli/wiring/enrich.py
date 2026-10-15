@@ -20,6 +20,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.enrich import WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, production_like
 from snowflake_semantic_tools.domain.ports.enrich import EnrichPort
+from snowflake_semantic_tools.domain.ports.snowflake.cortex_models import CortexBaseModel
 
 
 class LazyEnrichPort(EnrichPort):
@@ -45,6 +46,12 @@ class LazyEnrichPort(EnrichPort):
 
     def complete_json(self, model: str, prompt: str, schema: Mapping[str, object]) -> object:
         return self._connected().complete_json(model, prompt, schema)
+
+    def probe_completion(self, model: str) -> str | None:
+        return self._connected().probe_completion(model)
+
+    def base_models(self) -> tuple[CortexBaseModel, ...]:
+        return self._connected().base_models()
 
     def close(self) -> None:
         """Close the session, when one was opened."""

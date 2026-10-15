@@ -27,7 +27,7 @@ from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.app.baseline import clock_stamp, clock_today, days_after
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
-from snowflake_semantic_tools.app.validate_models import ModelCheck, configured_models
+from snowflake_semantic_tools.app.validate_models import model_check
 from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
 from snowflake_semantic_tools.cli.exit_codes import ERROR
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
@@ -319,7 +319,7 @@ def _current(
         return tuple(result.diagnostics)
     profile, port = connect(paths, target_name)
     try:
-        models = ModelCheck(configured_models(project_config(paths)), Fanout(port))
+        models = model_check(project_config(paths), Fanout(port))
         result = ValidateArtifacts(
             port, catalog=port, target=profile.target_name, clock=SystemClock(), models=models
         ).run(compiled, strict=False, connected=True)

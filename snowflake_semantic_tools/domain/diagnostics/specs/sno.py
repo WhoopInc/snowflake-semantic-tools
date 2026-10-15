@@ -281,4 +281,35 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         precheck=Precheck.RUNTIME,
     ),
+    spec(
+        "SST-SNO032",
+        Severity.ERROR,
+        "Synonym model does not answer",
+        "synonym model '{model}' refused a test completion: {detail}",
+        "set enrichment.synonym_model to a model AI_COMPLETE accepts in this account, such as a GA one "
+        "SHOW CORTEX BASE MODELS lists",
+        condition=(
+            "before enrich reads anything for a run that fills synonyms, a one-token AI_COMPLETE call to "
+            "`enrichment.synonym_model` fails; the run stops and nothing is written"
+        ),
+        note=(
+            "AI_COMPLETE refuses an embedding model, a retired model and a misspelt name alike, with "
+            "'unknown model', and a legacy model the account never used with 'has been in legacy "
+            "state'. Without the check, every model would read the warehouse and then fail its "
+            "synonyms with SST-SNO031."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO033",
+        Severity.WARNING,
+        "Synonym model is at risk",
+        "synonym model '{model}' is {reason}",
+        "move enrichment.synonym_model to a GA model before this one stops answering",
+        condition=(
+            "the synonym model answered enrich's test completion, but SHOW CORTEX BASE MODELS lists it as "
+            "INTERNAL, past end-of-life, legacy or in preview, or does not list it"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
 )

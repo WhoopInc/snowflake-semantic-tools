@@ -156,7 +156,7 @@ def test_a_stale_saved_plan_says_what_changed_in_order() -> None:
 
 
 def test_the_enrichment_block_reads_each_key_or_its_default() -> None:
-    assert enrichment_config({}) == EnrichmentConfig(25, 10, "mistral-large2", 4, True)
+    assert enrichment_config({}) == EnrichmentConfig(25, 10, "claude-sonnet-4-5", 4, True)
     written = {
         "enrichment": {
             "distinct_limit": 30,

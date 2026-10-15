@@ -591,4 +591,20 @@ SPECS: tuple[ErrorSpec, ...] = (
         note="An unchecked model is neither accepted nor refused; the reason says what stopped the check.",
         precheck=Precheck.OBSERVE,
     ),
+    spec(
+        "SST-VAL557",
+        Severity.WARNING,
+        "Synonym model is at risk",
+        "enrichment.synonym_model '{model}' is {reason}",
+        "move enrichment.synonym_model to a GA model before sst enrich stops working",
+        condition=(
+            "connected validation finds `enrichment.synonym_model`, or its default when unset, listed by "
+            "`SHOW CORTEX BASE MODELS` as INTERNAL, past end-of-life, legacy or in preview, or not listed"
+        ),
+        note=(
+            "Only `sst enrich` calls the synonym model, so validation reads its lifecycle and asks it "
+            "nothing; enrich checks that it answers before it reads the warehouse (SST-SNO032)."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
 )

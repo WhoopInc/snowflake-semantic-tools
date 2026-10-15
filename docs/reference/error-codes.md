@@ -22,13 +22,13 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 297 codes
+- [Validation (VAL)](#validation-val) -- 298 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
 - [Planning (PLN)](#planning-pln) -- 41 codes
 - [Apply (APL)](#apply-apl) -- 29 codes
-- [Snowflake (SNO)](#snowflake-sno) -- 26 codes
+- [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 24 codes
 - [Internal (INT)](#internal-int) -- 12 codes
 - [Retired numbers](#retired-numbers) -- 69 numbers
@@ -3999,6 +3999,18 @@ Fix: fix what the reason names, such as the role's CREATE AGENT in the first age
 
 Note: An unchecked model is neither accepted nor refused; the reason says what stopped the check.
 
+### SST-VAL557
+
+**Synonym model is at risk** (warning)
+
+`enrichment.synonym_model '<model>' is <reason>`
+
+Raised when connected validation finds `enrichment.synonym_model`, or its default when unset, listed by `SHOW CORTEX BASE MODELS` as INTERNAL, past end-of-life, legacy or in preview, or not listed.
+
+Fix: move enrichment.synonym_model to a GA model before sst enrich stops working
+
+Note: Only `sst enrich` calls the synonym model, so validation reads its lifecycle and asks it nothing; enrich checks that it answers before it reads the warehouse (SST-SNO032).
+
 ### SST-VAL603
 
 **Tool type is not recognised** (error)
@@ -7100,6 +7112,28 @@ Fix: build the model in this target, or grant the role access to it
 Raised when an enrich step failed for a model: reading its columns or values, or a Cortex call; Cortex answered in another shape than requested; or a value to write holds template syntax dbt would run, so nothing is written for that column.
 
 Fix: fix the cause the message names, then run sst enrich again
+
+### SST-SNO032
+
+**Synonym model does not answer** (error)
+
+`synonym model '<model>' refused a test completion: <detail>`
+
+Raised when before enrich reads anything for a run that fills synonyms, a one-token AI_COMPLETE call to `enrichment.synonym_model` fails; the run stops and nothing is written.
+
+Fix: set enrichment.synonym_model to a model AI_COMPLETE accepts in this account, such as a GA one SHOW CORTEX BASE MODELS lists
+
+Note: AI_COMPLETE refuses an embedding model, a retired model and a misspelt name alike, with 'unknown model', and a legacy model the account never used with 'has been in legacy state'. Without the check, every model would read the warehouse and then fail its synonyms with SST-SNO031.
+
+### SST-SNO033
+
+**Synonym model is at risk** (warning)
+
+`synonym model '<model>' is <reason>`
+
+Raised when the synonym model answered enrich's test completion, but SHOW CORTEX BASE MODELS lists it as INTERNAL, past end-of-life, legacy or in preview, or does not list it.
+
+Fix: move enrichment.synonym_model to a GA model before this one stops answering
 
 ## External systems (PRT)
 

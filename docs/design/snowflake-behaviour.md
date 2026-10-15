@@ -542,7 +542,11 @@ Cortex model with its `lifecycle_status` (`GA`, `PUPR`, `PRPR`, `LEGACY`, `EOL`,
 Neither matches the docs' table: an account can be offered models the table
 omits, some of them `INTERNAL` or absent from SHOW, and not offered models it
 lists. ACCOUNTADMIN reaches every model, so a run as it proves nothing for
-other roles.
+other roles. `AI_COMPLETE` refuses an embedding model, a retired model and a
+misspelt name alike, with `400 'unknown model "<model>"'`, and a legacy model
+an account never used with "has been in legacy state" (`mistral-large2`, SST's
+former synonym default, from October 2026); `EXPLAIN` accepts all of
+them, so only a call shows a model answers.
 
 **Evidence**: `Enforced`. Offline, `snowflake.orchestration_models`, default
 `[auto]`, is the guard, and SST-VAL543 refuses a model outside it. Connected,

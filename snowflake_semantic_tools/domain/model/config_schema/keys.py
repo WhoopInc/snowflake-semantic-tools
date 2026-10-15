@@ -228,7 +228,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         minimum=1,
         maximum=1000,
     ),
-    _key("enrichment.synonym_model", _S, "Cortex model that writes synonyms.", default="mistral-large2"),
+    _key("enrichment.synonym_model", _S, "Cortex model that writes synonyms.", default="claude-sonnet-4-5"),
     _key(
         "enrichment.synonym_max_count",
         _I,

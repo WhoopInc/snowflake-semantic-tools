@@ -38,7 +38,7 @@ from snowflake_semantic_tools.app.plan_artifacts import (
 from snowflake_semantic_tools.app.policy import strict_reach
 from snowflake_semantic_tools.app.state import change_summary, read_state
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
-from snowflake_semantic_tools.app.validate_models import ModelCheck, configured_models
+from snowflake_semantic_tools.app.validate_models import ModelCheck, model_check
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
 from snowflake_semantic_tools.domain.diagnostics.policy import apply_overrides
@@ -460,7 +460,7 @@ class PreparePlan:
         """Validate the selection as `run` says, and return it with the manifest of what publishes."""
         tree = self._inputs.config().tree
         overrides = severity_overrides(tree)
-        check = ModelCheck(configured_models(tree), models) if models is not None else None
+        check = model_check(tree, models) if models is not None else None
         with self._phases.phase("validate"):
             diagnostics = (
                 _validation(candidates, port, target, readers, overrides, check)

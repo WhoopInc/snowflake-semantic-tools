@@ -14,7 +14,7 @@ from snowflake_semantic_tools.adapters.yaml.ownership import ownership_report
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.policy import strict_reach
 from snowflake_semantic_tools.app.validate import ValidateArtifacts, ValidationResult
-from snowflake_semantic_tools.app.validate_models import ModelCheck, configured_models
+from snowflake_semantic_tools.app.validate_models import model_check
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.options import (
@@ -99,7 +99,7 @@ def validate(
     try:
         with ConnectorPool(workers, lambda: open_connector(params)) as pool, RUN_TIMINGS.phase("validate"):
             readers = Fanout(port, pool, workers) if port is not None else None
-            models = ModelCheck(configured_models(project_config(paths)), readers) if readers is not None else None
+            models = model_check(project_config(paths), readers) if readers is not None else None
             result = ValidateArtifacts(
                 port, catalog=port, target=target, clock=SystemClock(), readers=readers, models=models
             ).run(

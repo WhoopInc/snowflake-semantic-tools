@@ -203,7 +203,7 @@ def test_column_synonyms_are_asked_in_batches_and_a_malformed_answer_fails_the_m
     port = ScriptedEnrich(columns={"DB.SCH.ORDERS": wide}, answer=answer)
     project, _, _ = _project(port=port)
     report = project.run(_request(C.COLUMN_SYNONYMS))
-    assert [call for call in port.calls if call[0] == "cortex"] == [("cortex", "mistral-large2")] * 2
+    assert [call for call in port.calls if call[0] == "cortex"] == [("cortex", "claude-sonnet-4-5")] * 2
     enrichment = report.models[0].enrichment
     assert enrichment is not None and enrichment.filled(C.COLUMN_SYNONYMS) == COLUMNS_PER_PROMPT + 1
     malformed = ScriptedEnrich(columns={"DB.SCH.ORDERS": ORDERS_COLUMNS}, answer=lambda *_: ["not", "an", "object"])

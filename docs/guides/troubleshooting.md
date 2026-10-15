@@ -465,6 +465,10 @@ adds each model's lifecycle.
 Run the check as the role that deploys. ACCOUNTADMIN reaches models that
 other roles cannot, so a check it passes says little about theirs.
 
+The synonym model `sst enrich` uses is checked apart: connected validate
+reports its lifecycle (`SST-VAL557`), and enrich asks it for one token before
+it reads anything, stopping on a refusal (`SST-SNO032`).
+
 ## A file name is refused
 
 **`SST-VAL857`**: a stage accepts only letters, digits, `.`, `_`, `-`, and `$` in
