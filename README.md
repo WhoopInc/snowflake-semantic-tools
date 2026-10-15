@@ -61,7 +61,8 @@ semantic view end to end.
 | `sst list` | List compiled artifacts and their status |
 | `sst baseline` | Record known, not yet fixed warnings so they stop blocking under `--strict`, and maintain that file |
 | `sst explain` | Explain one diagnostic code, offline |
-| `sst migrate refs` | Rewrite 0.3 `table()` / `column()` references to `ref()`; a dry run unless `--write` |
+| `sst migrate refs` | Write every bare reference as its `{{ }}` call, 0.3 `table()` / `column()` as `ref()`, and old item settings under `config:`; a dry run unless `--write` |
+| `sst migrate split` | Write each listed member to its own single-item file, and tool groups into folders; a dry run unless `--write` |
 | `sst docs` | Regenerate the reference pages from the engine's registries |
 | `sst clean` | Remove local build output |
 | `sst drop` | Break-glass: drop one object SST owns from one target |
@@ -79,7 +80,8 @@ result on stdout.
   [agents](docs/guides/agents.md), [evals](docs/guides/evals.md),
   [skills](docs/guides/skills.md),
   [plugins and profiles](docs/guides/plugins-and-profiles.md),
-  [configuration](docs/guides/configuration.md), [CI/CD](docs/guides/ci-cd.md),
+  [configuration](docs/guides/configuration.md),
+  [references](docs/guides/references.md), [CI/CD](docs/guides/ci-cd.md),
   [security](docs/guides/security.md),
   [troubleshooting](docs/guides/troubleshooting.md),
   [agent kit](docs/guides/agent-kit.md),

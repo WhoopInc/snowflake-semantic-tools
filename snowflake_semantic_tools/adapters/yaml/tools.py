@@ -24,12 +24,12 @@ from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosition
 from snowflake_semantic_tools.domain.model.config_schema import resolve_settings
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
+from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
 from snowflake_semantic_tools.domain.model.tool import (
     CREATION_KEYS,
     MOVED_TOOL_KEYS,
     TOOL_COLUMN_KEYS,
     TOOL_MEMBER_KEYS,
-    TOOLS_FILE_KEYS,
     ToolCatalog,
     ToolColumn,
     ToolMember,
@@ -46,7 +46,13 @@ from snowflake_semantic_tools.domain.validate.dbt_seam import literal_relation_d
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 from snowflake_semantic_tools.domain.validate.tool import validate_tool_catalog
 
-# Keys of a `tools:` list entry that only a tool group wrote; an entry with one is a group.
+# The tool type as the registry declares it, as every other loader reads its type: the root
+# holding one member (`tool:`) and the root holding a list (`tools:`), the `sst_config.yml` block
+# its settings and folder routes resolve through, and the kind part of each member's key.
+_TOOL = ARTIFACT_REGISTRY.artifacts["tool"]
+_ONE, _MANY = str(_TOOL.singular_root), str(_TOOL.root_key)
+_FILE_KEYS = frozenset((_ONE, _MANY))
+# Keys of a list entry that only a tool group wrote; an entry with one is a group.
 _GROUP_KEYS = ("group", "define", "reference")
 
 
@@ -125,7 +131,7 @@ def load_tool_catalog(
         SST-DBT006: a reference relation names a dbt model by the name its alias replaced.
     """
     tree = config if config is not None else {}
-    diagnostics: list[Diagnostic] = list(routed_diagnostics(tree, project_dir, "tool")) if config else []
+    diagnostics: list[Diagnostic] = list(routed_diagnostics(tree, project_dir, _TOOL.name)) if config else []
     root = project_dir / tools_dir
     if not root.is_dir():
         return ToolCatalog((), target_name, declared_targets, DiagnosticBag(diagnostics))
@@ -154,10 +160,10 @@ def load_tool_catalog(
             parsed.line_index,
             path.parent.relative_to(root).parts,
             dbt,
-            tree.get("tools"),
+            tree.get(_TOOL.routed_block),
             MappingProxyType(variables),
         )
-        diagnostics.extend(_unknown(loaded, TOOLS_FILE_KEYS, relative, source, ()))
+        diagnostics.extend(_unknown(loaded, _FILE_KEYS, relative, source, ()))
         for node, value in _entries(loaded, source, diagnostics):
             member, member_diagnostics = _parse_member(source, node, value)
             diagnostics.extend(member_diagnostics)
@@ -179,35 +185,35 @@ def _entries(
         SST-PRS003: the root holds both `tool:` and `tools:`, or neither, or `tools:` is not a list.
     """
     file = source.source_file
-    if "tool" in loaded and "tools" in loaded:
+    if _ONE in loaded and _MANY in loaded:
         diagnostics.append(
             D(
                 "SST-PRS003",
                 artifact=file,
                 field="root",
-                expected="one of tool: and tools:",
+                expected=f"one of {_ONE}: and {_MANY}:",
                 found="both",
                 origin=Origin(file),
             )
         )
         return ()
-    if "tool" in loaded:
-        return ((("tool",), loaded["tool"]),)
-    listed = loaded.get("tools")
+    if _ONE in loaded:
+        return (((_ONE,), loaded[_ONE]),)
+    listed = loaded.get(_MANY)
     if not isinstance(listed, list):
-        expected = "list" if "tools" in loaded else "a tool: mapping or a tools: list"
+        expected = "list" if _MANY in loaded else f"a {_ONE}: mapping or a {_MANY}: list"
         diagnostics.append(
             D(
                 "SST-PRS003",
                 artifact=file,
-                field="tools",
+                field=_MANY,
                 expected=expected,
                 found=type(listed).__name__,
                 origin=Origin(file),
             )
         )
         return ()
-    return tuple((("tools", index), value) for index, value in enumerate(listed))
+    return tuple(((_MANY, index), value) for index, value in enumerate(listed))
 
 
 def _aliased_relations(catalog: ToolCatalog, dbt: DbtCatalog) -> tuple[Diagnostic, ...]:
@@ -279,7 +285,7 @@ def _parse_member(source: _Source, path: NodePath, value: object) -> tuple[ToolM
     entry, name, type_name = header
     diagnostics: list[Diagnostic] = []
     origin = source.origin(path)
-    subject = artifact_key("tool", name.casefold())
+    subject = artifact_key(_TOOL.name, name.casefold())
     keys = {key: item for key, item in entry.items() if key is not True}
     diagnostics.extend(_unknown(keys, TOOL_MEMBER_KEYS, subject, source, path, subject=subject))
     referenced = "relations" in entry
@@ -288,7 +294,7 @@ def _parse_member(source: _Source, path: NodePath, value: object) -> tuple[ToolM
     config = entry.get("config")
     diagnostics.extend(
         item_config_diagnostics(
-            "tools",
+            _TOOL.routed_block,
             config,
             subject=subject,
             origin_of=lambda key: source.origin((*path, "config", key) if key else (*path, "config")),
@@ -439,7 +445,7 @@ def _body(
         Every code `file_call` lists, for a `body:` that is not one `file()` call.
         Every code `resolve_file` lists, for the file it names.
     """
-    subject = artifact_key("tool", name.casefold())
+    subject = artifact_key(_TOOL.name, name.casefold())
     origin = source.origin(path)
     if value is None:
         return None, None
@@ -482,7 +488,7 @@ def _where(
     text = optional_string(value)
     if text is None or referenced:
         return text
-    subject = artifact_key("tool", name.casefold())
+    subject = artifact_key(_TOOL.name, name.casefold())
     origin = source.origin(path)
 
     def column_value(call: TemplateCall, column: str) -> str | Diagnostic:
@@ -542,7 +548,7 @@ def _on_fields(
         diagnostics.append(
             D(
                 "SST-PRS003",
-                artifact=artifact_key("tool", name),
+                artifact=artifact_key(_TOOL.name, name),
                 field="on",
                 expected="ref() string",
                 found=type(raw).__name__,
@@ -625,7 +631,7 @@ def _columns_of(
         SST-PRS002: an entry names no `column`.
         Every code `tool_column` lists, for each entry's `column:`.
     """
-    subject = artifact_key("tool", name.casefold())
+    subject = artifact_key(_TOOL.name, name.casefold())
     if value is None:
         return ()
     if not isinstance(value, list):

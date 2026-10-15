@@ -430,7 +430,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Live view carries tags that a replace would remove",
         "{artifact}: replacing {value} removes tags the project does not declare: {found}",
-        "declare each tag to keep under the view's `tags:`, or set it again after applying",
+        "declare each tag to keep in the view's `tags` setting, or set it again after applying",
         condition="a planned update replaces a semantic view that carries tags the project does not declare",
         note=(
             "The replace's `WITH TAG` names only the declared tags, and Snowflake removes every other "

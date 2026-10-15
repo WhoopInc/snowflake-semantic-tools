@@ -22,7 +22,7 @@ class AgentCompileContext:
             any other view is SST-REF011.
         agents: Every enabled agent's published name, by casefolded name, each in the location
             the folder routes over its file resolve to.
-        extensions: `skills.extensions` entries, by casefolded name.
+        extensions: The top-level `extensions:` entries, by casefolded name.
         variables: What `{{ var('<name>') }}` resolves to in a skill's version: the project's
             `vars:`, and `sha_version`.
         database, schema: The `agents:` block's own location: where an agent `agents` does not

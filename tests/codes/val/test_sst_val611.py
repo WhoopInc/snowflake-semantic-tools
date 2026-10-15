@@ -26,9 +26,7 @@ def _gated(embedding_model: str | None) -> list[Diagnostic]:
 def test_sst_val611_fires() -> None:
     [diagnostic] = _gated(None)
     assert diagnostic.severity is Severity.WARNING
-    assert diagnostic.message == (
-        "tool member 'docs_search' declares embedding_model: null and is read by a gated agent"
-    )
+    assert diagnostic.message == ("tool member 'docs_search' pins no embedding_model and is read by a gated agent")
     assert diagnostic.subject == "tool:docs_search"
 
 

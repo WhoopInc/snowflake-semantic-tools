@@ -13,7 +13,7 @@ from tests.helpers.eval_inputs import dataset, sales_eval, validate
 def test_sst_val703_fires() -> None:
     diagnostic = only(validate(sales_eval(eval_dataset=dataset(forbidden_keys=("schema",)))), "SST-VAL703")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "dataset 'agents/sales/evals/dataset.yml' declares +schema"
+    assert diagnostic.message == "dataset 'agents/sales/evals/dataset.yml' declares schema"
     assert diagnostic.subject == "eval:sales"
 
 

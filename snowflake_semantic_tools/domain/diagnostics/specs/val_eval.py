@@ -34,9 +34,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL703",
         Severity.ERROR,
         "Dataset declares its own database or schema",
-        "dataset '{artifact}' declares +{key}",
+        "dataset '{artifact}' declares {key}",
         "remove it; eval objects resolve to the agent's schema",
-        condition="an eval's dataset or config file sets `+database`, `+schema` or `+enabled`",
+        condition="an eval's dataset or config file sets `database`, `schema` or `enabled` at its top level",
     ),
     spec(
         "SST-VAL704",

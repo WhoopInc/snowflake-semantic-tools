@@ -106,7 +106,7 @@ sst test --suite smoke                      # queries what was published
 - `profiles.yml`: the same targets dbt uses.
 - The semantic models directory (`project.semantic_models_dir`, default `semantic_models`):
   views under `semantic_views/`, and metrics, relationships, filters, verified queries, and
-  custom instructions anywhere below it.
+  custom instructions anywhere below it, usually one item per file under its singular root.
 - Column metadata: each dbt model's YAML, under `config.meta.sst`.
 - `agents/`, `tools/`, `skills/`, `plugins/`, `profiles/`: agents and what SST publishes for
   them. The `skills/` folder there is published to Snowflake. These kit skills are not, and

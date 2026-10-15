@@ -58,7 +58,8 @@ SST runs `dbt parse` itself, with the directory of the first `profiles.yml` it f
 - `sst debug --no-connect` shows the database and schema the target resolves to;
   `--target <name>` shows another target.
 - Check `+database` and `+schema` for the artifact type, and any folder route, in
-  `sst_config.yml`.
+  `sst_config.yml`, and the artifact's own `config:`, which wins over both.
+  `sst list --long` prints where each artifact's `database` and `schema` came from.
 
 ## Snowflake says an object does not exist or is not authorized
 

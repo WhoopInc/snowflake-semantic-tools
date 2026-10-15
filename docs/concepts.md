@@ -125,24 +125,28 @@ and SST resolves the name for the target being built:
 | Reference | Resolves to | Where it is accepted |
 |---|---|---|
 | `{{ ref('orders') }}` | the dbt model's relation | a view's `tables:`, relationship endpoints, verified query SQL |
-| `{{ ref('orders', 'order_id') }}` | a column of that model | expressions, relationship conditions, a view's `columns:` |
+| `{{ ref('orders', 'order_id') }}` | a column of that model | expressions, relationship conditions, a view's `columns:`, a non-additive dimension's `ref:`, a defined tool member's columns |
 | `{{ source('raw', 'orders') }}` | a dbt source's relation, a table without columns | a view's `tables:` |
 | `{{ metric('order_count') }}` | another metric's expression | metric expressions, verified query SQL, a view's `metrics:` |
 | `{{ var('name') }}` | a value from `vars:` in `sst_config.yml` | metric and filter expressions, verified query SQL |
 | `{{ custom_instructions('name') }}` | a custom instruction block | a view's `custom_instructions:` |
-| `{{ filter('name') }}`, `{{ relationship('name') }}`, `{{ verified_query('name') }}` | that member's name | custom instruction text |
-| `{{ tag('name') }}` | a tag from `tags:` in `sst_config.yml` | the `name` of a view's `tags:` entry |
+| `{{ filter('name') }}`, `{{ verified_query('name') }}` | that member's name | custom instruction text |
+| `{{ relationship('name') }}` | a relationship | a view's `relationships:`, a metric's `using_relationships:`, custom instruction text |
+| `{{ tag('name') }}` | a tag from `tags:` in `sst_config.yml` | the `name` of a view's or an agent's `config.tags` entry |
 | `{{ semantic_view('name') }}`, `{{ agent('name') }}` | the published object | agent specs |
-| `{{ tool('name') }}` | a tool member | agent specs |
-| `{{ skill('name') }}`, `{{ plugin('name') }}` | a skill or plugin this project publishes, pinned to its current version | agent skill sources, plugin and profile members |
+| `{{ tool('name') }}` | a tool member | agent specs, and the opening of a stage path |
+| `{{ skill('name') }}`, `{{ plugin('name') }}` | a skill or plugin this project publishes, pinned to its current version | agent skill sources, plugin and profile members, a command's `skill:` |
 | `{{ command('path') }}`, `{{ mcp_server('name') }}`, `{{ hook('name') }}` | a command, MCP config or hook the project holds | profile members |
 | `{{ extension('name') }}` | an extension another project publishes, from `extensions:` | agent skill sources |
 | `{{ eval_dataset('name') }}`, `{{ eval_config('name') }}` | the dataset or config file of that `name:` in the agent's `evals/` folder | an agent's `evals:` |
 | `{{ eval_metric('name') }}` | a custom judge metric | eval configs |
-| `{{ file('path') }}` | the contents of a file beside the artifact | agent instructions, a verified query's `sql:` |
+| `{{ file('path') }}` | the contents of a file, relative to the file that names it | agent instructions, a verified query's `sql:`, a tool member's `body:`, a hook's `script:` |
 
-A reference that does not resolve is an error. SST's `ref()` resolves against
-the dbt manifest, so it names models and their columns exactly as dbt does.
+A reference that does not resolve is an error, and so is a bare name where a
+call belongs (`SST-REF050`). SST's `ref()` resolves against the dbt manifest, so
+it names models and their columns exactly as dbt does.
+[References](guides/references.md) lists every field that takes a call, and the
+fields that stay literal.
 
 ## Targets
 
@@ -156,11 +160,13 @@ semantic_views:
   +schema: "{{ target.schema }}"
 ```
 
-Keys that start with `+` set a default for everything below them. Under
-`semantic_views:`, `tools:` and `agents:`, an unprefixed key names a folder --
-below `semantic_views/` in the semantic models directory, or below the tools or
-agents directory -- and its `+` keys apply to what is in that folder
-(`SST-CFG041` when the folder does not exist).
+Keys that start with `+` set a default for everything below them. In every
+artifact block -- `semantic_views:`, `tools:`, `agents:`, `evals:`, `skills:`,
+`plugins:` and `profiles:` -- an unprefixed key names a folder below that
+type's directory (for views, below `semantic_views/` in the semantic models
+directory), and its `+` keys apply to what is in that folder (`SST-CFG041` when
+the folder does not exist). An artifact's own `config:` block overrides every
+route; [Precedence](guides/configuration.md#precedence) gives the whole chain.
 
 ```yaml
 semantic_views:

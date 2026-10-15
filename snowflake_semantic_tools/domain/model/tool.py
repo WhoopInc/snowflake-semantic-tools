@@ -295,10 +295,8 @@ CREATION_KEYS = frozenset(
         "secrets",
     )
 )
-# The keys a tools file's root and a member may write: `tool:` holds one member, `tools:` a list
-# of them. YAML 1.1 reads an unquoted `on:` as the boolean `true`, which a member's loader reads
-# as `on:`.
-TOOLS_FILE_KEYS = frozenset(("tool", "tools"))
+# The keys a member may write; the roots a tools file holds members under are the registry's. YAML
+# 1.1 reads an unquoted `on:` as the boolean `true`, which a member's loader reads as `on:`.
 TOOL_MEMBER_KEYS = frozenset(
     (
         *CREATION_KEYS,

@@ -241,6 +241,8 @@ queries, and reports any that fail.
 - [Concepts](concepts.md): artifacts, members, references, and the
   `validate` / `plan` / `apply` pipeline.
 - [Semantic views](guides/semantic-views.md): relationships, filters, verified queries.
+- [Configuration](guides/configuration.md): folder routes, an item's own `config:`,
+  and the [precedence](guides/configuration.md#precedence) every setting resolves by.
 - [Agents](guides/agents.md), [evals](guides/evals.md), [skills](guides/skills.md),
   and [plugins and profiles](guides/plugins-and-profiles.md).
 - [CI/CD](guides/ci-cd.md): the same four commands in a pipeline.

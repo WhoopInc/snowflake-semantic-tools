@@ -31,8 +31,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "agent '{artifact}' is granted to {value}; it cannot become non-secure",
         "keep secure: true, or revoke the share grant first",
         condition=(
-            "an agent is authored `secure: false` while its live object is secure and granted to a "
-            "share or an application role"
+            "an agent's `secure` setting resolves to false while its live object is secure and granted "
+            "to a share or an application role"
         ),
         precheck=Precheck.OBSERVE,
     ),
@@ -201,12 +201,12 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL524",
         Severity.ERROR,
-        "columns_and_descriptions entry is malformed",
+        "Search tool column entry is malformed",
         "agent '{artifact}': tool '{name}' column '{column}': {detail}",
         "use type string or datetime, with boolean searchable and filterable",
         condition=(
-            "a `columns_and_descriptions` entry is not a mapping, or its `type`, `searchable` or "
-            "`filterable` is missing or of the wrong kind"
+            "a search tool's `columns:` entry is not a mapping or names no `column`, or a column it "
+            "renders has a `type`, `searchable` or `filterable` that is missing or of the wrong kind"
         ),
     ),
     spec(

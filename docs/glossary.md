@@ -10,8 +10,9 @@ where it is explained.
 - **Agent kit.** The skills `sst agent-kit` installs for a coding agent, Cortex
   Code or Claude Code, into the project; never published. Not the project's
   `skills/`. See [the agent kit](guides/agent-kit.md).
-- **Alias.** The version alias an agent's `alias:` names, which apply moves to
-  each new version; promotion and rollback are moves of it. See
+- **Alias.** The version alias an agent's `alias` setting names (`config.alias`,
+  or `+alias` in `agents:`), which apply moves to each new version; promotion
+  and rollback are moves of it. See
   [publishing agents](guides/agents.md#publishing).
 - **Apply.** The command that executes a plan's changes against a target and
   records them in state. See [the pipeline](concepts.md#the-pipeline).
@@ -48,8 +49,10 @@ where it is explained.
 - **Fingerprint.** A SHA-256 digest of what an artifact renders, which `plan`
   compares with state to decide whether it changed. See
   [terms used in the code](concepts.md#terms-used-in-the-code).
-- **Folder route.** An unprefixed key under `semantic_views:` or `agents:`
-  that names a folder, whose `+` keys apply to what is in it. See
+- **Folder route.** An unprefixed key under an artifact block of
+  `sst_config.yml` -- `semantic_views:`, `tools:`, `agents:`, `evals:`,
+  `skills:`, `plugins:`, or `profiles:` -- that names a folder, whose `+` keys
+  apply to what is in it. See
   [folder routes](guides/configuration.md#folder-routes).
 - **Golden suite.** The offline part of `sst test`, which compares rendered
   output with committed files. See [`sst test`](reference/cli.md#sst-test).
@@ -87,6 +90,11 @@ where it is explained.
   `semantic_view:` file, or an entry under `semantic_views:`, and the members
   that attach to it. See
   [semantic views](guides/semantic-views.md).
+- **Setting.** One `+` key of an artifact block, such as `schema` or
+  `certified`, as it resolves for one artifact: its own `config:`, else the
+  closest folder route, else the block root, else SST's default.
+  `sst list --long` prints where each came from. See
+  [precedence](guides/configuration.md#precedence).
 - **Skill.** A `SKILL.md` folder SST publishes as a version of a skill-type
   Cortex Extension. See [skills](guides/skills.md).
 - **Smoke suite.** The part of `sst test` that checks deployed objects exist as
@@ -123,9 +131,9 @@ Drawn from: [artifact keys](../snowflake_semantic_tools/domain/model/artifact_ke
 | manifest | an application package's `manifest.yml` | `target/manifest.json`, which SST reads | `target/sst/manifest.json`, the record of one SST compile; a plugin's `plugin.yml` is also called its manifest |
 | state | -- | `--state`, a directory of an earlier run's artifacts | the state table apply writes; `--state` also names an earlier build directory, as in dbt |
 | version | a numbered version of an agent or extension, such as `VERSION$1` | a model version, or dbt's own release | an extension version named for its content, or an agent version added by each change |
-| alias | a name on an agent or extension version | the name a model's relation takes instead of the model's | an agent's `alias:`, moved to each new version |
+| alias | a name on an agent or extension version | the name a model's relation takes instead of the model's | an agent's `alias` setting, moved to each new version |
 | profile | an agent's display name, avatar, and color | a connection in `profiles.yml` | dbt's `profiles.yml`, which SST also reads, or a CoCo Desktop profile from `profile.yml`; an agent's `profile:` keeps Snowflake's sense |
-| catalog | the catalog that serves Cortex Extensions to users; also a catalog integration for Iceberg tables | `catalog.json`, written by `dbt docs generate` | `skills.catalog`, the block that turns on publishing skills to Cortex Extensions |
+| catalog | the catalog that serves Cortex Extensions to users; also a catalog integration for Iceberg tables | `catalog.json`, written by `dbt docs generate` | the same Cortex Extension catalog, which a skill or plugin publishes to wherever its `+bundle_stage` resolves |
 | tool | an entry in an agent specification's `tools` | -- | an agent's tool, or the `tool` artifact a defined tool member publishes |
 | metric | an entry in a semantic view's `METRICS` | a metric in dbt's semantic layer | a `metric:` file or a `snowflake_metrics:` entry; an eval's judge metric is a different thing, named with `eval_metric()` |
 

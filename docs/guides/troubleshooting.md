@@ -87,8 +87,10 @@ blocks each agent that stages on it when it cannot be used:
 ## It went to the wrong database or schema
 
 - Run `sst debug` and check the database and schema the target resolves to.
-- Check `+database` / `+schema` for the artifact type and any folder route in
-  `sst_config.yml`.
+- Check `+database` / `+schema` for the artifact type, any folder route in
+  `sst_config.yml`, and the artifact's own `config:`. `sst list --long` prints
+  where each artifact's `database` and `schema` came from: `config`,
+  `route:<folder>`, `root`, or `default`.
 - A tool member that writes `relations:` resolves through that map; a
   target the map does not cover is an error rather than a fall-through.
 
@@ -461,6 +463,8 @@ still stops the run, and `--partial` cannot be combined with `--prune`.
 
 **`SST-VAL841`**: once any version of an extension is certified, the catalog
 serves the latest certified version rather than the newest one. Publish with
-`skills.+certified: true`, or certify the new version; a later certified version
+`certified` resolving to true for the skill -- `skills.+certified: true`, a
+folder route, or the skill's own `config: {certified: true}` -- or certify the
+new version; a later certified version
 has to be un-certified in Snowsight. Agents pin their version and are
 unaffected.

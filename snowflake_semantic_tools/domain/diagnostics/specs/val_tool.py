@@ -85,16 +85,18 @@ SPECS: tuple[ErrorSpec, ...] = (
         "execute_as: owner on a procedure reachable from an agent",
         "tool member '{name}' runs as owner and is reachable from agent '{artifact}'",
         "review the privilege escalation, or run as caller",
-        condition="an agent's tool reaches a defined procedure declared `execute_as: owner`",
+        condition="an agent's tool reaches a defined procedure whose `execute_as` setting resolves to `owner`",
         note="An owner's-rights procedure is a deliberate privilege escalation, now reachable from conversation.",
     ),
     spec(
         "SST-VAL611",
         Severity.WARNING,
-        "embedding_model is null on an eval-gated search service",
-        "tool member '{name}' declares embedding_model: null and is read by a gated agent",
-        "pin the embedding model",
-        condition=("a defined search service read by an agent whose eval is blocking sets no `embedding_model`"),
+        "No embedding model pinned on an eval-gated search service",
+        "tool member '{name}' pins no embedding_model and is read by a gated agent",
+        "pin the embedding model with config.embedding_model, a folder route, or tools.+embedding_model",
+        condition=(
+            "a defined search service read by an agent whose eval is blocking resolves no `embedding_model` setting"
+        ),
         note="Without a pinned model, retrieval can change between deploys with no change in the project.",
     ),
     spec(

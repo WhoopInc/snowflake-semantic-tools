@@ -40,7 +40,7 @@ def resolve_skills(
         SST-VAL540: a `skill()` entry writes a name; it is named after the skill.
         SST-VAL840: a `plugin()` entry's name is not a member of the plugin.
         SST-REF037: `extension()` names an extension this project publishes.
-        SST-REF013: `extension()` names no `skills.extensions` entry.
+        SST-REF013: `extension()` names no entry of the `extensions:` block.
         SST-VAL538: a consumed extension's entry pins no version, or pins LIVE; a `var()`
             version that `vars:` does not declare pins none.
         SST-VAL541: a resolved entry contributes a member name an earlier entry contributed.
@@ -169,7 +169,7 @@ def _pin_consumed(
     context: AgentCompileContext,
     diagnostics: list[Diagnostic],
 ) -> AgentSkill | None:
-    """Pin an `extension()` entry to its `skills.extensions` target and the version it names."""
+    """Pin an `extension()` entry to its `extensions:` target and the version it names."""
     label = skill.name or skill.path
     owned = _owned_kind(skill.path, context)
     if owned is not None:

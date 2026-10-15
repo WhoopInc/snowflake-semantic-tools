@@ -176,37 +176,52 @@ def test_the_manifest_records_an_artifacts_settings_and_refuses_a_malformed_bloc
 ROUTED_BLOCKS = tuple(
     artifact.routed_block for artifact in ARTIFACT_REGISTRY.artifacts.values() if artifact.routed_block
 )
-# One value of each kind a `+` key takes; three distinct ones, so each step of the chain is visible.
-_SAMPLES: dict[KeyKind, tuple[object, object, object]] = {
-    KeyKind.STRING: ("root", "route", "own"),
-    KeyKind.BOOLEAN: (True, False, True),
-    KeyKind.INTEGER: (1, 2, 3),
-    KeyKind.LIST: (["root"], ["route"], []),
-    KeyKind.ENUM: ("root", "route", "own"),
+# One value of each kind a `+` key takes; four distinct ones, so each step of the chain is visible.
+_SAMPLES: dict[KeyKind, tuple[object, object, object, object]] = {
+    KeyKind.STRING: ("root", "outer", "inner", "own"),
+    KeyKind.BOOLEAN: (True, False, True, False),
+    KeyKind.INTEGER: (1, 2, 3, 4),
+    KeyKind.LIST: (["root"], ["outer"], ["inner"], []),
+    KeyKind.ENUM: ("root", "outer", "inner", "own"),
 }
+
+
+def test_the_chain_is_checked_for_every_routed_type_and_every_kind_of_key() -> None:
+    assert ROUTED_BLOCKS == ("semantic_views", "tools", "skills", "plugins", "profiles", "agents", "evals")
+    kinds = {spec.kind for block in ROUTED_BLOCKS for spec in block_settings(block).values()}
+    assert kinds <= set(_SAMPLES)
+    assert all(block_settings(block) for block in ROUTED_BLOCKS)
 
 
 @pytest.mark.parametrize(
     ("block", "key"),
     [(block, key) for block in ROUTED_BLOCKS for key, spec in block_settings(block).items() if not spec.root_only],
 )
-def test_every_routed_key_resolves_item_then_closest_route_then_root_then_absent(block: str, key: str) -> None:
-    root, route, own = _SAMPLES[block_settings(block)[key].kind]
-    tree = {f"+{key}": root, "outer": {f"+{key}": route, "inner": {}}}
+def test_every_routed_key_resolves_item_then_closest_route_then_root_then_built_in(block: str, key: str) -> None:
+    root, outer, inner, own = _SAMPLES[block_settings(block)[key].kind]
+    tree = {f"+{key}": root, "outer": {f"+{key}": outer, "inner": {f"+{key}": inner, "leaf": {}}, "bare": {}}}
 
     def found(folder: tuple[str, ...], config: object = None) -> tuple[object, str] | None:
         setting = resolve_settings(tree, folder, config).get(key)
         return None if setting is None else (setting.value, setting.source)
 
-    assert found(("outer", "inner"), {key: own}) == (own, "config")
-    assert found(("outer", "inner")) == (route, "route:outer")
+    assert found(("outer", "inner", "leaf"), {key: own}) == (own, "config")
+    assert found(("outer", "inner", "leaf")) == (inner, "route:outer/inner")
+    assert found(("outer", "bare")) == (outer, "route:outer")
     assert found(("elsewhere",)) == (root, "root")
+    # Nothing set: the key is absent, and the consumer's built-in default fills it, marked as one.
     assert resolve_settings({}, ("outer",)).get(key) is None
+    [filled] = with_defaults(resolve_settings({}, ("outer",)), {key: "built-in"})
+    assert (filled.value, filled.source) == ("built-in", "default")
+    [kept] = with_defaults(resolve_settings(tree, ()), {key: "built-in"})
+    assert (kept.value, kept.source) == (root, "root")
     # Null is never a value: it is SST-CFG054 wherever it is written, and reads as absent.
-    assert found(("outer",), {key: None}) == (route, "route:outer")
+    assert found(("outer",), {key: None}) == (outer, "route:outer")
     assert [item.code for item in item_config_diagnostics(block, {key: None}, subject="x", origin_of=_at)] == [
         "SST-CFG054"
     ]
+    assert [item.code for item in validate_config({block: {f"+{key}": None}})] == ["SST-CFG054"]
+    assert [item.code for item in validate_config({block: {"outer": {f"+{key}": None}}})] == ["SST-CFG054"]
 
 
 @pytest.mark.parametrize(
@@ -214,8 +229,9 @@ def test_every_routed_key_resolves_item_then_closest_route_then_root_then_absent
     [(block, key) for block in ROUTED_BLOCKS for key, spec in block_settings(block).items() if spec.root_only],
 )
 def test_every_root_only_key_is_refused_in_a_route_and_in_an_items_config(block: str, key: str) -> None:
-    root, _, own = _SAMPLES[block_settings(block)[key].kind]
+    root, _, _, own = _SAMPLES[block_settings(block)[key].kind]
     assert [item.code for item in validate_config({block: {"outer": {f"+{key}": root}}})] == ["SST-CFG055"]
+    assert [item.code for item in validate_config({block: {"outer": {"inner": {f"+{key}": root}}}})] == ["SST-CFG055"]
     assert [item.code for item in item_config_diagnostics(block, {key: own}, subject="x", origin_of=_at)] == [
         "SST-CFG055"
     ]

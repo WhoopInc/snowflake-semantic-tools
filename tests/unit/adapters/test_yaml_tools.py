@@ -4,9 +4,11 @@ from pathlib import Path
 
 import pytest
 
+from snowflake_semantic_tools.adapters.yaml import tools as tools_loader
 from snowflake_semantic_tools.adapters.yaml.tools import load_tool_catalog
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
+from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolOwnership
 
 
@@ -95,6 +97,15 @@ tools:
     assert resolved is lookup and diagnostics == ()
     relation, diagnostics = catalog.relation(lookup)
     assert relation is not None and relation.sql == "DB.S.LOOKUP" and diagnostics == ()
+
+
+def test_the_loader_reads_the_tool_roots_and_block_the_registry_declares() -> None:
+    tool = ARTIFACT_REGISTRY.artifacts["tool"]
+    roots = (tool.singular_root, tool.root_key)
+    loaded = (tools_loader._ONE, tools_loader._MANY)
+    assert loaded == roots
+    assert set(roots) == tools_loader._FILE_KEYS
+    assert tool.routed_block == tools_loader._TOOL.routed_block == "tools"
 
 
 def test_a_member_s_settings_resolve_over_its_config_then_the_closest_folder_route(tmp_path: Path) -> None:

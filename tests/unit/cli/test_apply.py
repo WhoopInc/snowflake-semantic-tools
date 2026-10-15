@@ -135,9 +135,12 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     assert {"lock", "publish", "state_write"} <= set(payload["invocation"]["timings"]["phases"])
     # Seven more than M4: the bundle stage, one CREATE carrying the first version for each
     # of three skills and the plugin, and the profile stage; the eval dataset's own version;
-    # and the agent spec stage, created once for every agent that stages there.
-    assert len(apply_port.scripts) == 19
+    # and the agent spec stage, created once for every agent that stages there. One more
+    # certifies the version of jaffle-catalogue, the skill whose own config: sets certified.
+    assert len(apply_port.scripts) == 20
     first_lines = [statements[0].split("\n", 1)[0] for statements in apply_port.scripts]
+    assert sum("CERTIFICATION_STATUS" in line and "JAFFLE_CATALOGUE" in line for line in first_lines) == 1
+    assert sum("CERTIFICATION_STATUS" in line for line in first_lines) == 1
     assert sum("JAFFLE_TOOLKIT" in line for line in first_lines) == 1
     assert not any(line.startswith("ALTER CORTEX EXTENSION") and " ADD VERSION " in line for line in first_lines)
     assert sum("SKILL_BUNDLES " in line and line.startswith("CREATE STAGE") for line in first_lines) == 1

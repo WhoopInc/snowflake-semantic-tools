@@ -20,25 +20,25 @@
     "SETTINGS_OVERRIDES": {},
     "SKILL_REPOS": [
       {
-        "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/skills/shared/365756b27a15/"
+        "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/skills/shared/5a3efafcb4b8/"
       }
     ],
     "SYSTEM_PROMPT_REPO": {
       "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/prompts/jaffle-operator/78bcd7d0d30f/AGENTS.md"
     },
-    "VERSION": "SST_DBE234B51B0A"
+    "VERSION": "SST_8C38C097DAAE"
   },
   "trees": [
     {
-      "digest": "365756b27a157291386ab90b8569aece55420f964f1ad61c3943cbb51ddaf587",
+      "digest": "5a3efafcb4b8920bd79763d4d4239bbed47777d44ec22657fc29ba4bb337ec04",
       "files": [
         {
           "path": "jaffle-catalogue/SKILL.md",
-          "sha256": "c745b5a266e92509302f0129810212994f7204132a35b927e2fc4224ee301735",
-          "size": 1531
+          "sha256": "c53a8c66db0b54b2d2c4af80436362713b347d754abdd6cd0587da9c6c265116",
+          "size": 1685
         }
       ],
-      "prefix": "skills/shared/365756b27a15/"
+      "prefix": "skills/shared/5a3efafcb4b8/"
     },
     {
       "digest": "78bcd7d0d30fa31d711faa9021f729fa9d4149bce617c109bd9289311b7b91f6",

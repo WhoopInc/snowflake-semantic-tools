@@ -3475,7 +3475,7 @@ Fix: run CI as the owner role, or accept that the round-trip is skipped
 
 `agent '<artifact>' is granted to <value>; it cannot become non-secure`
 
-Raised when an agent is authored `secure: false` while its live object is secure and granted to a share or an application role.
+Raised when an agent's `secure` setting resolves to false while its live object is secure and granted to a share or an application role.
 
 Fix: keep secure: true, or revoke the share grant first
 
@@ -3649,11 +3649,11 @@ Fix: mark the column filterable: true
 
 ### SST-VAL524
 
-**columns_and_descriptions entry is malformed** (error)
+**Search tool column entry is malformed** (error)
 
 `agent '<artifact>': tool '<name>' column '<column>': <detail>`
 
-Raised when a `columns_and_descriptions` entry is not a mapping, or its `type`, `searchable` or `filterable` is missing or of the wrong kind.
+Raised when a search tool's `columns:` entry is not a mapping or names no `column`, or a column it renders has a `type`, `searchable` or `filterable` that is missing or of the wrong kind.
 
 Fix: use type string or datetime, with boolean searchable and filterable
 
@@ -4007,7 +4007,7 @@ Fix: correct the column list
 
 `tool member '<name>' runs as owner and is reachable from agent '<artifact>'`
 
-Raised when an agent's tool reaches a defined procedure declared `execute_as: owner`.
+Raised when an agent's tool reaches a defined procedure whose `execute_as` setting resolves to `owner`.
 
 Fix: review the privilege escalation, or run as caller
 
@@ -4015,13 +4015,13 @@ Note: An owner's-rights procedure is a deliberate privilege escalation, now reac
 
 ### SST-VAL611
 
-**embedding_model is null on an eval-gated search service** (warning)
+**No embedding model pinned on an eval-gated search service** (warning)
 
-`tool member '<name>' declares embedding_model: null and is read by a gated agent`
+`tool member '<name>' pins no embedding_model and is read by a gated agent`
 
-Raised when a defined search service read by an agent whose eval is blocking sets no `embedding_model`.
+Raised when a defined search service read by an agent whose eval is blocking resolves no `embedding_model` setting.
 
-Fix: pin the embedding model
+Fix: pin the embedding model with config.embedding_model, a folder route, or tools.+embedding_model
 
 Note: Without a pinned model, retrieval can change between deploys with no change in the project.
 
@@ -4155,9 +4155,9 @@ Fix: shorten the name
 
 **Dataset declares its own database or schema** (error)
 
-`dataset '<artifact>' declares +<key>`
+`dataset '<artifact>' declares <key>`
 
-Raised when an eval's dataset or config file sets `+database`, `+schema` or `+enabled`.
+Raised when an eval's dataset or config file sets `database`, `schema` or `enabled` at its top level.
 
 Fix: remove it; eval objects resolve to the agent's schema
 
@@ -6385,7 +6385,7 @@ Note: Publish order is the registry's type order, so it cannot be authored; only
 
 Raised when a planned update replaces a semantic view that carries tags the project does not declare.
 
-Fix: declare each tag to keep under the view's `tags:`, or set it again after applying
+Fix: declare each tag to keep in the view's `tags` setting, or set it again after applying
 
 Note: The replace's `WITH TAG` names only the declared tags, and Snowflake removes every other tag set on the view; a tag it inherits from its schema or database is kept. `--no-grants` skips the read of the view's tags, and with it this warning; a read that fails is `SST-PLN040`.
 

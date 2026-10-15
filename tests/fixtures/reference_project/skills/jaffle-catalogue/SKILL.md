@@ -6,6 +6,10 @@ description: |-
   SKU, list price, food versus drink. Do NOT invoke for anything about orders,
   customers, revenue or margin; those need JAFFLE_SALES or JAFFLE_MENU and are
   covered by the jaffle-semantics skill.
+# This skill certifies itself alone: its own config: beats the folder routes and
+# the skills: root, whose +certified is false.
+config:
+  certified: true
 ---
 
 # Jaffle menu catalogue

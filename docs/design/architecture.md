@@ -368,16 +368,16 @@ and is resolved where that thing is known:
 |---|---|---|
 | `ref('model')`, `ref('model', 'column')` | a dbt model's relation, or one of its columns | `resolve_scalar` |
 | `source('source', 'table')` | a dbt source table | the semantic load for a view's `tables:` |
-| `metric()` | a metric member | `resolve_scalar` |
+| `metric()` | a metric member | `resolve_scalar`, and the semantic load for a view's `metrics:` scope |
 | `custom_instructions()` | a custom instruction member | `resolve_scalar`, and the semantic load for a view's entries |
-| `relationship()`, `filter()`, `verified_query()` | that member, by name, in custom instruction text | `resolve_scalar` |
+| `relationship()`, `filter()`, `verified_query()` | that member, by name, in custom instruction text; a relationship also in a view's `relationships:` scope and a metric's `using_relationships:` | `resolve_scalar`, and the semantic load for the scope and `using_relationships:` entries |
 | `var()` | a project variable from `vars:` | `resolve_scalar` |
-| `tag()` | a tag from `tags:` | `resolve_scalar` |
-| `semantic_view()`, `tool('name')`, `agent()` | that artifact | the agent loader, then `app/compile/agents/resolve_tools.py` |
-| `skill()`, `plugin()` | a skill or plugin this project publishes | the agent loader, then `app/compile/agents/resolve_skills.py`; as a plugin or profile member, `member_names` in `adapters/yaml/fields.py` |
+| `tag()` | a tag from `tags:` | `resolve_scalar`, and `domain/resolve/tags.py` for an agent's tags |
+| `semantic_view()`, `tool('name')`, `agent()` | that artifact; a `tool()` that opens a stage path names the stage member | the agent loader, then `app/compile/agents/resolve_tools.py`; a stage path through `domain/resolve/stage_path.py` |
+| `skill()`, `plugin()` | a skill or plugin this project publishes | the agent loader, then `app/compile/agents/resolve_skills.py`; as a plugin or profile member, `member_names` in `adapters/yaml/fields.py`; as a command's `skill:`, `domain/validate/profile.py`, and `domain/render/profile.py` renders it to the skill's name |
 | `command()`, `mcp_server()`, `hook()` | a command, MCP config or hook, as a profile member | `member_names`, in the profile loader |
-| `extension()` | an extension another project publishes, from `skills.extensions` | the agent loader, then `app/compile/agents/resolve_skills.py` |
-| `file()` | a file beside the agent, or beside a verified query's YAML | the agent loader, and the verified query reader |
+| `extension()` | an extension another project publishes, from the top-level `extensions:` block | the agent loader, then `app/compile/agents/resolve_skills.py` |
+| `file()` | a file, relative to the folder of the file that names it: an agent's instructions, a verified query's `sql:`, a tool member's `body:`, a hook's `script:` | `resolve_file` in `adapters/yaml/fields.py`, the one resolver every loader calls |
 | `eval_dataset()`, `eval_config()` | an eval file in the agent's `evals/` folder, by its `name:` | the eval catalog reader |
 | `eval_metric()` | a custom judge metric | the eval config reader |
 | `table()`, `column()` | nothing: legacy spellings of `ref()` | refused |

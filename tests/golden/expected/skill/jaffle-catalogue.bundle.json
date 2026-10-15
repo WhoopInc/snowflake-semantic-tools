@@ -1,13 +1,14 @@
 {
-  "alias": "SST_D9172060A877",
+  "alias": "SST_3536453E8CA3",
+  "certified": true,
   "comment": "Use when a question needs only the jaffle menu catalogue -- which products exist,\nwhat type each is, and what each lists for. Invoke for terms like menu, product,\nSKU, list price, food versus drink. Do NOT invoke for anything about orders,\ncustomers, revenue or margin; those need JAFFLE_SALES or JAFFLE_MENU and are\ncovered by the jaffle-semantics skill.",
-  "digest": "d9172060a877a3a22186b0dc7c88bec857db2a0527548be8722952f616d73d38",
+  "digest": "3536453e8ca33261b63973329b3ff04e98d46b86ca74c4a4a2bc89433abb19f8",
   "extension": "SST_REF_DEV.JAFFLE.JAFFLE_CATALOGUE",
   "files": [
     {
       "path": "skills/jaffle-catalogue/SKILL.md",
-      "sha256": "c745b5a266e92509302f0129810212994f7204132a35b927e2fc4224ee301735",
-      "size": 1531
+      "sha256": "c53a8c66db0b54b2d2c4af80436362713b347d754abdd6cd0587da9c6c265116",
+      "size": 1685
     }
   ],
   "flattened": [],

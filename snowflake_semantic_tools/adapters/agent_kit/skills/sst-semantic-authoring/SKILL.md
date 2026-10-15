@@ -19,6 +19,14 @@ differ, trust the pages and `sst explain`.
   look at two or three existing files there to match the project's layout and naming.
 - Find the models a view reads with `dbt ls` or the dbt YAML; SST reads the dbt manifest.
 
+## Every reference is a call
+
+Every field that names a model, a column, another member, or a file takes exactly one
+`{{ }}` call: `ref()`, `metric()`, `relationship()`, `custom_instructions()`, `tag()`,
+`file()`. A bare name where a call belongs is `SST-REF050`, which names the function to write;
+another function's call is `SST-REF041`. Snowflake object names, view variables, and an item's
+own `name:` stay literal. @SST_DOCS@/guides/references.md lists every field.
+
 ## Columns live in dbt
 
 Each model's YAML carries SST metadata under `config.meta.sst`:
@@ -98,6 +106,24 @@ A view's own settings go under `config:`: the `semantic_views:` `+` keys without
 and the block root; an absent key inherits, any other key is `SST-CFG053`, and a key with no
 value is `SST-CFG054`. Never write them beside `tables:` (`SST-PRS126`).
 
+## Folder routes and precedence
+
+In `sst_config.yml`, a `+` key sets a block's default and an unprefixed key is a folder route:
+
+```yaml
+semantic_views:
+  +schema: SEMANTIC
+  finance:          # views under <semantic_models_dir>/semantic_views/finance/
+    +schema: FINANCE_SEMANTIC
+```
+
+Each setting resolves closest first: the item's own `config:`, then the closest folder route
+over its file, then the block root, then SST's default. A route that names no folder is
+`SST-CFG041`; `skills.+threads` is root-only (`SST-CFG055`). Every artifact block routes the
+same way: `tools:`, `agents:`, `evals:`, `skills:`, `plugins:`, `profiles:`. Prefer a folder
+route for what a whole folder shares and `config:` for the one item that differs.
+`sst list --long` prints each setting with where it came from.
+
 ## Metrics
 
 ```yaml
@@ -162,6 +188,16 @@ relationship:
   long SQL in a file with `sql: "{{ file('sql/<name>.sql') }}"`, relative to the YAML file.
 - A custom instruction block uses `ai_sql_generation` and `ai_question_categorization`, and
   a view includes it with `"{{ custom_instructions('<name>') }}"`.
+
+## Tool members beside the views
+
+Tool members are not semantic members, but they follow the same file rules: one `tool:`
+mapping per file under `project.tools_dir` (a `tools:` list still reads), at any depth, with no
+groups. Their settings come from `tools:` folder routes and the member's own `config:`, and
+`meta.owner` names the owner. An agent names a member as `{{ tool('<name>') }}`, one argument
+(`SST-REF015`), and a defined search service writes every column as
+`{{ ref('<on model>', '<column>') }}` (`SST-VAL622` for another model). For the rest, use
+sst-agents-and-evals.
 
 ## After every edit
 

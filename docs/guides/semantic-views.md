@@ -342,8 +342,9 @@ snowflake_metrics:
 - List order matters, as in an `ORDER BY`.
 - Only a derived metric may reference a semi-additive metric (`SST-VAL107`).
 
-These render only what each entry authors, as `NON ADDITIVE BY (SNAPSHOT_MONTH)`
-and `NON ADDITIVE BY (SUPPLIES.SNAPSHOT_MONTH DESC NULLS FIRST)`.
+These render only what each entry authors, each dimension qualified by its
+table, as `NON ADDITIVE BY (SUPPLIES.SNAPSHOT_MONTH)` and
+`NON ADDITIVE BY (SUPPLIES.SNAPSHOT_MONTH DESC NULLS FIRST)`.
 
 ### Window function metrics
 

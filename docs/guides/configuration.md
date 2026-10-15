@@ -77,9 +77,9 @@ an absent `+` key inherits and an empty one would read as a value it is not
 
 ## Locations and targets
 
-Every artifact type has a block, and its `+database` / `+schema` keys decide
-where it publishes. Values can use three substitutions from the selected
-target:
+Every artifact type has a block, and, for every type but evals (which publish
+into their agent's schema), its `+database` / `+schema` keys decide where it
+publishes. Values can use three substitutions from the selected target:
 
 ```yaml
 semantic_views:
@@ -166,8 +166,20 @@ for every key and every type, closest first:
 4. SST's built-in default, which the
    [configuration reference](../reference/config.md) lists.
 
+```mermaid
+flowchart LR
+  builtin[Built-in default] --> root["Block root +key"]
+  root --> folders["Folder routes, outermost to closest"]
+  folders --> item["Item config:"]
+  item --> resolved["Resolved value plus provenance"]
+```
+
+Each step overrides the one before it, key by key.
+
 ```yaml
 # sst_config.yml
+snowflake:
+  orchestration_models: [auto, claude-sonnet-4-6]
 agents:
   +orchestration_model: claude-sonnet-4-6
   +budget_seconds: 120

@@ -124,7 +124,8 @@ def configure_skills_as_published(port: FakeSnowflake, changes: list[dict[str, o
                     "location": f"snow://cortex_extension/{target}/versions/version$2/",
                     "files": paths,
                     "is_default": True,
-                    "certification": None,
+                    # Apply certifies the version of an item whose `certified` resolved true.
+                    "certification": "CERTIFIED" if bundle.get("certified") else None,
                 }
             ],
             "live": None,
