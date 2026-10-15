@@ -299,7 +299,8 @@ Exit 0 with no errors, and 1 with errors, or warnings under --strict; a warning 
 baseline holds never blocks, and an expired baseline fails the run. The Snowflake syntax
 check connects, and runs unless --no-snowflake-syntax-check or
 `validation.snowflake_syntax_check: false` turns it off. With --verify-schema, the
-columns each semantic view reads are looked up in the warehouse. With more than one
+columns each semantic view reads are looked up in the warehouse. The syntax check also runs
+each model `snowflake.orchestration_models` allows in a throwaway agent. With more than one
 thread, the connected checks run on up to that many sessions at once, with the same
 findings.
 
@@ -316,7 +317,7 @@ sst validate [OPTIONS]
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--database` | TEXT |  | Read from this database instead of the target's; never where an artifact is published. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error; `--no-strict` promotes none. Else `$SST_STRICT`, else `validation.strict`, off when unset. A warning about an artifact the selection leaves out stays one. |
-| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Connects: compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`, on when unset. |
+| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Connects: compile expressions against Snowflake, and run each model `snowflake.orchestration_models` allows in a throwaway agent. Defaults to `validation.snowflake_syntax_check`, on when unset. |
 | `--dbt` | DIRECTORY |  | Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`. |
 | `--semantic` | DIRECTORY |  | Read the semantic models from this directory instead of `project.semantic_models_dir`. |
 | `--verify-schema` | flag |  | Connects: confirm each column a semantic view reads exists in the warehouse. |
@@ -500,7 +501,7 @@ sst plan [OPTIONS]
 | `--names-only` | flag |  | Print the name of each changed artifact, one per line, and nothing else. |
 | `--no-detailed-exitcode` | flag |  | Exit 0 when changes are pending, instead of 2. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error; `--no-strict` promotes none. Else `$SST_STRICT`, else `validation.strict`, off when unset. A warning about an artifact the selection leaves out stays one. |
-| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Connects: compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`, on when unset. |
+| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Connects: compile expressions against Snowflake, and run each model `snowflake.orchestration_models` allows in a throwaway agent. Defaults to `validation.snowflake_syntax_check`, on when unset. |
 
 ## sst apply
 
@@ -559,7 +560,7 @@ sst apply [OPTIONS]
 | `--no-validate` | flag |  | Skip validation: no cycle check, connected check, agent reference lookup, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`. |
 | `--sql-out` | DIRECTORY |  | Write each create's and update's statements into this directory instead of `target/sst/sql`. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error; `--no-strict` promotes none. Else `$SST_STRICT`, else `validation.strict`, off when unset. A warning about an artifact the selection leaves out stays one. |
-| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Connects: compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`, on when unset. |
+| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Connects: compile expressions against Snowflake, and run each model `snowflake.orchestration_models` allows in a throwaway agent. Defaults to `validation.snowflake_syntax_check`, on when unset. |
 
 ## sst diff
 

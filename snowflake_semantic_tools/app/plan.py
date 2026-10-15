@@ -38,6 +38,7 @@ from snowflake_semantic_tools.app.plan_artifacts import (
 from snowflake_semantic_tools.app.policy import strict_reach
 from snowflake_semantic_tools.app.state import change_summary, read_state
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
+from snowflake_semantic_tools.app.validate_models import ModelCheck, configured_models
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
 from snowflake_semantic_tools.domain.diagnostics.policy import apply_overrides
@@ -53,6 +54,7 @@ from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
+from snowflake_semantic_tools.domain.ports.snowflake.cortex_models import CortexModelsPort
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightPort
 from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.ports.timing import NO_PHASES, PhaseTimer
@@ -320,6 +322,7 @@ class PreparePlan:
         readers: Fanout[PlanReadPort] | None = None,
         observe_options: ObserveOptions = DEFAULT_OBSERVE_OPTIONS,
         validate: bool = True,
+        models: Fanout[CortexModelsPort] | None = None,
     ) -> PlanReady | PlanRefused:
         """Validate the candidates, read authoritative state, and plan against what Snowflake shows now.
 
@@ -353,6 +356,8 @@ class PreparePlan:
                 the same tree: no cycle check, no connected check, and no strict promotion. The
                 project's severity overrides still apply, and the compile's own errors still
                 refuse the plan, or with `--partial` split it.
+            models: Sessions the connected checks run probe agents on, one per model
+                `snowflake.orchestration_models` allows; None skips that check.
 
         Diagnostics:
             SST-PLN018: observing and planning took longer than the observation stays current.
@@ -361,7 +366,7 @@ class PreparePlan:
             Those of validation, of `read_state`, and of `PlanArtifacts`, then
             `channel_divergence`'s, then the plan's `change_summary` and `plan_notices`.
         """
-        validated = self._validated_selection(candidates, port, target, readers, validate)
+        validated = self._validated_selection(candidates, port, target, readers, validate, models)
         if isinstance(validated, PlanRefused):
             return validated
         result, manifest = validated
@@ -450,12 +455,15 @@ class PreparePlan:
         target: TargetIdentity,
         readers: Fanout[PlanReadPort] | None,
         validate: bool,
+        models: Fanout[CortexModelsPort] | None = None,
     ) -> tuple[CompileResult, Manifest] | PlanRefused:
         """Validate the selection as `run` says, and return it with the manifest of what publishes."""
-        overrides = severity_overrides(self._inputs.config().tree)
+        tree = self._inputs.config().tree
+        overrides = severity_overrides(tree)
+        check = ModelCheck(configured_models(tree), models) if models is not None else None
         with self._phases.phase("validate"):
             diagnostics = (
-                _validation(candidates, port, target, readers, overrides)
+                _validation(candidates, port, target, readers, overrides, check)
                 if validate
                 else apply_overrides(candidates.selected.diagnostics, overrides)
             )
@@ -560,6 +568,7 @@ def _validation(
     target: TargetIdentity,
     readers: Fanout[PlanReadPort] | None,
     overrides: Mapping[str, Severity],
+    models: ModelCheck | None = None,
 ) -> DiagnosticBag:
     """Validate the selection, connected when the settings ask for it; return what validation reported.
 
@@ -568,7 +577,13 @@ def _validation(
     """
     live = port if candidates.connected else None
     return (
-        ValidateArtifacts(live, catalog=port, target=target.name, readers=readers if candidates.connected else None)
+        ValidateArtifacts(
+            live,
+            catalog=port,
+            target=target.name,
+            readers=readers if candidates.connected else None,
+            models=models if candidates.connected else None,
+        )
         .run(
             candidates.selected,
             strict=candidates.strict,

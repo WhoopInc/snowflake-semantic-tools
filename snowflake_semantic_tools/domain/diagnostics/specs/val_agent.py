@@ -494,4 +494,101 @@ SPECS: tuple[ErrorSpec, ...] = (
         "remove the alias, or stop deprecating the agent",
         condition="a deprecated agent still sets an `alias`, which points at a version of it",
     ),
+    spec(
+        "SST-VAL551",
+        Severity.ERROR,
+        "Agents refuse an allowed orchestration model",
+        "orchestration model '{model}' was refused when an agent ran on it in target '{target}': {detail}",
+        "remove it from snowflake.orchestration_models, or enable it for the role and region",
+        condition=(
+            "connected validation runs a throwaway agent on a model `snowflake.orchestration_models` "
+            "lists, `auto` aside, and Snowflake refuses the model when the agent runs"
+        ),
+        note=(
+            "`CREATE AGENT` accepts any model name, so a model agents do not accept fails only when "
+            "someone asks the agent something. Snowflake keeps no list of the models agents accept: "
+            "`SHOW CORTEX BASE MODELS` lists models agents refuse, such as embedding models. So SST "
+            "creates a TEMPORARY agent with no tools and a small budget in the schema of the first "
+            "agent the project publishes, runs it once with `DATA_AGENT_RUN` as the session's role, "
+            "and drops it. The detail is the first line of Snowflake's message: 'not an allowed model "
+            "for Agent requests' for a model agents never accept, 'not authorized or not available in "
+            "your region' for one the account cannot reach. Run the check as the role that deploys: "
+            "ACCOUNTADMIN reaches models other roles cannot."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-VAL552",
+        Severity.WARNING,
+        "Allowed orchestration model is not offered to customers",
+        "orchestration model '{model}' is not offered to customers: {reason}",
+        "rely on it only if Snowflake has enabled it for the account; it may go without notice",
+        condition=(
+            "connected validation finds a model `snowflake.orchestration_models` lists, `auto` aside, "
+            "marked INTERNAL by `SHOW CORTEX BASE MODELS`, or absent from it, and no agent run refused it"
+        ),
+        note=(
+            "Snowsight may offer such a model and an agent may run on it, but Snowflake publishes no "
+            "lifecycle for it, so it can be withdrawn without the legacy and end-of-life notice a "
+            "listed model gets."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-VAL553",
+        Severity.ERROR,
+        "Allowed orchestration model is past end-of-life",
+        "orchestration model '{model}' is past end-of-life ({date})",
+        "remove it from snowflake.orchestration_models and move its agents to a supported model",
+        condition=(
+            "connected validation finds a model `snowflake.orchestration_models` lists, `auto` aside, "
+            "whose `SHOW CORTEX BASE MODELS` lifecycle status is EOL"
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-VAL554",
+        Severity.WARNING,
+        "Allowed orchestration model is legacy",
+        "orchestration model '{model}' is legacy; end-of-life: {date}",
+        "move its agents to a newer model before end-of-life",
+        condition=(
+            "connected validation finds a model `snowflake.orchestration_models` lists, `auto` aside, "
+            "whose `SHOW CORTEX BASE MODELS` lifecycle status is LEGACY"
+        ),
+        note=(
+            "After a model's legacy date only accounts that already used it may keep calling it, and "
+            "after its end-of-life date none may."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-VAL555",
+        Severity.WARNING,
+        "Allowed orchestration model is in preview",
+        "orchestration model '{model}' is in {kind}",
+        "keep production agents on a GA model",
+        condition=(
+            "connected validation finds a model `snowflake.orchestration_models` lists, `auto` aside, "
+            "whose `SHOW CORTEX BASE MODELS` lifecycle status is PUPR or PRPR"
+        ),
+        note="Snowflake does not intend preview models for production workloads.",
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-VAL556",
+        Severity.WARNING,
+        "Allowed orchestration model was not fully checked",
+        "orchestration model '{model}' was not fully checked: {reason}",
+        "fix what the reason names, such as the role's CREATE AGENT in the first agent's schema, then validate "
+        "again as the deploying role",
+        condition=(
+            "connected validation could not run a throwaway agent on a model "
+            "`snowflake.orchestration_models` lists, or could not read `SHOW CORTEX BASE MODELS`: the "
+            "project publishes no agent, or Snowflake refused the CREATE, the run or the SHOW, or the run "
+            "did not answer within 60 seconds"
+        ),
+        note="An unchecked model is neither accepted nor refused; the reason says what stopped the check.",
+        precheck=Precheck.OBSERVE,
+    ),
 )

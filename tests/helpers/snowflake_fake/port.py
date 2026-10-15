@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError
 from tests.helpers.snowflake_fake.catalog import FakeCatalog
+from tests.helpers.snowflake_fake.cortex_models import FakeCortexModels
 from tests.helpers.snowflake_fake.execution import FakeExecution
 from tests.helpers.snowflake_fake.preflight import FakePreflight
 from tests.helpers.snowflake_fake.profile_registry import FakeProfileRegistry
@@ -11,7 +12,9 @@ from tests.helpers.snowflake_fake.stage import FakeStage
 from tests.helpers.snowflake_fake.state import FakeState
 
 
-class FakeSnowflake(FakeCatalog, FakeExecution, FakeStage, FakeProfileRegistry, FakeState, FakePreflight):
+class FakeSnowflake(
+    FakeCatalog, FakeExecution, FakeStage, FakeProfileRegistry, FakeState, FakePreflight, FakeCortexModels
+):
     """`SnowflakePort` and `PreflightPort` in memory, each role over the same account.
 
     A test stages what the account holds through the constructor and the attributes

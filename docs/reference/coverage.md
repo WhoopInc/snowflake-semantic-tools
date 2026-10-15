@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 707
+- Codes: 713
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -591,6 +591,12 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL548`](error-codes.md#sst-val548) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.agent` | `tests/codes/val/test_sst_val548.py` |
 | [`SST-VAL549`](error-codes.md#sst-val549) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.agent` | `tests/codes/val/test_sst_val549.py` |
 | [`SST-VAL550`](error-codes.md#sst-val550) | VAL | error | local | `snowflake_semantic_tools.domain.validate.agent` | `tests/codes/val/test_sst_val550.py` |
+| [`SST-VAL551`](error-codes.md#sst-val551) | VAL | error | observe | `snowflake_semantic_tools.app.validate`<br>`snowflake_semantic_tools.app.validate_models` | `tests/codes/val/test_sst_val551.py` |
+| [`SST-VAL552`](error-codes.md#sst-val552) | VAL | warning | observe | `snowflake_semantic_tools.app.validate_models` | `tests/codes/val/test_sst_val552.py` |
+| [`SST-VAL553`](error-codes.md#sst-val553) | VAL | error | observe | `snowflake_semantic_tools.app.validate_models` | `tests/codes/val/test_sst_val553.py` |
+| [`SST-VAL554`](error-codes.md#sst-val554) | VAL | warning | observe | `snowflake_semantic_tools.app.validate_models` | `tests/codes/val/test_sst_val554.py` |
+| [`SST-VAL555`](error-codes.md#sst-val555) | VAL | warning | observe | `snowflake_semantic_tools.app.validate_models` | `tests/codes/val/test_sst_val555.py` |
+| [`SST-VAL556`](error-codes.md#sst-val556) | VAL | warning | observe | `snowflake_semantic_tools.app.validate_models` | `tests/codes/val/test_sst_val556.py` |
 | [`SST-VAL603`](error-codes.md#sst-val603) | VAL | error | local | `snowflake_semantic_tools.domain.validate.tool` | `tests/codes/val/test_sst_val603.py` |
 | [`SST-VAL604`](error-codes.md#sst-val604) | VAL | error | local | `snowflake_semantic_tools.domain.validate.tool` | `tests/codes/val/test_sst_val604.py` |
 | [`SST-VAL605`](error-codes.md#sst-val605) | VAL | error | local | `snowflake_semantic_tools.domain.validate.tool` | `tests/codes/val/test_sst_val605.py` |

@@ -14,6 +14,7 @@ from snowflake_semantic_tools.adapters.yaml.ownership import ownership_report
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.policy import strict_reach
 from snowflake_semantic_tools.app.validate import ValidateArtifacts, ValidationResult
+from snowflake_semantic_tools.app.validate_models import ModelCheck, configured_models
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.options import (
@@ -72,7 +73,8 @@ def validate(
     baseline holds never blocks, and an expired baseline fails the run. The Snowflake syntax
     check connects, and runs unless --no-snowflake-syntax-check or
     `validation.snowflake_syntax_check: false` turns it off. With --verify-schema, the
-    columns each semantic view reads are looked up in the warehouse. With more than one
+    columns each semantic view reads are looked up in the warehouse. The syntax check also runs
+    each model `snowflake.orchestration_models` allows in a throwaway agent. With more than one
     thread, the connected checks run on up to that many sessions at once, with the same
     findings.
     """
@@ -97,7 +99,10 @@ def validate(
     try:
         with ConnectorPool(workers, lambda: open_connector(params)) as pool, RUN_TIMINGS.phase("validate"):
             readers = Fanout(port, pool, workers) if port is not None else None
-            result = ValidateArtifacts(port, catalog=port, target=target, clock=SystemClock(), readers=readers).run(
+            models = ModelCheck(configured_models(project_config(paths)), readers) if readers is not None else None
+            result = ValidateArtifacts(
+                port, catalog=port, target=target, clock=SystemClock(), readers=readers, models=models
+            ).run(
                 compiled,
                 strict=effective_strict,
                 connected=effective_connected,

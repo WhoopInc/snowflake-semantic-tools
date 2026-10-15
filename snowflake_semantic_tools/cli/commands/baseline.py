@@ -25,13 +25,16 @@ from snowflake_semantic_tools.adapters.fs.baseline import BASELINE_FILE, baselin
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.app.baseline import clock_stamp, clock_today, days_after
+from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
+from snowflake_semantic_tools.app.validate_models import ModelCheck, configured_models
 from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
 from snowflake_semantic_tools.cli.exit_codes import ERROR
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import Decorator, selection_options
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, project_path, write_text
+from snowflake_semantic_tools.cli.settings import project_config
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.project import connect
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag
@@ -316,9 +319,10 @@ def _current(
         return tuple(result.diagnostics)
     profile, port = connect(paths, target_name)
     try:
-        result = ValidateArtifacts(port, catalog=port, target=profile.target_name, clock=SystemClock()).run(
-            compiled, strict=False, connected=True
-        )
+        models = ModelCheck(configured_models(project_config(paths)), Fanout(port))
+        result = ValidateArtifacts(
+            port, catalog=port, target=profile.target_name, clock=SystemClock(), models=models
+        ).run(compiled, strict=False, connected=True)
     finally:
         port.close()
     return tuple(result.diagnostics)

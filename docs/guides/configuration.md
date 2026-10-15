@@ -229,7 +229,7 @@ artifact's, so no artifact lists it.
 | Block | What it controls |
 |---|---|
 | `project` | Where each artifact type is authored. A directory key that is set must name a directory that exists (`SST-CFG047`); an unset one falls back to its default, which may be absent. |
-| `validation` | `strict` promotes warnings to errors; `snowflake_syntax_check` compiles expressions against Snowflake; `description_floor` and `instruction_budget` bound descriptions and instructions; `exclude_dirs` skips directories during discovery. |
+| `validation` | `strict` promotes warnings to errors; `snowflake_syntax_check` compiles expressions against Snowflake and runs each allowed orchestration model in a throwaway agent; `description_floor` and `instruction_budget` bound descriptions and instructions; `exclude_dirs` skips directories during discovery. |
 | `diagnostics` | `severity_overrides`: the severity a code reports at; see [below](#severity-overrides). |
 | `enrichment` | What `sst enrich` samples and asks Cortex for, and whether it may read row data at all. |
 | `generation` | How many Snowflake sessions `plan`, `apply`, and `test` use, and how long one statement may run. |

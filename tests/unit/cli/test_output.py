@@ -60,7 +60,7 @@ def test_validate_json_emits_one_v2_envelope(tmp_path: Path) -> None:
     assert envelope["invocation"]["duration_s"] >= 0
     assert envelope["status"] == "ok"
     # Infos: SST-VAL854 (the fixture's profile registry is not Desktop's), SST-VAL020 once per
-    # connected rule (4), the eval notes SST-VAL711/712/725, the skill notes SST-VAL816 (3) and
+    # connected rule (5), the eval notes SST-VAL711/712/725, the skill notes SST-VAL816 (3) and
     # SST-VAL831 (4), the dbt seam's notes SST-DBT016 for orders and products and SST-DBT025,
     # eighteen that report
     # what attached where (SST-MEM011 for each of the fifteen members both jaffle views hold,
@@ -81,7 +81,7 @@ def test_validate_json_emits_one_v2_envelope(tmp_path: Path) -> None:
     assert envelope["summary"] == {
         "error": 0,
         "warning": 6,
-        "info": 51,
+        "info": 52,
         "promoted": 0,
         "suppressed_cascade": 0,
         "baselined": 0,

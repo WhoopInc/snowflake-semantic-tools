@@ -132,7 +132,7 @@ agent's settings with where each came from.
 |---|---|
 | `database`, `schema` | Where the agent publishes. Unset, the target's. |
 | `warehouse`, `query_timeout` | The execution environment of every Analyst, search, and generic tool of the agent that sets none. With no `warehouse`, they run on the target's warehouse. |
-| `orchestration_model` | Rendered as `models.orchestration`. It must be in `snowflake.orchestration_models` (`SST-VAL543`), which defaults to `[auto]` alone, so a project that names a model lists it there. Unset, `auto`. |
+| `orchestration_model` | Rendered as `models.orchestration`. It must be in `snowflake.orchestration_models` (`SST-VAL543`), which defaults to `[auto]` alone, so a project that names a model lists it there. The connected check runs each model in that list in a throwaway agent, so a model agents refuse fails validation (`SST-VAL551`) rather than an agent's first question. Unset, `auto`. |
 | `budget_seconds`, `budget_tokens` | Rendered as `orchestration.budget`. Tokens spent inside tools are not counted, so the token budget is not a spend ceiling: an agent that sets `config.budget_tokens` itself is warned (`SST-VAL547`) unless a comment on that line, or just above it, says `orchestration`. A budget an agent inherits from `agents:` is not warned. |
 | `tool_not_accessible` | Rendered as `orchestration.tool_not_accessible`: `accept`, `reject`, or `legacy` (`SST-VAL545`). |
 | `analytical_search` | Rendered as `orchestration.capabilities.analytical_search`; `true` needs a `cortex_search` tool (`SST-VAL546`). |

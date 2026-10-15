@@ -39,13 +39,15 @@ def test_validation_promotes_warnings_and_reports_connected_skip_or_failure() ->
     warning = DiagnosticBag((D("SST-LOD003", file="empty.yml"),))
     promoted = ValidateArtifacts().run(compile_result(warning), strict=True, connected=False)
     assert not promoted.success and promoted.promoted == 1
-    # One skip notice per connected rule: the compile check, then the two spot checks.
+    # One skip notice per connected rule: the compile check and row count, the two spot
+    # checks, then the orchestration-model check.
     assert [(item.code, item.context.get("rule_id")) for item in promoted.diagnostics] == [
         ("SST-LOD003", None),
         ("SST-VAL020", "SST-VAL418"),
         ("SST-VAL020", "SST-VAL415"),
         ("SST-VAL020", "SST-VAL212"),
         ("SST-VAL020", "SST-VAL218"),
+        ("SST-VAL020", "SST-VAL551"),
     ]
     skipped = ValidateArtifacts().run(compile_result(), strict=False, connected=True)
     assert skipped.success and skipped.diagnostics[0].code == "SST-VAL020"

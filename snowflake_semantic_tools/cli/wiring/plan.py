@@ -228,6 +228,7 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
             readers=Fanout(port, pool, request.threads),
             observe_options=request.observe_options,
             validate=request.validate,
+            models=Fanout(port, pool, request.threads),
         )
     if isinstance(outcome, PlanRefused):
         port.close()

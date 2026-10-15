@@ -65,6 +65,7 @@ explains, and names the 1.0 code it became.
 | `SST-VAL311` | An equality join's right table declares no key | Add `primary_key` in the model's `meta.sst`. |
 | `SST-VAL405` | A boolean filter has no label | Add `labels: [filter]`. |
 | `SST-PRS004` | A key SST does not read | Check the spelling against the docs; it is ignored. |
+| `SST-VAL551` | An agent run refused a model `snowflake.orchestration_models` lists | Remove the model from the list; don't add one that hasn't run in an agent. |
 
 ## The baseline file is not a fix
 

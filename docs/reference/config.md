@@ -41,7 +41,7 @@ What blocks a build.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `validation.strict` | boolean | `false` | Promote every warning to an error. |
-| `validation.snowflake_syntax_check` | boolean | `true` | Compile expressions against Snowflake during validate and plan. Must be written out, true or false (SST-CFG031). |
+| `validation.snowflake_syntax_check` | boolean | `true` | Compile expressions against Snowflake during validate and plan, and run each allowed orchestration model in a throwaway agent (SST-VAL551 to SST-VAL556). Must be written out, true or false (SST-CFG031). |
 | `validation.description_floor` | integer |  | Shortest description, in characters, a semantic view or metric may carry (SST-VAL004); unset checks none. |
 | `validation.instruction_budget` | integer |  | Longest composed comment and instructions, in characters, a semantic view may publish (SST-VAL018); unset checks none. |
 | `validation.exclude_dirs` | list | `[]` | Globs of project-relative directories discovery skips: no semantic model file under one is read. |
@@ -260,7 +260,7 @@ Allowlists for Snowflake surfaces the renderer accepts.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `snowflake.orchestration_models` | list | `[auto]` | Orchestration models agents may name. |
+| `snowflake.orchestration_models` | list | `[auto]` | Orchestration models agents may name; the syntax check runs each one in a throwaway agent. |
 | `snowflake.tool_types` | list |  | Agent tool types added to the ones SST renders, for a type Snowflake shipped since this release. |
 | `snowflake.allow_unknown_keys` | boolean | `true` | Render agent spec keys SST does not model with a warning; false makes each an error. |
 | `snowflake.profile` | block |  | Agent profile allowlists. |

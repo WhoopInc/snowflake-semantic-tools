@@ -439,6 +439,32 @@ it reads `expression failed to compile` even though nothing was sent. Offline,
 this is the only cause of `SST-VAL418`; under connected validation it also
 reports an expression or query Snowflake will not compile.
 
+## An allowed orchestration model fails the check (`SST-VAL551` to `SST-VAL556`)
+
+`CREATE AGENT` accepts any model name, and Snowflake keeps no list of the
+models agents accept, so the connected check runs each model
+`snowflake.orchestration_models` lists, `auto` aside, in a throwaway agent:
+TEMPORARY, no tools, a small budget, created in the schema of the first agent
+the project publishes, and dropped once it answers. `SHOW CORTEX BASE MODELS`
+adds each model's lifecycle.
+
+- **`SST-VAL551`**: the run refused the model. "not an allowed model for Agent
+  requests" means agents never accept it, such as `llama3.1-8b`; "not
+  authorized or not available in your region" means the account cannot reach
+  it, such as an embedding model, a retired one, or a misspelling. Remove it
+  from the list.
+- **`SST-VAL552`**: the model ran, but Snowflake marks it `INTERNAL` or does
+  not list it. Snowsight may still offer it; it can go without notice.
+- **`SST-VAL553`, `SST-VAL554`, `SST-VAL555`**: end-of-life (an error),
+  legacy, or preview.
+- **`SST-VAL556`**: nothing was learned, because the project publishes no
+  agent, or the role may not create one in that schema, or the run did not
+  answer within 60 seconds, or the SHOW failed. A model that times out once
+  may answer on the next run; one that keeps timing out is not one to rely on.
+
+Run the check as the role that deploys. ACCOUNTADMIN reaches models that
+other roles cannot, so a check it passes says little about theirs.
+
 ## A file name is refused
 
 **`SST-VAL857`**: a stage accepts only letters, digits, `.`, `_`, `-`, and `$` in

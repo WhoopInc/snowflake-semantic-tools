@@ -594,7 +594,7 @@ These are the commands that connect, and what they do once connected:
 |---|---|---|---|
 | `compile`, `format`, `list`, `explain`, `docs`, `clean`, `init`, `migrate refs`, `migrate split`, `baseline show`, `baseline renew` | never | | local files only |
 | `test --suite golden` | never | | goldens, with `--update-golden` |
-| `validate` | unless the syntax check is off (`--no-snowflake-syntax-check` or `validation.snowflake_syntax_check: false`) and there is no `--verify-schema` | `EXPLAIN` of each expression and query, verified-query row counts, what exists | nothing |
+| `validate` | unless the syntax check is off (`--no-snowflake-syntax-check` or `validation.snowflake_syntax_check: false`) and there is no `--verify-schema` | `EXPLAIN` of each expression and query, verified-query row counts, what exists, `SHOW CORTEX BASE MODELS`; one run of a probe agent per allowed orchestration model | a TEMPORARY probe agent per model, dropped once it answers |
 | `baseline add --target`, `baseline prune --target` | yes, as `validate --target` | as `validate` | the local baseline file |
 | `debug` | unless `--no-connect` or `--snowflake-signatures` | the session's role and account | nothing |
 | `enrich` | when it first reads the warehouse or Cortex | column types, distinct values, Cortex answers | dbt model YAML, locally |

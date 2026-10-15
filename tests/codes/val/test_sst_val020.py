@@ -10,7 +10,13 @@ from tests.helpers.snowflake_fake import FakeSnowflake
 
 def test_sst_val020_fires() -> None:
     found = ValidateArtifacts().run(CompileResult(()), strict=False, connected=False).diagnostics
-    assert [item.context["rule_id"] for item in found] == ["SST-VAL418", "SST-VAL415", "SST-VAL212", "SST-VAL218"]
+    assert [item.context["rule_id"] for item in found] == [
+        "SST-VAL418",
+        "SST-VAL415",
+        "SST-VAL212",
+        "SST-VAL218",
+        "SST-VAL551",
+    ]
     assert found[0].severity is Severity.INFO
     assert found[0].message == "SST-VAL418 skipped: Snowflake syntax checking was disabled"
 

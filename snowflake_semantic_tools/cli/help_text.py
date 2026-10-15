@@ -91,8 +91,8 @@ _OPTION_HELP: Mapping[str, str] = {
         "`validation.strict`, off when unset. A warning about an artifact the selection leaves out stays one."
     ),
     "--snowflake-syntax-check": (
-        "Connects: compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`, "
-        "on when unset."
+        "Connects: compile expressions against Snowflake, and run each model `snowflake.orchestration_models` "
+        "allows in a throwaway agent. Defaults to `validation.snowflake_syntax_check`, on when unset."
     ),
     "--prune": (
         "Also act on managed artifacts whose source was deleted, as far as each type "

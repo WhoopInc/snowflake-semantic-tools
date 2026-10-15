@@ -4,7 +4,9 @@ The offline checks live in `domain.validate`. The connected checks stay here bec
 run SQL through the `ExecutionPort`: the syntax check (SST-VAL418) compiles each expression
 over columns typed as the target describes its tables (`app.explain_projection`), the
 verified-query row count (SST-VAL415) runs each query that compiles, and the spot checks
-(SST-VAL212, SST-VAL218) read the joined tables. SST-VAL020 reports each one skipped. The
+(SST-VAL212, SST-VAL218) read the joined tables. Each model `snowflake.orchestration_models`
+allows is run in a throwaway agent (SST-VAL551 to SST-VAL556, `app.validate_models`). SST-VAL020
+reports each one skipped. The
 live-object checks of agents and tools are in `app.compile.agents.observe`. Each distinct
 statement the views' checks run is one unit a `Fanout` may run on a session of its own, and
 runs once however many views or members ask it; the views' findings are then read from the
@@ -27,6 +29,7 @@ from snowflake_semantic_tools.app.explain_projection import (
     explain_expression,
 )
 from snowflake_semantic_tools.app.fanout import Fanout
+from snowflake_semantic_tools.app.validate_models import ModelCheck, check_orchestration_models
 from snowflake_semantic_tools.app.verify_schema import verify_columns
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.diagnostics.policy import SeverityPolicy, apply_policy
@@ -77,8 +80,9 @@ class ValidationResult:
 class ValidateArtifacts:
     """Validate a compile result offline or, with a port, against Snowflake.
 
-    The connected checks only EXPLAIN, count a verified query's rows, and read what exists,
-    so they never write.
+    The connected checks EXPLAIN, count a verified query's rows, and read what exists; the
+    only thing they create is a TEMPORARY probe agent per allowed orchestration model, which
+    lives in its session alone and is dropped once it has answered.
 
     Args:
         catalog: Reads the live objects the compiled agents and tools publish over or call;
@@ -87,6 +91,8 @@ class ValidateArtifacts:
         clock: Times each verified query's count; None reports it as taking 0ms.
         readers: Sessions to run the checks' statements on concurrently, opened from `port`;
             None runs them on `port`, one at a time. Either way the findings are the same.
+        models: The allowed orchestration models and the sessions their probe agents run on;
+            None skips that check.
     """
 
     def __init__(
@@ -97,12 +103,14 @@ class ValidateArtifacts:
         target: str = "",
         clock: ClockPort | None = None,
         readers: Fanout[ExecutionPort] | None = None,
+        models: ModelCheck | None = None,
     ) -> None:
         self._port = port
         self._catalog = catalog
         self._target = target
         self._clock = clock
         self._readers = readers
+        self._models = models
 
     def run(
         self,
@@ -129,7 +137,9 @@ class ValidateArtifacts:
         query's, runs once, and both read its answer. A compile or row-count finding repeated
         by every view that holds the member is reported once, naming those views. With a
         catalog, the compiled agents
-        and tools are checked against their live objects. The project's severity overrides
+        and tools are checked against their live objects. With a model check, each allowed
+        orchestration model is then run in a throwaway agent; that runs last, after every
+        read it could otherwise slow. The project's severity overrides
         then apply, and strict mode promotes every warning to an error.
 
         Args:
@@ -155,6 +165,7 @@ class ValidateArtifacts:
             SST-VAL218: a distinct range's rows overlap.
             Those of `ObserveLiveObjects`, with a catalog; with `references` and the checks
                 skipped, those of its `references`.
+            Those of `check_orchestration_models`, with a model check.
             Those of `verify_columns`, with `verify_schema` and a catalog.
         """
         found = [*compiled.diagnostics, *_cycle_diagnostics(compiled.rendered)]
@@ -172,6 +183,8 @@ class ValidateArtifacts:
             found.extend(_once_per_member(self._connected_checks(self._readers or Fanout(self._port), views)))
             if self._catalog is not None:
                 found.extend(ObserveLiveObjects(self._catalog, target=self._target).run(compiled))
+            if self._models is not None:
+                found.extend(check_orchestration_models(self._models, compiled, target=self._target))
         if verify_schema and self._catalog is not None:
             found.extend(verify_columns(self._catalog, compiled))
         policy = SeverityPolicy(MappingProxyType(dict(overrides or {})), strict, reaches)
@@ -422,8 +435,9 @@ def _spot_finding(relationship: Relationship, target: Table, rows: tuple[tuple[o
     )
 
 
-# The connected rules, which offline validation skips and reports as skipped.
-CONNECTED_RULES = ("SST-VAL418", "SST-VAL415", "SST-VAL212", "SST-VAL218")
+# The connected rules, which offline validation skips and reports as skipped; SST-VAL551
+# stands for the orchestration-model check.
+CONNECTED_RULES = ("SST-VAL418", "SST-VAL415", "SST-VAL212", "SST-VAL218", "SST-VAL551")
 # Every validation rule in the registry: one per VAL code, the connected rules among them.
 VALIDATION_RULES = tuple(sorted(code for code, spec in ERROR_REGISTRY.items() if spec.subsystem == "VAL"))
 

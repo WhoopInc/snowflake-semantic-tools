@@ -171,8 +171,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "validation.snowflake_syntax_check",
         _B,
-        "Compile expressions against Snowflake during validate and plan. Must be written out, true or false "
-        "(SST-CFG031).",
+        "Compile expressions against Snowflake during validate and plan, and run each allowed orchestration "
+        "model in a throwaway agent (SST-VAL551 to SST-VAL556). Must be written out, true or false (SST-CFG031).",
         default="true",
     ),
     _key(
@@ -596,7 +596,12 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     ),
     _deprecated("deploy", "apply"),
     _key("snowflake", _BLOCK, "Allowlists for Snowflake surfaces the renderer accepts."),
-    _key("snowflake.orchestration_models", _L, "Orchestration models agents may name.", default="[auto]"),
+    _key(
+        "snowflake.orchestration_models",
+        _L,
+        "Orchestration models agents may name; the syntax check runs each one in a throwaway agent.",
+        default="[auto]",
+    ),
     _key(
         "snowflake.tool_types",
         _L,

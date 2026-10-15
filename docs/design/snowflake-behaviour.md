@@ -523,23 +523,41 @@ tool resources.
 [agents/observe.py](../../snowflake_semantic_tools/app/compile/agents/observe.py);
 [the agents guide](../guides/agents.md#skills).
 
-### The orchestration model is not checked
+### The orchestration model is checked only when the agent runs
 
 **Docs say**: `models.orchestration` names the orchestration model, for example
-`auto`, which lets Snowflake choose.
+`auto`, which lets Snowflake choose. The Cortex Agents page lists the supported
+models by cross-region scope.
 
 **Server does**: `CREATE AGENT` accepts any string there, including an embedding
 model, a retired model and a name that is no model at all, and `DESCRIBE AGENT`
-returns it unchanged. The models the agent runtime accepts are listed only in
-the error an `agent:run` returns for a bad one. `SHOW CORTEX BASE MODELS` lists
-every Cortex model and marks none as agent-capable, so it cannot stand in.
+returns it unchanged. A bad model fails only when the agent runs:
+`DATA_AGENT_RUN` returns code `399504`, with "<model> is not an allowed model
+for Agent requests" for a real model agents never accept (`llama3.1-8b`), and
+"<model> is not authorized or not available in your region" for one the account
+cannot reach. Each message lists the models available under a "Diagnostics"
+heading, in a format no document fixes. `SHOW CORTEX BASE MODELS` lists every
+Cortex model with its `lifecycle_status` (`GA`, `PUPR`, `PRPR`, `LEGACY`, `EOL`,
+`INTERNAL`) and marks none as agent-capable, so it cannot stand in for a run.
+Neither matches the docs' table: an account can be offered models the table
+omits, some of them `INTERNAL` or absent from SHOW, and not offered models it
+lists. ACCOUNTADMIN reaches every model, so a run as it proves nothing for
+other roles.
 
-**Evidence**: `Enforced`. `snowflake.orchestration_models`, default `[auto]`, is
-the only guard, and SST-VAL543 refuses a model outside it.
-[test_sst_val543.py](../../tests/codes/val/test_sst_val543.py).
+**Evidence**: `Enforced`. Offline, `snowflake.orchestration_models`, default
+`[auto]`, is the guard, and SST-VAL543 refuses a model outside it. Connected,
+each model in it, `auto` aside, runs once in a TEMPORARY probe agent with no
+tools: SST-VAL551 when the run refuses it, SST-VAL552 to SST-VAL555 for its
+lifecycle, SST-VAL556 when nothing could be learned. Observed on an AWS US
+account in October 2026.
+[test_sst_val543.py](../../tests/codes/val/test_sst_val543.py),
+[test_sst_val551.py](../../tests/codes/val/test_sst_val551.py),
+[test_cortex_models_port.py](../../tests/contract/test_cortex_models_port.py).
 
 **SST depends on it at**:
 [val_agent.py](../../snowflake_semantic_tools/domain/diagnostics/specs/val_agent.py);
+[validate_models.py](../../snowflake_semantic_tools/app/validate_models.py);
+[cortex_models.py](../../snowflake_semantic_tools/adapters/snowflake/connector/cortex_models.py);
 [the configuration reference](../reference/config.md).
 
 ## Cortex extensions and stages

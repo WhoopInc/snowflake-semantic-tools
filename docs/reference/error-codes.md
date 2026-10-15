@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 291 codes
+- [Validation (VAL)](#validation-val) -- 297 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
@@ -3928,6 +3928,76 @@ Fix: rename one of them; it is the conversational handle
 Raised when a deprecated agent still sets an `alias`, which points at a version of it.
 
 Fix: remove the alias, or stop deprecating the agent
+
+### SST-VAL551
+
+**Agents refuse an allowed orchestration model** (error)
+
+`orchestration model '<model>' was refused when an agent ran on it in target '<target>': <detail>`
+
+Raised when connected validation runs a throwaway agent on a model `snowflake.orchestration_models` lists, `auto` aside, and Snowflake refuses the model when the agent runs.
+
+Fix: remove it from snowflake.orchestration_models, or enable it for the role and region
+
+Note: `CREATE AGENT` accepts any model name, so a model agents do not accept fails only when someone asks the agent something. Snowflake keeps no list of the models agents accept: `SHOW CORTEX BASE MODELS` lists models agents refuse, such as embedding models. So SST creates a TEMPORARY agent with no tools and a small budget in the schema of the first agent the project publishes, runs it once with `DATA_AGENT_RUN` as the session's role, and drops it. The detail is the first line of Snowflake's message: 'not an allowed model for Agent requests' for a model agents never accept, 'not authorized or not available in your region' for one the account cannot reach. Run the check as the role that deploys: ACCOUNTADMIN reaches models other roles cannot.
+
+### SST-VAL552
+
+**Allowed orchestration model is not offered to customers** (warning)
+
+`orchestration model '<model>' is not offered to customers: <reason>`
+
+Raised when connected validation finds a model `snowflake.orchestration_models` lists, `auto` aside, marked INTERNAL by `SHOW CORTEX BASE MODELS`, or absent from it, and no agent run refused it.
+
+Fix: rely on it only if Snowflake has enabled it for the account; it may go without notice
+
+Note: Snowsight may offer such a model and an agent may run on it, but Snowflake publishes no lifecycle for it, so it can be withdrawn without the legacy and end-of-life notice a listed model gets.
+
+### SST-VAL553
+
+**Allowed orchestration model is past end-of-life** (error)
+
+`orchestration model '<model>' is past end-of-life (<date>)`
+
+Raised when connected validation finds a model `snowflake.orchestration_models` lists, `auto` aside, whose `SHOW CORTEX BASE MODELS` lifecycle status is EOL.
+
+Fix: remove it from snowflake.orchestration_models and move its agents to a supported model
+
+### SST-VAL554
+
+**Allowed orchestration model is legacy** (warning)
+
+`orchestration model '<model>' is legacy; end-of-life: <date>`
+
+Raised when connected validation finds a model `snowflake.orchestration_models` lists, `auto` aside, whose `SHOW CORTEX BASE MODELS` lifecycle status is LEGACY.
+
+Fix: move its agents to a newer model before end-of-life
+
+Note: After a model's legacy date only accounts that already used it may keep calling it, and after its end-of-life date none may.
+
+### SST-VAL555
+
+**Allowed orchestration model is in preview** (warning)
+
+`orchestration model '<model>' is in <kind>`
+
+Raised when connected validation finds a model `snowflake.orchestration_models` lists, `auto` aside, whose `SHOW CORTEX BASE MODELS` lifecycle status is PUPR or PRPR.
+
+Fix: keep production agents on a GA model
+
+Note: Snowflake does not intend preview models for production workloads.
+
+### SST-VAL556
+
+**Allowed orchestration model was not fully checked** (warning)
+
+`orchestration model '<model>' was not fully checked: <reason>`
+
+Raised when connected validation could not run a throwaway agent on a model `snowflake.orchestration_models` lists, or could not read `SHOW CORTEX BASE MODELS`: the project publishes no agent, or Snowflake refused the CREATE, the run or the SHOW, or the run did not answer within 60 seconds.
+
+Fix: fix what the reason names, such as the role's CREATE AGENT in the first agent's schema, then validate again as the deploying role
+
+Note: An unchecked model is neither accepted nor refused; the reason says what stopped the check.
 
 ### SST-VAL603
 

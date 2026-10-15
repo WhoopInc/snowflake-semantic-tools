@@ -4,6 +4,7 @@
 failures into `SnowflakePortError`. `catalog`, `preflight` (built on `catalog`), `stage`,
 `profile_registry`, `state_table` and `run_lock` each implement one role protocol on that
 session, as `profiler` and `cortex` implement the ones `sst enrich` reads through, and
+`cortex_models` the one connected validation checks orchestration models through, and
 `SnowflakeConnector` assembles them into the one class importers construct. `pool` lends
 parallel workers sibling connectors.
 """
@@ -11,6 +12,7 @@ parallel workers sibling connectors.
 from __future__ import annotations
 
 from snowflake_semantic_tools.adapters.snowflake.connector.cortex import CortexMethods
+from snowflake_semantic_tools.adapters.snowflake.connector.cortex_models import CortexModelsMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.pool import ConnectorPool
 from snowflake_semantic_tools.adapters.snowflake.connector.preflight import PreflightMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.profile_registry import ProfileRegistryMethods
@@ -28,6 +30,7 @@ class SnowflakeConnector(
     RunLockMethods,
     ProfilerMethods,
     CortexMethods,
+    CortexModelsMethods,
 ):
     """Reach Snowflake through one driver connection, implementing every port role.
 
