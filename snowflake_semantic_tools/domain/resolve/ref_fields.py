@@ -17,6 +17,7 @@ from snowflake_semantic_tools.domain.resolve.template import (
     DESCRIPTION,
     FILTER_EXPR,
     METRIC_EXPR,
+    STAGE_PATH,
     TAG_NAME,
     VQR_SQL,
     RefPolicy,
@@ -30,6 +31,7 @@ REF_POLICIES: Mapping[str, RefPolicy] = MappingProxyType(
         "custom_instruction_item": CUSTOM_INSTRUCTION_ITEM,
         "tag_name": TAG_NAME,
         "description": DESCRIPTION,
+        "stage_path": STAGE_PATH,
     }
 )
 
@@ -52,6 +54,10 @@ UNBOUND_POLICIES: Mapping[str, str] = MappingProxyType(
             "which refuses the same calls"
         ),
         "description": "descriptions are rendered as written and never resolved",
+        "stage_path": (
+            "a stage path takes one opening tool() call, which resolve_stage_path resolves against the "
+            "tool catalog rather than through resolve_scalar"
+        ),
     }
 )
 
@@ -63,6 +69,63 @@ def ref_field(field: str) -> RefPolicy:
         KeyError: `field` is not bound.
     """
     return REF_POLICIES[REF_FIELDS[field]]
+
+
+# Every authored field that names a file or a member, by where it is written, with the template
+# functions it takes, the first being the one a bare value is told to use. Most are read through
+# `reference_functions` by `calls.required_call`; a stage path opens with its call
+# (`resolve_stage_path`), and a view's tables, a relationship's endpoints and a view's custom
+# instructions have readers of their own that refuse the same values. docs/guides/references.md
+# lists each, with the fields left literal, and a test keeps the two in step.
+REFERENCE_FIELDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "semantic_view.tables": ("ref", "source"),
+        "semantic_view.columns": ("ref",),
+        "semantic_view.metrics": ("metric",),
+        "semantic_view.relationships": ("relationship",),
+        "semantic_view.custom_instructions": ("custom_instructions",),
+        "semantic_view.config.tags.name": ("tag",),
+        "relationship.left_table": ("ref",),
+        "relationship.right_table": ("ref",),
+        "metric.using_relationships": ("relationship",),
+        "metric.non_additive_dimensions.ref": ("ref",),
+        "verified_query.sql": ("file",),
+        "agent.spec.instructions": ("file",),
+        "agent.spec.tools.semantic_view": ("semantic_view",),
+        "agent.spec.tools.search_service": ("tool",),
+        "agent.spec.tools.identifier": ("tool",),
+        "agent.spec.tools.agent": ("agent",),
+        "agent.spec.tools.stage_path": ("tool",),
+        "agent.spec.skills.source.path": ("skill", "plugin", "extension"),
+        "agent.spec.skills.name": ("skill",),
+        "agent.spec.skills.source.version": ("var",),
+        "agent.config.tags.name": ("tag",),
+        "agent.evals.dataset": ("eval_dataset",),
+        "agent.evals.config": ("eval_config",),
+        "eval_config.metrics.custom": ("eval_metric",),
+        "tool.on": ("ref",),
+        "tool.columns": ("ref",),
+        "tool.body": ("file",),
+        "tool.imports": ("tool",),
+        "plugin.skills": ("skill",),
+        "profile.skills": ("skill",),
+        "profile.plugins": ("plugin",),
+        "profile.commands": ("command",),
+        "profile.hooks": ("hook",),
+        "profile.mcp_servers": ("mcp_server",),
+        "hook.script": ("file",),
+        "command.skill": ("skill",),
+    }
+)
+
+
+def reference_functions(field: str) -> tuple[str, ...]:
+    """Return the template functions the reference field `field` takes, the one to suggest first.
+
+    Raises:
+        KeyError: `field` is not a reference field.
+    """
+    return REFERENCE_FIELDS[field]
 
 
 def check_ref_policies(

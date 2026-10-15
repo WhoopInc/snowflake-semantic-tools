@@ -178,7 +178,7 @@ def _view_metric(metric: MetricDef, relationships: tuple[Relationship, ...], res
     """Build one metric: its non-additive tables first, then its expression, then its window.
 
     Diagnostics:
-        SST-VAL118: when a non-additive dimension's `table:` is not one of the view's tables.
+        SST-VAL118: when the model a non-additive entry's `ref:` names is not one of the view's tables.
 
     Raises:
         ProjectError: A non-additive table is outside the view, or the expression or the window

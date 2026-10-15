@@ -9,7 +9,7 @@ from tests.helpers.diagnostic_filters import coded
 from tests.helpers.reference_project import edited, load, member_file
 
 FILE = member_file("metrics", "line_item_count")
-BEFORE = "    - order_items_to_orders"
+BEFORE = "    - \"{{ relationship('order_items_to_orders') }}\""
 
 
 def test_sst_ref029_fires(tmp_path: Path) -> None:

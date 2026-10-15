@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile.agents.context import AgentCompileContext
@@ -24,6 +24,7 @@ from snowflake_semantic_tools.domain.model.agent import KNOWN_AGENT_TOOL_TYPES, 
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember, ToolOwnership
+from snowflake_semantic_tools.domain.resolve.stage_path import resolve_stage_path
 from snowflake_semantic_tools.domain.validate.agent_tool import (
     misplaced_keys,
     overrides,
@@ -80,12 +81,14 @@ def resolve_tool(
         SST-VAL016: an Analyst tool's semantic view is one the project declares and does not
             publish, because it is disabled.
         SST-REF011: an Analyst tool's semantic view is not one that compiled.
-        SST-VAL521: a Cortex Search or generic tool has no name, or names no tool member.
+        SST-VAL521: a Cortex Search or generic tool has no name, or names no tool member; or an
+            agent toolset names neither an agent nor a tool member.
         SST-REF010: the tool member a tool names does not resolve (from the tool catalog).
         SST-REF020: the tool member is of a type the tool cannot use.
         SST-REF018: a referenced tool member has no relation for the target (from the catalog).
         SST-REF019: a referenced tool member's relation does not parse (from the catalog).
         SST-VAL522: a Cortex Search tool declares half of its document-preview pair.
+        Every code `resolve_stage_path` lists, for a Cortex Search tool's `stage_path`.
         SST-VAL524: a Cortex Search tool's column descriptor is malformed.
         SST-REF050, SST-REF015, SST-REF008, SST-VAL622: a Cortex Search tool's own column is not
             what its member's columns are (see `search_tool_columns`).
@@ -169,6 +172,20 @@ def _search(
     if relation is None:
         return None
     name = authored.name or ""
+    if authored.stage_path is not None:
+        stage_path = resolve_stage_path(
+            authored.stage_path,
+            context.tools,
+            lambda member: context.tool_target(member.name),
+            authored.origin,
+            field=f"{name}.stage_path",
+            artifact=agent.name,
+            subject=agent.key,
+        )
+        if isinstance(stage_path, Diagnostic):
+            diagnostics.append(stage_path)
+            return None
+        authored = replace(authored, stage_path=stage_path)
     authored, own_columns, column_problems = search_tool_columns(agent, authored, name, backing)
     diagnostics.extend(column_problems)
     resources = _search_resources(authored, backing, relation, warehouse, context.query_timeout, own_columns)
@@ -278,12 +295,13 @@ def _backing(
 def _delegate(
     agent: AgentModel, authored: AgentTool, context: AgentCompileContext, diagnostics: list[Diagnostic]
 ) -> _Resolution | None:
-    """An agent toolset: another agent of this project by `agent()`, or an `agent` tool member by its name.
+    """An agent toolset: another agent of this project by `agent()`, or an `agent` tool member by `tool()`.
 
     Snowflake unions the named agent's tools into this agent's at run time, so the resources
     are that agent's name alone. An agent reached by `agent()` must publish first, so it is a
-    dependency. A member of another type drops the tool, and so does a member that resolves
-    to no relation; for a defined member, which has none, nothing reports it.
+    dependency. A member, written `identifier: "{{ tool('<name>') }}"`, of another type drops
+    the tool, and so does a member that resolves to no relation; for a defined member, which
+    has none, nothing reports it. A toolset that names neither is reported.
     """
     name = authored.name or ""
     resolution: _Resolution | None = None
@@ -298,8 +316,8 @@ def _delegate(
                 {"agent_name": target.sql},
                 (artifact_key("agent", authored.agent_ref.casefold()),),
             )
-    elif name:
-        backing, problems = context.tools.resolve(authored.member_reference or name)
+    elif authored.backing:
+        backing, problems = context.tools.resolve(authored.backing)
         diagnostics.extend(problems)
         if backing is not None and backing.type not in _AGENTS:
             diagnostics.append(
@@ -318,6 +336,11 @@ def _delegate(
             if relation is not None:
                 description = authored.description or backing.description or ""
                 resolution = _Resolution(name, description, {"agent_name": relation.sql}, external=True)
+    else:
+        label = name or authored.type
+        diagnostics.append(
+            D("SST-VAL521", artifact=agent.name, name=label, field="agent or identifier", subject=agent.key)
+        )
     if resolution is not None:
         diagnostics.append(D("SST-VAL528", artifact=agent.name, name=resolution.name, subject=agent.key))
     return resolution

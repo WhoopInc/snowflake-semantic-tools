@@ -6,20 +6,23 @@ the wrong type as its empty sentinel without a word. A checked reader (`checked_
 (SST-PRS003) into the caller's diagnostics list, and `report_unknown_keys` reports the keys a
 parser does not read (SST-PRS004). No reader raises. `project_relative` is the path a
 diagnostic names a file by, `refused` reports a file a folder walk must not read, and
-`sibling_within` says why a file a discovered document names may not be read.
+`resolve_file` reads the one file a `{{ file('<path>') }}` call names, for every field that
+takes one.
 """
 
 from __future__ import annotations
 
 import posixpath
 from collections.abc import Callable, Iterable
-from pathlib import Path, PurePosixPath
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
-from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, single_template_call
-from snowflake_semantic_tools.domain.resolve.calls import syntax_problem
+from snowflake_semantic_tools.domain.parse.template import TemplateCall
+from snowflake_semantic_tools.domain.resolve.calls import required_call
+from snowflake_semantic_tools.domain.resolve.ref_fields import reference_functions
 
 
 def optional_string(value: object) -> str | None:
@@ -95,7 +98,7 @@ def checked_strings(
 
 def member_names(
     value: object,
-    function: str,
+    reference: str,
     sink: list[Diagnostic],
     *,
     field: str,
@@ -105,38 +108,27 @@ def member_names(
 ) -> tuple[str, ...]:
     """Read a member list whose every entry is one `{{ <function>('<name>') }}` call, as the names.
 
+    Args:
+        reference: The list's entry in `REFERENCE_FIELDS`, which names the function it takes.
+
     Returns:
         The names, in order and with any repeats; an entry that is not that call is left out.
 
     Diagnostics:
         SST-PRS003: the value is present but not a list of strings; it reads as `()`.
-        SST-LOD004, SST-REF033, SST-REF003: an entry's template does not parse.
-        SST-REF049: an entry is a bare name, or a call of another function.
+        Every code `required_call` lists, for an entry that is not one call of the function.
     """
     names: list[str] = []
-    expected = f"a list of {{{{ {function}('<name>') }}}} calls"
+    functions = reference_functions(reference)
+    expected = f"a list of {{{{ {functions[0]}('<name>') }}}} calls"
     for index, entry in enumerate(
         checked_strings(value, sink, field=field, artifact=artifact, origin=origin, subject=subject, expected=expected)
     ):
-        try:
-            call = single_template_call(entry, function)
-        except TemplateSyntaxError as exc:
-            sink.append(syntax_problem(exc, origin.file, subject=subject))
-            continue
-        if call is None or len(call.args) != 1:
-            sink.append(
-                D(
-                    "SST-REF049",
-                    artifact=artifact,
-                    field=f"{field}[{index}]",
-                    found=entry,
-                    function=function,
-                    origin=origin,
-                    subject=subject,
-                )
-            )
-            continue
-        names.append(call.args[0])
+        found = required_call(entry, functions, origin, field=f"{field}[{index}]", artifact=artifact, subject=subject)
+        if isinstance(found, Diagnostic):
+            sink.append(found)
+        else:
+            names.append(found.args[0])
     return tuple(names)
 
 
@@ -260,26 +252,107 @@ def refused(project_dir: Path, path: Path, diagnostics: list[Diagnostic], *, sub
     return True
 
 
-# The reason `sibling_within` refuses a path outside the project, which a caller may name apart.
-OUTSIDE_PROJECT = "it resolves outside the project"
+@dataclass(frozen=True, slots=True)
+class Sidecar:
+    """The one file a `{{ file('<path>') }}` call names, read once.
+
+    Attributes:
+        path: The file, relative to the project root, with its `..` taken away.
+        content: Its bytes, never only whitespace; valid UTF-8 when it was read as text.
+    """
+
+    path: str
+    content: bytes
+
+    @property
+    def text(self) -> str:
+        """Return the content as text; only for a sidecar `resolve_file` read as text."""
+        return self.content.decode("utf-8")
 
 
-def sibling_within(document: Path, document_path: str, named: str) -> tuple[Path, str | None]:
-    """Return the file `named`, relative to a discovered document, and why SST refuses to read it.
+def file_call(
+    value: str, origin: Origin, *, field: str, artifact: str, subject: str | None = None
+) -> TemplateCall | Diagnostic:
+    """Read a field that names a sidecar: the one `{{ file('<path>') }}` call it must be.
 
-    The project is the folder `document_path` -- the document's project-relative path -- is
-    relative to, found from `document`, its resolved path. `named` is joined to the document's
-    folder and its `..` taken away as written, so the path returned is the one checked, and the
-    one to read. It is refused as `walk_refusal` refuses a path: when it, or a folder between the
-    project and it, is a symbolic link, or it lies outside the project.
+    Diagnostics:
+        Every code `required_call` lists, for the `file()` function.
+    """
+    return required_call(value, ("file",), origin, field=field, artifact=artifact, subject=subject)
+
+
+def resolve_file(
+    project_dir: Path,
+    declaring_file: str,
+    call: TemplateCall,
+    *,
+    origin: Origin,
+    subject: str | None = None,
+    text: bool = True,
+) -> Sidecar | Diagnostic:
+    """Read the file one `file()` call names, by the rules every sidecar follows, exactly once.
+
+    The path is relative to the folder of the file that declares the call, and its `..` are
+    taken away as written. It must stay inside the project without passing through a link: a
+    link is refused wherever it is, even one that points inside the project.
+
+    Args:
+        declaring_file: The file holding the call, relative to the project root.
+        call: A `file()` call with one argument, as `file_call` returns it.
+        text: Whether the file must be UTF-8 text; a hook script is read as bytes.
 
     Returns:
-        The file to read, and the reason it may not be, worded to follow "could not read
-        <path>: " in SST-PRT009; None when it may.
+        The file read; or the one diagnostic that refuses it.
+
+    Diagnostics:
+        SST-REF027: the path is absolute, or climbs out of the project.
+        SST-PRT009: the file, or a folder between the project and it, is a symbolic link.
+        SST-REF014: the path names no file.
+        SST-LOD018: the file is there and cannot be read.
+        SST-LOD006: a text sidecar is not UTF-8.
+        SST-LOD019: the file holds only whitespace.
     """
-    project = document.parents[len(PurePosixPath(document_path).parts) - 1]
-    relative = posixpath.normpath(posixpath.join(posixpath.dirname(document_path), named))
-    path = project / relative
-    if posixpath.isabs(relative) or relative == ".." or relative.startswith("../"):
-        return path, OUTSIDE_PROJECT
-    return path, walk_refusal(project, path)
+    requested = call.args[0]
+    relative = posixpath.normpath(posixpath.join(posixpath.dirname(declaring_file), requested))
+    if posixpath.isabs(requested) or relative == ".." or relative.startswith("../"):
+        return D("SST-REF027", path=requested, origin=origin, subject=subject)
+    path = project_dir / relative
+    refusal = walk_refusal(project_dir, path)
+    if refusal is not None:
+        return D("SST-PRT009", path=relative, detail=refusal, origin=origin, subject=subject)
+    if not path.is_file():
+        return D("SST-REF014", path=requested, origin=origin, subject=subject)
+    try:
+        content = path.read_bytes()
+    except OSError:
+        return D("SST-LOD018", file=declaring_file, path=requested, origin=origin, subject=subject)
+    if text:
+        try:
+            content.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            return D("SST-LOD006", file=relative, offset=exc.start, origin=Origin(relative), subject=subject)
+    if not content.strip():
+        return D("SST-LOD019", path=requested, file=declaring_file, origin=origin, subject=subject)
+    return Sidecar(relative, content)
+
+
+def read_sidecar(
+    project_dir: Path,
+    declaring_file: str,
+    value: str,
+    *,
+    origin: Origin,
+    field: str,
+    artifact: str,
+    subject: str | None = None,
+    text: bool = True,
+) -> Sidecar | Diagnostic:
+    """Read the sidecar a field names: `file_call` on its value, then `resolve_file` on the call.
+
+    Diagnostics:
+        Every code `file_call` and `resolve_file` list.
+    """
+    call = file_call(value, origin, field=field, artifact=artifact, subject=subject)
+    if isinstance(call, Diagnostic):
+        return call
+    return resolve_file(project_dir, declaring_file, call, origin=origin, subject=subject, text=text)

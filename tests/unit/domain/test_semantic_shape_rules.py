@@ -27,27 +27,35 @@ def test_a_metric_needs_a_string_expr_and_lists_of_the_right_types() -> None:
     assert _metric_findings(
         {"name": "m", "expr": "x", "using_relationships": "a", "access_modifier": "public_access"}
     ) == [("SST-PRS003", "using_relationships")]
-    assert _metric_findings({"name": "m", "expr": "x", "using_relationships": ["a"]}) == []
+    assert _metric_findings({"name": "m", "expr": "x", "using_relationships": ["{{ relationship('a') }}"]}) == []
+    # A bare name is refused, naming the function to write instead.
+    assert _metric_findings({"name": "m", "expr": "x", "using_relationships": ["a", "{{ metric('a') }}"]}) == [
+        ("SST-REF050", "using_relationships[0]"),
+        ("SST-REF041", "using_relationships[1]"),
+    ]
 
 
-def test_each_non_additive_entry_names_a_dimension_a_bare_table_and_an_allowed_sort() -> None:
+def test_each_non_additive_entry_names_its_column_with_one_ref_and_an_allowed_sort() -> None:
     assert _metric_findings({"name": "m", "expr": "x", "non_additive_dimensions": "as_of"}) == [
         ("SST-PRS003", "non_additive_dimensions")
     ]
     entries = [
         "as_of",
-        {"dimension": " "},
-        {"dimension": "as_of", "table": "{{ ref('b') }}", "sort_direction": "up", "null_order": 1},
-        {"dimension": "as_of", "table": "balances", "sort_direction": "descending", "null_order": "last"},
-        {"dimension": "as_of", "table": 3},
+        {"sort_direction": "descending"},
+        {"ref": "{{ ref('b', 'as_of') }}", "sort_direction": "up", "null_order": 1},
+        {"ref": "{{ ref('balances', 'as_of') }}", "sort_direction": "descending", "null_order": "last"},
+        {"ref": "as_of"},
+        {"ref": "{{ ref('balances') }}"},
+        {"ref": "{{ metric('balances') }}"},
     ]
     assert _metric_findings({"name": "m", "expr": "x", "non_additive_dimensions": entries}) == [
         ("SST-PRS003", "non_additive_dimensions[0]"),
-        ("SST-PRS002", "non_additive_dimensions[1].dimension"),
-        ("SST-PRS003", "non_additive_dimensions[2].table"),
+        ("SST-PRS002", "non_additive_dimensions[1].ref"),
         ("SST-PRS103", "non_additive_dimensions[2].sort_direction"),
         ("SST-PRS103", "non_additive_dimensions[2].null_order"),
-        ("SST-PRS003", "non_additive_dimensions[4].table"),
+        ("SST-REF050", "non_additive_dimensions[4].ref"),
+        ("SST-PRS003", "non_additive_dimensions[5].ref"),
+        ("SST-REF041", "non_additive_dimensions[6].ref"),
     ]
 
 
@@ -64,7 +72,13 @@ def test_a_window_is_a_mapping_of_reference_lists_an_order_and_a_frame() -> None
         ],
         "frame": "ROWS 1",
     }
-    node = {"name": "m", "expr": "x", "window": window, "using_relationships": ["r"], "non_additive_dimensions": []}
+    node = {
+        "name": "m",
+        "expr": "x",
+        "window": window,
+        "using_relationships": ["{{ relationship('r') }}"],
+        "non_additive_dimensions": [],
+    }
     assert _metric_findings(node) == [
         ("SST-PRS014", "window"),
         ("SST-PRS003", "window.partition_by_excluding"),

@@ -54,6 +54,7 @@ def test_every_key_the_loader_does_not_read_is_named_by_what_it_is() -> None:
         ("SST-VAL403", "semantic_view:w", "w.filters[0]"),
         ("SST-VAL402", "metric:m", "m"),
         ("SST-PRS020", "metric:m", "non_additive_by"),
+        ("SST-PRS126", "metric:m", "non_additive_dimensions[0].dimension"),
         ("SST-PRS020", "metric:m", "non_additive_dimensions[0].order"),
         ("SST-PRS020", "metric:m", "non_additive_dimensions[0].nulls"),
         ("SST-PRS022", "metric:m", "window.frames"),
@@ -64,7 +65,7 @@ def test_every_key_the_loader_does_not_read_is_named_by_what_it_is() -> None:
         ("SST-VAL406", "filter:f", "f"),
         ("SST-PRS021", "relationship:r", None),
     ]
-    assert found[0].origin.line == 4 and found[11].origin.line == 9  # type: ignore[union-attr]
+    assert found[0].origin.line == 4 and found[12].origin.line == 9  # type: ignore[union-attr]
     assert found[2].origin.line is None  # type: ignore[union-attr]
 
 

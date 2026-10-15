@@ -455,8 +455,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Hook definition is incomplete or ambiguous",
         "hook '{artifact}': {detail}",
-        "declare event, command, and exactly one script, naming it with script: when the folder holds several files",
-        condition=("a hook folder has no manifest or both spellings, or is not exactly one event/command/script"),
+        "declare event and command, and name the script with script: \"{{ file('<path>') }}\" "
+        "when the folder holds several files",
+        condition=(
+            "a hook folder has no manifest or both spellings, is not exactly one event/command, or, with "
+            "no `script:`, holds no script or more than one"
+        ),
+        note="A `script:` that names no file is `SST-REF014`; one that is not a `file()` call is `SST-REF050`.",
     ),
     spec(
         "SST-VAL853",

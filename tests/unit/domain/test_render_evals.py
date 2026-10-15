@@ -46,7 +46,6 @@ def dataset() -> EvalDataset:
     return EvalDataset(
         ORIGIN,
         "agents/a/evals/dataset.yml",
-        "a",
         "review only",
         (
             EvalQuestion(
@@ -71,7 +70,6 @@ def config() -> EvalConfig:
     return EvalConfig(
         ORIGIN,
         "agents/a/evals/config.yml",
-        "a",
         EvalDatasetConfig(
             "auto",
             "EVAL_{{ agent | upper }}_{{ sha7 }}",
@@ -162,7 +160,6 @@ def test_alias_and_explicit_version_are_preserved_in_repeat_run_yaml() -> None:
         EvalConfig(
             ORIGIN,
             "config.yml",
-            "a",
             None,
             (),
             (),
@@ -179,14 +176,13 @@ def test_alias_and_explicit_version_are_preserved_in_repeat_run_yaml() -> None:
 
 
 def test_eval_rendering_covers_empty_dataset_ground_truth_and_optional_metric_values() -> None:
-    empty = EvalDataset(ORIGIN, "dataset.yml", "a", None, (EvalQuestion(ORIGIN, None, None),))
+    empty = EvalDataset(ORIGIN, "dataset.yml", None, (EvalQuestion(ORIGIN, None, None),))
     assert json.loads(render_dataset_payload(empty)) == [{"ground_truth": {}, "input_query": ""}]
     assert "INSERT INTO" not in render_source_table_sql("[]\n", QualifiedName.parse("DB.S.EMPTY"))
 
     partial_truth = EvalDataset(
         ORIGIN,
         "dataset.yml",
-        "a",
         None,
         (
             EvalQuestion(
@@ -207,7 +203,6 @@ def test_eval_rendering_covers_empty_dataset_ground_truth_and_optional_metric_va
     output_only = EvalDataset(
         ORIGIN,
         "dataset.yml",
-        "a",
         None,
         (EvalQuestion(ORIGIN, "q", EvalGroundTruth(ORIGIN, None, "expected")),),
     )

@@ -25,7 +25,9 @@ VIEW = """  - name: v
 
 
 def test_sst_val332_fires(tmp_path: Path) -> None:
-    project = with_view(tmp_path, VIEW + "    exclude_relationships:\n      - order_items_to_orders\n")
+    project = with_view(
+        tmp_path, VIEW + "    exclude_relationships:\n      - \"{{ relationship('order_items_to_orders') }}\"\n"
+    )
     [diagnostic] = reported(project, "SST-VAL332")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
@@ -45,7 +47,8 @@ def test_sst_val332_silent(tmp_path: Path) -> None:
     project = with_view(
         tmp_path,
         VIEW
-        + "    exclude_metrics:\n      - line_item_count\n    exclude_relationships:\n      - order_items_to_orders\n",
+        + "    exclude_metrics:\n      - \"{{ metric('line_item_count') }}\"\n"
+        + "    exclude_relationships:\n      - \"{{ relationship('order_items_to_orders') }}\"\n",
     )
     assert reported(project, "SST-VAL332") == []
     assert "V" in view_names(project)

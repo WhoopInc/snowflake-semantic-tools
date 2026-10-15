@@ -19,6 +19,7 @@ from snowflake_semantic_tools.domain.render.tool import (
     search_service_statement,
     tool_render_checks,
 )
+from snowflake_semantic_tools.domain.resolve.stage_path import resolve_stage_path
 from snowflake_semantic_tools.domain.sql import keyword, literal, qname, sql
 from snowflake_semantic_tools.domain.validate.tool import rebuilt_source, reference_ddl
 
@@ -159,6 +160,7 @@ class CompileTools:
         although it is only referenced is dropped.
 
         Diagnostics:
+            Every code `resolve_stage_path` lists, for a routine's `imports:` entry.
             SST-RND040, SST-RND041, SST-RND042: as `tool_render_checks` reports them.
             SST-INT902: rendering a member raised KeyError, TypeError or ValueError.
             SST-VAL612: a referenced member was rendered.
@@ -192,7 +194,11 @@ class CompileTools:
 
     def _compile(self, member: ToolMember) -> tuple[CompiledTool | None, tuple[Diagnostic, ...]]:
         placement = self._placements.get(member.name.casefold(), self._default)
-        effective = _defaults(member, placement)
+        imports = tuple(self._import(member, path) for path in member.imports)
+        refused_imports = tuple(path for path in imports if isinstance(path, Diagnostic))
+        if refused_imports:
+            return None, refused_imports
+        effective = replace(_defaults(member, placement), imports=tuple(str(path) for path in imports))
         target = QualifiedName.from_parts(placement.database, placement.schema, member.name)
         source = (
             QualifiedName.parse(self._dbt_relations[member.on_model])
@@ -203,6 +209,22 @@ class CompileTools:
         if refused:
             return None, refused
         return CompiledTool(effective, render_tool(effective, target, source), placement.settings), ()
+
+    def _import(self, member: ToolMember, path: str) -> str | Diagnostic:
+        """Resolve one `imports:` entry: a stage SST declares by `tool()`, else an external path as written.
+
+        Diagnostics:
+            Every code `resolve_stage_path` lists.
+        """
+        subject = artifact_key("tool", member.name.casefold())
+        return resolve_stage_path(
+            path, self._catalog, self._location, member.origin, field="imports", artifact=subject, subject=subject
+        )
+
+    def _location(self, member: ToolMember) -> QualifiedName:
+        """Return where a defined member publishes: its placement, else the default."""
+        placement = self._placements.get(member.name.casefold(), self._default)
+        return QualifiedName.from_parts(placement.database, placement.schema, member.name)
 
 
 def _defaults(member: ToolMember, placement: ToolPlacement) -> ToolMember:

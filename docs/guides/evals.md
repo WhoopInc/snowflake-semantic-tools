@@ -31,12 +31,14 @@ evals:
 ```
 
 Both keys are required (`SST-PRS002`), and each is one reference call: a path or
-any other value is an error (`SST-REF047`). A name that no file of that kind in
+any other bare value is an error naming the function to write (`SST-REF050`),
+and a call of another function `SST-REF041`. A name that no file of that kind in
 the agent's own `evals/` folder declares is `SST-REF048`; another agent's files
-are not searched. A linked file or folder is refused (`SST-PRT009`). Each file
-names the agent it belongs to with `agent:` (`SST-REF012` otherwise). A file the
-agent does not name is still validated, against the named file of the other
-kind, so a folder can hold the next config before the agent switches to it.
+are not searched. A linked file or folder is refused (`SST-PRT009`). A file
+names no agent: the folder it sits in says whose eval it is, and an `agent:`
+key is an error (`SST-PRS126`). A file the agent does not name is still
+validated, against the named file of the other kind, so a folder can hold the
+next config before the agent switches to it.
 
 Eval objects always publish into their agent's schema, so an eval and the agent
 it evaluates move between targets together. Neither eval file may set
@@ -46,7 +48,6 @@ it evaluates move between targets together. Neither eval file may set
 ## The dataset
 
 ```yaml
-agent: sales_analyst
 name: sales_questions
 description: Order and revenue questions the agent must route correctly.
 questions:
@@ -126,7 +127,6 @@ are checked against them.
 ## The run configuration
 
 ```yaml
-agent: sales_analyst
 name: sales_nightly
 config:
   agent_version: committed

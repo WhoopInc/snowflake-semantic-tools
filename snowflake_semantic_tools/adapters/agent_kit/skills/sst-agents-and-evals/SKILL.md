@@ -57,7 +57,11 @@ spec:
   inherits, any other key is `SST-CFG053`, and a key with no value is `SST-CFG054`. Never
   write these at the top level or under `spec:` (`SST-PRS126`).
 - `instructions` is a map of `orchestration`, `response`, and `sample_questions`; never a
-  bare string. `{{ file('<path>') }}` inlines a Markdown file relative to the agent's folder.
+  bare string. `{{ file('<path>') }}` inlines a Markdown file relative to the agent file's
+  folder; an absolute path or one leaving the project is `SST-REF027`, a symbolic link
+  `SST-PRT009`.
+- A tag under `config.tags` names its tag by the `tags:` block of `sst_config.yml`:
+  `- {name: "{{ tag('cost_center') }}", value: sales}`. A bare name is `SST-REF050`.
 - Each tool's `description` is what the agent reads to pick it: say when to use it, and when
   not to.
 - Load a project skill with `{{ skill('<name>') }}` and write neither `name:` (`SST-VAL540`),
@@ -68,7 +72,11 @@ spec:
 ## Tool members
 
 A search, generic, or toolset tool calls a tool member, named with one argument:
-`search_service: "{{ tool('<name>') }}"` or `identifier: "{{ tool('<name>') }}"`. A member
+`search_service: "{{ tool('<name>') }}"` or `identifier: "{{ tool('<name>') }}"`; an
+`agent_toolset` over an `agent` member writes `identifier:` too, since its `name:` is only the
+tool's own label. A search tool's `stage_path` names a stage member as
+`"{{ tool('<stage>') }}/<path>"`, and so does a routine's `imports:` entry; a stage SST does
+not declare stays literal, `@<database>.<schema>.<stage>/<path>`. A member
 is one file under `project.tools_dir`, in any folder, with a `tool:` root (a `tools:` root
 holds a list of them):
 
@@ -101,7 +109,7 @@ tool:
 ## Plugins and profiles
 
 A plugin (`plugins/<name>/plugin.yml`) and a profile (`profiles/<name>/profile.yml`) list their
-members as reference calls, one per entry, never bare names (`SST-REF049`):
+members as reference calls, one per entry, never bare names (`SST-REF050`):
 
 ```yaml
 skills:
@@ -117,7 +125,10 @@ hooks:
 ```
 
 A plugin's members are only `skills:`. A command is named by its path under `commands/` without
-`.md`.
+`.md`. A command's frontmatter names the skill it runs as `skill: "{{ skill('<name>') }}"`,
+which SST publishes as the bare name Desktop reads. A hook's `script:` is
+`"{{ file('<path>') }}"`, relative to its `hook.yml`; without one, its folder must hold exactly
+one other file.
 
 A skill (in its `SKILL.md` frontmatter), a plugin, and a profile set their own settings under
 `config:`: the `skills:`, `plugins:`, or `profiles:` `+` keys of `sst_config.yml` without the `+`.
@@ -138,7 +149,8 @@ evals:
   config: "{{ eval_config('sales_ci') }}"
 ```
 
-- Never write a path there (`SST-REF047`). A name resolves only in this agent's `evals/` folder
+- Never write a path there (`SST-REF050`), and write no `agent:` in the files themselves
+  (`SST-PRS126`): the folder says whose eval it is. A name resolves only in this agent's `evals/` folder
   (`SST-REF048`), and is unique per kind there (`SST-VAL765`).
 - An eval config's own settings go under `config:`: the `evals:` `+` keys without the `+`, such
   as `agent_version`, `eval_tier`, `retry`, `baseline_runs`, and `retention`. Written at the top

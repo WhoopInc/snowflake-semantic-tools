@@ -13,6 +13,7 @@ from snowflake_semantic_tools.adapters.yaml.documents import load_documents
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.file_reads import _verified_query_diagnostics
+from snowflake_semantic_tools.adapters.yaml.semantic.readers import load_verified_queries
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import _relationship_parse_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.target import _semantic_view_target
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY
@@ -211,11 +212,10 @@ def test_vq_sources_and_relationship_conditions_fail_with_registered_codes(tmp_p
     )
     documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
 
-    assert [diagnostic.code for diagnostic in _verified_query_diagnostics(documents)] == [
-        "SST-PRS002",
-        "SST-REF014",
-        "SST-LOD019",
-    ]
+    assert [diagnostic.code for diagnostic in _verified_query_diagnostics(documents)] == ["SST-PRS002"]
+    # The file a `sql:` names is read once, by the loader, which reports what it cannot use.
+    queries, read = load_verified_queries(documents, tmp_path, "semantic_models")
+    assert queries == () and [diagnostic.code for diagnostic in read] == ["SST-REF014", "SST-LOD019"]
     assert [
         diagnostic.code for diagnostic in _relationship_parse_diagnostics(documents, tmp_path, "semantic_models")
     ] == ["SST-VAL201"]
@@ -347,7 +347,7 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
         "    expr: COUNT(*)\n"
         "    visibility: private\n"
         "    non_additive_by: [product_id]\n"
-        "    non_additive_dimensions:\n      - dimension: product_id\n        grain: day\n"
+        "    non_additive_dimensions:\n      - ref: \"{{ ref('products', 'product_id') }}\"\n        grain: day\n"
         "        order: desc\n        nulls: first\n"
         "    default_aggregation: sum\n",
         encoding="utf-8",
@@ -497,9 +497,8 @@ def test_non_additive_entries_are_shape_checked(tmp_path: Path) -> None:
         "    non_additive_dimensions: product_id\n"
         "  - name: bad_entries\n    tables: [products]\n    expr: COUNT(*)\n    non_additive_dimensions:\n"
         "      - product_id\n"
-        "      - table: products\n"
-        "      - dimension: product_id\n"
-        "        table: \"{{ ref('products') }}\"\n"
+        "      - sort_direction: descending\n"
+        "      - ref: product_id\n"
         "        sort_direction: desc\n"
         "        null_order: [first]\n",
         encoding="utf-8",
@@ -508,8 +507,8 @@ def test_non_additive_entries_are_shape_checked(tmp_path: Path) -> None:
     assert [(item.code, item.subject, item.context["field"]) for item in metric_parse_diagnostics(documents)] == [
         ("SST-PRS003", "metric:not_a_list", "non_additive_dimensions"),
         ("SST-PRS003", "metric:bad_entries", "non_additive_dimensions[0]"),
-        ("SST-PRS002", "metric:bad_entries", "non_additive_dimensions[1].dimension"),
-        ("SST-PRS003", "metric:bad_entries", "non_additive_dimensions[2].table"),
+        ("SST-PRS002", "metric:bad_entries", "non_additive_dimensions[1].ref"),
+        ("SST-REF050", "metric:bad_entries", "non_additive_dimensions[2].ref"),
         ("SST-PRS103", "metric:bad_entries", "non_additive_dimensions[2].sort_direction"),
         ("SST-PRS103", "metric:bad_entries", "non_additive_dimensions[2].null_order"),
     ]
@@ -521,8 +520,8 @@ def test_window_blocks_are_shape_checked(tmp_path: Path) -> None:
     (tmp_path / "semantic_models" / "metrics" / "windows.yml").write_text(
         "snowflake_metrics:\n"
         f"  - name: not_a_mapping\n{head}    window: [product_id]\n"
-        f"  - name: exclusive\n{head}    using_relationships: [a_to_b]\n"
-        "    non_additive_dimensions: [{dimension: product_id}]\n"
+        f"  - name: exclusive\n{head}    using_relationships: [\"{{{{ relationship('a_to_b') }}}}\"]\n"
+        "    non_additive_dimensions: [{ref: \"{{ ref('products', 'product_id') }}\"}]\n"
         "    window:\n"
         "      partition_by: product_id\n"
         "      partition_by_excluding: [\"{{ ref('products', 'product_id') }}\"]\n"
@@ -681,8 +680,7 @@ def test_a_non_additive_table_outside_the_view_fails_the_view(tmp_path: Path) ->
         "    description: Products.\n"
         "    expr: \"COUNT({{ ref('products', 'product_id') }})\"\n"
         "    non_additive_dimensions:\n"
-        "      - table: calendar\n"
-        "        dimension: month\n",
+        "      - ref: \"{{ ref('calendar', 'month') }}\"\n",
         encoding="utf-8",
     )
     project = load_project(tmp_path, manifest_path=manifest_path)

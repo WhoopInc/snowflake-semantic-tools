@@ -204,8 +204,8 @@ def _structure_diagnostics(metric: MetricDef) -> list[Diagnostic]:
 def _non_additive_diagnostics(metric: MetricDef, models: Mapping[str, DbtModel]) -> list[Diagnostic]:
     """Report each non-additive dimension that is not a dimension of its table.
 
-    An entry without `table:` names a dimension of the metric's own table, so on a metric of
-    more than one table it never resolves.
+    An entry with no table, which only a record built in code can be, names a dimension of the
+    metric's own table, so on a metric of more than one table it never resolves.
 
     Diagnostics:
         SST-VAL118: when an entry names no column, an excluded column, or one that is not a dimension.

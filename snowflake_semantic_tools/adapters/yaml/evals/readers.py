@@ -180,6 +180,19 @@ def string_tuple(
     return checked_strings(value, diagnostics, field=field, artifact=origin.file, origin=origin)
 
 
+def removed_agent_key(source_file: str, parsed: ParsedYaml) -> tuple[Diagnostic, ...]:
+    """Report an eval file's `agent:`, which no longer says anything its folder does not.
+
+    Diagnostics:
+        SST-PRS126: the file writes `agent:`.
+    """
+    if "agent" not in parsed.tree:
+        return ()
+    reason = "an eval belongs to the agent whose evals/ folder holds it, so its files name none"
+    origin = origin_at(parsed, ("agent",), source_file)
+    return (D("SST-PRS126", origin=origin, artifact=source_file, field="agent", reason=reason),)
+
+
 def origin_at(parsed: ParsedYaml, path: tuple[str | int, ...], source_file: str) -> Origin:
     """Return where the node at `path` was written, or the file's first line when not recorded."""
     position = parsed.line_index.get(path)

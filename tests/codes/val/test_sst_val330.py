@@ -38,10 +38,14 @@ VIEW = """  - name: v
             "{{ ref('customers', 'no_such_column') }}",
             "columns names column 'customers.no_such_column', which does not exist on 'customers'",
         ),
-        ("columns", "customer_id", "columns names column 'customer_id', which is not a two-argument ref() call"),
+        (
+            "columns",
+            "{{ ref('customers') }}",
+            "columns names column '{{ ref('customers') }}', which is not a two-argument ref() call",
+        ),
         (
             "exclude_relationships",
-            "no_such_relationship",
+            "{{ relationship('no_such_relationship') }}",
             "exclude_relationships names relationship 'no_such_relationship', which does not exist",
         ),
     ],

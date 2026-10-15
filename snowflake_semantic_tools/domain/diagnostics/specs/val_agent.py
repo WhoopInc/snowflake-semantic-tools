@@ -169,13 +169,18 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL521",
         Severity.ERROR,
-        "Search or generic tool omits a required key",
+        "Search, generic or toolset tool omits a required key",
         "agent '{artifact}': tool '{name}' omits {field}",
-        "declare the tool's name, and its search_service or, for a generic tool, its identifier",
+        "declare the tool's name, and its search_service or, for a generic tool, its identifier; "
+        "an agent toolset names its agent with agent() or its tool member with identifier: tool()",
         condition=(
-            "a cortex_search tool omits `name` or `search_service`, or a generic tool omits `name` or `identifier`"
+            "a cortex_search tool omits `name` or `search_service`, a generic tool omits `name` or "
+            "`identifier`, or an agent_toolset tool declares neither `agent` nor `identifier`"
         ),
-        note="A generic tool declares `name` and `identifier`, the `tool()` reference to its member.",
+        note=(
+            "A generic tool declares `name` and `identifier`, the `tool()` reference to its member; an "
+            "agent toolset over an `agent` tool member writes `identifier: \"{{ tool('<name>') }}\"`."
+        ),
     ),
     spec(
         "SST-VAL522",

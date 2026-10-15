@@ -138,15 +138,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="one side of a condition refs more than one column",
     ),
     spec(
-        "SST-VAL214",
-        Severity.ERROR,
-        "using_relationships names an undeclared relationship",
-        "metric '{metric}' names relationship '{relationship}', which is not declared",
-        "declare the relationship, or correct the name",
-        condition="a metric's `using_relationships` lists a bare name that no relationship declares",
-        note="A `{{ relationship() }}` call naming no relationship is `SST-REF029`.",
-    ),
-    spec(
         "SST-VAL215",
         Severity.ERROR,
         "Relationship graph has a cycle that changes results",

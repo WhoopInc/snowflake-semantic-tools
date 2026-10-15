@@ -102,10 +102,12 @@ not compile; write it as `instructions: {response: Answer briefly.}`.
   long instructions live in Markdown. Text and a template mixed in one value is
   an error (`SST-REF003`), and so is a value that is not a string
   (`SST-PRS003`).
-- A `file()` path resolves against the agent's folder and must stay inside the
-  project (`SST-REF027`). A missing file is `SST-REF014`, an unreadable one
+- A `file()` path resolves against the folder of `agent.yml`, as every
+  `file()` does (see [References](references.md#files)). An absolute path or one
+  that leaves the project is `SST-REF027`, and a symbolic link, wherever it
+  points, `SST-PRT009`. A missing file is `SST-REF014`, an unreadable one
   `SST-LOD018`, and one holding only whitespace `SST-LOD019`. Trailing
-  whitespace is stripped.
+  whitespace is stripped, and the file joins the agent's source files.
 - `sample_questions` is a list of `question:` maps; a bare string entry is an
   error (`SST-PRS118`). An eval question identical to a sample question is
   reported by the eval checks.
@@ -137,7 +139,7 @@ agent's settings with where each came from.
 | `alias` | The version alias SST moves to each new version. |
 | `secure` | Published with `ALTER AGENT ... SET SECURE`; unset, false. |
 | `enabled` | `false` leaves the agent out of the compiled project, so `enabled: true` keeps an agent under a route that sets `+enabled: false`. |
-| `tags` | A list of `{name, value}` pairs, applied with `ALTER AGENT ... SET TAG`. A tag name is an identifier or a qualified name (`SST-PRS005`) of a tag object that already exists. A closer setting replaces the whole list. |
+| `tags` | A list of `{name, value}` pairs, applied with `ALTER AGENT ... SET TAG`. Each `name` is a `{{ tag('<name>') }}` call naming an entry of the `tags:` block of `sst_config.yml`, as a view's tags are; a bare name is `SST-REF050`, an undeclared one `SST-REF028`. The tag object must already exist. A closer setting replaces the whole list. |
 
 The keys an earlier draft read elsewhere -- `alias`, `secure`, `enabled` and
 `tags` at the top level, and `spec.models` and `spec.orchestration` -- are an
@@ -151,9 +153,9 @@ Each `spec.tools` entry is one tool. SST splits it into the spec's `tools` and
 | `type` | What it names |
 |---|---|
 | `cortex_analyst_text_to_sql` | `semantic_view: "{{ semantic_view('<name>') }}"`, a view this project compiles (`SST-REF011`). It takes no `name:` (`SST-VAL520`): the tool is named after the view. |
-| `cortex_search` | `name:` and `search_service: "{{ tool('<name>') }}"`, a `cortex_search_service` tool member. Optional: `max_results`, `id_column`, `title_column`, `columns`, `filter`, and `stage_path` with `relative_path_column` (both or neither, `SST-VAL522`). |
+| `cortex_search` | `name:` and `search_service: "{{ tool('<name>') }}"`, a `cortex_search_service` tool member. Optional: `max_results`, `id_column`, `title_column`, `columns`, `filter`, and `stage_path` with `relative_path_column` (both or neither, `SST-VAL522`). A `stage_path` on a stage this project declares opens with its member, `"{{ tool('<stage>') }}/<path>"`; an external stage is written as it is. |
 | `generic` | `name:`, `identifier: "{{ tool('<name>') }}"`, a `procedure` or `function` tool member, and an object `input_schema` (`SST-VAL526`). |
-| `agent_toolset` | `agent: "{{ agent('<name>') }}"`, or a `name:` that names an `agent` tool member; see [agent toolsets](#agent-toolsets). |
+| `agent_toolset` | `agent: "{{ agent('<name>') }}"`, or `identifier: "{{ tool('<name>') }}"`, an `agent` tool member; see [agent toolsets](#agent-toolsets). |
 | `mcp` | `name:`; its resources are exactly its `passthrough:` keys. |
 | `data_to_chart`, `web_search`, `code_execution` | Built-ins: no resources. Unnamed, a built-in is named after its type, and `web_search` must be named `web_search` (`SST-VAL517`). |
 
@@ -391,7 +393,7 @@ signature, `COPY GRANTS`, `RETURNS`, `LANGUAGE`, `RUNTIME_VERSION`, `HANDLER`,
 | `runtime_version` | string | for Java, Python and Scala; never rendered for SQL or JavaScript | `RUNTIME_VERSION = '<version>'` |
 | `handler` | string | for Java, Python and Scala; never rendered for SQL or JavaScript | `HANDLER = '<handler>'` |
 | `packages` | list of strings | no | `PACKAGES = ('<package>', ...)` |
-| `imports` | list of strings | no | `IMPORTS = ('<path>', ...)` |
+| `imports` | list of stage paths: `"{{ tool('<stage>') }}/<path>"` for a stage this project declares, else `@<database>.<schema>.<stage>/<path>` as written | no | `IMPORTS = ('<path>', ...)`, a member's stage at its published location |
 | `external_access_integrations` | list of identifiers | no | `EXTERNAL_ACCESS_INTEGRATIONS = (<name>, ...)` |
 | `secrets` | map of variable name to three-part secret name | no | `SECRETS = ('<variable>' = <secret>, ...)`, sorted by variable |
 
@@ -469,13 +471,15 @@ in one of two ways:
 - `agent: "{{ agent('<name>') }}"` names an enabled agent this project
   publishes (`SST-REF012`), which then publishes first. Unnamed, the tool takes
   that agent's name.
-- With no `agent:`, the tool's `name:` names a referenced tool member of type
+- `identifier: "{{ tool('<name>') }}"` names a referenced tool member of type
   `agent`, for an agent another project owns; a member of another type is an
-  error (`SST-REF020`):
+  error (`SST-REF020`). The tool's `name:` is only its own label: a toolset that
+  writes neither `agent:` nor `identifier:` is an error (`SST-VAL521`).
 
 ```yaml
     - type: agent_toolset
       name: partner_delivery_agent
+      identifier: "{{ tool('partner_delivery_agent') }}"
 ```
 
 Snowflake checks the caller's `USAGE` on the other agent on every run and, when

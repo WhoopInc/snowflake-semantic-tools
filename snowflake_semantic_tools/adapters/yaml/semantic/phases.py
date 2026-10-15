@@ -464,15 +464,12 @@ def _using_problem(metric: MetricDef, name: str, relationship: Relationship | No
     """Report one `using_relationships` entry of a metric, or return None when it fits.
 
     Diagnostics:
-        SST-REF029: the entry is a `relationship()` call naming no declared relationship.
-        SST-VAL214: the entry is a bare name naming no declared relationship.
+        SST-REF029: the entry's `relationship()` call names no declared relationship.
         SST-VAL114: the relationship does not start from the metric's table.
     """
     subject = artifact_key("metric", metric.name)
-    if relationship is None and name in metric.relationship_refs:
-        return D("SST-REF029", name=name.casefold(), subject=subject, origin=metric.origin)
     if relationship is None:
-        return D("SST-VAL214", metric=metric.name, relationship=name, subject=subject, origin=metric.origin)
+        return D("SST-REF029", name=name.casefold(), subject=subject, origin=metric.origin)
     if metric.tables and relationship.from_table.casefold() != metric.tables[0]:
         return D(
             "SST-VAL114",

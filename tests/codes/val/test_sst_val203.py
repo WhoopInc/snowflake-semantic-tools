@@ -13,7 +13,7 @@ VIEW = """  - name: v
     tables:
       - "{{ ref('customers') }}"
 TABLES    relationships:
-      - orders_to_customers
+      - "{{ relationship('orders_to_customers') }}"
 """
 VARIABLES = """    variables:
       - name: large_order_cents

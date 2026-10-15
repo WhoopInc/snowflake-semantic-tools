@@ -8,7 +8,7 @@ metric:
     Number of line items sold.
   expr: "COUNT({{ ref('order_items', 'order_item_id') }})"
   using_relationships:
-    - order_items_to_orders
+    - "{{ relationship('order_items_to_orders') }}"
   synonyms:
     - units sold
     - items

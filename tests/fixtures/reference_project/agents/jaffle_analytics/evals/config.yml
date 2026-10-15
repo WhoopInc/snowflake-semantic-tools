@@ -11,9 +11,8 @@
 # Pinning fixes what is under test; the gate compares runs with a captured
 # baseline rather than trusting a single score.
 
-# Must match dataset.yml and the agent whose `evals:` block points here
-# (`SST-REF012`).
-agent: jaffle_analytics_agent
+# The file names no agent: it sits in jaffle_analytics_agent's evals/ folder,
+# which says whose eval it is (an `agent:` key is SST-PRS126).
 
 # What the agent's `{{ eval_config() }}` names this file by; unique among the
 # configs in this folder (`SST-VAL765`). Never rendered.

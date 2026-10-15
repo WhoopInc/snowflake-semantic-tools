@@ -35,7 +35,8 @@ config:
   naming rule, and must match `name:` when it is given (`SST-VAL801`).
 - `description` is required, and so is at least one member under `skills`
   (`SST-PRS002`). Each member is one `{{ skill('<name>') }}` call; a bare name
-  or another function's call is an error (`SST-REF049`). A member listed twice
+  is an error naming the function to write (`SST-REF050`), and another
+  function's call `SST-REF041`. A member listed twice
   is a warning (`SST-VAL837`), and any other key is a warning (`SST-PRS004`).
 - Each member must be a project skill (`SST-VAL835`), and a member with errors
   stops the plugin from bundling (`SST-VAL836`); a plugin never publishes with a
@@ -105,8 +106,9 @@ hooks:
   `owner_team` are optional and fill the row's columns of those names.
 - `skills`, `plugins`, `commands`, `mcp_servers`, and `hooks` list one call
   each, of `skill()`, `plugin()`, `command()`, `mcp_server()`, and `hook()`
-  respectively; a bare name or another function's call is an error
-  (`SST-REF049`). The calls name what is in
+  respectively; a bare name is an error naming the function to write
+  (`SST-REF050`), and another function's call `SST-REF041`. The calls name what
+  is in
   `project.skills_dir`, `project.plugins_dir`, `project.commands_dir`,
   `project.mcp_servers_dir` (default `mcp-servers/`), and `project.hooks_dir`.
   An unknown name is an error (`SST-VAL844`, `SST-VAL860`, `SST-VAL858`,
@@ -149,14 +151,18 @@ A command is a Markdown file anywhere under `project.commands_dir` (default
 ---
 description: Check a query against the SQL style rules.
 allowed-tools: [snowflake_sql_execute]
+skill: "{{ skill('sql-style') }}"
 ---
 Review the SQL in the last message against the rules in AGENTS.md.
 ```
 
 Frontmatter is optional. When it is present, it is a YAML mapping of
 `description`, `allowed-tools` (a string or a list), `skill`, and `hidden`
-(`SST-VAL859`); any other key is a warning (`SST-PRS004`). The file is
-published as written.
+(`SST-VAL859`); any other key is a warning (`SST-PRS004`). `skill` is one
+`{{ skill('<name>') }}` call naming a skill of this project: a bare name is
+`SST-REF050`, and a skill the project does not have `SST-REF032`. The file is
+published as written, except that the call is rendered to the skill's name,
+`skill: sql-style`, which is what Desktop reads.
 
 ### Plugins in a profile
 
@@ -176,10 +182,17 @@ command: bash
 matcher: snowflake_sql_execute
 timeout: 30
 description: Refuses destructive SQL unless the user confirms it.
+script: "{{ file('sql-guard.sh') }}"
 ```
 
-A hook folder holds `hook.yml` (or `hook.yaml`) and exactly one script; with
-more than one file, name the script with `script:` (`SST-VAL852`). `event` and
+A hook folder holds `hook.yml` (or `hook.yaml`) and its script. `script:` names
+the script with one `{{ file('<path>') }}` call, relative to the folder of
+`hook.yml`, read by the same rules as every `file()` (see
+[References](references.md#files)): a bare path is `SST-REF050`, an absolute
+one or one that leaves the project `SST-REF027`, a symbolic link `SST-PRT009`, a
+missing file `SST-REF014`, and an empty one `SST-LOD019`. Without `script:`, the
+folder's one other file is the script, and a folder with none or several is
+`SST-VAL852`. The script joins the profile's source files. `event` and
 `command` are required, and `type` may be left out: only command hooks are
 supported (`SST-VAL852`). `matcher`, `timeout`, `interactive`, and
 `description` are optional; any other key is a warning (`SST-PRS004`). The

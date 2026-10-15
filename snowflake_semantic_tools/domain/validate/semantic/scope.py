@@ -4,8 +4,10 @@ A view exposes every member its tables attach unless it narrows them. For each o
 kinds it may list what to keep or what to drop, never both:
 
     columns / exclude_columns               {{ ref('<model>', '<column>') }} entries
-    metrics / exclude_metrics               {{ metric('<name>') }} entries, or bare names
-    relationships / exclude_relationships   relationship names
+    metrics / exclude_metrics               {{ metric('<name>') }} entries
+    relationships / exclude_relationships   {{ relationship('<name>') }} entries
+
+Each entry is one call of its kind's function; a bare name is refused, naming the function.
 
 A scope that names nothing, or that would leave a kept metric without the relationship or
 the dimension it needs, is an error rather than a member quietly left out.
@@ -16,14 +18,16 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import MetricDef
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, ViewScope
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, single_template_call
+from snowflake_semantic_tools.domain.resolve.calls import required_call
 from snowflake_semantic_tools.domain.resolve.membership import ViewMembers
+from snowflake_semantic_tools.domain.resolve.ref_fields import reference_functions
 
 # Each kind's include key, exclude key, and the word a diagnostic names its members by.
 SCOPE_KINDS: tuple[tuple[str, str, str], ...] = (
@@ -45,6 +49,9 @@ class ScopeEntry:
         name: The column, metric or relationship it names, casefolded; for an entry that
             cannot be read, the entry as written.
         readable: False when the entry is not of its list's form.
+        refusal: Why the entry is not one call of its kind's function, as `required_call`
+            reports it; None when it is one, so an unreadable entry without one is a column
+            `ref()` that names no column.
     """
 
     field: str
@@ -52,6 +59,7 @@ class ScopeEntry:
     model: str | None
     name: str
     readable: bool = True
+    refusal: Diagnostic | None = None
 
     @property
     def label(self) -> str:
@@ -59,13 +67,18 @@ class ScopeEntry:
         return f"{self.model}.{self.name}" if self.model else self.name
 
 
-def scope_entries(node: Mapping[str, object]) -> tuple[ScopeEntry, ...]:
+def scope_entries(
+    node: Mapping[str, object], origin: Origin | None = None, subject: str = ""
+) -> tuple[ScopeEntry, ...]:
     """Every entry of the view's scope lists, list by list in `SCOPE_KINDS` order.
 
     A list that is not a list holds no entries; `_shape_diagnostics` reports it.
+
+    Args:
+        origin, subject: Where an entry's refusal is reported, and against which view.
     """
     return tuple(
-        _entry(field, kind, raw)
+        _entry(field, kind, raw, origin, subject)
         for include, exclude, kind in SCOPE_KINDS
         for field in (include, exclude)
         for raw in _list(node.get(field))
@@ -76,28 +89,22 @@ def _list(value: object) -> list[object]:
     return value if isinstance(value, list) else []
 
 
-def _entry(field: str, kind: str, raw: object) -> ScopeEntry:
-    """Read one scope-list entry in the form its kind takes.
+def _entry(field: str, kind: str, raw: object, origin: Origin | None, subject: str) -> ScopeEntry:
+    """Read one scope-list entry: one call of its kind's function.
 
-    A column is a two-argument `ref()`, a metric a `metric()` call or a bare name, and a
-    relationship a bare name. An entry of any other form is kept unreadable, as written, so
-    the check can name it.
+    A column is a two-argument `ref()`, a metric a `metric()` call and a relationship a
+    `relationship()` call. An entry of any other form is kept unreadable, as written, with why.
     """
     text = str(raw).strip()
-    try:
-        if kind == "column":
-            call = single_template_call(text, "ref")
-            if call is not None and len(call.args) == 2:
-                return ScopeEntry(field, kind, call.args[0].casefold(), call.args[1].casefold())
-            return ScopeEntry(field, kind, None, text, readable=False)
-        if kind == "metric":
-            call = single_template_call(text, "metric")
-            if call is not None and len(call.args) == 1:
-                return ScopeEntry(field, kind, None, call.args[0].casefold())
-    except TemplateSyntaxError:
-        return ScopeEntry(field, kind, None, text, readable=False)
-    readable = bool(text) and "{" not in text and "." not in text
-    return ScopeEntry(field, kind, None, text.casefold() if readable else text, readable=readable)
+    functions = reference_functions(f"semantic_view.{kind}s")
+    found = required_call(text, functions, origin, field=field, artifact=subject, subject=subject)
+    if isinstance(found, Diagnostic):
+        return ScopeEntry(field, kind, None, text, readable=False, refusal=found)
+    if kind != "column":
+        return ScopeEntry(field, kind, None, found.args[0].casefold())
+    if len(found.args) == 2:
+        return ScopeEntry(field, kind, found.args[0].casefold(), found.args[1].casefold())
+    return ScopeEntry(field, kind, None, text, readable=False)
 
 
 def view_scope(node: Mapping[str, object]) -> ViewScope:
@@ -161,8 +168,11 @@ def scope_diagnostics(
     Diagnostics:
         SST-PRS003: a scope key is not a list.
         SST-VAL329: one kind declares both its include and its exclude list.
+        Every code `required_call` lists, for an entry that is not one call of its kind's
+            function: `ref()`, `metric()` or `relationship()`.
         SST-VAL330: an entry names no column, metric or relationship the view's tables
-            provide, or `columns` names a column excluded globally.
+            provide, a column `ref()` names no column, or `columns` names a column excluded
+            globally.
         SST-VAL331: `exclude_columns` names a column already excluded globally.
         SST-VAL203: a listed relationship names a table the view does not hold.
         SST-VAL332: a kept metric's `using_relationships` names a relationship the scope
@@ -180,9 +190,8 @@ def scope_diagnostics(
             view, frozenset(view.declared_tables), models, metric_by_name, relationship_by_name, members
         )
         diagnostics.extend(_shape_diagnostics(context))
-        diagnostics.extend(
-            found for entry in scope_entries(view.source) if (found := _entry_problem(entry, context)) is not None
-        )
+        entries = scope_entries(view.source, view.origin, context.key)
+        diagnostics.extend(found for entry in entries if (found := _entry_problem(entry, context)) is not None)
         diagnostics.extend(_kept_metric_diagnostics(context))
     return tuple(diagnostics)
 
@@ -220,9 +229,10 @@ def _key_order(field: str) -> int:
 
 def _entry_problem(entry: ScopeEntry, context: _ScopeContext) -> Diagnostic | None:
     """Report what one entry names that the view cannot scope, or return None when it fits."""
+    if entry.refusal is not None:
+        return entry.refusal
     if not entry.readable:
-        form = "two-argument ref() call" if entry.kind == "column" else f"{entry.kind} name"
-        return _unknown(entry, context, f"is not a {form}")
+        return _unknown(entry, context, "is not a two-argument ref() call")
     if entry.kind == "column":
         return _column_problem(entry, context)
     if entry.kind == "metric":
@@ -326,7 +336,7 @@ def _kept_metric_diagnostics(context: _ScopeContext) -> Iterator[Diagnostic]:
 def _held(name: str, context: _ScopeContext) -> bool:
     """Report whether the view holds both tables of the relationship named `name`.
 
-    A relationship that is not declared is held: SST-VAL214 reports it.
+    A relationship that is not declared is held: SST-REF029 reports it.
     """
     relationship = context.relationships.get(name.casefold())
     if relationship is None:

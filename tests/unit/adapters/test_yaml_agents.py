@@ -72,9 +72,9 @@ evals:
     assert (agents[0].evals.dataset, agents[0].evals.config) == (None, "run")
     # A path is never read: the agent names its dataset by the name the file declares.
     [diagnostic] = diagnostics
-    assert diagnostic.code == "SST-REF047"
+    assert diagnostic.code == "SST-REF050"
     assert diagnostic.message == (
-        "agents/bad/agent.yml: evals.dataset is '../../../outside.yml'; it takes one {{ eval_dataset('<name>') }} call"
+        "agents/bad/agent.yml: evals.dataset is '../../../outside.yml'; it takes a {{ eval_dataset(...) }} call"
     )
 
 
@@ -288,7 +288,7 @@ def test_keys_an_agent_file_does_not_model_are_reported_and_a_near_miss_is_a_typ
         "      description: Sales.\n"
         "      warehosue: WH\n"
         "  skills:\n"
-        "    - name: s\n      source: {type: CORTEX_EXTENSION, path: x, pin: 1}\n"
+        "    - name: s\n      source: {type: CORTEX_EXTENSION, path: \"{{ extension('x') }}\", pin: 1}\n"
         "meta:\n  anything: goes\n"
         "evals:\n  dataset: \"{{ eval_dataset('d') }}\"\n  config: \"{{ eval_config('c') }}\"\n  extra: 1\n"
     )

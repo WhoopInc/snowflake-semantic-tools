@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import posixpath
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
@@ -14,10 +15,12 @@ from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.json_files import JsonFileError, read_json_file
 from snowflake_semantic_tools.adapters.yaml.fields import (
+    Sidecar,
     checked_text,
     member_names,
     optional_int,
     project_relative,
+    read_sidecar,
     refused,
     report_unknown_keys,
     unknown_keys,
@@ -39,6 +42,8 @@ from snowflake_semantic_tools.domain.model.profile import (
     SharedProfile,
 )
 from snowflake_semantic_tools.domain.model.skill import SkillFile
+from snowflake_semantic_tools.domain.resolve.calls import required_call
+from snowflake_semantic_tools.domain.resolve.ref_fields import reference_functions
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 
 PROFILE_KEYS = frozenset(
@@ -202,7 +207,8 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
         SST-VAL851: when an unread key is one SST refuses, which names the reason.
         SST-PRS004: when any other key is not one SST reads.
         SST-PRS003: when a text field is not a string, or a member list not a list of strings.
-        SST-REF049: when a member list's entry is not one call of its key's function.
+        Every code `member_names` lists, for a member list's entry that is not one call of its
+            key's function.
         SST-LOD006: when `AGENTS.md` is not UTF-8; the profile then has no prompt.
         SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
             reports the manifest's `config:` block, each at its first line.
@@ -264,14 +270,16 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
         directory=directory,
         description=_text(tree.get("description"), "description", subject, origin, diagnostics),
         owner_team=_text(tree.get("owner_team"), "owner_team", subject, origin, diagnostics),
-        skills=member_names(tree.get("skills"), "skill", diagnostics, field="skills", **located),
-        mcp_servers=member_names(tree.get("mcp_servers"), "mcp_server", diagnostics, field="mcp_servers", **located),
-        hooks=member_names(tree.get("hooks"), "hook", diagnostics, field="hooks", **located),
+        skills=member_names(tree.get("skills"), "profile.skills", diagnostics, field="skills", **located),
+        mcp_servers=member_names(
+            tree.get("mcp_servers"), "profile.mcp_servers", diagnostics, field="mcp_servers", **located
+        ),
+        hooks=member_names(tree.get("hooks"), "profile.hooks", diagnostics, field="hooks", **located),
         prompt=_prompt(project_dir, prompt_path, subject, diagnostics),
         origin=origin,
         source_files=tuple(sources),
-        commands=member_names(tree.get("commands"), "command", diagnostics, field="commands", **located),
-        plugins=member_names(tree.get("plugins"), "plugin", diagnostics, field="plugins", **located),
+        commands=member_names(tree.get("commands"), "profile.commands", diagnostics, field="commands", **located),
+        plugins=member_names(tree.get("plugins"), "profile.plugins", diagnostics, field="plugins", **located),
         config=MappingProxyType(dict(item_config)) if isinstance(item_config, Mapping) else MappingProxyType({}),
     )
 
@@ -291,7 +299,8 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         SST-VAL801: when the folder holds both `profile.yml` and `profile.yaml`.
         SST-PRS004: when the manifest holds a key other than `skills` and `commands`.
         SST-PRS003: when `skills` or `commands` is not a list of strings.
-        SST-REF049: when an entry is not one `skill()` or `command()` call.
+        Every code `member_names` lists, for an entry that is not one `skill()` or `command()`
+            call.
         SST-LOD006: when `AGENTS.md` or a rule is not UTF-8; it is left out of the layer.
     """
     subject = "profile:shared"
@@ -310,8 +319,8 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         tree = _parse(project_dir, manifest, subject, diagnostics) or {}
         report_unknown_keys(tree, SHARED_KEYS, diagnostics, artifact=subject, origin=origin, subject=subject)
         located = _located(subject, origin)
-        skills = member_names(tree.get("skills"), "skill", diagnostics, field="skills", **located)
-        commands = member_names(tree.get("commands"), "command", diagnostics, field="commands", **located)
+        skills = member_names(tree.get("skills"), "profile.skills", diagnostics, field="skills", **located)
+        commands = member_names(tree.get("commands"), "profile.commands", diagnostics, field="commands", **located)
     prompt_path = folder / "AGENTS.md"
     if prompt_path.is_file():
         sources.append(project_relative(project_dir, prompt_path))
@@ -340,13 +349,22 @@ def _load_commands(project_dir: Path, root: Path, diagnostics: list[Diagnostic])
         file = project_relative(project_dir, path)
         content = path.read_bytes()
         command = CommandFile(relative, content, file, Origin(file, 1))
-        _check_command(command, diagnostics)
-        commands.append(command)
+        commands.append(replace(command, skill=_check_command(command, diagnostics)))
     return tuple(commands)
 
 
-def _check_command(command: CommandFile, diagnostics: list[Diagnostic]) -> None:
-    """Frontmatter is optional; when present it must be a mapping Desktop can read."""
+def _check_command(command: CommandFile, diagnostics: list[Diagnostic]) -> str | None:
+    """Check a command's frontmatter, and return the skill its `skill:` names; None for none.
+
+    Frontmatter is optional; when present it must be a mapping Desktop can read. Its `skill:`
+    is one `{{ skill('<name>') }}` call, which publishing renders to the skill's name.
+
+    Diagnostics:
+        SST-VAL859: the command is not UTF-8, or its frontmatter is malformed or holds a value
+            of the wrong type.
+        SST-PRS004: the frontmatter holds a key Desktop does not read.
+        Every code `required_call` lists, for a `skill:` that is not one `skill()` call.
+    """
 
     def invalid(detail: str, line: int = 1) -> None:
         diagnostics.append(
@@ -363,24 +381,24 @@ def _check_command(command: CommandFile, diagnostics: list[Diagnostic]) -> None:
         text = command.content.decode("utf-8")
     except UnicodeDecodeError:
         invalid("is not UTF-8")
-        return
+        return None
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
-        return
+        return None
     closing = next((index for index, line in enumerate(lines[1:], start=1) if line.strip() == "---"), None)
     if closing is None:
         invalid("frontmatter opens with --- but never closes")
-        return
+        return None
     try:
         value: Any = bounded_yaml.safe_load("\n".join(lines[1:closing]))
     except yaml.YAMLError as exc:
         invalid(f"frontmatter is not valid YAML: {getattr(exc, 'problem', exc)}")
-        return
+        return None
     if value is None:
-        return
+        return None
     if not isinstance(value, dict):
         invalid(f"frontmatter is a {type(value).__name__}, not a mapping")
-        return
+        return None
     report_unknown_keys(
         value,
         COMMAND_FRONTMATTER_KEYS,
@@ -399,23 +417,37 @@ def _check_command(command: CommandFile, diagnostics: list[Diagnostic]) -> None:
         isinstance(tools, str) or (isinstance(tools, list) and all(isinstance(item, str) for item in tools))
     ):
         invalid("'allowed-tools' must be a string or a list of strings")
+    skill = value.get("skill")
+    if not isinstance(skill, str):
+        return None
+    functions = reference_functions("command.skill")
+    found = required_call(skill, functions, command.origin, field="skill", artifact=command.key, subject=command.key)
+    if isinstance(found, Diagnostic):
+        diagnostics.append(found)
+        return None
+    return found.args[0]
 
 
 def _load_hook(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> HookDefinition | None:
     """Read one hook folder into a command hook and the script it runs; None when that cannot be done.
 
-    The manifest is `hook.yml` or `hook.yaml`. Its `script:` names the script among the folder's
-    other published files; without it, the folder must hold exactly one such file. A `script`,
-    `matcher`, `timeout`, `interactive` or `description` of the wrong type is ignored, unreported.
+    The manifest is `hook.yml` or `hook.yaml`. Its `script:` is one `{{ file('<path>') }}` call,
+    relative to the manifest's folder; without it, the folder must hold exactly one other
+    published file, which is the script. A `matcher`, `timeout`, `interactive` or `description`
+    of the wrong type is ignored, unreported.
 
     Raises:
-        OSError: The manifest or the script cannot be read.
+        OSError: The manifest, or a script found without `script:`, cannot be read.
 
     Diagnostics:
         SST-VAL852: when the folder holds no manifest or both spellings, the hook is not of type
-            `command`, it declares no `event` or `command`, or its script is absent or ambiguous.
-        SST-PRT009: when the manifest or a script is a symbolic link; it is left out.
+            `command`, it declares no `event` or `command`, or, with no `script:`, its folder
+            holds no script or more than one.
+        SST-PRT009: when the manifest or a script found without `script:` is a symbolic link; it
+            is left out.
         SST-PRS004: when the manifest holds a key SST does not read.
+        Every code `read_sidecar` lists, for the script `script:` names, read as bytes relative to
+            the manifest's folder.
     """
     name = folder.name
     subject = f"hook:{name}"
@@ -449,28 +481,36 @@ def _load_hook(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -
             D("SST-VAL852", origin=origin, subject=subject, artifact=name, detail="declares no event or command")
         )
         return None
-    scripts = [
-        path
-        for path in sorted(folder.iterdir())
-        if path.name not in HOOK_FILES
-        and _published(path, folder)
-        and path.is_file()
-        and not refused(project_dir, path, diagnostics, subject=subject)
-    ]
     declared = tree.get("script")
-    if isinstance(declared, str):
-        chosen = [path for path in scripts if path.name == declared]
-        if not chosen:
-            diagnostics.append(
-                D("SST-VAL852", origin=origin, subject=subject, artifact=name, detail=f"script '{declared}' is absent")
-            )
+    if declared is not None:
+        manifest_file = project_relative(project_dir, manifest)
+        script = read_sidecar(
+            project_dir,
+            manifest_file,
+            str(declared),
+            origin=origin,
+            field="script",
+            artifact=subject,
+            subject=subject,
+            text=False,
+        )
+        if isinstance(script, Diagnostic):
+            diagnostics.append(script)
             return None
-    elif len(scripts) != 1:
-        detail = "has no script" if not scripts else f"has {len(scripts)} candidate scripts and no script: key"
-        diagnostics.append(D("SST-VAL852", origin=origin, subject=subject, artifact=name, detail=detail))
-        return None
     else:
-        chosen = scripts
+        scripts = [
+            path
+            for path in sorted(folder.iterdir())
+            if path.name not in HOOK_FILES
+            and _published(path, folder)
+            and path.is_file()
+            and not refused(project_dir, path, diagnostics, subject=subject)
+        ]
+        if len(scripts) != 1:
+            detail = "has no script" if not scripts else f"has {len(scripts)} candidate scripts and no script: key"
+            diagnostics.append(D("SST-VAL852", origin=origin, subject=subject, artifact=name, detail=detail))
+            return None
+        script = Sidecar(project_relative(project_dir, scripts[0]), scripts[0].read_bytes())
     timeout = tree.get("timeout")
     interactive = tree.get("interactive")
     matcher = tree.get("matcher")
@@ -479,12 +519,13 @@ def _load_hook(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -
         directory=directory,
         event=event,
         command=command,
-        script=SkillFile(chosen[0].name, chosen[0].read_bytes()),
+        script=SkillFile(posixpath.basename(script.path), script.content),
         origin=origin,
         matcher=matcher if isinstance(matcher, str) and matcher else None,
         timeout=optional_int(timeout),
         interactive=interactive if isinstance(interactive, bool) else None,
         description=tree.get("description") if isinstance(tree.get("description"), str) else None,
+        script_file=script.path,
     )
 
 

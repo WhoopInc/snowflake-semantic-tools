@@ -55,6 +55,9 @@ CUSTOM_INSTRUCTION_ITEM = RefPolicy(frozenset(("custom_instructions",)), require
 INSTRUCTION_TEXT = RefPolicy(frozenset(("filter", "relationship", "verified_query")))
 TAG_NAME = RefPolicy(frozenset(("tag",)), required=True, multi=False)
 DESCRIPTION = RefPolicy(frozenset())
+# A stage path names a stage SST declares by its tool member, `{{ tool('<stage>') }}/<path>`;
+# a path with no call is an external stage, kept as written.
+STAGE_PATH = RefPolicy(frozenset(("tool",)), multi=False)
 
 # The value of a two-argument `ref()`, given the call and its column: a value or a diagnostic.
 ColumnValue = Callable[[TemplateCall, str], "str | Diagnostic"]

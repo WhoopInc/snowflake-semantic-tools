@@ -96,12 +96,12 @@ def with_view(root: Path, view: str) -> Path:
 
 
 def break_menu_view(project: Path) -> None:
-    """Point the `menu` view of a copy at a bare table name, which does not resolve."""
+    """List one table of the `menu` view of a copy twice, which fails that view's build alone."""
     path = project / MENU_VIEW
     text = path.read_text(encoding="utf-8")
     entry = "- \"{{ ref('products') }}\""
     assert entry in text
-    path.write_text(text.replace(entry, '- "products"', 1), encoding="utf-8")
+    path.write_text(text.replace(entry, f"{entry}\n    {entry}", 1), encoding="utf-8")
 
 
 def load(project: Path, manifest_path: Path = DBT_MANIFEST) -> SemanticViewProject:

@@ -42,7 +42,8 @@ class AgentTool:
         name: None when unset, as an Analyst tool must leave it.
         semantic_view: The name an Analyst tool's `{{ semantic_view('<name>') }}` gives.
         backing: The member name the `{{ tool('<name>') }}` call that is the whole of
-            `search_service:` or `identifier:` gives; None when there is no such call.
+            `search_service:` or `identifier:` gives, an agent toolset's over an `agent`
+            member included; None when there is no such call.
         title_column, id_column, relative_path_column: A search tool's own columns, as written:
             each a `{{ ref('<model>', '<column>') }}` over a defined member's `on:` model, or a
             bare column of a referenced member; resolution reads them against its member.
@@ -81,14 +82,9 @@ class AgentTool:
     def member_reference(self) -> str | None:
         """The name of the tool member this tool resolves to, as `ToolCatalog.resolve` takes it; None for none.
 
-        That is its `{{ tool('<name>') }}` backing, or, for an `agent_toolset` tool that names no
-        agent of this project, its own name: such a tool resolves the member of that name.
+        That is its `{{ tool('<name>') }}` backing, written as `search_service:` or `identifier:`.
         """
-        if self.backing:
-            return self.backing
-        if self.type == "agent_toolset" and not self.agent_ref and self.name:
-            return self.name
-        return None
+        return self.backing
 
 
 @dataclass(frozen=True, slots=True)

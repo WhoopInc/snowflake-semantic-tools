@@ -20,6 +20,7 @@ from snowflake_semantic_tools.domain.model.registry import (
 from snowflake_semantic_tools.domain.parse.template import scan_template_calls
 from snowflake_semantic_tools.domain.resolve import template
 from snowflake_semantic_tools.domain.resolve.calls import KNOWN_FUNCTIONS, call_problem
+from snowflake_semantic_tools.domain.resolve.ref_fields import REFERENCE_FIELDS
 from tests.helpers.registry_types import artifact, freeze
 
 
@@ -77,11 +78,9 @@ def _literals(node: ast.expr, bound: dict[str, frozenset[str]]) -> frozenset[str
 
 
 # The loader entry points that take the one function a field may call as their second argument,
-# and the check that refuses a call a field does not accept, whose second argument is the set.
-_ONE_FUNCTION_ENTRY_POINTS = frozenset(
-    ("single_template_call", "replace_template_calls", "_template_args", "member_names")
-)
-_ENTRY_POINTS = _ONE_FUNCTION_ENTRY_POINTS | {"_single_template_arg", "call_problem"}
+# and the checks that refuse a call a field does not accept, whose second argument is the set.
+_ONE_FUNCTION_ENTRY_POINTS = frozenset(("single_template_call", "replace_template_calls"))
+_ENTRY_POINTS = _ONE_FUNCTION_ENTRY_POINTS | {"call_problem", "required_call"}
 
 
 def _functions_loaders_resolve() -> frozenset[str]:
@@ -124,7 +123,8 @@ def test_every_dialect_function_has_a_resolver_in_the_package() -> None:
     # the dialect or the registry's resolver set lacks, fails here.
     policies = [value for value in vars(template).values() if isinstance(value, template.RefPolicy)]
     by_policy = frozenset().union(*(policy.allowed for policy in policies))
-    resolved = by_policy | _functions_loaders_resolve() | _legacy_refusals()
+    by_reference = frozenset().union(*REFERENCE_FIELDS.values())
+    resolved = by_policy | by_reference | _functions_loaders_resolve() | _legacy_refusals()
     assert resolved == KNOWN_FUNCTIONS
     assert RESOLVED_FUNCTIONS == KNOWN_FUNCTIONS
 

@@ -9,6 +9,8 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import NULL_ORDERS, SORT_DIRECTIONS, AuthoredDocuments
 from snowflake_semantic_tools.domain.parse.frame import canonical_frame
+from snowflake_semantic_tools.domain.resolve.calls import required_call
+from snowflake_semantic_tools.domain.resolve.ref_fields import reference_functions
 from snowflake_semantic_tools.domain.validate.column_metadata import printable, synonym_problem
 from snowflake_semantic_tools.domain.validate.semantic.nodes import load_nodes, member_root, node_origin
 
@@ -69,6 +71,8 @@ def metric_parse_diagnostics(
         SST-PRS113: when `expr` is not a string.
         SST-PRS003: when `using_relationships`, `non_additive_dimensions`, `window`
             or a part of either block has the wrong type.
+        Every code `required_call` lists, for a `using_relationships` entry that is not one
+            `relationship()` call, or a non-additive `ref` that is not one `ref()` call.
         SST-PRS103: when `access_modifier`, a `sort_direction` or a `null_order` is not an
             allowed value.
         SST-PRS014: when a window comes with `using_relationships` or `non_additive_dimensions`,
@@ -117,6 +121,7 @@ def metric_parse_diagnostics(
                     origin=origin,
                 )
             )
+        diagnostics.extend(_using_entry_diagnostics(using, subject, origin))
         access = node.get("access_modifier")
         if access is not None and str(access) not in allowed_access:
             diagnostics.append(
@@ -246,57 +251,69 @@ def _order_by_entry(
     return diagnostics
 
 
+def _using_entry_diagnostics(value: object, subject: str, origin: Origin) -> tuple[Diagnostic, ...]:
+    """Report each `using_relationships` entry that is not one `relationship()` call.
+
+    A value that is not a list of strings is SST-PRS003's alone, so its entries are not read.
+    """
+    if not isinstance(value, list) or any(not isinstance(entry, str) for entry in value):
+        return ()
+    functions = reference_functions("metric.using_relationships")
+    found = (
+        required_call(
+            entry, functions, origin, field=f"using_relationships[{position}]", artifact=subject, subject=subject
+        )
+        for position, entry in enumerate(value)
+    )
+    return tuple(item for item in found if isinstance(item, Diagnostic))
+
+
 def _non_additive_parse_diagnostics(value: object, subject: str, origin: Origin) -> tuple[Diagnostic, ...]:
-    """The shape of `non_additive_dimensions`; whether each entry resolves is checked with the models."""
+    """The shape of `non_additive_dimensions`; whether each entry resolves is checked with the models.
+
+    Each entry is a mapping whose `ref` is one two-argument `{{ ref('<model>', '<column>') }}`
+    call, with an optional sort.
+
+    Diagnostics:
+        SST-PRS003: the value is not a list, or an entry is not a mapping.
+        SST-PRS002: an entry has no `ref`.
+        Every code `required_call` lists, for a `ref` that is not one `ref()` call.
+        SST-PRS003: the `ref()` call names no column.
+        SST-PRS103: a `sort_direction` or `null_order` is not an allowed value.
+    """
     if value is None:
         return ()
-    if not isinstance(value, list):
-        return (
-            D(
-                "SST-PRS003",
-                artifact=subject,
-                field="non_additive_dimensions",
-                expected="a list",
-                found=type(value).__name__,
-                subject=subject,
-                origin=origin,
-            ),
+
+    def wrong_type(field: str, expected: str, found: object) -> Diagnostic:
+        return D(
+            "SST-PRS003",
+            artifact=subject,
+            field=field,
+            expected=expected,
+            found=found,
+            subject=subject,
+            origin=origin,
         )
+
+    if not isinstance(value, list):
+        return (wrong_type("non_additive_dimensions", "a list", type(value).__name__),)
     diagnostics: list[Diagnostic] = []
     for position, entry in enumerate(value):
         field = f"non_additive_dimensions[{position}]"
         if not isinstance(entry, dict):
-            found = type(entry).__name__
-            diagnostics.append(
-                D(
-                    "SST-PRS003",
-                    artifact=subject,
-                    field=field,
-                    expected="a mapping",
-                    found=found,
-                    subject=subject,
-                    origin=origin,
-                )
-            )
+            diagnostics.append(wrong_type(field, "a mapping", type(entry).__name__))
             continue
-        dimension = entry.get("dimension")
-        if not isinstance(dimension, str) or not dimension.strip():
-            diagnostics.append(
-                D("SST-PRS002", artifact=subject, field=f"{field}.dimension", subject=subject, origin=origin)
+        if "ref" not in entry:
+            diagnostics.append(D("SST-PRS002", artifact=subject, field=f"{field}.ref", subject=subject, origin=origin))
+        else:
+            functions = reference_functions("metric.non_additive_dimensions.ref")
+            found = required_call(
+                str(entry["ref"]), functions, origin, field=f"{field}.ref", artifact=subject, subject=subject
             )
-        table = entry.get("table")
-        if "table" in entry and (not isinstance(table, str) or not table.strip() or "{{" in table):
-            diagnostics.append(
-                D(
-                    "SST-PRS003",
-                    artifact=subject,
-                    field=f"{field}.table",
-                    expected="a bare model name",
-                    found=repr(table),
-                    subject=subject,
-                    origin=origin,
-                )
-            )
+            if isinstance(found, Diagnostic):
+                diagnostics.append(found)
+            elif len(found.args) != 2:
+                diagnostics.append(wrong_type(f"{field}.ref", "a ref('<model>', '<column>') call", found.raw))
         for key, allowed in (("sort_direction", SORT_DIRECTIONS), ("null_order", NULL_ORDERS)):
             if key in entry and (not isinstance(entry[key], str) or entry[key] not in allowed):
                 diagnostics.append(

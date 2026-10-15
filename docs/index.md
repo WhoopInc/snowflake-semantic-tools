@@ -25,6 +25,7 @@ dbt project, and publishes them with a reviewed plan.
 | [Skills](guides/skills.md) | `SKILL.md` folders, bundled files, flattening, limits, and versions |
 | [Plugins and profiles](guides/plugins-and-profiles.md) | plugins, CoCo Desktop profiles, commands, hooks, and MCP configs |
 | [Configuration](guides/configuration.md) | `sst_config.yml`, targets, projects without dbt, and authentication |
+| [References](guides/references.md) | every field that names a file or a member, the template call it takes, `file()`, stage paths, and the fields left literal |
 | [CI/CD](guides/ci-cd.md) | pull-request and merge jobs, a deploy workflow template for your project, JSON output, and exit codes |
 | [Security](guides/security.md) | the trust model, what SST checks, and running it with least privilege |
 | [Troubleshooting](guides/troubleshooting.md) | symptoms and their causes |

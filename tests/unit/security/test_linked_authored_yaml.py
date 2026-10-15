@@ -3,7 +3,8 @@
 Discovery of semantic models, and the agent, tool, and eval-metric loaders, refuse a linked
 file or folder with SST-PRT009 wherever it points, inside the project or out; a link that
 loops is SST-DIS005. The file a verified query's `sql:` loads with `file()`, and a tool's
-`body_file:`, are refused the same way, and may not climb out of the project with `..` or an
+`body:`, an agent's instruction sidecar and a hook's `script:` -- every `file()` -- are refused the
+same way, and may not climb out of the project with `..` or an
 absolute path (for a verified query, SST-REF027). The input
 checksums a manifest records skip every link the loaders refuse.
 """
@@ -21,7 +22,6 @@ from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
 from snowflake_semantic_tools.adapters.yaml.documents import load_documents
 from snowflake_semantic_tools.adapters.yaml.evals.metrics import load_custom_metrics
-from snowflake_semantic_tools.adapters.yaml.fields import OUTSIDE_PROJECT
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.semantic.file_reads import _verified_query_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.readers import load_verified_queries
@@ -32,6 +32,8 @@ from tests.helpers.diagnostic_filters import coded
 from tests.helpers.seam_projects import SmallProject
 
 LINKED = "it is a symbolic link, which SST does not follow"
+# How the tests label a path SST-REF027 refuses for climbing out of the project.
+OUTSIDE_PROJECT = "it resolves outside the project"
 METRICS = "snowflake_metrics: []\n"
 SMUGGLED_VIEW = (
     "semantic_views:\n"
@@ -230,8 +232,8 @@ def _query_project(tmp_path: Path, sql_file: str) -> Path:
 def _sql_file_results(project: Path) -> tuple[list[tuple[str, str]], list[str]]:
     """The refusals, a path outside the project as SST-REF027 names it, and the SQL each query read."""
     documents = load_documents(discover_yaml(project, "semantic_models"), parse_yaml_bytes)
-    queries = load_verified_queries(documents, project, "semantic_models")
-    found = list(_verified_query_diagnostics(documents))
+    queries, read = load_verified_queries(documents, project, "semantic_models")
+    found = [*_verified_query_diagnostics(documents), *read]
     outside = [(item.context["path"], OUTSIDE_PROJECT) for item in coded(found, "SST-REF027")]
     return [*outside, *_refusals(found)], [query.sql for query in queries]
 

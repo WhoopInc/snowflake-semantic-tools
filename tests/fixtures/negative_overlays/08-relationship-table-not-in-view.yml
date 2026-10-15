@@ -20,4 +20,4 @@ semantic_views:
           Whether revenue metrics should include collected tax.
         default_value: false
     relationships:
-      - orders_to_customers
+      - "{{ relationship('orders_to_customers') }}"

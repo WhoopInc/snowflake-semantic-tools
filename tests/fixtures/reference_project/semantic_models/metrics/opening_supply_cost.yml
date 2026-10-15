@@ -9,7 +9,6 @@ metric:
     record. Not additive across months.
   expr: "SUM({{ ref('supplies', 'supply_cost') }})"
   non_additive_dimensions:
-    - table: supplies
-      dimension: snapshot_month
+    - ref: "{{ ref('supplies', 'snapshot_month') }}"
       sort_direction: descending
       null_order: first

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
@@ -34,13 +33,14 @@ def _as_str_tuple(value: Any) -> tuple[str, ...]:
 def _table_refs(value: object) -> tuple[str, ...]:
     """Read a view's `tables:` list as the models it names, casefolded and in order.
 
-    Each entry is a `{{ ref('<model>') }}` call, a `{{ source('<source>', '<table>') }}` call,
-    named `<source>.<table>`, a legacy `{{ table('<model>') }}` call, or a bare model name; a
-    value that is not a list names none. `_safe_table_refs` reads an error as no tables.
+    Each entry is a `{{ ref('<model>') }}` call, or a `{{ source('<source>', '<table>') }}`
+    call, named `<source>.<table>`, as the build reads them; a value that is not a list names
+    none. Any other entry, a bare model name or a legacy `{{ table() }}` call among them, names
+    no table here, as the build refuses it (SST-REF044), so membership never attaches to a
+    table the view cannot build. `_safe_table_refs` reads an error as no tables.
 
     Raises:
-        ProjectError: An entry is a `ref()` without exactly one argument, is neither a call nor
-            a model name, or holds a malformed template; only the last carries a diagnostic.
+        ProjectError: An entry holds a malformed template.
 
     Diagnostics:
         SST-LOD004, SST-REF033, SST-REF003: when an entry's template does not parse, positioned
@@ -50,26 +50,14 @@ def _table_refs(value: object) -> tuple[str, ...]:
     for raw in value if isinstance(value, list) else []:
         try:
             call = single_template_call(str(raw), "ref")
+            source = single_template_call(str(raw), "source")
         except TemplateSyntaxError as exc:
             diagnostic = syntax_problem(exc, "<tables>")
             raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
-        if call is not None:
-            if len(call.args) != 1:
-                raise ProjectError(f"table attachment ref() must have one argument, found {raw!r}")
+        if call is not None and len(call.args) == 1:
             refs.append(call.args[0].casefold())
-            continue
-        source = single_template_call(str(raw), "source")
-        if source is not None and len(source.args) == 2:
+        elif source is not None and len(source.args) == 2:
             refs.append(".".join(source.args).casefold())
-            continue
-        legacy = single_template_call(str(raw), "table")
-        if legacy is not None and len(legacy.args) == 1:
-            refs.append(legacy.args[0].casefold())
-            continue
-        literal = str(raw).strip()
-        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", literal):
-            raise ProjectError(f"table attachment must be a model name, found {raw!r}")
-        refs.append(literal.casefold())
     return tuple(refs)
 
 

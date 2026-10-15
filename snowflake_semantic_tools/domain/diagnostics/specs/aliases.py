@@ -103,7 +103,7 @@ ALIASES: Mapping[str, Alias] = _aliases(
     ("SST-V041", "Relationship table not found", "KEPT", ("SST-VAL205", "SST-REF001")),
     ("SST-V042", "Relationship missing primary key", "KEPT", ("SST-VAL203",)),
     ("SST-V043", "Relationship column not found", "KEPT", ("SST-VAL204", "SST-REF002")),
-    ("SST-V044", "Using relationship not found", "KEPT", ("SST-VAL214", "SST-VAL204")),
+    ("SST-V044", "Using relationship not found", "KEPT", ("SST-REF029", "SST-VAL204")),
     ("SST-V045", "Derived metric must reference other metrics", "KEPT", ("SST-REF006",)),
     ("SST-V046", "Invalid field on derived metric", "KEPT", ("SST-PRS126",)),
     ("SST-V047", "Excluded column referenced in expression", "KEPT", ("SST-VAL318",)),
@@ -528,5 +528,25 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         "Per-group tools override names an unknown or reference-only group",
         "SST-CFG041",
         "tools are routed by folder, not group name: a tools: route that names no folder is SST-CFG041",
+    ),
+    (
+        "SST-REF047",
+        "Eval reference is not an eval_dataset() or eval_config() call",
+        "SST-REF050",
+        "every reference field is read as one call by the same reader: a bare value is SST-REF050, "
+        "a call of another function SST-REF041",
+    ),
+    (
+        "SST-REF049",
+        "Plugin or profile member is not its key's reference call",
+        "SST-REF050",
+        "every reference field is read as one call by the same reader: a bare value is SST-REF050, "
+        "a call of another function SST-REF041",
+    ),
+    (
+        "SST-VAL214",
+        "using_relationships names an undeclared relationship",
+        "SST-REF029",
+        "a using_relationships entry is always a relationship() call, so one naming no relationship is SST-REF029",
     ),
 )

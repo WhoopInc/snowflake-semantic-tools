@@ -41,7 +41,8 @@ def test_loads_asof_and_range_relationships(menu: SemanticView) -> None:
 def test_loads_path_pinning_and_non_additive_dimension(menu: SemanticView) -> None:
     metrics = {metric.name: metric for metric in menu.metrics}
     assert metrics["LINE_ITEM_COUNT"].using_relationships == ("ORDER_ITEMS_TO_ORDERS",)
-    assert metrics["TOTAL_SUPPLY_COST"].non_additive_by == (SortKey(authored("SNAPSHOT_MONTH")),)
+    # Each entry's ref() names its model, so every key renders qualified by the model's table.
+    assert metrics["TOTAL_SUPPLY_COST"].non_additive_by == (SortKey(authored("SUPPLIES.SNAPSHOT_MONTH")),)
     assert metrics["OPENING_SUPPLY_COST"].non_additive_by == (
         SortKey(authored("SUPPLIES.SNAPSHOT_MONTH"), descending=True, nulls_first=True),
     )

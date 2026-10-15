@@ -337,7 +337,8 @@ def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         SST-PRS004: when the manifest holds a key SST does not read, at that key.
         SST-PRS003: when `description` or `owner_team` is not a string, or `skills` is not a list
             of strings.
-        SST-REF049: when a `skills` entry is not one `{{ skill('<name>') }}` call.
+        Every code `member_names` lists, for a `skills` entry that is not one
+            `{{ skill('<name>') }}` call.
         SST-PRS002: when there is no non-blank `description`.
         SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
             reports the manifest's `config:` block.
@@ -386,7 +387,7 @@ def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         )
     members = member_names(
         tree.get("skills"),
-        "skill",
+        "plugin.skills",
         diagnostics,
         field="skills",
         artifact=subject,

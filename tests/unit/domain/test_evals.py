@@ -40,8 +40,8 @@ from snowflake_semantic_tools.domain.validate.eval import eval_placement, valida
 def test_resolved_eval_identity_sources_and_dependency_are_deterministic() -> None:
     origin = Origin("agent.yml")
     agent = AgentModel("sales", origin, ("agent.yml",))
-    dataset = EvalDataset(origin, "dataset.yml", "sales", None, (EvalQuestion(origin, "q", EvalGroundTruth(origin)),))
-    config = EvalConfig(origin, "config.yml", "sales", None, (), ("judge",), None)
+    dataset = EvalDataset(origin, "dataset.yml", None, (EvalQuestion(origin, "q", EvalGroundTruth(origin)),))
+    config = EvalConfig(origin, "config.yml", None, (), ("judge",), None)
     judge = CustomEvalMetric(
         origin,
         "judge.yml",
@@ -56,7 +56,7 @@ def test_resolved_eval_identity_sources_and_dependency_are_deterministic() -> No
     assert value.depends_on == ("agent:sales",)
     assert value.source_files == ("dataset.yml", "config.yml", "judge.yml")
     with pytest.raises(FrozenInstanceError):
-        value.dataset.agent = "other"  # type: ignore[misc]
+        value.dataset.name = "other"  # type: ignore[misc]
     resolved_agent = ResolvedAgent(
         AgentModel("a", origin, ("a.yml",)),
         (
@@ -138,7 +138,6 @@ def _resolved_eval(
     eval_dataset = dataset or EvalDataset(
         Origin("agents/sales/evals/dataset.yml"),
         "agents/sales/evals/dataset.yml",
-        "sales",
         None,
         (
             EvalQuestion(
@@ -155,7 +154,6 @@ def _resolved_eval(
     eval_config = config or EvalConfig(
         Origin("agents/sales/evals/config.yml"),
         "agents/sales/evals/config.yml",
-        "sales",
         EvalDatasetConfig("auto", "EVAL_{{ agent | upper }}_{{ sha7 }}", "SRC_{{ agent }}_{{ sha7 }}"),
         (
             EvalSystemMetric(
@@ -211,12 +209,11 @@ def test_valid_eval_uses_exact_compiler_tool_projection_and_v3_pins() -> None:
     assert all(diagnostic.code != "SST-VAL744" for diagnostic in diagnostics)
 
 
-def test_dataset_validation_covers_agreement_placement_rows_dates_overlap_and_tools() -> None:
+def test_dataset_validation_covers_placement_rows_dates_overlap_and_tools() -> None:
     origin = Origin("agents/sales/evals/dataset.yml", 4)
     dataset = EvalDataset(
         origin,
         origin.file,
-        "other",
         None,
         (
             EvalQuestion(origin, None, EvalGroundTruth(origin)),
@@ -238,7 +235,7 @@ def test_dataset_validation_covers_agreement_placement_rows_dates_overlap_and_to
         agent_tool_names={"sales": ("SALES_VIEW", "web_search")},
         allowed_models=("claude-sonnet-4-6",),
     )
-    assert {"SST-REF012", "SST-VAL703", "SST-VAL705", "SST-VAL706", "SST-VAL707"}.issubset(codes)
+    assert {"SST-VAL703", "SST-VAL705", "SST-VAL706", "SST-VAL707"}.issubset(codes)
     assert {"SST-VAL708", "SST-VAL709", "SST-VAL710", "SST-PRS015"}.issubset(codes)
 
 
@@ -247,7 +244,6 @@ def test_agent_absent_from_tool_projection_skips_tool_checks() -> None:
     dataset = EvalDataset(
         origin,
         origin.file,
-        None,
         None,
         (
             EvalQuestion(
@@ -270,7 +266,6 @@ def test_dataset_name_template_bounds_and_collisions_are_checked_when_renderable
     config = EvalConfig(
         Origin("agents/other/evals/config.yml"),
         "agents/other/evals/config.yml",
-        "other",
         EvalDatasetConfig("auto", shared_template, "SRC_{{ agent }}_{{ sha7 }}"),
         (EvalSystemMetric(Origin("config.yml"), "answer_correctness", "v3"),),
         (),
@@ -279,7 +274,6 @@ def test_dataset_name_template_bounds_and_collisions_are_checked_when_renderable
     dataset = EvalDataset(
         Origin("agents/other/evals/dataset.yml"),
         "agents/other/evals/dataset.yml",
-        "other",
         None,
         first.dataset.questions,
     )
@@ -287,7 +281,6 @@ def test_dataset_name_template_bounds_and_collisions_are_checked_when_renderable
     first_config = EvalConfig(
         first.config.origin,
         first.config.source_file,
-        first.config.agent,
         EvalDatasetConfig("auto", shared_template, "SRC_{{ agent }}_{{ sha7 }}"),
         first.config.system_metrics,
         first.config.custom_metric_names,
@@ -313,7 +306,6 @@ def test_rendered_run_names_must_be_unique_per_agent() -> None:
     second_config = EvalConfig(
         first.config.origin,
         first.config.source_file,
-        first.config.agent,
         first.config.dataset,
         first.config.system_metrics,
         first.config.custom_metric_names,
@@ -329,7 +321,6 @@ def test_eval_config_validation_covers_system_metrics_thresholds_statuses_and_bo
     config = EvalConfig(
         value.config.origin,
         value.config.source_file,
-        "sales",
         value.config.dataset,
         (
             EvalSystemMetric(value.config.origin, "unknown", "v3"),
@@ -361,9 +352,7 @@ def test_eval_config_validation_covers_system_metrics_thresholds_statuses_and_bo
 def test_a_system_metric_pinned_to_v1_is_refused_in_place_of_the_legacy_version_warning() -> None:
     value = _resolved_eval()
     metric = EvalSystemMetric(value.config.origin, "answer_correctness", "v1")
-    config = EvalConfig(
-        value.config.origin, value.config.source_file, "sales", value.config.dataset, (metric,), (), None
-    )
+    config = EvalConfig(value.config.origin, value.config.source_file, value.config.dataset, (metric,), (), None)
     value = _resolved_eval(config=config, settings={"agent_version": "LIVE"})
     codes = _codes(EvalCatalog((value,), value.custom_metrics), allowed_models=("claude-sonnet-4-6",))
     assert {"SST-PRS013", "SST-VAL764"}.issubset(codes)
@@ -436,7 +425,6 @@ def test_eval_validation_covers_omitted_configs_templates_invocations_and_defaul
     dataset = EvalDataset(
         value.dataset.origin,
         value.dataset.source_file,
-        "sales",
         None,
         (
             EvalQuestion(
@@ -461,7 +449,6 @@ def test_eval_validation_covers_omitted_configs_templates_invocations_and_defaul
     config = EvalConfig(
         value.config.origin,
         value.config.source_file,
-        "sales",
         None,
         (),
         (),

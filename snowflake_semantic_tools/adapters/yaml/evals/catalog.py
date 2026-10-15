@@ -210,7 +210,7 @@ def _settled(agent: AgentModel, loaded: _Loaded, root: _Root, dataset: EvalDatas
     config, source = loaded
     settings = resolve_settings(root[0], agent.folder, config.config)
     filled = _with_system_defaults(config, source, _options(eval_defaults(settings), root))
-    placeholder = dataset or EvalDataset(config.origin, config.source_file, None, None, ())
+    placeholder = dataset or EvalDataset(config.origin, config.source_file, None, ())
     return ResolvedEval(agent, placeholder, filled, (), settings)
 
 

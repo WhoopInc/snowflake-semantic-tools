@@ -7,4 +7,4 @@ metric:
     Cost of supplying the products sold, in cents. Not additive across months.
   expr: "SUM({{ ref('supplies', 'supply_cost') }})"
   non_additive_dimensions:
-    - dimension: snapshot_month
+    - ref: "{{ ref('supplies', 'snapshot_month') }}"

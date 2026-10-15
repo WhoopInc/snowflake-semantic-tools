@@ -36,7 +36,9 @@ class HookDefinition:
     """One command hook, `<hooks_dir>/<name>/`: Desktop runs `command` on the script for `event`.
 
     Attributes:
-        script: The one script the hook runs, by its path inside the hook folder.
+        script: The one script the hook runs, by its file name, which is its path in the hook's tree.
+        script_file: Where the script was read from, relative to the project root; empty for a
+            hook not read from a project, whose script is taken to sit in its folder.
         matcher: The matcher the hook is grouped under within its event; None for the group with none.
         timeout: Copied into the hook's registry entry; None leaves the key out.
         interactive: Copied into the hook's registry entry; None leaves the key out.
@@ -52,6 +54,7 @@ class HookDefinition:
     timeout: int | None = None
     interactive: bool | None = None
     description: str | None = None
+    script_file: str = ""
 
     @property
     def tree_path(self) -> str:
@@ -80,6 +83,11 @@ class CommandFile:
 
     A profile names it by its path without `.md`; Desktop joins nested folders with
     `:`, so `sql/check.md` is `sql/check` here and `/sql:check` in Desktop.
+
+    Attributes:
+        content: The file as written, its frontmatter's `skill:` still a template call.
+        skill: The skill the frontmatter's `{{ skill('<name>') }}` names; None when it names none
+            or the value is refused. Publishing writes this name in place of the call.
     """
 
     path: str

@@ -66,11 +66,13 @@ spec:
       say so rather than guessing which order the user intended.
 
   tools:
-    # Resolved by name through the tool registry to the partner's object for
-    # the current target. No DDL is emitted for it. The orchestrator never sees
-    # a toolset's description, only the tools it inherits.
+    # `identifier:` names the tool member, resolved through the tool registry
+    # to the partner's object for the current target; a bare `name:` names
+    # nothing. No DDL is emitted for it. The orchestrator never sees a
+    # toolset's description, only the tools it inherits.
     - name: partner_delivery_agent
       type: agent_toolset
+      identifier: "{{ tool('partner_delivery_agent') }}"
       description: |-
         The partner's delivery agent's tools. They answer where an order is and
         when it will arrive, and nothing about order contents or value.

@@ -34,30 +34,35 @@ def _members(
     return ViewMembers(frozen(reached), frozen(kept if kept is not None else reached), frozenset(poisoned))
 
 
-def test_each_scope_entry_is_read_in_its_kinds_form_or_kept_as_written() -> None:
+def test_each_scope_entry_is_one_call_of_its_kinds_function_or_kept_as_written() -> None:
     node = {
         "columns": ["{{ ref('Orders', 'State') }}", "{{ ref('orders') }}", "state", "{{ ref('orders'"],
         "exclude_metrics": ["{{ metric('Total') }}", "Revenue", "{{ metric('a', 'b') }}", "{{ metric('x'"],
-        "relationships": ["joined", "a.b", " "],
+        "relationships": ["{{ relationship('joined') }}", "joined", "{{ ref('a') }}", " "],
         "exclude_relationships": "not a list",
     }
-    entries = scope_entries(node)
-    assert [(entry.field, entry.label, entry.readable) for entry in entries] == [
-        ("columns", "orders.state", True),
-        ("columns", "{{ ref('orders') }}", False),
-        ("columns", "state", False),
-        ("columns", "{{ ref('orders'", False),
-        ("exclude_metrics", "total", True),
-        ("exclude_metrics", "revenue", True),
-        ("exclude_metrics", "{{ metric('a', 'b') }}", False),
-        ("exclude_metrics", "{{ metric('x'", False),
-        ("relationships", "joined", True),
-        ("relationships", "a.b", False),
-        ("relationships", "", False),
+    entries = scope_entries(node, ORIGIN, "semantic_view:v")
+    assert [(entry.field, entry.label, entry.readable, entry.refusal and entry.refusal.code) for entry in entries] == [
+        ("columns", "orders.state", True, None),
+        ("columns", "{{ ref('orders') }}", False, None),
+        ("columns", "state", False, "SST-REF050"),
+        ("columns", "{{ ref('orders'", False, "SST-LOD004"),
+        ("exclude_metrics", "total", True, None),
+        ("exclude_metrics", "Revenue", False, "SST-REF050"),
+        ("exclude_metrics", "{{ metric('a', 'b') }}", False, "SST-REF015"),
+        ("exclude_metrics", "{{ metric('x'", False, "SST-LOD004"),
+        ("relationships", "joined", True, None),
+        ("relationships", "joined", False, "SST-REF050"),
+        ("relationships", "{{ ref('a') }}", False, "SST-REF041"),
+        ("relationships", "", False, "SST-REF050"),
     ]
+    refusal = entries[5].refusal
+    assert refusal is not None and refusal.message == (
+        "semantic_view:v: exclude_metrics is 'Revenue'; it takes a {{ metric(...) }} call"
+    )
     scope = view_scope(node)
     assert scope.columns == ("ORDERS.STATE",) and scope.metrics is None
-    assert scope.exclude_metrics == ("TOTAL", "REVENUE") and scope.relationships == ("JOINED",)
+    assert scope.exclude_metrics == ("TOTAL",) and scope.relationships == ("JOINED",)
 
 
 def test_a_scope_names_only_members_the_view_provides_in_one_mode_per_kind() -> None:
@@ -73,8 +78,18 @@ def test_a_scope_names_only_members_the_view_provides_in_one_mode_per_kind() -> 
                 "state",
             ],
             exclude_columns=["{{ ref('orders', 'secret') }}"],
-            metrics=["total", "gone", "unattached", "broken", "x.y"],
-            relationships=["joined", "missing", "away"],
+            metrics=[
+                "{{ metric('total') }}",
+                "{{ metric('gone') }}",
+                "{{ metric('unattached') }}",
+                "{{ metric('broken') }}",
+                "x.y",
+            ],
+            relationships=[
+                "{{ relationship('joined') }}",
+                "{{ relationship('missing') }}",
+                "{{ relationship('away') }}",
+            ],
             exclude_relationships="joined",
         ),
         ParsedView("p", ORIGIN, "views.yml", {"columns": "x"}, (), poisoned=True),
@@ -97,11 +112,11 @@ def test_a_scope_names_only_members_the_view_provides_in_one_mode_per_kind() -> 
         ("SST-VAL330", "ghost.x", "does not exist on 'ghost'"),
         ("SST-VAL330", "orders.nothing", "does not exist on 'orders'"),
         ("SST-VAL330", "notes.note_id", "declares no column_type, so it is not a member"),
-        ("SST-VAL330", "state", "is not a two-argument ref() call"),
+        ("SST-REF050", "columns", None),
         ("SST-VAL331", None, None),
         ("SST-VAL330", "gone", "does not exist"),
         ("SST-VAL330", "unattached", "does not attach to this view"),
-        ("SST-VAL330", "x.y", "is not a metric name"),
+        ("SST-REF050", "metrics", None),
         ("SST-VAL330", "missing", "does not exist"),
         ("SST-VAL203", "elsewhere", None),
     ]
@@ -124,7 +139,7 @@ def test_a_kept_metric_keeps_the_relationships_and_dimension_columns_it_needs() 
     loose = MetricDef("loose", "COUNT(*)", None, (), non_additive=(NonAdditiveDef("as_of"),))
     dropped = MetricDef("dropped", "1", None, (), using_relationships=("AWAY",))
     view = _view(
-        exclude_relationships=["joined"],
+        exclude_relationships=["{{ relationship('joined') }}"],
         exclude_columns=["{{ ref('balances', 'as_of') }}", "{{ ref('balances', 'account_id') }}"],
     )
     members = _members(

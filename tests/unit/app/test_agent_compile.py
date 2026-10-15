@@ -432,9 +432,11 @@ def test_agent_compiler_resolves_reference_and_managed_tool_fallbacks() -> None:
                 backing="managed_procedure",
                 input_schema=MappingProxyType({"type": "object"}),
             ),
-            AgentTool("agent_toolset", Origin("agent.yml"), name="delegated", description="Delegate."),
-            AgentTool("agent_toolset", Origin("agent.yml"), name="broken", description="Delegate."),
-            AgentTool("agent_toolset", Origin("agent.yml"), name="managed_agent", description="Delegate."),
+            AgentTool("agent_toolset", Origin("agent.yml"), name="delegated", backing="delegated", description="D."),
+            AgentTool("agent_toolset", Origin("agent.yml"), name="broken", backing="broken", description="Delegate."),
+            AgentTool(
+                "agent_toolset", Origin("agent.yml"), name="managed_agent", backing="managed_agent", description="D."
+            ),
         ),
     )
     result = CompileAgents((model,), DiagnosticBag(), context(tools=tools, warehouse=None)).run_result()
@@ -861,9 +863,18 @@ def test_agent_tools_without_a_reference_or_a_resolving_member_are_dropped() -> 
     origin = Origin("agent.yml")
     model = AgentModel("delegates", origin, ("agent.yml",))
 
-    assert resolve_tool(model, AgentTool("agent_toolset", origin, description="Neither."), context()) == (None, ())
-    ghost, diagnostics = resolve_tool(
+    neither, reported = resolve_tool(model, AgentTool("agent_toolset", origin, description="Neither."), context())
+    # A toolset that names neither an agent nor a tool member says which keys it omits.
+    assert neither is None and [(item.code, item.context["field"]) for item in reported] == [
+        ("SST-VAL521", "agent or identifier")
+    ]
+    # A bare `name:` names no member: the toolset is the same as one that names nothing.
+    bare, reported = resolve_tool(
         model, AgentTool("agent_toolset", origin, name="ghost", description="Gone."), context()
+    )
+    assert bare is None and [item.code for item in reported] == ["SST-VAL521"]
+    ghost, diagnostics = resolve_tool(
+        model, AgentTool("agent_toolset", origin, name="ghost", backing="ghost", description="Gone."), context()
     )
     assert ghost is None
     assert [item.code for item in diagnostics] == ["SST-REF010"]

@@ -198,8 +198,8 @@ def evaluation(model: AgentModel, *questions: str, tier: str | None = "blocking"
     evaluation = replace(
         base,
         agent=model,
-        dataset=replace(base.dataset, agent=model.name, questions=rows),
-        config=replace(base.config, agent=model.name, run=EvalRunConfig()),
+        dataset=replace(base.dataset, questions=rows),
+        config=replace(base.config, run=EvalRunConfig()),
     )
     return settled(evaluation, eval_tier=tier)
 

@@ -51,6 +51,8 @@ from snowflake_semantic_tools.domain.model.setting import ROOT_SOURCE, ROUTE_PRE
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, Plugin, Skill, extension_identifier
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
+from snowflake_semantic_tools.domain.resolve.stage_path import stage_member
+from snowflake_semantic_tools.domain.resolve.tags import declared_tags
 from snowflake_semantic_tools.domain.validate.config import (
     config_tool_calls,
     config_tool_references,
@@ -260,7 +262,10 @@ class CompileProject:
         tools = _compile_tools(settings, tool_catalog, dbt)
         loaded, agent_diagnostics = self._inputs.agents(agents_dir=settings.directory("agents_dir", "agents"))
         # Loading resolves each agent's settings, `enabled` among them; the rest are applied here.
-        agent_models = tuple(settled_agent(model, settings.target) for model in loaded)
+        tags = declared_tags(settings.tree.get("tags"), settings.target)
+        settled = tuple(settled_agent(model, settings.target, tags) for model in loaded)
+        agent_models = tuple(model for model, _ in settled)
+        agent_diagnostics = DiagnosticBag((*agent_diagnostics, *(item for _, found in settled for item in found)))
         enabled = tuple(model for model in agent_models if model.enabled)
         context = self._agent_context(settings, enabled, semantic, tool_catalog, consumed, publishing, unpublished)
         contexts: dict[str, AgentCompileContext] = {}
@@ -280,6 +285,13 @@ class CompileProject:
         # So does a configuration value's `tool()`.
         calls = (
             *(tool.member_reference for model in agent_models for tool in model.tools if tool.member_reference),
+            *(
+                stage
+                for model in agent_models
+                for tool in model.tools
+                if tool.stage_path and (stage := stage_member(tool.stage_path))
+            ),
+            *(stage for member in tool_catalog.members for path in member.imports if (stage := stage_member(path))),
             *config_tool_calls(settings.tree),
         )
         tool_config = CompileResult(

@@ -7,9 +7,7 @@ loaded YAML, leaving every check of what was read to `domain.validate.semantic`.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
 
-from snowflake_semantic_tools.adapters.yaml.fields import optional_string
 from snowflake_semantic_tools.domain.model.authored import (
     NULL_ORDERS,
     SORT_DIRECTIONS,
@@ -18,13 +16,27 @@ from snowflake_semantic_tools.domain.model.authored import (
     WindowOrderDef,
 )
 from snowflake_semantic_tools.domain.parse.frame import canonical_frame
+from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, single_template_call
 from snowflake_semantic_tools.domain.validate.semantic.nodes import list_of
 
 
-def _non_additive(entry: Mapping[str, Any]) -> NonAdditiveDef:
+def _non_additive(entry: object) -> NonAdditiveDef | None:
+    """Read one `non_additive_dimensions` entry: the model and column its `ref:` names, and its sort.
+
+    None when the entry is not a mapping whose `ref` is one `{{ ref('<model>', '<column>') }}`
+    call; the shape check reports it. An unknown `sort_direction` or `null_order` reads as unset.
+    """
+    if not isinstance(entry, Mapping) or not isinstance(entry.get("ref"), str):
+        return None
+    try:
+        call = single_template_call(str(entry["ref"]).strip(), "ref")
+    except TemplateSyntaxError:
+        return None
+    if call is None or len(call.args) != 2:
+        return None
     return NonAdditiveDef(
-        dimension=str(entry["dimension"]).strip(),
-        table=optional_string(entry.get("table")),
+        dimension=call.args[1],
+        table=call.args[0],
         descending=SORT_DIRECTIONS.get(str(entry.get("sort_direction"))),
         nulls_first=NULL_ORDERS.get(str(entry.get("null_order"))),
     )

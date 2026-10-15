@@ -83,7 +83,13 @@ class AuthoredDocuments(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class NonAdditiveDef:
-    """One `non_additive_dimensions` entry as authored: a dimension, its table, and its sort."""
+    """One `non_additive_dimensions` entry as authored: a dimension, its table, and its sort.
+
+    Attributes:
+        dimension, table: The column and the model the entry's `{{ ref('<model>', '<column>') }}`
+            names; `table` is None only for a record not read from a file, whose dimension is
+            on the metric's own table.
+    """
 
     dimension: str
     table: str | None = None
@@ -151,8 +157,8 @@ class MetricDef:
             failing those the models its `window:` names. `()` when it names none.
         derived: Whether the metric is derived: its expression combines other metrics with
             `metric()`, names no column, and it has no `window:`.
-        using_relationships: The relationship names, uppercased, each as written or as the one
-            `relationship()` call it is written as.
+        using_relationships: The names the entries' `relationship()` calls give, uppercased; an
+            entry that is not one such call is left out, for the shape checks to report.
         non_additive: The `non_additive_dimensions` entries that name a dimension.
         access_modifier: As written; `public_access` when absent.
         origin: Where the entry starts; None only for a record not read from a file.
@@ -160,7 +166,6 @@ class MetricDef:
         poisoned: Whether a template it reads its tables from is malformed, which keeps the
             metric out of every view.
         window: The `window:` block; None when absent or not a mapping.
-        relationship_refs: Those of `using_relationships` written as a `relationship()` call.
     """
 
     name: str
@@ -176,7 +181,6 @@ class MetricDef:
     template_calls: tuple[TemplateCall, ...] = ()
     poisoned: bool = False
     window: WindowDef | None = None
-    relationship_refs: tuple[str, ...] = ()
 
     @property
     def calls(self) -> tuple[TemplateCall, ...]:

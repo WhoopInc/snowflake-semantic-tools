@@ -25,7 +25,7 @@ def test_reference_agents_match_complete_json_goldens() -> None:
     )
     loaded, diagnostics = load_agents(FIXTURE, config=config)
     # Each agent's settings resolve through its `config:` and the `agents:` block, as compile applies them.
-    models = tuple(settled_agent(model, target) for model in loaded)
+    models = tuple(settled_agent(model, target)[0] for model in loaded)
     tool_catalog = YamlProjectSource(
         project_paths(FIXTURE),
         target_name="dev",

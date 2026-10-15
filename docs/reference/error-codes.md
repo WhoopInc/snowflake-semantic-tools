@@ -20,9 +20,9 @@ cannot be downgraded by any setting.
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
 - [Parsing (PRS)](#parsing-prs) -- 57 codes
 - [Loading (LOD)](#loading-lod) -- 24 codes
-- [References (REF)](#references-ref) -- 40 codes
+- [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 292 codes
+- [Validation (VAL)](#validation-val) -- 291 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
@@ -31,7 +31,7 @@ cannot be downgraded by any setting.
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 24 codes
 - [Internal (INT)](#internal-int) -- 12 codes
-- [Retired numbers](#retired-numbers) -- 66 numbers
+- [Retired numbers](#retired-numbers) -- 69 numbers
 
 ## Registry (REG)
 
@@ -1123,9 +1123,11 @@ Fix: shorten the tag value
 
 `<artifact>: tags must be a list of name and value entries, found <found>`
 
-Raised when the tags block fails its schema: it is not a list of name and value entries, an entry lacks name or value, or an entry name is not one tag() call.
+Raised when the tags block fails its schema: it is not a list of name and value entries, or an entry lacks name or value.
 
 Fix: correct the tags block
+
+Note: An entry whose name is not one `{{ tag('<name>') }}` call is `SST-REF050`.
 
 ### SST-PRS028
 
@@ -1609,7 +1611,7 @@ Fix: re-save without a BOM
 
 `<file>: could not read <path>`
 
-Raised when a `file()` sidecar or `body_file:` a document references is not a file or cannot be read; also an eval, metric, or project YAML file that cannot be read.
+Raised when a `file()` sidecar a document references exists and cannot be read; also an agent, eval, metric, or project YAML file that cannot be read.
 
 Fix: create the file, correct the path, or make it readable
 
@@ -1619,7 +1621,7 @@ Fix: create the file, correct the path, or make it readable
 
 `<path>, referenced by <file>, is empty`
 
-Raised when a `file()` sidecar or tool `body_file:` holds only whitespace.
+Raised when a `file()` sidecar holds only whitespace.
 
 Fix: add content, or remove the reference
 
@@ -1785,7 +1787,7 @@ Fix: declare the view, or correct the name
 
 `{{ agent('<name>') }} does not resolve`
 
-Raised when an `agent()` reference names no agent the project declares; also an eval whose dataset or config names another agent than the eval's, or than each other.
+Raised when an `agent()` reference names no agent the project declares.
 
 Fix: declare the agent, or correct the name
 
@@ -1805,7 +1807,7 @@ Fix: declare the extension source, or correct the name
 
 `{{ file('<path>') }} does not resolve to a file`
 
-Raised when an agent's, a verified query's, or a tool member's `body:` `file()` reference names a file that does not exist.
+Raised when a `file()` reference -- an agent instruction, a verified query's `sql:`, a tool member's `body:` or a hook's `script:` -- names, relative to its own file's folder, a file that does not exist.
 
 Fix: create the file, or correct the path
 
@@ -1885,7 +1887,7 @@ Fix: declare the metric in the eval_metrics/ tree, or correct the name
 
 `{{ file('<path>') }} resolves outside the project root`
 
-Raised when an agent's, a verified query's, or a tool member's `body:` `file()` reference resolves outside the project root, or is an absolute path.
+Raised when a `file()` reference -- an agent instruction, a verified query's `sql:`, a tool member's `body:` or a hook's `script:` -- is an absolute path, or climbs out of the project.
 
 Fix: use a path inside the project
 
@@ -2023,16 +2025,6 @@ Raised when a relationship left_table/right_table is anything but one one-argume
 
 Fix: write the endpoint as {{ ref('&lt;model&gt;') }}, or run sst migrate refs --write
 
-### SST-REF047
-
-**Eval reference is not an eval_dataset() or eval_config() call** (error)
-
-`<artifact>: <field> is '<found>'; it takes one {{ <function>('<name>') }} call`
-
-Raised when an agent's `evals.dataset` or `evals.config` is a path, or anything but one reference call.
-
-Fix: name the file with {{ eval_dataset('&lt;name&gt;') }} or {{ eval_config('&lt;name&gt;') }}, the name: it declares
-
 ### SST-REF048
 
 **Eval reference names no file** (error)
@@ -2043,25 +2035,17 @@ Raised when an agent's `eval_dataset()` or `eval_config()` call names no file of
 
 Fix: name a {kind} file in the agent's evals/ folder by its name:, or give one that name
 
-### SST-REF049
-
-**Plugin or profile member is not its key's reference call** (error)
-
-`<artifact>: <field> is '<found>'; it takes one {{ <function>('<name>') }} call`
-
-Raised when an entry of a plugin's or profile's `skills:`, `plugins:`, `commands:`, `mcp_servers:` or `hooks:` is a bare name, or a call of another function.
-
-Fix: write the member as one call of its key's function, such as {{ skill('&lt;name&gt;') }} under skills:
-
 ### SST-REF050
 
 **Required template call missing** (error)
 
 `<artifact>: <field> is '<found>'; it takes a {{ <function>(...) }} call`
 
-Raised when a field that is read only as a template call holds a bare value, such as a defined tool member's column written without `{{ ref('<model>', '<column>') }}`, or its `body:` without `{{ file('<path>') }}`.
+Raised when a field that names a file or a member, and so is read only as a template call, holds a bare value: a view's scope entry, a metric's `using_relationships` or non-additive `ref`, an agent's tool, skill, tag or eval reference, a defined tool member's column or `body:`, a plugin's or profile's member, a hook's `script:` or a command's `skill:`.
 
 Fix: write the value as a {function}() call; a bare value is not read
+
+Note: The References guide lists every reference field, the function it takes, and the fields left literal.
 
 ### SST-REF900
 
@@ -2867,18 +2851,6 @@ Raised when one side of a condition refs more than one column.
 
 Fix: split it into one condition per column pair
 
-### SST-VAL214
-
-**using_relationships names an undeclared relationship** (error)
-
-`metric '<metric>' names relationship '<relationship>', which is not declared`
-
-Raised when a metric's `using_relationships` lists a bare name that no relationship declares.
-
-Fix: declare the relationship, or correct the name
-
-Note: A `{{ relationship() }}` call naming no relationship is `SST-REF029`.
-
 ### SST-VAL215
 
 **Relationship graph has a cycle that changes results** (error)
@@ -3645,15 +3617,15 @@ Fix: declare exactly one semantic_view and no name
 
 ### SST-VAL521
 
-**Search or generic tool omits a required key** (error)
+**Search, generic or toolset tool omits a required key** (error)
 
 `agent '<artifact>': tool '<name>' omits <field>`
 
-Raised when a cortex_search tool omits `name` or `search_service`, or a generic tool omits `name` or `identifier`.
+Raised when a cortex_search tool omits `name` or `search_service`, a generic tool omits `name` or `identifier`, or an agent_toolset tool declares neither `agent` nor `identifier`.
 
-Fix: declare the tool's name, and its search_service or, for a generic tool, its identifier
+Fix: declare the tool's name, and its search_service or, for a generic tool, its identifier; an agent toolset names its agent with agent() or its tool member with identifier: tool()
 
-Note: A generic tool declares `name` and `identifier`, the `tool()` reference to its member.
+Note: A generic tool declares `name` and `identifier`, the `tool()` reference to its member; an agent toolset over an `agent` tool member writes `identifier: "{{ tool('<name>') }}"`.
 
 ### SST-VAL522
 
@@ -5257,9 +5229,11 @@ Fix: delete the key
 
 `hook '<artifact>': <detail>`
 
-Raised when a hook folder has no manifest or both spellings, or is not exactly one event/command/script.
+Raised when a hook folder has no manifest or both spellings, is not exactly one event/command, or, with no `script:`, holds no script or more than one.
 
-Fix: declare event, command, and exactly one script, naming it with script: when the folder holds several files
+Fix: declare event and command, and name the script with script: "{{ file('&lt;path&gt;') }}" when the folder holds several files
+
+Note: A `script:` that names no file is `SST-REF014`; one that is not a `file()` call is `SST-REF050`.
 
 ### SST-VAL853
 
@@ -7135,7 +7109,7 @@ Fix: check the permissions and the free space
 
 `could not read <path>: <detail>`
 
-Raised when a file SST reads cannot be read or does not hold what it should (a manifest, baseline, saved plan, or `--state` observation); a file or folder to be read is a symbolic link or is reached through one, a tool member's `body:` file among them; or dbt's `target-path` or the semantic-models directory resolves outside the project.
+Raised when a file SST reads cannot be read or does not hold what it should (a manifest, baseline, saved plan, or `--state` observation); a file or folder to be read is a symbolic link or is reached through one, every `file()` sidecar among them; or dbt's `target-path` or the semantic-models directory resolves outside the project.
 
 Fix: remove the link, or use a path inside the project; otherwise check that the file exists and can be read
 
@@ -7658,6 +7632,22 @@ Retired because relationship endpoints take a `ref()` call; a bare model name is
 
 Superseded by [`SST-REF046`](#sst-ref046).
 
+### SST-REF047
+
+**Eval reference is not an eval_dataset() or eval_config() call** (retired in 1.0.0)
+
+Retired because every reference field is read as one call by the same reader: a bare value is SST-REF050, a call of another function SST-REF041.
+
+Superseded by [`SST-REF050`](#sst-ref050).
+
+### SST-REF049
+
+**Plugin or profile member is not its key's reference call** (retired in 1.0.0)
+
+Retired because every reference field is read as one call by the same reader: a bare value is SST-REF050, a call of another function SST-REF041.
+
+Superseded by [`SST-REF050`](#sst-ref050).
+
 ### SST-REF200
 
 **table() is deprecated** (retired in 1.0.0)
@@ -7709,6 +7699,14 @@ Superseded by [`SST-PRS126`](#sst-prs126).
 Retired because a metric's tables are inferred from its expression; one that names none is SST-MEM002.
 
 Superseded by [`SST-MEM002`](#sst-mem002).
+
+### SST-VAL214
+
+**using_relationships names an undeclared relationship** (retired in 1.0.0)
+
+Retired because a using_relationships entry is always a relationship() call, so one naming no relationship is SST-REF029.
+
+Superseded by [`SST-REF029`](#sst-ref029).
 
 ### SST-VAL304
 

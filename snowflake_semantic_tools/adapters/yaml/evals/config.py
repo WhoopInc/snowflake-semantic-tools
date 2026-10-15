@@ -17,6 +17,7 @@ from snowflake_semantic_tools.adapters.yaml.evals.readers import (
     optional_string_field,
     origin_at,
     parse_threshold,
+    removed_agent_key,
     required_string,
     string_tuple,
 )
@@ -35,8 +36,8 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalSystemMetric,
     eval_defaults,
 )
-from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, single_template_call
-from snowflake_semantic_tools.domain.resolve.calls import call_problem, malformed_field, syntax_problem
+from snowflake_semantic_tools.domain.resolve.calls import required_call
+from snowflake_semantic_tools.domain.resolve.ref_fields import reference_functions
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 
 # Settings an earlier draft read outside `config:`, by the path that held them, with where each is
@@ -141,11 +142,13 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
     Custom metrics are returned as the names their `eval_metric()` references give; the caller
     resolves them. `database`, `schema` and `enabled` are recorded as the location keys the
     file sets, for the validator to refuse, and the `config:` block as written, for the caller
-    to resolve. Fields are read, and reported, in this order: `agent`, `name`, `config`,
-    `dataset`, `metrics`, `run`, `sweep`; then the settings written outside `config:`.
+    to resolve. The file names no agent: its folder says which it belongs to. Fields are read,
+    and reported, in this order: `agent`, then `name`, `config`, `dataset`, `metrics`, `run`,
+    `sweep`; then the settings written outside `config:`.
 
     Diagnostics:
-        SST-PRS002: `agent`, `name` or `metrics` is absent.
+        SST-PRS126: the file writes `agent:`.
+        SST-PRS002: `name` or `metrics` is absent.
         SST-PRS003: a field has the wrong type, such as a `run:` block that is not a mapping.
         SST-PRS013: a `run.accept_statuses` entry, or a `config.metrics` name, is not an
             accepted value.
@@ -154,14 +157,14 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
         SST-PRS126: the file writes `agent_version`, or a `run:` setting, outside `config:`.
         SST-PRS018: an entry of `metrics.system` or `metrics.custom` has the wrong type.
         SST-PRS019: a boolean field, such as a system metric's `gate`, is not a boolean.
-        SST-LOD004, SST-REF033, SST-REF003, SST-REF015: a `metrics.custom` entry is not exactly
-            one `eval_metric()` reference.
+        Every code `required_call` lists, for a `metrics.custom` entry that is not one
+            `eval_metric()` reference.
         SST-CFG044: the file declares a `sweep:` block, which this release does not run.
     """
     source_file, parsed = loaded
     tree = parsed.tree
     origin = origin_at(parsed, (), source_file)
-    agent = required_string(tree, "agent", source_file, parsed, diagnostics)
+    diagnostics.extend(removed_agent_key(source_file, parsed))
     name = required_string(tree, "name", source_file, parsed, diagnostics)
     item_config = tree.get("config")
     _check_item_config(source_file, parsed, item_config, diagnostics)
@@ -192,7 +195,6 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
     return EvalConfig(
         origin,
         source_file,
-        agent,
         dataset,
         system_metrics,
         custom_metric_names,
@@ -384,9 +386,7 @@ def _parse_custom_refs(
     Diagnostics:
         SST-PRS003: the block is not a list; reported without a position.
         SST-PRS018: an entry is not a string.
-        SST-LOD004, SST-REF033, SST-REF003: an entry's template does not parse, or the entry is
-            not one whole `eval_metric()` call (SST-REF003).
-        SST-REF015: the call does not take one argument.
+        Every code `required_call` lists, for an entry that is not one `eval_metric()` call.
     """
     if value is None:
         return ()
@@ -411,20 +411,13 @@ def _parse_custom_refs(
                 )
             )
             continue
-        try:
-            call = single_template_call(item, "eval_metric")
-        except TemplateSyntaxError as exc:
-            diagnostics.append(syntax_problem(exc, source_file))
-            continue
         located = Origin(source_file, origin.line, origin.col)
-        if call is None:
-            diagnostics.append(malformed_field(item, located))
+        functions = reference_functions("eval_config.metrics.custom")
+        found = required_call(item, functions, located, field="metrics.custom", artifact=source_file)
+        if isinstance(found, Diagnostic):
+            diagnostics.append(found)
             continue
-        problem = call_problem(call, frozenset(("eval_metric",)), located, field="metrics.custom", artifact=source_file)
-        if problem is not None:
-            diagnostics.append(problem)
-            continue
-        names.append(str(call.args[0]))
+        names.append(str(found.args[0]))
     return tuple(names)
 
 

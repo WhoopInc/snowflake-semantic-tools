@@ -33,7 +33,6 @@ evals:
     write(
         tmp_path / "agents" / "sales" / "evals" / "dataset.yml",
         """
-agent: sales
 name: questions
 questions:
   - question: Decline this request.
@@ -46,7 +45,6 @@ questions:
     write(
         tmp_path / "agents" / "sales" / "evals" / "config.yml",
         f"""
-agent: sales
 name: run
 config:
   agent_version: committed

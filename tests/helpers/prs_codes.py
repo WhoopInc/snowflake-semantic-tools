@@ -40,7 +40,7 @@ FILE = "agents/sales/evals/dataset.yml"
 def dataset_findings(code: str, rows: str) -> list[Diagnostic]:
     """The diagnostics of `code` from parsing an eval dataset for agent `sales` with `rows`."""
     diagnostics: list[Diagnostic] = []
-    parse_dataset((FILE, parsed(f"agent: sales\nquestions:\n{rows}", FILE)), diagnostics)
+    parse_dataset((FILE, parsed(f"name: questions\nquestions:\n{rows}", FILE)), diagnostics)
     return [item for item in diagnostics if item.code == code]
 
 

@@ -2,28 +2,27 @@
 
 from __future__ import annotations
 
-import posixpath
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
-from snowflake_semantic_tools.adapters.yaml.fields import sibling_within
+from snowflake_semantic_tools.adapters.yaml.fields import resolve_file
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import _non_additive, _window
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple, _referenced_tables
-from snowflake_semantic_tools.domain.diagnostics import D
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
-from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.parse.template import (
+    TemplateCall,
+    TemplateSyntaxError,
+    scan_template_calls,
+    single_template_call,
+)
 from snowflake_semantic_tools.domain.resolve.calls import member_reference
 from snowflake_semantic_tools.domain.validate.semantic.deprecated import honoured
 from snowflake_semantic_tools.domain.validate.semantic.nodes import list_of, load_nodes, member_root, node_origin
-
-
-def _relationship_name(text: str) -> str:
-    """Read a `using_relationships` entry: a bare relationship name, or one `relationship()` call."""
-    return member_reference(text, "relationship") or text
 
 
 def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir: str) -> tuple[MetricDef, ...]:
@@ -60,19 +59,14 @@ def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir
                 tables=tables,
                 derived=window is None and not tables and any(call.function == "metric" for call in template_calls),
                 using_relationships=tuple(
-                    _relationship_name(str(value)).upper() for value in node.get("using_relationships") or []
-                ),
-                relationship_refs=tuple(
                     name.upper()
-                    for value in node.get("using_relationships") or []
+                    for value in list_of(node.get("using_relationships"))
                     if (name := member_reference(str(value), "relationship")) is not None
                 ),
                 non_additive=tuple(
-                    _non_additive(value)
+                    entry
                     for value in list_of(node.get("non_additive_dimensions"))
-                    if isinstance(value, dict)
-                    and isinstance(value.get("dimension"), str)
-                    and value["dimension"].strip()
+                    if (entry := _non_additive(value)) is not None
                 ),
                 access_modifier=str(honoured(node, "access_modifier", "metric") or "public_access"),
                 origin=node_origin(document, member_root("metric"), index),
@@ -226,45 +220,46 @@ def _verified_at(value: object, *, name: str) -> int | None:
 
 def load_verified_queries(
     documents: RawDocuments, project_dir: Path, semantic_models_dir: str
-) -> tuple[VerifiedQueryDef, ...]:
+) -> tuple[tuple[VerifiedQueryDef, ...], tuple[Diagnostic, ...]]:
     """Read every document's `snowflake_verified_queries:` entries into records, in document order.
 
     A file in any folder is read. The SQL is `sql:`, or the file a `{{ file('<path>') }}` call
-    that is all of it names, relative to the entry's own file. Its tables are the models the
-    SQL, the file's when it names one, names with `ref()`. An entry is skipped here when it is
-    not a mapping, has no `name`, `question` or `sql`, calls `file()` in a `sql:` that call is
-    not all of, or names a file that is, or is reached through, a symbolic link, lies outside
-    the project, cannot be read, is not UTF-8, or holds only whitespace; the shape checks
-    report those.
+    that is all of it names, read once by `resolve_file` relative to the entry's own file. Its
+    tables are the models the SQL, the file's when it names one, names with `ref()`. An entry
+    is skipped when it is not a mapping, has no `name`, `question` or `sql`, calls `file()` in a
+    `sql:` that call is not all of (SST-REF003, which the shape checks report), or names a file
+    `resolve_file` refuses.
+
+    Returns:
+        The records, and what reading the files they name reported, in entry order.
 
     Raises:
         ProjectError: An entry's `verified_at` is neither an integer nor an ISO-8601 string; an
             unquoted date, which YAML reads as a date, is refused too (SST-PRS017).
+
+    Diagnostics:
+        Every code `resolve_file` lists, for the file a `sql:` names.
     """
     out: list[VerifiedQueryDef] = []
+    diagnostics: list[Diagnostic] = []
     for document, index, node in load_nodes(documents, member_root("verified_query")):
         if not node.get("name") or not node.get("question") or node.get("sql") is None:
             continue
         sql = str(node["sql"])
         sql_file = None
-        requested = member_reference(sql.strip(), "file")
-        if requested is None and _calls_file(sql):
-            # A file() that is not all of `sql:` is SST-REF003's to report.
+        call = _file_call(sql)
+        if call is None and _calls_file(sql):
             continue
-        if requested is not None:
-            raw = documents.by_path[document.path]
-            sql_path, refusal = sibling_within(raw.abs_path, document.path, requested)
-            if refusal is not None:
-                continue
-            try:
-                sql = sql_path.read_text(encoding="utf-8").rstrip("\n")
-            except (OSError, UnicodeDecodeError):
-                continue
-            if not sql.strip():
-                continue
-            sql_file = posixpath.normpath(posixpath.join(posixpath.dirname(document.path), requested))
-        sql = _strip_sql_header(sql)
         name = str(node["name"])
+        origin = node_origin(document, member_root("verified_query"), index)
+        if call is not None:
+            subject = artifact_key("verified_query", name)
+            sidecar = resolve_file(project_dir, document.path, call, origin=origin, subject=subject)
+            if isinstance(sidecar, Diagnostic):
+                diagnostics.append(sidecar)
+                continue
+            sql, sql_file = sidecar.text.rstrip("\n"), sidecar.path
+        sql = _strip_sql_header(sql)
         try:
             template_calls = scan_template_calls(sql)
         except TemplateSyntaxError:
@@ -281,10 +276,19 @@ def load_verified_queries(
                 onboarding_question=(
                     bool(node["use_as_onboarding_question"]) if "use_as_onboarding_question" in node else None
                 ),
-                origin=node_origin(document, member_root("verified_query"), index),
+                origin=origin,
                 template_calls=template_calls,
                 poisoned=poisoned,
                 sql_file=sql_file,
             )
         )
-    return tuple(out)
+    return tuple(out), tuple(diagnostics)
+
+
+def _file_call(sql: str) -> TemplateCall | None:
+    """Return the one-path `file()` call that is all of `sql`; None for anything else."""
+    try:
+        call = single_template_call(sql.strip(), "file")
+    except TemplateSyntaxError:
+        return None
+    return call if call is not None and len(call.args) == 1 else None

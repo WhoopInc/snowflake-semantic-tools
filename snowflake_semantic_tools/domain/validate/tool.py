@@ -113,11 +113,16 @@ def _immutable(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
 
 
 def _define_fields(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
-    """Report a defined member with nothing to create it from."""
+    """Report a defined member with nothing to create it from.
+
+    What it declares counts, not what reading it gave: a `body:` the loader refused is reported
+    there, once, and not again here.
+    """
     emit = Emitter(subject=subject, origin=member.origin)
     if member.ownership is not ToolOwnership.DEFINE:
         return emit.diagnostics
-    if not member.on_model and not member.body_file and member.type != ToolKind.STAGE.value:
+    declared = member.on_model or member.body_file or "body" in member.creation_keys
+    if not declared and member.type != ToolKind.STAGE.value:
         emit("SST-VAL604", name=member.name)
     return emit.diagnostics
 

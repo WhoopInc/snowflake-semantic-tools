@@ -155,9 +155,10 @@ def test_agents_inherit_secure_and_tags_they_do_not_set(tmp_path: Path) -> None:
     _replace(
         project / "sst_config.yml",
         "\nagents:\n",
-        "\nagents:\n  +tags:\n    - name: COST_CENTER\n      value: analytics\n",
+        "\nagents:\n  +tags:\n    - name: \"{{ tag('cost_center') }}\"\n      value: analytics\n",
     )
-    assert _minimal_agent(project).tags == (("COST_CENTER", "analytics"),)
+    # The reference project's `tags:` block names the tag: its default_prefix and its key.
+    assert _minimal_agent(project).tags == (("SST_REF_DEV.JAFFLE.COST_CENTER", "analytics"),)
 
 
 def test_views_take_the_default_tags_when_they_set_none(tmp_path: Path) -> None:

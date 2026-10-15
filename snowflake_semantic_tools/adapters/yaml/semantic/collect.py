@@ -45,12 +45,13 @@ def parse_semantic_project(
         SST-LOD021, SST-PRS001: a document's root keys are not registered, as
             `root_key_diagnostics` reports them, after the documents' own diagnostics.
         SST-PRS900: a parser returned a record that is not immutable, after the root keys.
+        Every code `load_verified_queries` lists, for the files verified queries load, last.
     """
     views = _parse_views(documents)
     metrics = load_metrics(documents, project_dir, semantic_models_dir)
     filters = load_filters(documents, project_dir, semantic_models_dir)
     instructions = load_instructions(documents, project_dir, semantic_models_dir)
-    verified_queries = load_verified_queries(documents, project_dir, semantic_models_dir)
+    verified_queries, query_files = load_verified_queries(documents, project_dir, semantic_models_dir)
     relationship_records, relationship_diagnostics = load_relationships(
         documents, project_dir, semantic_models_dir, models
     )
@@ -70,7 +71,9 @@ def parse_semantic_project(
         *(diagnostic for type_name in SEMANTIC_REGISTRY.members for diagnostic in _mutable_members(type_name, members)),
     )
     return ParsedProject(
-        views, members, DiagnosticBag((*documents.diagnostics, *shape, *mutable, *relationship_diagnostics))
+        views,
+        members,
+        DiagnosticBag((*documents.diagnostics, *shape, *mutable, *relationship_diagnostics, *query_files)),
     )
 
 

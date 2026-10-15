@@ -86,6 +86,7 @@ def validate_profile_catalog(
         SST-VAL849: two MCP configs a profile uses define one server.
         SST-VAL850: an MCP config sets a credential-like key to a literal value.
         SST-VAL857: a hook script or command file has a path a stage rejects.
+        SST-REF032: a command's frontmatter `skill:` names a skill the project does not have.
     """
     shared = catalog.shared
     known = _Known(
@@ -103,6 +104,11 @@ def validate_profile_catalog(
         diagnostics.extend(_profile_rules(profile, known))
     diagnostics.extend(_credential_rules(catalog.mcp_configs))
     diagnostics.extend(_staged_path_rules(catalog))
+    diagnostics.extend(
+        D("SST-REF032", name=command.skill, origin=command.origin, subject=command.key)
+        for command in catalog.commands
+        if command.skill is not None and command.skill not in skills
+    )
     return DiagnosticBag(diagnostics)
 
 

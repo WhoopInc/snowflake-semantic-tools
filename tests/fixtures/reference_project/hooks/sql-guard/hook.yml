@@ -8,3 +8,6 @@ command: bash
 matcher: snowflake_sql_execute
 timeout: 30
 description: Refuses destructive SQL unless the user confirms it.
+# The script, relative to this file. Without `script:` the folder's one other
+# file is the script.
+script: "{{ file('sql-guard.sh') }}"

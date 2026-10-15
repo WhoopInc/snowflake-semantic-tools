@@ -21,10 +21,8 @@ def test_sst_val701_fires() -> None:
             ),
             sales_eval(
                 agent=sales_agent(name="orders"),
-                eval_dataset=dataset(agent="orders"),
-                eval_config=config(
-                    agent="orders", dataset=EvalDatasetConfig("auto", "EVAL_{{ sha7 }}", "SRC_{{ agent }}_{{ sha7 }}")
-                ),
+                eval_dataset=dataset(),
+                eval_config=config(dataset=EvalDatasetConfig("auto", "EVAL_{{ sha7 }}", "SRC_{{ agent }}_{{ sha7 }}")),
             ),
         ),
         "SST-VAL701",
@@ -40,8 +38,8 @@ def test_sst_val701_silent() -> None:
             sales_eval(),
             sales_eval(
                 agent=sales_agent(name="orders"),
-                eval_dataset=dataset(agent="orders"),
-                eval_config=config(agent="orders"),
+                eval_dataset=dataset(),
+                eval_config=config(),
             ),
         )
     )

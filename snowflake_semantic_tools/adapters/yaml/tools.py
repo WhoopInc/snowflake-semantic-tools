@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import posixpath
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -10,8 +9,14 @@ from types import MappingProxyType
 from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.paths import walk_refusal
-from snowflake_semantic_tools.adapters.yaml.fields import optional_string, refused, strings, unknown_keys
+from snowflake_semantic_tools.adapters.yaml.fields import (
+    file_call,
+    optional_string,
+    refused,
+    resolve_file,
+    strings,
+    unknown_keys,
+)
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
@@ -33,7 +38,7 @@ from snowflake_semantic_tools.domain.model.tool import (
 )
 from snowflake_semantic_tools.domain.parse.fields import unknown_field
 from snowflake_semantic_tools.domain.parse.template import TemplateCall, TemplateSyntaxError, scan_template_calls
-from snowflake_semantic_tools.domain.resolve.calls import call_problem, malformed_field, missing_call, syntax_problem
+from snowflake_semantic_tools.domain.resolve.calls import syntax_problem
 from snowflake_semantic_tools.domain.resolve.ref_fields import ref_field
 from snowflake_semantic_tools.domain.resolve.template import ResolveContext, resolve_scalar
 from snowflake_semantic_tools.domain.resolve.tool_column import ColumnSite, tool_column
@@ -422,29 +427,20 @@ def _at(value: Mapping[Any, Any], keys: tuple[str, ...]) -> object:
 def _body(
     source: _Source, value: object, name: str, path: NodePath, diagnostics: list[Diagnostic]
 ) -> tuple[str | None, str | None]:
-    """Read a routine's `body: "{{ file('<path>') }}"`, its path relative to the tool file's folder.
+    """Read a routine's `body: "{{ file('<path>') }}"` through `resolve_file`, relative to the tool file.
 
     Returns:
-        The file relative to the project root, and its text; the file and None when its text
-        cannot be read; and None and None when `body:` is absent or names no file.
+        The file relative to the project root, and its text; None and None when `body:` is
+        absent or refused. A refused `body:` is still declared, so the member is not also
+        reported as having none (SST-VAL604).
 
     Diagnostics:
         SST-PRS003: `body:` is not a string.
-        SST-LOD004, SST-REF033, SST-REF003: its template does not parse.
-        SST-REF050: it is a bare value, not a `file()` call.
-        SST-REF003: it holds more than one call, or text beside the call.
-        SST-REF004, SST-REF041, SST-REF015: the call is not one one-path `file()` call.
-        SST-REF027: the path is absolute, or climbs out of the project.
-        SST-PRT009: the file, or a folder between the project and it, is a symbolic link; it is
-            not read.
-        SST-REF014: the path names no file.
-        SST-LOD018: the file is there and cannot be read.
-        SST-LOD006: the file is not UTF-8.
-        SST-LOD019: the file holds only whitespace.
+        Every code `file_call` lists, for a `body:` that is not one `file()` call.
+        Every code `resolve_file` lists, for the file it names.
     """
     subject = artifact_key("tool", name.casefold())
     origin = source.origin(path)
-    file = source.source_file
     if value is None:
         return None, None
     if not isinstance(value, str):
@@ -453,55 +449,15 @@ def _body(
             D("SST-PRS003", artifact=subject, field="body", expected="string", found=found, origin=origin)
         )
         return None, None
-    call = _one_call(value, "file", origin, subject, diagnostics)
-    if call is None:
+    call = file_call(value, origin, field="body", artifact=subject, subject=subject)
+    if isinstance(call, Diagnostic):
+        diagnostics.append(call)
         return None, None
-    requested = call.args[0]
-    relative = posixpath.normpath(posixpath.join(posixpath.dirname(file), requested))
-    if posixpath.isabs(requested) or relative == ".." or relative.startswith("../"):
-        diagnostics.append(D("SST-REF027", path=requested, origin=origin, subject=subject))
+    sidecar = resolve_file(source.project_dir, source.source_file, call, origin=origin, subject=subject)
+    if isinstance(sidecar, Diagnostic):
+        diagnostics.append(sidecar)
         return None, None
-    sidecar = source.project_dir / relative
-    refusal = walk_refusal(source.project_dir, sidecar)
-    if refusal is not None:
-        diagnostics.append(D("SST-PRT009", path=relative, detail=refusal, subject=subject, origin=origin))
-        return relative, None
-    if not sidecar.is_file():
-        diagnostics.append(D("SST-REF014", path=requested, origin=origin, subject=subject))
-        return relative, None
-    try:
-        content = sidecar.read_text(encoding="utf-8")
-    except UnicodeDecodeError as exc:
-        diagnostics.append(D("SST-LOD006", origin=Origin(relative), file=relative, offset=exc.start, subject=subject))
-        return relative, None
-    except OSError:
-        diagnostics.append(D("SST-LOD018", file=file, path=requested, origin=origin, subject=subject))
-        return relative, None
-    if not content.strip():
-        diagnostics.append(D("SST-LOD019", path=requested, file=file, origin=origin, subject=subject))
-    return relative, content
-
-
-def _one_call(
-    value: str, function: str, origin: Origin, subject: str, diagnostics: list[Diagnostic]
-) -> TemplateCall | None:
-    """Return the one `function()` call that is all of `value`; None, reported, when it is anything else."""
-    try:
-        calls = scan_template_calls(value)
-    except TemplateSyntaxError as exc:
-        diagnostics.append(syntax_problem(exc, origin.file, subject=subject))
-        return None
-    if not calls:
-        diagnostics.append(missing_call(value, function, origin, field="body", artifact=subject, subject=subject))
-        return None
-    if len(calls) != 1 or calls[0].raw.strip() != value.strip():
-        diagnostics.append(malformed_field(value, origin, subject=subject))
-        return None
-    problem = call_problem(calls[0], frozenset((function,)), origin, field="body", artifact=subject, subject=subject)
-    if problem is not None:
-        diagnostics.append(problem)
-        return None
-    return calls[0]
+    return sidecar.path, sidecar.text
 
 
 def _where(

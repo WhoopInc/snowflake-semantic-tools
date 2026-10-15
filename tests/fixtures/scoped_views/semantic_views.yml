@@ -33,10 +33,10 @@ semantic_views:
       - "{{ metric('total_supply_cost') }}"
       - "{{ metric('gross_margin') }}"
       - "{{ metric('gross_margin_rate') }}"
-      - product_count
+      - "{{ metric('product_count') }}"
     relationships:
-      - order_items_to_products
-      - supplies_to_products
+      - "{{ relationship('order_items_to_products') }}"
+      - "{{ relationship('supplies_to_products') }}"
 
   # Exclude mode: everything its tables attach renders except what is named.
   # Filters are never scoped, so is_large_order still needs large_order_cents.

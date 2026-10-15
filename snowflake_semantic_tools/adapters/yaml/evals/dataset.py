@@ -14,6 +14,7 @@ from snowflake_semantic_tools.adapters.yaml.evals.readers import (
     optional_bool_field,
     optional_string_field,
     origin_at,
+    removed_agent_key,
     required_string,
     string_tuple,
 )
@@ -35,10 +36,11 @@ def parse_dataset(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic])
     """Parse one eval dataset file, given with its project-relative path.
 
     `database`, `schema` and `enabled` are recorded as the location keys the file sets, for
-    the validator to refuse.
+    the validator to refuse. The file names no agent: its folder says which it belongs to.
 
     Diagnostics:
-        SST-PRS002: `agent`, `name` or `questions` is absent.
+        SST-PRS126: the file writes `agent:`.
+        SST-PRS002: `name` or `questions` is absent.
         SST-PRS117: a question row has no `question` or no `ground_truth`.
         SST-PRS003: a field has the wrong type, such as a `questions` that is not a list.
         SST-PRS018: a question or an expected invocation is not a mapping.
@@ -47,7 +49,7 @@ def parse_dataset(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic])
     source_file, parsed = loaded
     tree = parsed.tree
     origin = origin_at(parsed, (), source_file)
-    agent = required_string(tree, "agent", source_file, parsed, diagnostics)
+    diagnostics.extend(removed_agent_key(source_file, parsed))
     name = required_string(tree, "name", source_file, parsed, diagnostics)
     description = optional_string_field(tree, "description", source_file, parsed, diagnostics)
     questions_value = tree.get("questions")
@@ -74,7 +76,6 @@ def parse_dataset(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic])
     return EvalDataset(
         origin,
         source_file,
-        agent,
         description,
         questions,
         tuple(key for key in ("database", "schema", "enabled") if key in tree),

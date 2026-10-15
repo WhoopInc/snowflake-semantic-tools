@@ -6,7 +6,7 @@ from snowflake_semantic_tools.adapters.yaml.evals.config import parse_config
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 
-_CONFIG = "agent: sales\nmetrics:\n  system: [tool_selection_accuracy]\n"
+_CONFIG = "name: run\nmetrics:\n  system: [tool_selection_accuracy]\n"
 _FILE = "agents/sales/evals/config.yml"
 
 

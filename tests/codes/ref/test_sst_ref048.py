@@ -35,7 +35,7 @@ def test_sst_ref048_fires(tmp_path: Path) -> None:
 
 
 def test_sst_ref048_does_not_search_another_agents_folder(tmp_path: Path) -> None:
-    write(tmp_path / "agents" / "other" / "evals" / "nightly.yml", "agent: other\nname: nightly\nmetrics: {}\n")
+    write(tmp_path / "agents" / "other" / "evals" / "nightly.yml", "name: nightly\nmetrics: {}\n")
     assert len(coded(_catalog(tmp_path, "nightly").diagnostics, "SST-REF048")) == 1
 
 

@@ -513,8 +513,9 @@ def _file_checksums(files: ProjectPaths, tree: Mapping[str, object], cache: Load
     """Checksum every input file the manifest records, by project-relative path.
 
     With a dbt project, each semantic model document discovery finds; then every file under the
-    tools, agents, and eval metric roots; then under the skill, plugin, profile, hook, and MCP
-    server roots. Those bundled roots skip what publication skips: hidden entries and caches.
+    tools, agents, and eval metric roots; then under the skill, plugin, profile, hook, MCP
+    server, and command roots. Those bundled roots skip what publication skips: hidden entries
+    and caches.
 
     A symbolic link, or a file reached through one, is skipped, as every loader refuses it: no
     checksum is read from outside the project.
@@ -540,6 +541,7 @@ def _file_checksums(files: ProjectPaths, tree: Mapping[str, object], cache: Load
         configured_dir(config, "profiles_dir", "profiles"),
         configured_dir(config, "hooks_dir", "hooks"),
         configured_dir(config, "mcp_servers_dir", "mcp-servers"),
+        configured_dir(config, "commands_dir", "commands"),
     )
     for directory in (*directories, *bundled):
         root = project_dir / directory

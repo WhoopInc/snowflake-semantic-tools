@@ -94,7 +94,7 @@ NESTED_KEYS: Mapping[tuple[str, str], frozenset[str]] = MappingProxyType(
         # `view_config_diagnostics` checks; only the tag entries are checked here.
         ("semantic_view", "config"): frozenset(),
         ("semantic_view.config", "tags"): frozenset(("name", "value")),
-        ("metric", "non_additive_dimensions"): frozenset(("dimension", "table", "sort_direction", "null_order")),
+        ("metric", "non_additive_dimensions"): frozenset(("ref", "sort_direction", "null_order")),
         ("metric", "window"): frozenset(("partition_by", "partition_by_excluding", "order_by", "frame")),
         ("metric.window", "order_by"): frozenset(("ref", "sort_direction", "null_order")),
     }
@@ -133,6 +133,12 @@ REMOVED_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
         ("semantic_view", "enabled"): "a view sets it under config:, as config.enabled",
         ("semantic_view", "tags"): "a view sets it under config:, as config.tags",
         ("semantic_view", "max_staleness"): "a view sets it under config:, as config.max_staleness",
+        ("metric.non_additive_dimensions", "dimension"): (
+            "a non-additive entry names its column as ref: \"{{ ref('<model>', '<column>') }}\""
+        ),
+        ("metric.non_additive_dimensions", "table"): (
+            "a non-additive entry names its model in its ref: \"{{ ref('<model>', '<column>') }}\""
+        ),
     }
 )
 # The folder under the semantic models directory that owns each member type's files.

@@ -72,7 +72,7 @@ def question(text: str | None = "Show revenue in calendar year 2025.", **truth: 
 
 
 def dataset(*questions: EvalQuestion, **changes: object) -> EvalDataset:
-    value = EvalDataset(Origin(DATASET_FILE), DATASET_FILE, "sales", None, questions or (question(),))
+    value = EvalDataset(Origin(DATASET_FILE), DATASET_FILE, None, questions or (question(),))
     return replace(value, **changes)  # type: ignore[arg-type]
 
 
@@ -111,7 +111,6 @@ def config(**changes: object) -> EvalConfig:
     value = EvalConfig(
         Origin(CONFIG_FILE),
         CONFIG_FILE,
-        "sales",
         EvalDatasetConfig("auto", "EVAL_{{ agent | upper }}_{{ sha7 }}", "SRC_{{ agent }}_{{ sha7 }}"),
         (system_metric(),),
         ("grounding",),

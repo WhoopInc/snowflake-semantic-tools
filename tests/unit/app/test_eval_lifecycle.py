@@ -391,8 +391,8 @@ def two_evals_in_one_schema() -> tuple[Manifest, dict[str, RenderedArtifact]]:
     second = replace(
         first,
         agent=replace(first.agent, name="ops_agent"),
-        dataset=replace(first.dataset, agent="ops_agent"),
-        config=replace(first.config, agent="ops_agent"),
+        dataset=first.dataset,
+        config=first.config,
     )
     result = CompileEvals(
         EvalCatalog((first, second), first.custom_metrics),

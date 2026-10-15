@@ -144,8 +144,9 @@ class EvalQuestion:
 class EvalDataset:
     """An agent's eval questions, as authored in its dataset file.
 
+    The file names no agent: it belongs to the agent whose `evals/` folder holds it.
+
     Attributes:
-        agent: The agent the file declares; it must name the agent that points to it.
         name: The name `{{ eval_dataset() }}` references it by; None when absent. Never
             rendered.
         description: For reviewers only; never rendered into anything sent to Snowflake.
@@ -155,7 +156,6 @@ class EvalDataset:
 
     origin: Origin
     source_file: str
-    agent: str | None
     description: str | None
     questions: tuple[EvalQuestion, ...]
     forbidden_keys: tuple[str, ...] = ()
@@ -228,6 +228,8 @@ class EvalRunConfig:
 class EvalConfig:
     """An agent's eval run configuration, as authored in its config file.
 
+    Like a dataset, the file names no agent: its folder says which agent it belongs to.
+
     Attributes:
         dataset: None when the `dataset:` block is absent or not a mapping; likewise `run`
             for its block.
@@ -241,7 +243,6 @@ class EvalConfig:
 
     origin: Origin
     source_file: str
-    agent: str | None
     dataset: EvalDatasetConfig | None
     system_metrics: tuple[EvalSystemMetric, ...]
     custom_metric_names: tuple[str, ...]

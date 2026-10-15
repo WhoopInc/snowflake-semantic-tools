@@ -167,8 +167,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{file}: could not read {path}",
         "create the file, correct the path, or make it readable",
         condition=(
-            "a `file()` sidecar or `body_file:` a document references is not a file or "
-            "cannot be read; also an eval, metric, or project YAML file that cannot be read"
+            "a `file()` sidecar a document references exists and cannot be read; also an agent, eval, "
+            "metric, or project YAML file that cannot be read"
         ),
     ),
     spec(
@@ -177,7 +177,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Sidecar file is empty",
         "{path}, referenced by {file}, is empty",
         "add content, or remove the reference",
-        condition=("a `file()` sidecar or tool `body_file:` holds only whitespace"),
+        condition="a `file()` sidecar holds only whitespace",
     ),
     spec(
         "SST-LOD020",

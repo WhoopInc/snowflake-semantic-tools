@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from snowflake_semantic_tools.domain.resolve.ref_fields import REFERENCE_FIELDS
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PAGES = sorted((REPO_ROOT / "README.md", *(REPO_ROOT / "docs").rglob("*.md")))
 FENCE = re.compile(r"^```(\w*)\n(.*?)^```", re.MULTILINE | re.DOTALL)
@@ -133,3 +135,9 @@ ANY_PLANNING_ID = re.compile(r"(?<![\w$-])[A-Z]\d{3}(?![\w-])")
 def test_code_fixture_and_goldens_carry_no_planning_identifiers(source: Path) -> None:
     hits = [line.strip() for line in source.read_text(encoding="utf-8").splitlines() if ANY_PLANNING_ID.search(line)]
     assert not hits, f"{source.relative_to(REPO_ROOT)}: {hits}"
+
+
+def test_the_references_guide_lists_every_reference_field() -> None:
+    page = (REPO_ROOT / "docs/guides/references.md").read_text(encoding="utf-8")
+    missing = [field for field in REFERENCE_FIELDS if f"`{field}`" not in page]
+    assert missing == [], f"docs/guides/references.md does not list {missing}"

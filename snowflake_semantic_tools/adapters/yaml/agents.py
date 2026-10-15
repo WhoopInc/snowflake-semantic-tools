@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import posixpath
-import re
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
@@ -11,13 +10,13 @@ from types import MappingProxyType
 from typing import Any, TypeVar
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.paths import resolve_within
 from snowflake_semantic_tools.adapters.yaml.fields import (
     checked_list,
     checked_mapping,
     mapping,
     optional_int,
     optional_string,
+    read_sidecar,
     refused,
     unknown_keys,
 )
@@ -30,8 +29,9 @@ from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosit
 from snowflake_semantic_tools.domain.model.config_schema import resolve_settings, setting_value
 from snowflake_semantic_tools.domain.parse.fields import unknown_field
 from snowflake_semantic_tools.domain.parse.passthrough import AGENT_SPEC_KEYS, TOOL_SPEC_KEYS, passthrough_diagnostics
-from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
-from snowflake_semantic_tools.domain.resolve.calls import call_problem, malformed_field, syntax_problem
+from snowflake_semantic_tools.domain.parse.template import TemplateCall
+from snowflake_semantic_tools.domain.resolve.calls import literal_problem, required_call
+from snowflake_semantic_tools.domain.resolve.ref_fields import reference_functions
 from snowflake_semantic_tools.domain.validate.agent_tool import TOOL_KEYS
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 
@@ -84,11 +84,12 @@ def load_agents(
             reports the agent's `config:` block.
         SST-PRS018: when a `spec.tools` or `spec.skills` entry has the wrong shape.
         SST-PRS118: when a sample question is not a mapping with a string `question`.
-        SST-REF003: when an instruction holds templates other than one whole `{{ file() }}` call.
-        SST-REF014: when an instruction's `{{ file() }}` names no file.
-        SST-REF027: when a sidecar or an eval file resolves outside the project root.
-        SST-LOD018: when a file or a sidecar cannot be read.
-        SST-LOD019: when a sidecar holds only whitespace.
+        Every code `required_call` lists, when a reference field, or an instruction holding a
+            template, is not one call of the function it takes.
+        Every code `resolve_file` lists, for an instruction's sidecar, which is read relative to
+            the agent file's folder and never through a symbolic link.
+        SST-REF008: when a consumed extension's skill `name` holds a template.
+        SST-LOD018: when an agent file cannot be read.
     """
     root = project_dir / agents_dir
     routes = routed_diagnostics(config, project_dir, "agent") if config is not None else ()
@@ -109,7 +110,7 @@ def load_agents(
         except OSError:
             diagnostics.append(D("SST-LOD018", file=relative, path=relative, origin=Origin(relative)))
             continue
-        agent, problems = _parse_agent(project_dir, path.parent, relative, dict(parsed.tree), parsed.line_index)
+        agent, problems = _parse_agent(project_dir, relative, dict(parsed.tree), parsed.line_index)
         diagnostics.extend((*parsed.diagnostics, *problems))
         if agent is not None:
             documented = _comment_mentions(raw, parsed.line_index.get(_TOKENS), "orchestration")
@@ -248,7 +249,6 @@ def _comment_mentions(raw: bytes, position: SourcePosition | None, word: str) ->
 
 def _parse_agent(
     project_dir: Path,
-    agent_dir: Path,
     relative: str,
     tree: Mapping[str, Any],
     lines: Mapping[NodePath, SourcePosition],
@@ -278,7 +278,6 @@ def _parse_agent(
     orchestration_text, response_text = (
         _instruction(
             project_dir,
-            agent_dir,
             relative,
             instructions.get(key),
             source_files,
@@ -292,7 +291,7 @@ def _parse_agent(
     skills = tuple(
         skill
         for index, value in enumerate(listed(spec.get("skills"), "spec.skills"))
-        if (skill := _parse_skill(relative, index, value, diagnostics)) is not None
+        if (skill := _parse_skill(relative, index, value, diagnostics, subject)) is not None
     )
     questions = listed(instructions.get("sample_questions"), "spec.instructions.sample_questions")
     sample_questions = _sample_questions(questions, name, origin, diagnostics)
@@ -364,8 +363,8 @@ def _parse_eval_files(source_file: str, value: object, diagnostics: list[Diagnos
     Diagnostics:
         SST-PRS003: when `evals:` is not a mapping.
         SST-PRS002: when `dataset` or `config` is absent.
-        SST-LOD004, SST-REF033, SST-REF003: when a template in a value does not parse.
-        SST-REF047: when a value is anything but one `eval_dataset()` or `eval_config()` call.
+        Every code `required_call` lists, for a value that is not one `eval_dataset()` or
+            `eval_config()` call.
     """
     if value is None:
         return None
@@ -384,32 +383,21 @@ def _parse_eval_files(source_file: str, value: object, diagnostics: list[Diagnos
         )
         return AgentEvalFiles(origin, folder=folder)
     names: dict[str, str | None] = {}
-    for function in ("eval_dataset", "eval_config"):
-        field = function.removeprefix("eval_")
+    for field in ("dataset", "config"):
         raw = value.get(field)
         names[field] = None
         if raw is None:
             diagnostics.append(D("SST-PRS002", artifact=source_file, field=f"evals.{field}", origin=origin))
             continue
-        reported = len(diagnostics)
-        names[field] = _single_template_arg(raw, function, diagnostics, origin)
-        if names[field] is None and len(diagnostics) == reported:
-            diagnostics.append(
-                D(
-                    "SST-REF047",
-                    artifact=source_file,
-                    field=f"evals.{field}",
-                    found=str(raw),
-                    function=function,
-                    origin=origin,
-                )
-            )
+        call = _reference(
+            raw, f"agent.evals.{field}", diagnostics, origin, field=f"evals.{field}", artifact=source_file
+        )
+        names[field] = _name(call)
     return AgentEvalFiles(origin, names["dataset"], names["config"], folder)
 
 
 def _instruction(
     project_dir: Path,
-    agent_dir: Path,
     source_file: str,
     value: object,
     source_files: list[str],
@@ -420,28 +408,23 @@ def _instruction(
 ) -> str | None:
     """Read one instruction: its text as written, or the `{{ file('<path>') }}` sidecar it names.
 
-    A sidecar resolves against the agent's folder, is read as UTF-8 without trailing whitespace,
-    and is appended to `source_files`. A malformed template is reported and the text kept.
+    Text with no template is the instruction. A sidecar is read by `resolve_file`, relative to
+    the agent file's folder, without trailing whitespace, and is appended to `source_files`.
 
     Args:
         field: The instruction's key under `spec.instructions`, which a value of the wrong
             type is reported under.
-        subject: The agent's key, which a value of the wrong type is reported against.
+        subject: The agent's key, which every problem is reported against.
 
     Returns:
-        The instruction; None when `value` is not a string or a sidecar problem was reported.
+        The instruction; None when `value` is not a string or its sidecar was refused.
 
     Diagnostics:
         SST-PRS003: when the value is present and is not a string.
-        SST-LOD004, SST-REF033, SST-REF003: when a template in the text does not parse.
-        SST-REF003: when the text holds templates, and they are not one call that is all of it.
-        SST-REF004, SST-REF041, SST-REF015: when that call is not one one-path `file()` call.
-        SST-REF027: when the sidecar resolves outside the project root.
-        SST-REF014: when the sidecar's path names no file.
-        SST-LOD018: when the sidecar is there and cannot be read.
-        SST-LOD006: when the sidecar is not UTF-8.
-        SST-LOD019: when the sidecar holds only whitespace.
+        Every code `read_sidecar` lists, for text that holds a template: it must be one
+            `file()` call naming a sidecar `resolve_file` reads.
     """
+    origin = Origin(source_file)
     if not isinstance(value, str):
         if value is not None:
             diagnostics.append(
@@ -451,48 +434,27 @@ def _instruction(
                     field=f"spec.instructions.{field}",
                     expected="string",
                     found=type(value).__name__,
-                    origin=Origin(source_file),
+                    origin=origin,
                     subject=subject,
                 )
             )
         return None
-    try:
-        calls = scan_template_calls(value)
-    except TemplateSyntaxError as exc:
-        diagnostics.append(syntax_problem(exc, source_file))
+    if "{{" not in value:
         return value
-    if not calls:
-        return value
-    origin = Origin(source_file)
-    if len(calls) != 1 or calls[0].raw != value:
-        diagnostics.append(malformed_field(value, origin))
+    sidecar = read_sidecar(
+        project_dir,
+        source_file,
+        value,
+        origin=origin,
+        field=f"spec.instructions.{field}",
+        artifact=subject,
+        subject=subject,
+    )
+    if isinstance(sidecar, Diagnostic):
+        diagnostics.append(sidecar)
         return None
-    problem = call_problem(calls[0], frozenset(("file",)), origin, field="instructions", artifact=source_file)
-    if problem is not None:
-        diagnostics.append(problem)
-        return None
-    requested = str(calls[0].args[0])
-    path = resolve_within(project_dir, agent_dir / requested)
-    if path is None:
-        diagnostics.append(D("SST-REF027", path=requested, origin=origin))
-        return None
-    if not path.exists():
-        diagnostics.append(D("SST-REF014", path=requested, origin=origin))
-        return None
-    relative = path.relative_to(project_dir.resolve()).as_posix()
-    try:
-        content = path.read_text(encoding="utf-8")
-    except OSError:
-        diagnostics.append(D("SST-LOD018", file=source_file, path=requested, origin=Origin(source_file)))
-        return None
-    except UnicodeDecodeError as exc:
-        diagnostics.append(D("SST-LOD006", origin=Origin(relative), file=relative, offset=exc.start))
-        return None
-    if not content.strip():
-        diagnostics.append(D("SST-LOD019", path=requested, file=source_file, origin=Origin(source_file)))
-        return None
-    source_files.append(relative)
-    return content.rstrip()
+    source_files.append(sidecar.path)
+    return sidecar.text.rstrip()
 
 
 def _parse_tools(
@@ -524,9 +486,9 @@ def _parse_tool(
     """Read one `spec.tools` entry; None when it is not a mapping or declares no string `type`.
 
     `search_service`, else `identifier`, is read as the one name of a `{{ tool('<name>') }}`
-    call, and `semantic_view` and `agent` as the one argument of a call of that name; any other
-    value of those fields reads as empty. A search tool's columns are kept as written, since
-    what they must be depends on the member they resolve against.
+    call, and `semantic_view` and `agent` as the one argument of a call of that name; each is
+    reported and read as empty when it is anything else. A search tool's columns are kept as
+    written, since what they must be depends on the member they resolve against.
 
     Args:
         subject: The agent's key, which a mapping field of the wrong type reports against.
@@ -537,8 +499,8 @@ def _parse_tool(
         SST-PRS002: when it declares no string `type`.
         SST-PRS003: when a mapping field, such as `filter` or `input_schema`, holds another type,
             or `columns` is not a list.
-        SST-REF015: when the `tool()` call names other than one member.
-        SST-LOD004, SST-REF033, SST-REF003: when a template in a reference field does not parse.
+        Every code `required_call` lists, for a reference field that is not one call of its
+            function.
         SST-PRS023, SST-PRS024: as `passthrough_diagnostics` reports `tool_spec_passthrough`.
     """
     if not isinstance(value, dict):
@@ -567,13 +529,21 @@ def _parse_tool(
         )
         return MappingProxyType(read)
 
-    backing = _backing(value.get("search_service", value.get("identifier")), diagnostics, origin, subject)
+    def called(key: str) -> str | None:
+        field = f"tools[{index}].{key}"
+        reference = f"agent.spec.tools.{key}"
+        return _name(
+            _reference(entry.get(key), reference, diagnostics, origin, field=field, artifact=subject, subject=subject)
+        )
+
+    backing_key = "search_service" if "search_service" in value else "identifier"
     field = f"tools[{index}].columns"
     columns = checked_list(
         value.get("columns"), diagnostics, field=field, artifact=source_file, origin=origin, subject=subject
     )
-    semantic = _single_template_arg(value.get("semantic_view"), "semantic_view", diagnostics, origin)
-    agent_ref = _single_template_arg(value.get("agent"), "agent", diagnostics, origin)
+    backing = called(backing_key)
+    semantic = called("semantic_view")
+    agent_ref = called("agent")
     return AgentTool(
         type=type_name,
         origin=origin,
@@ -605,21 +575,6 @@ def _parse_tool(
     )
 
 
-def _backing(value: object, diagnostics: list[Diagnostic], origin: Origin, subject: str) -> str | None:
-    """Return the member name the `{{ tool('<name>') }}` call that is all of `value` gives; None for none.
-
-    Diagnostics:
-        SST-LOD004, SST-REF033, SST-REF003: the template does not parse.
-        SST-REF015: the `tool()` call names other than one member.
-    """
-    args = _template_args(value, "tool", diagnostics, origin)
-    if len(args) > 1:
-        diagnostics.append(
-            D("SST-REF015", origin=origin, subject=subject, ref_function="tool", expected="1", found=len(args))
-        )
-    return args[0] if len(args) == 1 else None
-
-
 def _checked_passthrough(
     block: _Block,
     artifact: str,
@@ -638,19 +593,24 @@ def _parse_skill(
     index: int,
     value: object,
     diagnostics: list[Diagnostic],
+    subject: str,
 ) -> AgentSkill | None:
     """Read one `spec.skills` entry; None when it cannot hold a skill.
 
-    `source.path` names a project skill (`{{ skill() }}`), a project plugin (`{{ plugin() }}`)
-    or a consumed extension (`{{ extension() }}`), tried in that order, and `ref` records which.
-    A `{{ var() }}` version is kept as the variable's name, else the version as written. An
-    absent name, path or version reads as `""`.
+    `source.path` is one call naming a project skill (`{{ skill() }}`), a project plugin
+    (`{{ plugin() }}`) or a consumed extension (`{{ extension() }}`), and `ref` records which.
+    A plugin entry's `name` is the `{{ skill('<member>') }}` call naming one of its members, and
+    is kept as the member's name; any other entry's `name` is kept as written. A version holding
+    a template is one `{{ var() }}` call, kept as the variable's name; any other is kept as
+    written. An absent name, path or version, or one that is refused, reads as `""`.
 
     Diagnostics:
         SST-PRS018: when the entry is not a mapping with a `source:` mapping.
         SST-PRS002: when `source.type` is not a string, or `name` is present and not one.
-        SST-LOD004, SST-REF033, SST-REF003: when a template in `source.path` or `source.version`
-            does not parse, once each.
+        Every code `required_call` lists, for a `source.path` that is not one `skill()`,
+            `plugin()` or `extension()` call, a plugin entry's `name` that is not one `skill()`
+            call, or a templated `source.version` that is not one `var()` call.
+        SST-REF008: when a consumed extension's `name` holds a template.
     """
     if not isinstance(value, dict) or not isinstance(value.get("source"), dict):
         diagnostics.append(
@@ -671,45 +631,73 @@ def _parse_skill(
     if not isinstance(source_type, str) or (name is not None and not isinstance(name, str)):
         diagnostics.append(D("SST-PRS002", artifact=source_file, field=f"skills[{index}].name/source.type"))
         return None
-    ref = "extension"
-    path: str | None = None
-    for function in ("skill", "plugin"):
-        # Syntax errors are reported once, by the final extension() attempt.
-        path = _single_template_arg(source.get("path"), function, [], Origin(source_file))
-        if path is not None:
-            ref = function
-            break
-    else:
-        path = _single_template_arg(source.get("path"), "extension", diagnostics, Origin(source_file))
-    version_var = _single_template_arg(source.get("version"), "var", diagnostics, Origin(source_file))
-    literal = None if version_var is not None else optional_string(source.get("version"))
-    return AgentSkill(name or "", source_type, path or "", literal or "", ref=ref, version_var=version_var)
+    origin = Origin(source_file)
+    field = f"spec.skills[{index}]"
+    located: dict[str, Any] = {"artifact": subject, "subject": subject}
+    path_call = _reference(
+        source.get("path"),
+        "agent.spec.skills.source.path",
+        diagnostics,
+        origin,
+        field=f"{field}.source.path",
+        **located,
+    )
+    ref = path_call.function if path_call is not None else "extension"
+    path = path_call.args[0] if path_call is not None else ""
+    if name is not None and ref == "plugin":
+        name = (
+            _name(_reference(name, "agent.spec.skills.name", diagnostics, origin, field=f"{field}.name", **located))
+            or ""
+        )
+    elif (
+        name is not None
+        and ref == "extension"
+        and (problem := literal_problem(name, origin, field=f"{field}.name", **located))
+    ):
+        diagnostics.append(problem)
+        name = ""
+    version = source.get("version")
+    version_var = None
+    if isinstance(version, str) and "{{" in version:
+        reference = "agent.spec.skills.source.version"
+        version_var = _name(
+            _reference(version, reference, diagnostics, origin, field=f"{field}.source.version", **located)
+        )
+        version = None
+    literal = optional_string(version)
+    return AgentSkill(name or "", source_type, path, literal or "", ref=ref, version_var=version_var)
 
 
-def _template_args(
+def _reference(
     value: object,
-    function: str,
+    reference: str,
     diagnostics: list[Diagnostic],
     origin: Origin,
-) -> tuple[str, ...]:
-    if not isinstance(value, str):
-        return ()
-    value = re.sub(r"''([^']+)''", r"'\1'", value)
-    try:
-        calls = scan_template_calls(value)
-    except TemplateSyntaxError as exc:
-        diagnostics.append(syntax_problem(exc, origin.file))
-        return ()
-    if len(calls) != 1 or calls[0].function != function or calls[0].raw != value:
-        return ()
-    return tuple(str(value) for value in calls[0].args)
+    *,
+    field: str,
+    artifact: str,
+    subject: str | None = None,
+) -> TemplateCall | None:
+    """Return the one call a reference field's `value` must be; None when it is absent or refused.
+
+    Args:
+        reference: The field's entry in `REFERENCE_FIELDS`, which names the functions it takes.
+
+    A value that is not text is read as the text it prints as, so it is refused as a bare value.
+
+    Diagnostics:
+        Every code `required_call` lists.
+    """
+    if value is None:
+        return None
+    functions = reference_functions(reference)
+    found = required_call(str(value), functions, origin, field=field, artifact=artifact, subject=subject)
+    if isinstance(found, Diagnostic):
+        diagnostics.append(found)
+        return None
+    return found
 
 
-def _single_template_arg(
-    value: object,
-    function: str,
-    diagnostics: list[Diagnostic],
-    origin: Origin,
-) -> str | None:
-    args = _template_args(value, function, diagnostics, origin)
-    return args[0] if len(args) == 1 else None
+def _name(call: TemplateCall | None) -> str | None:
+    """Return the one name a reference call gives; None for no call."""
+    return call.args[0] if call is not None else None

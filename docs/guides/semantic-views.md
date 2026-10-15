@@ -196,11 +196,12 @@ semantic_view:
   metrics:                       # or exclude_metrics:
     - "{{ metric('total_line_item_revenue') }}"
   relationships:                 # or exclude_relationships:
-    - order_items_to_products
+    - "{{ relationship('order_items_to_products') }}"
 ```
 
-- A column entry is a two-argument `ref()`; a metric entry is a `metric()` call
-  or a bare name; a relationship entry is a bare name.
+- Every entry is one call: a column a two-argument `ref()`, a metric a
+  `metric()` call, a relationship a `relationship()` call. A bare name is an
+  error naming the function to write (`SST-REF050`).
 - An entry must name something the view's tables provide (`SST-VAL330`); a
   column excluded globally cannot be listed, and excluding it again only warns
   (`SST-VAL331`).
@@ -297,9 +298,10 @@ metric:
 - When more than one relationship path joins a metric's table to another table
   in the view, name the path with `using_relationships:`. An ambiguous path is
   an error for the metric (`SST-VAL116`) and a warning for the view (`SST-VAL209`).
-  Each entry is a relationship name (or `{{ relationship('<name>') }}`) that
-  starts at the metric's table (`SST-VAL114`), and it renders as
-  `USING (...)`. A derived metric cannot set it (`SST-VAL113`).
+  Each entry is a `{{ relationship('<name>') }}` call (a bare name is
+  `SST-REF050`, a name no relationship declares `SST-REF029`) that starts at the
+  metric's table (`SST-VAL114`), and it renders as `USING (...)`. A derived
+  metric cannot set it (`SST-VAL113`).
 - `access_modifier: private_access` renders the metric as `PRIVATE`; the default
   is `public_access`. The 0.3 key `visibility` is an error (`SST-VAL122`).
 
@@ -316,20 +318,21 @@ snowflake_metrics:
   - name: total_supply_cost
     expr: "SUM({{ ref('supplies', 'supply_cost') }})"
     non_additive_dimensions:
-      - dimension: snapshot_month        # latest month: the default order
+      - ref: "{{ ref('supplies', 'snapshot_month') }}"   # latest month: the default order
 
   - name: opening_supply_cost
     expr: "SUM({{ ref('supplies', 'supply_cost') }})"
     non_additive_dimensions:
-      - table: supplies
-        dimension: snapshot_month
+      - ref: "{{ ref('supplies', 'snapshot_month') }}"
         sort_direction: descending       # earliest month
         null_order: first
 ```
 
-- `dimension` names a dimension of the metric's table, or of `table:` when it is
-  set; a name that is not a dimension there, or a `table:` outside the view, is
-  an error (`SST-VAL118`).
+- `ref` is one `{{ ref('<model>', '<column>') }}` call naming a dimension; it
+  renders qualified by the model's table, `SUPPLIES.SNAPSHOT_MONTH`. A column
+  that is not a dimension there, or a model outside the view, is an error
+  (`SST-VAL118`); a bare name is `SST-REF050`. The older `dimension:` and
+  `table:` keys are errors (`SST-PRS126`).
 - `sort_direction` is `ascending` (the default, which takes the latest value of a
   date) or `descending` (the earliest). `null_order` is `first` or `last`; left
   unset, Snowflake's default null ordering applies, which sorts nulls last in

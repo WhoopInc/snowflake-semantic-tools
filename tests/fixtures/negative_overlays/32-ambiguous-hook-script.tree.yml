@@ -1,6 +1,15 @@
 ---
-# A second script beside the hook's, so it is no longer clear which one runs.
+# A second script beside the hook's, and a manifest that no longer names one
+# with `script: "{{ file() }}"`, so it is no longer clear which one runs.
 files:
+  hooks/sql-guard/hook.yml: |
+    name: sql-guard
+    event: PreToolUse
+    type: command
+    command: bash
+    matcher: snowflake_sql_execute
+    timeout: 30
+    description: Refuses destructive SQL unless the user confirms it.
   hooks/sql-guard/sql-guard.py: |
     import sys
     if any(word in sys.stdin.read().lower() for word in ("drop", "delete", "truncate")):

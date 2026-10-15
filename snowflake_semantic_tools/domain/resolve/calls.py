@@ -17,6 +17,7 @@ from snowflake_semantic_tools.domain.parse.template import (
     TemplateCall,
     TemplateSyntaxError,
     TemplateSyntaxKind,
+    scan_template_calls,
     single_template_call,
 )
 
@@ -176,6 +177,47 @@ def missing_call(
     return D(
         "SST-REF050", origin=origin, subject=subject, artifact=artifact, field=field, found=text, function=function
     )
+
+
+def required_call(
+    value: str,
+    functions: str | tuple[str, ...],
+    origin: Origin | None,
+    *,
+    field: str,
+    artifact: str,
+    subject: str | None = None,
+) -> TemplateCall | Diagnostic:
+    """Read a field that must be exactly one template call: the call, or why the value is not one.
+
+    The one check every reference field runs, so a bare value is refused the same way wherever
+    it is written, naming the function to use; a call then passes `call_problem`.
+
+    Args:
+        functions: The functions the field accepts; a bare value is told to use the first.
+
+    Returns:
+        The call; or the one diagnostic that refuses the value.
+
+    Diagnostics:
+        SST-LOD004, SST-REF033, SST-REF003: a template in the value does not parse.
+        SST-REF050: the value holds no template call.
+        SST-REF003: it holds more than one call, or text beside the call.
+        SST-REF034, SST-REF035, SST-REF004, SST-REF041, SST-REF015: as `call_problem` refuses
+            the call.
+    """
+    accepted = (functions,) if isinstance(functions, str) else functions
+    file = origin.file if origin is not None else "<template>"
+    try:
+        calls = scan_template_calls(value)
+    except TemplateSyntaxError as exc:
+        return syntax_problem(exc, file, subject=subject)
+    if not calls:
+        return missing_call(value, accepted[0], origin, field=field, artifact=artifact, subject=subject)
+    if len(calls) != 1 or calls[0].raw.strip() != value.strip():
+        return malformed_field(value, origin, subject=subject)
+    problem = call_problem(calls[0], frozenset(accepted), origin, field=field, artifact=artifact, subject=subject)
+    return calls[0] if problem is None else problem
 
 
 def literal_problem(

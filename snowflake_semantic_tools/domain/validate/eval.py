@@ -59,7 +59,6 @@ def validate_eval_catalog(
         SST-VAL747: a judge prompt can produce a score outside the declared bands.
         SST-PRS115: a custom metric's default threshold is not usable within its bands.
         SST-PRS116: a judge prompt uses an unsupported placeholder.
-        SST-REF012: the dataset or config names another agent, or they disagree.
         SST-VAL703: the dataset or config sets `database`, `schema` or `enabled`.
         SST-VAL705: a dataset row has no question, or nothing to score against.
         SST-VAL707: a question repeats one of the agent's sample questions.
@@ -155,27 +154,10 @@ def _validate_eval(
     run_names: dict[tuple[str, str], str],
 ) -> tuple[Diagnostic, ...]:
     return (
-        *_agent_agreement(resolved),
         *_forbidden_keys(resolved),
         *validate_eval_dataset(resolved, defaults, tool_names, dataset_names),
         *validate_eval_config(resolved, defaults, run_names),
     )
-
-
-def _agent_agreement(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
-    # Each file must name the eval's agent, compared casefolded. Separately, a dataset and a
-    # config that name different agents are reported against the config, whichever is wrong.
-    dataset = resolved.dataset
-    config = resolved.config
-    agent_name = resolved.agent.name.casefold()
-    diagnostics = [
-        D("SST-REF012", name=declared, origin=origin, subject=resolved.key)
-        for declared, origin in ((dataset.agent, dataset.origin), (config.agent, config.origin))
-        if declared is not None and declared.casefold() != agent_name
-    ]
-    if dataset.agent and config.agent and dataset.agent.casefold() != config.agent.casefold():
-        diagnostics.append(D("SST-REF012", name=config.agent, origin=config.origin, subject=resolved.key))
-    return tuple(diagnostics)
 
 
 def _forbidden_keys(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:

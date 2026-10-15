@@ -17,8 +17,7 @@
 # Questions carry no identifiers, names or dates. Only the last row hardcodes a
 # figure.
 
-# Must name the agent whose `evals:` block points here (`SST-REF012`).
-agent: jaffle_analytics_agent
+# No `agent:` key (SST-PRS126): the agent's evals/ folder says whose it is.
 
 # What the agent's `{{ eval_dataset() }}` names this file by; unique among the
 # datasets in this folder (`SST-VAL765`). Never rendered.

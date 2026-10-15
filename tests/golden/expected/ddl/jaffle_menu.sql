@@ -100,7 +100,7 @@ CREATE OR REPLACE SEMANTIC VIEW SST_REF_DEV.CORE.JAFFLE_MENU
     ORDER_ITEMS.TOTAL_LINE_ITEM_REVENUE AS SUM(ORDER_ITEMS.ITEM_PRICE) COMMENT = 'Total line-item value, in cents.',
     PRODUCTS.PRODUCT_COUNT AS COUNT(DISTINCT PRODUCTS.PRODUCT_ID) COMMENT = 'Number of distinct products sold.',
     SUPPLIES.OPENING_SUPPLY_COST NON ADDITIVE BY (SUPPLIES.SNAPSHOT_MONTH DESC NULLS FIRST) AS SUM(SUPPLIES.SUPPLY_COST) COMMENT = 'Cost of supplying the products sold, in cents, in the earliest month on record. Not additive across months.',
-    SUPPLIES.TOTAL_SUPPLY_COST NON ADDITIVE BY (SNAPSHOT_MONTH) AS SUM(SUPPLIES.SUPPLY_COST) COMMENT = 'Cost of supplying the products sold, in cents. Not additive across months.',
+    SUPPLIES.TOTAL_SUPPLY_COST NON ADDITIVE BY (SUPPLIES.SNAPSHOT_MONTH) AS SUM(SUPPLIES.SUPPLY_COST) COMMENT = 'Cost of supplying the products sold, in cents. Not additive across months.',
     GROSS_MARGIN AS ORDER_ITEMS.TOTAL_LINE_ITEM_REVENUE - SUPPLIES.TOTAL_SUPPLY_COST COMMENT = 'Line-item revenue less the cost of supplying what was sold, in cents.',
     GROSS_MARGIN_RATE AS DIV0(GROSS_MARGIN, ORDER_ITEMS.TOTAL_LINE_ITEM_REVENUE) WITH SYNONYMS ('margin rate', 'margin percentage') COMMENT = 'Gross margin as a share of line-item revenue.',
     REVENUE_PER_ORDER AS DIV0(ORDERS.TOTAL_REVENUE, ORDERS.ORDER_COUNT) WITH SYNONYMS ('revenue per order') COMMENT = 'Mean revenue per order, derived from two table-scoped metrics.'

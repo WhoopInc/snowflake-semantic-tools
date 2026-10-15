@@ -106,10 +106,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "agent() target not found",
         "{{{{ agent('{name}') }}}} does not resolve",
         "declare the agent, or correct the name",
-        condition=(
-            "an `agent()` reference names no agent the project declares; also an eval whose "
-            "dataset or config names another agent than the eval's, or than each other"
-        ),
+        condition="an `agent()` reference names no agent the project declares",
     ),
     spec(
         "SST-REF013",
@@ -126,8 +123,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{{{{ file('{path}') }}}} does not resolve to a file",
         "create the file, or correct the path",
         condition=(
-            "an agent's, a verified query's, or a tool member's `body:` `file()` reference names a file "
-            "that does not exist"
+            "a `file()` reference -- an agent instruction, a verified query's `sql:`, a tool member's "
+            "`body:` or a hook's `script:` -- names, relative to its own file's folder, a file that does "
+            "not exist"
         ),
     ),
     spec(
@@ -204,8 +202,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{{{{ file('{path}') }}}} resolves outside the project root",
         "use a path inside the project",
         condition=(
-            "an agent's, a verified query's, or a tool member's `body:` `file()` reference resolves "
-            "outside the project root, or is an absolute path"
+            "a `file()` reference -- an agent instruction, a verified query's `sql:`, a tool member's "
+            "`body:` or a hook's `script:` -- is an absolute path, or climbs out of the project"
         ),
     ),
     spec(
@@ -316,14 +314,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="a relationship left_table/right_table is anything but one one-argument {{ ref() }} call",
     ),
     spec(
-        "SST-REF047",
-        Severity.ERROR,
-        "Eval reference is not an eval_dataset() or eval_config() call",
-        "{artifact}: {field} is '{found}'; it takes one {{{{ {function}('<name>') }}}} call",
-        "name the file with {{ eval_dataset('<name>') }} or {{ eval_config('<name>') }}, the name: it declares",
-        condition="an agent's `evals.dataset` or `evals.config` is a path, or anything but one reference call",
-    ),
-    spec(
         "SST-REF048",
         Severity.ERROR,
         "Eval reference names no file",
@@ -335,27 +325,18 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
-        "SST-REF049",
-        Severity.ERROR,
-        "Plugin or profile member is not its key's reference call",
-        "{artifact}: {field} is '{found}'; it takes one {{{{ {function}('<name>') }}}} call",
-        "write the member as one call of its key's function, such as {{ skill('<name>') }} under skills:",
-        condition=(
-            "an entry of a plugin's or profile's `skills:`, `plugins:`, `commands:`, `mcp_servers:` or "
-            "`hooks:` is a bare name, or a call of another function"
-        ),
-    ),
-    spec(
         "SST-REF050",
         Severity.ERROR,
         "Required template call missing",
         "{artifact}: {field} is '{found}'; it takes a {{{{ {function}(...) }}}} call",
         "write the value as a {function}() call; a bare value is not read",
         condition=(
-            "a field that is read only as a template call holds a bare value, such as a defined tool "
-            "member's column written without `{{ ref('<model>', '<column>') }}`, or its `body:` "
-            "without `{{ file('<path>') }}`"
+            "a field that names a file or a member, and so is read only as a template call, holds a bare "
+            "value: a view's scope entry, a metric's `using_relationships` or non-additive `ref`, an "
+            "agent's tool, skill, tag or eval reference, a defined tool member's column or `body:`, a "
+            "plugin's or profile's member, a hook's `script:` or a command's `skill:`"
         ),
+        note="The References guide lists every reference field, the function it takes, and the fields left literal.",
     ),
     spec(
         "SST-REF900",

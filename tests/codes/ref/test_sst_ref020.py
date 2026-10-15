@@ -36,7 +36,9 @@ def test_sst_ref020_silent() -> None:
 
 def test_sst_ref020_fires_for_an_agent_toolset_over_a_member_that_is_not_an_agent() -> None:
     resolved, diagnostics = resolve_tool(
-        ROUTER, AgentTool("agent_toolset", ORIGIN, name="search"), agent_context(catalog=tools(search_member()))
+        ROUTER,
+        AgentTool("agent_toolset", ORIGIN, name="search", backing="search"),
+        agent_context(catalog=tools(search_member())),
     )
     assert resolved is None
     [diagnostic] = coded(diagnostics, "SST-REF020")
@@ -45,7 +47,9 @@ def test_sst_ref020_fires_for_an_agent_toolset_over_a_member_that_is_not_an_agen
 
 def test_sst_ref020_silent_for_an_agent_toolset_over_an_agent_member() -> None:
     resolved, diagnostics = resolve_tool(
-        ROUTER, AgentTool("agent_toolset", ORIGIN, name="search"), agent_context(catalog=tools(search_member("agent")))
+        ROUTER,
+        AgentTool("agent_toolset", ORIGIN, name="search", backing="search"),
+        agent_context(catalog=tools(search_member("agent"))),
     )
     assert resolved is not None
     assert dict(resolved.resources) == {"agent_name": "DB.S.SEARCH"}

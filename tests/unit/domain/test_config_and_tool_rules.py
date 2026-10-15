@@ -24,10 +24,12 @@ def test_a_member_no_tool_call_names_is_referenced_by_nothing() -> None:
     assert [item.context["name"] for item in found] == ["audit"]
 
 
-def test_an_agent_tool_references_its_backing_or_by_name_the_member_it_delegates_to() -> None:
+def test_an_agent_tool_references_only_the_member_its_tool_call_names() -> None:
     origin = Origin("agents/a.yml")
     assert AgentTool("generic", origin, name="t", backing="m").member_reference == "m"
-    assert AgentTool("agent_toolset", origin, name="partner").member_reference == "partner"
+    assert AgentTool("agent_toolset", origin, name="partner", backing="partner").member_reference == "partner"
+    # A bare `name:` names nothing: a toolset over a member writes `identifier: "{{ tool() }}"`.
+    assert AgentTool("agent_toolset", origin, name="partner").member_reference is None
     assert AgentTool("agent_toolset", origin, name="partner", agent_ref="own").member_reference is None
     assert AgentTool("agent_toolset", origin).member_reference is None
     assert AgentTool("data_to_chart", origin, name="chart").member_reference is None

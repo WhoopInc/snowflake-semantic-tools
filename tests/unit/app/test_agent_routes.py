@@ -20,7 +20,7 @@ TREE: dict[str, object] = {
         "+orchestration_model": "block-model",
         "+warehouse": "BLOCK_WH",
         "+alias": "block_alias",
-        "+tags": [{"name": "TIER", "value": "block"}],
+        "+tags": [{"name": "{{ tag('tier') }}", "value": "block"}],
         "finance": {
             "+schema": "FIN",
             "+orchestration_model": "route-model",
@@ -30,6 +30,8 @@ TREE: dict[str, object] = {
         "retired": {"+enabled": False},
     },
     "snowflake": {"orchestration_models": MODELS},
+    # A tag's `name:` is a tag() call, named by the `tags:` block.
+    "tags": {"tier": {"fqn": "DB.GOV.TIER"}},
 }
 
 
@@ -95,7 +97,7 @@ def test_the_closest_route_wins_per_key_and_the_agent_file_wins_over_every_route
         "route-model",
         30,
         False,
-        (("TIER", "block"),),
+        (("DB.GOV.TIER", "block"),),
     )
     # A nested route folds over its parent, which it does not reset.
     sec = agents["sec"].resolved.model

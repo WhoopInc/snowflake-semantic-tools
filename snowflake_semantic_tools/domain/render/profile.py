@@ -10,6 +10,7 @@ previous trees remain for rollback. The row's VERSION is a digest of every other
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
@@ -259,7 +260,7 @@ def _source_files(
                 *profile.source_files,
                 *(shared.source_files if shared is not None else ()),
                 *_skill_sources((*chosen.shared_skills, *chosen.own_skills), skills),
-                *(f"{hook.directory}/{hook.script.path}" for hook in chosen.hooks),
+                *(hook.script_file or f"{hook.directory}/{hook.script.path}" for hook in chosen.hooks),
                 *(config.file for config in chosen.configs),
                 *(commands[name].file for name in (*chosen.shared_commands, *chosen.own_commands) if name in commands),
                 *(
@@ -296,7 +297,7 @@ def _command_tree(scope: str, names: tuple[str, ...], commands: Mapping[str, Com
     entries = tuple(
         sorted(
             (
-                BundleEntry(commands[name].path, commands[name].content)
+                BundleEntry(commands[name].path, render_command(commands[name]))
                 for name in dict.fromkeys(names)
                 if name in commands
             ),
@@ -304,6 +305,35 @@ def _command_tree(scope: str, names: tuple[str, ...], commands: Mapping[str, Com
         )
     )
     return StageTree("commands", scope, entries)
+
+
+_SKILL_KEY = re.compile(r"skill\s*:")
+
+
+def render_command(command: CommandFile) -> bytes:
+    """Render a command as Desktop loads it: its frontmatter's `skill:` the name of the skill it calls.
+
+    The `{{ skill('<name>') }}` call the loader read becomes the bare name Desktop expects, on
+    the one line, any continuation lines of the value dropped; every other byte is kept. A
+    command whose frontmatter names no skill, or names it in a form no line starts with, is
+    published as written.
+
+    Example:
+        `skill: "{{ skill('jaffle-operations') }}"` renders as `skill: jaffle-operations`.
+    """
+    if command.skill is None:
+        return command.content
+    lines = command.content.decode("utf-8").splitlines(keepends=True)
+    closing = next((index for index, line in enumerate(lines[1:], start=1) if line.strip() == "---"), 0)
+    start = next((index for index in range(1, closing) if _SKILL_KEY.match(lines[index])), None)
+    if start is None:
+        return command.content
+    end = start + 1
+    while end < closing and lines[end][:1] in (" ", "\t"):
+        end += 1
+    ending = lines[start][len(lines[start].rstrip("\r\n")) :]
+    lines[start:end] = [f"skill: {command.skill}{ending}"]
+    return "".join(lines).encode("utf-8")
 
 
 def _plugin_tree(

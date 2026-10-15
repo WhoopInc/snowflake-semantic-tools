@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from types import MappingProxyType
 
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.config_schema import (
     Setting,
@@ -23,24 +24,38 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     with_defaults,
 )
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
+from snowflake_semantic_tools.domain.resolve.tags import DeclaredTags, tag_reference
 
 _RENDERED = ("database", "schema", "warehouse")
 
 
-def settled_agent(model: AgentModel, target: TargetIdentity) -> AgentModel:
+def settled_agent(
+    model: AgentModel, target: TargetIdentity, tags: DeclaredTags | None = None
+) -> tuple[AgentModel, tuple[Diagnostic, ...]]:
     """Return the agent with each field a setting gives set from its resolved settings.
 
     Text values have their `{{ target.* }}` templates rendered. An absent orchestration model
     is `auto` and an absent `secure` false; any other absent setting leaves its field unset.
-    The agent's `settings` become what it reports: the location and warehouse rendered, and
-    each built-in default it took recorded as such.
+    Each tag's `name:` is one `{{ tag('<name>') }}` call, resolved against `tags`; a tag whose
+    name does not resolve is left out. The agent's `settings` become what it reports: the
+    location and warehouse rendered, and each built-in default it took recorded as such.
+
+    Args:
+        tags: What the `tags:` block of the configuration declares; None declares none.
+
+    Returns:
+        The agent, and why each tag it leaves out does not resolve, in the order it lists them.
+
+    Diagnostics:
+        Every code `tag_reference` lists, for a tag's `name:`.
     """
     settings = model.settings
 
     def text(key: str) -> str | None:
         return target_text(setting_value(settings, key), target, None)
 
-    return replace(
+    pairs, problems = _tag_pairs(model, setting_value(settings, "tags"), tags or DeclaredTags())
+    settled = replace(
         model,
         orchestration_model=text("orchestration_model") or "auto",
         budget_seconds=config_int(setting_value(settings, "budget_seconds")),
@@ -49,9 +64,10 @@ def settled_agent(model: AgentModel, target: TargetIdentity) -> AgentModel:
         analytical_search=config_bool(setting_value(settings, "analytical_search")),
         alias=text("alias"),
         secure=config_bool(setting_value(settings, "secure")) is True,
-        tags=_tag_pairs(setting_value(settings, "tags")),
+        tags=pairs,
         settings=_reported(settings, target),
     )
+    return settled, problems
 
 
 def agent_location(model: AgentModel, target: TargetIdentity) -> tuple[str, str]:
@@ -91,11 +107,30 @@ def _reported(settings: Mapping[str, Setting], target: TargetIdentity) -> Mappin
     return MappingProxyType({item.key: item for item in with_defaults({**settings, **rendered}, defaults)})
 
 
-def _tag_pairs(value: object) -> tuple[tuple[str, str], ...]:
-    """Read the `tags` setting: each `{name, value}` entry as a pair, in the order it lists them."""
-    entries = value if isinstance(value, list) else []
-    return tuple(
-        (str(entry["name"]), str(entry["value"]))
-        for entry in entries
-        if isinstance(entry, Mapping) and entry.get("name") is not None and entry.get("value") is not None
-    )
+def _tag_pairs(
+    model: AgentModel, value: object, tags: DeclaredTags
+) -> tuple[tuple[tuple[str, str], ...], tuple[Diagnostic, ...]]:
+    """Read the `tags` setting: each `{name, value}` entry as an object name and value, in order.
+
+    An entry without both is skipped; the settings checks report its shape.
+    """
+    pairs: list[tuple[str, str]] = []
+    problems: list[Diagnostic] = []
+    for index, entry in enumerate(value if isinstance(value, list) else []):
+        if not isinstance(entry, Mapping) or entry.get("name") is None or entry.get("value") is None:
+            continue
+        field = f"config.tags[{index}].name"
+        found = tag_reference(
+            str(entry["name"]),
+            tags,
+            model.origin,
+            reference="agent.config.tags.name",
+            field=field,
+            artifact=model.key,
+            subject=model.key,
+        )
+        if isinstance(found, Diagnostic):
+            problems.append(found)
+        else:
+            pairs.append((found, str(entry["value"])))
+    return tuple(pairs), tuple(problems)

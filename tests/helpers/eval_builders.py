@@ -49,14 +49,12 @@ def resolved_eval() -> ResolvedEval:
     dataset = EvalDataset(
         ORIGIN,
         "agents/sales/evals/dataset.yml",
-        "sales_agent",
         None,
         (EvalQuestion(ORIGIN, "Question", EvalGroundTruth(ORIGIN, (), "Answer")),),
     )
     config = EvalConfig(
         ORIGIN,
         "agents/sales/evals/config.yml",
-        "sales_agent",
         EvalDatasetConfig(
             "auto",
             "EVAL_{{ agent | upper }}_{{ sha7 }}",

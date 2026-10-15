@@ -122,9 +122,16 @@ metric:
 - Every metric, filter and verified query names a column or table with `ref()`, or it attaches
   to no view (`SST-MEM002`): write `COUNT({{ ref('orders', 'order_id') }})`, never `COUNT(*)`.
 - When two join paths connect a metric's table to another, name one with
-  `using_relationships:` (`SST-VAL116`).
-- Use `non_additive_dimensions:` for a balance that must not be summed over a date, and a
-  `window:` block for running totals; never write `OVER (...)` in `expr`.
+  `using_relationships: ["{{ relationship('<name>') }}"]` (`SST-VAL116`); a bare name is
+  `SST-REF050`.
+- Use `non_additive_dimensions:` for a balance that must not be summed over a date, each entry
+  `- ref: "{{ ref('<model>', '<column>') }}"` with an optional `sort_direction` and
+  `null_order` (never `dimension:` or `table:`, `SST-PRS126`), and a `window:` block for running
+  totals; never write `OVER (...)` in `expr`.
+- A view's scope lists name each member by its call: `columns:` / `exclude_columns:` by
+  `{{ ref('<model>', '<column>') }}`, `metrics:` / `exclude_metrics:` by
+  `{{ metric('<name>') }}`, and `relationships:` / `exclude_relationships:` by
+  `{{ relationship('<name>') }}`. A bare name is `SST-REF050`.
 
 ## Relationships
 

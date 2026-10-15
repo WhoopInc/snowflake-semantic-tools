@@ -241,9 +241,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: tags must be a list of name and value entries, found {found}",
         "correct the tags block",
         condition=(
-            "the tags block fails its schema: it is not a list of name and value entries, an entry "
-            "lacks name or value, or an entry name is not one tag() call"
+            "the tags block fails its schema: it is not a list of name and value entries, or an entry "
+            "lacks name or value"
         ),
+        note="An entry whose name is not one `{{ tag('<name>') }}` call is `SST-REF050`.",
     ),
     spec(
         "SST-PRS028",
