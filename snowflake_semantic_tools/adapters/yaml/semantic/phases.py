@@ -25,7 +25,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.relationships import (
 )
 from snowflake_semantic_tools.adapters.yaml.semantic.target import _stray_view_diagnostics
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
 from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtTarget
 from snowflake_semantic_tools.domain.model.project import ParsedProject, ParsedView
@@ -181,12 +181,12 @@ def _declaration_diagnostics(parsed: ParsedProject) -> tuple[tuple[Diagnostic, .
         name = view.name.casefold()
         view_counts[name] = view_counts.get(name, 0) + 1
     diagnostics = [
-        D("SST-VAL001", type="semantic_view", name=name, subject=artifact_key("semantic_view", name))
+        D("SST-VAL001", type="semantic_view", name=name, subject=view_key(name))
         for name, count in sorted(view_counts.items())
         if count > 1
     ]
     diagnostics.extend(
-        _malformed_tables(view.origin, "malformed table reference", artifact_key("semantic_view", view.name))
+        _malformed_tables(view.origin, "malformed table reference", view_key(view.name))
         for view in parsed.views
         if view.poisoned
     )
@@ -242,8 +242,7 @@ def _description_template_diagnostics(parsed: ParsedProject) -> tuple[Diagnostic
         SST-REF008: when a description holds `{{`.
     """
     described: list[tuple[str, str, Origin | None]] = [
-        (artifact_key("semantic_view", view.name), str(view.source.get("description") or ""), view.origin)
-        for view in parsed.views
+        (view_key(view.name), str(view.source.get("description") or ""), view.origin) for view in parsed.views
     ]
     described.extend(
         (member.key, member.source.description or "", member.origin)
@@ -405,7 +404,7 @@ def _cycle_diagnostics(members: SemanticMembers) -> tuple[Diagnostic, ...]:
 
 def _view_tables(views: tuple[ParsedView, ...]) -> tuple[tuple[str, frozenset[str]], ...]:
     """Pair each view's key with the casefolded tables it declares; malformed tables declare none."""
-    return tuple((artifact_key("semantic_view", view.name), frozenset(view.declared_tables)) for view in views)
+    return tuple((view_key(view.name), frozenset(view.declared_tables)) for view in views)
 
 
 def _relationship_checks(

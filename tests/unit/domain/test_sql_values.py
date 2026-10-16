@@ -7,7 +7,17 @@ from decimal import Decimal
 
 import pytest
 
-from snowflake_semantic_tools.domain.sql import boolean, dollar_quoted, literal, local_file, null, number
+from snowflake_semantic_tools.domain.sql import (
+    DefaultMismatch,
+    boolean,
+    dollar_quoted,
+    literal,
+    local_file,
+    null,
+    number,
+    typed_default,
+)
+from snowflake_semantic_tools.domain.sql.datatype import type_family
 from tests.helpers.sql_reference import snowflake_reads
 
 TRICKY = [
@@ -82,3 +92,74 @@ def test_a_file_uri_keeps_the_path_as_written_unless_it_could_end_the_quote() ->
     for bad in ("", "/tmp/it's", "C:\\Temp\\", "/tmp/a\nb"):
         with pytest.raises(ValueError, match="file URI"):
             local_file(bad)
+
+
+@pytest.mark.parametrize(
+    ("data_type", "family"),
+    [
+        ("number(38, 2)", "fixed"),
+        ("BYTEINT", "fixed"),
+        ("float8", "float"),
+        ("Double Precision", "float"),
+        ("char varying(4)", "text"),
+        ("STRING", "text"),
+        ("boolean", "boolean"),
+        ("DATE", "date"),
+        ("time(3)", "time"),
+        ("TIMESTAMP_TZ(9)", "timestamp"),
+        ("DATETIME", "timestamp"),
+        ("VARIANT", "other"),
+        ("VECTOR(INT, 3)", "other"),
+        ("BINARY(4)", "other"),
+    ],
+)
+def test_a_type_s_family_groups_its_synonyms(data_type: str, family: str) -> None:
+    assert type_family(data_type) == family
+
+
+def test_a_family_is_only_given_for_a_data_type() -> None:
+    with pytest.raises(ValueError, match="is not a Snowflake data type"):
+        type_family("NUMBER(")
+
+
+@pytest.mark.parametrize(
+    ("data_type", "value", "rendered"),
+    [
+        ("NUMBER", 1, "1"),
+        ("INT", 3, "3"),
+        ("FLOAT", 1.5, "1.5"),
+        ("DECIMAL(10, 2)", Decimal("2.50"), "2.50"),
+        ("BOOLEAN", False, "FALSE"),
+        ("VARCHAR(10)", "it's", "'it''s'"),
+        ("DATE", "2026-01-01", "'2026-01-01'::DATE"),
+        ("TIME", " 13:30:00.5 ", "'13:30:00.5'::TIME"),
+        ("TIMESTAMP_NTZ", "2026-01-01 10:00:00", "'2026-01-01 10:00:00'::TIMESTAMP_NTZ"),
+        ("TIMESTAMP_TZ(3)", "2026-01-01T10:00:00+02:00", "'2026-01-01T10:00:00+02:00'::TIMESTAMP_TZ(3)"),
+        ("TIMESTAMP_LTZ", "2026-01-01", "'2026-01-01'::TIMESTAMP_LTZ"),
+    ],
+)
+def test_a_default_renders_as_a_constant_of_its_type(data_type: str, value: object, rendered: str) -> None:
+    assert str(typed_default(data_type, value)) == rendered
+
+
+@pytest.mark.parametrize(
+    ("data_type", "value", "expected"),
+    [
+        ("NUMBER", "abc", "a finite number"),
+        ("INT", True, "a finite number"),
+        ("FLOAT", float("nan"), "a finite number"),
+        ("BOOLEAN", 1, "true or false"),
+        ("TEXT", 3, "a string"),
+        ("TEXT", "a\x00b", "a string"),
+        ("DATE", "2026-02-30T00:00", "an ISO date such as 2026-01-01"),
+        ("DATE", None, "an ISO date such as 2026-01-01"),
+        ("TIME", "25:00", "an ISO time such as 13:30:00"),
+        ("TIMESTAMP", "now", "an ISO date and time such as 2026-01-01 13:30:00"),
+        ("VARIANT", "{}", "no default SST can write; use a numeric, text, BOOLEAN, DATE, TIME or TIMESTAMP type"),
+    ],
+)
+def test_a_default_its_type_cannot_hold_is_refused(data_type: str, value: object, expected: str) -> None:
+    with pytest.raises(DefaultMismatch) as raised:
+        typed_default(data_type, value)
+    assert raised.value.expected == expected
+    assert str(raised.value) == f"a {data_type} default must be {expected}"

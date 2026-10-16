@@ -18,11 +18,11 @@ cannot be downgraded by any setting.
 - [Registry (REG)](#registry-reg) -- 23 codes
 - [Configuration (CFG)](#configuration-cfg) -- 45 codes
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
-- [Parsing (PRS)](#parsing-prs) -- 57 codes
+- [Parsing (PRS)](#parsing-prs) -- 58 codes
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 300 codes
+- [Validation (VAL)](#validation-val) -- 301 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
@@ -1420,6 +1420,18 @@ Raised when a key that SST now works out for itself, or reads from elsewhere, is
 Fix: remove the field
 
 Note: `sst migrate refs --write` removes the member `tables:` and `derived:` keys.
+
+### SST-PRS127
+
+**View variable default does not fit its data type** (error)
+
+`<artifact>: variable '<name>' of type <type> cannot default to <found>: it takes <expected>`
+
+Raised when a semantic view variable's `default_value` is not a value of its `data_type`'s family: a number for a numeric type, true or false for BOOLEAN, a string for text, ISO 8601 text for DATE, TIME or a timestamp; or the type is one no default can be written for.
+
+Fix: write the default as the message says, or change the variable's data_type
+
+Note: A temporal default renders as `'<text>'::<type>`; Snowflake reads a bare string as VARCHAR.
 
 ### SST-PRS900
 
@@ -3103,9 +3115,11 @@ Fix: set `is_enum: false`, or run `sst enrich --force enums`
 
 `<artifact>: '<member>' references excluded column '<column>'`
 
-Raised when an expression names a column excluded globally, or a window or non-additive entry of a metric a view keeps names a column the view's scope removes.
+Raised when an expression names a column excluded globally; or a metric a view keeps (its expression, window or non-additive entries), or a filter or verified query attached to the view, reads with `ref()` a column the view's scope removes.
 
 Fix: un-exclude the column, or change the expression
+
+Note: A scoped-out column is hidden only as a fact or dimension; a member that reads it would still compute over it, so the view is refused. Bare column names in a verified query's SQL are not checked.
 
 ### SST-VAL319
 
@@ -3272,6 +3286,16 @@ Raised when a `fact` column that is not excluded declares `meta.sst.is_enum: tru
 Fix: remove `is_enum`, or change `column_type` to `dimension`
 
 Note: Snowflake refuses `IS_ENUM` on a fact when the view is created, so no setting lowers this.
+
+### SST-VAL336
+
+**Metric is built on a metric the view excludes** (error)
+
+`<artifact>: keeps metric '<metric>', which is built on '<other>', which its scope removes`
+
+Raised when a metric left in the view's scope calls `metric()` on a metric the view's tables attach and its scope removes, so the view would hold the metric without its base.
+
+Fix: keep the base metric, or exclude the metric built on it too
 
 ### SST-VAL401
 

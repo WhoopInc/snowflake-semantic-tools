@@ -7,7 +7,7 @@ from types import MappingProxyType
 from typing import Any
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
 from snowflake_semantic_tools.domain.model.authored import AuthoredDocument, AuthoredDocuments, NodePath
 from snowflake_semantic_tools.domain.parse.fields import unknown_field
 from snowflake_semantic_tools.domain.parse.names import name_warnings
@@ -172,7 +172,7 @@ def view_config_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, .
         for index, node in enumerate(nodes if isinstance(nodes, list) else ()):
             if not isinstance(node, dict) or "config" not in node:
                 continue
-            subject = artifact_key("semantic_view", str(node.get("name") or index))
+            subject = view_key(str(node.get("name") or index))
             origin_of = _config_origins(document, (root_key, index))
             diagnostics.extend(
                 item_config_diagnostics("semantic_views", node["config"], subject=subject, origin_of=origin_of)

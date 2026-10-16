@@ -60,9 +60,7 @@ CREATE OR REPLACE SEMANTIC VIEW SST_REF_DEV.JAFFLE.JAFFLE_CUSTOMER_ORDERS
   COMMENT = 'Orders and the customers who placed them, without customer names or tax.
 Use this view for questions about order volume and value by customer
 type, and how many customers order.'
-  AI_SQL_GENERATION 'For ORDERS, shortfall_to_large_order_cents is large_order_cents -
-ORDERS.ORDER_TOTAL. How far an order falls short of the large-order
-threshold, for generated narrative. A measure of distance, not a predicate.'
+  AI_SQL_GENERATION 'For ORDERS, shortfall_to_large_order_cents is large_order_cents - ORDERS.ORDER_TOTAL. How far an order falls short of the large-order threshold, for generated narrative. A measure of distance, not a predicate.'
   AI_VERIFIED_QUERIES (
     ORDER_COUNT_BY_STATE AS (
       QUESTION 'How many orders are there in each fulfilment state?'

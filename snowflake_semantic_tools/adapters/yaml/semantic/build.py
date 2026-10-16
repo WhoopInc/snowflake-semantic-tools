@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from datetime import date, datetime
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, TypeVar
@@ -28,10 +29,11 @@ from snowflake_semantic_tools.adapters.yaml.semantic.build_members import (
     _with_variable_names,
 )
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.artifact_key import view_key
 from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.model.config_schema import Setting, setting_value
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtSource, DbtTarget
+from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.project import ParsedMember
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
@@ -43,13 +45,10 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Variable,
     ViewScope,
 )
-from snowflake_semantic_tools.domain.parse.template import (
-    TemplateSyntaxError,
-    scan_template_calls,
-    single_template_call,
-)
+from snowflake_semantic_tools.domain.parse.template import TemplateCall, single_template_call
+from snowflake_semantic_tools.domain.resolve.calls import required_call
 from snowflake_semantic_tools.domain.resolve.tags import DeclaredTags, declared_tags, tag_reference
-from snowflake_semantic_tools.domain.sql import Sql, boolean, datatype, is_datatype, literal, number
+from snowflake_semantic_tools.domain.sql import DefaultMismatch, column_ref, datatype, is_datatype, typed_default
 from snowflake_semantic_tools.domain.validate.semantic.scope import view_scope
 from snowflake_semantic_tools.domain.validate.semantic_view import relation_diagnostics
 from snowflake_semantic_tools.domain.validate.sql import qualified_name_problem
@@ -67,6 +66,7 @@ def _build_view(
     sources: tuple[DbtSource, ...] = (),
     *,
     settings: Mapping[str, Setting] = MappingProxyType({}),
+    variable_origins: tuple[Origin, ...] = (),
 ) -> SemanticView:
     """Build one view from its node and the members attached to it, one phase at a time.
 
@@ -78,6 +78,7 @@ def _build_view(
 
     Args:
         settings: The view's resolved settings, which give its tags and `max_staleness`.
+        variable_origins: Where each of the view's variables is written, which its diagnostics name.
 
     Raises:
         ProjectError: A table, column, member, variable or tag does not resolve. Its diagnostics
@@ -85,7 +86,7 @@ def _build_view(
     """
     name = str(node["name"])
     scope = view_scope(node)
-    selected = _scoped(_select_members(artifact_key("semantic_view", name), members, attachment), scope)
+    selected = _scoped(_select_members(view_key(name), members, attachment), scope)
     view = _View(
         name,
         path,
@@ -93,6 +94,7 @@ def _build_view(
         models,
         DbtCatalog("v12", None, None, tuple(models.values()), sources=sources),
         mapping(config.get("vars")),
+        variable_origins,
     )
     tables, logical_by_model = _view_tables(node, view)
     # A `source()` table has no model; its relation is the source's own, so it cannot be misplaced.
@@ -198,11 +200,10 @@ def _listed_instructions(node: Mapping[str, Any], attached: Mapping[str, Instruc
     order: list[str] = []
     raw = node.get("custom_instructions")
     for entry in raw if isinstance(raw, list) else []:
-        try:
-            calls = scan_template_calls(str(entry))
-        except TemplateSyntaxError:
-            continue
-        order.extend(call.args[0].casefold() for call in calls if call.args and call.args[0].casefold() in attached)
+        # Read as `_view_instructions` reads it, which reports an entry that is not one call.
+        found = required_call(str(entry), "custom_instructions", None, field="custom_instructions", artifact="")
+        if isinstance(found, TemplateCall) and found.args[0].casefold() in attached:
+            order.append(found.args[0].casefold())
     names = [*dict.fromkeys(order), *sorted(name for name in attached if name not in order)]
     return tuple(attached[name] for name in names)
 
@@ -226,6 +227,7 @@ class _View:
         models: The target's dbt models, by casefolded name.
         catalog: The same models, as the expression resolver reads them.
         variables: The project's `vars:`.
+        variable_origins: Where each entry of the view's `variables:` is written, in order.
     """
 
     name: str
@@ -234,11 +236,16 @@ class _View:
     models: Mapping[str, DbtModel]
     catalog: DbtCatalog
     variables: Mapping[str, object]
+    variable_origins: tuple[Origin, ...] = ()
 
     @property
     def key(self) -> str:
         """The view's artifact key, which the view's build diagnostics name."""
-        return artifact_key("semantic_view", self.name)
+        return view_key(self.name)
+
+    def variable_origin(self, index: int) -> Origin:
+        """Return where the view's variable at `index` is written; the view's file when unknown."""
+        return self.variable_origins[index] if index < len(self.variable_origins) else self.origin
 
 
 def _member_resolver(view: _View, logical_by_model: dict[str, str], selected: _Members) -> _Resolver:
@@ -307,7 +314,7 @@ def _view_table(raw: object, view: _View, logical_by_model: Mapping[str, str]) -
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     distinct_range = None
     if model.distinct_range is not None:
-        start, end = _names(model.distinct_range, view.key, None)
+        start, end = _names(_column_names(model, model.distinct_range), view.key, None)
         distinct_range = (start, end)
     (logical,) = _names((logical,), view.key, None)
     if qualified_name_problem(model.relation_name, artifact=view.key, subject=view.key) is not None:
@@ -316,12 +323,18 @@ def _view_table(raw: object, view: _View, logical_by_model: Mapping[str, str]) -
     return model_name.lower(), Table(
         logical_name=logical,
         fqn=model.relation_name,
-        primary_key=_names(model.primary_key, view.key, None),
-        unique_keys=tuple(_names(key, view.key, None) for key in model.unique_keys),
+        primary_key=_names(_column_names(model, model.primary_key), view.key, None),
+        unique_keys=tuple(_names(_column_names(model, key), view.key, None) for key in model.unique_keys),
         synonyms=model.synonyms,
         comment=model.description,
         distinct_range=distinct_range,
     )
+
+
+def _column_names(model: DbtModel, names: tuple[str, ...]) -> tuple[str, ...]:
+    """Write each of a model's key columns as a member names it, quoted when dbt quotes it."""
+    columns = (model.column(name) for name in names)
+    return tuple(name if column is None else column.member_name for name, column in zip(names, columns, strict=True))
 
 
 def _source_table(args: tuple[str, ...], view: _View, logical_by_model: Mapping[str, str]) -> tuple[str, Table]:
@@ -410,12 +423,13 @@ def _view_column(model: DbtModel, column: DbtColumn, logical: str) -> Column:
     if kind is ColumnKind.TIME_DIMENSION:
         kind = ColumnKind.DIMENSION
     subject = f"dbt_model:{model.name}"
-    (name,) = _names((column.name,), subject, None)
+    (name,) = _names((column.member_name,), subject, None)
+    reference = column_ref(Identifier.parse(logical), column.identifier).text
     return Column(
         table=logical,
         name=name,
         kind=kind,
-        expr=_expression(f"{logical}.{name}", kind=kind.value, name=name, subject=subject, origin=None),
+        expr=_expression(reference, kind=kind.value, name=name, subject=subject, origin=None),
         comment=column.description,
         synonyms=column.synonyms,
         sample_values=column.sample_values,
@@ -425,33 +439,40 @@ def _view_column(model: DbtModel, column: DbtColumn, logical: str) -> Column:
 
 
 def _view_variables(node: Mapping[str, Any], view: _View) -> tuple[Variable, ...]:
-    """Build the view's variables in declaration order.
+    """Build the view's variables in declaration order, each name once whatever its case.
+
+    Diagnostics:
+        SST-PRS006: when a variable's name, compared without case, repeats an earlier one's.
+        Every code `_variable` lists, for each variable.
 
     Raises:
-        ProjectError: A variable is malformed, or its default does not fit its type.
+        ProjectError: A variable is malformed, repeats a name, or its default does not fit its type.
     """
-    return tuple(_variable(value, path=view.path, view_name=view.name) for value in node.get("variables") or [])
+    variables: list[Variable] = []
+    seen: set[str] = set()
+    for index, value in enumerate(node.get("variables") or []):
+        variable = _variable(value, view=view, origin=view.variable_origin(index))
+        # Snowflake folds an unquoted name to upper case, and refuses one declared twice.
+        if variable.name.casefold() in seen:
+            diagnostic = D("SST-PRS006", type="variable", name=str(value["name"]), origin=view.variable_origin(index))
+            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+        seen.add(variable.name.casefold())
+        variables.append(variable)
+    return tuple(variables)
 
 
-def _sql_value(value: object) -> Sql:
-    """The SQL literal for a YAML scalar: a boolean or number as written, anything else a string.
+def _variable(value: object, *, view: _View, origin: Origin) -> Variable:
+    """Build one view variable, its default rendered as a constant of its declared type.
+
+    The type is checked first, then the default against it (see `typed_default`). A YAML date or
+    timestamp, which the parser reads as one, is checked as the ISO text it was written as.
+
+    Diagnostics:
+        SST-PRS003: when the data type is not a Snowflake data type.
+        SST-PRS127: when the default is not a value of the data type.
 
     Raises:
-        ValueError: a number is not finite, or a string holds a NUL.
-    """
-    if isinstance(value, bool):
-        return boolean(value)
-    if isinstance(value, (int, float)):
-        return number(value)
-    return literal(str(value))
-
-
-def _variable(value: object, *, path: Path, view_name: str) -> Variable:
-    """Build one view variable, its default rendered as the SQL literal of its type.
-
-    Raises:
-        ProjectError: The variable lacks a name, a type or a default, or a BOOLEAN, NUMBER or
-            string variable's default is not of that type.
+        ProjectError: The variable lacks a name, a type or a default, or for each diagnostic above.
     """
     if (
         not isinstance(value, dict)
@@ -459,16 +480,9 @@ def _variable(value: object, *, path: Path, view_name: str) -> Variable:
         or not value.get("data_type")
         or "default_value" not in value
     ):
-        raise ProjectError(f"{path}: view {view_name} has an invalid variable {value!r}")
+        raise ProjectError(f"{view.path}: view {view.name} has an invalid variable {value!r}")
     data_type = str(value["data_type"]).upper()
-    raw_default = value["default_value"]
-    if data_type == "BOOLEAN" and not isinstance(raw_default, bool):
-        raise ProjectError(f"{path}: view {view_name} variable {value['name']} requires a boolean default")
-    if data_type.startswith("NUMBER") and (not isinstance(raw_default, (int, float)) or isinstance(raw_default, bool)):
-        raise ProjectError(f"{path}: view {view_name} variable {value['name']} requires a numeric default")
-    if data_type.startswith(("VARCHAR", "TEXT", "STRING")) and not isinstance(raw_default, str):
-        raise ProjectError(f"{path}: view {view_name} variable {value['name']} requires a string default")
-    subject = artifact_key("semantic_view", view_name)
+    subject = view.key
     if not is_datatype(data_type):
         diagnostic = D(
             "SST-PRS003",
@@ -477,13 +491,27 @@ def _variable(value: object, *, path: Path, view_name: str) -> Variable:
             expected="a Snowflake data type",
             found=repr(value["data_type"]),
             subject=subject,
+            origin=origin,
         )
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    raw_default = value["default_value"]
+    if isinstance(raw_default, (date, datetime)):
+        raw_default = str(raw_default)
     try:
-        default = _sql_value(raw_default)
-    except ValueError as exc:
-        raise ProjectError(f"{path}: view {view_name} variable {value['name']} has an invalid default: {exc}") from exc
-    (name,) = _names((str(value["name"]),), subject, None)
+        default = typed_default(data_type, raw_default)
+    except DefaultMismatch as exc:
+        diagnostic = D(
+            "SST-PRS127",
+            artifact=subject,
+            name=str(value["name"]),
+            type=data_type,
+            found=repr(raw_default),
+            expected=exc.expected,
+            subject=subject,
+            origin=origin,
+        )
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
+    (name,) = _names((str(value["name"]),), subject, origin)
     return Variable(
         name=name,
         data_type=datatype(data_type),

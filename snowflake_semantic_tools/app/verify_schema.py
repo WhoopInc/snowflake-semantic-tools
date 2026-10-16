@@ -31,30 +31,34 @@ def verify_columns(catalog: CatalogPort, compiled: CompileResult) -> tuple[Diagn
 
     Diagnostics:
         SST-PRT005: a table a view reads does not exist, once per table.
-        SST-VAL325: a column a view reads is absent from its table, once per view and column.
+        SST-VAL325: a column a view reads is absent from its table, once per view and column;
+            a quoted column must match the table's spelling exactly, any other in any case.
     """
-    wanted: dict[str, list[tuple[str, str, str]]] = {}
+    wanted: dict[str, list[tuple[str, str, str, bool]]] = {}
     for item in compiled.compiled:
         if isinstance(item, CompiledView):
-            for fqn, model, column in _references(item):
-                wanted.setdefault(fqn, []).append((item.artifact_key, model, column))
+            for fqn, model, column, quoted in _references(item):
+                wanted.setdefault(fqn, []).append((item.artifact_key, model, column, quoted))
     diagnostics: list[Diagnostic] = []
     for fqn in sorted(wanted):
         columns = catalog.table_columns(QualifiedName.parse(fqn))
         if columns is None:
             diagnostics.append(D("SST-PRT005", value=fqn, detail="a semantic view reads it as a table"))
             continue
-        present = {name.casefold() for name, _ in columns}
+        exact = {name for name, _ in columns}
+        present = {name.casefold() for name in exact}
+        # A quoted reference names exactly one spelling; an unquoted one resolves upper-cased,
+        # which DESCRIBE reports as the table's name when the column was created unquoted.
         diagnostics.extend(
             D("SST-VAL325", model=model, column=column, subject=key)
-            for key, model, column in dict.fromkeys(wanted[fqn])
-            if column.casefold() not in present
+            for key, model, column, quoted in dict.fromkeys(wanted[fqn])
+            if (column not in exact if quoted else column.casefold() not in present)
         )
     return tuple(diagnostics)
 
 
-def _references(item: CompiledView) -> Iterable[tuple[str, str, str]]:
-    """Yield `(table FQN, logical table, column)` for each plain column reference of one view."""
+def _references(item: CompiledView) -> Iterable[tuple[str, str, str, bool]]:
+    """Yield `(table FQN, logical table, column, quoted)` for each plain column reference of one view."""
     tables = {table.logical_name.casefold(): table for table in item.view.tables}
     for column in (*item.view.facts, *item.view.dimensions):
         reference = _plain_reference(column)
@@ -62,17 +66,17 @@ def _references(item: CompiledView) -> Iterable[tuple[str, str, str]]:
             continue
         table = tables.get(reference[0].casefold())
         if table is not None:
-            yield table.fqn, table.logical_name.casefold(), reference[1]
+            yield table.fqn, table.logical_name.casefold(), reference[1], reference[2]
 
 
-def _plain_reference(column: Column) -> tuple[str, str] | None:
-    """Return a column's `(table, column)` when its expression is one plain reference; else None."""
+def _plain_reference(column: Column) -> tuple[str, str, bool] | None:
+    """Return a column's `(table, column, quoted)` when its expression is one plain reference; else None."""
     if column.kind is ColumnKind.FILTER:
         return None
     match = _PLAIN.match(column.expr.text)
     if match is None:
         return None
-    return _unquoted(match.group(1)), _unquoted(match.group(2))
+    return _unquoted(match.group(1)), _unquoted(match.group(2)), match.group(2).startswith('"')
 
 
 def _unquoted(part: str) -> str:

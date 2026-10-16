@@ -29,7 +29,7 @@ from snowflake_semantic_tools.app.compile.tools import CompileTools, ToolPlaceme
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.diagnostics.policy import apply_overrides
 from snowflake_semantic_tools.domain.model.agent import AgentModel
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key, view_key
 from snowflake_semantic_tools.domain.model.config_schema import (
     CONFIG_FILE,
     Setting,
@@ -255,7 +255,7 @@ class CompileProject:
         # A view the project declares disabled is named as such, not as undeclared, by a tool.
         unpublished = {
             **unpublished,
-            **{artifact_key("semantic_view", name): "it is disabled" for name in semantic.disabled},
+            **{view_key(name): "it is disabled" for name in semantic.disabled},
         }
         dbt = self._inputs.dbt_catalog()
         tool_catalog = self._inputs.tool_catalog()

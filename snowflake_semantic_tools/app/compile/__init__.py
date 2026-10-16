@@ -30,7 +30,7 @@ from snowflake_semantic_tools.app.compile.base import (
     has_error,
 )
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     DesiredMetadata,
@@ -116,7 +116,7 @@ class CompiledView(CompiledArtifact):
 
     @property
     def artifact_key(self) -> str:
-        return artifact_key("semantic_view", self.name.casefold())
+        return view_key(self.name)
 
     @property
     def artifact_type(self) -> str:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
 from snowflake_semantic_tools.domain.model.authored import ACCESS_MODIFIERS, MetricDef
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
@@ -306,7 +306,7 @@ def description_diagnostics(
                     "SST-VAL003",
                     type="semantic_view",
                     name=view.name,
-                    subject=artifact_key("semantic_view", view.name),
+                    subject=view_key(view.name),
                     origin=view.origin,
                 )
             )

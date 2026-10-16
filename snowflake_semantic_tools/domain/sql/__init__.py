@@ -21,23 +21,27 @@ from snowflake_semantic_tools.domain.sql.authored import (
 )
 from snowflake_semantic_tools.domain.sql.core import Sql, canonical, join, sql
 from snowflake_semantic_tools.domain.sql.datatype import datatype, is_datatype
-from snowflake_semantic_tools.domain.sql.names import ident, keyword, privilege, qname, scope, stage_path
+from snowflake_semantic_tools.domain.sql.names import column_ref, ident, keyword, privilege, qname, scope, stage_path
 from snowflake_semantic_tools.domain.sql.values import (
+    DefaultMismatch,
     boolean,
     dollar_quoted,
     literal,
     local_file,
     null,
     number,
+    typed_default,
 )
 
 __all__ = [
     "AuthoredExpression",
     "AuthoredQuery",
+    "DefaultMismatch",
     "Sql",
     "UnsafeSqlError",
     "boolean",
     "canonical",
+    "column_ref",
     "datatype",
     "dollar_quoted",
     "expr",
@@ -57,4 +61,5 @@ __all__ = [
     "scope",
     "sql",
     "stage_path",
+    "typed_default",
 ]

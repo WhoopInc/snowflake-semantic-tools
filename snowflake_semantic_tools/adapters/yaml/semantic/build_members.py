@@ -8,7 +8,6 @@ resolve, so a view reports one build problem at a time.
 from __future__ import annotations
 
 import re
-import textwrap
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -18,8 +17,15 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.fields import mapping
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
+from snowflake_semantic_tools.domain.model.authored import (
+    FilterDef,
+    InstructionDef,
+    MetricDef,
+    NonAdditiveDef,
+    VerifiedQueryDef,
+)
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
+from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
     ColumnKind,
@@ -33,7 +39,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
 from snowflake_semantic_tools.domain.parse.template import scan_template_calls, single_template_call
 from snowflake_semantic_tools.domain.resolve.ref_fields import ref_field
 from snowflake_semantic_tools.domain.resolve.template import RefPolicy, ResolveContext, resolve_scalar
-from snowflake_semantic_tools.domain.sql import AuthoredExpression, AuthoredQuery
+from snowflake_semantic_tools.domain.sql import AuthoredExpression, AuthoredQuery, column_ref
 from snowflake_semantic_tools.domain.validate.sql import checked_expression, checked_query, name_problem
 
 
@@ -60,14 +66,17 @@ def _expression(text: str, *, kind: str, name: str, subject: str, origin: Origin
 
 
 def _names(values: tuple[str, ...], subject: str, origin: Origin | None) -> tuple[str, ...]:
-    """Upper-case each name, once each is known to render as one identifier.
+    """Write each name as the identifier it parses to, once each is known to render as one.
+
+    An unquoted name is upper-cased; a double-quoted one, such as a quoted column's
+    `DbtColumn.member_name`, keeps its quotes and its exact case.
 
     Raises:
         ProjectError: a name is not a valid identifier (SST-PRS005).
     """
     for value in values:
         _require(name_problem(value, artifact=subject, subject=subject, origin=origin))
-    return tuple(value.upper() for value in values)
+    return tuple(Identifier.parse(value).sql for value in values)
 
 
 def _resolve_expression(
@@ -215,28 +224,28 @@ def _view_metric(metric: MetricDef, relationships: tuple[Relationship, ...], res
         comment=metric.description,
         synonyms=metric.synonyms,
         using_relationships=_names(metric.using_relationships, subject, metric.origin),
-        non_additive_by=tuple(
-            _sort_key(entry.names, entry.descending, entry.nulls_first, metric, subject)
-            for entry in metric.non_additive
-        ),
+        non_additive_by=tuple(_sort_key(entry, metric, subject, resolver.catalog) for entry in metric.non_additive),
         access_modifier=metric.access_modifier,
         window=window,
     )
 
 
-def _sort_key(
-    names: tuple[str, ...], descending: bool | None, nulls_first: bool | None, metric: MetricDef, subject: str
-) -> SortKey:
+def _sort_key(entry: NonAdditiveDef, metric: MetricDef, subject: str, catalog: DbtCatalog) -> SortKey:
     """Build one `NON ADDITIVE BY` key from the names it is written from, each checked first.
+
+    A dimension its model declares is written as a column reference, quoted as the column is.
 
     Raises:
         ProjectError: a name is not a valid identifier (SST-PRS005).
     """
-    text = ".".join(_names(names, subject, metric.origin))
+    names = _names(entry.names, subject, metric.origin)
+    model = catalog.model(entry.table) if entry.table else None
+    column = model.column(entry.dimension) if model is not None else None
+    text = ".".join(names) if column is None else column_ref(Identifier.parse(names[0]), column.identifier).text
     return SortKey(
         _expression(text, kind="metric", name=metric.name, subject=subject, origin=metric.origin),
-        descending,
-        nulls_first,
+        entry.descending,
+        entry.nulls_first,
     )
 
 
@@ -380,11 +389,8 @@ def _standalone_filter_instruction(filter_def: FilterDef, resolver: _Resolver) -
         filter_def.expr, ref_field("filter.expression"), filter_def.origin, "filter.expression"
     )
     description = filter_def.description or ""
-    return _wrap_text(f"For {table}, {filter_def.name} is {expression}. {description}".strip())
-
-
-def _wrap_text(text: str, width: int = 77) -> str:
-    return "\n".join(textwrap.wrap(text, width=width, break_long_words=False, break_on_hyphens=False))
+    # One sentence on one line: a break inside it could fall inside the expression or a literal.
+    return f"For {table}, {filter_def.name} is {expression}. {description}".strip()
 
 
 def _view_verified_queries(

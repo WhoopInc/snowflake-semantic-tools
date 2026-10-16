@@ -12,7 +12,7 @@ from dataclasses import dataclass, replace
 
 from snowflake_semantic_tools.adapters.yaml.semantic.phases import SemanticChecks, SemanticMembers
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
 from snowflake_semantic_tools.domain.model.authored import MetricDef
 from snowflake_semantic_tools.domain.model.project import ParsedMember, ParsedView
 
@@ -109,10 +109,8 @@ def _view_poison(
     view_keys = {
         subject.casefold() for subject in _error_subjects(reported) if subject.casefold().startswith(view_prefix)
     }
-    view_keys.update(artifact_key("semantic_view", view.name).casefold() for view in views if view.poisoned)
+    view_keys.update(view_key(view.name) for view in views if view.poisoned)
     # A view authored with the legacy globals is rejected by SST-REF034; building
     # it would only report the same call again as an internal error.
-    view_keys.update(
-        artifact_key("semantic_view", view.name).casefold() for view in views if view.origin.file in legacy_files
-    )
+    view_keys.update(view_key(view.name) for view in views if view.origin.file in legacy_files)
     return replace(poison, view_names=duplicate_views, view_keys=frozenset(view_keys))

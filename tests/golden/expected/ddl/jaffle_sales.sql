@@ -98,9 +98,7 @@ comparing state by hand, and treat a return using is_returned_order.
 Interpret a pricing period as half-open: the start is inclusive and the end
 is exclusive.
 
-For ORDERS, shortfall_to_large_order_cents is large_order_cents -
-ORDERS.ORDER_TOTAL. How far an order falls short of the large-order
-threshold, for generated narrative. A measure of distance, not a predicate.'
+For ORDERS, shortfall_to_large_order_cents is large_order_cents - ORDERS.ORDER_TOTAL. How far an order falls short of the large-order threshold, for generated narrative. A measure of distance, not a predicate.'
   AI_QUESTION_CATEGORIZATION 'These views answer questions about orders, the customers who placed them,
 the store locations they were placed at, the menu items sold, and the cost
 of supplying those items.

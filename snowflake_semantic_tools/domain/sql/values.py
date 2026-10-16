@@ -1,4 +1,4 @@
-"""SQL constants: string, number, boolean, and NULL literals, dollar-quoted bodies, and file URIs.
+"""SQL constants: string, number, boolean and NULL literals, typed defaults, dollar quotes, file URIs.
 
 Inside a single-quoted literal Snowflake treats a backslash as an escape character --
 'C:\\temp' holds a tab -- and reads a doubled quote as one quote. `literal` escapes both, so
@@ -10,9 +10,32 @@ no escape at all, so `dollar_quoted` refuses any body that could end it early.
 from __future__ import annotations
 
 import math
+import re
 from decimal import Decimal
 
-from snowflake_semantic_tools.domain.sql.core import Sql, _seal
+from snowflake_semantic_tools.domain.sql.core import Sql, _seal, sql
+from snowflake_semantic_tools.domain.sql.datatype import datatype, type_family
+
+_DATE = r"\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])"
+_TIME = r"(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?"
+_ZONE = r"(?:Z|[+-](?:[01]\d|2[0-3]):?[0-5]\d)?"
+# The ISO 8601 text a temporal default is written as, by its type's family.
+_TEMPORAL = {
+    "date": re.compile(_DATE),
+    "time": re.compile(_TIME),
+    "timestamp": re.compile(rf"{_DATE}(?:[T ]{_TIME}{_ZONE})?"),
+}
+# What a default must be, by its type's family, as a refusal names it.
+_EXPECTED = {
+    "fixed": "a finite number",
+    "float": "a finite number",
+    "text": "a string",
+    "boolean": "true or false",
+    "date": "an ISO date such as 2026-01-01",
+    "time": "an ISO time such as 13:30:00",
+    "timestamp": "an ISO date and time such as 2026-01-01 13:30:00",
+    "other": "no default SST can write; use a numeric, text, BOOLEAN, DATE, TIME or TIMESTAMP type",
+}
 
 
 def _unrepresentable(value: str) -> str | None:
@@ -111,3 +134,54 @@ def local_file(path: str) -> Sql:
     if not path or "'" in path or path.endswith("\\") or any(ord(character) < 32 for character in path):
         raise ValueError(f"{path!r} cannot be written as a file URI")
     return _seal(f"'file://{path}'")
+
+
+class DefaultMismatch(ValueError):
+    """A variable's default that is not a value of its data type.
+
+    Attributes:
+        expected: What the type takes, as a refusal names it.
+    """
+
+    def __init__(self, data_type: str, expected: str) -> None:
+        super().__init__(f"a {data_type} default must be {expected}")
+        self.expected = expected
+
+
+def typed_default(data_type: str, value: object) -> Sql:
+    """Return a variable's default as a constant of its declared data type.
+
+    The type's family decides the value it takes: a number for a numeric type (never a bool),
+    true or false for BOOLEAN, a string for text, ISO 8601 text for DATE, TIME and the
+    timestamps, and nothing for any other type. A temporal default renders as
+    `'<text>'::<data type>`, since Snowflake reads a bare string as VARCHAR.
+
+    Example:
+        typed_default("DATE", "2026-01-01") gives `'2026-01-01'::DATE`.
+
+    Raises:
+        TypeError: `data_type` is not a `str`.
+        ValueError: `data_type` is not a Snowflake data type.
+        DefaultMismatch: `value` is not a value of the type; its `expected` says what is.
+    """
+    family = type_family(data_type)
+    refused = DefaultMismatch(data_type.strip(), _EXPECTED[family])
+    if family in ("fixed", "float"):
+        if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+            raise refused
+        try:
+            return number(value)
+        except ValueError as exc:
+            raise refused from exc
+    if family == "boolean":
+        if not isinstance(value, bool):
+            raise refused
+        return boolean(value)
+    if not isinstance(value, str) or _unrepresentable(value) is not None:
+        raise refused
+    if family == "text":
+        return literal(value)
+    pattern = _TEMPORAL.get(family)
+    if pattern is None or not pattern.fullmatch(value.strip()):
+        raise refused
+    return sql("{text}::{data_type}", text=literal(value.strip()), data_type=datatype(data_type))

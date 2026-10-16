@@ -9,18 +9,13 @@ from __future__ import annotations
 from dataclasses import replace
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.artifact_key import view_key
 from snowflake_semantic_tools.domain.model.authored import InstructionDef
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.project import ParsedMember, ParsedProject, ParsedView
-from snowflake_semantic_tools.domain.parse.template import TemplateCall, TemplateSyntaxError, scan_template_calls
-from snowflake_semantic_tools.domain.resolve.calls import call_problem, syntax_problem
-from snowflake_semantic_tools.domain.resolve.template import (
-    CUSTOM_INSTRUCTION_ITEM,
-    INSTRUCTION_TEXT,
-    ResolveContext,
-    resolve_scalar,
-)
+from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.resolve.calls import required_call
+from snowflake_semantic_tools.domain.resolve.template import INSTRUCTION_TEXT, ResolveContext, resolve_scalar
 
 
 def _view_instructions(
@@ -29,70 +24,72 @@ def _view_instructions(
     """Resolve each view's `custom_instructions` entries to the casefolded names they attach.
 
     A `custom_instructions` value that is not a list names nothing; a string is the 0.3
-    bare-string form, which 1.0 never renders, so it is reported.
+    bare-string form, which 1.0 never renders, so it is reported. Each entry of a list is read
+    as exactly one `custom_instructions()` call, so a bare name is refused rather than dropped.
 
     Returns:
         The names by view key, with an entry for every view, and a diagnostic for each
-        entry or call that attaches nothing.
+        entry that attaches nothing.
 
     Diagnostics:
         SST-VAL408: a view's `custom_instructions` is a bare string.
-        SST-LOD004, SST-REF033, SST-REF003: an entry is not a template that parses.
+        Every code `_instruction_name` lists, for an entry that attaches nothing.
     """
     names_by_view: dict[str, frozenset[str]] = {}
     diagnostics: list[Diagnostic] = []
     for view in views:
         raw_instructions = view.source.get("custom_instructions")
         if isinstance(raw_instructions, str):
-            subject = artifact_key("semantic_view", view.name)
+            subject = view_key(view.name)
             diagnostics.append(D("SST-VAL408", member=view.name, origin=view.origin, subject=subject))
         names: set[str] = set()
         for raw in raw_instructions if isinstance(raw_instructions, list) else []:
-            try:
-                calls = scan_template_calls(str(raw))
-            except TemplateSyntaxError as exc:
-                diagnostics.append(
-                    syntax_problem(exc, view.origin.file, subject=artifact_key("semantic_view", view.name))
-                )
-                continue
-            for call in calls:
-                resolved = _instruction_name(view, call, known)
-                if isinstance(resolved, str):
-                    names.add(resolved)
-                elif resolved is not None:
-                    diagnostics.append(resolved)
-        names_by_view[artifact_key("semantic_view", view.name)] = frozenset(names)
+            resolved = _instruction_name(view, str(raw), known)
+            if isinstance(resolved, str):
+                names.add(resolved)
+            elif resolved is not None:
+                diagnostics.append(resolved)
+        names_by_view[view_key(view.name)] = frozenset(names)
     return names_by_view, tuple(diagnostics)
 
 
-def _instruction_name(view: ParsedView, call: TemplateCall, known: frozenset[str]) -> str | Diagnostic | None:
-    """Return the casefolded name one call attaches, or the diagnostic for why it attaches none.
+def _instruction_name(view: ParsedView, entry: str, known: frozenset[str]) -> str | Diagnostic | None:
+    """Return the casefolded name one entry attaches, or the diagnostic for why it attaches none.
 
     None for a legacy `table()` or `column()` call, which the legacy check already names at its
     position.
 
     Diagnostics:
-        SST-REF004, SST-REF041, SST-REF015: the call is not one one-name
-            `custom_instructions()` call.
+        Every code `required_call` lists, but for a legacy call: the entry is not one
+            one-name `custom_instructions()` call; a bare name is SST-REF050.
         SST-REF007: the name matches no custom instruction.
     """
-    if call.function in ("table", "column"):
+    if _legacy_call(entry):
         return None
-    view_subject = artifact_key("semantic_view", view.name)
-    problem = call_problem(
-        call,
-        CUSTOM_INSTRUCTION_ITEM.allowed,
+    view_subject = view_key(view.name)
+    found = required_call(
+        entry,
+        "custom_instructions",
         view.origin,
         field="custom_instructions",
         artifact=view_subject,
         subject=view_subject,
     )
-    if problem is not None:
-        return problem
-    instruction_name = call.args[0].casefold()
+    if isinstance(found, Diagnostic):
+        return found
+    instruction_name = found.args[0].casefold()
     if instruction_name not in known:
-        return D("SST-REF007", origin=view.origin, subject=view_subject, name=call.args[0])
+        return D("SST-REF007", origin=view.origin, subject=view_subject, name=found.args[0])
     return instruction_name
+
+
+def _legacy_call(entry: str) -> bool:
+    """Report whether an entry makes a legacy `table()` or `column()` call; False when it does not parse."""
+    try:
+        calls = scan_template_calls(entry)
+    except TemplateSyntaxError:
+        return False
+    return any(call.function in ("table", "column") for call in calls)
 
 
 def _instruction_texts(

@@ -23,6 +23,15 @@ def artifact_key(kind: str, name: str) -> str:
     return f"{kind}:{name}"
 
 
+def view_key(name: str) -> str:
+    """Build a semantic view's key: its name casefolded, since a view's name is case-insensitive.
+
+    Every site that keys a view by its authored name goes through here, so `Sales2` and `sales2`
+    are one view wherever they are matched.
+    """
+    return artifact_key("semantic_view", name.casefold())
+
+
 def split_artifact_key(key: str) -> tuple[str, str]:
     """Split a key into its kind and name at the first colon.
 

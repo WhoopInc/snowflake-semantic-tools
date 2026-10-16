@@ -75,6 +75,9 @@ def test_composes_instruction_channels_and_standalone_filter_prose(sales: Semant
     # The prose filter's expression is resolved as the view names its columns.
     prose = " ".join(sales.ai_sql_generation.split())
     assert "For ORDERS, shortfall_to_large_order_cents is large_order_cents - ORDERS.ORDER_TOTAL." in prose
+    # The sentence stays on one line, however long: a break could fall inside its expression.
+    [sentence] = [line for line in sales.ai_sql_generation.splitlines() if line.startswith("For ORDERS,")]
+    assert sentence.endswith("A measure of distance, not a predicate.")
     assert sales.ai_question_categorization is not None
     assert "A question about staffing" in sales.ai_question_categorization
     assert sales.custom_instruction_names == ("jaffle_sql_conventions", "jaffle_question_scope")

@@ -80,6 +80,8 @@ semantic_view:
     - "{{ custom_instructions('sql_conventions') }}"
 ```
 
+- `name:` is the view's name. Unquoted, it is case-insensitive, as Snowflake
+  folds it: `Sales2` and `sales2` are one view, which publishes as `SALES2`.
 - `tables:` is required and lists models with `{{ ref('<model>') }}`, or dbt
   sources with `{{ source('<source>', '<table>') }}` (a source contributes a
   table but no columns). Any other entry is an error (`SST-REF044`), and so is a
@@ -95,10 +97,24 @@ semantic_view:
   view that holds the table renders it the same. A view does not write
   `table_config` (`SST-PRS126`).
 - `variables:` declares view variables that expressions use by bare name. Each
-  needs `name`, `data_type` and `default_value`, and a `BOOLEAN`, `NUMBER` or
-  string default must be of that type; `description` renders as the variable's
-  `COMMENT`. A member that reads a variable must find it declared on every view
-  it attaches to (`SST-VAL326`); a variable nothing reads is warned about
+  needs `name`, `data_type` and `default_value`; `description` renders as the
+  variable's `COMMENT`. Names are unique in a view regardless of case, since
+  Snowflake folds `rate` and `RATE` to one variable (`SST-PRS006`). The default
+  must be a value of the type's family (`SST-PRS127`):
+  - a numeric type (`NUMBER`, `INT`, `INTEGER`, `DECIMAL`, `NUMERIC`, `FLOAT`,
+    `DOUBLE`, `REAL` and their synonyms): a number, never `true` or `false`;
+  - `BOOLEAN`: `true` or `false`;
+  - a text type (`VARCHAR`, `CHAR`, `STRING`, `TEXT`, `NVARCHAR`, ...): a string;
+  - `DATE`: an ISO date such as `2026-01-01`; `TIME`: an ISO time such as
+    `13:30:00`; `DATETIME` or a `TIMESTAMP` type: an ISO date, optionally with a
+    time and an offset, such as `2026-01-01 13:30:00`. Quoted or not, the
+    default renders cast to the declared type, `'2026-01-01'::DATE`, since
+    Snowflake reads a bare string as `VARCHAR`;
+  - any other type (`VARIANT`, `OBJECT`, `ARRAY`, `GEOGRAPHY`, `BINARY`, ...)
+    takes no default SST can write, so it cannot be a variable's type.
+
+  A member that reads a variable must find it declared on every view it
+  attaches to (`SST-VAL326`); a variable nothing reads is warned about
   (`SST-VAL220`).
 - `config:` holds the view's own settings, described next.
 
@@ -206,9 +222,18 @@ semantic_view:
   column excluded globally cannot be listed, and excluding it again only warns
   (`SST-VAL331`).
 - A kept metric needs the relationships in its `using_relationships`
-  (`SST-VAL332`) and the dimensions its window or non-additive entries name
-  (`SST-VAL318`).
-- Filters are never scoped: they attach by their tables as usual.
+  (`SST-VAL332`), and every metric it is built on with `metric()` that the
+  view's tables attach (`SST-VAL336`): keep the base, or exclude the derived
+  metric too.
+- A scope hides a column as a fact or dimension, and nothing may read it
+  around that: a kept metric whose expression, window or non-additive entries
+  read the column, or a filter or verified query whose `{{ ref() }}` does, is
+  an error (`SST-VAL318`), since the published view would still compute over
+  or group by the hidden data. Exclude those metrics as well, or keep the
+  column. A verified query's bare column names, outside `ref()`, are not
+  checked.
+- Filters and verified queries are never scoped: they attach by their tables as
+  usual.
 
 ## Columns: facts, dimensions, time dimensions
 
@@ -546,8 +571,8 @@ ORDERS.IS_COMPLETED_ORDER LABELS = (FILTER) AS ORDERS.ORDER_STATE = 'completed' 
   labelled filter must be boolean (`SST-VAL401`) and must name exactly one
   table.
 - A boolean expression without a `labels:` key is an error (`SST-VAL405`).
-- A filter not labelled `filter` renders as prose instead: one sentence,
-  `For <TABLE>, <name> is <expr>. <description>`, appended to the view's
+- A filter not labelled `filter` renders as prose instead: one sentence on one
+  line, `For <TABLE>, <name> is <expr>. <description>`, appended to the view's
   `AI_SQL_GENERATION`. Its expression must name exactly one table.
 - A filter cannot carry `synonyms:`; nothing renders them (`SST-VAL406`).
 
@@ -568,7 +593,9 @@ verified_query:
   verified_by: analytics-team
 ```
 
-- `sql:` is required (`SST-PRS002`). To keep the query in a `.sql` file, write
+- `question:` and `sql:` are required; an entry missing either, or with a
+  blank `question:`, is an error (`SST-PRS002`), and one with no `name:` is
+  `SST-PRS107`. To keep the query in a `.sql` file, write
   `sql: "{{ file('sql/order_count_by_state.sql') }}"`, resolved relative to the
   YAML file. The file must stay inside the project (`SST-REF027`), not be a
   symbolic link (`SST-PRT009`), and exist (`SST-REF014`); `sql_file:` is not
@@ -604,7 +631,7 @@ custom_instruction:
 
 A view includes a block by listing `{{ custom_instructions('<name>') }}`; a name
 that matches no block is an error (`SST-REF007`), and so is a bare string
-(`SST-VAL408`). Unlike other members, a block attaches only to the views that
+(`SST-VAL408`) or a bare name as a list entry (`SST-REF050`). Unlike other members, a block attaches only to the views that
 name it. The view's `AI_SQL_GENERATION` is each included block's
 `ai_sql_generation`, then one sentence per prose filter (see
 [Filters](#filters)), separated by blank lines; `AI_QUESTION_CATEGORIZATION` is

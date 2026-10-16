@@ -197,6 +197,23 @@ def ident(identifier: Identifier) -> Sql:
     return _seal(_identifier_text(identifier))
 
 
+def column_ref(table: Identifier, column: Identifier) -> Sql:
+    """Return the column reference `TABLE.COLUMN`, each part as `ident` renders it.
+
+    A quoted column keeps its exact case, and an unquoted one that is a reserved word is quoted
+    upper-cased, so the reference names the column the table holds.
+
+    Example:
+        column_ref(ORDERS, "MixedCaseAmount" quoted) gives `ORDERS."MixedCaseAmount"`, and
+        column_ref(ORDERS, order) gives `ORDERS."ORDER"`.
+
+    Raises:
+        TypeError: a part is not an `Identifier`.
+        ValueError: as `ident` raises it, for either part.
+    """
+    return _seal(f"{_identifier_text(table)}.{_identifier_text(column)}")
+
+
 def qname(name: QualifiedName) -> Sql:
     """Return a three-part name, each part as `ident` renders it.
 

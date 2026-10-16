@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
+from snowflake_semantic_tools.domain.model.identifier import Identifier
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,7 +24,10 @@ class DbtTarget:
 
 @dataclass(frozen=True, slots=True)
 class DbtColumn:
-    """One dbt model column after dbt has resolved patches and inheritance."""
+    """One dbt model column after dbt has resolved patches and inheritance.
+
+    A quoted column keeps its exact case wherever SST names it; any other is upper-cased.
+    """
 
     name: str
     description: str | None
@@ -46,6 +50,18 @@ class DbtColumn:
     pii_tagged: bool = False
     # `meta.sst.access_modifier` as written; None when the column writes none.
     access_modifier: str | None = None
+    # dbt's `quote: true`: the column was created quoted, so its name is case-sensitive.
+    quoted: bool = False
+
+    @property
+    def identifier(self) -> Identifier:
+        """The column as Snowflake names it: its exact name when quoted, else upper-cased."""
+        return Identifier(self.name, quoted=self.quoted)
+
+    @property
+    def member_name(self) -> str:
+        """The column's name as a view member holds it: double-quoted when quoted, else as written."""
+        return self.identifier.sql if self.quoted else self.name
 
 
 @dataclass(frozen=True, slots=True)

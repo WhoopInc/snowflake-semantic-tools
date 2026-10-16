@@ -9,8 +9,11 @@ kinds it may list what to keep or what to drop, never both:
 
 Each entry is one call of its kind's function; a bare name is refused, naming the function.
 
-A scope that names nothing, or that would leave a kept metric without the relationship or
-the dimension it needs, is an error rather than a member quietly left out.
+A scope that names nothing, or that would leave a kept metric without the relationship, the
+dimension or the base metric it needs, is an error rather than a member quietly left out. So
+is a kept metric, an attached filter or an attached verified query whose `ref()` reads a column
+the scope removes: hiding a column must not leave its data reachable through another member.
+Bare column names in a verified query's SQL are not read, so they are not checked.
 """
 
 from __future__ import annotations
@@ -19,12 +22,17 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.authored import MetricDef
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
+from snowflake_semantic_tools.domain.model.authored import FilterDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, ViewScope
-from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, single_template_call
+from snowflake_semantic_tools.domain.parse.template import (
+    TemplateCall,
+    TemplateSyntaxError,
+    scan_template_calls,
+    single_template_call,
+)
 from snowflake_semantic_tools.domain.resolve.calls import required_call
 from snowflake_semantic_tools.domain.resolve.membership import ViewMembers
 from snowflake_semantic_tools.domain.resolve.ref_fields import reference_functions
@@ -138,6 +146,7 @@ class _ScopeContext:
         metrics: Every metric of the project, by casefolded name.
         relationships: Every relationship of the project, by casefolded name.
         members: What member resolution attaches to each view, and what its scope keeps.
+        readers: Every filter and verified query of the project, by member key, in parse order.
     """
 
     view: ParsedView
@@ -146,10 +155,11 @@ class _ScopeContext:
     metrics: Mapping[str, MetricDef]
     relationships: Mapping[str, Relationship]
     members: ViewMembers
+    readers: Mapping[str, FilterDef | VerifiedQueryDef]
 
     @property
     def key(self) -> str:
-        return artifact_key("semantic_view", self.view.name)
+        return view_key(self.view.name)
 
 
 def scope_diagnostics(
@@ -158,12 +168,17 @@ def scope_diagnostics(
     relationships: tuple[Relationship, ...],
     models: Mapping[str, DbtModel],
     members: ViewMembers,
+    readers: tuple[FilterDef | VerifiedQueryDef, ...] = (),
 ) -> tuple[Diagnostic, ...]:
     """Check every readable view's scope, view by view in declaration order.
 
     For each view: the lists' shape and modes, then each entry in list order, then each
-    metric the scope keeps against the relationships and columns it removes. A metric attaches
+    metric the scope keeps against the relationships, columns and base metrics it removes, then
+    each attached filter and verified query against the columns it removes. A member attaches
     to a view, and is kept by it, as `members` says.
+
+    Args:
+        readers: The project's filters and verified queries, whose `ref()` columns are checked.
 
     Diagnostics:
         SST-PRS003: a scope key is not a list.
@@ -178,22 +193,32 @@ def scope_diagnostics(
         SST-VAL332: a kept metric's `using_relationships` names a relationship the scope
             removes, or one whose tables the view does not hold; a view with no scope
             lists is checked for the second.
-        SST-VAL318: a kept window or non-additive metric names a column the scope removes.
+        SST-VAL336: a kept metric is built, with `metric()`, on a metric the view reaches and
+            its scope removes.
+        SST-VAL318: a kept metric's expression, window or non-additive entry, or an attached
+            filter's or verified query's `ref()`, names a column the scope removes.
     """
     metric_by_name = {metric.name.casefold(): metric for metric in metrics}
     relationship_by_name = {relationship.name.casefold(): relationship for relationship in relationships}
+    reader_by_key = {_reader_key(reader): reader for reader in readers}
     diagnostics: list[Diagnostic] = []
     for view in views:
         if view.poisoned:
             continue
         context = _ScopeContext(
-            view, frozenset(view.declared_tables), models, metric_by_name, relationship_by_name, members
+            view, frozenset(view.declared_tables), models, metric_by_name, relationship_by_name, members, reader_by_key
         )
         diagnostics.extend(_shape_diagnostics(context))
         entries = scope_entries(view.source, view.origin, context.key)
         diagnostics.extend(found for entry in entries if (found := _entry_problem(entry, context)) is not None)
         diagnostics.extend(_kept_metric_diagnostics(context))
+        diagnostics.extend(_reader_diagnostics(context))
     return tuple(diagnostics)
+
+
+def _reader_key(reader: FilterDef | VerifiedQueryDef) -> str:
+    kind = "filter" if isinstance(reader, FilterDef) else "verified_query"
+    return artifact_key(kind, reader.name.casefold())
 
 
 def _shape_diagnostics(context: _ScopeContext) -> Iterator[Diagnostic]:
@@ -302,9 +327,10 @@ def _kept_metric_diagnostics(context: _ScopeContext) -> Iterator[Diagnostic]:
 
     A metric is kept when it attaches to the view and the scope admits it. Its
     `using_relationships` must name relationships the view holds and the relationship scope
-    keeps, and the columns its window
-    and non-additive dimensions name must survive the column scope: Snowflake resolves
-    those against the view's dimensions, so a removed column would fail the view.
+    keeps. Each metric it is built on that the view reaches must be kept too, or the view would
+    hold the metric without its base. And every column its expression reads, or its window
+    and non-additive dimensions name, must survive the column scope: a window or non-additive
+    column would fail the view, and an expression's would publish data the scope hides.
     """
     scope = view_scope(context.view.source)
     for name in sorted(context.metrics):
@@ -321,16 +347,76 @@ def _kept_metric_diagnostics(context: _ScopeContext) -> Iterator[Diagnostic]:
                     subject=context.key,
                     origin=context.view.origin,
                 )
-        for column in _dimension_columns(metric):
+        yield from _removed_bases(metric, context)
+        for column in dict.fromkeys((*_column_reads(metric.calls), *_dimension_columns(metric))):
             if not scope.admits_column_name(column):
-                yield D(
-                    "SST-VAL318",
-                    artifact=context.key,
-                    member=metric.name,
-                    column=column,
-                    subject=context.key,
-                    origin=context.view.origin,
-                )
+                yield _hidden_read(metric.name, column, context)
+
+
+def _removed_bases(metric: MetricDef, context: _ScopeContext) -> Iterator[Diagnostic]:
+    """Report each metric `metric` is built on that the view reaches and its scope removes.
+
+    A base the view keeps is checked as a kept metric in its turn, so its own bases are
+    reported against it, each once.
+    """
+    for base in metric.referenced_metrics:
+        key = artifact_key("metric", base)
+        if context.members.reaches(context.key, key) and not context.members.keeps(context.key, key):
+            yield D(
+                "SST-VAL336",
+                artifact=context.key,
+                metric=metric.name,
+                other=base,
+                subject=context.key,
+                origin=context.view.origin,
+            )
+
+
+def _reader_diagnostics(context: _ScopeContext) -> Iterator[Diagnostic]:
+    """Report each column an attached filter or verified query reads with `ref()` and the scope removes.
+
+    A scope never removes either member, so each attached one is checked; its bare column
+    names, as a verified query's SQL may write them, are not read.
+    """
+    scope = view_scope(context.view.source)
+    for key, reader in context.readers.items():
+        if not context.members.keeps(context.key, key):
+            continue
+        for column in _column_reads(_reader_calls(reader)):
+            if not scope.admits_column_name(column):
+                yield _hidden_read(key, column, context)
+
+
+def _reader_calls(reader: FilterDef | VerifiedQueryDef) -> tuple[TemplateCall, ...]:
+    """The calls a filter's expression or a verified query's SQL makes; none when one is malformed."""
+    if reader.template_calls:
+        return reader.template_calls
+    try:
+        return scan_template_calls(reader.expr if isinstance(reader, FilterDef) else reader.sql)
+    except TemplateSyntaxError:
+        return ()
+
+
+def _hidden_read(member: str, column: str, context: _ScopeContext) -> Diagnostic:
+    return D(
+        "SST-VAL318",
+        artifact=context.key,
+        member=member,
+        column=column,
+        subject=context.key,
+        origin=context.view.origin,
+    )
+
+
+def _column_reads(calls: tuple[TemplateCall, ...]) -> tuple[str, ...]:
+    """The columns two-argument `ref()` calls read, each `<model>.<column>` casefolded, once each in order."""
+    return tuple(
+        dict.fromkeys(
+            f"{call.args[0].casefold()}.{call.args[1].casefold()}"
+            for call in calls
+            if call.function == "ref" and len(call.args) == 2
+        )
+    )
 
 
 def _held(name: str, context: _ScopeContext) -> bool:

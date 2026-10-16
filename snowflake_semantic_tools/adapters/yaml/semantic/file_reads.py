@@ -31,8 +31,10 @@ def _verified_query_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ..
     Entries come from files in any folder; one with no name is called `<unnamed>`. Nothing is
     read here: `load_verified_queries` reads the file a `sql:` names, once, and reports it.
 
+    An entry with no name is SST-PRS107's to report, as for every member type.
+
     Diagnostics:
-        SST-PRS002: when an entry has no `sql`.
+        SST-PRS002: when an entry has no `question`, or one that is blank; or has no `sql`.
         SST-REF003: when `sql` calls `file()` and that call is not all of it, or names other
             than one path.
     """
@@ -41,6 +43,9 @@ def _verified_query_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ..
         name = str(node.get("name") or "<unnamed>")
         subject = artifact_key("verified_query", name)
         origin = node_origin(document, member_root("verified_query"), index)
+        # The reader skips an entry without a question, so it would publish nowhere unreported.
+        if not str(node.get("question") or "").strip():
+            diagnostics.append(D("SST-PRS002", artifact=subject, field="question", subject=subject, origin=origin))
         if node.get("sql") is None:
             diagnostics.append(D("SST-PRS002", artifact=subject, field="sql", subject=subject, origin=origin))
             continue

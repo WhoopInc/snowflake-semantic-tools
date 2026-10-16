@@ -4,10 +4,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from snowflake_semantic_tools.domain.model.authored import MetricDef, NonAdditiveDef, WindowDef, WindowOrderDef
+from snowflake_semantic_tools.domain.model.authored import (
+    FilterDef,
+    MetricDef,
+    NonAdditiveDef,
+    VerifiedQueryDef,
+    WindowDef,
+    WindowOrderDef,
+)
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship
+from snowflake_semantic_tools.domain.parse.template import scan_template_calls
 from snowflake_semantic_tools.domain.resolve.membership import ViewMembers
 from snowflake_semantic_tools.domain.validate.semantic.scope import scope_diagnostics, scope_entries, view_scope
 from tests.helpers.authored_documents import ORIGIN
@@ -155,3 +163,36 @@ def test_a_kept_metric_keeps_the_relationships_and_dimension_columns_it_needs() 
     ]
     unscoped = scope_diagnostics((_view(),), (loose,), (), ALL_MODELS, _members({"semantic_view:v": {"metric:loose"}}))
     assert unscoped == ()
+
+
+def test_a_kept_metric_keeps_its_base_metrics_and_reads_no_column_the_scope_removes() -> None:
+    base = MetricDef("base", "SUM({{ ref('orders', 'state') }})", None, ())
+    derived = MetricDef("derived", "{{ metric('base') }} + {{ metric('elsewhere') }}", None, ())
+    cost = MetricDef("cost_total", "SUM({{ ref('orders', 'cost') }})", None, ())
+    view = _view(exclude_metrics=["{{ metric('base') }}"], exclude_columns=["{{ ref('orders', 'cost') }}"])
+    members = _members(
+        {"semantic_view:v": {"metric:base", "metric:derived", "metric:cost_total"}},
+        {"semantic_view:v": {"metric:derived", "metric:cost_total"}},
+    )
+    found = scope_diagnostics((view,), (base, derived, cost), (), ALL_MODELS, members)
+    assert [(item.code, item.message) for item in found] == [
+        ("SST-VAL318", "semantic_view:v: 'cost_total' references excluded column 'orders.cost'"),
+        ("SST-VAL336", "semantic_view:v: keeps metric 'derived', which is built on 'base', which its scope removes"),
+    ]
+
+
+def test_an_attached_filter_or_verified_query_reads_no_column_the_scope_removes() -> None:
+    read = "{{ ref('orders', 'cost') }} > 0"
+    readers = (
+        FilterDef("scanned", read, None, ("orders",), True),
+        FilterDef("detached", read, None, ("orders",), True),
+        FilterDef("visible", "{{ ref('orders', 'state') }} = 'x'", None, ("orders",), True),
+        FilterDef("parsed", "x", None, ("orders",), True, template_calls=scan_template_calls(read)),
+        VerifiedQueryDef("broken", "Q?", "SELECT {{ ref('orders'", ("orders",), None, None, None),
+        VerifiedQueryDef("query", "Q?", f"SELECT 1 WHERE {read}", ("orders",), None, None, None),
+    )
+    view = _view(exclude_columns=["{{ ref('orders', 'cost') }}"])
+    attached = {"filter:scanned", "filter:visible", "filter:parsed", "verified_query:broken", "verified_query:query"}
+    found = scope_diagnostics((view,), (), (), ALL_MODELS, _members({"semantic_view:v": attached}), readers)
+    assert [item.context["member"] for item in found] == ["filter:scanned", "filter:parsed", "verified_query:query"]
+    assert {item.code for item in found} == {"SST-VAL318"}

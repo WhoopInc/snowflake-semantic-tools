@@ -157,8 +157,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: '{member}' references excluded column '{column}'",
         "un-exclude the column, or change the expression",
         condition=(
-            "an expression names a column excluded globally, or a window or non-additive entry of a "
-            "metric a view keeps names a column the view's scope removes"
+            "an expression names a column excluded globally; or a metric a view keeps (its expression, "
+            "window or non-additive entries), or a filter or verified query attached to the view, "
+            "reads with `ref()` a column the view's scope removes"
+        ),
+        note=(
+            "A scoped-out column is hidden only as a fact or dimension; a member that reads it would "
+            "still compute over it, so the view is refused. Bare column names in a verified query's SQL "
+            "are not checked."
         ),
     ),
     spec(
@@ -324,5 +330,16 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="a `fact` column that is not excluded declares `meta.sst.is_enum: true`",
         note="Snowflake refuses `IS_ENUM` on a fact when the view is created, so no setting lowers this.",
         demotable=False,
+    ),
+    spec(
+        "SST-VAL336",
+        Severity.ERROR,
+        "Metric is built on a metric the view excludes",
+        "{artifact}: keeps metric '{metric}', which is built on '{other}', which its scope removes",
+        "keep the base metric, or exclude the metric built on it too",
+        condition=(
+            "a metric left in the view's scope calls `metric()` on a metric the view's tables attach "
+            "and its scope removes, so the view would hold the metric without its base"
+        ),
     ),
 )

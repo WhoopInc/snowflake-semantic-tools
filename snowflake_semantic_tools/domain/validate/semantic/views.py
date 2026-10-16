@@ -13,7 +13,7 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
 from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
@@ -184,12 +184,12 @@ class _Attached:
 
     @property
     def key(self) -> str:
-        return artifact_key("semantic_view", self.view.name)
+        return view_key(self.view.name)
 
 
 def _attached(view: ParsedView, inputs: ViewInputs) -> _Attached:
     """What member resolution attaches to a view and its scope keeps, each kind in project order."""
-    key = artifact_key("semantic_view", view.name)
+    key = view_key(view.name)
 
     def kept(type_name: str, name: str) -> bool:
         return inputs.members.keeps(key, artifact_key(type_name, name.casefold()))

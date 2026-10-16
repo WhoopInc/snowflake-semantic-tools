@@ -12,8 +12,10 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
+from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.parse.template import TemplateCall, TemplateSyntaxError, scan_template_calls
 from snowflake_semantic_tools.domain.resolve.calls import call_problem, malformed_field, syntax_problem
+from snowflake_semantic_tools.domain.sql.names import column_ref
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +158,7 @@ def resolve_scalar(
             legal in the field (see `calls.call_problem`).
         SST-REF001: `ref()` names no dbt model.
         SST-REF002: `ref()` names a column its model does not have.
+        SST-PRS005: `ref()` names a model or column that cannot be written as an identifier.
         SST-REF006: `metric()` names no metric.
         SST-REF007, SST-REF029, SST-REF030, SST-REF031: `custom_instructions()`,
             `relationship()`, `filter()` or `verified_query()` names no such member.
@@ -225,7 +228,16 @@ def _resolve_ref(
     ref_value: Callable[[TemplateCall], str] | None,
     column_value: ColumnValue | None,
 ) -> str | Diagnostic:
-    """Resolve `ref()` to the model's relation or MODEL.COLUMN, unless a callback gives the value."""
+    """Resolve `ref()` to the model's relation or MODEL.COLUMN, unless a callback gives the value.
+
+    MODEL.COLUMN is a column reference: a column dbt quotes keeps its exact case, and a reserved
+    word is quoted (see `column_ref`).
+
+    Diagnostics:
+        SST-REF001: the model is not declared.
+        SST-REF002: the model has no such column.
+        SST-PRS005: the model or the column cannot be written as an identifier.
+    """
     model = context.catalog.model(call.args[0])
     if model is None:
         return D("SST-REF001", origin=site.origin, subject=site.subject, model=call.args[0])
@@ -236,7 +248,11 @@ def _resolve_ref(
         return D("SST-REF002", origin=site.origin, subject=site.subject, model=call.args[0], column=call.args[1])
     if column_value is not None:
         return column_value(call, column.name)
-    return f"{model.name.upper()}.{column.name.upper()}"
+    try:
+        return column_ref(Identifier(model.name.upper()), column.identifier).text
+    except ValueError:
+        value = f"{model.name}.{column.name}"
+        return D("SST-PRS005", origin=site.origin, subject=site.subject, artifact=site.artifact, value=value)
 
 
 def _resolve_metric(call: TemplateCall, site: _Site, context: ResolveContext) -> str | Diagnostic:

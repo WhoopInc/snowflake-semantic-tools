@@ -380,15 +380,28 @@ def _read_relationship(
     )
     if invalid is not None:
         return (invalid,)
+    bounds = conditions.range_bounds
     return Relationship(
         name=str(node["name"]).upper(),
         from_table=left_endpoint.upper(),
-        from_columns=tuple(left for left, _ in conditions.pairs),
+        from_columns=tuple(_member_column(models, left_endpoint, left) for left, _ in conditions.pairs),
         to_table=right_endpoint.upper(),
-        to_columns=tuple(right for _, right in conditions.pairs),
+        to_columns=tuple(_member_column(models, right_endpoint, right) for _, right in conditions.pairs),
         asof_index=conditions.asof_index,
-        range_bounds=conditions.range_bounds,
+        range_bounds=None
+        if bounds is None
+        else (
+            _member_column(models, right_endpoint, bounds[0]),
+            _member_column(models, right_endpoint, bounds[1]),
+        ),
     )
+
+
+def _member_column(models: Mapping[str, DbtModel] | None, endpoint: str, column: str) -> str:
+    """Write a condition's column as the relationship holds it: double-quoted when dbt quotes it."""
+    model = models.get(endpoint.casefold()) if models is not None else None
+    found = model.column(column) if model is not None else None
+    return found.member_name if found is not None and found.quoted else column
 
 
 def _parse_conditions(

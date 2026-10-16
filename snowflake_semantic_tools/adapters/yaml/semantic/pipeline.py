@@ -16,7 +16,7 @@ from typing import Any
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
-from snowflake_semantic_tools.adapters.yaml.documents import LoadCache, RawDocuments, load_documents
+from snowflake_semantic_tools.adapters.yaml.documents import LoadCache, RawDocument, RawDocuments, load_documents
 from snowflake_semantic_tools.adapters.yaml.ownership import assign_owners
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.semantic.build import _build_view
@@ -36,7 +36,8 @@ from snowflake_semantic_tools.adapters.yaml.semantic.poison import Poison, _memb
 from snowflake_semantic_tools.adapters.yaml.semantic.target import _view_location, _view_provenance, _view_settings
 from snowflake_semantic_tools.adapters.yaml.semantic.view_instructions import _instruction_texts, _view_instructions
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.artifact_key import view_key
+from snowflake_semantic_tools.domain.model.authored import NodePath
 from snowflake_semantic_tools.domain.model.config_schema import setting_value
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtTarget
 from snowflake_semantic_tools.domain.model.project import (
@@ -219,14 +220,21 @@ def _view_content_checks(
             poisoned,
             view_tables=dict(_view_tables(parsed.views)),
             view_instructions=instruction_names,
-            view_scopes={artifact_key("semantic_view", view.name): view_scope(view.source) for view in parsed.views},
+            view_scopes={view_key(view.name): view_scope(view.source) for view in parsed.views},
         )
     )
     return instruction_names, (
         *instruction_found,
         *instruction_text_diagnostics,
         *contradiction_diagnostics(instructions, instruction_names),
-        *scope_diagnostics(parsed.views, members.metrics, members.relationships, context.models, attached),
+        *scope_diagnostics(
+            parsed.views,
+            members.metrics,
+            members.relationships,
+            context.models,
+            attached,
+            (*members.filters, *members.verified_queries),
+        ),
         *rule_diagnostics(
             context.documents,
             file_texts(context.documents),
@@ -256,7 +264,7 @@ def _resolve_and_build(
         the dbt seam's, then the built views'.
     """
     built_nodes = tuple(_buildable_nodes(context, poison))
-    scopes = {artifact_key("semantic_view", str(node["name"]).casefold()): view_scope(node) for _, node in built_nodes}
+    scopes = {view_key(str(node["name"])): view_scope(node) for _, node in built_nodes}
     attached_members, decided = membership(
         members,
         poison.member_keys,
@@ -353,7 +361,7 @@ def _build_views(
         settings = _view_settings(context.config, path, context.views_dir, node)
         view_target = _view_location(settings, context.target)
         try:
-            views[artifact_key("semantic_view", str(node["name"]).casefold())] = _build_view(
+            views[view_key(str(node["name"]))] = _build_view(
                 node,
                 path,
                 context.project_dir,
@@ -364,6 +372,7 @@ def _build_views(
                 context.config,
                 context.catalog.sources,
                 settings=_view_provenance(settings, view_target),
+                variable_origins=_variable_origins(context, path, node),
             )
         except ProjectError as exc:
             # A member several views hold fails the same way in each; it is reported once.
@@ -373,6 +382,30 @@ def _build_views(
     return views, tuple(diagnostics)
 
 
+def _variable_origins(context: LoadContext, path: Path, node: Mapping[str, Any]) -> tuple[Origin, ...]:
+    """Return where each entry of a view's `variables:` is written, found by the view's node in its file.
+
+    Empty when the node is not one of its file's views, so its variables are reported at the file.
+    """
+    root_key = SEMANTIC_REGISTRY.artifacts["semantic_view"].root_key
+    assert root_key is not None
+    entries = node.get("variables")
+    count = len(entries) if isinstance(entries, list) else 0
+    for document in context.documents.under(context.views_dir, root_key):
+        for index, candidate in enumerate(document.tree.get(root_key) or []):
+            if document.abs_path == path and candidate is node:
+                return tuple(_located(document, (root_key, index, "variables", item)) for item in range(count))
+    return ()
+
+
+def _located(document: RawDocument, path: NodePath) -> Origin:
+    """Return where the value at `path` starts in `document`; the file alone when it records no position."""
+    position = document.position(path)
+    if position is None:
+        return Origin(document.path)
+    return Origin(document.path, position.line, position.col)
+
+
 def _buildable_nodes(context: LoadContext, poison: Poison) -> Iterator[tuple[Path, dict[str, Any]]]:
     """Yield, in document order, each named view under semantic_views/ that is enabled and not poisoned."""
     for path, node, enabled in _named_views(context):
@@ -380,7 +413,7 @@ def _buildable_nodes(context: LoadContext, poison: Poison) -> Iterator[tuple[Pat
             continue
         if str(node["name"]).casefold() in poison.view_names:
             continue
-        if artifact_key("semantic_view", node["name"]).casefold() in poison.view_keys:
+        if view_key(str(node["name"])) in poison.view_keys:
             continue
         yield path, node
 
@@ -409,7 +442,7 @@ def _disabled_views(context: LoadContext) -> tuple[str, ...]:
 def _build_failure(project_dir: Path, path: Path, node: dict[str, Any], exc: ProjectError) -> tuple[Diagnostic, ...]:
     """Report a view that failed to build, at its file and key wherever the failure names neither."""
     view_origin = Origin(path.resolve().relative_to(project_dir.resolve()).as_posix())
-    view_subject = artifact_key("semantic_view", node["name"])
+    view_subject = view_key(str(node["name"]))
     if exc.diagnostics:
         return tuple(
             replace(item, origin=item.origin or view_origin, subject=item.subject or view_subject)

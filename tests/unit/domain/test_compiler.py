@@ -434,3 +434,23 @@ def test_metric_dependencies_do_not_widen_declared_table_attachment() -> None:
         metric_dependencies={impossible.key: (base.key,)},
     )
     assert result[impossible.key] == ()
+
+
+def test_a_column_reference_is_quoted_as_its_column_is() -> None:
+    columns = (
+        DbtColumn("MixedCase", None, "NUMBER", "fact", quoted=True),
+        DbtColumn("order", None, "NUMBER", "fact"),
+        DbtColumn("Order Id", None, "NUMBER", "fact"),
+    )
+    models = (DbtModel("model.fixture.t", "t", "DB.S.T", (), (), columns),)
+    context = ResolveContext(DbtCatalog("v12", None, None, models))
+
+    def resolved(text: str) -> tuple[str, list[str]]:
+        value, found = resolve_scalar(text, METRIC_EXPR, Origin("m.yml", 1, 1), context, field="expression")
+        return value.text, [item.code for item in found]
+
+    assert resolved("SUM({{ ref('t', 'mixedcase') }})") == ('SUM(T."MixedCase")', [])
+    assert resolved("SUM({{ ref('t', 'order') }})") == ('SUM(T."ORDER")', [])
+    # A column that is not an identifier unquoted, and not declared quoted, cannot be referenced.
+    assert resolved("SUM({{ ref('t', 'Order Id') }})")[1] == ["SST-PRS005"]
+    assert [column.member_name for column in columns] == ['"MixedCase"', "order", "Order Id"]

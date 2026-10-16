@@ -66,7 +66,14 @@ control character, or template syntax, and reports each one it refuses for its c
   server rather than run.
 - **A name that is a reserved word is quoted.** An unquoted name that is a Snowflake reserved
   word, such as a column called `select`, is written double-quoted in upper case (`"SELECT"`):
-  it names the same object, and no reader takes it for the keyword.
+  it names the same object, and no reader takes it for the keyword. That holds inside
+  expressions too: `SUM({{ ref('orders', 'order') }})` renders `SUM(ORDERS."ORDER")`.
+- **A quoted column keeps its case.** A dbt column declared with `quote: true` was created
+  quoted, so its name is case-sensitive; SST writes it double-quoted exactly as dbt names it,
+  as a member name, in every expression and in keys and relationships
+  (`ORDERS."MixedCaseAmount"`). `validate --verify-schema` compares such a column with the
+  table's exactly, so a case mismatch is reported (`SST-VAL325`) rather than failing at
+  create.
 - **Authored SQL passes a guard first.** Each metric, fact, dimension, and filter expression, a
   window frame, and a search tool's `where:` must be exactly one expression, checked after its
   `{{ ... }}` references are resolved. Outside strings and quoted identifiers it may hold no

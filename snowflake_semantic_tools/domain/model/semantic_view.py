@@ -42,7 +42,8 @@ class ColumnKind(Enum):
 class Column:
     """One entry inside `FACTS (...)` or `DIMENSIONS (...)`.
 
-    `table` and `name` are already upper-cased by the loader, and each is one identifier.
+    `table` and `name` are already upper-cased by the loader, and each is one identifier; a
+    column dbt quotes keeps its exact case and its double quotes in `name`.
     `expr` is the right side of `AS`, guarded: for a plain column that is `TABLE.COLUMN`,
     and for a filter it is a predicate such as `ORDERS.ORDER_STATE = 'completed'`.
 
@@ -64,8 +65,9 @@ class Column:
 
     @property
     def qualified_name(self) -> str:
-        """`TABLE.NAME`: how the DDL names the column, and what columns sort by when rendered."""
-        return f"{self.table}.{self.name}"
+        """`TABLE.NAME`, a quoted name without its quotes: what columns sort, match and are keyed by."""
+        name = self.name[1:-1].replace('""', '"') if self.name.startswith('"') else self.name
+        return f"{self.table}.{name}"
 
 
 @dataclass(frozen=True, slots=True)

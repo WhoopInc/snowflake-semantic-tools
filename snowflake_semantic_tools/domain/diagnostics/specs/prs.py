@@ -500,6 +500,19 @@ SPECS: tuple[ErrorSpec, ...] = (
         note="`sst migrate refs --write` removes the member `tables:` and `derived:` keys.",
     ),
     spec(
+        "SST-PRS127",
+        Severity.ERROR,
+        "View variable default does not fit its data type",
+        "{artifact}: variable '{name}' of type {type} cannot default to {found}: it takes {expected}",
+        "write the default as the message says, or change the variable's data_type",
+        condition=(
+            "a semantic view variable's `default_value` is not a value of its `data_type`'s family: a "
+            "number for a numeric type, true or false for BOOLEAN, a string for text, ISO 8601 text "
+            "for DATE, TIME or a timestamp; or the type is one no default can be written for"
+        ),
+        note="A temporal default renders as `'<text>'::<type>`; Snowflake reads a bare string as VARCHAR.",
+    ),
+    spec(
         "SST-PRS900",
         Severity.ERROR,
         "Parser returned a non-frozen record",

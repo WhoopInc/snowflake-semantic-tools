@@ -22,7 +22,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.app.compile.agents.context import AgentCompileContext
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.agent import KNOWN_AGENT_TOOL_TYPES, AgentModel, AgentTool, ResolvedAgentTool
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.resolve.stage_path import resolve_stage_path
@@ -149,7 +149,7 @@ def _analyst(
         )
         return None
     target = context.semantic_views.get(authored.semantic_view.casefold())
-    declared = artifact_key("semantic_view", authored.semantic_view.casefold())
+    declared = view_key(authored.semantic_view)
     if target is None and declared in context.unpublished:
         diagnostics.append(D("SST-VAL016", type="agent", name=agent.name, value=declared, subject=agent.key))
         return None
@@ -164,7 +164,7 @@ def _analyst(
         target.name.folded,
         authored.description or "",
         {"semantic_view": target.sql, **environment},
-        (artifact_key("semantic_view", authored.semantic_view.casefold()),),
+        (view_key(authored.semantic_view),),
     )
 
 

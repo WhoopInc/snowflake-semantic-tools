@@ -19,8 +19,8 @@ def _column(expr: str, kind: ColumnKind = ColumnKind.DIMENSION) -> Column:
 
 
 def test_only_a_plain_reference_is_a_column_to_look_up() -> None:
-    assert _plain_reference(_column("ORDERS.ORDER_ID")) == ("ORDERS", "ORDER_ID")
-    assert _plain_reference(_column('"Orders"."Order Id"')) == ("Orders", "Order Id")
+    assert _plain_reference(_column("ORDERS.ORDER_ID")) == ("ORDERS", "ORDER_ID", False)
+    assert _plain_reference(_column('"Orders"."Order Id"')) == ("Orders", "Order Id", True)
     assert _plain_reference(_column("SUM(ORDERS.AMOUNT)")) is None
     assert _plain_reference(_column("ORDERS.STATE = 'x'", ColumnKind.FILTER)) is None
     assert _unquoted('"a""b"') == 'a"b'
@@ -33,7 +33,7 @@ def _tables(project: Path) -> tuple[CompileResult, dict[str, tuple[tuple[str, st
     tables: dict[str, set[str]] = {}
     for item in compiled.compiled:
         if isinstance(item, CompiledView):
-            for fqn, _model, column in _references(item):
+            for fqn, _model, column, _quoted in _references(item):
                 tables.setdefault(fqn, set()).add(column.upper())
     return compiled, {fqn: tuple((name, "TEXT") for name in sorted(names)) for fqn, names in tables.items()}
 
