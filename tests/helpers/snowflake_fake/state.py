@@ -67,6 +67,10 @@ class FakeState(SnowflakeWorld):
         self._check("extend_run_lock")
         return self.run_locks.extend_run_lock(state_table, target_name, fence, ttl_seconds)
 
+    def verify_run_lock(self, state_table: QualifiedName, target_name: str, fence: LockFence) -> bool:
+        self._check("verify_run_lock")
+        return self.run_locks.verify_run_lock(state_table, target_name, fence)
+
     def release_run_lock(self, state_table: QualifiedName, target_name: str, fence: LockFence) -> None:
         self._check("release_run_lock")
         self.run_locks.release_run_lock(state_table, target_name, fence)

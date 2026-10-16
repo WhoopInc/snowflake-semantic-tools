@@ -43,6 +43,9 @@ class InMemoryStateStore:
             return True, old, True
         return False, self.holder, False
 
+    def describe_lock(self, holder: str | None) -> str:
+        return holder or "another run"
+
     def release_lock(self, run_id: str) -> None:
         if self.holder == run_id:
             self.locked = False

@@ -18,6 +18,7 @@ from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.apply.lock import EventTicker, LockPolicy, RunLease
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
@@ -29,9 +30,11 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     FailurePolicy,
     OutcomeStatus,
     OwnershipMarker,
+    RenderedArtifact,
     ShowRow,
 )
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.sql import literal, sql
 from snowflake_semantic_tools.domain.state import APPLIED, AppliedEntry, State
 from snowflake_semantic_tools.domain.state.lock import LockClaim, LockFence
 from tests.helpers.app_ports import InMemoryStateStore
@@ -378,7 +381,13 @@ def test_releasing_the_lease_frees_the_local_lock_even_when_the_remote_release_f
     port.release_run_lock = refuse  # type: ignore[method-assign, assignment]
     with pytest.raises(SnowflakePortError):
         lease.release()
-    assert not store.locked and lease.fence is None
+    # The fence is kept, so a release on another session, a fresh one, can still free the lock.
+    assert not store.locked and lease.fence is not None
+    fresh = FakeSnowflake()
+    fresh.run_locks = port.run_locks
+    lease.release(fresh)
+    assert lease.fence is None and port.run_locks.rows == {}
+    lease.release()
 
 
 def test_a_remote_lock_that_cannot_be_read_releases_the_local_lock() -> None:
@@ -519,3 +528,109 @@ def test_a_stale_local_lock_broken_before_a_live_remote_one_refuses_reports_both
 
     assert not acquired and [item.code for item in reported] == ["SST-APL010", "SST-APL011"]
     assert not store.locked
+
+
+def _agent_publish(steps: int) -> RenderedArtifact:
+    """An artifact whose publish is one script of `steps` statements, as an agent's publish is."""
+    statements = tuple(
+        sql("ALTER AGENT DB.SCHEMA.AGENT SET COMMENT = {step}", step=literal(f"step {index}"))
+        for index in range(1, steps + 1)
+    )
+    return replace(rendered("AGENT"), statements=statements)
+
+
+class BreaksOnVerification(FakeSnowflake):
+    """A worker session on which another run takes the lock just before the `at`-th lock read."""
+
+    def __init__(self, main: FakeSnowflake, at: int) -> None:
+        super().__init__()
+        self.run_locks = main.run_locks
+        self._main, self._at, self.reads = main, at, 0
+
+    def verify_run_lock(self, state_table: QualifiedName, target_name: str, fence: LockFence) -> bool:
+        self.reads += 1
+        if self.reads == self._at:
+            break_lock(self._main)
+        return super().verify_run_lock(state_table, target_name, fence)
+
+
+def test_a_lock_broken_part_way_through_a_publish_stops_it_before_its_next_statement() -> None:
+    # Another run took the lock while this one was paused mid-publish: its heartbeat has not
+    # beaten since, so only the read before each statement can tell it.
+    main, store = FakeSnowflake(), InMemoryStateStore()
+    worker = BreaksOnVerification(main, at=4)
+    publish, after = _agent_publish(7), rendered("LATER")
+    result = apply_with(main, "run-a", store=store, sessions=ListPool([worker])).run(
+        changeset(change(publish), change(after)), state(), ApplyOptions(parallelism=1)
+    )
+
+    # Statements 1-3 ran; the read before statement 4 found the lock gone, so it never ran.
+    assert worker.scripts == [tuple(str(item) for item in publish.statements[:3])]
+    assert [(item.key, item.status, item.partial_write) for item in result.outcomes] == [
+        (publish.key, OutcomeStatus.FAILED, True),
+        (after.key, OutcomeStatus.SKIPPED, False),
+    ]
+    assert ("SST-APL011", LOST) in [(item.code, item.message) for item in result.diagnostics]
+    # The run that broke the lock owns the target's state: nothing of this run is recorded.
+    assert not result.state_written and main.state_writes == [] and store.state is None
+    assert main.run_locks.holder("verify") == "rival"
+
+
+def test_a_lock_broken_between_changes_starts_no_further_change_before_any_heartbeat() -> None:
+    port, store = FakeSnowflake(), InMemoryStateStore()
+    first, second = rendered("A"), rendered("B")
+
+    def broken_while_paused(*args: object) -> ExecResult:
+        break_lock(port)
+        return ExecResult(True, ("q1",))
+
+    port.execute_script = broken_while_paused  # type: ignore[assignment, method-assign]
+    result = apply_with(port, "run-a", store=store).run(
+        changeset(change(first), change(second)), state(), ApplyOptions(parallelism=1)
+    )
+    assert [(item.key, item.status) for item in result.outcomes] == [
+        (first.key, OutcomeStatus.APPLIED),
+        (second.key, OutcomeStatus.SKIPPED),
+    ]
+    assert [(item.code, item.message) for item in result.diagnostics] == [("SST-APL011", LOST)]
+    assert not result.state_written and port.state_writes == []
+    # The lock was read again before each change, the second read finding it gone.
+    assert port.run_locks.verifications == ["run-a", "run-a"]
+
+
+def test_a_lock_that_cannot_be_read_before_a_change_fails_that_change_with_nothing_written() -> None:
+    port = FakeSnowflake()
+    port.fail("verify_run_lock", SnowflakePortError("connection reset"), times=1)
+    result = apply_with(port, "run-a").run(changeset(change(rendered())), state())
+    [outcome] = result.outcomes
+    assert outcome.status is OutcomeStatus.FAILED and not outcome.write_succeeded
+    assert outcome.error is not None and outcome.error.message == "connection reset"
+    assert port.scripts == []
+
+
+def test_a_lock_read_that_fails_on_a_workers_session_stops_its_script_there() -> None:
+    main = FakeSnowflake()
+    worker = FakeSnowflake()
+    worker.fail("verify_run_lock", SnowflakePortError("connection reset"))
+    result = apply_with(main, "run-a", sessions=ListPool([worker])).run(changeset(change(_agent_publish(2))), state())
+    [outcome] = result.outcomes
+    assert outcome.status is OutcomeStatus.FAILED and not outcome.write_succeeded
+    assert outcome.error is not None and outcome.error.message == "connection reset"
+    assert worker.scripts == []
+
+
+def test_verifying_a_lost_lease_reads_nothing_and_a_lease_is_lost_once() -> None:
+    port, store = FakeSnowflake(), InMemoryStateStore()
+    reasons: list[str] = []
+    lease = lease_for(port, store, stepped(), on_lost=reasons.append)
+    assert not lease.verify()
+    assert lease.acquire(break_stale=False) == (True, ())
+    assert lease.verify()
+    break_lock(port)
+    assert not lease.verify() and not lease.verify()
+    assert reasons == ["another run, which broke this run's lock"] and lease.lost
+    assert port.run_locks.verifications == ["run-a", "run-a"]
+    # The heartbeat and a verification may both find the loss; the first reason stands.
+    lease._lose("the heartbeat's reason")
+    assert reasons == ["another run, which broke this run's lock"] and lease.lost_reason == reasons[0]
+    lease.release()

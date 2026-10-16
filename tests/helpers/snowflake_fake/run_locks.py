@@ -1,7 +1,7 @@
 """An in-memory run lock table with the connector's semantics.
 
 `InMemoryRunLocks` keeps one row per (state table, target). Each operation, a claim, an
-extension, a release, or a fence check, is one critical section that reads and then decides,
+extension, a release, a verification, or a fence check, is one critical section that reads and then decides,
 as each runs in the connector as one transaction that serialises on the lock table's mutex row
 before it reads; every claim that wins is issued the next generation. Time is a number of
 seconds the test controls through `now`.
@@ -33,6 +33,8 @@ class InMemoryRunLocks:
         self.extensions: list[str] = []
         self.releases: list[str] = []
         self.claims: list[str] = []
+        # The run id of each fence verified, in order.
+        self.verifications: list[str] = []
         self.refuse_extension = False
         self.generation = 0
         self._guard = threading.Lock()
@@ -80,6 +82,11 @@ class InMemoryRunLocks:
             key = (state_table.sql, target_name)
             if _fenced(self.rows.get(key), fence):
                 del self.rows[key]
+
+    def verify_run_lock(self, state_table: QualifiedName, target_name: str, fence: LockFence) -> bool:
+        with self._guard:
+            self.verifications.append(fence.run_id)
+            return _fenced(self.rows.get((state_table.sql, target_name)), fence)
 
     def fence_holds(self, state_table: QualifiedName, target_name: str, fence: LockFence) -> bool:
         with self._guard:

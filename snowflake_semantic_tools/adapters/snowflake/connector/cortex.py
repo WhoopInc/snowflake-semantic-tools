@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
-from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _variant_value
+from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _headline, _variant_value
 from snowflake_semantic_tools.domain.ports.enrich import CortexPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, boolean, join, literal, null, number, sql
@@ -76,8 +76,7 @@ class CortexMethods(Session, CortexPort):
         try:
             self.query(probe_sql(), (model, "Reply with OK."))
         except SnowflakePortError as error:
-            text = str(error).strip()
-            return next((line.strip() for line in text.splitlines() if line.strip()), type(error).__name__)
+            return _headline(str(error)) or type(error).__name__
         return None
 
     def complete_json(self, model: str, prompt: str, schema: Mapping[str, object]) -> object:

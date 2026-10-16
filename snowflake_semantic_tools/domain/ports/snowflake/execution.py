@@ -9,7 +9,7 @@ with that scope as its own and keeps it.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from typing import Protocol, TypeVar
 
@@ -86,6 +86,21 @@ class ExecutionPort(Protocol):
         """Run one statement as a one-statement script, which reports a failure in its result.
 
         Never raises for a SQL error, as `execute_script` does not.
+        """
+        ...
+
+
+class WriteGuardPort(Protocol):
+    """A session that checks, before each write it starts, that it may still write."""
+
+    def guard_writes(self, guard: Callable[[], None] | None) -> None:
+        """Call `guard` before every write statement `execute_script` starts from now on; None stops.
+
+        A read -- SELECT, SHOW, DESCRIBE, LIST, EXPLAIN, GET -- is never guarded. The guard runs
+        on the thread that runs the script, on its way to the statement. A guard that halts the
+        session stops the script before the statement, as `halt` does; a `SnowflakePortError`
+        it raises stops it there too, and the script's result carries that error. Either way
+        the result names exactly the statements that completed before.
         """
         ...
 

@@ -10,7 +10,7 @@ from tests.helpers.plan_codes import partial_result as result
 def test_sst_pln033_fires() -> None:
     refusal = partial_refusal(result(D("SST-CFG047", subject="config:project.hooks_dir", key="k", value="v")))
     assert refusal is not None
-    assert (refusal.code, refusal.severity) == ("SST-PLN033", Severity.INFO)
+    assert (refusal.code, refusal.severity) == ("SST-PLN033", Severity.WARNING)
     assert refusal.message == (
         "--partial publishes nothing: SST-CFG047 on config:project.hooks_dir cannot be traced to the artifacts it "
         "would change"

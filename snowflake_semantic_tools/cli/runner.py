@@ -72,7 +72,13 @@ from snowflake_semantic_tools.cli.signals import terminated_as_interrupt
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, audit
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
-from snowflake_semantic_tools.domain.diagnostics.signatures import UNRECOGNISED, match_signature, snowflake_diagnostic
+from snowflake_semantic_tools.domain.diagnostics.signatures import (
+    UNRECOGNISED,
+    SessionFailure,
+    match_signature,
+    session_failure,
+    snowflake_diagnostic,
+)
 from snowflake_semantic_tools.domain.model.lifecycle import ErrorKind
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
@@ -458,9 +464,10 @@ def snowflake_failure(exc: SnowflakePortError) -> tuple[Diagnostic, int]:
 
     The error's own diagnostic exits 5. Otherwise the signature table classifies its message,
     errno and SQLSTATE: a rejected login is the credential rejected; a dropped connection or an
-    unrecognised error is the connection failing; a refused privilege or a missed deadline is the warehouse not
-    cooperating, exit 5; any other signature -- an object that does not exist, a compilation
-    error -- is a statement Snowflake rejected, exit 1.
+    unrecognised error is the connection failing, but a session Snowflake ended, which had
+    connected, is the network failure (SST-SNO014) it is, exit 5; a refused privilege or a
+    missed deadline is the warehouse not cooperating, exit 5; any other signature -- an object
+    that does not exist, a compilation error -- is a statement Snowflake rejected, exit 1.
 
     Diagnostics:
         SST-PRT001: the connection failed, or no signature recognises the error.
@@ -485,7 +492,9 @@ def _classified(exc: SnowflakePortError) -> tuple[Diagnostic, int, Diagnostic]:
         return exc.diagnostic, CONNECTION, matched
     if signature.code == _AUTHENTICATION_SIGNATURE:
         return D("SST-PRT002", subject="cli", value="Snowflake", detail=message), CONNECTION, matched
-    if signature.code in _CONNECTION_SIGNATURES:
+    # A session Snowflake ended was connected: it is the network failure it is, not a failed connect.
+    gone = session_failure(message, errno=exc.errno, sqlstate=exc.sqlstate) is SessionFailure.SESSION_GONE
+    if signature.code in _CONNECTION_SIGNATURES and not gone:
         return D("SST-PRT001", subject="cli", value="Snowflake", detail=message), CONNECTION, matched
     uncooperative = signature.kind in {ErrorKind.PRIVILEGE, ErrorKind.TRANSIENT} or signature.code == "SST-SNO011"
     return matched, CONNECTION if uncooperative else ERROR, matched

@@ -208,14 +208,15 @@ def _preflight_to_json(preflight: Preflight) -> dict[str, object]:
         "missing_stage_privileges": [
             [*name, list(privileges)] for name, privileges in sorted(preflight.missing_stage_privileges.items())
         ],
+        "absent_state_tables": [table.sql for table in preflight.absent_state_tables],
     }
 
 
 def _preflight_from_json(value: Mapping[str, Any]) -> Preflight:
     """Read the preflight facts `_preflight_to_json` wrote; a record without the later facts has none.
 
-    The later facts are the stage facts, the privileges only a secondary role holds, and those
-    the walk up from the primary role stopped short of.
+    The later facts are the stage facts, the privileges only a secondary role holds, those
+    the walk up from the primary role stopped short of, and the absent state tables.
     """
     privileges: dict[_Scope, tuple[str, ...]] = {}
     for entry in _list(value.get("missing_privileges"), "missing_privileges"):
@@ -254,6 +255,10 @@ def _preflight_from_json(value: Mapping[str, Any]) -> Preflight:
         stage_types=MappingProxyType(stage_types),
         absent_stages=frozenset(_triple(name) for name in _list(value.get("absent_stages", []), "absent_stages")),
         missing_stage_privileges=MappingProxyType(stage_privileges),
+        absent_state_tables=tuple(
+            QualifiedName.parse(str(table))
+            for table in _list(value.get("absent_state_tables", []), "absent_state_tables")
+        ),
     )
 
 

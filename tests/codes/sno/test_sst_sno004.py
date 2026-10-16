@@ -15,7 +15,9 @@ def test_sst_sno004_fires() -> None:
         )
     )
     assert (diagnostic.code, diagnostic.severity) == ("SST-SNO004", Severity.ERROR)
-    assert diagnostic.message == "insufficient privileges for SCHEMA"
+    assert diagnostic.message == (
+        "insufficient privileges for SCHEMA: Insufficient privileges to operate on schema 'SCHEMA'"
+    )
     assert diagnostic.subject == "semantic_view:v"
 
 

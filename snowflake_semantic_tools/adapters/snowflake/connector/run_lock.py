@@ -28,7 +28,8 @@ replaced only with `break_stale`, and a live one is refused with a ROLLBACK that
 nothing. A winning claim is issued the next generation, recorded on its row and on the mutex
 row, and returned as its `LockFence`. Expiry is computed and judged by Snowflake's
 CURRENT_TIMESTAMP, so the clocks of the machines that contend never matter. Every value is
-bound.
+bound. A verification, which a run makes before each write, only reads the target's row, in no
+transaction: it writes nothing, so it never queues behind a claim.
 
 Contention is per table, not per target. Every lock transaction writes the one mutex row, so
 claims for different targets that share a lock table queue behind each other by design; and
@@ -45,8 +46,10 @@ from __future__ import annotations
 from snowflake_semantic_tools.adapters.snowflake.connector.lock_table import (
     MUTEX_TARGET,
     LockTableMethods,
+    fence_sql,
     generation,
     lock_table_sql,
+    records_fence,
 )
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Transaction
 from snowflake_semantic_tools.adapters.snowflake.connector.state_table import _state_timestamp
@@ -102,7 +105,7 @@ def _release_sql(table: Sql) -> Sql:
 
 
 class RunLockMethods(LockTableMethods, StatePort):
-    """Keep the run lock table: taking the lock creates it first, so a first apply finds it."""
+    """Keep the run lock table: taking the lock creates it when absent, so a first apply finds it."""
 
     def acquire_run_lock(
         self,
@@ -137,6 +140,12 @@ class RunLockMethods(LockTableMethods, StatePort):
         table = lock_table_sql(state_table)
         with self._lock_transaction(table) as transaction:
             return transaction.run(_extend_sql(table), (ttl_seconds, target_name, fence.run_id, fence.generation)) > 0
+
+    def verify_run_lock(self, state_table: QualifiedName, target_name: str, fence: LockFence) -> bool:
+        # A plain read, outside any lock transaction: it must not queue behind a rival's claim,
+        # and a takeover's DELETE and INSERT commit together, so it never sees a lock between.
+        rows = self.query(fence_sql(lock_table_sql(state_table)), (target_name,)).rows
+        return records_fence(rows, fence)
 
     def release_run_lock(self, state_table: QualifiedName, target_name: str, fence: LockFence) -> None:
         table = lock_table_sql(state_table)

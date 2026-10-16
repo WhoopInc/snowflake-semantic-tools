@@ -65,6 +65,14 @@ def test_a_refused_create_runs_nothing_more_and_is_unprobed() -> None:
     assert len(driver.statements) == 1
 
 
+def test_a_refused_run_keeps_what_snowflake_wrote_after_its_heading() -> None:
+    failure = ProgrammingError(msg="SQL compilation error:\nAgent model 'grok-9' is not available", errno=1003)
+    driver = FakeDriverSession(failures={"SELECT SNOWFLAKE.CORTEX": failure})
+    probe = FakeDriverConnector(driver).probe_orchestration_model(SCOPE, "grok-9")
+    assert probe.outcome is ProbeOutcome.UNPROBED
+    assert probe.detail.endswith("SQL compilation error: Agent model 'grok-9' is not available")
+
+
 def test_a_failed_run_is_unprobed_and_the_agent_is_still_dropped() -> None:
     driver = FakeDriverSession(
         failures={"SELECT SNOWFLAKE.CORTEX": ProgrammingError(msg="Unknown function", errno=2141)}

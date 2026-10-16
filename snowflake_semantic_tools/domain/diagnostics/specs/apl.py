@@ -33,6 +33,10 @@ SPECS: tuple[ErrorSpec, ...] = (
             "a change this one depends on failed or was skipped, so it did not run; with "
             "`--fail-fast` the run instead stops at the first failure and skips every change left"
         ),
+        note=(
+            "The message names the change that failed, even when the dependency between them was "
+            "only skipped. A dependent the plan had nothing to do for (NOOP) is skipped without it."
+        ),
         precheck=Precheck.RUNTIME,
     ),
     spec(
@@ -155,9 +159,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         note=(
             "The message names the holder: its run id and, for the lock in Snowflake, the role and "
-            "host it runs as and when its lock expires. A live lock is never broken: wait for that "
-            "run to end. Only once its lock has expired does `--break-stale-lock` take it over "
-            "(SST-APL010). A run that lost its lock starts no further statement and writes no state."
+            "host it runs as and when its lock expires; for the local lock, the lock file, that "
+            "it locks this checkout only, and when it goes stale. A live lock is never broken: "
+            "wait for that run to end. Only once its lock has expired does `--break-stale-lock` "
+            "take it over (SST-APL010). A run reads its lock again before each change and each "
+            "write statement, so a run that lost its lock starts no further statement and writes "
+            "no state."
         ),
         precheck=Precheck.RUNTIME,
     ),
@@ -380,6 +387,23 @@ SPECS: tuple[ErrorSpec, ...] = (
             "failed, observed by `sst test --suite smoke` rather than by `apply`"
         ),
         note="Fix the artifact the probe names; a metric probe reports `SST-PLN100`.",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL103",
+        Severity.ERROR,
+        "Connection to Snowflake lost mid-run",
+        "the connection to Snowflake was lost mid-run; finished before it: {value}",
+        "run sst plan, which shows what the run left to do, then apply again",
+        condition=(
+            "Snowflake ended a session apply was running on after the run took its lock: the "
+            "network dropped, or the session was aborted or expired (error 390111 or 390112)"
+        ),
+        note=(
+            "Apply opens one fresh connection to record in state the changes that finished and to "
+            "release its lock, so the target is not left locked. A change whose statements had "
+            "not returned is not recorded as written; the next plan sees what it left behind."
+        ),
         precheck=Precheck.RUNTIME,
     ),
     spec(

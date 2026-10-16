@@ -157,6 +157,17 @@ def test_diagnostic_identity_and_human_render_are_stable() -> None:
     assert render_diagnostic(no_origin).startswith("error[SST-INT902]")
 
 
+def test_every_further_line_of_a_message_is_indented_deeper_than_its_help_line() -> None:
+    # Snowflake's text runs over several lines; each further line must still read as part of
+    # the headline, never as a line of its own, nor as the help or docs line.
+    detail = "003001 (42501): SQL access control error:\nInsufficient privileges to operate on schema 'S'."
+    rendered = render_diagnostic(D("SST-APL001", artifact="semantic_view:v", value="update", detail=detail))
+    headline, continued, help_line, *_ = rendered.splitlines()
+    assert headline.endswith("SQL access control error:")
+    assert continued == "    Insufficient privileges to operate on schema 'S'."
+    assert help_line.startswith("  help: ")
+
+
 def test_human_render_omits_help_when_registry_has_no_suggestion() -> None:
     from dataclasses import replace
 

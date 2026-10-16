@@ -292,3 +292,17 @@ def test_an_upload_stage_in_a_missing_schema_blocks_its_writes_once_for_the_sche
     checked, diagnostics = check_preflight((_staging("A", elsewhere), _staging("B", elsewhere)), preflight)
     assert _codes(diagnostics) == ["SST-PLN010"]
     assert [_codes(item.diagnostics) for item in checked] == [["SST-PLN010"], ["SST-PLN010"]]
+
+
+def test_an_absent_state_table_s_create_table_is_checked_only_when_the_plan_writes() -> None:
+    lacking = MappingProxyType({("DB", "STATE"): ("CREATE TABLE",)})
+    absent = (QualifiedName.parse("DB.STATE.SST_STATE"), QualifiedName.parse("DB.STATE.SST_STATE_LOCK"))
+    preflight = Preflight("dev", "DEPLOYER", missing_privileges=lacking, absent_state_tables=absent)
+    unchanged = change(rendered("SALES"), Action.NOOP)
+    report_only = replace(change(rendered("OLD"), Action.PRUNE), prune_executable=False)
+    pruned = replace(report_only, prune_executable=True)
+    assert _codes(check_preflight((unchanged, report_only), preflight)[1]) == []
+    # Two absent tables in one schema need the privilege once.
+    assert _codes(check_preflight((unchanged, pruned), preflight)[1]) == ["SST-PLN008"]
+    _, [lacked] = check_preflight((change(rendered("SALES")),), replace(preflight, missing_privileges=lacking))
+    assert lacked.message == "DEPLOYER lacks CREATE TABLE on DB.STATE"

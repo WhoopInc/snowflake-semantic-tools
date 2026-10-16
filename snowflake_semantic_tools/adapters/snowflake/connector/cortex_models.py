@@ -19,6 +19,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector.session import (
     _as_port_errors,
     _execute,
     _fetch,
+    _headline,
 )
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake.cortex_models import (
@@ -87,14 +88,14 @@ def read_probe_response(raw: object) -> AgentProbe:
     try:
         response = parse_json(raw) if isinstance(raw, str) else raw
     except JsonFileError:
-        return AgentProbe(ProbeOutcome.REJECTED, _first_line(str(raw)))
+        return AgentProbe(ProbeOutcome.REJECTED, _headline(str(raw)))
     if isinstance(response, dict):
         if "content" in response and not response.get("code"):
             return AgentProbe(ProbeOutcome.ACCEPTED)
         message = response.get("message")
         if isinstance(message, str) and message:
-            return AgentProbe(ProbeOutcome.REJECTED, _first_line(message))
-    return AgentProbe(ProbeOutcome.REJECTED, _first_line(json.dumps(response, default=str)))
+            return AgentProbe(ProbeOutcome.REJECTED, _headline(message))
+    return AgentProbe(ProbeOutcome.REJECTED, _headline(json.dumps(response, default=str)))
 
 
 def base_model(row: dict[str, Any]) -> CortexBaseModel | None:
@@ -124,12 +125,12 @@ class CortexModelsMethods(Session, CortexModelsPort):
             with _as_port_errors(), self._cursor() as cursor:
                 _execute(cursor, create)
         except SnowflakePortError as exc:
-            return AgentProbe(ProbeOutcome.UNPROBED, _first_line(str(exc)))
+            return AgentProbe(ProbeOutcome.UNPROBED, _headline(str(exc)))
         try:
             with _as_port_errors(), self._cursor() as cursor:
                 result = _fetch(cursor, run, (agent.sql, PROBE_REQUEST), timeout_seconds=PROBE_TIMEOUT_SECONDS)
         except SnowflakePortError as exc:
-            return AgentProbe(ProbeOutcome.UNPROBED, _first_line(str(exc)))
+            return AgentProbe(ProbeOutcome.UNPROBED, _headline(str(exc)))
         finally:
             self._drop_quietly(drop)
         return read_probe_response(result.rows[0][0] if result.rows and result.rows[0] else None)
@@ -141,11 +142,6 @@ class CortexModelsMethods(Session, CortexModelsPort):
                 _execute(cursor, drop)
         except SnowflakePortError:
             return
-
-
-def _first_line(message: str) -> str:
-    """Return a message's first non-empty line, trimmed."""
-    return next((line.strip() for line in message.splitlines() if line.strip()), "")
 
 
 def _text(value: object) -> str | None:

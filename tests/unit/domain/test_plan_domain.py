@@ -647,3 +647,16 @@ def test_only_a_replaced_semantic_view_warns_of_the_tags_it_removes() -> None:
         ["semantic_view:v: replacing DB.SCH.V removes tags the project does not declare: DB.SCH.HAND"],
     )
     assert planned(False) == ((Action.NOOP, Action.NOOP), [])
+
+
+def test_a_narrowed_plan_keeps_its_order_and_hashes_its_id_anew() -> None:
+    from snowflake_semantic_tools.domain.plan.changeset import narrowed
+    from tests.helpers.artifact_builders import change, changeset, rendered
+
+    first, second = change(rendered("A")), change(rendered("B"))
+    plan = replace(changeset(first, second), plan_id="old")
+    notice = D("SST-PLN032", subject=second.key, artifact=second.key)
+    kept = narrowed(plan, (second,), DiagnosticBag((notice,)))
+    assert kept.changes == (second,) and [item.code for item in kept.diagnostics] == ["SST-PLN032"]
+    assert kept.plan_id not in ("old", "") and kept.plan_id == narrowed(plan, (second,), DiagnosticBag()).plan_id
+    assert kept.plan_id != narrowed(plan, (first, second), DiagnosticBag()).plan_id

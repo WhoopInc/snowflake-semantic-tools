@@ -23,7 +23,7 @@ class SnowflakeEvalStateStore:
     A row is keyed by `TARGET_NAME`, `EVAL_KEY` and `RECORD_KIND` (`baseline` or `gate`) and
     holds its record as a JSON `PAYLOAD` of metadata only. A read never creates the table, so a
     read-only role can read and a missing table reads as no record; a write creates the table
-    first and upserts its rows. Snowflake does not enforce the key, so a read that finds two
+    when it is absent, and upserts its rows. Snowflake does not enforce the key, so a read that finds two
     rows raises.
     """
 
@@ -88,6 +88,11 @@ class SnowflakeEvalStateStore:
         self._write(target_name, gate.eval_key, "gate", _gate_payload(gate))
 
     def _ensure_table(self) -> None:
+        # Snowflake checks the CREATE TABLE privilege for CREATE TABLE IF NOT EXISTS even when the
+        # table exists, so a role that may only write the table would be refused: create it only
+        # when it is absent.
+        if self._port.object_exists("TABLE", self._table):
+            return
         result = self._port.execute_script(
             (
                 sql(

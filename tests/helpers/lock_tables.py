@@ -26,6 +26,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
+from snowflake.connector.errors import ProgrammingError
+
 from tests.helpers.snowflake_fake.driver import FakeDriverConnector, FakeDriverSession, Rows
 
 LOCK = "DB.S.SST_STATE_LOCK"
@@ -71,6 +73,10 @@ class LockTables:
         self._condition = threading.Condition()
         self._holders: dict[str, int] = {}
         self._open: dict[int, _Transaction] = {}
+        # Whether the lock table exists, and has GENERATION; the probe that reads it fails as
+        # Snowflake would otherwise, and CREATE and ALTER set them.
+        self.lock_table_exists = True
+        self.has_generation = True
 
     @property
     def rows(self) -> list[LockRow]:
@@ -124,8 +130,16 @@ class LockTables:
     def _run(
         self, connection: int, statement: str, params: tuple[object, ...]
     ) -> tuple[list[tuple[object, ...]] | None, int]:
+        if statement.startswith(f"CREATE TABLE IF NOT EXISTS {LOCK}"):
+            self.lock_table_exists = self.has_generation = True
+            return None, 0
+        if statement.startswith(f"ALTER TABLE {LOCK}"):
+            self.has_generation = True
+            return None, 0
         if statement.startswith(("CREATE TABLE IF NOT EXISTS", "ALTER TABLE")):
             return None, 0
+        if statement.startswith(f"SELECT GENERATION FROM {LOCK}"):
+            return self._probe(), 0
         seen = self._view(connection)
         if statement.startswith("SELECT RUN_ID, OWNER, HOST"):
             held = sorted(
@@ -151,6 +165,16 @@ class LockTables:
             # INSERT takes no lock that UPDATE, DELETE or MERGE wait for.
             return None, self._write(connection, None, lambda tables: tables.locks.append(copy.copy(row)), 1)
         return None, self._dml(connection, statement, params, seen)
+
+    def _probe(self) -> list[tuple[object, ...]]:
+        """Answer the lock table's probe, failing as Snowflake does when the table or its column is missing."""
+        if not self.lock_table_exists:
+            raise ProgrammingError(
+                msg=f"Object '{LOCK}' does not exist or not authorized.", errno=2003, sqlstate="02000"
+            )
+        if not self.has_generation:
+            raise ProgrammingError(msg="invalid identifier 'GENERATION'", errno=904, sqlstate="42000")
+        return [(row.generation,) for row in self.committed.locks[:1]]
 
     def _dml(self, connection: int, statement: str, params: tuple[object, ...], seen: Tables) -> int:
         """Run an UPDATE, DELETE or MERGE: its rows are judged against `seen`, read before any wait."""

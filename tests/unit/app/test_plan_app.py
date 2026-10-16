@@ -6,6 +6,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.app.observe import DEFAULT_OBSERVE_OPTIONS, ObserveOptions, observe
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import Severity
+from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
@@ -29,6 +30,7 @@ from snowflake_semantic_tools.domain.plan.properties import changed_properties
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
+from tests.helpers.agent_stage import staged_agent
 from tests.helpers.artifact_builders import change, manifest, rendered, state, target
 from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import statement, texts
@@ -350,3 +352,54 @@ def test_a_failed_tag_read_warns_and_the_update_is_planned_all_the_same() -> Non
         )
     ]
     assert planned.changes[0].observed is not None and planned.changes[0].observed.tags is None
+
+
+class _ListedTypes(FakeSnowflake):
+    """Records every object type a plan lists."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.listed: list[str] = []
+
+    def show_objects(self, object_type: str, scope: SchemaScope) -> tuple[ShowRow, ...]:
+        self.listed.append(object_type.upper())
+        return super().show_objects(object_type, scope)
+
+
+def _selected_agent(*depends_on: str) -> RenderedArtifact:
+    return replace(staged_agent("ANALYST"), depends_on=depends_on)
+
+
+def test_a_selected_agent_observes_the_types_of_what_it_depends_on() -> None:
+    port = _ListedTypes()
+    agent = _selected_agent("semantic_view:sales", "tool:menu_search")
+    PlanArtifacts(port).run({agent.key: agent}, manifest({agent.key: agent}), state(), target(), fetched_at="now")
+    assert "SEMANTIC VIEW" in port.listed and "AGENT" in port.listed
+    tool_types = {item.upper() for item in SEMANTIC_REGISTRY.artifacts["tool"].object_types}
+    assert tool_types and tool_types <= set(port.listed)
+    # A type nothing selected depends on is not listed.
+    assert not {item.upper() for item in SEMANTIC_REGISTRY.artifacts["skill"].object_types} & set(port.listed)
+
+
+def test_selecting_an_agent_alone_never_blocks_it_on_a_dependency_that_exists() -> None:
+    # `--select agent:analyst` renders the agent alone; the view it depends on is compiled and
+    # live, so a change to the agent's comment is an update, not SST-PLN038.
+    sales = rendered("SALES")
+    agent = _selected_agent(sales.key)
+    port = FakeSnowflake()
+    port.show(ShowRow("SALES", "DB", "SCHEMA", "OWNER", "now"))
+    marked = f"an older comment [sst:{'a' * 64}:{'b' * 64}]"
+    port.show(ShowRow("ANALYST", "DB", "S", "OWNER", "now", marked, object_type="AGENT"))
+    published = manifest({sales.key: sales, agent.key: agent})
+    # State recorded the agent's last publish, whose marker it still carries.
+    recorded = AppliedEntry("b" * 64, agent.target.sql, "then", "run", "applied", "d" * 64, "a" * 64)
+    planned = PlanArtifacts(port).run(
+        {agent.key: agent},
+        published,
+        replace(state(), applied=MappingProxyType({agent.key: recorded})),
+        target(),
+        fetched_at="now",
+        observation_targets=(agent.target, sales.target),
+    )
+    assert "SST-PLN038" not in [item.code for item in planned.diagnostics]
+    assert [change.action for change in planned.changes] == [Action.UPDATE]

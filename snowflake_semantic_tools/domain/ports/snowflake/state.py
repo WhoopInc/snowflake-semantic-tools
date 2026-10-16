@@ -84,6 +84,8 @@ class StatePort(Protocol):
         """Create the state table unless it exists, and add any column an older table lacks.
 
         Idempotent: every column added since the first table is added with ADD COLUMN IF NOT EXISTS.
+        A table that exists with every column gets no DDL at all, so a role that may only read
+        and write it needs no CREATE TABLE privilege on its schema.
 
         Raises:
             SnowflakePortError: the CREATE or ALTER failed.
@@ -122,6 +124,21 @@ class StatePort(Protocol):
 
         Raises:
             SnowflakePortError: the extension failed; the lock is as it was.
+        """
+        ...
+
+    def verify_run_lock(self, state_table: QualifiedName, target_name: str, fence: LockFence) -> bool:
+        """Read the target's lock row and report whether `fence` still holds the lock; never writes.
+
+        One read, taking no lock: a takeover commits its row in one transaction, so the read
+        sees the lock as it was before the takeover or after it, never between.
+
+        Returns:
+            Whether the target's one lock row records `fence`; False when another run broke it,
+            or no run holds it.
+
+        Raises:
+            SnowflakePortError: the lock table could not be read.
         """
         ...
 

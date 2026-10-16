@@ -167,6 +167,7 @@ def apply(
         SST-APL010: the run took over an expired lock, with --break-stale-lock.
         SST-APL011: another run holds the lock.
         SST-APL013: --temporary would publish to a production-like target.
+        SST-APL103: Snowflake ended a session the run used, after it took the lock.
     """
     request = PlanRequest(
         paths,
@@ -308,6 +309,8 @@ def _apply_plan(
     params = session.profile.connection_params
     # Changes run on connections leased from the pool, never on `port`, which keeps the plan
     # reads, the run lock, and the state write; the heartbeat has a connection of its own.
+    # Should Snowflake end `port`'s session mid-run, a fresh connection writes state and
+    # releases the lock.
     try:
         with (
             ConnectorPool(options.parallelism, lambda: project.open_connector(params)) as pool,
@@ -325,6 +328,7 @@ def _apply_plan(
                 sessions=pool,
                 heartbeat=heartbeat,
                 phases=RUN_TIMINGS,
+                reconnect=lambda: contextlib.closing(project.open_connector(params)),
             ).run(ready.changeset, ready.state, options)
     finally:
         session.port.close()

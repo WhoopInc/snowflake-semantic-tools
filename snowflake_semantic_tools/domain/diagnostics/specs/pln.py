@@ -353,16 +353,23 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Excluded from a partial run",
         "{artifact} has errors, or depends on something that does, so this partial run leaves it unpublished",
         "fix the errors reported for it; what is live stays as it is, and state keeps its record",
-        condition="under --partial, an artifact with errors (or depending on one) is left out of the plan",
+        condition=(
+            "under --partial, an artifact with errors (or depending on one) is left out of the plan; "
+            "so is one the plan blocks against the target, such as an object changed out of band "
+            "(SST-PLN014) or one SST does not manage (SST-PLN024), and everything depending on it"
+        ),
     ),
     spec(
         "SST-PLN033",
-        Severity.INFO,
+        Severity.WARNING,
         "Partial run cannot go ahead",
         "--partial publishes nothing: {found} on {value} cannot be traced to the artifacts it would change",
         "fix that error first; a configuration error, or an error in a semantic view member such as a metric, "
         "stops every run, because the views it belongs to would otherwise publish without it",
-        condition=("under --partial, an error names no artifact, so nothing can be excluded and the run stops"),
+        condition=(
+            "under --partial, an error names no artifact, so nothing can be excluded and the run stops; "
+            "an error on a tool member's reference names its tool, so it is not one of these"
+        ),
     ),
     spec(
         "SST-PLN034",

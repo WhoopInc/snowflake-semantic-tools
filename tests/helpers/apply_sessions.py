@@ -8,7 +8,6 @@ from contextlib import contextmanager
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.apply.lock import LockPolicy
-from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult
 from snowflake_semantic_tools.domain.sql import Sql
 from tests.helpers.app_ports import InMemoryStateStore
@@ -60,16 +59,17 @@ class SlowSnowflake(FakeSnowflake):
 
 
 class ListPool:
-    """A session pool over fixed ports, recording which change ran on which port, and its halt."""
+    """A session pool over fixed ports, recording which change ran on which port; its halt halts them all."""
 
     def __init__(self, ports: Sequence[FakeSnowflake]) -> None:
+        self.ports = tuple(ports)
         self.idle = list(ports)
         self.guard = threading.Lock()
         self.leases = 0
         self.halted: str | None = None
 
     @contextmanager
-    def lease(self) -> Iterator[CatalogPublicationPort]:
+    def lease(self) -> Iterator[FakeSnowflake]:
         with self.guard:
             port = self.idle.pop()
             self.leases += 1
@@ -81,6 +81,8 @@ class ListPool:
 
     def halt(self, reason: str) -> None:
         self.halted = reason
+        for port in self.ports:
+            port.halt(reason)
 
 
 def apply_with(
@@ -92,6 +94,10 @@ def apply_with(
     heartbeat: FakeSnowflake | None = None,
     policy: LockPolicy | None = None,
 ) -> ApplyArtifacts:
+    # One Snowflake account: a worker's session reads the run lock the command's session took.
+    if isinstance(sessions, ListPool):
+        for worker in sessions.ports:
+            worker.run_locks = port.run_locks
     return ApplyArtifacts(
         port,
         store or InMemoryStateStore(),

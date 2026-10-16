@@ -36,6 +36,8 @@ _Name = tuple[str, str, str]
 _CREATE = "CREATE"
 # The schema privilege apply needs to create an absent upload stage.
 CREATE_STAGE = "CREATE STAGE"
+# The schema privilege apply needs to create an absent state or lock table.
+CREATE_TABLE = "CREATE TABLE"
 # The privileges on an existing upload stage that staging a file and reading it back need.
 STAGE_PRIVILEGES = ("READ", "WRITE")
 
@@ -74,6 +76,9 @@ class Preflight:
         missing_stage_privileges: By folded name, what the role lacks of `STAGE_PRIVILEGES` on
             an upload stage that exists. An absent stage's CREATE STAGE is in
             `missing_privileges`, under its schema.
+        absent_state_tables: The state and lock tables that do not exist, which apply creates;
+            their CREATE TABLE is in `missing_privileges`, under their schema. A state table
+            that exists needs no CREATE privilege at all.
     """
 
     target_name: str
@@ -92,6 +97,7 @@ class Preflight:
     stage_types: Mapping[_Name, str] = field(default_factory=lambda: MappingProxyType({}))
     absent_stages: frozenset[_Name] = frozenset()
     missing_stage_privileges: Mapping[_Name, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
+    absent_state_tables: tuple[QualifiedName, ...] = ()
 
 
 def required_privilege(change: Change) -> str | None:
@@ -113,12 +119,13 @@ def check_preflight(
     Returns:
         The changes in their given order, each blocking diagnostic on its change, and every
         diagnostic for the plan's list: one per missing database or schema, then each
-        change's own, in change order, then SST-PLN012.
+        change's own, in change order, then the state tables' SST-PLN008, then SST-PLN012.
 
     Diagnostics:
         SST-PLN007: a write references a relation that does not exist in the target.
         SST-PLN008: the role lacks the privilege a create needs on its schema, CREATE STAGE
-            on the schema of an absent upload stage, or READ or WRITE on an existing one.
+            on the schema of an absent upload stage, or READ or WRITE on an existing one; or,
+            when the plan writes, CREATE TABLE on the schema of an absent state table, once.
         SST-PLN009: a create's target name is taken by an object observation did not list.
         SST-PLN010: a write's schema, or its upload stage's, does not exist.
         SST-PLN011: a write's database, or its upload stage's, does not exist.
@@ -137,6 +144,8 @@ def check_preflight(
         reported.extend(warnings)
         reported.extend(item for item in blocking if item.code not in ("SST-PLN010", "SST-PLN011"))
         checked.append(_blocked(change, blocking) if blocking else change)
+    if any(_writes(change) for change in changes):
+        reported.extend(_state_tables_lacked(preflight))
     if preflight.warehouse and not preflight.warehouse_usable:
         reported.append(D("SST-PLN012", value=preflight.warehouse))
     return tuple(checked), (*scoped.values(), *reported)
@@ -176,6 +185,23 @@ def _change_findings(
     if target.folded in preflight.locked:
         warnings.append(D("SST-PLN019", subject=change.key, value=target.sql))
     return tuple(blocking), tuple(warnings)
+
+
+def _writes(change: Change) -> bool:
+    """Report whether apply would execute the change: a create, an update, or an executable prune."""
+    return change.action in (Action.CREATE, Action.UPDATE) or (
+        change.action is Action.PRUNE and change.prune_executable
+    )
+
+
+def _state_tables_lacked(preflight: Preflight) -> tuple[Diagnostic, ...]:
+    """SST-PLN008 for each schema an absent state table is in where the primary role lacks CREATE TABLE."""
+    scopes = dict.fromkeys(SchemaScope.from_qualified_name(table) for table in preflight.absent_state_tables)
+    return tuple(
+        _lacks(None, CREATE_TABLE, scope, preflight)
+        for scope in scopes
+        if CREATE_TABLE in preflight.missing_privileges.get(_scope_key(scope), ())
+    )
 
 
 def _missing_scope(
@@ -221,7 +247,7 @@ def _stage_blocking(
     return ()
 
 
-def _lacks(key: str, privilege: str, scope: SchemaScope, preflight: Preflight) -> Diagnostic:
+def _lacks(key: str | None, privilege: str, scope: SchemaScope, preflight: Preflight) -> Diagnostic:
     """SST-PLN008 for a CREATE privilege the primary role lacks, saying when the session holds it."""
     detail = privilege
     if privilege in preflight.secondary_privileges.get(_scope_key(scope), ()):

@@ -536,6 +536,7 @@ Diagnostics:
     SST-APL010: the run took over an expired lock, with --break-stale-lock.
     SST-APL011: another run holds the lock.
     SST-APL013: --temporary would publish to a production-like target.
+    SST-APL103: Snowflake ended a session the run used, after it took the lock.
 
 ```text
 sst apply [OPTIONS]

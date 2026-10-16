@@ -139,6 +139,15 @@ def test_a_refused_probe_returns_the_first_line_of_the_refusal() -> None:
     )
 
 
+def test_a_refused_probe_keeps_the_line_after_a_bare_heading() -> None:
+    # Snowflake writes what is wrong on the line after `SQL compilation error:`; the first line
+    # alone would say nothing.
+    refusal = SnowflakePortError("002003 (02000): SQL compilation error:\nUnknown model 'claude-9'\nmore context")
+    assert _Recorded(refusal).probe_completion("claude-9") == (
+        "002003 (02000): SQL compilation error: Unknown model 'claude-9'"
+    )
+
+
 def test_a_probe_of_a_name_that_is_no_model_name_sends_nothing() -> None:
     port = _Recorded()
     assert port.probe_completion("x'; DROP TABLE T; --") == '"x\'; DROP TABLE T; --" is not a Cortex model name'

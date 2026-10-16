@@ -14,7 +14,11 @@ something outside the project names (SST-PLN017), and it reads `SNOWFLAKE.ACCOUN
 which a schema owner need not be granted. A role refused it skips that warning for each
 prune candidate (SST-VAL020) and the prune goes ahead; it was never what stopped a prune.
 
-The reads run in phases -- databases, schemas, the role, relations, upload stages, privileges,
+The state tables are read too, when plan is given them: a role may use tables that exist with
+only the privilege to read and write them, but apply creates an absent one, and CREATE TABLE
+needs the privilege on the state schema, so only then is it checked.
+
+The reads run in phases -- databases, schemas, the role, relations, upload stages, state tables, privileges,
 privileges on upload stages, occupied names, locks, references, the warehouse -- and the reads
 of one phase are independent, so a `Fanout` may run them on sessions of their own. Their
 answers and refusals are taken in the order the phase lists them, which is the order they
@@ -32,7 +36,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, detail_of, session_failure
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import SSE_STAGE_TYPE, RenderedArtifact, SnowflakeObservation
-from snowflake_semantic_tools.domain.plan.preflight import CREATE_STAGE, STAGE_PRIVILEGES, Preflight
+from snowflake_semantic_tools.domain.plan.preflight import CREATE_STAGE, CREATE_TABLE, STAGE_PRIVILEGES, Preflight
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightPort
 from snowflake_semantic_tools.domain.state import State
@@ -147,6 +151,7 @@ def read_preflight(
     *,
     include_prune: bool,
     readers: Fanout[PreflightPort] | None = None,
+    state_tables: tuple[QualifiedName, ...] = (),
 ) -> tuple[Preflight, tuple[Diagnostic, ...]]:
     """Read the target's containers, relations, stages, privileges, locks, references, and warehouse.
 
@@ -157,6 +162,8 @@ def read_preflight(
         include_prune: Whether the plan prunes, so the objects a prune may remove are read.
         readers: Sessions to run each phase's reads on concurrently; None reads on `port`,
             one at a time. Either way the preflight and its failures are the same.
+        state_tables: The tables apply keeps state and its lock in; each that is absent
+            needs CREATE TABLE on its schema. A read of one Snowflake refuses counts it present.
 
     Returns:
         What the reads found, and the failed reads.
@@ -179,7 +186,8 @@ def read_preflight(
     managed = {artifact.target.folded for artifact in rendered.values()} | {
         QualifiedName.parse(entry.qualified_name).folded for entry in state.applied.values() if entry.qualified_name
     }
-    needs = _create_needs(created, present, stages, absent_stages)
+    absent_state = _absent_state_tables(reader, state_tables)
+    needs = _with_state_needs(_create_needs(created, present, stages, absent_stages), absent_state)
     # The primary role is read once: the profile's role names it, but CURRENT_ROLE() spells it.
     primary = (current if not target.role else _current_role(reader)) if needs else None
     missing_privileges, secondary_privileges, unreached_privileges = _missing_privileges(reader, needs, primary)
@@ -200,6 +208,7 @@ def read_preflight(
         warehouse_usable=_warehouse_usable(reader, target.warehouse),
         stage_types=MappingProxyType(stage_types),
         absent_stages=absent_stages,
+        absent_state_tables=absent_state,
     )
     return preflight, tuple(reader.failures)
 
@@ -321,6 +330,24 @@ def _create_needs(
             )
         )
     )
+
+
+def _absent_state_tables(reader: _Reader, state_tables: tuple[QualifiedName, ...]) -> tuple[QualifiedName, ...]:
+    """Return, in table order, the state tables that do not exist; a refused read counts one present."""
+    exists = reader.holds_each(
+        state_tables, lambda port, table: port.relation_exists(table), lambda item: f"table {item.sql}", refused=True
+    )
+    return tuple(table for table, found in zip(state_tables, exists, strict=True) if not found)
+
+
+def _with_state_needs(
+    needs: tuple[tuple[SchemaScope, tuple[str, ...]], ...], absent_state: tuple[QualifiedName, ...]
+) -> tuple[tuple[SchemaScope, tuple[str, ...]], ...]:
+    """Add CREATE TABLE to what each schema an absent state table is in needs, once per schema."""
+    merged = {scope: set(needed) for scope, needed in needs}
+    for table in absent_state:
+        merged.setdefault(SchemaScope.from_qualified_name(table), set()).add(CREATE_TABLE)
+    return tuple((scope, tuple(sorted(needed))) for scope, needed in merged.items())
 
 
 def _missing_privileges(

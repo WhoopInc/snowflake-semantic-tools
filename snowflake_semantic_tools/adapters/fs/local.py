@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 from collections.abc import Callable, Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Generic, TypeVar
 
@@ -305,6 +305,22 @@ class StateFileStore(JsonStore[State]):
         instance = self._lock_bytes()
         return _lock_status(instance, now, self.LOCK_TTL_SECONDS) if instance is not None else (None, False)
 
+    def describe_lock(self, holder: str | None) -> str:
+        """Describe the lock file as SST-APL011 names who holds it: the run, the file, and when it goes stale.
+
+        The file locks this checkout only. One that records no time it was taken never goes
+        stale, so the description says to delete it once its run has ended.
+        """
+        instance = self._lock_bytes()
+        created = _lock_claim(instance)[1] if instance is not None else None
+        if created is not None:
+            stale = (created + timedelta(seconds=self.LOCK_TTL_SECONDS)).isoformat()
+            reach = f"this checkout only; stale after {stale}"
+        else:
+            reach = "this checkout only; it records no time, so delete it once its run has ended"
+        run = f"run {holder}" if holder else "a run SST cannot name"
+        return f"{run}, by the lock file {self._lock_path} ({reach})"
+
     def release_lock(self, run_id: str) -> None:
         """Delete the lock file when `run_id` holds the lock; otherwise leave it as it is.
 
@@ -324,17 +340,23 @@ def _lock_status(instance: bytes, now: datetime, ttl_seconds: int) -> tuple[str 
     Bytes that do not decode, are longer than `_LOCK_READ_BYTES`, or record no time, name no holder
     and are never stale.
     """
+    holder, timestamp = _lock_claim(instance)
+    stale = timestamp is not None and (now - timestamp).total_seconds() > ttl_seconds
+    return holder, stale
+
+
+def _lock_claim(instance: bytes) -> tuple[str | None, datetime | None]:
+    """Return the run id and the time a lock file's bytes record; None for each that cannot be read."""
     if len(instance) > _LOCK_READ_BYTES:
-        return None, False
+        return None, None
     try:
         value = parse_json(instance)
         holder = value.get("run_id") if isinstance(value, dict) else None
         created = value.get("created_at") if isinstance(value, dict) else None
         timestamp = datetime.fromisoformat(created) if isinstance(created, str) else None
     except ValueError:
-        return None, False
-    stale = timestamp is not None and (now - timestamp).total_seconds() > ttl_seconds
-    return holder if isinstance(holder, str) else None, stale
+        return None, None
+    return (holder if isinstance(holder, str) else None), timestamp
 
 
 def _shape_problem(exc: Exception) -> str:

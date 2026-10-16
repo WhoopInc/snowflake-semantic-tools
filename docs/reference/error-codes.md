@@ -27,7 +27,7 @@ cannot be downgraded by any setting.
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
 - [Planning (PLN)](#planning-pln) -- 41 codes
-- [Apply (APL)](#apply-apl) -- 29 codes
+- [Apply (APL)](#apply-apl) -- 30 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 24 codes
 - [Internal (INT)](#internal-int) -- 12 codes
@@ -6399,17 +6399,17 @@ Fix: plan the pinned artifact in the same run; when its version is already publi
 
 `<artifact> has errors, or depends on something that does, so this partial run leaves it unpublished`
 
-Raised when under --partial, an artifact with errors (or depending on one) is left out of the plan.
+Raised when under --partial, an artifact with errors (or depending on one) is left out of the plan; so is one the plan blocks against the target, such as an object changed out of band (SST-PLN014) or one SST does not manage (SST-PLN024), and everything depending on it.
 
 Fix: fix the errors reported for it; what is live stays as it is, and state keeps its record
 
 ### SST-PLN033
 
-**Partial run cannot go ahead** (info)
+**Partial run cannot go ahead** (warning)
 
 `--partial publishes nothing: <found> on <value> cannot be traced to the artifacts it would change`
 
-Raised when under --partial, an error names no artifact, so nothing can be excluded and the run stops.
+Raised when under --partial, an error names no artifact, so nothing can be excluded and the run stops; an error on a tool member's reference names its tool, so it is not one of these.
 
 Fix: fix that error first; a configuration error, or an error in a semantic view member such as a metric, stops every run, because the views it belongs to would otherwise publish without it
 
@@ -6535,6 +6535,8 @@ Raised when a change this one depends on failed or was skipped, so it did not ru
 
 Fix: fix the dependency, then re-apply
 
+Note: The message names the change that failed, even when the dependency between them was only skipped. A dependent the plan had nothing to do for (NOOP) is skipped without it.
+
 ### SST-APL003
 
 **Refused: artifact is blocked** (error)
@@ -6633,7 +6635,7 @@ Raised when another run (`apply`, `drop`, or the eval suite of `sst test`) holds
 
 Fix: wait for the other run to end; once its lock has expired, re-run with --break-stale-lock
 
-Note: The message names the holder: its run id and, for the lock in Snowflake, the role and host it runs as and when its lock expires. A live lock is never broken: wait for that run to end. Only once its lock has expired does `--break-stale-lock` take it over (SST-APL010). A run that lost its lock starts no further statement and writes no state.
+Note: The message names the holder: its run id and, for the lock in Snowflake, the role and host it runs as and when its lock expires; for the local lock, the lock file, that it locks this checkout only, and when it goes stale. A live lock is never broken: wait for that run to end. Only once its lock has expired does `--break-stale-lock` take it over (SST-APL010). A run reads its lock again before each change and each write statement, so a run that lost its lock starts no further statement and writes no state.
 
 ### SST-APL012
 
@@ -6821,6 +6823,18 @@ Fix: fix the artifact the probe names; a created view is not a working view
 
 Note: Fix the artifact the probe names; a metric probe reports `SST-PLN100`.
 
+### SST-APL103
+
+**Connection to Snowflake lost mid-run** (error)
+
+`the connection to Snowflake was lost mid-run; finished before it: <value>`
+
+Raised when Snowflake ended a session apply was running on after the run took its lock: the network dropped, or the session was aborted or expired (error 390111 or 390112).
+
+Fix: run sst plan, which shows what the run left to do, then apply again
+
+Note: Apply opens one fresh connection to record in state the changes that finished and to release its lock, so the target is not left locked. A change whose statements had not returned is not recorded as written; the next plan sees what it left behind.
+
 ### SST-APL900
 
 **Outcome count does not match change count** (error)
@@ -6871,13 +6885,13 @@ Note: Plan reports a missing referenced relation first, as SST-PLN007.
 
 **Insufficient privileges** (error)
 
-`insufficient privileges for <value>`
+`insufficient privileges for <value>: <detail>`
 
 Raised when Snowflake reported error 3001 (SQLSTATE 42501), SQLSTATE 28000, or a message saying `insufficient privileges` or `not authorized`.
 
 Fix: grant the privilege to the deploying role
 
-Note: Plan reports a missing CREATE privilege on a schema first, as SST-PLN008.
+Note: The message ends with what Snowflake said is missing, such as which privilege the primary role must be granted on which object. Plan reports a missing CREATE privilege on a schema first, as SST-PLN008.
 
 ### SST-SNO005
 
@@ -6985,11 +6999,11 @@ Note: When a command's own session is refused this way, the command reports SST-
 
 `network failure: <detail>`
 
-Raised when the driver lost or could not open its connection: SQLSTATE 08000, 08003 (error 250002), 08006, or 08001 with timeout or connection wording.
+Raised when the driver lost or could not open its connection: SQLSTATE 08000, 08003 (error 250002), 08006, or 08001 with timeout or connection wording; or Snowflake ended or let expire a session that had connected (error 390111 or 390112).
 
 Fix: retry
 
-Note: When a command's own connection fails this way, the command reports SST-PRT001.
+Note: When a command's own connection fails this way, the command reports SST-PRT001; a session Snowflake ended had connected, so it is reported as this code instead, and `sst apply` reports SST-APL103.
 
 ### SST-SNO015
 

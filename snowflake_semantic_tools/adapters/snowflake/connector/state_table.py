@@ -82,7 +82,7 @@ _MERGE_BATCH = 50
 
 
 class StateTableMethods(LockTableMethods, StatePort, CatalogPort):
-    """Keep the state table: reads never change it, and every write creates and migrates it first.
+    """Keep the state table: reads never change it; a write first adds what it lacks, table or column.
 
     `CatalogPort` is a base for the one lookup a read starts with, whether the table exists,
     which the assembled connector's catalog role answers.
@@ -130,17 +130,26 @@ class StateTableMethods(LockTableMethods, StatePort, CatalogPort):
         return next(iter(recorded)) if len(recorded) == 1 else None
 
     def ensure_state_table(self, state_table: QualifiedName) -> None:
-        additions = tuple(
-            sql(
-                "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl}",
-                table=qname(state_table),
-                column=column.identifier,
-                ddl=column.ddl,
+        # Snowflake checks the CREATE TABLE privilege for CREATE TABLE IF NOT EXISTS even when the
+        # table exists, so it is issued only for a table that is absent, and an ALTER only for a
+        # column that is missing: a role that may only read and write the table needs neither.
+        statements: tuple[Sql, ...]
+        if not self.object_exists("TABLE", state_table):
+            statements = (_create_sql(state_table),)
+        else:
+            present = self._column_names(state_table)
+            statements = tuple(
+                sql(
+                    "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl}",
+                    table=qname(state_table),
+                    column=column.identifier,
+                    ddl=column.ddl,
+                )
+                for column in (*_COLUMNS, _STATE_MANIFEST)
+                if column.added and column.name not in present
             )
-            for column in (*_COLUMNS, _STATE_MANIFEST)
-            if column.added
-        )
-        _require_ok(self.execute_script((_create_sql(state_table), *additions)), "state table creation failed")
+        if statements:
+            _require_ok(self.execute_script(statements), "state table creation failed")
 
     def write_state(
         self,

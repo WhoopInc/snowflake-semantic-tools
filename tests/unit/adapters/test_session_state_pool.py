@@ -76,7 +76,7 @@ def test_a_programming_error_inside_a_script_is_never_reported_as_a_snowflake_fa
 def test_a_state_write_merges_the_changes_in_one_fenced_transaction_with_every_value_bound() -> None:
     driver = _driver(rows={"SELECT RUN_ID, GENERATION": [("run", 3)]})
     hostile = "semantic_view:v'; DROP TABLE x; --"
-    assert DriverConnector(driver).write_state(
+    assert DriverConnector(driver, exists=False).write_state(
         STATE_TABLE, "dev", "m" * 64, StateWrite({"skill:b": ENTRY, hostile: ENTRY}, ("agent:gone",)), FENCE
     )
     statements = driver.statements
@@ -145,16 +145,31 @@ def test_a_state_write_that_fails_part_way_rolls_back_and_records_nothing() -> N
     assert "COMMIT" not in driver.statements
 
 
-def test_ensure_state_table_migrates_an_older_table_idempotently() -> None:
+def test_ensure_state_table_creates_an_absent_table_with_every_column() -> None:
     driver = _driver()
-    DriverConnector(driver).ensure_state_table(STATE_TABLE)
-    create, *alters = driver.statements
+    DriverConnector(driver, exists=False).ensure_state_table(STATE_TABLE)
+    [create] = driver.statements
     assert "STATE_MANIFEST_ID VARCHAR(64)" in create and ", PRIMARY KEY (TARGET_NAME, ARTIFACT_KEY))" in create
-    assert alters == [
+
+
+def test_ensure_state_table_adds_only_the_columns_an_older_table_lacks() -> None:
+    driver = _driver()
+    DriverConnector(driver, columns=("TARGET_NAME", "PHYSICAL_RESOURCES")).ensure_state_table(STATE_TABLE)
+    assert driver.statements == [
         "ALTER TABLE DB.S.SST_STATE ADD COLUMN IF NOT EXISTS COMPONENT_FINGERPRINTS OBJECT",
-        "ALTER TABLE DB.S.SST_STATE ADD COLUMN IF NOT EXISTS PHYSICAL_RESOURCES ARRAY",
         "ALTER TABLE DB.S.SST_STATE ADD COLUMN IF NOT EXISTS STATE_MANIFEST_ID VARCHAR(64)",
     ]
+
+
+def test_an_existing_state_table_gets_no_ddl_so_a_role_that_may_only_write_it_can() -> None:
+    # Snowflake checks CREATE TABLE on the schema for CREATE TABLE IF NOT EXISTS even when the
+    # table exists, which a role granted only SELECT, INSERT, UPDATE and DELETE lacks.
+    driver = _driver(rows={"SELECT RUN_ID, GENERATION": [("run", 3)]})
+    columns = ("COMPONENT_FINGERPRINTS", "PHYSICAL_RESOURCES", "STATE_MANIFEST_ID")
+    assert DriverConnector(driver, columns=columns).write_state(
+        STATE_TABLE, "dev", "m", StateWrite({"k": ENTRY}), FENCE
+    )
+    assert not any(statement.startswith(("CREATE", "ALTER")) for statement in driver.statements)
 
 
 @pytest.mark.parametrize(
@@ -277,6 +292,49 @@ def test_a_script_halted_part_way_stops_before_its_next_statement() -> None:
     assert (result.ok, result.query_ids) == (False, ("q1",))
     assert result.error is not None and result.error.message == "lost"
     assert driver.statements == ["SELECT 1"]
+
+
+def test_a_guard_runs_before_each_write_statement_of_a_script_and_never_before_a_read() -> None:
+    driver = _driver()
+    connector = DriverConnector(driver)
+    seen: list[int] = []
+    connector.guard_writes(lambda: seen.append(len(driver.statements)))
+    script = (sql("SELECT 1"), sql("ALTER AGENT DB.S.A SET COMMENT = 'a'"), sql("ALTER AGENT DB.S.A SET COMMENT = 'b'"))
+    assert connector.execute_script(script).ok
+    # Before the second statement and the third: after one, then two, statements ran.
+    assert seen == [1, 2]
+    connector.guard_writes(None)
+    assert connector.execute_script(script).ok and seen == [1, 2]
+
+
+def test_a_guard_that_halts_the_session_stops_the_script_before_its_statement() -> None:
+    driver = _driver()
+    connector = DriverConnector(driver)
+    guarded = iter((None, "the run lock was lost"))
+
+    def guard() -> None:
+        reason = next(guarded)
+        if reason is not None:
+            connector.halt(reason)
+
+    connector.guard_writes(guard)
+    result = connector.execute_script((sql("ALTER VIEW A SET COMMENT = 'a'"), sql("ALTER VIEW B SET COMMENT = 'b'")))
+    assert (result.ok, result.query_ids) == (False, ("q1",))
+    assert result.error is not None and result.error.message == "the run lock was lost"
+    assert driver.statements == ["ALTER VIEW A SET COMMENT = 'a'"]
+
+
+def test_a_guard_that_cannot_read_what_it_checks_fails_the_script_with_that_error() -> None:
+    driver = _driver()
+    connector = DriverConnector(driver)
+
+    def guard() -> None:
+        raise SnowflakePortError("Session no longer exists", errno=390111, sqlstate="08001")
+
+    connector.guard_writes(guard)
+    result = connector.execute_script((sql("ALTER VIEW A SET COMMENT = 'a'"),))
+    assert (result.ok, result.query_ids, driver.statements) == (False, (), [])
+    assert result.error is not None and (result.error.errno, result.error.sqlstate) == (390111, "08001")
 
 
 def test_a_scoped_session_opened_after_a_halt_is_halted_too(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -11,7 +11,7 @@ from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticV
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion, AgentVersions, CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
+from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort, WriteGuardPort
 from snowflake_semantic_tools.domain.ports.snowflake.profile_registry import ProfileRegistryPort
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagePort
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
@@ -70,6 +70,7 @@ def test_execution_and_stage_port_methods_are_declarations_only() -> None:
     assert ExecutionPort.query_in_context(source, object(), "x") is None  # type: ignore[arg-type]
     assert ExecutionPort.execute_script(source, ()) is None  # type: ignore[arg-type]
     assert ExecutionPort.try_execute(source, "x") is None  # type: ignore[arg-type]
+    WriteGuardPort.guard_writes(source, None)  # type: ignore[arg-type]
     assert StagePort.observe_staged_file(source, "@x") is None  # type: ignore[arg-type]
     assert StagePort.read_staged_file(source, "@x") is None  # type: ignore[arg-type]
     StagePort.upload(source, "@x", b"")  # type: ignore[arg-type]
@@ -96,6 +97,7 @@ def test_profile_registry_and_state_port_methods_are_declarations_only() -> None
     )
     assert StatePort.extend_run_lock(source, object(), "x", object(), 1) is None  # type: ignore[arg-type]
     StatePort.release_run_lock(source, object(), "x", object())  # type: ignore[arg-type]
+    assert StatePort.verify_run_lock(source, object(), "x", object()) is None  # type: ignore[arg-type]
 
 
 def test_clock_and_state_store_protocol_methods_are_declarations_only() -> None:
@@ -109,6 +111,7 @@ def test_clock_and_state_store_protocol_methods_are_declarations_only() -> None:
     StateStore.write_local(source, object())  # type: ignore[arg-type]
     assert StateStore.acquire_lock(source, "x", break_stale=False) is None  # type: ignore[arg-type]
     StateStore.release_lock(source, "x")  # type: ignore[arg-type]
+    assert StateStore.describe_lock(source, "x") is None  # type: ignore[arg-type]
     error = SnowflakePortError("x", sqlstate="42", errno=1)
     assert (str(error), error.sqlstate, error.errno) == ("x", "42", 1)
 

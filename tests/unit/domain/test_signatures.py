@@ -91,3 +91,53 @@ def test_the_session_reads_a_failure_from_the_table(
     message: str, errno: int | None, sqlstate: str | None, failure: SessionFailure | None
 ) -> None:
     assert session_failure(message, errno=errno, sqlstate=sqlstate) is failure
+
+
+# How Snowflake refuses CREATE TABLE IF NOT EXISTS on an existing table to a role that may
+# only write it: the privilege the role needs is on the line after the heading.
+_NO_CREATE_TABLE = (
+    "003001 (42501): 01bf2c3d-0306-a1b2-0000-0001e2f3a4b5: SQL access control error:\n"
+    "Insufficient privileges to operate on schema 'STATE'. Your primary role SSTX_RESTRICTED must have "
+    "CREATE TABLE granted on SCHEMA SSTX_DEV_DB.STATE."
+)
+
+
+def test_sno004_names_the_privilege_snowflake_says_is_missing() -> None:
+    signature = match_signature(_NO_CREATE_TABLE, errno=3001, sqlstate="42501")
+    diagnostic = snowflake_diagnostic(signature.code, _NO_CREATE_TABLE, value="the object")
+    assert diagnostic.code == "SST-SNO004"
+    assert diagnostic.message == (
+        "insufficient privileges for STATE: Insufficient privileges to operate on schema 'STATE'. Your "
+        "primary role SSTX_RESTRICTED must have CREATE TABLE granted on SCHEMA SSTX_DEV_DB.STATE."
+    )
+    assert "must have CREATE TABLE granted" in diagnostic.message
+
+
+def test_the_detail_drops_the_query_id_and_the_access_control_heading() -> None:
+    assert detail_of(_NO_CREATE_TABLE).startswith("Insufficient privileges to operate on schema 'STATE'.")
+
+
+@pytest.mark.parametrize(
+    ("message", "errno", "sqlstate"),
+    [
+        ("390111 (08001): Session no longer exists.  New login required to access the service.", 390111, "08001"),
+        ("390112 (08001): Your session has expired. Please login again.", 390112, "08001"),
+        ("Session no longer exists.  New login required to access the service.", None, "08001"),
+    ],
+    ids=["ended", "expired", "wording-only"],
+)
+def test_a_session_snowflake_ended_is_a_session_gone_not_a_deadline(
+    message: str, errno: int | None, sqlstate: str
+) -> None:
+    assert session_failure(message, errno=errno, sqlstate=sqlstate) is SessionFailure.SESSION_GONE
+    assert match_signature(message, errno=errno, sqlstate=sqlstate).code == "SST-SNO014"
+
+
+def test_a_session_snowflake_ended_is_not_retried_on_the_same_session() -> None:
+    assert not match_signature("Session no longer exists.", errno=390111).retryable
+
+
+def test_a_dropped_connection_is_still_a_deadline_not_a_session_gone() -> None:
+    assert session_failure("250002 (08003): Connection is closed", errno=250002, sqlstate="08003") is (
+        SessionFailure.DEADLINE
+    )

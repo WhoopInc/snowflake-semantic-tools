@@ -86,6 +86,34 @@ def test_preflight_reads_each_container_relation_privilege_lock_reference_and_wa
     assert not preflight.warehouse_usable
 
 
+def test_an_absent_state_table_asks_for_create_table_on_its_schema_and_an_existing_one_asks_nothing() -> None:
+    port = FakeSnowflake()
+    state_table, lock_table = QualifiedName.parse("DB.STATE.SST_STATE"), QualifiedName.parse("DB.STATE.SST_STATE_LOCK")
+    port.preflight.lacking["DB.STATE"] = ("CREATE TABLE",)
+    sales = view("sales")
+
+    def read(*missing: QualifiedName) -> Preflight:
+        port.preflight.missing_relations = {table.sql for table in missing}
+        found, failures = read_preflight(
+            port,
+            {sales.key: sales},
+            _observation(),
+            state_of(manifest_of()),
+            dev_target(),
+            include_prune=False,
+            state_tables=(state_table, lock_table),
+        )
+        assert failures == ()
+        return found
+
+    lock_absent = read(lock_table)
+    assert lock_absent.absent_state_tables == (lock_table,)
+    assert lock_absent.missing_privileges[("DB", "STATE")] == ("CREATE TABLE",)
+    # Both tables exist: a role that may only read and write them needs no CREATE privilege.
+    present = read()
+    assert present.absent_state_tables == () and ("DB", "STATE") not in present.missing_privileges
+
+
 def test_a_refused_preflight_read_is_reported_and_never_blocks_on_its_own() -> None:
     port = FakeSnowflake()
     port.refuse("database_exists", "relation_exists", "warehouse_exists", "locked_objects", "external_references")
@@ -187,7 +215,7 @@ def test_a_lock_read_the_role_may_not_make_skips_the_lock_check_and_fails_nothin
     )
     [skipped] = failures
     assert (skipped.code, skipped.severity) == ("SST-VAL020", Severity.INFO)
-    assert skipped.message.startswith("SST-PLN019 skipped: the role may not read locks in DB.SCH: SQL access")
+    assert skipped.message.startswith("SST-PLN019 skipped: the role may not read locks in DB.SCH: Insufficient")
     assert "MONITOR granted on ACCOUNT" in skipped.message
     assert preflight.locked == frozenset()
 
@@ -380,6 +408,29 @@ def test_a_partial_plans_manifest_covers_only_what_stays_healthy_after_validatio
     assert ready.manifest.manifest_id == manifest_for(sales_only, EMPTY_SOURCES).manifest_id
     assert ready.manifest.manifest_id != candidates.manifest.manifest_id
     assert {change.key for change in ready.changeset.changes} == {"semantic_view:sales"}
+
+
+def test_a_partial_plan_leaves_out_an_object_it_blocks_against_the_target_and_plans_the_rest() -> None:
+    # MENU compiles cleanly, but an object SST does not manage holds its name (SST-PLN024).
+    result = compiled("MENU", "SALES")
+    use_case = PreparePlan(InMemoryProjectInputs(), FixedClock())
+    candidates = use_case.select(
+        result, manifest_for(result, EMPTY_SOURCES), EVERYTHING, partial=True, strict=None, connected=None, project="p"
+    )
+    assert isinstance(candidates, PlanCandidates)
+    port = FakeSnowflake()
+    port.objects[("SEMANTIC VIEW", "DB.SCH")] = (ShowRow("MENU", "DB", "SCH", "OWNER", "now"),)
+    ready = use_case.run(
+        candidates, port, InMemoryStateStore(State.empty(dev_target())), target=dev_target(), state_table=STATE_TABLE
+    )
+    assert isinstance(ready, PlanReady)
+    assert [change.key for change in ready.changeset.changes] == ["semantic_view:sales"]
+    assert not ready.changeset.blocked and not ready.changeset.diagnostics.has_errors
+    left_out = [
+        (item.code, item.subject) for item in ready.result.diagnostics if item.code in ("SST-PLN024", "SST-PLN032")
+    ]
+    assert left_out == [("SST-PLN024", None), ("SST-PLN032", "semantic_view:menu")]
+    assert ready.result.diagnostics.has_errors
 
 
 def test_a_report_only_prune_restamps_state_only_until_state_has_an_entry_for_it() -> None:

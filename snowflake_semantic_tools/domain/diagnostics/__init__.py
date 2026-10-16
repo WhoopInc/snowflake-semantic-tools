@@ -430,12 +430,18 @@ def unstable_fingerprints(first: Iterable[Diagnostic], second: Iterable[Diagnost
     return DiagnosticBag(D("SST-INT006", value=code) for code in changed)
 
 
+# What starts each further line of a message: deeper than the help and docs lines.
+_CONTINUATION = "\n    "
+
+
 def render_diagnostic(diagnostic: Diagnostic) -> str:
     """Render one diagnostic as terminal text: a located headline, then its help and docs lines.
 
     The location is ``file:line:col: ``, cut to what the origin knows and absent without
     one; the help line is absent when the code has no suggestion. A message whose template
     begins with its own ``file:line:`` is not located twice: the headline drops that prefix.
+    A message of several lines, as Snowflake's text often is, continues on lines indented
+    deeper than the help line, so every line of it reads as the headline's.
 
     Example:
         views.yml:4:7: error[SST-REF001]: {{ ref('missing') }} is not a model in the dbt manifest
@@ -454,6 +460,7 @@ def render_diagnostic(diagnostic: Diagnostic) -> str:
         prefixes = (":".join(parts[:count]) + ": " for count in range(len(parts), 0, -1))
         message = next((message.removeprefix(prefix) for prefix in prefixes if message.startswith(prefix)), message)
     spec = ERROR_REGISTRY[diagnostic.code]
+    message = _CONTINUATION.join(message.splitlines())
     rendered = f"{location}{diagnostic.severity.name.lower()}[{diagnostic.code}]: {message}"
     if spec.suggestion:
         rendered += f"\n  help: {diagnostic.suggestion}"

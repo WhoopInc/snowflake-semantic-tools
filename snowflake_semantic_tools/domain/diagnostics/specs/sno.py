@@ -51,13 +51,17 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-SNO004",
         Severity.ERROR,
         "Insufficient privileges",
-        "insufficient privileges for {value}",
+        "insufficient privileges for {value}: {detail}",
         "grant the privilege to the deploying role",
         condition=(
             "Snowflake reported error 3001 (SQLSTATE 42501), SQLSTATE 28000, or a message saying "
             "`insufficient privileges` or `not authorized`"
         ),
-        note="Plan reports a missing CREATE privilege on a schema first, as SST-PLN008.",
+        note=(
+            "The message ends with what Snowflake said is missing, such as which privilege the "
+            "primary role must be granted on which object. Plan reports a missing CREATE "
+            "privilege on a schema first, as SST-PLN008."
+        ),
         precheck=Precheck.RUNTIME,
     ),
     spec(
@@ -163,9 +167,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         "retry",
         condition=(
             "the driver lost or could not open its connection: SQLSTATE 08000, 08003 (error "
-            "250002), 08006, or 08001 with timeout or connection wording"
+            "250002), 08006, or 08001 with timeout or connection wording; or Snowflake ended or "
+            "let expire a session that had connected (error 390111 or 390112)"
         ),
-        note="When a command's own connection fails this way, the command reports SST-PRT001.",
+        note=(
+            "When a command's own connection fails this way, the command reports SST-PRT001; a "
+            "session Snowflake ended had connected, so it is reported as this code instead, and "
+            "`sst apply` reports SST-APL103."
+        ),
         precheck=Precheck.RUNTIME,
     ),
     spec(

@@ -59,6 +59,15 @@ class StateStore(Protocol):
         """
         ...
 
+    def describe_lock(self, holder: str | None) -> str:
+        """Describe the lock `holder` holds as a refusal names it: the run, where the lock is, its expiry.
+
+        Says the lock is this store's alone, so a reader knows other checkouts and machines are
+        not locked out, and when it goes stale, so they know when `--break-stale-lock` takes
+        it; `holder` is None when the lock names no run SST can read.
+        """
+        ...
+
     def release_lock(self, run_id: str) -> None:
         """Release the lock when `run_id` holds it, and otherwise leave it alone.
 

@@ -343,3 +343,17 @@ def test_a_spec_note_names_the_code_the_runner_reports_for_its_signature() -> No
     for code, reported in named.items():
         diagnostic, exit_code = snowflake_failure(_REPORTED_INSTEAD[code])
         assert (diagnostic.code, exit_code) == (reported, 5), code
+
+
+def test_a_session_snowflake_ended_is_a_network_failure_not_a_failed_connect() -> None:
+    from snowflake_semantic_tools.cli.runner import snowflake_failure
+
+    gone = SnowflakePortError(
+        "390111 (08001): Session no longer exists.  New login required to access the service.",
+        errno=390111,
+        sqlstate="08001",
+    )
+    diagnostic, exit_code = snowflake_failure(gone)
+    assert (diagnostic.code, exit_code) == ("SST-SNO014", 5)
+    assert "could not connect" not in diagnostic.message
+    assert diagnostic.message == "network failure: Session no longer exists.  New login required to access the service."

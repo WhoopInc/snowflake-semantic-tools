@@ -27,7 +27,7 @@ from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHand
 from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest, target_mismatch
 from snowflake_semantic_tools.app.observation_age import duration, seconds_between
 from snowflake_semantic_tools.app.observe import DEFAULT_OBSERVE_OPTIONS, ObserveOptions
-from snowflake_semantic_tools.app.partial import PartialSplit, partial_refusal, partial_split
+from snowflake_semantic_tools.app.partial import PartialSplit, partial_changeset, partial_refusal, partial_split
 from snowflake_semantic_tools.app.plan_artifacts import (
     PlanArtifacts,
     PlanReadPort,
@@ -59,6 +59,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightP
 from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.ports.timing import NO_PHASES, PhaseTimer
 from snowflake_semantic_tools.domain.state import Manifest, State
+from snowflake_semantic_tools.domain.state.lock import lock_table_for
 from snowflake_semantic_tools.domain.validate.config import severity_overrides
 
 # How long an observation stays current. A plan that takes longer to observe and decide
@@ -338,8 +339,8 @@ class PreparePlan:
         4. Render what publishes for the manifest, each agent staged under
            `apply.agent_spec_stage`.
         5. Build the lifecycle handlers of the composite artifact types.
-        6. Observe, preflight when given `preflight`, and plan, as `PlanArtifacts` does, in
-           the schemas of every compiled artifact and of every object state records.
+        6. Observe, preflight (the state and lock tables too) when given `preflight`, and plan,
+           as `PlanArtifacts` does, in the schemas of every artifact and object state records.
         7. Report what selecting reported first, and the plan's notices last.
 
         Args:
@@ -361,7 +362,7 @@ class PreparePlan:
 
         Diagnostics:
             SST-PLN018: observing and planning took longer than the observation stays current.
-            SST-PLN032: with `--partial`, an artifact is left out of the plan.
+            SST-PLN032: with `--partial`, an artifact with errors, or one the plan blocked, is left out.
             SST-PLN033: with `--partial`, a validation error names no artifact.
             Those of validation, of `read_state`, and of `PlanArtifacts`, then
             `channel_divergence`'s, then the plan's `change_summary` and `plan_notices`.
@@ -391,6 +392,7 @@ class PreparePlan:
                 include_prune=scope.include_prune,
                 prune_types=scope.prune_types,
                 observation_targets=_observation_targets(candidates.full, state),
+                state_tables=(state_table, lock_table_for(state_table)),
             )
         with self._phases.phase("classify"):
             changeset = _decided(candidates, rendered, reading, manifest, state, target, handlers, composite_plans)
@@ -398,16 +400,9 @@ class PreparePlan:
         # A reading with a refused read is incomplete, so no later plan may reuse it. An advisory
         # read the role may not make (SST-VAL020) is as complete as the role can ever read it.
         recorded = RecordedObservation(target, reading.observation, state, reading.preflight)
-        ready = _ready(
-            candidates,
-            result,
-            manifest,
-            state,
-            changeset,
-            handlers,
-            leading=(*state_diagnostics, *((stale,) if stale else ())),
-            trailing=channel_divergence(port, result),
-        )
+        leading = (*state_diagnostics, *((stale,) if stale else ()))
+        trailing = channel_divergence(port, result)
+        ready = _ready(candidates, result, manifest, state, changeset, handlers, leading=leading, trailing=trailing)
         return replace(ready, recorded=None if reading.failures.has_errors else recorded)
 
     def run_recorded(
@@ -430,6 +425,7 @@ class PreparePlan:
         Diagnostics:
             SST-PLN016: when the recorded observation was taken, and how old it is.
             SST-PLN001: a composite artifact, which the record cannot decide.
+            SST-PLN032: with `--partial`, a change the plan blocked is left out of it.
             Those of validation, then the plan's `change_summary` and `plan_notices`.
         """
         offline = replace(candidates, connected=False)
@@ -555,7 +551,15 @@ def _ready(
     leading: tuple[Diagnostic, ...],
     trailing: tuple[Diagnostic, ...],
 ) -> PlanReady:
-    """Return the ready plan: what selecting reported and `leading` first, the plan's notices last."""
+    """Return the ready plan: what selecting reported and `leading` first, the plan's notices last.
+
+    A partial plan leaves out every change it blocked, as `partial_changeset` does: what that
+    reported joins what the run left out, in the result, so plan, apply, and a saved plan's id
+    all see the same plan.
+    """
+    if candidates.partial:
+        changeset, left_out = partial_changeset(changeset)
+        result = replace(result, diagnostics=DiagnosticBag((*result.diagnostics, *left_out)))
     first = (*candidates.notices, *leading)
     last = (*trailing, *change_summary(changeset), *plan_notices(changeset))
     changeset = replace(changeset, diagnostics=DiagnosticBag((*first, *changeset.diagnostics, *last)))

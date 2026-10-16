@@ -252,12 +252,36 @@ lost, leaves its lock behind. Expiry is judged by Snowflake's
 clock. A lock left behind by a run that was killed expires 30 minutes after it
 was last extended; `--break-stale-lock` takes over an expired lock
 (`SST-APL010`), and never a live one. A run also keeps a lock file beside its
-local state cache, which guards one machine only.
+local state cache, which guards that checkout only; when another run's lock file
+refuses a run, `SST-APL011` names the file and when it goes stale.
+
+A run that may only read and write SST's tables can use them: the lock, state,
+and eval tables are created, or given a column an older release lacked, only
+when they need it. `plan` reports a missing CREATE TABLE privilege on the state
+schema (`SST-PLN008`) only when a state or lock table does not exist yet.
 
 Once it holds the lock, a run reads the target's state again, and refuses the
 plan (`SST-APL012`) if another run changed it since the plan read it. If the run
 loses its lock while it runs, it starts no further statement and writes no state
 (`SST-APL011`): the run that took the lock over owns the target's state.
+
+The heartbeat alone would find a lost lock only at its next beat, up to five
+minutes late, and a run paused past its lock's expiry -- a laptop asleep, a
+frozen CI runner -- may find another run holding it when it resumes. So a run
+reads its lock row again before each change starts, and before every write
+statement of a change, on the session that runs it: a publish of several
+statements, such as an agent's, stops at the first one after the takeover. No
+clock decides that a read may be skipped, since a monotonic clock stands still
+while the machine sleeps. One window remains: between the read and the one
+statement it guards, a few milliseconds, another run may take the lock, and
+that statement still runs. The next plan reports what it overwrote as changed
+out of band (`SST-PLN014`).
+
+If Snowflake ends a session the run is using -- the network drops, the session
+is aborted or expires -- the run opens one fresh connection to record in state
+the changes that finished and to release its lock, so the target is not left
+locked, and reports `SST-APL103`, naming what finished; run `sst plan` to see
+what is left.
 
 A run writes state once, after its changes: in one transaction that first checks
 it still holds the lock with its token, one `MERGE` per entry it changed and one
@@ -318,10 +342,15 @@ the state table. The plan keeps listing report-only objects until they are
 removed by hand.
 
 `--partial` lets `compile`, `plan`, and `apply` go ahead with every artifact
-that has no errors and depends on nothing that does. Each artifact left out is
-listed (`SST-PLN032`); what is live for it stays as it is, and its state record
-is untouched. The command still exits 1 while errors remain, and an error that
-names no artifact, such as a configuration error, still stops the run. A saved
+that has no errors and depends on nothing that does. An error on a tool
+member's reference, such as a relation missing for the target, counts against
+that tool. An artifact the plan blocks against the target -- changed out of band
+(`SST-PLN014`), unmanaged (`SST-PLN024`), or recorded at another target
+(`SST-PLN025`) -- is left out the same way, and so is everything that depends on
+it. Each artifact left out is listed (`SST-PLN032`); what is live for it stays
+as it is, and its state record is untouched. The command still exits 1 while
+errors remain, and an error that names no artifact, such as a configuration
+error, still stops the run, with the warning `SST-PLN033` saying why. A saved
 partial plan applies only with `--partial`, and `--partial` cannot be combined
 with `--prune`, because an artifact left out for errors would look deleted.
 
@@ -385,7 +414,12 @@ Drawn from: [prune.py](../snowflake_semantic_tools/domain/plan/prune.py), [compo
 
 Then blocking spreads: a write whose dependency the project compiles, the plan
 leaves out, and Snowflake lacks is blocked (`SST-PLN038`), and so, last, is
-every change that depends, however indirectly, on a blocked one. `sst plan` exits 1 when any change is
+every change that depends, however indirectly, on a blocked one. A plan
+narrowed by `--select` still observes the types of everything the selected
+artifacts depend on, so `--select agent:<name>` sees the views and tools that
+exist and plans the agent alone. A pinned skill or plugin version is a separate
+check: a write that pins a version the plan leaves out is blocked with
+`SST-PLN030` whether or not it exists, so select the pinned artifact too. `sst plan` exits 1 when any change is
 blocked or an error is reported, 2 when apply would write or still has state to
 record, and 0 otherwise; `--no-detailed-exitcode` turns 2 into 0.
 

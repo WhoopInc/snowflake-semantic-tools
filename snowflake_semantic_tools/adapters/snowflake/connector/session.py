@@ -5,7 +5,8 @@ session lock; parallel apply workers each lease a sibling session from a pool in
 Statements arrive as `Sql` and become text only in `_execute`, the one place this adapter
 hands SQL to the driver. A driver or transport failure surfaces as `SnowflakePortError`,
 carrying the diagnostic a command reports; any other exception is an SST bug and propagates
-unwrapped. A halted session starts no further statement. No statement here is a USE: a scope
+unwrapped. A halted session starts no further statement, and a guarded one runs its guard
+before each write statement of a script. No statement here is a USE: a scope
 is a session's own, set when it connects. The private helpers here are shared by the role
 modules beside this one. The driver is imported the first time a session needs it, never when
 this module is: importing it costs most of a second, which a command that never connects
@@ -156,6 +157,8 @@ class Session(ExecutionPort):
     _halted: str | None = None
     # The answers this session's reads are kept in; None while every read reads anew.
     _read_cache: ReadCache | None = None
+    # What runs before each write statement of a script; None while writes are not guarded.
+    _write_guard: Callable[[], None] | None = None
 
     def __init__(self, connection_params: Mapping[str, object]) -> None:
         failure: SnowflakePortError | None = None
@@ -216,6 +219,14 @@ class Session(ExecutionPort):
         for session in tuple(self._scoped.values()):
             session.halt(self._halted)
 
+    def guard_writes(self, guard: Callable[[], None] | None) -> None:
+        """Call `guard` before each write statement a script starts, as `WriteGuardPort` says; None stops.
+
+        Apply guards each worker's session with a read of its run lock, so a run whose lock was
+        broken while it paused writes no further statement, not even within one publish.
+        """
+        self._write_guard = guard
+
     def keep_reads(self, cache: ReadCache | None) -> None:
         """Keep this session's read answers in `cache` from now on, as `ReadCache` says; None reads anew.
 
@@ -254,6 +265,7 @@ class Session(ExecutionPort):
             if halted is None:
                 with self._cursor() as cursor:
                     for statement in statements:
+                        self._guard(statement)
                         if (halted := self._halted) is not None:
                             break
                         _execute(cursor, statement)
@@ -264,12 +276,22 @@ class Session(ExecutionPort):
             # those, and never counts the one that failed as written.
             error = ExecutionError(scrubbed_message(exc), getattr(exc, "sqlstate", None), getattr(exc, "errno", None))
             return ExecResult(False, tuple(completed), error, rows_affected=rows)
+        except SnowflakePortError as exc:
+            # The guard could not read what it checks, or the session was halted on the way.
+            error = ExecutionError(str(exc), exc.sqlstate, exc.errno)
+            return ExecResult(False, tuple(completed), error, rows_affected=rows)
         if halted is not None:
             return ExecResult(False, tuple(completed), ExecutionError(halted), rows_affected=rows)
         return ExecResult(True, tuple(completed), rows_affected=rows)
 
     def try_execute(self, sql: Sql) -> ExecResult:
         return self.execute_script((sql,))
+
+    def _guard(self, statement: Sql) -> None:
+        """Run the write guard before a statement that may write; a read is never guarded."""
+        guard = self._write_guard
+        if guard is not None and _verb(statement) not in _READ_VERBS:
+            guard()
 
     def _scoped_session(self, target: SchemaScope) -> Session:
         """Return the session `query_in_context` runs on in `target`, opening it on first use.
@@ -551,10 +573,28 @@ def _require_ok(result: ExecResult, failure: str) -> None:
     """Raise the error that stopped a script, or `failure` when its result names none.
 
     Raises:
-        SnowflakePortError: the script failed; the error carries only its message.
+        SnowflakePortError: the script failed; the error carries its message, SQLSTATE and
+            number, so a command classifies it by number rather than by its wording.
     """
-    if not result.ok:
-        raise SnowflakePortError(result.error.message if result.error else failure)
+    if result.ok:
+        return
+    if result.error is None:
+        raise SnowflakePortError(failure)
+    raise SnowflakePortError(result.error.message, sqlstate=result.error.sqlstate, errno=result.error.errno)
+
+
+def _headline(message: str) -> str:
+    """Return a message's first non-empty line, trimmed, with the next one when the first only opens it.
+
+    Snowflake writes what is wrong on the line after a heading such as `SQL compilation error:`,
+    so a first line ending in a colon is kept together with the next non-empty line.
+    """
+    lines = [line.strip() for line in message.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    if lines[0].endswith(":") and len(lines) > 1:
+        return f"{lines[0]} {lines[1]}"
+    return lines[0]
 
 
 def _json_text(value: object) -> str:

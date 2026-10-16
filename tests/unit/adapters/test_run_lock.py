@@ -12,12 +12,14 @@ import threading
 from types import MappingProxyType
 
 import pytest
+from snowflake.connector.errors import ProgrammingError
 
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, LockFence, StateWrite
 from tests.helpers.lock_tables import LockRow, LockTables, LockTablesConnector
+from tests.helpers.snowflake_fake.driver import FakeDriverConnector, FakeDriverSession
 
 STATE_TABLE = QualifiedName.parse("DB.S.SST_STATE")
 ENTRY = AppliedEntry("f" * 64, "DB.S.V", "2026-09-29T00:00:00Z", "run", "applied", "d" * 64, "m" * 64)
@@ -249,3 +251,65 @@ def test_every_lock_value_is_bound_and_the_table_sits_beside_the_state_table() -
     assert all("DROP TABLE x" not in statement for statement in tables.executed())
     assert all("SST_STATE_LOCK" in statement for statement in tables.executed() if statement not in ("BEGIN", "COMMIT"))
     assert tables.rows[0].run_id == "run'; DROP TABLE x; --" and acquisition.acquired
+
+
+def test_verifying_the_lock_holds_only_for_the_fence_its_row_records() -> None:
+    tables = LockTables()
+    fence = fence_of(claim(tables, "run-a", ttl=10))
+    connector = LockTablesConnector(tables)
+    assert connector.verify_run_lock(STATE_TABLE, "dev", fence)
+    assert not connector.verify_run_lock(STATE_TABLE, "dev", LockFence("run-a", fence.generation + 1))
+    tables.now = 20.0
+    taken = fence_of(claim(tables, "run-b", break_stale=True))
+    assert not connector.verify_run_lock(STATE_TABLE, "dev", fence)
+    assert connector.verify_run_lock(STATE_TABLE, "dev", taken)
+    # A plain read, in no transaction: it writes nothing, so it never queues behind a claim.
+    assert (
+        tables.executed(connector.number)
+        == ["SELECT RUN_ID, GENERATION FROM DB.S.SST_STATE_LOCK WHERE TARGET_NAME = %s"] * 4
+    )
+
+
+def test_a_lock_table_that_exists_with_every_column_gets_no_ddl_only_its_mutex_seed() -> None:
+    # Snowflake checks CREATE TABLE on the schema for CREATE TABLE IF NOT EXISTS even when the
+    # table exists, which a role granted only SELECT, INSERT, UPDATE and DELETE lacks.
+    tables = LockTables()
+    claim(tables, "run-a")
+    assert not any(statement.startswith(("CREATE", "ALTER")) for statement in tables.executed())
+    assert tables.executed()[:2] == [
+        "SELECT GENERATION FROM DB.S.SST_STATE_LOCK LIMIT 1",
+        "MERGE INTO DB.S.SST_STATE_LOCK AS held USING (SELECT %s AS TARGET_NAME) AS seed "
+        "ON held.TARGET_NAME = seed.TARGET_NAME WHEN NOT MATCHED THEN INSERT (TARGET_NAME, RUN_ID, "
+        "ACQUIRED_AT, EXPIRES_AT, GENERATION) VALUES (%s, '', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP(), 0)",
+    ]
+
+
+def test_an_absent_lock_table_is_created_and_one_without_generation_only_migrated() -> None:
+    absent = LockTables()
+    absent.lock_table_exists = absent.has_generation = False
+    assert claim(absent, "run-a").acquired
+    assert [
+        statement.split(" (")[0] for statement in absent.executed() if statement.startswith(("CREATE", "ALTER"))
+    ] == ["CREATE TABLE IF NOT EXISTS DB.S.SST_STATE_LOCK"]
+    older = LockTables()
+    older.has_generation = False
+    assert claim(older, "run-a").acquired
+    assert [statement for statement in older.executed() if statement.startswith(("CREATE", "ALTER"))] == [
+        "ALTER TABLE DB.S.SST_STATE_LOCK ADD COLUMN IF NOT EXISTS GENERATION NUMBER"
+    ]
+
+
+def test_a_lock_table_probe_that_fails_for_another_reason_is_raised_with_its_number() -> None:
+    driver = FakeDriverSession({"SELECT GENERATION": ProgrammingError(msg="Insufficient privileges", errno=3001)})
+    with pytest.raises(SnowflakePortError) as raised:
+        FakeDriverConnector(driver).acquire_run_lock(STATE_TABLE, "dev", LockClaim("run-a"), break_stale=False)
+    assert raised.value.errno == 3001 and driver.statements == ["SELECT GENERATION FROM DB.S.SST_STATE_LOCK LIMIT 1"]
+
+
+def test_a_lock_table_ddl_refused_keeps_snowflakes_number_so_it_is_classified_by_it() -> None:
+    refused = ProgrammingError(msg="Insufficient privileges to operate on schema 'S'", errno=3001, sqlstate="42501")
+    missing = ProgrammingError(msg="Object 'DB.S.SST_STATE_LOCK' does not exist", errno=2003, sqlstate="02000")
+    driver = FakeDriverSession({"SELECT GENERATION": missing, "CREATE TABLE": refused})
+    with pytest.raises(SnowflakePortError) as raised:
+        FakeDriverConnector(driver).acquire_run_lock(STATE_TABLE, "dev", LockClaim("run-a"), break_stale=False)
+    assert (raised.value.errno, raised.value.sqlstate) == (3001, "42501")

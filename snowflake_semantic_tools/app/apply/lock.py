@@ -9,7 +9,11 @@ never queues behind the run's statements.
 
 The heartbeat marks the lease lost, and calls `on_lost` at once, when an extension finds the
 lock broken, when extensions keep failing until the lock could expire before the next one, or
-when anything else goes wrong in it: it never dies silently. Its waiting and its clock come
+when anything else goes wrong in it: it never dies silently. `verify` reads the lock row again
+on demand, before a write, and loses the lease the same way when another run holds it: the
+heartbeat beats only every few minutes, and a run that was paused past its lock's expiry
+learns of the takeover from `verify` before its next write, not at its next beat. The lease
+is lost once, for the first reason found. Its waiting and its clock come
 from a `Ticker`, so a test steps beats one at a time. `release` stops the heartbeat, joins it
 for at most `LockPolicy.stop_seconds`, and releases both locks, remote first.
 """
@@ -125,6 +129,7 @@ class RunLease:
         self._ticker = policy.ticker()
         self._lost = threading.Event()
         self._lost_reason: str | None = None
+        self._losing = threading.Lock()
         self._heartbeat: threading.Thread | None = None
         self._holder: str | None = None
         self._fence: LockFence | None = None
@@ -161,7 +166,7 @@ class RunLease:
 
         Diagnostics:
             SST-APL011: another run holds either lock, or the remote lock expired and
-                `break_stale` was not given.
+                `break_stale` was not given; for the local lock, in the store's own words.
             SST-APL010: an expired lock was taken over; once, though both locks were, in the
                 remote lock's words, which name the run, its role and host, and the expiry.
         """
@@ -170,7 +175,7 @@ class RunLease:
         locked, holder, broke_local = self._store.acquire_lock(run_id, break_stale=break_stale)
         if not locked:
             self._holder = holder
-            return False, (D("SST-APL011", value=holder or "another run"),)
+            return False, (D("SST-APL011", value=self._store.describe_lock(holder)),)
         local_break = (D("SST-APL010", value=holder or "expired run"),) if broke_local else ()
         try:
             remote = self._port.acquire_run_lock(
@@ -191,21 +196,40 @@ class RunLease:
         self._start_heartbeat(remote.fence)
         return True, reported
 
-    def release(self) -> None:
-        """Stop the heartbeat, then release the remote lock and the local one; idempotent.
+    def verify(self, port: StatePort | None = None) -> bool:
+        """Read the lock row again, on `port` or the lease's own, and report whether the run holds it.
+
+        A run that does not hold it any more loses the lease, as the heartbeat would, so
+        `on_lost` halts what the run is doing. A lease already lost reads nothing.
+
+        Raises:
+            SnowflakePortError: the lock row could not be read; the lease is as it was.
+        """
+        fence = self._fence
+        if self._lost.is_set() or fence is None:
+            return False
+        if (port or self._port).verify_run_lock(self._state_table, self._target_name, fence):
+            return True
+        self._lose(BROKEN_BY_ANOTHER_RUN)
+        return False
+
+    def release(self, port: StatePort | None = None) -> None:
+        """Stop the heartbeat, then release the remote lock, on `port` or the lease's own, and the local one.
 
         The local lock is released even when releasing the remote one raises, which then
-        propagates; the remote lock then expires on its own. A lease that never held the remote
-        lock releases only the local one.
+        propagates; the lease still holds the fence then, so a release on another port, such
+        as a fresh connection once the run's own session is gone, may release it. Once the
+        remote lock is released, releasing again releases nothing more. A lease that never held
+        the remote lock releases only the local one.
         """
         self._ticker.stop()
         if self._heartbeat is not None:
             self._heartbeat.join(self._policy.stop_seconds)
             self._heartbeat = None
-        fence, self._fence = self._fence, None
         try:
-            if fence is not None:
-                self._port.release_run_lock(self._state_table, self._target_name, fence)
+            if self._fence is not None:
+                (port or self._port).release_run_lock(self._state_table, self._target_name, self._fence)
+                self._fence = None
         finally:
             self._store.release_lock(self._claim.run_id)
 
@@ -242,9 +266,12 @@ class RunLease:
             self._ticker.stop()
 
     def _lose(self, reason: str) -> None:
-        """Mark the lease lost with `reason`, then tell `on_lost` at once."""
-        self._lost_reason = reason
-        self._lost.set()
+        """Mark the lease lost with `reason`, then tell `on_lost` at once; only the first loss counts."""
+        with self._losing:
+            if self._lost.is_set():
+                return
+            self._lost_reason = reason
+            self._lost.set()
         if self._on_lost is not None:
             # The lease is lost whatever the callback does, and the heartbeat must not die of it.
             with contextlib.suppress(Exception):

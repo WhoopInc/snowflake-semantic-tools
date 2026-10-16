@@ -13,11 +13,16 @@ holds a `refused` fragment; otherwise each statement takes effect in order:
 - CREATE and ALTER CORTEX EXTENSION change the extension (`extensions.py`).
 
 A statement that cannot take effect fails the script there, as Snowflake reports it.
+
+While `guard_writes` set a guard, it runs before each statement of a script that is not a read,
+as the connector's session runs it: a guard that raises `SnowflakePortError`, or that leaves the
+fake halted, stops the script there, and only the statements before it are logged and take
+effect. Each of those reports a query id, `q<n>`, when the script stops part way.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
@@ -27,10 +32,17 @@ from tests.helpers.snowflake_fake.extensions import apply_extension_statement, q
 from tests.helpers.snowflake_fake.world import Sent, SnowflakeWorld
 
 _ROW_COUNT = "SELECT COUNT(*) AS ROW_COUNT FROM "
+_READ_VERBS = frozenset(("SELECT", "SHOW", "DESCRIBE", "DESC", "LIST", "EXPLAIN", "GET"))
 
 
 class FakeExecution(SnowflakeWorld):
     """`ExecutionPort` over the shared account and script."""
+
+    # What runs before each write statement; None while writes are not guarded.
+    _write_guard: Callable[[], None] | None = None
+
+    def guard_writes(self, guard: Callable[[], None] | None) -> None:
+        self._write_guard = guard
 
     def query(self, sql: Sql, params: object = None) -> QueryResult:
         return self._answer(
@@ -58,6 +70,31 @@ class FakeExecution(SnowflakeWorld):
 
     def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
         texts = tuple(str(statement) for statement in statements)
+        allowed, stopped = self._guarded(texts)
+        if stopped is None:
+            return self._run_script(texts)
+        if not allowed:
+            return stopped
+        ran = self._run_script(texts[:allowed])
+        if not ran.ok:
+            return ran
+        return ExecResult(False, tuple(f"q{index}" for index in range(1, allowed + 1)), stopped.error)
+
+    def _guarded(self, texts: tuple[str, ...]) -> tuple[int, ExecResult | None]:
+        """How many statements the guard lets run, and the result that stops the script; None runs all."""
+        guard = self._write_guard
+        for index, text in enumerate(texts):
+            if guard is None or text.split(None, 1)[0].upper() in _READ_VERBS:
+                continue
+            try:
+                guard()
+            except SnowflakePortError as exc:
+                return index, ExecResult(False, error=ExecutionError(str(exc), exc.sqlstate, exc.errno))
+            if self.halted is not None:
+                return index, ExecResult(False, error=ExecutionError(self.halted))
+        return len(texts), None
+
+    def _run_script(self, texts: tuple[str, ...]) -> ExecResult:
         self.log.append(Sent("script", texts))
         self._check("execute_script")
         if self.execute_results:

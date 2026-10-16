@@ -14,7 +14,7 @@ from dataclasses import replace
 import pytest
 
 from snowflake_semantic_tools.app.apply.errors import _failed
-from snowflake_semantic_tools.app.apply.run import _WaveRun
+from snowflake_semantic_tools.app.apply.waves import _WaveRun
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     ApplyOptions,

@@ -19,6 +19,7 @@ The plan's diagnostics follow the same order.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
@@ -132,23 +133,29 @@ def _ordered(
     if unordered is not None:
         failed = DiagnosticBag((*diagnostics, unordered))
         return ChangeSet(manifest.manifest_id, target, (), failed, observation.fetched_at, full)
-    plan_id = _plan_id(manifest, target, observation, ordered)
+    plan_id = _plan_id(manifest.manifest_id, target, observation.fetched_at, ordered)
     return ChangeSet(
         manifest.manifest_id, target, ordered, DiagnosticBag(diagnostics), observation.fetched_at, full, plan_id
     )
 
 
+def narrowed(changeset: ChangeSet, changes: tuple[Change, ...], diagnostics: DiagnosticBag) -> ChangeSet:
+    """Return the plan with only `changes`, in its order, and `diagnostics`, its id hashed anew."""
+    plan_id = _plan_id(changeset.manifest_id, changeset.target, changeset.observation_at, changes)
+    return replace(changeset, changes=changes, diagnostics=diagnostics, plan_id=plan_id)
+
+
 def _plan_id(
-    manifest: Manifest,
+    manifest_id: str,
     target: TargetIdentity,
-    observation: SnowflakeObservation,
+    observation_at: str,
     ordered: tuple[Change, ...],
 ) -> str:
     """Hash what identifies a plan: its manifest, target, observation time, and each decision."""
     identity = {
-        "manifest_id": manifest.manifest_id,
+        "manifest_id": manifest_id,
         "target": target.as_dict(),
-        "observation_at": observation.fetched_at,
+        "observation_at": observation_at,
         "changes": [
             {
                 "key": change.key,

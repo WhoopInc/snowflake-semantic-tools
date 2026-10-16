@@ -16,6 +16,7 @@ from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.observe import DEFAULT_OBSERVE_OPTIONS, ObserveOptions, observe, observe_replaced_tags
 from snowflake_semantic_tools.app.preflight import read_preflight
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
+from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
@@ -174,13 +175,15 @@ class PlanArtifacts:
         include_prune: bool = False,
         prune_types: frozenset[str] | None = None,
         observation_targets: tuple[QualifiedName, ...] | None = None,
+        state_tables: tuple[QualifiedName, ...] = (),
     ) -> TargetReading:
         """Read the target for a plan: observe it, then preflight it when given a preflight port.
 
-        The observation covers every type rendered and, when pruning, every type a prune may
-        remove, in the schemas of `observation_targets`, else of the rendered artifacts. Unless
-        the options turn grants off, it then holds the tags of each semantic view the plan will
-        replace, as `observe_replaced_tags` reads them. The preflight read is `read_preflight`'s.
+        The observation covers every type rendered, every type they depend on, and, when
+        pruning, every type a prune may remove, in the schemas of `observation_targets`, else of
+        the rendered artifacts. Unless the options turn grants off, it then holds the tags of
+        each semantic view the plan will replace, as `observe_replaced_tags` reads them. The
+        preflight read is `read_preflight`'s, `state_tables` among what it checks.
 
         Diagnostics:
             SST-PLN001: observing Snowflake, or a preflight read, failed.
@@ -212,6 +215,7 @@ class PlanArtifacts:
             target,
             include_prune=include_prune,
             readers=self._readers,
+            state_tables=state_tables,
         )
         return TargetReading(observation, preflight, DiagnosticBag((*failures, *refused)))
 
@@ -221,11 +225,23 @@ class PlanArtifacts:
         include_prune: bool,
         prune_types: frozenset[str] | None,
     ) -> frozenset[str]:
-        """Return the types to observe: those rendered and, when pruning, those a prune may remove."""
+        """Return the types to observe: those rendered, those they depend on, and those a prune may remove.
+
+        A dependency's type is observed even when `--select` leaves every artifact of it out, so
+        a dependency that exists is seen to exist: only one Snowflake lacks blocks the write
+        that depends on it (SST-PLN038).
+        """
         prunable: set[str] = set()
         if include_prune:
             prunable = set(prune_types) if prune_types is not None else set(self._registry.artifacts)
-        return frozenset({artifact.artifact_type for artifact in rendered.values()} | prunable)
+        depended = {
+            split_artifact_key(dependency)[0] for artifact in rendered.values() for dependency in artifact.depends_on
+        }
+        return frozenset(
+            {artifact.artifact_type for artifact in rendered.values()}
+            | (depended & set(self._registry.artifacts))
+            | prunable
+        )
 
     def _observed_object_types(self, rendered: Mapping[str, RenderedArtifact]) -> dict[str, frozenset[str]]:
         """Return, for every registered type, the object types its rendered artifacts are published as."""

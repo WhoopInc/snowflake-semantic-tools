@@ -72,6 +72,11 @@ _NOT_FOUND = ErrorKind.NOT_FOUND
 _SYNTAX = ErrorKind.SYNTAX
 _TRANSIENT = ErrorKind.TRANSIENT
 _AUTHENTICATION = _words(r"\bincorrect username or password\b|\bauthentication (?:failed|token)")
+# Snowflake's wording for a session it ended or let expire: the connection is fine, but every
+# statement on that session fails until a new login.
+_SESSION_GONE = _words(r"\bsession no longer exists\b|\bsession (?:has )?expired\b")
+# Snowflake's numbers for that: a session that no longer exists, and one that expired.
+_SESSION_GONE_ERRNOS = (390111, 390112)
 _DURATION = _words(r"(\d+\s*(?:(?:second|minute|hour)(?:\(s\)|s)?|ms|s)(?![a-z]))")
 
 # The table. Specific rows come before general ones that share their wording, so the
@@ -129,6 +134,9 @@ SIGNATURES: tuple[Signature, ...] = (
     Signature("SST-SNO010", None, None, _words(r"\bSQL execution internal error\b|\bincident\s+\d+")),
     Signature("SST-SNO009", 1003, "42000", _words(r"\bsyntax error\b|\bSQL compilation error\b"), _SYNTAX),
     Signature("SST-SNO009", None, "42601", None, _SYNTAX),
+    # A session Snowflake ended (aborted, or dropped with the network) or let expire. Not
+    # retryable: the same statement on the same session fails the same way.
+    *(Signature("SST-SNO014", number, None, _SESSION_GONE, _TRANSIENT) for number in _SESSION_GONE_ERRNOS),
     # The SQL-standard connection-exception states: 250002 is the driver closing a connection
     # under a session, as 08003 says; 08006 is a connection that failed mid-statement.
     Signature("SST-SNO014", 250002, "08003", None, _TRANSIENT, True),
@@ -148,8 +156,12 @@ SIGNATURES: tuple[Signature, ...] = (
 
 UNRECOGNISED = Signature("SST-SNO001")
 
-_NUMBER_PREFIX = re.compile(r"^\s*\d{3,6}\s*(?:\([0-9A-Z]{5}\))?\s*:\s*")
-_HEADING = _words(r"^\s*(?:SQL compilation error|SQL execution internal error)\s*:\s*")
+# A driver message opens with Snowflake's number and SQLSTATE, then the query id when there was one.
+_NUMBER_PREFIX = re.compile(
+    r"^\s*\d{3,6}\s*(?:\([0-9A-Z]{5}\))?\s*:\s*(?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\s*:\s*)?"
+)
+# The heading Snowflake puts on its own line before what is wrong.
+_HEADING = _words(r"^\s*(?:SQL compilation error|SQL execution internal error|SQL access control error)\s*:\s*")
 _QUOTED = re.compile(r"'([^']+)'")
 
 
@@ -180,6 +192,7 @@ class SessionFailure(Enum):
     """What a driver error means to the session that ran into it."""
 
     AUTHENTICATION = "authentication"
+    SESSION_GONE = "session_gone"
     DEADLINE = "deadline"
     PRIVILEGE = "privilege"
     NOT_VISIBLE = "not_visible"
@@ -199,7 +212,8 @@ def session_failure(message: str, *, errno: int | None = None, sqlstate: str | N
     """Read a driver error, as `match_signature` classifies it, as what it means to the session.
 
     Returns:
-        AUTHENTICATION for a rejected credential (SST-SNO013); NOT_VISIBLE for a database,
+        AUTHENTICATION for a rejected credential (SST-SNO013); SESSION_GONE for a session
+        Snowflake ended or let expire, by its number or, without one, its wording; NOT_VISIBLE for a database,
         schema or object that does not exist or is not granted; DEADLINE for a transient
         failure or a statement timeout; PRIVILEGE for any other refused privilege, and for a
         not-visible failure its number or SQLSTATE identifies on the `SNOWFLAKE` database or
@@ -208,6 +222,8 @@ def session_failure(message: str, *, errno: int | None = None, sqlstate: str | N
     signature = match_signature(message, errno=errno, sqlstate=sqlstate)
     if signature.code == "SST-SNO013":
         return SessionFailure.AUTHENTICATION
+    if errno in _SESSION_GONE_ERRNOS or (errno is None and _SESSION_GONE.search(message)):
+        return SessionFailure.SESSION_GONE
     if signature.code in _NOT_VISIBLE:
         identified = errno in _NOT_VISIBLE_ERRNOS or sqlstate in _NOT_VISIBLE_SQLSTATES
         if identified and _names_system_database(message):
@@ -232,7 +248,7 @@ def fragile_signatures() -> tuple[Signature, ...]:
 
 
 def detail_of(message: str) -> str:
-    """Return a driver message without its leading error number and its SQL error heading."""
+    """Return a driver message without its leading error number, query id, and SQL error heading."""
     return _HEADING.sub("", _NUMBER_PREFIX.sub("", message), count=1).strip()
 
 
