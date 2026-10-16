@@ -1,6 +1,6 @@
 """SST-VAL732: unsupported tool types are skipped during evals.
 
-Fires when the agent has an MCP tool an eval run skips; the nearest legitimate input stays quiet.
+Fires when the agent has an agent toolset an eval run skips; the nearest legitimate input stays quiet.
 """
 
 from __future__ import annotations
@@ -15,13 +15,15 @@ def test_sst_val732_fires() -> None:
     diagnostic = only(
         validate(
             sales_eval(
-                agent=sales_agent(tools=(*sales_agent().tools, AgentTool("mcp", Origin(AGENT_FILE), name="docs")))
+                agent=sales_agent(
+                    tools=(*sales_agent().tools, AgentTool("agent_toolset", Origin(AGENT_FILE), name="docs"))
+                )
             )
         ),
         "SST-VAL732",
     )
     assert diagnostic.severity is Severity.INFO
-    assert diagnostic.message == "eval config for 'sales': mcp will be skipped, not failed"
+    assert diagnostic.message == "eval config for 'sales': agent_toolset will be skipped, not failed"
     assert diagnostic.subject == "eval:sales"
 
 

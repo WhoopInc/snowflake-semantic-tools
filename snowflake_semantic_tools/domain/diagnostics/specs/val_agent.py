@@ -607,4 +607,30 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         precheck=Precheck.OBSERVE,
     ),
+    spec(
+        "SST-VAL558",
+        Severity.ERROR,
+        "Agent profile exceeds the size limit",
+        "agent '{artifact}': profile renders {size} bytes of JSON, over Snowflake's 1,000-byte limit",
+        "shorten the profile's display_name, avatar or color",
+        condition="the agent's `profile:` renders more than 1,000 bytes of JSON, encoded as UTF-8",
+        note=(
+            "`ALTER AGENT ... SET PROFILE` refuses a larger profile, after the agent's other "
+            "statements ran, so the publish would stop part way."
+        ),
+    ),
+    spec(
+        "SST-VAL559",
+        Severity.ERROR,
+        "MCP tool type is not a Snowflake tool",
+        "agent '{artifact}': tool '{name}' has type mcp, which every run of the agent refuses",
+        "remove the tool and attach the server under spec.passthrough.mcp_servers",
+        condition="an agent's `spec.tools` entry has `type: mcp`",
+        note=(
+            "CREATE AGENT accepts the tool, then every run of the agent fails with 'Tool type mcp "
+            "is not valid'. Snowflake attaches an MCP server with the spec's top-level "
+            "`mcp_servers:` key, which `spec.passthrough` renders: "
+            "`mcp_servers: [{server_spec: {name: <server>}}]`."
+        ),
+    ),
 )

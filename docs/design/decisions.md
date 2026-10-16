@@ -277,11 +277,17 @@ quote is an injection, and nothing finds it.
 ### Published versions are added, never rewritten
 
 **Chosen.** An agent is created from a staged specification and left with
-exactly one committed version; each later change adds a version, and the agent
-is never replaced. A skill or plugin version's alias carries a digest of its
-bundle, so a change adds a version rather than rewriting one. For iteration,
-`apply --temporary` publishes a session-scoped temporary agent, records nothing
-in state, and is refused on a production-like target (`SST-APL013`).
+exactly one committed version; each later change to its specification adds a
+version, and the agent is never replaced. A change to only its comment,
+profile, tags, alias, or `secure` adds none: each committed version's comment
+carries the fingerprint of its specification, so plan sees the newest version
+already holds it. A skill or plugin version's alias carries a digest of its
+bundle, so a change adds a version rather than rewriting one.
+`apply --temporary` publishes only the agents as session-scoped temporary
+agents, records nothing about them in state, skips their evals (`SST-APL105`),
+and is refused on a production-like target (`SST-APL013`). A temporary agent is
+dropped when the apply's session ends, so it checks that Snowflake accepts a
+spec; it is not an agent to iterate on, which a per-developer target is.
 
 **Rejected.** Replacing an agent on each change, which discards its version
 history and the grants on it; rewriting an extension version in place, which

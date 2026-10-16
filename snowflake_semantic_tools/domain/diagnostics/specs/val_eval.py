@@ -381,7 +381,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "eval config for '{artifact}': {value} will be skipped, not failed",
         None,
         condition=(
-            "the agent has an `mcp` or `agent` tool, which an eval run skips; one per tool type, only for "
+            "the agent has an `agent_toolset` tool, which an eval run skips; one per tool type, only for "
             "a config with a `run:` block"
         ),
         note="A skipped tool is never invoked, so the eval looks healthier than the agent is.",

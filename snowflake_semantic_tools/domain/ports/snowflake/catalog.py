@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow
+
+_VERSION_NAME = re.compile(r"VERSION\$(\d+)", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +74,27 @@ class AgentVersions:
     def aliases(self) -> tuple[str, ...]:
         """Every version alias the agent shows, live version included, as SHOW prints them."""
         return tuple(version.alias for version in self.versions if version.alias)
+
+    @property
+    def newest(self) -> AgentVersion | None:
+        """Return the newest committed version, the highest `VERSION$<n>`; None when none is committed."""
+        numbered = [(int(match.group(1)), version) for version in self.versions if (match := _number(version.name))]
+        return max(numbered, key=lambda item: item[0])[1] if numbered else None
+
+    @property
+    def default_name(self) -> str | None:
+        """Return the name of the committed version SHOW marks the default; None when none is."""
+        return next((version.name for version in self.versions if version.name and version.is_default), None)
+
+    @property
+    def alias_versions(self) -> tuple[tuple[str, str], ...]:
+        """Return each alias a committed version carries, with that version, as `(alias, version)`."""
+        return tuple((version.alias, version.name) for version in self.versions if version.name and version.alias)
+
+
+def _number(name: str | None) -> re.Match[str] | None:
+    """Match a system version name, `VERSION$<n>`; None for the live version or any other name."""
+    return _VERSION_NAME.fullmatch(name or "")
 
 
 class CatalogPort(Protocol):

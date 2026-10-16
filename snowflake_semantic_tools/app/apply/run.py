@@ -21,13 +21,13 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import Protocol
 
-from snowflake_semantic_tools.app.apply.errors import _exception_error, _failed, _rendered_ddl
+from snowflake_semantic_tools.app.apply.errors import _exception_error, _failed, _rendered_ddl, _skipped
 from snowflake_semantic_tools.app.apply.lock import LockPolicy, RunLease
 from snowflake_semantic_tools.app.apply.one import ChangeApplier
 from snowflake_semantic_tools.app.apply.recovery import Reconnect, Reconnection, connection_lost
 from snowflake_semantic_tools.app.apply.stages import UploadStages
 from snowflake_semantic_tools.app.apply.state import EntryStamp, _applied_after, _run_outcome
-from snowflake_semantic_tools.app.apply.temporary import temporary_notes, temporary_refusal
+from snowflake_semantic_tools.app.apply.temporary import temporary_evals, temporary_notes, temporary_refusal
 from snowflake_semantic_tools.app.apply.waves import _WaveRun, lost_lock
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.app.state import table_state
@@ -170,6 +170,7 @@ class ApplyArtifacts:
             SST-APL013: a temporary artifact would publish to a production-like target.
             SST-APL014: a temporary artifact now shadows the permanent object of its name.
             SST-APL015: a temporary artifact's alias was ignored.
+            SST-APL105: an eval of an agent published as temporary was skipped.
             SST-APL103: Snowflake ended a session the run used, after it took its lock.
             SST-APL900: the outcomes do not account for every planned change.
             SST-VAL828: a skill, plugin or profile change, a publication channel's, has no
@@ -254,6 +255,7 @@ class ApplyArtifacts:
         """Run the phases that need the lock: preflight, waves, accounting, then persist.
 
         The waves share one `UploadStages`, so each stage the run uploads to is created at most once.
+        An eval of an agent the run publishes as temporary is skipped, writing nothing.
         """
         with self._phases.phase("publish"):
             outcomes = self._preflight_relations(changeset.changes, options.parallelism)
@@ -263,7 +265,11 @@ class ApplyArtifacts:
         def lost() -> str | None:
             return lease.lost_reason if lease.lost else None
 
+        skipped = temporary_evals(changeset)
+
         def apply_one(change: Change, options: ApplyOptions) -> ApplyOutcome:
+            if change.key in skipped:
+                return _skipped(change, _rendered_ddl(change))
             return self._apply_one(change, options, stages, lease)
 
         waves = _WaveRun(

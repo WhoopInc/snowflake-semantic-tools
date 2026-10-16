@@ -3,8 +3,8 @@
 Compile renders each artifact as a `RenderedArtifact`; plan compares it with what Snowflake
 shows, a `SnowflakeObservation`, and decides one `Change` per artifact, collected in a
 `ChangeSet`; apply runs the writes and reports an `ApplyOutcome` for each. One submodule
-holds each stage's values -- `marker`, `observation`, `action`, `rendered`, `change`, and
-`apply` -- and this module re-exports them, so importers never reach into the submodules.
+holds each stage's values -- `marker`, `observation`, `action`, `rendered`, `change`,
+`apply`, and `version` -- and this module re-exports them, so importers never reach into the submodules.
 """
 
 from __future__ import annotations
@@ -45,6 +45,13 @@ from snowflake_semantic_tools.domain.model.lifecycle.rendered import (
     SmokeProbe,
     StatementPlan,
     Upload,
+    version_drift,
+)
+from snowflake_semantic_tools.domain.model.lifecycle.version import (
+    commented_spec_fingerprint,
+    held_spec_fingerprint,
+    spec_fingerprint,
+    version_comment,
 )
 
 __all__ = [
@@ -82,6 +89,11 @@ __all__ = [
     "SnowflakeObservation",
     "StatementPlan",
     "Upload",
+    "commented_spec_fingerprint",
     "extract_marker",
+    "held_spec_fingerprint",
     "marked_comment",
+    "spec_fingerprint",
+    "version_comment",
+    "version_drift",
 ]

@@ -324,6 +324,13 @@ this; a second Ctrl-C stops the running changes at their next statement. Run
   `unrecorded_publish`, and the next apply records it. Apply again before you
   change that artifact: once its definition moves on, the marker no longer
   vouches for it and it blocks as below.
+- **An agent** has its marker written before anything else of its publish, so
+  the marker means SST was writing that definition, whether or not the new
+  version was committed. When the newest committed version already holds the
+  planned spec (its comment carries `sst-spec:<fingerprint>`), the next apply
+  points the alias and the live version at it and sets the agent's properties,
+  without committing another version. When it does not, the next apply commits
+  the spec once. Either way, apply again before you change the agent.
 - **An object it created** has no entry in state, so `plan` blocks it as
   unmanaged (`SST-PLN024`), as it would any object SST did not publish. Drop it
   by hand (`DROP <type> <name>`, with a role that may), then apply again.

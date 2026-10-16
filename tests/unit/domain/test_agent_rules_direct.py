@@ -92,6 +92,14 @@ def test_the_profile_colour_must_be_a_name_or_a_token_and_a_deprecated_agent_kee
     assert agent_rules(token, frozenset(("claude",)), (), frozenset(("Icon",))) == []
 
 
+def test_a_profile_set_profile_would_refuse_is_reported_by_its_rendered_size() -> None:
+    # The JSON SST sends escapes non-ASCII text, six bytes a character, and that is what is measured.
+    model = agent(profile=AgentProfile("\u00e9" * 500))
+    [found] = agent_rules(model, frozenset(("claude",)), ())
+    assert (found.code, found.context["size"]) == ("SST-VAL558", 3019)
+    assert agent_rules(agent(profile=AgentProfile("e" * 981)), frozenset(("claude",)), ()) == []
+
+
 def test_a_token_budget_the_agent_sets_itself_is_reported_unless_documented() -> None:
     own = MappingProxyType({"budget_tokens": Setting("budget_tokens", 1000, "config")})
     routed = MappingProxyType({"budget_tokens": Setting("budget_tokens", 1000, "root")})

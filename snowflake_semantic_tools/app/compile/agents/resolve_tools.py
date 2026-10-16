@@ -1,11 +1,12 @@
 """Resolve one authored agent tool into the entry its specification carries.
 
 Each modeled tool type has a resolver in `_RESOLVERS`: a Cortex Analyst tool names a
-semantic view, a Cortex Search or generic tool names a tool member, an agent toolset names
-another agent, and an MCP tool passes its keys through. Every other known type is a
-built-in, such as data_to_chart. A resolver appends what it finds to the diagnostics it
-is given, in order, and returns None for a tool that cannot be rendered; `_finish` then
-checks what every resolved tool shares and builds its entry.
+semantic view, a Cortex Search or generic tool names a tool member, and an agent toolset
+names another agent. Every other known type is a built-in, such as data_to_chart. An `mcp`
+tool is refused: Snowflake attaches MCP servers through the spec's `mcp_servers:` key. A
+resolver appends what it finds to the diagnostics it is given, in order, and returns None for
+a tool that cannot be rendered; `_finish` then checks what every resolved tool shares and
+builds its entry.
 
 Its diagnostics are reported as each entry resolves against the `AgentCompileContext`, so
 they stay with resolution here rather than in `domain.validate`.
@@ -39,6 +40,8 @@ _AGENTS = (ToolKind.AGENT.value,)
 # The tool type that inherits another agent's tools; Snowflake never shows its entry to the
 # orchestrator, so it needs no description.
 _TOOLSET = "agent_toolset"
+# A tool type Snowflake accepts in CREATE AGENT and refuses on every run (SST-VAL559).
+_MCP = "mcp"
 _INPUT_TYPES = frozenset(("string", "number", "integer", "boolean", "array"))
 
 # What an agent tool's name may hold: letters, digits, `_` and `-`.
@@ -75,6 +78,7 @@ def resolve_tool(
         The resolved tool, or None, and every diagnostic in the order it was found.
 
     Diagnostics:
+        SST-VAL559: the tool's type is `mcp`, which no run of the agent accepts.
         SST-RND012: the tool type is unknown to the renderer, and `snowflake.tool_types` adds no such type.
         SST-VAL516: the tool declares a key another tool type takes and its own does not.
         SST-VAL520: an Analyst tool names no semantic view, or is given a name as well.
@@ -109,6 +113,10 @@ def resolve_tool(
         SST-PRS016: the tool's `query_timeout` is not positive.
     """
     diagnostics: list[Diagnostic] = []
+    if authored.type == _MCP:
+        name = authored.name or authored.type
+        diagnostics.append(D("SST-VAL559", artifact=agent.name, name=name, subject=agent.key, origin=authored.origin))
+        return None, tuple(diagnostics)
     if authored.type not in KNOWN_AGENT_TOOL_TYPES | context.extra_tool_types:
         diagnostics.append(
             D("SST-RND012", artifact=agent.name, found=authored.type, subject=agent.key, origin=authored.origin)
@@ -346,13 +354,6 @@ def _delegate(
     return resolution
 
 
-def _mcp(
-    agent: AgentModel, authored: AgentTool, context: AgentCompileContext, diagnostics: list[Diagnostic]
-) -> _Resolution:
-    """An MCP tool, whose `passthrough` keys are its resources."""
-    return _Resolution(authored.name or "", authored.description or "", dict(authored.passthrough))
-
-
 def _builtin(
     agent: AgentModel, authored: AgentTool, context: AgentCompileContext, diagnostics: list[Diagnostic]
 ) -> _Resolution:
@@ -372,7 +373,6 @@ _RESOLVERS: Mapping[str, _Resolver] = MappingProxyType(
         "cortex_search": _search,
         "generic": _generic,
         "agent_toolset": _delegate,
-        "mcp": _mcp,
     }
 )
 

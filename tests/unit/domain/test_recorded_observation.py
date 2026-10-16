@@ -38,6 +38,10 @@ def _artifact(key: str, *, full: bool) -> ObservedArtifact:
         routine_signature=("NUMBER",) if full else (),
         aliases=("ALIAS",) if full else (),
         tags=("DB.S.TAG",) if full else (),
+        newest_version="VERSION$2" if full else None,
+        newest_spec="c" * 64 if full else None,
+        default_version="VERSION$1" if full else None,
+        alias_versions=(("PROMOTED", "VERSION$2"),) if full else (),
     )
 
 
@@ -146,3 +150,17 @@ def test_a_malformed_record_is_refused(field: str, value: object, message: str) 
     document[field] = value
     with pytest.raises(ValueError, match=message):
         RecordedObservation.from_dict(document)
+
+
+def test_a_record_written_before_agent_version_facts_reads_with_none() -> None:
+    document = _recorded(preflight=None).as_dict()
+    for artifact in document["artifacts"]:  # type: ignore[attr-defined]
+        for key in ("newest_version", "newest_spec", "default_version", "alias_versions"):
+            del artifact[key]
+    observed = RecordedObservation.from_dict(json.loads(json.dumps(document))).observation.artifacts["semantic_view:a"]
+    assert (observed.newest_version, observed.newest_spec, observed.default_version, observed.alias_versions) == (
+        None,
+        None,
+        None,
+        (),
+    )

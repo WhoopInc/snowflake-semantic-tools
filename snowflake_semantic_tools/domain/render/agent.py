@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
-from snowflake_semantic_tools.domain.model.agent import BUILTIN_AGENT_TOOLS, AgentModel, ResolvedAgentTool
+from snowflake_semantic_tools.domain.model.agent import BUILTIN_AGENT_TOOLS, AgentModel, AgentProfile, ResolvedAgentTool
 from snowflake_semantic_tools.domain.render.invariants import dollar_quote_offset
 from snowflake_semantic_tools.domain.state import canonical_json
 
@@ -15,8 +16,8 @@ def render_agent_spec(model: AgentModel, tools: tuple[ResolvedAgentTool, ...]) -
 
     `models.orchestration` is always present; every other section appears only when it has
     content. A built-in tool, or one with no resources, gets no `tool_resources` entry, and a
-    skill without a name renders no `name`. The `passthrough` keys go in last, so they replace
-    any section of the same name.
+    skill without a name renders no `name`, which only a STAGE source has once skills resolve.
+    The `passthrough` keys go in last, so they replace any section of the same name.
 
     Example:
         An agent whose one tool is a Cortex Analyst tool over the view `DB.S.SALES` renders:
@@ -58,7 +59,7 @@ def render_agent_spec(model: AgentModel, tools: tuple[ResolvedAgentTool, ...]) -
     if model.skills:
         document["skills"] = [
             {
-                # A plugin reference may omit `name`; its members come from the version.
+                # Resolution names each owned entry; a STAGE source is kept as authored.
                 **({"name": skill.name} if skill.name else {}),
                 "source": {
                     "type": skill.source_type,
@@ -80,9 +81,22 @@ def render_agent_json(model: AgentModel, tools: tuple[ResolvedAgentTool, ...]) -
     Raises:
         TypeError: a value, such as one from `passthrough`, is not JSON-encodable.
     """
-    import json
-
     return json.dumps(render_agent_spec(model, tools), indent=2, ensure_ascii=False) + "\n"
+
+
+def render_agent_profile(profile: AgentProfile) -> str:
+    """Render an agent's profile as the compact JSON `SET PROFILE` takes, leaving out each unset key.
+
+    Example:
+        A profile with only a display name renders `{"display_name":"Sales"}`; one with
+        nothing set renders `{}`.
+    """
+    value = {
+        key: item
+        for key, item in (("display_name", profile.display_name), ("avatar", profile.avatar), ("color", profile.color))
+        if item is not None
+    }
+    return json.dumps(value, separators=(",", ":"))
 
 
 def agent_render_checks(

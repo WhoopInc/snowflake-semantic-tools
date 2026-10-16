@@ -3,9 +3,10 @@
 `RenderedArtifact.create` canonicalizes the rendered text and fingerprints it. What a
 caller sets besides arrives in small parameter objects: `PublishShape` for the object
 Snowflake receives, `StatementPlan` for the statements each action runs, `Upload` for a
-file staged first, `DesiredMetadata` for the alias and tags an agent keeps, and
+file staged first, `DesiredMetadata` for the alias, tags and specification an agent keeps, and
 `CompositeFacts` for an artifact a lifecycle handler publishes. Once plan has chosen an
-action, `RenderedArtifact.for_action` picks the statements apply runs.
+action, `RenderedArtifact.for_action` picks the statements apply runs, and `version_drift` says
+how an agent's versions no longer point where SST published them.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from snowflake_semantic_tools.domain.model.lifecycle.action import Action
 from snowflake_semantic_tools.domain.model.lifecycle.marker import OwnershipMarker
 from snowflake_semantic_tools.domain.model.lifecycle.observation import ArtifactKey, ObservedArtifact
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
-from snowflake_semantic_tools.domain.sql import Sql, canonical, ident, join, qname, sql
+from snowflake_semantic_tools.domain.sql import Sql, canonical, ident, join, literal, qname, sql
 
 # The type Snowflake reports for an internal stage with server-side encryption only: the one
 # kind of stage SST creates, and the only kind it stages files on.
@@ -87,12 +88,20 @@ class StatementPlan:
         create: What a CREATE runs instead of `default`.
         update: What an UPDATE runs instead of `default`.
         update_live: What an UPDATE runs instead of `update` when the object has a live version.
+        update_properties: What an UPDATE runs instead of either when the agent's newest
+            committed version already holds the desired specification: it sets properties
+            and never adds or commits a version. `for_action` inserts, after its first
+            `properties_lead` statements, those that point the alias and the default version
+            at that version and open a live version from it.
+        properties_lead: How many of `update_properties` run before the pointing statements.
     """
 
     default: tuple[Sql, ...] | None = None
     create: tuple[Sql, ...] = ()
     update: tuple[Sql, ...] = ()
     update_live: tuple[Sql, ...] = ()
+    update_properties: tuple[Sql, ...] = ()
+    properties_lead: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,7 +122,7 @@ class Upload:
 
 @dataclass(frozen=True, slots=True)
 class DesiredMetadata:
-    """The version alias and tags an artifact keeps.
+    """The version alias, tags and specification an artifact keeps.
 
     An agent's update unsets every other alias and tag it observes; a semantic view's replace
     sets exactly these tags, so plan warns about any other one the view carries. Both compare
@@ -122,10 +131,13 @@ class DesiredMetadata:
     Attributes:
         alias: The one version alias to keep; None keeps none.
         tags: The tags to keep, by name.
+        spec_fingerprint: The fingerprint of the specification an agent's served version must
+            hold, which its committed versions carry in their comments; None for anything else.
     """
 
     alias: str | None = None
     tags: tuple[str, ...] = ()
+    spec_fingerprint: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,11 +172,13 @@ class RenderedArtifact:
             `PublishShape` describes them.
         upload_path, upload_content, upload_stage: As `Upload` describes its `path`, `content`,
             and `stage`; all None when nothing is staged.
-        create_statements, update_statements, update_live_statements: As `StatementPlan`
-            describes its `create`, `update`, and `update_live`.
+        create_statements, update_statements, update_live_statements,
+            update_properties_statements, properties_lead: As `StatementPlan` describes its
+            `create`, `update`, `update_live`, `update_properties`, and `properties_lead`.
         expected_marker: The ownership marker the write must leave, which apply reads back;
             None skips the check.
-        desired_alias, desired_tags: As `DesiredMetadata` describes them.
+        desired_alias, desired_tags, spec_fingerprint: As `DesiredMetadata` describes its
+            `alias`, `tags`, and `spec_fingerprint`.
         depends_on: The keys of the artifacts that must be published before this one.
         references: What the artifact names but does not wait on: a plugin's or profile's
             members, as artifact keys and component keys such as `command:<name>`,
@@ -195,9 +209,12 @@ class RenderedArtifact:
     create_statements: tuple[Sql, ...] = ()
     update_statements: tuple[Sql, ...] = ()
     update_live_statements: tuple[Sql, ...] = ()
+    update_properties_statements: tuple[Sql, ...] = ()
+    properties_lead: int = 0
     expected_marker: OwnershipMarker | None = None
     desired_alias: str | None = None
     desired_tags: tuple[str, ...] = ()
+    spec_fingerprint: str | None = None
     depends_on: tuple[ArtifactKey, ...] = ()
     references: tuple[str, ...] = ()
     smoke: tuple[SmokeProbe, ...] = ()
@@ -268,8 +285,11 @@ class RenderedArtifact:
             create_statements=statements.create,
             update_statements=statements.update,
             update_live_statements=statements.update_live,
+            update_properties_statements=statements.update_properties,
+            properties_lead=statements.properties_lead,
             desired_alias=metadata.alias,
             desired_tags=metadata.tags,
+            spec_fingerprint=metadata.spec_fingerprint,
             depends_on=depends_on,
             references=references,
             smoke=smoke,
@@ -288,15 +308,25 @@ class RenderedArtifact:
         """Return the artifact with `statements` set to what the action runs.
 
         A CREATE runs `create_statements` when there are any. An UPDATE runs
-        `update_live_statements` when the observed object has a live version and there are
-        any, else `update_statements` when there are any, and then unsets the aliases and tags
-        the observed agent carries but this artifact does not desire. Any other action, or an
-        UPDATE with neither program, returns this artifact unchanged.
+        `update_properties_statements` when the observed agent's newest committed version
+        already holds the desired specification and there are any, with the statements that
+        point the alias and the default version at it, and open a live version from it, where
+        missing; else `update_live_statements` when the observed object has a live version and
+        there are any; else `update_statements` when there are any. It then unsets the aliases
+        and tags the observed agent carries but this artifact does not desire. Any other
+        action, or an UPDATE with no program, returns this artifact unchanged.
         """
         if action is Action.CREATE and self.create_statements:
             return replace(self, statements=self.create_statements)
         if action is Action.UPDATE:
-            if observed is not None and observed.has_live_version and self.update_live_statements:
+            carrier = _spec_carrier(self, observed)
+            if observed is not None and carrier is not None and self.update_properties_statements:
+                lead, rest = (
+                    self.update_properties_statements[: self.properties_lead],
+                    self.update_properties_statements[self.properties_lead :],
+                )
+                statements = (*lead, *_pointing(self, observed, carrier), *rest)
+            elif observed is not None and observed.has_live_version and self.update_live_statements:
                 statements = self.update_live_statements
             elif self.update_statements:
                 statements = self.update_statements
@@ -304,6 +334,89 @@ class RenderedArtifact:
                 return self
             return replace(self, statements=(*statements, *_metadata_removals(self, observed)))
         return self
+
+
+def version_drift(artifact: RenderedArtifact, observed: ObservedArtifact) -> tuple[str, ...]:
+    """Describe how an agent's versions no longer serve what SST published; empty when they do.
+
+    Only a permanent agent whose desired specification is known, and that lists a committed
+    version, is checked: it must have a live version and, when its newest committed version
+    holds the desired specification, carry the desired alias there and have no other version
+    marked the default. A newest version holding another specification, or one that cannot be
+    read, is not drift by itself: whatever changed it is not told apart here.
+
+    Returns:
+        One phrase per finding, in that order, such as `alias PROMOTED is on VERSION$9, not
+        VERSION$10`.
+    """
+    if (
+        artifact.object_type != "AGENT"
+        or artifact.temporary
+        or artifact.spec_fingerprint is None
+        or observed.newest_version is None
+    ):
+        return ()
+    found: list[str] = []
+    if not observed.has_live_version:
+        found.append("it has no live version")
+    carrier = _spec_carrier(artifact, observed)
+    if carrier is None:
+        return tuple(found)
+    if artifact.desired_alias:
+        holder = _alias_holder(observed, artifact.desired_alias)
+        if holder is None or holder.casefold() != carrier.casefold():
+            found.append(f"alias {artifact.desired_alias.upper()} is on {holder or 'no version'}, not {carrier}")
+    default = observed.default_version
+    if default is not None and default.casefold() != carrier.casefold():
+        found.append(f"the default version is {default}, not {carrier}")
+    return tuple(found)
+
+
+def _spec_carrier(artifact: RenderedArtifact, observed: ObservedArtifact | None) -> str | None:
+    """Name the observed agent's newest committed version when it holds the desired specification."""
+    if observed is None or artifact.spec_fingerprint is None or observed.newest_spec != artifact.spec_fingerprint:
+        return None
+    return observed.newest_version
+
+
+def _alias_holder(observed: ObservedArtifact, alias: str) -> str | None:
+    """Name the committed version that carries `alias`, casefolded alike; None when none does."""
+    return next(
+        (version for shown, version in observed.alias_versions if shown.casefold() == alias.casefold()),
+        None,
+    )
+
+
+def _pointing(artifact: RenderedArtifact, observed: ObservedArtifact, carrier: str) -> tuple[Sql, ...]:
+    """Point the alias and default version at `carrier`, and open a live version from it, where missing.
+
+    A name no identifier can spell is not one Snowflake showed or SST renders, so nothing is
+    pointed at it.
+    """
+    version = _safe_identifier(carrier)
+    if version is None:
+        return ()
+    agent = qname(artifact.target)
+    statements: list[Sql] = []
+    alias = _plain_identifier(artifact.desired_alias)
+    holder = _alias_holder(observed, artifact.desired_alias) if artifact.desired_alias else None
+    if alias is not None and (holder is None or holder.casefold() != carrier.casefold()):
+        statements.append(
+            sql(
+                "ALTER AGENT {agent}\n  MODIFY VERSION {version} SET ALIAS = {alias}",
+                agent=agent,
+                version=version,
+                alias=alias,
+            )
+        )
+    default = observed.default_version
+    if default is not None and default.casefold() != carrier.casefold():
+        statements.append(
+            sql("ALTER AGENT {agent} SET DEFAULT_VERSION = {version}", agent=agent, version=literal(carrier))
+        )
+    if not observed.has_live_version:
+        statements.append(sql("ALTER AGENT {agent} ADD LIVE VERSION FROM {version}", agent=agent, version=version))
+    return tuple(statements)
 
 
 def _metadata_removals(
@@ -342,6 +455,16 @@ def _metadata_removals(
             )
         )
     return tuple(statements)
+
+
+def _plain_identifier(value: str | None) -> Sql | None:
+    """Spell an authored name as SQL, as it parses unquoted; None for no name or one that does not parse."""
+    if not value:
+        return None
+    try:
+        return ident(Identifier.parse(value))
+    except ValueError:
+        return None
 
 
 def _safe_identifier(value: str) -> Sql | None:

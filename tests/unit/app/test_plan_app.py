@@ -222,6 +222,35 @@ def test_observe_agent_versions_selects_update_program_and_unsets_stranded_alias
         "ALTER AGENT COMMIT",
         'ALTER AGENT DB."SCHEMA".V MODIFY VERSION PROMOTED UNSET ALIAS',
     )
+    # The default version, where each alias is, and what the newest version holds are read too.
+    assert (observed.newest_version, observed.default_version, observed.alias_versions) == (
+        "VERSION$1",
+        "VERSION$1",
+        (("PROMOTED", "VERSION$1"),),
+    )
+    assert observed.newest_spec is None
+
+
+def test_observe_reads_the_specification_fingerprint_the_newest_version_holds() -> None:
+    artifact = replace(rendered(), key="agent:v", artifact_type="agent", object_type="AGENT")
+    spec = '{"models": {"orchestration": "auto"}}'
+    port = FakeSnowflake()
+    port.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now", object_type="AGENT"))
+    port.agent_version_rows[artifact.target.sql] = (
+        AgentVersion(None, None, specification=spec),
+        AgentVersion("VERSION$2", None, comment=f"git:abc sst-spec:{'e' * 64}", specification=spec),
+        AgentVersion("VERSION$1", None, specification="{}"),
+    )
+    observation, _ = observe(
+        port,
+        SEMANTIC_REGISTRY,
+        (artifact.target,),
+        fetched_at="now",
+        artifact_types=frozenset(("agent",)),
+        observed_object_types={"agent": frozenset(("AGENT",))},
+    )
+    # The fingerprint the version's comment names wins over its specification's own.
+    assert next(iter(observation.artifacts.values())).newest_spec == "e" * 64
 
 
 def test_plan_reports_composite_prune_when_generic_observation_has_no_change() -> None:

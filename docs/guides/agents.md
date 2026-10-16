@@ -73,7 +73,7 @@ top-level keys:
 | Key | Meaning |
 |---|---|
 | `comment` | Published as the agent's comment, before SST's ownership marker. |
-| `profile` | `display_name`, `avatar`, and `color`, set with `ALTER AGENT ... SET PROFILE`. Two agents with one display name is a warning (`SST-VAL549`); a color must be a plain color name or `var(--token)`, and an avatar must be in `snowflake.profile.avatar_allowlist` when that is set (`SST-VAL548`). |
+| `profile` | `display_name`, `avatar`, and `color`, set with `ALTER AGENT ... SET PROFILE`. Two agents with one display name is a warning (`SST-VAL549`); a color must be a plain color name or `var(--token)`, and an avatar must be in `snowflake.profile.avatar_allowlist` when that is set (`SST-VAL548`). Snowflake refuses a profile over 1,000 bytes of JSON, so a larger one is an error (`SST-VAL558`). |
 | `config` | The agent's own settings, [below](#settings). |
 | `spec` | The Cortex Agent specification, below. |
 | `deprecated` | Retires the agent; a deprecated agent that still has an alias is an error (`SST-VAL550`). |
@@ -156,9 +156,23 @@ Each `spec.tools` entry is one tool. SST splits it into the spec's `tools` and
 | `cortex_search` | `name:` and `search_service: "{{ tool('<name>') }}"`, a `cortex_search_service` tool member. Optional: `max_results`, `id_column`, `title_column`, `columns`, `filter`, and `stage_path` with `relative_path_column` (both or neither, `SST-VAL522`). A `stage_path` on a stage this project declares opens with its member, `"{{ tool('<stage>') }}/<path>"`; an external stage is written as it is. |
 | `generic` | `name:`, `identifier: "{{ tool('<name>') }}"`, a `procedure` or `function` tool member, and an object `input_schema` (`SST-VAL526`). |
 | `agent_toolset` | `agent: "{{ agent('<name>') }}"`, or `identifier: "{{ tool('<name>') }}"`, an `agent` tool member; see [agent toolsets](#agent-toolsets). |
-| `mcp` | `name:`; its resources are exactly its `passthrough:` keys. |
 | `data_to_chart`, `web_search`, `code_execution` | Built-ins: no resources. Unnamed, a built-in is named after its type, and `web_search` must be named `web_search` (`SST-VAL517`). |
 
+- `type: mcp` is refused (`SST-VAL559`): Snowflake accepts it in `CREATE AGENT`,
+  then every run of the agent fails with "Tool type mcp is not valid". Snowflake
+  attaches an MCP server with the spec's top-level `mcp_servers:` key instead,
+  which `spec.passthrough` renders:
+
+  ```yaml
+  spec:
+    passthrough:
+      mcp_servers:
+        - server_spec:
+            name: PARTNER.DELIVERY.DELIVERY_MCP
+  ```
+
+  Snowflake names each tool the server offers `<server>_<tool>`, so the
+  agent's tool-name checks do not see them.
 - Every tool needs a `description` (`SST-VAL518`); a search or generic tool
   that sets none takes its member's. The description is what the orchestrator
   reads to choose a tool, so say what the tool answers and, just as usefully,
@@ -504,6 +518,10 @@ An agent loads skills published as Cortex Extensions:
     - source:
         type: CORTEX_EXTENSION
         path: "{{ skill('sales-semantics') }}"
+    - name: "{{ skill('jaffle-analytics') }}"
+      source:
+        type: CORTEX_EXTENSION
+        path: "{{ plugin('jaffle-toolkit') }}"
     - name: partner-glossary
       source:
         type: CORTEX_EXTENSION
@@ -515,9 +533,12 @@ An agent loads skills published as Cortex Extensions:
   this project publishes (`SST-REF032`, `SST-REF036`). Do not write `version:`
   (`SST-VAL838`): SST pins the version it publishes for the skill's current
   content, so the agent never points at a version that was not created. A
-  `skill()` entry takes the skill's name and writes no `name:` (`SST-VAL540`);
-  a `plugin()` entry may name one of the plugin's members (`SST-VAL840`), or
-  omit `name:` to load them all.
+  `skill()` entry takes the skill's name and writes no `name:` (`SST-VAL540`).
+  A `plugin()` entry may name one of the plugin's members as a `skill()` call,
+  `name: "{{ skill('<member>') }}"` (`SST-VAL840`); a bare member name is
+  `SST-REF050`. A `plugin()` entry with no `name:` loads every member: Snowflake
+  refuses a plugin entry without a name, so SST renders it as one entry per
+  member, each named after it.
 - **`{{ extension('<name>') }}`** names an extension another project publishes.
   It resolves through `extensions:` in `sst_config.yml` (`SST-REF013`;
   one this project publishes is `SST-REF037`) and must pin a version, such as
@@ -535,16 +556,18 @@ covers how skill versions are named.
 ## Publishing
 
 `sst plan` shows each agent as a create, an update, or unchanged, and its
-summary counts an agent's updates as `update`, since each adds a version. Apply
-uploads the rendered spec to `@<stage>/<agent>/<commit>/agent_spec.yaml` under
-`apply.agent_spec_stage` (default stage `AGENT_SPECS`, in the target's database
-and schema), then:
+summary counts an agent's updates as `update`. Apply uploads the rendered spec
+to `@<stage>/<agent>/<commit>/agent_spec.yaml` under `apply.agent_spec_stage`
+(default stage `AGENT_SPECS`, in the target's database and schema), then:
 
-1. When the agent is absent, `CREATE AGENT ... FROM` that folder. Snowflake
-   commits `VERSION$1`, commented `git:<commit>`, and also opens a live version
-   holding the same spec, which apply keeps.
-2. When the agent exists, `ALTER AGENT ... ADD VERSION FROM` that folder,
-   commented `git:<commit>`. An agent with a live version, which is every agent
+1. When the agent is absent, `CREATE AGENT ... COMMENT = '<comment>' FROM` that
+   folder: the comment carries SST's ownership marker from the first statement.
+   Snowflake commits `VERSION$1`, which apply comments
+   `git:<commit> sst-spec:<fingerprint>`, and also opens a live version holding
+   the same spec, which apply keeps.
+2. When the agent exists, `SET COMMENT` writes the marked comment first, then
+   `ALTER AGENT ... ADD VERSION FROM` that folder, commented
+   `git:<commit> sst-spec:<fingerprint>`. An agent with a live version, which is every agent
    SST has published since this release, has the spec written into its live
    version instead (`MODIFY LIVE VERSION SET SPECIFICATION`), which is then
    committed with that comment, so an update always adds exactly one version.
@@ -558,18 +581,45 @@ and schema), then:
    shows, and runs with, no instructions, tools, or skills.
 3. `ALTER AGENT ... MODIFY VERSION "LAST" SET ALIAS = <alias>`, when the agent
    has an alias, and `SET TAG` for its tags. The new version becomes the
-   default.
+   default, unless a default version was set by hand (see
+   [version drift](#version-drift)).
 4. `MODIFY VERSION <alias> UNSET ALIAS` for every other alias the agent shows,
    so after apply the agent carries only the alias its settings resolve to:
    changing `alias: promoted` to `alias: candidate` moves the agent to
    `CANDIDATE` and leaves no `PROMOTED`, and an agent whose `alias` resolves to
    none, under `config:` or `agents:`, has none. `plan --full`
    shows the `aliases` that change.
-5. `SET PROFILE`, `SET COMMENT`, and `SET SECURE`.
+5. `SET PROFILE` and `SET SECURE`.
 
-A statement that fails after an earlier one of the agent's ran is not retried:
-re-running from the top would add the version again. The run reports a partial
-write, and the next plan and apply finish it.
+`<fingerprint>` is the SHA-256 of the specification alone, so a plan can tell
+that the agent's newest committed version already holds the spec being planned.
+When it does, an update adds no version: a change to only the agent's
+`comment`, `profile`, tags, `alias`, or `secure` runs `SET COMMENT`, points the
+alias at that version (`MODIFY VERSION <version> SET ALIAS`), opens a live
+version from it if there is none, and sets the tags, profile, and `SECURE`. An
+eval baseline taken against that version stays valid. A version committed
+before SST wrote the fingerprint is recognised by its specification, when the
+role may read it; a secure agent's version the role cannot read gets a new
+version, as before.
+
+The ownership marker means "SST is writing this definition": it is written
+before anything else, so a publish that stops part way leaves the marker state
+records for it. A statement that fails after an earlier one of the agent's ran
+is not retried: re-running from the top would add the version again. The run
+reports a partial write with Snowflake's error (`SST-APL001`), and the next
+plan and apply finish it rather than refusing it as changed out of band
+(`SST-PLN014`). An apply that was killed after the new version was committed
+is finished the same way, without committing another version.
+
+### Version drift
+
+The plan reads where the agent's alias and default version point, and whether
+it has a live version. An agent whose definition is unchanged but whose alias
+or default version is on another version than the newest one holding its spec,
+or that has no live version, is an update with reason `version_drift`
+(`SST-PLN102`): apply points them back, without adding a version. An agent with
+no live version whose newest version holds another spec gets a new version.
+This is how a [rollback](ci-cd.md#rollback) is rolled forward.
 
 SST creates the stage when it is absent, as it does the skill bundle, profile,
 and eval config stages: before the first upload to it, apply runs
@@ -602,7 +652,13 @@ quoted, as the upper-cased name it already resolves to.
 
 `sst apply --temporary` instead publishes each agent as a session-scoped
 `CREATE OR REPLACE TEMPORARY AGENT` from the inline spec, staging nothing; it is
-refused for a production-like target. A spec over 100,000 bytes is an error
+refused for a production-like target. Only agents are temporary: the views,
+tools, and skills the same run publishes are permanent. The temporary agent is
+dropped when the apply's session ends, before anything else can call it, so it
+checks that Snowflake accepts the spec rather than giving an agent to iterate
+on; to iterate, publish to a per-developer target. An eval of an agent the run
+publishes as temporary is skipped, neither published nor recorded
+(`SST-APL105`). A spec over 100,000 bytes is an error
 (`SST-VAL511`), and one over 80% of that a warning (`SST-VAL512`).
 
 With connected validation on, `sst validate` and `sst plan` also look up every

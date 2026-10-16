@@ -3,7 +3,9 @@
 An entry reaches its extension one of three ways. `skill()` and `plugin()` name an
 extension this project publishes, and resolve to its published alias. `extension()`
 names one this project only consumes, and must pin a version itself. A STAGE source,
-a path into a mutable bundle, is kept as authored and reported.
+a path into a mutable bundle, is kept as authored and reported. A `plugin()` entry that
+names no member loads every member: Snowflake refuses a plugin entry without a name, so it
+resolves to one named entry per member.
 
 Its diagnostics are reported as each entry resolves against the `AgentCompileContext`, so
 they stay with resolution here rather than in `domain.validate`.
@@ -26,7 +28,8 @@ def resolve_skills(
     """Pin owned extensions to their published alias; check consumed ones are pinned.
 
     Returns:
-        The entries that resolve, in authored order, with the path and version they pin;
+        The entries that resolve, in authored order, with the path and version they pin, a
+        `plugin()` entry naming no member as one entry per member, in the plugin's order;
         the artifact keys of the owned extensions they pin, first reference first, each
         once; and every diagnostic, in authored order.
 
@@ -51,8 +54,8 @@ def resolve_skills(
     contributors: dict[str, str] = {}
     for skill in model.skills:
         pinned, dependency = _resolve_skill(model, skill, context, diagnostics)
-        if pinned is not None:
-            resolved.append(pinned)
+        if pinned:
+            resolved.extend(pinned)
             diagnostics.extend(_shadowed(model, skill, context, contributors))
         if dependency is not None:
             dependencies.append(dependency)
@@ -89,21 +92,22 @@ def _resolve_skill(
     skill: AgentSkill,
     context: AgentCompileContext,
     diagnostics: list[Diagnostic],
-) -> tuple[AgentSkill | None, str | None]:
-    """Resolve one entry, appending what it reports; return it pinned, and the key of its pin.
+) -> tuple[tuple[AgentSkill, ...], str | None]:
+    """Resolve one entry, appending what it reports; return the entries it pins, and the key of its pin.
 
     The STAGE and `sha_version` checks come first, so they apply whichever function the
-    entry's path uses.
+    entry's path uses. An entry that does not resolve pins none.
     """
     if skill.source_type == "STAGE":
         diagnostics.append(D("SST-VAL539", artifact=model.name, name=skill.name or skill.path, subject=model.key))
-        return skill, None
+        return (skill,), None
     if skill.version_var == "sha_version":
         diagnostics.append(D("SST-VAL839", artifact=model.name, name=skill.name or skill.path, subject=model.key))
-        return None, None
+        return (), None
     if skill.ref in ("skill", "plugin"):
         return _pin_owned(model, skill, context, diagnostics)
-    return _pin_consumed(model, skill, context, diagnostics), None
+    consumed = _pin_consumed(model, skill, context, diagnostics)
+    return ((consumed,) if consumed is not None else ()), None
 
 
 def _pin_owned(
@@ -111,21 +115,28 @@ def _pin_owned(
     skill: AgentSkill,
     context: AgentCompileContext,
     diagnostics: list[Diagnostic],
-) -> tuple[AgentSkill | None, str | None]:
+) -> tuple[tuple[AgentSkill, ...], str | None]:
     """Pin a `skill()` or `plugin()` entry to the extension's published target and alias.
 
-    A `skill()` entry is named after the skill it names.
+    A `skill()` entry is named after the skill it names. A `plugin()` entry naming no member
+    becomes one entry per member, each named after it; a plugin with no members keeps the
+    one entry, unnamed.
     """
     pin = (context.skills if skill.ref == "skill" else context.plugins).get(skill.path)
     if pin is None:
         diagnostics.append(_unpublished_or_undeclared(model, skill, context))
-        return None, None
+        return (), None
     problem = _owned_entry_problem(model, skill, pin)
     if problem is not None:
         diagnostics.append(problem)
-        return None, None
-    name = skill.path if skill.ref == "skill" else skill.name
-    return replace(skill, name=name, path=pin.target.sql, version=pin.alias), pin.key
+        return (), None
+    if skill.ref == "skill":
+        names: tuple[str, ...] = (skill.path,)
+    elif skill.name:
+        names = (skill.name,)
+    else:
+        names = pin.members or ("",)
+    return tuple(replace(skill, name=name, path=pin.target.sql, version=pin.alias) for name in names), pin.key
 
 
 def _unpublished_or_undeclared(model: AgentModel, skill: AgentSkill, context: AgentCompileContext) -> Diagnostic:

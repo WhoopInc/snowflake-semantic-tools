@@ -20,7 +20,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, session_failure
 from snowflake_semantic_tools.domain.model.agent import AgentSkill, ResolvedAgentTool
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.lifecycle import GrantRow
+from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, commented_spec_fingerprint
 from snowflake_semantic_tools.domain.model.tool import ToolKind
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -66,7 +66,8 @@ class ObserveLiveObjects:
             SST-VAL507: a live secure agent granted to a share or application role is authored
                 non-secure.
             SST-VAL508: an agent's tag names no tag object.
-            SST-VAL509: an agent SST last published unchanged no longer matches its rendered spec.
+            SST-VAL509: an agent SST last published unchanged no longer matches its rendered spec,
+                unless the newest version's comment says SST's write of the spec is unfinished.
             SST-VAL533: a generic tool's resource key is not confirmed by a live spec.
             SST-VAL531: an object a tool calls, which SST does not publish, does not exist;
                 or an extension the agent consumes, or the version it pins, does not exist
@@ -166,12 +167,21 @@ class ObserveLiveObjects:
         """Compare the live spec with the rendered one, when the live object's marker says nothing changed.
 
         With a change pending the two differ by design; the comparison only means something
-        when SST believes the live agent already carries this definition.
+        when SST believes the live agent already carries this definition. The marker is
+        written before the specification, so it also names a write that stopped before its
+        version was committed: a newest version whose comment fingerprints another
+        specification says so, and the comparison is skipped. A version committed before SST
+        wrote that fingerprint is compared as before.
         """
         if spec is None:
             return []
         marker = self._read(lambda: self._port.describe_marker(agent.target, "AGENT"))
         if marker is None or marker.fingerprint != agent.definition_fingerprint:
+            return []
+        versions = self._read(lambda: self._port.observe_agent_versions(agent.target))
+        newest = versions.newest if versions is not None else None
+        committed = commented_spec_fingerprint(newest.comment) if newest is not None else None
+        if committed is not None and committed != agent.spec_fingerprint:
             return []
         difference = first_difference(render_agent_spec(agent.resolved.model, agent.resolved.tools), spec)
         if difference is None:

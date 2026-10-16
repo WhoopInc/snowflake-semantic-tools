@@ -13,8 +13,11 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ChangeSet,
     ObservedArtifact,
     OwnershipMarker,
+    PublishShape,
     RenderedArtifact,
+    StatementPlan,
 )
+from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.state import (
     APPLIED,
     STATE_SCHEMA_VERSION,
@@ -104,3 +107,28 @@ def manifest(artifacts: dict[str, RenderedArtifact]) -> Manifest:
 def applied_entry(target: str, fingerprint: str, *, outcome: str = APPLIED) -> AppliedEntry:
     """An entry applied to `target` with `fingerprint` and `outcome`."""
     return AppliedEntry(fingerprint, target, "now", "run", outcome, fingerprint, "a" * 64)
+
+
+def agent_and_eval(*, temporary: bool) -> tuple[Change, Change]:
+    """Creates of the agent `agent:sales`, temporary or not, and of `eval:sales`, which depends on it."""
+    agent = RenderedArtifact.create(
+        key="agent:sales",
+        artifact_type="agent",
+        target=QualifiedName.from_parts("db", "schema", "sales"),
+        ddl='{"models": {"orchestration": "auto"}}',
+        shape=PublishShape(
+            "AGENT", render_dialect="json", grant_preservation=GrantPreservation.NONE, temporary=temporary
+        ),
+        statements=StatementPlan(default=(statement("CREATE AGENT DB.SCHEMA.SALES"),)),
+    )
+    evaluation = RenderedArtifact.create(
+        key="eval:sales",
+        artifact_type="eval",
+        target=QualifiedName.from_parts("db", "schema", "sales_eval"),
+        ddl=statement("CREATE DATASET DB.SCHEMA.SALES_EVAL"),
+        depends_on=(agent.key,),
+    )
+    return (
+        Change(agent.key, "agent", Action.CREATE, ChangeReason.NOT_PRESENT, agent, None, (), 60),
+        Change(evaluation.key, "eval", Action.CREATE, ChangeReason.NOT_PRESENT, evaluation, None, (agent.key,), 70),
+    )

@@ -52,8 +52,18 @@ config:
   closest folder route under `plugins:`, then the block root. A member skill is
   bundled into the plugin whether or not it publishes alone.
 - An agent references it with `{{ plugin('sales-toolkit') }}` and no
-  `version:` (`SST-VAL838`); the skill entry's `name:` is optional or must be
-  one of the members (`SST-VAL840`).
+  `version:` (`SST-VAL838`). An entry without `name:` loads every member: SST
+  renders it as one entry per member, since Snowflake refuses a plugin entry
+  without a name. To load one member, name it with a `skill()` call; a bare
+  member name is `SST-REF050`, and a skill that is not a member `SST-VAL840`:
+
+  ```yaml
+  skills:
+    - name: "{{ skill('sales-semantics') }}"
+      source:
+        type: CORTEX_EXTENSION
+        path: "{{ plugin('sales-toolkit') }}"
+  ```
 
 ## Profiles
 

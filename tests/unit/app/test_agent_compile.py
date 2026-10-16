@@ -276,6 +276,7 @@ def test_agent_compiler_covers_all_tool_kinds_and_validation_branches() -> None:
         "SST-PRS025",
         "SST-VAL543",
         "SST-VAL545",
+        "SST-VAL559",
     }
     assert expected_codes.issubset(codes), (expected_codes - codes, codes)
 
@@ -299,7 +300,7 @@ def test_agent_compiler_duplicate_names_size_skills_and_publish_properties() -> 
         tools=(
             AgentTool("data_to_chart", Origin("agent.yml"), name="same", description="chart"),
             AgentTool("code_execution", Origin("agent.yml"), name="same", description="code"),
-            AgentTool("mcp", Origin("agent.yml"), name="Same", description="mcp"),
+            AgentTool("data_to_chart", Origin("agent.yml"), name="Same", description="another chart"),
         ),
         skills=(
             AgentSkill("stage", "STAGE", "@stage", "LIVE"),
@@ -719,7 +720,11 @@ def test_agent_artifact_programs_cover_temporary_alias_tags_and_metadata() -> No
     assert any("MODIFY VERSION" in str(statement) for statement in published.create_statements)
     assert any("SET TAG DB.S.TAG" in str(statement) for statement in published.create_statements)
     assert any("SET SECURE = TRUE" in str(statement) for statement in published.statements)
-    assert "owner''s agent" in str(published.statements[-2])
+    # The marked comment comes first, so a publish that stops part way leaves the marker it was
+    # writing: in CREATE AGENT itself, and as an update's first statement.
+    assert "owner''s agent" in str(published.create_statements[0])
+    assert str(published.update_statements[0]).startswith("ALTER AGENT DB.S.PUBLISH SET COMMENT = 'owner''s agent")
+    assert str(published.statements[-2]).startswith("ALTER AGENT DB.S.PUBLISH SET PROFILE")
 
     temporary = for_publication(
         compiled,
@@ -762,8 +767,9 @@ def test_skill_references_pin_owned_versions_and_check_consumed_ones() -> None:
     payload = compiled_as(result, CompiledAgent).payload
     assert '"path": "DB.S.TOOLKIT"' in payload and '"version": "SST_0123456789AB"' in payload
     assert '"path": "DB.EXT.VENDOR_PACK"' in payload and '"version": "V2"' in payload
-    # The skill entry is named after its skill, and vendor names itself; the plugin entry omits name.
-    assert payload.count('"name":') == 2 and '"name": "semantics"' in payload
+    # The skill entry is named after its skill, and vendor names itself; the plugin entry, which
+    # names no member, is one entry per member, each named after it.
+    assert payload.count('"name":') == 4 and '"name": "operations"' in payload
     assert compiled_as(result, CompiledAgent).rendered_artifact.depends_on == ("skill:semantics", "plugin:toolkit")
 
     broken = AgentModel(
@@ -851,12 +857,15 @@ def test_agent_tools_resolve_by_type_and_unknown_types_resolve_to_nothing() -> N
     assert chart_diagnostics == ()
     assert chart is not None and (chart.name, dict(chart.resources)) == ("data_to_chart", {})
 
-    mcp, _ = resolve_tool(
+    # An `mcp` tool is refused, whatever `snowflake.tool_types` adds: every run of the agent
+    # would fail, and Snowflake attaches MCP servers through the spec's `mcp_servers:` key.
+    mcp, mcp_diagnostics = resolve_tool(
         model,
         AgentTool("mcp", origin, name="docs", description="Docs.", passthrough=MappingProxyType({"url": "u"})),
-        context(),
+        replace(context(), extra_tool_types=frozenset(("mcp",))),
     )
-    assert mcp is not None and dict(mcp.resources) == {"url": "u"}
+    assert mcp is None
+    assert [(item.code, item.origin) for item in mcp_diagnostics] == [("SST-VAL559", origin)]
 
 
 def test_agent_tools_without_a_reference_or_a_resolving_member_are_dropped() -> None:

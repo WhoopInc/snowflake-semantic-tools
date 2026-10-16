@@ -31,7 +31,7 @@ from snowflake_semantic_tools.domain.validate.shared import Emitter
 _PINNED_VERSION = re.compile(r"VERSION\$[1-9]\d*")
 _BASELINE_RUNS_MIN = 1
 # Agent tool types an eval run skips rather than fails (SST-VAL732).
-_SKIPPED_TOOL_TYPES = ("mcp", "agent_toolset")
+_SKIPPED_TOOL_TYPES = ("agent_toolset",)
 
 
 def validate_eval_config(

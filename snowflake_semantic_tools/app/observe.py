@@ -31,6 +31,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ShowRow,
     SnowflakeObservation,
     extract_marker,
+    held_spec_fingerprint,
 )
 from snowflake_semantic_tools.domain.model.registry import ArtifactType, Registry
 from snowflake_semantic_tools.domain.plan import classify
@@ -170,11 +171,12 @@ def _observe_row(
     grants, diagnostics = (
         _replaceable_grants(port, artifact_type, object_type, row, desired_artifact) if options.grants else (None, ())
     )
-    # One SHOW VERSIONS read serves both the update program and the agent's captured prior.
+    # One SHOW VERSIONS read serves the update program, version drift, and the agent's captured prior.
     versions = port.observe_agent_versions(row.qualified_name) if object_type == "AGENT" else AgentVersions()
     definition, definition_diagnostics = (
         prior_definition(port, object_type, row, desired_artifact, versions) if options.capture_prior else (None, ())
     )
+    newest = versions.newest
     artifact = ObservedArtifact(
         key=key,
         raw_name=row.name,
@@ -188,6 +190,10 @@ def _observe_row(
         definition=definition,
         has_live_version=versions.has_live_version,
         aliases=versions.aliases,
+        newest_version=newest.name if newest is not None else None,
+        newest_spec=held_spec_fingerprint(newest.comment, newest.specification) if newest is not None else None,
+        default_version=versions.default_name,
+        alias_versions=versions.alias_versions,
     )
     return artifact, (*diagnostics, *definition_diagnostics)
 

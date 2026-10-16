@@ -34,7 +34,6 @@ TOOL_KEYS: Mapping[str, frozenset[str]] = {
     },
     "generic": _COMMON | _ENVIRONMENT | {"identifier", "input_schema", "passthrough"},
     "agent_toolset": _COMMON | {"agent", "identifier"},
-    "mcp": _COMMON | {"passthrough"},
     **dict.fromkeys(BUILTIN_AGENT_TOOLS, _COMMON),
 }
 # Every key some type takes. A key outside it is not a misplaced key but an unknown one.

@@ -49,6 +49,17 @@ A definition that cannot be read, for want of a privilege or because the agent
 lists no version, is a warning (`SST-PLN037`), and that change's
 `prior_definition` is null; the plan is otherwise the same as without the flag.
 
+### Rollback
+
+Running an agent's captured statements rolls it back: its alias and default
+version point at the version it served before. The rollback holds until the
+next apply. The next `sst plan` sees that the alias or the default version is no
+longer on the newest version holding the project's spec, and plans the agent as
+an update with reason `version_drift` (`SST-PLN102`); applying it rolls forward,
+pointing them back at that version without adding one. To keep the rollback,
+do not apply until it should end, or change the source back and apply that,
+which publishes the earlier spec as a new version.
+
 If the project commits golden files, `sst test --suite golden` compares the
 rendered DDL and specs with them offline. The DDL goldens are read from
 `--golden-dir` (default `expected/ddl/` in the project), and the other goldens

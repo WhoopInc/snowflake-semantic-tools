@@ -64,6 +64,23 @@ def test_agent_versions_derive_the_live_version_and_the_aliases_from_the_rows() 
     assert (versions.has_live_version, versions.aliases) == (True, ("CANDIDATE", "PROMOTED"))
 
 
+def test_agent_versions_name_the_newest_committed_the_default_and_where_each_alias_is() -> None:
+    assert (AgentVersions().newest, AgentVersions().default_name, AgentVersions().alias_versions) == (None, None, ())
+    versions = AgentVersions(
+        (
+            AgentVersion(None, "CANDIDATE", is_default=True),
+            AgentVersion("VERSION$9", None, is_default=True),
+            AgentVersion("VERSION$10", "PROMOTED"),
+            AgentVersion("CUSTOM", "OTHER"),
+        )
+    )
+    # Versions compare by number, not as text, and a name of another form is never the newest.
+    newest = versions.newest
+    assert newest is not None and newest.name == "VERSION$10"
+    assert versions.default_name == "VERSION$9"
+    assert versions.alias_versions == (("PROMOTED", "VERSION$10"), ("OTHER", "CUSTOM"))
+
+
 def test_execution_and_stage_port_methods_are_declarations_only() -> None:
     source = object()
     assert ExecutionPort.query(source, "x") is None  # type: ignore[arg-type]

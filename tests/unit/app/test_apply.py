@@ -33,9 +33,25 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, sql
-from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, AppliedEntry, AppliedResourceInput, Manifest
+from snowflake_semantic_tools.domain.state import (
+    FAILED_AFTER_WRITE,
+    PARTIAL_WRITE,
+    AppliedEntry,
+    AppliedResourceInput,
+    Manifest,
+)
 from tests.helpers.app_ports import InMemoryStateStore
-from tests.helpers.artifact_builders import change, changeset, manifest, marker, observed, rendered, state, target
+from tests.helpers.artifact_builders import (
+    agent_and_eval,
+    change,
+    changeset,
+    manifest,
+    marker,
+    observed,
+    rendered,
+    state,
+    target,
+)
 from tests.helpers.clocks import FixedClock
 from tests.helpers.snowflake_fake import FakeSnowflake, failed
 from tests.helpers.sql_values import statement, texts
@@ -1100,3 +1116,55 @@ class _LifecycleHandler:
         del current, previous
         self.merged = True
         return (("TABLE", "DB.SCHEMA.MERGED"),)
+
+
+def test_a_temporary_run_publishes_and_records_no_eval_of_a_temporary_agent() -> None:
+    # The temporary agent ends with the run's session, so an eval of it could never run.
+    port = FakeSnowflake()
+    use_case, _, store, _ = runner(port)
+    result = use_case.run(changeset(*agent_and_eval(temporary=True)), state(), ApplyOptions(temporary=True))
+    assert result.success
+    assert {outcome.key: outcome.status for outcome in result.outcomes} == {
+        "agent:sales": OutcomeStatus.APPLIED,
+        "eval:sales": OutcomeStatus.SKIPPED,
+    }
+    assert port.scripts == [("CREATE AGENT DB.SCHEMA.SALES",)]
+    assert [item.code for item in result.diagnostics if item.code == "SST-APL105"] == ["SST-APL105"]
+    written = store.state
+    assert written is not None and not any(key.startswith("eval:") for key in written.applied)
+
+    # The same eval of a permanent agent is published.
+    port = FakeSnowflake()
+    use_case, _, _, _ = runner(port)
+    permanent = use_case.run(changeset(*agent_and_eval(temporary=False)), state())
+    assert [outcome.status for outcome in permanent.outcomes] == [OutcomeStatus.APPLIED, OutcomeStatus.APPLIED]
+
+
+def test_a_set_profile_refused_after_the_create_reports_snowflakes_error_and_a_partial_write() -> None:
+    # The marker is written with CREATE AGENT, so the next plan finishes the write; the
+    # refusal that stopped it is what the run reports, not a marker read back.
+    agent, _ = agent_and_eval(temporary=False)
+    assert agent.rendered is not None
+    artifact = replace(agent.rendered, expected_marker=OwnershipMarker("c" * 64, agent.rendered.fingerprint))
+    refusal = "Cortex agent profile JSON exceeds maximum size limit of 1000 bytes. Actual size: 10019 bytes."
+    port = FakeSnowflake()
+    port.execute_results = [replace(failed(refusal), query_ids=("01-create", "02-version-comment"))]
+    use_case, _, store, _ = runner(port)
+    result = use_case.run(changeset(replace(agent, rendered=artifact)), state())
+    [outcome] = result.outcomes
+    assert outcome.partial_write and outcome.error is not None and outcome.error.message == refusal
+    [reported] = [item for item in result.diagnostics if item.code.startswith("SST-APL")]
+    assert reported.code == "SST-APL001" and refusal in reported.message
+    assert store.state is not None and store.state.applied["agent:sales"].outcome == PARTIAL_WRITE
+
+
+def test_a_write_that_ran_whole_without_leaving_its_marker_says_so() -> None:
+    agent, _ = agent_and_eval(temporary=False)
+    assert agent.rendered is not None
+    artifact = replace(agent.rendered, expected_marker=OwnershipMarker("c" * 64, agent.rendered.fingerprint))
+    use_case, _, _, _ = runner(FakeSnowflake())
+    result = use_case.run(changeset(replace(agent, rendered=artifact)), state())
+    [reported] = [item for item in result.diagnostics if item.code == "SST-APL012"]
+    assert reported.message == (
+        "agent:sales: DB.SCHEMA.SALES, whose ownership marker the write did not leave, changed since the plan"
+    )

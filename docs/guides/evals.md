@@ -542,7 +542,9 @@ baseline is captured, when:
   label), a threshold or gate flag, the tier, the set of question and metric
   pairs, or the concrete agent version the run resolved: `SST-VAL759`
   (`baseline_incompatible`). Publishing a new agent version therefore needs a
-  new baseline;
+  new baseline. A change to only the agent's comment, profile, tags, alias, or
+  `secure` adds no version ([agents guide](agents.md#publishing)), so the
+  baseline stays valid;
 - the baseline holds fewer runs than `baseline_runs` now asks: `SST-VAL734`
   (`baseline_incomplete`);
 - it has expired: `SST-VAL761` (`baseline_expired`);

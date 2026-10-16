@@ -25,6 +25,9 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     OutcomeStatus,
 )
 
+# The failure a write reports when it ran whole and the object does not carry the marker it set.
+MARKER_NOT_INSTALLED = "ownership marker was not installed"
+
 
 def classify_error(message: str, *, sqlstate: str | None = None, errno: int | None = None) -> ClassifiedError:
     """Classify a Snowflake failure by the signature table: its number, its SQLSTATE, then its wording.
@@ -125,6 +128,10 @@ def _outcome_diagnostic(change: Change, outcome: ApplyOutcome) -> Diagnostic:
         return D(code, artifact=change.key, value=error.message)
     if code == "SST-APL012":
         target = change.observed.qualified_name.sql if change.observed else change.key
+        # The write ran, so the object may not have changed at all: say the marker is missing.
+        if error.message == MARKER_NOT_INSTALLED:
+            written = change.rendered.target.sql if change.rendered else target
+            target = f"{written}, whose ownership marker the write did not leave,"
         return D(code, artifact=change.key, value=target)
     if code in ("SST-APL007", "SST-APL016", "SST-APL017", "SST-APL022"):
         return D(code, artifact=change.key, detail=error.message)

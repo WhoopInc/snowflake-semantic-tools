@@ -481,6 +481,24 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
+        "SST-PLN102",
+        Severity.WARNING,
+        "Agent versions drifted from what SST published",
+        "{artifact}: {detail}; apply points it back",
+        "apply to roll forward, or hold a rollback by not applying until it should end",
+        condition=(
+            "state records the agent unchanged, but it has no live version, or its newest "
+            "committed version holds the planned specification and the agent's alias is on "
+            "another version or another version is the default"
+        ),
+        note=(
+            "The update sets the alias, the default version and a live version back on the "
+            "version holding the specification, without adding a version; an agent with no live "
+            "version whose newest version holds another specification gets a new version instead."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
         "SST-PLN900",
         Severity.ERROR,
         "Change order is not a valid topological order",

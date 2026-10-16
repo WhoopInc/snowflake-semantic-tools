@@ -364,8 +364,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL840",
         Severity.ERROR,
         "Plugin entry name is not one of its members",
-        "agent '{artifact}': skill source name '{name}' must be {expected}",
-        "use a member name of the plugin, or remove the name",
+        "agent '{artifact}': plugin entry name {{{{ skill('{name}') }}}} must be {expected}",
+        "name a member as {{ skill('<member>') }}, or remove the name to load every member",
         condition="an agent's `plugin()` entry names a skill that is not a member of the plugin",
     ),
     spec(

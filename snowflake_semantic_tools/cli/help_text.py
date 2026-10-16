@@ -141,7 +141,8 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst apply", "--plan"): "Apply this saved plan. It must still match the compiled project.",
     ("sst apply", "--yes"): "Apply without asking for confirmation.",
     ("sst apply", "--temporary"): (
-        "Publish agents as session-scoped temporary agents; refused for a production-like target."
+        "Publish agents as temporary agents, dropped when the apply's session ends, and skip their "
+        "evals; views, tools and skills still publish permanently. Refused for a production-like target."
     ),
     ("sst compile", "--emit-ddl"): "Write each artifact's rendered payload into this directory, offline.",
     ("sst compile", "--select"): "Report and emit only these artifacts; the manifest still holds everything.",

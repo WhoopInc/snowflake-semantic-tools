@@ -11,7 +11,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import replace
 
-from snowflake_semantic_tools.app.apply.errors import _exception_error, _failed, _rendered_ddl, _script_error, _skipped
+from snowflake_semantic_tools.app.apply.errors import (
+    MARKER_NOT_INSTALLED,
+    _exception_error,
+    _failed,
+    _rendered_ddl,
+    _script_error,
+    _skipped,
+)
 from snowflake_semantic_tools.app.apply.stages import UploadStages
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.model.identifier import Identifier
@@ -285,20 +292,23 @@ class ChangeApplier:
         outcome: ApplyOutcome,
         before: tuple[GrantRow, ...] | None,
     ) -> ApplyOutcome:
-        """Check the ownership marker and the explicit grants of an object the statements wrote.
+        """Check the ownership marker and the explicit grants of an object the statements fully wrote.
 
-        The marker is read back even after a partial failure; the grants only after a full
-        write of an update that kept some.
+        A partial write keeps the error Snowflake reported for the statement that failed: that
+        is why the write stopped, whatever the marker then reads. The grants are checked only
+        for an update that kept some.
         """
         assert change.rendered is not None
         rendered = change.rendered
+        if outcome.status is OutcomeStatus.FAILED:
+            return outcome
         if (
             rendered.expected_marker is not None
             and self._port.describe_marker(rendered.target, rendered.object_type) != rendered.expected_marker
         ):
-            error = ClassifiedError("SST-APL012", "ownership marker was not installed", ErrorKind.UNKNOWN)
+            error = ClassifiedError("SST-APL012", MARKER_NOT_INSTALLED, ErrorKind.UNKNOWN)
             return replace(outcome, status=OutcomeStatus.FAILED, error=error, write_succeeded=True)
-        if outcome.status is OutcomeStatus.FAILED or before is None or change.observed is None:
+        if before is None or change.observed is None:
             return outcome
         return self._verify_grants(change, change.observed, outcome, before)
 

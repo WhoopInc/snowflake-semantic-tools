@@ -22,12 +22,12 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 298 codes
+- [Validation (VAL)](#validation-val) -- 300 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
-- [Planning (PLN)](#planning-pln) -- 41 codes
-- [Apply (APL)](#apply-apl) -- 30 codes
+- [Planning (PLN)](#planning-pln) -- 42 codes
+- [Apply (APL)](#apply-apl) -- 31 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 24 codes
 - [Internal (INT)](#internal-int) -- 12 codes
@@ -4011,6 +4011,30 @@ Fix: move enrichment.synonym_model to a GA model before sst enrich stops working
 
 Note: Only `sst enrich` calls the synonym model, so validation reads its lifecycle and asks it nothing; enrich checks that it answers before it reads the warehouse (SST-SNO032).
 
+### SST-VAL558
+
+**Agent profile exceeds the size limit** (error)
+
+`agent '<artifact>': profile renders <size> bytes of JSON, over Snowflake's 1,000-byte limit`
+
+Raised when the agent's `profile:` renders more than 1,000 bytes of JSON, encoded as UTF-8.
+
+Fix: shorten the profile's display_name, avatar or color
+
+Note: `ALTER AGENT ... SET PROFILE` refuses a larger profile, after the agent's other statements ran, so the publish would stop part way.
+
+### SST-VAL559
+
+**MCP tool type is not a Snowflake tool** (error)
+
+`agent '<artifact>': tool '<name>' has type mcp, which every run of the agent refuses`
+
+Raised when an agent's `spec.tools` entry has `type: mcp`.
+
+Fix: remove the tool and attach the server under spec.passthrough.mcp_servers
+
+Note: CREATE AGENT accepts the tool, then every run of the agent fails with 'Tool type mcp is not valid'. Snowflake attaches an MCP server with the spec's top-level `mcp_servers:` key, which `spec.passthrough` renders: `mcp_servers: [{server_spec: {name: <server>}}]`.
+
 ### SST-VAL603
 
 **Tool type is not recognised** (error)
@@ -4551,7 +4575,7 @@ Fix: lower concurrency; runs re-invoke the agent, so this is real load and real 
 
 `eval config for '<artifact>': <value> will be skipped, not failed`
 
-Raised when the agent has an `mcp` or `agent` tool, which an eval run skips; one per tool type, only for a config with a `run:` block.
+Raised when the agent has an `agent_toolset` tool, which an eval run skips; one per tool type, only for a config with a `run:` block.
 
 Note: A skipped tool is never invoked, so the eval looks healthier than the agent is.
 
@@ -5199,11 +5223,11 @@ Fix: use skill() or plugin() with no version, or pin a real version of a consume
 
 **Plugin entry name is not one of its members** (error)
 
-`agent '<artifact>': skill source name '<name>' must be <expected>`
+`agent '<artifact>': plugin entry name {{ skill('<name>') }} must be <expected>`
 
 Raised when an agent's `plugin()` entry names a skill that is not a member of the plugin.
 
-Fix: use a member name of the plugin, or remove the name
+Fix: name a member as {{ skill('&lt;member&gt;') }}, or remove the name to load every member
 
 ### SST-VAL841
 
@@ -6501,6 +6525,18 @@ Fix: fix the metric; a created view is not a working view
 
 Raised when under `sst test --suite smoke --fail-fast`, an artifact whose probes did not run because an earlier probe failed.
 
+### SST-PLN102
+
+**Agent versions drifted from what SST published** (warning)
+
+`<artifact>: <detail>; apply points it back`
+
+Raised when state records the agent unchanged, but it has no live version, or its newest committed version holds the planned specification and the agent's alias is on another version or another version is the default.
+
+Fix: apply to roll forward, or hold a rollback by not applying until it should end
+
+Note: The update sets the alias, the default version and a live version back on the version holding the specification, without adding a version; an agent with no live version whose newest version holds another specification gets a new version instead.
+
 ### SST-PLN900
 
 **Change order is not a valid topological order** (error)
@@ -6834,6 +6870,18 @@ Raised when Snowflake ended a session apply was running on after the run took it
 Fix: run sst plan, which shows what the run left to do, then apply again
 
 Note: Apply opens one fresh connection to record in state the changes that finished and to release its lock, so the target is not left locked. A change whose statements had not returned is not recorded as written; the next plan sees what it left behind.
+
+### SST-APL105
+
+**Eval of a temporary agent skipped** (info)
+
+`<artifact>: skipped, because --temporary publishes <value> as a temporary agent`
+
+Raised when `apply --temporary` publishes an eval's agent as a temporary agent, which ends with the run's session, so the eval is neither published nor recorded.
+
+Fix: apply without --temporary to publish the eval with its agent
+
+Note: Only agents are temporary: the views, tools and skills the same run publishes are permanent.
 
 ### SST-APL900
 

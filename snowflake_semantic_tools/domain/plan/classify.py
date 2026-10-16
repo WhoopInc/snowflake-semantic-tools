@@ -19,7 +19,13 @@ A blocking diagnostic travels on the change as well as in the plan's list. Three
 never change a decision: a declared name whose case differs from the live object's
 (SST-PLN023), reported before the decision's own diagnostic; and an update of an object that
 carries explicit grants (SST-PLN013), then of a semantic view that carries tags the project
-does not declare (SST-PLN039), reported after it.
+does not declare (SST-PLN039), reported after it. An agent updated for version drift reports
+what drifted (SST-PLN102) after them.
+
+An agent's ownership marker means "SST is writing this definition": publishing writes the
+marked comment before anything else, so an apply that stops part way leaves the marker state
+records for the write, and the partial write is finished rather than refused as changed out
+of band.
 """
 
 from __future__ import annotations
@@ -36,6 +42,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositePlan,
     ObservedArtifact,
     RenderedArtifact,
+    version_drift,
 )
 from snowflake_semantic_tools.domain.model.registry import Registry
 from snowflake_semantic_tools.domain.state import PARTIAL_WRITE, AppliedEntry
@@ -89,6 +96,7 @@ def classify(
         SST-PLN025: state records the artifact at another target.
         SST-PLN039: an update replaces a semantic view that carries tags the project does not
             declare, which the replace removes.
+        SST-PLN102: an otherwise unchanged agent's versions drifted from what SST published.
         SST-VAL320: the recorded or rendered fingerprint is not a canonical digest, so the
             comparison would not be of normalised definitions.
     """
@@ -166,6 +174,8 @@ def _compare(
         )
     if change.action is Action.UPDATE and (removed := _removed_tags(artifact, observed)):
         reported.append(D("SST-PLN039", artifact=key, value=observed.qualified_name.sql, found=", ".join(removed)))
+    if change.reason is ChangeReason.VERSION_DRIFT:
+        reported.append(D("SST-PLN102", artifact=key, detail="; ".join(version_drift(artifact, observed))))
     return Decision(change, tuple(reported))
 
 
@@ -253,6 +263,10 @@ def _written_partly(evidence: _Evidence) -> bool:
     return evidence.recorded.outcome == PARTIAL_WRITE
 
 
+def _versions_drifted(evidence: _Evidence) -> bool:
+    return bool(version_drift(evidence.artifact, evidence.observed))
+
+
 def _target_moved(evidence: _Evidence) -> Diagnostic:
     return D(
         "SST-PLN025",
@@ -269,6 +283,7 @@ def _out_of_band(evidence: _Evidence) -> Diagnostic:
 # The first row that holds decides, and an object no row matches is unchanged. The blocking
 # rows come first, so an update never overwrites an object that moved or changed out of band;
 # the one update before them is of an object whose marker names the definition being planned.
+# Version drift comes last: it is checked only for an agent whose definition is unchanged.
 _STATE_RULES: tuple[_StateRule, ...] = (
     _StateRule(_unnormalised, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _raw_comparison),
     _StateRule(_recorded_elsewhere, Action.BLOCKED, ChangeReason.TARGET_MOVED, _target_moved),
@@ -276,6 +291,7 @@ _STATE_RULES: tuple[_StateRule, ...] = (
     _StateRule(_changed_out_of_band, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _out_of_band),
     _StateRule(_fingerprint_differs, Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS),
     _StateRule(_written_partly, Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS),
+    _StateRule(_versions_drifted, Action.UPDATE, ChangeReason.VERSION_DRIFT),
 )
 
 

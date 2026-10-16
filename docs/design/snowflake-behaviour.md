@@ -493,6 +493,44 @@ the upload path, and the agent goldens are JSON
 **SST depends on it at**: the `Upload` in `CompiledAgent.rendered_artifact` in
 [compiled.py](../../snowflake_semantic_tools/app/compile/agents/compiled.py).
 
+### A profile over 1,000 bytes is refused, and only once the agent exists
+
+**Docs say**: `ALTER AGENT ... SET PROFILE` takes a JSON object of
+`display_name`, `avatar`, and `color`. The docs give no size limit.
+
+**Server does**: a profile over 1,000 bytes of JSON is refused:
+`Cortex agent profile JSON exceeds maximum size limit of 1000 bytes. Actual
+size: <n> bytes.` `CREATE AGENT` and every version statement before it have
+already run, so the publish stops part way.
+
+**Evidence**: `Enforced`. Validation refuses such a profile (SST-VAL558), and
+publishing writes the marked comment before anything else, so a publish that
+stops part way is finished by the next apply.
+[test_sst_val558.py](../../tests/codes/val/test_sst_val558.py),
+`test_a_set_profile_refused_after_the_create_reports_snowflakes_error_and_a_partial_write`
+in [test_apply.py](../../tests/unit/app/test_apply.py).
+
+**SST depends on it at**: `PROFILE_LIMIT_BYTES` in
+[validate/agent.py](../../snowflake_semantic_tools/domain/validate/agent.py).
+
+### An mcp tool is accepted, and every run of the agent fails
+
+**Docs say**: an MCP server is attached to an agent with the spec's top-level
+`mcp_servers:` key, `mcp_servers: [{server_spec: {name: <server>}}]`.
+
+**Server does**: `CREATE AGENT` accepts a `tools` entry of `type: mcp`, as it
+accepts any tool type, and then every run of the agent fails before
+orchestration with `Tool type mcp is not valid` (399504), whatever the question.
+The same server under `mcp_servers:` is called, its tools named
+`<server>_<tool>`.
+
+**Evidence**: `Enforced`. SST refuses `type: mcp` (SST-VAL559);
+`spec.passthrough` renders `mcp_servers:`.
+[test_sst_val559.py](../../tests/codes/val/test_sst_val559.py).
+
+**SST depends on it at**: `resolve_tool` in
+[resolve_tools.py](../../snowflake_semantic_tools/app/compile/agents/resolve_tools.py).
+
 ### Agent references are not checked by the server
 
 **Docs say**: the `CREATE AGENT` reference does not describe a skills block, so

@@ -37,7 +37,11 @@ class ChangeReason(Enum):
     whose entry records a different target.
     UNRECORDED_PUBLISH updates an object whose ownership marker names the very definition being
     planned, though state records an earlier one: an apply published it and was stopped before
-    it recorded it, so publishing it again records it.
+    it recorded it, so publishing it again records it. An agent whose newest committed version
+    already holds the specification is not given another version; only its properties are set.
+    VERSION_DRIFT updates an agent that is otherwise unchanged whose alias or default version
+    no longer points at the version holding its specification, or that has no live version,
+    so apply points them back.
     """
 
     NOT_PRESENT = "not_present"
@@ -51,3 +55,4 @@ class ChangeReason(Enum):
     UNMANAGED_OBJECT = "unmanaged_object"
     TARGET_MOVED = "target_moved"
     UNRECORDED_PUBLISH = "unrecorded_publish"
+    VERSION_DRIFT = "version_drift"

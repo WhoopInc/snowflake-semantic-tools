@@ -17,7 +17,6 @@ KNOWN_AGENT_TOOL_TYPES = frozenset(
         "cortex_search",
         *BUILTIN_AGENT_TOOLS,
         "generic",
-        "mcp",
         "agent_toolset",
     )
 )

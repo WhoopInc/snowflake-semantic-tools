@@ -20,11 +20,14 @@ from snowflake_semantic_tools.domain.model.agent import (
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.setting import CONFIG_SOURCE
 from snowflake_semantic_tools.domain.parse.names import RESERVED_WORDS
+from snowflake_semantic_tools.domain.render.agent import render_agent_profile
 from snowflake_semantic_tools.domain.sql import ident
 from snowflake_semantic_tools.domain.validate.sql import name_problem, qualified_name_problem
 
 SPEC_LIMIT_BYTES = 100_000
 SPEC_WARNING_BYTES = 80_000
+# The most bytes of profile JSON `ALTER AGENT ... SET PROFILE` accepts (docs/design/snowflake-behaviour.md).
+PROFILE_LIMIT_BYTES = 1_000
 
 
 class AgentIdentities:
@@ -102,6 +105,7 @@ def agent_rules(
         SST-VAL546: the agent enables analytical search without a cortex_search tool.
         SST-VAL548: the avatar is outside the allowlist, or the color is neither a plain
             colour name nor a `var(--token)`.
+        SST-VAL558: the profile renders more than `PROFILE_LIMIT_BYTES` of JSON.
         SST-VAL550: the agent is deprecated and an alias still points at a version of it.
     """
     diagnostics: list[Diagnostic] = []
@@ -176,7 +180,7 @@ def _alias_problems(model: AgentModel, alias: str) -> tuple[Diagnostic, ...]:
 
 
 def _profile_problems(model: AgentModel, avatar_allowlist: frozenset[str] | None) -> list[Diagnostic]:
-    """Report an avatar outside the configured allowlist, then a color in neither known form."""
+    """Report an avatar outside the allowlist, a color in neither known form, then an oversize profile."""
     found: list[Diagnostic] = []
     avatar, color = model.profile.avatar, model.profile.color
     if avatar and avatar_allowlist is not None and avatar not in avatar_allowlist:
@@ -201,6 +205,9 @@ def _profile_problems(model: AgentModel, avatar_allowlist: frozenset[str] | None
                 subject=model.key,
             )
         )
+    size = len(render_agent_profile(model.profile).encode("utf-8"))
+    if size > PROFILE_LIMIT_BYTES:
+        found.append(D("SST-VAL558", artifact=model.name, size=size, subject=model.key, origin=model.origin))
     return found
 
 

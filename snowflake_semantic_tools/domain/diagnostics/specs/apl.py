@@ -407,6 +407,18 @@ SPECS: tuple[ErrorSpec, ...] = (
         precheck=Precheck.RUNTIME,
     ),
     spec(
+        "SST-APL105",
+        Severity.INFO,
+        "Eval of a temporary agent skipped",
+        "{artifact}: skipped, because --temporary publishes {value} as a temporary agent",
+        "apply without --temporary to publish the eval with its agent",
+        condition=(
+            "`apply --temporary` publishes an eval's agent as a temporary agent, which ends "
+            "with the run's session, so the eval is neither published nor recorded"
+        ),
+        note="Only agents are temporary: the views, tools and skills the same run publishes are permanent.",
+    ),
+    spec(
         "SST-APL900",
         Severity.ERROR,
         "Outcome count does not match change count",

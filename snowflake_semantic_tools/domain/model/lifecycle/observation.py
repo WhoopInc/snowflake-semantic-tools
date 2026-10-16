@@ -90,6 +90,13 @@ class ObservedArtifact:
         tags: The tags the object shows: an agent's update unsets those not desired, and a
             semantic view's replace removes them. Read only for a semantic view plan will
             replace; None when not read, which is not the same as none set.
+        newest_version: The agent's newest committed version, such as `VERSION$3`; None when
+            it lists none.
+        newest_spec: The fingerprint of the specification the newest committed version holds,
+            as `held_spec_fingerprint` reads it; None when it cannot be told.
+        default_version: The committed version SHOW marks the default; None when none is.
+        alias_versions: Each alias a committed version carries, with that version, as
+            `(alias, version)`.
     """
 
     key: ArtifactKey
@@ -106,6 +113,10 @@ class ObservedArtifact:
     routine_signature: tuple[str, ...] = ()
     aliases: tuple[str, ...] = ()
     tags: tuple[str, ...] | None = None
+    newest_version: str | None = None
+    newest_spec: str | None = None
+    default_version: str | None = None
+    alias_versions: tuple[tuple[str, str], ...] = ()
 
     @property
     def explicit_grants(self) -> tuple[GrantRow, ...]:
