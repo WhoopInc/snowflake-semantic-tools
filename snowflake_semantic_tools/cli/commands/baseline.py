@@ -198,7 +198,7 @@ def show_command(
     if current is None:
         data = _data(path, Baseline(_name(options), "", ()))
         return CommandResult(data=data, human=lambda: click.echo(f"no baseline at {path}"))
-    lapsed = current.expires_on < _today().isoformat()
+    lapsed = date.fromisoformat(current.expires_on) < _today()
     shown = tuple(
         entry
         for entry in current.entries

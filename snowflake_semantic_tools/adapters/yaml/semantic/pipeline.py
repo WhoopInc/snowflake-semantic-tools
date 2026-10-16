@@ -15,7 +15,7 @@ from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
-from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
+from snowflake_semantic_tools.adapters.yaml.discover import FileSet, directory_refused, discover_yaml
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache, RawDocument, RawDocuments, load_documents
 from snowflake_semantic_tools.adapters.yaml.ownership import assign_owners
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
@@ -38,7 +38,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.view_instructions import _i
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import view_key
 from snowflake_semantic_tools.domain.model.authored import NodePath
-from snowflake_semantic_tools.domain.model.config_schema import setting_value
+from snowflake_semantic_tools.domain.model.config_schema import configured_dir, setting_value
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtTarget
 from snowflake_semantic_tools.domain.model.project import (
     ParsedMember,
@@ -62,15 +62,25 @@ from snowflake_semantic_tools.domain.validate.semantic.verified_queries import d
 
 @dataclass(frozen=True, slots=True)
 class SemanticInputs:
-    """What the semantic load reads from SST's own files: the config and every semantic-model document."""
+    """What the semantic load reads from SST's own files: the config and every semantic-model document.
+
+    Attributes:
+        refused: The configuration refused the directory, so nothing was discovered and the
+            load builds nothing; the configuration's diagnostic is the report.
+    """
 
     config: dict[str, Any]
     semantic_models_dir: str
     documents: RawDocuments
+    refused: bool = False
 
 
 def read_semantic_inputs(
-    files: ProjectPaths, config: Mapping[str, Any], cache: LoadCache | None = None
+    files: ProjectPaths,
+    config: Mapping[str, Any],
+    cache: LoadCache | None = None,
+    *,
+    config_diagnostics: DiagnosticBag | tuple[Diagnostic, ...] = (),
 ) -> SemanticInputs:
     """Read the configuration, then discover, parse, and assign every semantic-model document once.
 
@@ -81,6 +91,9 @@ def read_semantic_inputs(
     Args:
         config: The run's configuration, with its templates resolved for the run's target.
         cache: The parses this run already holds, which an unchanged file is served from.
+        config_diagnostics: What checking the configuration found. When one blocks on the
+            `project:` block or its `semantic_models_dir`, nothing is discovered: that diagnostic
+            is the report, not the absence of a directory nobody can name.
 
     Raises:
         ProjectError: the run has no configuration file, or a document cannot be read.
@@ -89,11 +102,16 @@ def read_semantic_inputs(
         raise ProjectError(f"no configuration file in {files.project_dir}")
     project_dir = files.project_dir
     config = dict(config)
-    semantic_models_dir = str((config.get("project") or {}).get("semantic_models_dir") or "semantic_models")
-    documents = load_documents(discover_yaml(project_dir, semantic_models_dir, config=config), parse_yaml_bytes, cache)
+    semantic_models_dir = configured_dir(config, "semantic_models_dir", "semantic_models")
+    refused = directory_refused(config_diagnostics)
+    if refused:
+        found = FileSet((), MappingProxyType({"semantic_models": semantic_models_dir}))
+    else:
+        found = discover_yaml(project_dir, semantic_models_dir, config=config)
+    documents = load_documents(found, parse_yaml_bytes, cache)
     unowned, _ = assign_owners(documents)
     documents = replace(documents, diagnostics=(*documents.diagnostics, *unowned))
-    return SemanticInputs(config, semantic_models_dir, documents)
+    return SemanticInputs(config, semantic_models_dir, documents, refused)
 
 
 def load_semantic_views_result(
@@ -149,6 +167,8 @@ def load_semantic_views_result(
     Raises:
         ProjectError: A member cannot be read at all, or there is no semantic_views/ directory.
     """
+    if inputs.refused:
+        return SemanticViewProject(())
     parsed = parse_semantic_project(inputs.documents, project_dir, inputs.semantic_models_dir, models)
     resolved_members, instruction_text_diagnostics, unresolved_instructions = _instruction_texts(
         parsed, catalog or DbtCatalog("v12", None, None, tuple(models.values()))

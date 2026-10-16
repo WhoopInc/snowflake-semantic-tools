@@ -110,8 +110,8 @@ Where apply records what it published, per target.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `state.+database` | string | the target database | State table database. |
-| `state.+schema` | string | the target schema | State table schema. |
+| `state.+database` | identifier | the target database | State table database. |
+| `state.+schema` | identifier | the target schema | State table schema. |
 | `state.+table` | string | `SST_STATE` | State table name. |
 
 ## tags
@@ -130,8 +130,8 @@ Defaults for tool members, overridable per folder and by a member's own `config:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `tools.+database` | string | the target database | Database for defined tool objects. |
-| `tools.+schema` | string | the target schema | Schema for defined tool objects. |
+| `tools.+database` | identifier | the target database | Database for defined tool objects. |
+| `tools.+schema` | identifier | the target schema | Schema for defined tool objects. |
 | `tools.+warehouse` | string | the target warehouse | Warehouse for defined search services and procedures. |
 | `tools.+target_lag` | string |  | Target lag for defined search services. |
 | `tools.+embedding_model` | string |  | Embedding model for defined search services. |
@@ -145,8 +145,8 @@ Defaults for semantic views, overridable per folder and by a view's own `config:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `semantic_views.+database` | string | the target database | Database for semantic views. |
-| `semantic_views.+schema` | string | the target schema | Schema for semantic views. |
+| `semantic_views.+database` | identifier | the target database | Database for semantic views. |
+| `semantic_views.+schema` | identifier | the target schema | Schema for semantic views. |
 | `semantic_views.+enabled` | boolean | `true` | Whether views are built; false leaves them out of the project. |
 | `semantic_views.+tags` | list |  | Tags, as `name` and `value` entries, rendered in the CREATE's WITH TAG; a closer setting replaces the list. |
 | `semantic_views.+max_staleness` | integer |  | `MAX_STALENESS` of views, in seconds; at least 120 (SST-CFG023). |
@@ -158,8 +158,8 @@ Defaults for Cortex Agents, overridable per folder and by an agent's own `config
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `agents.+database` | string | the target database | Database for agents. |
-| `agents.+schema` | string | the target schema | Schema for agents. |
+| `agents.+database` | identifier | the target database | Database for agents. |
+| `agents.+schema` | identifier | the target schema | Schema for agents. |
 | `agents.+warehouse` | string | the target warehouse | Warehouse an agent's Analyst, search, and generic tools run on when they name none. |
 | `agents.+orchestration_model` | string | `auto` | Orchestration model; must be in `snowflake.orchestration_models` (SST-CFG025 here, SST-VAL543 for the value an agent resolves). `auto` lets Snowflake choose. |
 | `agents.+query_timeout` | integer |  | Query timeout, in seconds, of an agent's tools that set none. |
@@ -197,9 +197,9 @@ Defaults for skills, overridable per folder and by a skill's own `config:`. A sk
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `skills.+database` | string | the target database | Database for skill extensions. |
-| `skills.+schema` | string | the target schema | Schema for skill extensions. |
-| `skills.+bundle_stage` | string |  | Internal stage that `ADD VERSION` reads from; created when absent. Unset, the skill does not publish. |
+| `skills.+database` | identifier | the target database | Database for skill extensions. |
+| `skills.+schema` | identifier | the target schema | Schema for skill extensions. |
+| `skills.+bundle_stage` | identifier or three-part name |  | Internal stage that `ADD VERSION` reads from; created when absent. Unset, the skill does not publish. |
 | `skills.+certified` | boolean | `false` | Tag each new skill version `SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'`. |
 | `skills.+version_prefix` | string | `SST_` | Prefix of every version alias, and of each profile's VERSION; the rest is 12 hex characters of the digest. |
 | `skills.+threads` | integer, 1 to 16, root only | `4` | Changes `apply` applies at once when neither `--threads`, `$SST_THREADS`, nor `generation.threads` says. Profiles always publish one at a time. |
@@ -211,9 +211,9 @@ Defaults for plugins, overridable per folder and by a plugin's own `config:`. A 
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `plugins.+database` | string | the target database | Database for plugin extensions. |
-| `plugins.+schema` | string | the target schema | Schema for plugin extensions. |
-| `plugins.+bundle_stage` | string |  | Internal stage that `ADD VERSION` reads from; created when absent. Unset, the plugin does not publish. |
+| `plugins.+database` | identifier | the target database | Database for plugin extensions. |
+| `plugins.+schema` | identifier | the target schema | Schema for plugin extensions. |
+| `plugins.+bundle_stage` | identifier or three-part name |  | Internal stage that `ADD VERSION` reads from; created when absent. Unset, the plugin does not publish. |
 | `plugins.+certified` | boolean | `false` | Tag each new plugin version `SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'`. |
 | `plugins.+version_prefix` | string | `SST_` | Prefix of every plugin version alias; the rest is 12 hex characters of the bundle digest. |
 | `plugins.<route>` | block |  | Folder route: overrides for the plugins under that directory. |
@@ -224,10 +224,10 @@ Defaults for CoCo Desktop profiles, overridable per folder and by a profile's ow
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `profiles.+database` | string | the target database | Database of the profile stage and registry. |
-| `profiles.+schema` | string | the target schema | Schema of the profile stage and registry. |
-| `profiles.+stage` | string |  | Internal stage that holds profile trees; created when absent. Unset, the profile does not publish. |
-| `profiles.+registry_table` | string | `PROFILE_REGISTRY` | Profile registry table. Desktop reads `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`. |
+| `profiles.+database` | identifier | the target database | Database of the profile stage and registry. |
+| `profiles.+schema` | identifier | the target schema | Schema of the profile stage and registry. |
+| `profiles.+stage` | identifier or three-part name |  | Internal stage that holds profile trees; created when absent. Unset, the profile does not publish. |
+| `profiles.+registry_table` | identifier or three-part name | `PROFILE_REGISTRY` | Profile registry table. Desktop reads `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`. |
 | `profiles.<route>` | block |  | Folder route: overrides for the profile in that directory. |
 
 ## extensions

@@ -240,11 +240,13 @@ def variable_problem(
 
     Diagnostics:
         SST-CFG029: `vars:` declares no variable of that exact name.
-        SST-REF009: the variable's value is empty, so the call would substitute nothing.
+        SST-REF009: the variable's value is empty or null, so the call would substitute nothing.
     """
     if name not in variables:
         return D("SST-CFG029", origin=origin, subject=subject, var=name)
-    if str(variables[name]) == "":
+    value = variables[name]
+    # `name:` with nothing after it parses to None, which is as empty as `""`.
+    if value is None or str(value) == "":
         return D("SST-REF009", origin=origin, subject=subject, ref_function="var", name=name)
     return None
 

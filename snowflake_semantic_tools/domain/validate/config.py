@@ -8,7 +8,7 @@ anything else is reported, never ignored.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any
 
@@ -21,6 +21,7 @@ from snowflake_semantic_tools.domain.diagnostics import (
     Severity,
     override_refusal,
 )
+from snowflake_semantic_tools.domain.model.config_schema import stated
 from snowflake_semantic_tools.domain.model.config_schema.keys import (
     CHILDREN,
     CONFIG_FILE,
@@ -31,6 +32,7 @@ from snowflake_semantic_tools.domain.model.config_schema.keys import (
     KeyKind,
     KeyStatus,
 )
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, vocabulary_key
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
 
@@ -43,8 +45,19 @@ _TYPES: Mapping[KeyKind, tuple[type, ...]] = MappingProxyType(
         KeyKind.INTEGER: (int,),
         KeyKind.LIST: (list,),
         KeyKind.ENUM: (str,),
+        KeyKind.IDENTIFIER: (str,),
+        KeyKind.OBJECT_NAME: (str,),
     }
 )
+# What a location key must name, as SST-CFG008 says it.
+NAME_KINDS: Mapping[KeyKind, str] = MappingProxyType(
+    {
+        KeyKind.IDENTIFIER: "Snowflake identifiers",
+        KeyKind.OBJECT_NAME: "Snowflake identifiers and three-part names",
+    }
+)
+# The templates a location value may hold: `target_text` renders exactly these spellings.
+_TARGET_FIELDS = ("{{ target.database }}", "{{ target.schema }}", "{{ target.warehouse }}")
 
 Positions = Mapping[tuple[str | int, ...], tuple[int, int]]
 _SEVERITIES: Mapping[str, Severity] = MappingProxyType(
@@ -87,12 +100,66 @@ def validate_config(
         SST-CFG033: a severity override demotes a non-demotable code, an error below warning, or
             promotes an info code to error.
     """
+    return _validated(tree, positions, file)[0]
+
+
+def validated_config(
+    tree: Mapping[Any, object], *, positions: Positions | None = None, file: str = CONFIG_FILE
+) -> tuple[dict[str, Any], DiagnosticBag]:
+    """Check a parsed tree as `validate_config` does, and return it without each location it refused.
+
+    A location key whose value is of the wrong type or names no Snowflake object is removed, so
+    every reader sees it unset and nothing parses it as a name; its diagnostic still blocks.
+
+    Diagnostics:
+        Each code `validate_config` reports.
+    """
+    diagnostics, located = _validated(tree, positions, file)
+    pruned: dict[str, Any] = dict(tree)
+    for path in located.refused:
+        _remove(pruned, path)
+    return pruned, diagnostics
+
+
+def _validated(tree: Mapping[Any, object], positions: Positions | None, file: str) -> tuple[DiagnosticBag, _Located]:
     diagnostics: list[Diagnostic] = []
     located = _Located(positions or {}, file)
     _walk("", ChildPolicy.DECLARED, tree, (), located, diagnostics)
     diagnostics.extend(_allowlist_problems(tree, located))
     diagnostics.extend(_override_problems(tree, located))
-    return DiagnosticBag(diagnostics)
+    return DiagnosticBag(diagnostics), located
+
+
+def _remove(tree: dict[Any, object], path: tuple[str, ...]) -> None:
+    """Remove the entry at `path`, copying each block on the way so the parsed tree is left alone."""
+    block = tree
+    for key in path[:-1]:
+        raw = next(item for item in block if str(item) == key)
+        child = block[raw]
+        assert isinstance(child, Mapping)
+        block[raw] = block = dict(child)
+    block.pop(next(item for item in block if str(item) == path[-1]))
+
+
+def unusable_name(value: str, kind: KeyKind) -> bool:
+    """Report whether a location value fails to parse as the Snowflake name its key's readers take.
+
+    Empty reads as unset, so it parses. A `{{ target.* }}` template stands for a name the target
+    supplies. An `OBJECT_NAME` with a dot outside quotes is read as a three-part name.
+    """
+    text = value
+    for template in _TARGET_FIELDS:
+        text = text.replace(template, "X")
+    if not text:
+        return False
+    try:
+        if kind is KeyKind.OBJECT_NAME and "." in text:
+            QualifiedName.parse(text)
+        else:
+            Identifier.parse(text)
+    except ValueError:
+        return True
+    return False
 
 
 def _overrides(tree: Mapping[Any, object]) -> dict[str, object]:
@@ -278,10 +345,14 @@ def empty_is_block(path: tuple[str | int, ...]) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class _Located:
-    """The key positions of one configuration file, and how its diagnostics name it."""
+    """The key positions of one configuration file, and how its diagnostics name it.
+
+    `refused` collects, as the walk goes, the path of each location key whose value was refused.
+    """
 
     positions: Positions
     file: str
+    refused: list[tuple[str, ...]] = field(default_factory=list)
 
 
 def unstated_policy(tree: Mapping[Any, object], *, file: str = CONFIG_FILE) -> DiagnosticBag:
@@ -291,10 +362,10 @@ def unstated_policy(tree: Mapping[Any, object], *, file: str = CONFIG_FILE) -> D
     so the file must say so; a block or value of the wrong type is reported by `validate_config`.
 
     Diagnostics:
-        SST-CFG031: `validation.snowflake_syntax_check` is absent.
+        SST-CFG031: `validation.snowflake_syntax_check` is absent, or written with no value.
     """
     validation = tree.get("validation")
-    if isinstance(validation, Mapping) and "snowflake_syntax_check" in validation:
+    if stated(validation, "snowflake_syntax_check"):
         return DiagnosticBag()
     path = ("validation", "snowflake_syntax_check") if isinstance(validation, Mapping) else ("validation",)
     return DiagnosticBag((D("SST-CFG031", origin=Origin(file), subject=f"config:{'.'.join(path)}"),))
@@ -485,6 +556,8 @@ def _check(
     problem = _value_problem(spec, value, path, positions)
     if problem is not None:
         diagnostics.append(problem)
+        if spec.kind in NAME_KINDS:
+            positions.refused.append(path)
         return
     if isinstance(value, dict) and spec.kind in (KeyKind.BLOCK, KeyKind.MAP):
         if route_of is not None:
@@ -521,7 +594,7 @@ def value_problem(spec: ConfigKey, value: object, *, key: str, origin: Origin, s
     Diagnostics:
         SST-CFG004: the value is not of the key's type; an integer key never takes a boolean.
         SST-CFG008: the value is outside the key's choices or bounds, unless the key names its own
-            code for that, such as SST-CFG023.
+            code for that, such as SST-CFG023; or a location key's value is no Snowflake name.
     """
     expected = _TYPES.get(spec.kind)
     mistyped = expected is not None and not isinstance(value, expected)
@@ -535,6 +608,8 @@ def value_problem(spec: ConfigKey, value: object, *, key: str, origin: Origin, s
     if isinstance(value, int) and not isinstance(value, bool) and _out_of_bounds(spec, value):
         bounds = f"{spec.minimum}..{spec.maximum}"
         return D(code, origin=origin, subject=subject, key=key, found=str(value), expected=bounds)
+    if spec.kind in NAME_KINDS and isinstance(value, str) and unusable_name(value, spec.kind):
+        return D(code, origin=origin, subject=subject, key=key, found=repr(value), expected=NAME_KINDS[spec.kind])
     return None
 
 

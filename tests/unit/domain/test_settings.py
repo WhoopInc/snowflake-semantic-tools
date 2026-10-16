@@ -183,6 +183,8 @@ _SAMPLES: dict[KeyKind, tuple[object, object, object, object]] = {
     KeyKind.INTEGER: (1, 2, 3, 4),
     KeyKind.LIST: (["root"], ["outer"], ["inner"], []),
     KeyKind.ENUM: ("root", "outer", "inner", "own"),
+    KeyKind.IDENTIFIER: ("ROOT", "OUTER", "INNER", "OWN"),
+    KeyKind.OBJECT_NAME: ("ROOT", "OUTER", "INNER", "OWN"),
 }
 
 

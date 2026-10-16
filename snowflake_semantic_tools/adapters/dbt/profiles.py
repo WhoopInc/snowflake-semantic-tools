@@ -300,13 +300,17 @@ def resolve_profile_name(files: ProjectPaths) -> str:
 def declared_targets(files: ProjectPaths) -> tuple[str, frozenset[str], str | None]:
     """Return the profile's name, every target it declares, and its default `target:`.
 
+    The default target is rendered as `_default_target` renders it.
+
     Raises:
-        ProjectError: no `profiles.yml` exists (SST-CFG009), or it does not declare the profile
-            (SST-CFG010).
+        ProjectError: no `profiles.yml` exists (SST-CFG009), it does not declare the profile
+            (SST-CFG010), or its `target:` cannot be rendered (SST-CFG013, SST-CFG049).
 
     Diagnostics:
         SST-CFG009: no `profiles.yml` exists at any searched location; raised.
         SST-CFG010: `profiles.yml` does not declare the profile; raised.
+        SST-CFG013: `target:` calls `env_var()` on an unset variable with no default; raised.
+        SST-CFG049: `target:` holds a template other than `env_var()`; raised.
     """
     profile_name = resolve_profile_name(files)
     profile = _read_profiles(files.profiles_file()).get(profile_name)
@@ -315,8 +319,26 @@ def declared_targets(files: ProjectPaths) -> tuple[str, frozenset[str], str | No
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     outputs = profile.get("outputs")
     targets = frozenset(str(key) for key in outputs) if isinstance(outputs, dict) else frozenset()
-    default = profile.get("target")
-    return profile_name, targets, default if isinstance(default, str) else None
+    return profile_name, targets, _default_target(profile)
+
+
+def _default_target(profile: Mapping[str, object]) -> str | None:
+    """Return a profile's `target:` with each `env_var()` rendered, as dbt renders it; None when unset.
+
+    Raises:
+        ProjectError: the value holds another template (SST-CFG049), or names an unset variable
+            with no default (SST-CFG013).
+
+    Diagnostics:
+        SST-CFG049: `target:` holds a template other than `env_var()`; raised.
+        SST-CFG013: `target:` calls `env_var()` on an unset variable with no default; raised.
+    """
+    value = profile.get("target")
+    if not isinstance(value, str):
+        return None
+    if _TEMPLATE.search(_ENV_VAR.sub("", value)):
+        _refuse("SST-CFG049", value, key="target", problem="holds a template other than env_var()")
+    return str(_resolve_env(value))
 
 
 def profile_output(
@@ -335,8 +357,10 @@ def profile_output(
         SST-CFG009: no `profiles.yml` exists at any searched location; raised.
         SST-CFG010: the profile has no such target; raised.
         SST-CFG011: the target's `type` is not `snowflake`; raised.
-        SST-CFG013: an `env_var()` SST reads is unset and has no default; raised.
-        SST-CFG049: a field SST reads holds a template other than `env_var()`; raised.
+        SST-CFG013: an `env_var()` SST reads, the default `target:` among them, is unset and has
+            no default; raised.
+        SST-CFG049: a field SST reads, the default `target:` among them, holds a template other
+            than `env_var()`; raised.
         SST-PRT011: a credential written for the target renders empty; raised.
     """
     profile_name = profile or resolve_profile_name(files)
@@ -347,7 +371,7 @@ def profile_output(
             "SST-CFG010", subject="config:profiles.yml", target=target_name or "(default)", profile=profile_name
         )
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    selected = target_name or declared.get("target")
+    selected = target_name or _default_target(declared)
     outputs = declared.get("outputs")
     output = outputs.get(selected) if isinstance(outputs, dict) else None
     if not isinstance(selected, str) or not isinstance(output, dict):

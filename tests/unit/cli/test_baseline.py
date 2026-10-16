@@ -36,9 +36,9 @@ def test_the_file_round_trips_with_its_audit_record(tmp_path: Path) -> None:
     path = tmp_path / "b.json"
     path.write_text(baseline_text(written), encoding="utf-8")
     assert read_baseline(path, "b.json") == written
-    path.write_text('{"version": 1, "expires_on": "x", "entries": [], "renewals": [1, {"reason": "r"}]}')
+    path.write_text('{"version": 1, "expires_on": "2027-01-01", "entries": [], "renewals": [1, {"reason": "r"}]}')
     assert read_baseline(path, "b.json").renewals == (Renewal("", "r", ""),)
-    path.write_text('{"version": 1, "expires_on": "x", "entries": [], "renewals": "no"}')
+    path.write_text('{"version": 1, "expires_on": "2027-01-01", "entries": [], "renewals": "no"}')
     assert read_baseline(path, "b.json").renewals == ()
 
 

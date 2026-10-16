@@ -4,7 +4,8 @@ A value that is wholly `{{ '<a>' if target.name == '<t>' else '<b>' }}` -- `!=` 
 through further `else '<x>' if target.name == '<u>'` arms, the final `else` optional -- becomes the
 literal its first true arm names. `{{ var('<name>') }}` anywhere in a value becomes the variable
 `vars:` declares. Every other template, `{{ target.database }}` among them, is left as written for
-the reader of that key. Nothing else is evaluated, so the grammar stays enumerable.
+the reader of that key. Nothing else is evaluated, so the grammar stays enumerable. A value whose
+template does not resolve is removed: its reader sees the key unset, and the diagnostic blocks.
 """
 
 from __future__ import annotations
@@ -15,12 +16,15 @@ from typing import Any
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.config_schema.keys import CONFIG_KEYS, KeyKind
+from snowflake_semantic_tools.domain.resolve.calls import variable_problem
 
 _LITERAL = r"'([^']*)'"
 _ARM = re.compile(rf"\s*{_LITERAL}\s+if\s+target\.name\s*(==|!=)\s*{_LITERAL}\s*(?:else\b|$)")
 _FALLBACK = re.compile(rf"\s*{_LITERAL}\s*$")
 _CONDITIONAL = re.compile(r"^\s*\{\{(?P<body>.*\bif\s+target\.name\b.*)\}\}\s*$", re.DOTALL)
 _VAR = re.compile(r"\{\{\s*var\(\s*['\"]([^'\"]+)['\"]\s*\)\s*\}\}")
+# What `render` returns for a value whose template failed, so its key or list item is dropped.
+_UNRESOLVED = object()
 
 
 def has_target_conditional(tree: Mapping[str, Any]) -> bool:
@@ -33,8 +37,9 @@ def render_config(
 ) -> tuple[dict[str, Any], DiagnosticBag]:
     """Return the tree with every target conditional and `var()` resolved, and what did not resolve.
 
-    `vars:` itself is left as written. A value that does not resolve is left as written too, so
-    the reader of its key reports nothing further about it.
+    `vars:` itself is left as written. A value that does not resolve is removed, key or list
+    item, so its reader sees it unset and reports nothing further about it -- neither a
+    mistyped value nor a name that does not parse -- while the diagnostic still blocks.
 
     Args:
         target_name: The target the run resolves against; None when there is no conditional.
@@ -43,24 +48,31 @@ def render_config(
     Diagnostics:
         SST-CFG016: a target conditional has no arm for the current target and no final else.
         SST-CFG029: `var()` names a variable `vars:` does not declare.
+        SST-REF009: `var()` names a variable whose value is empty or null.
     """
     variables = tree.get("vars")
     declared = variables if isinstance(variables, Mapping) else {}
     diagnostics: list[Diagnostic] = []
 
     def render(path: tuple[str, ...], value: Any) -> Any:
+        """Render one value; `_UNRESOLVED` when its template reported, so its key or item is dropped."""
         if isinstance(value, Mapping):
-            return {key: render((*path, str(key)), item) for key, item in value.items()}
+            entries = ((key, render((*path, str(key)), item)) for key, item in value.items())
+            return {key: item for key, item in entries if item is not _UNRESOLVED}
         if isinstance(value, list):
-            return [render((*path, str(index)), item) for index, item in enumerate(value)]
+            items = (render((*path, str(index)), item) for index, item in enumerate(value))
+            return [item for item in items if item is not _UNRESOLVED]
         if not isinstance(value, str):
             return value
+        reported = len(diagnostics)
         rendered = _render_vars(value, declared, path, file, diagnostics)
         chosen = _render_conditional(rendered, target_name, path, file, diagnostics)
+        if len(diagnostics) > reported:
+            return _UNRESOLVED
         return _typed(path, chosen) if chosen is not rendered else chosen
 
-    resolved = {key: (item if key == "vars" else render((key,), item)) for key, item in tree.items()}
-    return resolved, DiagnosticBag(diagnostics)
+    entries = ((key, item if key == "vars" else render((key,), item)) for key, item in tree.items())
+    return {key: item for key, item in entries if item is not _UNRESOLVED}, DiagnosticBag(diagnostics)
 
 
 def _strings(tree: Mapping[str, Any], path: tuple[str, ...] = ()) -> list[tuple[tuple[str, ...], str]]:
@@ -82,9 +94,11 @@ def _render_vars(
 ) -> str:
     def substitute(match: re.Match[str]) -> str:
         name = match.group(1)
-        if name in declared:
+        # The one rule project YAML's `var()` follows too: undeclared is CFG029, empty REF009.
+        problem = variable_problem(name, declared, Origin(file), subject=f"config:{'.'.join(path)}")
+        if problem is None:
             return str(declared[name])
-        diagnostics.append(D("SST-CFG029", origin=Origin(file), subject=f"config:{'.'.join(path)}", var=name))
+        diagnostics.append(problem)
         return match.group(0)
 
     return _VAR.sub(substitute, value)

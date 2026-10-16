@@ -41,6 +41,8 @@ _KIND_LABELS: Mapping[KeyKind, str] = {
     KeyKind.INTEGER: "integer",
     KeyKind.LIST: "list",
     KeyKind.ENUM: "enum",
+    KeyKind.IDENTIFIER: "identifier",
+    KeyKind.OBJECT_NAME: "identifier or three-part name",
     KeyKind.ANY: "any",
 }
 

@@ -109,7 +109,9 @@ and the message's values, never the line, so a reformat keeps it while a new
 instance, or a renamed artifact, is not covered. Errors and non-demotable
 warnings cannot be baselined. The file expires
 (`--expires-in`, 180 days by default): a run past its expiry fails with
-`SST-CFG039` until `sst baseline renew --reason ...`. `sst baseline prune`
+`SST-CFG039` until `sst baseline renew --reason ...`. Its `expires_on` is a
+`YYYY-MM-DD` date, as `sst baseline` writes it; any other spelling, such as
+`2026-9-1`, is refused when the file is read (`SST-PRT009`). `sst baseline prune`
 removes the entries nothing matches any more, and `--no-baseline` ignores the
 file for one run.
 

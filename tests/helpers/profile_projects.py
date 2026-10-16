@@ -14,3 +14,12 @@ def target_project(root: Path, fields: str = "", *, adapter: str = "snowflake") 
         encoding="utf-8",
     )
     return root
+
+
+def default_target_project(root: Path, target: str) -> Path:
+    """Write `target_project`'s project with its profile's `target:` written as `target`, and a target `y`."""
+    target_project(root, "")
+    path = root / "profiles.yml"
+    text = path.read_text(encoding="utf-8").replace("  target: x\n", f"  target: {target}\n", 1)
+    path.write_text(text + "    y:\n      type: snowflake\n      database: DB\n      schema: S\n", encoding="utf-8")
+    return root

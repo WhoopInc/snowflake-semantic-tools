@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.resolve.config import has_target_conditional, render_config
+from tests.helpers.cli_projects import validate_json
+from tests.helpers.reference_project import AGENTS_SCHEMA, config_edited, config_line
 
 PROD_ONLY = {"semantic_views": {"+database": "{{ 'PROD_DB' if target.name == 'prod' }}"}}
 
@@ -30,3 +34,15 @@ def test_sst_cfg016_silent() -> None:
         "+schema": "C",
         "+database": "{{ target.database }}",
     }
+
+
+def test_sst_cfg016_on_an_agents_location_is_reported_not_parsed_as_a_name(tmp_path: Path) -> None:
+    # The reference project's default target is `dev`, which this conditional has no arm for.
+    value = AGENTS_SCHEMA.replace("JAFFLE", "\"{{ 'P' if target.name == 'prod' }}\"")
+    code, diagnostics = validate_json(config_edited(tmp_path, (AGENTS_SCHEMA, value)))
+    [diagnostic] = [item for item in diagnostics if item["code"] == "SST-CFG016"]
+    assert code == 1
+    assert (diagnostic["location"]["file"], diagnostic["location"]["line"]) == (
+        "sst_config.yml",
+        config_line(tmp_path, "+schema: \"{{ 'P'"),
+    )

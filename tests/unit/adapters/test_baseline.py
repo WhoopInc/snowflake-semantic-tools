@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -51,3 +52,15 @@ def test_a_missing_baseline_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ProjectError) as raised:
         read_baseline(tmp_path / "absent.json", "absent.json")
     assert [item.code for item in raised.value.diagnostics] == ["SST-PRT009"]
+
+
+@pytest.mark.parametrize("expires_on", ["2026-9-1", "2026-13-45", "20260901", "２０２６-01-01", 20270101])
+def test_an_expiry_that_is_not_a_yyyy_mm_dd_date_is_refused(tmp_path: Path, expires_on: object) -> None:
+    # As text, `2026-9-1` sorts after every October date, so it would never expire.
+    path = write(tmp_path, json.dumps({"version": 1, "expires_on": expires_on, "entries": []}))
+    with pytest.raises(ProjectError) as raised:
+        read_baseline(path, "b.json")
+    [diagnostic] = raised.value.diagnostics
+    assert diagnostic.code == "SST-PRT009"
+    if isinstance(expires_on, str):
+        assert diagnostic.message == "could not read b.json: expires_on is not a YYYY-MM-DD date"

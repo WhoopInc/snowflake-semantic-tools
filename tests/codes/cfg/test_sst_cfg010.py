@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target
+from snowflake_semantic_tools.adapters.dbt.profiles import declared_targets, load_profile_target
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.profile_projects import target_project
+from tests.helpers.profile_projects import default_target_project, target_project
 from tests.helpers.projects import project_paths
 
 
@@ -31,3 +31,16 @@ def test_sst_cfg010_fires_for_an_undeclared_profile(tmp_path: Path) -> None:
 
 def test_sst_cfg010_silent(tmp_path: Path) -> None:
     assert load_profile_target(project_paths(target_project(tmp_path)), "x").target_name == "x"
+
+
+def test_sst_cfg010_silent_for_a_default_target_env_var_renders(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # dbt renders `target:`, so SST selects the target it names, as written or by its default.
+    project = project_paths(default_target_project(tmp_path, "\"{{ env_var('SST_TEST_TARGET', 'y') }}\""))
+    monkeypatch.delenv("SST_TEST_TARGET", raising=False)
+    assert load_profile_target(project).target_name == "y"
+    assert declared_targets(project)[2] == "y"
+    monkeypatch.setenv("SST_TEST_TARGET", "x")
+    assert load_profile_target(project).target_name == "x"
+    assert declared_targets(project)[2] == "x"

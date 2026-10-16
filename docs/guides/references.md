@@ -177,6 +177,7 @@ These fields are not references, and take no template call:
 | A tool member's `relations`, `secrets`, `external_access_integrations` and `packages`; warehouses; external stages | They name Snowflake objects SST does not own. They are what references resolve into, not references themselves. |
 | Extension and tag FQNs in `sst_config.yml` (`extensions:`, `tags:`) | They are the declarations a `tag()` or `extension()` call resolves against. |
 | A consumed extension's skill `name:` in an agent | It names a skill inside an extension SST does not build; a template there is `SST-REF008`. |
+| An agent's `comment`, `profile.display_name`, and sample questions; a tool's `description`, in an agent or a tool member | They are published as written; a template there, even a `{{` alone, is `SST-REF008`. |
 | dbt `meta.sst` columns | dbt owns that file and renders its own Jinja before SST reads it. |
 | An agent search tool's `filter` object | It is Snowflake's own filter syntax, passed through as written. |
 | Eval `tool_name` | It is a run-time trace label, matched against what the agent called. |

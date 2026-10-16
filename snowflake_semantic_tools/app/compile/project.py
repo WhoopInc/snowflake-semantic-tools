@@ -9,13 +9,13 @@ and merges their results in DDL order.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompileArtifacts, CompileSemanticViews
 from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, CompileAgents, CompiledAgent
 from snowflake_semantic_tools.app.compile.agents.cross import cross_artifact_result
-from snowflake_semantic_tools.app.compile.agents.settled import agent_environment, agent_location, settled_agent
+from snowflake_semantic_tools.app.compile.agents.settled import agent_environment, settled_agent
 from snowflake_semantic_tools.app.compile.base import CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompileEvals
 from snowflake_semantic_tools.app.compile.profiles import CompileProfiles, DesktopChannel
@@ -32,6 +32,7 @@ from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key, view_key
 from snowflake_semantic_tools.domain.model.config_schema import (
     CONFIG_FILE,
+    KeyKind,
     Setting,
     block_settings,
     config_block,
@@ -47,17 +48,19 @@ from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
-from snowflake_semantic_tools.domain.model.setting import ROOT_SOURCE, ROUTE_PREFIX
+from snowflake_semantic_tools.domain.model.setting import CONFIG_SOURCE, ROOT_SOURCE, ROUTE_PREFIX
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, Plugin, Skill, extension_identifier
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
 from snowflake_semantic_tools.domain.resolve.stage_path import stage_member
 from snowflake_semantic_tools.domain.resolve.tags import declared_tags
 from snowflake_semantic_tools.domain.validate.config import (
+    NAME_KINDS,
     config_tool_calls,
     config_tool_references,
     severity_overrides,
     unreferenced_tool_members,
+    unusable_name,
 )
 from snowflake_semantic_tools.domain.validate.shared import namespace_collisions
 
@@ -87,11 +90,17 @@ class Publishing:
 
 @dataclass(frozen=True, slots=True)
 class _Settings:
-    """`sst_config.yml` read against the dbt target: where every compiler's settings come from."""
+    """`sst_config.yml` read against the dbt target: where every compiler's settings come from.
+
+    Attributes:
+        problems: Each location that rendered to no Snowflake name, collected as the compilers
+            read their settings; the target's own value stands in for it.
+    """
 
     tree: Mapping[str, object]
     target: TargetIdentity
     file: str = CONFIG_FILE
+    problems: list[Diagnostic] = field(default_factory=list)
 
     def block(self, name: str) -> dict[str, object]:
         """Return one top-level block; empty when it is absent or not a mapping."""
@@ -101,23 +110,81 @@ class _Settings:
         """Return the `project.<key>` root, else `default`."""
         return configured_dir(self.tree, key, default)
 
-    def location(self, block: Mapping[str, object]) -> tuple[str, str]:
-        """Return the block's `+database` and `+schema`, each defaulting to the target's own."""
-        database = self.target.database.folded
-        schema = self.target.schema.folded
+    def location(self, name: str) -> tuple[str, str]:
+        """Return block `name`'s `+database` and `+schema`, each defaulting to the target's own.
+
+        Diagnostics:
+            SST-CFG008: a part renders to no Snowflake identifier; the target's own is used.
+        """
+        block = self.block(name)
         return (
-            target_text(block.get("+database"), self.target, database) or database,
-            target_text(block.get("+schema"), self.target, schema) or schema,
+            self.name(block.get("+database"), self.target.database.folded, f"{name}.+database", None),
+            self.name(block.get("+schema"), self.target.schema.folded, f"{name}.+schema", None),
         )
 
-    def place(self, resolved: Mapping[str, Setting]) -> tuple[str, str]:
-        """Return the `database` and `schema` an item's settings name, each else the target's own."""
-        database = self.target.database.folded
-        schema = self.target.schema.folded
+    def place(self, resolved: Mapping[str, Setting], block: str, subject: str) -> tuple[str, str]:
+        """Return the `database` and `schema` an item's settings name, each else the target's own.
+
+        Diagnostics:
+            SST-CFG008: a part renders to no Snowflake identifier; the target's own is used.
+        """
         return (
-            target_text(setting_value(resolved, "database"), self.target, database) or database,
-            target_text(setting_value(resolved, "schema"), self.target, schema) or schema,
+            self.setting(resolved, "database", self.target.database.folded, block, subject),
+            self.setting(resolved, "schema", self.target.schema.folded, block, subject),
         )
+
+    def setting(
+        self,
+        resolved: Mapping[str, Setting],
+        key: str,
+        default: str,
+        block: str,
+        subject: str,
+        kind: KeyKind = KeyKind.IDENTIFIER,
+    ) -> str:
+        """Render an item's location setting `key`, else `default`, as `name` checks it.
+
+        Diagnostics:
+            SST-CFG008: the setting renders to no Snowflake name; `default` is used.
+        """
+        setting = resolved.get(key)
+        if setting is None:
+            return default
+        # A setting from the item's own `config:` is reported against the item, not this file.
+        own = subject if setting.source == CONFIG_SOURCE else None
+        return self.name(setting.value, default, _setting_key(block, setting), own, kind)
+
+    def name(
+        self, value: object, default: str, key: str, subject: str | None, kind: KeyKind = KeyKind.IDENTIFIER
+    ) -> str:
+        """Render one location value, else `default`; one that renders to no Snowflake name is refused.
+
+        A value that is itself no name was refused where it was checked, as the configuration file
+        or the item's `config:` was read, so only one that `{{ target.* }}` made unusable is
+        reported here. Either way `default` stands in, so nothing downstream parses it.
+
+        Args:
+            subject: The item whose `config:` wrote the value; None for this file's own key.
+
+        Diagnostics:
+            SST-CFG008: the value renders to no Snowflake name.
+        """
+        text = target_text(value, self.target, default) or default
+        if value is None or text == default or not unusable_name(text, kind):
+            return text
+        if not (isinstance(value, str) and unusable_name(value, kind)):
+            origin = Origin(self.file) if subject is None else None
+            self.problems.append(
+                D(
+                    "SST-CFG008",
+                    origin=origin,
+                    subject=subject or f"config:{key}",
+                    key=key,
+                    found=repr(text),
+                    expected=NAME_KINDS[kind],
+                )
+            )
+        return default
 
 
 class CompileProject:
@@ -180,6 +247,7 @@ class CompileProject:
         ]
         if config.has_dbt_project:
             results.extend(self._dbt_artifacts(settings, publishing, consumed, unpublished))
+        results.append(CompileResult((), DiagnosticBag(settings.problems)))
         merged = CompileArtifacts.merge(results, POSITIONS)
         # Each code reports at the severity the project sets for it from here on.
         return replace(merged, diagnostics=apply_overrides(merged.diagnostics, severity_overrides(config.tree)))
@@ -328,10 +396,10 @@ class CompileProject:
         )
         skill_pins, plugin_pins, plugin_members = extension_pins(publishing.skills)
         semantic_targets = {item.name.casefold(): item.rendered_artifact.target for item in semantic.compiled}
-        database, schema = settings.location(defaults)
+        database, schema = settings.location("agents")
         agent_targets: dict[str, QualifiedName] = {}
         for model in enabled:
-            location = agent_location(model, settings.target)
+            location = settings.place(model.settings, "agents", model.key)
             agent_targets.setdefault(model.name.casefold(), QualifiedName.from_parts(*location, model.name))
         return AgentCompileContext(
             semantic_targets,
@@ -450,7 +518,10 @@ def _unqualified_extension(name: str, reason: str, file: str) -> Diagnostic:
 
 
 def _object_in(name: str, database: str, schema: str) -> QualifiedName:
-    """Qualify an object name in the block's database and schema, unless it is qualified already."""
+    """Qualify an object name in the block's database and schema, unless it is qualified already.
+
+    `name` is one `_Settings.setting` checked as an `OBJECT_NAME`, so it parses.
+    """
     return QualifiedName.parse(name) if "." in name else QualifiedName.from_parts(database, schema, name)
 
 
@@ -491,11 +562,14 @@ def _catalog_channel(settings: _Settings, block: str, item: Skill | Plugin) -> C
     block's root location is its home.
     """
     resolved = resolve_settings(settings.tree.get(block), item.folder, item.config)
-    bundle_stage = setting_value(resolved, "bundle_stage")
-    if not isinstance(bundle_stage, str):
+    if not isinstance(setting_value(resolved, "bundle_stage"), str):
+        return None
+    bundle_stage = settings.setting(resolved, "bundle_stage", "", block, item.key, KeyKind.OBJECT_NAME)
+    if not bundle_stage:
+        # Empty, or no Snowflake name and reported: either way the item has nowhere to publish.
         return None
     target = settings.target
-    database, schema = settings.place(resolved)
+    database, schema = settings.place(resolved, block, item.key)
     prefix = target_text(setting_value(resolved, "version_prefix"), target, DEFAULT_VERSION_PREFIX)
     prefix_setting = resolved.get("version_prefix")
     defaults: dict[str, object] = {
@@ -507,10 +581,10 @@ def _catalog_channel(settings: _Settings, block: str, item: Skill | Plugin) -> C
     return CatalogChannel(
         database=database,
         schema=schema,
-        bundle_stage=_object_in(target_text(bundle_stage, target, "") or "", database, schema),
+        bundle_stage=_object_in(bundle_stage, database, schema),
         version_prefix=prefix or DEFAULT_VERSION_PREFIX,
         certified=config_bool(setting_value(resolved, "certified")) is True,
-        home=settings.location(settings.block(block)),
+        home=settings.location(block),
         prefix_key=_setting_key(block, prefix_setting) if prefix_setting else f"{block}.+version_prefix",
         settings=_rendered(block, resolved, target, defaults),
     )
@@ -524,15 +598,19 @@ def _desktop_channel(settings: _Settings, profile: DesktopProfile) -> DesktopCha
     qualified; its VERSION takes the `skills:` block root's version prefix.
     """
     resolved = resolve_settings(settings.tree.get("profiles"), (profile.name,), profile.config)
-    stage = setting_value(resolved, "stage")
-    if not isinstance(stage, str):
+    if not isinstance(setting_value(resolved, "stage"), str):
+        return None
+    stage = settings.setting(resolved, "stage", "", "profiles", profile.key, KeyKind.OBJECT_NAME)
+    if not stage:
         return None
     target = settings.target
-    database, schema = settings.place(resolved)
-    registry = target_text(setting_value(resolved, "registry_table"), target, "PROFILE_REGISTRY") or "PROFILE_REGISTRY"
+    database, schema = settings.place(resolved, "profiles", profile.key)
+    registry = settings.setting(
+        resolved, "registry_table", "PROFILE_REGISTRY", "profiles", profile.key, KeyKind.OBJECT_NAME
+    )
     defaults: dict[str, object] = {"database": database, "schema": schema, "registry_table": "PROFILE_REGISTRY"}
     return DesktopChannel(
-        stage=_object_in(target_text(stage, target, "") or "", database, schema),
+        stage=_object_in(stage, database, schema),
         registry=_object_in(registry, database, schema),
         version_prefix=_version_prefix(settings.block("skills"), target),
         settings=_rendered("profiles", resolved, target, defaults),
@@ -584,7 +662,7 @@ def _tool_placements(settings: _Settings, catalog: ToolCatalog) -> dict[str, Too
 def _tool_placement(settings: _Settings, member: ToolMember) -> ToolPlacement:
     resolved = resolve_settings(settings.tree.get("tools"), member.folder, member.config)
     target = settings.target
-    database, schema = settings.place(resolved)
+    database, schema = settings.place(resolved, "tools", artifact_key("tool", member.name.casefold()))
     warehouse = target_text(setting_value(resolved, "warehouse"), target, target.warehouse)
     defaults: dict[str, object] = {
         "database": database,

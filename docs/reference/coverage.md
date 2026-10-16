@@ -51,7 +51,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-CFG004`](error-codes.md#sst-cfg004) | CFG | error | local | `snowflake_semantic_tools.cli.group`<br>`snowflake_semantic_tools.domain.validate.config`<br>`snowflake_semantic_tools.domain.validate.settings` | `tests/codes/cfg/test_sst_cfg004.py` |
 | [`SST-CFG005`](error-codes.md#sst-cfg005) | CFG | error | local | `snowflake_semantic_tools.adapters.locations` | `tests/codes/cfg/test_sst_cfg005.py` |
 | [`SST-CFG007`](error-codes.md#sst-cfg007) | CFG | error | local | `snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg007.py` |
-| [`SST-CFG008`](error-codes.md#sst-cfg008) | CFG | error | local | `snowflake_semantic_tools.app.compile.skills`<br>`snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg008.py` |
+| [`SST-CFG008`](error-codes.md#sst-cfg008) | CFG | error | local | `snowflake_semantic_tools.app.compile.project`<br>`snowflake_semantic_tools.app.compile.skills`<br>`snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg008.py` |
 | [`SST-CFG009`](error-codes.md#sst-cfg009) | CFG | error | local | `snowflake_semantic_tools.adapters.locations` | `tests/codes/cfg/test_sst_cfg009.py` |
 | [`SST-CFG010`](error-codes.md#sst-cfg010) | CFG | error | local | `snowflake_semantic_tools.adapters.dbt.profiles`<br>`snowflake_semantic_tools.adapters.deferral` | `tests/codes/cfg/test_sst_cfg010.py` |
 | [`SST-CFG011`](error-codes.md#sst-cfg011) | CFG | error | local | `snowflake_semantic_tools.adapters.dbt.profiles` | `tests/codes/cfg/test_sst_cfg011.py` |
@@ -64,8 +64,8 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-CFG018`](error-codes.md#sst-cfg018) | CFG | warning | local | `snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg018.py` |
 | [`SST-CFG023`](error-codes.md#sst-cfg023) | CFG | error | local | `snowflake_semantic_tools.domain.model.config_schema.keys` | `tests/codes/cfg/test_sst_cfg023.py` |
 | [`SST-CFG025`](error-codes.md#sst-cfg025) | CFG | warning | local | `snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg025.py` |
-| [`SST-CFG029`](error-codes.md#sst-cfg029) | CFG | error | local | `snowflake_semantic_tools.domain.resolve.calls`<br>`snowflake_semantic_tools.domain.resolve.config`<br>`snowflake_semantic_tools.domain.resolve.membership_request`<br>`snowflake_semantic_tools.domain.resolve.template` | `tests/codes/cfg/test_sst_cfg029.py` |
-| [`SST-CFG031`](error-codes.md#sst-cfg031) | CFG | error | local | `snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg031.py` |
+| [`SST-CFG029`](error-codes.md#sst-cfg029) | CFG | error | local | `snowflake_semantic_tools.domain.resolve.calls`<br>`snowflake_semantic_tools.domain.resolve.membership_request` | `tests/codes/cfg/test_sst_cfg029.py` |
+| [`SST-CFG031`](error-codes.md#sst-cfg031) | CFG | error | local | `snowflake_semantic_tools.cli.settings`<br>`snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg031.py` |
 | [`SST-CFG032`](error-codes.md#sst-cfg032) | CFG | warning | local | `snowflake_semantic_tools.adapters.locations` | `tests/codes/cfg/test_sst_cfg032.py` |
 | [`SST-CFG033`](error-codes.md#sst-cfg033) | CFG | error | local | `snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg033.py` |
 | [`SST-CFG034`](error-codes.md#sst-cfg034) | CFG | warning | local | `snowflake_semantic_tools.app.policy` | `tests/codes/cfg/test_sst_cfg034.py` |

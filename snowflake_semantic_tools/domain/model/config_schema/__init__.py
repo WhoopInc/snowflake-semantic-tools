@@ -39,6 +39,7 @@ from snowflake_semantic_tools.domain.model.config_schema.values import (
     dbt_settings,
     enrichment_config,
     route_root,
+    stated,
     target_text,
 )
 
@@ -67,6 +68,7 @@ __all__ = [
     "resolve_settings",
     "route_root",
     "setting_value",
+    "stated",
     "target_text",
     "with_defaults",
 ]

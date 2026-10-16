@@ -26,13 +26,16 @@ def test_without_a_target_name_a_conditional_is_left_as_written() -> None:
     assert (resolved["a"], diagnostics) == (CONDITIONAL, ())
 
 
-def test_a_conditional_with_no_arm_for_the_target_is_reported_and_kept() -> None:
+def test_a_conditional_with_no_arm_for_the_target_is_reported_and_removed() -> None:
     value = "{{ 'PROD_DB' if target.name == 'prod' }}"
-    resolved, [diagnostic] = render_config({"catalog": {"+database": value}}, target_name="dev", file="config/sst.yml")
-    assert resolved["catalog"]["+database"] == value
+    tree = {"catalog": {"+database": value, "+schema": "S"}, "top": value}
+    resolved, (diagnostic, top) = render_config(tree, target_name="dev", file="config/sst.yml")
+    # Removed, so its reader sees the key unset rather than parsing the template as a name.
+    assert resolved == {"catalog": {"+schema": "S"}}
     assert (diagnostic.code, diagnostic.subject) == ("SST-CFG016", "config:catalog.+database")
     assert diagnostic.message == "+database does not resolve for target 'dev'"
     assert diagnostic.origin is not None and diagnostic.origin.file == "config/sst.yml"
+    assert top.subject == "config:top"
 
 
 def test_var_resolves_inside_a_value_and_lists_are_rendered_too() -> None:
@@ -41,3 +44,17 @@ def test_var_resolves_inside_a_value_and_lists_are_rendered_too() -> None:
     assert (resolved["list"], resolved["flag"], diagnostics) == (["SALES.X", 3], True, ())
     _, [missing] = render_config({"vars": "not a mapping", "a": "{{ var('x') }}"}, target_name=None, file="f")
     assert (missing.code, missing.subject) == ("SST-CFG029", "config:a")
+
+
+def test_a_list_item_whose_var_fails_is_dropped_and_the_rest_kept() -> None:
+    tree = {"vars": {"a": "A"}, "list": ["{{ var('a') }}", "{{ var('nope') }}", "x"]}
+    resolved, [missing] = render_config(tree, target_name=None, file="f")
+    assert resolved["list"] == ["A", "x"]
+    assert (missing.code, missing.subject) == ("SST-CFG029", "config:list.1")
+
+
+def test_a_null_variable_is_empty_not_the_text_none() -> None:
+    tree = {"vars": {"sch": None}, "agents": {"+schema": "{{ var('sch') }}", "+database": "DB"}}
+    resolved, [empty] = render_config(tree, target_name=None, file="sst_config.yml")
+    assert (empty.code, empty.subject) == ("SST-REF009", "config:agents.+schema")
+    assert resolved["agents"] == {"+database": "DB"}

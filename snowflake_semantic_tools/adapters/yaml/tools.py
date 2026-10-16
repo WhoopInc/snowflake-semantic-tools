@@ -38,7 +38,7 @@ from snowflake_semantic_tools.domain.model.tool import (
 )
 from snowflake_semantic_tools.domain.parse.fields import unknown_field
 from snowflake_semantic_tools.domain.parse.template import TemplateCall, TemplateSyntaxError, scan_template_calls
-from snowflake_semantic_tools.domain.resolve.calls import syntax_problem
+from snowflake_semantic_tools.domain.resolve.calls import literal_problem, syntax_problem
 from snowflake_semantic_tools.domain.resolve.ref_fields import ref_field
 from snowflake_semantic_tools.domain.resolve.template import ResolveContext, resolve_scalar
 from snowflake_semantic_tools.domain.resolve.tool_column import ColumnSite, tool_column
@@ -277,6 +277,7 @@ def _parse_member(source: _Source, path: NodePath, value: object) -> tuple[ToolM
             reports its `config:` block.
         SST-LOD004, SST-REF033, SST-REF003: the template in `on:` does not parse.
         SST-VAL608: `on:` is not one single-argument `ref()` call.
+        SST-REF008: `description`, published as written, holds a template.
         Every code `_header`, `_Columns.read`, `_columns_of`, `_where` and `_body` list.
     """
     header, problems = _header(source, path, value)
@@ -308,7 +309,7 @@ def _parse_member(source: _Source, path: NodePath, value: object) -> tuple[ToolM
         ownership=ToolOwnership.REFERENCE if referenced else ToolOwnership.DEFINE,
         origin=origin,
         source_file=source.source_file,
-        description=optional_string(entry.get("description")),
+        description=_described(entry.get("description"), subject, source.origin((*path, "description")), diagnostics),
         on_model=on_model,
         search_column=columns.written("search_column") or columns.written("on", "search_column"),
         attribute_columns=columns.attributes(on_attributes),
@@ -705,6 +706,15 @@ def _mapping(value: object, field: str, subject: str, origin: Origin, diagnostic
         )
         return {}
     return {str(key): item for key, item in value.items()}
+
+
+def _described(value: object, subject: str, origin: Origin, diagnostics: list[Diagnostic]) -> str | None:
+    """Read a member's `description`, published as written: a template in it is SST-REF008."""
+    text = optional_string(value)
+    problem = literal_problem(text or "", origin, field="description", artifact=subject, subject=subject)
+    if problem is not None:
+        diagnostics.append(problem)
+    return text
 
 
 def _string_map(

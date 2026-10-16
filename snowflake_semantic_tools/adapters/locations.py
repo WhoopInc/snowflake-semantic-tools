@@ -157,7 +157,10 @@ def locate_project(
     if config is not None:
         if not config.is_file():
             _refuse(D("SST-CFG001", subject="config:--config", path=str(config)))
-        return ProjectPaths(project_dir, config, (config, *discovered), present, profiles_dir)
+        # The file named may be the discoverable one itself, by another spelling of its path; a
+        # file cannot shadow itself.
+        shadowed = tuple(path for path in present if not path.samefile(config))
+        return ProjectPaths(project_dir, config, (config, *discovered), shadowed, profiles_dir)
     if len(present) > 1:
         _refuse(
             D(

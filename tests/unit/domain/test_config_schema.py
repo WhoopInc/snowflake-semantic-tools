@@ -14,7 +14,7 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     KeyStatus,
 )
 from snowflake_semantic_tools.domain.model.tool import EXECUTE_AS
-from snowflake_semantic_tools.domain.validate.config import validate_config
+from snowflake_semantic_tools.domain.validate.config import unusable_name, validate_config, validated_config
 
 
 def _codes(tree: Mapping[str, object]) -> list[tuple[str, str | None]]:
@@ -278,3 +278,24 @@ def test_manifest_schema_versions_reports_each_entry_the_reader_would_drop() -> 
 
 def test_manifest_schema_versions_says_it_replaces_the_default_set() -> None:
     assert "replaces the default set" in CONFIG_KEYS["dbt.manifest_schema_versions"].summary
+
+
+def test_a_refused_location_is_removed_wherever_it_is_written_and_the_parse_left_alone() -> None:
+    routed = {"ops": {"+schema": "A B", "+alias": "x"}, 7: {"+schema": " "}}
+    tree: dict[str, object] = {"agents": routed, "state": {"+database": 5}}
+    pruned, diagnostics = validated_config(tree)
+    assert [item.code for item in diagnostics] == ["SST-CFG008", "SST-CFG008", "SST-CFG004"]
+    assert pruned == {"agents": {"ops": {"+alias": "x"}, 7: {}}, "state": {}}
+    # The tree it was given keeps every value, for the readers that hash it as written.
+    assert tree["agents"] is routed and routed["ops"] == {"+schema": "A B", "+alias": "x"}
+
+
+def test_a_location_is_usable_when_its_readers_can_parse_it() -> None:
+    assert not unusable_name("", KeyKind.IDENTIFIER)
+    assert not unusable_name("{{ target.database }}", KeyKind.IDENTIFIER)
+    assert not unusable_name('"a.b"', KeyKind.IDENTIFIER)
+    assert unusable_name("A.B", KeyKind.IDENTIFIER)
+    assert unusable_name("{{ target.database }} X", KeyKind.IDENTIFIER)
+    assert not unusable_name("{{ target.database }}.{{ target.schema }}.STAGE", KeyKind.OBJECT_NAME)
+    assert unusable_name("A.B", KeyKind.OBJECT_NAME)
+    assert unusable_name("@stage", KeyKind.OBJECT_NAME)

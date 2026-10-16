@@ -13,13 +13,15 @@ from collections.abc import Mapping
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.app import policy
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity, resolve_severities
+from snowflake_semantic_tools.domain.diagnostics.policy import apply_overrides
 from snowflake_semantic_tools.domain.model.config_schema import (
     DEFAULT_THREADS,
     config_block,
     config_bool,
     config_int,
     configured_dir,
+    stated,
 )
 
 
@@ -70,14 +72,21 @@ def apply_fail_fast(paths: ProjectPaths, flag: bool | None) -> bool:
 
 
 def validation_settings(paths: ProjectPaths, *, strict: bool | None, connected: bool | None) -> tuple[bool, bool]:
-    """Return whether to validate strictly, and against Snowflake: each flag given, else `validation:`."""
+    """Return whether to validate strictly, and against Snowflake: each flag given, else `validation:`.
+
+    An unstated `snowflake_syntax_check` checks against Snowflake, its default, unless the
+    SST-CFG031 that reports it blocks the run: connecting could then only fail first and hide it.
+    """
     validation = config_block(project_config(paths).get("validation"))
     configured_strict = config_bool(validation.get("strict"))
-    configured_check = config_bool(validation.get("snowflake_syntax_check"))
-    return (
-        strict if strict is not None else bool(configured_strict),
-        connected if connected is not None else configured_check is not False,
-    )
+    effective_strict = strict if strict is not None else bool(configured_strict)
+    if connected is not None:
+        return effective_strict, connected
+    if stated(validation, "snowflake_syntax_check"):
+        return effective_strict, config_bool(validation.get("snowflake_syntax_check")) is not False
+    unstated = apply_overrides(DiagnosticBag((D("SST-CFG031"),)), severity_overrides_setting(paths))
+    reported, _ = resolve_severities(unstated, strict=effective_strict)
+    return effective_strict, not any(item.blocks for item in reported)
 
 
 def strict_disagreement(paths: ProjectPaths, strict: bool | None) -> tuple[Diagnostic, ...]:

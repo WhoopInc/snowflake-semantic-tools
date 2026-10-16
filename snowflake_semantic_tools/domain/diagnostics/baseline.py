@@ -4,7 +4,7 @@ A baseline records the warnings a project knows about and has not fixed. A diagn
 stable fingerprint is recorded is baselined: still counted and still in the JSON envelope, but
 neither rendered by default nor blocking. Only a demotable code below ERROR can be baselined, so
 a baseline suppresses and never demotes. Past its `expires_on` a baseline matches nothing and
-every diagnostic it held blocks again. Dates are ISO `YYYY-MM-DD` text, compared as text, so this
+every diagnostic it held blocks again. Dates are ISO `YYYY-MM-DD` text, compared as dates, so this
 module needs no clock: the caller passes today's date and the date 30 days from it.
 """
 
@@ -126,6 +126,9 @@ def match_baseline(
         today: Today's ISO date; a baseline whose `expires_on` is before it has expired.
         warn_from: The ISO date 30 days from today; a baseline expiring by then is nearing expiry.
 
+    Raises:
+        ValueError: a date is not `YYYY-MM-DD` numbers; the baseline file reader refuses such a file.
+
     Diagnostics:
         SST-CFG039: the baseline is past its expiry, so nothing is baselined.
         SST-CFG035: the baseline expires within 30 days.
@@ -137,14 +140,15 @@ def match_baseline(
     origin = Origin(baseline.path)
     count = len(baseline.entries)
     subject = f"config:{baseline.path}"
-    if baseline.expires_on < today:
+    expires = _day(baseline.expires_on)
+    if expires < _day(today):
         expired = D("SST-CFG039", origin=origin, subject=subject, date=baseline.expires_on, count=count)
         return BaselineMatch(frozenset(), (expired,))
     recorded = tuple(dict.fromkeys(entry.fingerprint for entry in baseline.entries if baselinable(entry.code)))
     matched = Counter(stable_fingerprint(item) for item in diagnostics if baselinable(item.code))
     baselined = frozenset(fingerprint for fingerprint in recorded if matched[fingerprint] == 1)
     notices: tuple[Diagnostic, ...] = ()
-    if baseline.expires_on <= warn_from:
+    if expires <= _day(warn_from):
         notices = (D("SST-CFG035", origin=origin, subject=subject, date=baseline.expires_on, count=count),)
     ambiguous = tuple(
         D("SST-INT009", subject=subject, value=fingerprint, count=matched[fingerprint])
@@ -152,6 +156,15 @@ def match_baseline(
         if matched[fingerprint] > 1
     )
     return BaselineMatch(baselined, (*notices, *ambiguous))
+
+
+def _day(text: str) -> tuple[int, ...]:
+    """Read an ISO `YYYY-MM-DD` date as (year, month, day), which orders as the dates do.
+
+    Raises:
+        ValueError: a part is not a number.
+    """
+    return tuple(int(part) for part in text.split("-"))
 
 
 # How long a baseline lasts unless told otherwise, and the longest it may be told.

@@ -9,6 +9,7 @@ the rest of SST goes through.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from types import MappingProxyType
 from typing import Any
 
@@ -17,9 +18,9 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.ports.project import ProjectConfig
-from snowflake_semantic_tools.domain.validate.config import empty_is_block, unstated_policy, validate_config
+from snowflake_semantic_tools.domain.validate.config import empty_is_block, unstated_policy, validated_config
 
 # Resolves a parsed tree's templates, returning the tree and what did not resolve.
 Render = Callable[[Mapping[str, Any]], tuple[dict[str, Any], DiagnosticBag]]
@@ -86,13 +87,9 @@ def load_project_config(files: ProjectPaths, render: Render | None = None) -> Pr
     positions = {
         key: (position.line, position.col) for key, position in parsed.line_index.items() if isinstance(key, tuple)
     }
-    tree, unresolved = render(parsed.tree) if render is not None else (dict(parsed.tree), DiagnosticBag())
-    diagnostics = [
-        *files.diagnostics,
-        *parsed.diagnostics,
-        *validate_config(tree, positions=positions, file=name),
-        *unstated_policy(tree, file=name),
-    ]
+    rendered, unresolved = render(parsed.tree) if render is not None else (dict(parsed.tree), DiagnosticBag())
+    tree, checked = validated_config(rendered, positions=positions, file=name)
+    diagnostics = [*files.diagnostics, *parsed.diagnostics, *checked, *unstated_policy(tree, file=name)]
     if files.semantic_models_dir is not None:
         # `--semantic` stands in for the key, so every reader of the directory sees the override.
         tree["project"] = {
@@ -134,7 +131,19 @@ def load_project_config(files: ProjectPaths, render: Render | None = None) -> Pr
                         value=value,
                     )
                 )
-    return ProjectConfig(MappingProxyType(tree), DiagnosticBag((*diagnostics, *unresolved)), has_dbt_project, name)
+    located = (_at_key(item, positions) for item in unresolved)
+    return ProjectConfig(MappingProxyType(tree), DiagnosticBag((*diagnostics, *located)), has_dbt_project, name)
+
+
+def _at_key(diagnostic: Diagnostic, positions: Mapping[tuple[str | int, ...], tuple[int, int]]) -> Diagnostic:
+    """Give a template diagnostic the line of the key it names, which the renderer does not know."""
+    origin = diagnostic.origin
+    subject = diagnostic.subject or ""
+    if origin is None or origin.line is not None or not subject.startswith("config:"):
+        return diagnostic
+    path = tuple(int(part) if part.isdigit() else part for part in subject.removeprefix("config:").split("."))
+    position = positions.get(path)
+    return diagnostic if position is None else replace(diagnostic, origin=Origin(origin.file, *position))
 
 
 def _parse_config(files: ProjectPaths) -> ParsedYaml:

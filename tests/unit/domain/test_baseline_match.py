@@ -63,3 +63,19 @@ def test_a_baseline_holds_what_it_records_and_reports_its_expiry() -> None:
     expired = match_baseline((warning,), Baseline("b.json", "2025-12-31", entries), today=TODAY, warn_from=WARN_FROM)
     assert [(item.code, item.subject) for item in expired.notices] == [("SST-CFG039", "config:b.json")]
     assert expired.baselined == frozenset()
+
+
+def test_expiry_is_judged_on_dates_across_a_month_boundary() -> None:
+    warning = D("SST-CFG003", key="k")
+    entries = (BaselineEntry(stable_fingerprint(warning), "SST-CFG003"),)
+
+    def notices(expires_on: str) -> list[str]:
+        found = match_baseline(
+            (warning,), Baseline("b.json", expires_on, entries), today="2026-10-16", warn_from="2026-11-15"
+        )
+        return [item.code for item in found.notices]
+
+    assert notices("2026-09-30") == ["SST-CFG039"]
+    assert notices("2026-11-01") == ["SST-CFG035"]
+    assert notices("2026-11-15") == ["SST-CFG035"]
+    assert notices("2026-11-16") == []

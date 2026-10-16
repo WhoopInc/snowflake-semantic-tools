@@ -28,7 +28,9 @@ class KeyKind(Enum):
     """The type of value a key takes.
 
     `MAP` is a block of free-form names, `ENUM` a string from the key's `choices`, and
-    `ANY` accepts every value unchecked. An `INTEGER` key never accepts a boolean.
+    `ANY` accepts every value unchecked. An `INTEGER` key never accepts a boolean. An
+    `IDENTIFIER` is a string naming one Snowflake identifier, and an `OBJECT_NAME` one
+    identifier or a three-part name; either may be empty, which reads as unset.
     """
 
     BLOCK = "block"
@@ -38,6 +40,8 @@ class KeyKind(Enum):
     INTEGER = "integer"
     LIST = "list"
     ENUM = "enum"
+    IDENTIFIER = "identifier"
+    OBJECT_NAME = "object name"
     ANY = "any"
 
 
@@ -137,6 +141,9 @@ _B = KeyKind.BOOLEAN
 _I = KeyKind.INTEGER
 _L = KeyKind.LIST
 _BLOCK = KeyKind.BLOCK
+# A location part a block's objects are created in; a stage or table may be written qualified.
+_ID = KeyKind.IDENTIFIER
+_OBJ = KeyKind.OBJECT_NAME
 
 CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("project", _BLOCK, "Where each artifact type lives on disk."),
@@ -310,8 +317,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("vars.<name>", KeyKind.ANY, "One variable value."),
     _removed("vars.sha_version", "SST supplies sha_version from the commit being published", code="SST-CFG040"),
     _key("state", _BLOCK, "Where apply records what it published, per target."),
-    _key("state.+database", _S, "State table database.", default="the target database"),
-    _key("state.+schema", _S, "State table schema.", default="the target schema"),
+    _key("state.+database", _ID, "State table database.", default="the target database"),
+    _key("state.+schema", _ID, "State table schema.", default="the target schema"),
     _key("state.+table", _S, "State table name.", default="SST_STATE"),
     _key(
         "tags",
@@ -328,8 +335,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "Defaults for tool members, overridable per folder and by a member's own `config:`.",
         children=ChildPolicy.ROUTES,
     ),
-    _key("tools.+database", _S, "Database for defined tool objects.", default="the target database"),
-    _key("tools.+schema", _S, "Schema for defined tool objects.", default="the target schema"),
+    _key("tools.+database", _ID, "Database for defined tool objects.", default="the target database"),
+    _key("tools.+schema", _ID, "Schema for defined tool objects.", default="the target schema"),
     _key(
         "tools.+warehouse",
         _S,
@@ -364,8 +371,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "Defaults for semantic views, overridable per folder and by a view's own `config:`.",
         children=ChildPolicy.ROUTES,
     ),
-    _key("semantic_views.+database", _S, "Database for semantic views.", default="the target database"),
-    _key("semantic_views.+schema", _S, "Schema for semantic views.", default="the target schema"),
+    _key("semantic_views.+database", _ID, "Database for semantic views.", default="the target database"),
+    _key("semantic_views.+schema", _ID, "Schema for semantic views.", default="the target schema"),
     _key(
         "semantic_views.+enabled",
         _B,
@@ -392,8 +399,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "Defaults for Cortex Agents, overridable per folder and by an agent's own `config:`.",
         children=ChildPolicy.ROUTES,
     ),
-    _key("agents.+database", _S, "Database for agents.", default="the target database"),
-    _key("agents.+schema", _S, "Schema for agents.", default="the target schema"),
+    _key("agents.+database", _ID, "Database for agents.", default="the target database"),
+    _key("agents.+schema", _ID, "Schema for agents.", default="the target schema"),
     _key(
         "agents.+warehouse",
         _S,
@@ -480,11 +487,11 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "Cortex Extension only when `+bundle_stage` resolves for it.",
         children=ChildPolicy.ROUTES,
     ),
-    _key("skills.+database", _S, "Database for skill extensions.", default="the target database"),
-    _key("skills.+schema", _S, "Schema for skill extensions.", default="the target schema"),
+    _key("skills.+database", _ID, "Database for skill extensions.", default="the target database"),
+    _key("skills.+schema", _ID, "Schema for skill extensions.", default="the target schema"),
     _key(
         "skills.+bundle_stage",
-        _S,
+        _OBJ,
         "Internal stage that `ADD VERSION` reads from; created when absent. Unset, the skill does not publish.",
     ),
     _key(
@@ -526,11 +533,11 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "Cortex Extension only when `+bundle_stage` resolves for it.",
         children=ChildPolicy.ROUTES,
     ),
-    _key("plugins.+database", _S, "Database for plugin extensions.", default="the target database"),
-    _key("plugins.+schema", _S, "Schema for plugin extensions.", default="the target schema"),
+    _key("plugins.+database", _ID, "Database for plugin extensions.", default="the target database"),
+    _key("plugins.+schema", _ID, "Schema for plugin extensions.", default="the target schema"),
     _key(
         "plugins.+bundle_stage",
-        _S,
+        _OBJ,
         "Internal stage that `ADD VERSION` reads from; created when absent. Unset, the plugin does not publish.",
     ),
     _key(
@@ -553,16 +560,16 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "profile publishes only when `+stage` resolves for it.",
         children=ChildPolicy.ROUTES,
     ),
-    _key("profiles.+database", _S, "Database of the profile stage and registry.", default="the target database"),
-    _key("profiles.+schema", _S, "Schema of the profile stage and registry.", default="the target schema"),
+    _key("profiles.+database", _ID, "Database of the profile stage and registry.", default="the target database"),
+    _key("profiles.+schema", _ID, "Schema of the profile stage and registry.", default="the target schema"),
     _key(
         "profiles.+stage",
-        _S,
+        _OBJ,
         "Internal stage that holds profile trees; created when absent. Unset, the profile does not publish.",
     ),
     _key(
         "profiles.+registry_table",
-        _S,
+        _OBJ,
         "Profile registry table. Desktop reads `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`.",
         default="PROFILE_REGISTRY",
     ),

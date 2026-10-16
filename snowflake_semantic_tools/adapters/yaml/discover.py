@@ -18,7 +18,7 @@ from __future__ import annotations
 import errno
 import os
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
@@ -89,6 +89,19 @@ def registry_roots(config: Mapping[str, object], registry: Registry = SEMANTIC_R
             for name, artifact in registry.artifacts.items()
         }
     )
+
+
+# The configuration subjects whose blocking diagnostic leaves the semantic-models directory unknown.
+_DIRECTORY_SUBJECTS = frozenset(("config:project", "config:project.semantic_models_dir"))
+
+
+def directory_refused(config_diagnostics: Iterable[Diagnostic]) -> bool:
+    """Report whether checking the configuration refused `project:` or its `semantic_models_dir`.
+
+    Then there is no directory to discover: the refusal is the report, and looking for the
+    directory anyway would only raise SST-DIS001 in its place.
+    """
+    return any(item.blocks and item.subject in _DIRECTORY_SUBJECTS for item in config_diagnostics)
 
 
 def discover_yaml(

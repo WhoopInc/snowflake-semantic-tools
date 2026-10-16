@@ -14,10 +14,11 @@ from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.project import CompileProject
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
 from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog
 from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog
 from tests.helpers.compile_builders import plugin, skill
-from tests.helpers.project_inputs import InMemoryProjectInputs
+from tests.helpers.project_inputs import InMemoryProjectInputs, dev_target
 
 
 def _compiled(tree: dict[str, object], *skills: Skill, **inputs: object) -> CompileResult:
@@ -137,3 +138,57 @@ def test_a_profile_no_stage_reaches_is_checked_and_does_not_publish() -> None:
 def test_a_root_only_setting_is_resolved_but_never_reported_by_an_item() -> None:
     found = _extensions(_compiled({"skills": {"+bundle_stage": "B", "+threads": 2}}, skill("close")))
     assert "threads" not in {item.key for item in found["skill:close"].settings}
+
+
+def _unnamed_warehouse() -> TargetIdentity:
+    """A target whose warehouse is no unquoted identifier, so `{{ target.warehouse }}` renders to none."""
+    return replace(dev_target(), warehouse="my wh")
+
+
+def test_a_location_that_renders_to_no_name_is_refused_and_the_targets_own_used() -> None:
+    tree: dict[str, object] = {
+        "skills": {"+bundle_stage": "{{ target.warehouse }}", "+schema": "{{ target.warehouse }}"},
+        "agents": {"+database": "{{ target.warehouse }}"},
+        "tools": {"+schema": "S"},
+    }
+    own = replace(skill("own"), config={"schema": "{{ target.warehouse }}"})
+    inputs = InMemoryProjectInputs(tree=tree, skills=SkillCatalog((skill("close"), own)), identity=_unnamed_warehouse())
+    result = CompileProject(inputs).run()
+    refused = [(item.subject, item.context["key"]) for item in result.diagnostics if item.code == "SST-CFG008"]
+    # Each skill reports the root's bundle stage, which leaves it nowhere to publish; the
+    # schema of its own `config:` names the skill, the root's this file's key.
+    assert refused == [
+        ("config:skills.+bundle_stage", "skills.+bundle_stage"),
+        ("config:skills.+bundle_stage", "skills.+bundle_stage"),
+        ("config:agents.+database", "agents.+database"),
+    ]
+    assert _extensions(result) == {}
+    placed = {**tree, "skills": {"+bundle_stage": "BUNDLES", "+schema": "{{ target.warehouse }}"}}
+    result = CompileProject(replace(inputs, tree=placed)).run()
+    refused = [(item.subject, item.context["key"]) for item in result.diagnostics if item.code == "SST-CFG008"]
+    assert ("skill:own", "config.schema") in refused and ("config:skills.+schema", "skills.+schema") in refused
+    assert {item.release.target.schema.folded for item in _extensions(result).values()} == {"SCH"}
+
+
+def test_a_location_already_refused_where_it_was_written_is_not_reported_again() -> None:
+    # The value check of the file or the item's `config:` reported it; this one only steps around it.
+    own = replace(skill("own"), config={"schema": " "})
+    tree: dict[str, object] = {"skills": {"+bundle_stage": "BUNDLES"}, "agents": {"+schema": "A B"}}
+    result = CompileProject(InMemoryProjectInputs(tree=tree, skills=SkillCatalog((own,)))).run()
+    assert "SST-CFG008" not in [item.code for item in result.diagnostics]
+    assert [item.release.target.schema.folded for item in _extensions(result).values()] == ["SCH"]
+
+
+def test_a_profile_stage_or_registry_that_renders_to_no_name_is_refused() -> None:
+    profiles = ProfileCatalog((_profile("analyst"), _profile("operator", registry_table="{{ target.warehouse }}")))
+    tree: dict[str, object] = {"profiles": {"+stage": "TREES", "analyst": {"+stage": "{{ target.warehouse }}"}}}
+    result = _compiled(tree, profiles=profiles, identity=_unnamed_warehouse())
+    refused = [(item.subject, item.context["key"]) for item in result.diagnostics if item.code == "SST-CFG008"]
+    assert refused == [
+        ("config:profiles.analyst.+stage", "profiles.analyst.+stage"),
+        ("profile:operator", "config.registry_table"),
+    ]
+    compiled = {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledProfile)}
+    # The stage leaves analyst nowhere to publish; operator keeps the default registry.
+    assert list(compiled) == ["profile:operator"]
+    assert compiled["profile:operator"].channel.registry.sql == "DB.SCH.PROFILE_REGISTRY"

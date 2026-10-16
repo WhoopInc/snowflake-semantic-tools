@@ -68,7 +68,8 @@ starts:
   its replacement (`SST-CFG200`);
 - `validation.snowflake_syntax_check` must be written out, `true` or `false`
   (`SST-CFG031`): whether expressions were compiled against Snowflake decides
-  what a passing `sst validate` proves.
+  what a passing `sst validate` proves. Written with no value, it is unset, so
+  `SST-CFG031` too; while that error blocks the run, validate does not connect.
 
 An empty value (`key:` with nothing after it) means the key is unset, except
 for a `+` key: one written with no value is an error (`SST-CFG054`), because
@@ -92,17 +93,31 @@ tools:
 
 `--target` picks the target from `profiles.yml`, so one configuration publishes
 to development and production from the same authored files. A key that is not
-set falls back to the target's own database, schema, or warehouse.
+set, or is set to `""`, falls back to the target's own database, schema, or
+warehouse.
+
+A location key -- `+database` and `+schema` of every block, and `+bundle_stage`,
+`+stage`, and `+registry_table`, which may also be written as a three-part
+name -- must name a Snowflake identifier, `{{ target.* }}` standing for the
+target's own: a value of another type is `SST-CFG004`, and text that is no
+identifier, such as `" "` or `A.B` for a schema, is `SST-CFG008`. The key is
+then read as unset, so its diagnostic is reported with every other one.
 
 Two more templates are evaluated anywhere in the file except inside `vars:`:
 
 - `{{ var('<name>') }}` becomes the value `vars:` declares for it; an
-  undeclared name is an error (`SST-CFG029`).
+  undeclared name is an error (`SST-CFG029`), and a declared variable whose
+  value is empty, `""` or nothing at all, is an error too (`SST-REF009`), as in
+  project YAML.
 - A value that is wholly a target conditional becomes the literal of its first
   true arm. Arms compare `target.name` with `==` or `!=` and chain with
   `else`; the final `else` is optional, but a target no arm matches is then an
   error (`SST-CFG016`). For a boolean or integer key, `'true'`, `'false'`, or
   digits are read as that type.
+
+A key whose template does not resolve is read as unset once its error is
+reported: no reader then refuses its template text as a name or a type, and
+the error still fails the run.
 
 ```yaml
 agents:
@@ -328,7 +343,9 @@ set to anything but empty, `0`, `false`, or `no`, refuses
 ## Authentication
 
 SST connects with the fields of the selected `profiles.yml` output, read the way
-dbt-snowflake reads them. `{{ env_var('NAME') }}` and
+dbt-snowflake reads them. The profile's default `target:` is rendered the same
+way, so `target: "{{ env_var('DBT_TARGET', 'dev') }}"` selects the target dbt
+selects. `{{ env_var('NAME') }}` and
 `{{ env_var('NAME', 'default') }}` are rendered anywhere in a value, so
 `"svc_{{ env_var('SUFFIX') }}"` works. dbt's `as_number`, `as_bool`,
 `as_native`, and `as_text` filters are accepted too; on a value that is one

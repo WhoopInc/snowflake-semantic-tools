@@ -91,6 +91,30 @@ def edited(root: Path, relative: str, old: str, new: str) -> Path:
     return project
 
 
+def config_edited(root: Path, *edits: tuple[str, str]) -> Path:
+    """A project copy with each `(old, new)` applied once, in order, to `sst_config.yml`."""
+    project = project_copy(root)
+    path = project / CONFIG
+    text = path.read_text(encoding="utf-8")
+    for old, new in edits:
+        assert old in text, f"{old!r} is not in {CONFIG}"
+        text = text.replace(old, new, 1)
+    path.write_text(text, encoding="utf-8")
+    return project
+
+
+def config_line(root: Path, text: str) -> int:
+    """The 1-based line of the first line holding `text` in the `sst_config.yml` of `root`'s copy."""
+    lines = (root / "project" / CONFIG).read_text(encoding="utf-8").splitlines()
+    return next(number for number, line in enumerate(lines, start=1) if text in line)
+
+
+# Where an edit of the reference `sst_config.yml` lands: the agents block root's schema, and the
+# end of `vars:`, which a declared variable is appended to.
+AGENTS_SCHEMA = "  +schema: JAFFLE\n  +enabled: true\n\n  # Pinned"
+VARS_END = "vars:\n  completed_state: completed"
+
+
 def appended(root: Path, relative: str, text: str) -> Path:
     """A project copy with `text` appended to one file."""
     project = project_copy(root)

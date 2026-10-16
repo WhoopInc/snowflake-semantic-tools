@@ -33,7 +33,7 @@ from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.config import read_config_document
-from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
+from snowflake_semantic_tools.adapters.yaml.discover import directory_refused, discover_yaml
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache, load_documents
 from snowflake_semantic_tools.adapters.yaml.evals import load_eval_catalog, parse_eval_defaults
 from snowflake_semantic_tools.adapters.yaml.fields import strings
@@ -247,7 +247,10 @@ class YamlProjectSource:
         """
         # SST's own files first, then the dbt target and models: a problem in either is
         # reported in that order, and before dbt is run.
-        inputs = read_semantic_inputs(self._files, self._config_tree(), self._load_cache)
+        config = resolved_config(self._files, self._target_name)
+        inputs = read_semantic_inputs(
+            self._files, dict(config.tree), self._load_cache, config_diagnostics=config.diagnostics
+        )
         target = resolve_target(self._files, self._target_name)
         if self._database is not None:
             target = dataclasses.replace(target, database=self._database)
@@ -432,6 +435,7 @@ class YamlProjectInputs(ProjectInputs):
         # The reads run in this order on every run, so a broken input is reported at one point.
         dbt_name, catalog, dbt_path = self._dbt_sources()
         config_checksum, semantic_path = self._config_sources()
+        config = self.config()
         projection = _dbt_projection(catalog)
         return ManifestSources(
             semantic_path=semantic_path,
@@ -441,7 +445,9 @@ class YamlProjectInputs(ProjectInputs):
             dbt_schema_version=catalog.schema_version,
             dbt_digest=sha256(canonical_json(projection)).hexdigest(),
             model_count=len(catalog.models),
-            file_checksums=_file_checksums(self._files, self.config().tree, self._load_cache),
+            file_checksums=_file_checksums(
+                self._files, config.tree, self._load_cache, refused=directory_refused(config.diagnostics)
+            ),
             target_name=self._selected_target(),
         )
 
@@ -509,7 +515,9 @@ def _dbt_projection(catalog: DbtCatalog) -> list[dict[str, object]]:
     ]
 
 
-def _file_checksums(files: ProjectPaths, tree: Mapping[str, object], cache: LoadCache | None = None) -> dict[str, str]:
+def _file_checksums(
+    files: ProjectPaths, tree: Mapping[str, object], cache: LoadCache | None = None, *, refused: bool = False
+) -> dict[str, str]:
     """Checksum every input file the manifest records, by project-relative path.
 
     With a dbt project, each semantic model document discovery finds; then every file under the
@@ -523,7 +531,8 @@ def _file_checksums(files: ProjectPaths, tree: Mapping[str, object], cache: Load
     project_dir = files.project_dir
     config = dict(tree)
     checksums: dict[str, str] = {}
-    if (project_dir / "dbt_project.yml").is_file():
+    # A semantic-models directory the configuration refused is reported there, not looked for.
+    if (project_dir / "dbt_project.yml").is_file() and not refused:
         semantic_models_dir = configured_dir(config, "semantic_models_dir", "semantic_models")
         found = discover_yaml(project_dir, semantic_models_dir, config=config)
         documents = load_documents(found, parse_yaml_bytes, cache)

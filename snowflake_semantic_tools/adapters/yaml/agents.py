@@ -88,7 +88,9 @@ def load_agents(
             template, is not one call of the function it takes.
         Every code `resolve_file` lists, for an instruction's sidecar, which is read relative to
             the agent file's folder and never through a symbolic link.
-        SST-REF008: when a consumed extension's skill `name` holds a template.
+        SST-REF008: when a consumed extension's skill `name` holds a template, or a field the
+            agent publishes as written does: its `comment`, `profile.display_name`, a sample
+            question, or a tool's `description`.
         SST-LOD018: when an agent file cannot be read.
     """
     root = project_dir / agents_dir
@@ -295,6 +297,10 @@ def _parse_agent(
     )
     questions = listed(instructions.get("sample_questions"), "spec.instructions.sample_questions")
     sample_questions = _sample_questions(questions, name, origin, diagnostics)
+
+    def published(value: object, path: NodePath) -> str | None:
+        return _published_text(value, path, relative, lines, diagnostics, subject)
+
     meta = mapped(tree.get("meta"), "meta")
     passthrough = mapped(spec.get("passthrough"), "spec.passthrough")
     diagnostics.extend(
@@ -310,9 +316,9 @@ def _parse_agent(
             name=name,
             origin=origin,
             source_files=tuple(dict.fromkeys(source_files)),
-            comment=optional_string(tree.get("comment")),
+            comment=published(tree.get("comment"), ("comment",)),
             profile=AgentProfile(
-                optional_string(profile_node.get("display_name")),
+                published(profile_node.get("display_name"), ("profile", "display_name")),
                 optional_string(profile_node.get("avatar")),
                 optional_string(profile_node.get("color")),
             ),
@@ -330,8 +336,29 @@ def _parse_agent(
     )
 
 
+def _published_text(
+    value: object,
+    path: NodePath,
+    relative: str,
+    lines: Mapping[NodePath, SourcePosition],
+    diagnostics: list[Diagnostic],
+    subject: str,
+) -> str | None:
+    """Read a text field the agent publishes as written, reporting a template in it (SST-REF008)."""
+    text = optional_string(value)
+    position = lines.get(path)
+    origin = Origin(relative, position.line, position.col) if position is not None else Origin(relative, 1, 1)
+    problem = literal_problem(text or "", origin, field=_label(path), artifact=subject, subject=subject)
+    if problem is not None:
+        diagnostics.append(problem)
+    return text
+
+
 def _sample_questions(values: Any, name: str, origin: Origin, diagnostics: list[Diagnostic]) -> list[str]:
-    """Each `question` of `instructions.sample_questions`, reporting SST-PRS118 for an entry without one."""
+    """Each `question` of `instructions.sample_questions`, reporting SST-PRS118 for an entry without one.
+
+    A question is published as written, so a template in one is SST-REF008.
+    """
     questions: list[str] = []
     for index, value in enumerate(values or []):
         if not isinstance(value, dict) or not isinstance(value.get("question"), str):
@@ -345,7 +372,13 @@ def _sample_questions(values: Any, name: str, origin: Origin, diagnostics: list[
                 )
             )
             continue
-        questions.append(str(value["question"]))
+        question = str(value["question"])
+        field = f"spec.instructions.sample_questions[{index}].question"
+        subject = artifact_key("agent", name.casefold())
+        problem = literal_problem(question, origin, field=field, artifact=subject, subject=subject)
+        if problem is not None:
+            diagnostics.append(problem)
+        questions.append(question)
     return questions
 
 
@@ -502,6 +535,7 @@ def _parse_tool(
         Every code `required_call` lists, for a reference field that is not one call of its
             function.
         SST-PRS023, SST-PRS024: as `passthrough_diagnostics` reports `tool_spec_passthrough`.
+        SST-REF008: the `description`, published as written, holds a template.
     """
     if not isinstance(value, dict):
         diagnostics.append(
@@ -548,7 +582,7 @@ def _parse_tool(
         type=type_name,
         origin=origin,
         name=optional_string(value.get("name")),
-        description=optional_string(value.get("description")),
+        description=_described(value.get("description"), index, subject, origin, diagnostics),
         semantic_view=semantic,
         backing=backing,
         agent_ref=agent_ref,
@@ -573,6 +607,17 @@ def _parse_tool(
         ),
         declared_keys=tuple(sorted(str(key) for key in value)),
     )
+
+
+def _described(value: object, index: int, subject: str, origin: Origin, diagnostics: list[Diagnostic]) -> str | None:
+    """Read a tool's `description`, published as written: a template in it is SST-REF008."""
+    text = optional_string(value)
+    problem = literal_problem(
+        text or "", origin, field=f"spec.tools[{index}].description", artifact=subject, subject=subject
+    )
+    if problem is not None:
+        diagnostics.append(problem)
+    return text
 
 
 def _checked_passthrough(

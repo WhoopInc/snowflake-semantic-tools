@@ -84,7 +84,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "remove the link, or use a path inside the project; otherwise check that the file exists and can be read",
         condition=(
             "a file SST reads cannot be read or does not hold what it should (a manifest, baseline, "
-            "saved plan, or `--state` observation); a file or folder to be read is a symbolic link "
+            "saved plan, or `--state` observation), such as a baseline whose `expires_on` is not a "
+            "`YYYY-MM-DD` date; a file or folder to be read is a symbolic link "
             "or is reached through one, every `file()` sidecar among them; or dbt's "
             "`target-path` or the semantic-models directory resolves outside the project"
         ),

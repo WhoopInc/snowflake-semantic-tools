@@ -10,6 +10,8 @@ change to the file reviews as a diff of the entries it touched.
 from __future__ import annotations
 
 import json
+import re
+from datetime import date
 from pathlib import Path
 from typing import NoReturn
 
@@ -19,6 +21,8 @@ from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, BaselineEntry, Renewal
 
 BASELINE_FILE = Path(".sst") / "baseline.json"
+# Exactly the form `sst baseline` writes: `date.fromisoformat` alone also takes `20260901`.
+_ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
 def read_baseline(path: Path, name: str) -> Baseline:
@@ -26,7 +30,7 @@ def read_baseline(path: Path, name: str) -> Baseline:
 
     Raises:
         ProjectError: the file cannot be read, is not JSON, or is not a version 1 baseline with
-            an `expires_on` date and a list of entries (SST-PRT009).
+            an `expires_on` `YYYY-MM-DD` date and a list of entries (SST-PRT009).
 
     Diagnostics:
         SST-PRT009: the baseline file cannot be read or does not hold a baseline; raised.
@@ -41,6 +45,9 @@ def read_baseline(path: Path, name: str) -> Baseline:
     entries = document.get("entries")
     if not isinstance(expires_on, str) or not isinstance(entries, list):
         _refuse(name, "it needs an expires_on date and a list of entries")
+    if not _is_date(expires_on):
+        # Compared as text, `2026-9-1` would sort after every October date and never expire.
+        _refuse(name, "expires_on is not a YYYY-MM-DD date")
     parsed: list[BaselineEntry] = []
     for entry in entries:
         if not isinstance(entry, dict) or not isinstance(entry.get("fingerprint"), str):
@@ -63,6 +70,17 @@ def read_baseline(path: Path, name: str) -> Baseline:
         generated_by=str(document.get("generated_by_sst") or ""),
         renewals=_renewals(document.get("renewals")),
     )
+
+
+def _is_date(text: str) -> bool:
+    """Report whether `text` is a real calendar date written `YYYY-MM-DD`."""
+    if _ISO_DATE.fullmatch(text) is None:
+        return False
+    try:
+        date.fromisoformat(text)
+    except ValueError:
+        return False
+    return True
 
 
 def _renewals(value: object) -> tuple[Renewal, ...]:

@@ -14,7 +14,12 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.parse.template import TemplateCall, TemplateSyntaxError, scan_template_calls
-from snowflake_semantic_tools.domain.resolve.calls import call_problem, malformed_field, syntax_problem
+from snowflake_semantic_tools.domain.resolve.calls import (
+    call_problem,
+    malformed_field,
+    syntax_problem,
+    variable_problem,
+)
 from snowflake_semantic_tools.domain.sql.names import column_ref
 
 
@@ -275,10 +280,12 @@ def _resolve_member(call: TemplateCall, site: _Site, context: ResolveContext) ->
 
 
 def _resolve_var(call: TemplateCall, site: _Site, context: ResolveContext) -> str | Diagnostic:
-    """Resolve a project variable, by its exact name, to its value as text."""
-    if call.args[0] not in context.variables:
-        return D("SST-CFG029", origin=site.origin, subject=site.subject, var=call.args[0])
-    return str(context.variables[call.args[0]])
+    """Resolve a project variable, by its exact name, to its value as text.
+
+    `variable_problem` decides, as for every `var()`: a null value is empty, so SST-REF009.
+    """
+    problem = variable_problem(call.args[0], context.variables, site.origin, subject=site.subject)
+    return str(context.variables[call.args[0]]) if problem is None else problem
 
 
 def _resolve_tag(call: TemplateCall, site: _Site, context: ResolveContext) -> str | Diagnostic:

@@ -23,6 +23,11 @@ def config_block(value: object) -> dict[str, object]:
     return {str(key): item for key, item in value.items()} if isinstance(value, Mapping) else {}
 
 
+def stated(block: object, key: str) -> bool:
+    """Report whether a block states `key`: present with a value, as `key:` written empty is unset."""
+    return isinstance(block, Mapping) and block.get(key) is not None
+
+
 def configured_dir(config: Mapping[str, object], key: str, default: str) -> str:
     """Return `project.<key>` as text; `default` when the block or the value is absent or empty."""
     project = config.get("project")
