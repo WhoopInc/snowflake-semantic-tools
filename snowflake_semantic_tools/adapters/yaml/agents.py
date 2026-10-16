@@ -16,6 +16,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
     mapping,
     optional_int,
     optional_string,
+    project_relative,
     read_sidecar,
     refused,
     unknown_keys,
@@ -28,12 +29,14 @@ from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosition
 from snowflake_semantic_tools.domain.model.config_schema import resolve_settings, setting_value
 from snowflake_semantic_tools.domain.parse.fields import unknown_field
+from snowflake_semantic_tools.domain.parse.names import name_warnings
 from snowflake_semantic_tools.domain.parse.passthrough import AGENT_SPEC_KEYS, TOOL_SPEC_KEYS, passthrough_diagnostics
 from snowflake_semantic_tools.domain.parse.template import TemplateCall
 from snowflake_semantic_tools.domain.resolve.calls import literal_problem, required_call
 from snowflake_semantic_tools.domain.resolve.ref_fields import reference_functions
 from snowflake_semantic_tools.domain.validate.agent_tool import TOOL_KEYS
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
+from snowflake_semantic_tools.domain.validate.sql import name_problem
 
 _Block = TypeVar("_Block", bound=Mapping[Any, Any])
 
@@ -72,6 +75,9 @@ def load_agents(
         SST-LOD002: when a file's root is not a mapping.
         SST-PRS002: when the agent has no `name`, a tool no `type`, a skill no `source.type`, or
             `evals:` no `dataset` or `config`.
+        SST-PRS005: when the agent's `name` is not a Snowflake identifier; the agent is left out.
+        SST-PRS012, SST-PRS031, SST-PRS100: when the agent's `name` holds a character outside
+            ASCII, is a reserved word, or starts with a reserved prefix.
         SST-PRS003: when `evals:` is not a mapping, or one of its paths not a non-empty string;
             when `spec.tools`, `spec.skills` or the sample questions are not a list;
             when `spec.instructions`, `meta`, `spec.passthrough` or a tool's mapping field, such
@@ -92,6 +98,7 @@ def load_agents(
             agent publishes as written does: its `comment`, `profile.display_name`, a sample
             question, or a tool's `description`.
         SST-LOD018: when an agent file cannot be read.
+        SST-VAL801: when a folder holds both `agent.yml` and `agent.yaml`; neither is read.
     """
     root = project_dir / agents_dir
     routes = routed_diagnostics(config, project_dir, "agent") if config is not None else ()
@@ -99,7 +106,7 @@ def load_agents(
         return (), DiagnosticBag(routes)
     agents: list[AgentModel] = []
     diagnostics: list[Diagnostic] = list(routes)
-    for path in sorted(root.glob("*/**/agent.y*ml")):
+    for path in _agent_files(project_dir, root, diagnostics):
         if refused(project_dir, path, diagnostics):
             continue
         relative = path.relative_to(project_dir).as_posix()
@@ -127,6 +134,27 @@ def load_agents(
 
 
 _TOKENS: NodePath = ("config", "budget_tokens")
+# The spellings of an agent file; a folder holds one of them.
+_AGENT_FILES = ("agent.yml", "agent.yaml")
+
+
+def _agent_files(project_dir: Path, root: Path, diagnostics: list[Diagnostic]) -> list[Path]:
+    """Return each agent folder's one agent file, in path order, reporting a folder that holds both.
+
+    Diagnostics:
+        SST-VAL801: when a folder holds both `agent.yml` and `agent.yaml`; neither is returned.
+    """
+    by_folder: dict[Path, list[Path]] = {}
+    for spelling in _AGENT_FILES:
+        for path in root.glob(f"*/**/{spelling}"):
+            by_folder.setdefault(path.parent, []).append(path)
+    for folder, paths in sorted(by_folder.items()):
+        if len(paths) > 1:
+            relative = project_relative(project_dir, folder)
+            detail = "agent folder has both agent.yml and agent.yaml"
+            diagnostics.append(D("SST-VAL801", artifact=relative, detail=detail, origin=Origin(relative)))
+    return sorted(paths[0] for paths in by_folder.values() if len(paths) == 1)
+
 
 # The keys each block of an agent file models, by the block's path; `*` stands for any list index.
 # `meta` and the passthrough blocks are free-form, and a tool's own mapping fields are its type's.
@@ -255,17 +283,29 @@ def _parse_agent(
     tree: Mapping[str, Any],
     lines: Mapping[NodePath, SourcePosition],
 ) -> tuple[AgentModel | None, tuple[Diagnostic, ...]]:
-    """Build one agent, reporting each problem; None, with SST-PRS002, only when it has no name.
+    """Build one agent, reporting each problem; None only when it has no name, or one SST cannot render.
+
+    A name SST can render but that is risky to publish is reported, and the agent kept.
 
     Args:
         lines: Where each node of the agent file starts, which places each tool.
+
+    Diagnostics:
+        SST-PRS002: the agent has no `name`; it is not built.
+        SST-PRS005: the name is not a Snowflake identifier; it is not built.
+        Every code `name_warnings` lists, at the name.
     """
     origin = Origin(relative, 1, 1)
-    diagnostics: list[Diagnostic] = []
     name = tree.get("name")
     if not isinstance(name, str) or not name:
         return None, (D("SST-PRS002", artifact=relative, field="name", origin=origin),)
     subject = artifact_key("agent", name.casefold())
+    named = lines.get(("name",))
+    at = Origin(relative, named.line, named.col) if named is not None else origin
+    unusable = name_problem(name, artifact=subject, subject=subject, origin=at)
+    if unusable is not None:
+        return None, (unusable,)
+    diagnostics: list[Diagnostic] = list(name_warnings(name, subject=subject, origin=at))
 
     def listed(value: object, field: str) -> list[Any]:
         return checked_list(value, diagnostics, field=field, artifact=relative, origin=origin, subject=subject)

@@ -58,7 +58,7 @@ def test_routine_renderers_include_copy_grants_and_sidecar_body() -> None:
         body="BEGIN\n  RETURN 1;\nEND;",
         returns="NUMBER",
         warehouse="WH",
-        signature=(ToolParameter("order_id", "NUMBER", True),),
+        signature=(ToolParameter("order_id", "NUMBER"),),
         execute_as="owner",
         secrets=MappingProxyType({"token": "DB.S.SECRET"}),
     )
@@ -77,7 +77,7 @@ def test_routine_renderers_include_copy_grants_and_sidecar_body() -> None:
         handler="run",
         body="return value",
         returns="VARCHAR",
-        signature=(ToolParameter("value", "VARCHAR", True),),
+        signature=(ToolParameter("value", "VARCHAR"),),
     )
     rendered = render_tool(function, QualifiedName.parse("DB.S.NORMALISE"), None)
     assert "CREATE OR REPLACE FUNCTION DB.S.NORMALISE(VALUE VARCHAR)" in rendered.ddl
@@ -198,7 +198,7 @@ def test_routine_values_are_held_to_their_grammars() -> None:
         {"returns": "NUMBER); DROP TABLE x; --"},
         {"returns": "TABLE (x NOT_A_TYPE)"},
         {"language": "sql; DROP TABLE x"},
-        {"signature": (ToolParameter("id", "NUMBER) AS 'x'; --", True),)},
+        {"signature": (ToolParameter("id", "NUMBER) AS 'x'; --"),)},
         {"body": "$$; DROP TABLE x; $$"},
     ):
         with pytest.raises(ValueError):

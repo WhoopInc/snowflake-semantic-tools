@@ -98,7 +98,7 @@ def procedure_member(name: str = "lookup", *, reference: bool = True, **fields: 
 
 def parameter(name: str, sql_type: str) -> ToolParameter:
     """Return one required signature parameter."""
-    return ToolParameter(name, sql_type, True)
+    return ToolParameter(name, sql_type)
 
 
 def analyst_tool(**fields: Any) -> AgentTool:

@@ -75,8 +75,8 @@ questions:
 - A `ground_truth_output` holding a number in digits must also declare
   `immutable: true` and an `immutable_reason` saying why the figure cannot
   change (`SST-PRS015`). An absolute date is not such a figure: "in 2024",
-  "Q3 2024", "March 5, 2024" and "2024-03-31" need neither, while "2000 orders"
-  still does.
+  "Q3 2024", "March 5, 2024", "2024-03-31" and "as of 2024-03-31" need
+  neither, while "2000 orders" still does.
 - A question byte-identical to one of the agent's `sample_questions` is a
   warning (`SST-VAL707`): the agent was tuned on it, so it catches nothing.
 - A dataset smaller than `evals.+min_dataset_rows` is a warning (`SST-VAL710`),

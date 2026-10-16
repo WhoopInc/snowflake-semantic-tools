@@ -13,6 +13,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, RenderedArtifact, marked_comment
 from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolKind, ToolMember, ToolOwnership
+from snowflake_semantic_tools.domain.parse.names import NAME_WARNING_CODES
 from snowflake_semantic_tools.domain.render.tool import (
     render_tool,
     routine_signature,
@@ -158,8 +159,8 @@ class CompileTools:
 
         The diagnostics are the catalog's, then each member's render checks or SST-INT902, then
         the checks of the compiled members. A member that any catalog diagnostic names,
-        whatever its severity, is not compiled, nor is one a render check refuses; one rendered
-        although it is only referenced is dropped.
+        whatever its severity, is not compiled, unless it only warns of a risky name; nor is one
+        a render check refuses; one rendered although it is only referenced is dropped.
 
         Diagnostics:
             Every code `resolve_stage_path` lists, for a routine's `imports:` entry.
@@ -168,7 +169,12 @@ class CompileTools:
             SST-VAL612: a referenced member was rendered.
             SST-VAL617: a search service indexes a dbt model that dbt rebuilds every run.
         """
-        poisoned = {diagnostic.subject for diagnostic in self._catalog.diagnostics if diagnostic.subject}
+        # A risky name still renders, quoted when it must be, so its warning leaves the member be.
+        poisoned = {
+            diagnostic.subject
+            for diagnostic in self._catalog.diagnostics
+            if diagnostic.subject and diagnostic.code not in NAME_WARNING_CODES
+        }
         result = compile_checked(
             sorted(self._catalog.managed, key=lambda item: item.name.casefold()),
             key=lambda member: artifact_key("tool", member.name.casefold()),

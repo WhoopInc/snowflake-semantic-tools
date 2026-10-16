@@ -94,7 +94,15 @@ definitions, bare paths in prose, and paths inside fenced code blocks.
 
 Every file that is not Markdown counts as a script. A script that names an
 absolute or home-directory path, or any text file that holds what looks like a
-literal credential, is a warning (`SST-VAL815`).
+literal credential, is a warning (`SST-VAL815`). An absolute path is one below
+a local file system's top folder (`/Users`, `/home`, `/opt`, `/etc`, `/tmp`,
+`/var`, `/usr`, `/private`, `/root`, `/mnt`, `/Volumes`, `/srv`), below `~/`,
+or on a drive (`C:\`); a URL's path is not. A credential is a key such as
+`password`, `secret` or `api_key`, alone or inside a longer name such as
+`AWS_SECRET_ACCESS_KEY`, set with `:` or `=` to a literal of six or more
+characters, quoted or not. A value that starts with `$`, `{` or `<`, such as
+`$SNOWFLAKE_PASSWORD` or `<yours>`, is a variable or a placeholder, not a
+credential.
 
 ## Flattening
 

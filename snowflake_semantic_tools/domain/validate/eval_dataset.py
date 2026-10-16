@@ -21,6 +21,8 @@ _MONTH = (
     r"sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?"
 )
 _YEAR = r"(?:19|20)\d{2}"
+# A year, or an ISO month or day in it, after a date word: "as of 2024-03-31" is one date, whole.
+_DAY = rf"{_YEAR}(?:-\d{{2}}(?:-\d{{2}})?)?"
 # An absolute date written out, which the evals guide requires (SST-VAL706 rejects a relative
 # one): it scopes the expectation and does not drift as data lands, so it is not a figure. A bare
 # four-digit number with no date word before it still is ("2000 orders").
@@ -28,8 +30,8 @@ _DATE = re.compile(
     rf"(?<![\w-]){_YEAR}-\d{{2}}(?:-\d{{2}})?(?![\w-])"
     rf"|\b{_MONTH}\s+(?:\d{{1,2}}(?:st|nd|rd|th)?,?\s+)?{_YEAR}\b"
     rf"|\b{_MONTH}\s+\d{{1,2}}(?:st|nd|rd|th)?\b"
-    rf"|\b(?:in|during|since|before|after|until|through|from|between|of|for|year|fy|q[1-4]|h[12])\s+{_YEAR}"
-    rf"(?:\s*(?:-|–|to|and|through)\s*{_YEAR})?\b",
+    rf"|\b(?:in|during|since|before|after|until|through|from|between|of|for|year|fy|q[1-4]|h[12])\s+{_DAY}"
+    rf"(?:\s*(?:-|–|to|and|through)\s*{_DAY})?\b",
     re.IGNORECASE,
 )
 

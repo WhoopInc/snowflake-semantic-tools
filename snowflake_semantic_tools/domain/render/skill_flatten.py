@@ -25,10 +25,20 @@ from snowflake_semantic_tools.domain.validate.shared import Emitter
 # catches a skill that names `scripts/x.sql` while shipping `x.sql` at its root.
 CONVENTIONAL_DIRS = frozenset(("scripts", "reference", "references", "examples", "assets", "templates"))
 
-_ABSOLUTE = re.compile(r"(?<![\w./:-])((?:/(?:Users|home|opt)/|~/|[A-Za-z]:\\)[^\s`'\")\]]*)")
+# The top-level folders of a local machine's file system, by platform; a path below one, a
+# home-directory path, or a drive path names a file the agent's sandbox does not hold. A path
+# below any other root, such as a URL route `/api/v2/...` a script calls, is not reported.
+_ROOTS = "Users|home|opt|etc|tmp|var|usr|private|root|mnt|Volumes|srv"
+_ABSOLUTE = re.compile(rf"(?<![\w./:-])((?:/(?:{_ROOTS})/|~/|[A-Za-z]:\\)[^\s`'\")\]]*)")
 _URL = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+# A credential key, alone or as one word of a longer name such as AWS_SECRET_ACCESS_KEY, set to
+# a literal of six or more characters. A quoted value is a literal; an unquoted one only when it
+# ends the statement, since in code an unquoted value is a name or a call. A value that starts
+# `$`, `{` or `<` is a variable, a template or a placeholder, not a credential.
+_KEY_WORD = r"(?:password|passwd|secret|api[_-]?key|private[_-]?key|access[_-]?token|auth[_-]?token)"
 _SECRET = re.compile(
-    r"(?i)\b(?:password|passwd|secret|api[_-]?key|private[_-]?key|access[_-]?token|auth[_-]?token)\b\s*[:=]\s*['\"][^'\"\s]{4,}"
+    rf"(?i)(?<![A-Za-z0-9])(?:[A-Za-z0-9]+_)*{_KEY_WORD}(?:_[A-Za-z0-9]+)*\s*[:=]\s*"
+    r"(?:['\"](?![$<{])[^'\"\s]{6,}|(?![$<{'\"])[^\s'\"()\[\].,;]{6,}(?=[\s;]|$))"
 )
 
 

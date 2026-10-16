@@ -51,7 +51,7 @@ from snowflake_semantic_tools.domain.resolve.tags import DeclaredTags, declared_
 from snowflake_semantic_tools.domain.sql import DefaultMismatch, column_ref, datatype, is_datatype, typed_default
 from snowflake_semantic_tools.domain.validate.semantic.scope import view_scope
 from snowflake_semantic_tools.domain.validate.semantic_view import relation_diagnostics
-from snowflake_semantic_tools.domain.validate.sql import qualified_name_problem
+from snowflake_semantic_tools.domain.validate.sql import name_problem, qualified_name_problem
 
 
 def _build_view(
@@ -384,21 +384,32 @@ def _source_table(args: tuple[str, ...], view: _View, logical_by_model: Mapping[
 def _view_columns(models: Mapping[str, DbtModel], logical_by_model: Mapping[str, str]) -> list[Column]:
     """Build the facts and dimensions of each table in turn, leaving out unset and excluded columns.
 
+    Every column name is checked before any column is built, so each one that is not an
+    identifier is reported, at its model's dbt YAML.
+
     Raises:
-        ProjectError: A column's role is not a known column kind (SST-DBT003).
+        ProjectError: A column's name is not an identifier (SST-PRS005, one per column), or its
+            role is not a known column kind (SST-DBT003).
     """
-    columns: list[Column] = []
-    for model_key, logical in logical_by_model.items():
-        model = models.get(model_key)
-        if model is None:
-            # A dbt source: SST reads no columns of one.
-            continue
-        columns.extend(
-            _view_column(model, column, logical)
-            for column in model.columns
-            if column.column_type is not None and not column.excluded
-        )
-    return columns
+    used = [
+        (model, column, logical)
+        for model_key, logical in logical_by_model.items()
+        # A dbt source is not in `models`: SST reads no columns of one.
+        if (model := models.get(model_key)) is not None
+        for column in model.columns
+        if column.column_type is not None and not column.excluded
+    ]
+    refused = tuple(found for model, column, _ in used if (found := _column_name_problem(model, column)) is not None)
+    if refused:
+        raise ProjectError(refused[0].message, diagnostics=refused)
+    return [_view_column(model, column, logical) for model, column, logical in used]
+
+
+def _column_name_problem(model: DbtModel, column: DbtColumn) -> Diagnostic | None:
+    """Report a column name that is not an identifier, at the dbt YAML its model is described in."""
+    subject = f"dbt_model:{model.name}"
+    origin = Origin(model.patch_file) if model.patch_file else None
+    return name_problem(column.member_name, artifact=subject, subject=subject, origin=origin)
 
 
 def _view_column(model: DbtModel, column: DbtColumn, logical: str) -> Column:

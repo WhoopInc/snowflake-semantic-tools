@@ -1,38 +1,32 @@
-"""SST-PRS032: a defined tool's signature declares a parameter of type OBJECT."""
+"""SST-PRS032: a generic tool's input_schema property has a type a tool argument cannot carry."""
 
 from __future__ import annotations
 
 from types import MappingProxyType
 
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin, Severity
-from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember, ToolOwnership, ToolParameter
-from snowflake_semantic_tools.domain.validate.tool import validate_tool_catalog
+import pytest
+
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
+from tests.helpers.agent_builders import agent, catalog, compile_agents, generic_tool, procedure_member
+from tests.helpers.diagnostic_filters import coded
 
 
 def _found(kind: str) -> list[Diagnostic]:
-    member = ToolMember(
-        "lookup",
-        "procedure",
-        ToolOwnership.DEFINE,
-        Origin("tools.yml"),
-        "tools.yml",
-        body_file="lookup.sql",
-        body="RETURN 1",
-        signature=(ToolParameter("payload", kind, True),),
-        relations=MappingProxyType({}),
+    schema = {"type": "object", "properties": {"payload": {"type": kind}}, "required": ["payload"]}
+    tool = generic_tool(input_schema=MappingProxyType(schema))
+    return coded(
+        compile_agents(agent("sales_agent", tool), tools=catalog(procedure_member())).diagnostics, "SST-PRS032"
     )
-    catalog = ToolCatalog((member,), "dev", frozenset(("dev",)))
-    return [
-        item for item in validate_tool_catalog(catalog, DbtCatalog("v12", None, None, ())) if item.code == "SST-PRS032"
-    ]
 
 
-def test_sst_prs032_fires() -> None:
-    [diagnostic] = _found("object")
+@pytest.mark.parametrize("kind", ["object", "array"])
+def test_sst_prs032_fires(kind: str) -> None:
+    [diagnostic] = _found(kind)
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message.endswith("input_schema property 'payload' has type 'object'")
+    assert diagnostic.message == f"sales_agent: input_schema property 'payload' has type '{kind}'"
+    assert diagnostic.subject == "agent:sales_agent"
 
 
-def test_sst_prs032_silent() -> None:
-    assert _found("VARCHAR") == []
+@pytest.mark.parametrize("kind", ["string", "number", "integer", "boolean"])
+def test_sst_prs032_silent(kind: str) -> None:
+    assert _found(kind) == []

@@ -23,3 +23,28 @@ def test_sst_val607_fires() -> None:
 
 def test_sst_val607_silent() -> None:
     assert _signed("VARCHAR(64)") == []
+
+
+TWO = {
+    "type": "object",
+    "properties": {"order_total": {"type": "number"}, "tip_pct": {"type": "number"}},
+    "required": ["order_total"],
+}
+
+
+def _required(listed: list[str]) -> list[Diagnostic]:
+    member = procedure_member(signature=(parameter("order_total", "NUMBER(10, 2)"), parameter("tip_pct", "NUMBER")))
+    tool = generic_tool(input_schema={**TWO, "required": listed})
+    return coded(compile_agents(agent("sales_agent", tool), tools=catalog(member)).diagnostics, "SST-VAL607")
+
+
+def test_sst_val607_fires_for_a_parameter_the_schema_does_not_require() -> None:
+    [diagnostic] = _required(["order_total"])
+    assert diagnostic.message == (
+        "tool member 'lookup': signature (order_total NUMBER(10, 2), tip_pct NUMBER) requiring each "
+        "differs from input_schema (order_total number, tip_pct number) not requiring tip_pct"
+    )
+
+
+def test_sst_val607_silent_when_the_schema_requires_every_parameter() -> None:
+    assert _required(["ORDER_TOTAL", "tip_pct"]) == []

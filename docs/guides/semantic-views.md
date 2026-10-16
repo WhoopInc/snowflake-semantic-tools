@@ -623,8 +623,10 @@ onboarding question.
 - A query's tables are the models its `ref()` calls name, and it attaches to
   every view that holds all of them. `tables:` is not written (`SST-PRS126`).
 - `verified_at` is epoch seconds, or a quoted ISO-8601 date or timestamp (UTC
-  unless it says otherwise), which renders as epoch seconds; anything else is an
-  error (`SST-PRS017`).
+  unless it says otherwise), which renders as epoch seconds; anything else,
+  including an unquoted date such as `2026-10-12`, which YAML reads as a date,
+  is an error at that line (`SST-PRS017`), reported beside the run's other
+  diagnostics.
 - Each entry renders in `AI_VERIFIED_QUERIES` as `QUESTION`, then whichever of
   `VERIFIED_AT`, `ONBOARDING_QUESTION` and `VERIFIED_BY` are set, then `SQL`.
   The `description` is not published.

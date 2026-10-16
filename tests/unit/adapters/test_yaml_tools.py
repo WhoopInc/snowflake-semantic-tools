@@ -206,7 +206,7 @@ tools:
   - name: same
     type: procedure
     signature:
-      - {name: payload, type: object, required: true}
+      - {name: payload, type: object}
     relations: {dev: DB.S.B}
 """,
     )
@@ -214,7 +214,7 @@ tools:
     catalog = _load(tmp_path)
     [repeated] = _codes(catalog, "SST-VAL001")
     assert (repeated.subject, len(repeated.related)) == ("tool:same", 2)
-    assert {"SST-VAL603", "SST-PRS032"} <= {item.code for item in catalog.diagnostics}
+    assert "SST-VAL603" in {item.code for item in catalog.diagnostics}
 
 
 def test_an_unreadable_tools_file_is_reported_and_the_rest_still_load(tmp_path: Path) -> None:

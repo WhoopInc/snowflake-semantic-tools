@@ -8,6 +8,8 @@ from snowflake_semantic_tools.domain.validate.sql import name_problem
 
 # Prefixes SST and Snowflake keep for their own objects, casefolded.
 RESERVED_PREFIXES = ("sst_", "sst$", "snowflake_", "snowflake$")
+# What `name_warnings` reports: a name that still renders, as written or quoted.
+NAME_WARNING_CODES = frozenset(("SST-PRS012", "SST-PRS031", "SST-PRS100"))
 
 
 def name_warnings(name: str, *, subject: str, origin: Origin | None = None) -> tuple[Diagnostic, ...]:

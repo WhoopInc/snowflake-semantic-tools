@@ -62,7 +62,7 @@ def test_compiled_tool_projections_cover_sidecars_relations_and_routine_markers(
         body_file="routine.sql",
         body="RETURN 1",
         returns="NUMBER",
-        signature=(ToolParameter("value", "NUMBER", True),),
+        signature=(ToolParameter("value", "NUMBER"),),
     )
     catalog = ToolCatalog(
         (managed,),
@@ -456,3 +456,11 @@ def test_editing_only_a_routines_description_changes_its_fingerprint_and_plans_a
     observed = live(before, marker=OwnershipMarker(published.manifest_id, before.fingerprint), object_type="PROCEDURE")
     planned = plan((after,), observed=(observed,), applied=recorded)
     assert (planned.changes[0].action, planned.changes[0].reason) == (Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS)
+
+
+def test_a_risky_name_warning_does_not_keep_a_member_back() -> None:
+    # The member still renders, quoted when it must be, so only its warning is reported.
+    warning = D("SST-PRS031", name="landing", subject="tool:landing")
+    result = compile_stage(warning)
+    assert [item.artifact_key for item in result.compiled] == ["tool:landing"]
+    assert list(result.diagnostics) == [warning]

@@ -18,11 +18,11 @@ cannot be downgraded by any setting.
 - [Registry (REG)](#registry-reg) -- 23 codes
 - [Configuration (CFG)](#configuration-cfg) -- 45 codes
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
-- [Parsing (PRS)](#parsing-prs) -- 58 codes
+- [Parsing (PRS)](#parsing-prs) -- 59 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 301 codes
+- [Validation (VAL)](#validation-val) -- 304 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
@@ -1177,9 +1177,11 @@ Fix: rename it, or accept the quoted identifier
 
 `<artifact>: input_schema property '<field>' has type '<found>'`
 
-Raised when a generic tool's input_schema property declares a type other than string, number, integer, boolean or array, or a tool member's signature has a parameter typed OBJECT.
+Raised when a generic tool's input_schema property declares a type other than string, number, integer or boolean.
 
-Fix: use string, number, integer, boolean or array
+Fix: use string, number, integer or boolean
+
+Note: Snowflake's tool runtime refuses an array or object argument on a warehouse; pass the value as a JSON string and parse it in the routine.
 
 ### SST-PRS033
 
@@ -1434,6 +1436,18 @@ Raised when a semantic view variable's `default_value` is not a value of its `da
 Fix: write the default as the message says, or change the variable's data_type
 
 Note: A temporal default renders as `'<text>'::<type>`; Snowflake reads a bare string as VARCHAR.
+
+### SST-PRS130
+
+**Signature parameter writes required** (error)
+
+`<artifact>: '<field>' is not written: every signature parameter is required`
+
+Raised when a procedure or function member's `signature:` entry writes `required`.
+
+Fix: remove `required:`, and list the parameter in the calling tool's input_schema.required
+
+Note: SST renders no DEFAULT for a parameter, so Snowflake requires every argument; a call that leaves one out matches no signature (000944).
 
 ### SST-PRS900
 
@@ -4121,7 +4135,7 @@ Fix: reference the existing object with relations:, or set immutable to false fo
 
 `tool member '<name>': signature <found> differs from input_schema <expected>`
 
-Raised when the arity, names or types of a defined procedure's or function's signature differ from the input schema of the generic agent tool that calls it.
+Raised when the arity, names or types of a defined procedure's or function's signature differ from the input schema of the generic agent tool that calls it, or the schema's `required` leaves out a parameter, all of which are required.
 
 Fix: align the signature and the schema
 
@@ -4274,6 +4288,42 @@ Note: Snowflake's JavaScript and Snowflake Scripting CREATE PROCEDURE and CREATE
 Raised when a column a defined search service names -- `search_column`, an attribute, an id, title or relative path column, or a `columns:` entry, on the member or on an agent's search tool over it -- or a column `ref()` in its `where`, names a model other than its `on:` model.
 
 Fix: reference a column of the on: model, as {{ ref('&lt;on model&gt;', '&lt;column&gt;') }}
+
+### SST-VAL623
+
+**Generic tool calls a table-returning routine** (error)
+
+`agent '<artifact>': generic tool '<name>' calls '<member>', which returns a table`
+
+Raised when a generic agent tool's procedure or function member declares `returns: TABLE (...)`.
+
+Fix: return one value, such as a VARCHAR holding JSON, from the routine the tool calls
+
+Note: Snowflake's tool runtime reads a single cell back, so every call fails with 'expected a single cell result set'. Calling the routine outside a generic tool is unaffected.
+
+### SST-VAL624
+
+**Generic tool cannot name a quoted parameter** (error)
+
+`agent '<artifact>': generic tool '<name>' cannot pass '<member>' parameter '<field>', whose name is quoted`
+
+Raised when a parameter of a generic agent tool's procedure or function member renders quoted: it is a reserved word such as `select`, or written quoted.
+
+Fix: rename the parameter to an unquoted identifier that is not a reserved word
+
+Note: Snowflake's tool runtime names each argument unquoted (`select => ?`), so the call is a syntax error on every run. Calling the routine outside a generic tool is unaffected.
+
+### SST-VAL625
+
+**Generic tool cannot pass a semi-structured parameter** (error)
+
+`agent '<artifact>': generic tool '<name>' cannot pass '<member>' parameter '<field>' of type <found>`
+
+Raised when a parameter of a generic agent tool's procedure or function member is ARRAY, OBJECT or VARIANT.
+
+Fix: take the value as VARCHAR, and parse it in the routine with PARSE_JSON
+
+Note: Snowflake's tool runtime refuses those argument types on a warehouse, so every call fails. Calling the routine outside a generic tool is unaffected.
 
 ### SST-VAL701
 
@@ -4885,15 +4935,15 @@ Fix: give each file its own name:
 
 ### SST-VAL801
 
-**Skill, plugin or profile folder is misnamed** (error)
+**Skill, plugin, profile or agent folder is misnamed** (error)
 
 `'<artifact>': <detail>`
 
-Raised when a skill, plugin or profile folder is misnamed or its manifest is wrong: a skill or plugin name is not kebab-case or would publish as an extension name that does not start with a letter; a profile name is not lowercase letters, digits, '-' or '_', or is 'shared'; a plugin or profile folder has no manifest, or both the .yml and .yaml spellings; or the SKILL.md frontmatter or manifest `name` is not the folder's name.
+Raised when a skill, plugin or profile folder is misnamed or its manifest is wrong: a skill or plugin name is not kebab-case or would publish as an extension name that does not start with a letter; a profile name is not lowercase letters, digits, '-' or '_', or is 'shared'; a plugin or profile folder has no manifest, or both the .yml and .yaml spellings; an agent folder holds both agent.yml and agent.yaml; or the SKILL.md frontmatter or manifest `name` is not the folder's name.
 
-Fix: rename the folder, or correct the manifest or SKILL.md name the message names
+Fix: rename the folder, keep one manifest spelling, or fix the manifest or SKILL.md name the message names
 
-Note: The message names which; rename the folder, or correct the manifest or frontmatter.
+Note: The message names which; rename the folder, keep one manifest spelling, or correct the manifest or frontmatter.
 
 ### SST-VAL802
 

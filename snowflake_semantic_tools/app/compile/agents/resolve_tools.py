@@ -27,6 +27,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.resolve.stage_path import resolve_stage_path
 from snowflake_semantic_tools.domain.validate.agent_tool import (
+    generic_callable,
     misplaced_keys,
     overrides,
     search_tool_columns,
@@ -42,7 +43,8 @@ _AGENTS = (ToolKind.AGENT.value,)
 _TOOLSET = "agent_toolset"
 # A tool type Snowflake accepts in CREATE AGENT and refuses on every run (SST-VAL559).
 _MCP = "mcp"
-_INPUT_TYPES = frozenset(("string", "number", "integer", "boolean", "array"))
+# An array argument is refused by the tool runtime, as an ARRAY parameter is (SST-VAL625).
+_INPUT_TYPES = frozenset(("string", "number", "integer", "boolean"))
 
 # What an agent tool's name may hold: letters, digits, `_` and `-`.
 _TOOL_IDENTIFIER = re.compile(r"[A-Za-z0-9_-]+")
@@ -102,6 +104,8 @@ def resolve_tool(
         SST-PRS032: an input schema property has a type a tool input cannot carry.
         SST-PRS033: an input schema requires a property it does not declare.
         SST-VAL607: a generic tool's input schema disagrees with its member's signature.
+        SST-VAL623, SST-VAL624, SST-VAL625: a generic tool's member returns a table, or has a
+            parameter whose name must be quoted or whose type is ARRAY, OBJECT or VARIANT.
         SST-VAL527: a generic tool resolves no warehouse.
         SST-REF012: an agent toolset's `agent()` names no enabled agent.
         SST-VAL528: an agent toolset resolved, so this spec no longer fixes the tool surface.
@@ -241,6 +245,7 @@ def _generic(
     mismatch = signature_mismatch(agent, name, backing, authored.input_schema)
     if mismatch is not None:
         diagnostics.append(mismatch)
+    diagnostics.extend(generic_callable(agent, name, backing))
     if not warehouse:
         diagnostics.append(D("SST-VAL527", artifact=agent.name, name=name, subject=agent.key))
     diagnostics.extend(overrides(agent, authored, name, backing))

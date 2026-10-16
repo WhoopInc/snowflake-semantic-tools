@@ -42,17 +42,15 @@ class ToolKind(Enum):
 
 @dataclass(frozen=True, slots=True)
 class ToolParameter:
-    """One `signature:` parameter of a procedure or function member.
+    """One `signature:` parameter of a procedure or function member; every one is required.
 
     Attributes:
         name: Rendered as an identifier, so upper-cased unless written quoted.
         type: The SQL type as written, rendered verbatim.
-        required: The parameter's `required:` flag; False when unset.
     """
 
     name: str
     type: str
-    required: bool
 
 
 @dataclass(frozen=True, slots=True)

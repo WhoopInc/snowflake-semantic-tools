@@ -11,6 +11,7 @@ from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.validate.agent import agent_rules, token_budget
 from snowflake_semantic_tools.domain.validate.agent_live import names_object, signature_disagreement
 from snowflake_semantic_tools.domain.validate.agent_tool import (
+    generic_callable,
     misplaced_keys,
     overrides,
     search_tool_columns,
@@ -59,8 +60,14 @@ def test_a_search_tool_needs_both_preview_keys_sound_descriptors_and_filterable_
 
 def test_a_member_signature_must_match_the_calling_tools_input_schema() -> None:
     member = procedure_member(signature=(parameter("ORDER_ID", "NUMBER(38,0)"), parameter("NOTE", "VARCHAR")))
-    matching = {"properties": {"order_id": {"type": "integer"}, "Note": {"type": "string"}}}
+    matching = {
+        "properties": {"order_id": {"type": "integer"}, "Note": {"type": "string"}},
+        "required": ["order_id", "Note"],
+    }
     assert signature_mismatch(MODEL, "lookup", member, matching) is None
+    # Every parameter is required, so a schema that lists none of them in `required` differs.
+    unlisted = signature_mismatch(MODEL, "lookup", member, {"properties": matching["properties"]})
+    assert unlisted is not None and unlisted.context["expected"].endswith("not requiring ORDER_ID, NOTE")
     wrong = {"properties": {"order_id": {"type": "string"}, "note": {"type": "string"}}}
     found = signature_mismatch(MODEL, "lookup", member, wrong)
     assert found is not None and found.code == "SST-VAL607"
@@ -148,3 +155,19 @@ def test_a_live_specification_names_an_object_by_its_qualified_name_anywhere_in_
     assert not names_object({"limit": 3, "flag": None, "text": "no dots here"}, view)
     assert not names_object({"unbalanced": '"DB.S.ORDERS', "four": "A.B.C.D"}, view)
     assert not names_object('"DB"."S"."orders"', view)
+
+
+def test_a_generic_tool_cannot_call_a_table_a_quoted_parameter_or_a_semi_structured_one() -> None:
+    member = procedure_member(
+        returns="TABLE (id VARCHAR)",
+        signature=(
+            parameter("select", "VARCHAR"),
+            parameter("payload", "variant"),
+            parameter("bad name", "VARCHAR"),
+            parameter("order_id", "NUMBER"),
+        ),
+    )
+    found = [(item.code, item.context.get("field")) for item in generic_callable(MODEL, "lookup", member)]
+    # A name that does not parse is SST-PRS005's, not a quoting problem.
+    assert found == [("SST-VAL623", None), ("SST-VAL624", "select"), ("SST-VAL625", "payload")]
+    assert generic_callable(MODEL, "lookup", procedure_member()) == ()

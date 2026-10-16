@@ -161,7 +161,7 @@ spec:
         Do NOT use for population questions -- any question phrased "how many" or
         "which location" belongs to an Analyst tool.
       # Required for a generic tool (SST-VAL526). Property types must be string,
-      # number, integer, boolean or array (SST-PRS032), and every `required`
+      # number, integer or boolean (SST-PRS032), and every `required`
       # name must be a declared property (SST-PRS033).
       input_schema:
         type: object

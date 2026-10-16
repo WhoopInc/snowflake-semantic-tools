@@ -184,7 +184,7 @@ def test_tool_validation_covers_duplicate_unknown_category_signature_and_columns
         origin,
         "tools.yml",
         relations=MappingProxyType({"dev": "DB.S.BROKEN"}),
-        signature=(ToolParameter("payload", "object", True),),
+        signature=(ToolParameter("payload", "object"),),
     )
     bad_search = ToolMember(
         "search",
@@ -203,8 +203,9 @@ def test_tool_validation_covers_duplicate_unknown_category_signature_and_columns
         "SST-VAL604",
         "SST-VAL606",
         "SST-VAL609",
-        "SST-PRS032",
     }.issubset({diagnostic.code for diagnostic in diagnostics})
+    # An OBJECT parameter is a generic tool's concern (SST-VAL625), not the member's.
+    assert "SST-PRS032" not in {diagnostic.code for diagnostic in diagnostics}
 
 
 def test_tool_validation_covers_reference_without_relations_and_shared_target_warning() -> None:
@@ -299,7 +300,7 @@ def test_every_value_a_defined_tool_writes_unquoted_is_checked_before_it_renders
         execute_as="everyone",
         returns="NUMBER); DROP TABLE x; --",
         warehouse="WH X",
-        signature=(ToolParameter("id", "NUMBER) --", True),),
+        signature=(ToolParameter("id", "NUMBER) --"),),
         secrets=MappingProxyType({"token": "SECRET"}),
         where="1 = 1; DROP TABLE x",
     )
@@ -328,7 +329,7 @@ def test_a_tool_whose_values_render_or_wait_for_a_template_reports_none() -> Non
         execute_as="restricted   caller",
         returns="TABLE (id NUMBER)",
         warehouse="{{ env_var('WH') }}",
-        signature=(ToolParameter("id", "NUMBER(38, 0)", True),),
+        signature=(ToolParameter("id", "NUMBER(38, 0)"),),
         secrets=MappingProxyType({"token": "DB.S.SECRET"}),
         where="{{ var('predicate') }}",
     )
@@ -401,3 +402,17 @@ def test_a_javascript_or_sql_routine_reports_each_key_only_handler_languages_tak
     assert (
         _handler_keys("cortex_search_service", {"on_model": "docs", "search_column": "BODY", "packages": ("p",)}) == []
     )
+
+
+def test_a_member_name_that_is_not_an_identifier_is_reported_alone_and_a_risky_one_beside_the_rest() -> None:
+    def member(name: str) -> ToolMember:
+        return ToolMember(name, "mystery", ToolOwnership.DEFINE, Origin("tools.yml"), "tools.yml")
+
+    unusable = validate_tool_catalog(
+        ToolCatalog((member("zz-stage"),), "dev", frozenset(("dev",))), DbtCatalog("v12", None, None, ())
+    )
+    assert [item.code for item in unusable] == ["SST-PRS005"]
+    risky = validate_tool_catalog(
+        ToolCatalog((member("select"),), "dev", frozenset(("dev",))), DbtCatalog("v12", None, None, ())
+    )
+    assert {"SST-PRS031", "SST-VAL603"} <= {item.code for item in risky}

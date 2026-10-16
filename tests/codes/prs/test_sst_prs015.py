@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
+
 from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
 from snowflake_semantic_tools.domain.model.eval import (
     EvalGroundTruth,
@@ -51,3 +53,20 @@ def test_sst_prs015_silent_for_a_date_that_scopes_the_expectation() -> None:
 def test_sst_prs015_fires_for_a_figure_beside_a_date_or_shaped_like_a_year() -> None:
     for output in ("It reports 12 orders in 2024.", "It reports 2000 orders.", "Revenue rose 5% since 2023."):
         assert _output_findings(output) == ["questions[0].ground_truth.ground_truth_output"], output
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "Revenue is before tax, as of 2024-03-31.",
+        "It counts every order since 2024-01-01.",
+        "It covers orders from 2024-01-01 to 2024-03-31.",
+        "It covers orders between 2024-01-01 and 2024-03-31.",
+    ],
+)
+def test_sst_prs015_silent_for_an_iso_date_after_a_date_word(output: str) -> None:
+    assert _output_findings(output) == []
+
+
+def test_sst_prs015_fires_for_a_figure_after_an_iso_date_after_a_date_word() -> None:
+    assert _output_findings("As of 2024-03-31 revenue was 1200.") == ["questions[0].ground_truth.ground_truth_output"]

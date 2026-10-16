@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.evals.dataset import parse_dataset
@@ -10,8 +11,10 @@ from snowflake_semantic_tools.adapters.yaml.skills import load_skill_catalog
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.eval import CustomEvalMetric, EvalCatalog, ResolvedEval
 from snowflake_semantic_tools.domain.validate.eval import validate_eval_catalog
+from tests.helpers.cli_projects import validate_json
 from tests.helpers.eval_builders import resolved_eval
 from tests.helpers.file_trees import write_tree
+from tests.helpers.reference_project import project_copy
 from tests.helpers.seam_projects import parsed
 
 VALUE = resolved_eval()
@@ -49,3 +52,29 @@ def skill_tree_findings(tmp_path: Path, code: str, files: dict[str, str]) -> lis
     write_tree(tmp_path, files)
     catalog = load_skill_catalog(tmp_path, skills_dir="skills", plugins_dir="plugins")
     return [item for item in catalog.diagnostics if item.code == code]
+
+
+NAMED_AGENT = "agents/sales/zz_named/agent.yml"
+NAMED_MEMBER = "tools/platform/zz_named.yml"
+
+
+def named_findings(root: Path, code: str, *, agent: str, member: str) -> tuple[int, list[dict[str, Any]]]:
+    """Validate a reference project copy with an agent and a stage member of these names.
+
+    Returns:
+        The exit code, and the diagnostics of `code`, as JSON objects, with the agent's first.
+    """
+    project = project_copy(root)
+    write_tree(
+        project,
+        {
+            NAMED_AGENT: (
+                f"name: {agent}\nspec:\n  tools:\n    - type: cortex_analyst_text_to_sql\n"
+                "      semantic_view: \"{{ semantic_view('jaffle_sales') }}\"\n      description: Orders.\n"
+            ),
+            NAMED_MEMBER: f"tool:\n  name: {member}\n  type: stage\n  description: Files.\n",
+        },
+    )
+    exit_code, diagnostics = validate_json(project)
+    found = [item for item in diagnostics if item["code"] == code]
+    return exit_code, sorted(found, key=lambda item: item["location"]["file"])

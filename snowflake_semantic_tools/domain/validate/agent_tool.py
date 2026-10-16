@@ -11,8 +11,10 @@ from dataclasses import replace
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.agent import BUILTIN_AGENT_TOOLS, AgentModel, AgentTool
+from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.tool import ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.resolve.tool_column import ColumnSite, tool_column
+from snowflake_semantic_tools.domain.sql import ident
 
 # The keys every tool type takes; `name` on an Analyst tool is SST-VAL520's to report.
 _COMMON = frozenset(("type", "name", "description", "tool_spec_passthrough"))
@@ -39,6 +41,8 @@ TOOL_KEYS: Mapping[str, frozenset[str]] = {
 # Every key some type takes. A key outside it is not a misplaced key but an unknown one.
 _KNOWN_KEYS = frozenset(key for keys in TOOL_KEYS.values() for key in keys)
 _COLUMN_TYPES = frozenset(("string", "datetime"))
+# Parameter type families Snowflake's tool runtime cannot pass a generic tool's argument as.
+_UNCALLABLE_TYPES = frozenset(("ARRAY", "OBJECT", "VARIANT"))
 # JSON Schema input types, by the Snowflake type families each may carry.
 _SQL_TO_INPUT: Mapping[str, frozenset[str]] = {
     "VARCHAR": frozenset(("string",)),
@@ -155,11 +159,12 @@ def signature_mismatch(
     """Compare a member's declared signature with the input schema of the tool that calls it.
 
     Parameters match properties in number, by name ignoring case, and by type: a Snowflake
-    type's family against the JSON Schema type. A member that declares no signature, or a
-    schema with no properties mapping, is not compared.
+    type's family against the JSON Schema type. Every parameter is required, since none renders
+    a DEFAULT, so the schema's `required` must list each one. A member that declares no
+    signature, or a schema with no properties mapping, is not compared.
 
     Diagnostics:
-        SST-VAL607: the arity, a name, or a type differs.
+        SST-VAL607: the arity, a name, or a type differs, or `required` leaves out a parameter.
     """
     properties = input_schema.get("properties")
     if not backing.signature or not isinstance(properties, Mapping):
@@ -168,10 +173,15 @@ def signature_mismatch(
     matches = len(declared) == len(backing.signature) and all(
         input_type_matches(parameter.type, declared.get(parameter.name.casefold())) for parameter in backing.signature
     )
-    if matches:
+    required = input_schema.get("required")
+    listed = {str(key).casefold() for key in required} if isinstance(required, list) else set()
+    optional = [parameter.name for parameter in backing.signature if parameter.name.casefold() not in listed]
+    if matches and not optional:
         return None
     found = "(" + ", ".join(f"{parameter.name} {parameter.type}" for parameter in backing.signature) + ")"
     expected = "(" + ", ".join(f"{key} {schema_type(value)}" for key, value in properties.items()) + ")"
+    if matches:
+        found, expected = f"{found} requiring each", f"{expected} not requiring {', '.join(optional)}"
     return D("SST-VAL607", name=backing.name, found=found, expected=expected, subject=agent.key)
 
 
@@ -187,9 +197,64 @@ def input_type_matches(sql_type: str, schema: object) -> bool:
     """
     if not isinstance(schema, Mapping):
         return False
-    family = sql_type.strip().upper().split("(")[0].split()[0] if sql_type.strip() else ""
-    accepted = _SQL_TO_INPUT.get(family)
+    accepted = _SQL_TO_INPUT.get(_family(sql_type))
     return accepted is None or schema.get("type") in accepted
+
+
+def _family(sql_type: str) -> str:
+    """Name a Snowflake type's family: its first word, upper-cased, before any `(`; "" when blank."""
+    return sql_type.strip().upper().split("(")[0].split()[0] if sql_type.strip() else ""
+
+
+def generic_callable(agent: AgentModel, name: str, backing: ToolMember) -> tuple[Diagnostic, ...]:
+    """Report what in a routine's declared signature a generic tool calling it cannot pass or read.
+
+    Snowflake's tool runtime calls the routine on a warehouse with each argument named unquoted,
+    and reads a single value back. A routine an agent does not call this way is not affected.
+    A parameter whose name does not parse is left to SST-PRS005.
+
+    Diagnostics:
+        SST-VAL623: the routine returns a table.
+        SST-VAL624: a parameter's name renders quoted: it is a reserved word, or written quoted.
+        SST-VAL625: a parameter's type is ARRAY, OBJECT or VARIANT.
+    """
+    found: list[Diagnostic] = []
+    if _family(backing.returns or "") == "TABLE":
+        found.append(D("SST-VAL623", artifact=agent.name, name=name, member=backing.name, subject=agent.key))
+    for parameter in backing.signature:
+        if _needs_quotes(parameter.name):
+            found.append(
+                D(
+                    "SST-VAL624",
+                    artifact=agent.name,
+                    name=name,
+                    member=backing.name,
+                    field=parameter.name,
+                    subject=agent.key,
+                )
+            )
+        if _family(parameter.type) in _UNCALLABLE_TYPES:
+            found.append(
+                D(
+                    "SST-VAL625",
+                    artifact=agent.name,
+                    name=name,
+                    member=backing.name,
+                    field=parameter.name,
+                    found=parameter.type,
+                    subject=agent.key,
+                )
+            )
+    return tuple(found)
+
+
+def _needs_quotes(name: str) -> bool:
+    """Report whether a parameter name renders other than as its bare name upper-cased."""
+    try:
+        rendered = str(ident(Identifier.parse(name)))
+    except ValueError:
+        return False
+    return rendered != name.strip().upper()
 
 
 def overrides(agent: AgentModel, authored: AgentTool, name: str, backing: ToolMember) -> list[Diagnostic]:

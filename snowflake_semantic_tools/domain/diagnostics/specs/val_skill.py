@@ -14,17 +14,21 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL801",
         Severity.ERROR,
-        "Skill, plugin or profile folder is misnamed",
+        "Skill, plugin, profile or agent folder is misnamed",
         "'{artifact}': {detail}",
-        "rename the folder, or correct the manifest or SKILL.md name the message names",
+        "rename the folder, keep one manifest spelling, or fix the manifest or SKILL.md name the message names",
         condition=(
             "a skill, plugin or profile folder is misnamed or its manifest is wrong: a skill or plugin "
             "name is not kebab-case or would publish as an extension name that does not start with a "
             "letter; a profile name is not lowercase letters, digits, '-' or '_', or is 'shared'; a "
-            "plugin or profile folder has no manifest, or both the .yml and .yaml spellings; or the "
-            "SKILL.md frontmatter or manifest `name` is not the folder's name"
+            "plugin or profile folder has no manifest, or both the .yml and .yaml spellings; an agent "
+            "folder holds both agent.yml and agent.yaml; or the SKILL.md frontmatter or manifest "
+            "`name` is not the folder's name"
         ),
-        note="The message names which; rename the folder, or correct the manifest or frontmatter.",
+        note=(
+            "The message names which; rename the folder, keep one manifest spelling, or correct the "
+            "manifest or frontmatter."
+        ),
     ),
     spec(
         "SST-VAL802",

@@ -296,10 +296,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Input schema property has a forbidden type",
         "{artifact}: input_schema property '{field}' has type '{found}'",
-        "use string, number, integer, boolean or array",
+        "use string, number, integer or boolean",
         condition=(
-            "a generic tool's input_schema property declares a type other than string, number, "
-            "integer, boolean or array, or a tool member's signature has a parameter typed OBJECT"
+            "a generic tool's input_schema property declares a type other than string, number, integer or boolean"
+        ),
+        note=(
+            "Snowflake's tool runtime refuses an array or object argument on a warehouse; pass the "
+            "value as a JSON string and parse it in the routine."
         ),
     ),
     spec(
@@ -519,6 +522,18 @@ SPECS: tuple[ErrorSpec, ...] = (
             "for DATE, TIME or a timestamp; or the type is one no default can be written for"
         ),
         note="A temporal default renders as `'<text>'::<type>`; Snowflake reads a bare string as VARCHAR.",
+    ),
+    spec(
+        "SST-PRS130",
+        Severity.ERROR,
+        "Signature parameter writes required",
+        "{artifact}: '{field}' is not written: every signature parameter is required",
+        "remove `required:`, and list the parameter in the calling tool's input_schema.required",
+        condition="a procedure or function member's `signature:` entry writes `required`",
+        note=(
+            "SST renders no DEFAULT for a parameter, so Snowflake requires every argument; a call "
+            "that leaves one out matches no signature (000944)."
+        ),
     ),
     spec(
         "SST-PRS900",

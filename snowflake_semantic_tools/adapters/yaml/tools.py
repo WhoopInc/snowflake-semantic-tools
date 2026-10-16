@@ -285,6 +285,7 @@ def _parse_member(source: _Source, path: NodePath, value: object) -> tuple[ToolM
         SST-VAL608: `on:` is not one single-argument `ref()` call.
         SST-REF008: `description`, published as written, holds a template.
         SST-PRS013: `refresh_mode` is present and not text, such as an unquoted `yes` or empty.
+        SST-PRS130: a `signature:` entry writes `required`; every parameter is required.
         Every code `_header`, `_Columns.read`, `_columns_of`, `_where` and `_body` list.
     """
     header, problems = _header(source, path, value)
@@ -587,12 +588,13 @@ def _on_fields(
 def _signature(value: object, subject: str, origin: Origin, diagnostics: list[Diagnostic]) -> tuple[ToolParameter, ...]:
     """Read `signature:` as the routine's parameters, in order, skipping each malformed entry.
 
-    A parameter needs a string `name` and `type`; `required` is read as a truth value, False
-    when absent.
+    A parameter needs a string `name` and `type`. Every parameter is required, since the routine
+    renders no DEFAULT, so an entry that writes `required` is refused and the parameter kept.
 
     Diagnostics:
         SST-PRS003: when `signature:` is not a list, or an entry is not a mapping with a string
             `name` and `type`, once per entry.
+        SST-PRS130: when an entry writes `required`, once per entry.
     """
     if value is None:
         return ()
@@ -622,7 +624,10 @@ def _signature(value: object, subject: str, origin: Origin, diagnostics: list[Di
                 )
             )
             continue
-        parameters.append(ToolParameter(str(item["name"]), str(item["type"]), bool(item.get("required", False))))
+        if "required" in item:
+            field = f"signature.{item['name']}.required"
+            diagnostics.append(D("SST-PRS130", artifact=subject, field=field, subject=subject, origin=origin))
+        parameters.append(ToolParameter(str(item["name"]), str(item["type"])))
     return tuple(parameters)
 
 

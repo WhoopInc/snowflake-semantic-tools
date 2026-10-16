@@ -23,10 +23,15 @@ tools/
 ```
 
 Each agent is a folder under `project.agents_dir` (default `agents`) holding
-`agent.yml` or `agent.yaml`; a file directly in `agents_dir` is not read. The
-agent's name comes from `name:`, not from the folder, and it publishes into its
-resolved `database` and `schema` settings (below), which default to the target's
-database and schema.
+`agent.yml` or `agent.yaml`; a file directly in `agents_dir` is not read, and a
+folder holding both is an error (`SST-VAL801`) and publishes neither. The
+agent's name comes from `name:`, not from the folder. It must be a Snowflake
+identifier, such as letters, digits and underscores starting with a letter
+(`SST-PRS005`, and the agent is left out); a reserved word such as `select`
+(`SST-PRS031`), or a reserved prefix such as `sst_` or `snowflake_`
+(`SST-PRS100`), is a warning. The agent publishes into its resolved `database`
+and `schema` settings (below), which default to the target's database and
+schema.
 
 Agent folders may sit in grouping folders, `agents/<domain>/<agent>/agent.yml`.
 An `agents.<domain>:` folder route overrides any `agents:` `+` key for the
@@ -196,7 +201,14 @@ Each `spec.tools` entry is one tool. SST splits it into the spec's `tools` and
 - `tool_spec_passthrough` adds keys to the rendered `tool_spec`; search and
   generic tools also take `passthrough`, added to their resources last.
 - A generic tool's resources are not checked by `CREATE AGENT`, so each is a
-  warning (`SST-RND013`): confirm the backing object yourself.
+  warning (`SST-RND013`): confirm the backing object yourself. Snowflake's tool
+  runtime calls the routine on a warehouse with each argument named unquoted,
+  and reads one value back, so when the member declares them SST refuses what
+  would fail every run: a routine that returns a table (`SST-VAL623`), a
+  parameter whose name must be quoted, such as a reserved word like `select`
+  (`SST-VAL624`), and a parameter of type `ARRAY`, `OBJECT`, or `VARIANT`
+  (`SST-VAL625`); take such a value as `VARCHAR` and parse it with
+  `PARSE_JSON`. The same routine stays valid for any other caller.
 
 ### Tool members
 
@@ -204,7 +216,10 @@ Every object a search, generic, or toolset tool calls is declared once as a
 **tool member** under `project.tools_dir`, in any folder below it, and
 referenced with `{{ tool('<name>') }}`, which takes exactly one name
 (`SST-REF015`) and names a declared member (`SST-REF010`). A member name is
-unique in the project, ignoring case (`SST-VAL001`). A file's root `tool:` holds
+unique in the project, ignoring case (`SST-VAL001`), and follows the agent name
+rules: a name that is not an identifier is an error (`SST-PRS005`) and the
+member is not compiled, and a reserved word or prefix is a warning
+(`SST-PRS031`, `SST-PRS100`). A file's root `tool:` holds
 one member, the norm; its root `tools:` holds a list of them:
 
 ```yaml
@@ -272,9 +287,9 @@ In the agent:
 
 A search tool's id and title columns and its `columns` come from the member
 unless the tool sets its own, written as the member writes its columns (below).
-An `input_schema` property type is `string`, `number`, `integer`, `boolean`, or
-`array` (`SST-PRS032`), and every `required` name is a declared property
-(`SST-PRS033`).
+An `input_schema` property type is `string`, `number`, `integer`, or `boolean`
+(`SST-PRS032`): the tool runtime cannot pass an array or an object argument.
+Every `required` name is a declared property (`SST-PRS033`).
 
 A tool object that a defined member publishes is replaced when its definition
 cannot change in place. SST never grants new access, but it re-issues exactly
@@ -406,8 +421,8 @@ description changes the fingerprint, and `plan` shows the routine as an update.
 |---|---|---|---|
 | `body` | `"{{ file('<path>') }}"`, relative to the tool file's folder | yes | the body, as `AS $$ ... $$`; it may not contain `$$` |
 | `language` | `sql`, `python`, `java`, `javascript`, or `scala` | yes | `LANGUAGE` (`SST-PRS013`) |
-| `returns` | a Snowflake type, or `TABLE (<column> <type>, ...)` | yes | `RETURNS` (`SST-PRS003`) |
-| `signature` | list of `name:` and `type:` maps | no | the argument list, in order |
+| `returns` | a Snowflake type, or `TABLE (<column> <type>, ...)`, which a generic tool cannot call (`SST-VAL623`) | yes | `RETURNS` (`SST-PRS003`) |
+| `signature` | list of `name:` and `type:` maps; every parameter is required, and an entry that writes `required:` is an error (`SST-PRS130`) | no | the argument list, in order |
 | `runtime_version` | string | for Java, Python and Scala; never rendered for SQL or JavaScript | `RUNTIME_VERSION = '<version>'` |
 | `handler` | string | for Java, Python and Scala; never rendered for SQL or JavaScript | `HANDLER = '<handler>'` |
 | `packages` | list of strings | no | `PACKAGES = ('<package>', ...)` |
@@ -424,10 +439,10 @@ files and fingerprint; an absolute path or one that leaves the project is
 `SST-REF027`, a symbolic link `SST-PRT009`, a path naming no file `SST-REF014`,
 an unreadable file `SST-LOD018`, and an empty one `SST-LOD019`. Each name the
 DDL writes must be an identifier and each secret a three-part name
-(`SST-PRS005`), each type a Snowflake type (`SST-PRS003`), and a parameter of
-type `OBJECT` is refused (`SST-PRS032`). A generic tool's `input_schema` must
-match the signature in count, in names ignoring case, and in type
-(`SST-VAL607`). A procedure that runs as `owner` and that an agent reaches is a
+(`SST-PRS005`), and each type a Snowflake type (`SST-PRS003`). A generic tool's
+`input_schema` must match the signature in count, in names ignoring case, and
+in type, and its `required` must list every parameter, since none renders a
+`DEFAULT` (`SST-VAL607`). A procedure that runs as `owner` and that an agent reaches is a
 warning (`SST-VAL610`): it lets a conversation act with the owner's privileges.
 
 ```yaml

@@ -54,7 +54,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "align the signature and the schema",
         condition=(
             "the arity, names or types of a defined procedure's or function's signature differ from the "
-            "input schema of the generic agent tool that calls it"
+            "input schema of the generic agent tool that calls it, or the schema's `required` leaves "
+            "out a parameter, all of which are required"
         ),
     ),
     spec(
@@ -146,6 +147,45 @@ SPECS: tuple[ErrorSpec, ...] = (
             "a column a defined search service names -- `search_column`, an attribute, an id, title "
             "or relative path column, or a `columns:` entry, on the member or on an agent's search "
             "tool over it -- or a column `ref()` in its `where`, names a model other than its `on:` model"
+        ),
+    ),
+    spec(
+        "SST-VAL623",
+        Severity.ERROR,
+        "Generic tool calls a table-returning routine",
+        "agent '{artifact}': generic tool '{name}' calls '{member}', which returns a table",
+        "return one value, such as a VARCHAR holding JSON, from the routine the tool calls",
+        condition="a generic agent tool's procedure or function member declares `returns: TABLE (...)`",
+        note=(
+            "Snowflake's tool runtime reads a single cell back, so every call fails with 'expected a "
+            "single cell result set'. Calling the routine outside a generic tool is unaffected."
+        ),
+    ),
+    spec(
+        "SST-VAL624",
+        Severity.ERROR,
+        "Generic tool cannot name a quoted parameter",
+        "agent '{artifact}': generic tool '{name}' cannot pass '{member}' parameter '{field}', whose name is quoted",
+        "rename the parameter to an unquoted identifier that is not a reserved word",
+        condition=(
+            "a parameter of a generic agent tool's procedure or function member renders quoted: it is "
+            "a reserved word such as `select`, or written quoted"
+        ),
+        note=(
+            "Snowflake's tool runtime names each argument unquoted (`select => ?`), so the call is a "
+            "syntax error on every run. Calling the routine outside a generic tool is unaffected."
+        ),
+    ),
+    spec(
+        "SST-VAL625",
+        Severity.ERROR,
+        "Generic tool cannot pass a semi-structured parameter",
+        "agent '{artifact}': generic tool '{name}' cannot pass '{member}' parameter '{field}' of type {found}",
+        "take the value as VARCHAR, and parse it in the routine with PARSE_JSON",
+        condition=("a parameter of a generic agent tool's procedure or function member is ARRAY, OBJECT or VARIANT"),
+        note=(
+            "Snowflake's tool runtime refuses those argument types on a warehouse, so every call fails. "
+            "Calling the routine outside a generic tool is unaffected."
         ),
     ),
     spec(

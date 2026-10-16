@@ -6,12 +6,11 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
-from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
 from snowflake_semantic_tools.adapters.yaml.fields import checked_bool, resolve_file
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import _non_additive, _window
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple, _referenced_tables
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.parse.template import (
@@ -193,29 +192,31 @@ def _calls_file(text: str) -> bool:
         return False
 
 
-def _verified_at(value: object, *, name: str) -> int | None:
+def _verified_at(value: object, *, name: str, origin: Origin) -> tuple[int | None, Diagnostic | None]:
     """Read `verified_at` as epoch seconds: an integer, or an ISO-8601 string, in UTC unless it says.
 
-    Raises:
-        ProjectError: The value is neither (SST-PRS017).
+    Returns:
+        The epoch seconds, None when unset; or None with the diagnostic, at `origin`, when the
+        value is neither. An unquoted date, which YAML reads as a date, is neither.
 
     Diagnostics:
-        SST-PRS017: the value is not an integer epoch or an ISO-8601 string; raised.
+        SST-PRS017: the value is not an integer epoch or an ISO-8601 string.
     """
     if value is None:
-        return None
+        return None, None
     if isinstance(value, int) and not isinstance(value, bool):
-        return value
+        return value, None
     if isinstance(value, str):
         try:
             parsed = datetime.fromisoformat(value.strip())
         except ValueError:
             parsed = None
         if parsed is not None:
-            return int((parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)).timestamp())
+            return int((parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)).timestamp()), None
     subject = artifact_key("verified_query", name)
-    diagnostic = D("SST-PRS017", artifact=subject, field="verified_at", found=str(value), subject=subject)
-    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    return None, D(
+        "SST-PRS017", artifact=subject, field="verified_at", found=str(value), subject=subject, origin=origin
+    )
 
 
 def load_verified_queries(
@@ -231,13 +232,13 @@ def load_verified_queries(
     `resolve_file` refuses.
 
     Returns:
-        The records, and what reading the files they name reported, in entry order.
-
-    Raises:
-        ProjectError: An entry's `verified_at` is neither an integer nor an ISO-8601 string; an
-            unquoted date, which YAML reads as a date, is refused too (SST-PRS017).
+        The records, and what reading the files they name and their `verified_at` values
+        reported, in entry order.
 
     Diagnostics:
+        SST-PRS017: an entry's `verified_at` is neither an integer nor an ISO-8601 string, at
+            that key; an unquoted date, which YAML reads as a date, is refused too. The entry
+            is kept, with no `verified_at`.
         Every code `resolve_file` lists, for the file a `sql:` names.
         SST-PRS003: `use_as_onboarding_question` is not a boolean, such as a quoted `"false"`;
             it reads as unset.
@@ -267,13 +268,17 @@ def load_verified_queries(
         except TemplateSyntaxError:
             template_calls = ()
         tables, poisoned = _referenced_tables(sql)
+        where = node_origin(document, member_root("verified_query"), index, "verified_at")
+        verified_at, refused = _verified_at(node.get("verified_at"), name=name, origin=where)
+        if refused is not None:
+            diagnostics.append(refused)
         out.append(
             VerifiedQueryDef(
                 name=name,
                 question=str(node["question"]),
                 sql=sql,
                 tables=tables,
-                verified_at=_verified_at(node.get("verified_at"), name=name),
+                verified_at=verified_at,
                 verified_by=str(node.get("verified_by") or "").strip() or None,
                 onboarding_question=checked_bool(
                     node.get("use_as_onboarding_question"),

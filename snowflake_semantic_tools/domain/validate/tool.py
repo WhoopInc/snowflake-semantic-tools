@@ -17,6 +17,7 @@ from snowflake_semantic_tools.domain.model.tool import (
     ToolOwnership,
     vocabulary_key,
 )
+from snowflake_semantic_tools.domain.parse.names import name_warnings
 from snowflake_semantic_tools.domain.sql import is_datatype
 from snowflake_semantic_tools.domain.validate.shared import Emitter
 from snowflake_semantic_tools.domain.validate.sql import (
@@ -47,11 +48,12 @@ def validate_tool_catalog(catalog: ToolCatalog, dbt: DbtCatalog) -> DiagnosticBa
         SST-REF018: a relation names a target `profiles.yml` does not declare, or none names the current one.
         SST-REF019: a relation is not a three-part name.
         SST-REF023: a mutable member's relations name one object for both dev and prod.
-        SST-PRS032: a signature parameter has type OBJECT; only the first is reported.
         SST-VAL608: a defined search service's `on:` is not a dbt model.
         SST-VAL609: a search or attribute column is not on the search service's model.
-        SST-PRS005: a name a defined member's DDL writes is not an identifier, or a secret not a
-            three-part name.
+        SST-PRS005: a member's name, or a name a defined member's DDL writes, is not an identifier,
+            or a secret not a three-part name. A member whose name is not is checked no further.
+        SST-PRS012, SST-PRS031, SST-PRS100: a member's name holds a character outside ASCII, is a
+            reserved word, or starts with a reserved prefix.
         SST-PRS003: a defined member's parameter or return type is not a Snowflake data type.
         SST-PRS013: a defined member's language, `execute_as` or `refresh_mode` is not one
             Snowflake accepts.
@@ -102,15 +104,22 @@ def _duplicate_names(members: tuple[ToolMember, ...]) -> list[Diagnostic]:
 
 
 def _validate_member(member: ToolMember, catalog: ToolCatalog, dbt: DbtCatalog) -> tuple[Diagnostic, ...]:
-    """Run every member rule, in this order; each reports against the member's key and origin."""
+    """Run every member rule, in this order; each reports against the member's key and origin.
+
+    A name that is not an identifier is reported alone: the member's DDL cannot name it, and the
+    diagnostic keeps it from compiling.
+    """
     subject = artifact_key("tool", member.name.casefold())
+    unusable = name_problem(member.name, artifact=subject, subject=subject, origin=member.origin)
+    if unusable is not None:
+        return (unusable,)
     return (
+        *name_warnings(member.name, subject=subject, origin=member.origin),
         *_known_type(member, subject),
         *_immutable(member, subject),
         *_define_fields(member, subject),
         *_reference_fields(member, subject),
         *_reference_relations(member, catalog, subject),
-        *_object_parameter(member, subject),
         *_search_columns(member, dbt, subject),
         *_render_fields(member, subject),
         *_handler_keys(member, subject),
@@ -191,15 +200,6 @@ def _shares_one_object(member: ToolMember) -> bool:
         and "prod" in member.relations
         and member.relations["dev"].casefold() == member.relations["prod"].casefold()
     )
-
-
-def _object_parameter(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
-    """Report the first signature parameter typed OBJECT, which tool input schemas cannot carry."""
-    emit = Emitter(subject=subject, origin=member.origin)
-    parameter = next((parameter for parameter in member.signature if parameter.type.casefold() == "object"), None)
-    if parameter is not None:
-        emit("SST-PRS032", artifact=subject, field=parameter.name, found=parameter.type)
-    return emit.diagnostics
 
 
 def _search_columns(member: ToolMember, dbt: DbtCatalog, subject: str) -> tuple[Diagnostic, ...]:
