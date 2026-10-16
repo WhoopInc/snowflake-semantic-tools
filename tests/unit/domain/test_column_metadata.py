@@ -37,9 +37,10 @@ def test_sentinels_are_missing_values_in_any_case() -> None:
     ]
 
 
-def test_a_synonym_with_a_quote_is_unusable() -> None:
+def test_a_synonym_with_a_quote_is_usable_and_one_with_a_template_is_not() -> None:
     single = "customer" + chr(39) + "s name"
-    assert [synonym_problem(value) for value in ("order count", single, 'say "hi"')] == [None, "quotes", "quotes"]
+    assert [synonym_problem(value) for value in ("order count", single, 'say "hi"')] == [None, None, None]
+    assert [synonym_problem(value) for value in ("{{ x }}", "{% raw %}", "{# c #}")] == ["template syntax"] * 3
 
 
 def test_a_synonym_with_a_control_or_invisible_character_is_unusable() -> None:

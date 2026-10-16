@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
 from snowflake_semantic_tools.domain.model.authored import ACCESS_MODIFIERS, MetricDef
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.validate.column_metadata import is_numeric, is_sentinel, is_temporal
+from snowflake_semantic_tools.domain.validate.semantic.shape import synonym_diagnostics
 
 
 def dbt_column_diagnostics(
@@ -128,10 +129,15 @@ def _column_meta_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnos
         SST-VAL222: when a dimension not excluded declares `access_modifier: private_access`.
         SST-VAL334: when a fact not excluded declares `access_modifier: private_access`.
         SST-PRS004: when a column's `meta.sst` holds a key SST does not read, once per key.
+        Every code `_read_problems` lists, for the column's own fields.
+        Every code `synonym_diagnostics` lists, for the column's synonyms.
     """
     artifact, subject = _column_keys(model, column)
     modifier = column.access_modifier
-    diagnostics: list[Diagnostic] = []
+    diagnostics = _read_problems(
+        model, subject, column.wrong_types, column.unstorable, prefix=f"columns.{column.name}."
+    )
+    diagnostics.extend(synonym_diagnostics(column.synonyms, artifact=subject, subject=subject))
     if modifier is not None and modifier not in ACCESS_MODIFIERS:
         diagnostics.append(D("SST-VAL333", artifact=artifact, member=column.name, found=modifier, subject=subject))
     elif modifier == "private_access" and not column.excluded:
@@ -145,6 +151,42 @@ def _column_meta_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnos
         D("SST-PRS004", artifact=subject, field=f"meta.sst.{key}", subject=subject) for key in column.unknown_meta_keys
     )
     return diagnostics
+
+
+def _read_problems(
+    model: DbtModel,
+    subject: str,
+    wrong_types: tuple[tuple[str, str, str], ...],
+    unstorable: tuple[tuple[str, str], ...],
+    *,
+    prefix: str = "",
+) -> list[Diagnostic]:
+    """Report what reading a model or column's manifest entry found unusable, at the model's YAML.
+
+    Args:
+        prefix: Put before each unstorable field, naming the column it is in.
+
+    Diagnostics:
+        SST-PRS003: a `meta.sst` value has the wrong type, such as a quoted `"false"`; once per value.
+        SST-LOD022: a published text holds what Snowflake cannot store; once per text.
+    """
+    found = [
+        D("SST-PRS003", artifact=subject, field=field, expected=expected, found=kind, subject=subject)
+        for field, expected, kind in wrong_types
+    ]
+    file = model.patch_file or model.original_file_path or model.unique_id
+    found.extend(
+        D(
+            "SST-LOD022",
+            origin=Origin(file, dbt_node=model.unique_id),
+            subject=subject,
+            file=file,
+            field=f"{prefix}{field}",
+            found=problem,
+        )
+        for field, problem in unstorable
+    )
+    return found
 
 
 def _declared_type_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
@@ -203,6 +245,8 @@ def dbt_model_diagnostics(
         SST-DBT030: when `meta.sst` holds a forbidden location key, once per key.
         SST-DBT032: when the model writes key metadata in the 0.3 form, once per field.
         SST-PRS004: when `meta.sst` holds a key SST does not read, once per key.
+        Every code `_read_problems` lists, for the model's own fields.
+        Every code `synonym_diagnostics` lists, for the model's synonyms.
         SST-VAL312: when the model declares neither `primary_key` nor `unique_keys`, in either form.
         SST-VAL310: when a declared key column is not a column of the model.
         SST-VAL223: when a column is in both `primary_key` and `unique_keys`.
@@ -220,6 +264,8 @@ def dbt_model_diagnostics(
         diagnostics.extend(
             D("SST-DBT032", model=model.name, field=field, subject=subject) for field in model.legacy_key_fields
         )
+        diagnostics.extend(_read_problems(model, subject, model.wrong_types, model.unstorable))
+        diagnostics.extend(synonym_diagnostics(model.synonyms, artifact=subject, subject=subject))
         diagnostics.extend(
             D("SST-PRS004", artifact=subject, field=f"meta.sst.{key}", subject=subject)
             for key in model.unknown_meta_keys

@@ -25,6 +25,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
 )
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
+from snowflake_semantic_tools.adapters.yaml.text_checks import read_authored_text
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.skill import SKILL_FILE, Plugin, Skill, SkillCatalog, SkillFile
@@ -153,7 +154,8 @@ def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagn
 
     Diagnostics:
         SST-PRS119: once per skill folder nested inside this one.
-        SST-LOD001: when `SKILL.md` is not UTF-8, or its frontmatter is not valid YAML.
+        Every code `read_authored_text` lists, for a `SKILL.md` it refuses.
+        SST-LOD001: when the frontmatter of `SKILL.md` is not valid YAML.
         SST-LOD002: when the frontmatter is not a mapping.
         SST-PRS034: when the frontmatter has no `name` or no `description`, once for each.
         SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
@@ -225,21 +227,19 @@ def _frontmatter(raw: bytes, file: str, subject: str, diagnostics: list[Diagnost
 
     Returns:
         `(keys, body)`: the frontmatter's keys as parsed, none when there is no frontmatter or it
-        cannot be read; and the body, empty when the file is not UTF-8.
+        cannot be read; and the body, empty when `read_authored_text` refuses the file.
 
     Diagnostics:
-        SST-LOD001: when the file is not UTF-8, at its first line, or the frontmatter is not valid
-            YAML, at the offending line of the file.
+        Every code `read_authored_text` lists: a byte-order mark, say, is refused, not read as
+            part of the first line.
+        SST-LOD001: when the frontmatter is not valid YAML, at the offending line of the file.
         SST-LOD002: when the frontmatter is not a mapping.
         SST-PRS034: for `name` and for `description`, each that is missing or not a non-blank
             string; for both when there is no frontmatter.
     """
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        diagnostics.append(
-            D("SST-LOD001", origin=Origin(file), subject=subject, file=file, line=1, col=1, detail=f"not UTF-8: {exc}")
-        )
+    text = read_authored_text(raw, file, subject=subject)
+    if isinstance(text, Diagnostic):
+        diagnostics.append(text)
         return {}, ""
     lines = text.splitlines(keepends=True)
     closing = next(

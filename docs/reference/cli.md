@@ -252,7 +252,7 @@ sst format [OPTIONS] [PATH]...
 | `--check` | flag |  | Write nothing; exit 2 when a file would change. |
 | `--dry-run` | flag |  | Write nothing; print each file's change as a diff. |
 | `--force` | flag |  | Rewrite every file, even one already in canonical form. |
-| `--sanitize` | flag |  | Also repair apostrophes in synonyms and sample values, and Jinja delimiters in descriptions. |
+| `--sanitize` | flag |  | Also remove apostrophes from synonyms and break apart Jinja delimiters in descriptions; sample values are kept as written. |
 | `--no-detailed-exitcode` | flag |  | With `--check`, exit 0 when files would change, instead of 2. |
 
 ## sst compile

@@ -84,5 +84,15 @@ def test_no_text_but_a_template_can_hold_the_placeholder_mark() -> None:
 
 
 def test_canonical_strips_whitespace_only() -> None:
-    assert str(canonical(statement("  A  \n  B '  \n'  \n\n"))) == "A\n  B '\n'"
+    assert str(canonical(statement("  A  \n  B 'x'  \n\n"))) == "A\n  B 'x'"
     assert str(canonical(statement("  AS X  \n"), keep_indent=True)) == "  AS X"
+
+
+def test_canonical_keeps_every_value_byte_for_byte() -> None:
+    text = "C = 'a  \r\nb'  \n  \"q  \n\" $$BEGIN\r\n  x;  \n$$  \n-- note  \n/* a  \n b */  \nEND"
+    expected = "C = 'a  \r\nb'\n  \"q  \n\" $$BEGIN\r\n  x;  \n$$\n-- note\n/* a\n b */\nEND"
+    assert str(canonical(statement(text))) == expected
+
+
+def test_a_statement_that_does_not_lex_keeps_its_lines_as_written() -> None:
+    assert str(canonical(statement("  A 'open  \n  B  \n"))) == "A 'open  \n  B"

@@ -274,11 +274,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Synonym contains problematic characters",
         "{artifact}: synonym '{value}' contains {detail}",
-        "remove the punctuation",
+        "remove the character or the template",
         condition=(
-            "a synonym holds a quote or a control character; a synonym `sst enrich` proposes is also "
-            "refused for template syntax, and is dropped rather than written"
+            "a synonym holds a control character (a newline or tab among them) or template syntax "
+            "(`{{`, `{%` or `{#`): a metric's, or a dbt model's or column's `meta.sst` "
+            "synonym; a synonym `sst enrich` proposes is also refused when it holds a quote or is too "
+            "long, and is dropped rather than written"
         ),
+        note="a quote an author writes is not refused: the DDL escapes it, so the synonym reads as written",
     ),
     spec(
         "SST-PRS031",

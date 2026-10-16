@@ -2,8 +2,9 @@
 
 A plain reader (`optional_string`, `optional_int`, `strings`, `mapping`) reads a value of
 the wrong type as its empty sentinel without a word. A checked reader (`checked_text`,
-`checked_strings`, `checked_list`, `checked_mapping`) does the same and also reports the value
-(SST-PRS003) into the caller's diagnostics list, and `report_unknown_keys` reports the keys a
+`checked_bool`, `checked_strings`, `checked_list`, `checked_mapping`) does the same and also
+reports the value (SST-PRS003) into the caller's diagnostics list, and `checked_choice` reports
+a closed field's value that is not text (SST-PRS013); and `report_unknown_keys` reports the keys a
 parser does not read (SST-PRS004). No reader raises. `project_relative` is the path a
 diagnostic names a file by, `refused` reports a file a folder walk must not read, and
 `resolve_file` reads the one file a `{{ file('<path>') }}` call names, for every field that
@@ -19,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from snowflake_semantic_tools.adapters.paths import walk_refusal
+from snowflake_semantic_tools.adapters.yaml.text_checks import bom_refusal, read_authored_text
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.parse.template import TemplateCall
 from snowflake_semantic_tools.domain.resolve.calls import required_call
@@ -68,6 +70,72 @@ def checked_text(
         sink.append(_wrong_type(value, "a string", field=field, artifact=artifact, origin=origin, subject=subject))
         return None
     return value.strip() or None
+
+
+def checked_bool(
+    value: object,
+    sink: list[Diagnostic],
+    *,
+    field: str,
+    artifact: str,
+    origin: Origin,
+    subject: str | None = None,
+) -> bool | None:
+    """Return a boolean field, or None when it is absent; report any other value, a quoted one too.
+
+    A quoted `"false"` is text, which Python would read as true, so it is refused rather than
+    read; an unquoted `yes` or `no` is a boolean here, which `compose` already warns of.
+
+    Diagnostics:
+        SST-PRS003: `value` is present but not a boolean; it reads as None.
+    """
+    if value is None or isinstance(value, bool):
+        return value
+    sink.append(_wrong_type(value, "boolean", field=field, artifact=artifact, origin=origin, subject=subject))
+    return None
+
+
+def checked_choice(
+    value: object,
+    allowed: Iterable[str],
+    sink: list[Diagnostic],
+    *,
+    field: str,
+    artifact: str,
+    origin: Origin,
+    subject: str | None = None,
+    written: bool | None = None,
+) -> str | None:
+    """Return a closed field's text stripped, for its validator to match; report one not text.
+
+    Args:
+        allowed: The values the field takes, as the report names them; text outside them is the
+            validator's to report, by the field's own rule for case.
+        written: Whether the key is written, so an empty value, which reads as None, is
+            reported; None takes a None value as the key being absent.
+
+    Diagnostics:
+        SST-PRS013: the field is written but not as text with something in it, such as a boolean
+            or an empty value; it reads as None.
+    """
+    if not (value is not None if written is None else written):
+        return None
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    # Named as YAML writes it, since that is what the author sees: `true`, not Python's `True`.
+    found = value if isinstance(value, str) else _yaml_spelling(value)
+    sink.append(
+        D(
+            "SST-PRS013",
+            origin=origin,
+            subject=subject,
+            artifact=artifact,
+            field=field,
+            found=found,
+            expected=", ".join(allowed),
+        )
+    )
+    return None
 
 
 def checked_strings(
@@ -178,6 +246,13 @@ def checked_mapping(
         sink.append(_wrong_type(value, "a mapping", field=field, artifact=artifact, origin=origin, subject=subject))
         return {}
     return dict(value)
+
+
+def _yaml_spelling(value: object) -> str:
+    """Return a non-text scalar as YAML spells it: `true`, `false`, `null`, or the number."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return "null" if value is None else repr(value)
 
 
 def _wrong_type(
@@ -309,7 +384,9 @@ def resolve_file(
         SST-PRT009: the file, or a folder between the project and it, is a symbolic link.
         SST-REF014: the path names no file.
         SST-LOD018: the file is there and cannot be read.
-        SST-LOD006: a text sidecar is not UTF-8.
+        SST-LOD017: the file begins with a byte-order mark, whether read as text or bytes.
+        SST-LOD007, SST-LOD006, SST-LOD022: a text sidecar is too large, is not UTF-8, or holds
+            a NUL, as `read_authored_text` refuses it.
         SST-LOD019: the file holds only whitespace.
     """
     requested = call.args[0]
@@ -326,11 +403,13 @@ def resolve_file(
         content = path.read_bytes()
     except OSError:
         return D("SST-LOD018", file=declaring_file, path=requested, origin=origin, subject=subject)
-    if text:
-        try:
-            content.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            return D("SST-LOD006", file=relative, offset=exc.start, origin=Origin(relative), subject=subject)
+    read = (
+        read_authored_text(content, relative, subject=subject)
+        if text
+        else bom_refusal(content, relative, subject=subject)
+    )
+    if isinstance(read, Diagnostic):
+        return read
     if not content.strip():
         return D("SST-LOD019", path=requested, file=declaring_file, origin=origin, subject=subject)
     return Sidecar(relative, content)

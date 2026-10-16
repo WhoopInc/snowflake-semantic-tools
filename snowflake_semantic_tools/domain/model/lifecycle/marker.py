@@ -13,6 +13,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from snowflake_semantic_tools.domain.text import comment_text
+
 _MARKER = re.compile(r"\[sst:([0-9a-f]{64}):([0-9a-f]{64})\]", re.IGNORECASE)
 
 
@@ -59,6 +61,6 @@ def extract_marker(comment: str | None) -> OwnershipMarker | None:
 
 
 def marked_comment(text: str | None, marker: str) -> str:
-    """Return the comment SST publishes: `text`, then `marker`; the marker alone when `text` is blank."""
-    body = (text or "").rstrip()
+    """Return the comment SST publishes: `comment_text(text)`, then `marker`; the marker alone if blank."""
+    body = comment_text(text)
     return f"{body} {marker}" if body else marker

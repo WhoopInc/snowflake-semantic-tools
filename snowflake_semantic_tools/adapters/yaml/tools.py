@@ -10,6 +10,7 @@ from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.fields import (
+    checked_choice,
     file_call,
     optional_string,
     refused,
@@ -261,6 +262,11 @@ def _unknown(
     return found
 
 
+# A search service's refresh modes, as a refusal of a value that is not text names them; text
+# is matched, in any case, by the tool validator.
+_REFRESH_MODES = ("AUTO", "FULL", "INCREMENTAL")
+
+
 def _parse_member(source: _Source, path: NodePath, value: object) -> tuple[ToolMember | None, tuple[Diagnostic, ...]]:
     """Read one member: `tool:`'s mapping, or an entry of `tools:`; None when it lacks a name or type.
 
@@ -278,6 +284,7 @@ def _parse_member(source: _Source, path: NodePath, value: object) -> tuple[ToolM
         SST-LOD004, SST-REF033, SST-REF003: the template in `on:` does not parse.
         SST-VAL608: `on:` is not one single-argument `ref()` call.
         SST-REF008: `description`, published as written, holds a template.
+        SST-PRS013: `refresh_mode` is present and not text, such as an unquoted `yes` or empty.
         Every code `_header`, `_Columns.read`, `_columns_of`, `_where` and `_body` list.
     """
     header, problems = _header(source, path, value)
@@ -319,7 +326,16 @@ def _parse_member(source: _Source, path: NodePath, value: object) -> tuple[ToolM
         relative_path_column=columns.written("relative_path_column"),
         signature=_signature(entry.get("signature"), subject, origin, diagnostics),
         where=_where(source, entry.get("where"), name, on_model, referenced, (*path, "where"), diagnostics),
-        refresh_mode=optional_string(entry.get("refresh_mode")),
+        refresh_mode=checked_choice(
+            entry.get("refresh_mode"),
+            _REFRESH_MODES,
+            diagnostics,
+            field="refresh_mode",
+            artifact=subject,
+            origin=source.origin((*path, "refresh_mode")),
+            subject=subject,
+            written="refresh_mode" in entry,
+        ),
         language=optional_string(entry.get("language")),
         runtime_version=optional_string(entry.get("runtime_version")),
         handler=optional_string(entry.get("handler")),

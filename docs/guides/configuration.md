@@ -125,6 +125,11 @@ agents:
   +secure: "{{ 'true' if target.name == 'prod' else 'false' }}"
 ```
 
+A template is read as the YAML scalar holding it reads, so either quoting style
+works: `'{{ ''AGENTS'' if target.name == ''prod'' else ''AGENTS_DEV'' }}'`, as a
+YAML writer such as PyYAML emits it, is the same value as the double-quoted
+spelling above. The same holds for every template in project YAML.
+
 Every other template, `{{ target.* }}` among them, is left as written for the
 key that reads it; every key that takes `{{ target.* }}` renders it the same
 way, each placeholder with the target's own value.

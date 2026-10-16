@@ -139,7 +139,7 @@ def test_document_markers_and_empty_files() -> None:
     assert canonical_yaml("a: 1", "f.yml") == "a: 1\n"
 
 
-def test_sanitize_repairs_apostrophes_and_jinja_and_nothing_else() -> None:
+def test_sanitize_repairs_synonym_apostrophes_and_jinja_and_nothing_else() -> None:
     text = (
         "t:\n  synonyms: [\"bob's\", 'it''s', plain]\n  sample_values:\n    - \u2019q\u2019\n"
         "  description: 'see {{ x }} {% if %} {# c #}'\n  expr: \"it's\"\n"
@@ -148,7 +148,7 @@ def test_sanitize_repairs_apostrophes_and_jinja_and_nothing_else() -> None:
     assert _value(repaired) == {
         "t": {
             "synonyms": ["bobs", "its", "plain"],
-            "sample_values": ["q"],
+            "sample_values": ["\u2019q\u2019"],
             "description": "see { { x } } { % if % } { # c # }",
             "expr": "it's",
         }
@@ -178,3 +178,15 @@ def test_trailing_space_that_is_content_is_not_stripped() -> None:
     assert _without_trailing_space("a: |\n  x \n") == "a: |\n  x \n"
     assert _without_trailing_space("a: 1  \n") == "a: 1\n"
     assert _without_trailing_space("a: [  \n") == "a: [  \n"
+
+
+def test_a_canonical_form_a_second_pass_would_change_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    from snowflake_semantic_tools.adapters.yaml import format as module
+
+    passes = iter(("a: 1\n", "a:  1\n"))
+    monkeypatch.setattr(module, "_canonical", lambda text, path, sanitize: next(passes))
+    with pytest.raises(ProjectError) as raised:
+        canonical_yaml("a: 1\n", "f.yml")
+    [diagnostic] = raised.value.diagnostics
+    assert diagnostic.code == "SST-INT003"
+    assert "a second format would change" in diagnostic.message

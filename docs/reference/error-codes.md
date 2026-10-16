@@ -19,7 +19,7 @@ cannot be downgraded by any setting.
 - [Configuration (CFG)](#configuration-cfg) -- 45 codes
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
 - [Parsing (PRS)](#parsing-prs) -- 58 codes
-- [Loading (LOD)](#loading-lod) -- 24 codes
+- [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
 - [Validation (VAL)](#validation-val) -- 301 codes
@@ -1155,9 +1155,11 @@ Fix: use a list of strings
 
 `<artifact>: synonym '<value>' contains <detail>`
 
-Raised when a synonym holds a quote or a control character; a synonym `sst enrich` proposes is also refused for template syntax, and is dropped rather than written.
+Raised when a synonym holds a control character (a newline or tab among them) or template syntax (`{{`, `{%` or `{#`): a metric's, or a dbt model's or column's `meta.sst` synonym; a synonym `sst enrich` proposes is also refused when it holds a quote or is too long, and is dropped rather than written.
 
-Fix: remove the punctuation
+Fix: remove the character or the template
+
+Note: a quote an author writes is not refused: the DDL escapes it, so the synonym reads as written
 
 ### SST-PRS031
 
@@ -1451,7 +1453,7 @@ Fix: return a frozen dataclass
 
 `<file>:<line>:<col>: <detail>`
 
-Raised when a YAML file, or a skill's `SKILL.md` frontmatter, does not parse, nests collections deeper than the depth limit, or holds a value YAML cannot construct, such as an unknown tag; a `SKILL.md` that is not UTF-8 is reported here too, at its first line.
+Raised when a YAML file, or a skill's `SKILL.md` frontmatter, does not parse, nests collections deeper than the depth limit, or holds a value YAML cannot construct, such as an unknown tag, or a character YAML does not allow, such as a control character.
 
 Fix: fix the YAML syntax at the reported position
 
@@ -1503,7 +1505,7 @@ Fix: remove one of the two keys
 
 `<file>: invalid UTF-8 at byte <offset>`
 
-Raised when a file SST reads is not UTF-8: project YAML, an instruction or verified-query SQL sidecar, or a profile's `AGENTS.md` or rule.
+Raised when a file SST reads is not UTF-8: project YAML, a `file()` sidecar such as an instruction, a verified-query SQL file or a routine body, a `SKILL.md`, or a profile's `AGENTS.md` or rule.
 
 Fix: re-save the file as UTF-8
 
@@ -1613,7 +1615,7 @@ Fix: quote the value if it is meant as a string, or write {} if it is meant as a
 
 `<file> begins with a BOM`
 
-Raised when the file begins with a UTF-8 byte-order mark (U+FEFF).
+Raised when the file begins with a UTF-8 byte-order mark (U+FEFF): project YAML, a `file()` sidecar (a hook script among them), a `SKILL.md`, or a profile's `AGENTS.md` or rule; the mark is refused rather than removed, since removing it would change what is published.
 
 Fix: re-save without a BOM
 
@@ -1656,6 +1658,18 @@ Fix: standardise on .yml
 Raised when the root mapping has keys and none is a registered artifact type's root key; when only some are unclaimed, SST-PRS001 names each.
 
 Fix: add the artifact's root key
+
+### SST-LOD022
+
+**Text holds a character Snowflake cannot store** (error)
+
+`<file>: '<field>' holds <found>, which Snowflake cannot store`
+
+Raised when a file SST reads holds a NUL character, or a value read from one holds a NUL or a lone UTF-16 surrogate, such as a YAML `\0` or `\ud800` escape: project YAML, a `file()` sidecar, a `SKILL.md`, a profile's `AGENTS.md` or rule, or a dbt description, synonym or sample value a view uses.
+
+Fix: remove the character
+
+Note: refused wherever it is written, an agent's specification included
 
 ### SST-LOD200
 

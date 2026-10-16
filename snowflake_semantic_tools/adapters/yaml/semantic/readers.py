@@ -8,7 +8,7 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
-from snowflake_semantic_tools.adapters.yaml.fields import resolve_file
+from snowflake_semantic_tools.adapters.yaml.fields import checked_bool, resolve_file
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import _non_additive, _window
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple, _referenced_tables
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
@@ -239,6 +239,8 @@ def load_verified_queries(
 
     Diagnostics:
         Every code `resolve_file` lists, for the file a `sql:` names.
+        SST-PRS003: `use_as_onboarding_question` is not a boolean, such as a quoted `"false"`;
+            it reads as unset.
     """
     out: list[VerifiedQueryDef] = []
     diagnostics: list[Diagnostic] = []
@@ -273,8 +275,13 @@ def load_verified_queries(
                 tables=tables,
                 verified_at=_verified_at(node.get("verified_at"), name=name),
                 verified_by=str(node.get("verified_by") or "").strip() or None,
-                onboarding_question=(
-                    bool(node["use_as_onboarding_question"]) if "use_as_onboarding_question" in node else None
+                onboarding_question=checked_bool(
+                    node.get("use_as_onboarding_question"),
+                    diagnostics,
+                    field="use_as_onboarding_question",
+                    artifact=artifact_key("verified_query", name),
+                    origin=origin,
+                    subject=artifact_key("verified_query", name),
                 ),
                 origin=origin,
                 template_calls=template_calls,

@@ -57,7 +57,7 @@ def test_frontmatter_defects_are_located(tmp_path: Path) -> None:
     catalog = load_skill_catalog(tmp_path, skills_dir="skills", plugins_dir="plugins")
     found = [(item.subject, item.code, item.context.get("field")) for item in catalog.diagnostics]
     assert found == [
-        ("skill:binary", "SST-LOD001", None),
+        ("skill:binary", "SST-LOD006", None),
         ("skill:broken", "SST-LOD001", None),
         ("skill:empty", "SST-PRS034", "name"),
         ("skill:empty", "SST-PRS034", "description"),

@@ -265,7 +265,8 @@ class RenderedArtifact:
         elif statements.default is None:
             raise TypeError("a rendered document needs the statements that publish it")
         else:
-            text = "\n".join(line.rstrip() for line in ddl.splitlines()).strip() + "\n"
+            # Lines end only at `\n`: a document's text may hold a separator such as U+2028.
+            text = "\n".join(line.rstrip() for line in ddl.split("\n")).strip() + "\n"
             default = statements.default
         return cls(
             key=key,

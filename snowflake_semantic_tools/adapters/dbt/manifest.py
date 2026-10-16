@@ -12,6 +12,8 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.json_files import read_json_file
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtSource
+from snowflake_semantic_tools.domain.text import unstorable
+from snowflake_semantic_tools.domain.validate.column_metadata import is_boolean_type
 
 SUPPORTED_SCHEMA = "https://schemas.getdbt.com/dbt/manifest/v12.json"
 # The manifest schema versions SST reads: an explicit set, never a range, since dbt makes no
@@ -50,6 +52,63 @@ def _string_value(value: object) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value)
+
+
+def _meta_texts(
+    value: object, *, path: str, field: str, wrong: list[tuple[str, str, str]], booleans: bool = False
+) -> tuple[str, ...]:
+    """Read a `meta.sst` list of text, such as `sample_values`; a number reads as its digits.
+
+    dbt reads YAML 1.1, so an unquoted `no` reaches the manifest as `false`: an item that is not
+    text or a number is recorded in `wrong` and left out, never published as `'false'`.
+
+    Args:
+        booleans: A boolean is a value of the list, as a BOOLEAN column's sample values are; it
+            reads as `true` or `false`.
+
+    Raises:
+        ProjectError: The value is present and not a list.
+    """
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ProjectError(f"dbt manifest {path} must be a list")
+    kept: list[str] = []
+    for index, item in enumerate(value):
+        if isinstance(item, bool) and booleans:
+            kept.append("true" if item else "false")
+        elif isinstance(item, str) or (isinstance(item, (int, float)) and not isinstance(item, bool)):
+            kept.append(str(item))
+        else:
+            wrong.append((f"meta.sst.{field}[{index}]", "a string", type(item).__name__))
+    return tuple(kept)
+
+
+def _meta_bool(meta: Mapping[str, Any], key: str, wrong: list[tuple[str, str, str]]) -> bool | None:
+    """Return a `meta.sst` boolean, None when absent; a quoted `"false"` is recorded in `wrong`, not read."""
+    value = meta.get(key)
+    if value is None or isinstance(value, bool):
+        return value
+    wrong.append((f"meta.sst.{key}", "boolean", type(value).__name__))
+    return None
+
+
+def _meta_text(meta: Mapping[str, Any], key: str, wrong: list[tuple[str, str, str]]) -> str | None:
+    """Return a `meta.sst` text value stripped, None when absent or blank; any other type is recorded."""
+    value = meta.get(key)
+    if value is None or isinstance(value, str):
+        return _text(value)
+    wrong.append((f"meta.sst.{key}", "a string", type(value).__name__))
+    return None
+
+
+def _unstorable(texts: Mapping[str, str | tuple[str, ...] | None]) -> tuple[tuple[str, str], ...]:
+    """Return each published text, by its field, that holds what Snowflake cannot store, with why."""
+    found: list[tuple[str, str]] = []
+    for field, value in texts.items():
+        items = value if isinstance(value, tuple) else (value,)
+        found.extend((field, problem) for item in items if item is not None and (problem := unstorable(item)))
+    return tuple(found)
 
 
 def _primary_key(value: object, *, path: str) -> tuple[tuple[str, ...], bool]:
@@ -114,10 +173,19 @@ def _column(name: str, value: object, *, node_path: str) -> DbtColumn:
     path = f"{node_path}.columns.{name}"
     node = _mapping(value, path=path)
     meta = _sst_meta(node, path=path)
+    wrong: list[tuple[str, str, str]] = []
+    synonyms = _meta_texts(meta.get("synonyms"), path=f"{path}.meta.sst.synonyms", field="synonyms", wrong=wrong)
     description = _text(node.get("description"))
     native_type = _text(node.get("data_type"))
     declared_type = _text(meta.get("data_type"))
     data_type = native_type or declared_type
+    samples = _meta_texts(
+        meta.get("sample_values"),
+        path=f"{path}.meta.sst.sample_values",
+        field="sample_values",
+        wrong=wrong,
+        booleans=is_boolean_type(data_type),
+    )
     column_type = _text(meta.get("column_type"))
     # dbt's own data_type wins; a meta.sst.data_type that says otherwise is reported.
     disagrees = (
@@ -128,17 +196,21 @@ def _column(name: str, value: object, *, node_path: str) -> DbtColumn:
         description=description,
         data_type=data_type,
         column_type=column_type,
-        synonyms=_strings(meta.get("synonyms"), path=f"{path}.meta.sst.synonyms"),
-        sample_values=_strings(meta.get("sample_values"), path=f"{path}.meta.sst.sample_values"),
-        is_enum=None if meta.get("is_enum") is None else bool(meta.get("is_enum")),
-        excluded=bool(meta.get("exclude", False)),
+        synonyms=synonyms,
+        sample_values=samples,
+        is_enum=_meta_bool(meta, "is_enum", wrong),
+        excluded=_meta_bool(meta, "exclude", wrong) or False,
         unknown_meta_keys=tuple(sorted(str(key) for key in meta if key not in COLUMN_META_KEYS)),
         declared_data_type=declared_type if disagrees else None,
         declared_keys=frozenset(str(key) for key in meta),
         native_data_type=native_type,
         pii_tagged=_pii_tagged(node),
-        access_modifier=_text(meta.get("access_modifier")),
+        access_modifier=_meta_text(meta, "access_modifier", wrong),
         quoted=node.get("quote") is True,
+        wrong_types=tuple(wrong),
+        unstorable=_unstorable(
+            {"description": description, "meta.sst.synonyms": synonyms, "meta.sst.sample_values": samples}
+        ),
     )
 
 
@@ -247,6 +319,9 @@ def _build_model(
         ProjectError: A column or key has the wrong shape.
     """
     raw_columns = _mapping(node.get("columns") or {}, path=f"{path}.columns")
+    wrong: list[tuple[str, str, str]] = []
+    description = _text(node.get("description"))
+    synonyms = _meta_texts(meta.get("synonyms"), path=f"{path}.config.meta.sst.synonyms", field="synonyms", wrong=wrong)
     columns = tuple(_column(str(column_name), value, node_path=path) for column_name, value in raw_columns.items())
     primary_key, legacy_primary_key = _primary_key(meta.get("primary_key"), path=f"{path}.config.meta.sst.primary_key")
     unique_keys, legacy_unique_keys = _unique_keys(meta.get("unique_keys"), path=f"{path}.config.meta.sst.unique_keys")
@@ -260,7 +335,7 @@ def _build_model(
         original_file_path=_text(node.get("original_file_path")),
         patch_path=_text(node.get("patch_path")),
         forbidden_location_keys=tuple(key for key in ("database", "schema") if key in meta),
-        description=_text(node.get("description")),
+        description=description,
         legacy_key_fields=tuple(
             field
             for field, legacy in (("primary_key", legacy_primary_key), ("unique_keys", legacy_unique_keys))
@@ -275,9 +350,11 @@ def _build_model(
         has_contract=_has_contract(node),
         test_count=test_count,
         materialized=_text(config.get("materialized")) if isinstance(config := node.get("config"), Mapping) else None,
-        synonyms=_strings(meta.get("synonyms"), path=f"{path}.config.meta.sst.synonyms"),
+        synonyms=synonyms,
         distinct_range=_distinct_range(meta.get("distinct_range")),
         malformed_distinct_range="distinct_range" in meta and _distinct_range(meta.get("distinct_range")) is None,
+        wrong_types=tuple(wrong),
+        unstorable=_unstorable({"description": description, "meta.sst.synonyms": synonyms}),
     )
 
 
@@ -374,29 +451,43 @@ def _sources(root: Mapping[str, Any]) -> tuple[tuple[DbtSource, ...], tuple[Diag
     """Read the declared sources, in sorted unique-id order, and each `source.table` pair that repeats.
 
     Diagnostics:
+        SST-PRS003: a source's `meta.sst.synonyms` holds an item that is not text; it is left out.
         SST-DBT012: a `source.table` pair is declared more than once, once per pair.
     """
     raw = root.get("sources")
-    sources = tuple(
-        DbtSource(
-            unique_id=str(unique_id),
-            source_name=str(node.get("source_name") or ""),
-            name=str(node.get("name") or ""),
-            relation_name=_text(node.get("relation_name")),
-            description=_text(node.get("description")),
-            synonyms=_strings(
-                _sst_meta(node, path=f"sources.{unique_id}").get("synonyms"),
-                path=f"sources.{unique_id}.config.meta.sst.synonyms",
-            ),
+    wrong: list[Diagnostic] = []
+    sources: list[DbtSource] = []
+    for unique_id, node in sorted((raw if isinstance(raw, dict) else {}).items()):
+        if not isinstance(node, dict) or not node.get("source_name") or not node.get("name"):
+            continue
+        found: list[tuple[str, str, str]] = []
+        synonyms = _meta_texts(
+            _sst_meta(node, path=f"sources.{unique_id}").get("synonyms"),
+            path=f"sources.{unique_id}.config.meta.sst.synonyms",
+            field="synonyms",
+            wrong=found,
         )
-        for unique_id, node in sorted((raw if isinstance(raw, dict) else {}).items())
-        if isinstance(node, dict) and node.get("source_name") and node.get("name")
-    )
+        subject = f"dbt_source:{node.get('source_name')}.{node.get('name')}"
+        wrong.extend(
+            D("SST-PRS003", artifact=subject, field=field, expected=expected, found=kind, subject=subject)
+            for field, expected, kind in found
+        )
+        sources.append(
+            DbtSource(
+                unique_id=str(unique_id),
+                source_name=str(node.get("source_name") or ""),
+                name=str(node.get("name") or ""),
+                relation_name=_text(node.get("relation_name")),
+                description=_text(node.get("description")),
+                synonyms=synonyms,
+            )
+        )
     counts: dict[str, int] = {}
     for source in sources:
         pair = f"{source.source_name}.{source.name}".casefold()
         counts[pair] = counts.get(pair, 0) + 1
-    return sources, tuple(D("SST-DBT012", value=pair) for pair, count in sorted(counts.items()) if count > 1)
+    duplicates = (D("SST-DBT012", value=pair) for pair, count in sorted(counts.items()) if count > 1)
+    return tuple(sources), (*wrong, *duplicates)
 
 
 def catalog_from_document(
@@ -418,6 +509,7 @@ def catalog_from_document(
     Diagnostics:
         SST-DBT018, SST-DBT017: as `check_schema_version` raises them.
         SST-DBT013, SST-DBT014: a model has no name, or no database or schema; it is skipped.
+        SST-PRS003: a source's synonym is not text.
         SST-DBT012: a source pair is declared more than once.
     """
     root = _mapping(document, path="root")

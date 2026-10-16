@@ -287,7 +287,8 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst format", "--dry-run"): "Write nothing; print each file's change as a diff.",
     ("sst format", "--force"): "Rewrite every file, even one already in canonical form.",
     ("sst format", "--sanitize"): (
-        "Also repair apostrophes in synonyms and sample values, and Jinja delimiters in descriptions."
+        "Also remove apostrophes from synonyms and break apart Jinja delimiters in descriptions; "
+        "sample values are kept as written."
     ),
     ("sst format", "--no-detailed-exitcode"): "With `--check`, exit 0 when files would change, instead of 2.",
     ("sst agent-kit install", "--agent"): (

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
@@ -21,13 +21,13 @@ def _synonyms_diagnostics(
     artifact: str,
     subject: str,
 ) -> tuple[Diagnostic, ...]:
-    """Check a `synonyms:` value: a list of strings, none holding a quote or a control character.
+    """Check a `synonyms:` value: a list of strings, each one `synonym_diagnostics` accepts.
 
     An absent value is fine.
 
     Diagnostics:
         SST-PRS029: when the value is not a list of strings.
-        SST-PRS030: when a synonym holds a quote or a control character, once per synonym.
+        Every code `synonym_diagnostics` lists.
     """
     if value is None:
         return ()
@@ -40,20 +40,20 @@ def _synonyms_diagnostics(
                 subject=subject,
             ),
         )
-    diagnostics = []
-    for synonym in value:
-        problem = synonym_problem(synonym)
-        if problem is not None:
-            diagnostics.append(
-                D(
-                    "SST-PRS030",
-                    artifact=artifact,
-                    value=printable(synonym),
-                    detail=problem,
-                    subject=subject,
-                )
-            )
-    return tuple(diagnostics)
+    return synonym_diagnostics(value, artifact=artifact, subject=subject)
+
+
+def synonym_diagnostics(synonyms: Iterable[str], *, artifact: str, subject: str) -> tuple[Diagnostic, ...]:
+    """Report each synonym `synonym_problem` refuses, whoever wrote it: SST YAML or dbt's `meta.sst`.
+
+    Diagnostics:
+        SST-PRS030: when a synonym holds a control character or template syntax, once per synonym.
+    """
+    return tuple(
+        D("SST-PRS030", artifact=artifact, value=printable(synonym), detail=problem, subject=subject)
+        for synonym in synonyms
+        if (problem := synonym_problem(synonym)) is not None
+    )
 
 
 def metric_parse_diagnostics(

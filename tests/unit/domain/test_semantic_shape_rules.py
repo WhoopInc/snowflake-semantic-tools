@@ -97,15 +97,19 @@ def test_a_window_is_a_mapping_of_reference_lists_an_order_and_a_frame() -> None
     assert _metric_findings({"name": "m", "expr": "x", "window": good}) == []
 
 
-def test_synonyms_are_strings_without_quotes_or_control_characters() -> None:
+def test_synonyms_are_strings_without_control_characters_or_templates() -> None:
     assert _metric_findings({"name": "m", "expr": "x", "synonyms": "revenue"}) == [("SST-PRS029", None)]
     assert _metric_findings({"name": "m", "expr": "x", "synonyms": ["ok", 3]}) == [("SST-PRS029", None)]
     found = metric_parse_diagnostics(
-        documents(document("m.yml", {METRICS: [{"name": "m", "expr": "x", "synonyms": ["ok", 'say "x"', "a\x01b"]}]}))
+        documents(
+            document(
+                "m.yml", {METRICS: [{"name": "m", "expr": "x", "synonyms": ["ok", 'say "x"', "a\x01b", "{{ y }}"]}]}
+            )
+        )
     )
     assert [(item.code, item.context["value"]) for item in found] == [
-        ("SST-PRS030", 'say "x"'),
         ("SST-PRS030", "a\\u0001b"),
+        ("SST-PRS030", "{{ y }}"),
     ]
 
 

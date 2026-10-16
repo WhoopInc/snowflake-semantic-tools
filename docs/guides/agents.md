@@ -357,7 +357,7 @@ the model `on:` names:
 | `columns` | list of `column` (a column ref), `description`, `type`, `searchable`, `filterable` | no | columns added to the query; the searchable and filterable ones describe the agent's search tool |
 | `id_column`, `title_column` | a column ref | no | nothing in the DDL; the agent's search tool defaults to them |
 | `where` | one SQL expression, which may hold `ref()` and `var()` calls | no | `WHERE <expression>` on the query (`SST-VAL418`); a column ref renders as the bare column |
-| `refresh_mode` | `AUTO`, `FULL`, or `INCREMENTAL` | no | `REFRESH_MODE = <mode>`; unset leaves it to Snowflake (`SST-PRS013`) |
+| `refresh_mode` | `AUTO`, `FULL`, or `INCREMENTAL`, in any case | no | `REFRESH_MODE = <mode>`; unset leaves it to Snowflake. Any other value is `SST-PRS013`, an unquoted `yes` or `no` (a boolean) and an empty value among them, rather than read as unset |
 
 `warehouse`, `target_lag` and `embedding_model` are settings (above), rendered
 as `WAREHOUSE`, `TARGET_LAG` and `EMBEDDING_MODEL`. `on:` may also be the

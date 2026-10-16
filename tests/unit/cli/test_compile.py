@@ -295,3 +295,23 @@ def test_a_plugin_with_a_broken_member_blocks_the_profile(tmp_path: Path) -> Non
     assert {"SST-VAL808", "SST-VAL836"} <= {item["code"] for item in diagnostics}
     blocked = [item["message"] for item in diagnostics if item["code"] == "SST-VAL855"]
     assert blocked == ["profile 'analyst': plugin 'kit' has errors, so the profile cannot publish"]
+
+
+def test_a_carriage_return_in_a_description_or_a_body_is_emitted_byte_for_byte(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    view = project / "semantic_models" / "semantic_views" / "jaffle_minimal.yml"
+    text = view.read_text(encoding="utf-8")
+    written = "description: |-\n    Menu products only. Use it when a question needs nothing but the product catalogue."
+    assert written in text
+    view.write_text(text.replace(written, 'description: "Use it when \\r\\nmenus matter."'), encoding="utf-8")
+    tools = project / "tools" / "platform"
+    (tools / "zz_crlf.yml").write_text(
+        "tool:\n  name: zz_crlf\n  type: procedure\n  description: Returns ok.\n  language: sql\n"
+        "  returns: VARCHAR\n  body: \"{{ file('zz_crlf.sql') }}\"\n",
+        encoding="utf-8",
+    )
+    (tools / "zz_crlf.sql").write_bytes(b"BEGIN\r\n  RETURN 'ok';  \r\nEND;\r\n")
+    result = CliRunner().invoke(cli, ["compile", *common(project), "--emit-ddl", str(tmp_path / "ddl")])
+    assert result.exit_code == 0, result.output
+    assert b"COMMENT = 'Use it when \r\nmenus matter.'" in (tmp_path / "ddl" / "jaffle_minimal.sql").read_bytes()
+    assert b"$$\nBEGIN\r\n  RETURN 'ok';  \r\nEND;\n$$" in (tmp_path / "ddl" / "zz_crlf.sql").read_bytes()

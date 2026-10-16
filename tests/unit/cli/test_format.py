@@ -112,3 +112,24 @@ def test_validate_finding_is_cured_by_format(tmp_path: Path) -> None:
     assert formatting_problem(path.read_bytes().decode("utf-8")) is not None
     assert _format(project, "semantic_models").exit_code == 0
     assert formatting_problem(path.read_bytes().decode("utf-8")) is None
+
+
+def test_one_sanitize_reaches_the_form_a_sanitize_check_accepts_and_keeps_sample_apostrophes(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    # A single-quoted entry with an apostrophe and a trailing space: the first pass once dropped
+    # the apostrophe and kept the quotes, and the second then double-quoted it.
+    model = (
+        "models:\n  - name: m\n    columns:\n      - name: c\n        config:\n          meta:\n"
+        "            sst:\n              synonyms:\n                - 'kevin parker''s favorite! '\n"
+        "              sample_values:\n                - 'kevin parker''s favorite! '\n"
+        "                - Mother's Day Brunch\n"
+    )
+    path = project / "models" / "schema.yml"
+    path.write_text(model, encoding="utf-8")
+    assert _format(project, "--sanitize").exit_code == 0
+    once = path.read_text(encoding="utf-8")
+    assert _format(project, "--check", "--sanitize").exit_code == 0
+    assert _format(project, "--sanitize").exit_code == 0
+    assert path.read_text(encoding="utf-8") == once
+    assert "- 'kevin parkers favorite! '\n" in once
+    assert "- 'kevin parker''s favorite! '\n                - Mother's Day Brunch\n" in once

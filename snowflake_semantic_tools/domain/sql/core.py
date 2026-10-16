@@ -14,12 +14,16 @@ from collections.abc import Iterable
 from dataclasses import InitVar, dataclass
 from typing import LiteralString
 
+from snowflake_semantic_tools.domain.sql.lexer import LexError, Token, TokenKind, tokenize
+
 _SEAL = object()
 _FORMATTER = string.Formatter()
 # A bind placeholder is marked with NUL, which no constructor lets into text: `_seal` refuses it,
 # so only a code-authored template can create one, and no value can be read as a placeholder.
 _MARK = "\x00"
 _PLACEHOLDER = re.compile(r"%(\([A-Za-z_][A-Za-z0-9_]*\))?s")
+# Tokens holding a value, kept byte for byte: what is inside them is data, not layout.
+_VERBATIM = frozenset((TokenKind.STRING, TokenKind.QUOTED_IDENTIFIER, TokenKind.DOLLAR_STRING))
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,12 +152,35 @@ def canonical(statement: Sql, *, keep_indent: bool = False) -> Sql:
     """Right-strip every line of a statement and strip the whole, as rendered artifacts store it.
 
     Only whitespace goes, so the statement keeps its tokens: a quote, bracket, or comment
-    marker is never removed. Lines end only at `\n`, so a `\r` or Unicode separator inside a
-    literal stays as written; authored SQL is already in this form (see `guard_expression`),
-    so canonicalising never changes what a guard checked.
+    marker is never removed. A line's end is stripped only outside every string literal,
+    quoted identifier and dollar-quoted body, so a value inside one -- a comment's trailing
+    space, a body's `\r\n` -- is published byte for byte; a statement that does not lex keeps
+    every line as written. Lines end only at `\n`, so a Unicode separator is never a line
+    end; authored SQL is already in this form (see `guard_expression`), so canonicalising never
+    changes what a guard checked.
 
     Args:
         keep_indent: Strip only the end of the whole, for a fragment that continues a line.
     """
-    text = "\n".join(line.rstrip() for line in statement.text.split("\n"))
+    try:
+        tokens = tokenize(statement.text)
+    except LexError:
+        text = statement.text
+    else:
+        text = "".join(_line_ends_stripped(token) for token in tokens)
     return _compose(text.rstrip() if keep_indent else text.strip())
+
+
+def _line_ends_stripped(token: Token) -> str:
+    """Return a token's text with the whitespace ending each of its lines removed, unless it is a value.
+
+    A `--` or `//` comment ends where its line does, so its own trailing whitespace ends a line.
+    Every other token that spans lines keeps its last part as written: that part continues the
+    line the next token is on, as indentation does.
+    """
+    if token.kind in _VERBATIM:
+        return token.text
+    if token.kind is TokenKind.COMMENT and not token.text.startswith("/*"):
+        return token.text.rstrip()
+    *ended, last = token.text.split("\n")
+    return "\n".join([*(part.rstrip() for part in ended), last])

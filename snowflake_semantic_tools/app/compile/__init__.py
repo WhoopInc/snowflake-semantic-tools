@@ -43,7 +43,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import Metric, Semantic
 from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
 from snowflake_semantic_tools.domain.render.semantic_view import bound_verified_query, render, render_checked
-from snowflake_semantic_tools.domain.sql import AuthoredExpression, Sql, ident, join, qname, sql
+from snowflake_semantic_tools.domain.sql import AuthoredExpression, Sql, canonical, ident, join, qname, sql
 from snowflake_semantic_tools.domain.validate.semantic_view import (
     fan_out_diagnostics,
     join_graph_diagnostics,
@@ -101,8 +101,8 @@ class CompiledView(CompiledArtifact):
 
     @property
     def canonical_ddl(self) -> str:
-        """Canonical bytes hashed by manifests and compared by plans."""
-        return "\n".join(line.rstrip() for line in str(self.ddl).splitlines()).strip() + "\n"
+        """Canonical bytes hashed by manifests and compared by plans: the DDL as `canonical` makes it."""
+        return canonical(self.ddl).text + "\n"
 
     @property
     def byte_length(self) -> int:

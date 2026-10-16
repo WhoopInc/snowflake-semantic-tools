@@ -55,20 +55,23 @@ def compose_single(text: str, path: str) -> yaml.Node | None:
     Diagnostics:
         SST-LOD009: YAML stopped at an unquoted `: ` inside a value on a key's line.
         SST-LOD001: any other YAML syntax error, at YAML's mark, collections nested deeper than
-            `adapters.bounded_yaml` allows among them.
+            `adapters.bounded_yaml` allows and a character YAML does not allow among them.
         SST-LOD003: the text holds no document: only whitespace or comments.
         SST-LOD008: the text holds more than one document.
         SST-LOD013: an anchor or alias is written; one diagnostic per anchor and alias.
     """
-    loader = _Loader(text)
+    loader: _Loader | None = None
     try:
+        # The loader's reader checks every character as it is built, so building it can fail too.
+        loader = _Loader(text)
         nodes: list[yaml.Node | None] = []
         while loader.check_node():
             nodes.append(loader.get_node())
     except yaml.YAMLError as exc:
         _refuse_syntax(text, path, exc)
     finally:
-        loader.dispose()
+        if loader is not None:
+            loader.dispose()
     if not nodes:
         _refuse(D("SST-LOD003", file=path))
     if len(nodes) != 1:
@@ -88,6 +91,11 @@ def _refuse_syntax(text: str, path: str, exc: yaml.YAMLError) -> NoReturn:
     line = mark.line + 1 if mark is not None else 1
     col = mark.column + 1 if mark is not None else 1
     problem = str(getattr(exc, "problem", exc))
+    if isinstance(exc, yaml.reader.ReaderError):
+        # A character the reader refuses has an offset, not a mark.
+        line = text.count("\n", 0, exc.position) + 1
+        col = exc.position - text.rfind("\n", 0, exc.position)
+        problem = f"the character U+{exc.character:04X} is not allowed in YAML"
     colon = unquoted_colon(text, path, line, col - 1) if problem == "mapping values are not allowed here" else None
     diagnostic = colon or D("SST-LOD001", file=path, line=line, col=col, detail=problem)
     raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc

@@ -5,11 +5,15 @@ through it, the first raising and the second collecting diagnostics. Every parse
 
 - refuses a file that is too large, starts with a byte-order mark, is not UTF-8, or indents
   with tabs, and reads CRLF line endings as LF (`text_checks`);
-- keeps each `{{ ... }}` template exactly as written, quoted or not: it is swapped for a
-  YAML-safe placeholder before parsing and its source text restored in every string after
-  (a whole-line comment or a block scalar is left to YAML as text, templates and all);
+- reads each `{{ ... }}` template as the scalar holding it reads: it is swapped for a
+  YAML-safe placeholder before parsing, and its source text restored in every string after,
+  unescaped as that scalar's quoting says (`''` is one quote in a single-quoted scalar, and a
+  backslash escape is decoded in a double-quoted one), so either quoting gives the same
+  template; a whole-line comment or a block scalar is left to YAML as text, templates and all;
 - refuses anchors, aliases, merge keys, non-string keys, and a key written twice in one
   mapping, and reports a value YAML cannot construct at its own position (`compose`);
+- refuses a string, key or value, holding a NUL or a lone surrogate, which a YAML escape can
+  write and Snowflake cannot store, at the line it is written on;
 - indexes each node's source position by its path, and records each template's position;
 - returns what loads but is badly formatted -- CRLF, trailing whitespace, folded scalars,
   implicit booleans and nulls -- as `ParsedYaml.diagnostics`, never raising for them.
@@ -19,6 +23,7 @@ A file holds exactly one document, and its root is a mapping.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import MappingProxyType
@@ -26,6 +31,7 @@ from typing import Any
 
 import yaml
 
+from snowflake_semantic_tools.adapters.bounded_yaml import BoundedSafeLoader
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.compose import compose_single, construct, formatting_findings
 from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml, TemplateSource
@@ -34,11 +40,13 @@ from snowflake_semantic_tools.adapters.yaml.text_checks import (
     executable_lines,
     normalised_text,
     refuse_tab_indentation,
+    unstorable_diagnostics,
 )
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosition
 
 _PLACEHOLDER = "__SST_TPL_%d__"
+_PLACEHOLDERS = re.compile(r"__SST_TPL_\d+__")
 
 
 def _neutralize_templates(
@@ -88,16 +96,58 @@ def _neutralize_templates(
     return rewritten, templates
 
 
-def _restore_templates(value: Any, templates: Mapping[str, TemplateSource]) -> Any:
+def _scalar_styles(node: yaml.Node) -> dict[str, str | None]:
+    """Return the quoting style of the scalar each placeholder is written in, by placeholder."""
+    styles: dict[str, str | None] = {}
+    pending = [node]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, yaml.ScalarNode):
+            styles.update(dict.fromkeys(_PLACEHOLDERS.findall(current.value), current.style))
+        elif isinstance(current, yaml.MappingNode):
+            pending.extend(part for pair in current.value for part in pair)
+        elif isinstance(current, yaml.SequenceNode):
+            pending.extend(current.value)
+    return styles
+
+
+def _unescaped(raw: str, style: str | None) -> str:
+    """Return a template's source text as the scalar it is written in reads it.
+
+    A single-quoted scalar doubles a quote; a double-quoted one escapes with a backslash, and
+    holding no backslash reads as written. One that does not decode, such as one holding a
+    bare `"` (which the placeholder kept from ending the scalar), reads as written too.
+    """
+    if style == "'":
+        return raw.replace("''", "'")
+    if style != '"' or "\\" not in raw:
+        return raw
+    loader = BoundedSafeLoader(f'"{raw}"')
+    try:
+        decoded = loader.get_single_data()
+    except yaml.YAMLError:
+        return raw
+    finally:
+        loader.dispose()
+    return decoded if isinstance(decoded, str) else raw
+
+
+def _restored(node: yaml.Node, templates: Mapping[str, TemplateSource]) -> dict[str, str]:
+    """Return each template's text as its scalar reads it, by placeholder, for `_restore_templates`."""
+    styles = _scalar_styles(node)
+    return {placeholder: _unescaped(source.raw, styles.get(placeholder)) for placeholder, source in templates.items()}
+
+
+def _restore_templates(value: Any, restored: Mapping[str, str]) -> Any:
     if isinstance(value, str):
-        restored = value
-        for placeholder, source in templates.items():
-            restored = restored.replace(placeholder, source.raw)
-        return restored
+        text = value
+        for placeholder, source in restored.items():
+            text = text.replace(placeholder, source)
+        return text
     if isinstance(value, list):
-        return [_restore_templates(item, templates) for item in value]
+        return [_restore_templates(item, restored) for item in value]
     if isinstance(value, dict):
-        return {_restore_templates(key, templates): _restore_templates(item, templates) for key, item in value.items()}
+        return {_restore_templates(key, restored): _restore_templates(item, restored) for key, item in value.items()}
     return value
 
 
@@ -117,6 +167,11 @@ def _node_path_index(node: yaml.Node) -> Mapping[NodePath, SourcePosition]:
 
     walk(node, ())
     return MappingProxyType(positions)
+
+
+def _line_of(positions: Mapping[NodePath, SourcePosition], at: NodePath) -> int | None:
+    position = positions.get(at)
+    return position.line if position is not None else None
 
 
 def parse_yaml_bytes(
@@ -147,6 +202,7 @@ def parse_yaml_bytes(
             not a string; every one at once, raised.
         SST-LOD005: a key written twice in one mapping; raised.
         SST-LOD002: the document root is not a mapping; raised.
+        SST-LOD022: a string holds a NUL or a lone surrogate; every one at once, raised.
         SST-LOD012, SST-LOD202: CRLF line endings, read as LF, or trailing whitespace; returned.
         SST-LOD011, SST-LOD016: a folded scalar, or an implicit boolean or null; returned.
     """
@@ -155,15 +211,21 @@ def parse_yaml_bytes(
     refuse_tab_indentation(text, path, executable)
     neutralized, templates = _neutralize_templates(text, path, executable)
     composed = compose_single(neutralized, path)
-    loaded = None if composed is None else _restore_templates(construct(composed, path), templates)
-    if composed is None or loaded is None:
+    if composed is None:
+        return ParsedYaml(MappingProxyType({}), MappingProxyType({}), MappingProxyType(templates), findings)
+    loaded = _restore_templates(construct(composed, path), _restored(composed, templates))
+    if loaded is None:
         return ParsedYaml(MappingProxyType({}), MappingProxyType({}), MappingProxyType(templates), findings)
     if not isinstance(loaded, dict):
         diagnostic = D("SST-LOD002", file=str(path), found=type(loaded).__name__)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    positions = _node_path_index(composed)
+    unstorable = unstorable_diagnostics(loaded, path, lambda at: _line_of(positions, at))
+    if unstorable:
+        raise ProjectError("; ".join(item.message for item in unstorable), diagnostics=unstorable)
     return ParsedYaml(
         MappingProxyType({str(key): value for key, value in loaded.items()}),
-        _node_path_index(composed),
+        positions,
         MappingProxyType(templates),
         (*findings, *formatting_findings(composed, path, null_means=null_means)),
     )

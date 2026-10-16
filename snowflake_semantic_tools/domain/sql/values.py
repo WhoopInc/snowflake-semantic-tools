@@ -15,6 +15,7 @@ from decimal import Decimal
 
 from snowflake_semantic_tools.domain.sql.core import Sql, _seal, sql
 from snowflake_semantic_tools.domain.sql.datatype import datatype, type_family
+from snowflake_semantic_tools.domain.text import unstorable
 
 _DATE = r"\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])"
 _TIME = r"(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?"
@@ -38,18 +39,8 @@ _EXPECTED = {
 }
 
 
-def _unrepresentable(value: str) -> str | None:
-    """Name the first character Snowflake cannot hold in a string, or None when there is none."""
-    for character in value:
-        if character == "\x00":
-            return "a NUL character"
-        if 0xD800 <= ord(character) <= 0xDFFF:
-            return f"the lone surrogate U+{ord(character):04X}"
-    return None
-
-
 def _quoted(value: str) -> str:
-    unrepresentable = _unrepresentable(value)
+    unrepresentable = unstorable(value)
     if unrepresentable is not None:
         raise ValueError(f"a SQL string literal cannot hold {unrepresentable}")
     return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"
@@ -177,7 +168,7 @@ def typed_default(data_type: str, value: object) -> Sql:
         if not isinstance(value, bool):
             raise refused
         return boolean(value)
-    if not isinstance(value, str) or _unrepresentable(value) is not None:
+    if not isinstance(value, str) or unstorable(value) is not None:
         raise refused
     if family == "text":
         return literal(value)

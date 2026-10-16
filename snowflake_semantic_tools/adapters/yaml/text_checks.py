@@ -1,17 +1,24 @@
-"""What `parse_yaml_bytes` checks in a file's bytes and text before YAML reads any of it.
+"""What every file SST reads must be before it is text, and what `parse_yaml_bytes` checks in it.
 
-The refusals raise `ProjectError` with their diagnostics: a file over the size limit, a
-byte-order mark, bytes that are not UTF-8, and tabs used for indentation. The formatting
-findings are returned instead, since the file still loads: CRLF line endings, which are
-normalised in memory and never written back, and trailing whitespace.
+`read_authored_text` is the one rule for an authored file's bytes, YAML, a `file()` sidecar or
+a `SKILL.md` alike: within the size limit, no byte-order mark, UTF-8, and no NUL. A mark is
+refused, never removed, since removing it would change what a checksum or a published body
+holds. `unstorable_diagnostics` refuses a loaded value holding what Snowflake cannot store.
+
+For YAML, the refusals raise `ProjectError` with their diagnostics: those above, and tabs used
+for indentation. The formatting findings are returned instead, since the file still loads:
+CRLF line endings, which are normalised in memory and never written back, and trailing
+whitespace.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.text import TreePath, unstorable, unstorable_strings
 
 # A semantic-model file this large is a generated dump, not something a person reviews.
 MAX_FILE_BYTES = 4 * 1024 * 1024
@@ -24,25 +31,82 @@ def _refuse(*diagnostics: Diagnostic) -> ProjectError:
     return ProjectError("; ".join(diagnostic.message for diagnostic in diagnostics), diagnostics=diagnostics)
 
 
-def decoded_text(raw: bytes, path: str) -> str:
-    """Return a file's bytes as text, refusing what SST will not read.
+def bom_refusal(raw: bytes, path: str, *, subject: str | None = None) -> Diagnostic | None:
+    """Return the refusal of a file that begins with a byte-order mark; None when it does not.
 
-    Raises:
-        ProjectError: As the diagnostics below say; the first that applies is the only one.
+    Diagnostics:
+        SST-LOD017: the file begins with a UTF-8 byte-order mark.
+    """
+    return D("SST-LOD017", origin=Origin(path), file=path, subject=subject) if raw.startswith(_BOM) else None
+
+
+def read_authored_text(raw: bytes, path: str, *, subject: str | None = None) -> str | Diagnostic:
+    """Return an authored file's bytes as text, or the one diagnostic that refuses them.
+
+    Args:
+        path: The file as diagnostics name it, relative to the project root.
 
     Diagnostics:
         SST-LOD007: the file is larger than `MAX_FILE_BYTES`.
         SST-LOD017: the file begins with a UTF-8 byte-order mark.
         SST-LOD006: the bytes are not UTF-8, at the first offending byte.
+        SST-LOD022: the text holds a NUL character, at its line.
     """
     if len(raw) > MAX_FILE_BYTES:
-        raise _refuse(D("SST-LOD007", origin=Origin(path), file=path, size=len(raw), expected=f"{MAX_FILE_BYTES}-byte"))
-    if raw.startswith(_BOM):
-        raise _refuse(D("SST-LOD017", origin=Origin(path), file=path))
+        expected = f"{MAX_FILE_BYTES}-byte"
+        return D("SST-LOD007", origin=Origin(path), file=path, size=len(raw), expected=expected, subject=subject)
+    refusal = bom_refusal(raw, path, subject=subject)
+    if refusal is not None:
+        return refusal
     try:
-        return raw.decode("utf-8")
+        text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise _refuse(D("SST-LOD006", origin=Origin(path), file=path, offset=exc.start)) from exc
+        return D("SST-LOD006", origin=Origin(path), file=path, offset=exc.start, subject=subject)
+    # Strict UTF-8 decoding never yields a surrogate, so a NUL is all `unstorable` can find here.
+    problem = unstorable(text)
+    if problem is not None:
+        line = text.count("\n", 0, text.index("\x00")) + 1
+        return D("SST-LOD022", origin=Origin(path, line), file=path, field="text", found=problem, subject=subject)
+    return text
+
+
+def decoded_text(raw: bytes, path: str) -> str:
+    """Return a YAML file's bytes as text, refusing what SST will not read.
+
+    Raises:
+        ProjectError: As `read_authored_text` refuses the bytes.
+
+    Diagnostics:
+        Every code `read_authored_text` lists.
+    """
+    text = read_authored_text(raw, path)
+    if isinstance(text, Diagnostic):
+        raise _refuse(text)
+    return text
+
+
+def unstorable_diagnostics(
+    tree: object, path: str, line_of: Callable[[TreePath], int | None], *, subject: str | None = None
+) -> tuple[Diagnostic, ...]:
+    """Report each string in a loaded tree that Snowflake cannot store, at the line it is written on.
+
+    Args:
+        line_of: The line a tree path is written on; None when it is not known.
+
+    Diagnostics:
+        SST-LOD022: a string holds a NUL or a lone surrogate, once per string.
+    """
+    return tuple(
+        D(
+            "SST-LOD022",
+            origin=Origin(path, line_of(at)),
+            file=path,
+            field=".".join(str(part) for part in at) or "document",
+            found=problem,
+            subject=subject,
+        )
+        for at, problem in unstorable_strings(tree)
+    )
 
 
 def normalised_text(text: str, path: str) -> tuple[str, tuple[Diagnostic, ...]]:

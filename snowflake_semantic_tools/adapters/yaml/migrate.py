@@ -10,7 +10,7 @@ from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import create_within, remove_within, write_within
 from snowflake_semantic_tools.adapters.yaml.discover import YAML_SUFFIXES
-from snowflake_semantic_tools.adapters.yaml.parse import _neutralize_templates, _restore_templates
+from snowflake_semantic_tools.adapters.yaml.parse import _neutralize_templates, _restore_templates, _restored
 from snowflake_semantic_tools.domain.migrate.refs import FilterSite
 
 _HOOK_MANIFESTS = frozenset(("hook.yml", "hook.yaml"))
@@ -114,6 +114,7 @@ def filter_sites(text: str, path: str) -> tuple[FilterSite, ...]:
     if not isinstance(root, yaml.MappingNode):
         return ()
     sites: list[FilterSite] = []
+    restored = _restored(root, templates)
     for key, value in root.value:
         if key.value == "snowflake_filters" and isinstance(value, yaml.SequenceNode):
             entries = list(value.value)
@@ -135,8 +136,8 @@ def filter_sites(text: str, path: str) -> tuple[FilterSite, ...]:
             )
             sites.append(
                 FilterSite(
-                    name=str(_restore_templates(name.value, templates)) if isinstance(name, yaml.ScalarNode) else "",
-                    expr=str(_restore_templates(expr.value, templates)),
+                    name=str(_restore_templates(name.value, restored)) if isinstance(name, yaml.ScalarNode) else "",
+                    expr=str(_restore_templates(expr.value, restored)),
                     has_labels="labels" in fields,
                     last_line=last,
                     indent=entry.value[0][0].start_mark.column,

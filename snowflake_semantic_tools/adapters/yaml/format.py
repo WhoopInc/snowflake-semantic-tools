@@ -13,9 +13,11 @@ The canonical form is a re-layout that never changes what the file means:
 
 Comments, quoting, and the order of everything else survive the round trip. `canonical_yaml`
 checks the result against the original before returning it: both must load to the same value,
-or the file is refused rather than rewritten. With `sanitize`, two repairs that do change values
-are made first -- apostrophes leave `synonyms` and `sample_values` entries, and Jinja delimiters
-in a `description` are broken apart -- and the check compares against the repaired value.
+and formatting the result again must return it unchanged, or the file is refused rather than
+rewritten. With `sanitize`, two repairs that do change values are made first -- apostrophes
+leave `synonyms` entries, and Jinja delimiters in a `description` are broken apart -- and the
+check compares against the repaired value. A sample value keeps its apostrophes: it must match
+the warehouse's text, and the DDL escapes the quote.
 """
 
 from __future__ import annotations
@@ -44,7 +46,7 @@ _INDENT = {"mapping": 2, "sequence": 4, "offset": 2}
 # Wide enough that no line is ever folded where the file did not fold it.
 _WIDTH = 4096
 _FIRST_KEY = "name"
-_APOSTROPHE_LISTS = frozenset(("synonyms", "sample_values"))
+_APOSTROPHE_LISTS = frozenset(("synonyms",))
 _APOSTROPHES = re.compile("['\u2019]")
 _JINJA = re.compile(r"\{([{%#])|([}%#])\}")
 
@@ -76,13 +78,24 @@ def canonical_yaml(text: str, path: str, *, sanitize: bool = False) -> str:
 
     Raises:
         ProjectError: the text is not YAML (SST-LOD001), or its canonical form would load to a
-            different value, so it is left as it is (SST-INT003).
+            different value or is not a fixed point, so it is left as it is (SST-INT003).
 
     Diagnostics:
         SST-LOD001: the text does not parse, or nests collections deeper than
             `adapters.roundtrip.check_depth` allows; raised.
-        SST-INT003: the canonical form would change the file's value; raised.
+        SST-INT003: the canonical form would change the file's value, or formatting it again,
+            with the same `sanitize`, would change it; raised.
     """
+    result = _canonical(text, path, sanitize=sanitize)
+    if result and _canonical(result, path, sanitize=sanitize) != result:
+        found = f"a form of {path} that a second format would change, so it was left as it is"
+        diagnostic = D("SST-INT003", subject="format", value="sst format", found=found, expected="a fixed point")
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    return result
+
+
+def _canonical(text: str, path: str, *, sanitize: bool) -> str:
+    """Return one formatting pass over `text`, refusing one that changes its value."""
     source = text.replace("\r\n", "\n").replace("\r", "\n")
     try:
         check_depth(source)
@@ -186,8 +199,14 @@ def _unjinja(match: re.Match[str]) -> str:
 
 
 def _restyled(original: str, repaired: str) -> str:
-    """Return `repaired` in the scalar style `original` was written in, so only its text changes."""
-    if repaired == original or not isinstance(original, ScalarString):
+    """Return `repaired` in the scalar style `original` was written in, so only its text changes.
+
+    An unchanged value is `original` itself: a plain copy of it would lose its quotes, and then
+    `_literal` could quote it another way, which a second pass would not.
+    """
+    if repaired == original:
+        return original
+    if not isinstance(original, ScalarString):
         return repaired
     return type(original)(repaired)
 

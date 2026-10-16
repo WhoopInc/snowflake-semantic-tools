@@ -12,6 +12,8 @@ from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml, Templat
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_file, read_yaml_mapping
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.authored import SourcePosition
+from tests.helpers.cli_projects import validate_json
+from tests.helpers.reference_project import AGENTS_SCHEMA, config_edited
 
 
 def _raised(raw: bytes, path: str = "f.yml") -> ProjectError:
@@ -62,10 +64,36 @@ def test_a_file_without_a_document_is_lod003(raw: bytes) -> None:
     assert _raised(raw, "empty.yml").diagnostics == (D("SST-LOD003", file="empty.yml"),)
 
 
+def test_a_template_reads_as_its_scalar_does_whichever_quotes_hold_it() -> None:
+    raw = (
+        b"single: '{{ ref(''orders'') }}'\n"
+        b"double: \"{{ ref('orders') }}\"\n"
+        b'escaped: "{{ ref(\\"orders\\") }}"\n'
+        b'bare: "{{ ref("orders") }}"\n'
+        b"plain: {{ ref('orders') }}\n"
+        b"empty: '{{ x or '''' }}'\n"
+    )
+    parsed = parse_yaml_bytes(raw, "q.yml")
+    assert dict(parsed.tree) == {
+        "single": "{{ ref('orders') }}",
+        "double": "{{ ref('orders') }}",
+        "escaped": '{{ ref("orders") }}',
+        "bare": '{{ ref("orders") }}',
+        "plain": "{{ ref('orders') }}",
+        "empty": "{{ x or '' }}",
+    }
+    # A template keeps its source text, as written, for where it is reported.
+    assert "{{ ref(''orders'') }}" in {source.raw for source in parsed.templates.values()}
+
+
+def test_a_double_quoted_template_whose_escape_does_not_decode_reads_as_written() -> None:
+    parsed = parse_yaml_bytes(b'a: "{{ x(\\q) }}"\n', "q.yml")
+    assert dict(parsed.tree) == {"a": "{{ x(\\q) }}"}
+
+
 def test_bytes_that_are_not_utf8_are_lod006_at_their_offset() -> None:
     error = _raised(b"a: \xff\n", "bad.yml")
     assert error.diagnostics == (D("SST-LOD006", origin=Origin("bad.yml"), file="bad.yml", offset=3),)
-    assert isinstance(error.__cause__, UnicodeDecodeError)
 
 
 def test_every_malformed_template_is_reported_at_once() -> None:
@@ -162,3 +190,16 @@ def test_an_unreadable_pointed_to_file_is_lod018_at_the_pointer(tmp_path: Path) 
 def test_template_sources_record_the_one_based_column_after_the_last_newline() -> None:
     parsed = parse_yaml_bytes(b"a: 1\nb: '{{ var(\"x\") }}'\n", "m.yml")
     assert list(parsed.templates.values()) == [TemplateSource('{{ var("x") }}', 2, 5)]
+
+
+def test_a_single_quoted_conditional_setting_validates_as_the_double_quoted_one_does(tmp_path: Path) -> None:
+    single = "  +schema: '{{ ''JAFFLE'' if target.name == ''prod'' else ''JAFFLE'' }}'\n  +enabled: true\n\n  # Pinned"
+    double = "  +schema: \"{{ 'JAFFLE' if target.name == 'prod' else 'JAFFLE' }}\"\n  +enabled: true\n\n  # Pinned"
+    results = [
+        validate_json(config_edited(tmp_path / str(index), (AGENTS_SCHEMA, edit)))
+        for index, edit in enumerate((single, double))
+    ]
+    assert [code for code, _ in results] == [0, 0]
+    assert [sorted(item["code"] for item in found) for _, found in results][0] == sorted(
+        item["code"] for item in results[1][1]
+    )

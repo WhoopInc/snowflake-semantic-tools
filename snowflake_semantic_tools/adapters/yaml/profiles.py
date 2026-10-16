@@ -28,6 +28,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.adapters.yaml.skills import _published
+from snowflake_semantic_tools.adapters.yaml.text_checks import bom_refusal, read_authored_text
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.profile import (
@@ -178,15 +179,19 @@ def _prompt(project_dir: Path, path: Path, subject: str, diagnostics: list[Diagn
 
 
 def _read_text(project_dir: Path, path: Path, subject: str, diagnostics: list[Diagnostic]) -> str | None:
-    """Return a file's UTF-8 text; None, reporting SST-PRT009 or SST-LOD006, if linked or not UTF-8."""
+    """Return a file's text; None, reporting why, when it is linked or `read_authored_text` refuses it.
+
+    Diagnostics:
+        SST-PRT009: the file, or a folder above it, is a symbolic link.
+        Every code `read_authored_text` lists.
+    """
     if refused(project_dir, path, diagnostics, subject=subject):
         return None
-    try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError as exc:
-        file = project_relative(project_dir, path)
-        diagnostics.append(D("SST-LOD006", origin=Origin(file), subject=subject, file=file, offset=exc.start))
+    text = read_authored_text(path.read_bytes(), project_relative(project_dir, path), subject=subject)
+    if isinstance(text, Diagnostic):
+        diagnostics.append(text)
         return None
+    return text
 
 
 def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> DesktopProfile | None:
@@ -209,7 +214,8 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
         SST-PRS003: when a text field is not a string, or a member list not a list of strings.
         Every code `member_names` lists, for a member list's entry that is not one call of its
             key's function.
-        SST-LOD006: when `AGENTS.md` is not UTF-8; the profile then has no prompt.
+        Every code `read_authored_text` lists, for an `AGENTS.md` it refuses; the profile then has
+            no prompt.
         SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
             reports the manifest's `config:` block, each at its first line.
     """
@@ -301,7 +307,8 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         SST-PRS003: when `skills` or `commands` is not a list of strings.
         Every code `member_names` lists, for an entry that is not one `skill()` or `command()`
             call.
-        SST-LOD006: when `AGENTS.md` or a rule is not UTF-8; it is left out of the layer.
+        Every code `read_authored_text` lists, for an `AGENTS.md` or a rule it refuses; it is left
+            out of the layer.
     """
     subject = "profile:shared"
     origin = Origin(project_relative(project_dir, folder))
@@ -428,6 +435,39 @@ def _check_command(command: CommandFile, diagnostics: list[Diagnostic]) -> str |
     return found.args[0]
 
 
+def _folder_script(
+    project_dir: Path, folder: Path, origin: Origin, subject: str, diagnostics: list[Diagnostic]
+) -> Sidecar | None:
+    """Return the one published file beside a hook manifest that writes no `script:`; None when not one.
+
+    Raises:
+        OSError: The script cannot be read.
+
+    Diagnostics:
+        SST-PRT009: a candidate is a symbolic link; it is left out.
+        SST-VAL852: the folder holds no script, or more than one.
+        SST-LOD017: the script begins with a byte-order mark, which would come before its `#!` line.
+    """
+    scripts = [
+        path
+        for path in sorted(folder.iterdir())
+        if path.name not in HOOK_FILES
+        and _published(path, folder)
+        and path.is_file()
+        and not refused(project_dir, path, diagnostics, subject=subject)
+    ]
+    if len(scripts) != 1:
+        detail = "has no script" if not scripts else f"has {len(scripts)} candidate scripts and no script: key"
+        diagnostics.append(D("SST-VAL852", origin=origin, subject=subject, artifact=folder.name, detail=detail))
+        return None
+    script = Sidecar(project_relative(project_dir, scripts[0]), scripts[0].read_bytes())
+    refusal = bom_refusal(script.content, script.path, subject=subject)
+    if refusal is not None:
+        diagnostics.append(refusal)
+        return None
+    return script
+
+
 def _load_hook(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> HookDefinition | None:
     """Read one hook folder into a command hook and the script it runs; None when that cannot be done.
 
@@ -448,6 +488,7 @@ def _load_hook(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -
         SST-PRS004: when the manifest holds a key SST does not read.
         Every code `read_sidecar` lists, for the script `script:` names, read as bytes relative to
             the manifest's folder.
+        Every code `_folder_script` lists, for a hook that writes no `script:`.
     """
     name = folder.name
     subject = f"hook:{name}"
@@ -498,19 +539,10 @@ def _load_hook(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -
             diagnostics.append(script)
             return None
     else:
-        scripts = [
-            path
-            for path in sorted(folder.iterdir())
-            if path.name not in HOOK_FILES
-            and _published(path, folder)
-            and path.is_file()
-            and not refused(project_dir, path, diagnostics, subject=subject)
-        ]
-        if len(scripts) != 1:
-            detail = "has no script" if not scripts else f"has {len(scripts)} candidate scripts and no script: key"
-            diagnostics.append(D("SST-VAL852", origin=origin, subject=subject, artifact=name, detail=detail))
+        found = _folder_script(project_dir, folder, origin, subject, diagnostics)
+        if found is None:
             return None
-        script = Sidecar(project_relative(project_dir, scripts[0]), scripts[0].read_bytes())
+        script = found
     timeout = tree.get("timeout")
     interactive = tree.get("interactive")
     matcher = tree.get("matcher")

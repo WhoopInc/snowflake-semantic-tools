@@ -284,6 +284,16 @@ models:
   `distinct_range` as a `DISTINCT RANGE` constraint (see
   [Relationships](#relationships)). A dbt source table takes its `description`
   and `meta.sst.synonyms` the same way.
+- `is_enum` and `exclude` are booleans, written unquoted: `is_enum: false`. A
+  quoted `"false"` is text, which would otherwise read as true, so it is
+  `SST-PRS003` and read as unset, as is an `access_modifier` written as a
+  boolean. dbt reads its YAML as YAML 1.1, so an unquoted `yes`, `no`, `on` or
+  `off` reaches SST as a boolean: in `synonyms` or `sample_values` such an item
+  is `SST-PRS003` and left out, never published as `'false'`. Quote it
+  (`'no'`) to mean the word. A BOOLEAN column's sample values may be `true` and
+  `false`.
+- A synonym, here or a metric's, may hold a quote, which the DDL escapes; a
+  control character, such as a newline, or template syntax is `SST-PRS030`.
 
 The `order_state` column above renders as:
 
@@ -593,6 +603,10 @@ verified_query:
   verified_by: analytics-team
 ```
 
+`use_as_onboarding_question` is a boolean, written unquoted; a quoted `"false"`
+is `SST-PRS003` and read as unset, so the question is not published as an
+onboarding question.
+
 - `question:` and `sql:` are required; an entry missing either, or with a
   blank `question:`, is an error (`SST-PRS002`), and one with no `name:` is
   `SST-PRS107`. To keep the query in a `.sql` file, write
@@ -672,3 +686,16 @@ reorder the rest. Tables keep the order `tables:` lists them in, variables and
 tags the order they are declared in, and the custom instructions' text joins in
 the order the view's `custom_instructions:` lists them, so reordering any of
 these changes the statement.
+
+### How text is published
+
+Every comment SST publishes, a view's or a member's `COMMENT`, a tool's
+description, an agent's comment, is its authored text with whitespace trimmed
+from both ends. Everything between is published byte for byte: line breaks,
+carriage returns, tabs, and the spaces at the end of an inner line, so a
+`description` written with Windows line endings keeps them. A metric's
+`description` is the one exception: its lines are joined with a space into one
+line. A routine's `body:` file is published as written but for whitespace at its
+end, and an agent's instruction file loses its trailing whitespace. A plan
+compares the text as rendered, so only whitespace that ends a statement's line
+outside every string, quoted name and `$$` body is ignored there.

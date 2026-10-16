@@ -13,11 +13,15 @@ from types import MappingProxyType
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.validate.column_metadata import (
     base_type,
+    has_template_syntax,
     is_numeric,
     is_sentinel,
     printable,
     synonym_problem,
 )
+
+# Quotes enrich never writes into a synonym, though validation accepts one an author writes.
+_QUOTES = ("'", '"')
 
 # The type INFORMATION_SCHEMA reports for each spelling a model YAML may hold. A type not
 # listed is its own family, compared by its base type.
@@ -45,15 +49,6 @@ SAMPLED_TYPES = frozenset(
 # Longer values are free text, not samples an analyst would filter on.
 MAX_SAMPLE_LENGTH = 500
 MAX_SYNONYM_LENGTH = 100
-
-# Text a template engine would read: a value or synonym holding it is never written. dbt renders
-# the YAML enrich writes as Jinja, so a value holding one would run as code at the next parse.
-_TEMPLATE_MARKERS = ("{{", "{%", "{#")
-
-
-def has_template_syntax(text: str) -> bool:
-    """Report whether `text` opens a Jinja expression, statement or comment."""
-    return any(marker in text for marker in _TEMPLATE_MARKERS)
 
 
 def semantic_data_type(data_type: str) -> str:
@@ -134,9 +129,10 @@ def proposed_synonym(candidate: object) -> tuple[str, str | None]:
     """Read one proposed synonym: its text, and why it can never be written.
 
     The text is stripped and its runs of spaces collapsed. It is refused, whatever else the
-    column or table holds, when it holds a quote or a control character (a newline or tab
-    inside it among them: those are checked before spaces are collapsed), is longer than
-    `MAX_SYNONYM_LENGTH`, or holds template syntax.
+    column or table holds, when it holds a quote, a control character (a newline or tab inside
+    it among them: those are checked before spaces are collapsed) or template syntax, or is
+    longer than `MAX_SYNONYM_LENGTH`. Validation accepts a quote an author writes, which the DDL
+    escapes; enrich writes none, as `sst format --sanitize` would only take it out again.
 
     Returns:
         `(text, reason)`, the reason worded as SST-PRS030 words it; `("", None)` for a proposal
@@ -146,11 +142,9 @@ def proposed_synonym(candidate: object) -> tuple[str, str | None]:
         return "", None
     stripped = candidate.strip()
     text = " ".join(stripped.split())
-    problem = synonym_problem(stripped)
+    problem = "quotes" if any(quote in stripped for quote in _QUOTES) else synonym_problem(stripped)
     if problem is None and len(text) > MAX_SYNONYM_LENGTH:
         problem = f"more than {MAX_SYNONYM_LENGTH} characters"
-    if problem is None and has_template_syntax(text):
-        problem = "template syntax"
     return text, problem
 
 

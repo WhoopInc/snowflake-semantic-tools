@@ -152,8 +152,25 @@ a hook's `script:`.
   `SST-LOD018`, a text file that is not UTF-8 `SST-LOD006`, and one holding only
   whitespace `SST-LOD019`. A hook's script is read as bytes, so it need not be
   text.
+- A file that begins with a UTF-8 byte-order mark is refused (`SST-LOD017`),
+  naming that file, as a YAML file with one is. The mark is not removed, since
+  removing it would change what is published; Snowflake refuses one before a
+  procedure's `BEGIN`, and before a hook's `#!` line it stops the script
+  running. Many Windows editors write one by default: save the file as UTF-8
+  without a BOM.
 - Each file is read once. It joins its artifact's source files, so a change to
   it changes the artifact's fingerprint and shows up in `sst plan`.
+
+## Characters no file may hold
+
+The rules above for a byte-order mark and UTF-8 hold for every file SST reads:
+project YAML, each `file()` sidecar, a `SKILL.md`, and a profile's `AGENTS.md`
+and rules. A NUL character, or a lone UTF-16 surrogate, which a YAML escape such
+as `"\0"` or `"\ud800"` can write, is refused too (`SST-LOD022`), at the file
+and line holding it: Snowflake cannot store either in a string, a name, or a
+body. A dbt description, synonym or sample value holding one is refused the same
+way where a view uses its model. Both are refused wherever they are written, an
+agent's specification included.
 
 ## Stage paths
 

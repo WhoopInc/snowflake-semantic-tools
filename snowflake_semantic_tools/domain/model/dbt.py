@@ -52,6 +52,11 @@ class DbtColumn:
     access_modifier: str | None = None
     # dbt's `quote: true`: the column was created quoted, so its name is case-sensitive.
     quoted: bool = False
+    # `meta.sst` values of the wrong type, as `(field, expected, found)`: each reads as unset, and
+    # is reported where a view uses the model rather than read by Python's truthiness.
+    wrong_types: tuple[tuple[str, str, str], ...] = ()
+    # Published text that holds what Snowflake cannot store, as `(field, problem)`.
+    unstorable: tuple[tuple[str, str], ...] = ()
 
     @property
     def identifier(self) -> Identifier:
@@ -105,6 +110,9 @@ class DbtModel:
     distinct_range: tuple[str, str] | None = None
     # The model writes `meta.sst.distinct_range`, but not as a mapping naming a start and an end.
     malformed_distinct_range: bool = False
+    # As `DbtColumn.wrong_types` and `DbtColumn.unstorable`, for the model's own fields.
+    wrong_types: tuple[tuple[str, str, str], ...] = ()
+    unstorable: tuple[tuple[str, str], ...] = ()
 
     def column(self, name: str) -> DbtColumn | None:
         """Return a column case-insensitively."""

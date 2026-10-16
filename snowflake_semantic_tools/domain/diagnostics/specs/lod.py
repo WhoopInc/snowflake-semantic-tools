@@ -15,8 +15,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "fix the YAML syntax at the reported position",
         condition=(
             "a YAML file, or a skill's `SKILL.md` frontmatter, does not parse, nests collections deeper "
-            "than the depth limit, or holds a value YAML cannot construct, such as an unknown tag; a "
-            "`SKILL.md` that is not UTF-8 is reported here too, at its first line"
+            "than the depth limit, or holds a value YAML cannot construct, such as an unknown tag, or a "
+            "character YAML does not allow, such as a control character"
         ),
     ),
     spec(
@@ -65,8 +65,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{file}: invalid UTF-8 at byte {offset}",
         "re-save the file as UTF-8",
         condition=(
-            "a file SST reads is not UTF-8: project YAML, an instruction or verified-query SQL sidecar, or a "
-            "profile's `AGENTS.md` or rule"
+            "a file SST reads is not UTF-8: project YAML, a `file()` sidecar such as an instruction, a "
+            "verified-query SQL file or a routine body, a `SKILL.md`, or a profile's `AGENTS.md` or rule"
         ),
     ),
     spec(
@@ -158,7 +158,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Byte-order mark present",
         "{file} begins with a BOM",
         "re-save without a BOM",
-        condition="the file begins with a UTF-8 byte-order mark (U+FEFF)",
+        condition=(
+            "the file begins with a UTF-8 byte-order mark (U+FEFF): project YAML, a `file()` sidecar "
+            "(a hook script among them), a `SKILL.md`, or a profile's `AGENTS.md` or rule; the mark is "
+            "refused rather than removed, since removing it would change what is published"
+        ),
     ),
     spec(
         "SST-LOD018",
@@ -197,6 +201,20 @@ SPECS: tuple[ErrorSpec, ...] = (
             "the root mapping has keys and none is a registered artifact type's root key; when only "
             "some are unclaimed, SST-PRS001 names each"
         ),
+    ),
+    spec(
+        "SST-LOD022",
+        Severity.ERROR,
+        "Text holds a character Snowflake cannot store",
+        "{file}: '{field}' holds {found}, which Snowflake cannot store",
+        "remove the character",
+        condition=(
+            "a file SST reads holds a NUL character, or a value read from one holds a NUL or a lone "
+            "UTF-16 surrogate, such as a YAML `\\0` or `\\ud800` escape: project YAML, a `file()` "
+            "sidecar, a `SKILL.md`, a profile's `AGENTS.md` or rule, or a dbt description, synonym "
+            "or sample value a view uses"
+        ),
+        note="refused wherever it is written, an agent's specification included",
     ),
     spec(
         "SST-LOD200",

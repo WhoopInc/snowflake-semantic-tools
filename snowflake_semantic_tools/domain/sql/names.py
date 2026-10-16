@@ -14,7 +14,7 @@ from collections.abc import Iterable
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.sql.core import Sql, _seal, join, sql
 from snowflake_semantic_tools.domain.sql.datatype import datatype
-from snowflake_semantic_tools.domain.sql.values import _unrepresentable
+from snowflake_semantic_tools.domain.text import unstorable
 
 _UNQUOTED = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
 # Snowflake's reserved and limited keywords: as an identifier each must be quoted or not used.
@@ -172,7 +172,7 @@ def _identifier_text(identifier: Identifier) -> str:
     if not isinstance(identifier, Identifier):
         raise TypeError(f"expected Identifier, found {type(identifier).__name__}")
     value = identifier.value
-    if not value or len(value) > _MAX_IDENTIFIER or _unrepresentable(value) is not None:
+    if not value or len(value) > _MAX_IDENTIFIER or unstorable(value) is not None:
         raise ValueError(f"{value!r} is not a Snowflake identifier")
     if not identifier.quoted and not _UNQUOTED.fullmatch(value):
         raise ValueError(f"{value!r} must be quoted to be an identifier")

@@ -544,6 +544,7 @@ def _tag(value: object, *, view: _View, tags: DeclaredTags) -> Tag:
         Every code `tag_reference` lists, for a name that is not one `tag()` call naming a
             declared tag that can be qualified.
         SST-REF019: when the tag's name is not a three-part name.
+        SST-PRS003: when the value is not text or a number, such as an unquoted `no`.
         SST-PRS026: when the value is longer than 256 characters.
 
     Raises:
@@ -566,13 +567,26 @@ def _tag(value: object, *, view: _View, tags: DeclaredTags) -> Tag:
     if qualified_name_problem(resolved, artifact=view.key, subject=view.key) is not None:
         diagnostic = D("SST-REF019", value=resolved, origin=view.origin, subject=view.key)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    if len(str(value["value"])) > 256:
+    written = value["value"]
+    if not isinstance(written, (str, int, float)) or isinstance(written, bool):
+        # An unquoted `no` is YAML 1.1's false; published as text it would read 'False'.
+        found = type(written).__name__
+        diagnostic = D(
+            "SST-PRS003",
+            artifact=view.key,
+            field="config.tags.value",
+            expected="a string",
+            found=found,
+            subject=view.key,
+        )
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    text = str(written)
+    if len(text) > 256:
         call = single_template_call(str(value["name"]), "tag")
         field = call.args[0] if call is not None and call.args else str(value["name"])
-        size = len(str(value["value"]))
-        diagnostic = D("SST-PRS026", artifact=view.key, field=field, size=size, subject=view.key)
+        diagnostic = D("SST-PRS026", artifact=view.key, field=field, size=len(text), subject=view.key)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    return Tag(name=resolved, value=str(value["value"]))
+    return Tag(name=resolved, value=text)
 
 
 def _source_files(

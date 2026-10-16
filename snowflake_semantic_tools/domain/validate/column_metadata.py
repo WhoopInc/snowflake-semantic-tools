@@ -41,8 +41,10 @@ TEMPORAL_TYPES = frozenset(
 # A sample value that is really a missing value written out as text, compared casefolded.
 SAMPLE_SENTINELS = frozenset(("nan", "none", "null", "<na>"))
 
-# Characters a synonym may not hold: Snowflake quotes each synonym in the DDL it renders.
-_SYNONYM_QUOTES = ("'", '"')
+# Text a template engine would read. dbt renders the YAML it reads, and the YAML enrich writes,
+# as Jinja, so a synonym or value holding one would run as code at the next parse; SST's own
+# YAML would publish the template's text, not what it stands for.
+_TEMPLATE_MARKERS = ("{{", "{%", "{#")
 # Unicode categories no synonym needs, and a terminal or a reviewer may misread: control
 # characters (newlines and tabs among them), format characters such as bidirectional
 # overrides and zero-width spaces, private-use, surrogate and unassigned code points, and
@@ -75,12 +77,20 @@ def is_sentinel(value: str) -> bool:
     return value.casefold() in SAMPLE_SENTINELS
 
 
+def has_template_syntax(text: str) -> bool:
+    """Report whether `text` opens a Jinja expression, statement or comment."""
+    return any(marker in text for marker in _TEMPLATE_MARKERS)
+
+
 def synonym_problem(synonym: str) -> str | None:
-    """Return what makes a synonym unusable, as SST-PRS030 words it; None when it is usable."""
-    if any(character in synonym for character in _SYNONYM_QUOTES):
-        return "quotes"
+    """Return what makes a synonym unusable, as SST-PRS030 words it; None when it is usable.
+
+    A quote is usable: the DDL escapes it, so the synonym reads as written.
+    """
     if any(unicodedata.category(character) in _UNPRINTABLE for character in synonym):
         return "control characters"
+    if has_template_syntax(synonym):
+        return "template syntax"
     return None
 
 
