@@ -91,8 +91,9 @@ class CompiledTool(StandaloneArtifact):
         """Carry the member's description, then the ownership marker, in the object's COMMENT.
 
         A search service takes the comment inside its CREATE statement; a procedure, a
-        function, or a stage gets one more statement that sets it. Any other object type
-        keeps its statements. Apply expects the marker either way.
+        function, or a stage gets one more statement that sets it, a routine addressed with its
+        argument types even when it has none. Any other object type keeps its statements. Apply
+        expects the marker either way.
         """
         marker = OwnershipMarker(manifest_id, self.rendered.fingerprint).text
         comment_value = marked_comment(self.member.description, marker)
@@ -102,7 +103,8 @@ class CompiledTool(StandaloneArtifact):
             statements = (search_service_statement(self.member, self.rendered.target, source, comment=comment_value),)
         elif self.rendered.object_type in {"PROCEDURE", "FUNCTION", "STAGE"}:
             object_name = qname(self.rendered.target)
-            if self.rendered.routine_signature:
+            if self.rendered.object_type != "STAGE":
+                # A routine's bare name does not parse in ALTER; one with no arguments takes `()`.
                 object_name = routine_signature(
                     self.rendered.object_type, self.rendered.target, self.rendered.routine_signature
                 )

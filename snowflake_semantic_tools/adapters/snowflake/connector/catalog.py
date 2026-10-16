@@ -17,7 +17,7 @@ from collections.abc import Callable, Mapping
 from types import MappingProxyType
 from typing import Any
 
-from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _variant_value
+from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _json_text, _variant_value
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow, extract_marker
@@ -29,7 +29,17 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
     ExtensionVersion,
 )
 from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
-from snowflake_semantic_tools.domain.sql import Sql, boolean, datatype, ident, join, keyword, literal, qname, scope, sql
+from snowflake_semantic_tools.domain.sql import (
+    Sql,
+    boolean,
+    ident,
+    keyword,
+    literal,
+    qname,
+    routine_ref,
+    scope,
+    sql,
+)
 
 # The object types SST observes, each spelled as SHOW spells it once pluralized with an S.
 OBJECT_TYPES = frozenset(
@@ -99,6 +109,11 @@ class CatalogMethods(Session, CatalogPort):
                         created_on=str(row.get("created_on") or ""),
                         comment=_show_comment(row),
                         object_type=normalized_type,
+                        # What a drift digest reads of a routine or search service: SHOW
+                        # lists each, so comparing them costs plan no further query.
+                        is_secure=_optional_text(row.get("is_secure")),
+                        target_lag=_optional_text(row.get("target_lag")),
+                        warehouse=_optional_text(row.get("warehouse")),
                     )
                     for row in rows
                     # Both also list every built-in routine in every schema; none is an artifact.
@@ -120,7 +135,7 @@ class CatalogMethods(Session, CatalogPort):
             # Snowflake rejects SHOW GRANTS ON DATASET in every form; it is never sent.
             raise SnowflakePortError(f"Snowflake lists no grants on a {kind.lower()}; read its owner from SHOW")
         if kind in _ROUTINE_TYPES:
-            object_name = _routine(object_name, routine_signature)
+            object_name = routine_ref(qualified_name, routine_signature)
         rows = self._dict_rows(sql("SHOW GRANTS ON {kind} {name}", kind=keyword(kind), name=object_name))
         return tuple(
             sorted(
@@ -180,7 +195,7 @@ class CatalogMethods(Session, CatalogPort):
         # GET_DDL takes the name as a string, a routine's with its argument types. The third
         # argument asks for fully qualified names, so the text re-executes in a session with no
         # current database; it defaults to FALSE.
-        name = str(_routine(qname(qualified_name), routine_signature)) if kind in _ROUTINE_TYPES else qualified_name.sql
+        name = str(routine_ref(qualified_name, routine_signature)) if kind in _ROUTINE_TYPES else qualified_name.sql
         result = self.query(
             sql(
                 "SELECT GET_DDL({kind}, {name}, {qualified})",
@@ -272,6 +287,33 @@ class CatalogMethods(Session, CatalogPort):
         rows = self._dict_rows(sql("SHOW VERSIONS IN DATASET {dataset}", dataset=qname(qualified_name)))
         # SHOW VERSIONS IN DATASET names each version in `version`; it has no `name` column.
         return tuple(str(row.get("version") or "") for row in rows if row.get("version"))
+
+    def dataset_version_metadata(self, qualified_name: QualifiedName, version: str) -> str | None:
+        rows = self._dict_rows(sql("SHOW VERSIONS IN DATASET {dataset}", dataset=qname(qualified_name)))
+        # UNVERIFIED against a live account: the documented output does not list its columns,
+        # and a version's METADATA is taken to be in `metadata`, as JSON text or as an object.
+        # The probe in docs/design/snowflake-behaviour.md must confirm it before a release.
+        match = next((row for row in rows if str(row.get("version") or "").casefold() == version.casefold()), None)
+        value = match.get("metadata") if match is not None else None
+        if value is None:
+            return None
+        return value if isinstance(value, str) else _json_text(value)
+
+    def describe_routine(
+        self, object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...]
+    ) -> Mapping[str, str]:
+        kind = _object_type(object_type)
+        if kind not in _ROUTINE_TYPES:
+            raise SnowflakePortError(f"{kind.lower()} is not a procedure or function")
+        rows = self._dict_rows(
+            sql("DESCRIBE {kind} {routine}", kind=keyword(kind), routine=routine_ref(qualified_name, routine_signature))
+        )
+        # MEASURED: DESCRIBE PROCEDURE answers one row per property, as `property` and `value`.
+        return {
+            str(row.get("property") or "").casefold(): _text(row.get("value", row.get("property_value")))
+            for row in rows
+            if row.get("property")
+        }
 
     def describe_stage_file_format(self, qualified_name: QualifiedName) -> str | None:
         rows = self._dict_rows(sql("DESCRIBE STAGE {stage}", stage=qname(qualified_name)))
@@ -420,11 +462,6 @@ class CatalogMethods(Session, CatalogPort):
 
 def _scope(value: SchemaScope) -> Sql:
     return scope(value)
-
-
-def _routine(name: Sql, routine_signature: tuple[str, ...]) -> Sql:
-    """Address a procedure or function as Snowflake does: its name and its argument types."""
-    return sql("{name}({types})", name=name, types=join(", ", (datatype(value) for value in routine_signature)))
 
 
 def _object_type(value: str) -> str:

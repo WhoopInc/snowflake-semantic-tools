@@ -23,6 +23,7 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     configured_dir,
     stated,
 )
+from snowflake_semantic_tools.domain.model.lifecycle import DRIFT_CHECK_FULL, DRIFT_CHECKS
 
 
 def project_config(paths: ProjectPaths) -> dict[str, object]:
@@ -62,6 +63,12 @@ def apply_parallelism(paths: ProjectPaths, threads: int | None = None) -> int:
 
 def _generation_threads(tree: dict[str, object]) -> int | None:
     return config_int(config_block(tree.get("generation")).get("threads"))
+
+
+def drift_check_setting(paths: ProjectPaths) -> str:
+    """Return `plan.drift_check`: which live properties plan compares, `full` when unset."""
+    value = config_block(project_config(paths).get("plan")).get("drift_check")
+    return value if isinstance(value, str) and value in DRIFT_CHECKS else DRIFT_CHECK_FULL
 
 
 def apply_fail_fast(paths: ProjectPaths, flag: bool | None) -> bool:

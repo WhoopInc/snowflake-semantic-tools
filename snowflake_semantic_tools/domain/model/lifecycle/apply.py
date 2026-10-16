@@ -134,6 +134,8 @@ class ApplyOutcome:
             state records exactly these for a composite artifact, even when there are none.
         partial_write: Whether the statements stopped part way, some run and a later one
             failed, so what is live is not what was rendered.
+        live_digest: The digest of the written object's properties its marker does not prove,
+            read back once the write was verified; None when it was not read.
     """
 
     key: ArtifactKey
@@ -148,6 +150,7 @@ class ApplyOutcome:
     component_fingerprints: tuple[tuple[str, str], ...] = ()
     physical_resources: tuple[tuple[str, str], ...] = ()
     partial_write: bool = False
+    live_digest: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

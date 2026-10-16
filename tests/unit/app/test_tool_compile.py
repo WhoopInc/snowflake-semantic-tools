@@ -6,9 +6,11 @@ from types import MappingProxyType
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.tools import CompiledTool, CompileTools, ToolPlacement
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.lifecycle import Action, ChangeReason, OwnershipMarker
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember, ToolOwnership, ToolParameter
 from tests.helpers.artifact_builders import rendered
 from tests.helpers.compile_builders import compiled_as
+from tests.helpers.plan_codes import entry, live, manifest_of, plan
 
 
 def test_tool_compiler_applies_config_defaults_and_emits_only_managed_members() -> None:
@@ -335,7 +337,28 @@ def test_compiled_tool_publication_covers_routine_without_signature() -> None:
     assert result.compiled
     compiled = compiled_as(result, CompiledTool)
     published = compiled.rendered_for_publish("d" * 64)
-    assert str(published.statements[-1]).startswith("ALTER PROCEDURE DB.S.PROCEDURE SET COMMENT")
+    assert str(published.statements[-1]).startswith("ALTER PROCEDURE DB.S.PROCEDURE() SET COMMENT")
+
+
+def test_a_function_with_no_arguments_is_addressed_with_empty_parentheses() -> None:
+    function = ToolMember(
+        "answer",
+        "function",
+        ToolOwnership.DEFINE,
+        Origin("tools.yml"),
+        "tools.yml",
+        description="The answer.",
+        body="42",
+        returns="NUMBER",
+        language="sql",
+    )
+    result = CompileTools(
+        ToolCatalog((function,), "dev", frozenset(("dev",))),
+        default=ToolPlacement("DB", "S", None, None, None, None),
+        dbt_relations={},
+    ).run_result()
+    published = compiled_as(result, CompiledTool).rendered_for_publish("e" * 64)
+    assert str(published.statements[-1]).startswith("ALTER FUNCTION DB.S.ANSWER() SET COMMENT = 'The answer. [sst:")
 
 
 def compile_stage(*diagnostics: Diagnostic) -> CompileResult:
@@ -395,3 +418,41 @@ def test_any_catalog_diagnostic_that_names_a_member_keeps_it_back_even_a_warning
     result = compile_stage(warning)
     assert result.compiled == ()
     assert list(result.diagnostics) == [warning]
+
+
+def _procedure(description: str) -> CompiledTool:
+    member = ToolMember(
+        "order_status",
+        "procedure",
+        ToolOwnership.DEFINE,
+        Origin("tools.yml"),
+        "tools.yml",
+        description=description,
+        body="BEGIN RETURN 'ok'; END;",
+        returns="VARCHAR",
+        language="sql",
+        warehouse="WH",
+    )
+    result = CompileTools(
+        ToolCatalog((member,), "dev", frozenset(("dev",))),
+        default=ToolPlacement("DB", "S", None, None, None, None),
+        dbt_relations={},
+    ).run_result()
+    return compiled_as(result, CompiledTool)
+
+
+def test_a_routine_renders_its_description_as_a_comment_before_execute_as() -> None:
+    rendered = _procedure("Looks an\n order up.").rendered
+    lines = rendered.ddl.splitlines()
+    assert "  COMMENT = 'Looks an order up.'" in lines
+    assert lines.index("  COMMENT = 'Looks an order up.'") + 1 == lines.index("  EXECUTE AS CALLER")
+
+
+def test_editing_only_a_routines_description_changes_its_fingerprint_and_plans_an_update() -> None:
+    before, after = _procedure("Looks an order up.").rendered, _procedure("Looks an order up by id.").rendered
+    assert before.fingerprint != after.fingerprint
+    published = manifest_of(before)
+    recorded = {before.key: entry(before, published.manifest_id)}
+    observed = live(before, marker=OwnershipMarker(published.manifest_id, before.fingerprint), object_type="PROCEDURE")
+    planned = plan((after,), observed=(observed,), applied=recorded)
+    assert (planned.changes[0].action, planned.changes[0].reason) == (Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS)

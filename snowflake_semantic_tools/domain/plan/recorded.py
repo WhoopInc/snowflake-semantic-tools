@@ -135,11 +135,12 @@ def _artifact_to_json(item: ObservedArtifact) -> dict[str, object]:
         "newest_spec": item.newest_spec,
         "default_version": item.default_version,
         "alias_versions": [list(pair) for pair in item.alias_versions],
+        "live_digest": item.live_digest,
     }
 
 
 def _artifact_from_json(value: object) -> ObservedArtifact:
-    """Read one observed object `_artifact_to_json` wrote; an older record has no agent version facts."""
+    """Read one observed object `_artifact_to_json` wrote; an older record has no agent or digest facts."""
     item = _object(value, "artifact")
     marker = item.get("marker")
     grants = item.get("grants")
@@ -163,6 +164,7 @@ def _artifact_from_json(value: object) -> ObservedArtifact:
         newest_spec=_text(item.get("newest_spec")),
         default_version=_text(item.get("default_version")),
         alias_versions=tuple(_pair(pair) for pair in _list(item.get("alias_versions", []), "alias_versions")),
+        live_digest=_text(item.get("live_digest")),
     )
 
 

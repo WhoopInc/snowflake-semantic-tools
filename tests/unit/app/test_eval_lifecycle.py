@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Sequence
 from dataclasses import replace
@@ -1162,3 +1163,103 @@ def test_a_refused_or_unrecorded_add_version_fails_the_publish() -> None:
     outcome = handler.apply(change, ApplyOptions())
     assert outcome.error is not None and outcome.error.code == "SST-APL016"
     assert "after ADD VERSION" in outcome.error.message
+
+
+def _changed_questions() -> tuple[Manifest, RenderedArtifact]:
+    changed_eval = replace(
+        resolved_eval(),
+        dataset=replace(
+            resolved_eval().dataset,
+            questions=(EvalQuestion(ORIGIN, "Changed question", EvalGroundTruth(ORIGIN, (), "Answer")),),
+        ),
+    )
+    result = compile_eval(changed_eval)
+    manifest = build_manifest(result)
+    return manifest, compiled_as(result, CompiledEval).rendered_for_publish(manifest.manifest_id)
+
+
+def _published(
+    artifact: RenderedArtifact, manifest: Manifest, port: FakeSnowflake, handler: EvalLifecycleHandler, prior: State
+) -> State:
+    """Plan and apply one eval over `prior`; return the state the state table then holds."""
+    change = planned_change(artifact, manifest, port, handler, prior)
+    port.remote_state = prior.applied
+    result = ApplyArtifacts(
+        port, InMemoryStateStore(), FixedClock(), state_table=artifact.target, lifecycle_handlers={"eval": handler}
+    ).run(replace(changeset(change), manifest_id=manifest.manifest_id), prior)
+    assert result.success, result.diagnostics
+    assert port.remote_state is not None
+    return state_with(port.remote_state[artifact.key], manifest.manifest_id)
+
+
+def test_reverting_to_earlier_questions_updates_onto_the_dataset_sst_minted_for_them() -> None:
+    manifest, artifact, port, handler = setup_eval()
+    changed_manifest, changed = _changed_questions()
+    first = _published(artifact, manifest, port, handler, state_with(None, ""))
+    second = _published(changed, changed_manifest, port, handler, first)
+    retained = {resource.qualified_name for resource in second.applied[artifact.key].applied_resources}
+    assert {name.sql for _, name in artifact.physical_resources} <= retained
+
+    reverted = planned_change(artifact, manifest, port, handler, second)
+
+    assert (reverted.action, reverted.reason) == (Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS)
+    assert {"SST-PLN024", "SST-PLN025"}.isdisjoint(item.code for item in reverted.diagnostics)
+    created = len(port.scripts)
+    # The earlier table and dataset are found, not created again, and the revert converges.
+    third = _published(artifact, manifest, port, handler, second)
+    assert not any(
+        "CREATE TABLE" in statement or "ADD VERSION" in statement
+        for script in port.scripts[created:]
+        for statement in script
+    )
+    assert planned_change(artifact, manifest, port, handler, third).action is Action.NOOP
+
+
+def _killed_after_minting(*, metadata: str | None) -> tuple[Change, str]:
+    """Leave the eval's table, dataset and version live, unrecorded, its version carrying `metadata`."""
+    manifest, artifact, port, handler = setup_eval()
+    for _, name in artifact.physical_resources:
+        existing(port).add(name.sql)
+    seed_dataset_version(artifact, port)
+    dataset = next(name for kind, name in artifact.physical_resources if kind == "DATASET")
+    version = dict(artifact.component_fingerprints)["dataset_version"]
+    if metadata is not None:
+        port.dataset_version_metadata_text[(dataset.sql, version)] = metadata
+    return planned_change(artifact, manifest, port, handler, state_with(None, "")), artifact.version_metadata or ""
+
+
+def test_an_unrecorded_dataset_whose_version_carries_this_evals_provenance_is_adopted() -> None:
+    _, expected = _killed_after_minting(metadata=None)
+    # Another commit wrote it: provenance is the agent, source table and questions, not the commit.
+    document = {**json.loads(expected), "git_sha": "0" * 40}
+    change, _ = _killed_after_minting(metadata=json.dumps(document, indent=2))
+    assert (change.action, change.reason) == (Action.UPDATE, ChangeReason.UNRECORDED_PUBLISH)
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [None, '{"agent":"DB.S.OTHER_AGENT","dataset_fingerprint":"x","source_table":"DB.S.T"}', "not json", "[1]"],
+    ids=["no metadata", "another eval's", "not json", "not an object"],
+)
+def test_an_unrecorded_dataset_without_this_evals_provenance_stays_unmanaged(metadata: str | None) -> None:
+    change, _ = _killed_after_minting(metadata=metadata)
+    assert (change.action, change.reason) == (Action.BLOCKED, ChangeReason.UNMANAGED_OBJECT)
+    assert [item.code for item in change.diagnostics] == ["SST-PLN024"]
+
+
+def test_an_unreadable_dataset_version_metadata_proves_nothing() -> None:
+    manifest, artifact, port, handler = setup_eval()
+    for _, name in artifact.physical_resources:
+        existing(port).add(name.sql)
+    seed_dataset_version(artifact, port)
+    port.refuse("dataset_version_metadata")
+    change = planned_change(artifact, manifest, port, handler, state_with(None, ""))
+    assert change.action is Action.BLOCKED
+
+
+def test_an_unrecorded_dataset_missing_this_evals_version_stays_unmanaged() -> None:
+    manifest, artifact, port, handler = setup_eval()
+    for _, name in artifact.physical_resources:
+        existing(port).add(name.sql)
+    change = planned_change(artifact, manifest, port, handler, state_with(None, ""))
+    assert change.action is Action.BLOCKED

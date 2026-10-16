@@ -14,6 +14,7 @@ from enum import Enum
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
+from snowflake_semantic_tools.domain.model.lifecycle.drift import DRIFT_CHECK_FULL, DRIFT_CHECKS
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX
 from snowflake_semantic_tools.domain.model.tool import EXECUTE_AS
 
@@ -602,6 +603,17 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         default="false",
     ),
     _deprecated("deploy", "apply"),
+    _key("plan", _BLOCK, "What plan compares beyond each object's ownership marker."),
+    _key(
+        "plan.drift_check",
+        KeyKind.ENUM,
+        "Which live properties SST published plan compares with what apply read back, to find an "
+        "edit that kept the ownership marker (SST-PLN014). `full` also reads each procedure's "
+        "DESCRIBE and each semantic view's GET_DDL, one query each; `basic` compares only what "
+        "SHOW and an agent's versions list.",
+        default=DRIFT_CHECK_FULL,
+        choices=DRIFT_CHECKS,
+    ),
     _key("snowflake", _BLOCK, "Allowlists for Snowflake surfaces the renderer accepts."),
     _key(
         "snowflake.orchestration_models",

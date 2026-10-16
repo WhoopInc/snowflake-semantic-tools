@@ -307,5 +307,5 @@ class LockTablesConnector(FakeDriverConnector):
         return True
 
     def _dict_rows(self, statement: object) -> tuple[dict[str, object], ...]:
-        names = ("COMPONENT_FINGERPRINTS", "PHYSICAL_RESOURCES", "STATE_MANIFEST_ID")
+        names = ("COMPONENT_FINGERPRINTS", "PHYSICAL_RESOURCES", "LIVE_DIGEST", "STATE_MANIFEST_ID")
         return tuple({"name": name} for name in names)

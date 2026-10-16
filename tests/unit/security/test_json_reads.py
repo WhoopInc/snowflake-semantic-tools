@@ -24,7 +24,10 @@ EXEMPT: dict[tuple[str, str], str] = {
         "the dataset payload SST rendered with json.dumps from a loaded YAML dataset"
     ),
     ("app/evals/retrieve.py", "_variant"): "a VARIANT column of a row a Snowflake query returned",
-    ("app/lifecycle/evals.py", "_with_provenance"): (
+    ("app/lifecycle/eval_rules.py", "provenance"): (
+        "a dataset version's METADATA, which SST rendered with json.dumps or SHOW VERSIONS returned"
+    ),
+    ("app/lifecycle/eval_rules.py", "with_provenance"): (
         "the dataset version METADATA SST rendered with json.dumps itself"
     ),
     ("app/prior.py", "_specification"): "the specification text SHOW VERSIONS IN AGENT returned",

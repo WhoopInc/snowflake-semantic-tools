@@ -68,7 +68,7 @@ These go before the command name.
 
 | Code | Name | Meaning |
 |---:|---|---|
-| 0 | `OK` | Success. For `sst plan`, nothing to change. |
+| 0 | `OK` | Success. For `sst plan`, nothing to change: every live object carries the marker state records, and the properties plan compares are as apply read them back. |
 | 1 | `ERROR` | Errors were reported, or an apply, a test suite, or a check failed. |
 | 2 | `CHANGES` | Declared and actual state differ: `sst plan` found changes, `sst diff` found the two states differ, or `enrich --check`, `format --check`, `docs --check`, `migrate refs`, or `migrate split` found something to rewrite. |
 | 3 | `USAGE` | The command line is invalid. |
@@ -468,6 +468,9 @@ sst list [OPTIONS] [TYPE]
 Observe live Snowflake state and compute a non-writing plan.
 
 Exit 0 with nothing to change, 2 with changes pending, and 1 on an error or a blocked change.
+Nothing to change means each live object carries the ownership marker state records, and
+the properties `plan.drift_check` compares are as apply read them back; an object edited
+by hand in either way is blocked (SST-PLN014).
 The plan is saved as `target/sst/plan.json` unless --plan-out or --no-plan-out says
 otherwise, and each create's and update's statements go to `target/sst/sql`, or --sql-out.
 `--names-only` prints only the name of each changed artifact, and wins over `--full`.

@@ -117,7 +117,14 @@ Adding that version needs OWNERSHIP of the dataset (`SST-VAL713`).
 In the dataset templates, `{{ sha7 }}` is the first seven characters of the
 question payload's digest, not the commit. Changed questions so publish a new
 table and dataset under new names; the old ones stay, and `sst plan --prune`
-only reports them, because a run or baseline may still reference them.
+only reports them, because a run or baseline may still reference them. State
+keeps those earlier tables and datasets as SST's, so reverting to earlier
+questions is an update that reuses the table and dataset SST minted for them,
+with their run history, rather than an unmanaged object (`SST-PLN024`).
+A table and dataset state does not record at all, as an apply stopped after
+minting them leaves, are adopted the same way when the dataset holds the
+eval's `SST_<12 hex>` version and its METADATA names the same agent, source
+table and payload digest; otherwise they are `SST-PLN024`.
 
 `dataset.mint: never` creates nothing: the dataset the template names must
 already exist (`SST-SNO003`), and only the run configuration publishes. The

@@ -2,8 +2,8 @@
 
 One column table drives every statement the table sees: the CREATE, the ALTERs that migrate
 an older table, the SELECT that reads a target's entries, and the MERGE that writes one.
-COMPONENT_FINGERPRINTS, PHYSICAL_RESOURCES and STATE_MANIFEST_ID came later, so a table
-created before them reads the first two as NULL and records no manifest until
+COMPONENT_FINGERPRINTS, PHYSICAL_RESOURCES, LIVE_DIGEST and STATE_MANIFEST_ID came later, so a
+table created before them reads the first three as NULL and records no manifest until
 `ensure_state_table` adds them with ADD COLUMN IF NOT EXISTS, which is safe to repeat.
 
 A run writes only the entries it changed: one MERGE per batch of changed entries and one DELETE
@@ -72,7 +72,11 @@ _COLUMNS = (
     _StateColumn("DDL_SHA256", sql("VARCHAR(64)")),
     _StateColumn("COMPONENT_FINGERPRINTS", sql("OBJECT"), sql("PARSE_JSON(%s)"), added=True),
     _StateColumn("PHYSICAL_RESOURCES", sql("ARRAY"), sql("PARSE_JSON(%s)"), added=True),
+    # Added after the two above, so a table may hold them and lack it; it reads as NULL alone.
+    _StateColumn("LIVE_DIGEST", sql("VARCHAR"), added=True),
 )
+# The columns added together, which a table holds both of or reads as holding neither.
+_PAIRED = frozenset(("COMPONENT_FINGERPRINTS", "PHYSICAL_RESOURCES"))
 STATE_COLUMNS = tuple(column.name for column in _COLUMNS)
 # The manifest of the run that last wrote the target, on every one of its rows; not part of an entry.
 _STATE_MANIFEST = _StateColumn("STATE_MANIFEST_ID", sql("VARCHAR(64)"), added=True)
@@ -108,6 +112,7 @@ class StateTableMethods(LockTableMethods, StatePort, CatalogPort):
                     ddl_sha256=str(row[8]),
                     component_fingerprints=_component_fingerprints(row[9]),
                     physical_resources=_physical_resources(row[10]),
+                    live_digest=str(row[11]) if row[11] else None,
                 )
                 for row in result.rows
             }
@@ -205,14 +210,20 @@ def _create_sql(table: QualifiedName) -> Sql:
 def _select_sql(table: QualifiedName, present: set[str]) -> Sql:
     """Select a target's entries, every column but TARGET_NAME in table order.
 
-    A table that lacks either added column selects NULL for both, so a half-migrated table
-    reads as an unmigrated one.
+    A table that lacks either of the paired added columns selects NULL for both, so a
+    half-migrated table reads as an unmigrated one; a later added column it lacks selects NULL.
     """
-    migrated = all(column.name in present for column in _COLUMNS if column.added)
+    paired = all(name in present for name in _PAIRED)
+
+    def readable(column: _StateColumn) -> bool:
+        if not column.added:
+            return True
+        return paired if column.name in _PAIRED else column.name in present
+
     selected = join(
         ", ",
         (
-            column.identifier if migrated or not column.added else sql("NULL {name}", name=column.identifier)
+            column.identifier if readable(column) else sql("NULL {name}", name=column.identifier)
             for column in _COLUMNS
             if column.name != "TARGET_NAME"
         ),
@@ -269,6 +280,7 @@ def _state_values(target_name: str, artifact_key: str, entry: AppliedEntry) -> t
         entry.ddl_sha256,
         _json_components(entry),
         _json_resources(entry),
+        entry.live_digest,
     )
 
 

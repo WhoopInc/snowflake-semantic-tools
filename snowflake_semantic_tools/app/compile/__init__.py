@@ -235,13 +235,17 @@ class CompiledView(CompiledArtifact):
 def _metric_probe(target: QualifiedName, metric: Metric) -> SmokeProbe | None:
     """Return the probe that queries one metric; None when no query can name it, which smoke reports.
 
-    A window metric's query must request each dimension its PARTITION BY EXCLUDING names, so
-    a key there that is not a `TABLE.DIMENSION` reference leaves the metric unqueryable.
+    Snowflake refuses a query of a window metric that does not request each dimension its
+    window names: those its PARTITION BY EXCLUDING excludes, and those it partitions and
+    orders by. A key there that is not a `TABLE.DIMENSION` reference, such as an expression
+    over one, names no dimension a query could request, so it leaves the metric unqueryable.
     """
-    excluded = tuple(key.text.strip() for key in metric.window.partition_excluding) if metric.window else ()
-    if any(_DIMENSION_REFERENCE.fullmatch(key) is None for key in excluded):
+    window = metric.window
+    keys = (*window.partition_excluding, *window.partition_by, *(key.expr for key in window.order_by)) if window else ()
+    required = tuple(dict.fromkeys(key.text.strip() for key in keys))
+    if any(_DIMENSION_REFERENCE.fullmatch(key) is None for key in required):
         return None
-    query = _member_probe(target, "METRICS", metric.table, metric.name, metric.expr, limit=True, excluding=excluded)
+    query = _member_probe(target, "METRICS", metric.table, metric.name, metric.expr, limit=True, excluding=required)
     return SmokeProbe(key=artifact_key("metric", metric.qualified_name.casefold()), kind=ProbeKind.METRIC, sql=query)
 
 
@@ -268,8 +272,8 @@ def _member_probe(
 ) -> Sql:
     """Query one member through SEMANTIC_VIEW, with the dimensions a windowed metric requires.
 
-    `excluding` holds the `TABLE.DIMENSION` keys a structured window excludes, which the query
-    requests besides those its expression names.
+    `excluding` holds the `TABLE.DIMENSION` keys a structured window names, which the query
+    requests besides those its expression excludes; each dimension is requested once.
 
     Example:
         SELECT SV.ORDER_COUNT FROM SEMANTIC_VIEW(DB.S.V METRICS ORDERS.ORDER_COUNT) AS SV LIMIT 1
@@ -279,7 +283,10 @@ def _member_probe(
         member if table is None else sql("{table}.{member}", table=ident(Identifier.parse(table)), member=member)
     )
     named = _required_dimension_clause(expression.text) if expression is not None else ()
-    required = (*named, *(_dimension(*key.split(".")) for key in excluding))
+    unique: dict[str, Sql] = {}
+    for item in (*named, *(_dimension(*key.split(".")) for key in excluding)):
+        unique.setdefault(str(item).casefold(), item)
+    required = tuple(unique.values())
     dimensions = sql(" DIMENSIONS {names}", names=join(", ", required)) if required else sql("")
     parts = {
         "member": member,

@@ -22,6 +22,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.apply.observation import stale_observation
+from snowflake_semantic_tools.app.observe import ObserveOptions
 from snowflake_semantic_tools.app.plan import PlanRefused
 from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
 from snowflake_semantic_tools.cli.exit_codes import ERROR, INTERRUPTED, OK
@@ -47,6 +48,7 @@ from snowflake_semantic_tools.cli.runner import CommandResult, command_body, run
 from snowflake_semantic_tools.cli.settings import (
     apply_fail_fast,
     apply_parallelism,
+    drift_check_setting,
     strict_disagreement,
     threads_setting,
 )
@@ -182,6 +184,7 @@ def apply(
         temporary=temporary,
         state_dir=state_dir,
         threads=threads_setting(paths, threads),
+        observe_options=ObserveOptions(drift_check=drift_check_setting(paths)),
         validate=not no_validate,
         baseline=run_baseline(options),
     )

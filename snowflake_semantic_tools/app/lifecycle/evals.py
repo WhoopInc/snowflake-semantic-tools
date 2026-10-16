@@ -2,24 +2,38 @@
 
 from __future__ import annotations
 
-import json
-import re
 from dataclasses import dataclass, replace
-from hashlib import md5, sha256
+from hashlib import md5
 from threading import Lock
 from types import MappingProxyType
 
-from snowflake_semantic_tools.app.compile.evals import METRIC_COMPONENT_PREFIX
 from snowflake_semantic_tools.app.lifecycle.composite import (
     CompositeHandler,
     PublicationRun,
     blocked,
     failed,
 )
+from snowflake_semantic_tools.app.lifecycle.eval_rules import (
+    EVAL_STAGE_FILE_FORMAT as EVAL_STAGE_FILE_FORMAT,
+)
+from snowflake_semantic_tools.app.lifecycle.eval_rules import (
+    EVAL_STAGE_SQL,
+    dataset_version,
+    edited_metrics,
+    format_problem,
+    mints,
+    observation_identity,
+    provenance,
+    safe_stage_segment,
+    with_provenance,
+)
+from snowflake_semantic_tools.app.lifecycle.eval_rules import (
+    eval_stage_format_matches as eval_stage_format_matches,
+)
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
-from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE, EVAL_MINT_NEVER
+from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
@@ -39,12 +53,6 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.sql import Sql, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, ResourceStatus
 from snowflake_semantic_tools.domain.validate.publication import eval_publication_diagnostics
-
-_EVAL_STAGE_FILE_FORMAT = sql(
-    "TYPE='CSV' FIELD_DELIMITER=NONE RECORD_DELIMITER='\\n' SKIP_HEADER=0 "
-    "FIELD_OPTIONALLY_ENCLOSED_BY=NONE ESCAPE_UNENCLOSED_FIELD=NONE"
-)
-EVAL_STAGE_FILE_FORMAT = str(_EVAL_STAGE_FILE_FORMAT)
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,7 +123,7 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
         stage = self._config_stage(artifact)
         stage_exists = self._port.object_exists("STAGE", stage)
         stage_format = self._port.describe_stage_file_format(stage) if stage_exists else None
-        problem = _format_problem(stage, stage_format) if stage_exists else None
+        problem = format_problem(stage, stage_format) if stage_exists else None
         config_path = self._config_path(artifact)
         staged_config = self._port.observe_staged_file(config_path) if stage_exists else None
         staged_content = self._port.read_staged_file(config_path) if staged_config is not None else None
@@ -191,7 +199,7 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
             return CompositePlan(Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, observation, DiagnosticBag(problems))
         if not mints(artifact):
             return self._decide_unminted(artifact, state_entry, observation)
-        return _with_provenance(artifact, self._decide_minted(artifact, state_entry, observation))
+        return with_provenance(artifact, self._decide_minted(artifact, state_entry, observation))
 
     def _decide_minted(
         self,
@@ -201,15 +209,23 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
     ) -> CompositePlan:
         """Decide an eval SST mints: refuse an object it does not own, else create, update, or leave it.
 
+        SST owns what state records for the eval, the tables and datasets an earlier publish left
+        behind included, so a revert to earlier questions updates the eval onto the dataset SST
+        minted for them. An object state does not record is SST's too when it is exactly what
+        this eval mints and its dataset's version carries this eval's provenance: an apply that
+        stopped before recording it left it, and publishing again records it.
+
         Diagnostics:
             SST-PLN024: an object the eval publishes exists, and state does not record it as SST's.
         """
-        recorded_resources = self._recorded_resource_identity(state_entry)
+        owned = self._recorded_resource_identity(state_entry, retained=True)
         unmanaged_live_resources = tuple(
             item
             for item in observation.resources
-            if item.exists and (item.object_type.upper(), item.qualified_name.folded) not in recorded_resources
+            if item.exists and (item.object_type.upper(), item.qualified_name.folded) not in owned
         )
+        if unmanaged_live_resources and self._minted_unrecorded(artifact, unmanaged_live_resources, observation):
+            return CompositePlan(Action.UPDATE, ChangeReason.UNRECORDED_PUBLISH, observation)
         if unmanaged_live_resources:
             live = ", ".join(item.qualified_name.sql for item in unmanaged_live_resources)
             return blocked(
@@ -217,7 +233,35 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
             )
         if state_entry is None:
             return CompositePlan(Action.CREATE, ChangeReason.NOT_PRESENT, observation)
-        return self._decide_update(artifact, state_entry, observation, recorded_resources)
+        return self._decide_update(artifact, state_entry, observation, self._recorded_resource_identity(state_entry))
+
+    def _minted_unrecorded(
+        self,
+        artifact: RenderedArtifact,
+        unrecorded: tuple[PhysicalResource, ...],
+        observation: CompositeObservation,
+    ) -> bool:
+        """Report whether objects state does not record are the ones this eval mints, left by SST.
+
+        Each must be one of the eval's own resources, and the dataset must hold the version
+        this eval adds, whose METADATA names the same agent, source table and questions' digest.
+        The commit is not compared: the stopped apply may have run from another one. A
+        METADATA that cannot be read proves nothing.
+        """
+        own = self._resource_identity(artifact.physical_resources)
+        if any((item.object_type.upper(), item.qualified_name.folded) not in own for item in unrecorded):
+            return False
+        version = dataset_version(artifact)
+        if version is None or artifact.version_metadata is None:
+            return False
+        if dict(observation.details).get("dataset_version") != "present":
+            return False
+        try:
+            found = self._port.dataset_version_metadata(self._resources_by_type(artifact)["DATASET"], version)
+        except SnowflakePortError:
+            return False
+        expected = provenance(artifact.version_metadata)
+        return found is not None and expected is not None and provenance(found) == expected
 
     def _decide_unminted(
         self,
@@ -322,7 +366,7 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
         agent_prefix = artifact_key("agent", "")
         dependency = next((key for key in artifact.depends_on if key.startswith(agent_prefix)), artifact.key)
         agent_name = split_artifact_key(dependency)[1]
-        segment = _safe_stage_segment(agent_name)
+        segment = safe_stage_segment(agent_name)
         return f"@{stage.sql}/{segment}/{config}.yaml"
 
     def _changed_since_plan(self, planned: CompositeObservation, artifact: RenderedArtifact) -> bool:
@@ -339,7 +383,7 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
                 # A sibling eval's apply created the shared stage after this plan saw
                 # it absent. Its format is still checked before the config is uploaded.
                 planned = replace(planned, stage_exists=True, stage_file_format=current.stage_file_format)
-        return _observation_identity(current) != _observation_identity(planned)
+        return observation_identity(current) != observation_identity(planned)
 
     @staticmethod
     def _resources_by_type(artifact: RenderedArtifact) -> MappingProxyType[str, QualifiedName]:
@@ -359,12 +403,21 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
     @staticmethod
     def _recorded_resource_identity(
         state_entry: AppliedEntry | None,
+        *,
+        retained: bool = False,
     ) -> frozenset[tuple[str, tuple[str, str, str]]]:
+        """Return the tables and datasets state records for the eval, by type and folded name.
+
+        Args:
+            retained: Include those an earlier publish superseded, which are still SST's, as
+                the ownership check does; without it, only those the latest publish wrote,
+                which is where the eval is now published.
+        """
         if state_entry is None:
             return frozenset()
         values = []
         for resource in state_entry.applied_resources:
-            if resource.status is ResourceStatus.RETAINED:
+            if resource.status is ResourceStatus.RETAINED and not retained:
                 continue
             object_type = resource.object_type
             raw_name = resource.qualified_name
@@ -420,7 +473,7 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
         return sql(
             "CREATE STAGE IF NOT EXISTS {stage} FILE_FORMAT = ({file_format})",
             stage=qname(stage),
-            file_format=_EVAL_STAGE_FILE_FORMAT,
+            file_format=EVAL_STAGE_SQL,
         )
 
 
@@ -606,7 +659,7 @@ class _EvalRun(PublicationRun[CatalogPublicationPort]):
 
     def _verify_stage_format(self) -> ApplyOutcome | None:
         """Require the config stage to declare exactly the file format evals read (SST-APL028)."""
-        problem = _format_problem(self._stage, self._port.describe_stage_file_format(self._stage))
+        problem = format_problem(self._stage, self._port.describe_stage_file_format(self._stage))
         if problem is None:
             return None
         return _diagnosed(
@@ -687,91 +740,3 @@ def _diagnosed(
         component_fingerprints=component_fingerprints,
         physical_resources=physical_resources,
     )
-
-
-def edited_metrics(artifact: RenderedArtifact, state_entry: AppliedEntry | None) -> tuple[Diagnostic, ...]:
-    """Report each custom metric the eval renders under a name state recorded with another definition.
-
-    A custom metric has no Snowflake version: its name is the score's column and chart, so an
-    edited prompt published under the same name would read as a continuous trend across a change
-    of judge. A metric versions by taking a new name.
-
-    Diagnostics:
-        SST-VAL744: the metric's definition digest differs from the one state recorded for its name.
-    """
-    if state_entry is None:
-        return ()
-    recorded = dict(state_entry.component_fingerprints)
-    edited = (
-        key.removeprefix(METRIC_COMPONENT_PREFIX)
-        for key, digest in artifact.component_fingerprints
-        if key.startswith(METRIC_COMPONENT_PREFIX) and recorded.get(key, digest) != digest
-    )
-    return tuple(D("SST-VAL744", subject=f"eval_metric:{name}", artifact=name) for name in edited)
-
-
-def dataset_version(artifact: RenderedArtifact) -> str | None:
-    """Name the version SST adds to an eval's dataset; None for an eval that does not mint one."""
-    return dict(artifact.component_fingerprints).get("dataset_version")
-
-
-def _with_provenance(artifact: RenderedArtifact, plan: CompositePlan) -> CompositePlan:
-    """Warn on a plan that adds a dataset version whose METADATA carries no commit (SST-VAL714).
-
-    A version is added when the plan creates the eval, or updates one whose dataset or version is
-    missing. Its METADATA is the only provenance the dataset carries, since the eval API cannot
-    select a version.
-    """
-    adds_version = plan.action is Action.CREATE or (
-        plan.action is Action.UPDATE and dict(plan.observation.details).get("dataset_version") != "present"
-    )
-    metadata = artifact.version_metadata
-    if not adds_version or metadata is None or "git_sha" in json.loads(metadata):
-        return plan
-    warning = D("SST-VAL714", subject=artifact.key, artifact=artifact.key)
-    return replace(plan, diagnostics=DiagnosticBag((*plan.diagnostics, warning)))
-
-
-def mints(artifact: RenderedArtifact) -> bool:
-    """Report whether an eval artifact's apply creates its source table and dataset (`dataset.mint`)."""
-    return dict(artifact.component_fingerprints).get("mint") != EVAL_MINT_NEVER
-
-
-def eval_stage_format_matches(stage_format: str | None) -> bool:
-    """Report whether a stage's declared file format is the one evals read, compared key by key."""
-    return _normalize_file_format(stage_format) == _normalize_file_format(EVAL_STAGE_FILE_FORMAT)
-
-
-def _format_problem(stage: QualifiedName, stage_format: str | None) -> Diagnostic | None:
-    """Return SST-APL028 when the config stage declares another file format than evals read."""
-    if eval_stage_format_matches(stage_format):
-        return None
-    return D("SST-APL028", value=stage.sql, found=stage_format or "absent", expected=EVAL_STAGE_FILE_FORMAT)
-
-
-def _normalize_file_format(value: str | None) -> str:
-    if value is None:
-        return ""
-    pairs = re.findall(r"([A-Z_]+)\s*=\s*(?:'([^']*)'|([^\s]+))", value.upper())
-    normalized = {key: quoted if quoted != "" else raw for key, quoted, raw in pairs}
-    return " ".join(f"{key}={normalized[key]}" for key in sorted(normalized))
-
-
-def _observation_identity(value: CompositeObservation) -> tuple[object, ...]:
-    return (
-        tuple((item.object_type, item.qualified_name.folded, item.exists) for item in value.resources),
-        value.stage_exists,
-        _normalize_file_format(value.stage_file_format),
-        value.config_path,
-        value.config_exists,
-        value.config_size,
-        value.config_md5,
-    )
-
-
-def _safe_stage_segment(value: str) -> str:
-    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", value)
-    if safe == value and safe not in {"", ".", ".."}:
-        return safe
-    digest = sha256(value.encode("utf-8")).hexdigest()[:8]
-    return f"{safe or 'agent'}_{digest}"

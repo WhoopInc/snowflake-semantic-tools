@@ -4,9 +4,12 @@ Each kind is read the way it is published:
 
 - A semantic view, Cortex search service, procedure, or function is replaced, so its prior is
   what GET_DDL prints: the CREATE OR REPLACE that re-creates it, with names fully qualified.
-  A routine is addressed by its argument types. A semantic view's text is then put in the
-  form the server re-executes, since GET_DDL drops `COPY GRANTS` and puts `MAX_STALENESS`
-  before the AI clauses (docs/design/snowflake-behaviour.md); a text of any other shape is
+  A routine is addressed by its argument types. GET_DDL prints no `COPY GRANTS`, so running
+  its text as returned would revoke every grant on the object. A semantic view's text is
+  therefore put in the form the server re-executes, which also moves `MAX_STALENESS` after the
+  AI clauses (docs/design/snowflake-behaviour.md), and a routine's gains `COPY GRANTS` after
+  its argument list. A search service takes no `COPY GRANTS`, so its prior is followed by the
+  GRANT statements that give back the grants plan read on it. A text of any other shape is
   kept as returned, under a comment that says what to check before running it.
 - An agent is never replaced: an update adds a version and keeps every earlier one. GET_DDL
   would print a CREATE OR REPLACE AGENT of one version, which would drop the others and the
@@ -21,9 +24,10 @@ from __future__ import annotations
 import json
 import re
 
+from snowflake_semantic_tools.app.grant_sql import grant_statement
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
-from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact, ShowRow
+from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, RenderedArtifact, ShowRow
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion, AgentVersions, CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.render.semantic_view import TRAILING_CLAUSES
@@ -35,6 +39,10 @@ _NEVER_ALTERED = frozenset(("STAGE",))
 _VERSION_NUMBER = re.compile(r"VERSION\$(\d+)", re.IGNORECASE)
 _UNLISTED = AgentVersions()
 _VIEW_HEADER = ("CREATE", "OR", "REPLACE", "SEMANTIC", "VIEW")
+_REPLACE = ("CREATE", "OR", "REPLACE")
+_ROUTINES = frozenset(("PROCEDURE", "FUNCTION"))
+# Inserted after a routine's argument list, where SST's own render puts it.
+_COPY_GRANTS_CLAUSE = " COPY GRANTS"
 # The clauses before the trailing ones, each a keyword and a parenthesised list.
 _VIEW_BLOCKS = frozenset(("TABLES", "RELATIONSHIPS", "VARIABLES", "FACTS", "DIMENSIONS", "METRICS"))
 # Each trailing clause by its first keyword, with the keyword a two-word one must have next.
@@ -52,11 +60,14 @@ def prior_definition(
     row: ShowRow,
     desired_artifact: RenderedArtifact | None,
     agent_versions: AgentVersions = _UNLISTED,
+    grants: tuple[GrantRow, ...] | None = (),
 ) -> tuple[str | None, tuple[Diagnostic, ...]]:
     """Read the definition of an object this plan may change; None when it is not one or cannot be read.
 
     An agent's prior comes from `agent_versions`, the SHOW VERSIONS IN AGENT read the
-    observation already made for its update, so the agent is listed once.
+    observation already made for its update, so the agent is listed once. A search service's
+    is followed by a GRANT for each explicit grant in `grants`, the grants observation read on
+    it; None, for grants not read, leaves a comment saying to grant them again by hand.
 
     A read that fails is reported and leaves the definition None; the plan goes on.
 
@@ -76,7 +87,83 @@ def prior_definition(
         return None, (D("SST-PLN037", value=row.qualified_name.sql, detail=str(exc)),)
     # Snowflake's docs do not say GET_DDL rewrites a semantic view; the server's output fails
     # to re-execute as returned (docs/design/snowflake-behaviour.md).
-    return (restorable_semantic_view(text) if object_type == "SEMANTIC VIEW" else text), ()
+    if object_type == "SEMANTIC VIEW":
+        return restorable_semantic_view(text), ()
+    if object_type in _ROUTINES:
+        return restorable_routine(text), ()
+    if object_type == "CORTEX SEARCH SERVICE":
+        return regranted(text, object_type, row.qualified_name, grants), ()
+    return text, ()
+
+
+def restorable_routine(text: str) -> str:
+    """Add `COPY GRANTS` to a procedure's or function's GET_DDL text, so running it keeps the grants.
+
+    It goes right after the argument list, where SST's render puts it. The text is lexed, so a
+    parenthesis inside a string or a quoted name never ends the list; text that already says
+    COPY GRANTS there comes back unchanged. Text of another shape comes back as returned under
+    a comment that says to add it, rather than rewritten on a guess.
+    """
+    try:
+        tokens = tokenize(text)
+    except LexError as exc:
+        return _ungranted(text, f"it does not lex: {exc}")
+    significant = [token for token in tokens if token.kind not in (TokenKind.SPACE, TokenKind.COMMENT)]
+    words = [token.text.upper() if token.kind is TokenKind.WORD else "" for token in significant]
+    if tuple(words[: len(_REPLACE)]) != _REPLACE:
+        return _ungranted(text, "it is not a CREATE OR REPLACE")
+    kind = next((index for index, word in enumerate(words) if word in _ROUTINES), None)
+    if kind is None or any(not word for word in words[len(_REPLACE) : kind]):
+        return _ungranted(text, "it does not create a procedure or function")
+    opening = _name_end(significant, kind + 1)
+    if opening >= len(significant) or significant[opening].text != "(":
+        return _ungranted(text, "its name is not followed by its argument list")
+    closing = _closing(significant, opening)
+    if closing is None:
+        return _ungranted(text, "its argument list does not close")
+    if words[closing + 1 : closing + 3] == ["COPY", "GRANTS"]:
+        return text
+    end = significant[closing].offset + 1
+    return "".join((text[:end], _COPY_GRANTS_CLAUSE, text[end:]))
+
+
+def _closing(tokens: list[Token], opening: int) -> int | None:
+    """The index of the parenthesis that closes the one at `opening`; None when none does."""
+    depth = 0
+    for index in range(opening, len(tokens)):
+        depth += {"(": 1, ")": -1}.get(tokens[index].text, 0)
+        if depth == 0:
+            return index
+    return None
+
+
+def _ungranted(text: str, reason: str) -> str:
+    return (
+        f"-- SST did not add COPY GRANTS to this definition: {reason}.\n"
+        "-- Before running it, add COPY GRANTS after the argument list, which keeps the routine's grants.\n" + text
+    )
+
+
+def regranted(text: str, object_type: str, name: QualifiedName, grants: tuple[GrantRow, ...] | None) -> str:
+    """Follow a replaced object's definition with the GRANTs that give back its explicit grants.
+
+    A grant SQL cannot spell, which SHOW GRANTS never prints, is named in a comment instead of
+    granted. None, for grants plan did not read, leaves a comment saying to grant them again.
+    """
+    body = text.rstrip()
+    if grants is None:
+        return body + "\n-- SST did not read this object's grants; running this revokes them, so grant them again.\n"
+    lines: list[str] = []
+    for grant in sorted(item for item in grants if item.is_explicit):
+        try:
+            lines.append(f"{grant_statement(object_type, name, grant)};")
+        except ValueError:
+            lines.append(f"-- grant {grant.privilege} to {grant.granted_to} {grant.grantee_name} again by hand.")
+    if not lines:
+        return text
+    return (
+        body + "\n-- Running the replace above revokes these grants; they give them back:\n" + "\n".join(lines) + "\n"
+    )
 
 
 def restorable_semantic_view(text: str) -> str:

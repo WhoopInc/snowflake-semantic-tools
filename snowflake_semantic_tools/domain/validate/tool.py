@@ -19,7 +19,12 @@ from snowflake_semantic_tools.domain.model.tool import (
 )
 from snowflake_semantic_tools.domain.sql import is_datatype
 from snowflake_semantic_tools.domain.validate.shared import Emitter
-from snowflake_semantic_tools.domain.validate.sql import checked_expression, name_problem, qualified_name_problem
+from snowflake_semantic_tools.domain.validate.sql import (
+    checked_expression,
+    name_problem,
+    qualified_name_problem,
+    quoted_name_problem,
+)
 
 
 def validate_tool_catalog(catalog: ToolCatalog, dbt: DbtCatalog) -> DiagnosticBag:
@@ -52,12 +57,29 @@ def validate_tool_catalog(catalog: ToolCatalog, dbt: DbtCatalog) -> DiagnosticBa
             Snowflake accepts.
         SST-VAL418: a defined member's `where:` is not one expression.
         SST-VAL001: a member name is declared twice anywhere in the project, ignoring case.
+        SST-PRS005: a defined member's name is written quoted, as `quoted_name_problem` reports.
     """
     diagnostics: list[Diagnostic] = list(catalog.diagnostics)
     for member in catalog.members:
         diagnostics.extend(_validate_member(member, catalog, dbt))
+    diagnostics.extend(_quoted_names(catalog.members))
     diagnostics.extend(_duplicate_names(catalog.members))
     return DiagnosticBag(sorted(diagnostics, key=lambda item: (item.origin.file if item.origin else "", item.code)))
+
+
+def _quoted_names(members: tuple[ToolMember, ...]) -> list[Diagnostic]:
+    """Report each defined member whose name is written quoted, which SST would publish and never find."""
+    found: list[Diagnostic] = []
+    for member in members:
+        subject = artifact_key("tool", member.name.casefold())
+        problem = (
+            quoted_name_problem(member.name, artifact=subject, subject=subject, origin=member.origin)
+            if member.ownership is ToolOwnership.DEFINE
+            else None
+        )
+        if problem is not None:
+            found.append(problem)
+    return found
 
 
 def _duplicate_names(members: tuple[ToolMember, ...]) -> list[Diagnostic]:

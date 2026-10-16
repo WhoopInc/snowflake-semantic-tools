@@ -147,6 +147,11 @@ class SnowflakeWorld:
         self.agent_version_rows: dict[str, tuple[AgentVersion, ...]] = {}
         # The versions of each dataset, by qualified name; ADD VERSION appends to them.
         self.dataset_version_names: dict[str, list[str]] = {}
+        # The METADATA of each dataset version, by (dataset, version); ADD VERSION records it.
+        self.dataset_version_metadata_text: dict[tuple[str, str], str] = {}
+        # What DESCRIBE answers for a routine, by "<TYPE> <name>(<types>)", and each one read.
+        self.routine_descriptions: dict[str, Mapping[str, str]] = {}
+        self.routine_reads: list[str] = []
         # Each dataset's owner, by qualified name, as SHOW DATASETS lists it; a dataset not
         # named here is owned by the session's role. MEASURED: SHOW GRANTS ON DATASET is a
         # syntax error, so SHOW DATASETS' `owner` is the only way to read who owns one.

@@ -254,6 +254,14 @@ Stages apply uploads through.
 | `apply.eval_config_stage.stage` | string | `EVAL_CONFIGS` | Stage name. |
 | `apply.fail_fast` | boolean | `false` | Stop at the first failure instead of continuing; `--fail-fast` and `--no-fail-fast` override it. |
 
+## plan
+
+What plan compares beyond each object's ownership marker.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `plan.drift_check` | enum: `full`, `basic` | `full` | Which live properties SST published plan compares with what apply read back, to find an edit that kept the ownership marker (SST-PLN014). `full` also reads each procedure's DESCRIBE and each semantic view's GET_DDL, one query each; `basic` compares only what SHOW and an agent's versions list. |
+
 ## snowflake
 
 Allowlists for Snowflake surfaces the renderer accepts.

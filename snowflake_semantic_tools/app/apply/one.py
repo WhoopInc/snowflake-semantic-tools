@@ -20,8 +20,9 @@ from snowflake_semantic_tools.app.apply.errors import (
     _skipped,
 )
 from snowflake_semantic_tools.app.apply.stages import UploadStages
+from snowflake_semantic_tools.app.drift import written_digest
+from snowflake_semantic_tools.app.grant_sql import grant_statement
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
-from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
@@ -41,7 +42,7 @@ from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from snowflake_semantic_tools.domain.sql import Sql, ident, join, keyword, privilege, qname, sql
+from snowflake_semantic_tools.domain.sql import Sql, keyword, qname, sql
 from snowflake_semantic_tools.domain.validate.publication import refused_value, statement_diagnostic
 
 
@@ -174,7 +175,7 @@ class ChangeApplier:
         options: ApplyOptions,
         started: int,
     ) -> ApplyOutcome:
-        """Run a checked change's statements, then verify what they wrote.
+        """Run a checked change's statements, verify what they wrote, then read back its digest.
 
         The explicit grants an update keeps are read before anything runs, and the file the
         artifact publishes is staged before its statements, on a stage made to exist first
@@ -201,12 +202,25 @@ class ChangeApplier:
         if not outcome.write_succeeded:
             return outcome
         try:
-            return self._verify_write(change, outcome, before)
+            verified = self._verify_write(change, outcome, before)
         except Exception as exc:
             # The statements ran, so the object is written whatever failed while it was
             # checked. Reporting no write would drop it from state, and the next plan
             # would call an object SST created unmanaged.
             return replace(outcome, status=OutcomeStatus.FAILED, error=_exception_error(exc), write_succeeded=True)
+        return self._with_digest(verified, rendered)
+
+    def _with_digest(self, outcome: ApplyOutcome, rendered: RenderedArtifact) -> ApplyOutcome:
+        """Read back the digest of what a verified write left, which state records for plan."""
+        if outcome.status is not OutcomeStatus.APPLIED:
+            return outcome
+        try:
+            digest = written_digest(self._port, rendered)
+        except Exception:
+            # The write is verified; a digest that cannot be read is unknown, never drift, and
+            # the next apply reads it again.
+            digest = None
+        return replace(outcome, live_digest=digest)
 
     def _grants_to_keep(self, change: Change, rendered: RenderedArtifact) -> tuple[GrantRow, ...] | None:
         """Return the explicit grants an update must keep; None when it has none to check.
@@ -362,7 +376,8 @@ class ChangeApplier:
             SST-VAL826, SST-VAL827: as `statement_diagnostic` reports them, as the failure's code.
         """
         statements = tuple(
-            _grant_statement(rendered, grant) for grant in sorted(grants, key=lambda item: item.identity)
+            grant_statement(rendered.object_type, rendered.target, grant)
+            for grant in sorted(grants, key=lambda item: item.identity)
         )
         if not statements:
             return None
@@ -382,41 +397,3 @@ class ChangeApplier:
     def _elapsed(self, started: int) -> int:
         """Return the milliseconds since `started`, by the clock's monotonic reading."""
         return self._clock.monotonic_ms() - started
-
-
-def _grant_statement(rendered: RenderedArtifact, grant: GrantRow) -> Sql:
-    """Render the GRANT that restores one explicit grant, spelling a database role as Snowflake does."""
-    grantee_kind = "DATABASE ROLE" if grant.granted_to.upper() == "DATABASE_ROLE" else grant.granted_to
-    return sql(
-        "GRANT {privilege} ON {kind} {target} TO {grantee_kind} {grantee}{grant_option}",
-        privilege=privilege(grant.privilege),
-        kind=keyword(rendered.object_type),
-        target=qname(rendered.target),
-        grantee_kind=keyword(grantee_kind),
-        grantee=_grantee_identifier(grant.grantee_name),
-        grant_option=sql(" WITH GRANT OPTION") if grant.grant_option else sql(""),
-    )
-
-
-def _grantee_identifier(value: str) -> Sql:
-    """Render a grantee as SHOW GRANTS printed it; a name of two or three dotted parts part by part."""
-    parts = value.split(".")
-    if len(parts) in (2, 3):
-        return join(".", (_simple_identifier(part) for part in parts))
-    return _simple_identifier(value)
-
-
-def _simple_identifier(value: str) -> Sql:
-    """Render one name part as SHOW GRANTS printed it, naming the same object.
-
-    A part Snowflake would store as printed, upper case and valid unquoted, is written bare;
-    any other, one with a lowercase letter, a space, or a quote, is quoted exactly with each
-    inner quote doubled, so no name can close the identifier early.
-
-    Raises:
-        ValueError: the part is empty or is a name no identifier can spell, as `ident` refuses.
-    """
-    try:
-        return ident(Identifier.shown(value))
-    except ValueError:
-        return ident(Identifier(value, quoted=True))

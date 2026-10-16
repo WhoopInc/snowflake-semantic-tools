@@ -16,7 +16,11 @@ from snowflake_semantic_tools.domain.sql import (
     guard_query,
     ident,
     qname,
+    stage_path,
 )
+
+# Any stage, to ask `stage_path` whether a name is a segment it writes unquoted.
+_ANY_STAGE = QualifiedName.from_parts("DB", "SCHEMA", "STAGE")
 
 
 def checked_expression(
@@ -74,6 +78,43 @@ def name_problem(value: str, *, artifact: str, subject: str, origin: Origin | No
     try:
         ident(Identifier.parse(value))
     except (TypeError, ValueError):
+        return D("SST-PRS005", artifact=artifact, value=value, subject=subject, origin=origin)
+    return None
+
+
+def quoted_name_problem(value: str, *, artifact: str, subject: str, origin: Origin | None = None) -> Diagnostic | None:
+    """Report a published object's name written quoted; None for one written unquoted or unparsed.
+
+    SST keys a tool or agent by its name casefolded, and an object it observes by the name SHOW
+    prints, casefolded too unless Snowflake shows it quoted. The two agree for every unquoted
+    name, which Snowflake stores upper-cased, and for no quoted one, which keeps its quotes and
+    case: a plan would never find the object it published. A name that does not parse is
+    `name_problem`'s to report.
+
+    Diagnostics:
+        SST-PRS005: the name is written quoted.
+    """
+    try:
+        quoted = Identifier.parse(value).quoted
+    except ValueError:
+        return None
+    return D("SST-PRS005", artifact=artifact, value=value, subject=subject, origin=origin) if quoted else None
+
+
+def stage_segment_problem(
+    value: str, *, artifact: str, subject: str, origin: Origin | None = None
+) -> Diagnostic | None:
+    """Report a name `stage_path` would refuse as one segment of a stage path; None when it writes it.
+
+    An agent's specification is staged below a folder named by the agent, so a name no stage
+    path can hold must be refused before plan renders the path.
+
+    Diagnostics:
+        SST-PRS005: the name is not a segment a stage path writes unquoted.
+    """
+    try:
+        stage_path(_ANY_STAGE, f"{value}/")
+    except ValueError:
         return D("SST-PRS005", artifact=artifact, value=value, subject=subject, origin=origin)
     return None
 

@@ -41,6 +41,7 @@ def test_observe_collects_markers_grants_and_errors() -> None:
     artifact = rendered()
     port.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now", f"comment [sst:{'a' * 64}:{'b' * 64}]"))
     port.grants[artifact.target.sql] = (GrantRow("SELECT", "ROLE", "R"),)
+    port.definitions[artifact.target.sql] = "create or replace semantic view V"
     observation, diagnostics = observe(
         port,
         SEMANTIC_REGISTRY,
@@ -323,6 +324,7 @@ def _tag_plan(
         ShowRow("V", "DB", "SCHEMA", "OWNER", "now", OwnershipMarker(planned_manifest.manifest_id, recorded).text)
     )
     port.tags[artifact.target.sql] = ("GOV.T.PII",)
+    port.definitions[artifact.target.sql] = "create or replace semantic view V"
     applied = AppliedEntry(
         recorded, artifact.target.sql, "then", "run", "applied", recorded, planned_manifest.manifest_id
     )

@@ -40,7 +40,7 @@ from snowflake_semantic_tools.cli.plan_output import (
     write_plan_sql,
 )
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, run_baseline
-from snowflake_semantic_tools.cli.settings import strict_disagreement, threads_setting
+from snowflake_semantic_tools.cli.settings import drift_check_setting, strict_disagreement, threads_setting
 from snowflake_semantic_tools.cli.wiring.plan import (
     PlanRequest,
     cached_observation_path,
@@ -137,6 +137,9 @@ def plan(
     """Observe live Snowflake state and compute a non-writing plan.
 
     Exit 0 with nothing to change, 2 with changes pending, and 1 on an error or a blocked change.
+    Nothing to change means each live object carries the ownership marker state records, and
+    the properties `plan.drift_check` compares are as apply read them back; an object edited
+    by hand in either way is blocked (SST-PLN014).
     The plan is saved as `target/sst/plan.json` unless --plan-out or --no-plan-out says
     otherwise, and each create's and update's statements go to `target/sst/sql`, or --sql-out.
     `--names-only` prints only the name of each changed artifact, and wins over `--full`.
@@ -156,7 +159,9 @@ def plan(
         snowflake_syntax_check,
         state_dir=state_dir,
         threads=threads_setting(paths, threads),
-        observe_options=ObserveOptions(grants=grants, capture_prior=capture_prior),
+        observe_options=ObserveOptions(
+            grants=grants, capture_prior=capture_prior, drift_check=drift_check_setting(paths)
+        ),
         validate=not no_validate,
         use_cached_state=use_cached_state,
         baseline=run_baseline(options),

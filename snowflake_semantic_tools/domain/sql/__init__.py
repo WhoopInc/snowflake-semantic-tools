@@ -21,7 +21,16 @@ from snowflake_semantic_tools.domain.sql.authored import (
 )
 from snowflake_semantic_tools.domain.sql.core import Sql, canonical, join, sql
 from snowflake_semantic_tools.domain.sql.datatype import datatype, is_datatype
-from snowflake_semantic_tools.domain.sql.names import column_ref, ident, keyword, privilege, qname, scope, stage_path
+from snowflake_semantic_tools.domain.sql.names import (
+    column_ref,
+    ident,
+    keyword,
+    privilege,
+    qname,
+    routine_ref,
+    scope,
+    stage_path,
+)
 from snowflake_semantic_tools.domain.sql.values import (
     DefaultMismatch,
     boolean,
@@ -58,6 +67,7 @@ __all__ = [
     "privilege",
     "qname",
     "query_text",
+    "routine_ref",
     "scope",
     "sql",
     "stage_path",

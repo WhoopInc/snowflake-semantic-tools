@@ -27,6 +27,7 @@ from snowflake_semantic_tools.domain.sql import (
     keyword,
     literal,
     qname,
+    routine_ref,
     sql,
 )
 
@@ -192,6 +193,8 @@ def _render_search(
 def routine_signature(object_type: str, target: QualifiedName, types: tuple[str, ...]) -> Sql:
     """Name a procedure or function with its argument types, as DESCRIBE, ALTER, and GRANT address it.
 
+    A routine with no arguments is named with empty parentheses, as `routine_ref` renders it.
+
     Example:
         DB.S.LOOKUP(NUMBER, VARCHAR)
 
@@ -200,7 +203,7 @@ def routine_signature(object_type: str, target: QualifiedName, types: tuple[str,
     """
     if " ".join(object_type.upper().split()) not in ("PROCEDURE", "FUNCTION"):
         raise ValueError(f"{object_type!r} is not a routine type")
-    return sql("{target}({types})", target=qname(target), types=join(", ", (datatype(value) for value in types)))
+    return routine_ref(target, types)
 
 
 def _handler_clauses(member: ToolMember) -> list[Sql]:
@@ -235,9 +238,12 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
     The clauses come in a fixed order: the signature, COPY GRANTS, RETURNS, and LANGUAGE; then,
     for Java, Python and Scala only, RUNTIME_VERSION and HANDLER, which they require, and when
     set PACKAGES and IMPORTS (the SQL and JavaScript grammars have none of the four); then, when
-    set, EXTERNAL_ACCESS_INTEGRATIONS, and SECRETS sorted by name; then a procedure's
+    set, EXTERNAL_ACCESS_INTEGRATIONS, and SECRETS sorted by name; then, when the member has a
+    description, COMMENT with each run of whitespace collapsed to one space; then a procedure's
     EXECUTE AS, CALLER by default; then the body. A procedure also requires `warehouse`,
-    which the DDL itself does not name.
+    which the DDL itself does not name. The comment is in the text the fingerprint digests, so
+    an edit of only the description is a change; Snowflake refuses COMMENT after EXECUTE AS.
+    Publishing then sets the comment again with the ownership marker after it.
 
     Args:
         procedure: Render a procedure rather than a function.
@@ -254,6 +260,7 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
           COPY GRANTS
           RETURNS NUMBER
           LANGUAGE SQL
+          COMMENT = 'Look an order up.'
           EXECUTE AS CALLER
           AS $$
         <body>
@@ -297,6 +304,8 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
             ),
         )
         clauses.append(sql("  SECRETS = ({secrets})", secrets=secrets))
+    if member.description:
+        clauses.append(sql("  COMMENT = {comment}", comment=literal(_one_line(member.description))))
     if procedure:
         clauses.append(sql("  EXECUTE AS {rights}", rights=keyword(member.execute_as or "caller")))
     clauses.append(sql("  AS {body}", body=dollar_quoted(f"\n{member.body.rstrip()}\n")))

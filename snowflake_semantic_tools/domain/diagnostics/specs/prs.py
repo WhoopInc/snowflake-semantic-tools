@@ -53,10 +53,15 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Name is not a valid identifier",
         "{artifact}: '{value}' is not a valid identifier",
         "use letters, digits and underscores, starting with a letter",
-        condition="a name fails the identifier grammar",
+        condition=(
+            "a name fails the identifier grammar; or the name of an agent or of a defined tool member is written quoted"
+        ),
         note=(
             "An agent's alias must be a plain identifier, rendered unquoted: one written quoted, or "
-            "valid only once quoted, is reported too."
+            "valid only once quoted, is reported too. So must an agent's name and a defined tool "
+            "member's: SST keys each by its name ignoring case, which matches the object Snowflake "
+            "shows only for a name it stores upper-cased, and an agent's name is also a folder of its "
+            "specification's stage path."
         ),
     ),
     spec(

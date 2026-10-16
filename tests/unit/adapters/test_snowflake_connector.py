@@ -311,6 +311,7 @@ class StateRowsConnector(SnowflakeConnector):
                     "f" * 64,
                     "{}",
                     "[]",
+                    None,
                 )
                 for index, value in enumerate(self._applied_at)
             ),
@@ -864,3 +865,75 @@ def test_agent_versions_read_each_version_with_its_alias_default_and_specificati
         AgentVersion("VERSION$2", "PROD", comment="git:abc", specification='{"a":1}'),
         AgentVersion("VERSION$1", None, is_default=True),
     )
+
+
+def test_show_rows_keep_the_columns_a_drift_digest_reads() -> None:
+    connector = StubSnowflakeConnector(
+        {
+            "SHOW PROCEDURES": (
+                {"name": "P", "schema_name": "S", "catalog_name": "DB", "is_builtin": "N", "is_secure": "Y"},
+            ),
+            "SHOW CORTEX SEARCH SERVICES": (
+                {"name": "DOCS", "schema_name": "S", "database_name": "DB", "target_lag": "1 day", "warehouse": "WH"},
+            ),
+        }
+    )
+    scope = SchemaScope.from_qualified_name(QualifiedName.parse("DB.S.X"))
+    [procedure] = connector.show_objects("PROCEDURE", scope)
+    [service] = connector.show_objects("CORTEX SEARCH SERVICE", scope)
+    assert (procedure.is_secure, procedure.target_lag, procedure.warehouse) == ("Y", None, None)
+    assert procedure.shown == {"is_secure": "Y"}
+    assert service.shown == {"target_lag": "1 day", "warehouse": "WH"}
+
+
+def test_describe_routine_addresses_the_routine_by_its_types_and_keys_each_property() -> None:
+    connector = StubSnowflakeConnector(
+        {
+            "DESCRIBE PROCEDURE DB.S.P()": (
+                {"property": "execute as", "value": "OWNER"},
+                {"property": "body", "value": None},
+                {"property": None, "value": "dropped"},
+            ),
+        }
+    )
+    found = connector.describe_routine("PROCEDURE", QualifiedName.parse("DB.S.P"), ())
+    assert found == {"execute as": "OWNER", "body": ""}
+    with pytest.raises(SnowflakePortError, match="is not a procedure or function"):
+        connector.describe_routine("STAGE", QualifiedName.parse("DB.S.P"), ())
+
+
+def test_dataset_version_metadata_reads_the_version_s_metadata_as_text() -> None:
+    connector = StubSnowflakeConnector(
+        {
+            "SHOW VERSIONS IN DATASET": (
+                {"version": "SST_0123456789AB", "metadata": '{"agent":"DB.S.A"}'},
+                {"version": "SST_OBJECT", "metadata": {"agent": "DB.S.B"}},
+                {"version": "SST_NONE", "metadata": None},
+            ),
+        }
+    )
+    dataset = QualifiedName.parse("DB.S.EVAL")
+    assert connector.dataset_version_metadata(dataset, "sst_0123456789ab") == '{"agent":"DB.S.A"}'
+    assert connector.dataset_version_metadata(dataset, "SST_OBJECT") == '{"agent":"DB.S.B"}'
+    assert connector.dataset_version_metadata(dataset, "SST_NONE") is None
+    assert connector.dataset_version_metadata(dataset, "SST_ABSENT") is None
+
+
+class _UndigestedStateConnector(StateRowsConnector):
+    """A state table migrated for components and resources, but not yet for LIVE_DIGEST."""
+
+    def __init__(self) -> None:
+        super().__init__(("2026-09-29T11:56:32Z",))
+        self.selected: list[str] = []
+
+    def query(self, sql: Sql, params: object = None) -> QueryResult:
+        self.selected.append(str(sql))
+        return super().query(sql, params)
+
+
+def test_a_state_table_without_live_digest_reads_it_as_null_and_keeps_its_components() -> None:
+    connector = _UndigestedStateConnector()
+    state = connector.read_state(QualifiedName.parse("DB.S.SST_STATE"), "verify")
+    assert state is not None and state["skill:s0"].live_digest is None
+    [select] = connector.selected
+    assert "NULL LIVE_DIGEST" in select and "NULL COMPONENT_FINGERPRINTS" not in select

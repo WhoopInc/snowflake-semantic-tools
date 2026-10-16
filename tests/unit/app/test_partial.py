@@ -119,7 +119,9 @@ def _blocked(name: str, *diagnostics: Diagnostic, depends_on: tuple[str, ...] = 
 
 
 def test_a_partial_plan_leaves_out_what_it_blocked_against_the_target_and_keeps_the_rest() -> None:
-    out_of_band = D("SST-PLN014", artifact="semantic_view:people")
+    out_of_band = D(
+        "SST-PLN014", artifact="semantic_view:people", detail="its ownership marker is not the one state records"
+    )
     unmanaged = D("SST-PLN024", artifact="semantic_view:orphan", value="DB.SCHEMA.ORPHAN")
     moved = D("SST-PLN025", artifact="semantic_view:moved", found="DB.OLD.MOVED", expected="DB.SCHEMA.MOVED")
     finance = change(rendered("FINANCE"), Action.UPDATE)
@@ -157,6 +159,6 @@ def test_a_plan_with_nothing_blocked_is_left_as_it_is() -> None:
 
 
 def test_a_blocked_changes_own_diagnostic_the_plan_did_not_list_is_still_kept() -> None:
-    own = D("SST-PLN014", artifact="semantic_view:people")
+    own = D("SST-PLN014", artifact="semantic_view:people", detail="its ownership marker is not the one state records")
     narrowed, left_out = partial_changeset(changeset(_blocked("PEOPLE", own)))
     assert narrowed.changes == () and [item.code for item in left_out] == ["SST-PLN014", "SST-PLN032"]

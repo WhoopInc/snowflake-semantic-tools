@@ -383,7 +383,15 @@ def test_a_plan_that_outlives_its_observation_reports_it() -> None:
 def test_a_partial_plans_manifest_covers_only_what_stays_healthy_after_validation() -> None:
     # A warning on one view compiles, so the compile split leaves nothing out; strict
     # validation promotes it, so the plan's own split leaves the view out.
-    warned = with_diagnostics(compiled("MENU", "SALES"), D("SST-PLN014", artifact="menu", subject="semantic_view:menu"))
+    warned = with_diagnostics(
+        compiled("MENU", "SALES"),
+        D(
+            "SST-PLN014",
+            artifact="menu",
+            detail="its ownership marker is not the one state records",
+            subject="semantic_view:menu",
+        ),
+    )
     inputs = InMemoryProjectInputs(validation=ValidationDefaults(strict=True, snowflake_syntax_check=False))
     use_case = PreparePlan(inputs, FixedClock())
     candidates = use_case.select(

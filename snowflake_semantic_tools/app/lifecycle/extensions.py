@@ -172,7 +172,9 @@ class _Run(PublicationRun[CatalogPublicationPort]):
 
     The steps run in order: ensure the bundle stage, upload the bundle and read it back,
     create the extension from the bundle, add the version unless the create made it, then
-    verify the version, align the comment, and certify it.
+    verify the version, align the comment, and certify it. When the version the plan observed
+    already exists, the bundle is neither uploaded nor read back from its stage prefix: the
+    version's own files are what `_check_version` verifies.
     """
 
     def __init__(
@@ -234,6 +236,11 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         return None
 
     def _upload_bundle(self) -> ApplyOutcome | None:
+        if self._current.version is not None:
+            # The version already holds the bundle and is what the extension serves, which
+            # `_check_version` reads back; its stage prefix is only the source an ADD VERSION
+            # copies, so whatever that prefix holds now is neither rewritten nor required.
+            return None
         release = self._release
         failed_upload = self._upload_missing(release.prefix, release.bundle.entries, set(self._current.staged))
         if failed_upload is None:
@@ -242,6 +249,8 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         return self.fail(f"upload of {entry.path} failed: {error}")
 
     def _verify_bundle(self) -> ApplyOutcome | None:
+        if self._current.version is not None:
+            return None
         release = self._release
         return self._verify_staged(
             release.prefix,

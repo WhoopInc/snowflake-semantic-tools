@@ -4,7 +4,7 @@ Compile renders each artifact as a `RenderedArtifact`; plan compares it with wha
 shows, a `SnowflakeObservation`, and decides one `Change` per artifact, collected in a
 `ChangeSet`; apply runs the writes and reports an `ApplyOutcome` for each. One submodule
 holds each stage's values -- `marker`, `observation`, `action`, `rendered`, `change`,
-`apply`, and `version` -- and this module re-exports them, so importers never reach into the submodules.
+`apply`, `version`, and `drift` -- and this module re-exports them, so importers never reach into the submodules.
 """
 
 from __future__ import annotations
@@ -22,6 +22,18 @@ from snowflake_semantic_tools.domain.model.lifecycle.apply import (
     RetryPolicy,
 )
 from snowflake_semantic_tools.domain.model.lifecycle.change import Change, ChangeSet, CompositePlan
+from snowflake_semantic_tools.domain.model.lifecycle.drift import (
+    DEFINED_TYPES,
+    DESCRIBED_TYPES,
+    DIGESTED_TYPES,
+    DRIFT_CHECK_BASIC,
+    DRIFT_CHECK_FULL,
+    DRIFT_CHECKS,
+    SHOWN_TYPES,
+    drift_properties,
+    drifted_properties,
+    live_digest,
+)
 from snowflake_semantic_tools.domain.model.lifecycle.marker import OwnershipMarker, extract_marker, marked_comment
 from snowflake_semantic_tools.domain.model.lifecycle.observation import (
     ArtifactKey,
@@ -55,6 +67,13 @@ from snowflake_semantic_tools.domain.model.lifecycle.version import (
 )
 
 __all__ = [
+    "DEFINED_TYPES",
+    "DESCRIBED_TYPES",
+    "DIGESTED_TYPES",
+    "DRIFT_CHECKS",
+    "DRIFT_CHECK_BASIC",
+    "DRIFT_CHECK_FULL",
+    "SHOWN_TYPES",
     "SSE_STAGE_TYPE",
     "Action",
     "ApplyOptions",
@@ -90,8 +109,11 @@ __all__ = [
     "StatementPlan",
     "Upload",
     "commented_spec_fingerprint",
+    "drift_properties",
+    "drifted_properties",
     "extract_marker",
     "held_spec_fingerprint",
+    "live_digest",
     "marked_comment",
     "spec_fingerprint",
     "version_comment",

@@ -29,7 +29,9 @@ def test_sst_pln032_silent() -> None:
 
 
 def test_sst_pln032_fires_for_a_change_the_plan_blocked_against_the_target() -> None:
-    out_of_band = D("SST-PLN014", artifact="semantic_view:people")
+    out_of_band = D(
+        "SST-PLN014", artifact="semantic_view:people", detail="its ownership marker is not the one state records"
+    )
     people = rendered("PEOPLE")
     blocked = replace(
         change(people, Action.UPDATE),

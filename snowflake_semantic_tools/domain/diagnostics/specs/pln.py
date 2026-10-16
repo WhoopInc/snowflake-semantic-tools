@@ -164,16 +164,22 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-PLN014",
         Severity.WARNING,
         "Live definition differs from the last recorded state",
-        "{artifact} was changed out of band; apply refuses it",
+        "{artifact} was changed out of band ({detail}); apply refuses it",
         "review the live object, then restore the one SST wrote or remove it before applying",
         condition=(
             "state records the artifact, but the live object's ownership marker is absent, or "
             "names another manifest or fingerprint than state records, or the object is under "
-            "another name"
+            "another name; or the marker is as recorded, but a property SST published that the "
+            "marker does not prove differs from what apply read back after writing it: an "
+            "agent's newest committed specification, a search service's target lag or "
+            "warehouse, a routine's SECURE, a procedure's EXECUTE AS or body, or a semantic "
+            "view's definition. The detail names each property that changed"
         ),
         note=(
             "The change is blocked, so `apply` refuses the plan (SST-APL003) until the live object "
-            "is again the one SST wrote, although this code is a warning."
+            "is again the one SST wrote, although this code is a warning. An entry recorded "
+            "before SST read these properties is not compared until the next apply records "
+            "them; `plan.drift_check: basic` compares only what SHOW lists."
         ),
         precheck=Precheck.OBSERVE,
     ),
@@ -465,7 +471,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Smoke query failed",
         "{artifact}: smoke query for metric '{member}' failed: {detail}",
-        "fix the metric; a created view is not a working view",
+        "read Snowflake's error: when it is about the metric's definition, fix the metric, since a "
+        "created view is not a working view; when it names dimensions the query must request that "
+        "the probe could not, exclude the view from the smoke suite",
         condition=("a smoke probe of a metric failed (`sst test --suite smoke`); any other probe reports `SST-APL100`"),
         precheck=Precheck.OBSERVE,
     ),
@@ -495,6 +503,22 @@ SPECS: tuple[ErrorSpec, ...] = (
             "The update sets the alias, the default version and a live version back on the "
             "version holding the specification, without adding a version; an agent with no live "
             "version whose newest version holds another specification gets a new version instead."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN103",
+        Severity.WARNING,
+        "Drift check could not read the object",
+        "{value}: {field} failed, so plan did not compare what it reads: {detail}",
+        "grant the role what the read needs (USAGE on a procedure for DESCRIBE, OWNERSHIP or "
+        "REFERENCES for GET_DDL), or set `plan.drift_check: basic` to compare only what SHOW lists",
+        condition=(
+            "`plan.drift_check` is `full`, and the DESCRIBE of a procedure or the GET_DDL of a "
+            "semantic view SST's marker claims failed"
+        ),
+        note=(
+            "The object's other properties, those SHOW lists, are still compared with what apply recorded (SST-PLN014)."
         ),
         precheck=Precheck.OBSERVE,
     ),

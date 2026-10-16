@@ -622,7 +622,7 @@ def test_search_service_update_replays_and_verifies_explicit_grants() -> None:
 def test_search_service_replay_refuses_a_grant_the_publication_guards_refuse(
     monkeypatch: pytest.MonkeyPatch, grant: object, code: str
 ) -> None:
-    monkeypatch.setattr(one, "_grant_statement", lambda rendered, row: grant)
+    monkeypatch.setattr(one, "grant_statement", lambda object_type, target, row: grant)
     artifact = replace(
         rendered(),
         object_type="CORTEX SEARCH SERVICE",
@@ -732,6 +732,7 @@ def test_an_error_reading_the_marker_back_after_create_keeps_ownership() -> None
     assert store.state is not None
     port.heal("describe_marker")
     port.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now", f"published {ownership.text}"))
+    port.definitions[artifact.target.sql] = "create or replace semantic view V"
     replanned = PlanArtifacts(port).run({artifact.key: artifact}, published, store.state, target(), fetched_at="later")
     # The view is SST's: the next plan must not call it unmanaged.
     assert [item.code for item in replanned.diagnostics] == []

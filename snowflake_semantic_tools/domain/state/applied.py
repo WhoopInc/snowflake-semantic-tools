@@ -133,6 +133,9 @@ class AppliedEntry:
         git_sha: The commit apply ran from; empty when it is unknown.
         component_fingerprints: A composite artifact's published parts.
         physical_resources: The objects the artifact spans, with what apply knows of each.
+        live_digest: The digest of the object's properties its marker does not prove, read back
+            after the write; None when unknown, as for an entry written before SST read one,
+            which plan never takes for drift.
     """
 
     fingerprint: str
@@ -145,6 +148,7 @@ class AppliedEntry:
     git_sha: str = ""
     component_fingerprints: tuple[tuple[str, str], ...] = ()
     physical_resources: tuple[AppliedResourceInput, ...] = ()
+    live_digest: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "component_fingerprints", tuple(sorted(self.component_fingerprints)))
@@ -156,8 +160,8 @@ class AppliedEntry:
         return cast(tuple[AppliedResource, ...], self.physical_resources)
 
     def as_dict(self) -> dict[str, object]:
-        """Return the entry as the state document stores it under `applied`."""
-        return {
+        """Return the entry as the state document stores it under `applied`; `live_digest` only when known."""
+        document: dict[str, object] = {
             "fingerprint": self.fingerprint,
             "qualified_name": self.qualified_name,
             "applied_at": self.applied_at,
@@ -169,6 +173,9 @@ class AppliedEntry:
             "component_fingerprints": pairs_to_json(self.component_fingerprints),
             "physical_resources": [resource.as_dict() for resource in self.applied_resources],
         }
+        if self.live_digest is not None:
+            document["live_digest"] = self.live_digest
+        return document
 
     @classmethod
     def from_dict(cls, value: object) -> AppliedEntry:
@@ -195,6 +202,7 @@ class AppliedEntry:
             git_sha=str(value.get("git_sha", "")),
             component_fingerprints=pairs_from_json(components),
             physical_resources=parsed_resources,
+            live_digest=str(value["live_digest"]) if value.get("live_digest") else None,
         )
 
 

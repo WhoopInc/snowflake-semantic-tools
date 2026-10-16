@@ -40,7 +40,8 @@ What is read depends on how the kind is published:
 | Kind | Prior definition | To restore it |
 |---|---|---|
 | Semantic view | What `GET_DDL` prints, with names fully qualified, rewritten into the form SST renders: the trailing clauses in the order the server accepts (`MAX_STALENESS` after the AI clauses) and `COPY GRANTS` added, which `GET_DDL` drops; needs REFERENCES or OWNERSHIP | Run it as recorded. If it starts with a `-- SST did not put this definition ...` comment, `GET_DDL` printed a shape SST does not rewrite and the text is as returned: add `COPY GRANTS` and move `MAX_STALENESS` after the AI clauses before running it, or the restore drops the view's grants or is refused |
-| Cortex search service, procedure, function | What `GET_DDL` prints, with names fully qualified (procedures and functions are addressed by their argument types); needs REFERENCES or OWNERSHIP | Review it before running it: it is a `CREATE OR REPLACE`, but SST has not checked that `GET_DDL`'s text for these kinds re-executes or keeps the object's grants |
+| Procedure, function | What `GET_DDL` prints, with names fully qualified (addressed by their argument types), with `COPY GRANTS` added after the argument list, which `GET_DDL` drops; needs REFERENCES or OWNERSHIP | Run it as recorded; `COPY GRANTS` keeps the routine's grants. If it starts with a `-- SST did not add COPY GRANTS ...` comment, the text is as returned: add `COPY GRANTS` after the argument list before running it, or the restore revokes every grant on the routine |
+| Cortex search service | What `GET_DDL` prints, with names fully qualified, followed by one `GRANT` per explicit grant plan read on the service: a search service takes no `COPY GRANTS`, so replacing it revokes them; needs REFERENCES or OWNERSHIP | Run it as recorded, the `GRANT` statements included. Under `--no-grants` the grants are not read, and a closing comment says to grant them again by hand |
 | Agent | The version it serves now (the one carrying the agent's alias, else the default, else the last committed), its specification as indented JSON, and the `ALTER AGENT` statements that point the alias and the default version back at it | An update adds a version and keeps every earlier one, so run those statements; never re-create the agent, which would drop its versions and grants |
 | Stage tool | None: apply only creates a stage when it is absent | Nothing to restore |
 | Skill, plugin, profile, eval | None: each publishes content-addressed versions, trees, tables, and datasets beside the earlier ones; a profile's row and an eval's staged configuration are rewritten in place and not captured | Re-publish the earlier source |
@@ -322,7 +323,7 @@ fields can appear in the same version.
 
 | Code | Meaning |
 |---:|---|
-| 0 | Success. For `plan`, nothing to change. |
+| 0 | Success. For `plan`, nothing to change: every artifact's live object carries the marker state records, and the properties plan compares (see [Concepts](../concepts.md#how-plan-decides-each-change)) are as apply read them back. Anything else about an object, such as its grants, is not compared. |
 | 1 | Errors were reported, or an apply, a test suite, or a check failed. |
 | 2 | Declared and actual state differ: `plan` found changes, `diff` found the two states differ, or `format --check`, `enrich --check`, `docs --check`, `migrate refs`, or `migrate split` found something to rewrite. |
 | 3 | The command line is invalid. |

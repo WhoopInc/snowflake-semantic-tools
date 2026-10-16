@@ -215,6 +215,33 @@ class CatalogPort(Protocol):
         """
         ...
 
+    def dataset_version_metadata(self, qualified_name: QualifiedName, version: str) -> str | None:
+        """Return the METADATA one version of a dataset carries, as JSON text.
+
+        The version is matched casefolded. Never writes.
+
+        Returns:
+            The METADATA; None when the dataset lists no such version, or it carries none.
+
+        Raises:
+            SnowflakePortError: SHOW VERSIONS failed, as it does for a dataset that does not exist.
+        """
+        ...
+
+    def describe_routine(
+        self, object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...]
+    ) -> Mapping[str, str]:
+        """Return what DESCRIBE reports for a procedure or function, addressed by its argument types.
+
+        Each row is one property, keyed by its lowercase name, such as `execute as` or `body`,
+        with its value as text. Never writes.
+
+        Raises:
+            SnowflakePortError: `object_type` is not a routine type, or the DESCRIBE failed, as it
+                does for a routine that does not exist.
+        """
+        ...
+
     def table_columns(self, qualified_name: QualifiedName) -> tuple[tuple[str, str], ...] | None:
         """Return a base table's columns as `(name, type)` pairs, both uppercase, in table order.
 

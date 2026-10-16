@@ -9,9 +9,11 @@ quoted, so each is held to a closed vocabulary.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
-from snowflake_semantic_tools.domain.sql.core import Sql, _seal
+from snowflake_semantic_tools.domain.sql.core import Sql, _seal, join, sql
+from snowflake_semantic_tools.domain.sql.datatype import datatype
 from snowflake_semantic_tools.domain.sql.values import _unrepresentable
 
 _UNQUOTED = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
@@ -224,6 +226,23 @@ def qname(name: QualifiedName) -> Sql:
     if not isinstance(name, QualifiedName):
         raise TypeError(f"qname() takes QualifiedName, found {type(name).__name__}")
     return _seal(".".join(_identifier_text(part) for part in (name.database, name.schema, name.name)))
+
+
+def routine_ref(target: QualifiedName, types: Iterable[str]) -> Sql:
+    """Return a procedure or function as Snowflake addresses it: its name, then its argument types.
+
+    A routine with no arguments still takes the parentheses: ALTER, DESCRIBE, GRANT and GET_DDL
+    do not parse its bare name.
+
+    Example:
+        routine_ref(DB.S.LOOKUP, ("NUMBER", "VARCHAR")) gives `DB.S.LOOKUP(NUMBER, VARCHAR)`, and
+        routine_ref(DB.S.COUNT, ()) gives `DB.S.COUNT()`.
+
+    Raises:
+        TypeError: `target` is not a `QualifiedName`.
+        ValueError: a part of the name is not an identifier, or a type is not a Snowflake type.
+    """
+    return sql("{target}({types})", target=qname(target), types=join(", ", (datatype(value) for value in types)))
 
 
 def scope(value: SchemaScope) -> Sql:

@@ -217,7 +217,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Partial write left the artifact in an unusable state",
         "{artifact}: {detail}",
-        "re-apply, or drop and re-create",
+        "read the detail: when a statement failed, fix its cause and apply again; when what was "
+        "written does not read back as rendered, restore it or drop the object by hand, then apply",
         condition=(
             "a composite publish (an eval, a skill or plugin, or a Desktop profile) wrote part of "
             "what it publishes, then a statement failed or what it wrote did not read back as "

@@ -13,9 +13,10 @@ from types import MappingProxyType
 import pytest
 
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
+from snowflake_semantic_tools.app.drift import written_digest
 from snowflake_semantic_tools.domain.diagnostics.signatures import UNRECOGNISED, match_signature
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
-from snowflake_semantic_tools.domain.model.lifecycle import ShowRow
+from snowflake_semantic_tools.domain.model.lifecycle import PublishShape, RenderedArtifact, ShowRow, drifted_properties
 from snowflake_semantic_tools.domain.sql import qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from snowflake_semantic_tools.domain.state.lock import LockClaim, StateWrite
@@ -93,3 +94,33 @@ def test_state_round_trips_and_the_run_lock_admits_one_run(
     second = live_connector.acquire_run_lock(state_table, "live", LockClaim("run-b"), break_stale=False)
     assert second.acquired and second.fence is not None and second.fence.generation > taken.fence.generation
     live_connector.release_run_lock(state_table, "live", second.fence)
+
+
+def test_a_procedure_s_drift_digest_is_stable_across_reads_and_a_comment_but_not_execute_as(
+    live_connector: SnowflakeConnector, scratch_schema: Scratch
+) -> None:
+    procedure = _name(scratch_schema("contract"), "SST_CONTRACT_DRIFT")
+    created = live_connector.execute_script(
+        (
+            sql(
+                "CREATE OR REPLACE PROCEDURE {p}() RETURNS NUMBER LANGUAGE SQL COMMENT = 'x' "
+                "EXECUTE AS CALLER AS 'BEGIN RETURN 1; END;'",
+                p=qname(procedure),
+            ),
+        )
+    )
+    assert created.ok
+    rendered = RenderedArtifact.create(
+        key="tool:sst_contract_drift",
+        artifact_type="tool",
+        target=procedure,
+        ddl=sql("CREATE PROCEDURE"),
+        shape=PublishShape("PROCEDURE"),
+    )
+    first = written_digest(live_connector, rendered)
+    assert first is not None and first == written_digest(live_connector, rendered)
+    commented = live_connector.execute_script((sql("ALTER PROCEDURE {p}() SET COMMENT = 'y'", p=qname(procedure)),))
+    assert commented.ok and written_digest(live_connector, rendered) == first
+    owner = live_connector.execute_script((sql("ALTER PROCEDURE {p}() EXECUTE AS OWNER", p=qname(procedure)),))
+    assert owner.ok
+    assert drifted_properties(first, written_digest(live_connector, rendered)) == ("execute_as",)

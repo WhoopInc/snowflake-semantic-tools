@@ -11,7 +11,12 @@ CONNECTION = 5
 INTERRUPTED = 130
 
 EXIT_CODE_DOCS: tuple[tuple[int, str, str], ...] = (
-    (OK, "OK", "Success. For `sst plan`, nothing to change."),
+    (
+        OK,
+        "OK",
+        "Success. For `sst plan`, nothing to change: every live object carries the marker state "
+        "records, and the properties plan compares are as apply read them back.",
+    ),
     (ERROR, "ERROR", "Errors were reported, or an apply, a test suite, or a check failed."),
     (
         CHANGES,

@@ -102,6 +102,31 @@ class FakeCatalog(SnowflakeWorld):
         self._check("dataset_versions")
         return tuple(self.dataset_version_names.get(qualified_name.sql, ()))
 
+    def dataset_version_metadata(self, qualified_name: QualifiedName, version: str) -> str | None:
+        self._check("dataset_version_metadata")
+        if qualified_name.sql not in self.dataset_version_names:
+            raise SnowflakePortError(f"Dataset '{qualified_name.sql}' does not exist or not authorized.")
+        return next(
+            (
+                metadata
+                for (dataset, named), metadata in self.dataset_version_metadata_text.items()
+                if dataset == qualified_name.sql and named.casefold() == version.casefold()
+            ),
+            None,
+        )
+
+    def describe_routine(
+        self, object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...]
+    ) -> Mapping[str, str]:
+        self._check("describe_routine")
+        kind = " ".join(object_type.upper().split())
+        name = f"{qualified_name.sql}({', '.join(routine_signature)})"
+        self.routine_reads.append(f"{kind} {name}")
+        described = self.routine_descriptions.get(f"{kind} {name}")
+        if described is None:
+            raise SnowflakePortError(f"SQL compilation error: {kind} '{name}' does not exist or not authorized.")
+        return described
+
     def table_columns(self, qualified_name: QualifiedName) -> tuple[tuple[str, str], ...] | None:
         self._check("table_columns")
         return self.tables.get(qualified_name.sql)

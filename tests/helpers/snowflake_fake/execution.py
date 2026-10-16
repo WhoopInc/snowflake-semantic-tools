@@ -22,6 +22,7 @@ effect. Each of those reports a query id, `q<n>`, when the script stops part way
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
@@ -153,6 +154,11 @@ class FakeExecution(SnowflakeWorld):
         elif upper.startswith("ALTER DATASET ") and " ADD VERSION " in upper:
             tokens = normalized.split()
             self.dataset_version_names.setdefault(tokens[2], []).append(tokens[5].strip("'"))
+            metadata = re.search(r"METADATA = '((?:[^']|'')*)'", normalized)
+            if metadata is not None:
+                self.dataset_version_metadata_text[(tokens[2], tokens[5].strip("'"))] = metadata.group(1).replace(
+                    "''", "'"
+                )
         elif "SYSTEM$CREATE_EVALUATION_DATASET" in upper:
             quoted = quoted_arguments(normalized)
             if len(quoted) >= 3 and self.existing is not None:

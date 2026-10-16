@@ -7,10 +7,15 @@ import dataclasses
 import pytest
 
 from snowflake_semantic_tools.app.observe import ObserveOptions, observe
-from snowflake_semantic_tools.app.prior import agent_prior, prior_definition, restorable_semantic_view
+from snowflake_semantic_tools.app.prior import (
+    agent_prior,
+    prior_definition,
+    restorable_routine,
+    restorable_semantic_view,
+)
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact, ShowRow
+from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, RenderedArtifact, ShowRow
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion, AgentVersions
 from tests.helpers.artifact_builders import rendered
@@ -136,10 +141,12 @@ def test_a_semantic_view_of_another_shape_is_kept_as_returned_under_a_warning(te
 
 
 def test_a_routine_is_read_by_its_name_with_its_argument_types() -> None:
-    port = FakeSnowflake(definitions={"DB.SCHEMA.P(VARCHAR, NUMBER)": "create or replace procedure P"})
+    port = FakeSnowflake(
+        definitions={"DB.SCHEMA.P(VARCHAR, NUMBER)": "create or replace procedure P(A VARCHAR, B NUMBER)"}
+    )
     procedure = _desired(signature=("VARCHAR", "NUMBER"))
     found, quiet = prior_definition(port, "PROCEDURE", _row("PROCEDURE", "P"), procedure)
-    assert (found, quiet) == ("create or replace procedure P", ())
+    assert (found, quiet) == ("create or replace procedure P(A VARCHAR, B NUMBER) COPY GRANTS", ())
     # Addressed by another signature, Snowflake finds no such routine; the plan only warns.
     missing, [warning] = prior_definition(port, "FUNCTION", _row("FUNCTION", "P"), _desired())
     assert missing is None and (warning.code, warning.severity) == ("SST-PLN037", Severity.WARNING)
@@ -266,3 +273,62 @@ def test_one_object_s_prior_failing_does_not_stop_the_others_being_observed() ->
     assert observation.artifacts[first.key].definition is None
     assert observation.artifacts[second.key].definition == "create or replace semantic view B\n  COPY GRANTS"
     assert [(item.code, item.severity) for item in diagnostics] == [("SST-PLN037", Severity.WARNING)]
+
+
+# GET_DDL's form of a procedure: no COPY GRANTS, a parenthesis inside a quoted name and the body.
+GET_DDL_PROCEDURE = (
+    'CREATE OR REPLACE PROCEDURE DB.SCHEMA."V(x)"("ID" VARCHAR, "N" NUMBER(38,0))\n'
+    "RETURNS VARCHAR\nLANGUAGE SQL\nEXECUTE AS CALLER\nAS 'BEGIN RETURN '')''; END';\n"
+)
+
+
+def test_a_routine_s_prior_gains_copy_grants_after_its_argument_list() -> None:
+    port = FakeSnowflake(definitions={'DB.SCHEMA."V(x)"(VARCHAR, NUMBER)': GET_DDL_PROCEDURE})
+    found, quiet = prior_definition(
+        port, "PROCEDURE", _row("PROCEDURE", "V(x)"), _desired(signature=("VARCHAR", "NUMBER"))
+    )
+    assert quiet == ()
+    assert found == GET_DDL_PROCEDURE.replace("NUMBER(38,0))\n", "NUMBER(38,0)) COPY GRANTS\n", 1)
+
+
+@pytest.mark.parametrize(
+    ("text", "reason"),
+    [
+        ("CREATE OR REPLACE PROCEDURE P() COPY GRANTS RETURNS INT AS '1'", None),
+        ("CREATE OR REPLACE SECURE FUNCTION DB.S.F() RETURNS INT AS '1'", None),
+        ("CREATE FUNCTION F() RETURNS INT AS '1'", "it is not a CREATE OR REPLACE"),
+        ("CREATE OR REPLACE TABLE T (A INT)", "it does not create a procedure or function"),
+        ("CREATE OR REPLACE 'x' FUNCTION F() AS '1'", "it does not create a procedure or function"),
+        ("CREATE OR REPLACE FUNCTION F RETURNS INT", "its name is not followed by its argument list"),
+        ("CREATE OR REPLACE FUNCTION F(A INT", "its argument list does not close"),
+        ("CREATE OR REPLACE FUNCTION F() AS 'unterminated", "it does not lex"),
+    ],
+    ids=["has it", "secure", "no replace", "not a routine", "odd word", "no list", "unclosed", "unlexed"],
+)
+def test_a_routine_prior_of_another_shape_is_kept_under_a_comment(text: str, reason: str | None) -> None:
+    found = restorable_routine(text)
+    if reason is None:
+        assert "COPY GRANTS" in found and not found.startswith("--")
+        assert found.count("COPY GRANTS") == 1
+    else:
+        assert found.startswith(f"-- SST did not add COPY GRANTS to this definition: {reason}") and found.endswith(text)
+
+
+def test_a_search_service_s_prior_is_followed_by_the_grants_it_held() -> None:
+    port = FakeSnowflake(definitions={"DB.SCHEMA.V": "create or replace cortex search service DB.SCHEMA.V;\n"})
+    grants = (
+        GrantRow("USAGE", "ROLE", "READER"),
+        GrantRow("OWNERSHIP", "ROLE", "DEPLOYER"),
+        GrantRow("USAGE", "DATABASE_ROLE", "DB.analyst", grant_option=True),
+        GrantRow("USAGE", "ROLE", ""),
+    )
+    found, _ = prior_definition(port, "CORTEX SEARCH SERVICE", _row("CORTEX SEARCH SERVICE"), _desired(), grants=grants)
+    assert found == (
+        "create or replace cortex search service DB.SCHEMA.V;\n"
+        "-- Running the replace above revokes these grants; they give them back:\n"
+        'GRANT USAGE ON CORTEX SEARCH SERVICE DB."SCHEMA".V TO DATABASE ROLE DB."analyst" WITH GRANT OPTION;\n'
+        "-- grant USAGE to ROLE  again by hand.\n"
+        'GRANT USAGE ON CORTEX SEARCH SERVICE DB."SCHEMA".V TO ROLE READER;\n'
+    )
+    unread, _ = prior_definition(port, "CORTEX SEARCH SERVICE", _row("CORTEX SEARCH SERVICE"), _desired(), grants=None)
+    assert unread is not None and unread.endswith("so grant them again.\n")

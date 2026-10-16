@@ -22,7 +22,12 @@ from snowflake_semantic_tools.domain.model.setting import CONFIG_SOURCE
 from snowflake_semantic_tools.domain.parse.names import RESERVED_WORDS
 from snowflake_semantic_tools.domain.render.agent import render_agent_profile
 from snowflake_semantic_tools.domain.sql import ident
-from snowflake_semantic_tools.domain.validate.sql import name_problem, qualified_name_problem
+from snowflake_semantic_tools.domain.validate.sql import (
+    name_problem,
+    qualified_name_problem,
+    quoted_name_problem,
+    stage_segment_problem,
+)
 
 SPEC_LIMIT_BYTES = 100_000
 SPEC_WARNING_BYTES = 80_000
@@ -98,8 +103,9 @@ def agent_rules(
     Diagnostics:
         SST-PRS025: the agent's alias is reserved: a version shortcut, or a Snowflake reserved
             word.
-        SST-PRS005: the agent's alias is not a plain identifier, or a tag name is not an
-            identifier or a qualified name.
+        SST-PRS005: the agent's name is written quoted or is not a segment a stage path can
+            hold, its alias is not a plain identifier, or a tag name is not an identifier or a
+            qualified name.
         SST-VAL543: the agent's orchestration model is not in `allowed_models`.
         SST-VAL545: the agent's `tool_not_accessible` is not accept, reject, or legacy.
         SST-VAL546: the agent enables analytical search without a cortex_search tool.
@@ -109,6 +115,12 @@ def agent_rules(
         SST-VAL550: the agent is deprecated and an alias still points at a version of it.
     """
     diagnostics: list[Diagnostic] = []
+    # The name keys the agent and names the folder its specification is staged in.
+    refused = quoted_name_problem(
+        model.name, artifact=model.key, subject=model.key, origin=model.origin
+    ) or stage_segment_problem(model.name, artifact=model.key, subject=model.key, origin=model.origin)
+    if refused is not None:
+        diagnostics.append(refused)
     if model.alias:
         diagnostics.extend(_alias_problems(model, model.alias))
     # Each tag name is written into ALTER AGENT unquoted when it can be.

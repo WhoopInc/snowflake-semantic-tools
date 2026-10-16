@@ -380,7 +380,9 @@ flowchart TD
     moved -- no --> marker{"marker names the recorded manifest and fingerprint?"}
     marker -->|"no, but this definition's"| u1["UPDATE: record an unrecorded publish"]
     marker -- no --> b5["BLOCKED, changed outside SST: SST-PLN014"]
-    marker -- yes --> fp{"fingerprint differs, or last write stopped part way?"}
+    marker -- yes --> drift{"a published property differs from what apply read back?"}
+    drift -- yes --> b7["BLOCKED, changed outside SST: SST-PLN014"]
+    drift -- no --> fp{"fingerprint differs, or last write stopped part way?"}
     fp -- yes --> u2["UPDATE"]
     fp -- no --> noop["NOOP"]
 ```
@@ -393,6 +395,33 @@ the object SST wrote is restored or the object is removed. An object whose
 marker names the very definition being planned is updated instead: an apply
 published it and was stopped before it recorded it, so publishing it again
 records it.
+
+A marker only proves which definition SST wrote, and most hand edits keep the
+comment it lives in: every `ALTER` that does not set the comment, and a
+`CREATE OR REPLACE` from the object's own `GET_DDL`. So once a write is
+verified, apply reads back the properties SST published that the marker does
+not prove, and records a digest of them in state; every plan reads them again
+and blocks an object whose marker is as recorded but whose properties are not
+(`SST-PLN014`, naming what changed):
+
+| Object | What plan compares | Read with |
+|---|---|---|
+| Agent | the specification its newest committed version holds | `SHOW VERSIONS IN AGENT`, which plan reads anyway |
+| Cortex search service | `TARGET_LAG` and `WAREHOUSE` | `SHOW CORTEX SEARCH SERVICES`, which plan reads anyway |
+| Function | `SECURE` | `SHOW FUNCTIONS`, which plan reads anyway |
+| Procedure | `SECURE`, `EXECUTE AS` and the body | `SHOW PROCEDURES`, and one `DESCRIBE PROCEDURE` each |
+| Semantic view | its whole definition | one `GET_DDL` each |
+
+`plan.drift_check: basic` skips the `DESCRIBE PROCEDURE` and `GET_DDL` reads,
+so it compares only what the listings show; `full`, the default, compares
+everything above. A read that fails is the warning `SST-PLN103`, and the
+object's other properties are still compared. An entry written before SST
+recorded digests, such as one from an earlier release, is never taken for
+drift: the first apply after it records what plan saw, and the plans after
+that compare. An agent whose alias or default version moved onto a version
+that holds SST's own specification is not blocked but rolled forward
+(`SST-PLN102`). Anything else about an object -- its grants, its tags, or a
+property SST does not publish -- is not compared.
 
 With `--prune`, the plan then looks at what SST published and the project no
 longer renders:

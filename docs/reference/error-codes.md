@@ -26,7 +26,7 @@ cannot be downgraded by any setting.
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
-- [Planning (PLN)](#planning-pln) -- 42 codes
+- [Planning (PLN)](#planning-pln) -- 43 codes
 - [Apply (APL)](#apply-apl) -- 31 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 24 codes
@@ -899,11 +899,11 @@ Note: Distinct from `SST-VAL013`/`SST-VAL014`: this is a key inside a block SST 
 
 `<artifact>: '<value>' is not a valid identifier`
 
-Raised when a name fails the identifier grammar.
+Raised when a name fails the identifier grammar; or the name of an agent or of a defined tool member is written quoted.
 
 Fix: use letters, digits and underscores, starting with a letter
 
-Note: An agent's alias must be a plain identifier, rendered unquoted: one written quoted, or valid only once quoted, is reported too.
+Note: An agent's alias must be a plain identifier, rendered unquoted: one written quoted, or valid only once quoted, is reported too. So must an agent's name and a defined tool member's: SST keys each by its name ignoring case, which matches the object Snowflake shows only for a name it stores upper-cased, and an agent's name is also a folder of its specification's stage path.
 
 ### SST-PRS006
 
@@ -6271,13 +6271,13 @@ Note: Apply checks every one survives the replace, and fails the change if not (
 
 **Live definition differs from the last recorded state** (warning)
 
-`<artifact> was changed out of band; apply refuses it`
+`<artifact> was changed out of band (<detail>); apply refuses it`
 
-Raised when state records the artifact, but the live object's ownership marker is absent, or names another manifest or fingerprint than state records, or the object is under another name.
+Raised when state records the artifact, but the live object's ownership marker is absent, or names another manifest or fingerprint than state records, or the object is under another name; or the marker is as recorded, but a property SST published that the marker does not prove differs from what apply read back after writing it: an agent's newest committed specification, a search service's target lag or warehouse, a routine's SECURE, a procedure's EXECUTE AS or body, or a semantic view's definition. The detail names each property that changed.
 
 Fix: review the live object, then restore the one SST wrote or remove it before applying
 
-Note: The change is blocked, so `apply` refuses the plan (SST-APL003) until the live object is again the one SST wrote, although this code is a warning.
+Note: The change is blocked, so `apply` refuses the plan (SST-APL003) until the live object is again the one SST wrote, although this code is a warning. An entry recorded before SST read these properties is not compared until the next apply records them; `plan.drift_check: basic` compares only what SHOW lists.
 
 ### SST-PLN015
 
@@ -6539,7 +6539,7 @@ Note: The plan is otherwise unaffected: the update is planned as before, and `SS
 
 Raised when a smoke probe of a metric failed (`sst test --suite smoke`); any other probe reports `SST-APL100`.
 
-Fix: fix the metric; a created view is not a working view
+Fix: read Snowflake's error: when it is about the metric's definition, fix the metric, since a created view is not a working view; when it names dimensions the query must request that the probe could not, exclude the view from the smoke suite
 
 ### SST-PLN101
 
@@ -6560,6 +6560,18 @@ Raised when state records the agent unchanged, but it has no live version, or it
 Fix: apply to roll forward, or hold a rollback by not applying until it should end
 
 Note: The update sets the alias, the default version and a live version back on the version holding the specification, without adding a version; an agent with no live version whose newest version holds another specification gets a new version instead.
+
+### SST-PLN103
+
+**Drift check could not read the object** (warning)
+
+`<value>: <field> failed, so plan did not compare what it reads: <detail>`
+
+Raised when `plan.drift_check` is `full`, and the DESCRIBE of a procedure or the GET_DDL of a semantic view SST's marker claims failed.
+
+Fix: grant the role what the read needs (USAGE on a procedure for DESCRIBE, OWNERSHIP or REFERENCES for GET_DDL), or set `plan.drift_check: basic` to compare only what SHOW lists
+
+Note: The object's other properties, those SHOW lists, are still compared with what apply recorded (SST-PLN014).
 
 ### SST-PLN900
 
@@ -6747,7 +6759,7 @@ Fix: no action; the same committed file is reusable for a permanent apply
 
 Raised when a composite publish (an eval, a skill or plugin, or a Desktop profile) wrote part of what it publishes, then a statement failed or what it wrote did not read back as rendered.
 
-Fix: re-apply, or drop and re-create
+Fix: read the detail: when a statement failed, fix its cause and apply again; when what was written does not read back as rendered, restore it or drop the object by hand, then apply
 
 Note: State keeps the partial write, so the next plan publishes the artifact again.
 

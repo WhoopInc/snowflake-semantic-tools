@@ -957,6 +957,53 @@ CREATE OR REPLACE FUNCTION <missing_db>.<schema>.probe_js() RETURNS FLOAT
 [render/tool.py](../../snowflake_semantic_tools/domain/render/tool.py);
 [the agents guide](../guides/agents.md).
 
+### COMMENT goes before EXECUTE AS, and a routine with no arguments takes `()`
+
+**Docs say**: the `CREATE PROCEDURE` grammar lists `COMMENT` before
+`EXECUTE AS`; `ALTER PROCEDURE` and `ALTER FUNCTION` address a routine by its
+name and argument types.
+
+**Server does**: `... LANGUAGE SQL COMMENT = '..' EXECUTE AS CALLER AS $$..$$`
+creates the procedure, and `COMMENT` after `EXECUTE AS` is a syntax error.
+`CREATE FUNCTION ... RETURNS INT COMMENT = '..' AS '1'` works. `ALTER PROCEDURE
+DB.S.P SET COMMENT` for a procedure with no arguments is a syntax error at `SET`;
+`ALTER PROCEDURE DB.S.P() SET COMMENT` works.
+
+**Evidence**: `Enforced`. `test_a_routine_renders_its_description_as_a_comment_before_execute_as`
+and `test_a_function_with_no_arguments_is_addressed_with_empty_parentheses` in
+[test_tool_compile.py](../../tests/unit/app/test_tool_compile.py).
+
+**SST depends on it at**: `_render_routine` and `routine_signature` in
+[render/tool.py](../../snowflake_semantic_tools/domain/render/tool.py);
+`routine_ref` in [sql/names.py](../../snowflake_semantic_tools/domain/sql/names.py);
+`rendered_for_publish` in [compile/tools.py](../../snowflake_semantic_tools/app/compile/tools.py).
+
+### DESCRIBE PROCEDURE and GET_DDL read the same until the object changes
+
+**Docs say**: nothing about whether the output is stable across reads.
+
+**Server does**: `DESCRIBE PROCEDURE` answers one row per property (signature,
+returns, language, `execute as`, body) and `GET_DDL('PROCEDURE', ..)` the same
+text on every read; neither changes after `ALTER ... SET COMMENT`, and
+`ALTER PROCEDURE ... EXECUTE AS OWNER` flips DESCRIBE's `execute as`. `SHOW
+FUNCTIONS` and `SHOW PROCEDURES` list `is_secure` (`Y` or `N`), and `SHOW CORTEX
+SEARCH SERVICES` lists `target_lag` (such as `1 day`) and `warehouse`.
+
+**Evidence**: `Observed`. Plan's drift digest compares these reads with the ones
+apply made after its write, so output that changed between Snowflake releases
+would block every such object (`SST-PLN014`) until the next apply records it
+again; `plan.drift_check: basic` skips the DESCRIBE and GET_DDL reads.
+`test_a_procedure_s_drift_digest_is_stable_across_reads_and_a_comment_but_not_execute_as`
+in [test_connector_contract.py](../../tests/contract_live/test_connector_contract.py)
+is the probe. The `metadata` column `dataset_version_metadata` reads from `SHOW
+VERSIONS IN DATASET` is not yet probed.
+
+**SST depends on it at**: [drift.py](../../snowflake_semantic_tools/app/drift.py);
+[model/lifecycle/drift.py](../../snowflake_semantic_tools/domain/model/lifecycle/drift.py);
+`describe_routine`, `dataset_version_metadata` and `show_objects` in
+[connector/catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py);
+[concepts](../concepts.md#how-plan-decides-each-change).
+
 ## Re-checking a behaviour
 
 A behaviour here can change in any Snowflake release, with or without a change

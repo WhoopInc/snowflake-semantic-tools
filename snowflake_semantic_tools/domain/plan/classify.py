@@ -7,8 +7,9 @@
 3. nothing is observed under its key, so it is created;
 4. an object of another type holds its name, which blocks it (SST-PLN002);
 5. no state entry records the object, which blocks it as unmanaged (SST-PLN024);
-6. the first row of `_STATE_RULES` whose condition holds, comparing the object with the
-   entry apply recorded for it; an object no row matches is unchanged.
+6. the first row of `_STATE_RULES` whose condition holds, comparing the object -- its marker,
+   and the digest of the properties the marker does not prove -- with the entry apply
+   recorded for it; an object no row matches is unchanged.
 
 Each artifact is decided by its own entry alone. The fingerprint digests everything its
 rendered form carries, resolved dependencies included, and the entry and the live marker
@@ -42,6 +43,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositePlan,
     ObservedArtifact,
     RenderedArtifact,
+    drifted_properties,
     version_drift,
 )
 from snowflake_semantic_tools.domain.model.registry import Registry
@@ -90,7 +92,8 @@ def classify(
     Diagnostics:
         SST-PLN002: an object of another type holds the artifact's name.
         SST-PLN013: an update replaces an object that carries explicit grants.
-        SST-PLN014: the object changed after apply recorded it.
+        SST-PLN014: the object changed after apply recorded it: its marker, or a property apply
+            read back after writing it.
         SST-PLN023: the declared name's case differs from the live object's.
         SST-PLN024: an object holds the name, but state records no entry for it.
         SST-PLN025: state records the artifact at another target.
@@ -253,6 +256,13 @@ def _published_unrecorded(evidence: _Evidence) -> bool:
     )
 
 
+def _properties_drifted(evidence: _Evidence) -> bool:
+    # A marker only proves which definition SST wrote. An edit that kept the comment -- an
+    # ALTER, or a replace from the object's own GET_DDL -- shows only in the properties apply
+    # read back after writing, so one of those that differs is as out of band as the marker.
+    return bool(drifted_properties(evidence.recorded.live_digest, evidence.observed.live_digest))
+
+
 def _fingerprint_differs(evidence: _Evidence) -> bool:
     return evidence.recorded.fingerprint != evidence.artifact.fingerprint
 
@@ -277,18 +287,26 @@ def _target_moved(evidence: _Evidence) -> Diagnostic:
 
 
 def _out_of_band(evidence: _Evidence) -> Diagnostic:
-    return D("SST-PLN014", artifact=evidence.key)
+    return D("SST-PLN014", artifact=evidence.key, detail="its ownership marker is not the one state records")
+
+
+def _drifted(evidence: _Evidence) -> Diagnostic:
+    changed = drifted_properties(evidence.recorded.live_digest, evidence.observed.live_digest)
+    return D("SST-PLN014", artifact=evidence.key, detail=f"its {', '.join(changed)} changed; its marker did not")
 
 
 # The first row that holds decides, and an object no row matches is unchanged. The blocking
 # rows come first, so an update never overwrites an object that moved or changed out of band;
 # the one update before them is of an object whose marker names the definition being planned.
-# Version drift comes last: it is checked only for an agent whose definition is unchanged.
+# A property that drifted under an unchanged marker blocks next, before any update would
+# replace the hand edit. Version drift comes last: it is checked only for an agent whose
+# definition and newest committed specification are both as SST left them.
 _STATE_RULES: tuple[_StateRule, ...] = (
     _StateRule(_unnormalised, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _raw_comparison),
     _StateRule(_recorded_elsewhere, Action.BLOCKED, ChangeReason.TARGET_MOVED, _target_moved),
     _StateRule(_published_unrecorded, Action.UPDATE, ChangeReason.UNRECORDED_PUBLISH),
     _StateRule(_changed_out_of_band, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _out_of_band),
+    _StateRule(_properties_drifted, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _drifted),
     _StateRule(_fingerprint_differs, Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS),
     _StateRule(_written_partly, Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS),
     _StateRule(_versions_drifted, Action.UPDATE, ChangeReason.VERSION_DRIFT),

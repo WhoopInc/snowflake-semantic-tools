@@ -2,10 +2,12 @@
 
 `observe` lists each artifact type's objects in every schema the targets name, once per
 schema, reading an object's grants only when the plan may replace it, and its definition only
-when asked to capture it. A failed read is reported and observation goes on, so one missing
-privilege never hides the rest. Every listing is one unit a `Fanout` may run on a session of its
-own, and then so are the reads of each object listed; both are merged in the order they would
-run one at a time, each listing followed by the reads of what it lists.
+when asked to capture it. An object a rendered artifact names and SST's marker claims also has
+the properties its marker does not prove digested, as `app.drift` reads them. A failed read is
+reported and observation goes on, so one missing privilege never hides the rest. Every listing
+is one unit a `Fanout` may run on a session of its own, and then so are the reads of each
+object listed; both are merged in the order they would run one at a time, each listing
+followed by the reads of what it lists.
 
 `observe_replaced_tags` then reads the tags of each semantic view the plan will replace, which
 only deciding the plan from what `observe` found can tell.
@@ -18,12 +20,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from types import MappingProxyType
 
+from snowflake_semantic_tools.app.drift import observed_digest
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.prior import prior_definition
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import (
+    DRIFT_CHECK_FULL,
     Action,
     GrantRow,
     ObservedArtifact,
@@ -58,10 +62,14 @@ class ObserveOptions:
         capture_prior: Read the current definition of each object a rendered artifact names,
             as `plan --capture-prior` asks: one GET_DDL each, or for an agent one SHOW
             VERSIONS IN AGENT; `app.prior` says what each kind's definition is.
+        drift_check: `plan.drift_check`: `full` also reads, for each procedure and semantic
+            view SST's marker claims, one DESCRIBE or GET_DDL to digest; `basic` digests only
+            what the listing and an agent's versions show.
     """
 
     grants: bool = True
     capture_prior: bool = False
+    drift_check: str = DRIFT_CHECK_FULL
 
 
 # What a plan reads when no flag says otherwise: grants, and no definitions.
@@ -101,6 +109,8 @@ def observe(
         SST-PLN001: listing an object type in a schema, or reading an object's grants, failed.
         SST-PLN037: under `capture_prior`, reading an object's definition failed; the
             observation is otherwise whole.
+        SST-PLN103: a DESCRIBE or GET_DDL a drift digest needs failed; that object's other
+            properties are still compared.
     """
     found: dict[str, ObservedArtifact] = {}
     diagnostics: list[Diagnostic] = []
@@ -165,7 +175,7 @@ def _observe_row(
     desired: Mapping[_FoldedName, RenderedArtifact],
     options: ObserveOptions,
 ) -> tuple[ObservedArtifact, tuple[Diagnostic, ...]]:
-    """Observe one listed object: its marker, its grants and definition, and an agent's versions."""
+    """Observe one listed object: its marker, grants, definition, an agent's versions, and its digest."""
     desired_artifact = desired.get(row.qualified_name.folded)
     key = artifact_key(artifact_type.name, row.qualified_name.artifact_component)
     grants, diagnostics = (
@@ -174,9 +184,28 @@ def _observe_row(
     # One SHOW VERSIONS read serves the update program, version drift, and the agent's captured prior.
     versions = port.observe_agent_versions(row.qualified_name) if object_type == "AGENT" else AgentVersions()
     definition, definition_diagnostics = (
-        prior_definition(port, object_type, row, desired_artifact, versions) if options.capture_prior else (None, ())
+        prior_definition(port, object_type, row, desired_artifact, versions, grants)
+        if options.capture_prior
+        else (None, ())
     )
     newest = versions.newest
+    newest_spec = held_spec_fingerprint(newest.comment, newest.specification) if newest is not None else None
+    marker = extract_marker(row.comment)
+    # Only an object plan may compare with what apply recorded is digested: one that a rendered
+    # artifact names and SST's marker claims.
+    digest, digest_diagnostics = (
+        observed_digest(
+            port,
+            object_type,
+            row.qualified_name,
+            desired_artifact,
+            shown=row.shown,
+            newest_spec=newest_spec,
+            drift_check=options.drift_check,
+        )
+        if desired_artifact is not None and marker is not None
+        else (None, ())
+    )
     artifact = ObservedArtifact(
         key=key,
         raw_name=row.name,
@@ -185,17 +214,18 @@ def _observe_row(
         owner=row.owner,
         created_on=row.created_on,
         comment=row.comment,
-        marker=extract_marker(row.comment),
+        marker=marker,
         grants=grants,
         definition=definition,
         has_live_version=versions.has_live_version,
         aliases=versions.aliases,
         newest_version=newest.name if newest is not None else None,
-        newest_spec=held_spec_fingerprint(newest.comment, newest.specification) if newest is not None else None,
+        newest_spec=newest_spec,
         default_version=versions.default_name,
         alias_versions=versions.alias_versions,
+        live_digest=digest,
     )
-    return artifact, (*diagnostics, *definition_diagnostics)
+    return artifact, (*diagnostics, *definition_diagnostics, *digest_diagnostics)
 
 
 def _replaceable_grants(

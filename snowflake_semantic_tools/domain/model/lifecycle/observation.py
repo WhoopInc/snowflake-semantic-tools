@@ -54,6 +54,8 @@ class ShowRow:
     Attributes:
         comment: The object's comment, where an ownership marker lives; None when it has none.
         object_type: The type SHOW listed the object under, such as SEMANTIC VIEW or AGENT.
+        is_secure: A procedure's or function's `is_secure`, such as `Y`; None when SHOW lists none.
+        target_lag, warehouse: A search service's, as SHOW lists them; None when it lists none.
     """
 
     name: str
@@ -63,6 +65,15 @@ class ShowRow:
     created_on: str
     comment: str | None = None
     object_type: str = "SEMANTIC VIEW"
+    is_secure: str | None = None
+    target_lag: str | None = None
+    warehouse: str | None = None
+
+    @property
+    def shown(self) -> dict[str, str]:
+        """Return the columns a drift digest reads, by SHOW's lowercase column name, those listed."""
+        columns = {"is_secure": self.is_secure, "target_lag": self.target_lag, "warehouse": self.warehouse}
+        return {name: value for name, value in columns.items() if value is not None}
 
     @property
     def qualified_name(self) -> QualifiedName:
@@ -97,6 +108,8 @@ class ObservedArtifact:
         default_version: The committed version SHOW marks the default; None when none is.
         alias_versions: Each alias a committed version carries, with that version, as
             `(alias, version)`.
+        live_digest: The digest of the properties the marker does not prove, as `live_digest`
+            computes it; None when none was read, as for an object no rendered artifact names.
     """
 
     key: ArtifactKey
@@ -117,6 +130,7 @@ class ObservedArtifact:
     newest_spec: str | None = None
     default_version: str | None = None
     alias_versions: tuple[tuple[str, str], ...] = ()
+    live_digest: str | None = None
 
     @property
     def explicit_grants(self) -> tuple[GrantRow, ...]:

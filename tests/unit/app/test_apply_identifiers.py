@@ -6,7 +6,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from snowflake_semantic_tools.app.apply.one import _grantee_identifier, _simple_identifier
+from snowflake_semantic_tools.app.grant_sql import _grantee_identifier, _simple_identifier
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 
 # Names as SHOW prints them: any text an identifier can hold, with the characters that could

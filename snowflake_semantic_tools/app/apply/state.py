@@ -69,7 +69,24 @@ def _applied_after(
             applied, by_key[outcome.key], outcome, previous, changeset.manifest_id, stamp, lifecycle_handlers
         )
     _record_observed(applied, changeset.changes, previous, failed_without_write, stamp)
+    _record_digests(applied, changeset.changes)
     return applied
+
+
+def _record_digests(applied: dict[str, AppliedEntry], changes: tuple[Change, ...]) -> None:
+    """Record the digest plan read for an unchanged object whose entry has none yet.
+
+    An entry written before SST read digests is never compared, so the first apply after it
+    records what plan saw on the object its marker still proves, and later plans compare.
+    """
+    for change in changes:
+        entry = applied.get(change.key)
+        observed = change.observed
+        if change.action is not Action.NOOP or entry is None or entry.live_digest is not None:
+            continue
+        if observed is None or observed.live_digest is None:
+            continue
+        applied[change.key] = replace(entry, live_digest=observed.live_digest)
 
 
 def _record_outcome(
@@ -155,6 +172,8 @@ def _written_entry(
         git_sha=stamp.git_sha,
         component_fingerprints=(outcome.component_fingerprints or change.rendered.component_fingerprints),
         physical_resources=_recorded_resources(change, outcome, previous_entry, lifecycle_handler),
+        # Apply reads a digest back only once a write is verified; any other is unknown.
+        live_digest=outcome.live_digest,
     )
 
 

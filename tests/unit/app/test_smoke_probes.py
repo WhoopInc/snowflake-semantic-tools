@@ -12,7 +12,7 @@ from snowflake_semantic_tools.app.smoke import RunSmokeSuite, SmokePublished
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, ProbeKind
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
-from snowflake_semantic_tools.domain.model.semantic_view import Metric, Window
+from snowflake_semantic_tools.domain.model.semantic_view import Metric, SortKey, Window
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from tests.helpers.app_ports import InMemoryStateStore
@@ -77,3 +77,24 @@ def test_fail_fast_reports_every_later_artifact_with_probes_as_skipped() -> None
         ("SST-APL006", None),
         ("SST-PLN101", other.key),
     ]
+
+
+def test_a_window_metric_probe_requests_the_dimensions_its_window_partitions_and_orders_by() -> None:
+    window = Window(
+        partition_by=(authored("T.LOCATION_ID"),),
+        order_by=(SortKey(authored("T.ORDERED_DATE"), descending=True), SortKey(authored("t.location_id"))),
+    )
+    result = _with_metric(
+        Metric("RUNNING", authored("SUM(T.C) OVER (PARTITION BY EXCLUDING T.C)"), table="T", window=window)
+    )
+    [probe] = [item for item in result.rendered[0].smoke if item.kind is ProbeKind.METRIC]
+    assert str(probe.sql) == (
+        "SELECT SV.RUNNING FROM SEMANTIC_VIEW(DB.SCH.SALES METRICS T.RUNNING "
+        "DIMENSIONS T.C, T.LOCATION_ID, T.ORDERED_DATE) AS SV LIMIT 1"
+    )
+
+
+def test_a_window_ordered_by_an_expression_leaves_its_metric_unprobed() -> None:
+    window = Window(order_by=(SortKey(authored("DATE_TRUNC('month', T.ORDERED_DATE)")),))
+    result = _with_metric(Metric("RUNNING", authored("SUM(T.C)"), table="T", window=window))
+    assert [item for item in result.rendered[0].smoke if item.kind is ProbeKind.METRIC] == []

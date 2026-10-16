@@ -393,10 +393,14 @@ tool:
 
 **Procedure and function** (`type: procedure`, `type: function`) render
 `CREATE OR REPLACE PROCEDURE` or `FUNCTION` with `COPY GRANTS`, then set the
-comment with `ALTER ... SET COMMENT`. Clauses come in a fixed order: the
+comment, the description followed by the ownership marker, with
+`ALTER PROCEDURE <name>(<types>) SET COMMENT`; a routine with no arguments is
+addressed as `<name>()`. Clauses come in a fixed order: the
 signature, `COPY GRANTS`, `RETURNS`, `LANGUAGE`, `RUNTIME_VERSION`, `HANDLER`,
-`PACKAGES`, `IMPORTS`, `EXTERNAL_ACCESS_INTEGRATIONS`, `SECRETS`, a procedure's
-`EXECUTE AS`, and the body.
+`PACKAGES`, `IMPORTS`, `EXTERNAL_ACCESS_INTEGRATIONS`, `SECRETS`, `COMMENT`
+(the description on one line), a procedure's `EXECUTE AS`, and the body.
+Because the description is part of the rendered DDL, an edit of only the
+description changes the fingerprint, and `plan` shows the routine as an update.
 
 | Key | Type | Required | Renders to |
 |---|---|---|---|
@@ -649,6 +653,13 @@ alias to rescue it, because quoting would make it case-sensitive. An alias
 written quoted, or one that is a valid identifier only once quoted, such as
 `pro-moted`, is refused too (`SST-PRS005`). A reserved word in a tag name is
 quoted, as the upper-cased name it already resolves to.
+
+An agent's name, and the name of a tool member SST defines, are plain
+identifiers too: one written quoted, such as `'"MixedCase"'`, is refused
+(`SST-PRS005`). SST matches each by its name ignoring case, which finds the
+object Snowflake created only when Snowflake stored the name upper-cased, and an
+agent's name is also a folder of the stage path its specification is staged
+under. A member SST only references may keep a quoted name.
 
 `sst apply --temporary` instead publishes each agent as a session-scoped
 `CREATE OR REPLACE TEMPORARY AGENT` from the inline spec, staging nothing; it is
