@@ -401,8 +401,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "the state or lock table exists as a standard table while `state.+table_kind` is "
             "`hybrid`, or as a hybrid table while it is `standard`; each kind takes its own "
-            "lock protocol, so SST refuses to run the other on it. `sst plan` reports it when the "
-            "plan writes, and apply before it takes the lock"
+            "lock protocol, so SST refuses to run the other on it. `sst plan` reports it, even "
+            "for a plan with nothing to change, and apply before it takes the lock"
         ),
         precheck=Precheck.OBSERVE,
     ),

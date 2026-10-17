@@ -17,9 +17,10 @@ CREATE STAGE on its schema; an existing stage must be an internal server-side en
 (SST-PLN026), on which the role holds READ and WRITE. Each failure blocks the write (SST-PLN008
 for a privilege), so apply never fails part-way on a stage it cannot create or use.
 
-The state and lock tables are checked once for the plan when it writes: CREATE TABLE on the
-schema of an absent one (SST-PLN008), and the kind of one that exists, which must be the kind
-`state.+table_kind` names (SST-APL031, which apply would report on taking the lock).
+The state and lock tables are checked once for the plan: when it writes, CREATE TABLE on the
+schema of an absent one (SST-PLN008); and always, the kind of one that exists, which must be
+the kind `state.+table_kind` names (SST-APL031, which apply would report on taking the lock,
+as it does even for a plan with nothing to change).
 """
 
 from __future__ import annotations
@@ -133,8 +134,8 @@ def check_preflight(
         SST-PLN012.
 
     Diagnostics:
-        SST-APL031: when the plan writes, a state or lock table exists as the other kind than
-            `state.+table_kind` names.
+        SST-APL031: a state or lock table exists as the other kind than `state.+table_kind`
+            names; reported whether or not the plan writes, since apply takes the lock either way.
         SST-PLN007: a write references a relation that does not exist in the target.
         SST-PLN008: the role lacks the privilege a create needs on its schema, CREATE STAGE
             on the schema of an absent upload stage, or READ or WRITE on an existing one; or,
@@ -159,7 +160,7 @@ def check_preflight(
         checked.append(_blocked(change, blocking) if blocking else change)
     if any(_writes(change) for change in changes):
         reported.extend(_state_tables_lacked(preflight))
-        reported.extend(_state_tables_of_other_kind(preflight))
+    reported.extend(_state_tables_of_other_kind(preflight))
     if preflight.warehouse and not preflight.warehouse_usable:
         reported.append(D("SST-PLN012", value=preflight.warehouse))
     return tuple(checked), (*scoped.values(), *reported)

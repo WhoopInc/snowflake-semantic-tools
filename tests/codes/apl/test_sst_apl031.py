@@ -44,9 +44,16 @@ def test_sst_apl031_fires_at_plan_time_for_each_table_of_the_other_kind() -> Non
     ]
 
 
+def test_sst_apl031_fires_at_plan_time_for_a_plan_with_nothing_to_change() -> None:
+    # Apply takes the lock to stamp state even when nothing changes, so it would refuse too.
+    planned = plan((), preflight=_read_as(STANDARD_TABLES))
+    assert [item.message for item in coded(planned.diagnostics, "SST-APL031")] == [
+        "DB.S.SST_STATE is a standard table, and state.+table_kind says hybrid"
+    ]
+
+
 def test_sst_apl031_silent_at_plan_time() -> None:
-    # Tables of the configured kind, a kind that could not be read, and a plan that writes nothing.
+    # Tables of the configured kind, and a kind that could not be read.
     assert coded(plan((view("sales"),), preflight=_read_as(HYBRID_TABLES)).diagnostics, "SST-APL031") == []
     unread = Preflight("dev", "DEPLOYER", state_table_kind=HYBRID_TABLES)
     assert coded(plan((view("sales"),), preflight=unread).diagnostics, "SST-APL031") == []
-    assert coded(plan((), preflight=_read_as(STANDARD_TABLES)).diagnostics, "SST-APL031") == []

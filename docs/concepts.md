@@ -339,8 +339,9 @@ once (per-developer targets, parallel CI) waits on; the check before each write
 is a network round trip either way. Choose it where hybrid tables are
 available, in a permanent schema. SST checks each table's kind against the
 setting before using it, and refuses one of the other kind (`SST-APL031`), since
-each kind takes its own protocol; `sst plan` reports it before apply does, for a
-plan that writes. `sst state convert` rebuilds the tables as the other kind. A hybrid table the configured schema cannot hold is `SST-APL030`,
+each kind takes its own protocol; `sst plan` reports it before apply does, even
+for a plan with nothing to change, since apply takes the lock to stamp state
+either way. `sst state convert` rebuilds the tables as the other kind. A hybrid table the configured schema cannot hold is `SST-APL030`,
 and one the account cannot create at all is `SST-APL035` (set
 `state.+table_kind: standard`); `sst state convert --to hybrid` reports both.
 

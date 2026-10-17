@@ -7035,7 +7035,7 @@ Fix: point state.+database / state.+schema at a permanent schema, or set state.+
 
 `<value> is a <found> table, and state.+table_kind says <expected>`
 
-Raised when the state or lock table exists as a standard table while `state.+table_kind` is `hybrid`, or as a hybrid table while it is `standard`; each kind takes its own lock protocol, so SST refuses to run the other on it. `sst plan` reports it when the plan writes, and apply before it takes the lock.
+Raised when the state or lock table exists as a standard table while `state.+table_kind` is `hybrid`, or as a hybrid table while it is `standard`; each kind takes its own lock protocol, so SST refuses to run the other on it. `sst plan` reports it, even for a plan with nothing to change, and apply before it takes the lock.
 
 Fix: run `sst state convert --to {expected}` to rebuild it, or set state.+table_kind back to {found}
 
