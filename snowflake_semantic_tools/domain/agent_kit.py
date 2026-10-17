@@ -345,15 +345,18 @@ def skill_statuses(
 ) -> tuple[SkillStatus, ...]:
     """Return where each skill stands for `agent`: every kit skill, and any installed one it dropped.
 
-    An agent that asked for skills by name lists those, and the ones installed.
+    A kit skill that is not installed is listed as such, selected or not. It is outdated only
+    when the agent's selection asks for it, so an upgrade would install it; one an agent that
+    asked for skills by name never asked for, or uninstalled, is only not installed.
     """
     previous = lock.agents.get(agent) or AgentInstall((), {})
     wanted = set(previous.selection) if previous.selection else set(bundle)
     statuses: list[SkillStatus] = []
-    for name in sorted(wanted | set(previous.skills)):
+    for name in sorted(set(bundle) | wanted | set(previous.skills)):
         recorded = previous.skills.get(name)
         if recorded is None:
-            statuses.append(SkillStatus(name, installed=False, outdated=agent in lock.agents and name in bundle))
+            due = agent in lock.agents and name in bundle and name in wanted
+            statuses.append(SkillStatus(name, installed=False, outdated=due))
             continue
         here = disk.get(name)
         statuses.append(

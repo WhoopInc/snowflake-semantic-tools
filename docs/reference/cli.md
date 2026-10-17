@@ -261,19 +261,22 @@ sst format [OPTIONS] [PATH]...
 Compile every artifact and write the canonical manifest, offline.
 
 The manifest, `target/sst/manifest.json`, always holds everything that compiled; --select
-narrows only what is reported and emitted. --emit-ddl writes each rendered payload, and
---emit-agent-spec each agent's specification, one file per artifact. With --partial, a
+narrows only what is reported and emitted. --emit-ddl writes each rendered payload, one
+file per artifact under a folder named for its type, as `tool/<name>.sql`; and
+--emit-agent-spec each agent's specification, one file per agent. With --partial, a
 compile with errors still writes the manifest of the artifacts no error touches, and exits
 1. Nothing connects: --target, --defer-target, and --database only decide what names
 resolve to.
 
 Exit 0 when everything compiled; 1 when an error stopped the compile, the manifest could
-not be written, or --partial left an artifact out; 4 when --select matches nothing.
+not be written, --partial left an artifact out, or two emitted files would collide; 4 when
+--select matches nothing.
 
 Diagnostics:
     SST-MAN008: the compile failed, so no manifest was written.
     SST-MAN007: the canonical manifest could not be written.
     SST-PLN033: --partial cannot trace an error to the artifacts it would leave out.
+    SST-PRT111: two artifacts of one type would write the same emitted file; nothing is emitted.
 
 ```text
 sst compile [OPTIONS]
@@ -287,7 +290,7 @@ sst compile [OPTIONS]
 | `--database` | TEXT |  | Resolve refs against this database instead of the target's. |
 | `--dbt` | DIRECTORY |  | Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`. |
 | `--semantic` | DIRECTORY |  | Read the semantic models from this directory instead of `project.semantic_models_dir`. |
-| `--emit-ddl` | DIRECTORY |  | Write each artifact's rendered payload into this directory, offline. |
+| `--emit-ddl` | DIRECTORY |  | Write each artifact's rendered payload into this directory, one folder per type, offline. |
 | `--emit-agent-spec` | DIRECTORY |  | Write each agent's rendered specification into this directory. |
 | `--select` | TEXT |  | Report and emit only these artifacts; the manifest still holds everything. |
 | `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
@@ -449,7 +452,9 @@ metrics or verified-queries, or tables. An artifact's status -- pending, applied
 failed, or deactivated -- is what the one local state file under `target/sst` records;
 with none there, or more than one target's, every artifact is pending. Without
 --no-manifest the manifest `sst compile` wrote is read, and its absence exits 4; with
-it, the project's files are compiled in memory, and nothing is written.
+it, the project's files are compiled in memory, nothing is written, and what fails to
+compile is reported and exits 1. A --select or --exclude value that matches nothing is
+reported; when the selectors choose no artifact and nothing failed to compile, it exits 4.
 
 ```text
 sst list [OPTIONS] [TYPE]

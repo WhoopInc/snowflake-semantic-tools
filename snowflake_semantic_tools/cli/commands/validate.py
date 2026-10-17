@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import click
@@ -82,7 +83,12 @@ def validate(
     compiled = compiling.compile_result(paths, target_name, manifest_path, database=database)
     scope = SelectionScope()
     if selected or excluded:
-        compiled, scope = compiling.selected_within(paths.project_dir, compiled, selected, excluded)
+        narrowed = compiling.selected_within(paths.project_dir, compiled, selected, excluded)
+        # Validated as the compile's own, so `--strict` promotes a selector that matched nothing.
+        scope = narrowed.scope
+        compiled = dataclasses.replace(
+            narrowed.result, diagnostics=DiagnosticBag((*narrowed.report, *narrowed.result.diagnostics))
+        )
     effective_strict, effective_connected = validation_settings(
         paths,
         strict=strict,

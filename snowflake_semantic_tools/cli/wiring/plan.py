@@ -32,7 +32,7 @@ from snowflake_semantic_tools.app.observe import ObserveOptions
 from snowflake_semantic_tools.app.plan import PlanCandidates, PlanReady, PlanRefused, PlanScope, PreparePlan
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.wiring import compile as compiling
-from snowflake_semantic_tools.cli.wiring.compile import manifest_universe, selection
+from snowflake_semantic_tools.cli.wiring.compile import compiled_universe, manifest_universe, selection, selector_report
 from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest
 from snowflake_semantic_tools.cli.wiring.project import (
     closed_on_error,
@@ -42,7 +42,6 @@ from snowflake_semantic_tools.cli.wiring.project import (
     state_store,
     target_dir,
 )
-from snowflake_semantic_tools.cli.wiring.selectors import selector_report
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
@@ -355,7 +354,7 @@ def _prepared(request: PlanRequest) -> tuple[PreparePlan, PlanCandidates, Diagno
     scope = plan_scope(request)
     project_dir = request.project_dir
     full_result = compiling.compile_result(request.paths, request.target_name, request.manifest_path)
-    selectors = selector_report(_named(request), request.excluded, full_result.compiled)
+    selectors = selector_report(_named(request), request.excluded, compiled_universe(full_result.compiled))
     inputs = project_inputs(request.paths, request.target_name, request.manifest_path)
     prepare = PreparePlan(inputs, SystemClock(), baseline=request.baseline, phases=RUN_TIMINGS)
     candidates = prepare.select(

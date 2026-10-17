@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.cli.wiring.selectors import selector_report
+from snowflake_semantic_tools.cli.wiring.compile import compiled_universe, selector_report
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.compiled_things import Thing
 
-COMPILED = (Thing("orders"), Thing("lookup", "tool"))
+COMPILED = compiled_universe((Thing("orders"), Thing("lookup", "tool")))
 
 
 def test_sst_dis201_fires() -> None:
@@ -16,4 +16,5 @@ def test_sst_dis201_fires() -> None:
 
 
 def test_sst_dis201_silent() -> None:
-    assert selector_report((), ("type:agent",), COMPILED) == ()
+    # An exclusion that matched nothing left nothing out; SST-DIS011 says so instead.
+    assert [item.code for item in selector_report((), ("type:agent",), COMPILED)] == ["SST-DIS011"]

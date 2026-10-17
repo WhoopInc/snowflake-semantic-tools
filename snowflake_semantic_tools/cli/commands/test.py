@@ -6,6 +6,7 @@ then refuse to run unless `sst compile` wrote the manifest the project compiles 
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import socket
 from pathlib import Path
@@ -13,6 +14,7 @@ from pathlib import Path
 import click
 
 from snowflake_semantic_tools.adapters.clock import SystemClock
+from snowflake_semantic_tools.adapters.dbt.invoke import INVOCATION_CODES
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.golden import GoldenFileStore
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
@@ -49,7 +51,6 @@ from snowflake_semantic_tools.cli.plan_output import print_eval_results
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import threads_setting
 from snowflake_semantic_tools.cli.wiring import compile as compiling
-from snowflake_semantic_tools.cli.wiring.compile import selected_result
 from snowflake_semantic_tools.cli.wiring.manifest import current_manifest
 from snowflake_semantic_tools.cli.wiring.project import (
     closed_on_error,
@@ -159,11 +160,15 @@ def test_command(
     compiled = compiling.compile_result(paths, target_name, manifest_path)
     if not compiled.success:
         return CommandResult(ERROR, compiled.diagnostics)
-    result = selected_result(paths.project_dir, compiled, selected, excluded) if selected or excluded else compiled
+    narrowed = (
+        compiling.selected_within(paths.project_dir, compiled, selected, excluded) if selected or excluded else None
+    )
+    result = compiled if narrowed is None else narrowed.result
+    notes = DiagnosticBag() if narrowed is None else narrowed.report
     inputs = project_inputs(paths, target_name, manifest_path)
     workers = threads_setting(paths, threads, default=1)
     if update_golden:
-        return _update_golden(paths.project_dir, golden_dir, result, inputs)
+        return _noted(_update_golden(paths.project_dir, golden_dir, result, inputs), notes)
     chosen = suites or tuple(name for name in SUITES if _applies(name, paths, result))
     if capture_baseline_requested and "evals" not in chosen:
         raise SstUsageError(
@@ -191,10 +196,17 @@ def test_command(
         if fail_fast and report.exit_code:
             break
     if len(suites) == 1:
-        return reports[0][1]
+        return _noted(reports[0][1], notes)
     # A suite --fail-fast stopped before is skipped, as one that does not apply is.
     ran = {name for name, _ in reports}
-    return _combined(reports, skipped=tuple(name for name in SUITES if name not in ran))
+    return _noted(_combined(reports, skipped=tuple(name for name in SUITES if name not in ran)), notes)
+
+
+def _noted(result: CommandResult, notes: DiagnosticBag) -> CommandResult:
+    """Report what the selectors' report says ahead of the suites' own diagnostics."""
+    if not notes:
+        return result
+    return dataclasses.replace(result, diagnostics=DiagnosticBag((*notes, *result.diagnostics)))
 
 
 def _applies(suite: str, paths: ProjectPaths, result: CompileResult) -> bool:
@@ -221,9 +233,9 @@ def _golden(
     if manifest is None and (paths.project_dir / "dbt_project.yml").is_file():
         manifest = YamlProjectSource(paths).manifest_file()
     again = compiling.compile_result(paths, target_name, manifest)
-    return _run_golden(
-        paths.project_dir, golden_dir, result, inputs, unstable_fingerprints(result.diagnostics, again.diagnostics)
-    )
+    # Only the first compile can start dbt, so what starting it says is not compared.
+    first = (item for item in result.diagnostics if item.code not in INVOCATION_CODES)
+    return _run_golden(paths.project_dir, golden_dir, result, inputs, unstable_fingerprints(first, again.diagnostics))
 
 
 def _combined(reports: list[tuple[str, CommandResult]], *, skipped: tuple[str, ...]) -> CommandResult:

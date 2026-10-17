@@ -33,7 +33,7 @@ from snowflake_semantic_tools.cli.runner import CommandResult, command_body, pro
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.manifest import build_manifest
 from snowflake_semantic_tools.cli.wiring.project import target_dir
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.file_names import file_name
 from snowflake_semantic_tools.domain.state import Manifest
 
@@ -56,7 +56,7 @@ def compile(
     database: str | None,
     emit_ddl_dir: Path | None,
     agent_spec_dir: Path | None,
-    selected: str | None,
+    selected: tuple[str, ...] | None,
     partial: bool,
     manifest_path: Path | None,
     dbt_dir: Path | None,
@@ -65,19 +65,22 @@ def compile(
     """Compile every artifact and write the canonical manifest, offline.
 
     The manifest, `target/sst/manifest.json`, always holds everything that compiled; --select
-    narrows only what is reported and emitted. --emit-ddl writes each rendered payload, and
-    --emit-agent-spec each agent's specification, one file per artifact. With --partial, a
+    narrows only what is reported and emitted. --emit-ddl writes each rendered payload, one
+    file per artifact under a folder named for its type, as `tool/<name>.sql`; and
+    --emit-agent-spec each agent's specification, one file per agent. With --partial, a
     compile with errors still writes the manifest of the artifacts no error touches, and exits
     1. Nothing connects: --target, --defer-target, and --database only decide what names
     resolve to.
 
     Exit 0 when everything compiled; 1 when an error stopped the compile, the manifest could
-    not be written, or --partial left an artifact out; 4 when --select matches nothing.
+    not be written, --partial left an artifact out, or two emitted files would collide; 4 when
+    --select matches nothing.
 
     Diagnostics:
         SST-MAN008: the compile failed, so no manifest was written.
         SST-MAN007: the canonical manifest could not be written.
         SST-PLN033: --partial cannot trace an error to the artifacts it would leave out.
+        SST-PRT111: two artifacts of one type would write the same emitted file; nothing is emitted.
     """
     paths = with_model_paths(paths, dbt_dir, semantic_dir)
     full_result = compiling.compile_result(paths, target_name, manifest_path, database=database)
@@ -100,40 +103,66 @@ def compile(
     except OSError as exc:
         failed = D("SST-MAN007", path=str(exc.filename or destination.parent), detail=exc.strerror or str(exc))
         return CommandResult(ERROR, DiagnosticBag((*shown, failed)))
-    result = healthy if selected is None else compiling.selected_result(paths.project_dir, healthy, (selected,))
+    narrowed = None if selected is None else compiling.selected_within(paths.project_dir, healthy, selected)
+    result = healthy if narrowed is None else narrowed.result
+    # A selector that matched nothing is shown even when the compile's own warnings are not.
+    notes = DiagnosticBag() if narrowed is None else narrowed.report
     data = _compiled_data(result, destination, manifest, excluded)
-    if emit_ddl_dir is not None:
-        files = _emit(paths.project_dir, project_path(paths, emit_ddl_dir), result, agents_only=False)
-        data.update(ddl_dir=str(emit_ddl_dir), ddl_files=files)
-    if agent_spec_dir is not None:
-        files = _emit(paths.project_dir, project_path(paths, agent_spec_dir), result, agents_only=True)
-        data.update(agent_spec_dir=str(agent_spec_dir), agent_spec_files=files)
+    emits = tuple(
+        (key, folder, *_payload_files(result, agents_only=only))
+        for key, folder, only in (("ddl", emit_ddl_dir, False), ("agent_spec", agent_spec_dir, True))
+        if folder is not None
+    )
+    clashes = tuple(diagnostic for *_, found in emits for diagnostic in found)
+    if clashes:
+        return CommandResult(ERROR, DiagnosticBag((*notes, *shown, *clashes)))
+    for key, folder, files, _ in emits:
+        directory = project_path(paths, folder)
+        root = output_root(paths.project_dir, directory)
+        for relative, content in files.items():
+            write_text(root, directory / relative, content)
+        data.update({f"{key}_dir": str(folder), f"{key}_files": list(files)})
     return CommandResult(
         OK if split is None else ERROR,
-        shown,
+        DiagnosticBag((*notes, *shown)),
         data,
         human=lambda: _print_compiled(data, excluded),
-        show_diagnostics=split is not None,
+        show_diagnostics=split is not None or bool(notes),
     )
 
 
-def _emit(project_dir: Path, directory: Path, result: CompileResult, *, agents_only: bool) -> list[str]:
-    """Write one payload file per compiled artifact into `directory`; return the names written.
+def _payload_files(result: CompileResult, *, agents_only: bool) -> tuple[dict[str, str], tuple[Diagnostic, ...]]:
+    """Name and render each file `--emit-ddl`, or with `agents_only` `--emit-agent-spec`, writes.
 
-    With `agents_only`, only agents are written, each as its rendered JSON specification. A
-    file is named by `file_name`, so no artifact name can place it outside `directory`.
+    A name is unique only within its type, so `--emit-ddl` puts each payload in a folder named
+    for its type; `--emit-agent-spec` writes agents only, as each one's JSON specification, side
+    by side. A file is named by `file_name`, so no artifact name can place it outside its folder.
+
+    Returns:
+        Each file's path below the folder, POSIX, and its content; and one SST-PRT111 for each
+        artifact whose file another already names, which is left out.
+
+    Diagnostics:
+        SST-PRT111: two artifacts of one type would write the same file.
     """
-    root = output_root(project_dir, directory)
-    written = []
+    files: dict[str, str] = {}
+    owners: dict[str, str] = {}
+    clashes: list[Diagnostic] = []
     for item in result.compiled:
         if agents_only and item.artifact_type != "agent":
             continue
         suffix = artifact_suffix(item.rendered_artifact.render_dialect)
         name = f"{file_name(item.name.casefold())}{suffix}"
+        relative = name if agents_only else f"{file_name(item.artifact_type)}/{name}"
+        if relative in owners:
+            clashes.append(
+                D("SST-PRT111", subject=item.artifact_key, path=relative, a=owners[relative], b=item.artifact_key)
+            )
+            continue
         content = item.rendered_artifact.content
-        write_text(root, directory / name, content if suffix in (".json", ".yaml") else content.rstrip() + ";\n")
-        written.append(name)
-    return written
+        owners[relative] = item.artifact_key
+        files[relative] = content if suffix in (".json", ".yaml") else content.rstrip() + ";\n"
+    return files, tuple(clashes)
 
 
 def _compiled_data(

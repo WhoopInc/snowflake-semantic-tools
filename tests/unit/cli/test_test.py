@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 import json
 import shutil
 from hashlib import md5
@@ -12,7 +13,9 @@ from typing import Any
 import pytest
 from click.testing import CliRunner
 
+from snowflake_semantic_tools.adapters.dbt.invoke import CompletedRun
 from snowflake_semantic_tools.adapters.fs.local import StateFileStore
+from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.run import EvalRunResult, EvalSuiteResult
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT
@@ -38,6 +41,7 @@ from tests.helpers.eval_builders import EvalSnowflake
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from tests.helpers.projects import project_paths
 from tests.helpers.reference_project import DBT_MANIFEST, REPO_ROOT, project_copy
+from tests.helpers.seam_projects import FakeDbt
 from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.snowflake_fake.world import Sent
 
@@ -644,3 +648,26 @@ def test_the_eval_state_table_keeps_a_quoted_state_tables_exact_name(state_table
     source = QualifiedName.parse(state_table)
     table = _eval_state_table(source)
     assert (table.database, table.schema, table.name.sql) == (source.database, source.schema, expected)
+
+
+def test_golden_suite_passes_under_a_dbt_it_cannot_identify(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = project_copy(tmp_path, offline=False)
+    # Packages dbt has not installed are refused before dbt starts (SST-DBT026); this one needs none.
+    (project / "packages.yml").unlink()
+    dbt = FakeDbt(
+        version=CompletedRun(0, "dbt 2.0.8\n", ""),
+        writes=(project / "target" / "manifest.json", json.loads(DBT_MANIFEST.read_text(encoding="utf-8"))),
+    )
+    monkeypatch.setattr(
+        "snowflake_semantic_tools.cli.wiring.project.YamlProjectInputs",
+        functools.partial(YamlProjectInputs, dbt_runner=dbt),
+    )
+    golden_dir = str(REPO_ROOT / "tests" / "golden" / "expected" / "ddl")
+    result = CliRunner().invoke(
+        cli, ["test", "--project-dir", str(project), "--suite", "golden", "--golden-dir", golden_dir, "-o", "json"]
+    )
+    codes = [item["code"] for item in json.loads(result.output)["diagnostics"]]
+    # Only the first compile starts dbt, so only it says it does not know this one (SST-DBT020);
+    # the second reads the manifest the first wrote, and the two still agree.
+    assert (result.exit_code, "SST-INT006" in codes) == (0, False), result.output[:2000]
+    assert dbt.runs.count(("dbt", "--version")) == 1

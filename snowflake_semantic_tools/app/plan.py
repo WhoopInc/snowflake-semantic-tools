@@ -96,6 +96,14 @@ class PlanScope:
         return self.selection.covers(item.artifact_type, item.artifact_key)
 
     @property
+    def by_state(self) -> bool:
+        """Report whether every selector is a `state:` one.
+
+        Such a selection chooses nothing when nothing is in that state, which is no miss.
+        """
+        return bool(self.selected) and all(value.casefold().startswith("state:") for value in self.selected)
+
+    @property
     def selection(self) -> SelectionScope:
         """Return what `--select` and `--exclude` choose, as every command applies it."""
         named = self.prune_types is not None or self.prune_keys is not None
@@ -251,7 +259,8 @@ class PreparePlan:
 
         1. With `--partial` and a failed compile, split off what can still publish.
         2. Narrow that to the scope, and with `state:modified` to what changed since
-           `previous_manifest`; refuse when selectors matched nothing and nothing prunes.
+           `previous_manifest`; refuse when selectors matched nothing and nothing prunes,
+           unless every selector is a `state:` one.
         3. Refuse on a compile error the split did not set aside, adding SST-PLN033 with
            `--partial` when the error names no artifact.
         4. Read the `validation:` defaults, and build the manifest of what may publish;
@@ -290,7 +299,13 @@ class PreparePlan:
                 if scope.covers(item) and (impact is None or item.artifact_key in impact)
             ),
         )
-        if scope.selected and not scope.impact and not selected.compiled and not scope.include_prune:
+        # Nothing new, or nothing orphaned, is a plan with nothing to change, not a selector that missed.
+        if (
+            scope.selected
+            and not (scope.impact or scope.by_state)
+            and not selected.compiled
+            and not scope.include_prune
+        ):
             return PlanRefused(
                 DiagnosticBag(D("SST-DIS010", selector=value) for value in scope.selected),
                 reason=f"selectors {scope.selected!r} matched no artifact in {project}",

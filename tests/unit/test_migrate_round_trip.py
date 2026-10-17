@@ -67,9 +67,9 @@ def test_the_pre_split_reference_project_migrates_to_the_goldens(tmp_path: Path,
     )
     assert sst(*compiled) == 0
     for view in VIEWS:
-        rendered = (ddl / f"{view}.sql").read_text(encoding="utf-8")
+        rendered = (ddl / "semantic_view" / f"{view}.sql").read_text(encoding="utf-8")
         assert without_header(rendered) == without_header((GOLDENS / "ddl" / f"{view}.sql").read_text(encoding="utf-8"))
-    tool = (ddl / "menu_docs_search.sql").read_text(encoding="utf-8")
+    tool = (ddl / "tool" / "menu_docs_search.sql").read_text(encoding="utf-8")
     assert without_header(tool) == without_header(
         (GOLDENS / "tool" / "menu_docs_search.sql").read_text(encoding="utf-8")
     )

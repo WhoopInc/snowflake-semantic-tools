@@ -14,7 +14,7 @@ case-insensitively, and anything else is a configuration error rather than a sil
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -31,14 +31,18 @@ LOG_LEVELS = ("debug", "info", "warn", "error")
 _TRUE = frozenset(("1", "true", "yes", "on"))
 _FALSE = frozenset(("0", "false", "no", "off"))
 
-# Each 0.3 short option that is reserved, and the usage error that names its replacement.
-RESERVED_SHORT_OPTIONS: Mapping[str, str] = {
-    "-s": "-s is reserved: it meant --schema in SST 0.3 and becomes --select in 1.0.1; write --schema or --select",
-    "-d": "-d is reserved: it meant --database in SST 0.3; write --database",
-    "-f": "-f is reserved: it meant --format in SST 0.3; use --output",
-    "-a": "-a is reserved: it meant --all in SST 0.3; use --select",
-    "-m": "-m is reserved: it meant --models in SST 0.3; use --select",
+# Each 0.3 short option that is reserved: what it meant, and what to write instead. `-s` and `-d`
+# chose where views publish, now the `+schema` and `+database` keys; a command that takes the
+# flag itself is told to write it, and `-s` also names `--select`, which it will become.
+RESERVED_SHORT_OPTIONS: Mapping[str, tuple[str, str]] = {
+    "-s": ("it meant --schema in SST 0.3 and becomes --select in 1.0.1", "--schema"),
+    "-d": ("it meant --database in SST 0.3", "--database"),
+    "-f": ("it meant --format in SST 0.3", "--output"),
+    "-a": ("it meant --all in SST 0.3", "--select"),
+    "-m": ("it meant --models in SST 0.3", "--select"),
 }
+# Where the publish location a reserved option chose is set now, for a command without the flag.
+_LOCATION_KEYS: Mapping[str, str] = {"-s": "+schema", "-d": "+database"}
 
 
 class StrictBool(click.types.BoolParamType):
@@ -210,22 +214,30 @@ def reserved_short_options() -> Decorator:
                 is_flag=True,
                 hidden=True,
                 expose_value=False,
-                callback=_refuse_reserved(message),
+                callback=_refuse_reserved,
             )
-            for letter, message in RESERVED_SHORT_OPTIONS.items()
+            for letter in RESERVED_SHORT_OPTIONS
         )
     )
 
 
-def _refuse_reserved(message: str) -> Callable[[click.Context, click.Parameter, Any], None]:
-    def callback(ctx: click.Context, param: click.Parameter, value: Any) -> None:
-        if value:
-            # Imported here: `cli.group` imports this module to declare the root group's options.
-            from snowflake_semantic_tools.cli.group import SstUsageError
+def reserved_message(letter: str, command: click.Command) -> str:
+    """Say why a reserved short option is refused, naming only flags `command` takes."""
+    meant, flag = RESERVED_SHORT_OPTIONS[letter]
+    takes = {name for param in command.params for name in param.opts}
+    flags = [name for name in dict.fromkeys((flag, "--select" if letter == "-s" else flag)) if name in takes]
+    advice = [f"write {' or '.join(flags)}"] if flags else []
+    if letter in _LOCATION_KEYS and flag not in takes:
+        advice.append(f"set {_LOCATION_KEYS[letter]} in sst_config.yml for where artifacts publish")
+    return f"{letter} is reserved: {meant}; {', or '.join(advice) or f'this command takes no {flag}'}"
 
-            raise SstUsageError(message, ctx)
 
-    return callback
+def _refuse_reserved(ctx: click.Context, param: click.Parameter, value: Any) -> None:
+    if value:
+        # Imported here: `cli.group` imports this module to declare the root group's options.
+        from snowflake_semantic_tools.cli.group import SstUsageError
+
+        raise SstUsageError(reserved_message(param.opts[0], ctx.command), ctx)
 
 
 def forwarded(ctx: click.Context, params: Mapping[str, Any]) -> dict[str, Any]:

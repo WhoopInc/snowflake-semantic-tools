@@ -92,6 +92,30 @@ def test_each_reserved_short_option_is_refused_naming_its_replacement(tmp_path: 
     assert CliRunner().invoke(cli, [letter, "validate"]).exit_code == 3
 
 
+def _refusal(*args: str) -> str:
+    """The message of the one diagnostic a reserved short option is refused with."""
+    result = CliRunner().invoke(cli, [*args, "--output", "json"])
+    assert result.exit_code == 3, result.output
+    [diagnostic] = json.loads(result.output)["diagnostics"]
+    assert diagnostic["code"] == "SST-PRT100"
+    message: str = diagnostic["message"]
+    return message
+
+
+def test_a_reserved_short_option_names_only_flags_the_command_takes(tmp_path: Path) -> None:
+    project = common(project_copy(tmp_path))
+    # What follows the `;` is the advice; before it, what the option meant in SST 0.3.
+    validate_s = _refusal("validate", *project, "-s", "x").partition("; ")[2]
+    assert validate_s == "write --select, or set +schema in sst_config.yml for where artifacts publish"
+    # `sst plan` has no --database, so -d points at the key that now chooses where artifacts publish.
+    assert _refusal("plan", *project, "-d", "x").partition("; ")[2] == (
+        "set +database in sst_config.yml for where artifacts publish"
+    )
+    # `sst enrich` takes --schema, and `sst validate` --database: each is named.
+    assert _refusal("enrich", *project, "-s", "x").endswith("write --schema or --select")
+    assert _refusal("validate", *project, "-d", "x").endswith("write --database")
+
+
 def _warnings(project: Path, *flags: str) -> tuple[int, dict[str, Any]]:
     return _json(["validate", *common(project), "--no-strict", *flags, "--output", "json"])
 

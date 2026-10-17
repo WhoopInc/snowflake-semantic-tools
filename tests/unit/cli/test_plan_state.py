@@ -58,3 +58,23 @@ def test_state_modified_without_state_is_refused(tmp_path: Path, monkeypatch: py
     )
     assert result.exit_code == 3
     assert [item["code"] for item in json.loads(result.output)["diagnostics"]] == ["SST-PRT103"]
+
+
+@pytest.mark.parametrize("selector", ["state:new", "state:orphaned"])
+@pytest.mark.parametrize("command", [["plan"], ["apply", "--yes"]])
+def test_a_state_selection_with_nothing_in_that_state_plans_nothing_to_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, selector: str, command: list[str]
+) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    result = invoke_with_port(
+        monkeypatch,
+        FakeSnowflake(state={}),
+        [*command, *common(project), "--target", "dev", "--state", str(project / "target" / "sst")]
+        + ["--select", selector, "--output", "json"],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    data = payload["data"]
+    assert data["changes" if command[0] == "plan" else "outcomes"] == []
+    assert [item["code"] for item in payload["diagnostics"] if item["severity"] == "error"] == []

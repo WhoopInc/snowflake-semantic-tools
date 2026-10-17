@@ -9,6 +9,7 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.commands.list import LIST_TYPES, type_name
 from snowflake_semantic_tools.cli.main import cli
+from tests.helpers.cli_json import invoke_json
 from tests.helpers.cli_projects import common, compile_project
 from tests.helpers.reference_project import project_copy
 
@@ -116,3 +117,40 @@ def test_list_long_prints_each_setting_with_where_it_came_from(tmp_path: Path) -
     assert items["eval:jaffle_analytics_agent"]["settings"]["retention"] == {"value": "audit", "source": "config"}
     short = CliRunner().invoke(cli, ["list", "--project-dir", str(project), "-o", "json"])
     assert all("settings" not in item for item in json.loads(short.output)["data"]["items"])
+
+
+def _listed(project: Path, *selectors: str) -> list[str]:
+    result = CliRunner().invoke(cli, ["list", "--project-dir", str(project), *selectors, "-o", "json"])
+    assert result.exit_code == 0, result.output
+    return [item["key"] for item in json.loads(result.output)["data"]["items"]]
+
+
+def test_a_selector_value_holding_spaces_is_one_selector_per_word(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    apart = ["--select", "jaffle_minimal", "--select", "jaffle_menu"]
+    assert _listed(project, "--select", "jaffle_minimal jaffle_menu") == _listed(project, *apart)
+    assert len(_listed(project, *apart)) == 2
+    assert _listed(project, "--exclude", " jaffle_minimal\tjaffle_menu ") == _listed(
+        project, "--exclude", "jaffle_minimal", "--exclude", "jaffle_menu"
+    )
+    validated = [
+        invoke_json(["validate", *common(project), "--no-strict", *selectors, "--show-info"])
+        for selectors in (["--select", "jaffle_minimal jaffle_menu"], apart)
+    ]
+    assert validated[0] == validated[1] and validated[0][0] == 0
+
+
+def test_list_no_manifest_reports_what_failed_to_compile(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    tool = project / "tools" / "platform" / "zz_dupe.yml"
+    tool.write_text(
+        "tool:\n  name: zz_dupe\n  type: procedure\n  description: Returns ok.\n  language: sql\n"
+        "  returns: VARCHAR\n  returns: INT\n  body: \"BEGIN RETURN 'ok'; END\"\n",
+        encoding="utf-8",
+    )
+    result = CliRunner().invoke(cli, ["list", "--no-manifest", *common(project), "-o", "json"])
+    assert result.exit_code == 1, result.output
+    envelope = json.loads(result.output)
+    assert "SST-LOD005" in [item["code"] for item in envelope["diagnostics"]]
+    assert "tool:zz_dupe" not in [item["key"] for item in envelope["data"]["items"]]

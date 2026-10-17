@@ -39,6 +39,9 @@ from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.state import SST_VERSION
 
+# The codes only a run that starts dbt returns; a run that reads a dbt manifest it is given has none.
+INVOCATION_CODES = frozenset(("SST-DBT020",))
+
 # The installation kinds `installation_type` names, the only answers the cache keeps.
 _KINDS = frozenset({"core", "cloud"})
 

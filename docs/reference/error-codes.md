@@ -17,7 +17,7 @@ cannot be downgraded by any setting.
 
 - [Registry (REG)](#registry-reg) -- 23 codes
 - [Configuration (CFG)](#configuration-cfg) -- 46 codes
-- [Discovery (DIS)](#discovery-dis) -- 12 codes
+- [Discovery (DIS)](#discovery-dis) -- 13 codes
 - [Parsing (PRS)](#parsing-prs) -- 59 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
@@ -29,7 +29,7 @@ cannot be downgraded by any setting.
 - [Planning (PLN)](#planning-pln) -- 43 codes
 - [Apply (APL)](#apply-apl) -- 31 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
-- [External systems (PRT)](#external-systems-prt) -- 24 codes
+- [External systems (PRT)](#external-systems-prt) -- 25 codes
 - [Internal (INT)](#internal-int) -- 13 codes
 - [Retired numbers](#retired-numbers) -- 69 numbers
 
@@ -842,6 +842,16 @@ Fix: correct model-paths in dbt_project.yml
 Raised when a `--select` value matches no artifact; `state:` selectors are not checked.
 
 Fix: widen the selector, or check the artifact name
+
+### SST-DIS011
+
+**Exclusion matched nothing** (warning)
+
+`--exclude <selector> matched no artifact`
+
+Raised when an `--exclude` value matches no artifact, so it leaves nothing out; `state:` selectors are not checked.
+
+Fix: check the artifact name, or drop the exclusion
 
 ### SST-DIS200
 
@@ -7582,6 +7592,16 @@ Fix: re-run with --yes; sst apply and sst baseline add --all-warnings ask instea
 Raised when --select or --exclude is passed to a command that takes no selector, or `sst drop` is given a pattern rather than one name.
 
 Fix: name one object, or use apply --prune for set-based removal
+
+### SST-PRT111
+
+**Emitted files would collide** (error)
+
+`<path> would hold the payload of both <a> and <b>`
+
+Raised when two artifacts of one type would write the same `sst compile --emit-ddl` or `--emit-agent-spec` file, as names that differ only in case do; nothing is emitted, though the manifest is written.
+
+Fix: rename one of the two artifacts; names that differ only in case name one file
 
 ## Internal (INT)
 

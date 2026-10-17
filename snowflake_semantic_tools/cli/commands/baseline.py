@@ -125,7 +125,7 @@ def add_command(
     path, current = _read(paths, options)
     today = _today()
     start = current or Baseline(_name(options), _date(today, expires_in), (), _now(), VERSION)
-    diagnostics = _current(paths, manifest_path, selected, excluded, target_name)
+    diagnostics, notes = _current(paths, manifest_path, selected, excluded, target_name)
     chosen = chosen_for_baseline(diagnostics, wanted)
     if all_warnings:
         _confirm(options, len(chosen), assume_yes=assume_yes)
@@ -134,7 +134,9 @@ def add_command(
     )
     write_text(output_root(paths.project_dir, path.parent), path, baseline_text(written))
     data = _data(path, written, added=added)
-    return CommandResult(data=data, human=lambda: click.echo(f"baselined {len(added)} diagnostic(s) in {path}"))
+    return CommandResult(
+        diagnostics=notes, data=data, human=lambda: click.echo(f"baselined {len(added)} diagnostic(s) in {path}")
+    )
 
 
 @baseline.command(cls=SstCommand, name="prune")
@@ -165,17 +167,19 @@ def prune_command(
     path, current = _read(paths, options)
     if current is None:
         return _absent(path)
-    in_scope = _scope(paths, manifest_path, selected, excluded)
+    in_scope, notes = _scope(paths, manifest_path, selected, excluded)
     written = current
     pruned: tuple[BaselineEntry, ...] = ()
     for target in dict.fromkeys((None, target_name)):
-        diagnostics = _current(paths, manifest_path, selected, excluded, target)
+        diagnostics, _ = _current(paths, manifest_path, selected, excluded, target)
         judged = _judged_by(in_scope, target)
         written, dropped = without_stale(written, diagnostics, judged)
         pruned = (*pruned, *dropped)
     write_text(output_root(paths.project_dir, path.parent), path, baseline_text(written))
     data = _data(path, written, pruned=pruned)
-    return CommandResult(data=data, human=lambda: click.echo(f"pruned {len(pruned)} entry(ies) from {path}"))
+    return CommandResult(
+        diagnostics=notes, data=data, human=lambda: click.echo(f"pruned {len(pruned)} entry(ies) from {path}")
+    )
 
 
 @baseline.command(cls=SstCommand, name="show")
@@ -304,19 +308,22 @@ def _current(
     selected: tuple[str, ...],
     excluded: tuple[str, ...],
     target_name: str | None = None,
-) -> tuple[Diagnostic, ...]:
-    """Return what `sst validate` of the chosen artifacts reports now.
+) -> tuple[tuple[Diagnostic, ...], DiagnosticBag]:
+    """Return what `sst validate` of the chosen artifacts reports now, and what the selectors' report says.
 
     Offline; or, with `target_name`, connected to that target as `sst validate --target` runs it.
+    The selectors' report is not among what validate reports, so it is never baselined.
     """
     compiled = compiling.compile_result(paths, target_name, manifest_path)
+    notes = DiagnosticBag()
     if selected or excluded:
-        compiled = compiling.selected_result(paths.project_dir, compiled, selected, excluded)
+        narrowed = compiling.selected_within(paths.project_dir, compiled, selected, excluded)
+        compiled, notes = narrowed.result, narrowed.report
     if target_name is None:
         result = ValidateArtifacts(None, catalog=None, target="", clock=SystemClock()).run(
             compiled, strict=False, connected=False
         )
-        return tuple(result.diagnostics)
+        return tuple(result.diagnostics), notes
     profile, port = connect(paths, target_name)
     try:
         models = model_check(project_config(paths), Fanout(port))
@@ -325,7 +332,7 @@ def _current(
         ).run(compiled, strict=False, connected=True)
     finally:
         port.close()
-    return tuple(result.diagnostics)
+    return tuple(result.diagnostics), notes
 
 
 def _judged_by(in_scope: Callable[[BaselineEntry], bool], target: str | None) -> Callable[[BaselineEntry], bool]:
@@ -335,16 +342,16 @@ def _judged_by(in_scope: Callable[[BaselineEntry], bool], target: str | None) ->
 
 def _scope(
     paths: ProjectPaths, manifest_path: Path | None, selected: tuple[str, ...], excluded: tuple[str, ...]
-) -> Callable[[BaselineEntry], bool]:
-    """Return which entries `prune` considers: all, or those of the artifacts the selectors choose."""
+) -> tuple[Callable[[BaselineEntry], bool], DiagnosticBag]:
+    """Return which entries `prune` considers, all or the chosen artifacts', and the selectors' report."""
     if not (selected or excluded):
-        return lambda entry: True
-    compiled = compiling.selected_result(
+        return (lambda entry: True), DiagnosticBag()
+    narrowed = compiling.selected_within(
         paths.project_dir, compiling.compile_result(paths, None, manifest_path), selected, excluded
     )
-    keys = {item.artifact_key for item in compiled.compiled}
-    files = {path for item in compiled.compiled for path in item.source_files}
-    return lambda entry: entry.artifact in keys or entry.file in files
+    keys = {item.artifact_key for item in narrowed.result.compiled}
+    files = {path for item in narrowed.result.compiled for path in item.source_files}
+    return (lambda entry: entry.artifact in keys or entry.file in files), narrowed.report
 
 
 def _absent(path: Path) -> CommandResult:

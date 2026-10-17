@@ -149,7 +149,7 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     CliRunner().invoke(
         cli, ["compile", "--project-dir", str(project), "--manifest", str(MANIFEST), "--emit-ddl", str(rendered)]
     )
-    ddl = (rendered / "dialect_sales.sql").read_text(encoding="utf-8")
+    ddl = (rendered / "semantic_view" / "dialect_sales.sql").read_text(encoding="utf-8")
     assert ddl == (CORPUS / "expected" / "ddl" / "dialect_sales.sql").read_text(encoding="utf-8")
     assert "ORDERS_TO_CUSTOMERS AS ORDERS (CUSTOMER_ID) REFERENCES CUSTOMERS (CUSTOMER_ID)" in ddl
     assert "ORDERS_TO_LOCATIONS AS ORDERS (LOCATION_ID) REFERENCES LOCATIONS (LOCATION_ID)" in ddl

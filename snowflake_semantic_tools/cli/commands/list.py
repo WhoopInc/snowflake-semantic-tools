@@ -27,11 +27,12 @@ from snowflake_semantic_tools.app.listing import (
     list_tables,
 )
 from snowflake_semantic_tools.app.manifest import read_notes
+from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.options import model_path_options, selection_options, with_model_paths
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring import compile as compiling
-from snowflake_semantic_tools.cli.wiring.compile import manifest_universe, selection_scope
+from snowflake_semantic_tools.cli.wiring.compile import checked_scope, manifest_universe
 from snowflake_semantic_tools.cli.wiring.manifest import build_manifest, compiled_manifest
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
@@ -82,16 +83,23 @@ def list_command(
     failed, or deactivated -- is what the one local state file under `target/sst` records;
     with none there, or more than one target's, every artifact is pending. Without
     --no-manifest the manifest `sst compile` wrote is read, and its absence exits 4; with
-    it, the project's files are compiled in memory, and nothing is written.
+    it, the project's files are compiled in memory, nothing is written, and what fails to
+    compile is reported and exits 1. A --select or --exclude value that matches nothing is
+    reported; when the selectors choose no artifact and nothing failed to compile, it exits 4.
     """
     paths = with_model_paths(paths, dbt_dir, semantic_dir)
     if no_manifest:
-        manifest = build_manifest(paths, compiling.compile_result(paths, None, manifest_path), manifest_path)
+        compiled = compiling.compile_result(paths, None, manifest_path)
+        manifest = build_manifest(paths, compiled, manifest_path)
+        # What failed to compile is missing from the list, so its errors are reported, exit 1.
+        found: tuple[Diagnostic, ...] = tuple(compiled.diagnostics)
     else:
         manifest = compiled_manifest(paths.project_dir)
-    notes = read_notes(manifest, str(target_dir(paths.project_dir) / "manifest.json"))
+        found = read_notes(manifest, str(target_dir(paths.project_dir) / "manifest.json"))
+    failed = DiagnosticBag(found).has_errors
     universe = manifest_universe(manifest)
-    scope = selection_scope(selected, excluded, universe)
+    scope, report = checked_scope(paths.project_dir, selected, excluded, universe, refuse=not failed)
+    notes = (*found, *report)
     kind, registered = LIST_TYPES[artifact_type] if artifact_type is not None else ("artifact", None)
     if kind != "artifact":
         listed = list_tables(manifest) if kind == "table" else list_members(manifest, registered or "")
@@ -108,10 +116,12 @@ def list_command(
     items = [_item(item, entries.get(item.key)) for item in summaries]
     data = {"type": artifact_type, "items": items, "count": len(items)}
     return CommandResult(
-        diagnostics=DiagnosticBag(notes),
-        data=data,
+        _exit_code(notes),
+        DiagnosticBag(notes),
+        data,
         human=lambda: _print_summaries(summaries, entries),
         rows=items,
+        gated=True,
     )
 
 
@@ -154,11 +164,18 @@ def _member_result(
     )
     rows = [_member_item(item) for item in members]
     return CommandResult(
-        diagnostics=DiagnosticBag(notes),
-        data={"type": list_type, "items": rows, "count": len(rows)},
+        _exit_code(notes),
+        DiagnosticBag(notes),
+        {"type": list_type, "items": rows, "count": len(rows)},
         human=lambda: _print_members(members),
         rows=rows,
+        gated=True,
     )
+
+
+def _exit_code(diagnostics: tuple[Diagnostic, ...]) -> int:
+    """Exit 1 when an error is reported, such as a file `--no-manifest` could not compile."""
+    return ERROR if DiagnosticBag(diagnostics).has_errors else OK
 
 
 def _member_item(summary: MemberSummary) -> dict[str, object]:

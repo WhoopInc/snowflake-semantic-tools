@@ -21,6 +21,9 @@ sst plan --target prod --output json > plan.json || test $? -eq 2
 - `compile` writes the SST manifest `plan` and `apply` read, for the same target;
   `--emit-ddl` also writes each artifact's rendered payload (a semantic view's
   DDL, an agent's specification), a readable artifact to attach to the review.
+  Each file sits in a folder named for its artifact's type, as
+  `<dir>/semantic_view/<name>.sql` or `<dir>/agent/<name>.json`, since a name
+  need only be unique within its type.
 - `plan` reads production and reports what merging would change without writing
   anything. It exits `2` when there are changes, so a pipeline that should
   accept a pending change treats `2` as success; any other non-zero exit is a

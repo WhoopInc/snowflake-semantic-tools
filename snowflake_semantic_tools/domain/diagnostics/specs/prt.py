@@ -255,4 +255,15 @@ SPECS: tuple[ErrorSpec, ...] = (
             "given a pattern rather than one name"
         ),
     ),
+    spec(
+        "SST-PRT111",
+        Severity.ERROR,
+        "Emitted files would collide",
+        "{path} would hold the payload of both {a} and {b}",
+        "rename one of the two artifacts; names that differ only in case name one file",
+        condition=(
+            "two artifacts of one type would write the same `sst compile --emit-ddl` or `--emit-agent-spec` "
+            "file, as names that differ only in case do; nothing is emitted, though the manifest is written"
+        ),
+    ),
 )

@@ -60,9 +60,25 @@ def _compile_result(
     return dataclasses.replace(result, diagnostics=DiagnosticBag((*result.diagnostics, moved)))
 
 
-def selected_result(
+@dataclasses.dataclass(frozen=True, slots=True)
+class Narrowed:
+    """A compiled result narrowed by `--select` and `--exclude`, with what the selectors' report says.
+
+    Attributes:
+        result: The compile result holding only the artifacts chosen.
+        scope: The scope `result` was narrowed to.
+        report: What `selector_report` says of the selectors. It is never added to `result`'s
+            diagnostics, so a narrowed compile reports what an unnarrowed one does.
+    """
+
+    result: CompileResult
+    scope: SelectionScope
+    report: DiagnosticBag
+
+
+def selected_within(
     project_dir: Path, result: CompileResult, selected: tuple[str, ...], excluded: tuple[str, ...] = ()
-) -> CompileResult:
+) -> Narrowed:
     """Return `result` with only the artifacts `selected` names, less those `excluded` names.
 
     No selector keeps every artifact, and no exclusion removes any.
@@ -71,27 +87,79 @@ def selected_result(
         SstUsageError: a selector is refused, as `selection` says.
         ProjectError: the selectors matched no artifact (SST-DIS010).
     """
-    return selected_within(project_dir, result, selected, excluded)[0]
+    universe = compiled_universe(result.compiled)
+    scope, report = checked_scope(project_dir, selected, excluded, universe)
+    compiled = tuple(item for item in result.compiled if scope.covers(item.artifact_type, item.artifact_key))
+    return Narrowed(dataclasses.replace(result, compiled=compiled), scope, report)
 
 
-def selected_within(
-    project_dir: Path, result: CompileResult, selected: tuple[str, ...], excluded: tuple[str, ...] = ()
-) -> tuple[CompileResult, SelectionScope]:
-    """Return `selected_result`'s narrowing of `result`, with the scope it narrowed to.
+def checked_scope(
+    project_dir: Path,
+    selected: tuple[str, ...],
+    excluded: tuple[str, ...],
+    universe: tuple[Selectable, ...],
+    *,
+    refuse: bool = True,
+) -> tuple[SelectionScope, DiagnosticBag]:
+    """Resolve the selectors over `universe`, with `selector_report`'s report, refusing a scope of nothing.
+
+    Args:
+        refuse: False to report a scope of nothing only as the report does, as where the
+            compile's own errors explain why an artifact is not there to select.
 
     Raises:
         SstUsageError: a selector is refused, as `selection` says.
-        ProjectError: the selectors matched no artifact (SST-DIS010).
+        ProjectError: selectors were given and the scope chooses no artifact (SST-DIS010).
+
+    Diagnostics:
+        SST-DIS010: raised, one per `--select` value, when the scope chooses no artifact.
     """
-    universe = compiled_universe(result.compiled)
     scope = selection_scope(selected, excluded, universe)
-    compiled = tuple(item for item in result.compiled if scope.covers(item.artifact_type, item.artifact_key))
-    if not compiled:
+    if refuse and (selected or excluded) and not any(scope.covers(item.type, item.key) for item in universe):
         raise ProjectError(
             f"selector {' '.join(selected)!r} matched no artifact in {project_dir}",
             diagnostics=tuple(D("SST-DIS010", selector=value) for value in selected),
         )
-    return dataclasses.replace(result, compiled=compiled), scope
+    return scope, selector_report(selected, excluded, universe)
+
+
+def selector_report(
+    selected: tuple[str, ...], excluded: tuple[str, ...], universe: Iterable[Selectable]
+) -> DiagnosticBag:
+    """Report each selector value that matches no artifact, then what `--exclude` removed.
+
+    A `state:` selector names no artifact of this compile, only a change since another, so it
+    is not reported.
+
+    Args:
+        universe: The artifacts the selectors resolve against: a compile's, or a manifest's.
+
+    Raises:
+        SstUsageError: a selector cannot be parsed, as `selection` says.
+
+    Diagnostics:
+        SST-DIS010: a `--select` value matched no artifact, one per value in the order given.
+        SST-DIS011: an `--exclude` value matched no artifact, one per value in the order given.
+        SST-DIS201: `--exclude` left artifacts out, counting their distinct source files.
+    """
+    artifacts = tuple(universe)
+    selected = tuple(value for value in selected if not _is_state(value))
+    excluded = tuple(value for value in excluded if not _is_state(value))
+    found = [D("SST-DIS010", selector=value) for value in selected if not _matching(artifacts, (value,))]
+    found.extend(D("SST-DIS011", selector=value) for value in excluded if not _matching(artifacts, (value,)))
+    left_out = _matching(artifacts, excluded) if excluded else ()
+    if left_out:
+        found.append(D("SST-DIS201", count=len({path for item in left_out for path in item.source_files})))
+    return DiagnosticBag(found)
+
+
+def _matching(artifacts: tuple[Selectable, ...], selectors: tuple[str, ...]) -> tuple[Selectable, ...]:
+    named = selection(selectors, artifacts)
+    return tuple(item for item in artifacts if named.names(item.type, item.key))
+
+
+def _is_state(selector: str) -> bool:
+    return selector.casefold().startswith("state:")
 
 
 def compiled_universe(compiled: Iterable[CompiledArtifact]) -> tuple[Selectable, ...]:
@@ -155,16 +223,29 @@ def selection_scope(
     )
 
 
-def check_selectors(ctx: click.Context, param: click.Parameter, values: tuple[str, ...] | str | None) -> object:
+def check_selectors(
+    ctx: click.Context, param: click.Parameter, values: tuple[str, ...] | str | None
+) -> tuple[str, ...] | None:
     """Refuse a malformed `--select` or `--exclude` while the command line is parsed, before anything runs.
 
+    Each value is split on whitespace, so `--select "a b"` is `--select a --select b`, and
+    click passes the command the split values; a value of only whitespace is kept as given.
     Only the grammar is checked here; what a selector names is resolved once the project is.
+
+    Returns:
+        Every selector given, in order; None when the option was not given at all.
 
     Raises:
         SstUsageError: a selector is refused, carrying its diagnostic.
     """
-    given = (values,) if isinstance(values, str) else tuple(values or ())
+    if values is None:
+        return None
+    given = tuple(part for value in ((values,) if isinstance(values, str) else values) for part in _split(value))
     resolved = resolve_selectors(given, artifact_types=SEMANTIC_REGISTRY.artifacts, previous={})
     if isinstance(resolved, Diagnostic):
         raise SstUsageError(resolved.message, ctx, diagnostic=resolved)
-    return values
+    return given
+
+
+def _split(value: str) -> list[str]:
+    return value.split() or [value]

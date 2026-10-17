@@ -33,8 +33,8 @@ def test_compile_accepts_an_explicit_manifest_without_invoking_dbt(tmp_path: Pat
     )
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)["data"]
-    assert (data["ddl_files"], data["artifact_counts"]) == (["jaffle_minimal.sql"], {"semantic_view": 1})
-    ddl = (tmp_path / "ddl" / "jaffle_minimal.sql").read_text(encoding="utf-8")
+    assert (data["ddl_files"], data["artifact_counts"]) == (["semantic_view/jaffle_minimal.sql"], {"semantic_view": 1})
+    ddl = (tmp_path / "ddl" / "semantic_view" / "jaffle_minimal.sql").read_text(encoding="utf-8")
     assert "CREATE OR REPLACE SEMANTIC VIEW SST_REF_DEV.JAFFLE.JAFFLE_MINIMAL" in ddl
 
 
@@ -74,8 +74,10 @@ def test_compile_writes_one_deterministic_file_per_view(tmp_path: Path) -> None:
         ],
     )
     assert result.exit_code == 0, result.output
-    assert sorted(path.name for path in output_dir.iterdir()) == ["jaffle_minimal.sql"]
-    ddl = (output_dir / "jaffle_minimal.sql").read_text(encoding="utf-8")
+    assert sorted(path.relative_to(output_dir).as_posix() for path in output_dir.rglob("*.sql")) == [
+        "semantic_view/jaffle_minimal.sql"
+    ]
+    ddl = (output_dir / "semantic_view" / "jaffle_minimal.sql").read_text(encoding="utf-8")
     assert ddl.startswith("CREATE OR REPLACE SEMANTIC VIEW SST_REF_DEV.JAFFLE.JAFFLE_MINIMAL")
     assert ddl.endswith(";\n")
 
@@ -313,5 +315,31 @@ def test_a_carriage_return_in_a_description_or_a_body_is_emitted_byte_for_byte(t
     (tools / "zz_crlf.sql").write_bytes(b"BEGIN\r\n  RETURN 'ok';  \r\nEND;\r\n")
     result = CliRunner().invoke(cli, ["compile", *common(project), "--emit-ddl", str(tmp_path / "ddl")])
     assert result.exit_code == 0, result.output
-    assert b"COMMENT = 'Use it when \r\nmenus matter.'" in (tmp_path / "ddl" / "jaffle_minimal.sql").read_bytes()
-    assert b"$$\nBEGIN\r\n  RETURN 'ok';  \r\nEND;\n$$" in (tmp_path / "ddl" / "zz_crlf.sql").read_bytes()
+    assert (
+        b"COMMENT = 'Use it when \r\nmenus matter.'"
+        in (tmp_path / "ddl" / "semantic_view" / "jaffle_minimal.sql").read_bytes()
+    )
+    assert b"$$\nBEGIN\r\n  RETURN 'ok';  \r\nEND;\n$$" in (tmp_path / "ddl" / "tool" / "zz_crlf.sql").read_bytes()
+
+
+def test_emit_ddl_writes_a_view_and_a_tool_sharing_a_name_to_two_files(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    tools = project / "tools" / "platform"
+    (tools / "jaffle_minimal.yml").write_text(
+        "tool:\n  name: jaffle_minimal\n  type: procedure\n  description: Returns ok.\n  language: sql\n"
+        "  returns: VARCHAR\n  body: \"{{ file('jaffle_minimal.sql') }}\"\n",
+        encoding="utf-8",
+    )
+    (tools / "jaffle_minimal.sql").write_text("BEGIN\n  RETURN 'ok';\nEND;\n", encoding="utf-8")
+    ddl = tmp_path / "ddl"
+    result = CliRunner().invoke(cli, ["compile", *common(project), "--emit-ddl", str(ddl), "--output", "json"])
+    assert result.exit_code == 0, result.output
+    files = json.loads(result.output)["data"]["ddl_files"]
+    assert len(files) == len(set(files)) == len(list(ddl.rglob("*.*")))
+    assert {"semantic_view/jaffle_minimal.sql", "tool/jaffle_minimal.sql"} <= set(files)
+    assert (
+        (ddl / "semantic_view" / "jaffle_minimal.sql")
+        .read_text(encoding="utf-8")
+        .startswith("CREATE OR REPLACE SEMANTIC VIEW")
+    )
+    assert "PROCEDURE" in (ddl / "tool" / "jaffle_minimal.sql").read_text(encoding="utf-8").split("(")[0]

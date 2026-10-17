@@ -144,7 +144,10 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "Publish agents as temporary agents, dropped when the apply's session ends, and skip their "
         "evals; views, tools and skills still publish permanently. Refused for a production-like target."
     ),
-    ("sst compile", "--emit-ddl"): "Write each artifact's rendered payload into this directory, offline.",
+    (
+        "sst compile",
+        "--emit-ddl",
+    ): "Write each artifact's rendered payload into this directory, one folder per type, offline.",
     ("sst compile", "--select"): "Report and emit only these artifacts; the manifest still holds everything.",
     ("sst docs", "--check"): "Write nothing; exit 2 when a committed reference page is out of date.",
     ("sst docs", "--only"): (

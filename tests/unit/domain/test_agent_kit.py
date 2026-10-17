@@ -368,9 +368,15 @@ def test_status_for_an_agent_with_nothing_installed_is_not_outdated() -> None:
     assert statuses == (SkillStatus("sst-core", installed=False), SkillStatus("sst-fix", installed=False))
 
 
-def test_status_for_a_named_selection_lists_only_it() -> None:
-    lock = _installed({"sst-core": KIT["sst-core"]}, ("sst-core",))
-    assert [status.name for status in skill_statuses(KIT, lock, {"sst-core": KIT["sst-core"]}, CORTEX)] == ["sst-core"]
+def test_status_lists_a_kit_skill_the_selection_leaves_out_as_not_installed() -> None:
+    kit = {f"sst-skill-{number}": {"SKILL.md": f"skill-{number}"} for number in range(7)}
+    chosen = dict(list(kit.items())[:6])
+    statuses = skill_statuses(kit, _installed(chosen, tuple(chosen)), chosen, CORTEX)
+    assert [(status.name, status.state) for status in statuses] == [
+        *((name, "current") for name in chosen),
+        ("sst-skill-6", "not installed"),
+    ]
+    assert statuses[-1].outdated is False
 
 
 def test_the_lock_round_trips_through_its_document() -> None:

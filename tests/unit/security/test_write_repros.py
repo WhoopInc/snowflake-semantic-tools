@@ -103,18 +103,19 @@ def test_an_artifact_name_with_path_characters_is_emitted_inside_the_emit_folder
     assert exit_code == 0, _codes(envelope)
     files = cast(list[str], cast(dict[str, object], envelope["data"])["ddl_files"])
     # The view's name reads as `/escaped"`, which joined to the emit folder was an absolute path.
-    assert "%2Fescaped%22.sql" in files
-    assert (project / "emitted" / "%2Fescaped%22.sql").is_file()
-    escaped = [path for path in tmp_path.rglob("*escaped*") if path.parent != project / "emitted"]
+    assert "semantic_view/%2Fescaped%22.sql" in files
+    assert (project / "emitted" / "semantic_view" / "%2Fescaped%22.sql").is_file()
+    escaped = [path for path in tmp_path.rglob("*escaped*") if path.parent != project / "emitted" / "semantic_view"]
     assert escaped == []
 
 
 @pytest.mark.parametrize(
-    ("option", "planted"), [("--emit-ddl", "jaffle_sales.sql"), ("--emit-agent-spec", "jaffle_minimal_agent.json")]
+    ("option", "planted"),
+    [("--emit-ddl", "semantic_view/jaffle_sales.sql"), ("--emit-agent-spec", "jaffle_minimal_agent.json")],
 )
 def test_compile_refuses_a_link_planted_in_the_emit_folder(tmp_path: Path, option: str, planted: str) -> None:
     project = project_copy(tmp_path)
-    (project / "emitted").mkdir()
+    (project / "emitted" / "semantic_view").mkdir(parents=True)
     victim = tmp_path / "victim_file.txt"
     victim.write_text("ORIGINAL CONTENT\n", encoding="utf-8")
     os.symlink(victim, project / "emitted" / planted)
@@ -144,7 +145,7 @@ def test_compile_writes_into_an_emit_folder_the_user_names_outside_the_project(t
     chosen = tmp_path / "chosen" / "ddl"
     exit_code, envelope = _invoke("compile", *common(project), "--emit-ddl", str(chosen))
     assert exit_code == 0, _codes(envelope)
-    assert (chosen / "jaffle_sales.sql").is_file()
+    assert (chosen / "semantic_view" / "jaffle_sales.sql").is_file()
 
 
 def test_the_manifest_is_never_written_through_a_symlinked_build_folder(tmp_path: Path) -> None:

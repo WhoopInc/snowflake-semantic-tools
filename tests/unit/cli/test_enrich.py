@@ -154,7 +154,7 @@ def test_verbose_is_the_global_flag_declared_once(monkeypatch: pytest.MonkeyPatc
 @pytest.mark.parametrize(
     ("args", "message"),
     [
-        (["-m", "orders"], "-m is reserved: it meant --models in SST 0.3; use --select"),
+        (["-m", "orders"], "-m is reserved: it meant --models in SST 0.3; write --select"),
         (["--models", "orders"], "--models was removed in SST 1.0; pass --select model:<name> once per model"),
         (["--all"], "--all was removed in SST 1.0; use --include all"),
         (["-syn"], "--synonyms/-syn was removed in SST 1.0; use --include synonyms"),

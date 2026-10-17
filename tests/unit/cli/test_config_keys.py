@@ -168,7 +168,7 @@ def test_views_take_the_default_tags_when_they_set_none(tmp_path: Path) -> None:
     ddl = tmp_path / "ddl"
     envelope = _compile(project, "--emit-ddl", str(ddl))
     assert [item["code"] for item in envelope["diagnostics"] if item["severity"] == "error"] == []
-    minimal = (ddl / "jaffle_minimal.sql").read_text(encoding="utf-8")
+    minimal = (ddl / "semantic_view" / "jaffle_minimal.sql").read_text(encoding="utf-8")
     assert "DATA_DOMAIN" in minimal and "routed_default" in minimal
     # A view that writes its own tags keeps them.
-    assert "routed_default" not in (ddl / "jaffle_sales.sql").read_text(encoding="utf-8")
+    assert "routed_default" not in (ddl / "semantic_view" / "jaffle_sales.sql").read_text(encoding="utf-8")

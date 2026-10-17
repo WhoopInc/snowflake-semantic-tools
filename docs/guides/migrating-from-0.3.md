@@ -50,8 +50,10 @@ current forms.
 
 `sst deploy`, `sst generate`, `sst extract` and `sst migrate-meta` are unknown
 commands (exit `3`). The short options `-m`, `-a`, `-s`, `-d` and `-f`, which
-0.3 bound, are reserved: each is refused with exit `3` and the flag to write
-instead. `sst plan` and `sst apply` read the manifest `sst compile` writes, and
+0.3 bound, are reserved: each is refused with exit `3` (`SST-PRT100`) and what
+to write instead, naming only flags the command takes. A command without
+`--schema` or `--database` points `-s` or `-d` at the `+schema` or `+database`
+key in `sst_config.yml`, which now chooses where artifacts publish. `sst plan` and `sst apply` read the manifest `sst compile` writes, and
 refuse without one (`SST-MAN001`). New in 1.0 are `sst migrate split`,
 `sst migrate refs`, `sst baseline`, `sst test`, `sst explain` and `sst docs`. The
 [CLI reference](../reference/cli.md) lists every 1.0 command and flag.

@@ -12,6 +12,8 @@ import pytest
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.render.semantic_view import render, render_verified_query
+from tests.helpers.cli_json import invoke_json
+from tests.helpers.cli_projects import common
 from tests.helpers.diagnostic_filters import coded
 from tests.helpers.reference_project import edited, edited_manifest, load, project_copy, set_column_meta
 from tests.helpers.seam_projects import COUNTED, METRICS, SmallProject, metric_file
@@ -83,3 +85,25 @@ def test_a_quoted_onboarding_flag_is_refused_and_does_not_publish_the_question(t
     queries = [query for view in loaded.views for query in view.verified_queries if query.name == "REVENUE_BY_LOCATION"]
     assert queries
     assert all("ONBOARDING_QUESTION TRUE" not in str(render_verified_query(query)) for query in queries)
+
+
+@pytest.mark.parametrize(("value", "found"), [("no", "bool"), ("[a]", "list"), ("'no'", None), ("3", None)])
+def test_an_agent_tag_value_that_is_not_text_or_a_number_is_refused_not_published(
+    tmp_path: Path, value: str, found: str | None
+) -> None:
+    project = edited(
+        tmp_path,
+        "agents/jaffle_analytics/agent.yml",
+        "config:\n",
+        f"config:\n  tags:\n    - name: \"{{{{ tag('cost_center') }}}}\"\n      value: {value}\n",
+    )
+    ddl = tmp_path / "ddl"
+    exit_code, diagnostics = invoke_json(["compile", *common(project), "--emit-ddl", str(ddl)])
+    messages = [item["message"] for item in diagnostics if item["code"] == "SST-PRS003"]
+    if found is None:
+        assert (exit_code, messages) == (0, [])
+        return
+    # An unquoted `no` is YAML's false, which published as text would set the tag to 'False'.
+    assert exit_code == 1
+    assert messages == [f"agent:jaffle_analytics_agent: 'config.tags[0].value' expects a string, found {found}"]
+    assert not ddl.exists() or "'False'" not in "".join(path.read_text() for path in ddl.rglob("*.*"))

@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from types import MappingProxyType
 
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.config_schema import (
     Setting,
@@ -44,10 +44,12 @@ def settled_agent(
         tags: What the `tags:` block of the configuration declares; None declares none.
 
     Returns:
-        The agent, and why each tag it leaves out does not resolve, in the order it lists them.
+        The agent, and why each tag it leaves out does not resolve or cannot publish, in the
+        order it lists them.
 
     Diagnostics:
         Every code `tag_reference` lists, for a tag's `name:`.
+        SST-PRS003: a tag's value is not text or a number, such as an unquoted `no`.
     """
     settings = model.settings
 
@@ -113,6 +115,10 @@ def _tag_pairs(
     """Read the `tags` setting: each `{name, value}` entry as an object name and value, in order.
 
     An entry without both is skipped; the settings checks report its shape.
+
+    Diagnostics:
+        Every code `tag_reference` lists, for a tag's `name:`.
+        SST-PRS003: a tag's value is not text or a number, such as an unquoted `no`.
     """
     pairs: list[tuple[str, str]] = []
     problems: list[Diagnostic] = []
@@ -129,8 +135,22 @@ def _tag_pairs(
             artifact=model.key,
             subject=model.key,
         )
+        written = entry["value"]
         if isinstance(found, Diagnostic):
             problems.append(found)
+        elif not isinstance(written, (str, int, float)) or isinstance(written, bool):
+            # An unquoted `no` is YAML 1.1's false; published as text it would read 'False'.
+            problems.append(
+                D(
+                    "SST-PRS003",
+                    artifact=model.key,
+                    field=f"config.tags[{index}].value",
+                    expected="a string",
+                    found=type(written).__name__,
+                    origin=model.origin,
+                    subject=model.key,
+                )
+            )
         else:
-            pairs.append((found, str(entry["value"])))
+            pairs.append((found, str(written)))
     return tuple(pairs), tuple(problems)

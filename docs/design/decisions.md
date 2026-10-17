@@ -479,7 +479,10 @@ selects, in every phase that reports one: validation's, the ones plan and
 apply raise while planning (promoted before either decides to refuse), and the
 baseline's own expiry notice. A code the registry marks non-demotable cannot be overridden below
 error (`SST-CFG033`). A diagnostic the baseline holds never blocks, and is
-counted rather than shown, until the baseline expires.
+counted rather than shown, until the baseline expires. A selector that matched
+nothing (`SST-DIS010`, or `SST-DIS011` for `--exclude`) names no artifact, so it
+has no subject and is about the run itself: `--strict` promotes it, and a
+`--select` value that misses beside others that match fails a strict run.
 
 **Rejected.** Exempting rules from `--strict`, which is a second, silent
 severity policy; and turning a rule off while a backlog is fixed, which also
