@@ -27,6 +27,7 @@ def test_sst_dbt027_silent(tmp_path: Path) -> None:
     assert dbt.runs[1] == (
         "dbt",
         "parse",
+        "--write-json",
         "--project-dir",
         str(tmp_path),
         "--profiles-dir",

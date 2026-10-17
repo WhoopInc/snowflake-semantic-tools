@@ -244,10 +244,11 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-DBT029",
         Severity.ERROR,
-        "`dbt parse` reported success but wrote no manifest",
-        "dbt parse exited 0 and {path} was not written",
-        "check --project-dir and dbt's target-path; dbt wrote its manifest elsewhere",
-        condition="the parse subprocess exited zero and the expected manifest is absent or unreadable",
+        "dbt reported success but wrote no manifest",
+        "dbt {found} exited 0 and {path} was not written",
+        "check --project-dir and dbt's target-path, which may write the manifest elsewhere; for a dbt "
+        "SST could not identify, also a no-JSON setting (DBT_ENGINE_WRITE_JSON=0, --no-write-json)",
+        condition="the parse or compile subprocess exited zero and the expected manifest is absent or unreadable",
         precheck=Precheck.RUNTIME,
     ),
     spec(

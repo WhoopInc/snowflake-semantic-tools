@@ -57,6 +57,21 @@ def test_a_second_parse_with_the_same_dbt_does_not_ask_it_what_it_is(
     assert kept == {"key": executable_key(), "kind": "core"}
 
 
+@pytest.mark.parametrize(("banner", "kind"), [("dbt 2.0.8\n", "v2"), ("dbt-oss 2.0.8\n", "v2-oss")])
+def test_a_dbt_v2_is_kept_like_core_and_still_writes_json_from_the_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, banner: str, kind: str
+) -> None:
+    _dbt_on_path(monkeypatch, tmp_path / "bin")
+    project, dbt = _project(tmp_path)
+    dbt.version = CompletedRun(0, banner, "")
+    assert _parse(project, dbt) == ()
+    assert _parse(project, dbt) == ()
+    assert _asked(dbt) == 1
+    kept = json.loads((project / "target" / "sst" / "dbt_installation.json").read_text(encoding="utf-8"))
+    assert kept["kind"] == kind
+    assert all("--write-json" in run for run in dbt.runs if run[1] == "parse")
+
+
 def test_a_rewritten_dbt_is_asked_again(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     executable = _dbt_on_path(monkeypatch, tmp_path / "bin")
     project, dbt = _project(tmp_path)

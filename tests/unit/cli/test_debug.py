@@ -73,6 +73,7 @@ def test_debug_reports_the_dbt_sst_runs_and_the_manifest_it_accepts(
     # The version is the one `dbt --version` reports, which is the dbt SST runs.
     assert dbt.runs == [("dbt", "--version")]
     assert data["versions"]["dbt"] == "1.9.4"
+    assert data["versions"]["dbt_installation"] == "core"
     assert data["manifest"]["source"] == "dbt compile" and data["manifest"]["runs_dbt"] is True
     assert data["manifest"]["path"] == str(tmp_path / "accepted" / "out" / "manifest.json")
     assert (data["manifest"]["accepted_schema_versions"], data["manifest"]["supported"]) == (["v11"], True)
@@ -87,6 +88,16 @@ def test_debug_reports_the_dbt_sst_runs_and_the_manifest_it_accepts(
     [diagnostic] = [item for item in refused["diagnostics"] if item["code"] == "SST-DBT017"]
     assert "v12" in diagnostic["message"]
     assert refused["data"]["exit_code"] == 1
+
+
+@pytest.mark.parametrize(("banner", "installation"), [("dbt 2.0.8\n", "v2"), ("dbt-oss 2.0.8\n", "v2-oss")])
+def test_debug_reports_a_dbt_v2_with_its_distribution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, banner: str, installation: str
+) -> None:
+    envelope = _debug_data(monkeypatch, tmp_path / "v2", CONFIG, FakeDbt(version=CompletedRun(0, banner, "")))
+    versions = envelope["data"]["versions"]
+    assert (versions["dbt"], versions["dbt_installation"]) == ("2.0.8", installation)
+    assert "SST-DBT020" not in {item["code"] for item in envelope["diagnostics"]}
 
 
 def test_debug_reports_every_candidate_and_refuses_what_it_cannot_resolve(tmp_path: Path) -> None:

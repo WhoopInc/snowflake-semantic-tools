@@ -90,7 +90,7 @@ def test_a_dbt_sst_cannot_identify_starts_once_and_both_compiles_agree(
     # Packages dbt has not installed are refused before dbt starts (SST-DBT026); this one needs none.
     (project / "packages.yml").unlink()
     dbt = FakeDbt(
-        version=CompletedRun(0, "dbt 2.0.8\n", ""),
+        version=CompletedRun(0, "dbt-fusion 2.0.0-beta\n", ""),
         writes=(project / "target" / "manifest.json", json.loads(DBT_MANIFEST.read_text(encoding="utf-8"))),
     )
     monkeypatch.setattr(

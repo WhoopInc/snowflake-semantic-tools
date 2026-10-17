@@ -28,9 +28,10 @@ clean-targets:
   - "dbt_packages"
 
 # PINNED TO THE MANIFEST SCHEMA, NOT TO A dbt MINOR. The range spans the dbt
-# minors that write manifest schema v12, which is the shape SST's manifest reader
-# reads. Widen or re-pin when the manifest schema moves, not when dbt does.
-require-dbt-version: [">=1.11.0", "<1.13.0"]
+# releases that write manifest schema v12 and SST tests, dbt Core 1.10-1.13 and
+# dbt v2 2.0, which is the shape SST's manifest reader reads. Widen or re-pin
+# when the manifest schema moves, not when dbt does.
+require-dbt-version: [">=1.10.0", "<2.1.0"]
 
 models:
   sst_reference_impl:

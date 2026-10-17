@@ -68,34 +68,71 @@ def test_the_evals_suite_builds_compiles_and_applies_verify_before_it_runs() -> 
     assert manifests == {"tests/fixtures/reference_project/target/manifest.json"}
 
 
-def _admitted_minors() -> list[str]:
-    """The dbt minors the reference project's `require-dbt-version` admits, as `>=1.a.0, <1.b.0`."""
+# dbt Core 1.13 is the last 1.x minor (dbt Labs); from 2.0, dbt ships as `dbt` and `dbt-oss`.
+_LAST_CORE_MINOR = 13
+_V2_DISTRIBUTIONS = {"": "dbt", "-oss": "dbt-oss"}
+_RELEASE = re.compile(r"(\d+)\.(\d+)\.\d+(?:[ab]\d+|rc\d+)?")
+
+
+def _admitted_lines() -> list[str]:
+    """The dbt release lines the reference project's `require-dbt-version` admits.
+
+    `>=1.a.0, <2.b.0` admits the dbt Core minors from 1.a to 1.13, then each dbt v2 minor below
+    2.b in both its distributions: `2.0` for `dbt`, `2.0-oss` for `dbt-oss`.
+    """
     project = yaml.safe_load((FIXTURE / "dbt_project.yml").read_text(encoding="utf-8"))
     lower, upper = project["require-dbt-version"]
     low = re.fullmatch(r">=(\d+)\.(\d+)\.0", lower)
     high = re.fullmatch(r"<(\d+)\.(\d+)\.0", upper)
-    assert low and high and low.group(1) == high.group(1), project["require-dbt-version"]
-    return [f"{low.group(1)}.{minor}" for minor in range(int(low.group(2)), int(high.group(2)))]
+    assert low and high and int(low.group(1)) <= int(high.group(1)) <= 2, project["require-dbt-version"]
+    lines: list[str] = []
+    for major in range(int(low.group(1)), int(high.group(1)) + 1):
+        first = int(low.group(2)) if major == int(low.group(1)) else 0
+        last = int(high.group(2)) if major == int(high.group(1)) else _LAST_CORE_MINOR + 1
+        suffixes = ("",) if major == 1 else tuple(_V2_DISTRIBUTIONS)
+        lines.extend(f"{major}.{minor}{suffix}" for minor in range(first, last) for suffix in suffixes)
+    return lines
 
 
-def test_the_required_gate_parses_the_reference_project_with_every_admitted_dbt_minor() -> None:
+def _line(release: str) -> str:
+    """The release line, `1.12` or `2.0`, a release such as `1.12.5` or `1.13.0b1` belongs to."""
+    found = _RELEASE.fullmatch(release)
+    assert found, release
+    return f"{found.group(1)}.{found.group(2)}"
+
+
+def test_the_required_gate_parses_the_reference_project_with_every_admitted_dbt_line() -> None:
     gate = _workflow("test-and-lint.yml")
     assert set(_triggers(gate)) == {"push", "pull_request", "workflow_call"}
     job = gate["jobs"]["dbt"]
-    assert job["strategy"]["matrix"]["dbt"] == _admitted_minors()
-    captured = sorted({path.parent.name.removeprefix("dbt-").rsplit(".", 1)[0] for path in COMMITTED_MANIFESTS})
-    assert captured == _admitted_minors(), "capture a manifest for each minor (tests/helpers/manifest_capture.py)"
-    # Each minor runs the exact dbt Core release a committed manifest was written by, and a
-    # dbt-snowflake release of the same minor; no version floats to a newer patch.
-    pins = {entry["dbt"]: entry for entry in job["strategy"]["matrix"]["include"]}
+    admitted = _admitted_lines()
+    assert job["strategy"]["matrix"]["dbt"] == admitted
     releases = {path.parent.name.removeprefix("dbt-") for path in COMMITTED_MANIFESTS}
-    assert sorted(pins) == _admitted_minors()
-    for minor, entry in pins.items():
-        assert entry["dbt_core"] in releases and entry["dbt_core"].rsplit(".", 1)[0] == minor, entry
-        assert re.fullmatch(rf"{re.escape(minor)}\.\d+", entry["dbt_snowflake"]), entry
+    captured = sorted({_line(release) for release in releases})
+    assert captured == sorted({line.removesuffix("-oss") for line in admitted}), (
+        "capture a manifest for each line (tests/helpers/manifest_capture.py)"
+    )
+    # Each line runs the exact release a committed manifest was written by -- dbt Core with a
+    # dbt-snowflake release no newer than its minor, or dbt v2 on its own -- and nothing floats
+    # to a newer patch.
+    pins = {entry["dbt"]: entry for entry in job["strategy"]["matrix"]["include"]}
+    assert sorted(pins) == sorted(admitted)
+    for line, entry in pins.items():
+        release = entry["release"]
+        assert release in releases and _line(release) == line.removesuffix("-oss"), entry
+        packages = entry["install"].split()
+        if line.startswith("1."):
+            core, adapter = packages
+            assert core == f"dbt-core=={release}", entry
+            snowflake = re.fullmatch(r"dbt-snowflake==1\.(\d+)\.\d+", adapter)
+            assert snowflake and int(snowflake.group(1)) <= int(line.split(".")[1]), entry
+        else:
+            assert packages == [f"{_V2_DISTRIBUTIONS[line.removeprefix(_line(release))]}=={release}"], entry
     runs = [" ".join(str(step.get("run", "")).split()) for step in job["steps"]]
-    assert any("--extras dbt" in run for run in runs)
-    assert any('"dbt-core==$DBT_CORE" "dbt-snowflake==$DBT_SNOWFLAKE"' in run for run in runs)
+    # dbt Core comes with the dbt extra; dbt v2, which brings its own `dbt`, without it.
+    assert any("--extras dbt" in run and "startsWith(matrix.dbt, '1.')" in run for run in runs)
+    install = next(step for step in job["steps"] if "$DBT_INSTALL" in str(step.get("run", "")))
+    assert install["env"]["DBT_INSTALL"] == "${{ matrix.install }}"
     assert not any("--constraint" in run or ".*" in run for run in runs)
     assert any("dbt deps" in run for run in runs)
     goldens = next(step for step in job["steps"] if "tests/unit/test_goldens.py" in str(step.get("run", "")))

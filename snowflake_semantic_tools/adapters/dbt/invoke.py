@@ -5,9 +5,11 @@ is `subprocess_runner`; tests pass a fake. In order, `parse_project`:
 
 1. refuses to start while `packages.yml` declares packages that are not installed (SST-DBT026);
 2. runs `dbt --version`, refusing a dbt that cannot be run (SST-DBT027), warning when the
-   installation cannot be identified (SST-DBT020), and refusing `defer.auto_compile` under
+   installation cannot be identified (SST-DBT020) -- dbt Core 1.x, the dbt Cloud CLI and dbt v2,
+   in its `dbt` and `dbt-oss` distributions, are -- and refusing `defer.auto_compile` under
    the dbt Cloud CLI, which cannot parse a target other than its default (SST-DBT021);
-3. runs `dbt parse`, refusing a non-zero exit (SST-DBT028) after passing dbt's own output on,
+3. runs `dbt parse`, with `--write-json` for dbt Core and dbt v2 so no no-JSON setting hides
+   the manifest, refusing a non-zero exit (SST-DBT028) after passing dbt's own output on,
    and a zero exit that wrote no manifest where dbt_project.yml says it would (SST-DBT029).
 
 Starting dbt only to ask what it is costs about two seconds, so with an `installation_cache`
@@ -21,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -43,7 +46,12 @@ from snowflake_semantic_tools.domain.state import SST_VERSION
 INVOCATION_CODES = frozenset(("SST-DBT020",))
 
 # The installation kinds `installation_type` names, the only answers the cache keeps.
-_KINDS = frozenset({"core", "cloud"})
+_KINDS = frozenset({"core", "cloud", "v2", "v2-oss"})
+# dbt v2 prints one line, `dbt 2.0.8` or, for its Apache-2.0 distribution, `dbt-oss 2.0.8`.
+_V2_BANNER = re.compile(r"^dbt(-oss)? 2\.\d+")
+# The installations `dbt parse` and `dbt compile` are given `--write-json`: measured on dbt Core
+# 1.8-1.13 and dbt v2 2.0. The dbt Cloud CLI's flags differ, so it is left as it is configured.
+_WRITES_JSON = frozenset({"core", "v2", "v2-oss"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,7 +148,15 @@ def missing_packages(project_dir: Path) -> int:
 
 
 def installation_type(output: str) -> str | None:
-    """Identify a dbt installation from what `dbt --version` printed: `core`, `cloud`, or None."""
+    """Identify a dbt installation from what `dbt --version` printed; None when it names none SST knows.
+
+    `core` is dbt Core 1.x, `cloud` the dbt Cloud CLI, `v2` dbt v2 (the Fusion engine) and
+    `v2-oss` its dbt-oss distribution; dbt v2 is told by its first line alone.
+    """
+    first = output.strip().splitlines()[0].strip().casefold() if output.strip() else ""
+    v2 = _V2_BANNER.match(first)
+    if v2 is not None:
+        return "v2-oss" if v2.group(1) else "v2"
     text = output.casefold()
     if "dbt cloud cli" in text or "cloud cli -" in text:
         return "cloud"
@@ -163,9 +179,10 @@ def _run(runner: DbtRunner, argv: Sequence[str], cwd: Path) -> CompletedRun:
 
 def _installation(
     runner: DbtRunner, project_dir: Path, auto_compile: bool, cache: Path | None = None
-) -> tuple[Diagnostic, ...]:
+) -> tuple[tuple[Diagnostic, ...], str | None]:
     """Ask dbt what it is, unless `cache` holds the answer for this dbt, and refuse what it cannot do.
 
+    Returns the warnings, and the installation kind; None when dbt named none SST knows.
     A `dbt --version` that runs and exits non-zero names no installation either: dbt still ran,
     so it is the `dbt parse` that follows which reports a broken install (SST-DBT028).
 
@@ -182,15 +199,15 @@ def _installation(
         output = f"{completed.stdout}\n{completed.stderr}".strip()
         if completed.returncode != 0:
             first = output.splitlines()[0] if output else "no output"
-            return (D("SST-DBT020", found=f"{first!r} (exit {completed.returncode})"),)
+            return (D("SST-DBT020", found=f"{first!r} (exit {completed.returncode})"),), None
         kind = installation_type(output)
         if kind is None:
             first = output.splitlines()[0] if output else "no output"
-            return (D("SST-DBT020", found=repr(first)),)
+            return (D("SST-DBT020", found=repr(first)),), None
         _store_kind(project_dir, cache, key, kind)
     if kind == "cloud" and auto_compile:
         raise _refuse(D("SST-DBT021", origin=Origin("sst_config.yml"), found="the dbt Cloud CLI"))
-    return ()
+    return (), kind
 
 
 def executable_key() -> dict[str, object] | None:
@@ -284,10 +301,16 @@ def parse_project(
     missing = missing_packages(project_dir)
     if missing:
         raise _refuse(D("SST-DBT026", origin=Origin("packages.yml"), count=missing))
-    warnings = _installation(runner, project_dir, auto_compile, installation_cache)
+    warnings, kind = _installation(runner, project_dir, auto_compile, installation_cache)
     # Absolute, because dbt runs inside the project and would resolve a relative path a second time.
     root = project_dir.resolve()
-    arguments = ["dbt", command, "--project-dir", str(root), "--profiles-dir", str((profiles_dir or root).resolve())]
+    arguments = ["dbt", command]
+    # A user's or CI's no-JSON setting (DBT_ENGINE_WRITE_JSON=0, --no-write-json) would hide the
+    # manifest; dbt Core and dbt v2 write it despite one when asked. Only an installation SST
+    # identified as taking the flag is given it.
+    if kind in _WRITES_JSON:
+        arguments.append("--write-json")
+    arguments.extend(("--project-dir", str(root), "--profiles-dir", str((profiles_dir or root).resolve())))
     if target_name:
         arguments.extend(("--target", target_name))
     if target_path is not None:
@@ -301,5 +324,5 @@ def parse_project(
             shown = manifest_path.relative_to(project_dir).as_posix()
         except ValueError:
             shown = str(manifest_path)
-        raise _refuse(D("SST-DBT029", path=shown))
+        raise _refuse(D("SST-DBT029", found=command, path=shown))
     return warnings

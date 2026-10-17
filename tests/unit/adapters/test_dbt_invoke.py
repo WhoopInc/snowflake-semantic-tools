@@ -26,7 +26,37 @@ def test_installations_are_told_apart_by_what_dbt_prints() -> None:
     assert installation_type("Core:\n  - installed: 1.11.2\n") == "core"
     assert installation_type("installed version: dbt-core 1.8") == "core"
     assert installation_type("dbt Cloud CLI - 0.38.6") == "cloud"
+    # dbt v2 prints one line, naming its distribution.
+    assert installation_type("dbt 2.0.8\n") == "v2"
+    assert installation_type("dbt-oss 2.0.8\n") == "v2-oss"
+    assert installation_type("dbt-fusion 2.0.0-beta") is None
+    assert installation_type("dbt 3.0.0") is None
     assert installation_type("something else") is None
+    assert installation_type("") is None
+
+
+@pytest.mark.parametrize(
+    ("banner", "writes_json"),
+    [
+        ("Core:\n  - installed: 1.12.6\n", True),
+        ("dbt 2.0.8\n", True),
+        ("dbt-oss 2.0.8\n", True),
+        ("dbt Cloud CLI - 0.38.6\n", False),
+        ("dbt-fusion 2.0\n", False),
+    ],
+    ids=["core", "v2", "v2-oss", "cloud", "unidentified"],
+)
+def test_only_an_installation_known_to_take_it_is_asked_to_write_json(
+    tmp_path: Path, banner: str, writes_json: bool
+) -> None:
+    project = SmallProject(tmp_path)
+    project.write()
+    dbt = FakeDbt(version=CompletedRun(0, banner, ""), writes=(tmp_path / "target" / "manifest.json", manifest()))
+    YamlProjectSource(project_paths(tmp_path), dbt_runner=dbt).load_project()
+    [parse] = [run for run in dbt.runs if run[1] == "parse"]
+    assert ("--write-json" in parse) is writes_json
+    if writes_json:
+        assert parse[2] == "--write-json"
 
 
 def test_a_project_source_parses_once_and_reports_dbts_warnings_with_the_project(tmp_path: Path) -> None:

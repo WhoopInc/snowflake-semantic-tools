@@ -8,9 +8,9 @@ change goes through.
 
 - Python 3.11, 3.12, or 3.13.
 - A dbt project on the Snowflake adapter whose `dbt parse` writes manifest
-  schema v12. Every change to SST runs `dbt parse` with dbt 1.11 and 1.12 on
-  its reference project and checks the manifest each writes; SST reports
-  `SST-DBT017` for any other manifest schema.
+  schema v12: dbt Core 1.10 to 1.13, or dbt v2 2.0. Every change to SST runs
+  `dbt parse` with each of them on its reference project and checks the
+  manifest each writes; SST reports `SST-DBT017` for any other manifest schema.
 - A Snowflake role that can create semantic views in the schema you publish to,
   select from the tables those views read, and create tables in the state
   schema (SST's state table and its lock table). [Security](guides/security.md#operating-sst)
@@ -27,8 +27,9 @@ sst --version
 ```
 
 SST runs whichever `dbt` is on `PATH`. If the environment has none, install
-`snowflake-semantic-tools[dbt]` instead, which adds dbt Core with the Snowflake
-adapter.
+`snowflake-semantic-tools[dbt]` instead, which adds dbt Core 1.x with the
+Snowflake adapter. For dbt v2, install it yourself beside SST (`pip install
+dbt`, or `dbt-oss`); see [Using dbt v2](design/dbt-compatibility.md#using-dbt-v2).
 
 ## 2. Put `profiles.yml` in the project
 

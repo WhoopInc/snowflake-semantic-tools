@@ -37,7 +37,17 @@ def test_the_manifest_is_read_under_target_path_after_one_dbt_parse(tmp_path: Pa
     second = source.dbt_catalog()
     assert runs == [
         ("dbt", "--version"),
-        ("dbt", "parse", "--project-dir", str(project), "--profiles-dir", str(project), "--target", "dev"),
+        (
+            "dbt",
+            "parse",
+            "--write-json",
+            "--project-dir",
+            str(project),
+            "--profiles-dir",
+            str(project),
+            "--target",
+            "dev",
+        ),
     ]
     assert first == second and first.model("customers") is not None
 

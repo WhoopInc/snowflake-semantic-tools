@@ -5823,13 +5823,13 @@ Fix: read dbt's own output above; the failure is in the dbt project
 
 ### SST-DBT029
 
-**`dbt parse` reported success but wrote no manifest** (error)
+**dbt reported success but wrote no manifest** (error)
 
-`dbt parse exited 0 and <path> was not written`
+`dbt <found> exited 0 and <path> was not written`
 
-Raised when the parse subprocess exited zero and the expected manifest is absent or unreadable.
+Raised when the parse or compile subprocess exited zero and the expected manifest is absent or unreadable.
 
-Fix: check --project-dir and dbt's target-path; dbt wrote its manifest elsewhere
+Fix: check --project-dir and dbt's target-path, which may write the manifest elsewhere; for a dbt SST could not identify, also a no-JSON setting (DBT_ENGINE_WRITE_JSON=0, --no-write-json)
 
 ### SST-DBT030
 

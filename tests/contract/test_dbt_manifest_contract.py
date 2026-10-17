@@ -88,6 +88,10 @@ TEST_PATHS: dict[str, _Kind] = {
     "column_name": _OPTIONAL_TEXT,
 }
 SOURCE_PATHS: dict[str, _Kind] = {"source_name": _TEXT, "name": _TEXT, "relation_name": _TEXT}
+# The paths a release may leave out where the YAML sets nothing, rather than write empty: dbt v2
+# omits all three, and dbt 1.8 a column's `config`. SST reads an absent one as empty, so absence
+# is no gap; a present one is still held to its type.
+OMITTED_WHEN_UNSET = frozenset(("columns.data_type", "columns.config.meta", "tests.column_name"))
 _ABSENT = object()
 
 
@@ -116,11 +120,12 @@ def _at(value: object, dotted: str) -> object:
     return value
 
 
-def _check(value: object, where: str, paths: Mapping[str, _Kind]) -> Iterator[str]:
+def _check(value: object, where: str, paths: Mapping[str, _Kind], part: str = "") -> Iterator[str]:
     for dotted, kind in paths.items():
         found = _at(value, dotted)
         if found is _ABSENT:
-            yield f"{where}.{dotted}: absent"
+            if f"{part}.{dotted}" not in OMITTED_WHEN_UNSET:
+                yield f"{where}.{dotted}: absent"
         elif not isinstance(found, kind) or (kind is not bool and isinstance(found, bool)):
             expected = " or ".join(item.__name__ for item in (kind if isinstance(kind, tuple) else (kind,)))
             yield f"{where}.{dotted}: {type(found).__name__}, not {expected}"
@@ -144,9 +149,9 @@ def read_surface_gaps(document: Mapping[str, Any]) -> list[str]:
         gaps.extend(_check(node, f"nodes.{key}", MODEL_PATHS))
         columns = _mapping(node.get("columns"))
         for name, column in sorted(columns.items()):
-            gaps.extend(_check(column, f"nodes.{key}.columns.{name}", COLUMN_PATHS))
+            gaps.extend(_check(column, f"nodes.{key}.columns.{name}", COLUMN_PATHS, "columns"))
     for key, node in sorted(tests.items()):
-        gaps.extend(_check(node, f"nodes.{key}", TEST_PATHS))
+        gaps.extend(_check(node, f"nodes.{key}", TEST_PATHS, "tests"))
     for key, node in sorted(sources.items()):
         gaps.extend(_check(node, f"sources.{key}", SOURCE_PATHS))
     # `meta.sst`, else `config.meta.sst`: one of them carries SST's keys wherever a model has any.
@@ -205,8 +210,9 @@ def test_sst_recognises_each_model_checksum_the_release_wrote(manifest_path: Pat
 def test_a_whitespace_only_edit_is_stale_only_for_a_release_that_hashes_whitespace(
     committed: Path, tmp_path: Path
 ) -> None:
-    # dbt 1.12 collapses whitespace before hashing, and 1.11 only strips the ends, so doubling a
-    # space inside a model is fresh to the first and an edit to the second.
+    # dbt 1.12 and later (dbt v2 included) collapse whitespace before hashing, and 1.11 and earlier
+    # only strip the ends, so doubling a space inside a model is fresh to the first and an edit to
+    # the second.
     document = _document(committed)
     project = _hashed_code_project(tmp_path, document)
     catalog = catalog_from_document(document)
@@ -214,7 +220,8 @@ def test_a_whitespace_only_edit_is_stale_only_for_a_release_that_hashes_whitespa
     path = project / str(edited.original_file_path)
     path.write_text(path.read_text(encoding="utf-8").replace(" ", "  ", 1), encoding="utf-8")
     stale = [item.context["value"] for item in stale_models(project, catalog, ("models",))]
-    hashes_whitespace = str(document["metadata"]["dbt_version"]).startswith("1.11.")
+    major, minor = (int(part) for part in str(document["metadata"]["dbt_version"]).split(".")[:2])
+    hashes_whitespace = (major, minor) < (1, 12)
     assert stale == ([edited.original_file_path] if hashes_whitespace else [])
 
 
@@ -264,3 +271,23 @@ def test_a_missing_or_retyped_path_is_named(edit: Callable[[dict[str, Any]], obj
     edit(document)
     gaps = read_surface_gaps(document)
     assert len(gaps) == 1 and gaps[0].endswith(named), gaps
+
+
+def test_a_path_left_out_when_unset_is_no_gap_but_a_retyped_one_is() -> None:
+    document = json.loads(COMMITTED[0].read_text(encoding="utf-8"))
+    model = document["nodes"]["model.sst_reference_impl.orders"]
+    column = next(iter(model["columns"].values()))
+    test = next(node for key, node in document["nodes"].items() if key.startswith(f"test.{PROJECT}."))
+    # As dbt v2 writes them where the YAML sets nothing.
+    column.pop("data_type")
+    column.pop("config")
+    test.pop("column_name")
+    assert read_surface_gaps(document) == []
+    column["data_type"] = 7
+    [gap] = read_surface_gaps(document)
+    assert gap.endswith("data_type: int, not str or NoneType")
+    # Any other path is still a gap when absent.
+    column["data_type"] = None
+    column.pop("description")
+    [gap] = read_surface_gaps(document)
+    assert gap.endswith("description: absent")

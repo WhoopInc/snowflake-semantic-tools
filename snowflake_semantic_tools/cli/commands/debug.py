@@ -16,7 +16,7 @@ import click
 
 from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.adapters.agent_kit import read_lock
-from snowflake_semantic_tools.adapters.dbt.invoke import DbtRunner, subprocess_runner
+from snowflake_semantic_tools.adapters.dbt.invoke import DbtRunner, installation_type, subprocess_runner
 from snowflake_semantic_tools.adapters.dbt.manifest import SUPPORTED_SCHEMA_VERSIONS, schema_version_number
 from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_profile_target
 from snowflake_semantic_tools.adapters.dbt.project import target_path
@@ -125,28 +125,41 @@ def _dbt_settings(paths: ProjectPaths, target_name: str | None) -> DbtSettings:
 
 
 def _versions(paths: ProjectPaths, *, runs_dbt: bool) -> dict[str, object]:
-    """Report SST's version and, when SST runs dbt, which `dbt` on `PATH` and its version."""
+    """Report SST's version and, when SST runs dbt, which `dbt` on `PATH`, its version and installation.
+
+    The installation is the kind `installation_type` names -- `core`, `cloud`, `v2` or `v2-oss` --
+    and None when dbt names none SST knows.
+    """
     if not runs_dbt:
-        return {"sst": VERSION, "dbt": None, "dbt_path": None}
-    return {"sst": VERSION, "dbt": _dbt_version(paths.project_dir), "dbt_path": shutil.which("dbt")}
+        return {"sst": VERSION, "dbt": None, "dbt_installation": None, "dbt_path": None}
+    version, installation = _dbt_version(paths.project_dir)
+    return {"sst": VERSION, "dbt": version, "dbt_installation": installation, "dbt_path": shutil.which("dbt")}
 
 
-def _dbt_version(project_dir: Path) -> str | None:
-    """Return the version `dbt --version` reports, as SST runs it; None when it cannot say."""
+def _dbt_version(project_dir: Path) -> tuple[str | None, str | None]:
+    """Return the version `dbt --version` reports, as SST runs it, and the installation it names.
+
+    Either is None when dbt cannot say.
+    """
     try:
         completed = dbt_runner(("dbt", "--version"), project_dir)
     except OSError:
-        return None
-    lines = [line.strip() for line in f"{completed.stdout}\n{completed.stderr}".splitlines() if line.strip()]
+        return None, None
+    output = f"{completed.stdout}\n{completed.stderr}"
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
     if completed.returncode != 0 or not lines:
-        return None
+        return None, None
+    installation = installation_type(output)
+    if installation in ("v2", "v2-oss"):
+        # dbt v2 prints one line, `dbt 2.0.8`.
+        return lines[0].split()[1], installation
     for line in lines:
         # dbt-core prints `- installed: 1.8.0`; the dbt Cloud CLI prints `dbt Cloud CLI - 0.38.6`.
         if "installed:" in line:
-            return line.split("installed:", 1)[1].split()[0]
+            return line.split("installed:", 1)[1].split()[0], installation
         if "cloud cli" in line.casefold() and " - " in line:
-            return line.rsplit(" - ", 1)[1].split()[0]
-    return lines[0]
+            return line.rsplit(" - ", 1)[1].split()[0], installation
+    return lines[0], installation
 
 
 def _agent_kit(project_dir: Path) -> dict[str, object]:

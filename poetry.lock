@@ -3986,4 +3986,4 @@ dbt = ["dbt-snowflake"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "81154ea804a97ea93d208e785dafa8de6ed70dad7d3cd02363a7ae4df2c27ec5"
+content-hash = "d1a7cb7fe6cf255c9eba0a44d5a71bcf0b16a26e7138e2b06f96cbfd4aacc089"

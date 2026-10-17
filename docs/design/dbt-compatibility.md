@@ -195,53 +195,93 @@ Drawn from: [manifest.py](../../snowflake_semantic_tools/adapters/dbt/manifest.p
 
 ## Supported dbt versions
 
-What the repository runs, and therefore what "supported" can mean:
+SST supports **dbt Core 1.10 to 1.13 and dbt v2 2.0** (the Fusion engine, in
+both its `dbt` and `dbt-oss` distributions), on manifest schema v12. That is
+what the repository runs:
 
-- The `dbt` extra accepts `dbt-snowflake` from 1.8 up to, not including, 2.0;
-  the lock file resolves it to dbt Core 1.12.5 with `dbt-snowflake` 1.12.1.
-- The required gate's `dbt` job runs real dbt, once for each minor the
-  reference project's `require-dbt-version` admits, 1.11 and 1.12. It installs
-  the extra, pins dbt Core and `dbt-snowflake` to the releases the committed
-  manifests were captured with (1.11.15 with 1.11.6, 1.12.5 with 1.12.1), runs
-  `dbt deps`, and runs `pytest tests/unit/test_goldens.py` with
-  `SST_GOLDEN_PROJECT` naming the reference project, which compiles it with no
-  manifest, so SST starts `dbt parse` itself and renders every artifact from
-  the manifest it writes for comparison with the goldens. It then holds that
-  manifest to the contract test above. The reference project's default
-  target carries no credential, so nothing connects to Snowflake and no secret
-  is needed; the job reaches only the package indexes it installs from. Only
-  those two packages are pinned: pip keeps each locked dependency they still
-  accept and resolves any they do not, such as `dbt-adapters` or `dbt-common`,
-  outside the lock.
+| dbt | Install | Committed manifest | `dbt` job |
+|---|---|---|---|
+| dbt Core 1.10 | `dbt-core==1.10.23 dbt-snowflake==1.10.8` | `dbt-1.10.23` | yes |
+| dbt Core 1.11 | `dbt-core==1.11.15 dbt-snowflake==1.11.6` | `dbt-1.11.15` | yes |
+| dbt Core 1.12 | `dbt-core==1.12.5 dbt-snowflake==1.12.1` | `dbt-1.12.5` | yes |
+| dbt Core 1.13 | `dbt-core==1.13.0b1 dbt-snowflake==1.12.3` (pre-release) | `dbt-1.13.0b1` | yes |
+| dbt v2 2.0 | `dbt==2.0.8` | `dbt-2.0.8` | yes |
+| dbt v2 2.0, OSS | `dbt-oss==2.0.8` | `dbt-2.0.8` (the same manifest) | yes |
+
+- The `dbt` extra accepts `dbt-snowflake` from 1.10 up to, not including, 2.0:
+  it installs dbt Core 1.x, and the lock file resolves it to dbt Core 1.12.5
+  with `dbt-snowflake` 1.12.1. dbt v2 is not an extra; see [Using dbt
+  v2](#using-dbt-v2).
+- The required gate's `dbt` job runs real dbt, once for each release line the
+  reference project's `require-dbt-version` admits, as the table lists. A dbt
+  Core line installs the extra and pins dbt Core and `dbt-snowflake` to the
+  releases its committed manifest was captured with; a dbt v2 line installs
+  `dbt` or `dbt-oss` alone, without the extra, since it brings its own adapter
+  and its own `dbt` executable. Each runs `dbt deps`, then `pytest
+  tests/unit/test_goldens.py` with `SST_GOLDEN_PROJECT` naming the reference
+  project, which compiles it with no manifest, so SST starts `dbt parse` itself
+  and renders every artifact from the manifest it writes for comparison with
+  the goldens. It then holds that manifest to the contract test above. The
+  reference project's default target carries no credential, so nothing
+  connects to Snowflake and no secret is needed; the job reaches only the
+  package indexes it installs from. Only the packages a line names are pinned:
+  pip keeps each locked dependency they still accept and resolves any they do
+  not, such as `dbt-adapters` or `dbt-common`, outside the lock.
 - The rest of the gate does not run dbt. It installs the package without the
   extra, runs dbt-facing code against a fake runner, loads the reference
   project against a committed manifest written by dbt 1.11, and holds the full
-  manifests under `tests/fixtures/dbt_manifests/`, written by dbt 1.11.15 and
-  1.12.5, to the read surface above.
+  manifests under `tests/fixtures/dbt_manifests/` to the read surface above.
 - The manual evals workflow installs the extra, runs `dbt build` on the
   reference project with the locked dbt, and compiles against the manifest that
   build writes.
-- The reference project pins `require-dbt-version` to 1.11 and 1.12, and
-  `tests/unit/test_ci_workflows.py` fails when the `dbt` job's matrix or the
-  committed manifests stop covering every minor it admits.
+- The reference project pins `require-dbt-version` to `[">=1.10.0",
+  "<2.1.0"]`, and `tests/unit/test_ci_workflows.py` fails when the `dbt` job's
+  matrix or the committed manifests stop covering every line it admits.
 
-So every change is checked with dbt 1.11 and 1.12 on manifest schema v12:
-`dbt parse` with 1.11.15 and 1.12.5, and the committed manifests of
-1.11.15 and 1.12.5. `dbt build` runs only in the manual workflow, with the
-locked 1.12. Earlier releases the extra allows are not tested; any of them that
-writes manifest v12 passes the gate.
+So every change is checked on manifest schema v12 with `dbt parse` under each
+release in the table, and against each committed manifest. `dbt build` runs
+only in the manual workflow, with the locked 1.12. dbt 1.13 is tested on its
+pre-release until it ships. dbt 1.8 and 1.9 also write manifest v12 and SST
+reads theirs alike, but they are past dbt's support window and cannot parse
+the reference project's generic-test `arguments:` syntax, so they are not
+tested; any release that writes manifest v12 still passes the schema gate.
+
+The manifests the releases write differ in two ways SST allows for. Up to 1.11,
+dbt hashes a model's file raw or stripped; from 1.12, dbt v2 included, it
+collapses every run of whitespace first, and the staleness check reads both. And
+where the YAML sets nothing, dbt v2 leaves a column's `data_type` and `config`,
+and a test's `column_name`, out of the manifest rather than writing them empty;
+SST reads an absent one as empty, and the contract test allows exactly those
+three paths to be absent.
+
+SST asks every dbt it identifies -- dbt Core or dbt v2 -- to `--write-json`, so
+a setting that turns JSON artifacts off (`DBT_ENGINE_WRITE_JSON=0`,
+`--no-write-json`, which dbt now promotes for speed) cannot hide the manifest.
+A dbt SST does not identify is run as configured, and a manifest it does not
+write is `SST-DBT029`.
 
 The dbt Cloud CLI is recognised from its `dbt --version` output and parsed with
-the same command as dbt Core. One combination is refused: `defer.auto_compile`
-(`SST-DBT021`), because the Cloud CLI cannot parse a target other than its
-default locally. Running the Cloud CLI through `dbt parse` is not tested. A
-Cloud CLI project can instead produce the manifest itself and give SST
-`--manifest`, or set `dbt.invoke: false`.
+the same command as dbt Core, without `--write-json`. One combination is
+refused: `defer.auto_compile` (`SST-DBT021`), because the Cloud CLI cannot parse
+a target other than its default locally. Running the Cloud CLI through `dbt
+parse` is not tested. A Cloud CLI project can instead produce the manifest
+itself and give SST `--manifest`, or set `dbt.invoke: false`.
 
-dbt Fusion is not recognised: SST knows only the dbt Core and Cloud CLI
-`dbt --version` wordings, so any other answer warns `SST-DBT020` on every run
-that starts dbt, and SST still runs `dbt parse` with the same arguments. Whether the result is read then depends only on the schema gate.
-Fusion is not tested; the tests cover only the warning, with a fake executable.
+### Using dbt v2
+
+dbt v2 is recognised from its one-line `dbt --version` answer, `dbt 2.0.8` or
+`dbt-oss 2.0.8`; `sst debug` reports it as installation `v2` or `v2-oss`, and it
+warns nothing. It is parsed with the same arguments as dbt Core. The `dbt`
+extra stays on dbt Core 1.x until a `dbt-snowflake` 2.x ships, so install dbt v2
+yourself, beside SST, and SST runs it from `PATH`:
+
+```bash
+python -m pip install snowflake-semantic-tools dbt      # or dbt-oss
+```
+
+Any other `dbt --version` answer, such as an early `dbt-fusion` beta, warns
+`SST-DBT020` on every run that starts dbt, and SST still runs `dbt parse`;
+whether the result is read then depends only on the schema gate.
 
 Drawn from: [pyproject.toml](../../pyproject.toml), [test-and-lint.yml](../../.github/workflows/test-and-lint.yml), [slow.yml](../../.github/workflows/slow.yml), [reference_project_manifest.json](../../tests/fixtures/reference_project_manifest.json), [dbt_project.yml](../../tests/fixtures/reference_project/dbt_project.yml), [invoke.py](../../snowflake_semantic_tools/adapters/dbt/invoke.py), [test_dbt_invoke.py](../../tests/unit/adapters/test_dbt_invoke.py), [test_ci_workflows.py](../../tests/unit/test_ci_workflows.py), [test_dbt_manifest_contract.py](../../tests/contract/test_dbt_manifest_contract.py).
 
@@ -253,7 +293,7 @@ to the releases SST is tested with, so an upgrade is a reviewed change rather
 than something a fresh environment does on its own:
 
 ```yaml
-require-dbt-version: [">=1.11.0", "<1.13.0"]
+require-dbt-version: [">=1.10.0", "<2.1.0"]
 ```
 
 Keep the values SST needs from `profiles.yml` to `env_var()`. SST renders

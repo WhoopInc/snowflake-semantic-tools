@@ -158,17 +158,33 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Every minor the reference project's require-dbt-version admits, each pinned to the
-        # dbt Core release tests/fixtures/dbt_manifests/ holds a manifest of and the dbt-snowflake
-        # release it was captured with (tests/unit/test_ci_workflows.py).
-        dbt: ["1.11", "1.12"]
+        # Every release line the reference project's require-dbt-version admits -- dbt Core 1.10
+        # to 1.13, and dbt v2 2.0 in both its distributions -- each pinned to the release
+        # tests/fixtures/dbt_manifests/ holds a manifest of (tests/unit/test_ci_workflows.py).
+        # dbt Core installs with the dbt-snowflake release it was captured with. dbt v2 carries
+        # its own adapter and its own `dbt`, so it installs alone, without the dbt extra; its two
+        # distributions write the same manifest, so they share one fixture. 1.13 is a
+        # pre-release: repin it at GA.
+        dbt: ["1.10", "1.11", "1.12", "1.13", "2.0", "2.0-oss"]
         include:
+          - dbt: "1.10"
+            release: "1.10.23"
+            install: "dbt-core==1.10.23 dbt-snowflake==1.10.8"
           - dbt: "1.11"
-            dbt_core: "1.11.15"
-            dbt_snowflake: "1.11.6"
+            release: "1.11.15"
+            install: "dbt-core==1.11.15 dbt-snowflake==1.11.6"
           - dbt: "1.12"
-            dbt_core: "1.12.5"
-            dbt_snowflake: "1.12.1"
+            release: "1.12.5"
+            install: "dbt-core==1.12.5 dbt-snowflake==1.12.1"
+          - dbt: "1.13"
+            release: "1.13.0b1"
+            install: "dbt-core==1.13.0b1 dbt-snowflake==1.12.3"
+          - dbt: "2.0"
+            release: "2.0.8"
+            install: "dbt==2.0.8"
+          - dbt: "2.0-oss"
+            release: "2.0.8"
+            install: "dbt-oss==2.0.8"
     env:
       DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
       REFERENCE_PROJECT: tests/fixtures/reference_project
@@ -196,21 +212,21 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .venv
-          key: venv-${{ runner.os }}-3.11-dbt${{ matrix.dbt_core }}-snowflake${{ matrix.dbt_snowflake }}-${{ hashFiles('**/poetry.lock') }}
+          key: venv-${{ runner.os }}-3.11-dbt${{ matrix.dbt }}-${{ matrix.release }}-${{ hashFiles('**/poetry.lock') }}
 
-      - name: Install the project with the dbt extra
-        run: poetry install --no-interaction --extras dbt
+      # dbt Core comes with the dbt extra, as a user's would; dbt v2 is installed on its own below.
+      - name: Install the project
+        run: poetry install --no-interaction ${{ startsWith(matrix.dbt, '1.') && '--extras dbt' || '' }}
 
-      # The lock resolves one dbt. This pins dbt Core and dbt-snowflake to the matrix's exact
-      # releases. Nothing else is pinned: pip keeps each locked package they still accept and
+      # The lock resolves one dbt. This pins the matrix's exact releases: dbt Core and dbt-snowflake,
+      # or dbt v2. Nothing else is pinned: pip keeps each locked package they still accept and
       # resolves, outside the lock, any they do not (dbt-adapters, dbt-common and their own
       # dependencies), so those may differ from the lock and between runs.
-      - name: Pin dbt ${{ matrix.dbt_core }} and dbt-snowflake ${{ matrix.dbt_snowflake }}
+      - name: Install ${{ matrix.install }}
         env:
-          DBT_CORE: ${{ matrix.dbt_core }}
-          DBT_SNOWFLAKE: ${{ matrix.dbt_snowflake }}
+          DBT_INSTALL: ${{ matrix.install }}
         run: |
-          poetry run pip install --disable-pip-version-check "dbt-core==$DBT_CORE" "dbt-snowflake==$DBT_SNOWFLAKE"
+          poetry run pip install --disable-pip-version-check $DBT_INSTALL
           poetry run dbt --version
 
       - name: Install the reference project's dbt packages
