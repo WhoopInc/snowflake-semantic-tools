@@ -600,8 +600,9 @@ to `@<stage>/<agent>/<commit>/agent_spec.yaml` under `apply.agent_spec_stage`
    shows, and runs with, no instructions, tools, or skills.
 3. `ALTER AGENT ... MODIFY VERSION "LAST" SET ALIAS = <alias>`, when the agent
    has an alias, and `SET TAG` for its tags. The new version becomes the
-   default, unless a default version was set by hand (see
-   [version drift](#version-drift)).
+   default: when a default version was set by hand to an older version, apply
+   also runs `SET DEFAULT_VERSION = LAST`, so the default follows the new
+   version (see [version drift](#version-drift)).
 4. `MODIFY VERSION <alias> UNSET ALIAS` for every other alias the agent shows,
    so after apply the agent carries only the alias its settings resolve to:
    changing `alias: promoted` to `alias: candidate` moves the agent to

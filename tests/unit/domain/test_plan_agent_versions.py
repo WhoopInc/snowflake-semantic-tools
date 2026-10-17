@@ -127,6 +127,30 @@ def test_a_property_only_change_sets_properties_and_adds_no_version() -> None:
     assert change.rendered is not None and texts(change.rendered.statements) == ("set comment", "set tag")
 
 
+def test_a_version_adding_update_moves_a_default_pinned_to_an_older_version() -> None:
+    before = agent()
+    after = agent(fingerprint="2" * 64)
+    applied = {after.key: entry(before, RECORDED_MANIFEST)}
+    for has_live_version, program in ((True, ("modify live", "commit")), (False, ("add version",))):
+        for default, unpinned in (("VERSION$2", True), ("VERSION$3", False), (None, False)):
+            observed = live(
+                before,
+                recorded(before),
+                newest_spec="f" * 64,
+                has_live_version=has_live_version,
+                default_version=default,
+            )
+            [change] = plan((after,), observed=(observed,), applied=applied).changes
+            assert change.rendered is not None
+            moved = ("ALTER AGENT DB.S.SALES SET DEFAULT_VERSION = LAST",) if unpinned else ()
+            assert texts(change.rendered.statements) == ("set comment", *program, *moved)
+    temporary = agent(temporary=True)
+    pinned = live(temporary, recorded(temporary), default_version="VERSION$2")
+    assert "ALTER AGENT DB.S.SALES SET DEFAULT_VERSION = LAST" not in texts(
+        temporary.for_action(Action.UPDATE, pinned).statements
+    )
+
+
 def test_an_agent_whose_newest_version_holds_another_specification_gets_a_version() -> None:
     before = agent()
     after = agent(fingerprint="2" * 64)

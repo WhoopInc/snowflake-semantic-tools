@@ -313,7 +313,8 @@ class RenderedArtifact:
         already holds the desired specification and there are any, with the statements that
         point the alias and the default version at it, and open a live version from it, where
         missing; else `update_live_statements` when the observed object has a live version and
-        there are any; else `update_statements` when there are any. It then unsets the aliases
+        there are any; else `update_statements` when there are any; either of those also moves a
+        default pinned to an older version onto the new one. It then unsets the aliases
         and tags the observed agent carries but this artifact does not desire. Any other
         action, or an UPDATE with no program, returns this artifact unchanged.
         """
@@ -328,13 +329,29 @@ class RenderedArtifact:
                 )
                 statements = (*lead, *_pointing(self, observed, carrier), *rest)
             elif observed is not None and observed.has_live_version and self.update_live_statements:
-                statements = self.update_live_statements
+                statements = (*self.update_live_statements, *_unpinned_default(self, observed))
             elif self.update_statements:
-                statements = self.update_statements
+                statements = (*self.update_statements, *_unpinned_default(self, observed))
             else:
                 return self
             return replace(self, statements=(*statements, *_metadata_removals(self, observed)))
         return self
+
+
+def _unpinned_default(artifact: RenderedArtifact, observed: ObservedArtifact | None) -> tuple[Sql, ...]:
+    """Move a default pinned to an older version onto the version an update adds, as `LAST`.
+
+    Snowflake keeps a default set by hand where it is when a version is committed, so a
+    version-adding update would leave it serving the old one until a second apply; the default
+    then follows the newest version again. An agent whose default is its newest version, or
+    unknown, gets nothing.
+    """
+    if observed is None or artifact.object_type != "AGENT" or artifact.temporary:
+        return ()
+    default, newest = observed.default_version, observed.newest_version
+    if default is None or newest is None or default.casefold() == newest.casefold():
+        return ()
+    return (sql("ALTER AGENT {agent} SET DEFAULT_VERSION = LAST", agent=qname(artifact.target)),)
 
 
 def version_drift(artifact: RenderedArtifact, observed: ObservedArtifact) -> tuple[str, ...]:
