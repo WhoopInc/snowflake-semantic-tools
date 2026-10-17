@@ -113,6 +113,7 @@ Where apply records what it published, per target.
 | `state.+database` | identifier | the target database | State table database. |
 | `state.+schema` | identifier | the target schema | State table schema. |
 | `state.+table` | string | `SST_STATE` | State table name. |
+| `state.+table_kind` | enum: `standard`, `hybrid` | `standard` | Whether the state and lock tables are standard or hybrid tables; hybrid locks per target. |
 
 ## tags
 

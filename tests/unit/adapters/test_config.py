@@ -135,3 +135,22 @@ def test_semantic_targets_resolve_single_quoted_env_vars(tmp_path: Path, monkeyp
     monkeypatch.delenv("SST_TEST_SCHEMA")
     with pytest.raises(ProjectError, match=r"env_var\('SST_TEST_SCHEMA'\) is unset and has no default"):
         resolve_target(project_paths(project))
+
+
+def test_a_hybrid_state_table_kind_is_carried_to_every_connection_and_reads_latest_writes(tmp_path: Path) -> None:
+    project = write_tree(
+        tmp_path,
+        {"dbt_project.yml": "name: x\nprofile: sst\n", "profiles.yml": PROFILES, "sst_config.yml": "project: {}\n"},
+    )
+    standard = load_profile_target(project_paths(project))
+    assert standard.state_table_kind == "standard"
+    assert "sst_state_table_kind" not in standard.connection_params
+    hybrid = load_profile_target(project_paths(project), state={"+table_kind": "hybrid"})
+    assert hybrid.state_table_kind == "hybrid"
+    params = hybrid.connection_params
+    assert params["sst_state_table_kind"] == "hybrid"
+    assert params["session_parameters"] == {"READ_LATEST_WRITES": True}
+    # Adding session parameters, as connecting does for the query tag, keeps the kind.
+    tagged = hybrid.with_session_parameters({"QUERY_TAG": "sst"})
+    assert tagged.state_table_kind == "hybrid"
+    assert tagged.connection_params["session_parameters"] == {"READ_LATEST_WRITES": True, "QUERY_TAG": "sst"}

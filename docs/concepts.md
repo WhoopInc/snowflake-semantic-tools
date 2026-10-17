@@ -288,34 +288,57 @@ it still holds the lock with its token, one `MERGE` per entry it changed and one
 `DELETE` per entry it retired, then it stamps the manifest it applied on the
 target's rows. Entries the run did not touch are left exactly as they were.
 
-**State and lock table type.** Both tables are standard tables, a choice made in
-one place in the connector. From Snowflake's documented semantics:
+**State and lock table type.** `state.+table_kind` chooses the kind both tables
+are created as: `standard`, the default, or `hybrid`. From Snowflake's documented
+semantics:
 
 | | Standard table | Hybrid table |
 |---|---|---|
 | Primary key | declared, not enforced | required and enforced |
 | Concurrent `MERGE`/`UPDATE`/`DELETE` | serialised by a table lock | row-level locks |
-| Availability | every account | not every account or region |
+| `SELECT ... FOR UPDATE` | not supported | supported |
+| Availability | every account | not every account or region; never in a transient database or schema |
 
-A standard table cannot enforce the lock row's key, and `SELECT ... FOR UPDATE`
+**On standard tables, contention is per lock table, not per target.** A
+standard table cannot enforce the lock row's key, and `SELECT ... FOR UPDATE`
 is for hybrid tables only, so SST relies on neither: its lock transactions
 serialise on the table lock that an `UPDATE` of the mutex row takes and holds
-until `COMMIT`, and each then reads what the previous one committed.
+until `COMMIT`, and each then reads what the previous one committed. Every lock
+transaction writes the same mutex row, so a claim, extend, release or state
+write for one target waits for any such transaction for another target that
+shares the lock table. Measured on a standard table, the wait does not depend on
+the mutex: an `UPDATE` of one existing row waits for an uncommitted `UPDATE` of a
+different row until that transaction commits (an `INSERT` does not wait). Each
+transaction is only a few bound statements, committed as soon as they finish,
+so the wait is short; a state write lasts longer the more entries the run
+changed.
 
-**Contention is per lock table, not per target.** Every lock transaction writes
-the same mutex row, so a claim, extend, release or state write for one target
-waits for any such transaction for another target that shares the lock table.
-Measured on a standard table, the wait does not depend on the mutex: an `UPDATE`
-of one existing row waits for an uncommitted `UPDATE` of a different row until
-that transaction commits (an `INSERT` does not wait). Each transaction is only a
-few bound statements, committed as soon as they finish, so the wait is short; a
-state write lasts longer the more entries the run changed.
+**On hybrid tables, contention is per target.** Each target's lock row is seeded
+once, free, outside any transaction, and every lock transaction starts by
+locking that row with `SELECT ... FOR UPDATE`. Transactions on different
+targets lock different rows and never wait on each other; two on the same
+target take turns, the second asked again a moment later, as Snowflake refuses
+a held row at once rather than queueing it. A release marks the row free rather
+than deleting it, so each target's fencing token only ever grows. State writes
+change only the target's own rows, with a `DELETE` and an `INSERT` per batch of
+entries. Sessions on a hybrid backend set `READ_LATEST_WRITES`, so a lock check
+never reads a write up to 100 ms old. Measured on a live account (an X-Small
+warehouse, client round trip included):
 
-A hybrid table would reject a second insert outright and let state writes to
-different targets proceed without waiting on each other, at the cost of
-availability: Snowflake also refuses to create one in a transient database or
-schema. How a hybrid table behaves under SST's write pattern has not yet been
-measured.
+| | Standard | Hybrid |
+|---|---|---|
+| Reading the lock row (the check before each write) | 150-300 ms | 170-300 ms |
+| Updating one row (claim, extend, release) | 375-720 ms | 160-230 ms |
+| `MERGE` of 50 state rows | 624 ms | 362 ms |
+
+So a hybrid backend makes each lock step about twice as fast, and removes the
+queue between targets, which is what a project with many targets applying at
+once (per-developer targets, parallel CI) waits on; the check before each write
+is a network round trip either way. Choose it where hybrid tables are
+available, in a permanent schema. SST checks each table's kind against the
+setting before using it, and refuses one of the other kind (`SST-APL031`), since
+each kind takes its own protocol; `sst state convert` rebuilds the tables as the
+other kind. A hybrid table the configured schema cannot hold is `SST-APL030`.
 
 ### Ownership, grants, and prune
 

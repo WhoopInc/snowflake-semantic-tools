@@ -27,7 +27,7 @@ cannot be downgraded by any setting.
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 43 codes
-- [Apply (APL)](#apply-apl) -- 31 codes
+- [Apply (APL)](#apply-apl) -- 33 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 25 codes
 - [Internal (INT)](#internal-int) -- 12 codes
@@ -7018,6 +7018,26 @@ Raised when an eval attempt failed, ended partial, or its status or results coul
 Fix: the retry's results were used; if this recurs, investigate the run's non-determinism
 
 Note: It replaces the error or warning the attempt reports on its own (SST-APL023, SST-APL024, SST-SNO001), and the gate judges only completed attempts whose results were read.
+
+### SST-APL030
+
+**Hybrid state table cannot be created where it is configured** (error)
+
+`<value>: a hybrid table cannot be created in a transient database or schema`
+
+Raised when `state.+table_kind` is `hybrid`, and the state or lock table does not exist yet and falls in a transient database or schema, where Snowflake refuses hybrid tables.
+
+Fix: point state.+database / state.+schema at a permanent schema, or set state.+table_kind: standard
+
+### SST-APL031
+
+**State table is of the other kind than configured** (error)
+
+`<value> is a <found> table, and state.+table_kind says <expected>`
+
+Raised when the state or lock table exists as a standard table while `state.+table_kind` is `hybrid`, or as a hybrid table while it is `standard`; each kind takes its own lock protocol, so SST refuses to run the other on it.
+
+Fix: run `sst state convert --to {expected}` to rebuild it, or set state.+table_kind back to {found}
 
 ### SST-APL100
 

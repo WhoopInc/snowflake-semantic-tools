@@ -20,6 +20,14 @@ from snowflake_semantic_tools.domain.state.applied import AppliedEntry
 LOCK_TTL_SECONDS = 30 * 60
 LOCK_HEARTBEAT_SECONDS = 5 * 60
 
+# The kinds of table the state and lock tables are created as, which `state.+table_kind` sets.
+STANDARD_TABLES = "standard"
+HYBRID_TABLES = "hybrid"
+TABLE_KINDS = (STANDARD_TABLES, HYBRID_TABLES)
+# The connection setting that carries the kind to the Snowflake connector, which takes it out
+# before the driver sees the settings; every session opened from them so learns the kind.
+TABLE_KIND_SETTING = "sst_state_table_kind"
+
 
 def lock_table_for(state_table: QualifiedName) -> QualifiedName:
     """Return the lock table beside a state table: its name with `_LOCK` appended, in its schema."""

@@ -140,6 +140,9 @@ class LockTables:
             return None, 0
         if statement.startswith(f"SELECT GENERATION FROM {LOCK}"):
             return self._probe(), 0
+        if statement.startswith("SELECT IS_HYBRID"):
+            # Every table here is standard: what INFORMATION_SCHEMA.TABLES says of one.
+            return [("NO",)], 0
         seen = self._view(connection)
         if statement.startswith("SELECT RUN_ID, OWNER, HOST"):
             held = sorted(

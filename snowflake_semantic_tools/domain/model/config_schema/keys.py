@@ -322,6 +322,13 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("state.+schema", _ID, "State table schema.", default="the target schema"),
     _key("state.+table", _S, "State table name.", default="SST_STATE"),
     _key(
+        "state.+table_kind",
+        KeyKind.ENUM,
+        "Whether the state and lock tables are standard or hybrid tables; hybrid locks per target.",
+        default="standard",
+        choices=("standard", "hybrid"),
+    ),
+    _key(
         "tags",
         _BLOCK,
         "Tag object names read by `{{ tag('<name>') }}`.",

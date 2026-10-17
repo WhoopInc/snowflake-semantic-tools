@@ -380,6 +380,31 @@ SPECS: tuple[ErrorSpec, ...] = (
         precheck=Precheck.RUNTIME,
     ),
     spec(
+        "SST-APL030",
+        Severity.ERROR,
+        "Hybrid state table cannot be created where it is configured",
+        "{value}: a hybrid table cannot be created in a transient database or schema",
+        "point state.+database / state.+schema at a permanent schema, or set state.+table_kind: standard",
+        condition=(
+            "`state.+table_kind` is `hybrid`, and the state or lock table does not exist yet and "
+            "falls in a transient database or schema, where Snowflake refuses hybrid tables"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL031",
+        Severity.ERROR,
+        "State table is of the other kind than configured",
+        "{value} is a {found} table, and state.+table_kind says {expected}",
+        "run `sst state convert --to {expected}` to rebuild it, or set state.+table_kind back to {found}",
+        condition=(
+            "the state or lock table exists as a standard table while `state.+table_kind` is "
+            "`hybrid`, or as a hybrid table while it is `standard`; each kind takes its own "
+            "lock protocol, so SST refuses to run the other on it"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
         "SST-APL100",
         Severity.ERROR,
         "Smoke query failed",

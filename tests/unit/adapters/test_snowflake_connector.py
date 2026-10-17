@@ -964,3 +964,20 @@ def test_a_state_table_without_live_digest_reads_it_as_null_and_keeps_its_compon
     assert state is not None and state["skill:s0"].live_digest is None
     [select] = connector.selected
     assert "NULL LIVE_DIGEST" in select and "NULL COMPONENT_FINGERPRINTS" not in select
+
+
+def test_the_state_table_kind_never_reaches_the_driver_but_every_sibling_learns_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[dict[str, object]] = []
+
+    def connect(**params: object) -> object:
+        seen.append(params)
+        return object()
+
+    monkeypatch.setattr("snowflake.connector.connect", connect)
+    connector = SnowflakeConnector({"account": "a", "sst_state_table_kind": "hybrid"})
+    sibling = connector.sibling()
+    assert seen == [{"account": "a"}, {"account": "a"}]
+    assert (connector._state_table_kind, sibling._state_table_kind) == ("hybrid", "hybrid")
+    assert SnowflakeConnector({"account": "a"})._state_table_kind == "standard"

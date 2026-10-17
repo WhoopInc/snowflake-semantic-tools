@@ -347,15 +347,18 @@ target, by default in the target's own database and schema; the local file is a
 cache. A run that writes takes the target's row in a lock table beside it,
 receives a fencing token it must present to extend, release, or write state, and
 once it holds the lock re-reads state, refusing a plan whose state changed
-since. Both are standard tables.
+since. Both are standard tables unless `state.+table_kind: hybrid` makes them
+hybrid tables, which lock per target with `SELECT ... FOR UPDATE` instead of
+per table with a mutex row (concepts.md, "Concurrent applies and the run lock",
+has the measurements).
 
 **Rejected.** A local state file, which a fresh CI runner lacks and two machines
-would each believe; and hybrid tables, which would enforce the lock row's key
-but are not available in every account or region and cannot be created in a
-transient database or schema.
+would each believe; and hybrid tables as the default, since they are not
+available in every account or region and cannot be created in a transient
+database or schema; a project opts in where they are.
 
-**Revisit when.** Hybrid tables are available wherever SST runs and their
-behaviour under SST's write pattern is measured.
+**Revisit when.** Hybrid tables are available wherever SST runs, which would
+make them the better default.
 
 ### Ownership is a marker on the object
 

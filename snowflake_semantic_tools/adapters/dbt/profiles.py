@@ -23,6 +23,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.config_schema import target_text
 from snowflake_semantic_tools.domain.model.dbt import DbtTarget
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
+from snowflake_semantic_tools.domain.state.lock import HYBRID_TABLES, STANDARD_TABLES, TABLE_KIND_SETTING
 
 _ENV_VAR = re.compile(
     r"\{\{\s*env_var\(\s*['\"]([^'\"]+)['\"](?:\s*,\s*['\"]([^'\"]*)['\"])?\s*\)"
@@ -181,12 +182,15 @@ class ProfileTarget:
         state_table: QualifiedName,
         diagnostics: tuple[Diagnostic, ...] = (),
         inline_key: tuple[str, object] | None = None,
+        state_table_kind: str = STANDARD_TABLES,
     ) -> None:
         self.profile_name = profile_name
         self.target_name = target_name
         self._params = connection_params
         self.identity = identity
         self.state_table = state_table
+        # `standard` or `hybrid`, as `state.+table_kind` sets; `connection_params` carries it.
+        self.state_table_kind = state_table_kind
         self.diagnostics = diagnostics
         # Decoded only when a connection is opened, so an offline compile needs no key.
         self._inline_key = inline_key
@@ -227,6 +231,7 @@ class ProfileTarget:
             state_table=self.state_table,
             diagnostics=self.diagnostics,
             inline_key=self._inline_key,
+            state_table_kind=self.state_table_kind,
         )
 
     @property
@@ -608,6 +613,13 @@ def load_profile_target(
         str(resolved["warehouse"]) if resolved.get("warehouse") else None,
     )
     state_table = _state_table(state, database, schema)
+    kind = _state_table_kind(state)
+    if kind == HYBRID_TABLES:
+        # Every session SST opens on the target learns the kind from its settings, and reads a
+        # hybrid table's latest writes rather than one up to 100 ms stale.
+        params[TABLE_KIND_SETTING] = kind
+        session = params.get("session_parameters")
+        params["session_parameters"] = {**(session if isinstance(session, dict) else {}), "READ_LATEST_WRITES": True}
     return ProfileTarget(
         profile_name=profile_name,
         target_name=selected,
@@ -616,6 +628,7 @@ def load_profile_target(
         state_table=state_table,
         diagnostics=diagnostics,
         inline_key=inline_key,
+        state_table_kind=kind,
     )
 
 
@@ -633,6 +646,15 @@ def target_location(profile: str, target: str, fields: Mapping[str, object]) -> 
     if missing:
         _refuse_profile("SST-CFG012", profile, field=f"{' and '.join(missing)} on target '{target}'")
     return str(database), str(schema)
+
+
+def _state_table_kind(state_config: Mapping[str, object] | None) -> str:
+    """Return the kind `state.+table_kind` names, `hybrid` or `standard`; `standard` when unset.
+
+    Any other value is refused where the configuration is validated (SST-CFG008).
+    """
+    block = state_config if isinstance(state_config, Mapping) else {}
+    return HYBRID_TABLES if str(block.get("+table_kind") or "").strip().lower() == HYBRID_TABLES else STANDARD_TABLES
 
 
 def _state_table(state_config: Mapping[str, object] | None, database: str, schema: str) -> QualifiedName:

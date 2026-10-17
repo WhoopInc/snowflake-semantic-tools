@@ -42,6 +42,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import (
 )
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.sql import Sql, sql
+from snowflake_semantic_tools.domain.state.lock import STANDARD_TABLES, TABLE_KIND_SETTING
 
 if TYPE_CHECKING:
     from snowflake.connector.cursor import SnowflakeCursorBase
@@ -166,11 +167,16 @@ class Session(ExecutionPort):
     _read_cache: ReadCache | None = None
     # What runs before each write statement of a script; None while writes are not guarded.
     _write_guard: Callable[[], None] | None = None
+    # The kind of table the state and lock tables are, `standard` or `hybrid`, as the settings'
+    # `TABLE_KIND_SETTING` names it; the driver never sees that setting.
+    _state_table_kind: str = STANDARD_TABLES
 
     def __init__(self, connection_params: Mapping[str, object]) -> None:
         failure: SnowflakePortError | None = None
         self._connection_params = MappingProxyType(dict(connection_params))
         self._scoped_guard = Lock()
+        driver_params = dict(connection_params)
+        self._state_table_kind = str(driver_params.pop(TABLE_KIND_SETTING, STANDARD_TABLES))
         try:
             # Browser SSO prints its prompts to stdout, which `--output json` reserves
             # for exactly one envelope; the prompts still reach the user on stderr. Pool
@@ -178,7 +184,7 @@ class Session(ExecutionPort):
             import snowflake.connector
 
             with _LOGIN_STDOUT.redirected(), RUN_TIMINGS.login():
-                self._connection = snowflake.connector.connect(**dict(connection_params))
+                self._connection = snowflake.connector.connect(**driver_params)
             self._lock = RLock()
         except Exception as exc:
             failure = _port_error(exc, connecting_to=str(connection_params.get("account") or "Snowflake"))

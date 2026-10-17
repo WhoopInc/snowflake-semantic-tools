@@ -156,6 +156,7 @@ def test_ensure_state_table_adds_only_the_columns_an_older_table_lacks() -> None
     driver = _driver()
     DriverConnector(driver, columns=("TARGET_NAME", "PHYSICAL_RESOURCES")).ensure_state_table(STATE_TABLE)
     assert driver.statements == [
+        "SELECT IS_HYBRID FROM DB.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
         "ALTER TABLE DB.S.SST_STATE ADD COLUMN IF NOT EXISTS COMPONENT_FINGERPRINTS OBJECT",
         "ALTER TABLE DB.S.SST_STATE ADD COLUMN IF NOT EXISTS LIVE_DIGEST VARCHAR",
         "ALTER TABLE DB.S.SST_STATE ADD COLUMN IF NOT EXISTS STATE_MANIFEST_ID VARCHAR(64)",

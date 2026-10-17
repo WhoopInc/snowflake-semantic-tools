@@ -138,6 +138,7 @@ def connect(
             connection_params=resolved_profile.connection_params,
             identity=identity,
             state_table=resolved_profile.state_table,
+            state_table_kind=resolved_profile.state_table_kind,
         )
         # Connected and bound: the caller owns the session from here, so nothing closes it.
         cleanup.pop_all()

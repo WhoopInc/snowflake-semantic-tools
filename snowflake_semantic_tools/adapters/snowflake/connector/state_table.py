@@ -14,6 +14,11 @@ waits for a few round trips rather than one per entry. That transaction is a loc
 transaction: it first takes the lock table's mutex, as `run_lock` explains, and writes only
 if the writer's fence still holds the target's lock, so a run whose lock was broken can never
 overwrite what the run that broke it recorded.
+
+A hybrid state table (`state.+table_kind: hybrid`) is written the same way under the target's
+own row lock instead of the mutex, so runs on different targets never wait on each other: one
+DELETE per batch of the keys the run changed or retired, then one INSERT ... SELECT per batch
+of changed entries, then the stamp. Both kinds hold the same columns and keys.
 """
 
 from __future__ import annotations
@@ -24,14 +29,15 @@ from types import MappingProxyType
 from typing import NamedTuple
 
 from snowflake_semantic_tools.adapters.snowflake.connector.lock_table import (
-    TABLE_KIND,
     LockTableMethods,
     fence_holds,
+    generation,
     lock_table_sql,
+    records_fence,
+    table_kind_sql,
 )
 from snowflake_semantic_tools.adapters.snowflake.connector.session import (
     _json_text,
-    _require_ok,
     _variant_value,
 )
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
@@ -140,8 +146,9 @@ class StateTableMethods(LockTableMethods, StatePort, CatalogPort):
         # column that is missing: a role that may only read and write the table needs neither.
         statements: tuple[Sql, ...]
         if not self.object_exists("TABLE", state_table):
-            statements = (_create_sql(state_table),)
+            statements = (_create_sql(state_table, self._state_table_kind),)
         else:
+            self.check_table_kind(state_table)
             present = self._column_names(state_table)
             statements = tuple(
                 sql(
@@ -154,7 +161,7 @@ class StateTableMethods(LockTableMethods, StatePort, CatalogPort):
                 if column.added and column.name not in present
             )
         if statements:
-            _require_ok(self.execute_script(statements), "state table creation failed")
+            self._create(statements, state_table, "state table creation failed")
 
     def write_state(
         self,
@@ -165,6 +172,8 @@ class StateTableMethods(LockTableMethods, StatePort, CatalogPort):
         fence: LockFence,
     ) -> bool:
         self.ensure_state_table(state_table)
+        if self._hybrid:
+            return self._write_rows(state_table, target_name, manifest_id, write, fence)
         table = qname(state_table)
         delete = sql("DELETE FROM {table} WHERE TARGET_NAME = %s AND ARTIFACT_KEY = %s", table=table)
         stamp = sql(
@@ -185,6 +194,40 @@ class StateTableMethods(LockTableMethods, StatePort, CatalogPort):
             transaction.run(stamp, (manifest_id, target_name))
         return True
 
+    def _write_rows(
+        self, state_table: QualifiedName, target_name: str, manifest_id: str, write: StateWrite, fence: LockFence
+    ) -> bool:
+        """Write a hybrid state table under the target's row lock, if `fence` still holds it.
+
+        Every key the run changed or retired is deleted, then each changed entry inserted, in
+        batches of `_MERGE_BATCH`, then the run's manifest stamped on every row of the target.
+        """
+        table = qname(state_table)
+        lock = lock_table_sql(state_table)
+        upserts = sorted(write.upserts.items())
+        keys = [*(key for key, _ in upserts), *write.deletes]
+        with self._row_transaction(lock, target_name) as (transaction, row):
+            held = ((row[0], generation(row[5])),) if row is not None else ()
+            if not records_fence(held, fence):
+                transaction.rollback()
+                return False
+            for start in range(0, len(keys), _MERGE_BATCH):
+                batch = keys[start : start + _MERGE_BATCH]
+                transaction.run(_delete_keys_sql(state_table, len(batch)), (target_name, *batch))
+            for start in range(0, len(upserts), _MERGE_BATCH):
+                entries = upserts[start : start + _MERGE_BATCH]
+                values = tuple(value for key, entry in entries for value in _state_values(target_name, key, entry))
+                transaction.run(_insert_sql(state_table, len(entries)), values)
+            transaction.run(
+                sql(
+                    "UPDATE {table} SET {column} = %s WHERE TARGET_NAME = %s",
+                    table=table,
+                    column=_STATE_MANIFEST.identifier,
+                ),
+                (manifest_id, target_name),
+            )
+        return True
+
     def _column_names(self, table: QualifiedName) -> set[str]:
         """Return the names of the columns DESCRIBE TABLE lists for a table, uppercased."""
         return {
@@ -193,14 +236,14 @@ class StateTableMethods(LockTableMethods, StatePort, CatalogPort):
         }
 
 
-def _create_sql(table: QualifiedName) -> Sql:
+def _create_sql(table: QualifiedName, kind: str) -> Sql:
     columns = join(
         ", ", (sql("{name} {ddl}", name=column.identifier, ddl=column.ddl) for column in (*_COLUMNS, _STATE_MANIFEST))
     )
     key = join(", ", (column.identifier for column in _COLUMNS if column.key))
     return sql(
         "CREATE {kind} IF NOT EXISTS {table} ({columns}, PRIMARY KEY ({key}))",
-        kind=TABLE_KIND,
+        kind=table_kind_sql(kind),
         table=qname(table),
         columns=columns,
         key=key,
@@ -263,6 +306,24 @@ def _merge_sql(table: QualifiedName, entries: int = 1) -> Sql:
         columns=_column_list(),
         values=values,
     )
+
+
+def _delete_keys_sql(table: QualifiedName, keys: int) -> Sql:
+    """Delete a target's entries of `keys` artifact keys; binds the target, then each key."""
+    placeholders = join(", ", (sql("%s") for _ in range(keys)))
+    return sql(
+        "DELETE FROM {table} WHERE TARGET_NAME = %s AND ARTIFACT_KEY IN ({keys})", table=qname(table), keys=placeholders
+    )
+
+
+def _insert_sql(table: QualifiedName, entries: int) -> Sql:
+    """Insert `entries` entries from one SELECT of bound values per entry, as `_merge_sql` binds them.
+
+    INSERT ... SELECT rather than VALUES, since PARSE_JSON is not allowed in a VALUES list.
+    """
+    row = join(", ", (sql("{bind} {name}", bind=column.bind, name=column.identifier) for column in _COLUMNS))
+    source = join(" UNION ALL ", (sql("SELECT {row}", row=row) for _ in range(entries)))
+    return sql("INSERT INTO {table} ({columns}) {source}", table=qname(table), columns=_column_list(), source=source)
 
 
 def _state_values(target_name: str, artifact_key: str, entry: AppliedEntry) -> tuple[object, ...]:

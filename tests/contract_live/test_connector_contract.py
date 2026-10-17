@@ -7,7 +7,7 @@ something the real connector does not, and every offline test that leans on them
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from types import MappingProxyType
 
 import pytest
@@ -17,9 +17,16 @@ from snowflake_semantic_tools.app.drift import written_digest
 from snowflake_semantic_tools.domain.diagnostics.signatures import UNRECOGNISED, match_signature
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import PublishShape, RenderedArtifact, ShowRow, drifted_properties
-from snowflake_semantic_tools.domain.sql import qname, sql
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.sql import ident, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from snowflake_semantic_tools.domain.state.lock import LockClaim, StateWrite
+from snowflake_semantic_tools.domain.state.lock import (
+    HYBRID_TABLES,
+    STANDARD_TABLES,
+    TABLE_KIND_SETTING,
+    LockClaim,
+    StateWrite,
+)
 from tests.helpers.live_snowflake import LiveAccount
 
 pytestmark = pytest.mark.live
@@ -69,12 +76,34 @@ def test_a_refused_statement_returns_a_failure_whose_text_the_signature_table_kn
     assert found is not UNRECOGNISED, f"unrecognised Snowflake failure text: {result.error.message!r}"
 
 
+@pytest.fixture(params=[STANDARD_TABLES, HYBRID_TABLES])
+def state_connector(
+    request: pytest.FixtureRequest, live_account: LiveAccount, live_connector: SnowflakeConnector
+) -> Iterator[tuple[str, SnowflakeConnector]]:
+    """The live connector, and one configured for hybrid state tables, as `state.+table_kind` sets."""
+    if request.param == STANDARD_TABLES:
+        yield request.param, live_connector
+        return
+    connector = SnowflakeConnector({**live_account.connection_params(), TABLE_KIND_SETTING: HYBRID_TABLES})
+    try:
+        yield request.param, connector
+    finally:
+        connector.close()
+
+
 def test_state_round_trips_and_the_run_lock_admits_one_run(
-    live_connector: SnowflakeConnector, scratch_schema: Scratch
+    state_connector: tuple[str, SnowflakeConnector], scratch_schema: Scratch
 ) -> None:
-    state_table = _name(scratch_schema("contract"), "SST_STATE")
+    kind, live_connector = state_connector
+    state_table = _name(scratch_schema("contract"), f"SST_STATE_{kind.upper()}")
     entry = AppliedEntry(
-        "b" * 64, _name(scratch_schema("contract"), "V").sql, "now", "run", "applied", "b" * 64, "a" * 64
+        "b" * 64,
+        _name(scratch_schema("contract"), "V").sql,
+        "2026-10-17T00:00:00Z",
+        "run",
+        "applied",
+        "b" * 64,
+        "a" * 64,
     )
     live_connector.ensure_state_table(state_table)
     assert live_connector.read_state(state_table, "live") in (None, {})
@@ -94,6 +123,25 @@ def test_state_round_trips_and_the_run_lock_admits_one_run(
     second = live_connector.acquire_run_lock(state_table, "live", LockClaim("run-b"), break_stale=False)
     assert second.acquired and second.fence is not None and second.fence.generation > taken.fence.generation
     live_connector.release_run_lock(state_table, "live", second.fence)
+    # The tables are of the kind configured, and a connector configured for the other refuses them.
+    other = HYBRID_TABLES if kind == STANDARD_TABLES else STANDARD_TABLES
+    kinds = live_connector.query(
+        sql(
+            "SELECT TABLE_NAME, IS_HYBRID FROM {database}.INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_SCHEMA = %s AND TABLE_NAME LIKE %s ORDER BY 1",
+            database=ident(state_table.database),
+        ),
+        (state_table.schema.folded, f"{state_table.name.folded}%"),
+    ).rows
+    assert [str(row[1]) for row in kinds] == ["YES" if kind == HYBRID_TABLES else "NO"] * 2
+    mismatched = live_connector.sibling()
+    try:
+        mismatched._state_table_kind = other
+        with pytest.raises(SnowflakePortError) as refused_kind:
+            mismatched.ensure_state_table(state_table)
+        assert refused_kind.value.diagnostic is not None and refused_kind.value.diagnostic.code == "SST-APL031"
+    finally:
+        mismatched.close()
 
 
 def test_a_procedure_s_drift_digest_is_stable_across_reads_and_a_comment_but_not_execute_as(

@@ -249,7 +249,12 @@ def test_every_lock_value_is_bound_and_the_table_sits_beside_the_state_table() -
     tables = LockTables()
     acquisition = claim(tables, "run'; DROP TABLE x; --")
     assert all("DROP TABLE x" not in statement for statement in tables.executed())
-    assert all("SST_STATE_LOCK" in statement for statement in tables.executed() if statement not in ("BEGIN", "COMMIT"))
+    # Every statement names the lock table, but the kind check, which reads the catalog for it.
+    assert all(
+        "SST_STATE_LOCK" in statement
+        for statement in tables.executed()
+        if statement not in ("BEGIN", "COMMIT") and not statement.startswith("SELECT IS_HYBRID")
+    )
     assert tables.rows[0].run_id == "run'; DROP TABLE x; --" and acquisition.acquired
 
 
@@ -276,8 +281,10 @@ def test_a_lock_table_that_exists_with_every_column_gets_no_ddl_only_its_mutex_s
     tables = LockTables()
     claim(tables, "run-a")
     assert not any(statement.startswith(("CREATE", "ALTER")) for statement in tables.executed())
-    assert tables.executed()[:2] == [
+    assert tables.executed()[:3] == [
         "SELECT GENERATION FROM DB.S.SST_STATE_LOCK LIMIT 1",
+        # A read, so a configured kind is never run on a table of the other (SST-APL031).
+        "SELECT IS_HYBRID FROM DB.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
         "MERGE INTO DB.S.SST_STATE_LOCK AS held USING (SELECT %s AS TARGET_NAME) AS seed "
         "ON held.TARGET_NAME = seed.TARGET_NAME WHEN NOT MATCHED THEN INSERT (TARGET_NAME, RUN_ID, "
         "ACQUIRED_AT, EXPIRES_AT, GENERATION) VALUES (%s, '', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP(), 0)",
