@@ -258,11 +258,12 @@ def _fenced(row: LockRow | None, run_id: object, generation: object) -> bool:
 class HybridTablesConnector(FakeDriverConnector):
     """A connector configured for hybrid tables, on its own connection to `tables`."""
 
-    _count = 0
+    # How many connections have been opened, which numbers each one.
+    _opened = 0
 
     def __init__(self, tables: HybridTables, *, kind: str = HYBRID_TABLES) -> None:
-        HybridTablesConnector._count += 1
-        self.number = HybridTablesConnector._count
+        HybridTablesConnector._opened += 1
+        self.number = HybridTablesConnector._opened
         number = self.number
 
         def respond(statement: str, binds: tuple[object, ...]) -> tuple[Rows | None, int]:

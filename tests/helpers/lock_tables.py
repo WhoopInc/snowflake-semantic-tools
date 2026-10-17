@@ -294,11 +294,12 @@ def _delete(matched: set[_Key]) -> _Write:
 class LockTablesConnector(FakeDriverConnector):
     """A connector on its own connection to `tables`: two of them are two Snowflake sessions."""
 
-    _count = 0
+    # How many connections have been opened, which numbers each one.
+    _opened = 0
 
     def __init__(self, tables: LockTables) -> None:
-        LockTablesConnector._count += 1
-        self.number = LockTablesConnector._count
+        LockTablesConnector._opened += 1
+        self.number = LockTablesConnector._opened
         number = self.number
 
         def respond(statement: str, binds: tuple[object, ...]) -> tuple[Rows | None, int]:
