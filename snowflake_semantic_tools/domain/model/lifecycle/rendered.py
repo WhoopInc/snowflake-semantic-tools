@@ -391,8 +391,9 @@ def _alias_holder(observed: ObservedArtifact, alias: str) -> str | None:
 def _pointing(artifact: RenderedArtifact, observed: ObservedArtifact, carrier: str) -> tuple[Sql, ...]:
     """Point the alias and default version at `carrier`, and open a live version from it, where missing.
 
-    A name no identifier can spell is not one Snowflake showed or SST renders, so nothing is
-    pointed at it.
+    `carrier` is the newest committed version, so the live version opens `FROM LAST`: Snowflake
+    opens one from no named version (docs/design/snowflake-behaviour.md). A name no identifier can
+    spell is not one Snowflake showed or SST renders, so nothing is pointed at it.
     """
     version = _safe_identifier(carrier)
     if version is None:
@@ -416,7 +417,7 @@ def _pointing(artifact: RenderedArtifact, observed: ObservedArtifact, carrier: s
             sql("ALTER AGENT {agent} SET DEFAULT_VERSION = {version}", agent=agent, version=literal(carrier))
         )
     if not observed.has_live_version:
-        statements.append(sql("ALTER AGENT {agent} ADD LIVE VERSION FROM {version}", agent=agent, version=version))
+        statements.append(sql("ALTER AGENT {agent} ADD LIVE VERSION FROM LAST", agent=agent))
     return tuple(statements)
 
 

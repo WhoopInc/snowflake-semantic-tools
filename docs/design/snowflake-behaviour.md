@@ -426,7 +426,11 @@ an agent with only `VERSION$1` and no live version: Snowsight showed no
 instructions, tools or skills; an unversioned `DATA_AGENT_RUN` ran without the
 agent's tools or skills; the same request naming `!VERSION$1` or `!DEFAULT` was
 served the full spec. `ALTER AGENT ... ADD LIVE VERSION FROM LAST` opens a live
-version holding `LAST`'s spec.
+version holding `LAST`'s spec. `LAST` is the only source it takes: `FROM
+VERSION$1`, `FROM "VERSION$1"` and `FROM VERSION VERSION$1` are syntax errors
+(001003), so a live version can be reopened only from the newest committed
+version. `SET DEFAULT_VERSION` takes the version as a string literal
+(`'VERSION$3'`) or a shortcut such as `LAST`; an identifier is a syntax error.
 
 **Evidence**: `Enforced`. On create, SST keeps the live copy `CREATE AGENT`
 opens. On update, an agent with a live version gets the spec written into it
@@ -995,8 +999,9 @@ would block every such object (`SST-PLN014`) until the next apply records it
 again; `plan.drift_check: basic` skips the DESCRIBE and GET_DDL reads.
 `test_a_procedure_s_drift_digest_is_stable_across_reads_and_a_comment_but_not_execute_as`
 in [test_connector_contract.py](../../tests/contract_live/test_connector_contract.py)
-is the probe. The `metadata` column `dataset_version_metadata` reads from `SHOW
-VERSIONS IN DATASET` is not yet probed.
+is the probe. `SHOW VERSIONS IN DATASET` lists each version's METADATA in a
+`metadata` column, as JSON text, beside the `SYSTEM_AI_OBS_...` version Snowflake
+adds itself; `dataset_version_metadata` reads it (observed on a live account).
 
 **SST depends on it at**: [drift.py](../../snowflake_semantic_tools/app/drift.py);
 [model/lifecycle/drift.py](../../snowflake_semantic_tools/domain/model/lifecycle/drift.py);

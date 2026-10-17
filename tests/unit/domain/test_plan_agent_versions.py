@@ -212,7 +212,7 @@ def test_an_agent_without_a_live_version_opens_one_from_the_published_version() 
     statements, messages = drifted(
         live(artifact, recorded(artifact), has_live_version=False, alias_versions=()), artifact
     )
-    assert statements == ("set comment", "ALTER AGENT DB.S.SALES ADD LIVE VERSION FROM VERSION$3", "set tag")
+    assert statements == ("set comment", "ALTER AGENT DB.S.SALES ADD LIVE VERSION FROM LAST", "set tag")
     assert messages == ("agent:sales: it has no live version; apply points it back",)
 
 

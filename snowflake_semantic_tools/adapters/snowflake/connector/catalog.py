@@ -290,9 +290,8 @@ class CatalogMethods(Session, CatalogPort):
 
     def dataset_version_metadata(self, qualified_name: QualifiedName, version: str) -> str | None:
         rows = self._dict_rows(sql("SHOW VERSIONS IN DATASET {dataset}", dataset=qname(qualified_name)))
-        # UNVERIFIED against a live account: the documented output does not list its columns,
-        # and a version's METADATA is taken to be in `metadata`, as JSON text or as an object.
-        # The probe in docs/design/snowflake-behaviour.md must confirm it before a release.
+        # MEASURED: SHOW VERSIONS IN DATASET lists a version's METADATA in `metadata`, as JSON
+        # text (docs/design/snowflake-behaviour.md); an object is taken as the same JSON.
         match = next((row for row in rows if str(row.get("version") or "").casefold() == version.casefold()), None)
         value = match.get("metadata") if match is not None else None
         if value is None:
