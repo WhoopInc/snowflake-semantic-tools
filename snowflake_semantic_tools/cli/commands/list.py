@@ -17,6 +17,7 @@ from pathlib import Path
 
 import click
 
+from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.local import STATE_FILE_GLOB, StateFileStore
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.app.listing import (
@@ -29,16 +30,24 @@ from snowflake_semantic_tools.app.listing import (
 from snowflake_semantic_tools.app.manifest import read_notes
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import SstCommand
-from snowflake_semantic_tools.cli.options import model_path_options, selection_options, with_model_paths
+from snowflake_semantic_tools.cli.options import (
+    database_option,
+    defer_target_option,
+    model_path_options,
+    selection_options,
+    target_option,
+    with_model_paths,
+)
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.compile import checked_scope, manifest_universe
 from snowflake_semantic_tools.cli.wiring.manifest import build_manifest, compiled_manifest
 from snowflake_semantic_tools.cli.wiring.project import target_dir
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan.selectors import SelectionScope
+from snowflake_semantic_tools.domain.state import Manifest
 from snowflake_semantic_tools.domain.state.manifest import ArtifactEntry
 
 LIST_OUTPUTS = ("table", "plain", "json", "yaml", "csv")
@@ -60,6 +69,9 @@ LIST_TYPES: dict[str, tuple[str, str]] = {
 
 @click.command(cls=SstCommand, name="list")
 @click.argument("artifact_type", metavar="[TYPE]", required=False, type=click.Choice(sorted(LIST_TYPES)))
+@target_option()
+@defer_target_option()
+@database_option()
 @selection_options()
 @click.option("--long", "long_format", is_flag=True)
 @click.option("--no-manifest", is_flag=True)
@@ -68,6 +80,8 @@ LIST_TYPES: dict[str, tuple[str, str]] = {
 def list_command(
     paths: ProjectPaths,
     artifact_type: str | None,
+    target_name: str | None,
+    database: str | None,
     selected: tuple[str, ...],
     excluded: tuple[str, ...],
     long_format: bool,
@@ -86,15 +100,19 @@ def list_command(
     it, the project's files are compiled in memory, nothing is written, and what fails to
     compile is reported and exits 1. A --select or --exclude value that matches nothing is
     reported; when the selectors choose no artifact and nothing failed to compile, it exits 4.
+    --target, --defer-target and --database resolve the in-memory compile as `sst compile`
+    would, offline; with a compiled manifest, a --target other than the one it was compiled
+    for is refused (SST-MAN006).
     """
     paths = with_model_paths(paths, dbt_dir, semantic_dir)
     if no_manifest:
-        compiled = compiling.compile_result(paths, None, manifest_path)
-        manifest = build_manifest(paths, compiled, manifest_path)
+        compiled = compiling.compile_result(paths, target_name, manifest_path, database=database)
+        manifest = build_manifest(paths, compiled, manifest_path, target_name)
         # What failed to compile is missing from the list, so its errors are reported, exit 1.
         found: tuple[Diagnostic, ...] = tuple(compiled.diagnostics)
     else:
         manifest = compiled_manifest(paths.project_dir)
+        _refuse_another_target(manifest, target_name)
         found = read_notes(manifest, str(target_dir(paths.project_dir) / "manifest.json"))
     failed = DiagnosticBag(found).has_errors
     universe = manifest_universe(manifest)
@@ -123,6 +141,20 @@ def list_command(
         rows=items,
         gated=True,
     )
+
+
+def _refuse_another_target(manifest: Manifest, target_name: str | None) -> None:
+    """Refuse a --target other than the one the compiled manifest was compiled for.
+
+    A manifest compiled without a target, or a run with none, agrees with any.
+
+    Raises:
+        ProjectError: the manifest records another target (SST-MAN006).
+    """
+    found = str(manifest.project.get("target") or "")
+    if target_name and found and found != target_name:
+        mismatch = D("SST-MAN006", found=found, expected=target_name)
+        raise ProjectError(mismatch.message, diagnostics=(mismatch,))
 
 
 def _item(summary: ArtifactSummary, entry: ArtifactEntry | None) -> dict[str, object]:

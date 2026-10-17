@@ -154,3 +154,27 @@ def test_list_no_manifest_reports_what_failed_to_compile(tmp_path: Path) -> None
     envelope = json.loads(result.output)
     assert "SST-LOD005" in [item["code"] for item in envelope["diagnostics"]]
     assert "tool:zz_dupe" not in [item["key"] for item in envelope["data"]["items"]]
+
+
+def test_list_no_manifest_resolves_names_for_the_target_given(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+
+    def targets(*flags: str) -> set[str]:
+        result = CliRunner().invoke(cli, ["list", "--no-manifest", *common(project), *flags, "-o", "json"])
+        assert result.exit_code == 0, result.output
+        return {item["target"].split(".")[0] for item in json.loads(result.output)["data"]["items"] if item["target"]}
+
+    assert targets() == {"SST_REF_DEV"}
+    assert targets("--target", "prod") == {"SST_REF_PROD"}
+
+
+def test_list_refuses_a_target_the_compiled_manifest_was_not_compiled_for(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    compiled = CliRunner().invoke(cli, ["compile", *common(project), "--target", "dev"])
+    assert compiled.exit_code == 0, compiled.output
+    assert CliRunner().invoke(cli, ["list", *common(project), "--target", "dev"]).exit_code == 0
+    refused = CliRunner().invoke(cli, ["list", *common(project), "--target", "prod", "-o", "json"])
+    assert refused.exit_code == 4, refused.output
+    [diagnostic] = json.loads(refused.output)["diagnostics"]
+    assert diagnostic["code"] == "SST-MAN006"
+    assert diagnostic["message"] == "manifest target 'dev', current target 'prod'"

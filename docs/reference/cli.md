@@ -458,6 +458,9 @@ with none there, or more than one target's, every artifact is pending. Without
 it, the project's files are compiled in memory, nothing is written, and what fails to
 compile is reported and exits 1. A --select or --exclude value that matches nothing is
 reported; when the selectors choose no artifact and nothing failed to compile, it exits 4.
+--target, --defer-target and --database resolve the in-memory compile as `sst compile`
+would, offline; with a compiled manifest, a --target other than the one it was compiled
+for is refused (SST-MAN006).
 
 ```text
 sst list [OPTIONS] [TYPE]
@@ -465,6 +468,10 @@ sst list [OPTIONS] [TYPE]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--defer-target` | TEXT |  | The `profiles.yml` target whose relations dbt objects resolve to, while publishing to `--target`; else `$SST_DEFER_TARGET`, else `defer.target`. |
+| `--no-defer` | flag |  | Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say. |
+| `--database` | TEXT |  | Read from this database instead of the target's; never where an artifact is published. |
 | `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--long` | flag |  | Also print each artifact's applied fingerprint and published version; `json`, `yaml` and `csv` also carry its source files. |
