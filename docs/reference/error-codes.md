@@ -27,7 +27,7 @@ cannot be downgraded by any setting.
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 43 codes
-- [Apply (APL)](#apply-apl) -- 36 codes
+- [Apply (APL)](#apply-apl) -- 37 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 25 codes
 - [Internal (INT)](#internal-int) -- 12 codes
@@ -7025,7 +7025,7 @@ Note: It replaces the error or warning the attempt reports on its own (SST-APL02
 
 `<value>: a hybrid table cannot be created in a transient database or schema`
 
-Raised when `state.+table_kind` is `hybrid`, and the state or lock table does not exist yet and falls in a transient database or schema, where Snowflake refuses hybrid tables.
+Raised when `state.+table_kind` is `hybrid`, and the state or lock table does not exist yet and falls in a transient database or schema, where Snowflake refuses hybrid tables; or `sst state convert --to hybrid` would create them there.
 
 Fix: point state.+database / state.+schema at a permanent schema, or set state.+table_kind: standard
 
@@ -7068,6 +7068,18 @@ Fix: review the plan for it: an object with no marker stays unmanaged (SST-PLN02
 Raised when `sst state convert` refused before renaming anything: the state table is absent or already of the kind asked for, a backup name is taken, a target's lock is live, or the state table's rows changed during the copy.
 
 Fix: nothing was changed; resolve what the message names and run sst state convert again
+
+### SST-APL035
+
+**Hybrid state table cannot be created on this account** (error)
+
+`<value>: this account cannot create hybrid tables: <detail>`
+
+Raised when `state.+table_kind` is `hybrid` (or `sst state convert --to hybrid` runs), and Snowflake refuses to create the state or lock table with an error that names hybrid tables and is not the transient schema's (SST-APL030).
+
+Fix: set state.+table_kind: standard
+
+Note: Its error number is not measured, so it is recognised by a message that names hybrid tables; any other refusal is reported as Snowflake gave it
 
 ### SST-APL100
 

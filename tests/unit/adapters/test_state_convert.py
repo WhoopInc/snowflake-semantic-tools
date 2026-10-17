@@ -71,3 +71,34 @@ def test_rows_written_during_the_copy_drop_the_copy_and_refuse() -> None:
         Connector(catalog).convert_state_tables(STATE_TABLE, "hybrid")
     assert set(catalog.tables) == {"SST_STATE", "SST_STATE_LOCK"}
     assert catalog.tables["SST_STATE"][0] == "NO"
+
+
+@pytest.mark.parametrize(
+    ("errno", "message", "code"),
+    [
+        (391412, "Cannot create hybrid table within transient database or schema.", "SST-APL030"),
+        # Illustrative wording: the error of an account without hybrid tables is not measured.
+        (1234, "Hybrid tables are not available for this account.", "SST-APL035"),
+    ],
+    ids=["transient-schema", "account-without-hybrid-tables"],
+)
+@pytest.mark.parametrize("table", ["SST_STATE_SST_CONVERT", "SST_STATE_LOCK"], ids=["copy", "lock"])
+def test_a_hybrid_table_snowflake_will_not_create_is_named(errno: int, message: str, code: str, table: str) -> None:
+    catalog = Catalog()
+    catalog.create_fails = (table, errno, message)
+    with pytest.raises(SnowflakePortError) as raised:
+        Connector(catalog).convert_state_tables(STATE_TABLE, "hybrid")
+    diagnostic = raised.value.diagnostic
+    assert diagnostic is not None and diagnostic.code == code
+    named = "DB.S.SST_STATE_LOCK" if table == "SST_STATE_LOCK" else "DB.S.SST_STATE"
+    assert diagnostic.message.startswith(f"{named}: ")
+    # The copy is dropped; a failed lock table leaves the converted state table for the next apply.
+    assert "SST_STATE_SST_CONVERT" not in catalog.tables
+
+
+def test_a_standard_table_snowflake_will_not_create_is_reported_as_it_failed() -> None:
+    catalog = Catalog(kind="YES")
+    catalog.create_fails = ("SST_STATE_SST_CONVERT", 1234, "Hybrid tables are not available for this account.")
+    with pytest.raises(SnowflakePortError) as raised:
+        Connector(catalog).convert_state_tables(STATE_TABLE, "standard")
+    assert raised.value.diagnostic is None and raised.value.errno == 1234

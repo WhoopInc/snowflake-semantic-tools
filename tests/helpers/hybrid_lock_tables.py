@@ -51,8 +51,10 @@ class HybridTables:
         self.kind_listed = True
         self.kind_refused = False
         self.lock_table_exists = True
-        # The errno a CREATE fails with, as a transient schema's 391412; None creates it.
+        # The errno a CREATE fails with, as a transient schema's 391412, and its message; None
+        # creates it.
         self.create_fails: int | None = None
+        self.create_message = "Cannot create hybrid table within transient database or schema."
         self._guard = threading.RLock()
         self._held: dict[str, int] = {}
         self._open: dict[int, _Open] = {}
@@ -128,9 +130,7 @@ class HybridTables:
             return ([("YES" if self.hybrid else "NO",)] if self.kind_listed else []), 0
         if statement.startswith(("CREATE HYBRID TABLE IF NOT EXISTS", "CREATE TABLE IF NOT")):
             if self.create_fails is not None:
-                raise ProgrammingError(
-                    msg="Cannot create hybrid table within transient database or schema.", errno=self.create_fails
-                )
+                raise ProgrammingError(msg=self.create_message, errno=self.create_fails)
             if LOCK in statement:
                 self.lock_table_exists = True
             return None, 0

@@ -68,7 +68,8 @@ class StateConvertMethods(StateTableMethods):
 
         Raises:
             SnowflakePortError: the conversion is refused (SST-APL034), with nothing changed,
-                or a statement failed.
+                or a statement failed; a hybrid table Snowflake would not create carries
+                SST-APL030 or SST-APL035, as `create_refusal` says.
         """
         if to_kind not in (STANDARD_TABLES, HYBRID_TABLES):
             raise ValueError(f"no table kind {to_kind!r}")
@@ -100,7 +101,10 @@ class StateConvertMethods(StateTableMethods):
         if lock_kind is not None:
             renames.append(_rename_sql(lock, lock_backup))
         renames.append(locks._create_sql(lock_table_sql(state_table), to_kind))
-        _require_ok(self.execute_script(tuple(renames)), "state table conversion failed")
+        result = self.execute_script(tuple(renames))
+        if (refusal := locks.create_refusal(renames, result, lock, to_kind)) is not None:
+            raise refusal
+        _require_ok(result, "state table conversion failed")
         self._kinds_checked = frozenset()
         return Conversion(from_kind, to_kind, before, state_backup, lock_backup if lock_kind is not None else None)
 
@@ -137,6 +141,8 @@ class StateConvertMethods(StateTableMethods):
         result = self.execute_script(statements)
         if not result.ok:
             self._drop(copy)
+            if (refusal := locks.create_refusal(statements, result, state_table, to_kind)) is not None:
+                raise refusal
             _require_ok(result, "state table copy failed")
 
     def _drop(self, table: QualifiedName) -> None:

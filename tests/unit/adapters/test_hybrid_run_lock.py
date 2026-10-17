@@ -12,7 +12,9 @@ import pytest
 
 from snowflake_semantic_tools.adapters.snowflake.connector import lock_table
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from snowflake_semantic_tools.domain.state.lock import (
     STANDARD_TABLES,
@@ -240,3 +242,22 @@ def test_a_target_with_no_row_cannot_be_claimed_inside_the_transaction(monkeypat
         connector.acquire_run_lock(STATE_TABLE, "dev", LockClaim("run-a", "ROLE", "laptop", 60), break_stale=False)
     assert tables.statements[-1][1] == "ROLLBACK"
     assert RIVAL not in {who for who, _ in tables.statements}
+
+
+def test_only_a_failed_create_of_a_hybrid_table_is_named() -> None:
+    table = lock_table.lock_table_sql(STATE_TABLE)
+    create, migrate = lock_table._create_sql(table, "hybrid"), lock_table._migrate_sql(table)
+    refused = ExecutionError("Hybrid tables are not available for this account.", None, 1234)
+    lock = QualifiedName.parse(LOCK)
+
+    def refusal(statements: tuple[Sql, ...], ran: int, *, kind: str = "hybrid") -> str | None:
+        result = ExecResult(False, tuple(f"q{index}" for index in range(ran)), refused)
+        found = lock_table.create_refusal(statements, result, lock, kind)
+        return None if found is None or found.diagnostic is None else found.diagnostic.code
+
+    assert refusal((migrate, create), 1) == "SST-APL035"
+    # A migration that failed, a standard table, and a script that failed past its last statement.
+    assert refusal((migrate, create), 0) is None
+    assert refusal((create,), 0, kind="standard") is None
+    assert refusal((create,), 1) is None
+    assert lock_table.create_refusal((create,), ExecResult(True, ("q0",)), lock, "hybrid") is None

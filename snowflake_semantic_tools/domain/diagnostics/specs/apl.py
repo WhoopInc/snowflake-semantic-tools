@@ -387,7 +387,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "point state.+database / state.+schema at a permanent schema, or set state.+table_kind: standard",
         condition=(
             "`state.+table_kind` is `hybrid`, and the state or lock table does not exist yet and "
-            "falls in a transient database or schema, where Snowflake refuses hybrid tables"
+            "falls in a transient database or schema, where Snowflake refuses hybrid tables; or "
+            "`sst state convert --to hybrid` would create them there"
         ),
         precheck=Precheck.RUNTIME,
     ),
@@ -440,6 +441,23 @@ SPECS: tuple[ErrorSpec, ...] = (
             "`sst state convert` refused before renaming anything: the state table is absent or "
             "already of the kind asked for, a backup name is taken, a target's lock is live, or "
             "the state table's rows changed during the copy"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL035",
+        Severity.ERROR,
+        "Hybrid state table cannot be created on this account",
+        "{value}: this account cannot create hybrid tables: {detail}",
+        "set state.+table_kind: standard",
+        condition=(
+            "`state.+table_kind` is `hybrid` (or `sst state convert --to hybrid` runs), and "
+            "Snowflake refuses to create the state or lock table with an error that names hybrid "
+            "tables and is not the transient schema's (SST-APL030)"
+        ),
+        note=(
+            "Its error number is not measured, so it is recognised by a message that names hybrid "
+            "tables; any other refusal is reported as Snowflake gave it"
         ),
         precheck=Precheck.RUNTIME,
     ),

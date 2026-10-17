@@ -785,7 +785,7 @@ to its backup the same way and created again, empty. Refused, with nothing chang
 any target's lock is live, or when the state table's rows change during the copy: run it
 while no apply does. Set `state.+table_kind` to the new kind afterwards, or every run
 refuses the converted tables (SST-APL031). Hybrid tables cannot sit in a transient
-database or schema.
+database or schema (SST-APL030), nor on an account that cannot create them (SST-APL035).
 
 Exit 0 when the tables were converted; 1 when the conversion was refused or failed; 3 when
 it would have to ask and there is no terminal, without --yes.
@@ -793,6 +793,8 @@ it would have to ask and there is no terminal, without --yes.
 Diagnostics:
     SST-PRT109: there is no terminal to ask on, and --yes was not given; raised.
     SST-APL034: the conversion was refused; nothing was changed.
+    SST-APL030: a hybrid table cannot be created in the transient database or schema.
+    SST-APL035: the account cannot create hybrid tables.
 
 ```text
 sst state convert [OPTIONS]

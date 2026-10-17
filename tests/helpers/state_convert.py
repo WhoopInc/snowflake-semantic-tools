@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from snowflake.connector.errors import ProgrammingError
+
 from snowflake_semantic_tools.adapters.snowflake.connector.convert import StateConvertMethods
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from tests.helpers.snowflake_fake.driver import FakeDriverConnector, FakeDriverSession, Rows
@@ -18,6 +20,8 @@ class Catalog:
         self.statements: list[str] = []
         # Rows a rival apply writes to the state table during the copy, as a race would.
         self.write_during_copy = 0
+        # The table whose CREATE fails, with the errno and message it fails with; None creates every one.
+        self.create_fails: tuple[str, int, str] | None = None
 
     def respond(self, statement: str, binds: tuple[object, ...]) -> tuple[Rows | None, int]:
         self.statements.append(statement)
@@ -31,6 +35,8 @@ class Catalog:
             return list(self.locks), 0
         if statement.startswith(("CREATE HYBRID TABLE IF NOT EXISTS", "CREATE TABLE IF NOT EXISTS")):
             name = statement.split()[6 if "HYBRID" in statement else 5].rsplit(".", 1)[1]
+            if self.create_fails is not None and self.create_fails[0] == name:
+                raise ProgrammingError(msg=self.create_fails[2], errno=self.create_fails[1])
             self.tables[name] = ("YES" if "HYBRID" in statement else "NO", 0)
             return None, 0
         if statement.startswith("INSERT INTO"):

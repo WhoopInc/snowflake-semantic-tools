@@ -9,6 +9,7 @@ import pytest
 
 from snowflake_semantic_tools.app.recover import RECORDED, UNMARKED, RecoveredArtifact, RecoverResult, RecoverState
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.cli_projects import applied_port, common, compile_project, invoke_with_port
 from tests.helpers.reference_project import project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
@@ -78,3 +79,15 @@ def test_convert_names_the_backups_and_the_setting_to_change(tmp_path: Path, mon
         monkeypatch, FakeSnowflake(state={}), ["state", "convert", *common(project), "--to", "standard", "--yes"]
     )
     assert refused.exit_code == 1 and "SST-APL034" in refused.output
+
+
+@pytest.mark.parametrize("code", ["SST-APL030", "SST-APL035"])
+def test_convert_reports_a_hybrid_table_snowflake_will_not_create(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: str
+) -> None:
+    project = project_copy(tmp_path)
+    port = FakeSnowflake(state={})
+    diagnostic = D(code, value="DB.S.SST_STATE", detail="Hybrid tables are not available for this account.")
+    port.fail("convert_state_tables", SnowflakePortError(diagnostic.message, diagnostic=diagnostic))
+    result = invoke_with_port(monkeypatch, port, ["state", "convert", *common(project), "--to", "hybrid", "--yes"])
+    assert result.exit_code == 1 and code in result.output

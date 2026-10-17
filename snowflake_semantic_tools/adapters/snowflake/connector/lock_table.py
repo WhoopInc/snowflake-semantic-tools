@@ -26,11 +26,14 @@ from snowflake_semantic_tools.adapters.snowflake.connector.session import (
     Session,
     Transaction,
     _driver_errors,
+    _headline,
     _require_ok,
+    _verb,
 )
 from snowflake_semantic_tools.domain.diagnostics import D
-from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, session_failure
+from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, detail_of, session_failure
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import ExecResult
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, ident, qname, sql
 from snowflake_semantic_tools.domain.state.lock import HYBRID_TABLES, STANDARD_TABLES, LockFence, lock_table_for
@@ -44,8 +47,10 @@ FREE = ""
 # been released"), which a `SELECT ... FOR UPDATE` reports at once rather than waiting.
 DUPLICATE_KEY = 200001
 KEY_LOCKED = 200010
-# A hybrid table cannot be created in a transient database or schema.
+# A hybrid table cannot be created in a transient database or schema (measured). The error of an
+# account that cannot create hybrid tables at all is not measured: its message names them.
 _TRANSIENT_HYBRID = 391412
+_HYBRID_WORD = "hybrid"
 # How often, and how long apart, a lock transaction asks again for a row a rival holds: a
 # rival's transaction is a few bound statements, so a few seconds in all is ample.
 _ROW_LOCK_ATTEMPTS = 20
@@ -147,6 +152,34 @@ def kind_in(rows: Sequence[Sequence[object]]) -> str | None:
     return HYBRID_TABLES if str(rows[0][0]).strip().upper() in ("YES", "Y", "TRUE") else STANDARD_TABLES
 
 
+def create_refusal(
+    statements: Sequence[Sql], result: ExecResult, table: QualifiedName, kind: str
+) -> SnowflakePortError | None:
+    """Return the error naming why Snowflake would not create `table` as a `kind` table; None otherwise.
+
+    Only a failed CREATE of a hybrid table counts, never a migration, copy, or rename that ran
+    in the same script. The transient schema's error is recognised by its number; an account's
+    refusal of hybrid tables, whose number is not measured, by a message that names them (see
+    docs/design/snowflake-behaviour.md).
+
+    Diagnostics:
+        SST-APL030: the hybrid table falls in a transient database or schema.
+        SST-APL035: the account cannot create hybrid tables.
+    """
+    error, failed = result.error, len(result.query_ids)
+    if result.ok or error is None or kind != HYBRID_TABLES or failed >= len(statements):
+        return None
+    if _verb(statements[failed]) != "CREATE":
+        return None
+    if error.errno == _TRANSIENT_HYBRID:
+        diagnostic = D("SST-APL030", value=table.sql)
+    elif _HYBRID_WORD in error.message.lower():
+        diagnostic = D("SST-APL035", value=table.sql, detail=_headline(detail_of(error.message)))
+    else:
+        return None
+    return SnowflakePortError(diagnostic.message, sqlstate=error.sqlstate, errno=error.errno, diagnostic=diagnostic)
+
+
 def fence_sql(table: Sql) -> Sql:
     """Select a target's lock rows as a fence compares them: run id and generation; binds the target."""
     return sql("SELECT RUN_ID, GENERATION FROM {table} WHERE TARGET_NAME = %s", table=table)
@@ -183,7 +216,7 @@ class LockTableMethods(Session):
         Raises:
             SnowflakePortError: probing, creating, migrating, or seeding the table failed; or
                 the table is of the other kind (SST-APL031), or a hybrid one cannot be created
-                where it is configured (SST-APL030).
+                where it is configured (SST-APL030) or on this account (SST-APL035).
         """
         table = lock_table_sql(state_table)
         missing = self._lock_table_ddl(table)
@@ -201,16 +234,16 @@ class LockTableMethods(Session):
         return table
 
     def _create(self, statements: tuple[Sql, ...], table: QualifiedName, failure: str) -> None:
-        """Run the DDL that creates or migrates `table`, naming a hybrid table a transient schema refuses.
+        """Run the DDL that creates or migrates `table`, naming why a hybrid one cannot be created.
 
         Raises:
-            SnowflakePortError: the DDL failed; a hybrid table in a transient database or schema
-                carries SST-APL030.
+            SnowflakePortError: the DDL failed; a hybrid table refused as `create_refusal` says
+                carries SST-APL030 or SST-APL035.
         """
         result = self.execute_script(statements)
-        if not result.ok and result.error is not None and result.error.errno == _TRANSIENT_HYBRID:
-            diagnostic = D("SST-APL030", value=table.sql)
-            raise SnowflakePortError(diagnostic.message, errno=_TRANSIENT_HYBRID, diagnostic=diagnostic)
+        refusal = create_refusal(statements, result, table, self._state_table_kind)
+        if refusal is not None:
+            raise refusal
         _require_ok(result, failure)
 
     def check_table_kind(self, table: QualifiedName) -> None:

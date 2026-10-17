@@ -1009,6 +1009,41 @@ adds itself; `dataset_version_metadata` reads it (observed on a live account).
 [connector/catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py);
 [concepts](../concepts.md#how-plan-decides-each-change).
 
+## State and lock tables
+
+### A transient schema's refusal of a hybrid table has a number; the account's does not
+
+**Docs say**: not consulted for this entry, which records only what SST
+measured; check Snowflake's hybrid table limitations when re-checking it.
+
+**Server does**: `CREATE HYBRID TABLE` in a transient database or schema fails
+with error 391412, "Cannot create hybrid table within transient database or
+schema." (measured on a live account). The error of an account that cannot
+create hybrid tables at all is not measured: the only account tested supports
+them.
+
+**Evidence**: `Enforced` for the transient schema: `create_refusal` reports
+391412 as `SST-APL030`
+([test_sst_apl030.py](../../tests/codes/apl/test_sst_apl030.py),
+[test_state_convert.py](../../tests/unit/adapters/test_state_convert.py)).
+`Observed` for the account: with no number to match, `create_refusal` reports
+any other failed `CREATE` of a hybrid state or lock table whose message names
+hybrid tables as `SST-APL035`
+([test_sst_apl035.py](../../tests/codes/apl/test_sst_apl035.py)), so a wording
+that does not name them is reported as Snowflake gave it. Probe, on an account
+without hybrid tables:
+
+```sql
+CREATE HYBRID TABLE <db>.<schema>.probe_table (id NUMBER PRIMARY KEY);
+-- Record the error number and message; then give create_refusal the number.
+```
+
+**SST depends on it at**: `create_refusal` in
+[connector/lock_table.py](../../snowflake_semantic_tools/adapters/snowflake/connector/lock_table.py),
+which the state and lock table creates and `sst state convert`
+([connector/convert.py](../../snowflake_semantic_tools/adapters/snowflake/connector/convert.py))
+share; [concepts](../concepts.md).
+
 ## Re-checking a behaviour
 
 A behaviour here can change in any Snowflake release, with or without a change
