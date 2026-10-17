@@ -340,6 +340,35 @@ setting before using it, and refuses one of the other kind (`SST-APL031`), since
 each kind takes its own protocol; `sst state convert` rebuilds the tables as the
 other kind. A hybrid table the configured schema cannot hold is `SST-APL030`.
 
+### Repairing state
+
+Two commands write the state table and its lock table, and never a published
+object.
+
+**`sst state recover`** rebuilds entries state lost: a dropped or recreated
+state table, or a target pointed at a new one, leaves every object SST published
+unrecorded, and plan blocks each as unmanaged (`SST-PLN024`). Recover plans the
+target, then, under the run lock, records each such object whose ownership
+marker names the compiled definition under the compiled name -- the same test
+plan trusts for an apply stopped between publishing and recording -- as apply
+records an observed object, so the next plan shows it unchanged
+(`SST-APL032`). Everything else it lists with what the next apply will do
+(`SST-APL033`). Measured on a live project of 29 artifacts with its state
+deleted, recover recorded the 20 that carry a marker -- semantic views, tools
+and agents -- and the next plan read them unchanged. The 9 kinds whose objects
+carry no marker on Snowflake stay unrecorded: skills, the plugin and the profile
+registry are still unmanaged, so an apply is blocked on them, and on the agents
+that depend on them, until they are dropped and published again; an eval is
+published again. Recover is a repair for the marked kinds, not a full restore.
+
+**`sst state convert --to hybrid|standard`** rebuilds both tables as the other
+kind (see the table above): it copies the state table into a new one, renames
+the old one to `<name>_<KIND>_BAK` and the new one into place, and recreates the
+lock table, keeping the old one as its backup too. It is refused, with nothing
+changed, while any target's lock is live or when rows change during the copy
+(`SST-APL034`); run it when no apply runs, then set `state.+table_kind` to the
+new kind.
+
 ### Ownership, grants, and prune
 
 SST changes only objects it published. An object that already exists under an

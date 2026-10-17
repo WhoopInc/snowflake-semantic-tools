@@ -405,6 +405,44 @@ SPECS: tuple[ErrorSpec, ...] = (
         precheck=Precheck.RUNTIME,
     ),
     spec(
+        "SST-APL032",
+        Severity.INFO,
+        "State entries recovered from ownership markers",
+        "state entries recovered from ownership markers: {count}; unrecorded artifacts left: {value}",
+        "run sst plan: what was recovered now plans as unchanged",
+        condition=(
+            "`sst state recover` ran: each object state did not record whose marker names the "
+            "compiled definition under the compiled name was recorded, without writing the object"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL033",
+        Severity.WARNING,
+        "Artifact not recoverable from a marker",
+        "{artifact}: not recovered ({found}); the next apply {value}",
+        "review the plan for it: an object with no marker stays unmanaged (SST-PLN024) until dropped or renamed",
+        condition=(
+            "`sst state recover` found an artifact state does not record that no marker proves is "
+            "the compiled definition: the object is absent, carries no marker, carries one for "
+            "another definition, or is of a kind with no marker on Snowflake"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL034",
+        Severity.ERROR,
+        "State tables not converted",
+        "{value} was not converted: {detail}",
+        "nothing was changed; resolve what the message names and run sst state convert again",
+        condition=(
+            "`sst state convert` refused before renaming anything: the state table is absent or "
+            "already of the kind asked for, a backup name is taken, a target's lock is live, or "
+            "the state table's rows changed during the copy"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
         "SST-APL100",
         Severity.ERROR,
         "Smoke query failed",

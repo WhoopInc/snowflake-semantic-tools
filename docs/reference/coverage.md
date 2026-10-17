@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 739
+- Codes: 742
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -43,6 +43,9 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-APL029`](error-codes.md#sst-apl029) | APL | warning | runtime | `snowflake_semantic_tools.app.evals.run` | `tests/codes/apl/test_sst_apl029.py` |
 | [`SST-APL030`](error-codes.md#sst-apl030) | APL | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.lock_table` | `tests/codes/apl/test_sst_apl030.py` |
 | [`SST-APL031`](error-codes.md#sst-apl031) | APL | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.lock_table` | `tests/codes/apl/test_sst_apl031.py` |
+| [`SST-APL032`](error-codes.md#sst-apl032) | APL | info | runtime | `snowflake_semantic_tools.app.recover` | `tests/codes/apl/test_sst_apl032.py` |
+| [`SST-APL033`](error-codes.md#sst-apl033) | APL | warning | runtime | `snowflake_semantic_tools.app.recover` | `tests/codes/apl/test_sst_apl033.py` |
+| [`SST-APL034`](error-codes.md#sst-apl034) | APL | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.convert` | `tests/codes/apl/test_sst_apl034.py` |
 | [`SST-APL100`](error-codes.md#sst-apl100) | APL | error | runtime | `snowflake_semantic_tools.app.smoke` | `tests/codes/apl/test_sst_apl100.py` |
 | [`SST-APL103`](error-codes.md#sst-apl103) | APL | error | runtime | `snowflake_semantic_tools.app.apply.recovery` | `tests/codes/apl/test_sst_apl103.py` |
 | [`SST-APL105`](error-codes.md#sst-apl105) | APL | info | local | `snowflake_semantic_tools.app.apply.temporary` | `tests/codes/apl/test_sst_apl105.py` |

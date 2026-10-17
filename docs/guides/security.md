@@ -25,7 +25,7 @@ its shape and publishes it. Treat each of these like SQL you would run yourself:
 
 **Never run a credentialed command on an untrusted change.** These commands connect:
 
-- `sst plan`, `sst apply`, `sst drop`, and `sst enrich`;
+- `sst plan`, `sst apply`, `sst drop`, `sst state recover`, `sst state convert`, and `sst enrich`;
 - `sst validate`, unless `--no-snowflake-syntax-check` is given or
   `validation.snowflake_syntax_check: false` is set (the default is `true`);
 - `sst test` with `--suite smoke` or `--suite evals`, and `sst test` with no `--suite`, which

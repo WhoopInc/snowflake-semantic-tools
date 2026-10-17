@@ -55,6 +55,7 @@ _DECLARED = {
     "baseline": {0, 1, 3, 4},
     "format": {0, 1, 2, 3, 4},
     "agent-kit": {0, 1, 2, 3, 4},
+    "state": {0, 1, 3, 4, 5},
 }
 EXIT_CODES = {command: codes | {INTERRUPTED} for command, codes in _DECLARED.items()}
 DROP = ("DB.S.V", "--type", "semantic_view", "--target", "dev", "--yes")
@@ -197,6 +198,12 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("drop", 3): lambda tmp, _: _run("drop", "DB.S.V", "--type", "semantic_view", "--target", "dev"),
     ("drop", 4): lambda tmp, _: _run("drop", *DROP, "--project-dir", str(tmp)),
     ("drop", 5): lambda tmp, mp: _drop_without_snowflake(tmp, mp, _unreachable),
+    ("state", 0): lambda tmp, mp: _state_convert(tmp, mp, "hybrid"),
+    ("state", 1): lambda tmp, mp: _state_convert(tmp, mp, "standard"),
+    # Off a terminal, a command that would ask refuses without --yes.
+    ("state", 3): lambda tmp, _: _run("state", "recover", *common(project_copy(tmp))),
+    ("state", 4): lambda tmp, _: _run("state", "recover", "--yes", "--project-dir", str(tmp / "not-dbt")),
+    ("state", 5): lambda tmp, mp: _state_unreachable(tmp, mp),
     ("drop", 130): lambda tmp, mp: _drop_without_snowflake(tmp, mp, _interrupt),
     ("explain", 0): lambda tmp, _: _run("explain", "SST-VAL009", "--project-dir", str(tmp)),
     ("explain", 3): lambda tmp, _: _run("explain", "SST-NOPE01"),
@@ -320,6 +327,19 @@ def _diff(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
     return invoke_with_port(monkeypatch, FakeSnowflake(state={}), ["diff", *common(project), *flags])
 
 
+def _state_convert(tmp: Path, monkeypatch: pytest.MonkeyPatch, to_kind: str) -> Result:
+    project = project_copy(tmp)
+    return invoke_with_port(
+        monkeypatch, FakeSnowflake(state={}), ["state", "convert", *common(project), "--to", to_kind, "--yes"]
+    )
+
+
+def _state_unreachable(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
+    project = project_copy(tmp)
+    _unreachable(monkeypatch)
+    return _run("state", "convert", *common(project), "--to", "hybrid", "--yes")
+
+
 def _drop_project(tmp: Path) -> Path:
     project = _dbt_project(tmp / "p")
     (project / "profiles.yml").write_text(PROFILES_FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
@@ -416,7 +436,7 @@ def test_every_command_is_in_the_exit_code_table() -> None:
 
 
 # A command line each body is reached by: a group's subcommand, and a command's required arguments.
-_INVOCATIONS = {"explain": ("SST-VAL009",), "drop": DROP}
+_INVOCATIONS = {"explain": ("SST-VAL009",), "drop": DROP, "convert": ("--to", "hybrid")}
 
 
 def _interruptible(name: str, command: click.Command) -> list[list[str]]:

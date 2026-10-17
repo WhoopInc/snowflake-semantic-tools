@@ -24,6 +24,7 @@ from snowflake_semantic_tools.cli.commands import (
     list,
     migrate,
     plan,
+    state,
     test,
     validate,
 )
@@ -50,6 +51,7 @@ for _command in (
     diff.diff,
     drop.drop,
     agent_kit.agent_kit,
+    state.state,
 ):
     cli.add_command(_command)
 document_options(cli)

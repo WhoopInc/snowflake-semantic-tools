@@ -27,7 +27,7 @@ cannot be downgraded by any setting.
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 43 codes
-- [Apply (APL)](#apply-apl) -- 33 codes
+- [Apply (APL)](#apply-apl) -- 36 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 25 codes
 - [Internal (INT)](#internal-int) -- 12 codes
@@ -7038,6 +7038,36 @@ Fix: point state.+database / state.+schema at a permanent schema, or set state.+
 Raised when the state or lock table exists as a standard table while `state.+table_kind` is `hybrid`, or as a hybrid table while it is `standard`; each kind takes its own lock protocol, so SST refuses to run the other on it.
 
 Fix: run `sst state convert --to {expected}` to rebuild it, or set state.+table_kind back to {found}
+
+### SST-APL032
+
+**State entries recovered from ownership markers** (info)
+
+`state entries recovered from ownership markers: <count>; unrecorded artifacts left: <value>`
+
+Raised when `sst state recover` ran: each object state did not record whose marker names the compiled definition under the compiled name was recorded, without writing the object.
+
+Fix: run sst plan: what was recovered now plans as unchanged
+
+### SST-APL033
+
+**Artifact not recoverable from a marker** (warning)
+
+`<artifact>: not recovered (<found>); the next apply <value>`
+
+Raised when `sst state recover` found an artifact state does not record that no marker proves is the compiled definition: the object is absent, carries no marker, carries one for another definition, or is of a kind with no marker on Snowflake.
+
+Fix: review the plan for it: an object with no marker stays unmanaged (SST-PLN024) until dropped or renamed
+
+### SST-APL034
+
+**State tables not converted** (error)
+
+`<value> was not converted: <detail>`
+
+Raised when `sst state convert` refused before renaming anything: the state table is absent or already of the kind asked for, a backup name is taken, a target's lock is live, or the state table's rows changed during the copy.
+
+Fix: nothing was changed; resolve what the message names and run sst state convert again
 
 ### SST-APL100
 

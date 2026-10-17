@@ -118,6 +118,7 @@ COMMAND_ORDER = (
     "docs",
     "clean",
     "drop",
+    "state",
 )
 
 

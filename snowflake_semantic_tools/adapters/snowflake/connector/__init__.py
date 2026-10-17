@@ -11,6 +11,7 @@ parallel workers sibling connectors.
 
 from __future__ import annotations
 
+from snowflake_semantic_tools.adapters.snowflake.connector.convert import StateConvertMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.cortex import CortexMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.cortex_models import CortexModelsMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.pool import ConnectorPool
@@ -26,6 +27,7 @@ class SnowflakeConnector(
     PreflightMethods,
     StageMethods,
     ProfileRegistryMethods,
+    StateConvertMethods,
     StateTableMethods,
     RunLockMethods,
     ProfilerMethods,

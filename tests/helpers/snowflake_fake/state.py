@@ -10,7 +10,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from types import MappingProxyType
 
+from snowflake_semantic_tools.adapters.snowflake.connector.convert import Conversion
+from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, LockFence, StateWrite
 from tests.helpers.snowflake_fake.world import SnowflakeWorld
@@ -18,6 +21,9 @@ from tests.helpers.snowflake_fake.world import SnowflakeWorld
 
 class FakeState(SnowflakeWorld):
     """`StatePort` over the shared account, and the session's `halt`."""
+
+    # The kind of table the state tables are, which `convert_state_tables` changes.
+    state_table_kind = "standard"
 
     def read_state(self, state_table: QualifiedName, target_name: str) -> Mapping[str, AppliedEntry] | None:
         del state_table, target_name
@@ -51,6 +57,18 @@ class FakeState(SnowflakeWorld):
     def ensure_state_table(self, state_table: QualifiedName) -> None:
         del state_table
         self._check("ensure_state_table")
+
+    def convert_state_tables(self, state_table: QualifiedName, to_kind: str) -> Conversion:
+        """Convert the state tables' kind, which `state_table_kind` holds, refusing the kind they are."""
+        self._check("convert_state_tables")
+        if to_kind == self.state_table_kind:
+            diagnostic = D("SST-APL034", value=state_table.sql, detail=f"it is already a {to_kind} table")
+            raise SnowflakePortError(diagnostic.message, diagnostic=diagnostic)
+        from_kind, self.state_table_kind = self.state_table_kind, to_kind
+        suffix = f"_{from_kind.upper()}_BAK"
+        backup = QualifiedName.parse(f"{state_table.sql}{suffix}")
+        lock = QualifiedName.parse(f"{state_table.sql}_LOCK{suffix}")
+        return Conversion(from_kind, to_kind, len(self.remote_state or {}), backup, lock)
 
     def acquire_run_lock(
         self,

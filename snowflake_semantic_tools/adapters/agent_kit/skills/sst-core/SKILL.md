@@ -65,6 +65,8 @@ skills, and CoCo Desktop profiles, then publishes them. This kit was installed b
 | `sst test` | billed | Smoke reads, evals run agents. Always pass `--suite`. |
 | `sst apply` | writes Snowflake | Publishes. Only when asked, and from a reviewed plan. |
 | `sst drop` | writes Snowflake | Break-glass: drops one object SST owns. Only when asked. |
+| `sst state recover` | writes Snowflake | Records lost state entries from ownership markers; writes no object. Only when asked. |
+| `sst state convert` | writes Snowflake | Rebuilds the state and lock tables as hybrid or standard tables. Only when asked. |
 
 ## The loop
 

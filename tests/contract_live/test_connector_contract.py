@@ -172,3 +172,48 @@ def test_a_procedure_s_drift_digest_is_stable_across_reads_and_a_comment_but_not
     owner = live_connector.execute_script((sql("ALTER PROCEDURE {p}() EXECUTE AS OWNER", p=qname(procedure)),))
     assert owner.ok
     assert drifted_properties(first, written_digest(live_connector, rendered)) == ("execute_as",)
+
+
+def test_state_tables_convert_to_hybrid_and_back_keeping_their_rows_and_backups(
+    live_account: LiveAccount, scratch_schema: Scratch
+) -> None:
+    state_table = _name(scratch_schema("contract"), "SST_STATE_CONVERT")
+    entry = AppliedEntry(
+        "c" * 64,
+        _name(scratch_schema("contract"), "V").sql,
+        "2026-10-17T00:00:00Z",
+        "run",
+        "applied",
+        "c" * 64,
+        "a" * 64,
+    )
+    standard = SnowflakeConnector(live_account.connection_params())
+    try:
+        standard.ensure_state_table(state_table)
+        taken = standard.acquire_run_lock(
+            state_table, "live", LockClaim("run-a", "ROLE", "host", 60), break_stale=False
+        )
+        assert taken.fence is not None
+        with pytest.raises(SnowflakePortError) as live_lock:
+            standard.convert_state_tables(state_table, HYBRID_TABLES)
+        assert live_lock.value.diagnostic is not None and live_lock.value.diagnostic.code == "SST-APL034"
+        write = StateWrite(MappingProxyType({"semantic_view:v": entry}))
+        assert standard.write_state(state_table, "live", "m" * 64, write, taken.fence)
+        standard.release_run_lock(state_table, "live", taken.fence)
+
+        to_hybrid = standard.convert_state_tables(state_table, HYBRID_TABLES)
+        assert (to_hybrid.from_kind, to_hybrid.rows) == (STANDARD_TABLES, 1)
+        assert to_hybrid.state_backup.name.value == "SST_STATE_CONVERT_STANDARD_BAK"
+    finally:
+        standard.close()
+    hybrid = SnowflakeConnector({**live_account.connection_params(), TABLE_KIND_SETTING: HYBRID_TABLES})
+    try:
+        assert hybrid.read_state(state_table, "live") == {"semantic_view:v": entry}
+        again = hybrid.acquire_run_lock(state_table, "live", LockClaim("run-b", "ROLE", "host", 60), break_stale=False)
+        assert again.acquired and again.fence is not None
+        hybrid.release_run_lock(state_table, "live", again.fence)
+        back = hybrid.convert_state_tables(state_table, STANDARD_TABLES)
+        assert (back.from_kind, back.to_kind, back.rows) == (HYBRID_TABLES, STANDARD_TABLES, 1)
+        assert back.state_backup.name.value == "SST_STATE_CONVERT_HYBRID_BAK"
+    finally:
+        hybrid.close()

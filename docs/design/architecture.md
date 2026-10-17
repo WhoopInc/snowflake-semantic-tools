@@ -533,7 +533,7 @@ local lock, a file beside the state cache: `<state file>.lock`.
 
 | | Manifest | State |
 |---|---|---|
-| Produced by | `sst compile` | `sst apply`, `sst drop` |
+| Produced by | `sst compile` | `sst apply`, `sst drop`, `sst state recover` |
 | Lives in | `target/sst/manifest.json` | the state table, cached in `target/sst/state.<target>.json` |
 | Describes | what the project renders now | what was published, with each object's fingerprint and the manifest it came from |
 | Deterministic | yes: its id is the hash of its content | no: it records run ids, times, and the commit |

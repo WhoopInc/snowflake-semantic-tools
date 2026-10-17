@@ -33,6 +33,9 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst docs`](#sst-docs) | Write the generated reference pages under docs/reference/. |
 | [`sst clean`](#sst-clean) | Remove local SST build artifacts only; never touch Snowflake. |
 | [`sst drop`](#sst-drop) | Break-glass: drop exactly one object SST owns from one target, and forget it in state. |
+| [`sst state`](#sst-state) | Repair a target's state table: recover entries it lost, or convert it between table kinds. |
+| [`sst state convert`](#sst-state-convert) | Rebuild the state and lock tables as hybrid or standard tables, keeping the old ones. |
+| [`sst state recover`](#sst-state-recover) | Record what state lost, from the ownership markers on the target's live objects. |
 | [`sst agent-kit`](#sst-agent-kit) | Install SST's skills for a coding agent into this project, and keep them current. |
 | [`sst agent-kit install`](#sst-agent-kit-install) | Install the kit's skills for each --agent, writing only files that are not there. |
 | [`sst agent-kit remove`](#sst-agent-kit-remove) | Remove the kit's skills, or those --only names, from each --agent, else every agent installed. |
@@ -754,6 +757,75 @@ sst drop [OPTIONS] <DB>.<SCHEMA>.<NAME>
 | `--target / -t` | TEXT |  | Required. Target from `profiles.yml`; there is no default, and `$SST_TARGET` is not read. |
 | `--profile` | TEXT |  | Profile in `profiles.yml`; else `dbt_project.yml`'s `profile:`. Needed outside a project. |
 | `--yes / -y` | flag |  | Required on every invocation: it is the confirmation, and there is no prompt. |
+| `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
+
+## sst state
+
+Repair a target's state table: recover entries it lost, or convert it between table kinds.
+
+State records what apply published to each target, in the state table `state:` names. These
+commands write that table and its lock table, and never a published object.
+
+Subcommands: [`sst state convert`](#sst-state-convert), [`sst state recover`](#sst-state-recover).
+
+## sst state convert
+
+Rebuild the state and lock tables as hybrid or standard tables, keeping the old ones.
+
+The state table is copied into a new table of the kind --to names, then the old one is
+renamed to `<name>_<KIND>_BAK` and the new one into its place; the lock table is renamed
+to its backup the same way and created again, empty. Refused, with nothing changed, while
+any target's lock is live, or when the state table's rows change during the copy: run it
+while no apply does. Set `state.+table_kind` to the new kind afterwards, or every run
+refuses the converted tables (SST-APL031). Hybrid tables cannot sit in a transient
+database or schema.
+
+Exit 0 when the tables were converted; 1 when the conversion was refused or failed; 3 when
+it would have to ask and there is no terminal, without --yes.
+
+Diagnostics:
+    SST-PRT109: there is no terminal to ask on, and --yes was not given; raised.
+    SST-APL034: the conversion was refused; nothing was changed.
+
+```text
+sst state convert [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--to` | standard\|hybrid, required |  | Required. The kind of table to rebuild the state and lock tables as. |
+| `--yes / -y` | flag |  | Convert without asking for confirmation; required off a terminal. |
+
+## sst state recover
+
+Record what state lost, from the ownership markers on the target's live objects.
+
+Plans the target, then records, under the run lock and without writing any object, each
+object state does not record whose marker names the compiled definition under the compiled
+name, so `sst plan` then shows it unchanged. Every other unrecorded artifact is listed with
+what the next apply will do: one with no marker stays unmanaged (SST-PLN024), one with a
+marker for another definition is published again, and a kind with no marker on Snowflake --
+a profile, a skill, an eval -- is published as new.
+
+Exit 0 when recover ran, whatever it recorded; 1 when another run holds the lock or the
+plan is refused; 3 when it would have to ask and there is no terminal, without --yes.
+
+Diagnostics:
+    SST-PRT109: there is no terminal to ask on, and --yes was not given; raised.
+    SST-APL032: what recover recorded, as a summary.
+    SST-APL033: an unrecorded artifact recover could not record, and what apply will do.
+    SST-APL011: another run holds the lock.
+    SST-APL010: an expired lock was taken over, with --break-stale-lock.
+
+```text
+sst state recover [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--yes / -y` | flag |  | Record without asking for confirmation; required off a terminal. |
 | `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 
 ## sst agent-kit
