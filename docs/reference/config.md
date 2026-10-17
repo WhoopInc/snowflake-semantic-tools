@@ -42,8 +42,8 @@ What blocks a build.
 |---|---|---|---|
 | `validation.strict` | boolean | `false` | Promote every warning to an error. |
 | `validation.snowflake_syntax_check` | boolean | `true` | Compile expressions against Snowflake during validate and plan, and run each allowed orchestration model in a throwaway agent (SST-VAL551 to SST-VAL556). Must be written out, true or false (SST-CFG031). |
-| `validation.description_floor` | integer |  | Shortest description, in characters, a semantic view or metric may carry (SST-VAL004); unset checks none. |
-| `validation.instruction_budget` | integer |  | Longest composed comment and instructions, in characters, a semantic view may publish (SST-VAL018); unset checks none. |
+| `validation.description_floor` | integer, at least 1 |  | Shortest description, in characters, a semantic view or metric may carry (SST-VAL004); unset checks none. |
+| `validation.instruction_budget` | integer, at least 1 |  | Longest composed comment and instructions, in characters, a semantic view may publish (SST-VAL018); unset checks none. |
 | `validation.exclude_dirs` | list | `[]` | Globs of project-relative directories discovery skips: no semantic model file under one is read. |
 
 ## diagnostics
@@ -74,7 +74,7 @@ How the commands that reach Snowflake pace their work.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `generation.threads` | integer, 1 to 16 | `4` | Sessions `plan`, `validate` and `test` work on at once, and changes `apply` applies at once, unless `--threads` or `$SST_THREADS` says. Unset, applying takes `skills.+threads` first, and `test` takes 1. |
-| `generation.view_timeout` | integer | `300` | Seconds one statement of a plan or apply session may run (`STATEMENT_TIMEOUT_IN_SECONDS`). |
+| `generation.view_timeout` | integer, at least 1 | `300` | Seconds one statement of a plan or apply session may run (`STATEMENT_TIMEOUT_IN_SECONDS`). |
 
 ## dbt
 
@@ -150,7 +150,7 @@ Defaults for semantic views, overridable per folder and by a view's own `config:
 | `semantic_views.+schema` | identifier | the target schema | Schema for semantic views. |
 | `semantic_views.+enabled` | boolean | `true` | Whether views are built; false leaves them out of the project. |
 | `semantic_views.+tags` | list |  | Tags, as `name` and `value` entries, rendered in the CREATE's WITH TAG; a closer setting replaces the list. |
-| `semantic_views.+max_staleness` | integer |  | `MAX_STALENESS` of views, in seconds; at least 120 (SST-CFG023). |
+| `semantic_views.+max_staleness` | integer, at least 120 |  | `MAX_STALENESS` of views, in seconds; at least 120 (SST-CFG023). |
 | `semantic_views.<route>` | block |  | Folder route: overrides for views under that directory. |
 
 ## agents
@@ -163,9 +163,9 @@ Defaults for Cortex Agents, overridable per folder and by an agent's own `config
 | `agents.+schema` | identifier | the target schema | Schema for agents. |
 | `agents.+warehouse` | string | the target warehouse | Warehouse an agent's Analyst, search, and generic tools run on when they name none. |
 | `agents.+orchestration_model` | string | `auto` | Orchestration model; must be in `snowflake.orchestration_models` (SST-CFG025 here, SST-VAL543 for the value an agent resolves). `auto` lets Snowflake choose. |
-| `agents.+query_timeout` | integer |  | Query timeout, in seconds, of an agent's tools that set none. |
-| `agents.+budget_seconds` | integer |  | Orchestration time budget. |
-| `agents.+budget_tokens` | integer |  | Orchestration token budget. |
+| `agents.+query_timeout` | integer, at least 1 |  | Query timeout, in seconds, of an agent's tools that set none. |
+| `agents.+budget_seconds` | integer, at least 1 |  | Orchestration time budget, in seconds. |
+| `agents.+budget_tokens` | integer, at least 1 |  | Orchestration token budget. |
 | `agents.+tool_not_accessible` | enum: `accept`, `reject`, `legacy` |  | Behavior when a tool is not accessible. |
 | `agents.+analytical_search` | boolean |  | Enable analytical search. |
 | `agents.+alias` | string |  | Version alias assigned after publication. |

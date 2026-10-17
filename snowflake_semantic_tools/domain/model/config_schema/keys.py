@@ -422,9 +422,11 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "value an agent resolves). `auto` lets Snowflake choose.",
         default="auto",
     ),
-    _key("agents.+query_timeout", _I, "Query timeout, in seconds, of an agent's tools that set none."),
-    _key("agents.+budget_seconds", _I, "Orchestration time budget."),
-    _key("agents.+budget_tokens", _I, "Orchestration token budget."),
+    # A budget or timeout below 1 publishes, and Snowflake runs the agent as if none were set
+    # (measured: 0 and negative values are stored verbatim and ignored), so each is refused.
+    _key("agents.+query_timeout", _I, "Query timeout, in seconds, of an agent's tools that set none.", minimum=1),
+    _key("agents.+budget_seconds", _I, "Orchestration time budget, in seconds.", minimum=1),
+    _key("agents.+budget_tokens", _I, "Orchestration token budget.", minimum=1),
     _key(
         "agents.+tool_not_accessible",
         KeyKind.ENUM,

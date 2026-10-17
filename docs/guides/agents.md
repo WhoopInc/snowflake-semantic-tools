@@ -130,15 +130,17 @@ agent leaves out inherits; an explicit value, `0`, `false`, `[]`, or `auto`
 among them, is a value; and a key written with no value is an error
 (`SST-CFG054`). Any other key under `config:` is an error (`SST-CFG053`), and a
 value is checked by the rules the `+` key follows, such as `SST-CFG008` for a
-`tool_not_accessible` outside its choices. `sst list --long` prints each
+`tool_not_accessible` outside its choices, or for a `query_timeout`,
+`budget_seconds` or `budget_tokens` below 1: Snowflake stores a zero or negative
+one as written and runs the agent as if none were set, so SST refuses it. `sst list --long` prints each
 agent's settings with where each came from.
 
 | Key | Meaning |
 |---|---|
 | `database`, `schema` | Where the agent publishes. Unset, the target's. |
-| `warehouse`, `query_timeout` | The execution environment of every Analyst, search, and generic tool of the agent that sets none. With no `warehouse`, they run on the target's warehouse. |
+| `warehouse`, `query_timeout` | The execution environment of every Analyst, search, and generic tool of the agent that sets none; `query_timeout` is at least 1. With no `warehouse`, they run on the target's warehouse. |
 | `orchestration_model` | Rendered as `models.orchestration`. It must be in `snowflake.orchestration_models` (`SST-VAL543`), which defaults to `[auto]` alone, so a project that names a model lists it there. The connected check runs each model in that list in a throwaway agent, so a model agents refuse fails validation (`SST-VAL551`) rather than an agent's first question. Unset, `auto`. |
-| `budget_seconds`, `budget_tokens` | Rendered as `orchestration.budget`. Tokens spent inside tools are not counted, so the token budget is not a spend ceiling: an agent that sets `config.budget_tokens` itself is warned (`SST-VAL547`) unless a comment on that line, or just above it, says `orchestration`. A budget an agent inherits from `agents:` is not warned. |
+| `budget_seconds`, `budget_tokens` | Rendered as `orchestration.budget`; each at least 1. Tokens spent inside tools are not counted, so the token budget is not a spend ceiling: an agent that sets `config.budget_tokens` itself is warned (`SST-VAL547`) unless a comment on that line, or just above it, says `orchestration`. A budget an agent inherits from `agents:` is not warned. |
 | `tool_not_accessible` | Rendered as `orchestration.tool_not_accessible`: `accept`, `reject`, or `legacy` (`SST-VAL545`). |
 | `analytical_search` | Rendered as `orchestration.capabilities.analytical_search`; `true` needs a `cortex_search` tool (`SST-VAL546`). |
 | `alias` | The version alias SST moves to each new version. |

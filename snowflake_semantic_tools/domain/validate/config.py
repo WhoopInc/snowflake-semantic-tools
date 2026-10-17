@@ -606,11 +606,19 @@ def value_problem(spec: ConfigKey, value: object, *, key: str, origin: Origin, s
     if spec.choices and (vocabulary_key(str(value)) if spec.folded else value) not in spec.choices:
         return D(code, origin=origin, subject=subject, key=key, found=repr(value), expected=", ".join(spec.choices))
     if isinstance(value, int) and not isinstance(value, bool) and _out_of_bounds(spec, value):
-        bounds = f"{spec.minimum}..{spec.maximum}"
-        return D(code, origin=origin, subject=subject, key=key, found=str(value), expected=bounds)
+        return D(code, origin=origin, subject=subject, key=key, found=str(value), expected=bounds(spec))
     if spec.kind in NAME_KINDS and isinstance(value, str) and unusable_name(value, spec.kind):
         return D(code, origin=origin, subject=subject, key=key, found=repr(value), expected=NAME_KINDS[spec.kind])
     return None
+
+
+def bounds(spec: ConfigKey) -> str:
+    """Name a key's integer bounds: `1..1000`, `the integers from 1 up`, or `the integers up to 20`."""
+    if spec.minimum is not None and spec.maximum is not None:
+        return f"{spec.minimum}..{spec.maximum}"
+    if spec.minimum is not None:
+        return f"the integers from {spec.minimum} up"
+    return f"the integers up to {spec.maximum}"
 
 
 def _out_of_bounds(spec: ConfigKey, value: int) -> bool:

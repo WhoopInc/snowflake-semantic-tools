@@ -212,3 +212,18 @@ def test_prose_and_code_spans_stay_markdown_safe() -> None:
     assert _code("plain") == "`plain`"
     assert _code("uses `x` inside") == "``uses `x` inside``"
     assert _code("`edge`") == "`` `edge` ``"
+
+
+def test_an_integer_bound_is_named_whichever_side_it_sets() -> None:
+    from snowflake_semantic_tools.domain.render.reference_docs import _type
+    from snowflake_semantic_tools.domain.validate.config import bounds
+
+    both = ConfigKey("x.both", KeyKind.INTEGER, "Both.", minimum=1, maximum=9)
+    low = ConfigKey("x.low", KeyKind.INTEGER, "Low.", minimum=1)
+    high = ConfigKey("x.high", KeyKind.INTEGER, "High.", maximum=20)
+    assert [bounds(key) for key in (both, low, high)] == ["1..9", "the integers from 1 up", "the integers up to 20"]
+    assert [_type(key) for key in (both, low, high)] == [
+        "integer, 1 to 9",
+        "integer, at least 1",
+        "integer, at most 20",
+    ]
