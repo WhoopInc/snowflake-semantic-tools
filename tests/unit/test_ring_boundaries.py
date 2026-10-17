@@ -15,6 +15,7 @@ A test asserting the linter passes would be the weaker test. These assert it fai
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -164,10 +165,45 @@ def _lint_imports(root: Path = REPO_ROOT) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [str(script)],
         cwd=root,
-        env={**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, (str(root), os.environ.get("PYTHONPATH"))))},
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join(filter(None, (str(root), os.environ.get("PYTHONPATH")))),
+            "NO_COLOR": "1",
+        },
         capture_output=True,
         text=True,
     )
+
+
+# One contract's result line: its name, its status, then optionally the count of ignored imports (and
+# warnings) and, in newer releases, how long it took.
+_RESULT_LINE = re.compile(r"^(?P<name>.+) (?P<status>KEPT|BROKEN)(?: \([^)]*\))?(?: \[[^\]]*\])?$")
+
+
+def _broken_contracts(stdout: str) -> list[str]:
+    """Return the name of each contract the linter's output reports BROKEN."""
+    matches = (_RESULT_LINE.match(line.rstrip()) for line in stdout.splitlines())
+    return [match["name"] for match in matches if match and match["status"] == "BROKEN"]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "adapter subpackages are independent BROKEN",
+        "adapter subpackages are independent BROKEN (2 ignored imports)",
+        "adapter subpackages are independent BROKEN (2 ignored imports, 1 warning)",
+        "adapter subpackages are independent BROKEN (2 ignored imports) [0.12s]",
+        "adapter subpackages are independent BROKEN [12ms]",
+    ],
+)
+def test_a_broken_result_line_is_read_in_each_linter_format(line: str) -> None:
+    output = f"app imports domain only -- no SDKs, no terminal KEPT (1 ignored import)\n{line}\n"
+    assert _broken_contracts(output) == ["adapter subpackages are independent"]
+
+
+def test_lines_that_only_mention_broken_are_not_results() -> None:
+    output = "Contracts: 7 kept, 1 broken.\n- snowflake_semantic_tools.app.x -> yaml (l.1)\nBROKEN\n"
+    assert _broken_contracts(output) == []
 
 
 def test_repo_root_resolves() -> None:
@@ -212,8 +248,8 @@ def test_crossing_a_boundary_breaks_its_contract(probe_path: str, body: str, con
         f"crossing a boundary was NOT caught -- {probe_path} imported "
         f"{body.strip()!r} and the linter still passed:\n{result.stdout}"
     )
-    broken = [ln for ln in result.stdout.splitlines() if ln.endswith("BROKEN")]
-    assert any(contract in ln for ln in broken), (
+    broken = _broken_contracts(result.stdout)
+    assert any(contract in name for name in broken), (
         f"expected the {contract!r} contract to break; broken contracts were {broken}\n{result.stdout}"
     )
 
