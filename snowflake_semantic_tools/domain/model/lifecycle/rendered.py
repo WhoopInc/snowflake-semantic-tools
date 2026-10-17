@@ -339,7 +339,7 @@ class RenderedArtifact:
 
 
 def _unpinned_default(artifact: RenderedArtifact, observed: ObservedArtifact | None) -> tuple[Sql, ...]:
-    """Move a default pinned to an older version onto the version an update adds, as `LAST`.
+    """Move a default pinned to an older version onto the version an update adds, as `'LAST'`.
 
     Snowflake keeps a default set by hand where it is when a version is committed, so a
     version-adding update would leave it serving the old one until a second apply; the default
@@ -351,7 +351,8 @@ def _unpinned_default(artifact: RenderedArtifact, observed: ObservedArtifact | N
     default, newest = observed.default_version, observed.newest_version
     if default is None or newest is None or default.casefold() == newest.casefold():
         return ()
-    return (sql("ALTER AGENT {agent} SET DEFAULT_VERSION = LAST", agent=qname(artifact.target)),)
+    # MEASURED: the shortcut is taken only as a string literal; unquoted, it is a syntax error.
+    return (sql("ALTER AGENT {agent} SET DEFAULT_VERSION = 'LAST'", agent=qname(artifact.target)),)
 
 
 def version_drift(artifact: RenderedArtifact, observed: ObservedArtifact) -> tuple[str, ...]:

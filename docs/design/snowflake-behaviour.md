@@ -429,8 +429,9 @@ served the full spec. `ALTER AGENT ... ADD LIVE VERSION FROM LAST` opens a live
 version holding `LAST`'s spec. `LAST` is the only source it takes: `FROM
 VERSION$1`, `FROM "VERSION$1"` and `FROM VERSION VERSION$1` are syntax errors
 (001003), so a live version can be reopened only from the newest committed
-version. `SET DEFAULT_VERSION` takes the version as a string literal
-(`'VERSION$3'`) or a shortcut such as `LAST`; an identifier is a syntax error.
+version. `SET DEFAULT_VERSION` takes the version, or a shortcut, only as a
+string literal (`'VERSION$3'`, `'LAST'`): an identifier is a syntax error, and
+so is an unquoted `LAST`, although Snowflake's versioning guide shows one.
 
 **Evidence**: `Enforced`. On create, SST keeps the live copy `CREATE AGENT`
 opens. On update, an agent with a live version gets the spec written into it

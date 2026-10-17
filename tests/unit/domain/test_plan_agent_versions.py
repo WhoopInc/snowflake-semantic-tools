@@ -142,11 +142,11 @@ def test_a_version_adding_update_moves_a_default_pinned_to_an_older_version() ->
             )
             [change] = plan((after,), observed=(observed,), applied=applied).changes
             assert change.rendered is not None
-            moved = ("ALTER AGENT DB.S.SALES SET DEFAULT_VERSION = LAST",) if unpinned else ()
+            moved = ("ALTER AGENT DB.S.SALES SET DEFAULT_VERSION = 'LAST'",) if unpinned else ()
             assert texts(change.rendered.statements) == ("set comment", *program, *moved)
     temporary = agent(temporary=True)
     pinned = live(temporary, recorded(temporary), default_version="VERSION$2")
-    assert "ALTER AGENT DB.S.SALES SET DEFAULT_VERSION = LAST" not in texts(
+    assert "ALTER AGENT DB.S.SALES SET DEFAULT_VERSION = 'LAST'" not in texts(
         temporary.for_action(Action.UPDATE, pinned).statements
     )
 
