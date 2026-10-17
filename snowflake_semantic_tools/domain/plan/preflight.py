@@ -16,6 +16,10 @@ too: apply creates an absent stage (SST-PLN035 says so, once per stage), so the 
 CREATE STAGE on its schema; an existing stage must be an internal server-side encrypted one
 (SST-PLN026), on which the role holds READ and WRITE. Each failure blocks the write (SST-PLN008
 for a privilege), so apply never fails part-way on a stage it cannot create or use.
+
+The state and lock tables are checked once for the plan when it writes: CREATE TABLE on the
+schema of an absent one (SST-PLN008), and the kind of one that exists, which must be the kind
+`state.+table_kind` names (SST-APL031, which apply would report on taking the lock).
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import SSE_STAGE_TYPE, Action, Change, ChangeReason
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import ROLE_HIERARCHY_DEPTH
+from snowflake_semantic_tools.domain.state.lock import STANDARD_TABLES
 
 _Scope = tuple[str, str]
 _Name = tuple[str, str, str]
@@ -79,6 +84,9 @@ class Preflight:
         absent_state_tables: The state and lock tables that do not exist, which apply creates;
             their CREATE TABLE is in `missing_privileges`, under their schema. A state table
             that exists needs no CREATE privilege at all.
+        state_table_kind: The kind `state.+table_kind` names, `standard` or `hybrid`.
+        state_table_kinds: Each state and lock table that exists, with the kind it was read to
+            be, in table order. A table whose kind could not be read is not listed.
     """
 
     target_name: str
@@ -98,6 +106,8 @@ class Preflight:
     absent_stages: frozenset[_Name] = frozenset()
     missing_stage_privileges: Mapping[_Name, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
     absent_state_tables: tuple[QualifiedName, ...] = ()
+    state_table_kind: str = STANDARD_TABLES
+    state_table_kinds: tuple[tuple[QualifiedName, str], ...] = ()
 
 
 def required_privilege(change: Change) -> str | None:
@@ -119,9 +129,12 @@ def check_preflight(
     Returns:
         The changes in their given order, each blocking diagnostic on its change, and every
         diagnostic for the plan's list: one per missing database or schema, then each
-        change's own, in change order, then the state tables' SST-PLN008, then SST-PLN012.
+        change's own, in change order, then the state tables' SST-PLN008 and SST-APL031, then
+        SST-PLN012.
 
     Diagnostics:
+        SST-APL031: when the plan writes, a state or lock table exists as the other kind than
+            `state.+table_kind` names.
         SST-PLN007: a write references a relation that does not exist in the target.
         SST-PLN008: the role lacks the privilege a create needs on its schema, CREATE STAGE
             on the schema of an absent upload stage, or READ or WRITE on an existing one; or,
@@ -146,6 +159,7 @@ def check_preflight(
         checked.append(_blocked(change, blocking) if blocking else change)
     if any(_writes(change) for change in changes):
         reported.extend(_state_tables_lacked(preflight))
+        reported.extend(_state_tables_of_other_kind(preflight))
     if preflight.warehouse and not preflight.warehouse_usable:
         reported.append(D("SST-PLN012", value=preflight.warehouse))
     return tuple(checked), (*scoped.values(), *reported)
@@ -201,6 +215,16 @@ def _state_tables_lacked(preflight: Preflight) -> tuple[Diagnostic, ...]:
         _lacks(None, CREATE_TABLE, scope, preflight)
         for scope in scopes
         if CREATE_TABLE in preflight.missing_privileges.get(_scope_key(scope), ())
+    )
+
+
+def _state_tables_of_other_kind(preflight: Preflight) -> tuple[Diagnostic, ...]:
+    """SST-APL031 for each state or lock table that exists as the other kind than configured."""
+    expected = preflight.state_table_kind
+    return tuple(
+        D("SST-APL031", value=table.sql, found=found, expected=expected)
+        for table, found in preflight.state_table_kinds
+        if found != expected
     )
 
 

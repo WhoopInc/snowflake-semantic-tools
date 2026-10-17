@@ -193,6 +193,20 @@ def test_a_table_of_the_other_kind_is_refused_naming_both_kinds() -> None:
     assert other.value.diagnostic is not None and other.value.diagnostic.context["found"] == "hybrid"
 
 
+def test_the_preflight_reads_each_kind_and_never_raises() -> None:
+    tables = HybridTables()
+    connector = HybridTablesConnector(tables)
+    lock = QualifiedName.parse(LOCK)
+    assert connector.table_kind(lock) == "hybrid"
+    tables.hybrid = False
+    assert connector.table_kind(lock) == "standard"
+    # Absent, and unreadable: neither is known to be the wrong kind.
+    tables.kind_listed = False
+    assert connector.table_kind(lock) is None
+    tables.kind_refused = True
+    assert connector.table_kind(lock) is None
+
+
 def test_the_kind_is_read_once_per_table_and_session() -> None:
     tables = HybridTables()
     connector = HybridTablesConnector(tables)

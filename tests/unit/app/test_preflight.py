@@ -114,6 +114,46 @@ def test_an_absent_state_table_asks_for_create_table_on_its_schema_and_an_existi
     assert present.absent_state_tables == () and ("DB", "STATE") not in present.missing_privileges
 
 
+def test_the_kind_of_each_state_table_that_exists_is_read_and_an_unknown_one_left_out() -> None:
+    port = FakeSnowflake()
+    state_table, lock_table = QualifiedName.parse("DB.STATE.SST_STATE"), QualifiedName.parse("DB.STATE.SST_STATE_LOCK")
+    gone = QualifiedName.parse("DB.STATE.GONE")
+    port.preflight.missing_relations = {gone.sql}
+    port.preflight.table_kinds = {state_table.sql: "standard", gone.sql: "hybrid"}
+    sales = view("sales")
+    found, failures = read_preflight(
+        port,
+        {sales.key: sales},
+        _observation(),
+        state_of(manifest_of()),
+        dev_target(),
+        include_prune=False,
+        state_tables=(state_table, lock_table, gone),
+        state_table_kind="hybrid",
+    )
+    # The lock table's kind is not known, and an absent table's is never read.
+    assert failures == ()
+    assert found.state_table_kind == "hybrid" and found.state_table_kinds == ((state_table, "standard"),)
+
+
+def test_a_kind_read_that_raises_is_left_out_unreported() -> None:
+    port = FakeSnowflake()
+    state_table = QualifiedName.parse("DB.STATE.SST_STATE")
+    port.preflight.table_kinds = {state_table.sql: "standard"}
+    port.refuse("table_kind")
+    sales = view("sales")
+    found, failures = read_preflight(
+        port,
+        {sales.key: sales},
+        _observation(),
+        state_of(manifest_of()),
+        dev_target(),
+        include_prune=False,
+        state_tables=(state_table,),
+    )
+    assert failures == () and found.state_table_kinds == ()
+
+
 def test_a_refused_preflight_read_is_reported_and_never_blocks_on_its_own() -> None:
     port = FakeSnowflake()
     port.refuse("database_exists", "relation_exists", "warehouse_exists", "locked_objects", "external_references")

@@ -36,6 +36,7 @@ from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightPort
 from snowflake_semantic_tools.domain.state import DEACTIVATED, Manifest, State
+from snowflake_semantic_tools.domain.state.lock import STANDARD_TABLES
 
 
 class PlanReadPort(SnowflakePort, PreflightPort, Protocol):
@@ -176,6 +177,7 @@ class PlanArtifacts:
         prune_types: frozenset[str] | None = None,
         observation_targets: tuple[QualifiedName, ...] | None = None,
         state_tables: tuple[QualifiedName, ...] = (),
+        state_table_kind: str = STANDARD_TABLES,
     ) -> TargetReading:
         """Read the target for a plan: observe it, then preflight it when given a preflight port.
 
@@ -183,7 +185,8 @@ class PlanArtifacts:
         pruning, every type a prune may remove, in the schemas of `observation_targets`, else of
         the rendered artifacts. Unless the options turn grants off, it then holds the tags of
         each semantic view the plan will replace, as `observe_replaced_tags` reads them. The
-        preflight read is `read_preflight`'s, `state_tables` among what it checks.
+        preflight read is `read_preflight`'s, `state_tables` among what it checks, each that
+        exists expected to be a `state_table_kind` table.
 
         Diagnostics:
             SST-PLN001: observing Snowflake, or a preflight read, failed.
@@ -216,6 +219,7 @@ class PlanArtifacts:
             include_prune=include_prune,
             readers=self._readers,
             state_tables=state_tables,
+            state_table_kind=state_table_kind,
         )
         return TargetReading(observation, preflight, DiagnosticBag((*failures, *refused)))
 

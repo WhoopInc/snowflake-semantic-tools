@@ -15,8 +15,10 @@ from snowflake_semantic_tools.adapters.snowflake.connector.grant_walk import (
     held_by,
     schema_holders,
 )
+from snowflake_semantic_tools.adapters.snowflake.connector.lock_table import kind_in, kind_sql
 from snowflake_semantic_tools.adapters.snowflake.connector.session import _variant_value
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import ROLE_HIERARCHY_DEPTH, PreflightPort, RoleWalk
 from snowflake_semantic_tools.domain.sql import Sql, ident, literal, qname, sql
 from snowflake_semantic_tools.domain.sql import scope as scope_sql
@@ -41,6 +43,13 @@ class PreflightMethods(CatalogMethods, PreflightPort):
 
     def relation_exists(self, qualified_name: QualifiedName) -> bool:
         return self.object_exists("TABLE OR VIEW", qualified_name)
+
+    def table_kind(self, table: QualifiedName) -> str | None:
+        try:
+            rows = self.query(kind_sql(table), (table.schema.folded, table.name.folded)).rows
+        except SnowflakePortError:
+            return None
+        return kind_in(rows)
 
     def warehouse_exists(self, warehouse: Identifier) -> bool:
         rows = self._dict_rows(sql("SHOW WAREHOUSES LIKE {pattern}", pattern=literal(warehouse.folded)))

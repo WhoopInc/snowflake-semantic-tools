@@ -47,6 +47,9 @@ class HybridTables:
         self.on: Callable[[str, str, int], object] = lambda event, statement, connection: None
         # What INFORMATION_SCHEMA.TABLES says the tables are; a test sets False for standard ones.
         self.hybrid = hybrid
+        # False when INFORMATION_SCHEMA lists no such table; `kind_refused` fails the read instead.
+        self.kind_listed = True
+        self.kind_refused = False
         self.lock_table_exists = True
         # The errno a CREATE fails with, as a transient schema's 391412; None creates it.
         self.create_fails: int | None = None
@@ -120,7 +123,9 @@ class HybridTables:
 
     def _run(self, connection: int, statement: str, params: tuple[object, ...]) -> tuple[Rows | None, int]:
         if statement.startswith("SELECT IS_HYBRID"):
-            return [("YES" if self.hybrid else "NO",)], 0
+            if self.kind_refused:
+                raise ProgrammingError(msg="Insufficient privileges to operate on schema 'S'", errno=3001)
+            return ([("YES" if self.hybrid else "NO",)] if self.kind_listed else []), 0
         if statement.startswith(("CREATE HYBRID TABLE IF NOT EXISTS", "CREATE TABLE IF NOT")):
             if self.create_fails is not None:
                 raise ProgrammingError(

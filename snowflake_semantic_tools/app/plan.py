@@ -59,7 +59,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightP
 from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.ports.timing import NO_PHASES, PhaseTimer
 from snowflake_semantic_tools.domain.state import Manifest, State
-from snowflake_semantic_tools.domain.state.lock import lock_table_for
+from snowflake_semantic_tools.domain.state.lock import STANDARD_TABLES, lock_table_for
 from snowflake_semantic_tools.domain.validate.config import severity_overrides
 
 # How long an observation stays current. A plan that takes longer to observe and decide
@@ -343,6 +343,7 @@ class PreparePlan:
         *,
         target: TargetIdentity,
         state_table: QualifiedName,
+        state_table_kind: str = STANDARD_TABLES,
         temporary: bool = False,
         preflight: PreflightPort | None = None,
         readers: Fanout[PlanReadPort] | None = None,
@@ -357,15 +358,13 @@ class PreparePlan:
         1. Validate the selection, with connected checks when the settings ask for them, and
            each extension an agent consumes looked up whenever plan is connected; without
            `validate`, take the compile's diagnostics as they are.
-        2. With `--partial`, split again on what validation reported, narrow the selection
-           to what is still healthy, and build the manifest of what is; otherwise refuse on
-           an error.
+        2. With `--partial`, split again on what validation reported, narrow the selection to what
+           is still healthy, and build the manifest of what is; otherwise refuse on an error.
         3. Read authoritative state, as `read_state` does.
-        4. Render what publishes for the manifest, each agent staged under
-           `apply.agent_spec_stage`.
+        4. Render what publishes for the manifest, each agent staged under `apply.agent_spec_stage`.
         5. Build the lifecycle handlers of the composite artifact types.
-        6. Observe, preflight (the state and lock tables too) when given `preflight`, and plan,
-           as `PlanArtifacts` does, in the schemas of every artifact and object state records.
+        6. Observe, preflight (the state and lock tables too, held to `state_table_kind`) when given `preflight`,
+           and plan, as `PlanArtifacts` does, in the schemas of every artifact and object state records.
         7. Report what selecting reported first, and the plan's notices last, each held to the
            project's severity overrides and, under strict mode, every warning the selection
            reaches promoted, as validation's are; apply refuses on what that makes an error.
@@ -422,6 +421,7 @@ class PreparePlan:
                 prune_types=scope.prune_types,
                 observation_targets=_observation_targets(candidates.full, state),
                 state_tables=(state_table, lock_table_for(state_table)),
+                state_table_kind=state_table_kind,
             )
         with self._phases.phase("classify"):
             changeset = _decided(candidates, rendered, reading, manifest, state, target, handlers, composite_plans)

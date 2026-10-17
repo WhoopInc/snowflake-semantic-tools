@@ -16,7 +16,9 @@ prune candidate (SST-VAL020) and the prune goes ahead; it was never what stopped
 
 The state tables are read too, when plan is given them: a role may use tables that exist with
 only the privilege to read and write them, but apply creates an absent one, and CREATE TABLE
-needs the privilege on the state schema, so only then is it checked.
+needs the privilege on the state schema, so only then is it checked. The kind of each that
+exists is read quietly: one that cannot be read is not known to be the wrong kind, and apply
+checks it again before it takes the lock.
 
 The reads run in phases -- databases, schemas, the role, relations, upload stages, state tables, privileges,
 privileges on upload stages, occupied names, locks, references, the warehouse -- and the reads
@@ -40,6 +42,7 @@ from snowflake_semantic_tools.domain.plan.preflight import CREATE_STAGE, CREATE_
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightPort
 from snowflake_semantic_tools.domain.state import State
+from snowflake_semantic_tools.domain.state.lock import STANDARD_TABLES
 
 ItemT = TypeVar("ItemT")
 ValueT = TypeVar("ValueT")
@@ -125,6 +128,12 @@ class _Reader:
 
         return self._readers.map(attempt, items)
 
+    def read_quietly(
+        self, items: Sequence[ItemT], read: Callable[[PreflightPort, ItemT], ValueT]
+    ) -> tuple[ValueT | None, ...]:
+        """Return what `read` reads of each item, in item order; None where it fails, reporting nothing."""
+        return tuple(value for value, _ in self._answers(items, read))
+
     def answers_quietly(self, read: Callable[[PreflightPort], bool], *, refused: bool) -> bool:
         """Return what one yes-or-no read answers, `refused` where Snowflake refuses it, reporting nothing."""
         [(answer, _)] = self._answers((None,), lambda port, _: read(port))
@@ -152,6 +161,7 @@ def read_preflight(
     include_prune: bool,
     readers: Fanout[PreflightPort] | None = None,
     state_tables: tuple[QualifiedName, ...] = (),
+    state_table_kind: str = STANDARD_TABLES,
 ) -> tuple[Preflight, tuple[Diagnostic, ...]]:
     """Read the target's containers, relations, stages, privileges, locks, references, and warehouse.
 
@@ -164,6 +174,8 @@ def read_preflight(
             one at a time. Either way the preflight and its failures are the same.
         state_tables: The tables apply keeps state and its lock in; each that is absent
             needs CREATE TABLE on its schema. A read of one Snowflake refuses counts it present.
+        state_table_kind: The kind `state.+table_kind` names, which each state table that
+            exists must be.
 
     Returns:
         What the reads found, and the failed reads.
@@ -209,6 +221,10 @@ def read_preflight(
         stage_types=MappingProxyType(stage_types),
         absent_stages=absent_stages,
         absent_state_tables=absent_state,
+        state_table_kind=state_table_kind,
+        state_table_kinds=_state_table_kinds(
+            reader, tuple(table for table in state_tables if table not in absent_state)
+        ),
     )
     return preflight, tuple(reader.failures)
 
@@ -338,6 +354,12 @@ def _absent_state_tables(reader: _Reader, state_tables: tuple[QualifiedName, ...
         state_tables, lambda port, table: port.relation_exists(table), lambda item: f"table {item.sql}", refused=True
     )
     return tuple(table for table, found in zip(state_tables, exists, strict=True) if not found)
+
+
+def _state_table_kinds(reader: _Reader, tables: tuple[QualifiedName, ...]) -> tuple[tuple[QualifiedName, str], ...]:
+    """Return, in table order, each table with its kind; one whose kind is not known is left out."""
+    kinds = reader.read_quietly(tables, lambda port, table: port.table_kind(table))
+    return tuple((table, kind) for table, kind in zip(tables, kinds, strict=True) if kind is not None)
 
 
 def _with_state_needs(

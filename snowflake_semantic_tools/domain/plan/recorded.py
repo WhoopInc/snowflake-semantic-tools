@@ -23,6 +23,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.plan.preflight import Preflight
 from snowflake_semantic_tools.domain.state import State, StoredDocumentError
+from snowflake_semantic_tools.domain.state.lock import STANDARD_TABLES
 
 RECORDED_OBSERVATION_SCHEMA_VERSION = 1
 
@@ -220,6 +221,8 @@ def _preflight_to_json(preflight: Preflight) -> dict[str, object]:
             [*name, list(privileges)] for name, privileges in sorted(preflight.missing_stage_privileges.items())
         ],
         "absent_state_tables": [table.sql for table in preflight.absent_state_tables],
+        "state_table_kind": preflight.state_table_kind,
+        "state_table_kinds": [[table.sql, kind] for table, kind in preflight.state_table_kinds],
     }
 
 
@@ -227,7 +230,8 @@ def _preflight_from_json(value: Mapping[str, Any]) -> Preflight:
     """Read the preflight facts `_preflight_to_json` wrote; a record without the later facts has none.
 
     The later facts are the stage facts, the privileges only a secondary role holds, those
-    the walk up from the primary role stopped short of, and the absent state tables.
+    the walk up from the primary role stopped short of, the absent state tables, and the
+    state tables' kinds; a record without the kinds read none, so nothing is of the wrong kind.
     """
     privileges: dict[_Scope, tuple[str, ...]] = {}
     for entry in _list(value.get("missing_privileges"), "missing_privileges"):
@@ -270,7 +274,16 @@ def _preflight_from_json(value: Mapping[str, Any]) -> Preflight:
             QualifiedName.parse(str(table))
             for table in _list(value.get("absent_state_tables", []), "absent_state_tables")
         ),
+        state_table_kind=str(value.get("state_table_kind", STANDARD_TABLES)),
+        state_table_kinds=tuple(
+            _table_kind(entry) for entry in _list(value.get("state_table_kinds", []), "state_table_kinds")
+        ),
     )
+
+
+def _table_kind(entry: object) -> tuple[QualifiedName, str]:
+    table, kind = _list(entry, "state table kind")
+    return QualifiedName.parse(str(table)), str(kind)
 
 
 def _names_to_json(names: Mapping[str, tuple[QualifiedName, ...]]) -> dict[str, list[str]]:

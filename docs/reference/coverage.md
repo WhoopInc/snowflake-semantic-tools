@@ -42,7 +42,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-APL028`](error-codes.md#sst-apl028) | APL | error | observe | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.lifecycle.eval_rules` | `tests/codes/apl/test_sst_apl028.py` |
 | [`SST-APL029`](error-codes.md#sst-apl029) | APL | warning | runtime | `snowflake_semantic_tools.app.evals.run` | `tests/codes/apl/test_sst_apl029.py` |
 | [`SST-APL030`](error-codes.md#sst-apl030) | APL | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.lock_table` | `tests/codes/apl/test_sst_apl030.py` |
-| [`SST-APL031`](error-codes.md#sst-apl031) | APL | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.lock_table` | `tests/codes/apl/test_sst_apl031.py` |
+| [`SST-APL031`](error-codes.md#sst-apl031) | APL | error | observe | `snowflake_semantic_tools.adapters.snowflake.connector.lock_table`<br>`snowflake_semantic_tools.domain.plan.preflight` | `tests/codes/apl/test_sst_apl031.py` |
 | [`SST-APL032`](error-codes.md#sst-apl032) | APL | info | runtime | `snowflake_semantic_tools.app.recover` | `tests/codes/apl/test_sst_apl032.py` |
 | [`SST-APL033`](error-codes.md#sst-apl033) | APL | warning | runtime | `snowflake_semantic_tools.app.recover` | `tests/codes/apl/test_sst_apl033.py` |
 | [`SST-APL034`](error-codes.md#sst-apl034) | APL | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.convert` | `tests/codes/apl/test_sst_apl034.py` |

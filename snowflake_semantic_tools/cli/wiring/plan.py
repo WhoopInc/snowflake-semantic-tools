@@ -222,6 +222,7 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
             store,
             target=profile.identity,
             state_table=profile.state_table,
+            state_table_kind=profile.state_table_kind,
             temporary=request.temporary,
             preflight=port,
             readers=Fanout(port, pool, request.threads),

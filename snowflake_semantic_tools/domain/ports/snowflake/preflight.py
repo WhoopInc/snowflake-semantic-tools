@@ -105,6 +105,14 @@ class PreflightPort(Protocol):
         """
         ...
 
+    def table_kind(self, table: QualifiedName) -> str | None:
+        """Return whether a table is a `hybrid` or a `standard` table, as INFORMATION_SCHEMA says.
+
+        Never raises: None when the table does not exist, and when the read failed, since a
+        kind that cannot be read is not known to be the wrong one.
+        """
+        ...
+
     def missing_stage_privileges(self, stage: QualifiedName, privileges: tuple[str, ...]) -> tuple[str, ...]:
         """Return, in the given order, the privileges on a stage no role in the session holds.
 

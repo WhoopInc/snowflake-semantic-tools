@@ -22,6 +22,10 @@ class FakePreflight(SnowflakeWorld):
         self._check("relation_exists")
         return qualified_name.sql not in self.preflight.missing_relations
 
+    def table_kind(self, table: QualifiedName) -> str | None:
+        self._check("table_kind")
+        return self.preflight.table_kinds.get(table.sql)
+
     def warehouse_exists(self, warehouse: Identifier) -> bool:
         self._check("warehouse_exists")
         return warehouse.folded not in self.preflight.missing_warehouses

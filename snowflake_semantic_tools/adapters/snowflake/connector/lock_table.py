@@ -20,7 +20,7 @@ from __future__ import annotations
 import contextlib
 import re
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 
 from snowflake_semantic_tools.adapters.snowflake.connector.session import (
     Session,
@@ -33,7 +33,7 @@ from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailur
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, ident, qname, sql
-from snowflake_semantic_tools.domain.state.lock import HYBRID_TABLES, LockFence, lock_table_for
+from snowflake_semantic_tools.domain.state.lock import HYBRID_TABLES, STANDARD_TABLES, LockFence, lock_table_for
 
 # The target name of the mutex row; a target is always named, so no lock row has it. A free
 # hybrid row has it as its RUN_ID.
@@ -132,12 +132,19 @@ def expired_sql(table: Sql) -> Sql:
     return sql("SELECT EXPIRES_AT <= CURRENT_TIMESTAMP() FROM {table} WHERE TARGET_NAME = %s", table=table)
 
 
-def _kind_sql(table: QualifiedName) -> Sql:
+def kind_sql(table: QualifiedName) -> Sql:
     """Read whether a table is hybrid: `YES` or `NO`, no row when there is no such table."""
     return sql(
         "SELECT IS_HYBRID FROM {database}.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
         database=ident(table.database),
     )
+
+
+def kind_in(rows: Sequence[Sequence[object]]) -> str | None:
+    """Return the kind `kind_sql`'s rows say a table is, `hybrid` or `standard`; None for no row."""
+    if not rows:
+        return None
+    return HYBRID_TABLES if str(rows[0][0]).strip().upper() in ("YES", "Y", "TRUE") else STANDARD_TABLES
 
 
 def fence_sql(table: Sql) -> Sql:
@@ -218,14 +225,19 @@ class LockTableMethods(Session):
         """
         if table.sql in self._kinds_checked:
             return
-        rows = self.query(_kind_sql(table), (table.schema.folded, table.name.folded)).rows
-        if rows:
-            hybrid = str(rows[0][0]).strip().upper() in ("YES", "Y", "TRUE")
-            if hybrid != self._hybrid:
-                found, configured = ("hybrid", "standard") if hybrid else ("standard", "hybrid")
-                diagnostic = D("SST-APL031", value=table.sql, found=found, expected=configured)
-                raise SnowflakePortError(diagnostic.message, diagnostic=diagnostic)
+        found, configured = self.kind_of(table), HYBRID_TABLES if self._hybrid else STANDARD_TABLES
+        if found is not None and found != configured:
+            diagnostic = D("SST-APL031", value=table.sql, found=found, expected=configured)
+            raise SnowflakePortError(diagnostic.message, diagnostic=diagnostic)
         self._kinds_checked = self._kinds_checked | {table.sql}
+
+    def kind_of(self, table: QualifiedName) -> str | None:
+        """Return whether `table` is a `hybrid` or `standard` table; None when it does not exist.
+
+        Raises:
+            SnowflakePortError: the read failed.
+        """
+        return kind_in(self.query(kind_sql(table), (table.schema.folded, table.name.folded)).rows)
 
     def _lock_table_ddl(self, table: Sql) -> tuple[Sql, ...]:
         """Return the DDL the lock table still needs: none when it exists with every column.

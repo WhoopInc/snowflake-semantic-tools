@@ -310,3 +310,22 @@ def test_run_validates_against_snowflake_when_connected() -> None:
 
     assert isinstance(ready, PlanReady)
     assert any(sql.startswith("EXPLAIN ") for sql, _ in port.queries)
+
+
+def test_run_reports_a_state_table_of_the_other_kind_than_configured() -> None:
+    candidates, use_case, _ = select(compiled())
+    port = FakeSnowflake()
+    port.preflight.table_kinds = {STATE_TABLE.sql: "standard"}
+    assert isinstance(candidates, PlanCandidates)
+
+    def planned(kind: str) -> PlanReady | PlanRefused:
+        store = InMemoryStateStore(State.empty(dev_target()))
+        return use_case.run(
+            candidates, port, store, target=dev_target(), state_table=STATE_TABLE, state_table_kind=kind, preflight=port
+        )
+
+    hybrid, standard = planned("hybrid"), planned("standard")
+    assert isinstance(hybrid, PlanReady) and isinstance(standard, PlanReady)
+    [refused] = [item for item in hybrid.changeset.diagnostics if item.code == "SST-APL031"]
+    assert refused.message == "DB.SCH.SST_STATE is a standard table, and state.+table_kind says hybrid"
+    assert "SST-APL031" not in [item.code for item in standard.changeset.diagnostics]

@@ -72,17 +72,17 @@ class StateConvertMethods(StateTableMethods):
         """
         if to_kind not in (STANDARD_TABLES, HYBRID_TABLES):
             raise ValueError(f"no table kind {to_kind!r}")
-        from_kind = self._kind_of(state_table)
+        from_kind = self.kind_of(state_table)
         if from_kind is None:
             _refuse(state_table, "it does not exist; set state.+table_kind, and apply creates it of that kind")
         if from_kind == to_kind:
             _refuse(state_table, f"it is already a {to_kind} table")
         lock = lock_table_for(state_table)
-        lock_kind = self._kind_of(lock)
+        lock_kind = self.kind_of(lock)
         suffix = f"{from_kind.upper()}_BAK"
         state_backup, lock_backup = _renamed(state_table, suffix), _renamed(lock, suffix)
         for backup in (state_backup, lock_backup if lock_kind is not None else None):
-            if backup is not None and self._kind_of(backup) is not None:
+            if backup is not None and self.kind_of(backup) is not None:
                 _refuse(state_table, f"its backup {backup.sql} already exists; drop or rename it first")
         self._refuse_live_locks(state_table, lock_kind)
         before = self._count(state_table)
@@ -103,13 +103,6 @@ class StateConvertMethods(StateTableMethods):
         _require_ok(self.execute_script(tuple(renames)), "state table conversion failed")
         self._kinds_checked = frozenset()
         return Conversion(from_kind, to_kind, before, state_backup, lock_backup if lock_kind is not None else None)
-
-    def _kind_of(self, table: QualifiedName) -> str | None:
-        """Return whether `table` is a `hybrid` or `standard` table; None when it does not exist."""
-        rows = self.query(locks._kind_sql(table), (table.schema.folded, table.name.folded)).rows
-        if not rows:
-            return None
-        return HYBRID_TABLES if str(rows[0][0]).strip().upper() in ("YES", "Y", "TRUE") else STANDARD_TABLES
 
     def _refuse_live_locks(self, state_table: QualifiedName, lock_kind: str | None) -> None:
         if lock_kind is None:

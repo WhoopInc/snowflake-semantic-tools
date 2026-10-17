@@ -60,6 +60,9 @@ class PreflightAnswers:
     secondary_roles: bool = True
     locked: dict[str, tuple[QualifiedName, ...]] = field(default_factory=dict)
     references: dict[str, tuple[QualifiedName, ...]] = field(default_factory=dict)
+    # The kind of each table by `QualifiedName.sql`, `hybrid` or `standard`; one not listed reads
+    # as unknown, as a table whose kind cannot be read does.
+    table_kinds: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
