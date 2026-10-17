@@ -1,49 +1,37 @@
-"""`sst test --select`, `--exclude` and `--update-golden`: which artifacts the suites cover, and rewriting goldens."""
+"""`sst test --select` and `--exclude`: which artifacts the suites cover."""
 
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 
 import pytest
-from click.testing import CliRunner, Result
+from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from tests.helpers.cli_projects import common, compile_project
-from tests.helpers.reference_project import REPO_ROOT, project_copy
-
-GOLDEN = REPO_ROOT / "tests" / "golden" / "expected" / "ddl"
+from tests.helpers.cli_projects import applied_port, common, compile_project, invoke_with_port
+from tests.helpers.reference_project import project_copy
 
 
-def _golden(project: Path, golden_dir: Path, *flags: str) -> Result:
-    args = ["test", *common(project), "--suite", "golden", "--golden-dir", str(golden_dir), *flags]
-    return CliRunner().invoke(cli, args)
+def _smoke_probes(monkeypatch: pytest.MonkeyPatch, project: Path, *flags: str) -> int:
+    """Run the smoke suite on `project`, every artifact applied; return how many probes it ran."""
+    args = ["test", *common(project), "--target", "dev", "--suite", "smoke", *flags, "-o", "json"]
+    result = invoke_with_port(monkeypatch, applied_port(project), args)
+    assert result.exit_code == 0, result.output
+    return int(json.loads(result.output)["data"]["attempted"])
 
 
-def _goldens(tmp_path: Path) -> Path:
-    """A copy of the committed goldens, so a test may change them."""
-    root = tmp_path / "expected"
-    shutil.copytree(GOLDEN.parent, root)
-    return root / "ddl"
-
-
-def test_select_and_exclude_narrow_the_golden_suite(tmp_path: Path) -> None:
+def test_select_and_exclude_narrow_the_smoke_suite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = project_copy(tmp_path)
-    selected = _golden(project, GOLDEN, "--select", "jaffle_minimal")
-    assert selected.exit_code == 0, selected.output
-    assert "golden suite passed for 1 artifact(s)" in selected.output
-    excluded = _golden(project, GOLDEN, "--exclude", "type:semantic_view")
-    assert excluded.exit_code == 0, excluded.output
-    assert "golden suite passed for 11 artifact(s)" in excluded.output
+    compile_project(project)
+    every = _smoke_probes(monkeypatch, project)
+    selected = _smoke_probes(monkeypatch, project, "--select", "jaffle_minimal")
+    excluded = _smoke_probes(monkeypatch, project, "--exclude", "jaffle_minimal")
+    assert 0 < selected < every
+    assert selected + excluded == every
 
-    goldens = _goldens(tmp_path)
-    (goldens / "jaffle_menu.sql").unlink()
-    assert _golden(project, goldens).exit_code == 4
-    assert _golden(project, goldens, "--exclude", "jaffle_menu").exit_code == 0
-
-    nothing = _golden(project, GOLDEN, "--select", "no_such_artifact", "-o", "json")
+    nothing = CliRunner().invoke(cli, ["test", *common(project), "--select", "no_such_artifact", "-o", "json"])
     assert nothing.exit_code == 4
     assert "SST-DIS010" in {item["code"] for item in json.loads(nothing.stdout)["diagnostics"]}
 
@@ -62,37 +50,3 @@ def test_a_selected_connected_suite_still_checks_the_whole_compiled_manifest(
     assert smoke.exit_code == 5, smoke.output
     evals = CliRunner().invoke(cli, ["test", *common(project), "--suite", "evals", "--select", "type:eval"])
     assert evals.exit_code == 5, evals.output
-
-
-def test_update_golden_creates_and_rewrites_goldens(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("CI", raising=False)
-    project = project_copy(tmp_path)
-    goldens = _goldens(tmp_path)
-    minimal = goldens / "jaffle_minimal.sql"
-    minimal.write_text(minimal.read_text(encoding="utf-8").replace("Menu products only", "Drifted"), encoding="utf-8")
-    (goldens / "jaffle_menu.sql").unlink()
-    assert _golden(project, goldens).exit_code == 4
-
-    updated = _golden(project, goldens, "--update-golden", "-o", "json")
-    assert updated.exit_code == 0, updated.output
-    assert json.loads(updated.stdout)["data"]["written"] == [str(goldens / "jaffle_menu.sql"), str(minimal)]
-    assert _golden(project, goldens).exit_code == 0
-    again = _golden(project, goldens, "--update-golden")
-    assert again.exit_code == 0
-    assert "0 golden file(s) written for 14 artifact(s)" in again.output
-
-
-def test_update_golden_is_refused_for_a_suite_without_goldens_and_in_ci(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    project = project_copy(tmp_path)
-    monkeypatch.delenv("CI", raising=False)
-    smoke = CliRunner().invoke(cli, ["test", *common(project), "--suite", "smoke", "--update-golden"])
-    assert smoke.exit_code == 3
-    assert "cannot run with --suite smoke" in smoke.output
-    monkeypatch.setenv("CI", "false")
-    assert _golden(project, _goldens(tmp_path), "--update-golden").exit_code == 0
-    monkeypatch.setenv("CI", "true")
-    ci = _golden(project, GOLDEN, "--update-golden")
-    assert ci.exit_code == 3
-    assert "never valid in CI" in ci.output

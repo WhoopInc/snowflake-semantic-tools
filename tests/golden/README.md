@@ -9,23 +9,28 @@ change it, and review the diff like code.
 Two of the DDL goldens, `jaffle_product_costs.sql` and `jaffle_customer_orders.sql`,
 render from `tests/fixtures/scoped_views/semantic_views.yml` placed in a copy of the
 reference project at `semantic_models/semantic_views/scoped/`; the others render from
-the reference project as it is. The reference project's own semantic view goldens have
-been created in Snowflake as written; each header says which.
+the reference project as it is. `unit/test_golden_ddl.py` compares those two, and
+`python -m tests.helpers.update_goldens` rewrites them from such a copy. The reference
+project's own semantic view goldens have been created in Snowflake as written; each header says
+which.
 
 `expected/enrich/` is different: it holds whole YAML files, as `sst enrich --include all`
 leaves the reference project's files under the warehouse and Cortex answers that
 `unit/test_golden_enrich.py` scripts by hand. Each file sits at its path in the project and
-is compared byte for byte; none carries a header. `sst test --suite golden --update-golden`
+is compared byte for byte; none carries a header. `python -m tests.helpers.update_goldens`
 does not write them: when enrich's output is meant to change, run that test to see the diff
 and edit the golden to match.
 
 ## How a golden is compared
 
-`sst test --suite golden` compares the rendered text with the golden exactly, after two
-normalisations on both sides: trailing whitespace at the end of the file is dropped and one
-final newline kept, and a `GIT_<commit>` name carries `GIT_0000000` in place of the commit.
-`--update-golden` writes a golden in that same form, and the `unit/test_golden_*.py` tests hold
-the engine to the same files.
+`unit/test_goldens.py` compiles the reference project and compares every artifact's rendered
+text with its golden exactly, after two normalisations on both sides: trailing whitespace at
+the end of the file is dropped and one final newline kept, and a `GIT_<commit>` name carries
+`GIT_0000000` in place of the commit.
+`python -m tests.helpers.update_goldens`, run from the repository root, writes a golden in that
+same form (it refuses when `$CI` is set to anything but empty, `0`, `false` or `no`), and the
+`unit/test_golden_*.py` tests hold the engine to the same files. The comparison and the rewrite
+live in `tests/helpers/goldens.py`.
 
 ## File shape
 
@@ -35,7 +40,7 @@ then the DDL through end of file. Every other golden, the tool's DDL included, h
 
 The comparison contract for a DDL golden (`ddl/` and `tool/`) is therefore: **the golden is
 everything from the first line that is not a comment or blank.** The header is
-documentation and is not rendered by the engine; `--update-golden` keeps the header a golden
+documentation and is not rendered by the engine; `update_goldens` keeps the header a golden
 already has.
 
 ## What the header is NOT

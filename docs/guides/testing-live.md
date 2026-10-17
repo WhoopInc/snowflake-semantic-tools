@@ -14,7 +14,7 @@ the goldens.
 
 | Workflow | When | What |
 |---|---|---|
-| `test-and-lint.yml` | every pull request (the `pull_request` trigger only), each push to `main`, and every release | The required gate, offline and with no secrets: the exit-code conformance tests, `format --check` on the reference project, the whole offline suite with coverage, the per-layer coverage floors and ratchet, strict mypy, ruff, import-linter, `sst docs --check`, bandit, pip-audit, and semgrep; and, in its `dbt` job, a real `dbt parse` of the reference project with dbt 1.11 and with 1.12, the golden suite over what it wrote, and the dbt manifest contract test on that manifest; and, in its `wheel` job, the built wheel installed alone into a venv outside the checkout, running validate, compile and the golden suite on a copy of the reference project. |
+| `test-and-lint.yml` | every pull request (the `pull_request` trigger only), each push to `main`, and every release | The required gate, offline and with no secrets: the exit-code conformance tests, `format --check` on the reference project, the whole offline suite with coverage, the per-layer coverage floors and ratchet, strict mypy, ruff, import-linter, `sst docs --check`, bandit, pip-audit, and semgrep; and, in its `dbt` job, once with dbt 1.11 and once with 1.12, `tests/unit/test_goldens.py` compiling the reference project with no manifest, so SST runs a real `dbt parse`, and comparing every artifact with its golden, then the dbt manifest contract test on the manifest that parse wrote; and, in its `wheel` job, the built wheel installed alone into a venv outside the checkout, running `--version`, validate and compile on a copy of the reference project. |
 | `nightly.yml` | 02:00 UTC daily, or by hand | Mutation testing over `domain/` and the suite under the deeper `nightly` Hypothesis profile. Offline and report-only: it blocks nothing. |
 | `slow.yml` | by hand only | The checks that connect to Snowflake; see [the manual workflow](#the-manual-workflow). No pull request and no workflow waits on it; a maintainer runs it [before each release](#when-the-live-suites-run). |
 | `publish-to-pypi.yml` | a `v*.*.*` tag | Runs `test-and-lint.yml` itself, checks the tag matches `pyproject.toml`, builds, and publishes through PyPI's trusted publishing; the publish job holds the only token and runs no project code. |
@@ -53,18 +53,25 @@ Property tests run under the Hypothesis profile `HYPOTHESIS_PROFILE` names: `dev
 random), `ci` (deterministic, so a failure reproduces on rerun), or `nightly` (deeper).
 
 A change to rendered output is compared byte for byte with the goldens under
-`tests/golden/expected/`; when the change is intended, rewrite them with the engine itself and
-review the diff:
+`tests/golden/expected/` by `tests/unit/test_goldens.py`; when the change is intended, rewrite
+them from the repository root and review the diff:
 
 ```bash
-P=tests/fixtures/reference_project
-M=tests/fixtures/reference_project_manifest.json
-poetry run sst test --suite golden --update-golden --project-dir $P --manifest $M \
-  --golden-dir "$PWD/tests/golden/expected/ddl"
+poetry run pytest tests/unit/test_goldens.py         # shows each golden that differs
+poetry run python -m tests.helpers.update_goldens    # rewrites them from the vendored manifest
 ```
 
-`--update-golden` is refused whenever `$CI` is set. The `enrich` goldens are the exception to
-the rule: `sst test` does not write them; see [tests/golden/README.md](../../tests/golden/README.md).
+`update_goldens` refuses whenever `$CI` is set to anything but empty, `0`, `false` or `no`. To
+compile the reference project with a real `dbt parse` instead of the vendored manifest, install
+its packages and point the test at it (needs `poetry install --extras dbt`):
+
+```bash
+poetry run dbt deps --project-dir tests/fixtures/reference_project
+SST_GOLDEN_PROJECT=tests/fixtures/reference_project poetry run pytest tests/unit/test_goldens.py
+```
+
+The `enrich` goldens are the exception to the rule: `update_goldens` does not write them;
+see [tests/golden/README.md](../../tests/golden/README.md).
 
 ## Live tests
 

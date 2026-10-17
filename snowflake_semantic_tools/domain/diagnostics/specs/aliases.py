@@ -549,4 +549,10 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         "SST-REF029",
         "a using_relationships entry is always a relationship() call, so one naming no relationship is SST-REF029",
     ),
+    (
+        "SST-INT006",
+        "Fingerprint is not stable across identical runs",
+        None,
+        "only the golden suite compiled a project twice, and goldens are the engine's own tests now, not `sst test`",
+    ),
 )

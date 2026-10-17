@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,8 @@ import pytest
 from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.cli.main import cli
+from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
+from snowflake_semantic_tools.domain.state import AppliedEntry
 from tests.helpers.cli_json import invoke_json
 from tests.helpers.file_trees import write_tree
 from tests.helpers.reference_project import DBT_MANIFEST
@@ -29,6 +32,34 @@ def invoke_with_port(
 
 def common(project: Path) -> list[str]:
     return ["--project-dir", str(project), "--manifest", str(DBT_MANIFEST)]
+
+
+def applied_port(project: Path) -> FakeSnowflake:
+    """A fake Snowflake on which every artifact of `project`'s compiled manifest is applied.
+
+    The state table records each one and its live marker matches, so the smoke suite runs its
+    probes, each of which answers.
+    """
+    manifest = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
+    manifest_id = manifest["manifest_id"]
+    artifacts = manifest["artifacts"]
+    state = {
+        key: AppliedEntry(
+            value["fingerprint"],
+            value["publish_target"]["qualified_name"],
+            "now",
+            "run",
+            "applied",
+            value["fingerprint"],
+            manifest_id,
+        )
+        for key, value in artifacts.items()
+    }
+    markers = {
+        value["publish_target"]["qualified_name"]: OwnershipMarker(manifest_id, value["fingerprint"])
+        for value in artifacts.values()
+    }
+    return FakeSnowflake(state=state, markers=markers)
 
 
 def on_a_terminal(monkeypatch: pytest.MonkeyPatch) -> None:

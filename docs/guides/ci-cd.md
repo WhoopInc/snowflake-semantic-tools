@@ -64,13 +64,6 @@ pointing them back at that version without adding one. To keep the rollback,
 do not apply until it should end, or change the source back and apply that,
 which publishes the earlier spec as a new version.
 
-If the project commits golden files, `sst test --suite golden` compares the
-rendered DDL and specs with them offline. The DDL goldens are read from
-`--golden-dir` (default `expected/ddl/` in the project), and the other goldens
-sit beside it. An artifact with no golden file exits `4`, and `--update-golden`
-is refused whenever `$CI` is set, so a pipeline can never rewrite the goldens it
-checks.
-
 ## On merge
 
 ```bash
@@ -249,8 +242,8 @@ jobs:
   `validation.snowflake_syntax_check: true`, validate connects too. A project's YAML is SQL that
   runs with the job's role, so never move a credentialed step to `pull_request_target`; see
   [Security](security.md#trust-model). To check a fork's change offline, add a job with no
-  Snowflake secrets that runs `sst validate --no-snowflake-syntax-check`, `sst compile` and
-  `sst test --suite golden`. Give it the profile's non-secret values, not empty ones: the target's
+  Snowflake secrets that runs `sst validate --no-snowflake-syntax-check` and `sst compile`.
+  Give it the profile's non-secret values, not empty ones: the target's
   warehouse, for one, is compiled into an agent tool that declares none of its own.
 - **The run lock backs up the concurrency group.** The group queues this workflow's deploys;
   `apply` also holds a lock in the target's state table while it runs, so an apply started

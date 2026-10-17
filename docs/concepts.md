@@ -199,9 +199,9 @@ compile  ->  validate  ->  plan  ->  apply  ->  test
   is given. With `--plan <file>`, it executes that saved plan only if it was
   made for the same target, from the manifest the project compiles to now,
   against the same live state, with the same changes.
-- **`test`** runs the golden suite offline, comparing rendered output with
-  committed goldens, and, once a manifest exists, the smoke suite against
-  deployed objects and the eval suite against agents. See
+- **`test`** checks what `apply` published, once `sst compile` has written the
+  manifest: the smoke suite probes deployed semantic views and the eval suite
+  runs agent evaluations. With no suite to run, it exits `4`. See
   [testing live](guides/testing-live.md) and [evals](guides/evals.md).
 
 The **manifest** is the record of one compile: every artifact with its key,

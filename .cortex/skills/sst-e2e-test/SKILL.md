@@ -1,6 +1,6 @@
 ---
 name: sst-e2e-test
-description: "End-to-end QA for SST on the in-repo reference project: the test suite, offline validate, compile, golden suite, and the migrate refs codemod, plus plan/apply against a scratch schema only when the user asks. Use when: testing SST changes end to end, QA before a release or PR, verifying the pipeline. Triggers: e2e test, end-to-end, qa sst, full test, test pipeline, golden suite, reference project, integration test."
+description: "End-to-end QA for SST on the in-repo reference project: the test suite, offline validate, compile, the golden tests, and the migrate refs codemod, plus plan/apply against a scratch schema only when the user asks. Use when: testing SST changes end to end, QA before a release or PR, verifying the pipeline. Triggers: e2e test, end-to-end, qa sst, full test, test pipeline, goldens, reference project, integration test."
 ---
 
 # SST End-to-End Testing
@@ -75,21 +75,21 @@ ls "$OUT"
 
 ---
 
-## Phase 4: Golden Suite
+## Phase 4: Goldens
 
 ```bash
-poetry run sst test --suite golden --project-dir $P --manifest $M --golden-dir "$PWD/tests/golden/expected/ddl"
+poetry run pytest tests/unit/test_goldens.py
 ```
 
-`--golden-dir` names the DDL goldens and must be absolute: a relative path is resolved against `--project-dir`. The other goldens are read from its sibling directories (`agent/`, `tool/`, `eval/`, `skill/`, `plugin/`, `profile/`).
+The goldens are the engine's own test tooling, not an `sst test` suite. This compiles a copy of the reference project from its vendored manifest and compares every artifact's payloads with its golden under `tests/golden/expected/` (`ddl/`, `agent/`, `tool/`, `eval/`, `skill/`, `plugin/`, `profile/`), and checks that compiling twice reports the same diagnostic fingerprints. Phase 1 already runs it; run it alone to see the diffs.
 
 ### Pass Criteria
-- `golden suite passed for 14 artifact(s)`, exit 0
+- Every test passes (`9 passed`), exit 0
 
 ### On Failure
-The output is a unified diff per golden, and the suite exits 1. A diff is a regression unless the change was meant to alter rendered output.
+`test_every_compiled_payload_equals_its_golden` fails with a unified diff per golden. A diff is a regression unless the change was meant to alter rendered output.
 
-**⚠️ MANDATORY STOPPING POINT**: Show the user each diff and ask whether it is intended. Do NOT change a golden without explicit approval. When approved, rewrite them with the same command plus `--update-golden` (refused when `$CI` is set; it keeps a DDL golden's `--` provenance header), never by hand, and review the resulting diff (`tests/golden/README.md`).
+**⚠️ MANDATORY STOPPING POINT**: Show the user each diff and ask whether it is intended. Do NOT change a golden without explicit approval. When approved, rewrite them from the repo root with `poetry run python -m tests.helpers.update_goldens` (refused when `$CI` is set; it keeps a DDL golden's `--` provenance header), never by hand, and review the resulting diff (`tests/golden/README.md`). It does not write the `enrich` goldens; those follow `tests/golden/README.md`.
 
 ---
 
@@ -163,7 +163,7 @@ Phase               | Status | Details
 1. Test suite       | ...    | all gates / failing gate
 2. Validate         | ...    | 14 artifacts, 0 errors, 6 warnings (5 + SST-CFG034)
 3. Compile          | ...    | 14 payload files
-4. Golden suite     | ...    | 14 artifacts match
+4. Goldens          | ...    | 14 artifacts match
 5. migrate refs     | ...    | 4 files pending, round trip matches
 6. Connected        | ...    | SKIPPED unless requested
 ----------------------------------------------
@@ -199,9 +199,6 @@ A phase-by-phase summary report (Phase 7) with PASS/FAIL/SKIPPED status for each
 
 **`SST-MAN001`, `SST-MAN006`, or `compiled SST manifest is stale; run sst compile before ...`**
 - `plan`, `apply`, and the smoke and eval suites need a current `sst compile` with the same `--target` first: `SST-MAN001` means there is no compiled manifest, `SST-MAN006` that it was compiled for another target, and the stale message that the project changed since.
-
-**`missing golden .../tests/fixtures/reference_project/tests/golden/...`**
-- `--golden-dir` was relative. Pass `"$PWD/tests/golden/expected/ddl"`.
 
 **`validate` exits 1 with `error[SST-VAL528] (promoted from warning)`**
 - `--no-strict` is missing; the fixture is strict by design.

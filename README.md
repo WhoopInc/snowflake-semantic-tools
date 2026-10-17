@@ -57,7 +57,7 @@ semantic view end to end.
 | `sst plan` | Compare the project with Snowflake and save a reviewable plan |
 | `sst apply` | Execute a saved plan |
 | `sst diff` | Compare two states -- local, a dbt target, or a saved plan |
-| `sst test` | Run offline goldens, smoke probes, or agent evals |
+| `sst test` | Run smoke probes against published semantic views, and agent evals |
 | `sst list` | List compiled artifacts and their status |
 | `sst baseline` | Record known, not yet fixed warnings so they stop blocking under `--strict`, and maintain that file |
 | `sst explain` | Explain one diagnostic code, offline |

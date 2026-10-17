@@ -83,7 +83,7 @@ CI also runs `pip-audit --skip-editable` over the locked dependencies, which nee
 **⚠️ MANDATORY STOPPING POINT**: If anything fails, report the failures to the user with their messages before taking any corrective action. Do NOT auto-fix without approval.
 
 What the usual failures mean:
-- **Golden diff**: rendered output changed. Confirm the change is intended before any golden is rewritten, then rewrite with `sst test --suite golden ... --update-golden`, never by hand (`tests/README.md`, Goldens).
+- **Golden diff**: rendered output changed. Confirm the change is intended before any golden is rewritten, then rewrite with `poetry run python -m tests.helpers.update_goldens`, never by hand (`tests/README.md`, Goldens).
 - **`lint-imports` or `test_ring_boundaries.py`**: an import crosses a ring; the output names the broken contract.
 - **`sst docs --check`** (`out of date: <path>`): a diagnostic, config key, CLI option, or artifact type changed; `poetry run sst docs` regenerates the pages.
 - **`format --check` on the fixture**: `poetry run sst --project-dir tests/fixtures/reference_project format` rewrites its YAML into canonical form.

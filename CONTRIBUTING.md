@@ -156,26 +156,29 @@ semgrep scan --config .semgrep/ --error --metrics off --disable-version-check sn
 # The dbt job, once per dbt minor the reference project admits, pinned to the releases the
 # committed manifests were captured with (dbt Core 1.11.15 with dbt-snowflake 1.11.6, or
 # 1.12.5 with 1.12.1; only those two are pinned, pip resolves the rest they need): real dbt,
-# offline, with no secret. SST runs `dbt parse` itself for the golden suite, and the manifest
-# it wrote is held to the same contract as the committed ones in tests/fixtures/dbt_manifests/.
+# offline, with no secret. With SST_GOLDEN_PROJECT set, the golden tests compile the reference
+# project with no manifest, so SST runs `dbt parse` itself, and the manifest it wrote is held
+# to the same contract as the committed ones in tests/fixtures/dbt_manifests/.
 # The pin replaces the environment's dbt; `poetry install --extras dbt` restores the locked one
 poetry install --extras dbt
 poetry run pip install dbt-core==1.11.15 dbt-snowflake==1.11.6   # or 1.12.5 and 1.12.1
 poetry run dbt deps --project-dir tests/fixtures/reference_project
-poetry run sst --project-dir tests/fixtures/reference_project test --suite golden \
-  --golden-dir "$PWD/tests/golden/expected/ddl"
+SST_GOLDEN_PROJECT=tests/fixtures/reference_project poetry run pytest tests/unit/test_goldens.py
 poetry run pytest tests/contract/test_dbt_manifest_contract.py \
   --dbt-manifest tests/fixtures/reference_project/target/manifest.json
 
 # The wheel job: the built wheel, installed alone into a venv outside the checkout, runs
-# validate, compile and the golden suite on a copy of the reference project with its vendored
-# manifest, from outside the source tree.
+# --version, validate and compile on a copy of the reference project with its vendored
+# manifest, from outside the source tree. The byte comparison with the goldens stays with the
+# dbt job and the unit tests.
 poetry build --format wheel
 python -m venv /tmp/sst-wheel && /tmp/sst-wheel/bin/pip install dist/*.whl
-cp -R tests/fixtures/reference_project /tmp/sst-wheel-project && (cd /tmp && /tmp/sst-wheel/bin/sst \
-  --project-dir /tmp/sst-wheel-project test --suite golden \
-  --manifest "$OLDPWD/tests/fixtures/reference_project_manifest.json" \
-  --golden-dir "$OLDPWD/tests/golden/expected/ddl")
+cp -R tests/fixtures/reference_project /tmp/sst-wheel-project && (cd /tmp && M="$OLDPWD/tests/fixtures/reference_project_manifest.json" \
+  && /tmp/sst-wheel/bin/sst --version \
+  && /tmp/sst-wheel/bin/sst --project-dir sst-wheel-project validate --manifest "$M" \
+    --no-strict --no-snowflake-syntax-check \
+  && /tmp/sst-wheel/bin/sst --project-dir sst-wheel-project compile --manifest "$M" \
+    --emit-ddl /tmp/sst-wheel-ddl)
 ```
 
 The ratchet and the three floors are separate checks: the ratchet compares each layer over the
@@ -217,7 +220,7 @@ thread it started is still running two seconds after it returns.
 
 The offline suite is every test the gate requires: `poetry run pytest tests/ -n auto` runs it with no
 account and no secrets, and no test in it can reach the network or read your own Snowflake or dbt
-configuration. Goldens are rewritten by the golden suite with `--update-golden`, never by hand;
+configuration. Goldens are rewritten with `python -m tests.helpers.update_goldens`, never by hand;
 [tests/README.md](tests/README.md#goldens) gives the exact command, and a pull request that changes a
 golden says why.
 
@@ -376,7 +379,7 @@ A pipeline branches on the exit code without reading the output, so each code ha
 | 5 | Snowflake would not cooperate: a rejected credential (SST-PRT002), a failed or dropped connection (SST-PRT001), a refused privilege, or a missed deadline. |
 | 130 | The run was interrupted (Ctrl-C, SIGTERM, SIGHUP) or a confirmation was declined. |
 
-- **2 reports a difference; it is not a failure.** A command that asserts never returns it: `validate` and `test` exit 1 when an assertion fails, a golden mismatch included. `--no-detailed-exitcode` turns 2 into 0 on `plan`, `diff`, `enrich`, `format`, and `docs`.
+- **2 reports a difference; it is not a failure.** A command that asserts never returns it: `validate` and `test` exit 1 when an assertion fails, a failed smoke probe or eval included. `--no-detailed-exitcode` turns 2 into 0 on `plan`, `diff`, `enrich`, `format`, and `docs`.
 - **Usage errors exit 3, not click's default 2**, so 2 always means a difference. `cli/group.py` sets the exit code of click's usage errors to 3 and reports each as a diagnostic; a bad value read from an environment variable is a configuration error, exit 4, since the command line itself was fine.
 - **1, 4, and 5 are split by how far the run got,** which tells the reader what to fix: 4, the setup (the run could not use the project, its configuration, or a saved plan); 1, the project; 5, the account (retry, or fix the grants). A manifest SST could not obtain is 4 even when `dbt parse` ran and failed (SST-DBT028): no model was read, and 5 is for Snowflake alone. `cli/runner.py` maps each exception to its code in one place, and `snowflake_failure` decides between 1 and 5 for a Snowflake error.
 - **An interrupt is 130**, never an internal error, from any point in the run.

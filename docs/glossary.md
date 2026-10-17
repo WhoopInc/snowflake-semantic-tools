@@ -54,8 +54,6 @@ where it is explained.
   `skills:`, `plugins:`, or `profiles:` -- that names a folder, whose `+` keys
   apply to what is in it. See
   [folder routes](guides/configuration.md#folder-routes).
-- **Golden suite.** The offline part of `sst test`, which compares rendered
-  output with committed files. See [`sst test`](reference/cli.md#sst-test).
 - **Key.** An artifact's or member's identity, `<type>:<name>`, such as
   `semantic_view:sales`. It never names a database or schema. See
   [identity and versions](concepts.md#identity-and-versions).

@@ -63,7 +63,7 @@ so the manifest carries no generation time; JSON documents are written with
 equal bytes; and `manifest_id` is the SHA-256 of that encoding of the manifest
 without its id and schema version. Two compiles of
 the same project write the same `manifest.json`, which
-`tests/unit/cli/test_compile.py` checks, and the golden suite can compare
+`tests/unit/cli/test_compile.py` checks, and `tests/unit/test_goldens.py` compares
 rendered text with committed files byte for byte (after the two normalisations
 `tests/golden/README.md` names).
 
@@ -131,7 +131,6 @@ The other ports follow the same pattern:
 | `ProjectInputs` | `YamlProjectInputs` (`adapters/project_source.py`) | `InMemoryProjectInputs` (`tests/helpers/project_inputs.py`) |
 | `StateStore` | `StateFileStore` (`adapters/fs/local.py`) | `InMemoryStateStore` (`tests/helpers/app_ports.py`) |
 | `ClockPort` | `SystemClock` (`adapters/clock.py`) | `FixedClock` (`tests/helpers/clocks.py`) |
-| `GoldenStore` | `GoldenFileStore` (`adapters/fs/golden.py`) | `InMemoryGoldenStore` (`tests/helpers/golden_store.py`) |
 | `EvalStateStore` | `SnowflakeEvalStateStore` (`adapters/snowflake/eval_state.py`) | `InMemoryEvalStateStore` (`tests/helpers/eval_state_store.py`) |
 
 `ClockPort` also issues run ids, so even a run's identity is injected. The
@@ -152,7 +151,7 @@ the driver, through `Sql.for_driver`. A value read from a project file or from
 Snowflake therefore reaches a statement only through quoting. The enforcement is
 under [Building SQL](../../CONTRIBUTING.md#building-sql).
 
-Drawn from: [domain/ports/project.py](../../snowflake_semantic_tools/domain/ports/project.py), [domain/ports/clock.py](../../snowflake_semantic_tools/domain/ports/clock.py), [domain/ports/state.py](../../snowflake_semantic_tools/domain/ports/state.py), [domain/ports/golden.py](../../snowflake_semantic_tools/domain/ports/golden.py), [app/apply/run.py](../../snowflake_semantic_tools/app/apply/run.py), [cli/wiring/project.py](../../snowflake_semantic_tools/cli/wiring/project.py), [cli/runner.py](../../snowflake_semantic_tools/cli/runner.py), [cli/settings.py](../../snowflake_semantic_tools/cli/settings.py), [domain/sql/core.py](../../snowflake_semantic_tools/domain/sql/core.py), [tests/contract/test_snowflake_port.py](../../tests/contract/test_snowflake_port.py).
+Drawn from: [domain/ports/project.py](../../snowflake_semantic_tools/domain/ports/project.py), [domain/ports/clock.py](../../snowflake_semantic_tools/domain/ports/clock.py), [domain/ports/state.py](../../snowflake_semantic_tools/domain/ports/state.py), [app/apply/run.py](../../snowflake_semantic_tools/app/apply/run.py), [cli/wiring/project.py](../../snowflake_semantic_tools/cli/wiring/project.py), [cli/runner.py](../../snowflake_semantic_tools/cli/runner.py), [cli/settings.py](../../snowflake_semantic_tools/cli/settings.py), [domain/sql/core.py](../../snowflake_semantic_tools/domain/sql/core.py), [tests/contract/test_snowflake_port.py](../../tests/contract/test_snowflake_port.py).
 
 ## The artifact and member registries
 
@@ -211,11 +210,12 @@ included.
 4. For a composite type, implement its handler in `app/lifecycle/` and add it
    to `_lifecycle_handlers` in `app/plan.py`; an object type needs an
    `object_type` and nothing more.
-5. Give it a route in `golden_payloads` (`app/golden.py`), which raises for a
-   type with none, then commit goldens with `--update-golden`.
+5. Give it a route in `golden_payloads` (`tests/helpers/goldens.py`), which
+   raises for a type with none, then run `python -m tests.helpers.update_goldens`
+   and commit the new goldens.
 6. Run `poetry run sst docs` and commit the regenerated reference pages.
 
-Drawn from: [domain/model/registry.py](../../snowflake_semantic_tools/domain/model/registry.py), [domain/ports/lifecycle.py](../../snowflake_semantic_tools/domain/ports/lifecycle.py), [app/lifecycle/composite.py](../../snowflake_semantic_tools/app/lifecycle/composite.py), [app/plan.py](../../snowflake_semantic_tools/app/plan.py), [app/golden.py](../../snowflake_semantic_tools/app/golden.py), [domain/render/reference_docs.py](../../snowflake_semantic_tools/domain/render/reference_docs.py).
+Drawn from: [domain/model/registry.py](../../snowflake_semantic_tools/domain/model/registry.py), [domain/ports/lifecycle.py](../../snowflake_semantic_tools/domain/ports/lifecycle.py), [app/lifecycle/composite.py](../../snowflake_semantic_tools/app/lifecycle/composite.py), [app/plan.py](../../snowflake_semantic_tools/app/plan.py), [tests/helpers/goldens.py](../../tests/helpers/goldens.py), [domain/render/reference_docs.py](../../snowflake_semantic_tools/domain/render/reference_docs.py).
 
 ## The compile pipeline
 
@@ -593,7 +593,6 @@ These are the commands that connect, and what they do once connected:
 | Command | Connects | Reads | Writes |
 |---|---|---|---|
 | `compile`, `format`, `list`, `explain`, `docs`, `clean`, `init`, `migrate refs`, `migrate split`, `baseline show`, `baseline renew` | never | | local files only |
-| `test --suite golden` | never | | goldens, with `--update-golden` |
 | `validate` | unless the syntax check is off (`--no-snowflake-syntax-check` or `validation.snowflake_syntax_check: false`) and there is no `--verify-schema` | `EXPLAIN` of each expression and query, verified-query row counts, what exists, `SHOW CORTEX BASE MODELS`; one run of a probe agent per allowed orchestration model | a TEMPORARY probe agent per model, dropped once it answers |
 | `baseline add --target`, `baseline prune --target` | yes, as `validate --target` | as `validate` | the local baseline file |
 | `debug` | unless `--no-connect` or `--snowflake-signatures` | the session's role and account | nothing |
@@ -605,8 +604,9 @@ These are the commands that connect, and what they do once connected:
 | `test --suite evals` | yes | the published agents | evaluation runs, the lock table, the eval table |
 | `drop` | yes | the object's marker, the state table | one `DROP`, the lock table, the state table |
 
-Run without `--suite`, `sst test` runs the golden suite and, once a compiled
-manifest exists, each connected suite that applies to the project.
+Run without `--suite`, `sst test` runs each suite that applies once `sst compile`
+has written the manifest, and exits 4 when none applies: `SST-MAN001` with no
+manifest, `SST-DIS012` when the selection compiles no semantic view and no eval.
 
 "Never" means SST opens no session. With `dbt.command: compile`, dbt itself connects to the
 warehouse on any command that runs dbt: every one that loads the project, unless `--manifest` is

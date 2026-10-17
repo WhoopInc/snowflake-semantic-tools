@@ -340,10 +340,8 @@ the same for any count. `sst test` defaults to 1.
 
 SST also reads `$DBT_PROFILES_DIR` (see [above](#which-files-are-read)) and the
 standard `$NO_COLOR`: any non-empty value turns colour off, as `--no-color`
-does. Colour is only ever used for `table` output on a terminal. `$CI`, when
-set to anything but empty, `0`, `false`, or `no`, refuses
-`sst test --update-golden`. Variables that `profiles.yml` names with
-`env_var()` are read as the next section describes.
+does. Colour is only ever used for `table` output on a terminal. Variables that
+`profiles.yml` names with `env_var()` are read as the next section describes.
 
 ## Authentication
 

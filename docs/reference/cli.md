@@ -28,7 +28,7 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst plan`](#sst-plan) | Observe live Snowflake state and compute a non-writing plan. |
 | [`sst apply`](#sst-apply) | Apply a current reviewed plan; smoke probes never run here. |
 | [`sst diff`](#sst-diff) | Compare two states -- local, a dbt target, or a saved plan -- and list what differs. |
-| [`sst test`](#sst-test) | Run the golden, smoke, and eval suites: those --suite names, else every one that applies. |
+| [`sst test`](#sst-test) | Run the smoke and eval suites: those --suite names, else every one that applies. |
 | [`sst explain`](#sst-explain) | Explain one diagnostic code from the registry: no project, configuration, or connection. |
 | [`sst docs`](#sst-docs) | Write the generated reference pages under docs/reference/. |
 | [`sst clean`](#sst-clean) | Remove local SST build artifacts only; never touch Snowflake. |
@@ -612,20 +612,19 @@ sst diff [OPTIONS]
 
 ## sst test
 
-Run the golden, smoke, and eval suites: those --suite names, else every one that applies.
+Run the smoke and eval suites: those --suite names, else every one that applies.
 
-The golden suite always applies; the connected suites apply once `sst compile` has written
-the manifest, the smoke suite when a semantic view compiles, the eval suite when an eval
+Both suites test what `sst apply` published, so they apply once `sst compile` has written
+the manifest: the smoke suite when a semantic view compiles, the eval suite when an eval
 does. `--select` and `--exclude` narrow every suite to those artifacts. Exit 1 when the
-project does not compile or a suite fails; 4 when a selected artifact has no golden file,
-or a connected suite finds the compiled manifest stale or the target's run lock held; and
-5 when a connected suite cannot reach Snowflake. Unless one --suite is given, the worst
-exit wins and the summary counts the suites that passed, failed, and were skipped: not
-named, not applying, or not reached once --fail-fast stopped. `--update-golden` runs the
-golden suite only, rewriting each golden the current output no longer equals. The eval
-suite holds the target's run lock while it runs, and `--break-stale-lock` takes it over
-only from a run that has expired; progress on its runs goes to stderr, except under
---quiet or --output json or yaml. `--capture-baseline` exits 3 unless the eval suite runs.
+project does not compile or a suite fails; 4 when, with no --suite, no suite applies, or a
+suite finds the compiled manifest missing or stale or the target's run lock held; and 5
+when a suite cannot reach Snowflake. Unless one --suite is given, the worst exit wins and
+the summary counts the suites that passed, failed, and were skipped: not named, not
+applying, or not reached once --fail-fast stopped. The eval suite holds the target's run
+lock while it runs, and `--break-stale-lock` takes it over only from a run that has
+expired; progress on its runs goes to stderr, except under --quiet or --output json or
+yaml. `--capture-baseline` exits 3 unless the eval suite runs.
 
 ```text
 sst test [OPTIONS]
@@ -633,15 +632,13 @@ sst test [OPTIONS]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
-| `--suite` | golden\|smoke\|evals, repeatable |  | Repeatable. `golden` compares outputs with committed goldens offline; `smoke` probes deployed objects; `evals` runs agent evaluations. Defaults to every suite that applies. |
+| `--suite` | smoke\|evals, repeatable |  | Repeatable. `smoke` probes deployed semantic views; `evals` runs agent evaluations. Defaults to every suite that applies. |
 | `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
-| `--golden-dir` | DIRECTORY | `expected/ddl` | Directory of the semantic view DDL goldens, taken from the project directory when relative; the other types' goldens sit in directories beside it. |
-| `--update-golden` | flag |  | Rewrite each golden the current output no longer equals, and create missing ones; runs the golden suite only. Refused with `--suite smoke` or `evals`, and when `$CI` is set to anything but empty, `0`, `false` or `no`. |
 | `--threads` | INTEGER RANGE |  | Smoke probes, and eval runs neither `evals.+concurrency` nor an eval's `concurrency` setting paces, run at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1. |
-| `--fail-fast` | flag |  | Stop the smoke or eval suite at its first failing probe or eval, running them one at a time, and run no suite after one that fails. The golden suite always compares every golden. |
-| `--capture-baseline` | flag |  | Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires `--reason`, and a run of the eval suite: refused with `--update-golden`, a `--suite` that does not name `evals`, or no `--suite` when the eval suite does not apply. |
+| `--fail-fast` | flag |  | Stop the smoke or eval suite at its first failing probe or eval, running them one at a time, and run no suite after one that fails. |
+| `--capture-baseline` | flag |  | Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires `--reason`, and a run of the eval suite: refused with a `--suite` that does not name `evals`, or no `--suite` when the eval suite does not apply. |
 | `--reason` | TEXT |  | Why the baseline is changing; stored with it. Requires `--capture-baseline`. |
 | `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 

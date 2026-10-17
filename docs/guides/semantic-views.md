@@ -673,9 +673,7 @@ sst compile --emit-ddl target/ddl/
 writes each view's `CREATE SEMANTIC VIEW` statement to `<view>.sql`, offline,
 beside the rendered payloads of the project's other artifacts. Diffing that
 directory between two commits shows exactly what a change does to the published
-DDL. `sst test --suite golden` compares the rendered DDL with files committed
-under `--golden-dir` (default `expected/ddl`, relative to the project), and
-`--update-golden` rewrites them.
+DDL.
 
 The statement is `CREATE OR REPLACE SEMANTIC VIEW`, with its clauses in
 Snowflake's order: `TABLES`, `RELATIONSHIPS`, `VARIABLES`, `FACTS`,

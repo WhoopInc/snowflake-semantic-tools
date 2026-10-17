@@ -10,7 +10,6 @@ may return, and every case's code must be one of its command's.
 from __future__ import annotations
 
 import json
-import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -24,7 +23,14 @@ from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics.signatures import SIGNATURES
 from snowflake_semantic_tools.domain.model.lifecycle import ErrorKind, OwnershipMarker
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from tests.helpers.cli_projects import common, compile_project, invoke_with_port, on_a_terminal, skills_only_project
+from tests.helpers.cli_projects import (
+    applied_port,
+    common,
+    compile_project,
+    invoke_with_port,
+    on_a_terminal,
+    skills_only_project,
+)
 from tests.helpers.enrich_ports import ScriptedEnrich
 from tests.helpers.reference_project import REPO_ROOT, break_menu_view, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
@@ -51,7 +57,6 @@ _DECLARED = {
     "agent-kit": {0, 1, 2, 3, 4},
 }
 EXIT_CODES = {command: codes | {INTERRUPTED} for command, codes in _DECLARED.items()}
-GOLDEN = REPO_ROOT / "tests" / "golden" / "expected" / "ddl"
 DROP = ("DB.S.V", "--type", "semantic_view", "--target", "dev", "--yes")
 PROFILES_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project" / "profiles.yml"
 Scenario = Callable[[Path, pytest.MonkeyPatch], Result]
@@ -164,12 +169,10 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("list", 0): lambda tmp, _: _listed(tmp),
     ("list", 3): lambda tmp, _: _run("list", "not-a-type"),
     ("list", 4): lambda tmp, _: _run("list", "--project-dir", str(project_copy(tmp))),
-    ("test", 0): lambda tmp, _: _run(
-        "test", *common(project_copy(tmp)), "--suite", "golden", "--golden-dir", str(GOLDEN)
-    ),
-    ("test", 1): lambda tmp, _: _test_drifted(tmp),
+    ("test", 0): lambda tmp, mp: _test_smoke(tmp, mp, applied=True),
+    ("test", 1): lambda tmp, mp: _test_smoke(tmp, mp, applied=False),
     ("test", 3): lambda tmp, _: _run("test", "--suite", "every"),
-    ("test", 4): lambda tmp, _: _run("test", "--project-dir", str(tmp), "--suite", "golden"),
+    ("test", 4): lambda tmp, _: _run("test", *common(project_copy(tmp))),
     ("test", 5): lambda tmp, mp: _connected(tmp, mp, "test", "--suite", "smoke"),
     ("docs", 0): lambda tmp, _: _run("docs", "--project-dir", str(REPO_ROOT), "--check"),
     ("docs", 1): lambda tmp, _: _docs_unwritable(tmp),
@@ -232,13 +235,10 @@ FLAG_SCENARIOS: dict[str, tuple[str, int, Scenario]] = {
         3,
         lambda tmp, _: _run("apply", "--yes", "--no-validate", "--snowflake-syntax-check"),
     ),
-    "test-select": ("test", 0, lambda tmp, _: _test_golden(tmp, GOLDEN, "--select", "jaffle_minimal")),
-    "test-exclude": ("test", 0, lambda tmp, _: _test_golden(tmp, GOLDEN, "--exclude", "type:agent")),
-    "test-select-matches-nothing": ("test", 4, lambda tmp, _: _test_golden(tmp, GOLDEN, "--select", "nothing")),
-    "test-missing-golden": ("test", 4, lambda tmp, _: _test_golden(tmp, tmp)),
-    "test-update-golden": ("test", 0, lambda tmp, mp: _test_update(tmp, mp, "")),
-    "test-update-golden-in-ci": ("test", 3, lambda tmp, mp: _test_update(tmp, mp, "true")),
-    "test-update-golden-smoke": ("test", 3, lambda tmp, _: _run("test", "--update-golden", "--suite", "smoke")),
+    "test-select": ("test", 0, lambda tmp, mp: _test_smoke(tmp, mp, "--select", "jaffle_minimal", applied=True)),
+    "test-exclude": ("test", 0, lambda tmp, mp: _test_smoke(tmp, mp, "--exclude", "type:agent", applied=True)),
+    "test-select-matches-nothing": ("test", 4, lambda tmp, _: _test_compiled(tmp, "--select", "nothing")),
+    "test-select-no-suite-applies": ("test", 4, lambda tmp, _: _test_compiled(tmp, "--select", "type:tool")),
     "enrich-not-production": ("enrich", 3, lambda tmp, _: _run("enrich", *common(project_copy(tmp)))),
     "enrich-allow-non-prod": ("enrich", 0, lambda tmp, mp: _enrich_allowed(tmp, mp)),
 }
@@ -263,22 +263,21 @@ def _enrich_allowed(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
     return _run("enrich", *common(project_copy(tmp)), "--select", "order_items", "--allow-non-prod")
 
 
-def _test_golden(tmp: Path, golden_dir: Path, *flags: str) -> Result:
+def _test_compiled(tmp: Path, *flags: str) -> Result:
+    """Run `sst test`, naming no suite, on a compiled copy of the reference project."""
     project = project_copy(tmp)
-    return _run("test", *common(project), "--suite", "golden", "--golden-dir", str(golden_dir), *flags)
+    compile_project(project)
+    return _run("test", *common(project), *flags)
 
 
-def _test_drifted(tmp: Path) -> Result:
-    goldens = tmp / "expected"
-    shutil.copytree(GOLDEN.parent, goldens)
-    drifted = goldens / "ddl" / "jaffle_minimal.sql"
-    drifted.write_text(drifted.read_text(encoding="utf-8").replace("Menu products only", "Drifted"), encoding="utf-8")
-    return _test_golden(tmp, goldens / "ddl")
-
-
-def _test_update(tmp: Path, monkeypatch: pytest.MonkeyPatch, ci: str) -> Result:
-    monkeypatch.setenv("CI", ci)
-    return _test_golden(tmp, tmp / "goldens", "--update-golden")
+def _test_smoke(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str, applied: bool) -> Result:
+    """Run the smoke suite on a compiled copy, every artifact applied or none."""
+    project = project_copy(tmp)
+    compile_project(project)
+    port = applied_port(project) if applied else FakeSnowflake(state={})
+    return invoke_with_port(
+        monkeypatch, port, ["test", *common(project), "--target", "dev", "--suite", "smoke", *flags]
+    )
 
 
 def _debug_invalid(tmp: Path) -> Result:

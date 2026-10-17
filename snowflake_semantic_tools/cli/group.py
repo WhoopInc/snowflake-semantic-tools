@@ -232,8 +232,7 @@ def cli(ctx: click.Context, /, **params: Any) -> None:
     SST_PROJECT_DIR, SST_CONFIG and SST_PROFILES_DIR; the commands whose help names them read
     SST_TARGET, SST_DEFER_TARGET, SST_STATE_DIR, SST_STRICT and SST_THREADS. A boolean
     variable takes 1, true, yes, on, or their negations, and a value that does not parse
-    exits 4 before anything runs. NO_COLOR and DBT_PROFILES_DIR are honoured, and CI set to
-    anything but empty, 0, false, or no refuses `sst test --update-golden`.
+    exits 4 before anything runs. NO_COLOR and DBT_PROFILES_DIR are honoured.
     """
     forward_globals(ctx, cli, forwarded(ctx, params))
 

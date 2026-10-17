@@ -98,8 +98,13 @@ def test_the_required_gate_parses_the_reference_project_with_every_admitted_dbt_
     assert any('"dbt-core==$DBT_CORE" "dbt-snowflake==$DBT_SNOWFLAKE"' in run for run in runs)
     assert not any("--constraint" in run or ".*" in run for run in runs)
     assert any("dbt deps" in run for run in runs)
-    golden = next(run for run in runs if "test --suite golden" in run)
-    assert "--manifest" not in golden, "SST must run dbt itself here, not read a manifest"
+    goldens = next(step for step in job["steps"] if "tests/unit/test_goldens.py" in str(step.get("run", "")))
+    assert goldens["env"]["SST_GOLDEN_PROJECT"] == "${{ env.REFERENCE_PROJECT }}"
+    assert "--manifest" not in goldens["run"], "SST must run dbt itself here, not read a manifest"
+    # The contract step reads the manifest that `dbt parse` wrote while the goldens rendered.
+    assert runs.index("poetry run pytest tests/unit/test_goldens.py") < next(
+        index for index, run in enumerate(runs) if "test_dbt_manifest_contract.py" in run
+    )
     assert any(
         "tests/contract/test_dbt_manifest_contract.py --dbt-manifest" in run and "target/manifest.json" in run
         for run in runs
@@ -114,10 +119,10 @@ def test_the_required_gate_runs_the_built_wheel_installed_alone_outside_the_chec
     # Nothing but the wheel is installed: no project install, no editable or source install.
     assert "poetry install" not in joined and "poetry run" not in joined
     assert re.findall(r"pip\"? install (?:--\S+ )*(\S+)", joined) == ["dist/*.whl"]
-    smoke = next(run for run in runs if "--suite golden" in run)
+    smoke = next(run for run in runs if "venv/bin/sst --version" in run)
     assert smoke.index('cd "$SMOKE"') < smoke.index("venv/bin/sst --version")
     assert '"$GITHUB_WORKSPACE"/*) echo "imported from the checkout' in smoke
-    for command in ("validate", "compile", "test --suite golden"):
+    for command in ("validate", "compile"):
         assert f'venv/bin/sst --project-dir project {command} --manifest "$M"' in smoke, command
     assert 'M="$GITHUB_WORKSPACE/tests/fixtures/reference_project_manifest.json"' in smoke
 

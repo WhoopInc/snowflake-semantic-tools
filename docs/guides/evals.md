@@ -304,10 +304,9 @@ holds the rendered run configurations (default `EVAL_CONFIGS`).
 ## Offline checks and connected suites
 
 Everything above is checked offline: `sst compile` reports the dataset,
-configuration and judge diagnostics without connecting to Snowflake.
-The offline golden suite, `sst test --suite golden`, also compares each eval's
-rendered run configuration and source table statements with the committed
-goldens under `expected/eval/`.
+configuration and judge diagnostics without connecting to Snowflake, and
+`sst compile --emit-ddl` writes each eval's rendered run configuration and source
+table statements, so a review can diff them.
 
 `sst test --suite evals` is connected: it runs the agent in Snowflake. Without
 `--suite`, `sst test` runs it too once `sst compile` has written the manifest
@@ -516,8 +515,8 @@ sst test --suite evals --capture-baseline --reason "new tool for supply cost"
 ```
 
 `--capture-baseline` and `--reason` go together (exit 3 otherwise), and only
-with a run of the eval suite: with `--update-golden`, with a `--suite` that does
-not name `evals`, or without `--suite` when the eval suite does not apply, they
+with a run of the eval suite: with a `--suite` that does not name `evals`, or
+without `--suite` when the eval suite does not apply, they
 are refused (exit 3). A capture
 runs each eval until `baseline_runs` attempts have completed, starting all of
 them in its first round, and gates nothing. It takes the first `baseline_runs`

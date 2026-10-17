@@ -47,9 +47,10 @@ After a compile, `sst list --project-dir tests/fixtures/reference_project` lists
 | `jaffle-toolkit.json` | plugin |
 | `jaffle-analyst.json`, `jaffle-operator.json` | profiles |
 
-## Golden Suite
+## Goldens
 
-`golden suite passed for 14 artifact(s)`, exit 0. The goldens compared, under `tests/golden/expected/`:
+`poetry run pytest tests/unit/test_goldens.py`: `9 passed`, exit 0. With nothing drifted,
+`poetry run python -m tests.helpers.update_goldens` prints `0 golden file(s) written for 16 artifact(s)` (the 14, and the two scoped views) and exits 0. The goldens compared, under `tests/golden/expected/`:
 
 | Directory | Files |
 |-----------|-------|
@@ -61,7 +62,7 @@ After a compile, `sst list --project-dir tests/fixtures/reference_project` lists
 | `plugin/` | `jaffle-toolkit.bundle.json`, `jaffle-toolkit.plugin.json` |
 | `profile/` | one `.profile.json` per profile, and the `jaffle-analyst/` tree |
 
-`ddl/` also holds `jaffle_customer_orders.sql` and `jaffle_product_costs.sql`, and `enrich/` holds whole YAML files; the unit tests compare those (`tests/fixtures/scoped_views/`, `sst enrich`), not the golden suite. A relative `--golden-dir` exits 4 with `missing golden tests/fixtures/reference_project/tests/golden/expected/...`.
+`ddl/` also holds `jaffle_customer_orders.sql` and `jaffle_product_costs.sql`, and `enrich/` holds whole YAML files; `unit/test_golden_ddl.py` and `unit/test_golden_enrich.py` compare those (`tests/fixtures/scoped_views/`, `sst enrich`); `update_goldens` rewrites the scoped-view two and not the `enrich` files.
 
 ## `sst migrate refs` (`tests/fixtures/v1_dialect`)
 

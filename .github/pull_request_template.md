@@ -32,7 +32,7 @@
 - [ ] All tests pass (`poetry run pytest tests/ -n auto`)
 - [ ] Coverage holds: the per-layer ratchet (`python -m tests.helpers.coverage_ratchet check`) and the floors (domain 100%, app 95%, cli 90%, adapters 90%; branch coverage)
 - [ ] New tests added for new functionality
-- [ ] Goldens changed only where rendered output was meant to change, rewritten with `--update-golden`, with the reason under Additional Notes
+- [ ] Goldens changed only where rendered output was meant to change, rewritten with `python -m tests.helpers.update_goldens`, with the reason under Additional Notes
 - [ ] Manual testing completed (if applicable; against a non-production schema)
 
 ### Test Results

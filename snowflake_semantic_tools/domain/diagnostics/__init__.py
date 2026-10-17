@@ -7,8 +7,8 @@ from those modules and re-exports the `core` names, so importers never reach int
 submodules. `D`, `Diagnostic`, and `render_diagnostic` look `ERROR_REGISTRY` up as a global
 of this module on each call, so replacing it here changes what all three see.
 
-`cascade` turns a diagnostic into the follow-on of another. `audit` and `unstable_fingerprints`
-check the emission invariants over a finished run: every diagnostic came from `D`, carries the
+`cascade` turns a diagnostic into the follow-on of another. `audit` checks the emission
+invariants over a finished run: every diagnostic came from `D`, carries the
 location it knows, declares its registered severity, has the effective severity a legal override
 and `resolve_severities` give it, and names a cause that is present. `policy` applies a project's
 severity overrides.
@@ -16,8 +16,7 @@ severity overrides.
 
 from __future__ import annotations
 
-from collections import Counter
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from types import MappingProxyType
@@ -76,7 +75,6 @@ __all__ = [
     "build_registry",
     "render_diagnostic",
     "resolve_severities",
-    "unstable_fingerprints",
 ]
 
 # Areas whose diagnostics point into a project file whenever they name one (SST-INT005).
@@ -434,21 +432,6 @@ def _legal_severity(item: Diagnostic, spec: ErrorSpec) -> bool:
     if base is Severity.WARNING and item.severity is Severity.ERROR:
         return True
     return item.cascaded
-
-
-def unstable_fingerprints(first: Iterable[Diagnostic], second: Iterable[Diagnostic]) -> DiagnosticBag:
-    """Return one SST-INT006 per code whose fingerprints differ between two identical runs.
-
-    The runs are compared as multisets of fingerprints per code, so order does not matter, and
-    codes are reported in sorted order.
-    """
-    before: dict[str, Counter[str]] = {}
-    after: dict[str, Counter[str]] = {}
-    for prints, items in ((before, first), (after, second)):
-        for item in items:
-            prints.setdefault(item.code, Counter())[item.fingerprint] += 1
-    changed = sorted(code for code in set(before) | set(after) if before.get(code) != after.get(code))
-    return DiagnosticBag(D("SST-INT006", value=code) for code in changed)
 
 
 # What starts each further line of a message: deeper than the help and docs lines.

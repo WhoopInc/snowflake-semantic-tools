@@ -14,7 +14,6 @@ from snowflake_semantic_tools.domain.diagnostics import (
     audit,
     cascade,
     resolve_severities,
-    unstable_fingerprints,
 )
 from tests.helpers.diagnostic_filters import codes
 
@@ -56,13 +55,6 @@ def test_audit_reports_each_broken_invariant_once_and_leaves_a_clean_run_alone()
     dangling = replace(ERROR, caused_by="SST-CFG003")
     found = audit(DiagnosticBag((direct, unlocated, raised, dangling, dangling)))
     assert codes(found)[5:] == ["SST-INT004", "SST-INT005", "SST-INT007", "SST-INT008"]
-
-
-def test_fingerprints_are_compared_per_code_as_multisets() -> None:
-    other = D("SST-LOD003", file="b.yml")
-    assert unstable_fingerprints((WARNING, other), (other, WARNING)) == ()
-    found = unstable_fingerprints((WARNING, ERROR), (other,))
-    assert [item.context["value"] for item in found] == ["SST-LOD003", "SST-REF001"]
 
 
 def test_audit_accepts_a_warning_strict_mode_promoted() -> None:

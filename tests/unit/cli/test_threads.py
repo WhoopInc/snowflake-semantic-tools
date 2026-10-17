@@ -219,13 +219,13 @@ def test_validate_defaults_to_the_parallelism_apply_uses(monkeypatch: pytest.Mon
 
 
 def test_test_takes_threads_from_the_flag_or_the_environment_within_one_to_sixteen(project: Path) -> None:
-    golden = ["test", *common(project), "--suite", "golden", "--output", "json"]
+    smoke = ["test", *common(project), "--suite", "smoke", "--output", "json"]
     for args, env in ((["--threads", "4"], None), ([], {"SST_THREADS": "4"})):
-        result = CliRunner().invoke(cli, [*golden, *args], env=env)
-        assert json.loads(result.output)["command"] == "test" and result.exit_code in (0, 1, 4), result.output
+        result = CliRunner().invoke(cli, [*smoke, *args], env=env)
+        assert json.loads(result.output)["command"] == "test" and result.exit_code in (0, 1, 4, 5), result.output
     # A bad flag is a usage error; a bad environment value is a configuration error.
-    assert CliRunner().invoke(cli, [*golden, "--threads", "17"]).exit_code == 3
-    refused = CliRunner().invoke(cli, golden, env={"SST_THREADS": "0"})
+    assert CliRunner().invoke(cli, [*smoke, "--threads", "17"]).exit_code == 3
+    refused = CliRunner().invoke(cli, smoke, env={"SST_THREADS": "0"})
     assert refused.exit_code == 4
     assert [item["code"] for item in json.loads(refused.output)["diagnostics"]] == ["SST-CFG004"]
 

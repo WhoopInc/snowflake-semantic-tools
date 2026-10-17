@@ -159,7 +159,7 @@ evals:
 - To change an eval, add a file under a new name and point the reference at it; the old file can
   stay. Every file in the folder is checked, and only the named pair publishes.
 
-- `sst compile` and `sst test --suite golden` check eval files offline.
+- `sst compile` checks eval files offline, and `sst compile --emit-ddl` writes what they render.
 - `sst test --suite evals` runs the agent in Snowflake, costs credits, and can take many
   minutes. Run it only when the user asks, against the target they name.
 - A gate run compares with a captured baseline, stored in Snowflake, not in
@@ -175,7 +175,6 @@ evals:
 sst format
 sst validate --no-snowflake-syntax-check
 sst compile --emit-agent-spec target/agents
-sst test --suite golden
 ```
 
 `--emit-agent-spec` writes each agent's rendered specification, which is exactly what

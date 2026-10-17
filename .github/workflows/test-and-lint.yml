@@ -216,12 +216,12 @@ jobs:
       - name: Install the reference project's dbt packages
         run: poetry run dbt deps --project-dir "$REFERENCE_PROJECT"
 
-      # No --manifest: SST runs `dbt parse` itself, through the same seam a user's project
-      # goes through, then renders every artifact and compares it with the goldens.
+      # SST_GOLDEN_PROJECT and no manifest: SST runs `dbt parse` itself, through the same seam a
+      # user's project goes through, then renders every artifact and compares it with the goldens.
       - name: Render the goldens from the manifest SST has dbt parse
-        run: >-
-          poetry run sst --project-dir "$REFERENCE_PROJECT" test --suite golden
-          --golden-dir "$PWD/tests/golden/expected/ddl"
+        env:
+          SST_GOLDEN_PROJECT: ${{ env.REFERENCE_PROJECT }}
+        run: poetry run pytest tests/unit/test_goldens.py
 
       # The same contract the committed manifests are held to: the schema version is accepted,
       # every path SST reads is present with its type, and the views render as the goldens'.
@@ -267,7 +267,7 @@ jobs:
 
       # From outside the checkout, on a copy of the reference project with its vendored manifest,
       # so nothing is imported from the source tree and no dbt is needed.
-      - name: Validate, compile and render the goldens with the installed sst
+      - name: Validate and compile with the installed sst
         env:
           SMOKE: ${{ runner.temp }}/wheel-smoke
         run: |
@@ -279,7 +279,6 @@ jobs:
           M="$GITHUB_WORKSPACE/tests/fixtures/reference_project_manifest.json"
           venv/bin/sst --project-dir project validate --manifest "$M" --no-strict --no-snowflake-syntax-check
           venv/bin/sst --project-dir project compile --manifest "$M" --emit-ddl "$SMOKE/ddl"
-          venv/bin/sst --project-dir project test --suite golden --manifest "$M" --golden-dir "$GITHUB_WORKSPACE/tests/golden/expected/ddl"
 
   semgrep:
     name: Scan with semgrep

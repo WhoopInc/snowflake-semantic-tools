@@ -1,33 +1,121 @@
-"""Compare compiled payloads with committed goldens offline, and rewrite them on request.
+"""The engine's golden files: where each compiled payload's golden lives, and comparing and rewriting them.
 
-Each artifact type has one route to its goldens: a semantic view's DDL sits in the golden
-directory itself, and every other type's payload in a directory beside it named for the
-type. Some goldens are optional -- a flattened skill, a plugin manifest, a profile's prompt
-and MCP files -- and are compared only when committed. `CompareGoldens` reads them through a
-`GoldenStore`, so it touches no file; `UpdateGoldens` writes through a `GoldenWriter`.
+A golden pins the exact bytes SST renders for one artifact of the reference project. Each
+artifact type has one route: a semantic view's DDL sits in the DDL directory itself
+(`tests/golden/expected/ddl`), and every other type's payload in a directory beside it named
+for the type. Some goldens are optional -- a flattened skill, a plugin manifest, a profile's
+prompt and MCP files -- and are compared only when committed.
+
+`CompareGoldens` reads goldens through a `GoldenStore`, so it touches no file;
+`UpdateGoldens` writes through a `GoldenWriter`. `GoldenFileStore` is the store on disk and
+`tests.helpers.golden_store.InMemoryGoldenStore` the one in memory. This is test tooling:
+`tests/unit/test_goldens.py` runs the comparison, and `python -m tests.helpers.update_goldens`
+rewrites the goldens.
 """
 
 from __future__ import annotations
 
 import difflib
 import itertools
-from collections.abc import Callable
+from collections import Counter
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Protocol
 
+from snowflake_semantic_tools.adapters.dbt.invoke import INVOCATION_CODES
+from snowflake_semantic_tools.adapters.locations import locate_project
+from snowflake_semantic_tools.adapters.paths import write_within
+from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
+from snowflake_semantic_tools.cli.wiring.compile import compile_result
+from snowflake_semantic_tools.cli.wiring.project import project_inputs
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.file_names import file_name
-from snowflake_semantic_tools.domain.ports.golden import GoldenPath, GoldenStore, GoldenWriter
 from snowflake_semantic_tools.domain.ports.project import UNKNOWN_GIT_SHA
 
-# Optional goldens a reference project may commit for an extension: where each lives, and
+REPO_ROOT = Path(__file__).resolve().parents[2]
+GOLDEN_DDL_DIR = REPO_ROOT / "tests" / "golden" / "expected" / "ddl"
+REFERENCE_PROJECT = REPO_ROOT / "tests" / "fixtures" / "reference_project"
+DBT_MANIFEST = REPO_ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
+
+# Optional goldens the reference project may commit for an extension: where each lives, and
 # the bundle member it pins.
 _OPTIONAL_EXTENSION_GOLDENS = {
     "skill": ("{name}-flattened.md", "skills/{name}/SKILL.md"),
     "plugin": ("{name}.plugin.json", ".cortex-plugin/plugin.json"),
 }
+
+
+@dataclass(frozen=True, slots=True)
+class GoldenPath:
+    """Where one golden lives, relative to the golden directories.
+
+    Attributes:
+        beside: The directory beside the DDL directory that holds the golden, such as
+            `agent` or `eval`; None for the DDL directory itself.
+        parts: The path below that directory, one segment per part, joined in order.
+    """
+
+    beside: str | None
+    parts: tuple[str, ...]
+
+
+class GoldenStore(Protocol):
+    """Committed goldens, read by location."""
+
+    def exists(self, path: GoldenPath) -> bool:
+        """Report whether a golden file is at `path`; a missing directory is a missing golden."""
+        ...
+
+    def read(self, path: GoldenPath) -> str | None:
+        """Return the golden at `path` as UTF-8 text; None when no golden file is there."""
+        ...
+
+    def name(self, path: GoldenPath) -> str:
+        """Return how a report names the golden at `path`, whether or not a file is there."""
+        ...
+
+
+class GoldenWriter(GoldenStore, Protocol):
+    """Committed goldens that `update_goldens` may also rewrite."""
+
+    def write(self, path: GoldenPath, text: str) -> None:
+        """Write `text` as the golden at `path`, in UTF-8, creating its directory when missing."""
+        ...
+
+
+class GoldenFileStore:
+    """Goldens under one DDL directory and its siblings, read and written as UTF-8.
+
+    A golden's name is its path, built from the DDL directory as given. Only `write` changes a
+    file, and only inside the DDL directory's parent (`adapters.paths.write_within`).
+    """
+
+    def __init__(self, ddl_dir: Path = GOLDEN_DDL_DIR) -> None:
+        self._ddl_dir = ddl_dir
+
+    def exists(self, path: GoldenPath) -> bool:
+        return self._path(path).is_file()
+
+    def read(self, path: GoldenPath) -> str | None:
+        file = self._path(path)
+        if not file.is_file():
+            return None
+        return file.read_text(encoding="utf-8")
+
+    def name(self, path: GoldenPath) -> str:
+        return str(self._path(path))
+
+    def write(self, path: GoldenPath, text: str) -> None:
+        write_within(self._ddl_dir.parent, self._path(path), text)
+
+    def _path(self, path: GoldenPath) -> Path:
+        base = self._ddl_dir if path.beside is None else self._ddl_dir.parent / path.beside
+        return base.joinpath(*path.parts)
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +135,7 @@ class GoldenPayload:
 
 @dataclass(frozen=True, slots=True)
 class GoldenReport:
-    """What a golden run found: one failure per golden that is missing or differs, in compile order.
+    """What a comparison found: one failure per golden that is missing or differs, in compile order.
 
     Attributes:
         failures: `missing golden <name>`, or a unified diff from the golden to the payload.
@@ -82,7 +170,6 @@ class CompareGoldens:
         Raises:
             ValueError: an artifact's type has no golden route, a DDL golden holds no DDL, or a
                 golden is not valid UTF-8.
-            OSError: a golden exists but cannot be read.
         """
         failures: list[str] = []
         missing: list[str] = []
@@ -116,7 +203,7 @@ class CompareGoldens:
 
 
 class UpdateGoldens:
-    """Rewrite every golden a compiled payload no longer equals, as `--update-golden` asks.
+    """Rewrite every golden a compiled payload no longer equals.
 
     A golden is rewritten only when `CompareGoldens` would fail it, and as it would expect it:
     trailing whitespace dropped, one final newline, and `GIT_<commit>` as `GIT_0000000`. A DDL
@@ -133,7 +220,6 @@ class UpdateGoldens:
 
         Raises:
             ValueError: as `CompareGoldens.run` raises.
-            OSError: a golden cannot be read or written.
         """
         written: list[str] = []
         for item in result.compiled:
@@ -146,6 +232,56 @@ class UpdateGoldens:
                 self._store.write(payload.golden, text)
                 written.append(self._store.name(payload.golden))
         return tuple(written)
+
+
+@dataclass(frozen=True, slots=True)
+class Compiled:
+    """A project compiled twice, the way the goldens are taken from it.
+
+    Attributes:
+        result: The first compile, whose payloads the goldens pin.
+        again: A second compile of the same files, from the dbt manifest the first one read.
+        git_sha: The commit the project's payloads name, asked for when a golden is compared.
+    """
+
+    result: CompileResult
+    again: CompileResult
+    git_sha: Callable[[], str]
+
+    def unstable_codes(self) -> list[str]:
+        """Name each code whose fingerprints differ between the two compiles.
+
+        What starting dbt says is left out: only the first compile can start it.
+        """
+        first = (item for item in self.result.diagnostics if item.code not in INVOCATION_CODES)
+        return unstable_codes(first, self.again.diagnostics)
+
+
+def compile_twice(project_dir: Path, manifest: Path | None) -> Compiled:
+    """Compile `project_dir` as `sst compile` would, then again from the dbt manifest it read.
+
+    With no `manifest`, SST runs `dbt parse` itself, as on a user's project; the second
+    compile reads the manifest that wrote, so dbt runs once.
+    """
+    paths = locate_project(project_dir, required=False)
+    result = compile_result(paths, None, manifest)
+    if manifest is None and (project_dir / "dbt_project.yml").is_file():
+        manifest = YamlProjectSource(paths).manifest_file()
+    again = compile_result(paths, None, manifest)
+    return Compiled(result, again, project_inputs(paths, None, manifest).git_sha)
+
+
+def unstable_codes(first: Iterable[Diagnostic], second: Iterable[Diagnostic]) -> list[str]:
+    """Name each code whose fingerprints differ between two compiles of the same project, sorted.
+
+    The compiles are compared as multisets of fingerprints per code, so order does not matter.
+    """
+    before: dict[str, Counter[str]] = {}
+    after: dict[str, Counter[str]] = {}
+    for prints, items in ((before, first), (after, second)):
+        for item in items:
+            prints.setdefault(item.code, Counter())[item.fingerprint] += 1
+    return sorted(code for code in set(before) | set(after) if before.get(code) != after.get(code))
 
 
 def _header(existing: str | None) -> str:

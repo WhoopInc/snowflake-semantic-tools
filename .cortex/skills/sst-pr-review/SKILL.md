@@ -58,7 +58,7 @@ Read the diff carefully. Focus on:
 - The package root gains nothing beside `__init__.py`, `_version.py`, and the four rings, and `__init__.py` exports nothing but `__version__`: there is no Python API
 - Where code belongs: commands and options in `cli/`; use cases in `app/`; YAML, dbt, Snowflake, and filesystem access in `adapters/`, behind a port in `domain/ports/`; rules, rendering, reference resolution, plan diffing, and state in `domain/`, by stage (`parse`, `resolve`, `validate`, `render`, `plan`, `state`), with `domain/model` holding data types only and a use case typed with the narrowest Snowflake port role it calls
 - Tests use real in-memory ports (`tests/helpers/app_ports.py`, `tests/helpers/snowflake_fake/`), not mocks, and nothing outside the `live` marker reaches the network
-- A golden change is intended and explained in the PR, and was made with `--update-golden`, not by hand; otherwise it is a regression
+- A golden change is intended and explained in the PR, and was made with `python -m tests.helpers.update_goldens`, not by hand; otherwise it is a regression
 
 ### Step 4: Run tests
 

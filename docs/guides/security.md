@@ -35,8 +35,8 @@ its shape and publishes it. Treat each of these like SQL you would run yourself:
 - `sst baseline add` and `sst baseline prune` with `--target`.
 
 A pull request from a fork can carry any SQL in its YAML, so run only the offline commands on
-it -- `sst validate --no-snowflake-syntax-check`, `sst compile`, and `sst test --suite golden`
--- and give that job no Snowflake credentials. In GitHub Actions, trigger such jobs with
+it -- `sst validate --no-snowflake-syntax-check` and `sst compile` -- and give that job no
+Snowflake credentials. In GitHub Actions, trigger such jobs with
 `pull_request`, which withholds repository secrets from forks, and never with
 `pull_request_target`, which runs with them.
 
@@ -146,8 +146,8 @@ and computes is still the author's, and runs with the target's role.
 
 SST renders each member under a run-time audit hook: a render that opens a file, a socket, or
 a process stops with `SST-INT002`, which is an SST bug to report. The offline commands --
-`sst validate --no-snowflake-syntax-check`, `sst compile`, and `sst test --suite golden` --
-need no network, and SST's own test suite fails any in-process test outside its live layer
+`sst validate --no-snowflake-syntax-check` and `sst compile` -- need no network, and SST's own
+test suite fails any in-process test outside its live layer
 that reaches it.
 
 ### SST changes only what it published

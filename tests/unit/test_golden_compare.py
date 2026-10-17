@@ -1,4 +1,4 @@
-"""The golden suite over an in-memory `GoldenStore`: routes, comparisons, normalization, and refusals."""
+"""Comparing and rewriting goldens over an in-memory `GoldenStore`: routes, comparisons, normalization, and refusals."""
 
 from __future__ import annotations
 
@@ -8,16 +8,15 @@ import pytest
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.project import CompileProject
-from snowflake_semantic_tools.app.golden import CompareGoldens, UpdateGoldens, golden_payloads
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.skill import SkillCatalog
-from snowflake_semantic_tools.domain.ports.golden import GoldenPath
 from tests.helpers.compile_builders import CHANNELS, agent, plugin, skill, view
 from tests.helpers.eval_builders import resolved_eval
 from tests.helpers.golden_store import InMemoryGoldenStore
+from tests.helpers.goldens import CompareGoldens, GoldenPath, UpdateGoldens, golden_payloads
 from tests.helpers.project_inputs import InMemoryProjectInputs
 
 

@@ -206,8 +206,9 @@ baseline matches on it alone. A baseline entry that matches more than one diagno
 none of them and is reported as `SST-INT009`, since it cannot say which one was meant.
 
 `Diagnostic.fingerprint` is a SHA-256 over the code, subject, file, line, column, and formatted
-message. It is a determinism check: the golden suite of `sst test` compiles the project twice and
-reports `SST-INT006` for each code whose fingerprints differ between the two runs.
+message. It is a determinism check: the engine's own `tests/unit/test_goldens.py` compiles the
+reference project twice and asserts that each code reports the same fingerprints in both runs.
+`SST-INT006`, which the removed golden suite of `sst test` reported, is retired.
 
 Drawn from: [baseline.py](../../snowflake_semantic_tools/domain/diagnostics/baseline.py),
 [compose.py](../../snowflake_semantic_tools/adapters/yaml/compose.py),

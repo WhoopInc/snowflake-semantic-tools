@@ -1,11 +1,9 @@
-"""`sst test`: the offline golden suite and the connected smoke and eval suites."""
+"""`sst test`: the smoke and eval suites, and what a run with no suite to run says."""
 
 from __future__ import annotations
 
 import dataclasses
-import functools
 import json
-import shutil
 from hashlib import md5
 from pathlib import Path
 from typing import Any
@@ -13,13 +11,12 @@ from typing import Any
 import pytest
 from click.testing import CliRunner
 
-from snowflake_semantic_tools.adapters.dbt.invoke import CompletedRun
 from snowflake_semantic_tools.adapters.fs.local import StateFileStore
-from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.run import EvalRunResult, EvalSuiteResult
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT
 from snowflake_semantic_tools.cli.main import cli
+from snowflake_semantic_tools.cli.runner import CommandResult
 from snowflake_semantic_tools.cli.wiring.compile import compile_result as _compile_result
 from snowflake_semantic_tools.cli.wiring.manifest import build_manifest as _build_manifest
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
@@ -32,94 +29,24 @@ from snowflake_semantic_tools.domain.model.eval import (
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
 from snowflake_semantic_tools.domain.state.lock import LockClaim
 from tests.helpers.artifact_builders import target
-from tests.helpers.cli_projects import common, compile_project, invoke_counting_closes, invoke_with_port
+from tests.helpers.cli_projects import (
+    applied_port,
+    common,
+    compile_project,
+    invoke_counting_closes,
+    invoke_with_port,
+)
 from tests.helpers.eval_builders import EvalSnowflake
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from tests.helpers.projects import project_paths
-from tests.helpers.reference_project import DBT_MANIFEST, REPO_ROOT, project_copy
-from tests.helpers.seam_projects import FakeDbt
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.snowflake_fake.world import Sent
-
-
-def test_golden_suite_compares_every_compiled_view(tmp_path: Path) -> None:
-    project = project_copy(tmp_path, offline=False)
-    result = CliRunner().invoke(
-        cli,
-        [
-            "test",
-            "--project-dir",
-            str(project),
-            "--manifest",
-            str(DBT_MANIFEST),
-            "--suite",
-            "golden",
-            "--golden-dir",
-            str(REPO_ROOT / "tests" / "golden" / "expected" / "ddl"),
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    assert "golden suite passed for 14 artifact(s)" in result.output
-
-
-def test_golden_suite_reports_a_diff(tmp_path: Path) -> None:
-    project = project_copy(tmp_path, offline=False)
-    expected_root = tmp_path / "expected"
-    shutil.copytree(REPO_ROOT / "tests" / "golden" / "expected", expected_root)
-    golden_dir = expected_root / "ddl"
-    path = golden_dir / "jaffle_minimal.sql"
-    path.write_text(path.read_text(encoding="utf-8").replace("Menu products only", "Drifted"), encoding="utf-8")
-    result = CliRunner().invoke(
-        cli,
-        [
-            "test",
-            "--project-dir",
-            str(project),
-            "--manifest",
-            str(DBT_MANIFEST),
-            "--suite",
-            "golden",
-            "--golden-dir",
-            str(golden_dir),
-        ],
-    )
-    assert result.exit_code != 0
-    assert "golden suite failed" in result.output
-    assert "-  COMMENT = 'Drifted" in result.output
-
-
-def test_golden_suite_compares_eval_source_sql(tmp_path: Path) -> None:
-    project = project_copy(tmp_path, offline=False)
-    expected_root = tmp_path / "expected"
-    shutil.copytree(REPO_ROOT / "tests" / "golden" / "expected", expected_root)
-    source = expected_root / "eval" / "jaffle_analytics_source.sql"
-    source.write_text(
-        source.read_text(encoding="utf-8").replace("GROUND_TRUTH VARIANT", "GROUND_TRUTH VARCHAR"),
-        encoding="utf-8",
-    )
-
-    result = CliRunner().invoke(
-        cli,
-        [
-            "test",
-            "--project-dir",
-            str(project),
-            "--manifest",
-            str(DBT_MANIFEST),
-            "--suite",
-            "golden",
-            "--golden-dir",
-            str(expected_root / "ddl"),
-        ],
-    )
-
-    assert result.exit_code == 1
-    assert "jaffle_analytics_source.sql" in result.output
-    assert "GROUND_TRUTH VARCHAR" in result.output
 
 
 def test_smoke_suite_is_separate_from_apply(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -547,11 +474,9 @@ def test_eval_baseline_capture_requires_reason(tmp_path: Path) -> None:
     ("args", "message"),
     [
         (["--reason", "why"], "--reason requires --capture-baseline"),
-        (["--suite", "golden", "--reason", "why"], "--reason requires --capture-baseline"),
-        (["--suite", "golden", "--capture-baseline", "--reason", "why"], "add --suite evals"),
+        (["--suite", "smoke", "--reason", "why"], "--reason requires --capture-baseline"),
         (["--suite", "smoke", "--capture-baseline", "--reason", "why"], "add --suite evals"),
-        (["--update-golden", "--capture-baseline", "--reason", "why"], "cannot run with --update-golden"),
-        # No --suite, and nothing compiled yet: only the golden suite applies.
+        # No --suite, and nothing compiled yet: no suite applies, so the eval suite does not.
         (["--capture-baseline", "--reason", "why"], "the eval suite does not apply"),
     ],
 )
@@ -586,45 +511,28 @@ def test_the_eval_suite_closes_its_connection_when_it_fails_before_running(
     assert closes == ["closed"]
 
 
-def test_golden_json_failure_missing_file_and_smoke_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("args", [["--suite", "golden"], ["--update-golden"], ["--golden-dir", "expected/ddl"]])
+def test_the_golden_suite_is_not_part_of_sst_test(tmp_path: Path, args: list[str]) -> None:
+    result = CliRunner().invoke(cli, ["test", *common(project_copy(tmp_path)), *args])
+    assert result.exit_code == 3, result.output
+
+
+def test_a_bare_run_runs_every_suite_that_applies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = project_copy(tmp_path)
     compile_project(project)
-    empty_golden = tmp_path / "golden"
-    empty_golden.mkdir()
-    missing = CliRunner().invoke(
-        cli,
-        ["test", *common(project), "--suite", "golden", "--golden-dir", str(empty_golden), "--output", "json"],
+    monkeypatch.setattr(
+        "snowflake_semantic_tools.cli.commands.test._run_evals",
+        lambda *args: CommandResult(0, data={"suite": "evals"}, human=lambda: None),
     )
-    assert missing.exit_code == 4
-    assert len(json.loads(missing.output)["data"]["failures"]) == 15
-    assert len(json.loads(missing.output)["data"]["missing"]) == 15
+    result = invoke_with_port(monkeypatch, applied_port(project), ["test", *common(project), "--target", "dev"])
+    assert result.exit_code == 0, result.output
+    assert "2 suite(s) passed, 0 failed, 0 skipped" in result.output
 
-    from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
-    from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-    from snowflake_semantic_tools.domain.state import AppliedEntry
 
-    manifest = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
-    manifest_id = manifest["manifest_id"]
-    state = {
-        key: AppliedEntry(
-            value["fingerprint"],
-            value["publish_target"]["qualified_name"],
-            "now",
-            "run",
-            "applied",
-            value["fingerprint"],
-            manifest_id,
-        )
-        for key, value in manifest["artifacts"].items()
-    }
-    markers = {
-        value["publish_target"]["qualified_name"]: OwnershipMarker(
-            manifest_id,
-            value["fingerprint"],
-        )
-        for value in manifest["artifacts"].values()
-    }
-    port = FakeSnowflake(state=state, markers=markers)
+def test_smoke_failure_exits_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    port = applied_port(project)
     port.query = lambda sql, params=None: (_ for _ in ()).throw(SnowflakePortError("broken"))  # type: ignore[method-assign]
     smoke = invoke_with_port(
         monkeypatch,
@@ -648,26 +556,3 @@ def test_the_eval_state_table_keeps_a_quoted_state_tables_exact_name(state_table
     source = QualifiedName.parse(state_table)
     table = _eval_state_table(source)
     assert (table.database, table.schema, table.name.sql) == (source.database, source.schema, expected)
-
-
-def test_golden_suite_passes_under_a_dbt_it_cannot_identify(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    project = project_copy(tmp_path, offline=False)
-    # Packages dbt has not installed are refused before dbt starts (SST-DBT026); this one needs none.
-    (project / "packages.yml").unlink()
-    dbt = FakeDbt(
-        version=CompletedRun(0, "dbt 2.0.8\n", ""),
-        writes=(project / "target" / "manifest.json", json.loads(DBT_MANIFEST.read_text(encoding="utf-8"))),
-    )
-    monkeypatch.setattr(
-        "snowflake_semantic_tools.cli.wiring.project.YamlProjectInputs",
-        functools.partial(YamlProjectInputs, dbt_runner=dbt),
-    )
-    golden_dir = str(REPO_ROOT / "tests" / "golden" / "expected" / "ddl")
-    result = CliRunner().invoke(
-        cli, ["test", "--project-dir", str(project), "--suite", "golden", "--golden-dir", golden_dir, "-o", "json"]
-    )
-    codes = [item["code"] for item in json.loads(result.output)["diagnostics"]]
-    # Only the first compile starts dbt, so only it says it does not know this one (SST-DBT020);
-    # the second reads the manifest the first wrote, and the two still agree.
-    assert (result.exit_code, "SST-INT006" in codes) == (0, False), result.output[:2000]
-    assert dbt.runs.count(("dbt", "--version")) == 1

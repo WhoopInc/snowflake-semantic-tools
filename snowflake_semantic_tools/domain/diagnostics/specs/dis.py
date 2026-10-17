@@ -106,6 +106,18 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
+        "SST-DIS012",
+        Severity.ERROR,
+        "No test suite applies",
+        "no test suite applies: the project compiles no semantic view for the smoke suite and no eval for the "
+        "eval suite",
+        "add a semantic view or an eval, widen --select and --exclude, or name a suite with --suite",
+        condition=(
+            "`sst test` names no `--suite`, and the selection compiles neither a semantic view nor an eval, "
+            "so it would test nothing"
+        ),
+    ),
+    spec(
         "SST-DIS200",
         Severity.INFO,
         "Artifact ownership assigned",

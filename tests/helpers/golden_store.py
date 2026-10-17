@@ -1,10 +1,10 @@
-"""An in-memory `GoldenWriter` for application tests: goldens held as text, by location."""
+"""An in-memory `GoldenWriter` for the golden comparison tests: goldens held as text, by location."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from snowflake_semantic_tools.domain.ports.golden import GoldenPath
+from tests.helpers.goldens import GoldenPath
 
 
 @dataclass

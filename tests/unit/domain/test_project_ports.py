@@ -18,7 +18,6 @@ from snowflake_semantic_tools.domain.model.config_schema import (
 from snowflake_semantic_tools.domain.model.dbt import DbtTarget
 from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetIdentity
 from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
-from snowflake_semantic_tools.domain.ports.golden import GoldenPath, GoldenStore
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs, ValidationDefaults
 from snowflake_semantic_tools.domain.state import PlanMismatch, SavedChange, SavedPlan
 
@@ -63,7 +62,7 @@ def test_validation_flags_override_the_configured_defaults() -> None:
     assert ValidationDefaults().resolve(None, None) == (False, True)
 
 
-def test_project_and_golden_port_methods_are_declarations_only() -> None:
+def test_project_port_methods_are_declarations_only() -> None:
     source = object()
     assert ProjectInputs.config(source) is None  # type: ignore[arg-type]
     assert ProjectInputs.target(source) is None  # type: ignore[arg-type]
@@ -79,10 +78,6 @@ def test_project_and_golden_port_methods_are_declarations_only() -> None:
     assert ProjectInputs.git_sha(source) is None  # type: ignore[arg-type]
     assert ProjectInputs.validation_defaults(source) is None  # type: ignore[arg-type]
     assert ProjectInputs.manifest_sources(source) is None  # type: ignore[arg-type]
-    path = GoldenPath("agent", ("a.json",))
-    assert GoldenStore.exists(source, path) is None  # type: ignore[arg-type]
-    assert GoldenStore.read(source, path) is None  # type: ignore[arg-type]
-    assert GoldenStore.name(source, path) is None  # type: ignore[arg-type]
 
 
 def change(**overrides: object) -> SavedChange:

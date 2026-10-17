@@ -44,7 +44,7 @@ poetry run ruff format snowflake_semantic_tools/ tests/
 poetry run ruff check --fix snowflake_semantic_tools/ tests/
 ```
 
-If the change touches diagnostics, `sst_config.yml` keys, CLI options, or artifact types, run `poetry run sst docs` and include the regenerated `docs/reference/*.md`. A new diagnostic code also needs its fires/silent test pair under `tests/codes/<area>/` (`tests/codes/README.md`). If rendered output is meant to change, regenerate the goldens with `sst test --suite golden ... --update-golden` (the `sst-e2e-test` skill, Phase 4) and say why in the PR.
+If the change touches diagnostics, `sst_config.yml` keys, CLI options, or artifact types, run `poetry run sst docs` and include the regenerated `docs/reference/*.md`. A new diagnostic code also needs its fires/silent test pair under `tests/codes/<area>/` (`tests/codes/README.md`). If rendered output is meant to change, regenerate the goldens with `poetry run python -m tests.helpers.update_goldens` (the `sst-e2e-test` skill, Phase 4) and say why in the PR.
 
 ### Step 3b: Run E2E tests (for code changes)
 

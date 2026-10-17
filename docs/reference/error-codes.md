@@ -17,7 +17,7 @@ cannot be downgraded by any setting.
 
 - [Registry (REG)](#registry-reg) -- 23 codes
 - [Configuration (CFG)](#configuration-cfg) -- 46 codes
-- [Discovery (DIS)](#discovery-dis) -- 13 codes
+- [Discovery (DIS)](#discovery-dis) -- 14 codes
 - [Parsing (PRS)](#parsing-prs) -- 59 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
@@ -30,8 +30,8 @@ cannot be downgraded by any setting.
 - [Apply (APL)](#apply-apl) -- 31 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 25 codes
-- [Internal (INT)](#internal-int) -- 13 codes
-- [Retired numbers](#retired-numbers) -- 69 numbers
+- [Internal (INT)](#internal-int) -- 12 codes
+- [Retired numbers](#retired-numbers) -- 70 numbers
 
 ## Registry (REG)
 
@@ -852,6 +852,16 @@ Fix: widen the selector, or check the artifact name
 Raised when an `--exclude` value matches no artifact, so it leaves nothing out; `state:` selectors are not checked.
 
 Fix: check the artifact name, or drop the exclusion
+
+### SST-DIS012
+
+**No test suite applies** (error)
+
+`no test suite applies: the project compiles no semantic view for the smoke suite and no eval for the eval suite`
+
+Raised when `sst test` names no `--suite`, and the selection compiles neither a semantic view nor an eval, so it would test nothing.
+
+Fix: add a semantic view or an eval, widen --select and --exclude, or name a suite with --suite
 
 ### SST-DIS200
 
@@ -7667,16 +7677,6 @@ Raised when a LOD, PRS, REF or VAL diagnostic names a file in its context and ca
 
 Fix: report this as a bug
 
-### SST-INT006
-
-**Fingerprint is not stable across identical runs** (error, always an error)
-
-`fingerprint for <value> changed between identical runs`
-
-Raised when `sst test` compiles the project twice and a code's fingerprints differ between the runs.
-
-Fix: report this as a bug
-
 ### SST-INT007
 
 **Effective severity computed outside the diagnostics module** (error, always an error)
@@ -7839,6 +7839,12 @@ Retired because `meta.sst.database` and `meta.sst.schema` are refused outright (
 **meta.sst location is hardcoded** (retired in 1.0.0)
 
 Retired because the keys it warned against are refused outright (SST-DBT030).
+
+### SST-INT006
+
+**Fingerprint is not stable across identical runs** (retired in 1.0.0)
+
+Retired because only the golden suite compiled a project twice, and goldens are the engine's own tests now, not `sst test`.
 
 ### SST-MAN004
 

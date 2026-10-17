@@ -67,8 +67,8 @@ Consequences:
   syntax checks are on unless turned off), `sst debug` unless `--no-connect` is given, and
   `sst test` with no `--suite`; the full list is in
   [docs/guides/security.md](docs/guides/security.md#trust-model). Check untrusted changes
-  offline: `sst validate --no-snowflake-syntax-check`, `sst compile`, and
-  `sst test --suite golden`. In GitHub Actions use the `pull_request` trigger, which withholds
+  offline: `sst validate --no-snowflake-syntax-check` and `sst compile`. In GitHub Actions use
+  the `pull_request` trigger, which withholds
   secrets from forks, never `pull_request_target`.
 - **`sst enrich` sends sample values to Cortex.** Synonym generation calls `AI_COMPLETE` in the
   account with column names, types, descriptions, and up to five example values per column.

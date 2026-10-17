@@ -203,27 +203,18 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "`manifest.json`, and `--use-cached-state` plans from its `observation.<target>.json`."
     ),
     ("sst test", "--suite"): (
-        "Repeatable. `golden` compares outputs with committed goldens offline; `smoke` probes deployed "
-        "objects; `evals` runs agent evaluations. Defaults to every suite that applies."
-    ),
-    ("sst test", "--golden-dir"): (
-        "Directory of the semantic view DDL goldens, taken from the project directory when relative; the "
-        "other types' goldens sit in directories beside it."
-    ),
-    ("sst test", "--update-golden"): (
-        "Rewrite each golden the current output no longer equals, and create missing ones; runs the "
-        "golden suite only. Refused with `--suite smoke` or `evals`, and when `$CI` is set to anything but "
-        "empty, `0`, `false` or `no`."
+        "Repeatable. `smoke` probes deployed semantic views; `evals` runs agent evaluations. Defaults to "
+        "every suite that applies."
     ),
     ("sst test", "--capture-baseline"): (
         "Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires `--reason`, "
-        "and a run of the eval suite: refused with `--update-golden`, a `--suite` that does not name `evals`, or no "
-        "`--suite` when the eval suite does not apply."
+        "and a run of the eval suite: refused with a `--suite` that does not name `evals`, or no `--suite` when the "
+        "eval suite does not apply."
     ),
     ("sst test", "--reason"): "Why the baseline is changing; stored with it. Requires `--capture-baseline`.",
     ("sst test", "--fail-fast"): (
         "Stop the smoke or eval suite at its first failing probe or eval, running them one at a time, and "
-        "run no suite after one that fails. The golden suite always compares every golden."
+        "run no suite after one that fails."
     ),
     ("sst validate", "--verify-schema"): "Connects: confirm each column a semantic view reads exists in the warehouse.",
     ("sst list", "--no-manifest"): "Compile the project's files in memory instead of reading the compiled manifest.",

@@ -681,9 +681,8 @@ is rejected.
 **Evidence**: `Enforced`. Each skill is its own extension, and its bundle puts
 every file under `skills/<name>/`. The skill goldens in
 [tests/golden/expected/skill](../../tests/golden/expected/skill) pin that layout,
-and `sst test --suite golden` compares them
-(`test_golden_suite_compares_every_compiled_view` in
-[test_test.py](../../tests/unit/cli/test_test.py)).
+and [test_goldens.py](../../tests/unit/test_goldens.py) compares them
+(`test_every_compiled_payload_equals_its_golden`).
 
 **SST depends on it at**:
 [skill_bundle.py](../../snowflake_semantic_tools/domain/render/skill_bundle.py);

@@ -49,7 +49,7 @@ the key words of the message. If one matches, offer to add the new evidence ther
 Build the smallest project that shows the problem, in a temporary folder outside the user's
 repository: one or two models, one view, the one member involved, with neutral names such as
 `orders` and `customers`. Prefer an offline reproduction (`--no-snowflake-syntax-check`,
-`sst compile`, `sst test --suite golden`); if it only happens connected, say so and keep the
+`sst compile`); if it only happens connected, say so and keep the
 connected command the user ran. Confirm it fails the same way before writing anything up.
 
 ## 4. Gather the evidence

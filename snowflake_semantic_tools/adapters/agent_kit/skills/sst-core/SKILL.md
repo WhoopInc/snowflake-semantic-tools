@@ -21,7 +21,7 @@ skills, and CoCo Desktop profiles, then publishes them. This kit was installed b
    show the plan first.
 2. **Never spend credits without being asked.** `sst test --suite evals` runs agents in
    Snowflake, and `sst test` with no `--suite` runs that suite too once an eval compiles.
-   Prefer `sst test --suite golden`, which is offline.
+   To check a change offline, use `sst validate --no-snowflake-syntax-check` and `sst compile`.
 3. **Stay offline by default.** `sst validate` connects unless told not to, and so do
    `sst debug`, `sst plan`, and `sst diff`. Use the offline forms in the table unless the user
    wants a connected check. With `authenticator: externalbrowser` in `profiles.yml`, a
@@ -62,7 +62,7 @@ skills, and CoCo Desktop profiles, then publishes them. This kit was installed b
 | `sst diff` | reads Snowflake | Offline only when `--from` and `--to` are both `local` or saved plans. |
 | `sst plan` | reads Snowflake | Never writes; exits 2 when there are changes. Saves `target/sst/plan.json`. |
 | `sst enrich` | reads Snowflake, edits files | Reads the warehouse into model YAML; `--include synonyms` calls Cortex, which costs credits. |
-| `sst test` | billed | Golden is offline, smoke reads, evals run agents. Always pass `--suite`. |
+| `sst test` | billed | Smoke reads, evals run agents. Always pass `--suite`. |
 | `sst apply` | writes Snowflake | Publishes. Only when asked, and from a reviewed plan. |
 | `sst drop` | writes Snowflake | Break-glass: drops one object SST owns. Only when asked. |
 

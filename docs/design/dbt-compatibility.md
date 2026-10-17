@@ -203,10 +203,11 @@ What the repository runs, and therefore what "supported" can mean:
   reference project's `require-dbt-version` admits, 1.11 and 1.12. It installs
   the extra, pins dbt Core and `dbt-snowflake` to the releases the committed
   manifests were captured with (1.11.15 with 1.11.6, 1.12.5 with 1.12.1), runs
-  `dbt deps`, and runs
-  `sst test --suite golden` without `--manifest`, so SST starts `dbt parse`
-  itself and renders every artifact from the manifest it writes. It then holds
-  that manifest to the contract test above. The reference project's default
+  `dbt deps`, and runs `pytest tests/unit/test_goldens.py` with
+  `SST_GOLDEN_PROJECT` naming the reference project, which compiles it with no
+  manifest, so SST starts `dbt parse` itself and renders every artifact from
+  the manifest it writes for comparison with the goldens. It then holds that
+  manifest to the contract test above. The reference project's default
   target carries no credential, so nothing connects to Snowflake and no secret
   is needed; the job reaches only the package indexes it installs from. Only
   those two packages are pinned: pip keeps each locked dependency they still
@@ -310,11 +311,15 @@ question about a release is which schema it writes.
    `tests/unit/cli/test_debug.py` uses v11. Manifests built in tests take their
    schema from `SUPPORTED_SCHEMA` in `adapters/dbt/manifest.py` or the `SCHEMA`
    constant in `tests/helpers/seam_projects.py`.
-6. Compare the output. The DDL goldens are rendered from the committed
-   manifest; render them again from the new one with `sst test --suite golden
-   --manifest <new manifest>`, as `tests/README.md` shows. Any difference is a
+6. Compare the output. The goldens are rendered from the committed vendored
+   manifest; render them again with the new dbt by running `dbt deps` on the
+   reference project and then
+   `SST_GOLDEN_PROJECT=tests/fixtures/reference_project poetry run pytest
+   tests/unit/test_goldens.py`, as `tests/README.md` shows. Any difference is a
    change in what SST publishes and needs an explanation, not an updated
-   golden.
+   golden. `python -m tests.helpers.update_goldens` compiles from the vendored
+   manifest, so once a replaced vendored manifest's difference is explained,
+   it regenerates the goldens from that manifest.
 7. Run the gates in [CONTRIBUTING.md](../../CONTRIBUTING.md), and update the
    versions `docs/getting-started.md` names.
 

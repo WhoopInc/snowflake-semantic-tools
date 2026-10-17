@@ -369,20 +369,6 @@ def test_skills_only_project_publishes_through_plan_and_apply(tmp_path: Path, mo
     assert replanned.exit_code == 0, replanned.output
     assert [item["action"] for item in json.loads(replanned.output)["data"]["changes"]] == ["noop"]
 
-    golden = tmp_path / "golden" / "ddl"
-    golden.mkdir(parents=True)
-    missing = CliRunner().invoke(
-        cli,
-        ["test", "--project-dir", str(project), "--suite", "golden", "--golden-dir", str(golden), "--output", "json"],
-    )
-    assert missing.exit_code == 4
-    envelope = json.loads(missing.output)
-    absent = tmp_path / "golden" / "skill" / "month-close.bundle.json"
-    assert envelope["data"]["failures"] == [f"missing golden {absent}"]
-    [diagnostic] = envelope["diagnostics"]
-    assert (diagnostic["code"], envelope["summary"]["error"]) == ("SST-PRT009", 1)
-    assert diagnostic["message"] == f"could not read {absent}: no golden is there; --update-golden writes it"
-
 
 def test_profiles_publish_then_deactivate_under_prune(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = skill_project(tmp_path / "skills")

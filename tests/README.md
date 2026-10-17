@@ -24,6 +24,7 @@ tests/
 │   ├── adapters/                # YAML loading, dbt manifest, connector, files, config, eval state
 │   ├── cli/                     # commands through click's CliRunner, one module per command
 │   ├── security/                # statement binding, as the connector formats it, offline
+│   ├── test_goldens.py          # every artifact of the reference project against its golden
 │   ├── test_golden_*.py         # rendered DDL, agents, tools, evals, and enrich against the goldens
 │   ├── test_ring_boundaries.py  # each import-linter contract rejects a crossing
 │   ├── test_structure.py        # size and complexity budgets, with no exceptions
@@ -58,6 +59,7 @@ tests/
                                  #   snowflake_fake/ -- the one in-memory Snowflake: every port, and the driver
                                  #   app_ports.py, clocks.py -- the in-memory state store and the clock
                                  #   eval_state_store.py, golden_store.py -- more ports
+                                 #   goldens.py, update_goldens.py -- golden comparison and rewrite
                                  #   project_inputs.py, projects.py, manifests.py -- project inputs and manifests
                                  #   manifest_capture.py -- scrubs a manifest `dbt parse` wrote into dbt_manifests/
                                  #   artifact_builders.py, compile_builders.py, eval_builders.py -- test values
@@ -79,12 +81,11 @@ P=tests/fixtures/reference_project
 M=tests/fixtures/reference_project_manifest.json
 poetry run sst validate --project-dir $P --manifest $M --no-strict --no-snowflake-syntax-check
 poetry run sst compile --project-dir $P --manifest $M --emit-ddl "$(mktemp -d)"
-poetry run sst test --suite golden --project-dir $P --manifest $M --golden-dir "$PWD/tests/golden/expected/ddl"
+poetry run pytest tests/unit/test_goldens.py   # every artifact against its golden
 ```
 
 - The fixture sets `validation.strict: true` and carries deliberate warnings (`SST-VAL528`, `SST-RND010`, `SST-RND013`, `SST-CFG018`), so a clean offline run passes `--no-strict`, which itself reports `SST-CFG034` for disagreeing with the config.
 - The fixture sets `validation.snowflake_syntax_check: true`, so an offline `validate` passes `--no-snowflake-syntax-check`.
-- A relative `--golden-dir` resolves against `--project-dir`, so pass an absolute path.
 - `sst compile` writes `target/sst/` inside the fixture; git ignores it.
 
 The reference project is a conformance fixture, not a template to start a project from. It holds every artifact type and many of their options at once so one copy can exercise the whole engine, and it carries deliberate warnings, folder routes and stand-ins a real project would not. A change to it is a change to what the tests assert: the goldens, the negative overlays and the CLI tests all read it, so keep it as small as that coverage allows.
@@ -95,9 +96,9 @@ The reference project is a conformance fixture, not a template to start a projec
 
 ## Goldens
 
-`golden/expected/` holds the exact expected output of the reference project under `dev`, one directory per artifact type, and two DDL goldens for the views in `fixtures/scoped_views/`. The `test_golden_*.py` tests and `sst test --suite golden` compare the text exactly, after trailing whitespace and the commit in a `GIT_<commit>` name are normalised. A DDL golden starts with a `--` provenance header that is not compared; see [golden/README.md](golden/README.md).
+`golden/expected/` holds the exact expected output of the reference project under `dev`, one directory per artifact type, and two DDL goldens for the views in `fixtures/scoped_views/`. `unit/test_goldens.py` compiles the reference project (from the vendored manifest, or with `SST_GOLDEN_PROJECT` naming a copy whose dbt packages are installed, with no manifest so SST runs `dbt parse`) and compares every artifact's payloads with its golden; it and the other `test_golden_*.py` tests compare the text exactly, after trailing whitespace and the commit in a `GIT_<commit>` name are normalised. A DDL golden starts with a `--` provenance header that is not compared; see [golden/README.md](golden/README.md).
 
-When a change to rendered output is intended, run the golden suite to see the diff, then rewrite the goldens with the same command plus `--update-golden` (refused when `$CI` is set; a DDL golden keeps its header), review the diff, and say why in the pull request. The scoped-view goldens are rewritten the same way from a copy of the reference project with `fixtures/scoped_views/semantic_views.yml` at `semantic_models/semantic_views/scoped/`. Never edit a golden by hand, except the `enrich` goldens, which `sst test` does not write; `unit/test_golden_enrich.py` shows their diff. An unexplained golden change is a regression.
+When a change to rendered output is intended, run `poetry run pytest tests/unit/test_goldens.py` to see the diff, then rewrite the goldens from the repository root with `poetry run python -m tests.helpers.update_goldens` (refused when `$CI` is set to anything but empty, `0`, `false` or `no`; a DDL golden keeps its header), review the diff, and say why in the pull request. It rewrites the two scoped-view DDL goldens too, from a copy with `fixtures/scoped_views/semantic_views.yml` at `semantic_models/semantic_views/scoped/`, and prints a `wrote <path>` line per golden and `N golden file(s) written for 16 artifact(s)`. Never edit a golden by hand, except the `enrich` goldens, which `update_goldens` does not write; `unit/test_golden_enrich.py` shows their diff. An unexplained golden change is a regression.
 
 ## Coverage and the code guards
 

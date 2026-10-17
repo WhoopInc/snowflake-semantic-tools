@@ -1,25 +1,21 @@
-"""`sst test`: the offline golden suite, and the connected smoke and eval suites.
+"""`sst test`: the smoke and eval suites, run against what `sst apply` published.
 
-Every suite first compiles the project and stops on its errors. The connected suites
-then refuse to run unless `sst compile` wrote the manifest the project compiles to now.
+Every suite first compiles the project and stops on its errors, then refuses to run unless
+`sst compile` wrote the manifest the project compiles to now.
 """
 
 from __future__ import annotations
 
 import dataclasses
-import os
 import socket
 from pathlib import Path
 
 import click
 
 from snowflake_semantic_tools.adapters.clock import SystemClock
-from snowflake_semantic_tools.adapters.dbt.invoke import INVOCATION_CODES
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.fs.golden import GoldenFileStore
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
-from snowflake_semantic_tools.adapters.paths import output_root
-from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs, YamlProjectSource
+from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.adapters.snowflake.eval_state import SnowflakeEvalStateStore
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
@@ -34,7 +30,6 @@ from snowflake_semantic_tools.app.evals.suite import (
     compiled_evals,
 )
 from snowflake_semantic_tools.app.fanout import Fanout
-from snowflake_semantic_tools.app.golden import CompareGoldens, GoldenReport, UpdateGoldens
 from snowflake_semantic_tools.app.smoke import SmokePublished
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, ERROR, OK
 from snowflake_semantic_tools.cli.globals import SstCommand
@@ -51,7 +46,7 @@ from snowflake_semantic_tools.cli.plan_output import print_eval_results
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import threads_setting
 from snowflake_semantic_tools.cli.wiring import compile as compiling
-from snowflake_semantic_tools.cli.wiring.manifest import current_manifest
+from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest, current_manifest
 from snowflake_semantic_tools.cli.wiring.project import (
     closed_on_error,
     connect,
@@ -60,53 +55,27 @@ from snowflake_semantic_tools.cli.wiring.project import (
     state_store,
     target_dir,
 )
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, unstable_fingerprints
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 
-SUITES = ("golden", "smoke", "evals")
+SUITES = ("smoke", "evals")
 # Which exit code wins when suites disagree: Snowflake unreachable, then a setup failure, then 1.
 _EXIT_RANK = {OK: 0, ERROR: 1, CONFIG: 2, CONNECTION: 3}
-# Values of `$CI` that do not mean a CI run.
-_NOT_CI = frozenset({"", "0", "false", "no"})
 
 
-def _refuse_invocation(
-    suites: tuple[str, ...], update_golden: bool, capture_baseline_requested: bool, reason: str | None
-) -> None:
-    """Refuse a flag combination the selected suites would not honour.
-
-    `--update-golden` is refused with a suite that has no goldens or in a CI run, and
-    `--capture-baseline`/`--reason` when the eval suite would not read them. A pipeline that
-    rewrites its own expectations asserts nothing, so `$CI` set to anything
-    but empty, `0`, `false` or `no` refuses the flag.
+def _refuse_invocation(suites: tuple[str, ...], capture_baseline_requested: bool, reason: str | None) -> None:
+    """Refuse `--capture-baseline` and `--reason` apart, or where the command line runs no eval suite.
 
     Raises:
-        SstUsageError: `--suite` names `smoke` or `evals` with `--update-golden`, or `$CI` is set;
-            `--capture-baseline` and `--reason` are not given together, or are given with
-            `--update-golden` or with a `--suite` that does not name `evals`.
+        SstUsageError: `--capture-baseline` and `--reason` are not given together, or are given
+            with a `--suite` that does not name `evals`.
     """
-    _refuse_baseline_flags(suites, update_golden, capture_baseline_requested, reason)
-    if not update_golden:
-        return
-    others = [name for name in suites if name != "golden"]
-    if others:
-        raise SstUsageError(f"--update-golden rewrites golden files only; it cannot run with --suite {others[0]}")
-    if os.environ.get("CI", "").strip().casefold() not in _NOT_CI:
-        raise SstUsageError("--update-golden is never valid in CI; regenerate golden files locally and commit them")
-
-
-def _refuse_baseline_flags(
-    suites: tuple[str, ...], update_golden: bool, capture_baseline_requested: bool, reason: str | None
-) -> None:
-    """Refuse `--capture-baseline` and `--reason` apart, or where the command line runs no eval suite."""
     if capture_baseline_requested and not reason:
         raise SstUsageError("--capture-baseline requires --reason")
     if reason and not capture_baseline_requested:
         raise SstUsageError("--reason requires --capture-baseline")
     if not capture_baseline_requested:
         return
-    if update_golden:
-        raise SstUsageError("--capture-baseline captures an eval baseline; it cannot run with --update-golden")
     if suites and "evals" not in suites:
         raise SstUsageError("--capture-baseline captures an eval baseline; add --suite evals")
 
@@ -115,12 +84,6 @@ def _refuse_baseline_flags(
 @click.option("--suite", "suites", type=click.Choice(SUITES), multiple=True)
 @selection_options()
 @target_option()
-@click.option(
-    "--golden-dir",
-    type=click.Path(file_okay=False, path_type=Path),
-    default=Path("expected/ddl"),
-)
-@click.option("--update-golden", is_flag=True)
 @threads_option()
 @fail_fast_option()
 @click.option("--capture-baseline", "capture_baseline_requested", is_flag=True)
@@ -134,28 +97,25 @@ def test_command(
     excluded: tuple[str, ...],
     target_name: str | None,
     manifest_path: Path | None,
-    golden_dir: Path,
-    update_golden: bool,
     threads: int | None,
     fail_fast: bool,
     capture_baseline_requested: bool,
     reason: str | None,
     break_stale_lock: bool,
 ) -> CommandResult:
-    """Run the golden, smoke, and eval suites: those --suite names, else every one that applies.
+    """Run the smoke and eval suites: those --suite names, else every one that applies.
 
-    The golden suite always applies; the connected suites apply once `sst compile` has written
-    the manifest, the smoke suite when a semantic view compiles, the eval suite when an eval
+    Both suites test what `sst apply` published, so they apply once `sst compile` has written
+    the manifest: the smoke suite when a semantic view compiles, the eval suite when an eval
     does. `--select` and `--exclude` narrow every suite to those artifacts. Exit 1 when the
-    project does not compile or a suite fails; 4 when a selected artifact has no golden file,
-    or a connected suite finds the compiled manifest stale or the target's run lock held; and
-    5 when a connected suite cannot reach Snowflake. Unless one --suite is given, the worst
-    exit wins and the summary counts the suites that passed, failed, and were skipped: not
-    named, not applying, or not reached once --fail-fast stopped. `--update-golden` runs the
-    golden suite only, rewriting each golden the current output no longer equals. The eval
-    suite holds the target's run lock while it runs, and `--break-stale-lock` takes it over
-    only from a run that has expired; progress on its runs goes to stderr, except under
-    --quiet or --output json or yaml. `--capture-baseline` exits 3 unless the eval suite runs.
+    project does not compile or a suite fails; 4 when, with no --suite, no suite applies, or a
+    suite finds the compiled manifest missing or stale or the target's run lock held; and 5
+    when a suite cannot reach Snowflake. Unless one --suite is given, the worst exit wins and
+    the summary counts the suites that passed, failed, and were skipped: not named, not
+    applying, or not reached once --fail-fast stopped. The eval suite holds the target's run
+    lock while it runs, and `--break-stale-lock` takes it over only from a run that has
+    expired; progress on its runs goes to stderr, except under --quiet or --output json or
+    yaml. `--capture-baseline` exits 3 unless the eval suite runs.
     """
     compiled = compiling.compile_result(paths, target_name, manifest_path)
     if not compiled.success:
@@ -167,19 +127,15 @@ def test_command(
     notes = DiagnosticBag() if narrowed is None else narrowed.report
     inputs = project_inputs(paths, target_name, manifest_path)
     workers = threads_setting(paths, threads, default=1)
-    if update_golden:
-        return _noted(_update_golden(paths.project_dir, golden_dir, result, inputs), notes)
-    chosen = suites or tuple(name for name in SUITES if _applies(name, paths, result))
-    if capture_baseline_requested and "evals" not in chosen:
+    if capture_baseline_requested and not suites and not _evals_apply(paths, result):
         raise SstUsageError(
             "--capture-baseline captures an eval baseline, and the eval suite does not apply: "
             "run sst compile first, or select an eval"
         )
+    chosen = suites or _applying(paths, result)
     reports: list[tuple[str, CommandResult]] = []
     for name in dict.fromkeys(chosen):
-        if name == "golden":
-            report = _golden(paths, target_name, manifest_path, golden_dir, result, inputs)
-        elif name == "evals":
+        if name == "evals":
             report = _run_evals(
                 paths,
                 target_name,
@@ -209,33 +165,31 @@ def _noted(result: CommandResult, notes: DiagnosticBag) -> CommandResult:
     return dataclasses.replace(result, diagnostics=DiagnosticBag((*notes, *result.diagnostics)))
 
 
-def _applies(suite: str, paths: ProjectPaths, result: CompileResult) -> bool:
-    """Report whether a suite applies to the project when --suite does not name it."""
-    if suite == "golden":
-        return True
-    if not (target_dir(paths.project_dir) / "manifest.json").is_file():
-        return False
-    if suite == "evals":
-        return bool(compiled_evals(result))
-    return any(isinstance(item, CompiledView) for item in result.compiled)
+def _applying(paths: ProjectPaths, result: CompileResult) -> tuple[str, ...]:
+    """Name the suites that apply when --suite names none, refusing a run that would test nothing.
+
+    Raises:
+        ProjectError: `sst compile` has written no manifest (SST-MAN001), or the selection
+            compiles no semantic view and no eval (SST-DIS012).
+    """
+    compiled_manifest(paths.project_dir)
+    applying = tuple(
+        name
+        for name, applies in (
+            ("smoke", any(isinstance(item, CompiledView) for item in result.compiled)),
+            ("evals", bool(compiled_evals(result))),
+        )
+        if applies
+    )
+    if not applying:
+        diagnostic = D("SST-DIS012")
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    return applying
 
 
-def _golden(
-    paths: ProjectPaths,
-    target_name: str | None,
-    manifest_path: Path | None,
-    golden_dir: Path,
-    result: CompileResult,
-    inputs: YamlProjectInputs,
-) -> CommandResult:
-    # The same project compiled again from the manifest just read, so dbt is not run twice.
-    manifest = manifest_path
-    if manifest is None and (paths.project_dir / "dbt_project.yml").is_file():
-        manifest = YamlProjectSource(paths).manifest_file()
-    again = compiling.compile_result(paths, target_name, manifest)
-    # Only the first compile can start dbt, so what starting it says is not compared.
-    first = (item for item in result.diagnostics if item.code not in INVOCATION_CODES)
-    return _run_golden(paths.project_dir, golden_dir, result, inputs, unstable_fingerprints(first, again.diagnostics))
+def _evals_apply(paths: ProjectPaths, result: CompileResult) -> bool:
+    """Report whether the eval suite applies with no --suite: `sst compile` has run, and an eval compiles."""
+    return (target_dir(paths.project_dir) / "manifest.json").is_file() and bool(compiled_evals(result))
 
 
 def _combined(reports: list[tuple[str, CommandResult]], *, skipped: tuple[str, ...]) -> CommandResult:
@@ -259,68 +213,6 @@ def _combined(reports: list[tuple[str, CommandResult]], *, skipped: tuple[str, .
 
     diagnostics = DiagnosticBag(tuple(item for _, report in reports for item in report.diagnostics))
     return CommandResult(worst, diagnostics, data, human=human)
-
-
-def _run_golden(
-    project_dir: Path,
-    golden_dir: Path,
-    result: CompileResult,
-    inputs: YamlProjectInputs,
-    unstable: DiagnosticBag,
-) -> CommandResult:
-    """Compare every compiled payload with its committed golden, offline.
-
-    Exit 1 on a mismatch, and 4 when a golden does not exist, which `--update-golden` creates.
-    A relative `--golden-dir` is taken from the project directory. `unstable` holds the
-    SST-INT006 a second compile of the project found, each of which fails the suite too.
-
-    Diagnostics:
-        SST-PRT009: a golden does not exist, one per golden.
-    """
-    report = CompareGoldens(GoldenFileStore(_golden_root(project_dir, golden_dir)), inputs.git_sha).run(result)
-    exit_code = CONFIG if report.missing else OK if report.passed and not unstable else ERROR
-    absent = tuple(
-        D("SST-PRT009", subject="cli", path=name, detail="no golden is there; --update-golden writes it")
-        for name in report.missing
-    )
-    return CommandResult(
-        exit_code,
-        DiagnosticBag((*absent, *unstable)),
-        data={"suite": "golden", "failures": list(report.failures), "missing": list(report.missing)},
-        human=lambda: _print_golden(report, len(result.compiled)),
-    )
-
-
-def _golden_root(project_dir: Path, golden_dir: Path) -> Path:
-    """Return `--golden-dir`, a relative one taken from the project directory."""
-    return golden_dir if golden_dir.is_absolute() else project_dir / golden_dir
-
-
-def _update_golden(
-    project_dir: Path, golden_dir: Path, result: CompileResult, inputs: YamlProjectInputs
-) -> CommandResult:
-    """Rewrite each golden the selected artifacts' output no longer equals; exit 0 once written.
-
-    Every golden is written inside the project, or inside the golden directory's parent when
-    `--golden-dir` lies outside it.
-    """
-    golden_root = _golden_root(project_dir, golden_dir)
-    store = GoldenFileStore(golden_root, root=output_root(project_dir, golden_root.parent))
-    written = UpdateGoldens(store, inputs.git_sha).run(result)
-
-    def human() -> None:
-        for name in written:
-            click.echo(f"wrote {name}")
-        click.echo(f"{len(written)} golden file(s) written for {len(result.compiled)} artifact(s)")
-
-    return CommandResult(OK, data={"suite": "golden", "written": list(written)}, human=human)
-
-
-def _print_golden(report: GoldenReport, artifact_count: int) -> None:
-    if not report.passed:
-        click.echo("golden suite failed:\n" + "\n\n".join(report.failures), err=True)
-        return
-    click.echo(f"golden suite passed for {artifact_count} artifact(s)")
 
 
 def _run_smoke(

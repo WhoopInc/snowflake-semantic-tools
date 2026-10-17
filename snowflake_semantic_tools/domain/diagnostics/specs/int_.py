@@ -65,15 +65,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="a LOD, PRS, REF or VAL diagnostic names a file in its context and carries no origin",
     ),
     spec(
-        "SST-INT006",
-        Severity.ERROR,
-        "Fingerprint is not stable across identical runs",
-        "fingerprint for {value} changed between identical runs",
-        _BUG,
-        demotable=False,
-        condition="`sst test` compiles the project twice and a code's fingerprints differ between the runs",
-    ),
-    spec(
         "SST-INT007",
         Severity.ERROR,
         "Effective severity computed outside the diagnostics module",
