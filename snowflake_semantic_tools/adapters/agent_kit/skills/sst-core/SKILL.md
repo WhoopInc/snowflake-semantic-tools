@@ -63,6 +63,7 @@ skills, and CoCo Desktop profiles, then publishes them. This kit was installed b
 | `sst plan` | reads Snowflake | Never writes; exits 2 when there are changes. Saves `target/sst/plan.json`. |
 | `sst enrich` | reads Snowflake, edits files | Reads the warehouse into model YAML; `--include synonyms` calls Cortex, which costs credits. |
 | `sst test` | billed | Smoke reads, evals run agents. Always pass `--suite`. |
+| `sst ask` | billed | Runs one agent once, as a temporary agent, on one question; publishes nothing. |
 | `sst apply` | writes Snowflake | Publishes. Only when asked, and from a reviewed plan. |
 | `sst drop` | writes Snowflake | Break-glass: drops one object SST owns. Only when asked. |
 | `sst state recover` | writes Snowflake | Records lost state entries from ownership markers; writes no object. Only when asked. |

@@ -10,6 +10,7 @@ from __future__ import annotations
 from snowflake_semantic_tools.cli.commands import (
     agent_kit,
     apply,
+    ask,
     baseline,
     clean,
     compile,
@@ -45,6 +46,7 @@ for _command in (
     migrate.migrate,
     enrich.enrich,
     test.test_command,
+    ask.ask,
     docs.docs,
     explain.explain_command,
     format.format_command,

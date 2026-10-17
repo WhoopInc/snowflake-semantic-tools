@@ -701,3 +701,51 @@ target whose referenced objects may be absent, demote the code to a warning with
 `diagnostics.severity_overrides`; a baseline cannot hold an error. `sst test --suite smoke` describes each published agent to
 confirm it exists as planned; to check what an agent answers, write an
 [eval](evals.md).
+
+## Trying a change before publishing
+
+None of these adds a version to the agent consumers use, and none records
+anything in state. Try them in this order: each costs more than the one before.
+
+### Ask the edited agent
+
+```bash
+sst ask sales_analyst "How many orders were placed in March 2026?"
+sst ask sales_analyst "Which location grew fastest?" --show-tools --target dev
+echo "Why did returns rise?" | sst ask sales_analyst - --output json
+```
+
+`sst ask` compiles the project in memory, as `sst test` does, and runs the
+named agent's rendered specification -- exactly what
+`sst compile --emit-agent-spec` writes -- as a temporary agent, on one session:
+`CREATE OR REPLACE TEMPORARY AGENT <schema>.SST_ASK_<AGENT>_<8 hex> FROM
+SPECIFICATION`, then `SNOWFLAKE.CORTEX.DATA_AGENT_RUN`, then `DROP AGENT IF
+EXISTS`, whatever the run did. So an edited instruction, tool description or
+tool list is what answers. It takes no lock and writes nothing, in Snowflake or
+under `target/sst`.
+
+- The temporary agent is created in the agent's own compiled schema. A role
+  that cannot create agents there sets `agents.+scratch_schema: DATABASE.SCHEMA`
+  (a two-part name; `{{ target.* }}` templates render, and a folder route or the
+  agent's `config:` may set it too), and the agent is created there instead.
+  Measured on a live account, a personal `USER$<user>.PUBLIC` schema works.
+- `--show-tools` prints each tool call, with its input, and each tool result
+  before the answer; `--output json` always carries them, with the answer, the
+  error and the time the run took. Snowflake also reports calls of its own
+  system tools, such as `server_skill` and `system_execute_sql`.
+- `-` reads the question from stdin; an empty question exits 3. `--timeout`
+  (default 300 seconds) bounds the run; the agent's own `budget_seconds` still
+  applies.
+- Exit 0 when the agent answered, 1 when the project does not compile or the
+  agent answered with an error (`SST-ASK002`), 4 when no agent of that name
+  compiles (`SST-ASK003`), and 5 when Snowflake is unreachable, refuses a
+  privilege, or the run times out.
+
+**What it cannot see.** The specification names every semantic view, search
+service, procedure, function and skill by its published name, so the agent
+calls what the target holds now, not an unpublished edit to one of them. Before
+asking, `sst ask` reads the target's state table, read-only, and warns of each
+artifact the agent depends on whose compiled fingerprint state does not record:
+`SST-ASK001` says "calls the published X, not your edit". To try an edited view
+together with the agent, publish the view first, to a
+[dev target](evals.md#running).

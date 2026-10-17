@@ -41,6 +41,7 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst agent-kit remove`](#sst-agent-kit-remove) | Remove the kit's skills, or those --only names, from each --agent, else every agent installed. |
 | [`sst agent-kit status`](#sst-agent-kit-status) | Show each skill's state against the kit of the SST now installed; change nothing. |
 | [`sst agent-kit upgrade`](#sst-agent-kit-upgrade) | Bring every installed skill to the kit of the SST now installed. |
+| [`sst ask`](#sst-ask) | Ask AGENT one QUESTION as it compiles now, publishing nothing; `-` reads the question from stdin. |
 
 ## Global options
 
@@ -956,3 +957,29 @@ sst agent-kit upgrade [OPTIONS]
 | `--agent` | cortex\|claude, repeatable |  | Repeatable. Upgrade only this agent's skills; defaults to every agent installed. |
 | `--force` | flag |  | Make every installed file match the kit, overwriting your changes. |
 | `--dry-run` | flag |  | List what would change; write nothing. |
+
+## sst ask
+
+Ask AGENT one QUESTION as it compiles now, publishing nothing; `-` reads the question from stdin.
+
+Connects: the agent's compiled specification runs as a temporary agent in its own schema,
+or in `agents.+scratch_schema`, and is dropped once it answers. Every view, search service
+and tool it names is the published one, so each that compiles differently from what the
+target's state records is a warning (SST-ASK001): the answer does not reflect that edit.
+Takes no lock and writes no state.
+
+Exit 0 when the agent answered; 1 when the project does not compile or the agent answered
+with an error (SST-ASK002); 3 for an empty question; 4 when no agent of that name compiles
+(SST-ASK003); and 5 when Snowflake is unreachable, refuses a privilege, or the run times out.
+
+```text
+sst ask [OPTIONS] AGENT QUESTION
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`: the agent's names resolve, and its temporary agent runs, there. Defaults to the profile's own default target. |
+| `--defer-target` | TEXT |  | The `profiles.yml` target whose relations dbt objects resolve to, while publishing to `--target`; else `$SST_DEFER_TARGET`, else `defer.target`. |
+| `--no-defer` | flag |  | Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say. |
+| `--show-tools` | flag |  | Also print each tool call the agent made, with its input, and each tool result. |
+| `--timeout` | INTEGER RANGE | `300` | Seconds the agent may take to answer before the run is cancelled, 1 to 3600; default 300. |

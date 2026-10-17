@@ -179,3 +179,15 @@ sst compile --emit-agent-spec target/agents
 
 `--emit-agent-spec` writes each agent's rendered specification, which is exactly what
 publishes. Publishing (`sst plan`, then `sst apply`) is the user's call.
+
+## Trying a change before publishing
+
+When the user wants to know whether an edit makes the agent answer better, before committing
+or publishing it, offer these in order, and run each only when the user asks: each runs the
+agent in Snowflake and costs credits.
+
+1. `sst ask <agent> "<question>" --show-tools`: runs the agent's compiled specification once as
+   a temporary agent, which is dropped after it answers. Nothing is published or recorded, and
+   no lock is taken. A role that cannot create agents in the agent's schema needs
+   `agents.+scratch_schema: DATABASE.SCHEMA`. `SST-ASK001` means the agent called the published
+   view, search service or tool, not the local edit to it: only the agent's own edit is tried.

@@ -22,6 +22,7 @@ from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics.signatures import SIGNATURES
 from snowflake_semantic_tools.domain.model.lifecycle import ErrorKind, OwnershipMarker
+from snowflake_semantic_tools.domain.ports.snowflake.agent_run import AgentReply
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.cli_projects import (
     applied_port,
@@ -56,6 +57,7 @@ _DECLARED = {
     "format": {0, 1, 2, 3, 4},
     "agent-kit": {0, 1, 2, 3, 4},
     "state": {0, 1, 3, 4, 5},
+    "ask": {0, 1, 3, 4, 5},
 }
 EXIT_CODES = {command: codes | {INTERRUPTED} for command, codes in _DECLARED.items()}
 DROP = ("DB.S.V", "--type", "semantic_view", "--target", "dev", "--yes")
@@ -175,6 +177,11 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("test", 3): lambda tmp, _: _run("test", "--suite", "every"),
     ("test", 4): lambda tmp, _: _run("test", *common(project_copy(tmp))),
     ("test", 5): lambda tmp, mp: _connected(tmp, mp, "test", "--suite", "smoke"),
+    ("ask", 0): lambda tmp, mp: _ask(tmp, mp),
+    ("ask", 1): lambda tmp, mp: _ask(tmp, mp, reply=AgentReply(error="refused")),
+    ("ask", 3): lambda tmp, _: _run("ask", "jaffle_analytics_agent"),
+    ("ask", 4): lambda tmp, mp: _ask(tmp, mp, agent="finance"),
+    ("ask", 5): lambda tmp, mp: _connected(tmp, mp, "ask", "jaffle_analytics_agent", "q"),
     ("docs", 0): lambda tmp, _: _run("docs", "--project-dir", str(REPO_ROOT), "--check"),
     ("docs", 1): lambda tmp, _: _docs_unwritable(tmp),
     ("docs", 2): lambda tmp, _: _run("docs", "--project-dir", str(tmp), "--check"),
@@ -383,6 +390,18 @@ def _apply_broken(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Re
     return invoke_with_port(monkeypatch, FakeSnowflake(state={}), ["apply", *common(project), "--yes", *flags])
 
 
+def _ask(
+    tmp: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    agent: str = "jaffle_analytics_agent",
+    reply: AgentReply | None = None,
+) -> Result:
+    port = FakeSnowflake(state={})
+    port.agent_replies = {"q": reply} if reply is not None else None
+    return invoke_with_port(monkeypatch, port, ["ask", agent, "q", *common(project_copy(tmp)), "--target", "dev"])
+
+
 def _interrupted(tmp: Path, monkeypatch: pytest.MonkeyPatch, *args: str) -> Result:
     project = project_copy(tmp)
     compile_project(project)
@@ -436,7 +455,7 @@ def test_every_command_is_in_the_exit_code_table() -> None:
 
 
 # A command line each body is reached by: a group's subcommand, and a command's required arguments.
-_INVOCATIONS = {"explain": ("SST-VAL009",), "drop": DROP, "convert": ("--to", "hybrid")}
+_INVOCATIONS = {"explain": ("SST-VAL009",), "drop": DROP, "convert": ("--to", "hybrid"), "ask": ("agent", "q")}
 
 
 def _interruptible(name: str, command: click.Command) -> list[list[str]]:

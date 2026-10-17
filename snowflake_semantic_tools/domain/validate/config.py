@@ -32,7 +32,7 @@ from snowflake_semantic_tools.domain.model.config_schema.keys import (
     KeyKind,
     KeyStatus,
 )
-from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, vocabulary_key
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
 
@@ -47,6 +47,7 @@ _TYPES: Mapping[KeyKind, tuple[type, ...]] = MappingProxyType(
         KeyKind.ENUM: (str,),
         KeyKind.IDENTIFIER: (str,),
         KeyKind.OBJECT_NAME: (str,),
+        KeyKind.SCHEMA_NAME: (str,),
     }
 )
 # What a location key must name, as SST-CFG008 says it.
@@ -54,6 +55,7 @@ NAME_KINDS: Mapping[KeyKind, str] = MappingProxyType(
     {
         KeyKind.IDENTIFIER: "Snowflake identifiers",
         KeyKind.OBJECT_NAME: "Snowflake identifiers and three-part names",
+        KeyKind.SCHEMA_NAME: "two-part names, DATABASE.SCHEMA",
     }
 )
 # The templates a location value may hold: `target_text` renders exactly these spellings.
@@ -146,7 +148,8 @@ def unusable_name(value: str, kind: KeyKind) -> bool:
     """Report whether a location value fails to parse as the Snowflake name its key's readers take.
 
     Empty reads as unset, so it parses. A `{{ target.* }}` template stands for a name the target
-    supplies. An `OBJECT_NAME` with a dot outside quotes is read as a three-part name.
+    supplies. An `OBJECT_NAME` with a dot outside quotes is read as a three-part name, and a
+    `SCHEMA_NAME` must be a two-part one.
     """
     text = value
     for template in _TARGET_FIELDS:
@@ -154,7 +157,9 @@ def unusable_name(value: str, kind: KeyKind) -> bool:
     if not text:
         return False
     try:
-        if kind is KeyKind.OBJECT_NAME and "." in text:
+        if kind is KeyKind.SCHEMA_NAME:
+            SchemaScope.parse(text)
+        elif kind is KeyKind.OBJECT_NAME and "." in text:
             QualifiedName.parse(text)
         else:
             Identifier.parse(text)

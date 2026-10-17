@@ -185,6 +185,7 @@ _SAMPLES: dict[KeyKind, tuple[object, object, object, object]] = {
     KeyKind.ENUM: ("root", "outer", "inner", "own"),
     KeyKind.IDENTIFIER: ("ROOT", "OUTER", "INNER", "OWN"),
     KeyKind.OBJECT_NAME: ("ROOT", "OUTER", "INNER", "OWN"),
+    KeyKind.SCHEMA_NAME: ("R.S", "O.S", "I.S", "W.S"),
 }
 
 

@@ -174,6 +174,19 @@ class SchemaScope:
     schema: Identifier
 
     @classmethod
+    def parse(cls, raw: str) -> SchemaScope:
+        """Parse a two-part dotted name, `DATABASE.SCHEMA`, splitting only at dots outside double quotes.
+
+        Raises:
+            ValueError: a quote is unbalanced, the name does not have exactly two parts, or a
+                part is empty or not a valid identifier.
+        """
+        parts = _split_qualified(raw)
+        if len(parts) != 2:
+            raise ValueError(f"expected a two-part Snowflake name, found {raw!r}")
+        return cls(Identifier.parse(parts[0]), Identifier.parse(parts[1]))
+
+    @classmethod
     def from_qualified_name(cls, name: QualifiedName) -> SchemaScope:
         """Return the database and schema that hold `name`."""
         return cls(name.database, name.schema)

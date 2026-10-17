@@ -28,6 +28,7 @@ cannot be downgraded by any setting.
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 43 codes
 - [Apply (APL)](#apply-apl) -- 37 codes
+- [Unpublished runs (ASK)](#unpublished-runs-ask) -- 3 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 25 codes
 - [Internal (INT)](#internal-int) -- 12 codes
@@ -7152,6 +7153,40 @@ Note: Only agents are temporary: the views, tools and skills the same run publis
 Raised when apply did not account for every planned change.
 
 Fix: report this as a bug
+
+## Unpublished runs (ASK)
+
+### SST-ASK001
+
+**Agent calls the published dependency, not your edit** (warning)
+
+`<artifact> calls the published <value>, not your edit: <detail>`
+
+Raised when a semantic view, tool, skill, plugin or agent the agent's specification names compiles to a fingerprint the target's state does not record for it, or the state cannot be read.
+
+Fix: publish it first (`sst plan`, then `sst apply`) to try the two together
+
+Note: The temporary agent's specification names objects by their published names, so a tool resolves to what the target holds now: only the agent's own edit is tried.
+
+### SST-ASK002
+
+**Unpublished agent run returned an error** (error)
+
+`<artifact> returned an error: <detail>`
+
+Raised when the temporary agent answered a question with an error message instead of a reply.
+
+Fix: fix what the message names, then run it again
+
+### SST-ASK003
+
+**No such agent** (error)
+
+`no agent named '<name>' compiles in this project; it compiles <detail>`
+
+Raised when `sst ask` names an agent that is not among the agents the project compiles.
+
+Fix: name an agent `sst list agents` lists
 
 ## Snowflake (SNO)
 

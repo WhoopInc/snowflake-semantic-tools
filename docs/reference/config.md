@@ -180,6 +180,7 @@ Defaults for Cortex Agents, overridable per folder and by an agent's own `config
 | `agents.+alias` | string |  | Version alias assigned after publication. |
 | `agents.+enabled` | boolean | `true` | Whether agents are compiled; false leaves them out of the project. |
 | `agents.+secure` | boolean | `false` | Publish agents with `SECURE = TRUE`. |
+| `agents.+scratch_schema` | two-part name | the agent's own schema | `DATABASE.SCHEMA` where `sst ask` and `sst test --suite evals --unpublished` create their temporary agents, for a role that cannot create agents in the agent's own schema. Nothing publishes there. |
 | `agents.+tags` | list |  | Tags, as `name` and `value` entries, set with ALTER AGENT ... SET TAG; a closer setting replaces the list. |
 | `agents.<route>` | block |  | Folder route: overrides for agents under that directory. |
 

@@ -212,6 +212,15 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "eval suite does not apply."
     ),
     ("sst test", "--reason"): "Why the baseline is changing; stored with it. Requires `--capture-baseline`.",
+    ("sst ask", "--target"): (
+        "Target from `profiles.yml`, else `$SST_TARGET`: the agent's names resolve, and its temporary agent "
+        "runs, there. Defaults to the profile's own default target."
+    ),
+    ("sst ask", "--show-tools"): "Also print each tool call the agent made, with its input, and each tool result.",
+    (
+        "sst ask",
+        "--timeout",
+    ): "Seconds the agent may take to answer before the run is cancelled, 1 to 3600; default 300.",
     ("sst test", "--fail-fast"): (
         "Stop the smoke or eval suite at its first failing probe or eval, running them one at a time, and "
         "run no suite after one that fails."

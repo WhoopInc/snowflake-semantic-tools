@@ -30,8 +30,9 @@ class KeyKind(Enum):
 
     `MAP` is a block of free-form names, `ENUM` a string from the key's `choices`, and
     `ANY` accepts every value unchecked. An `INTEGER` key never accepts a boolean. An
-    `IDENTIFIER` is a string naming one Snowflake identifier, and an `OBJECT_NAME` one
-    identifier or a three-part name; either may be empty, which reads as unset.
+    `IDENTIFIER` is a string naming one Snowflake identifier, an `OBJECT_NAME` one
+    identifier or a three-part name, and a `SCHEMA_NAME` a two-part `DATABASE.SCHEMA`; each may
+    be empty, which reads as unset.
     """
 
     BLOCK = "block"
@@ -43,6 +44,7 @@ class KeyKind(Enum):
     ENUM = "enum"
     IDENTIFIER = "identifier"
     OBJECT_NAME = "object name"
+    SCHEMA_NAME = "schema name"
     ANY = "any"
 
 
@@ -145,6 +147,7 @@ _BLOCK = KeyKind.BLOCK
 # A location part a block's objects are created in; a stage or table may be written qualified.
 _ID = KeyKind.IDENTIFIER
 _OBJ = KeyKind.OBJECT_NAME
+_SCH = KeyKind.SCHEMA_NAME
 
 CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("project", _BLOCK, "Where each artifact type lives on disk."),
@@ -457,6 +460,14 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("agents.+alias", _S, "Version alias assigned after publication."),
     _key("agents.+enabled", _B, "Whether agents are compiled; false leaves them out of the project.", default="true"),
     _key("agents.+secure", _B, "Publish agents with `SECURE = TRUE`.", default="false"),
+    _key(
+        "agents.+scratch_schema",
+        _SCH,
+        "`DATABASE.SCHEMA` where `sst ask` and `sst test --suite evals --unpublished` create their "
+        "temporary agents, for a role that cannot create agents in the agent's own schema. Nothing "
+        "publishes there.",
+        default="the agent's own schema",
+    ),
     _key(
         "agents.+tags",
         _L,

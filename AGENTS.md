@@ -2,7 +2,7 @@
 
 SST is a command-line compiler and publisher for a Snowflake semantic layer kept as code in a dbt project: semantic views, agent tools, Cortex Agents, evals, skills, plugins, and CoCo Desktop profiles. It validates offline, saves a reviewable plan, and applies exactly that plan.
 
-**Commands**: `sst init`, `debug`, `migrate refs|split`, `enrich`, `format`, `compile`, `validate`, `baseline add|prune|renew|show`, `list`, `plan`, `apply`, `diff`, `test --suite smoke|evals`, `explain`, `docs [--check]`, `clean`, `drop`. The CLI is the only interface; there is no Python API. Options and exit codes are in `docs/reference/cli.md` (generated).
+**Commands**: `sst init`, `debug`, `migrate refs|split`, `enrich`, `format`, `compile`, `validate`, `baseline add|prune|renew|show`, `list`, `plan`, `apply`, `diff`, `test --suite smoke|evals`, `ask`, `explain`, `docs [--check]`, `clean`, `drop`. The CLI is the only interface; there is no Python API. Options and exit codes are in `docs/reference/cli.md` (generated).
 
 ## Critical Rules
 
@@ -14,7 +14,7 @@ SST is a command-line compiler and publisher for a Snowflake semantic layer kept
   Preferred format: `[SST-<issue#>] <description>`
 - **Each PR addresses exactly one GitHub issue.** The PR body MUST contain `Closes #<number>`.
 - **Branch from the line you are changing**: 1.0 work from the 1.0 development branch; a 0.3.x fix from the maintenance branch cut from tag `v0.3.1`, never merged into 1.0 (see `CONTRIBUTING.md`). Name branches `fix/<description>` or `feature/<description>`.
-- **Connect to Snowflake only when the user asks**, and then only to a non-production scratch schema. These connect: `plan` unless `--use-cached-state`, `apply`, `enrich`, `drop`, `baseline add --target` and `baseline prune --target`, `test` whenever a suite runs (`smoke` and `evals` both run against the account), `diff` whenever either side is a dbt target (`--to` defaults to one), `debug` unless `--no-connect` or `--snowflake-signatures`, and `validate` with `--verify-schema` or with syntax checks on, which they are by default (`validation.snowflake_syntax_check: true`); `sst validate --no-snowflake-syntax-check` stays offline. Everything else, including the whole offline test suite, opens no session of its own. With `dbt.command: compile`, though, any command that runs dbt (everything that loads the project, unless `--manifest` or `dbt.invoke: false`) also makes dbt connect to the warehouse.
+- **Connect to Snowflake only when the user asks**, and then only to a non-production scratch schema. These connect: `plan` unless `--use-cached-state`, `apply`, `enrich`, `drop`, `baseline add --target` and `baseline prune --target`, `test` whenever a suite runs (`smoke` and `evals` both run against the account), `ask` (it runs the agent), `diff` whenever either side is a dbt target (`--to` defaults to one), `debug` unless `--no-connect` or `--snowflake-signatures`, and `validate` with `--verify-schema` or with syntax checks on, which they are by default (`validation.snowflake_syntax_check: true`); `sst validate --no-snowflake-syntax-check` stays offline. Everything else, including the whole offline test suite, opens no session of its own. With `dbt.command: compile`, though, any command that runs dbt (everything that loads the project, unless `--manifest` or `dbt.invoke: false`) also makes dbt connect to the warehouse.
 - **When addressing PR review comments**: reply to the comment explaining the fix, then resolve the thread:
   ```bash
   # Reply to the comment

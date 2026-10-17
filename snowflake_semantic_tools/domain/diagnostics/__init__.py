@@ -33,6 +33,7 @@ from snowflake_semantic_tools.domain.diagnostics.core import (
 from snowflake_semantic_tools.domain.diagnostics.integrity import PLACEHOLDERS, check_error_specs
 from snowflake_semantic_tools.domain.diagnostics.specs import (
     apl,
+    ask,
     cfg,
     dbt,
     dis,
@@ -259,6 +260,7 @@ ERROR_REGISTRY = build_registry(
         *rnd.SPECS,
         *pln.SPECS,
         *apl.SPECS,
+        *ask.SPECS,
         *man.SPECS,
         *sno.SPECS,
         *prt.SPECS,
