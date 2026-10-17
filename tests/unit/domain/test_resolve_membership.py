@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import pytest
 
+from snowflake_semantic_tools.domain.model.authored import FilterDef
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
     ColumnKind,
@@ -298,3 +300,19 @@ def test_each_invariant_fires_on_an_attachment_that_breaks_it() -> None:
 def test_a_view_outside_the_reported_set_holds_nothing_reported() -> None:
     result = membership(member("metric", "m", ("orders",)), reported_views=frozenset(("semantic_view:menu",)))
     assert [item.subject for item in coded(result.diagnostics, "SST-MEM103")] == ["semantic_view:menu"]
+
+
+def test_a_view_scope_leaves_out_a_filter_that_reads_a_column_it_removes() -> None:
+    hidden = "{{ ref('orders', 'cost') }} > 0"
+    reads_hidden = replace(
+        member("filter", "costly", ("orders",), hidden),
+        source=FilterDef("costly", hidden, None, ("orders",), True),
+    )
+    reads_shown = replace(
+        member("filter", "open", ("orders",), "{{ ref('orders', 'state') }} = 'x'"),
+        source=FilterDef("open", "{{ ref('orders', 'state') }} = 'x'", None, ("orders",), True),
+    )
+    scopes = {"semantic_view:sales": ViewScope(exclude_columns=("ORDERS.COST",))}
+    result = membership(reads_hidden, reads_shown, view_scopes=scopes)
+    assert result.attachment[reads_hidden.key] == ("semantic_view:menu",)
+    assert result.attachment[reads_shown.key] == ("semantic_view:menu", "semantic_view:sales")

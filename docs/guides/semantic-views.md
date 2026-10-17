@@ -226,14 +226,14 @@ semantic_view:
   view's tables attach (`SST-VAL336`): keep the base, or exclude the derived
   metric too.
 - A scope hides a column as a fact or dimension, and nothing may read it
-  around that: a kept metric whose expression, window or non-additive entries
-  read the column, or a filter or verified query whose `{{ ref() }}` does, is
-  an error (`SST-VAL318`), since the published view would still compute over
-  or group by the hidden data. Exclude those metrics as well, or keep the
-  column. A verified query's bare column names, outside `ref()`, are not
-  checked.
-- Filters and verified queries are never scoped: they attach by their tables as
-  usual.
+  around that. A kept metric whose expression, window or non-additive entries
+  read the column is an error (`SST-VAL318`), since the published view would
+  still compute over the hidden data: exclude the metric as well, or keep the
+  column.
+- Filters and verified queries are never listed in a scope: they attach by
+  their tables as usual. One whose `{{ ref() }}` reads a column the scope
+  removes is left out of that view, with a warning (`SST-VAL337`). A verified
+  query's bare column names, outside `ref()`, are not checked.
 
 ## Columns: facts, dimensions, time dimensions
 

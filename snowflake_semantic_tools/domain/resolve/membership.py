@@ -16,6 +16,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
+from snowflake_semantic_tools.domain.model.authored import FilterDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.model.project import ArtifactKey, MemberKey, ParsedMember
 from snowflake_semantic_tools.domain.model.registry import AttachRule, Registry
 from snowflake_semantic_tools.domain.model.semantic_view import ViewScope
@@ -23,6 +24,7 @@ from snowflake_semantic_tools.domain.resolve.members import attach_members, atta
 from snowflake_semantic_tools.domain.resolve.membership_model import Attachment, MembershipRequest
 from snowflake_semantic_tools.domain.resolve.membership_reach import reach_diagnostics
 from snowflake_semantic_tools.domain.resolve.membership_tables import table_diagnostics
+from snowflake_semantic_tools.domain.resolve.scope_reads import hidden_reads
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,24 +118,32 @@ def _unscoped(request: MembershipRequest) -> Attachment:
 
 
 def _scoped(attachment: Attachment, request: MembershipRequest) -> Attachment:
-    """Narrow each metric's and relationship's views to those whose scope admits it.
+    """Narrow each member's views to those whose scope admits it.
 
     A view's include or exclude lists decide what it exposes, so a metric or relationship a
-    view leaves out is not attached to it; every other member type is left as attached.
+    view leaves out is not attached to it, nor is a filter or verified query that reads with
+    `ref()` a column the view's scope removes (SST-VAL337 says so); every other member type is
+    left as attached.
     """
-    names = {member.key: (member.type_name, member.name) for member in request.members}
+    by_key = {member.key: member for member in request.members}
     narrowed: dict[str, tuple[ArtifactKey, ...]] = {}
     for key, views in attachment.items():
-        type_name, name = names.get(key, ("", ""))
-        narrowed[key] = tuple(view for view in views if _admits(request.view_scopes.get(view), type_name, name))
+        member = by_key.get(key)
+        narrowed[key] = tuple(view for view in views if _admits(request.view_scopes.get(view), member))
     return MappingProxyType(narrowed)
 
 
-def _admits(scope: ViewScope | None, type_name: str, name: str) -> bool:
-    """Report whether a view of `scope` exposes the member of this type and name."""
-    if scope is None or type_name not in ("metric", "relationship"):
+def _admits(scope: ViewScope | None, member: ParsedMember | None) -> bool:
+    """Report whether a view of `scope` exposes `member`; an unknown member is left as attached."""
+    if scope is None or member is None:
         return True
-    return scope.admits_metric(name) if type_name == "metric" else scope.admits_relationship(name)
+    if member.type_name == "metric":
+        return scope.admits_metric(member.name)
+    if member.type_name == "relationship":
+        return scope.admits_relationship(member.name)
+    if isinstance(member.source, FilterDef | VerifiedQueryDef):
+        return not hidden_reads(member.source, scope)
+    return True
 
 
 def invariant_diagnostics(

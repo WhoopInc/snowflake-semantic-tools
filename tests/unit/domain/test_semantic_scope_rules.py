@@ -181,7 +181,7 @@ def test_a_kept_metric_keeps_its_base_metrics_and_reads_no_column_the_scope_remo
     ]
 
 
-def test_an_attached_filter_or_verified_query_reads_no_column_the_scope_removes() -> None:
+def test_an_attached_filter_or_verified_query_reading_a_column_the_scope_removes_is_left_out() -> None:
     read = "{{ ref('orders', 'cost') }} > 0"
     readers = (
         FilterDef("scanned", read, None, ("orders",), True),
@@ -195,4 +195,4 @@ def test_an_attached_filter_or_verified_query_reads_no_column_the_scope_removes(
     attached = {"filter:scanned", "filter:visible", "filter:parsed", "verified_query:broken", "verified_query:query"}
     found = scope_diagnostics((view,), (), (), ALL_MODELS, _members({"semantic_view:v": attached}), readers)
     assert [item.context["member"] for item in found] == ["filter:scanned", "filter:parsed", "verified_query:query"]
-    assert {item.code for item in found} == {"SST-VAL318"}
+    assert {item.code for item in found} == {"SST-VAL337"}

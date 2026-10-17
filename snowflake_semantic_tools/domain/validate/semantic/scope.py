@@ -28,14 +28,13 @@ from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, ViewScope
 from snowflake_semantic_tools.domain.parse.template import (
-    TemplateCall,
     TemplateSyntaxError,
-    scan_template_calls,
     single_template_call,
 )
 from snowflake_semantic_tools.domain.resolve.calls import required_call
 from snowflake_semantic_tools.domain.resolve.membership import ViewMembers
 from snowflake_semantic_tools.domain.resolve.ref_fields import reference_functions
+from snowflake_semantic_tools.domain.resolve.scope_reads import column_reads, hidden_reads
 
 # Each kind's include key, exclude key, and the word a diagnostic names its members by.
 SCOPE_KINDS: tuple[tuple[str, str, str], ...] = (
@@ -174,8 +173,8 @@ def scope_diagnostics(
 
     For each view: the lists' shape and modes, then each entry in list order, then each
     metric the scope keeps against the relationships, columns and base metrics it removes, then
-    each attached filter and verified query against the columns it removes. A member attaches
-    to a view, and is kept by it, as `members` says.
+    each attached filter and verified query against the columns it removes, which leaves that
+    member out of the view. A member attaches to a view, and is kept by it, as `members` says.
 
     Args:
         readers: The project's filters and verified queries, whose `ref()` columns are checked.
@@ -195,8 +194,10 @@ def scope_diagnostics(
             lists is checked for the second.
         SST-VAL336: a kept metric is built, with `metric()`, on a metric the view reaches and
             its scope removes.
-        SST-VAL318: a kept metric's expression, window or non-additive entry, or an attached
-            filter's or verified query's `ref()`, names a column the scope removes.
+        SST-VAL318: a kept metric's expression, window or non-additive entry names a column
+            the scope removes.
+        SST-VAL337: an attached filter or verified query reads with `ref()` a column the scope
+            removes, so the view leaves it out.
     """
     metric_by_name = {metric.name.casefold(): metric for metric in metrics}
     relationship_by_name = {relationship.name.casefold(): relationship for relationship in relationships}
@@ -348,7 +349,7 @@ def _kept_metric_diagnostics(context: _ScopeContext) -> Iterator[Diagnostic]:
                     origin=context.view.origin,
                 )
         yield from _removed_bases(metric, context)
-        for column in dict.fromkeys((*_column_reads(metric.calls), *_dimension_columns(metric))):
+        for column in dict.fromkeys((*column_reads(metric.calls), *_dimension_columns(metric))):
             if not scope.admits_column_name(column):
                 yield _hidden_read(metric.name, column, context)
 
@@ -373,28 +374,25 @@ def _removed_bases(metric: MetricDef, context: _ScopeContext) -> Iterator[Diagno
 
 
 def _reader_diagnostics(context: _ScopeContext) -> Iterator[Diagnostic]:
-    """Report each column an attached filter or verified query reads with `ref()` and the scope removes.
+    """Report each attached filter or verified query the view leaves out for a column it hides.
 
-    A scope never removes either member, so each attached one is checked; its bare column
-    names, as a verified query's SQL may write them, are not read.
+    No scope list names filters or verified queries, so one attaches by its tables; one that
+    reads a column the scope removes is left out of the view by attachment, rather than refusing
+    a view its author could not otherwise narrow. Each the view's tables reach is checked.
     """
     scope = view_scope(context.view.source)
     for key, reader in context.readers.items():
-        if not context.members.keeps(context.key, key):
+        if not context.members.reaches(context.key, key):
             continue
-        for column in _column_reads(_reader_calls(reader)):
-            if not scope.admits_column_name(column):
-                yield _hidden_read(key, column, context)
-
-
-def _reader_calls(reader: FilterDef | VerifiedQueryDef) -> tuple[TemplateCall, ...]:
-    """The calls a filter's expression or a verified query's SQL makes; none when one is malformed."""
-    if reader.template_calls:
-        return reader.template_calls
-    try:
-        return scan_template_calls(reader.expr if isinstance(reader, FilterDef) else reader.sql)
-    except TemplateSyntaxError:
-        return ()
+        for column in hidden_reads(reader, scope):
+            yield D(
+                "SST-VAL337",
+                artifact=context.key,
+                member=key,
+                column=column,
+                subject=context.key,
+                origin=context.view.origin,
+            )
 
 
 def _hidden_read(member: str, column: str, context: _ScopeContext) -> Diagnostic:
@@ -405,17 +403,6 @@ def _hidden_read(member: str, column: str, context: _ScopeContext) -> Diagnostic
         column=column,
         subject=context.key,
         origin=context.view.origin,
-    )
-
-
-def _column_reads(calls: tuple[TemplateCall, ...]) -> tuple[str, ...]:
-    """The columns two-argument `ref()` calls read, each `<model>.<column>` casefolded, once each in order."""
-    return tuple(
-        dict.fromkeys(
-            f"{call.args[0].casefold()}.{call.args[1].casefold()}"
-            for call in calls
-            if call.function == "ref" and len(call.args) == 2
-        )
     )
 
 

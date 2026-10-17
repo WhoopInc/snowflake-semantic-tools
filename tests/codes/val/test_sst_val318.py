@@ -47,32 +47,6 @@ def test_sst_val318_fires_for_a_kept_metric_reading_a_column_the_scope_removes(t
     assert "V" not in view_names(project)
 
 
-def test_sst_val318_fires_for_an_attached_filter_reading_a_column_the_scope_removes(tmp_path: Path) -> None:
-    project = _scoped(tmp_path, "    exclude_columns:\n      - \"{{ ref('orders', 'order_state') }}\"\n")
-    [found, *_] = [item for item in reported(project, "SST-VAL318") if "filter:" in item.message]
-    assert found.severity is Severity.ERROR
-    assert (
-        found.message == "semantic_view:v: 'filter:is_completed_order' references excluded column 'orders.order_state'"
-    )
-    assert found.subject == "semantic_view:v"
-
-
-def test_sst_val318_fires_for_a_verified_query_reading_a_column_the_scope_removes(tmp_path: Path) -> None:
-    project = _scoped(tmp_path, "    exclude_columns:\n      - \"{{ ref('customers', 'customer_type') }}\"\n")
-    (project / "semantic_models" / "verified_queries" / "by_type.yml").write_text(
-        "verified_query:\n"
-        "  name: customers_by_type\n"
-        '  question: "How many customers of each type are there?"\n'
-        "  sql: \"SELECT {{ ref('customers', 'customer_type') }}, COUNT(*) FROM {{ ref('customers') }} GROUP BY 1\"\n",
-        encoding="utf-8",
-    )
-    messages = [item.message for item in reported(project, "SST-VAL318")]
-    assert (
-        "semantic_view:v: 'verified_query:customers_by_type' references excluded column 'customers.customer_type'"
-        in messages
-    )
-
-
 def test_sst_val318_silent_for_a_scope_no_member_reads(tmp_path: Path) -> None:
     project = _scoped(tmp_path, "    exclude_columns:\n      - \"{{ ref('customers', 'customer_name') }}\"\n")
     assert reported(project, "SST-VAL318") == []

@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 304 codes
+- [Validation (VAL)](#validation-val) -- 305 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
@@ -3163,11 +3163,11 @@ Fix: set `is_enum: false`, or run `sst enrich --force enums`
 
 `<artifact>: '<member>' references excluded column '<column>'`
 
-Raised when an expression names a column excluded globally; or a metric a view keeps (its expression, window or non-additive entries), or a filter or verified query attached to the view, reads with `ref()` a column the view's scope removes.
+Raised when an expression names a column excluded globally; or a metric a view keeps (its expression, window or non-additive entries) reads with `ref()` a column the view's scope removes.
 
 Fix: un-exclude the column, or change the expression
 
-Note: A scoped-out column is hidden only as a fact or dimension; a member that reads it would still compute over it, so the view is refused. Bare column names in a verified query's SQL are not checked.
+Note: A scoped-out column is hidden only as a fact or dimension; a kept metric that reads it would still compute over it, so the view is refused. A filter or verified query that reads it is left out of the view instead (SST-VAL337).
 
 ### SST-VAL319
 
@@ -3344,6 +3344,18 @@ Note: Snowflake refuses `IS_ENUM` on a fact when the view is created, so no sett
 Raised when a metric left in the view's scope calls `metric()` on a metric the view's tables attach and its scope removes, so the view would hold the metric without its base.
 
 Fix: keep the base metric, or exclude the metric built on it too
+
+### SST-VAL337
+
+**Filter or verified query left out by the view's scope** (info)
+
+`<artifact>: leaves out '<member>', which reads column '<column>' its scope removes`
+
+Raised when a filter or verified query attaches to a view by its tables and reads with `ref()` a column the view's scope removes.
+
+Fix: keep the column in the view to publish the member, or keep the scope to leave it out
+
+Note: No scope list names filters or verified queries, so a view leaves out the ones that would read the data it hides, rather than publishing them or refusing the view. Bare column names in a verified query's SQL are not checked.
 
 ### SST-VAL401
 
