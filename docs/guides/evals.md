@@ -656,16 +656,18 @@ Each metric is scored from the reply:
 
 | Metric | Scored |
 |---|---|
-| `tool_selection_accuracy` | Exactly, and gates. Only calls of tools the agent's specification declares count, so Snowflake's own system tools (`server_skill`, `system_execute_sql`) never do, and a `data_to_chart` tool is ignored, called or expected, as the evaluation service ignores an extra chart (measured on a live account). The calls that remain must name exactly the tools `ground_truth_invocations` lists, as a set: 1.0, else 0.0. An empty list expects no call; a question without the key is unscored. |
+| `tool_selection_accuracy` | Exactly, and gates. Only calls of tools the agent's specification declares count, so Snowflake's own system tools (`server_skill`, `system_execute_sql`) never do, and a `data_to_chart` tool is ignored, called or expected, as the evaluation service ignores an extra chart (measured on a live account). The calls that remain are compared with the tools `ground_truth_invocations` lists as multisets, names matched without case: the score is the matched calls over matched, missing and extra calls, so one expected tool called twice scores 0.5, as the evaluation service scored it (measured). An empty list expects no call; a question without the key is unscored. |
 | `answer_correctness` | Approximately, by an SST-written judge prompt asking whether the answer meets `ground_truth_output`, on 0 to 1. The judge is the eval's `judge_model`, else the agent's orchestration model; with neither, or `auto`, it is unscored (`SST-ASK004`). A question with no `ground_truth_output` is unscored. |
-| a custom metric | Approximately, by its own prompt and `model`, on its own score bands, with `{{ input }}`, `{{ output }}`, `{{ ground_truth }}`, `{{ tool_info }}`, `{{ duration }}`, `{{ error }}` and `{{ status }}` filled from the reply. A prompt using `{{ start_timestamp }}`, a `{{ span_* }}` placeholder or `{{ llm_model }}`, which only a published run's trace fills, is unscored (`SST-ASK004`). |
+| a custom metric | Approximately, by its own prompt and `model`, on its own score bands, with `{{ input }}`, `{{ output }}`, `{{ ground_truth }}`, `{{ tool_info }}`, `{{ duration }}`, `{{ error }}` and `{{ status }}` filled from the reply. A prompt that names neither `{{ input }}` nor `{{ output }}` is given the question and the answer after it, as the evaluation service gives them. A prompt using `{{ start_timestamp }}`, a `{{ span_* }}` placeholder or `{{ llm_model }}`, which only a published run's trace fills, is unscored (`SST-ASK004`). |
 | `tool_execution_accuracy`, `logical_consistency` | Not at all: only the evaluation service scores them (`SST-ASK005`, info). |
 
 Each judge is one `AI_COMPLETE` call at temperature 0 asking for JSON with a
 `score` and a `reason`; one that fails, or answers no number on the metric's
 scale, leaves that question unscored (`SST-ASK006`). These rules are SST's own,
-to be calibrated against the evaluation service: an unpublished score is a
-signal for iterating, never a substitute for the published gate.
+calibrated against the evaluation service on one live project: tool selection
+matched the service's pass count and average score, while a judged metric's average
+differed by up to a point on a 0 to 5 scale. An unpublished score is a signal
+for iterating, never a substitute for the published gate.
 
 **Gating.** Only exact metrics gate, on their thresholds alone: a question
 `tool_selection_accuracy` scores outside its `threshold` fails the run

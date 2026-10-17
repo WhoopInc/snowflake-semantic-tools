@@ -76,8 +76,18 @@ def fill_judge_prompt(prompt: str, reply: JudgedReply) -> str:
 
 
 def custom_judge_prompt(prompt: str, reply: JudgedReply, low: float, high: float) -> str:
-    """Return a custom metric's filled prompt, followed by how to answer on the metric's own scale."""
-    return f"{fill_judge_prompt(prompt, reply)}\n\n{_answer_format(low, high)}"
+    """Return a custom metric's filled prompt, followed by how to answer on the metric's own scale.
+
+    A prompt that names neither `{{ input }}` nor `{{ output }}` -- "you will be given the
+    question and the answer" -- is given both after it, as the evaluation service judged
+    such a prompt (measured on a live account: it scored 3 to 5 where a judge shown neither
+    scored 0).
+    """
+    filled = fill_judge_prompt(prompt, reply)
+    named = set(_JUDGE_PLACEHOLDER.findall(prompt))
+    if not named & {"input", "output"}:
+        filled = f"{filled}\n\nQuestion:\n{reply.input}\n\nAnswer:\n{reply.output}"
+    return f"{filled}\n\n{_answer_format(low, high)}"
 
 
 def answer_correctness_prompt(reply: JudgedReply) -> str | None:

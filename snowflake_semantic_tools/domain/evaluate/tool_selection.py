@@ -7,15 +7,18 @@ The rule, which the Snowflake evaluation service is to be calibrated against:
    specification never declares (measured on a live account); they are ignored.
 2. A `data_to_chart` tool is ignored on both sides, called or expected: the service scored an
    agent that drew an extra chart as fully accurate (measured on a live account).
-3. What remains is compared as a set of names, matched exactly, case included, as
-   `ground_truth_invocations` names a tool: the same set scores 1.0, any other 0.0. A tool
-   called twice counts once, and the order of the calls does not matter.
+3. What remains is compared with the expected tools as multisets of names, matched without
+   case: the evaluation service reports both lowercased. The score is the matched calls over
+   matched, missing and extra calls together, so the same tools score 1.0, none in common
+   0.0, and a tool called twice where it was expected once 0.5, as the service scored it
+   (measured on a live account). The order of the calls does not matter.
 4. An empty `ground_truth_invocations` expects no tool, so a reply that called none scores
    1.0. A question with no `ground_truth_invocations` states no expectation, and is unscored.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterable, Mapping
 
 CHART_TOOL_TYPES = frozenset(("data_to_chart",))
@@ -58,9 +61,14 @@ def expected_tools(ground_truth: object) -> tuple[str, ...] | None:
     )
 
 
-def selected_tools(called: Iterable[str], declared: Mapping[str, str]) -> frozenset[str]:
-    """Return the names of the declared, non-chart tools among `called`."""
-    return frozenset(name for name in called if name in declared and declared[name] not in CHART_TOOL_TYPES)
+def selected_tools(called: Iterable[str], declared: Mapping[str, str]) -> Counter[str]:
+    """Count the calls of declared, non-chart tools among `called`, by name without case."""
+    types = {name.casefold(): kind for name, kind in declared.items()}
+    return Counter(
+        name.casefold()
+        for name in called
+        if name.casefold() in types and types[name.casefold()] not in CHART_TOOL_TYPES
+    )
 
 
 def tool_selection_score(
@@ -74,10 +82,14 @@ def tool_selection_score(
         expected: The names `expected_tools` returns; None states no expectation.
 
     Returns:
-        1.0 when the calls that count are exactly the expected tools, 0.0 when not, None when
-        nothing is expected.
+        Matched calls over matched, missing and extra calls, by the module's rule; 1.0 when
+        none is expected and none that counts was made; None when nothing is expected.
     """
     if expected is None:
         return None
-    wanted = frozenset(name for name in expected if declared.get(name) not in CHART_TOOL_TYPES)
-    return 1.0 if selected_tools(called, declared) == wanted else 0.0
+    types = {name.casefold(): kind for name, kind in declared.items()}
+    wanted = Counter(name.casefold() for name in expected if types.get(name.casefold()) not in CHART_TOOL_TYPES)
+    made = selected_tools(called, declared)
+    matched = sum((made & wanted).values())
+    compared = matched + sum((wanted - made).values()) + sum((made - wanted).values())
+    return matched / compared if compared else 1.0

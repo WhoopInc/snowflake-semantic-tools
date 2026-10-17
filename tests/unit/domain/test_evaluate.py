@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 
 import pytest
 
@@ -54,9 +55,9 @@ def test_expected_tools_read_the_invocations_and_tell_none_from_no_expectation()
     assert expected_tools("not a mapping") is None
 
 
-def test_only_declared_non_chart_calls_count() -> None:
+def test_only_declared_non_chart_calls_count_each_time_and_without_case() -> None:
     called = ["SALES", "server_skill", "system_execute_sql", "chart", "SALES", "sales"]
-    assert selected_tools(called, DECLARED) == frozenset({"SALES"})
+    assert selected_tools(called, DECLARED) == Counter({"sales": 3})
 
 
 @pytest.mark.parametrize(
@@ -69,17 +70,20 @@ def test_only_declared_non_chart_calls_count() -> None:
         (["SALES", "chart"], ["SALES"], 1.0),
         (["SALES"], ["SALES", "chart"], 1.0),
         (["docs", "SALES"], ["SALES", "docs"], 1.0),
-        (["SALES"], ["SALES", "docs"], 0.0),
-        (["SALES", "docs"], ["SALES"], 0.0),
-        (["sales"], ["SALES"], 0.0),
+        (["sales"], ["SALES"], 1.0),
+        # The measured case: expected once, called twice.
+        (["SALES", "SALES"], ["SALES"], 0.5),
+        (["SALES"], ["SALES", "docs"], 0.5),
+        (["SALES", "docs"], ["SALES"], 0.5),
         ([], [], 1.0),
         (["server_skill"], [], 1.0),
         (["SALES"], [], 0.0),
+        ([], ["SALES"], 0.0),
         (["SALES"], ["MISSING"], 0.0),
         (["SALES"], None, None),
     ],
 )
-def test_tool_selection_is_exact_set_equality_on_what_counts(
+def test_tool_selection_scores_matched_over_matched_missing_and_extra(
     called: list[str], expected: list[str] | None, score: float | None
 ) -> None:
     assert tool_selection_score(called, DECLARED, expected) == score
@@ -113,7 +117,16 @@ def test_the_placeholders_a_reply_cannot_fill_are_named_once() -> None:
 def test_a_custom_prompt_is_followed_by_how_to_answer_on_its_scale() -> None:
     prompt = custom_judge_prompt("Score {{ output }}.", REPLY, 0, 5)
     assert prompt.startswith("Score 12 orders..\n\n")
+    assert "Question:" not in prompt
     assert prompt.endswith('"score", a number from 0 to 5, and "reason", one sentence saying why.')
+
+
+def test_a_custom_prompt_with_no_question_or_answer_placeholder_is_given_both() -> None:
+    prompt = custom_judge_prompt("You will be given the question and the answer.", REPLY, 0, 5)
+    assert prompt.startswith(
+        "You will be given the question and the answer.\n\nQuestion:\nHow many orders?\n\nAnswer:\n12 orders.\n\n"
+    )
+    assert "Question:" not in custom_judge_prompt("Was {{ input }} answered?", REPLY, 0, 5)
 
 
 def test_answer_correctness_is_judged_against_the_ground_truth_output_alone() -> None:
