@@ -111,3 +111,19 @@ def test_a_split_without_configuration_or_with_unreadable_configuration() -> Non
         SplitFiles(semantic={}, config=("c.yml", "skills:\n  stage:\n    +stage: S\n")), outline, lambda path: False
     )
     assert moved.run().changed
+
+
+def test_migrate_refs_writes_a_0_3_2_view_scope_in_the_1_0_form() -> None:
+    source = (
+        "semantic_view:\n  name: v\n  tables: [\"{{ table('orders') }}\"]\n"
+        "  dimensions:\n    - status\n    - \"{{ column('orders', 'total') }}\"\n"
+        "  exclude_columns: [orders.notes]\n"
+    )
+    report = MigrateRefs(RefsFiles({"v.yml": source}), lambda text, path: (), outline).run()
+    [migrated] = report.files
+    assert migrated.result.text == (
+        "semantic_view:\n  name: v\n  tables: [\"{{ ref('orders') }}\"]\n"
+        "  columns:\n    - \"{{ ref('orders', 'status') }}\"\n    - \"{{ ref('orders', 'total') }}\"\n"
+        "  exclude_columns: [\"{{ ref('orders', 'notes') }}\"]\n"
+    )
+    assert migrated.counts() == counts(ref=1, column=1, reference=2, setting=1) and report.untouched == 0

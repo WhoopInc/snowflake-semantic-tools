@@ -39,7 +39,9 @@ until it is migrated.
 
    It writes every bare reference as its template call (`relationship()`, `metric()`,
    `tag()`, `skill()`, `file()`, `tool()` with one argument), moves old item settings under
-   `config:`, writes tool columns as refs, and turns `{{ table('x') }}` into `{{ ref('x') }}` and `{{ column('x', 'y') }}` into
+   `config:`, writes tool columns as refs, writes a view's `columns` / `exclude_columns`
+   entries `x.y` (or a bare `y` in a view of one model) as `{{ ref('x', 'y') }}` and renames
+   its `dimensions:` to `columns:`, and turns `{{ table('x') }}` into `{{ ref('x') }}` and `{{ column('x', 'y') }}` into
    `{{ ref('x', 'y') }}`, writes relationship endpoints as `{{ ref('x') }}`, drops members'
    `tables:` and `derived:`, turns `sql_file:` into `sql: "{{ file('...') }}"`, and labels
    boolean filters. It does not rewrite verified-query SQL: change each table it reads by name

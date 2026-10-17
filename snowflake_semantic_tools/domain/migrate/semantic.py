@@ -2,10 +2,13 @@
 
 The reference pass writes each bare name as the call its field takes: `using_relationships` and a
 view's `relationships` / `exclude_relationships` as `relationship()`, its `metrics` /
-`exclude_metrics` as `metric()`, and a tag's `name` as `tag()`. The structure pass turns each
-`non_additive_dimensions` entry's `dimension` (and `table`) into one
-`ref: "{{ ref('<model>', '<column>') }}"`, and moves a view's `enabled`, `tags` and
-`max_staleness` under its `config:`.
+`exclude_metrics` as `metric()`, and a tag's `name` as `tag()`. A view's `columns` /
+`exclude_columns` entry `table.column` becomes `ref('table', 'column')`, and a bare `column` the
+same call of the one model the view's `tables:` names; any other entry without a template call
+is reported and left alone. The structure pass turns each `non_additive_dimensions` entry's
+`dimension` (and `table`) into one `ref: "{{ ref('<model>', '<column>') }}"`, renames a view's
+`dimensions:`, which SST 0.3.2 read as `columns:`, to `columns:` when it has none, and moves a
+view's `enabled`, `tags` and `max_staleness` under its `config:`.
 
 A non-additive entry without `table:` named a dimension of its metric's own table, the one model
 the metric's expression names with `ref()`, as SST 0.3 and the 1.0 drafts resolved it; a metric
@@ -14,6 +17,7 @@ naming no model or several is reported and left alone.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator, Sequence
 
 from snowflake_semantic_tools.domain.migrate.calls import bare, quoted_call
@@ -35,6 +39,12 @@ _SCOPE = (
     ("metrics", "metric"),
     ("exclude_metrics", "metric"),
 )
+# A view's column scope keys, and the key SST 0.3.2 also read as `columns`.
+_COLUMN_SCOPE = ("columns", "exclude_columns")
+_DIMENSIONS = "dimensions"
+_NAME = r"[A-Za-z_][A-Za-z0-9_$]*"
+_COLUMN = re.compile(rf"(?:(?P<table>{_NAME})\.)?(?P<column>{_NAME})")
+_COLUMN_CALL = "\"{{ ref('<model>', '<column>') }}\""
 
 
 def members(root: Node, list_root: str) -> Iterator[Node]:
@@ -72,6 +82,9 @@ def semantic_references(root: Node) -> Changes:
     for view in members(root, "semantic_views"):
         for key, function in _SCOPE:
             bare_items(view.get(key), function, changes)
+        model = _view_model(view)
+        for key in _COLUMN_SCOPE if view.get("columns") is not None else (*_COLUMN_SCOPE, _DIMENSIONS):
+            _column_items(view.get(key), model, changes)
         tag_names(view.get("tags"), changes)
         tag_names(view.find("config", "tags"), changes)
     return changes
@@ -85,6 +98,7 @@ def semantic_structure(lines: Sequence[str], root: Node) -> Changes:
         for entry in entries.maps() if entries is not None and entries.is_seq else ():
             _non_additive(lines, metric, entry, changes)
     for view in members(root, "semantic_views"):
+        _dimensions_as_columns(lines, view, changes)
         move_settings(lines, view, VIEW_MOVES, changes, block="config")
     return changes
 
@@ -107,7 +121,11 @@ def _model_of(table: Node | None, metric: Node) -> str | None:
     """Return the model a non-additive entry's `table:` names, as a bare name or a `ref()`."""
     if table is None:
         return metric_model(metric)
-    text = table.text or ""
+    return _named_model(table.text or "", ("ref",))
+
+
+def _named_model(text: str, functions: tuple[str, ...]) -> str | None:
+    """Return the model `text` names, bare or as a one-argument call of one of `functions`."""
     name = bare(text)
     if name is not None:
         return name
@@ -115,7 +133,52 @@ def _model_of(table: Node | None, metric: Node) -> str | None:
         calls = scan_template_calls(text)
     except TemplateSyntaxError:
         return None
-    return calls[0].args[0] if len(calls) == 1 and calls[0].function == "ref" and len(calls[0].args) == 1 else None
+    one = len(calls) == 1 and calls[0].function in functions and len(calls[0].args) == 1
+    return calls[0].args[0] if one else None
+
+
+def _view_model(view: Node) -> str | None:
+    """Return the one model a view's `tables:` names, bare or by `ref()` or `table()`; None otherwise."""
+    tables = view.get("tables")
+    items = tables.items if tables is not None and tables.is_seq else ()
+    named = [_named_model(item.text or "", ("ref", "table")) for item in items]
+    found = {name.casefold(): name for name in named if name is not None}
+    return next(iter(found.values())) if len(found) == 1 and None not in named else None
+
+
+def _column_items(sequence: Node | None, model: str | None, changes: Changes) -> None:
+    """Write each `table.column` or bare `column` entry of a view's column scope as a `ref()`.
+
+    An entry already a template call is the reference pass's or validation's. A bare column needs
+    the view's one model; that, and any other entry, is reported and left alone.
+    """
+    for item in sequence.items if sequence is not None and sequence.is_seq else ():
+        text = item.text
+        if text is not None and "{{" in text:
+            continue
+        name = bare(text)
+        found = _COLUMN.fullmatch(name) if name is not None else None
+        table = (found["table"] or model) if found is not None else None
+        if found is not None and table is not None:
+            changes.replace(item, quoted_call("ref", table, found["column"]), "reference")
+            continue
+        reason = "a bare column in a view whose tables: name no single model" if found else "not a column name"
+        changes.leave(item.line, item.col, text or "", f"{reason}; write {_COLUMN_CALL} by hand")
+
+
+def _dimensions_as_columns(lines: Sequence[str], view: Node, changes: Changes) -> None:
+    """Rename a view's `dimensions:` to `columns:`, or report it when the view has both."""
+    entry = view.entry(_DIMENSIONS)
+    if entry is None:
+        return
+    if view.get("columns") is not None:
+        changes.leave(entry.line, entry.col, _DIMENSIONS, "the view has columns: too; merge them by hand")
+        return
+    end = entry.col + len(_DIMENSIONS)
+    if lines[entry.line][entry.col : end] != _DIMENSIONS:
+        changes.leave(entry.line, entry.col, _DIMENSIONS, "a quoted key; rename it to columns: by hand")
+        return
+    changes.add(Edit(entry.line, entry.col, entry.line, end, "columns"), _DIMENSIONS, "columns", "setting")
 
 
 def _non_additive(lines: Sequence[str], metric: Node, entry: Node, changes: Changes) -> None:

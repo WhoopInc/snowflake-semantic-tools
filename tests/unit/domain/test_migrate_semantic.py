@@ -94,3 +94,65 @@ def test_metric_model_and_members() -> None:
         ).edits
         == []
     )
+
+
+VIEWS = """semantic_views:
+  - name: one_model
+    tables: ["{{ ref('orders') }}"]
+    columns:
+      - order_id
+      - customers.customer_id
+      - "{{ ref('orders', 'total') }}"
+      - "orders.\\"Quoted\\""
+      - {column: x}
+    exclude_columns: [notes]
+  - name: two_models
+    tables:
+      - "{{ table('orders') }}"
+      - customers
+    exclude_columns:
+      - order_id
+      - orders.status
+  - name: legacy
+    tables: [orders]
+    dimensions:
+      - status
+  - name: both
+    tables: [orders]
+    columns: [order_id]
+    dimensions: [status]
+  - name: unread
+    tables: ["{{ broken( }}"]
+    columns: [status]
+"""
+
+
+def test_a_views_column_scope_becomes_refs_and_a_bare_column_takes_its_one_model() -> None:
+    changes = semantic_references(outline(VIEWS))
+    text = applied(VIEWS, changes)
+    assert "      - \"{{ ref('orders', 'order_id') }}\"\n      - \"{{ ref('customers', 'customer_id') }}\"\n" in text
+    assert "exclude_columns: [\"{{ ref('orders', 'notes') }}\"]" in text
+    assert "      - order_id\n      - \"{{ ref('orders', 'status') }}\"\n" in text
+    # `dimensions:` is read as `columns:` where the view has none, and left where it has both.
+    assert "    dimensions:\n      - \"{{ ref('orders', 'status') }}\"\n" in text
+    assert "    columns: [\"{{ ref('orders', 'order_id') }}\"]\n    dimensions: [status]\n" in text
+    hand = "; write \"{{ ref('<model>', '<column>') }}\" by hand"
+    assert [(item.text, item.reason) for item in changes.untouched] == [
+        ('orders."Quoted"', f"not a column name{hand}"),
+        ("", f"not a column name{hand}"),
+        ("order_id", f"a bare column in a view whose tables: name no single model{hand}"),
+        ("status", f"a bare column in a view whose tables: name no single model{hand}"),
+    ]
+
+
+def test_a_views_dimensions_becomes_columns_unless_it_has_both() -> None:
+    changes = semantic_structure(lines(VIEWS), outline(VIEWS))
+    text = applied(VIEWS, changes)
+    assert "  - name: legacy\n    tables: [orders]\n    columns:\n      - status\n" in text
+    assert "    columns: [order_id]\n    dimensions: [status]\n" in text
+    assert [item.reason for item in changes.untouched] == ["the view has columns: too; merge them by hand"]
+    quoted = 'semantic_view:\n  name: v\n  "dimensions": [a]\n'
+    left = semantic_structure(lines(quoted), outline(quoted))
+    assert left.edits == [] and [item.reason for item in left.untouched] == [
+        "a quoted key; rename it to columns: by hand"
+    ]

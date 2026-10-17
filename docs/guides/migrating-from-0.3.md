@@ -160,6 +160,8 @@ Every field that names a member or a file takes one template call
 |---|---|
 | `using_relationships: [orders_to_customers]`, a view's `relationships` / `exclude_relationships` entries | `"{{ relationship('orders_to_customers') }}"` |
 | a view's `metrics` / `exclude_metrics` entries | `"{{ metric('<name>') }}"` |
+| a view's `columns` / `exclude_columns` entry `orders.order_id`, or a bare `order_id` in a view whose `tables:` name one model | `"{{ ref('orders', 'order_id') }}"`; a bare column in a view of several models is reported |
+| a view's `dimensions:`, which 0.3.2 read as `columns:` | `columns:`, when the view has none; with both, reported |
 | a view's or agent's tag `name: cost_center` | `name: "{{ tag('cost_center') }}"` |
 | `non_additive_dimensions: [{dimension: d, table: m}]` | `[{ref: "{{ ref('m', 'd') }}"}]`, `sort_direction` and `null_order` kept; without `table:`, the one model the metric's `expr` names |
 | `{{ tool('<group>', '<name>') }}`, anywhere | `{{ tool('<name>') }}` |
@@ -213,8 +215,9 @@ The report names each file and what it would rewrite, for example
 `would rewrite semantic_models/relationships/relationships.yml: 4 endpoint, 4 column`.
 A `table()` call anywhere else, such as inside a description, and anything
 else it will not rewrite safely -- a non-additive entry on a metric naming
-several models, a column of a tool member whose `on:` names no model, a
-`body_file` outside the project -- is printed to stderr as `file:line:column`
+several models, a bare column in the scope of a view of several models, a view
+with both `columns:` and `dimensions:`, a column of a tool member whose `on:`
+names no model, a `body_file` outside the project -- is printed to stderr as `file:line:column`
 and left alone, and the command exits `1` until it is fixed by hand; `--write` still rewrites everything else. A file's line endings
 are kept, and running the command twice changes nothing the second time.
 
