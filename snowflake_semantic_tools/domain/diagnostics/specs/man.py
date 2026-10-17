@@ -137,7 +137,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     ),
     spec(
         "SST-MAN027",
-        Severity.WARNING,
+        Severity.INFO,
         "Local state cache disagrees with the state table",
         "local state.json for target {value} disagrees with {detail}; the table wins",
         "none -- the run proceeds from the table",
@@ -146,9 +146,9 @@ SPECS: tuple[ErrorSpec, ...] = (
             "differ -- a switched branch, or an `apply` from another checkout"
         ),
         note=(
-            "The table is authoritative and the file is a cache, so the table wins. A warning rather "
-            "than an error because a correct answer is available; an error would stop a deploy over a "
-            "stale local file."
+            "The table is authoritative and the file is a cache, so the table wins and the file is "
+            "rewritten. Info rather than a warning because nothing is wrong and nothing is to be done: "
+            "strict mode promotes every warning, and would stop a deploy over a stale local file."
         ),
     ),
     spec(

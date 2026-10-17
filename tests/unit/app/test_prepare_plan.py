@@ -170,6 +170,23 @@ def test_run_plans_from_state_with_agents_staged_and_every_composite_type_handle
     assert inputs.reads[-2:] == ["config", "git_sha"]
 
 
+def test_a_strict_plan_is_not_refused_over_a_local_state_cache_the_table_overrides() -> None:
+    # Strict promotes every warning; a stale cache is rewritten from the table, so it is only info.
+    candidates, use_case, _ = select(compiled(), strict=True)
+    port = ScopeRecordingSnowflake()
+    gone = AppliedEntry("f" * 64, "OTHER.SCHEMA.GONE", "now", "run", "applied", "f" * 64, "m" * 64)
+    port.remote_state = MappingProxyType({"semantic_view:gone": gone})
+    assert isinstance(candidates, PlanCandidates) and candidates.strict
+
+    ready = use_case.run(
+        candidates, port, InMemoryStateStore(State.empty(dev_target())), target=dev_target(), state_table=STATE_TABLE
+    )
+
+    assert isinstance(ready, PlanReady)
+    [notice] = [item for item in ready.changeset.diagnostics if item.code == "SST-MAN027"]
+    assert notice.severity is Severity.INFO and ready.promoted == 0
+
+
 def _strict_plan(*warnings: object) -> PlanReady | PlanRefused:
     """Plan MENU alone, strictly, from a compile of MENU and SALES reporting `warnings`."""
     result = with_diagnostics(compiled("MENU", "SALES"), *warnings)

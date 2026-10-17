@@ -19,7 +19,7 @@ def test_sst_man027_fires() -> None:
     port.remote_state = MappingProxyType({})
     state, diagnostics = read_state(store, port, state_table=STATE_TABLE, target=target())
     [diagnostic] = diagnostics
-    assert (diagnostic.code, diagnostic.severity) == ("SST-MAN027", Severity.WARNING)
+    assert (diagnostic.code, diagnostic.severity) == ("SST-MAN027", Severity.INFO)
     assert diagnostic.message == f"local state.json for target verify disagrees with {STATE_TABLE.sql}; the table wins"
     assert state.applied == {} and store.writes[-1].applied == {}
 

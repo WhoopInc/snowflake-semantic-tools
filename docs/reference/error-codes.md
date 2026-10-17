@@ -6193,7 +6193,7 @@ Raised when a plan reports, per artifact type, its counts of new, modified, unmo
 
 ### SST-MAN027
 
-**Local state cache disagrees with the state table** (warning)
+**Local state cache disagrees with the state table** (info)
 
 `local state.json for target <value> disagrees with <detail>; the table wins`
 
@@ -6201,7 +6201,7 @@ Raised when both the state table and the local state file are readable and their
 
 Fix: none -- the run proceeds from the table
 
-Note: The table is authoritative and the file is a cache, so the table wins. A warning rather than an error because a correct answer is available; an error would stop a deploy over a stale local file.
+Note: The table is authoritative and the file is a cache, so the table wins and the file is rewritten. Info rather than a warning because nothing is wrong and nothing is to be done: strict mode promotes every warning, and would stop a deploy over a stale local file.
 
 ### SST-MAN030
 

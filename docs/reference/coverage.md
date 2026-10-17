@@ -188,7 +188,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-MAN024`](error-codes.md#sst-man024) | MAN | warning | local | `snowflake_semantic_tools.app.state` | `tests/codes/man/test_sst_man024.py` |
 | [`SST-MAN025`](error-codes.md#sst-man025) | MAN | error | local | `snowflake_semantic_tools.app.state`<br>`snowflake_semantic_tools.cli.wiring.plan` | `tests/codes/man/test_sst_man025.py` |
 | [`SST-MAN026`](error-codes.md#sst-man026) | MAN | info | local | `snowflake_semantic_tools.app.state` | `tests/codes/man/test_sst_man026.py` |
-| [`SST-MAN027`](error-codes.md#sst-man027) | MAN | warning | local | `snowflake_semantic_tools.app.state` | `tests/codes/man/test_sst_man027.py` |
+| [`SST-MAN027`](error-codes.md#sst-man027) | MAN | info | local | `snowflake_semantic_tools.app.state` | `tests/codes/man/test_sst_man027.py` |
 | [`SST-MAN030`](error-codes.md#sst-man030) | MAN | warning | local | `snowflake_semantic_tools.app.apply.observation` | `tests/codes/man/test_sst_man030.py` |
 | [`SST-MAN031`](error-codes.md#sst-man031) | MAN | error | local | `snowflake_semantic_tools.app.manifest` | `tests/codes/man/test_sst_man031.py` |
 | [`SST-MAN201`](error-codes.md#sst-man201) | MAN | info | local | `snowflake_semantic_tools.app.manifest` | `tests/codes/man/test_sst_man201.py` |
