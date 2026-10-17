@@ -28,6 +28,7 @@ from snowflake_semantic_tools.cli.commands import (
     test,
     validate,
 )
+from snowflake_semantic_tools.cli.globals import refuse_removed_options
 from snowflake_semantic_tools.cli.group import cli
 from snowflake_semantic_tools.cli.help_text import document_options
 
@@ -54,4 +55,6 @@ for _command in (
     state.state,
 ):
     cli.add_command(_command)
+# After every command is registered, so a command's own option is never shadowed by a refusal.
+refuse_removed_options(cli)
 document_options(cli)

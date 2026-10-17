@@ -14,7 +14,7 @@ case-insensitively, and anything else is a configuration error rather than a sil
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +43,28 @@ RESERVED_SHORT_OPTIONS: Mapping[str, tuple[str, str]] = {
 }
 # Where the publish location a reserved option chose is set now, for a command without the flag.
 _LOCATION_KEYS: Mapping[str, str] = {"-s": "+schema", "-d": "+database"}
+# Where the 0.3 migration guide tells each removed command and option's replacement.
+MIGRATION_GUIDE = "docs/guides/migrating-from-0.3.md"
+# Each SST 0.3 command 1.0 removed, and what replaces it (the migration guide's Commands table).
+REMOVED_COMMANDS: Mapping[str, str] = {
+    "deploy": "run sst compile, sst plan, then sst apply",
+    "generate": "run sst compile, sst plan, then sst apply; sst plan --sql-out <dir> writes the statements",
+    "extract": "nothing replaces it: 1.0 compiles from the dbt manifest and records what it published in state",
+    "migrate-meta": "nothing replaces it: author column metadata in the dbt model YAML",
+}
+# Each SST 0.3 long option 1.0 removed, whether it took a value, and what replaces it. A command
+# that defines the option itself keeps its own; `--prune` is refused on `drop` alone.
+REMOVED_OPTIONS: tuple[tuple[str, bool, str], ...] = (
+    ("--format", True, "write --output (-o) json"),
+    ("--only-modified", False, "write --select state:modified --state <dir>"),
+    ("--skip-validation", False, "write --no-validate"),
+    ("--views", True, "write --select"),
+    ("--view", True, "write --select"),
+    ("--db", True, "set +database in sst_config.yml for where artifacts publish"),
+    ("--models", True, "write --select, with --exclude"),
+    ("--extract-to-snowflake", False, "nothing replaces it: 1.0 records what it published in its state table"),
+)
+_PRUNE_ON_DROP = ("--prune", False, "run sst plan --prune, then sst apply --prune")
 
 
 class StrictBool(click.types.BoolParamType):
@@ -219,6 +241,43 @@ def reserved_short_options() -> Decorator:
             for letter in RESERVED_SHORT_OPTIONS
         )
     )
+
+
+def refuse_removed_options(command: click.Command, path: str = "sst") -> None:
+    """Give each command, and each group's subcommands, a hidden refusal for every removed 0.3 option.
+
+    Run once every command is registered, so an option a command defines itself -- such as
+    `sst format --check`'s own options, or `sst plan --prune` -- is left to it.
+    """
+    if isinstance(command, click.Group):
+        for name, child in command.commands.items():
+            refuse_removed_options(child, f"{path} {name}")
+        return
+    removed = (*REMOVED_OPTIONS, *((_PRUNE_ON_DROP,) if path == "sst drop" else ()))
+    taken = {name for param in command.params for name in param.opts}
+    for flag, takes_value, replacement in removed:
+        if flag not in taken:
+            command.params.append(
+                click.Option(
+                    [flag],
+                    is_flag=not takes_value,
+                    hidden=True,
+                    expose_value=False,
+                    callback=_refuse_removed(replacement),
+                )
+            )
+
+
+def _refuse_removed(replacement: str) -> Callable[[click.Context, click.Parameter, Any], None]:
+    def callback(ctx: click.Context, param: click.Parameter, value: Any) -> None:
+        if value:
+            # Imported here: `cli.group` imports this module to declare the root group's options.
+            from snowflake_semantic_tools.cli.group import SstUsageError
+
+            message = f"{param.opts[0]} was removed in SST 1.0; {replacement} (see {MIGRATION_GUIDE})"
+            raise SstUsageError(message, ctx)
+
+    return callback
 
 
 def reserved_message(letter: str, command: click.Command) -> str:

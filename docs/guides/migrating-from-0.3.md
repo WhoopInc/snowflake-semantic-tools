@@ -48,8 +48,11 @@ current forms.
 | `sst validate`, `sst compile`, `sst init`, `sst debug`, `sst list`, `sst clean` | still present, with new options |
 | `import snowflake_semantic_tools...` | no Python API: the package exposes only `__version__`, and the `sst` command is the interface |
 
-`sst deploy`, `sst generate`, `sst extract` and `sst migrate-meta` are unknown
-commands (exit `3`). The short options `-m`, `-a`, `-s`, `-d` and `-f`, which
+`sst deploy`, `sst generate`, `sst extract` and `sst migrate-meta` are refused
+(exit `3`, `SST-PRT100`) with what replaces each, as the table above says, and so
+are the removed long options `--format`, `--only-modified`, `--skip-validation`,
+`--views`, `--view`, `--db`, `--models` and `--extract-to-snowflake` on every
+command that does not take them, and `--prune` on `sst drop`. The short options `-m`, `-a`, `-s`, `-d` and `-f`, which
 0.3 bound, are reserved: each is refused with exit `3` (`SST-PRT100`) and what
 to write instead, naming only flags the command takes. A command without
 `--schema` or `--database` points `-s` or `-d` at the `+schema` or `+database`

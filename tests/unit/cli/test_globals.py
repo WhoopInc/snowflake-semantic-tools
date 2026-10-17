@@ -10,7 +10,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from snowflake_semantic_tools.cli.globals import SstCommand
+from snowflake_semantic_tools.cli.globals import REMOVED_COMMANDS, REMOVED_OPTIONS, SstCommand
 from snowflake_semantic_tools.cli.main import cli
 from tests.helpers.cli_projects import common
 from tests.helpers.reference_project import project_copy
@@ -246,3 +246,36 @@ def test_four_or_more_of_one_code_collapse_to_three_and_a_count(tmp_path: Path) 
     assert "... and 2 more SST-CFG018 (--show-all-occurrences)" in grouped.output
     every = CliRunner().invoke(cli, ["validate", *common(project), "--no-strict", "--show-all-occurrences"])
     assert every.output.count("warning[SST-CFG018]") == 5
+
+
+@pytest.mark.parametrize("command", sorted(REMOVED_COMMANDS))
+def test_a_removed_0_3_command_is_refused_with_what_replaces_it(command: str) -> None:
+    result = CliRunner().invoke(cli, [command, "--dry-run"])
+    assert result.exit_code == 3
+    assert f"sst {command} was removed in SST 1.0; {REMOVED_COMMANDS[command]}" in result.output
+    assert "migrating-from-0.3.md" in result.output and "Did you mean" not in result.output
+
+
+@pytest.mark.parametrize(
+    ("flag", "takes_value", "replacement"), REMOVED_OPTIONS, ids=[row[0] for row in REMOVED_OPTIONS]
+)
+def test_a_removed_0_3_option_is_refused_on_every_command_naming_its_replacement(
+    flag: str, takes_value: bool, replacement: str
+) -> None:
+    line = [flag, "x"] if takes_value else [flag]
+    for command in ("compile", "plan", "validate", "list"):
+        result = CliRunner().invoke(cli, [command, *line, "--project-dir", "/nonexistent"])
+        assert result.exit_code == 3, (command, result.output)
+        assert f"{flag} was removed in SST 1.0; {replacement}" in result.output
+
+
+def test_prune_is_refused_on_drop_and_kept_where_a_command_defines_it() -> None:
+    refused = CliRunner().invoke(cli, ["drop", "DB.S.V", "--prune"])
+    assert refused.exit_code == 3 and "run sst plan --prune, then sst apply --prune" in refused.output
+    assert any(
+        isinstance(param, click.Option) and "--prune" in param.opts and not param.hidden
+        for param in cli.commands["plan"].params
+    )
+    # enrich defines its own --models refusal, which keeps its wording.
+    enrich = CliRunner().invoke(cli, ["enrich", "--models", "a", "--project-dir", "/nonexistent"])
+    assert enrich.exit_code == 3 and "pass --select model:<name> once per model" in enrich.output

@@ -19,7 +19,7 @@ import click
 
 from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, INTERRUPTED, OK, USAGE
-from snowflake_semantic_tools.cli.globals import forwarded, group_global_options
+from snowflake_semantic_tools.cli.globals import MIGRATION_GUIDE, REMOVED_COMMANDS, forwarded, group_global_options
 from snowflake_semantic_tools.cli.output import aborted_line, json_envelope, print_envelope, start_invocation
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, render_diagnostic
 
@@ -129,6 +129,20 @@ class SstGroup(click.Group):
         """Return the commands in workflow order, then any `COMMAND_ORDER` does not name, by name."""
         rank = {name: index for index, name in enumerate(COMMAND_ORDER)}
         return sorted(self.commands, key=lambda name: (rank.get(name, len(rank)), name))
+
+    def resolve_command(
+        self, ctx: click.Context, args: list[str]
+    ) -> tuple[str | None, click.Command | None, list[str]]:
+        """Resolve the command, refusing an SST 0.3 command 1.0 removed with what replaces it.
+
+        Raises:
+            SstUsageError: the command is one 0.3 had; it carries SST-PRT100, exit 3, rather
+                than click's guess at a similar name.
+        """
+        if args and args[0] in REMOVED_COMMANDS:
+            message = f"sst {args[0]} was removed in SST 1.0; {REMOVED_COMMANDS[args[0]]} (see {MIGRATION_GUIDE})"
+            raise SstUsageError(message, ctx)
+        return super().resolve_command(ctx, args)
 
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
         """Parse the group's own options, raising any usage error as `sst` reports it."""
