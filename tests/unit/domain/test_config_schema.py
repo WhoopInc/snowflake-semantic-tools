@@ -299,3 +299,19 @@ def test_a_location_is_usable_when_its_readers_can_parse_it() -> None:
     assert not unusable_name("{{ target.database }}.{{ target.schema }}.STAGE", KeyKind.OBJECT_NAME)
     assert unusable_name("A.B", KeyKind.OBJECT_NAME)
     assert unusable_name("@stage", KeyKind.OBJECT_NAME)
+    assert not unusable_name("{{ target.database }}.SCRATCH", KeyKind.SCHEMA_NAME)
+    assert not unusable_name('USER$JDOE."My Schema"', KeyKind.SCHEMA_NAME)
+    assert unusable_name("SCRATCH", KeyKind.SCHEMA_NAME)
+    assert unusable_name("DB.S.T", KeyKind.SCHEMA_NAME)
+
+
+def test_the_scratch_schema_takes_a_two_part_name_at_the_root_in_a_route_and_in_an_agents_config() -> None:
+    assert CONFIG_KEYS["agents.+scratch_schema"].kind is KeyKind.SCHEMA_NAME
+    assert validate_config({"agents": {"+scratch_schema": "DEV_DB.SCRATCH", "ops": {"+scratch_schema": "A.B"}}}) == ()
+    [refused] = validate_config({"agents": {"+scratch_schema": "SCRATCH"}})
+    assert (refused.code, refused.message) == (
+        "SST-CFG008",
+        "config key 'agents.+scratch_schema' value 'SCRATCH' is outside two-part names, DATABASE.SCHEMA",
+    )
+    [mistyped] = validate_config({"agents": {"+scratch_schema": 3}})
+    assert mistyped.code == "SST-CFG004"

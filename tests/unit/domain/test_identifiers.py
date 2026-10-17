@@ -45,6 +45,12 @@ def test_qualified_name_retains_quoted_dots_and_builds_scope() -> None:
     assert SchemaScope.from_qualified_name(name).sql == 'DB."Mixed.Schema"'
     assert QualifiedName.from_parts("db", "sch", "thing").sql == "DB.SCH.THING"
     assert QualifiedName.from_parts("db", "sch", "thing").artifact_component == "thing"
+    assert SchemaScope.parse('USER$JDOE."Mixed.Schema"') == SchemaScope(
+        Identifier.parse("USER$JDOE"), Identifier.parse('"Mixed.Schema"')
+    )
+    for wrong in ("DB", "DB.S.T", "DB.", "a b.S"):
+        with pytest.raises(ValueError):
+            SchemaScope.parse(wrong)
     escaped = QualifiedName.parse('DB."S"."A""B"')
     assert escaped.name.value == 'A"B'
 
