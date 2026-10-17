@@ -7633,7 +7633,7 @@ Raised when the user interrupts a run, with Ctrl-C, SIGTERM or SIGHUP, or declin
 
 Fix: after apply, run sst plan to see what remains; an eval run already started keeps running in Snowflake until it ends or is cancelled there
 
-Note: Every signal is handled as Ctrl-C is, so a CI cancellation, `timeout`, or `docker stop` ends the run cleanly; a further SIGTERM or SIGHUP is ignored while it cleans up, and a second Ctrl-C stops apply's running changes at their next statement. SIGKILL cannot be handled: an apply it ends leaves its lock to expire (`--break-stale-lock` then takes it over). An object it updated but did not record still carries SST's marker for the new definition, so the next apply updates it again, and records it; one it created, which state never recorded, is refused as SST-PLN024 until it is dropped by hand.
+Note: Every signal is handled as Ctrl-C is, so a CI cancellation, `timeout`, or `docker stop` ends the run cleanly; a signal the process inherited as ignored, as `nohup` leaves SIGHUP, stays ignored. A further SIGTERM or SIGHUP is ignored while it cleans up, and a second Ctrl-C stops apply's running changes at their next statement. SIGKILL cannot be handled: an apply it ends leaves its lock to expire (`--break-stale-lock` then takes it over). An object it updated but did not record still carries SST's marker for the new definition, so the next apply updates it again, and records it; one it created, which state never recorded, is refused as SST-PLN024 until it is dropped by hand.
 
 ### SST-PRT108
 

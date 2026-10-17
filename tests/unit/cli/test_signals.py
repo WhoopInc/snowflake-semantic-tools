@@ -109,8 +109,24 @@ def test_a_worker_thread_runs_the_block_unchanged() -> None:
 
 
 @posix_only
-@pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGHUP])
-def test_a_signalled_sst_plan_exits_130_with_prt107_naming_the_signal(tmp_path: Path, signum: int) -> None:
+@pytest.mark.parametrize("signum", [signal.SIGHUP, signal.SIGTERM])
+def test_a_stop_signal_inherited_as_ignored_stays_ignored(signum: int) -> None:
+    before = signal.signal(signum, signal.SIG_IGN)
+    try:
+        with signals.terminated_as_interrupt():
+            assert signal.getsignal(signum) is signal.SIG_IGN
+            signal.raise_signal(signum)
+            assert signals.received_signal() == ""
+        assert signal.getsignal(signum) is signal.SIG_IGN
+    finally:
+        signal.signal(signum, before)
+
+
+def _held_plan(tmp_path: Path, sighup: signal.Handlers) -> subprocess.Popen[str]:
+    """Start `sst plan` in a child with SIGHUP set to ``sighup``, returning once it is held at connect.
+
+    The disposition is set explicitly, so the suite behaves the same when it runs under `nohup`.
+    """
     project = project_copy(tmp_path)
     compile_project(project)
     ready = tmp_path / "ready"
@@ -125,20 +141,51 @@ def test_a_signalled_sst_plan_exits_130_with_prt107_naming_the_signal(tmp_path: 
         text=True,
         cwd=REPO_ROOT,
         env=environment,
+        preexec_fn=lambda: signal.signal(signal.SIGHUP, sighup),
     )
+    deadline = time.monotonic() + 60
+    while not ready.exists() and child.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.05)
+    if not ready.exists():
+        child.kill()
+        pytest.fail(str(child.communicate(timeout=30)))
+    return child
+
+
+def _stop(child: subprocess.Popen[str], *signums: int) -> str:
+    """Send each signal in turn, pausing between them, and return the child's stderr once it exits."""
     try:
-        deadline = time.monotonic() + 60
-        while not ready.exists() and child.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.05)
-        assert ready.exists(), child.communicate(timeout=30)
-        child.send_signal(signum)
+        for signum in signums[:-1]:
+            child.send_signal(signum)
+            time.sleep(1)
+            assert child.poll() is None, child.communicate(timeout=30)
+        child.send_signal(signums[-1])
         _, stderr = child.communicate(timeout=30)
     finally:
         if child.poll() is None:
             child.kill()
             child.communicate(timeout=30)
+    return stderr
+
+
+@posix_only
+@pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGHUP])
+def test_a_signalled_sst_plan_exits_130_with_prt107_naming_the_signal(tmp_path: Path, signum: int) -> None:
+    child = _held_plan(tmp_path, signal.SIG_DFL)
+    stderr = _stop(child, signum)
 
     name = signal.Signals(signum).name
     assert child.returncode == 130, stderr
     assert f"Aborted: received {name}." in stderr and "SST-PRT107" in stderr
     assert "not interrupted" not in stderr
+
+
+@posix_only
+def test_sst_plan_started_with_sighup_ignored_survives_it_and_still_stops_on_sigterm(tmp_path: Path) -> None:
+    # As under `nohup`: a closed terminal must not interrupt the run.
+    child = _held_plan(tmp_path, signal.SIG_IGN)
+    stderr = _stop(child, signal.SIGHUP, signal.SIGTERM)
+
+    assert child.returncode == 130, stderr
+    assert "Aborted: received SIGTERM." in stderr and "SST-PRT107" in stderr
+    assert "SIGHUP" not in stderr

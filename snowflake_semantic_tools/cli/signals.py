@@ -9,6 +9,7 @@ with SST-PRT107.
 Once any of the three has interrupted the run, SIGTERM and SIGHUP are ignored until it ends, so
 the signal a CI runner or container sends after its first cannot cut that cleanup short. Ctrl-C
 still raises each time it is pressed, which is how a user stops waiting; SIGKILL is never caught.
+A signal the process inherited as ignored, as `nohup` leaves SIGHUP, stays ignored.
 """
 
 from __future__ import annotations
@@ -33,15 +34,20 @@ def terminated_as_interrupt() -> Iterator[None]:
     """Raise SIGTERM and SIGHUP in the block as `KeyboardInterrupt`, ignoring them after any interrupt.
 
     Ctrl-C keeps Python's own behaviour, raising each time; SIGINT is not taken over when it is
-    ignored, as it is for a job a non-interactive shell started in the background. Each
-    signal's previous handler is restored when the block ends. Outside the main thread no
-    handler can be set, so the block runs unchanged.
+    ignored, as it is for a job a non-interactive shell started in the background, and SIGTERM
+    or SIGHUP is not taken over when it is ignored, as `nohup` leaves SIGHUP. Each replaced
+    handler is restored when the block ends. Outside the main thread no handler can be set, so
+    the block runs unchanged.
     """
     _received.clear()
     if threading.current_thread() is not threading.main_thread():
         yield
         return
-    previous = {number: signal.signal(number, _raise_interrupt) for number in _STOP_SIGNALS}
+    previous = {
+        number: signal.signal(number, _raise_interrupt)
+        for number in _STOP_SIGNALS
+        if signal.getsignal(number) is not signal.SIG_IGN
+    }
     if signal.getsignal(signal.SIGINT) is signal.default_int_handler:
         previous[signal.SIGINT] = signal.signal(signal.SIGINT, _raise_interrupt)
     try:

@@ -214,7 +214,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         note=(
             "Every signal is handled as Ctrl-C is, so a CI cancellation, `timeout`, or `docker stop` "
-            "ends the run cleanly; a further SIGTERM or SIGHUP is ignored while it cleans up, and a "
+            "ends the run cleanly; a signal the process inherited as ignored, as `nohup` leaves "
+            "SIGHUP, stays ignored. A further SIGTERM or SIGHUP is ignored while it cleans up, and a "
             "second Ctrl-C stops apply's running changes at their next statement. SIGKILL cannot be "
             "handled: an apply it ends leaves its lock to expire (`--break-stale-lock` then takes it "
             "over). An object it updated but did not record still carries SST's marker for the new "

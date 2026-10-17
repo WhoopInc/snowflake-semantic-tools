@@ -246,7 +246,9 @@ runs that race for it exactly one proceeds, and the others stop with
 fencing token it presents to extend or release the lock and to write state. A
 long run extends its lock every five minutes, on a connection of its own, and
 releases it when it ends, however it ends: Ctrl-C, `SIGTERM`, and `SIGHUP` all
-end it as an interrupt, after `apply` records what finished (exit 130). Only a
+end it as an interrupt, after `apply` records what finished (exit 130), except
+that a signal the process inherited as ignored (as `nohup` leaves `SIGHUP`)
+stays ignored. Only a
 process that cannot run its cleanup, killed by `SIGKILL` or with its machine
 lost, leaves its lock behind. Expiry is judged by Snowflake's
 clock. A lock left behind by a run that was killed expires 30 minutes after it

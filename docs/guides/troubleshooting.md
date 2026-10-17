@@ -313,8 +313,10 @@ Ctrl-C, `SIGTERM` (a CI cancellation, `timeout`, `docker stop`), and `SIGHUP` al
 end a run the same way: `apply` starts no further change, waits for those
 running, records in state the ones that finished, releases both locks, and exits
 130 with `SST-PRT107`. A further `SIGTERM` or `SIGHUP` is ignored while it does
-this; a second Ctrl-C stops the running changes at their next statement. Run
-`sst plan` to see what remains; what was recorded plans as no change.
+this; a second Ctrl-C stops the running changes at their next statement. A
+signal the process inherited as ignored stays ignored: under `nohup`, closing
+the terminal does not interrupt the run. Run `sst plan` to see what remains;
+what was recorded plans as no change.
 
 `SIGKILL`, or a machine that went away, cannot be handled:
 

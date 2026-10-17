@@ -403,7 +403,8 @@ no longer declared.
 
 **Chosen.** Ctrl-C, `SIGTERM`, and `SIGHUP` end a run alike (exit 130,
 `SST-PRT107`): an interrupted apply starts no further change, records what
-finished, and releases its lock. A confirmation prompt appears only when stdin
+finished, and releases its lock. A signal the process inherited as ignored stays
+ignored, so a run started under `nohup` outlives its terminal. A confirmation prompt appears only when stdin
 and stderr are terminals and the output is not JSON; otherwise, and always for
 `sst drop` and `apply --prune`, the command needs `--yes` (`SST-PRT109`).
 
