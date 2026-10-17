@@ -1,0 +1,10 @@
+---
+# A view that keeps a metric no file declares.
+semantic_views:
+  - name: customers_unknown_metric
+    description: |-
+      Use this view for questions about customers and how many there are.
+    tables:
+      - "{{ ref('customers') }}"
+    metrics:
+      - "{{ metric('no_such_metric') }}"

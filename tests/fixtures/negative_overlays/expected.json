@@ -179,5 +179,21 @@
       {"code": "SST-VAL007", "severity": "warning", "count": 1}
     ],
     "reaches": ["semantic_models/custom_instructions/custom_instructions.yml"]
+  },
+  "35-include-and-exclude-metrics.yml": {
+    "into": "semantic_models/semantic_views",
+    "adds": [{"code": "SST-VAL329", "severity": "error", "count": 1}]
+  },
+  "36-unknown-scope-entry.yml": {
+    "into": "semantic_models/semantic_views",
+    "adds": [{"code": "SST-VAL330", "severity": "error", "count": 1}]
+  },
+  "37-exclude-a-globally-excluded-column.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL331", "severity": "warning", "count": 1}]
+  },
+  "38-exclude-a-needed-relationship.yml": {
+    "into": "semantic_models/semantic_views",
+    "adds": [{"code": "SST-VAL332", "severity": "error", "count": 1}]
   }
 }

@@ -130,6 +130,14 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 ---
 
+## Credits
+
+Thanks to Madhura Pharande ([@madhurapharande](https://github.com/madhurapharande)) for
+view-level include and exclude scope -- the `columns`, `metrics` and `relationships` lists a
+semantic view keeps or drops -- first released in 0.3.2.
+
+---
+
 ## License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.

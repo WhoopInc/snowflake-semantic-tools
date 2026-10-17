@@ -27,11 +27,12 @@ from tests.helpers.reference_project import DBT_MANIFEST, REPO_ROOT, project_cop
 
 OVERLAYS = REPO_ROOT / "tests" / "fixtures" / "negative_overlays"
 _MANIFEST_PATCH = ".manifest.json"
-# A change that spans files, or edits one in place: `remove` deletes files, `files` writes them, and
-# `edits` replaces text that must occur exactly once. Text, not a YAML round trip, so the commented
+# A change that spans files, or edits one in place: `remove` deletes files, `files` writes them,
+# `edits` replaces text that must occur exactly once, and `manifest` patches one column's
+# `meta.sst` as a `.manifest.json` overlay does. Text, not a YAML round trip, so the commented
 # fixture keeps its lines and a diagnostic's line number still means what the file says.
 _TREE = ".tree.yml"
-_TREE_KEYS = frozenset({"remove", "files", "edits"})
+_TREE_KEYS = frozenset({"remove", "files", "edits", "manifest"})
 # One diagnostic as the corpus counts it: the code, its declared severity, and the file it names.
 Key = tuple[str, str, str | None]
 
@@ -106,7 +107,8 @@ def overlay_paths(overlay: str, into: str) -> set[str]:
     return set() if overlay.endswith(_MANIFEST_PATCH) else {f"{into}/{overlay}"}
 
 
-def _lay_tree(project: Path, overlay: str) -> None:
+def _lay_tree(project: Path, overlay: str) -> dict[str, Any] | None:
+    """Remove, write and edit the tree's files; return its manifest patch, None for none."""
     tree = _tree(overlay)
     for relative in tree.get("remove", ()):
         (project / relative).unlink()
@@ -121,6 +123,8 @@ def _lay_tree(project: Path, overlay: str) -> None:
             assert text.count(edit["old"]) == 1, f"{overlay}: {edit['old']!r} is not in {relative} once"
             text = text.replace(edit["old"], edit["new"])
         path.write_text(text, encoding="utf-8")
+    patch: dict[str, Any] | None = tree.get("manifest")
+    return patch
 
 
 def overlaid(root: Path, overlay: str, into: str) -> tuple[Path, Path]:
@@ -128,21 +132,26 @@ def overlaid(root: Path, overlay: str, into: str) -> tuple[Path, Path]:
 
     A `.manifest.json` overlay patches one column's `meta.sst` in a copy of the manifest, which is
     where a dbt model's YAML arrives once dbt has parsed it; a `.tree.yml` overlay removes, writes
-    and edits files across the project; any other overlay is copied into `into` under the project.
+    and edits files across the project, and may patch the manifest too; any other overlay is
+    copied into `into` under the project.
     """
     project = project_copy(root, offline=False)
     if overlay.endswith(_TREE):
-        _lay_tree(project, overlay)
-        return project, DBT_MANIFEST
+        tree_patch = _lay_tree(project, overlay)
+        return project, DBT_MANIFEST if tree_patch is None else _patched_manifest(root, tree_patch)
     if not overlay.endswith(_MANIFEST_PATCH):
         shutil.copy(OVERLAYS / overlay, project / into / overlay)
         return project, DBT_MANIFEST
-    patch = json.loads((OVERLAYS / overlay).read_text(encoding="utf-8"))
+    return project, _patched_manifest(root, json.loads((OVERLAYS / overlay).read_text(encoding="utf-8")))
+
+
+def _patched_manifest(root: Path, patch: dict[str, Any]) -> Path:
+    """Write a copy of the reference manifest with one column's `meta.sst` patched; return its path."""
     document = json.loads(DBT_MANIFEST.read_text(encoding="utf-8"))
     set_column_meta(document, patch["model"], patch["column"], **patch["meta"])
     manifest = root / "manifest.json"
     manifest.write_text(json.dumps(document), encoding="utf-8")
-    return project, manifest
+    return manifest
 
 
 def strict_validate(project: Path, manifest: Path) -> SstRun:

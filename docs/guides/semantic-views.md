@@ -232,7 +232,7 @@ semantic_view:
   column.
 - Filters and verified queries are never listed in a scope: they attach by
   their tables as usual. One whose `{{ ref() }}` reads a column the scope
-  removes is left out of that view, with a warning (`SST-VAL337`). A verified
+  removes is left out of that view, with a note (`SST-VAL337`, info). A verified
   query's bare column names, outside `ref()`, are not checked.
 
 ## Columns: facts, dimensions, time dimensions

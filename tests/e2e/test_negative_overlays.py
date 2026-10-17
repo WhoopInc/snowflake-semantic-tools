@@ -30,7 +30,7 @@ def clean(tmp_path_factory: pytest.TempPathFactory) -> Counter[Key]:
 
 def test_every_overlay_has_an_expectation_and_every_expectation_an_overlay() -> None:
     assert overlay_files() == sorted(expected_cases())
-    assert len(overlay_files()) == 34
+    assert len(overlay_files()) == 38
 
 
 @pytest.mark.parametrize("overlay", overlay_files())
