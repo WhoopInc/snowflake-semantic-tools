@@ -310,6 +310,23 @@ was shipping silently:
 - **`validation.snowflake_syntax_check` defaults to `true`,** so `validate`
   compiles expressions against Snowflake unless you pass
   `--no-snowflake-syntax-check` or set the key to `false`.
+- **A metric a view cannot hold is reported, not skipped.** 0.3 left out of a
+  view, with only a debug log line, a metric whose expression names a table the
+  view does not hold; 0.3.2 also left out a metric whose `using_relationships`
+  the view lacks, and a window or semi-additive metric whose `PARTITION BY` or
+  `NON_ADDITIVE_BY` column the view's column scope leaves out. Now:
+  - A metric still attaches only to the views that hold every table it names,
+    but one that attaches to no view is `SST-MEM005`, with `SST-MEM010` for each
+    table the closest view reaches only through a join: warnings, errors under
+    `validation.strict`.
+  - A metric a view keeps whose `using_relationships` names a relationship the
+    view's scope removes, or one whose tables the view does not hold, is an
+    error (`SST-VAL332`), whether or not the view has scope lists.
+  - A metric a view keeps whose expression, window or non-additive entry reads
+    a column the scope removes is an error (`SST-VAL318`), and so is one built
+    with `metric()` on a metric the scope removes (`SST-VAL336`).
+  - A filter or verified query that reads with `ref()` a column the scope
+    removes is left out of that view and reported (`SST-VAL337`, info).
 
 ## Publishing over a 0.3 deployment
 

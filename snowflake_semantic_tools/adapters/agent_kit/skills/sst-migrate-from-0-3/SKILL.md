@@ -63,7 +63,12 @@ until it is migrated.
    | a key only 0.3 read | what the message names | `SST-CFG043` |
 
 5. Read the warnings before turning on `validation.strict: true`: 0.3 never enforced it,
-   so it promotes every accumulated warning at once.
+   so it promotes every accumulated warning at once. A metric 0.3 silently left out of a
+   view is now reported: one that attaches to no view is `SST-MEM005` (with `SST-MEM010`),
+   a warning; a kept metric whose `using_relationships` the view removes or lacks is
+   `SST-VAL332`, one reading a column the scope removes `SST-VAL318`, and one built on a
+   metric the scope removes `SST-VAL336`, all errors. A filter or verified query reading a
+   removed column is left out with `SST-VAL337` (info).
 6. Publish into a **new schema**: objects 0.3 published carry no 1.0 ownership record, so
    the first plan over them reports each as unmanaged (`SST-PLN024`) and will not apply.
    Change `semantic_views.+schema` (and the other types'), then `sst compile` and
