@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.config_schema import (
     EnrichmentConfig,
     config_block,
@@ -138,21 +139,18 @@ def test_a_saved_plan_for_another_target_names_both_targets() -> None:
 def test_a_stale_saved_plan_says_what_changed_in_order() -> None:
     current = plan()
     cases = [
-        (plan(manifest_id="b" * 64), "the saved plan was made from a different manifest; re-run sst plan"),
-        (plan(observation_fingerprint="0" * 64), "saved plan is stale; the live Snowflake observation changed"),
-        (
-            plan(changes=(change(statement_hashes=("1" * 64,)),)),
-            "saved plan is stale; the ordered changes or statement hashes changed",
-        ),
-        (
-            plan(manifest_id="b" * 64, observation_fingerprint="0" * 64),
-            "the saved plan was made from a different manifest; re-run sst plan",
-        ),
+        (plan(manifest_id="b" * 64), "the compiled manifest"),
+        (plan(observation_fingerprint="0" * 64), "the live Snowflake observation"),
+        (plan(changes=(change(statement_hashes=("1" * 64,)),)), "the ordered changes or their statement hashes"),
+        (plan(manifest_id="b" * 64, observation_fingerprint="0" * 64), "the compiled manifest"),
     ]
 
     found = [saved.check_applicable(current, source="plan.json") for saved, _ in cases]
 
-    assert found == [PlanMismatch(message) for _, message in cases]
+    assert found == [PlanMismatch(D("SST-APL012", artifact="plan.json", value=value)) for _, value in cases]
+    first = found[1]
+    assert first is not None and first.diagnostics == (first.diagnostic,)
+    assert first.message == "plan.json: the live Snowflake observation changed since the plan"
 
 
 def test_the_enrichment_block_reads_each_key_or_its_default() -> None:

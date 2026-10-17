@@ -6,7 +6,7 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, NoReturn
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.json_files import read_json_file
@@ -34,9 +34,19 @@ COLUMN_META_KEYS = frozenset(
 KEY_TESTS = frozenset(("unique", "unique_combination_of_columns", "relationships"))
 
 
+def _misshapen(path: str, expected: str) -> NoReturn:
+    """Refuse a manifest part SST reads that has the wrong shape.
+
+    Diagnostics:
+        SST-DBT033: the part at `path` is not `expected`; raised.
+    """
+    diagnostic = D("SST-DBT033", field=path, expected=expected)
+    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+
+
 def _mapping(value: object, *, path: str) -> Mapping[str, Any]:
     if not isinstance(value, dict):
-        raise ProjectError(f"dbt manifest {path} must be an object")
+        _misshapen(path, "an object")
     return value
 
 
@@ -44,7 +54,7 @@ def _strings(value: object, *, path: str) -> tuple[str, ...]:
     if value is None:
         return ()
     if not isinstance(value, list):
-        raise ProjectError(f"dbt manifest {path} must be a list")
+        _misshapen(path, "a list")
     return tuple(_string_value(item) for item in value)
 
 
@@ -67,12 +77,12 @@ def _meta_texts(
             reads as `true` or `false`.
 
     Raises:
-        ProjectError: The value is present and not a list.
+        ProjectError: The value is present and not a list (SST-DBT033).
     """
     if value is None:
         return ()
     if not isinstance(value, list):
-        raise ProjectError(f"dbt manifest {path} must be a list")
+        _misshapen(path, "a list")
     kept: list[str] = []
     for index, item in enumerate(value):
         if isinstance(item, bool) and booleans:
@@ -112,13 +122,16 @@ def _unstorable(texts: Mapping[str, str | tuple[str, ...] | None]) -> tuple[tupl
 
 
 def _primary_key(value: object, *, path: str) -> tuple[tuple[str, ...], bool]:
-    """The key columns, and whether they were written in the 0.3 string form.
+    """The key columns, and whether they were written in a form other than a list of columns.
 
     A 0.3 string (`id`, or `a, b`) is not read: guessing its columns would
-    decide which joins render. It is reported where a view uses the model.
+    decide which joins render. Nor is any other value that is not a list, such as a
+    mapping. Either is reported where a view uses the model.
     """
     if isinstance(value, str):
         return (), bool(value.strip())
+    if value is not None and not isinstance(value, list):
+        return (), True
     return _strings(value, path=path), False
 
 
@@ -126,16 +139,14 @@ def _unique_keys(value: object, *, path: str) -> tuple[tuple[tuple[str, ...], ..
     """The unique keys, and whether they were written in a 0.3 form.
 
     1.0 reads a list of column lists. The 0.3 forms -- a comma-separated string,
-    a flat list of names, or a bare name inside the list -- are not read, and are
-    reported like `primary_key`.
+    a flat list of names, or a bare name inside the list -- are not read, nor is any
+    other value that is not a list, and each is reported like `primary_key`.
     """
     if value is None:
         return (), False
     if isinstance(value, str):
         return (), bool(value.strip())
-    if not isinstance(value, list):
-        raise ProjectError(f"dbt manifest {path} must be a list of column lists")
-    if any(not isinstance(key, list) for key in value):
+    if not isinstance(value, list) or any(not isinstance(key, list) for key in value):
         return (), True
     return tuple(_strings(key, path=f"{path}[{index}]") for index, key in enumerate(value)), False
 
@@ -508,6 +519,7 @@ def catalog_from_document(
 
     Diagnostics:
         SST-DBT018, SST-DBT017: as `check_schema_version` raises them.
+        SST-DBT033: a part SST reads has the wrong shape; raised.
         SST-DBT013, SST-DBT014: a model has no name, or no database or schema; it is skipped.
         SST-PRS003: a source's synonym is not text.
         SST-DBT012: a source pair is declared more than once.

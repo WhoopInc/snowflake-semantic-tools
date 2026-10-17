@@ -31,7 +31,7 @@ from snowflake_semantic_tools.domain.diagnostics.core import (
     Severity,
     _placeholders,
 )
-from snowflake_semantic_tools.domain.diagnostics.integrity import check_error_specs
+from snowflake_semantic_tools.domain.diagnostics.integrity import PLACEHOLDERS, check_error_specs
 from snowflake_semantic_tools.domain.diagnostics.specs import (
     apl,
     cfg,
@@ -132,7 +132,14 @@ class Diagnostic:
 
     @property
     def promoted_from(self) -> Severity | None:
-        """Return the declared severity when the effective one is higher; None otherwise."""
+        """Return the severity the effective one was raised from; None when it was not raised.
+
+        That is the override when strict mode raised the diagnostic above it, so an error an
+        override made a warning, promoted back, reads as promoted from warning; otherwise the
+        declared severity, when the effective one -- an override's included -- is higher.
+        """
+        if self.override is not None and self.severity > self.override:
+            return self.override
         declared = self.declared or ERROR_REGISTRY[self.code].severity
         return declared if self.severity > declared else None
 
@@ -276,12 +283,18 @@ def D(
 
     `code` is positional only, so a template may name a `{code}` placeholder of its own.
     A LOD, PRS, REF or VAL code given no `origin` points at the `file`, `line` and `col` its
-    context names, so a location the raise site knows is never dropped.
+    context names, so a location the raise site knows is never dropped. The context must fill
+    the message template and every shared placeholder the suggestion names; a suggestion's
+    other braces, such as a JSON example, are text.
+
+    Diagnostics:
+        SST-INT900: the code is not registered.
+        SST-INT901: the context lacks a placeholder the message or the suggestion names.
     """
     spec = ERROR_REGISTRY.get(code)
     if spec is None:
         return D("SST-INT900", value=code)
-    missing = sorted(_placeholders(spec.template) - set(context))
+    missing = sorted((_placeholders(spec.template) | _suggested(spec.suggestion)) - set(context))
     if missing:
         return D("SST-INT901", value=code, placeholder=", ".join(missing))
     if origin is None and spec.subsystem in _LOCATED_AREAS:
@@ -297,6 +310,14 @@ def D(
         emitted=True,
         declared=spec.severity,
     )
+
+
+def _suggested(suggestion: str | None) -> frozenset[str]:
+    """Return the shared placeholders a suggestion names; none when it does not parse, and is text."""
+    try:
+        return _placeholders(suggestion or "") & PLACEHOLDERS
+    except ValueError:
+        return frozenset()
 
 
 def cascade(diagnostic: Diagnostic, cause: str) -> Diagnostic:

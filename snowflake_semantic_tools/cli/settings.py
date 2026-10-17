@@ -16,6 +16,7 @@ from snowflake_semantic_tools.app import policy
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity, resolve_severities
 from snowflake_semantic_tools.domain.diagnostics.policy import apply_overrides
 from snowflake_semantic_tools.domain.model.config_schema import (
+    CONFIG_KEYS,
     DEFAULT_THREADS,
     config_block,
     config_bool,
@@ -58,11 +59,25 @@ def apply_parallelism(paths: ProjectPaths, threads: int | None = None) -> int:
     if threads is not None:
         return threads
     tree = project_config(paths)
-    return _generation_threads(tree) or config_int(config_block(tree.get("skills")).get("+threads")) or DEFAULT_THREADS
+    skills = _bounded("skills.+threads", config_block(tree.get("skills")).get("+threads"))
+    return _generation_threads(tree) or skills or DEFAULT_THREADS
 
 
 def _generation_threads(tree: dict[str, object]) -> int | None:
-    return config_int(config_block(tree.get("generation")).get("threads"))
+    return _bounded("generation.threads", config_block(tree.get("generation")).get("threads"))
+
+
+def _bounded(key: str, value: object) -> int | None:
+    """Return an integer setting within its key's bounds; None when it is unset or outside them.
+
+    A value outside the bounds is the configuration's SST-CFG008, which compile reports where it
+    is written, so the command does not build a session pool from it first.
+    """
+    number = config_int(value)
+    spec = CONFIG_KEYS[key]
+    if number is None or (spec.minimum is not None and number < spec.minimum):
+        return None
+    return None if spec.maximum is not None and number > spec.maximum else number
 
 
 def drift_check_setting(paths: ProjectPaths) -> str:

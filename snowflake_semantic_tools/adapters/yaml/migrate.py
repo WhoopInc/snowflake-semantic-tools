@@ -11,6 +11,7 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import create_within, remove_within, write_within
 from snowflake_semantic_tools.adapters.yaml.discover import YAML_SUFFIXES
 from snowflake_semantic_tools.adapters.yaml.parse import _neutralize_templates, _restore_templates, _restored
+from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.migrate.refs import FilterSite
 
 _HOOK_MANIFESTS = frozenset(("hook.yml", "hook.yaml"))
@@ -21,11 +22,15 @@ def semantic_files(project_dir: Path, semantic_models_dir: str) -> dict[str, str
     """Every YAML file under the semantic models directory, keyed by project-relative path.
 
     Raises:
-        ProjectError: The directory does not exist.
+        ProjectError: The directory does not exist (SST-DIS001).
+
+    Diagnostics:
+        SST-DIS001: the semantic models directory does not exist; raised.
     """
     root = project_dir / semantic_models_dir
     if not root.is_dir():
-        raise ProjectError(f"no semantic model directory under {root}")
+        diagnostic = D("SST-DIS001", path=semantic_models_dir)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     return files_under(project_dir, semantic_models_dir, YAML_SUFFIXES)
 
 

@@ -151,13 +151,15 @@ def _resolve_one(
     kind = prefix.casefold()
     if kind in known_types and _GLOB & set(rest):
         # Only a bare name takes a glob; `tool:*` is `type:tool`.
-        return D("SST-PRT102", subject="cli", value=value)
+        return _globbed(value, prefix, f"or the bare glob '{rest}', which matches a name of every type")
     if kind in known_types:
         if not rest:
             return _unsupported(value, f"{prefix}: names no artifact")
         return "key", frozenset((artifact_key(kind, rest.casefold()),))
-    if kind not in SELECTOR_KINDS or (kind in ("type", "state", "model", "source") and _GLOB & set(rest)):
-        return D("SST-PRT102", subject="cli", value=value)
+    if kind not in SELECTOR_KINDS:
+        return D("SST-PRT102", subject="cli", value=value, expected=f"one of {', '.join(SELECTOR_KINDS)}")
+    if kind in ("type", "state", "model", "source") and _GLOB & set(rest):
+        return _globbed(value, prefix, "since only a bare name or a path: selector takes a glob")
     if kind == "type":
         if rest.casefold() not in known_types:
             return _unsupported(value, f"unknown artifact type '{rest}'; one of {', '.join(sorted(known_types))}")
@@ -193,3 +195,8 @@ def _state(
 
 def _unsupported(value: str, detail: str) -> Diagnostic:
     return D("SST-PRT100", subject="cli", detail=f"selector '{value}': {detail}")
+
+
+def _globbed(value: str, prefix: str, alternative: str) -> Diagnostic:
+    """Refuse a glob after a kind that takes an exact value, saying what to write instead."""
+    return D("SST-PRT102", subject="cli", value=value, expected=f"an exact value after '{prefix}:', {alternative}")

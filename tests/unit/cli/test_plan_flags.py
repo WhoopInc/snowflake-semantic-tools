@@ -127,7 +127,11 @@ def test_no_validate_skips_strict_promotion_and_refuses_a_syntax_check(
     args = ["plan", *common(project), "--strict", "--no-plan-out"]
     assert invoke_with_port(monkeypatch, FakeSnowflake(state={}), args).exit_code == 1
     unvalidated = invoke_with_port(monkeypatch, FakeSnowflake(state={}), [*args, "--no-validate", "-o", "json"])
-    assert unvalidated.exit_code == 2, unvalidated.output
+    # The compile's warning is not promoted, so it refuses nothing; strict still promotes the
+    # warning planning itself reports outside git (SST-VAL714), which `sst validate` never sees.
+    assert unvalidated.exit_code == 1, unvalidated.output
+    errors = [item["code"] for item in json.loads(unvalidated.output)["diagnostics"] if item["severity"] == "error"]
+    assert errors == ["SST-VAL714"]
     assert "SST-VAL020" not in _codes(unvalidated)
     refused = invoke_with_port(
         monkeypatch, FakeSnowflake(state={}), [*args, "--no-validate", "--snowflake-syntax-check"]

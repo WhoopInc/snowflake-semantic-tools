@@ -1,7 +1,7 @@
 """Build the deterministic compiled manifest from one compile result, and check one read back.
 
 `manifest_for` builds it from what `ProjectInputs.manifest_sources` read about the project's
-files; `stale_manifest` says why a run must not start when `sst compile` wrote another one,
+files; `stale_manifest` reports why a run must not start when `sst compile` wrote another one,
 and `target_mismatch` when it compiled for another target. `read_notes` reports how a stored
 manifest was read, and `dbt_manifest_moved` a dbt manifest rewritten while a run read it.
 `build_manifest` does the building: each member's `attached_to` and each dbt model's
@@ -38,16 +38,19 @@ def manifest_for(result: CompileResult, sources: ManifestSources) -> Manifest:
     )
 
 
-def stale_manifest(compiled: Manifest, current: Manifest, *, before: str) -> str | None:
-    """Say why a run must not start from a compile that no longer matches the project; None if it does.
+def stale_manifest(compiled: Manifest, current: Manifest, *, before: str) -> Diagnostic | None:
+    """Report a compile that no longer matches the project, so a run must not start; None if it does.
 
     Args:
         compiled: The manifest `sst compile` wrote.
         current: The manifest of the project as it compiles now.
         before: The run that must wait for a fresh compile, as the message names it.
+
+    Diagnostics:
+        SST-MAN009: the compiled manifest is not the one the project compiles to now.
     """
     if compiled.manifest_id != current.manifest_id:
-        return f"compiled SST manifest is stale; run sst compile before {before}"
+        return D("SST-MAN009", command=before)
     return None
 
 

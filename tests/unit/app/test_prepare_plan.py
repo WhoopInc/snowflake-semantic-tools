@@ -8,7 +8,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.manifest import manifest_for
 from snowflake_semantic_tools.app.plan import PlanCandidates, PlanReady, PlanRefused, PlanScope, PreparePlan
-from snowflake_semantic_tools.domain.diagnostics import D, Origin, Severity
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, baseline_entry
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ShowRow
@@ -68,7 +68,10 @@ def test_selectors_that_match_nothing_refuse_the_plan_unless_it_prunes() -> None
 
     refused, _, inputs = select(result, scope=scope)
 
-    assert refused == PlanRefused(reason="selectors ('nope',) matched no artifact in the-project")
+    assert refused == PlanRefused(
+        DiagnosticBag((D("SST-DIS010", selector="nope"),)),
+        reason="selectors ('nope',) matched no artifact in the-project",
+    )
     assert inputs.reads == []
     pruning, _, _ = select(result, scope=replace(scope, include_prune=True))
     assert isinstance(pruning, PlanCandidates) and pruning.selected.compiled == ()
@@ -127,7 +130,9 @@ def test_a_stale_compile_refuses_the_plan() -> None:
 
     refused, _, _ = select(compiled(), compiled_manifest=other)
 
-    assert refused == PlanRefused(reason="compiled SST manifest is stale; run sst compile before plan or apply")
+    stale = D("SST-MAN009", command="plan or apply")
+    assert refused == PlanRefused(DiagnosticBag((stale,)), reason=stale.message)
+    assert stale.message == "compiled SST manifest is stale; run sst compile before plan or apply"
 
 
 def test_flags_override_the_validation_block() -> None:

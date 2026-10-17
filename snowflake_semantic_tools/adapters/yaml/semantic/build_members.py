@@ -11,7 +11,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.fields import mapping
@@ -336,20 +336,28 @@ def _view_filters(filters: tuple[FilterDef, ...], resolver: _Resolver) -> tuple[
     return entity_filters, standalone_filters
 
 
+def _malformed(filter_def: FilterDef, subject: str, detail: str) -> NoReturn:
+    diagnostic = D("SST-PRS123", origin=filter_def.origin, subject=subject, artifact=subject, detail=detail)
+    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+
+
 def _entity_filter(filter_def: FilterDef, resolver: _Resolver) -> Column:
     """Build one labelled filter as a filter column of its table: its `tables:` entry, else its ref.
 
     Raises:
         ProjectError: The filter does not resolve to exactly one table, or its expression does
             not resolve.
+
+    Diagnostics:
+        SST-PRS123: the filter does not resolve to exactly one table; raised.
     """
     referenced = filter_def.tables or tuple(
         call.args[0] for call in scan_template_calls(filter_def.expr) if call.function == "ref" and call.args
     )
-    if len(referenced) != 1:
-        raise ProjectError(f"filter {filter_def.name!r} must resolve to exactly one table")
-    model_name = referenced[0].casefold()
     subject = artifact_key("filter", filter_def.name.casefold())
+    if len(referenced) != 1:
+        _malformed(filter_def, subject, "a labelled filter must resolve to exactly one table")
+    model_name = referenced[0].casefold()
     (name,) = _names((filter_def.name,), subject, filter_def.origin)
     resolved = resolver.resolve(filter_def.expr, ref_field("filter.expression"), filter_def.origin, "filter.expression")
     return Column(
@@ -382,8 +390,14 @@ def _instruction_parts(
 
 
 def _standalone_filter_instruction(filter_def: FilterDef, resolver: _Resolver) -> str:
+    """Compose an unlabelled filter's sentence for the view's SQL generation instructions.
+
+    Diagnostics:
+        SST-PRS123: the filter is not attached to exactly one table; raised.
+    """
     if len(filter_def.tables) != 1:
-        raise ProjectError(f"standalone filter {filter_def.name!r} must attach to exactly one table")
+        subject = artifact_key("filter", filter_def.name.casefold())
+        _malformed(filter_def, subject, "an unlabelled filter must attach to exactly one table")
     table = resolver.logical_by_model[filter_def.tables[0]]
     expression = resolver.resolve(
         filter_def.expr, ref_field("filter.expression"), filter_def.origin, "filter.expression"

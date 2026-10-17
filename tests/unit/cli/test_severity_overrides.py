@@ -79,7 +79,8 @@ def test_demoting_a_warning_to_info_reports_it_as_info(tmp_path: Path) -> None:
 def test_strict_promotes_a_demoted_error_again_since_strict_applies_after_the_override(tmp_path: Path) -> None:
     exit_code, diagnostics = validate_json(_project(tmp_path, {"SST-PRS106": "warning"}, duplicate=True), "--strict")
     assert exit_code == 1
-    assert _of(diagnostics, "SST-PRS106") == {("error", None, None)}
+    # Promoted from the warning the override made it, though the declared severity is error.
+    assert _of(diagnostics, "SST-PRS106") == {("error", "warning", None)}
     assert "SST-INT007" not in _codes(diagnostics)
 
 

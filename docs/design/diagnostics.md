@@ -93,7 +93,10 @@ command reads it. Nothing else compares severities to decide whether a run block
    when both are set, and `SST-CFG034` reports the disagreement. Promotion follows the run's
    selection: a run restricted by `--select` or `--exclude` promotes no warning about an artifact it
    leaves out, since it plans and publishes none of them. A warning that names no artifact concerns
-   the whole project and is promoted regardless.
+   the whole project and is promoted regardless. No phase is exempt: plan and apply hold the
+   warnings planning itself reports, such as `SST-VAL714`, to the same pass before they decide to
+   refuse, and count them in `summary.promoted`; the baseline's expiry warning (`SST-CFG035`) is
+   promoted when the baseline is matched.
 4. **Baseline.** `.sst/baseline.json` (or `--baseline`) holds known warnings by fingerprint. A held
    diagnostic keeps its severity and stays in the envelope, but does not block and is not shown by
    default.

@@ -237,13 +237,17 @@ def read_yaml_mapping(path: Path) -> dict[str, Any]:
     Diagnostics name the file by `str(path)`.
 
     Raises:
-        ProjectError: The file cannot be read (`cannot read {path}: {error}`, no diagnostics)
-            or does not parse (as `parse_yaml_bytes` raises).
+        ProjectError: The file cannot be read (SST-PRT009) or does not parse (as
+            `parse_yaml_bytes` raises).
+
+    Diagnostics:
+        SST-PRT009: the file cannot be read; raised.
     """
     try:
         raw = path.read_bytes()
     except OSError as exc:
-        raise ProjectError(f"cannot read {path}: {exc}") from exc
+        diagnostic = D("SST-PRT009", path=str(path), detail=str(exc))
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
     return dict(parse_yaml_bytes(raw, str(path)).tree)
 
 

@@ -75,12 +75,13 @@ def test_a_store_with_a_code_refuses_a_crafted_file_with_it(
 
 
 @pytest.mark.parametrize("crafted", CRAFTED, indirect=True)
-def test_a_saved_plan_crafted_file_is_a_value_error_the_runner_reports(tmp_path: Path, crafted: str) -> None:
-    """No code names an unusable plan; `cli.runner.guarded` reports a `ValueError` as exit 4."""
+def test_a_saved_plan_crafted_file_is_refused_as_unreadable(tmp_path: Path, crafted: str) -> None:
+    """An unusable plan is SST-PRT009, which `cli.runner.guarded` reports as exit 4."""
     path = tmp_path / "plan.json"
     path.write_text(crafted, encoding="utf-8")
-    with pytest.raises(ValueError, match=r"plan\.json: it (nests|is larger)"):
+    with pytest.raises(ProjectError, match=r"plan\.json: it (nests|is larger)") as raised:
         PlanFileStore(path).read()
+    assert [item.code for item in raised.value.diagnostics] == ["SST-PRT009"]
 
 
 @pytest.mark.parametrize("crafted", CRAFTED, indirect=True)

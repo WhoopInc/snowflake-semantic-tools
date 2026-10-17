@@ -475,7 +475,9 @@ baselines, and CI scripts, and a new area changes its number.
 
 **Chosen.** Declared severity, then the project's per-code override, then
 strict promotion. `--strict` promotes every warning about what the run
-selects; a code the registry marks non-demotable cannot be overridden below
+selects, in every phase that reports one: validation's, the ones plan and
+apply raise while planning (promoted before either decides to refuse), and the
+baseline's own expiry notice. A code the registry marks non-demotable cannot be overridden below
 error (`SST-CFG033`). A diagnostic the baseline holds never blocks, and is
 counted rather than shown, until the baseline expires.
 

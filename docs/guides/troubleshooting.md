@@ -220,10 +220,11 @@ the bundle. Check the validation output for the file:
 agree; otherwise it exits 4 and names the reason.
 
 - **`SST-APL005`**: the plan was made for another target.
-- **A different manifest**: the project no longer compiles to the manifest the
-  plan was made from.
-- **The live observation changed**, or the ordered changes or their statement
-  hashes did: something in Snowflake moved since the plan read it.
+- **`SST-APL012`, the compiled manifest changed**: the project no longer
+  compiles to the manifest the plan was made from.
+- **`SST-APL012`, the live observation changed**, or the ordered changes or
+  their statement hashes did: something in Snowflake moved since the plan read
+  it.
 
 Run `sst plan` again and apply the new plan. A saved observation more than an
 hour old is ignored and re-read (`SST-MAN030`). Once the run holds the lock, a

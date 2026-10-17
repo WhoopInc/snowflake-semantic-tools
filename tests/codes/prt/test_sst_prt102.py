@@ -11,10 +11,16 @@ from tests.helpers.reference_project import project_copy
 
 def test_sst_prt102_fires(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
-    for selector in ("view:orders", "type:*", "tool:*"):
+    suggestions = {
+        "view:orders": "use one of type, path, tag, state, model, source",
+        "type:*": "use an exact value after 'type:', since only a bare name or a path: selector takes a glob",
+        "tool:*": "use an exact value after 'tool:', or the bare glob '*', which matches a name of every type",
+    }
+    for selector, suggestion in suggestions.items():
         exit_code, [diagnostic] = invoke_json(["validate", *common(project), "--select", selector])
         assert (exit_code, diagnostic["code"], diagnostic["severity"]) == (3, "SST-PRT102", "error")
         assert diagnostic["message"] == f"selector '{selector}' names an unknown kind"
+        assert diagnostic["suggestion"] == suggestion
 
 
 def test_sst_prt102_silent(tmp_path: Path) -> None:

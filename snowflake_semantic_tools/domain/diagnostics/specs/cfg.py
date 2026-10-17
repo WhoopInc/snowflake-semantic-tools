@@ -112,10 +112,14 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-CFG012",
         Severity.ERROR,
-        "Credential field missing from the resolved profile",
+        "Required field missing from the resolved profile",
         "profile '{profile}' has no {field}",
         "set {field} in profiles.yml or its env var",
-        condition="account or user is absent or empty in the resolved target",
+        condition=(
+            "account or user is absent or empty in the resolved target when a connection opens, or "
+            "the target sets no `database` or no `schema`, which SST publishes into and keeps its "
+            "state table in"
+        ),
     ),
     spec(
         "SST-CFG013",
@@ -457,6 +461,18 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "a `+` key the configuration schema marks root-only, such as `skills.+threads`, is set in a folder "
             "route, or in an artifact's `config:` block"
+        ),
+    ),
+    spec(
+        "SST-CFG056",
+        Severity.ERROR,
+        "Project names no profiles.yml profile",
+        "no profiles.yml profile is named: {reason}",
+        "set `profile:` in dbt_project.yml, or project.target_profile in sst_config.yml for a project "
+        "without dbt; when both are set they must agree",
+        condition=(
+            "dbt_project.yml declares no `profile:`, the project has no dbt_project.yml and sets no "
+            "`project.target_profile`, or the two name different profiles"
         ),
     ),
     spec(

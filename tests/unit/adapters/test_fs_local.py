@@ -100,8 +100,9 @@ def test_an_unusable_state_file_names_why(tmp_path: Path, document: object, code
 
 
 def test_a_saved_plan_keeps_its_own_error(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="saved plan must be an object"):
+    with pytest.raises(ProjectError, match="saved plan must be an object") as raised:
         PlanFileStore(_write(tmp_path / "plan.json", [])).read()
+    assert [item.code for item in raised.value.diagnostics] == ["SST-PRT009"]
 
 
 @pytest.mark.parametrize(
@@ -120,7 +121,8 @@ def test_a_saved_plan_of_the_wrong_shape_is_its_own_error_not_a_crash(
     tmp_path: Path, change: dict[str, object], detail: str
 ) -> None:
     document = {"schema_version": PLAN_SCHEMA_VERSION, "changes": [change]}
-    with pytest.raises(ValueError, match=re.escape(detail)) as raised:
+    with pytest.raises(ProjectError, match=re.escape(detail)) as raised:
         PlanFileStore(_write(tmp_path / "plan.json", document)).read()
-    # No registered code names an unusable saved plan, so the ValueError names the file.
-    assert str(raised.value).startswith(f"{tmp_path / 'plan.json'} has the wrong shape: ")
+    [diagnostic] = raised.value.diagnostics
+    assert diagnostic.code == "SST-PRT009"
+    assert diagnostic.message.startswith(f"could not read {tmp_path / 'plan.json'}: ")

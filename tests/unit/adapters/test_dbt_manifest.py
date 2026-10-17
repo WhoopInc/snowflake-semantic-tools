@@ -253,12 +253,15 @@ def test_unique_keys_03_forms_are_reported_not_read(
     assert (projected.unique_keys, projected.legacy_key_fields) == (expected, ("unique_keys",) if legacy else ())
 
 
-def test_primary_key_of_another_type_is_still_a_project_error() -> None:
+def test_keys_of_another_type_are_reported_as_not_read_like_the_0_3_forms() -> None:
     document = manifest_document()
     sst = document["nodes"]["model.fixture.products"]["config"]["meta"]["sst"]  # type: ignore[index]
-    sst["primary_key"] = {"column": "product_id"}
-    with pytest.raises(ProjectError, match="primary_key must be a list"):
-        catalog_from_document(document)
+    sst["primary_key"] = {"columns": ["product_id"]}
+    sst["unique_keys"] = {"columns": ["product_id"]}
+    projected = catalog_from_document(document).model("products")
+    assert projected is not None
+    assert (projected.primary_key, projected.unique_keys) == ((), ())
+    assert projected.legacy_key_fields == ("primary_key", "unique_keys")
 
 
 def test_a_relationless_model_without_sst_metadata_is_skipped() -> None:
@@ -328,7 +331,8 @@ def test_models_keep_unique_id_order_and_a_malformed_model_reports_its_first_pro
     with pytest.raises(ProjectError, match=r"columns\.bad must be an object"):
         catalog_from_document(document)
     broken["columns"] = {}
-    with pytest.raises(ProjectError, match="primary_key must be a list"):
+    broken["config"] = {"meta": {"sst": {"synonyms": {"a": "b"}}}}
+    with pytest.raises(ProjectError, match="synonyms must be a list"):
         catalog_from_document(document)
 
 

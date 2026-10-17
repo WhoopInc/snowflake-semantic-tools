@@ -35,7 +35,7 @@ def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir
     `metric()`, names no column, and it has no `window:`.
 
     Raises:
-        ProjectError: An entry's `synonyms` is a mapping, which cannot be read as text.
+        ProjectError: An entry's `synonyms` is a mapping, which cannot be read as text (SST-PRS003).
     """
     out: list[MetricDef] = []
     for document, index, node in load_nodes(documents, member_root("metric")):
@@ -46,6 +46,8 @@ def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir
             template_calls = scan_template_calls(expression)
         except TemplateSyntaxError:
             template_calls = ()
+        origin = node_origin(document, member_root("metric"), index)
+        subject = artifact_key("metric", str(node["name"]).casefold())
         window = _window(node.get("window"))
         tables, poisoned = _referenced_tables(expression)
         _, window_poisoned = _referenced_tables(*(text for _, text in (window.references() if window else ())))
@@ -54,7 +56,7 @@ def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir
                 name=str(node["name"]),
                 expr=expression,
                 description=" ".join(str(node.get("description") or "").splitlines()).strip() or None,
-                synonyms=_as_str_tuple(node.get("synonyms")),
+                synonyms=_as_str_tuple(node.get("synonyms"), subject=subject, field="synonyms", origin=origin),
                 tables=tables,
                 derived=window is None and not tables and any(call.function == "metric" for call in template_calls),
                 using_relationships=tuple(
@@ -68,7 +70,7 @@ def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir
                     if (entry := _non_additive(value)) is not None
                 ),
                 access_modifier=str(honoured(node, "access_modifier", "metric") or "public_access"),
-                origin=node_origin(document, member_root("metric"), index),
+                origin=origin,
                 template_calls=template_calls,
                 poisoned=poisoned or window_poisoned,
                 window=window,

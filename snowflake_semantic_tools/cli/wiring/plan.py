@@ -201,7 +201,7 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
     Raises:
         SstUsageError: the selectors cannot be resolved, as `plan_scope` says.
         ProjectError: the selectors matched nothing, carrying SST-DIS010 for each, or the
-            compiled manifest is stale.
+            compiled manifest is stale, carrying SST-MAN009.
     """
     prepared = _prepared(request)
     if isinstance(prepared, PlanRefused):
@@ -350,7 +350,7 @@ def _prepared(request: PlanRequest) -> tuple[PreparePlan, PlanCandidates, Diagno
     Raises:
         SstUsageError: the selectors cannot be resolved, as `plan_scope` says.
         ProjectError: the selectors matched nothing, carrying SST-DIS010 for each, or the
-            compiled manifest is stale.
+            compiled manifest is stale, carrying SST-MAN009.
     """
     scope = plan_scope(request)
     project_dir = request.project_dir
@@ -370,7 +370,8 @@ def _prepared(request: PlanRequest) -> tuple[PreparePlan, PlanCandidates, Diagno
     )
     if isinstance(candidates, PlanRefused):
         if candidates.reason is not None:
-            raise ProjectError(candidates.reason, diagnostics=tuple(selectors))
+            held = tuple(item for item in candidates.diagnostics if item not in selectors)
+            raise ProjectError(candidates.reason, diagnostics=(*selectors, *held))
         return candidates
     return prepare, candidates, DiagnosticBag(tuple(selectors))
 

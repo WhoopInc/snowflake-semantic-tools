@@ -157,7 +157,7 @@ def test_a_failing_human_report_fails_the_command_like_its_body() -> None:
 
     command = demo_command(lambda: CommandResult(human=unwritable))
     human = CliRunner().invoke(command, [])
-    assert human.exit_code == 4 and "error: read-only" in human.output
+    assert human.exit_code == 4 and "error[SST-INT010]: uncoded refusal: read-only" in human.output
     # The human report is never run for `--output json`.
     assert CliRunner().invoke(command, ["--output", "json"]).exit_code == 0
 
@@ -218,8 +218,30 @@ def test_a_failing_human_report_fails_the_command_like_its_body() -> None:
             ["SST-PRT001"],
             id="port-error-connection",
         ),
-        pytest.param(ProjectError("broken project"), 4, "error: broken project", 4, [], id="project-error"),
-        pytest.param(ValueError("bad value"), 4, "error: bad value", 4, [], id="value-error"),
+        pytest.param(
+            ProjectError(diagnostics=(D("SST-MAN001", path="target/sst/manifest.json"),)),
+            4,
+            "error[SST-MAN001]: no SST manifest at target/sst/manifest.json",
+            4,
+            ["SST-MAN001"],
+            id="project-error",
+        ),
+        pytest.param(
+            ProjectError("broken project", diagnostics=()),
+            4,
+            "error[SST-INT010]: uncoded refusal: broken project",
+            4,
+            ["SST-INT010"],
+            id="uncoded-project-error",
+        ),
+        pytest.param(
+            ValueError("bad value"),
+            4,
+            "error[SST-INT010]: uncoded refusal: bad value",
+            4,
+            ["SST-INT010"],
+            id="value-error",
+        ),
         pytest.param(RuntimeError("boom"), 1, "error[SST-INT001]", 1, ["SST-INT001"], id="internal-error"),
         pytest.param(AssertionError("broken"), 1, "error[SST-INT001]", 1, ["SST-INT001"], id="broken-invariant"),
         pytest.param(KeyboardInterrupt(), 130, "Aborted.", 130, ["SST-PRT107"], id="interrupt"),

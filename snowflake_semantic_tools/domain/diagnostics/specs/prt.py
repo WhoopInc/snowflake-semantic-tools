@@ -164,7 +164,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Unknown selector kind",
         "selector '{value}' names an unknown kind",
-        "use one of {expected}",
+        "use {expected}",
         condition="a selector's prefix is not a registered kind, or globs a kind whose values are a fixed set",
     ),
     spec(

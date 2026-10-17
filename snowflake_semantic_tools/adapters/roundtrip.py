@@ -20,6 +20,7 @@ from ruamel.yaml.util import load_yaml_guess_indent
 
 from snowflake_semantic_tools.adapters.bounded_yaml import MAX_YAML_DEPTH
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.ports.enrich import WrittenFile
 
 __all__ = [
@@ -94,11 +95,23 @@ def _guess_indent(text: str, path: str) -> tuple[int, int, int]:
     try:
         _, sequence, offset = load_yaml_guess_indent(text)
     except YAMLError as exc:
-        raise ProjectError(f"{path}: cannot parse YAML to edit it: {exc}") from exc
+        raise _unparsable(path, exc) from exc
     sequence = sequence or 2
     offset = offset or 0
     mapping = sequence - offset if sequence > offset else sequence
     return mapping, sequence, offset
+
+
+def _unparsable(path: str, exc: YAMLError) -> ProjectError:
+    """Return the refusal of a file that cannot be parsed to edit, at the position YAML names.
+
+    Diagnostics:
+        SST-LOD001: the text does not parse, or nests too deep; at the problem's position, else 1:1.
+    """
+    mark = (exc.problem_mark or exc.context_mark) if isinstance(exc, MarkedYAMLError) else None
+    line, col = (mark.line + 1, mark.column + 1) if mark is not None else (1, 1)
+    diagnostic = D("SST-LOD001", file=path, line=line, col=col, detail=f"cannot parse YAML to edit it: {exc}")
+    return ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
 
 def load_editable(text: str, path: str) -> EditableYaml:
@@ -110,12 +123,12 @@ def load_editable(text: str, path: str) -> EditableYaml:
     try:
         check_depth(text)
     except YAMLError as exc:
-        raise ProjectError(f"{path}: cannot parse YAML to edit it: {exc}") from exc
+        raise _unparsable(path, exc) from exc
     yaml = _yaml(_guess_indent(text, path), explicit_start=text.lstrip().startswith("---"))
     try:
         root = yaml.load(text)
     except YAMLError as exc:
-        raise ProjectError(f"{path}: cannot parse YAML to edit it: {exc}") from exc
+        raise _unparsable(path, exc) from exc
     return EditableYaml(root, text, yaml)
 
 

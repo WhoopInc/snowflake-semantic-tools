@@ -179,7 +179,8 @@ SPECS: tuple[ErrorSpec, ...] = (
             "plan read it, an object the plan would create now exists, an ownership marker changed "
             "or was not installed, or a composite artifact's resources changed; `sst test` also "
             "reports it when an artifact it would smoke or eval is not published as the compiled "
-            "manifest renders it"
+            "manifest renders it; and `sst apply --plan` reports it, exiting 4, when the saved plan's "
+            "manifest, observation, or ordered changes are not a fresh plan's"
         ),
         note="Under `sst test`, run `sst plan` and `sst apply` for the current manifest first.",
         precheck=Precheck.RUNTIME,

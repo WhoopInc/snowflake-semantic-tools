@@ -15,12 +15,12 @@ def test_sst_prs123_fires(tmp_path: Path) -> None:
     project = SmallProject(tmp_path, files=view_file(VARIABLE.format(data_type=""))).load()
     [diagnostic] = coded(project.diagnostics, "SST-PRS123")
     assert diagnostic.severity is Severity.ERROR
-    path = (tmp_path / VIEWS).resolve()
     assert diagnostic.message == (
-        f"semantic_view:catalog: {path}: view catalog has an invalid variable "
-        "{'name': 'tax_inclusive', 'default_value': True}"
+        "semantic_view:catalog: variable {'name': 'tax_inclusive', 'default_value': True} "
+        "must set name, data_type and default_value"
     )
     assert diagnostic.subject == "semantic_view:catalog"
+    assert diagnostic.origin is not None and diagnostic.origin.file == VIEWS
 
 
 def test_sst_prs123_silent(tmp_path: Path) -> None:

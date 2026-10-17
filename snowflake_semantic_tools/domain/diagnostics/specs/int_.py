@@ -2,7 +2,8 @@
 
 Every one is a non-demotable error. `D` emits SST-INT900 for an unregistered code and SST-INT901
 for missing template context, `audit` the emission invariants, and the CLI SST-INT001 for an
-exception nothing expected. The module is `int_` so it does not shadow the builtin.
+exception nothing expected and SST-INT010 for a refusal that names no code. The module is `int_`
+so it does not shadow the builtin.
 """
 
 from __future__ import annotations
@@ -104,6 +105,18 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="a baseline entry's fingerprint matches more than one diagnostic in the run, so it baselines none",
     ),
     spec(
+        "SST-INT010",
+        Severity.ERROR,
+        "Refusal reported with no code",
+        "uncoded refusal: {detail}",
+        _BUG,
+        demotable=False,
+        condition=(
+            "a command refuses an unusable project, configuration, or saved plan with an error that "
+            "carries no diagnostic of its own; the command still exits 4"
+        ),
+    ),
+    spec(
         "SST-INT900",
         Severity.ERROR,
         "Unregistered code passed to the emit function",
@@ -119,7 +132,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{value} template needs {placeholder}, which was not supplied",
         _BUG,
         demotable=False,
-        condition="`D` is called without a value for a placeholder the code's message template names",
+        condition=(
+            "`D` is called without a value for a placeholder the code's message template names, or "
+            "a shared placeholder its suggestion names"
+        ),
     ),
     spec(
         "SST-INT902",

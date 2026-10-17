@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from snowflake_semantic_tools.adapters import bounded_yaml
-from snowflake_semantic_tools.adapters.dbt.profiles import profile_output
+from snowflake_semantic_tools.adapters.dbt.profiles import profile_output, target_location
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.paths import resolve_within
@@ -33,15 +33,14 @@ def resolve_target(files: ProjectPaths, target_name: str | None = None) -> DbtTa
     The profile adapter reads the file: it is plain YAML, not a semantic model, so
     the template-preserving parser would keep a single-quoted scalar's `''`
     escapes inside `{{ env_var(...) }}` and the value would never resolve.
+
+    Raises:
+        ProjectError: the profile or target cannot be resolved, as `profile_output` says, or the
+            target sets no database or schema (SST-CFG012).
     """
-    try:
-        _profile, selected_target, output = profile_output(files, target_name)
-    except ValueError as exc:
-        raise ProjectError(str(exc)) from exc
-    database, schema = output.get("database"), output.get("schema")
-    if not database or not schema:
-        raise ProjectError(f"target {selected_target!r} must set both `database` and `schema`")
-    return DbtTarget(database=str(database), schema=str(schema))
+    profile, selected_target, output = profile_output(files, target_name)
+    database, schema = target_location(profile, selected_target, output)
+    return DbtTarget(database=database, schema=schema)
 
 
 def target_path(project_dir: Path, read_yaml: YamlReader) -> Path:

@@ -118,9 +118,14 @@ class ManifestFileStore(JsonStore[Manifest]):
 class PlanFileStore(JsonStore[SavedPlan]):
     """A saved plan file, read as a `SavedPlan` whose `plan_id` must be the hash of its content.
 
-    No registered code names an unusable plan, so `read` raises `ValueError` for a plan that
-    exists and cannot be used, never `ProjectError`.
+    `read` raises `ProjectError` for a plan that exists and cannot be used.
+
+    Diagnostics:
+        SST-PRT009: when the file is not JSON, not a saved plan's shape, or its id is not the hash
+            of its content.
     """
+
+    unreadable_code = "SST-PRT009"
 
     def __init__(self, path: Path, *, root: Path | None = None) -> None:
         super().__init__(path, SavedPlan.from_dict, root=root)

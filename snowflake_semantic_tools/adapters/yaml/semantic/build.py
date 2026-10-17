@@ -479,6 +479,7 @@ def _variable(value: object, *, view: _View, origin: Origin) -> Variable:
     timestamp, which the parser reads as one, is checked as the ISO text it was written as.
 
     Diagnostics:
+        SST-PRS123: when the variable lacks a name, a type or a default.
         SST-PRS003: when the data type is not a Snowflake data type.
         SST-PRS127: when the default is not a value of the data type.
 
@@ -491,7 +492,9 @@ def _variable(value: object, *, view: _View, origin: Origin) -> Variable:
         or not value.get("data_type")
         or "default_value" not in value
     ):
-        raise ProjectError(f"{view.path}: view {view.name} has an invalid variable {value!r}")
+        detail = f"variable {value!r} must set name, data_type and default_value"
+        diagnostic = D("SST-PRS123", origin=origin, subject=view.key, artifact=view.key, detail=detail)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     data_type = str(value["data_type"]).upper()
     subject = view.key
     if not is_datatype(data_type):

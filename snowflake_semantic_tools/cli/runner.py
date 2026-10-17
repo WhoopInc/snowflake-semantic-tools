@@ -18,7 +18,8 @@ command:
   missed deadline exits 5 under its SNO code; a rejected login is SST-PRT002, and a dropped
   connection or an error no signature recognises is SST-PRT001, both exiting 5;
 - `WriteFailure` exits 1 (ERROR) with SST-PRT008: a file SST writes could not be written;
-- `ProjectError`, `ValueError`, `OSError`, and `JSONDecodeError` exit 4 (CONFIG);
+- `ProjectError`, `ValueError`, `OSError`, and `JSONDecodeError` exit 4 (CONFIG), reporting the
+  error's diagnostics, or SST-INT010 when it carries none;
 - anything else is SST-INT001, an unhandled internal error, and exits 1 (ERROR). This is the
   one place an exception nothing expects is caught.
 
@@ -66,7 +67,7 @@ from snowflake_semantic_tools.cli.output import (
     resolve_invocation,
     use_render_policy,
 )
-from snowflake_semantic_tools.cli.policy import ran_under_1_0, with_baseline, with_policy
+from snowflake_semantic_tools.cli.policy import ran_under_1_0, run_is_strict, with_baseline, with_policy
 from snowflake_semantic_tools.cli.run_log import append_run_log
 from snowflake_semantic_tools.cli.signals import terminated_as_interrupt
 from snowflake_semantic_tools.cli.wiring.project import target_dir
@@ -248,7 +249,8 @@ class _Run:
             first_run=first_run,
         )
         result = dataclasses.replace(result, diagnostics=diagnostics, exit_code=exit_code)
-        _report(self.name, options, _with_baseline(result, baseline, files))
+        strict = run_is_strict(self.name, files, self.given.get("strict"))
+        _report(self.name, options, _with_baseline(result, baseline, files, strict=strict))
 
     def _files(self) -> ProjectPaths:
         """Resolve the project's files, the target its configuration resolves against, and its deferral.
@@ -340,19 +342,23 @@ def run_baseline(options: GlobalOptions) -> Baseline | None:
     return read_baseline(path, name)
 
 
-def _with_baseline(result: CommandResult, baseline: Baseline | None, files: ProjectPaths) -> CommandResult:
+def _with_baseline(
+    result: CommandResult, baseline: Baseline | None, files: ProjectPaths, *, strict: bool = False
+) -> CommandResult:
     """Mark what the baseline holds, add its expiry notices, and settle the exit code they decide.
 
     `app.baseline` decides, as of the system clock's today: a baselined diagnostic never blocks,
-    and a baseline past its expiry is an error.
+    and a baseline past its expiry is an error. A `strict` run promotes the expiry warning too.
     """
     if baseline is None:
         return result
-    diagnostics, exit_code, baselined = with_baseline(
-        result.diagnostics, result.exit_code, baseline, gated=result.gated, clock=SystemClock()
+    diagnostics, exit_code, baselined, promoted = with_baseline(
+        result.diagnostics, result.exit_code, baseline, gated=result.gated, clock=SystemClock(), strict=strict
     )
     record_baselined(baselined)
-    return dataclasses.replace(result, diagnostics=diagnostics, exit_code=exit_code)
+    return dataclasses.replace(
+        result, diagnostics=diagnostics, exit_code=exit_code, promoted=result.promoted + promoted
+    )
 
 
 def _report(command: str, options: GlobalOptions, result: CommandResult) -> None:
@@ -539,14 +545,23 @@ def _write_failed(command: str, output: str, exc: WriteFailure) -> NoReturn:
 
 
 def _unusable(command: str, output: str, exc: Exception) -> NoReturn:
-    """Exit 4 because the project, its configuration, or a saved plan cannot be used."""
-    diagnostics = audit(DiagnosticBag(getattr(exc, "diagnostics", ())))
+    """Exit 4 because the project, its configuration, or a saved plan cannot be used.
+
+    An error that carries no diagnostic is still reported under a code, so the run's diagnostics
+    and its error count are never empty when it refuses. One whose diagnostics are only warnings,
+    such as selectors that matched nothing (SST-DIS010), also prints why it refuses.
+
+    Diagnostics:
+        SST-INT010: the refusal carries no diagnostic of its own.
+    """
+    found = tuple(getattr(exc, "diagnostics", ())) or (D("SST-INT010", subject="cli", detail=str(exc)),)
+    diagnostics = audit(DiagnosticBag(found))
     if output == "json":
         emit_json(
             json_envelope(command, diagnostics, exit_code=CONFIG, status="error", data={"error": str(exc)}), CONFIG
         )
     render_diagnostics(diagnostics)
-    if not diagnostics:
+    if not diagnostics.has_errors:
         click.echo(f"error: {exc}", err=True)
     raise click.exceptions.Exit(CONFIG) from exc
 

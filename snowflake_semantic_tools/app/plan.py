@@ -41,7 +41,7 @@ from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.app.validate_models import ModelCheck, model_check
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
-from snowflake_semantic_tools.domain.diagnostics.policy import apply_overrides
+from snowflake_semantic_tools.domain.diagnostics.policy import SeverityPolicy, apply_overrides, apply_policy
 from snowflake_semantic_tools.domain.model.config_schema import config_block, target_text
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
@@ -167,6 +167,7 @@ class PlanReady:
             a read failed, or the plan was made from a record.
         cached: The record the plan was made from instead of reading the target; None when
             it read the live target.
+        promoted: How many warnings strict mode made errors, validation's and the plan's own.
     """
 
     result: CompileResult
@@ -176,6 +177,7 @@ class PlanReady:
     lifecycle_handlers: Mapping[str, CompositeLifecycleHandler]
     recorded: RecordedObservation | None = None
     cached: CachedObservation | None = None
+    promoted: int = 0
 
     @property
     def restamps_state(self) -> bool:
@@ -192,14 +194,17 @@ class PlanRefused:
     """Why nothing was planned: errors a run reports, or a project that cannot be planned at all.
 
     Attributes:
-        diagnostics: The errors that stopped the plan, compile's or validation's.
-        reason: Set, with no diagnostics, when the project cannot be planned at all -- the
-            selectors matched nothing, or the compile is stale -- which the CLI reports as a
-            configuration error rather than as findings.
+        diagnostics: The errors that stopped the plan, compile's or validation's; with a
+            `reason`, what reports it.
+        reason: Set when the project cannot be planned at all -- the selectors matched nothing
+            (SST-DIS010, one per selector), or the compile is stale (SST-MAN009) -- which the CLI
+            reports as a configuration error rather than as findings.
+        promoted: How many warnings strict mode made errors before the plan was refused.
     """
 
     diagnostics: DiagnosticBag = DiagnosticBag()
     reason: str | None = None
+    promoted: int = 0
 
 
 class PreparePlan:
@@ -268,6 +273,8 @@ class PreparePlan:
             SST-PLN033: with `--partial`, a compile error names no artifact, so nothing can
                 be split off.
             SST-MAN006: the compiled manifest was written for another target.
+            SST-MAN009: the compiled manifest is stale.
+            SST-DIS010: the selectors matched nothing and nothing prunes, one per selector.
         """
         split = partial_split(full) if partial and not full.success else None
         source = split.healthy if split is not None else full
@@ -284,7 +291,10 @@ class PreparePlan:
             ),
         )
         if scope.selected and not scope.impact and not selected.compiled and not scope.include_prune:
-            return PlanRefused(reason=f"selectors {scope.selected!r} matched no artifact in {project}")
+            return PlanRefused(
+                DiagnosticBag(D("SST-DIS010", selector=value) for value in scope.selected),
+                reason=f"selectors {scope.selected!r} matched no artifact in {project}",
+            )
         if not selected.success and split is None:
             refusal = partial_refusal(full) if partial else None
             return PlanRefused(DiagnosticBag((*selected.diagnostics, *((refusal,) if refusal else ()))))
@@ -295,7 +305,7 @@ class PreparePlan:
             return PlanRefused(DiagnosticBag((mismatch,)))
         stale = stale_manifest(compiled_manifest, manifest, before="plan or apply")
         if stale is not None:
-            return PlanRefused(reason=stale)
+            return PlanRefused(DiagnosticBag((stale,)), reason=stale.message)
         return PlanCandidates(
             full,
             source,
@@ -341,7 +351,9 @@ class PreparePlan:
         5. Build the lifecycle handlers of the composite artifact types.
         6. Observe, preflight (the state and lock tables too) when given `preflight`, and plan,
            as `PlanArtifacts` does, in the schemas of every artifact and object state records.
-        7. Report what selecting reported first, and the plan's notices last.
+        7. Report what selecting reported first, and the plan's notices last, each held to the
+           project's severity overrides and, under strict mode, every warning the selection
+           reaches promoted, as validation's are; apply refuses on what that makes an error.
 
         Args:
             target: The live target, with the account and role the connection reported.
@@ -354,9 +366,10 @@ class PreparePlan:
                 time. Either way the plan and its diagnostics are the same.
             observe_options: Which per-object reads the observation makes, as `ObserveOptions` says.
             validate: False skips validation, as `--no-validate` asks once `sst validate` ran on
-                the same tree: no cycle check, no connected check, and no strict promotion. The
-                project's severity overrides still apply, and the compile's own errors still
-                refuse the plan, or with `--partial` split it.
+                the same tree: no cycle check, no connected check, and no strict promotion of what
+                compile reported. The project's severity overrides still apply, the compile's own
+                errors still refuse the plan, or with `--partial` split it, and strict mode still
+                promotes the warnings planning itself reports, which `sst validate` never sees.
             models: Sessions the connected checks run probe agents on, one per model
                 `snowflake.orchestration_models` allows; None skips that check.
 
@@ -370,7 +383,8 @@ class PreparePlan:
         validated = self._validated_selection(candidates, port, target, readers, validate, models)
         if isinstance(validated, PlanRefused):
             return validated
-        result, manifest = validated
+        result, manifest, promoted = validated
+        held = _Held(self._policy(candidates), promoted)
         with self._phases.phase("state_read"):
             state, state_diagnostics = read_state(state_store, port, state_table=state_table, target=target)
         apply_config = config_block(self._inputs.config().tree.get("apply"))
@@ -402,7 +416,9 @@ class PreparePlan:
         recorded = RecordedObservation(target, reading.observation, state, reading.preflight)
         leading = (*state_diagnostics, *((stale,) if stale else ()))
         trailing = channel_divergence(port, result)
-        ready = _ready(candidates, result, manifest, state, changeset, handlers, leading=leading, trailing=trailing)
+        ready = _ready(
+            candidates, result, manifest, state, changeset, handlers, held, leading=leading, trailing=trailing
+        )
         return replace(ready, recorded=None if reading.failures.has_errors else recorded)
 
     def run_recorded(
@@ -432,7 +448,8 @@ class PreparePlan:
         validated = self._validated_selection(offline, None, recorded.target, None, validate)
         if isinstance(validated, PlanRefused):
             return validated
-        result, manifest = validated
+        result, manifest, promoted = validated
+        held = _Held(self._policy(candidates), promoted)
         target, state = recorded.target, recorded.state
         apply_config = config_block(self._inputs.config().tree.get("apply"))
         rendered = self._publication(result, manifest, apply_config, target, temporary=temporary)
@@ -441,8 +458,13 @@ class PreparePlan:
         changeset = _decided(candidates, rendered, reading, manifest, state, target, {}, composites)
         cached = CachedObservation(recorded.fetched_at, seconds_between(recorded.fetched_at, self._clock.now_iso()))
         age = D("SST-PLN016", value=f"planned from the observation recorded at {cached.fetched_at}, {cached.age} old")
-        ready = _ready(candidates, result, manifest, state, changeset, {}, leading=(age,), trailing=())
+        ready = _ready(candidates, result, manifest, state, changeset, {}, held, leading=(age,), trailing=())
         return replace(ready, cached=cached)
+
+    def _policy(self, candidates: PlanCandidates) -> SeverityPolicy:
+        """Return the policy the plan's own diagnostics are held to: the overrides, and strict mode."""
+        tree = self._inputs.config().tree
+        return SeverityPolicy(severity_overrides(tree), candidates.strict, strict_reach(candidates.scope.selection))
 
     def _validated_selection(
         self,
@@ -452,24 +474,24 @@ class PreparePlan:
         readers: Fanout[PlanReadPort] | None,
         validate: bool,
         models: Fanout[CortexModelsPort] | None = None,
-    ) -> tuple[CompileResult, Manifest] | PlanRefused:
-        """Validate the selection as `run` says, and return it with the manifest of what publishes."""
+    ) -> tuple[CompileResult, Manifest, int] | PlanRefused:
+        """Validate the selection as `run` says; return it, what publishes, and how many warnings it promoted."""
         tree = self._inputs.config().tree
         overrides = severity_overrides(tree)
         check = model_check(tree, models) if models is not None else None
         with self._phases.phase("validate"):
-            diagnostics = (
+            diagnostics, promoted = (
                 _validation(candidates, port, target, readers, overrides, check)
                 if validate
-                else apply_overrides(candidates.selected.diagnostics, overrides)
+                else (apply_overrides(candidates.selected.diagnostics, overrides), 0)
             )
         held = held_by_baseline(diagnostics, self._baseline, clock=self._clock)
         validated = _validated(candidates, diagnostics, held)
         if isinstance(validated, PlanRefused):
-            return validated
+            return replace(validated, promoted=promoted)
         result, healthy = validated
         manifest = candidates.manifest if healthy is None else manifest_for(healthy, self._inputs.manifest_sources())
-        return result, manifest
+        return result, manifest, promoted
 
     def _publication(
         self,
@@ -540,6 +562,14 @@ def _decided(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _Held:
+    """The policy a plan's own diagnostics are held to, and how many warnings validation promoted."""
+
+    policy: SeverityPolicy
+    promoted: int
+
+
 def _ready(
     candidates: PlanCandidates,
     result: CompileResult,
@@ -547,6 +577,7 @@ def _ready(
     state: State,
     changeset: ChangeSet,
     handlers: Mapping[str, CompositeLifecycleHandler],
+    held: _Held,
     *,
     leading: tuple[Diagnostic, ...],
     trailing: tuple[Diagnostic, ...],
@@ -555,15 +586,21 @@ def _ready(
 
     A partial plan leaves out every change it blocked, as `partial_changeset` does: what that
     reported joins what the run left out, in the result, so plan, apply, and a saved plan's id
-    all see the same plan.
+    all see the same plan. What the plan reports is then held to `held.policy` in one pass, as
+    validation's diagnostics already were; holding them twice changes nothing more, so a plan
+    and the apply that re-plans it decide the same severities.
     """
+    moved_promoted = 0
     if candidates.partial:
         changeset, left_out = partial_changeset(changeset)
-        result = replace(result, diagnostics=DiagnosticBag((*result.diagnostics, *left_out)))
+        moved, moved_promoted = apply_policy(DiagnosticBag(left_out), held.policy)
+        result = replace(result, diagnostics=DiagnosticBag((*result.diagnostics, *moved)))
     first = (*candidates.notices, *leading)
     last = (*trailing, *change_summary(changeset), *plan_notices(changeset))
-    changeset = replace(changeset, diagnostics=DiagnosticBag((*first, *changeset.diagnostics, *last)))
-    return PlanReady(result, manifest, state, changeset, MappingProxyType(dict(handlers)))
+    reported, promoted = apply_policy(DiagnosticBag((*first, *changeset.diagnostics, *last)), held.policy)
+    changeset = replace(changeset, diagnostics=reported)
+    total = held.promoted + moved_promoted + promoted
+    return PlanReady(result, manifest, state, changeset, MappingProxyType(dict(handlers)), promoted=total)
 
 
 def _validation(
@@ -573,31 +610,28 @@ def _validation(
     readers: Fanout[PlanReadPort] | None,
     overrides: Mapping[str, Severity],
     models: ModelCheck | None = None,
-) -> DiagnosticBag:
-    """Validate the selection, connected when the settings ask for it; return what validation reported.
+) -> tuple[DiagnosticBag, int]:
+    """Validate the selection, connected when the settings ask; return its report and how many it promoted.
 
     With a port and the connected checks off, each extension an agent consumes is still looked up:
     Snowflake accepts an agent whose reference dangles, so plan is where it is caught.
     """
     live = port if candidates.connected else None
-    return (
-        ValidateArtifacts(
-            live,
-            catalog=port,
-            target=target.name,
-            readers=readers if candidates.connected else None,
-            models=models if candidates.connected else None,
-        )
-        .run(
-            candidates.selected,
-            strict=candidates.strict,
-            connected=candidates.connected,
-            references=True,
-            overrides=overrides,
-            reaches=strict_reach(candidates.scope.selection),
-        )
-        .diagnostics
+    validated = ValidateArtifacts(
+        live,
+        catalog=port,
+        target=target.name,
+        readers=readers if candidates.connected else None,
+        models=models if candidates.connected else None,
+    ).run(
+        candidates.selected,
+        strict=candidates.strict,
+        connected=candidates.connected,
+        references=True,
+        overrides=overrides,
+        reaches=strict_reach(candidates.scope.selection),
     )
+    return validated.diagnostics, validated.promoted
 
 
 def _validated(

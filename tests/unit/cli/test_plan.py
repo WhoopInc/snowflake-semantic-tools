@@ -657,6 +657,15 @@ def test_a_strict_plan_goes_ahead_when_the_baseline_holds_the_promoted_warning(
     added = CliRunner().invoke(cli, ["baseline", "add", "--all-warnings", "--yes", *common(project)])
     assert added.exit_code == 0, added.output
     args = ["plan", *common(project), "--target", "dev", "--strict", "--output", "json"]
+    # The dataset the plan mints outside git warns at plan time (SST-VAL714), which strict
+    # promotes too; the baseline holds it as it holds validation's.
+    first = json.loads(invoke_with_port(monkeypatch, FakeSnowflake(state={}), args).stdout)
+    planned = [item for item in first["diagnostics"] if item["code"] == "SST-VAL714"]
+    assert [item["promoted_from"] for item in planned] == ["warning"]
+    baseline = project / ".sst" / "baseline.json"
+    document = json.loads(baseline.read_text(encoding="utf-8"))
+    document["entries"].append({"fingerprint": planned[0]["fingerprint"], "code": "SST-VAL714"})
+    baseline.write_text(json.dumps(document), encoding="utf-8")
 
     held = invoke_with_port(monkeypatch, FakeSnowflake(state={}), args)
     assert held.exit_code == 2, held.output
@@ -701,17 +710,18 @@ def test_report_only_prunes_are_listed_but_are_not_changes(tmp_path: Path, monke
     assert not any("CORTEX EXTENSION" in statement for statement in executed)
     assert "DB.SCH.MONTH_CLOSE" in port.extensions
 
-    for extra in ([], ["--strict"]):
+    # Strict promotes the plan's own warning that the skill has no source, as it would validation's.
+    for extra, severity, exit_code in (([], "warning", 0), (["--strict"], "error", 1)):
         planned = invoke_with_port(
             monkeypatch, port, ["plan", "--project-dir", str(project), "--prune", "--output", "json", *extra]
         )
-        assert planned.exit_code == 0, planned.output
+        assert planned.exit_code == exit_code, planned.output
         payload = json.loads(planned.output)
-        assert payload["status"] == "ok" and payload["data"]["report_only"] == ["skill:month-close"]
+        assert payload["data"]["report_only"] == ["skill:month-close"]
         assert [(item["action"], item["report_only"]) for item in payload["data"]["changes"]] == [("prune", True)]
         assert [(item["code"], item["severity"]) for item in payload["diagnostics"]] == [
             ("SST-PLN034", "info"),
-            ("SST-VAL805", "warning"),
+            ("SST-VAL805", severity),
             ("SST-MAN026", "info"),
             ("SST-PLN016", "info"),
         ]

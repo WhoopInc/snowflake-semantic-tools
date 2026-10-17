@@ -186,7 +186,7 @@ def test_human_render_omits_help_when_registry_has_no_suggestion() -> None:
     [
         (None, None),
         ("add {key} to sst_config.yml", "add validation.strict to sst_config.yml"),
-        ("set {field} explicitly", "set {field} explicitly"),
+        ("set {VARIABLE} explicitly", "set {VARIABLE} explicitly"),
         ("write each tables: entry as {{ ref('<model>') }}", "write each tables: entry as {{ ref('<model>') }}"),
         ("a } alone is no template", "a } alone is no template"),
     ],
@@ -206,6 +206,22 @@ def test_a_suggestion_fills_only_the_placeholders_its_context_holds(
         assert ("help:" in render_diagnostic(diagnostic)) is (expected is not None)
     finally:
         module.ERROR_REGISTRY = original
+
+
+def test_a_context_without_a_shared_placeholder_the_suggestion_names_is_an_internal_error() -> None:
+    from dataclasses import replace
+
+    from snowflake_semantic_tools.domain import diagnostics as module
+
+    original = module.ERROR_REGISTRY
+    module.ERROR_REGISTRY = {**original, "SST-CFG054": replace(original["SST-CFG054"], suggestion="set {field}")}
+    try:
+        refused = D("SST-CFG054", key="validation.strict")
+        filled = D("SST-CFG054", key="validation.strict", field="strict")
+    finally:
+        module.ERROR_REGISTRY = original
+    assert (refused.code, refused.context["placeholder"]) == ("SST-INT901", "field")
+    assert filled.code == "SST-CFG054"
 
 
 def test_registry_integrity_checks_invalid_codes_and_duplicates() -> None:

@@ -316,13 +316,13 @@ def refused(project_dir: Path, path: Path, diagnostics: list[Diagnostic], *, sub
     """Report a file or folder a project walk must not read, and return True; False when it may be read.
 
     Diagnostics:
-        SST-PRT009: when `path`, or a folder between the project and it, is a symbolic link, or
-            it resolves outside the project.
+        SST-PRT009: when `path`, or a folder between the project and it, is a symbolic link, it
+            resolves outside the project, or it is not written below the project directory.
     """
     reason = walk_refusal(project_dir, path)
     if reason is None:
         return False
-    file = project_relative(project_dir, path)
+    file = project_relative(project_dir, path) if path.is_relative_to(project_dir) else str(path)
     diagnostics.append(D("SST-PRT009", origin=Origin(file), subject=subject, path=file, detail=reason))
     return True
 

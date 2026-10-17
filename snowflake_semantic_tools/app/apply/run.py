@@ -29,6 +29,7 @@ from snowflake_semantic_tools.app.apply.stages import UploadStages
 from snowflake_semantic_tools.app.apply.state import EntryStamp, _applied_after, _run_outcome
 from snowflake_semantic_tools.app.apply.temporary import temporary_evals, temporary_notes, temporary_refusal
 from snowflake_semantic_tools.app.apply.waves import _WaveRun, lost_lock
+from snowflake_semantic_tools.app.baseline import blocking
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.app.state import table_state
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
@@ -474,11 +475,13 @@ def _guard_write(lease: RunLease, port: WorkerPort) -> None:
 def _refusal(changeset: ChangeSet, options: ApplyOptions) -> tuple[Diagnostic, ...] | None:
     """Return what a plan is refused with before the lock is taken; None when it may run.
 
+    An error the run's baseline holds refuses nothing, as `ApplyOptions.held` says.
+
     Diagnostics:
         SST-APL003: a blocked change, unless the policy is CONTINUE; one per blocked change.
         SST-APL013: a temporary artifact against a production-like target; one per artifact.
     """
-    if changeset.diagnostics.has_errors:
+    if blocking(changeset.diagnostics, options.held):
         return tuple(changeset.diagnostics)
     refused_temporary = temporary_refusal(changeset, options)
     if refused_temporary:

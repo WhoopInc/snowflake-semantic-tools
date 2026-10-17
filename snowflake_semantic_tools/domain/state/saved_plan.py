@@ -275,23 +275,21 @@ class SavedPlan:
             source: How a report names the saved plan, such as its file path.
 
         Diagnostics:
-            SST-APL005: the saved plan was made for another target; the mismatch carries it.
+            SST-APL005: the saved plan was made for another target.
+            SST-APL012: the manifest, the observation, or the changes differ from the fresh plan's.
         """
         if self.target.key != current.target.key:
-            diagnostic = D(
-                "SST-APL005",
-                artifact=source,
-                found=_target_label(self.target),
-                expected=_target_label(current.target),
-            )
-            return PlanMismatch(diagnostic.message, (diagnostic,))
+            found, expected = _target_label(self.target), _target_label(current.target)
+            return PlanMismatch(D("SST-APL005", artifact=source, found=found, expected=expected))
         if not self.matches(current.manifest_id, current.target):
-            return PlanMismatch("the saved plan was made from a different manifest; re-run sst plan")
-        if self.observation_fingerprint != current.observation_fingerprint:
-            return PlanMismatch("saved plan is stale; the live Snowflake observation changed")
-        if self.changes != current.changes:
-            return PlanMismatch("saved plan is stale; the ordered changes or statement hashes changed")
-        return None
+            changed = "the compiled manifest"
+        elif self.observation_fingerprint != current.observation_fingerprint:
+            changed = "the live Snowflake observation"
+        elif self.changes != current.changes:
+            changed = "the ordered changes or their statement hashes"
+        else:
+            return None
+        return PlanMismatch(D("SST-APL012", artifact=source, value=changed))
 
     @classmethod
     def from_dict(cls, value: object) -> SavedPlan:
@@ -347,15 +345,19 @@ def _selection(
 
 @dataclass(frozen=True, slots=True)
 class PlanMismatch:
-    """Why a saved plan cannot be applied: what to report, and the diagnostic that names it.
+    """Why a saved plan cannot be applied: the diagnostic that names the refusal."""
 
-    Attributes:
-        message: The text to report the refusal with.
-        diagnostics: The diagnostic behind the message; empty when the refusal has no code.
-    """
+    diagnostic: Diagnostic
 
-    message: str
-    diagnostics: tuple[Diagnostic, ...] = ()
+    @property
+    def message(self) -> str:
+        """Return the text to report the refusal with: the diagnostic's message."""
+        return self.diagnostic.message
+
+    @property
+    def diagnostics(self) -> tuple[Diagnostic, ...]:
+        """Return the refusal's diagnostic, as the one a refusing command reports."""
+        return (self.diagnostic,)
 
 
 def _target_label(target: TargetIdentity) -> str:

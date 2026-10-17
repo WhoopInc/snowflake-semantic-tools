@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.domain.diagnostics import D, Origin
 from snowflake_semantic_tools.domain.parse.template import (
     TemplateSyntaxError,
     scan_template_calls,
@@ -13,11 +14,21 @@ from snowflake_semantic_tools.domain.parse.template import (
 from snowflake_semantic_tools.domain.resolve.calls import syntax_problem
 
 
-def _as_str_tuple(value: Any) -> tuple[str, ...]:
+def _as_str_tuple(value: Any, *, subject: str, field: str, origin: Origin | None = None) -> tuple[str, ...]:
     """Normalise a YAML scalar-or-list into a tuple of strings.
 
     Numbers are stringified because `sample_values: [1100, 700]` is authored as
     integers but renders as `'1100', '700'` -- YAML typing is not SQL typing.
+
+    Args:
+        subject, field, origin: The member the value is written on, its field, and where, which a
+            refusal reports.
+
+    Raises:
+        ProjectError: the value is neither a scalar nor a list (SST-PRS003).
+
+    Diagnostics:
+        SST-PRS003: the value is a mapping or another value that is neither a scalar nor a list; raised.
     """
     if value is None:
         return ()
@@ -27,7 +38,16 @@ def _as_str_tuple(value: Any) -> tuple[str, ...]:
         return (str(value),)
     if isinstance(value, list):
         return tuple("true" if v is True else "false" if v is False else str(v) for v in value)
-    raise ProjectError(f"expected a scalar or list, found {type(value).__name__}")
+    diagnostic = D(
+        "SST-PRS003",
+        origin=origin,
+        subject=subject,
+        artifact=subject,
+        field=field,
+        expected="a string or a list of strings",
+        found=type(value).__name__,
+    )
+    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
 
 def _table_refs(value: object) -> tuple[str, ...]:

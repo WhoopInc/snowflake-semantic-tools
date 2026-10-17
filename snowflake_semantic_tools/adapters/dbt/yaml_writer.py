@@ -10,6 +10,7 @@ the file does not describe yet is appended. Nothing else in the file changes.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import NoReturn
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.roundtrip import (
@@ -23,6 +24,7 @@ from snowflake_semantic_tools.adapters.roundtrip import (
     new_editable,
     scalar,
 )
+from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.enrich import WRITTEN_KEYS, ColumnUpdate
 
 # The order of the model-level `meta.sst` keys, so the table synonyms enrich adds sit after keys.
@@ -37,6 +39,16 @@ def _value(value: object) -> object:
     return value
 
 
+def _misshapen(path: str, field: str, expected: str) -> NoReturn:
+    """Refuse to edit a dbt YAML file whose part enrich writes into has another shape.
+
+    Diagnostics:
+        SST-DBT034: `field` in the file at `path` is not `expected`; raised.
+    """
+    diagnostic = D("SST-DBT034", path=path, field=field, expected=expected)
+    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+
+
 def _child_map(parent: CommentedMap, key: str, path: str) -> CommentedMap:
     """Return the mapping under `key`, adding an empty one when the key is absent or empty."""
     child = parent.get(key)
@@ -44,7 +56,7 @@ def _child_map(parent: CommentedMap, key: str, path: str) -> CommentedMap:
         child = CommentedMap()
         parent[key] = child
     if not isinstance(child, CommentedMap):
-        raise ProjectError(f"{path}: {key} must be a mapping to hold SST metadata")
+        _misshapen(path, key, "a mapping")
     return child
 
 
@@ -80,7 +92,7 @@ def _list(parent: CommentedMap, key: str, path: str) -> CommentedSeq:
         entries = CommentedSeq()
         parent[key] = entries
     if not isinstance(entries, CommentedSeq):
-        raise ProjectError(f"{path}: {key} must be a list")
+        _misshapen(path, key, "a list")
     return entries
 
 
@@ -116,7 +128,7 @@ def _document(text: str | None, path: str) -> EditableYaml:
         return new_editable(CommentedMap(version=2))
     document = load_editable(text, path)
     if not isinstance(document.root, CommentedMap):
-        raise ProjectError(f"{path}: a dbt YAML file must be a mapping")
+        _misshapen(path, "its root", "a mapping")
     return document
 
 
@@ -134,7 +146,8 @@ def write_model_updates(
         synonyms: The table synonyms of each model the file describes, by model name.
 
     Raises:
-        ProjectError: The file is not YAML, or a part enrich must edit has another shape.
+        ProjectError: The file is not YAML (SST-LOD001), or a part enrich must edit has another
+            shape (SST-DBT034).
     """
     document = _document(text, path)
     root = document.root

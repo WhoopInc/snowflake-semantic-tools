@@ -335,7 +335,9 @@ def test_apply_closes_its_connection_when_it_stops_before_applying(
             "1",
         ],
     )
-    assert stale.exit_code == 4 and "saved plan is stale" in json.loads(stale.output)["data"]["error"]
+    envelope = json.loads(stale.output)
+    assert stale.exit_code == 4 and "changed since the plan" in envelope["data"]["error"]
+    assert [item["code"] for item in envelope["diagnostics"]] == ["SST-APL012"]
     assert closes == ["closed"]
 
 
@@ -374,9 +376,12 @@ def test_skills_only_project_publishes_through_plan_and_apply(tmp_path: Path, mo
         ["test", "--project-dir", str(project), "--suite", "golden", "--golden-dir", str(golden), "--output", "json"],
     )
     assert missing.exit_code == 4
-    assert json.loads(missing.output)["data"]["failures"] == [
-        f"missing golden {tmp_path / 'golden' / 'skill' / 'month-close.bundle.json'}"
-    ]
+    envelope = json.loads(missing.output)
+    absent = tmp_path / "golden" / "skill" / "month-close.bundle.json"
+    assert envelope["data"]["failures"] == [f"missing golden {absent}"]
+    [diagnostic] = envelope["diagnostics"]
+    assert (diagnostic["code"], envelope["summary"]["error"]) == ("SST-PRT009", 1)
+    assert diagnostic["message"] == f"could not read {absent}: no golden is there; --update-golden writes it"
 
 
 def test_profiles_publish_then_deactivate_under_prune(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -168,7 +168,7 @@ def plan(
     )
     ready, close = _planned(request)
     if isinstance(ready, PlanRefused):
-        return CommandResult(ERROR, ready.diagnostics)
+        return CommandResult(ERROR, ready.diagnostics, promoted=ready.promoted)
     saved, destination, sql_path, observed_path = _save_plan(request, ready, close, plan_out, no_plan_out, sql_out)
     plan_path = None if no_plan_out else destination
     paths_written = _Written(plan_path, sql_path, observed_path)
@@ -270,14 +270,16 @@ def _plan_report(
     if request.partial:
         data["partial"] = {"excluded": partial_excluded(ready.result.diagnostics)}
     if names_only:
-        return CommandResult(exit_code, shown, data, human=lambda: print_changed_names(changeset))
+        return CommandResult(
+            exit_code, shown, data, human=lambda: print_changed_names(changeset), promoted=ready.promoted
+        )
 
     def human() -> None:
         if ready.cached is not None:
             click.echo(f"planned from the observation recorded at {ready.cached.fetched_at} ({ready.cached.age} old)")
         print_plan(changeset, full=full)
 
-    return CommandResult(exit_code, shown, data, human=human)
+    return CommandResult(exit_code, shown, data, human=human, promoted=ready.promoted)
 
 
 def _observation_data(ready: PlanReady, path: Path | None) -> dict[str, object]:

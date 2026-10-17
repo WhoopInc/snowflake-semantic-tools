@@ -215,13 +215,25 @@ def _project_profile(paths: ProjectPaths) -> str:
     """Return the profile `dbt_project.yml` names, which `--profile` overrides.
 
     Raises:
-        ProjectError: there is no `dbt_project.yml`, or it names no profile.
+        ProjectError: no file names a profile (SST-CFG056), or `dbt_project.yml` cannot be read
+            (SST-PRT009).
+
+    Diagnostics:
+        SST-PRT009: `dbt_project.yml` cannot be read; raised.
+        SST-CFG056: no file names a profile and `--profile` was not given; raised.
     """
     try:
         return resolve_profile_name(ProjectPaths(paths.project_dir, None, profiles_dir=paths.profiles_dir))
-    except (ValueError, OSError) as exc:
-        detail = f"no --profile was given, and {paths.project_dir / 'dbt_project.yml'} names no profile"
-        raise ProjectError(detail) from exc
+    except ProjectError as exc:
+        unnamed = [item for item in exc.diagnostics if item.code == "SST-CFG056"]
+        if not unnamed:
+            raise
+        # Outside a project, `--profile` is how drop names one; the refusal says so.
+        reason = f"no --profile was given, and {unnamed[0].context['reason']}"
+        raise ProjectError(diagnostics=(D("SST-CFG056", subject="cli", reason=reason),)) from exc
+    except OSError as exc:
+        diagnostic = D("SST-PRT009", subject="cli", path=str(paths.project_dir / "dbt_project.yml"), detail=str(exc))
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
 
 
 def _os_user() -> str:

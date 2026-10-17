@@ -92,7 +92,8 @@ def call_problem(
     if function in ("table", "column"):
         return _legacy(call, origin, subject)
     if function not in KNOWN_FUNCTIONS:
-        return D("SST-REF004", origin=origin, subject=subject, ref_function=function)
+        known = ", ".join(sorted(KNOWN_FUNCTIONS - {"table", "column"}))
+        return D("SST-REF004", origin=origin, subject=subject, ref_function=function, expected=known)
     if not allowed:
         return D("SST-REF008", origin=origin, subject=subject, artifact=artifact, field=field)
     if function not in allowed:

@@ -201,6 +201,7 @@ Diagnostics:
     SST-PRT100: the target is not production-like, a PATH is outside the project, or a
         component is unknown; raised.
     SST-CFG038: sample values or enums were asked for, and the project refuses collecting them.
+    SST-DIS010: no model matched the selection, one per selector or PATH; raised.
 
 ```text
 sst enrich [OPTIONS] [PATH]...

@@ -22,6 +22,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.apply.observation import stale_observation
+from snowflake_semantic_tools.app.baseline import held_by_baseline
 from snowflake_semantic_tools.app.observe import ObserveOptions
 from snowflake_semantic_tools.app.plan import PlanRefused
 from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
@@ -192,7 +193,7 @@ def apply(
     planned = request.following(saved)
     session = plan_runtime(planned)
     if isinstance(session, PlanRefused):
-        return CommandResult(ERROR, session.diagnostics)
+        return CommandResult(ERROR, session.diagnostics, promoted=session.promoted)
     with closed_on_error(session.port):
         apply_options, notes, sql_path = _confirmed_options(
             planned,
@@ -227,14 +228,19 @@ def _saved_plan(plan_path: Path | None, request: PlanRequest) -> SavedPlan | Non
     """Read the plan `--plan` names, refusing selection flags that disagree with it; None without one.
 
     Raises:
-        ProjectError: no saved plan is at the path.
+        ProjectError: no saved plan is at the path, or it cannot be read (SST-PRT009).
         SstUsageError: `--select`, `--exclude`, `--prune`, or `--partial` disagrees with the saved plan.
+
+    Diagnostics:
+        SST-PRT009: no saved plan is at the path, or the one there cannot be read; raised.
     """
     if plan_path is None:
         return None
     saved = PlanFileStore(plan_path).read()
     if saved is None:
-        raise ProjectError(f"no saved plan at {plan_path}")
+        # `--plan` must name a file, so it is absent only when it went between the check and the read.
+        absent = D("SST-PRT009", subject="cli", path=str(plan_path), detail="there is no saved plan")
+        raise ProjectError(diagnostics=(absent,))
     if request.selected and request.selected != saved.selected:
         raise SstUsageError("--select conflicts with the saved plan selection")
     if request.excluded and request.excluded != saved.excluded:
@@ -295,6 +301,7 @@ def _confirmed_options(
         allow_prune=request.prune,
         break_stale_lock=break_stale_lock,
         temporary=request.temporary,
+        held=held_by_baseline(changeset.diagnostics, request.baseline, clock=SystemClock()),
     )
     return options, notes, sql_path
 
@@ -359,8 +366,10 @@ def _apply_plan(
             _print_outcomes(outcomes)
             announce_interrupt(interrupted)
 
-        return CommandResult(INTERRUPTED, shown, data, human=report)
-    return CommandResult(exit_code, shown, data, human=lambda: _print_outcomes(apply_result.outcomes))
+        return CommandResult(INTERRUPTED, shown, data, human=report, promoted=ready.promoted)
+    return CommandResult(
+        exit_code, shown, data, human=lambda: _print_outcomes(apply_result.outcomes), promoted=ready.promoted
+    )
 
 
 def _interrupt_notice(state_written: bool) -> Diagnostic:

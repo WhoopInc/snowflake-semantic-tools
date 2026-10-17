@@ -69,6 +69,17 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="compilation did not reach the write step",
     ),
     spec(
+        "SST-MAN009",
+        Severity.ERROR,
+        "Compiled manifest is stale",
+        "compiled SST manifest is stale; run sst compile before {command}",
+        "run sst compile, then re-run the command",
+        condition=(
+            "the project no longer compiles to the manifest `sst compile` wrote, so plan, apply, or a "
+            "connected test suite refuses to start from it; the command exits 4"
+        ),
+    ),
+    spec(
         "SST-MAN020",
         Severity.WARNING,
         "state.json absent",

@@ -96,10 +96,14 @@ def read_semantic_inputs(
             is the report, not the absence of a directory nobody can name.
 
     Raises:
-        ProjectError: the run has no configuration file, or a document cannot be read.
+        ProjectError: the run has no configuration file (SST-CFG001), or a document cannot be read.
+
+    Diagnostics:
+        SST-CFG001: the run has no configuration file; raised.
     """
     if files.config_file is None:
-        raise ProjectError(f"no configuration file in {files.project_dir}")
+        diagnostic = D("SST-CFG001", subject="config:discovery", path=str(files.project_dir))
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     project_dir = files.project_dir
     config = dict(config)
     semantic_models_dir = configured_dir(config, "semantic_models_dir", "semantic_models")
@@ -350,11 +354,15 @@ def _load_context(
     """Gather the fixed inputs every later phase reads.
 
     Raises:
-        ProjectError: `<semantic_models_dir>/semantic_views` is not a directory.
+        ProjectError: `<semantic_models_dir>/semantic_views` is not a directory (SST-DIS001).
+
+    Diagnostics:
+        SST-DIS001: `<semantic_models_dir>/semantic_views` does not exist; raised.
     """
     views_dir = project_dir / inputs.semantic_models_dir / "semantic_views"
     if not views_dir.is_dir():
-        raise ProjectError(f"no semantic_views/ directory under {project_dir / inputs.semantic_models_dir}")
+        diagnostic = D("SST-DIS001", path=str(views_dir.relative_to(project_dir)))
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     catalog = catalog or DbtCatalog(
         schema_version="", dbt_version=None, project_name=None, models=tuple(models.values())
     )

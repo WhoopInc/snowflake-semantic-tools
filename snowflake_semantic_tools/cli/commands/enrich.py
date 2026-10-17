@@ -32,6 +32,7 @@ from snowflake_semantic_tools.cli.wiring.enrich import (
     refuse_non_production,
     relation_part,
 )
+from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.enrich import (
     COMPONENT_NAMES,
     Component,
@@ -169,6 +170,7 @@ def enrich(
         SST-PRT100: the target is not production-like, a PATH is outside the project, or a
             component is unknown; raised.
         SST-CFG038: sample values or enums were asked for, and the project refuses collecting them.
+        SST-DIS010: no model matched the selection, one per selector or PATH; raised.
     """
     options = resolve_options(_components(included, "--include"), _components(forced, "--force"))
     project_dir = paths.project_dir
@@ -188,7 +190,12 @@ def enrich(
         project = enrich_project(paths, target_name, manifest_path, port)
         report = project.run(request)
         if not report.diagnostics.has_errors and report.selected == 0 and not report.stopped:
-            raise ProjectError(f"no dbt model of the project in {project_dir} matched the selection")
+            # Each value that selected the models is one that matched nothing; with none, every model was.
+            named = (*selected, *(str(path) for path in path_arguments)) or ("*",)
+            raise ProjectError(
+                f"no dbt model of the project in {project_dir} matched the selection",
+                diagnostics=tuple(D("SST-DIS010", selector=value) for value in named),
+            )
         written = () if check or dry_run else _write(project, report, project_dir)
     finally:
         port.close()

@@ -116,11 +116,11 @@ def _read_yaml(path: Path) -> dict[str, Any]:
     """Read one YAML mapping: `dbt_project.yml` or the configuration file.
 
     Raises:
-        ProjectError: the file is not valid YAML (SST-CFG002).
-        ValueError: the file does not hold a mapping.
+        ProjectError: the file is not valid YAML (SST-CFG002), or does not hold a mapping (SST-LOD002).
 
     Diagnostics:
         SST-CFG002: the file is not valid YAML; raised.
+        SST-LOD002: the file's root is not a mapping; raised.
     """
     try:
         value = bounded_yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -130,7 +130,8 @@ def _read_yaml(path: Path) -> dict[str, Any]:
         )
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
     if not isinstance(value, dict):
-        raise ValueError(f"{path} must contain a mapping")
+        diagnostic = D("SST-LOD002", subject=f"config:{path.name}", file=path.name, found=type(value).__name__)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     return {str(key): item for key, item in value.items()}
 
 
@@ -274,7 +275,11 @@ def resolve_profile_name(files: ProjectPaths) -> str:
     """Return the `profiles.yml` profile: dbt's `profile:`, or `project.target_profile` without dbt.
 
     Raises:
-        ValueError: neither names a profile, or the two disagree.
+        ProjectError: neither names a profile, or the two disagree (SST-CFG056); a file cannot be
+            read as YAML, as `_read_yaml` says.
+
+    Diagnostics:
+        SST-CFG056: neither names a profile, or the two disagree; raised.
     """
     config = _read_yaml(files.config_file) if files.config_file is not None else {}
     project_block = config.get("project")
@@ -282,19 +287,22 @@ def resolve_profile_name(files: ProjectPaths) -> str:
     dbt_project_path = files.project_dir / "dbt_project.yml"
     if not dbt_project_path.is_file():
         if not isinstance(configured, str) or not configured:
-            raise ValueError(
-                f"the project has no dbt_project.yml; set project.target_profile in {files.config_name} "
-                "to name its profiles.yml profile"
-            )
+            _unnamed("the project has no dbt_project.yml, and project.target_profile is not set", files.config_name)
         return configured
     profile_name = _read_yaml(dbt_project_path).get("profile")
     if not isinstance(profile_name, str) or not profile_name:
-        raise ValueError("dbt_project.yml declares no profile")
+        _unnamed("dbt_project.yml declares no profile", "dbt_project.yml")
     if configured is not None and configured != profile_name:
-        raise ValueError(
-            f"project.target_profile {configured!r} disagrees with dbt_project.yml profile {profile_name!r}"
+        _unnamed(
+            f"project.target_profile {configured!r} disagrees with dbt_project.yml profile {profile_name!r}",
+            files.config_name,
         )
     return profile_name
+
+
+def _unnamed(reason: str, file: str) -> NoReturn:
+    diagnostic = D("SST-CFG056", origin=Origin(file), subject=f"config:{file}", reason=reason)
+    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
 
 def declared_targets(files: ProjectPaths) -> tuple[str, frozenset[str], str | None]:
@@ -567,22 +575,25 @@ def load_profile_target(
 
     Raises:
         OSError: profiles.yml cannot be read.
-        ValueError: The profile cannot be resolved, or the target's database, schema or state
-            table is missing or not a valid name.
-        ProjectError: profiles.yml cannot be found or parsed, or the target is absent or holds a
-            value SST cannot use.
+        ValueError: the state table the `state:` block names is not a valid name.
+        ProjectError: profiles.yml cannot be found or parsed, the profile cannot be named, or the
+            target is absent, sets no database or schema, or holds a value SST cannot use.
 
     Diagnostics:
         SST-CFG010: the profile has no such target; raised.
-        SST-CFG049: a field holds a template other than env_var(), or a value of the wrong type; raised.
+        SST-CFG012: the target sets no database or no schema; raised.
+        SST-CFG049: a field holds a template other than env_var(), a value of the wrong type, or a
+            database or schema that is not a valid identifier; raised.
         SST-CFG050: the target's authentication cannot be used; raised.
         SST-CFG048: a field SST does not read; carried on the target.
     """
     profile_name, selected, resolved = profile_output(files, target_name, profile=profile)
-    database = resolved.get("database")
-    schema = resolved.get("schema")
-    if not isinstance(database, str) or not isinstance(schema, str):
-        raise ValueError(f"target {selected!r} must set database and schema")
+    database, schema = target_location(profile_name, selected, resolved)
+    for key, value in (("database", database), ("schema", schema)):
+        try:
+            Identifier.parse(value)
+        except ValueError:
+            _refuse("SST-CFG049", selected, key=key, problem=f"{value!r} is not a valid identifier")
     params, inline_key, diagnostics = _connection_params(selected, resolved)
     query_tag = resolved.get("query_tag")
     if isinstance(query_tag, str) and query_tag:
@@ -606,6 +617,22 @@ def load_profile_target(
         diagnostics=diagnostics,
         inline_key=inline_key,
     )
+
+
+def target_location(profile: str, target: str, fields: Mapping[str, object]) -> tuple[str, str]:
+    """Return the database and schema a resolved profile target sets, refusing it when either is unset.
+
+    Raises:
+        ProjectError: the target sets no database or no schema (SST-CFG012).
+
+    Diagnostics:
+        SST-CFG012: the target sets no database, no schema, or neither; raised.
+    """
+    database, schema = fields.get("database"), fields.get("schema")
+    missing = [key for key, value in (("database", database), ("schema", schema)) if value is None or str(value) == ""]
+    if missing:
+        _refuse_profile("SST-CFG012", profile, field=f"{' and '.join(missing)} on target '{target}'")
+    return str(database), str(schema)
 
 
 def _state_table(state_config: Mapping[str, object] | None, database: str, schema: str) -> QualifiedName:

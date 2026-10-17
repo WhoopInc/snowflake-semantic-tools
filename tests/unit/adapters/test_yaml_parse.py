@@ -137,12 +137,12 @@ def test_read_yaml_mapping_returns_a_plain_dict_and_names_the_file_by_its_path(t
     assert exc_info.value.diagnostics == (D("SST-LOD005", file=str(path), line=2, key="a"),)
 
 
-def test_read_yaml_mapping_raises_an_unreadable_file_without_diagnostics(tmp_path: Path) -> None:
+def test_read_yaml_mapping_raises_an_unreadable_file_as_prt009(tmp_path: Path) -> None:
     path = tmp_path / "missing.yml"
     with pytest.raises(ProjectError) as exc_info:
         read_yaml_mapping(path)
-    assert str(exc_info.value).startswith(f"cannot read {path}: ")
-    assert exc_info.value.diagnostics == ()
+    assert str(exc_info.value).startswith(f"could not read {path}: ")
+    assert [item.code for item in exc_info.value.diagnostics] == ["SST-PRT009"]
     assert isinstance(exc_info.value.__cause__, OSError)
 
 

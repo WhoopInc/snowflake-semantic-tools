@@ -62,6 +62,8 @@ class ApplyOptions:
         break_stale_lock: Whether to take over a state lock whose holder has expired.
         temporary: Whether the run publishes session-scoped temporary artifacts, which a
             production-like target refuses.
+        held: The stable fingerprints of the plan's errors the run's baseline holds, such as a
+            warning strict mode promoted; they refuse nothing, as they fail no plan.
     """
 
     parallelism: int = 4
@@ -70,6 +72,7 @@ class ApplyOptions:
     allow_prune: bool = False
     break_stale_lock: bool = False
     temporary: bool = False
+    held: frozenset[str] = frozenset()
 
 
 class GrantCheck(Enum):

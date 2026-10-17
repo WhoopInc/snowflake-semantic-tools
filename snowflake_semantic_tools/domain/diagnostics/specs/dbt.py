@@ -273,6 +273,33 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Key metadata is written in the 0.3 form",
         "model '{model}': meta.sst.{field} is written in the 0.3 form",
         "write primary_key as a list of columns and unique_keys as a list of column lists",
-        condition="a model writes meta.sst.primary_key / unique_keys in the 0.3 value form, once per field",
+        condition=(
+            "a model writes meta.sst.primary_key / unique_keys in the 0.3 value form, or in another form "
+            "than a list, such as a mapping; once per field"
+        ),
+    ),
+    spec(
+        "SST-DBT033",
+        Severity.ERROR,
+        "dbt manifest value has the wrong shape",
+        "dbt manifest {field} must be {expected}",
+        "write the value in that form in the model's dbt YAML; for a part you did not write, regenerate the "
+        "manifest with dbt parse",
+        condition=(
+            "a part of the dbt manifest SST reads -- its root, `metadata`, `nodes`, a node, or a "
+            "`meta.sst` list such as `synonyms` -- is not the object or list dbt writes; the command exits 4"
+        ),
+    ),
+    spec(
+        "SST-DBT034",
+        Severity.ERROR,
+        "dbt YAML cannot hold what sst enrich writes",
+        "{path}: {field} must be {expected} to hold the metadata sst enrich writes",
+        "correct the dbt YAML to the shape dbt reads, or delete the key so sst enrich adds it",
+        condition=(
+            "the dbt YAML file of a model `sst enrich` updates has a root, `models:`, `columns:`, "
+            "`config:`, `meta:` or `sst:` of another shape than dbt reads, so enrich cannot edit it; "
+            "the command exits 4"
+        ),
     ),
 )

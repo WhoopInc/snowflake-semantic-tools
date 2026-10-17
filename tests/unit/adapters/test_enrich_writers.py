@@ -40,8 +40,9 @@ def test_a_file_round_trips_byte_for_byte_in_its_own_layout() -> None:
         assert document.dump() == text and not document.reformats()
     mixed = "models:\n  - name: a\n    tests:\n    - x\n"
     assert load_editable(mixed, "f.yml").reformats()
-    with pytest.raises(ProjectError, match="f.yml: cannot parse YAML"):
+    with pytest.raises(ProjectError, match="f.yml:1:5: cannot parse YAML") as raised:
         load_editable("a: [", "f.yml")
+    assert [item.code for item in raised.value.diagnostics] == ["SST-LOD001"]
 
 
 def test_text_dbt_would_read_as_another_type_is_quoted() -> None:
@@ -118,7 +119,7 @@ def test_a_model_or_file_the_project_lacks_is_created_in_dbts_layout() -> None:
 @pytest.mark.parametrize(
     ("text", "problem"),
     [
-        ("- not a mapping\n", "a dbt YAML file must be a mapping"),
+        ("- not a mapping\n", "its root must be a mapping"),
         ("models: {}\n", "models must be a list"),
         ("models:\n  - name: m\n    columns:\n      - name: a\n        config: text\n", "config must be a mapping"),
     ],

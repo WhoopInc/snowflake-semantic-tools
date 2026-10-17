@@ -85,6 +85,18 @@ def test_strict_applies_after_the_override() -> None:
     assert apply_policy(DiagnosticBag((ERROR,)), SeverityPolicy()) == (DiagnosticBag((ERROR,)), 0)
 
 
+def test_an_error_demoted_then_promoted_back_reads_as_promoted_from_its_override() -> None:
+    # The declared severity is the effective one again, so only the override shows strict raised it.
+    (error,), _ = apply_policy(DiagnosticBag((ERROR,)), SeverityPolicy({"SST-REF001": Severity.WARNING}, True))
+    assert (error.severity, error.promoted_from, error.demoted_from) == (Severity.ERROR, Severity.WARNING, None)
+    (raised,), _ = apply_policy(DiagnosticBag((WARNING,)), SeverityPolicy({"SST-LOD003": Severity.ERROR}, True))
+    assert (raised.severity, raised.override, raised.promoted_from) == (
+        Severity.ERROR,
+        Severity.ERROR,
+        Severity.WARNING,
+    )
+
+
 def test_an_override_reaching_a_warning_strict_already_promoted_resolves_it_again() -> None:
     promoted, _ = resolve_severities(DiagnosticBag((WARNING,)), strict=True)
     kept = apply_overrides(promoted, {"SST-LOD003": Severity.WARNING})[0]

@@ -100,18 +100,18 @@ def test_profile_name_comes_from_dbt_or_target_profile(tmp_path: Path) -> None:
     write_tree(dbt, {"sst_config.yml": "project:\n  target_profile: sst\n"})
     assert resolve_profile_name(project_paths(dbt)) == "sst"
     write_tree(dbt, {"sst_config.yml": "project:\n  target_profile: other\n"})
-    with pytest.raises(ValueError, match="disagrees"):
+    with pytest.raises(ProjectError, match="disagrees"):
         resolve_profile_name(project_paths(dbt))
 
     skills_only = write_tree(tmp_path / "skills", {"profiles.yml": PROFILES})
-    with pytest.raises(ValueError, match="project.target_profile"):
+    with pytest.raises(ProjectError, match="project.target_profile"):
         resolve_profile_name(project_paths(skills_only))
     write_tree(skills_only, {"sst_config.yml": "project:\n  target_profile: sst\n"})
     target = load_profile_target(project_paths(skills_only))
     assert (target.profile_name, target.target_name, target.identity.database.sql) == ("sst", "dev", "DB")
 
     unnamed = write_tree(tmp_path / "unnamed", {"dbt_project.yml": "name: x\n", "profiles.yml": PROFILES})
-    with pytest.raises(ValueError, match="declares no profile"):
+    with pytest.raises(ProjectError, match="declares no profile"):
         resolve_profile_name(project_paths(unnamed))
 
 

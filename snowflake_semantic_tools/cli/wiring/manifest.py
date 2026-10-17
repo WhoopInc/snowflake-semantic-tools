@@ -41,7 +41,7 @@ def current_manifest(project_dir: Path, result: CompileResult, inputs: YamlProje
 
     Raises:
         ProjectError: no compiled manifest exists (SST-MAN001), it was compiled for another
-            target (SST-MAN006), or it is stale.
+            target (SST-MAN006), or it is stale (SST-MAN009).
     """
     compiled = compiled_manifest(project_dir)
     current = manifest_for(result, inputs.manifest_sources())
@@ -50,5 +50,5 @@ def current_manifest(project_dir: Path, result: CompileResult, inputs: YamlProje
         raise ProjectError(mismatch.message, diagnostics=(mismatch,))
     stale = stale_manifest(compiled, current, before=before)
     if stale is not None:
-        raise ProjectError(stale)
+        raise ProjectError(diagnostics=(stale,))
     return current

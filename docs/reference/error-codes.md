@@ -16,21 +16,21 @@ cannot be downgraded by any setting.
 ## Contents
 
 - [Registry (REG)](#registry-reg) -- 23 codes
-- [Configuration (CFG)](#configuration-cfg) -- 45 codes
+- [Configuration (CFG)](#configuration-cfg) -- 46 codes
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
 - [Parsing (PRS)](#parsing-prs) -- 59 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
 - [Validation (VAL)](#validation-val) -- 304 codes
-- [dbt (DBT)](#dbt-dbt) -- 30 codes
+- [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
-- [Manifest and state (MAN)](#manifest-and-state-man) -- 19 codes
+- [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 43 codes
 - [Apply (APL)](#apply-apl) -- 31 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 24 codes
-- [Internal (INT)](#internal-int) -- 12 codes
+- [Internal (INT)](#internal-int) -- 13 codes
 - [Retired numbers](#retired-numbers) -- 69 numbers
 
 ## Registry (REG)
@@ -369,11 +369,11 @@ Fix: point SST at a Snowflake profile
 
 ### SST-CFG012
 
-**Credential field missing from the resolved profile** (error)
+**Required field missing from the resolved profile** (error)
 
 `profile '<profile>' has no <field>`
 
-Raised when account or user is absent or empty in the resolved target.
+Raised when account or user is absent or empty in the resolved target when a connection opens, or the target sets no `database` or no `schema`, which SST publishes into and keeps its state table in.
 
 Fix: set {field} in profiles.yml or its env var
 
@@ -718,6 +718,16 @@ Fix: delete the key to inherit its value from the folder routes, the block root,
 Raised when a `+` key the configuration schema marks root-only, such as `skills.+threads`, is set in a folder route, or in an artifact's `config:` block.
 
 Fix: set {expected} once, at the root of {block}, and remove it here
+
+### SST-CFG056
+
+**Project names no profiles.yml profile** (error)
+
+`no profiles.yml profile is named: <reason>`
+
+Raised when dbt_project.yml declares no `profile:`, the project has no dbt_project.yml and sets no `project.target_profile`, or the two name different profiles.
+
+Fix: set `profile:` in dbt_project.yml, or project.target_profile in sst_config.yml for a project without dbt; when both are set they must agree
 
 ### SST-CFG200
 
@@ -5815,9 +5825,29 @@ Fix: materialize the model as a table or a view; an ephemeral model has nothing 
 
 `model '<model>': meta.sst.<field> is written in the 0.3 form`
 
-Raised when a model writes meta.sst.primary_key / unique_keys in the 0.3 value form, once per field.
+Raised when a model writes meta.sst.primary_key / unique_keys in the 0.3 value form, or in another form than a list, such as a mapping; once per field.
 
 Fix: write primary_key as a list of columns and unique_keys as a list of column lists
+
+### SST-DBT033
+
+**dbt manifest value has the wrong shape** (error)
+
+`dbt manifest <field> must be <expected>`
+
+Raised when a part of the dbt manifest SST reads -- its root, `metadata`, `nodes`, a node, or a `meta.sst` list such as `synonyms` -- is not the object or list dbt writes; the command exits 4.
+
+Fix: write the value in that form in the model's dbt YAML; for a part you did not write, regenerate the manifest with dbt parse
+
+### SST-DBT034
+
+**dbt YAML cannot hold what sst enrich writes** (error)
+
+`<path>: <field> must be <expected> to hold the metadata sst enrich writes`
+
+Raised when the dbt YAML file of a model `sst enrich` updates has a root, `models:`, `columns:`, `config:`, `meta:` or `sst:` of another shape than dbt reads, so enrich cannot edit it; the command exits 4.
+
+Fix: correct the dbt YAML to the shape dbt reads, or delete the key so sst enrich adds it
 
 ## Rendering (RND)
 
@@ -6068,6 +6098,16 @@ Fix: check the filesystem permissions
 Raised when compilation did not reach the write step.
 
 Fix: fix the reported errors, then re-compile
+
+### SST-MAN009
+
+**Compiled manifest is stale** (error)
+
+`compiled SST manifest is stale; run sst compile before <command>`
+
+Raised when the project no longer compiles to the manifest `sst compile` wrote, so plan, apply, or a connected test suite refuses to start from it; the command exits 4.
+
+Fix: run sst compile, then re-run the command
 
 ### SST-MAN020
 
@@ -6779,7 +6819,7 @@ Note: The message names the holder: its run id and, for the lock in Snowflake, t
 
 `<artifact>: <value> changed since the plan`
 
-Raised when the target changed after the plan was computed: its state table no longer reads as the plan read it, an object the plan would create now exists, an ownership marker changed or was not installed, or a composite artifact's resources changed; `sst test` also reports it when an artifact it would smoke or eval is not published as the compiled manifest renders it.
+Raised when the target changed after the plan was computed: its state table no longer reads as the plan read it, an object the plan would create now exists, an ownership marker changed or was not installed, or a composite artifact's resources changed; `sst test` also reports it when an artifact it would smoke or eval is not published as the compiled manifest renders it; and `sst apply --plan` reports it, exiting 4, when the saved plan's manifest, observation, or ordered changes are not a fresh plan's.
 
 Fix: re-run plan
 
@@ -7459,7 +7499,7 @@ Fix: use space-separated selectors; intersection is not supported
 
 Raised when a selector's prefix is not a registered kind, or globs a kind whose values are a fixed set.
 
-Fix: use one of {expected}
+Fix: use {expected}
 
 ### SST-PRT103
 
@@ -7635,6 +7675,16 @@ Raised when a baseline entry's fingerprint matches more than one diagnostic in t
 
 Fix: re-generate the baseline
 
+### SST-INT010
+
+**Refusal reported with no code** (error, always an error)
+
+`uncoded refusal: <detail>`
+
+Raised when a command refuses an unusable project, configuration, or saved plan with an error that carries no diagnostic of its own; the command still exits 4.
+
+Fix: report this as a bug
+
 ### SST-INT900
 
 **Unregistered code passed to the emit function** (error, always an error)
@@ -7651,7 +7701,7 @@ Fix: report this as a bug
 
 `<value> template needs <placeholder>, which was not supplied`
 
-Raised when `D` is called without a value for a placeholder the code's message template names.
+Raised when `D` is called without a value for a placeholder the code's message template names, or a shared placeholder its suggestion names.
 
 Fix: report this as a bug
 

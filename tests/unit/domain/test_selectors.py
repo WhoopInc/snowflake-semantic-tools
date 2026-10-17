@@ -83,6 +83,15 @@ def test_a_state_selector_without_state_and_a_typed_glob_are_refused() -> None:
     assert isinstance(without, Diagnostic) and without.message == "selector 'state:modified' requires --state"
     glob = _resolve("tool:d*")
     assert isinstance(glob, Diagnostic) and glob.code == "SST-PRT102"
+    assert (
+        glob.suggestion == "use an exact value after 'tool:', or the bare glob 'd*', which matches a name of every type"
+    )
+
+
+def test_an_unknown_kind_is_refused_with_the_kinds_there_are() -> None:
+    unknown = _resolve("view:orders")
+    assert isinstance(unknown, Diagnostic) and unknown.message == "selector 'view:orders' names an unknown kind"
+    assert unknown.suggestion == "use one of type, path, tag, state, model, source"
 
 
 def test_a_selection_names_by_type_or_key_and_expands_its_types() -> None:

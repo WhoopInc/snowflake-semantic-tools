@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore, PlanFileStore, StateFileStore
 from snowflake_semantic_tools.domain.state import SavedPlan
 from tests.helpers.artifact_builders import change, changeset, manifest, rendered, state
@@ -40,8 +41,9 @@ def test_plan_store_detects_tampering_and_shape_errors(tmp_path: Path) -> None:
     value = json.loads(path.read_text(encoding="utf-8"))
     value["manifest_id"] = "tampered"
     path.write_text(json.dumps(value), encoding="utf-8")
-    with pytest.raises(ValueError, match="recomputed"):
+    with pytest.raises(ProjectError, match="recomputed") as raised:
         store.read()
+    assert [item.code for item in raised.value.diagnostics] == ["SST-PRT009"]
 
 
 def test_state_lock_enforces_exclusivity_and_stale_break(tmp_path: Path) -> None:

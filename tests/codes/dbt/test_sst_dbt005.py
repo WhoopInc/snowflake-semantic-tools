@@ -12,8 +12,10 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
 from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
+from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
 from tests.helpers.diagnostic_filters import coded
 from tests.helpers.projects import project_paths
@@ -112,3 +114,28 @@ def test_sst_dbt005_never_compares_a_manifest_sst_just_parsed(tmp_path: Path) ->
     loaded = YamlProjectSource(project_paths(tmp_path), dbt_runner=dbt).load_project()
     assert [run[1] for run in dbt.runs] == ["--version", "parse"]
     assert coded(loaded.diagnostics, "SST-DBT005") == []
+
+
+def test_sst_dbt005_softened_then_promoted_by_strict_says_so(tmp_path: Path) -> None:
+    # `--allow-stale-manifest` overrides the error to a warning; strict promotes it back.
+    project = _not_invoked(tmp_path, EDITED)
+    args = [
+        "--allow-stale-manifest",
+        "validate",
+        "--project-dir",
+        str(project),
+        "--strict",
+        "--no-snowflake-syntax-check",
+    ]
+    report = CliRunner().invoke(cli, ["--output", "json", *args])
+    [diagnostic] = [item for item in json.loads(report.output)["diagnostics"] if item["code"] == "SST-DBT005"]
+    assert (diagnostic["severity"], diagnostic["promoted_from"], diagnostic["demoted_from"]) == (
+        "error",
+        "warning",
+        None,
+    )
+    assert report.exit_code == 1
+    assert "error[SST-DBT005] (promoted from warning)" in CliRunner().invoke(cli, args).output
+
+    lenient = CliRunner().invoke(cli, [*args[:-2], "--no-strict", "--no-snowflake-syntax-check"]).output
+    assert "warning[SST-DBT005] (demoted from error)" in lenient

@@ -44,9 +44,16 @@ def walk_refusal(project_dir: Path, path: Path) -> str | None:
     `project_dir` and it, is a link, even one that points inside the project, or when it
     resolves outside the project. `project_dir` itself may be reached through a link.
 
+    A `path` not written below `project_dir` -- an absolute directory setting, say -- is refused
+    too, even one that lies inside the project: a walk names each file it reads relative to it.
+
     Returns:
         The reason, worded to follow "could not read <path>: " in SST-PRT009.
     """
+    if not path.is_relative_to(project_dir):
+        if resolve_within(project_dir, path) is None:
+            return "it resolves outside the project"
+        return "it is not written below the project directory; name the project's folders relative to it"
     current = project_dir
     for part in path.relative_to(project_dir).parts:
         current = current / part

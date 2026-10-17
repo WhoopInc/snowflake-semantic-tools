@@ -59,7 +59,7 @@ from snowflake_semantic_tools.cli.wiring.project import (
     state_store,
     target_dir,
 )
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, unstable_fingerprints
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, unstable_fingerprints
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 
 SUITES = ("golden", "smoke", "evals")
@@ -180,6 +180,7 @@ def test_command(
                 target_name,
                 (compiled, result),
                 inputs,
+                selected,
                 EvalGateRequest(
                     fail_fast, capture_baseline_requested, reason, threads=workers, break_stale_lock=break_stale_lock
                 ),
@@ -260,12 +261,19 @@ def _run_golden(
     Exit 1 on a mismatch, and 4 when a golden does not exist, which `--update-golden` creates.
     A relative `--golden-dir` is taken from the project directory. `unstable` holds the
     SST-INT006 a second compile of the project found, each of which fails the suite too.
+
+    Diagnostics:
+        SST-PRT009: a golden does not exist, one per golden.
     """
     report = CompareGoldens(GoldenFileStore(_golden_root(project_dir, golden_dir)), inputs.git_sha).run(result)
     exit_code = CONFIG if report.missing else OK if report.passed and not unstable else ERROR
+    absent = tuple(
+        D("SST-PRT009", subject="cli", path=name, detail="no golden is there; --update-golden writes it")
+        for name in report.missing
+    )
     return CommandResult(
         exit_code,
-        unstable,
+        DiagnosticBag((*absent, *unstable)),
         data={"suite": "golden", "failures": list(report.failures), "missing": list(report.missing)},
         human=lambda: _print_golden(report, len(result.compiled)),
     )
@@ -347,6 +355,7 @@ def _run_evals(
     target_name: str | None,
     results: tuple[CompileResult, CompileResult],
     inputs: YamlProjectInputs,
+    selected: tuple[str, ...],
     request: EvalGateRequest,
 ) -> CommandResult:
     """Run the selected evals against their published agents and gate them; exit 1 unless the run passes.
@@ -360,11 +369,19 @@ def _run_evals(
     Raises:
         ProjectError: the selection compiles no eval, the compiled manifest is stale, or another
             operation holds the target's lock; it carries what taking the lock reported.
+
+    Diagnostics:
+        SST-DIS010: the selection compiles no eval, one per selector; raised.
     """
     full, result = results
     evals = compiled_evals(result)
     if not evals:
-        raise ProjectError("no eval artifacts matched the project")
+        # The suite selects the evals within `selected`; with no selection, its own `type:eval`.
+        named = selected or ("type:eval",)
+        raise ProjectError(
+            "no eval artifacts matched the project",
+            diagnostics=tuple(D("SST-DIS010", selector=value) for value in named),
+        )
     manifest = current_manifest(paths.project_dir, full, inputs, before="evals")
     profile, port = connect(paths, target_name)
     params = profile.connection_params
