@@ -104,12 +104,15 @@ class ModelReport:
         path: The YAML file its column updates go to.
         enrichment: What its columns gain; None when one of its reads failed.
         table_synonyms: The table synonyms its `meta.sst` gains; empty when it gains none.
+        section: The top-level key of the YAML file that describes it: `models`, `snapshots`
+            or `seeds`.
     """
 
     model: str
     path: str
     enrichment: ModelEnrichment | None
     table_synonyms: tuple[str, ...] = ()
+    section: str = "models"
 
     @property
     def failed(self) -> bool:
@@ -160,7 +163,8 @@ def _under(file: str | None, paths: Sequence[str]) -> bool:
 def select_models(catalog: DbtCatalog, request: EnrichRequest) -> tuple[tuple[DbtModel, ...], list[Diagnostic]]:
     """Return the project's models the request selects, in name order, with what selecting found.
 
-    Only the root project's models are selected; an installed package's are never edited.
+    Only the root project's models are selected; an installed package's are never edited. With
+    no name or path, only models are: a snapshot or seed is selected by name or path alone.
 
     Diagnostics:
         SST-DBT031: a model selected by name has no relation.
@@ -174,16 +178,9 @@ def select_models(catalog: DbtCatalog, request: EnrichRequest) -> tuple[tuple[Db
         for pattern in request.selected
         if not any(character in pattern for character in "*?[") and pattern.casefold() not in known
     ]
-    models = [model for model in catalog.models if model.package_name in (None, catalog.project_name)]
-    if request.paths:
-        paths = [path.strip("/") for path in request.paths]
-        models = [
-            model for model in models if _under(model.original_file_path, paths) or _under(model.patch_file, paths)
-        ]
-    if request.selected:
-        models = [model for model in models if _matches(model.name, request.selected)]
-    if request.excluded:
-        models = [model for model in models if not _matches(model.name, request.excluded)]
+    models = _filtered(
+        [model for model in catalog.models if model.package_name in (None, catalog.project_name)], request
+    )
     diagnostics = [
         *absent,
         *(
@@ -193,6 +190,32 @@ def select_models(catalog: DbtCatalog, request: EnrichRequest) -> tuple[tuple[Db
         ),
     ]
     return tuple(sorted(models, key=lambda model: model.name.casefold())), diagnostics
+
+
+def yaml_section(model: DbtModel) -> str:
+    """Return the dbt YAML key that describes the model: `models`, `snapshots` or `seeds`."""
+    return {"snapshot": "snapshots", "seed": "seeds"}.get(model.resource_type, "models")
+
+
+def _filtered(models: list[DbtModel], request: EnrichRequest) -> list[DbtModel]:
+    """Keep the models the request's paths, names and exclusions select.
+
+    With no path or name, only models are kept: a snapshot or seed is enriched only when one
+    asks for it, as enrich samples its rows and sends them to Cortex, and a seed is often raw
+    data no view reads.
+    """
+    if not request.paths and not request.selected:
+        models = [model for model in models if model.resource_type == "model"]
+    if request.paths:
+        paths = [path.strip("/") for path in request.paths]
+        models = [
+            model for model in models if _under(model.original_file_path, paths) or _under(model.patch_file, paths)
+        ]
+    if request.selected:
+        models = [model for model in models if _matches(model.name, request.selected)]
+    if request.excluded:
+        models = [model for model in models if not _matches(model.name, request.excluded)]
+    return models
 
 
 def model_file(model: DbtModel) -> str:
@@ -330,8 +353,9 @@ class EnrichProject:
             taken = taken_by_views(views, model.name)
             edits, dropped_tables = self._table_synonyms(model, warehouse, taken, request.options, settings)
         except _ModelFailed as failure:
-            return ModelReport(model.name, path, None), [failure.diagnostic]
-        return ModelReport(model.name, path, enrichment, edits), [*enrichment.diagnostics, *dropped, *dropped_tables]
+            return ModelReport(model.name, path, None, section=yaml_section(model)), [failure.diagnostic]
+        report = ModelReport(model.name, path, enrichment, edits, yaml_section(model))
+        return report, [*enrichment.diagnostics, *dropped, *dropped_tables]
 
     def _synonym_model(self, model: str) -> list[Diagnostic]:
         """Check once that the synonym model answers, and how SHOW lists it, before any read.
@@ -452,20 +476,21 @@ class EnrichProject:
 
     def _edited_files(self, reports: Sequence[ModelReport]) -> tuple[EditedFile, ...]:
         """Compute every model file's text after the run, in path order."""
-        by_file: dict[str, tuple[dict[str, tuple[ColumnUpdate, ...]], dict[str, tuple[str, ...]]]] = {}
+        by_file: dict[str, tuple[dict[str, tuple[ColumnUpdate, ...]], dict[str, tuple[str, ...]], dict[str, str]]] = {}
         for report in reports:
             updates = report.enrichment.updates if report.enrichment is not None else ()
             if not updates and not report.table_synonyms:
                 continue
-            columns, synonyms = by_file.setdefault(report.path, ({}, {}))
+            columns, synonyms, sections = by_file.setdefault(report.path, ({}, {}, {}))
+            sections[report.model] = report.section
             if updates:
                 columns[report.model] = updates
             if report.table_synonyms:
                 synonyms[report.model] = report.table_synonyms
         edited = []
-        for path, (columns, synonyms) in sorted(by_file.items()):
+        for path, (columns, synonyms, sections) in sorted(by_file.items()):
             before = self._files.read(path)
-            written = self._files.edit_models(before, path, columns, synonyms)
+            written = self._files.edit_models(before, path, columns, synonyms, sections)
             edited.append(EditedFile(path, before, written.text, written.reformatted))
         return tuple(edited)
 

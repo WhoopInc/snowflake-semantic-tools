@@ -88,10 +88,18 @@ TEST_PATHS: dict[str, _Kind] = {
     "column_name": _OPTIONAL_TEXT,
 }
 SOURCE_PATHS: dict[str, _Kind] = {"source_name": _TEXT, "name": _TEXT, "relation_name": _TEXT}
+# A snapshot or seed is read as a model is, less what only a model has: a contract, which dbt
+# enforces on models alone, and a patch file, which a seed's CSV and a YAML snapshot lack.
+TABLE_PATHS: dict[str, _Kind] = {
+    key: kind
+    for key, kind in MODEL_PATHS.items()
+    if key not in ("contract.enforced", "config.contract.enforced", "patch_path")
+}
 # The paths a release may leave out where the YAML sets nothing, rather than write empty: dbt v2
-# omits all three, and dbt 1.8 a column's `config`. SST reads an absent one as empty, so absence
+# omits a column's `data_type` and `config`, a test's `column_name` and a seed's `config.meta`,
+# and dbt 1.8 a column's `config`. SST reads an absent one as empty, so absence
 # is no gap; a present one is still held to its type.
-OMITTED_WHEN_UNSET = frozenset(("columns.data_type", "columns.config.meta", "tests.column_name"))
+OMITTED_WHEN_UNSET = frozenset(("columns.data_type", "columns.config.meta", "tests.column_name", "tables.config.meta"))
 _ABSENT = object()
 
 
@@ -141,14 +149,19 @@ def read_surface_gaps(document: Mapping[str, Any]) -> list[str]:
     nodes = _mapping(document.get("nodes"))
     models = {key: node for key, node in nodes.items() if key.startswith(f"model.{PROJECT}.")}
     tests = {key: node for key, node in nodes.items() if key.startswith(f"test.{PROJECT}.")}
+    tables = {key: node for key, node in nodes.items() if key.startswith((f"snapshot.{PROJECT}.", f"seed.{PROJECT}."))}
     sources = _mapping(document.get("sources"))
-    for kind, found in (("models", models), ("tests", tests), ("sources", sources)):
+    for kind, found in (("models", models), ("tests", tests), ("snapshots and seeds", tables), ("sources", sources)):
         if not found:
             gaps.append(f"nodes: no reference-project {kind}")
     for key, node in sorted(models.items()):
         gaps.extend(_check(node, f"nodes.{key}", MODEL_PATHS))
         columns = _mapping(node.get("columns"))
         for name, column in sorted(columns.items()):
+            gaps.extend(_check(column, f"nodes.{key}.columns.{name}", COLUMN_PATHS, "columns"))
+    for key, node in sorted(tables.items()):
+        gaps.extend(_check(node, f"nodes.{key}", TABLE_PATHS, "tables"))
+        for name, column in sorted(_mapping(node.get("columns")).items()):
             gaps.extend(_check(column, f"nodes.{key}.columns.{name}", COLUMN_PATHS, "columns"))
     for key, node in sorted(tests.items()):
         gaps.extend(_check(node, f"nodes.{key}", TEST_PATHS, "tests"))

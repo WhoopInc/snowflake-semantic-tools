@@ -11,9 +11,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-REF001",
         Severity.ERROR,
         "ref() model not in the dbt catalog",
-        "{{{{ ref('{model}') }}}} is not a model in the dbt manifest",
-        "run dbt compile, or correct the model name",
-        condition="a single-argument ref names a model the manifest does not list",
+        "{{{{ ref('{model}') }}}} is not a model, snapshot or seed in the dbt manifest",
+        "run dbt compile, or correct the name",
+        condition="a single-argument ref names no model, snapshot or seed the manifest lists",
     ),
     spec(
         "SST-REF002",

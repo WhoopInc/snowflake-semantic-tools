@@ -96,13 +96,16 @@ def _list(parent: CommentedMap, key: str, path: str) -> CommentedSeq:
     return entries
 
 
-def _model_entry(root: CommentedMap, model: str, path: str) -> CommentedMap:
-    """Return the model's entry in `models:`, appending one when the file does not describe it."""
-    models = _list(root, "models", path)
-    entry = _named(models, model)
+def _model_entry(root: CommentedMap, model: str, path: str, section: str = "models") -> CommentedMap:
+    """Return the model's entry under `section`, appending one when the file does not describe it.
+
+    `section` is `models`, or `snapshots` or `seeds` for a snapshot or seed.
+    """
+    entries = _list(root, section, path)
+    entry = _named(entries, model)
     if entry is None:
         entry = CommentedMap(name=model)
-        models.append(entry)
+        entries.append(entry)
     return entry
 
 
@@ -137,6 +140,7 @@ def write_model_updates(
     path: str,
     updates: Mapping[str, Sequence[ColumnUpdate]],
     synonyms: Mapping[str, Sequence[str]] | None = None,
+    sections: Mapping[str, str] | None = None,
 ) -> WrittenFile:
     """Apply each model's column updates and table synonyms to one dbt YAML file's text.
 
@@ -144,6 +148,8 @@ def write_model_updates(
         text: The file's text; None for a file enrich creates.
         updates: The column updates of each model the file describes, by model name.
         synonyms: The table synonyms of each model the file describes, by model name.
+        sections: The top-level key each model is described under, by model name; `models`
+            when absent, `snapshots` or `seeds` for a snapshot or seed.
 
     Raises:
         ProjectError: The file is not YAML (SST-LOD001), or a part enrich must edit has another
@@ -153,6 +159,8 @@ def write_model_updates(
     root = document.root
     assert isinstance(root, CommentedMap)
     synonyms = synonyms or {}
+    sections = sections or {}
     for model in dict.fromkeys((*updates, *synonyms)):
-        _apply(_model_entry(root, model, path), updates.get(model), synonyms.get(model, ()), path)
+        entry = _model_entry(root, model, path, sections.get(model, "models"))
+        _apply(entry, updates.get(model), synonyms.get(model, ()), path)
     return WrittenFile(document.dump(), document.reformats())

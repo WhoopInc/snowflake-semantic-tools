@@ -136,7 +136,9 @@ def stale_models(project_dir: Path, catalog: DbtCatalog, paths: tuple[str, ...])
     """Report each model file under `paths` that changed after the manifest recorded its checksum.
 
     Only the root project's models are compared, by the file dbt read them from; a model with no
-    checksum, or whose file is gone, is not compared.
+    checksum, or whose file is gone, is not compared. Snapshots and seeds are not compared
+    either: dbt v2 hashes a YAML snapshot as something other than its file, so no form of the
+    file says whether it changed.
 
     Diagnostics:
         SST-DBT005: a model file's contents no longer match the manifest, once per file.
@@ -144,7 +146,9 @@ def stale_models(project_dir: Path, catalog: DbtCatalog, paths: tuple[str, ...])
     found: list[Diagnostic] = []
     for model in sorted(catalog.models, key=lambda item: item.original_file_path or ""):
         file = model.original_file_path
-        if file is None or model.checksum is None or model.package_name not in (None, catalog.project_name):
+        if model.resource_type != "model" or file is None or model.checksum is None:
+            continue
+        if model.package_name not in (None, catalog.project_name):
             continue
         if not any(file == root or file.startswith(f"{root}/") for root in paths):
             continue

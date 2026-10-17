@@ -25,7 +25,7 @@ The 0.3 spellings `{{ table() }}` and `{{ column() }}` are refused with the
 
 | Function | Names | Arguments |
 |---|---|---|
-| `ref` | a dbt model, or one of its columns | `('<model>')` or `('<model>', '<column>')` |
+| `ref` | a dbt model, snapshot or seed, or one of its columns | `('<model>')` or `('<model>', '<column>')` |
 | `source` | a dbt source table | `('<source>', '<table>')` |
 | `metric` | a metric | `('<name>')` |
 | `relationship` | a relationship | `('<name>')` |

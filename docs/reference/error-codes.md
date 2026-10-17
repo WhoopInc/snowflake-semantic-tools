@@ -1745,11 +1745,11 @@ Raised when CRLF line endings were read as LF in memory; the file itself is left
 
 **ref() model not in the dbt catalog** (error)
 
-`{{ ref('<model>') }} is not a model in the dbt manifest`
+`{{ ref('<model>') }} is not a model, snapshot or seed in the dbt manifest`
 
-Raised when a single-argument ref names a model the manifest does not list.
+Raised when a single-argument ref names no model, snapshot or seed the manifest lists.
 
-Fix: run dbt compile, or correct the model name
+Fix: run dbt compile, or correct the name
 
 ### SST-REF002
 

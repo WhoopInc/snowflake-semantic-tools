@@ -109,6 +109,7 @@ class EnrichFilesPort(Protocol):
         path: str,
         updates: Mapping[str, Sequence[ColumnUpdate]],
         synonyms: Mapping[str, Sequence[str]],
+        sections: Mapping[str, str] | None = None,
     ) -> WrittenFile:
         """Return a dbt YAML file's text with each model's updates made; nothing is written.
 
@@ -116,6 +117,8 @@ class EnrichFilesPort(Protocol):
             text: The file's current text; None for a file enrich creates.
             updates: The column updates of each model, by model name.
             synonyms: The table synonyms each model's `meta.sst` gains, by model name.
+            sections: The top-level key each model is described under, by model name --
+                `snapshots` for a snapshot, `seeds` for a seed; `models` when absent.
 
         Raises:
             ProjectError: The file is not YAML, or a part enrich must edit has another shape.

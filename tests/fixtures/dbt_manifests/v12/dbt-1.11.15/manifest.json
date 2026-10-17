@@ -1,6 +1,7 @@
 {
  "child_map": {
   "model.sst_reference_impl.customers": [
+   "snapshot.sst_reference_impl.customers_snapshot",
    "test.sst_reference_impl.not_null_customers_customer_id.5c9bf9911d",
    "test.sst_reference_impl.relationships_orders_customer_id__customer_id__ref_customers_.c6ec7f58f2",
    "test.sst_reference_impl.unique_customers_customer_id.c5af1ff4b1"
@@ -58,6 +59,7 @@
   "seed.sst_reference_impl.pricing_periods_raw": [],
   "seed.sst_reference_impl.products_raw": [],
   "seed.sst_reference_impl.supplies_raw": [],
+  "snapshot.sst_reference_impl.customers_snapshot": [],
   "source.sst_reference_impl.jaffle_service.customers_raw": [
    "model.sst_reference_impl.customers"
   ],
@@ -3570,6 +3572,218 @@
     "quote_columns": false
    }
   },
+  "snapshot.sst_reference_impl.customers_snapshot": {
+   "alias": "customers_snapshot",
+   "build_path": null,
+   "checksum": {
+    "checksum": "d764f0c8cf4ce8f3bda777fdaa589105190794c6bb4861704f1ef9a054fd421c",
+    "name": "sha256"
+   },
+   "columns": {
+    "customer_id": {
+     "config": {
+      "meta": {
+       "sst": {
+        "column_type": "dimension"
+       }
+      },
+      "tags": []
+     },
+     "constraints": [],
+     "data_type": "VARCHAR",
+     "description": "The customer this version describes.",
+     "doc_blocks": [],
+     "granularity": null,
+     "meta": {
+      "sst": {
+       "column_type": "dimension"
+      }
+     },
+     "name": "customer_id",
+     "quote": null,
+     "tags": []
+    },
+    "dbt_valid_from": {
+     "config": {
+      "meta": {
+       "sst": {
+        "column_type": "time_dimension"
+       }
+      },
+      "tags": []
+     },
+     "constraints": [],
+     "data_type": "TIMESTAMP_NTZ",
+     "description": "When this version of the customer became current.",
+     "doc_blocks": [],
+     "granularity": null,
+     "meta": {
+      "sst": {
+       "column_type": "time_dimension"
+      }
+     },
+     "name": "dbt_valid_from",
+     "quote": null,
+     "tags": []
+    },
+    "dbt_valid_to": {
+     "config": {
+      "meta": {
+       "sst": {
+        "column_type": "time_dimension"
+       }
+      },
+      "tags": []
+     },
+     "constraints": [],
+     "data_type": "TIMESTAMP_NTZ",
+     "description": "When this version stopped being current; null for the current version.",
+     "doc_blocks": [],
+     "granularity": null,
+     "meta": {
+      "sst": {
+       "column_type": "time_dimension"
+      }
+     },
+     "name": "dbt_valid_to",
+     "quote": null,
+     "tags": []
+    }
+   },
+   "compiled_path": null,
+   "config": {
+    "alias": null,
+    "batch_size": null,
+    "begin": null,
+    "check_cols": "all",
+    "column_types": {},
+    "concurrent_batches": null,
+    "contract": {
+     "alias_types": true,
+     "enforced": false
+    },
+    "database": null,
+    "dbt_valid_to_current": null,
+    "docs": {
+     "node_color": null,
+     "show": true
+    },
+    "enabled": true,
+    "event_time": null,
+    "full_refresh": null,
+    "grants": {},
+    "group": null,
+    "incremental_strategy": null,
+    "lookback": 1,
+    "materialized": "snapshot",
+    "meta": {
+     "sst": {
+      "primary_key": [
+       "customer_id",
+       "dbt_valid_from"
+      ],
+      "synonyms": [
+       "customer history"
+      ]
+     }
+    },
+    "on_configuration_change": "apply",
+    "on_schema_change": "ignore",
+    "packages": [],
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "schema": null,
+    "snapshot_meta_column_names": {
+     "dbt_is_deleted": null,
+     "dbt_scd_id": null,
+     "dbt_updated_at": null,
+     "dbt_valid_from": null,
+     "dbt_valid_to": null
+    },
+    "static_analysis": null,
+    "strategy": "check",
+    "tags": [],
+    "target_database": null,
+    "target_schema": null,
+    "unique_key": "customer_id",
+    "updated_at": null
+   },
+   "contract": {
+    "alias_types": true,
+    "checksum": null,
+    "enforced": false
+   },
+   "created_at": 0.0,
+   "database": "SST_REF_DEV",
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "model.sst_reference_impl.customers"
+    ]
+   },
+   "description": "Every version of each customer, as `customers` held it between snapshots.",
+   "doc_blocks": [],
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "fqn": [
+    "sst_reference_impl",
+    "customers_snapshot"
+   ],
+   "functions": [],
+   "group": null,
+   "language": "sql",
+   "meta": {
+    "sst": {
+     "primary_key": [
+      "customer_id",
+      "dbt_valid_from"
+     ],
+     "synonyms": [
+      "customer history"
+     ]
+    }
+   },
+   "metrics": [],
+   "name": "customers_snapshot",
+   "original_file_path": "snapshots/customers_snapshot.yml",
+   "package_name": "sst_reference_impl",
+   "patch_path": "sst_reference_impl://snapshots/customers_snapshot.yml",
+   "path": "customers_snapshot.yml/customers_snapshot.sql",
+   "raw_code": "select * from {{ ref('customers') }}",
+   "refs": [
+    {
+     "name": "customers",
+     "package": null,
+     "version": null
+    }
+   ],
+   "relation_name": "SST_REF_DEV.JAFFLE.customers_snapshot",
+   "resource_type": "snapshot",
+   "schema": "JAFFLE",
+   "sources": [],
+   "tags": [],
+   "unique_id": "snapshot.sst_reference_impl.customers_snapshot",
+   "unrendered_config": {
+    "check_cols": "all",
+    "meta": {
+     "sst": {
+      "primary_key": [
+       "customer_id",
+       "dbt_valid_from"
+      ],
+      "synonyms": [
+       "customer history"
+      ]
+     }
+    },
+    "strategy": "check",
+    "unique_key": "customer_id"
+   }
+  },
   "test.sst_reference_impl.dbt_utils_unique_combination_of_columns_order_items_order_id__order_item_id.a66770b59f": {
    "alias": "dbt_utils_unique_combination_o_7db28351565dc4b4fb3af6bea55683c3",
    "attached_node": "model.sst_reference_impl.order_items",
@@ -6105,6 +6319,9 @@
   "seed.sst_reference_impl.pricing_periods_raw": [],
   "seed.sst_reference_impl.products_raw": [],
   "seed.sst_reference_impl.supplies_raw": [],
+  "snapshot.sst_reference_impl.customers_snapshot": [
+   "model.sst_reference_impl.customers"
+  ],
   "source.sst_reference_impl.jaffle_service.customers_raw": [],
   "source.sst_reference_impl.jaffle_service.locations_raw": [],
   "source.sst_reference_impl.jaffle_service.order_items_raw": [],

@@ -104,8 +104,9 @@ class InMemoryFiles:
         path: str,
         updates: Mapping[str, Sequence[ColumnUpdate]],
         synonyms: Mapping[str, Sequence[str]],
+        sections: Mapping[str, str] | None = None,
     ) -> WrittenFile:
-        return write_model_updates(text, path, updates, synonyms)
+        return write_model_updates(text, path, updates, synonyms, sections)
 
     def write(self, path: str, text: str) -> None:
         self.texts[path] = text

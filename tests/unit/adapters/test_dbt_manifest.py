@@ -23,8 +23,8 @@ def manifest_document() -> dict[str, object]:
             "project_name": "fixture",
         },
         "nodes": {
-            "seed.fixture.products": {
-                "resource_type": "seed",
+            "analysis.fixture.products": {
+                "resource_type": "analysis",
                 "name": "products_raw",
             },
             "model.fixture.products": {
@@ -119,6 +119,41 @@ def test_a_model_without_a_physical_relation_is_left_out_with_its_materialisatio
     assert catalog.model("products") is None
     assert catalog.relationless_models == ("products",)
     assert dict(catalog.unreadable_models) == {"products": "ephemeral"}
+
+
+@pytest.mark.parametrize("resource_type", ["snapshot", "seed"])
+def test_a_snapshot_or_seed_is_a_table_like_a_model(resource_type: str) -> None:
+    document = manifest_document()
+    nodes = document["nodes"]
+    assert isinstance(nodes, dict)
+    nodes[f"{resource_type}.fixture.history"] = {
+        "resource_type": resource_type,
+        "name": "history",
+        "relation_name": "db.sch.history",
+        "original_file_path": f"{resource_type}s/history.yml",
+        "config": {"materialized": resource_type, "meta": {"sst": {"synonyms": ["record"]}}},
+        "columns": {"dbt_valid_from": {"name": "dbt_valid_from", "data_type": "TIMESTAMP_NTZ"}},
+    }
+    catalog = catalog_from_document(document)
+    found = catalog.model("history")
+    assert found is not None
+    assert (found.resource_type, found.relation_name, found.synonyms) == (resource_type, "DB.SCH.HISTORY", ("record",))
+    assert [column.name for column in found.columns] == ["dbt_valid_from"]
+    products = catalog.model("products")
+    assert products is not None and products.resource_type == "model"
+    # Any other node, such as an analysis, is not a table.
+    assert catalog.model("products_raw") is None and "products_raw" not in catalog.relationless_models
+
+
+def test_a_disabled_snapshot_or_seed_is_listed_as_disabled() -> None:
+    document = manifest_document()
+    document["disabled"] = {
+        "snapshot.fixture.old": [{"resource_type": "snapshot", "name": "old_history"}],
+        "seed.fixture.gone": [{"resource_type": "seed", "name": "gone_raw"}],
+        "analysis.fixture.skip": [{"resource_type": "analysis", "name": "not_a_table"}],
+    }
+    assert set(catalog_from_document(document).unreadable_models) >= {"old_history", "gone_raw"}
+    assert "not_a_table" not in catalog_from_document(document).unreadable_models
 
 
 def test_loads_a_manifest_from_disk(tmp_path: Path) -> None:

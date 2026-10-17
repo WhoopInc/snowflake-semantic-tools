@@ -21,6 +21,9 @@ SUPPORTED_SCHEMA = "https://schemas.getdbt.com/dbt/manifest/v12.json"
 SUPPORTED_SCHEMA_VERSIONS = frozenset((12,))
 # Both spellings dbt has written: `.../manifest/v12.json` and `.../manifest/v12/manifest.json`.
 _SCHEMA_URL = re.compile(r"^https?://schemas\.getdbt\.com/dbt/manifest/v(\d+)(?:\.json|/manifest\.json)$")
+# The dbt resources that are relations `ref()` names, so a semantic view can use them as tables:
+# a model, a snapshot (its SCD-2 history table) and a seed (the table a CSV loads into).
+_TABLE_RESOURCES = frozenset(("model", "snapshot", "seed"))
 
 # The `meta.sst` keys SST reads. `database` and `schema` are read only to be
 # refused (SST-DBT030); anything else is reported where a view uses the model.
@@ -279,8 +282,9 @@ def _model(
 ) -> DbtModel | tuple[str, str] | Diagnostic | None:
     """Project one manifest node, or say why the catalog leaves it out.
 
-    Every node must be a mapping; only a model is read. A model with no relation is returned
-    as its name and its materialisation, so the catalog can say why it has none.
+    Every node must be a mapping; a model, snapshot or seed is read (`_TABLE_RESOURCES`), as
+    each is a relation `ref()` resolves. One with no relation is returned as its name and its
+    materialisation, so the catalog can say why it has none.
 
     Returns:
         The model; `(name, materialisation)` for a model with no relation; the diagnostic of a
@@ -295,7 +299,7 @@ def _model(
     """
     path = f"nodes.{unique_id}"
     node = _mapping(raw_node, path=path)
-    if node.get("resource_type") != "model":
+    if node.get("resource_type") not in _TABLE_RESOURCES:
         return None
     name = str(node.get("name") or "").strip()
     if not name:
@@ -343,6 +347,7 @@ def _build_model(
         primary_key=primary_key,
         unique_keys=unique_keys,
         columns=columns,
+        resource_type=str(node.get("resource_type") or "model"),
         original_file_path=_text(node.get("original_file_path")),
         patch_path=_text(node.get("patch_path")),
         forbidden_location_keys=tuple(key for key in ("database", "schema") if key in meta),
@@ -447,13 +452,13 @@ def check_schema_version(
 
 
 def _disabled_models(root: Mapping[str, Any]) -> tuple[str, ...]:
-    """Return the names of the models dbt moved to the `disabled` map, sorted."""
+    """Return the names of the models, snapshots and seeds dbt moved to the `disabled` map, sorted."""
     disabled = root.get("disabled")
     names = {
         str(node.get("name"))
         for entries in (disabled.values() if isinstance(disabled, dict) else ())
         for node in (entries if isinstance(entries, list) else ())
-        if isinstance(node, dict) and node.get("resource_type") == "model" and node.get("name")
+        if isinstance(node, dict) and node.get("resource_type") in _TABLE_RESOURCES and node.get("name")
     }
     return tuple(sorted(names))
 

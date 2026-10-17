@@ -71,7 +71,11 @@ class DbtColumn:
 
 @dataclass(frozen=True, slots=True)
 class DbtModel:
-    """The manifest-backed relation and semantic metadata for one dbt model."""
+    """The manifest-backed relation and semantic metadata for one dbt model, snapshot or seed.
+
+    All three are relations `ref()` resolves, so a view uses any of them as a table alike;
+    `resource_type` says which it is.
+    """
 
     unique_id: str
     name: str
@@ -113,6 +117,8 @@ class DbtModel:
     # As `DbtColumn.wrong_types` and `DbtColumn.unstorable`, for the model's own fields.
     wrong_types: tuple[tuple[str, str, str], ...] = ()
     unstorable: tuple[tuple[str, str], ...] = ()
+    # dbt's `resource_type`: `model`, `snapshot` or `seed`.
+    resource_type: str = "model"
 
     def column(self, name: str) -> DbtColumn | None:
         """Return a column case-insensitively."""

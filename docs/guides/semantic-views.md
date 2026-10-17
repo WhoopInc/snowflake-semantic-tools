@@ -542,6 +542,17 @@ relationship:
     - "{{ ref('orders', 'ordered_at') }} >= {{ ref('customer_daily_status', 'status_date') }}"
 ```
 
+A dbt snapshot is the natural source of such a table: `ref()` names a snapshot
+(or a seed) exactly as it names a model, and its column metadata is read the same
+way, so a view joins the snapshot's SCD-2 history as-of on its key and
+`dbt_valid_from`. Declare the snapshot's key, such as `[customer_id,
+dbt_valid_from]`, in its `meta.sst.primary_key`, as for any table. Two things
+are only a model's: SST-DBT024 (no enforced contract) never reports a snapshot
+or seed, since dbt enforces contracts on models alone, and a change to a
+snapshot's or seed's file is not detected as staleness (SST-DBT005), since dbt v2
+does not hash a YAML snapshot as its file. `sst enrich` takes a snapshot or seed
+only when `--select` or a path names it.
+
 **A range join has no key.** It matches each row to the one range that contains
 it, across the whole right table: SST renders the range alone, so a key
 equality beside it is refused (`SST-VAL202`). So it suits a table of

@@ -49,6 +49,7 @@ def consumed_model_diagnostics(catalog: DbtCatalog, consumed: Iterable[str]) -> 
         SST-DBT024: the model enforces no contract and leaves a column's type to inference, so an
             upstream type change would re-infer it unseen. A model that types every column with
             `meta.sst.data_type` (or dbt's own `data_type`) has pinned them without a contract.
+            A snapshot or seed is never reported: dbt enforces contracts on models only.
     """
     wanted = {name.casefold() for name in consumed}
     diagnostics: list[Diagnostic] = []
@@ -59,7 +60,7 @@ def consumed_model_diagnostics(catalog: DbtCatalog, consumed: Iterable[str]) -> 
             diagnostics.append(D("SST-DBT015", model=model.name, subject=_subject(model)))
         if model.test_count == 0:
             diagnostics.append(D("SST-DBT023", model=model.name, subject=_subject(model)))
-        if not model.has_contract and _infers_a_type(model):
+        if model.resource_type == "model" and not model.has_contract and _infers_a_type(model):
             diagnostics.append(D("SST-DBT024", model=model.name, subject=_subject(model)))
     return tuple(diagnostics)
 

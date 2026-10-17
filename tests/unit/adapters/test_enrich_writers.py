@@ -183,3 +183,21 @@ def test_text_is_replaced_atomically(tmp_path: Path) -> None:
     write_within(tmp_path, target, "second ✓\n")
     assert target.read_text(encoding="utf-8") == "second ✓\n"
     assert [path.name for path in target.parent.iterdir()] == ["orders.yml"]
+
+
+def test_a_snapshot_or_seed_is_written_under_its_own_section() -> None:
+    snapshot = "snapshots:\n  - name: history\n    relation: ref('customers')\n"
+    written = write_model_updates(
+        snapshot,
+        "snapshots/history.yml",
+        {"history": [ColumnUpdate("dbt_valid_from", (("column_type", "time_dimension"),), added=True)]},
+        {},
+        {"history": "snapshots"},
+    )
+    assert written.text == (
+        snapshot + "    columns:\n      - name: dbt_valid_from\n        config:\n          meta:\n"
+        "            sst:\n              column_type: time_dimension\n"
+    )
+    seeded = write_model_updates(None, "seeds/raw.yml", {}, {"raw": ("raw rows",)}, {"raw": "seeds"})
+    assert seeded.text.startswith("version: 2\nseeds:\n  - name: raw\n")
+    assert "models:" not in seeded.text

@@ -54,7 +54,7 @@ explains, and names the 1.0 code it became.
 
 | Code | What it means | Usual fix |
 |---|---|---|
-| `SST-REF001` | `ref()` names no model in the dbt manifest | Check the model name; run `dbt deps` if it is in a package. |
+| `SST-REF001` | `ref()` names no model, snapshot or seed in the dbt manifest | Check the model name; run `dbt deps` if it is in a package. |
 | `SST-MEM005` | A member attached to no view | Add the models its `ref()` calls name to one view's `tables:`. |
 | `SST-MEM002` | A member names no table | Name its columns or tables with `{{ ref() }}`. |
 | `SST-PRS126` | A key SST no longer reads | Delete it; the message says where the value comes from now. |
