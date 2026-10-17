@@ -3,7 +3,8 @@
 The version alias is the bundle digest, so a version is never rewritten: apply
 uploads the bundle under `@<stage>/<name>/<ALIAS>/`, verifies it byte for byte,
 and adds the version from that prefix only when the alias is absent. It never
-drops, grants, un-certifies, or changes discoverability.
+drops, grants, un-certifies, or changes discoverability. Lost state is recovered
+from the same content: the version and the prefix it was added from.
 """
 
 from __future__ import annotations
@@ -22,13 +23,20 @@ from snowflake_semantic_tools.app.lifecycle.composite import (
     create_sse_stage_sql,
     details_stale,
     failed,
+    read_back,
     skipped,
 )
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
+    ABSENT,
+    BUNDLE_DIFFERS,
+    BUNDLE_PREFIX_MISSING,
+    OTHER_DEFINITION,
+    RECORDED,
     SSE_STAGE_TYPE,
+    UNOBSERVABLE,
     Action,
     ApplyOptions,
     ApplyOutcome,
@@ -39,6 +47,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ExecResult,
     OutcomeStatus,
     PhysicalResource,
+    RecoveryProof,
     RenderedArtifact,
 )
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import ExtensionObservation, ExtensionVersion
@@ -152,6 +161,42 @@ class ExtensionLifecycleHandler(CompositeHandler[ExtensionRelease, _Observed, Ca
         """Skip a prune, which is report-only, with the artifact's text if the change carries one."""
         del options
         return skipped(change, change.rendered.ddl if change.rendered is not None else "")
+
+    def recover(self, change: Change) -> RecoveryProof:
+        """Prove an unrecorded extension serves this release's bundle under its alias, from its bundle prefix.
+
+        The plan's observation must show the compiled target as an extension of the release's
+        type and comment, its alias naming a version that holds exactly the bundle's paths, on
+        a server-side encrypted stage; then the stage prefix the version was added from must
+        list exactly the bundle, each file reading back byte for byte. The alias is a digest
+        prefix, so these, not the alias, prove the content. A version the release certifies but
+        that is not certified yet is recorded: the next apply certifies it.
+
+        Raises:
+            SnowflakePortError: the bundle prefix could not be read.
+        """
+        release = self._releases[change.key]
+        observation = change.composite_observation
+        details = dict(observation.details) if observation is not None else {}
+        target = release.target.sql
+        if not details:
+            return RecoveryProof(UNOBSERVABLE, qualified_name=target)
+        found = _unproven(release, details)
+        if found is None:
+            listed, unread = read_back(self._port, release.prefix, release.bundle.entries)
+            if not listed:
+                found = BUNDLE_PREFIX_MISSING
+            elif listed != tuple(sorted(release.paths)) or unread is not None:
+                found = BUNDLE_DIFFERS
+        if found is not None:
+            return RecoveryProof(found, qualified_name=target)
+        assert change.rendered is not None
+        return RecoveryProof(
+            RECORDED,
+            (*change.rendered.component_fingerprints, ("version", details["version"])),
+            (("CORTEX EXTENSION", target), ("STAGE", release.stage.sql)),
+            target,
+        )
 
     def _observation(self, release: ExtensionRelease, observed: _Observed) -> CompositeObservation:
         return CompositeObservation(
@@ -627,6 +672,28 @@ def _version_number(name: str) -> int:
 def _stale(planned: tuple[tuple[str, str], ...], current: tuple[tuple[str, str], ...]) -> bool:
     """Changed since plan, ignoring a sibling artifact creating the shared bundle stage."""
     return details_stale(planned, current, creatable={"stage_type": ("", SSE_STAGE_TYPE)})
+
+
+def _unproven(release: ExtensionRelease, details: Mapping[str, str]) -> str | None:
+    """Say why the observed extension is not this release, from the plan's details; None when it may be.
+
+    What the bundle prefix holds is not read here: `recover` reads it once this holds.
+    """
+    if not details.get("extension_type"):
+        return ABSENT
+    # The details read an extension with no comment as "", which an empty release comment matches.
+    comments = {_text_digest(release.comment), *(("",) if not release.comment else ())}
+    if details["extension_type"] != release.extension_type or details.get("comment", "") not in comments:
+        return OTHER_DEFINITION
+    if not details.get("version"):
+        # Another alias, an older bundle, may be there; this release's is not.
+        return OTHER_DEFINITION
+    if details.get("version_files") != _digest(release.paths):
+        return BUNDLE_DIFFERS
+    stage_type = details.get("stage_type", "")
+    if not stage_type:
+        return BUNDLE_PREFIX_MISSING
+    return None if stage_type.upper() == SSE_STAGE_TYPE else OTHER_DEFINITION
 
 
 def _difference(found: tuple[str, ...], expected: tuple[str, ...]) -> str:

@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositePlan,
     GrantRow,
     OwnershipMarker,
+    RecoveryProof,
     RenderedArtifact,
     ShowRow,
 )
@@ -301,6 +302,9 @@ class _CompositeHandler:
     def merge_physical_resources(
         self, current: tuple[tuple[str, str], ...], previous: AppliedEntry | None
     ) -> tuple[AppliedResourceInput, ...]:
+        raise NotImplementedError
+
+    def recover(self, change: Change) -> RecoveryProof:
         raise NotImplementedError
 
     def report_prune(self, artifact_key: str, state_entry: AppliedEntry) -> Change:

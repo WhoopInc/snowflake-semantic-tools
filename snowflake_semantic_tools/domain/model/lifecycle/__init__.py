@@ -4,7 +4,8 @@ Compile renders each artifact as a `RenderedArtifact`; plan compares it with wha
 shows, a `SnowflakeObservation`, and decides one `Change` per artifact, collected in a
 `ChangeSet`; apply runs the writes and reports an `ApplyOutcome` for each. One submodule
 holds each stage's values -- `marker`, `observation`, `action`, `rendered`, `change`,
-`apply`, `version`, and `drift` -- and this module re-exports them, so importers never reach into the submodules.
+`apply`, `version`, `drift`, and `recovery` -- and this module re-exports them, so importers
+never reach into the submodules.
 """
 
 from __future__ import annotations
@@ -47,6 +48,20 @@ from snowflake_semantic_tools.domain.model.lifecycle.observation import (
     ShowRow,
     SnowflakeObservation,
 )
+from snowflake_semantic_tools.domain.model.lifecycle.recovery import (
+    ABSENT,
+    BUNDLE_DIFFERS,
+    BUNDLE_PREFIX_MISSING,
+    CONFIG_DIFFERS,
+    NO_MARKER,
+    OTHER_DEFINITION,
+    PROVENANCE_DIFFERS,
+    RECORDED,
+    ROW_DIFFERS,
+    UNMARKED,
+    UNOBSERVABLE,
+    RecoveryProof,
+)
 from snowflake_semantic_tools.domain.model.lifecycle.rendered import (
     SSE_STAGE_TYPE,
     CompositeFacts,
@@ -67,14 +82,25 @@ from snowflake_semantic_tools.domain.model.lifecycle.version import (
 )
 
 __all__ = [
+    "ABSENT",
+    "BUNDLE_DIFFERS",
+    "BUNDLE_PREFIX_MISSING",
+    "CONFIG_DIFFERS",
     "DEFINED_TYPES",
     "DESCRIBED_TYPES",
     "DIGESTED_TYPES",
     "DRIFT_CHECKS",
     "DRIFT_CHECK_BASIC",
     "DRIFT_CHECK_FULL",
+    "NO_MARKER",
+    "OTHER_DEFINITION",
+    "PROVENANCE_DIFFERS",
+    "RECORDED",
+    "ROW_DIFFERS",
     "SHOWN_TYPES",
     "SSE_STAGE_TYPE",
+    "UNMARKED",
+    "UNOBSERVABLE",
     "Action",
     "ApplyOptions",
     "ApplyOutcome",
@@ -101,6 +127,7 @@ __all__ = [
     "ProbeKind",
     "PublishShape",
     "QueryResult",
+    "RecoveryProof",
     "RenderedArtifact",
     "RetryPolicy",
     "ShowRow",

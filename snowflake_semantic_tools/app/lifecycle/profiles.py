@@ -5,6 +5,7 @@ change what a live row already points at. The MERGE on CONFIG_NAME is the atomic
 switch, guarded by the VERSION the plan observed; afterwards the row is re-read
 with Desktop's own query and every pointer must resolve. Profiles publish one at
 a time. Nothing is ever deleted: prune deactivates a row, and only under --prune.
+Lost state is recovered from the row itself, when Desktop reads it as the release.
 """
 
 from __future__ import annotations
@@ -31,6 +32,11 @@ from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.diagnostics.signatures import match_signature
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
+    ABSENT,
+    BUNDLE_PREFIX_MISSING,
+    OTHER_DEFINITION,
+    RECORDED,
+    ROW_DIFFERS,
     SSE_STAGE_TYPE,
     Action,
     ApplyOptions,
@@ -42,6 +48,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositePlan,
     OutcomeStatus,
     PhysicalResource,
+    RecoveryProof,
     RenderedArtifact,
 )
 from snowflake_semantic_tools.domain.model.skill import BundleEntry
@@ -202,6 +209,37 @@ class ProfileLifecycleHandler(CompositeHandler[CompiledProfile, _Observed, Profi
                 1,
             )
         return ApplyOutcome(change.key, change.action, OutcomeStatus.APPLIED, 1, 0, "", write_succeeded=True)
+
+    def recover(self, change: Change) -> RecoveryProof:
+        """Prove an unrecorded profile's registry row is this release's, as Desktop reads it.
+
+        The registry must have every column SST writes, with its type, and the row, read again,
+        must show Desktop exactly the release's twelve columns, VERSION included, on a
+        server-side encrypted stage. ACTIVE is not compared: an inactive row is recorded, and
+        the next apply reactivates it. The trees are content-addressed under the row's
+        pointers, so they are not read: the next plan publishes any that is incomplete.
+
+        Raises:
+            SnowflakePortError: a read failed, or more than one row has the profile's name.
+        """
+        compiled = self._releases[change.key]
+        channel = compiled.channel
+        name = f"{channel.registry.sql} row '{compiled.name}'"
+        columns = self._port.table_columns(channel.registry)
+        if columns is None:
+            return RecoveryProof(ABSENT, qualified_name=name)
+        if _shape_problem(columns) is not None:
+            return RecoveryProof(OTHER_DEFINITION, qualified_name=name)
+        row = self._port.read_profile_row(channel.registry, compiled.name)
+        if row is None:
+            return RecoveryProof(ABSENT, qualified_name=name)
+        if desktop_view(row) != desktop_view(compiled.release.row):
+            return RecoveryProof(ROW_DIFFERS, qualified_name=name)
+        stage_type = self._port.stage_type(channel.stage)
+        if stage_type is None or stage_type.upper() != SSE_STAGE_TYPE:
+            return RecoveryProof(OTHER_DEFINITION if stage_type else BUNDLE_PREFIX_MISSING, qualified_name=name)
+        assert change.rendered is not None
+        return RecoveryProof(RECORDED, change.rendered.component_fingerprints, _resources(channel), name)
 
     def _observation(self, compiled: CompiledProfile, observed: _Observed) -> CompositeObservation:
         return CompositeObservation(

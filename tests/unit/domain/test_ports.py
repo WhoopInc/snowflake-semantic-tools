@@ -142,6 +142,7 @@ def test_eval_and_composite_lifecycle_protocol_methods_are_declarations_only() -
     assert CompositeLifecycleHandler.apply(source, object(), object()) is None  # type: ignore[arg-type]
     assert CompositeLifecycleHandler.merge_physical_resources(source, (), None) is None  # type: ignore[arg-type]
     assert CompositeLifecycleHandler.report_prune(source, "eval:a", object()) is None  # type: ignore[arg-type]
+    assert CompositeLifecycleHandler.recover(source, object()) is None  # type: ignore[arg-type]
 
 
 def test_the_phase_timer_is_a_declaration_and_no_phases_runs_the_block_untimed() -> None:

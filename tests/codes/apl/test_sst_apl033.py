@@ -1,4 +1,4 @@
-"""SST-APL033: an artifact `sst state recover` could not record from a marker."""
+"""SST-APL033: an artifact `sst state recover` could not record: no marker or content proves it."""
 
 from __future__ import annotations
 

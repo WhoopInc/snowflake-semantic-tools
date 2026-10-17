@@ -66,7 +66,7 @@ semantic view end to end.
 | `sst docs` | Regenerate the reference pages from the engine's registries |
 | `sst clean` | Remove local build output |
 | `sst drop` | Break-glass: drop one object SST owns from one target |
-| `sst state recover` / `convert` | Repair state: record lost entries from ownership markers, or rebuild the state tables as hybrid or standard |
+| `sst state recover` / `convert` | Repair state: record lost entries from ownership markers and content digests, or rebuild the state tables as hybrid or standard |
 | `sst agent-kit` | Install, upgrade, check, or remove skills that teach Cortex Code or Claude Code to work in an SST project |
 
 Every command that reports results takes `--output json` for one machine-readable

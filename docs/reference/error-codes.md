@@ -7041,23 +7041,23 @@ Fix: run `sst state convert --to {expected}` to rebuild it, or set state.+table_
 
 ### SST-APL032
 
-**State entries recovered from ownership markers** (info)
+**State entries recovered from ownership markers and content digests** (info)
 
-`state entries recovered from ownership markers: <count>; unrecorded artifacts left: <value>`
+`state entries recovered from ownership markers and content digests: <count>; unrecorded artifacts left: <value>`
 
-Raised when `sst state recover` ran: each object state did not record whose marker names the compiled definition under the compiled name was recorded, without writing the object.
+Raised when `sst state recover` ran: each artifact state did not record whose live objects prove they hold the compiled definition under the compiled name -- by the ownership marker on a semantic view, tool or agent, and by the content of a skill's or plugin's version and bundle prefix, a profile's registry row, or an eval's dataset version and staged config -- was recorded, without writing the object.
 
 Fix: run sst plan: what was recovered now plans as unchanged
 
 ### SST-APL033
 
-**Artifact not recoverable from a marker** (warning)
+**Artifact not recoverable** (warning)
 
 `<artifact>: not recovered (<found>); the next apply <value>`
 
-Raised when `sst state recover` found an artifact state does not record that no marker proves is the compiled definition: the object is absent, carries no marker, carries one for another definition, or is of a kind with no marker on Snowflake.
+Raised when `sst state recover` found an artifact state does not record whose live content is not the compiled definition: the object is absent, carries no marker, or carries one for another definition; a skill's or plugin's version or bundle prefix is missing or holds other files; a profile's registry row shows Desktop other columns; an eval's dataset version records other provenance, or its staged config other bytes; or Snowflake would not report the objects.
 
-Fix: review the plan for it: an object with no marker stays unmanaged (SST-PLN024) until dropped or renamed
+Fix: review the plan for it: an object SST cannot prove is its own stays unmanaged (SST-PLN024) until dropped or renamed
 
 ### SST-APL034
 

@@ -1,8 +1,9 @@
 """`sst state`: repair a target's state table: recover lost entries, or convert its kind.
 
 `sst state recover` plans the target as `sst plan` does, then records, under the run lock and
-without writing any object, each object state does not record whose ownership marker proves
-it holds the compiled definition (`app/recover.py`). `sst state convert` rebuilds the state and
+without writing any object, each object state does not record that its ownership marker, or
+for a composite artifact its content, proves holds the compiled definition (`app/recover.py`).
+`sst state convert` rebuilds the state and
 lock tables as hybrid or standard tables, keeping the old ones as backups
 (`adapters/snowflake/connector/convert.py`). Both ask before they write, and off a terminal
 refuse without `--yes`.
@@ -19,7 +20,7 @@ from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.app.observe import ObserveOptions
 from snowflake_semantic_tools.app.plan import PlanRefused
-from snowflake_semantic_tools.app.recover import RECORDED, RecoverResult, RecoverState
+from snowflake_semantic_tools.app.recover import RecoverResult, RecoverState
 from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
@@ -29,6 +30,7 @@ from snowflake_semantic_tools.cli.settings import drift_check_setting, threads_s
 from snowflake_semantic_tools.cli.wiring.plan import PlanRequest, plan_runtime
 from snowflake_semantic_tools.cli.wiring.project import connect, git_sha
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
+from snowflake_semantic_tools.domain.model.lifecycle import RECORDED
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state.lock import TABLE_KINDS
 
@@ -60,14 +62,17 @@ def recover(
     break_stale_lock: bool,
     options: GlobalOptions,
 ) -> CommandResult:
-    """Record what state lost, from the ownership markers on the target's live objects.
+    """Record what state lost, from ownership markers and content digests on the target's live objects.
 
     Plans the target, then records, under the run lock and without writing any object, each
-    object state does not record whose marker names the compiled definition under the compiled
-    name, so `sst plan` then shows it unchanged. Every other unrecorded artifact is listed with
-    what the next apply will do: one with no marker stays unmanaged (SST-PLN024), one with a
-    marker for another definition is published again, and a kind with no marker on Snowflake --
-    a profile, a skill, an eval -- is published as new.
+    artifact state does not record whose live objects prove they hold the compiled definition,
+    so `sst plan` then shows it unchanged. A semantic view, tool or agent proves it by the
+    marker in its comment; a skill or plugin by its aliased version's files and the bundle
+    prefix they came from, read back byte for byte; a profile by its registry row as Desktop
+    reads it; an eval by its dataset version's provenance and its staged config's bytes.
+    Every other unrecorded artifact is listed with what the next apply will do: one SST cannot
+    prove stays unmanaged (SST-PLN024), and one that holds another definition is published
+    again. Eval baselines are not recovered.
 
     Exit 0 when recover ran, whatever it recorded; 1 when another run holds the lock or the
     plan is refused; 3 when it would have to ask and there is no terminal, without --yes.
@@ -101,7 +106,10 @@ def recover(
         return CommandResult(ERROR, session.diagnostics, promoted=session.promoted)
     try:
         if not assume_yes:
-            confirm(f"Record lost state entries for target {session.profile.target_name} from ownership markers?")
+            confirm(
+                f"Record lost state entries for target {session.profile.target_name} "
+                "from ownership markers and content digests?"
+            )
         result = RecoverState(
             session.port,
             session.state_store,
@@ -110,7 +118,13 @@ def recover(
             actor=session.profile.identity.role or "",
             host=socket.gethostname(),
             git_sha=git_sha(paths.project_dir),
-        ).run(session.ready.changeset, session.ready.state, session.profile.target_name, break_stale=break_stale_lock)
+        ).run(
+            session.ready.changeset,
+            session.ready.state,
+            session.profile.target_name,
+            break_stale=break_stale_lock,
+            lifecycle_handlers=session.ready.lifecycle_handlers,
+        )
     finally:
         session.port.close()
     data = {

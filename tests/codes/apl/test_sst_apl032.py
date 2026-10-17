@@ -1,4 +1,4 @@
-"""SST-APL032: what `sst state recover` recorded from ownership markers."""
+"""SST-APL032: what `sst state recover` recorded from ownership markers and content digests."""
 
 from __future__ import annotations
 
@@ -8,7 +8,9 @@ from tests.helpers.snowflake_fake import FakeSnowflake
 
 def test_sst_apl032_fires() -> None:
     [summary] = [item for item in recover(FakeSnowflake(), proved("A")).diagnostics if item.code == "SST-APL032"]
-    assert summary.message == "state entries recovered from ownership markers: 1; unrecorded artifacts left: 0"
+    assert summary.message == (
+        "state entries recovered from ownership markers and content digests: 1; unrecorded artifacts left: 0"
+    )
 
 
 def test_sst_apl032_silent() -> None:

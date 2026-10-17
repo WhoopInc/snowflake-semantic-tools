@@ -10,6 +10,8 @@ import pytest
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import (
+    RECORDED,
+    ROW_DIFFERS,
     Action,
     ApplyOptions,
     ApplyOutcome,
@@ -30,6 +32,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ProbeKind,
     PublishShape,
     QueryResult,
+    RecoveryProof,
     RenderedArtifact,
     RetryPolicy,
     ShowRow,
@@ -310,3 +313,9 @@ def test_a_shown_name_that_cannot_be_unquoted_is_the_exact_quoted_name() -> None
     assert Identifier.shown(" V ") == Identifier(" V ", quoted=True)
     with pytest.raises(ValueError, match="empty identifier"):
         Identifier.shown("")
+
+
+def test_a_recovery_proof_holds_only_when_it_found_the_compiled_definition() -> None:
+    assert RecoveryProof(RECORDED).recorded
+    assert not RecoveryProof(ROW_DIFFERS).recorded
+    assert RecoveryProof(ROW_DIFFERS).component_fingerprints == () and RecoveryProof(ROW_DIFFERS).qualified_name == ""

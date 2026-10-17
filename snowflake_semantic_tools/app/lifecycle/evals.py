@@ -36,6 +36,12 @@ from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, spl
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
+    ABSENT,
+    CONFIG_DIFFERS,
+    OTHER_DEFINITION,
+    PROVENANCE_DIFFERS,
+    RECORDED,
+    UNOBSERVABLE,
     Action,
     ApplyOutcome,
     Change,
@@ -47,6 +53,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ExecResult,
     OutcomeStatus,
     PhysicalResource,
+    RecoveryProof,
     RenderedArtifact,
 )
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -352,6 +359,43 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
     def _apply_unrendered(self, change: Change) -> ApplyOutcome:
         """Fail a change without its rendered eval: there is no dataset or config to publish."""
         return failed(change, "missing rendered eval artifact")
+
+    def recover(self, change: Change) -> RecoveryProof:
+        """Prove an unrecorded eval's objects are those it publishes, with exactly its config staged.
+
+        An eval SST mints must have every table and dataset it publishes, and the dataset the
+        version this eval adds, whose METADATA names its agent, source table and full questions'
+        digest, as `_minted_unrecorded` reads it; one that does not mint proves its config
+        alone. Either way the staged config must be the rendered bytes, by size and MD5. The
+        digest prefix in the objects' names is never proof: it is a few characters long. A
+        METADATA that cannot be read proves nothing.
+        """
+        artifact = change.rendered
+        observation = change.composite_observation
+        assert artifact is not None
+        if observation is None or not observation.details:
+            return RecoveryProof(UNOBSERVABLE)
+        if observation.diagnostics.has_errors:
+            return RecoveryProof(OTHER_DEFINITION)
+        minted = mints(artifact)
+        if minted:
+            live = tuple(item for item in observation.resources if item.exists)
+            if not live:
+                # Absent under these names, as an eval of earlier questions is: nothing to recover.
+                return RecoveryProof(ABSENT)
+            if len(live) != len(observation.resources) or not self._minted_unrecorded(artifact, live, observation):
+                return RecoveryProof(PROVENANCE_DIFFERS)
+        content = artifact.ddl.encode("utf-8")
+        digest = md5(content, usedforsecurity=False).hexdigest()
+        if not observation.config_exists:
+            return RecoveryProof(CONFIG_DIFFERS if minted else ABSENT)
+        if observation.config_size != len(content) or observation.config_md5 != digest:
+            return RecoveryProof(CONFIG_DIFFERS)
+        return RecoveryProof(
+            RECORDED,
+            (*artifact.component_fingerprints, ("config_stage_md5", digest)),
+            tuple((object_type, name.sql) for object_type, name in artifact.physical_resources) if minted else (),
+        )
 
     def _config_stage(self, artifact: RenderedArtifact) -> QualifiedName:
         return QualifiedName(

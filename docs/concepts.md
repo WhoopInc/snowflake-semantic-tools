@@ -353,18 +353,43 @@ object.
 **`sst state recover`** rebuilds entries state lost: a dropped or recreated
 state table, or a target pointed at a new one, leaves every object SST published
 unrecorded, and plan blocks each as unmanaged (`SST-PLN024`). Recover plans the
-target, then, under the run lock, records each such object whose ownership
-marker names the compiled definition under the compiled name -- the same test
-plan trusts for an apply stopped between publishing and recording -- as apply
-records an observed object, so the next plan shows it unchanged
-(`SST-APL032`). Everything else it lists with what the next apply will do
-(`SST-APL033`). Measured on a live project of 29 artifacts with its state
-deleted, recover recorded the 20 that carry a marker -- semantic views, tools
-and agents -- and the next plan read them unchanged. The 9 kinds whose objects
-carry no marker on Snowflake stay unrecorded: skills, the plugin and the profile
-registry are still unmanaged, so an apply is blocked on them, and on the agents
-that depend on them, until they are dropped and published again; an eval is
-published again. Recover is a repair for the marked kinds, not a full restore.
+target, then, under the run lock, records each such artifact whose live objects
+prove they hold the compiled definition, as apply records it, so the next plan
+shows it unchanged (`SST-APL032`). The proof is never a name alone, and is as
+strong as the ownership marker:
+
+- A semantic view, tool or agent: its marker names the compiled definition
+  under the compiled name -- the same test plan trusts for an apply stopped
+  between publishing and recording.
+- A skill or plugin: the extension under the compiled name has the release's
+  type and comment, its version under the compiled alias holds exactly the
+  bundle's paths on a server-side encrypted stage, and the stage prefix the
+  version was added from, `@<stage>/<name>/<ALIAS>/`, lists exactly the bundle,
+  each file reading back byte for byte. The alias is a digest prefix, so the
+  bytes prove the content, not the alias. An extension holding only an older
+  alias is not recovered; one the release certifies but that is not certified
+  yet is, and the next apply certifies it.
+- A profile: the registry has every column SST writes, and the row under the
+  profile's name shows Desktop exactly the release's twelve columns, `VERSION`
+  included, on a server-side encrypted stage. A row that is inactive is
+  recovered, and the next apply reactivates it; an older or edited row is not,
+  and neither is a name more than one row carries.
+- An eval: every table and dataset it mints exists, and the dataset holds the
+  version this eval adds, whose `METADATA` records its agent, source table and
+  full questions' digest; one that does not mint proves nothing besides its
+  config. Either way, the staged run config must be the rendered bytes, by size
+  and MD5. The digest prefix in an eval's object names is never proof. An eval
+  last published from other questions has nothing under its compiled names to
+  recover.
+
+Everything else it lists with what the next apply will do, and why it could not
+record it (`SST-APL033`). Recover rebuilds deploy state only: it never writes an
+object, and never rebuilds the eval baselines kept beside the state table.
+Measured on a live project of 29 artifacts with its state deleted, the recover
+that read markers only recorded the 20 that carry one -- semantic views, tools
+and agents -- and left the 9 others unmanaged. Recovering the skills, plugin,
+profile and evals from their content is tested offline, against a fake target
+the reference project is applied to in full, and not yet measured live.
 
 **`sst state convert --to hybrid|standard`** rebuilds both tables as the other
 kind (see the table above): it copies the state table into a new one, renames

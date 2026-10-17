@@ -35,7 +35,7 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst drop`](#sst-drop) | Break-glass: drop exactly one object SST owns from one target, and forget it in state. |
 | [`sst state`](#sst-state) | Repair a target's state table: recover entries it lost, or convert it between table kinds. |
 | [`sst state convert`](#sst-state-convert) | Rebuild the state and lock tables as hybrid or standard tables, keeping the old ones. |
-| [`sst state recover`](#sst-state-recover) | Record what state lost, from the ownership markers on the target's live objects. |
+| [`sst state recover`](#sst-state-recover) | Record what state lost, from ownership markers and content digests on the target's live objects. |
 | [`sst agent-kit`](#sst-agent-kit) | Install SST's skills for a coding agent into this project, and keep them current. |
 | [`sst agent-kit install`](#sst-agent-kit-install) | Install the kit's skills for each --agent, writing only files that are not there. |
 | [`sst agent-kit remove`](#sst-agent-kit-remove) | Remove the kit's skills, or those --only names, from each --agent, else every agent installed. |
@@ -808,14 +808,17 @@ sst state convert [OPTIONS]
 
 ## sst state recover
 
-Record what state lost, from the ownership markers on the target's live objects.
+Record what state lost, from ownership markers and content digests on the target's live objects.
 
 Plans the target, then records, under the run lock and without writing any object, each
-object state does not record whose marker names the compiled definition under the compiled
-name, so `sst plan` then shows it unchanged. Every other unrecorded artifact is listed with
-what the next apply will do: one with no marker stays unmanaged (SST-PLN024), one with a
-marker for another definition is published again, and a kind with no marker on Snowflake --
-a profile, a skill, an eval -- is published as new.
+artifact state does not record whose live objects prove they hold the compiled definition,
+so `sst plan` then shows it unchanged. A semantic view, tool or agent proves it by the
+marker in its comment; a skill or plugin by its aliased version's files and the bundle
+prefix they came from, read back byte for byte; a profile by its registry row as Desktop
+reads it; an eval by its dataset version's provenance and its staged config's bytes.
+Every other unrecorded artifact is listed with what the next apply will do: one SST cannot
+prove stays unmanaged (SST-PLN024), and one that holds another definition is published
+again. Eval baselines are not recovered.
 
 Exit 0 when recover ran, whatever it recorded; 1 when another run holds the lock or the
 plan is refused; 3 when it would have to ask and there is no terminal, without --yes.

@@ -20,6 +20,8 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ObservedArtifact,
     OutcomeStatus,
     OwnershipMarker,
+    RecoveryProof,
+    RenderedArtifact,
 )
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.state import (
@@ -242,6 +244,28 @@ def _observed_entry(observed: ObservedArtifact, marker: OwnershipMarker, stamp: 
         git_sha=stamp.git_sha,
         component_fingerprints=(),
         physical_resources=((observed.object_type, observed.qualified_name.sql),),
+    )
+
+
+def _recovered_entry(
+    rendered: RenderedArtifact, proof: RecoveryProof, manifest_id: str, stamp: EntryStamp
+) -> AppliedEntry:
+    """Record a composite artifact its handler proved holds the compiled definition, as observed.
+
+    The entry is the one apply records for a publish of the definition, from the manifest
+    being planned, with the parts and resources the proof names.
+    """
+    return AppliedEntry(
+        fingerprint=rendered.fingerprint,
+        qualified_name=rendered.target.sql,
+        applied_at=stamp.applied_at,
+        run_id=stamp.run_id,
+        outcome="observed",
+        ddl_sha256=rendered.fingerprint,
+        manifest_id=manifest_id,
+        git_sha=stamp.git_sha,
+        component_fingerprints=proof.component_fingerprints,
+        physical_resources=proof.physical_resources,
     )
 
 

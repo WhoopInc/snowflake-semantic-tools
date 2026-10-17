@@ -4,13 +4,26 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from snowflake_semantic_tools.app.recover import ABSENT, NO_MARKER, OTHER_DEFINITION, RECORDED, UNMARKED, classify
+from snowflake_semantic_tools.app.recover import RecoverState, classify
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    ABSENT,
+    NO_MARKER,
+    OTHER_DEFINITION,
+    RECORDED,
+    ROW_DIFFERS,
+    UNMARKED,
+    UNOBSERVABLE,
+    ChangeReason,
+    OwnershipMarker,
+    RecoveryProof,
+)
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state.lock import LockClaim
 from tests.helpers.app_ports import InMemoryStateStore
-from tests.helpers.artifact_builders import applied_entry, change, empty_state, rendered
-from tests.helpers.recover_changes import TABLE, proved, recover, unmanaged
+from tests.helpers.artifact_builders import applied_entry, change, changeset, empty_state, rendered
+from tests.helpers.clocks import FixedClock
+from tests.helpers.recover_changes import TABLE, Proving, composite, proved, recover, unmanaged
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
@@ -98,3 +111,79 @@ def test_a_live_object_the_plan_does_not_call_unmanaged_has_no_marker_recover_ca
     live = replace(planned, observed=proved("P").observed)
     item = classify(live, empty_state())
     assert item is not None and item.found == UNMARKED and item.next_apply == "create"
+
+
+PROOF = RecoveryProof(
+    RECORDED,
+    (("alias", "SST_A"), ("version", "VERSION$1")),
+    (("CORTEX EXTENSION", "DB.SCHEMA.S"), ("STAGE", "DB.SCHEMA.BUNDLES")),
+    "DB.SCHEMA.S",
+)
+
+
+def test_a_composite_its_handler_proves_is_recorded_though_dependency_blocking_overwrote_its_reason() -> None:
+    port = FakeSnowflake()
+    planned = composite("S")
+    assert planned.reason is ChangeReason.DEPENDENCY_BLOCKED and planned.observed is None
+    result = recover(port, planned, handlers={"skill": Proving(port, {planned.key: PROOF})})
+    assert result.recorded == (planned.key,)
+    entry = (port.remote_state or {})[planned.key]
+    # The entry apply records for a publish of the definition, from the manifest planned.
+    assert (entry.outcome, entry.fingerprint, entry.ddl_sha256) == ("observed",) + (rendered("S").fingerprint,) * 2
+    assert (entry.qualified_name, entry.manifest_id) == (rendered("S").target.sql, "m" * 64)
+    assert entry.component_fingerprints == PROOF.component_fingerprints
+    assert [(item.object_type, item.qualified_name) for item in entry.applied_resources] == list(
+        PROOF.physical_resources
+    )
+    assert port.state_manifest == "m" * 64
+
+
+def test_the_state_manifest_is_the_one_most_markers_name_and_proofs_do_not_vote() -> None:
+    port = FakeSnowflake()
+    skills = [composite(name) for name in ("S", "T", "U")]
+    handler = Proving(port, {item.key: PROOF for item in skills})
+    result = recover(port, proved("A"), *skills, handlers={"skill": handler})
+    assert len(result.recorded) == 4
+    # Three proofs name the planned manifest; the one marker names the apply that published it.
+    assert port.state_manifest == "a" * 64
+
+
+def test_a_composite_its_handler_cannot_prove_is_reported_with_why_and_a_failed_read_proves_nothing() -> None:
+    port = FakeSnowflake()
+    differs, unread = composite("S"), composite("T")
+    answers: dict[str, RecoveryProof | SnowflakePortError] = {
+        differs.key: RecoveryProof(ROW_DIFFERS, qualified_name="DB.SCHEMA.R row 's'"),
+        unread.key: SnowflakePortError("x"),
+    }
+    result = recover(port, differs, unread, handlers={"skill": Proving(port, answers)})
+    found = {item.key: (item.found, item.qualified_name, item.next_apply) for item in result.artifacts}
+    assert found == {
+        differs.key: (ROW_DIFFERS, "DB.SCHEMA.R row 's'", "blocked"),
+        unread.key: (UNOBSERVABLE, rendered("T").target.sql, "blocked"),
+    }
+    assert not result.wrote and [item.code for item in result.diagnostics] == ["SST-APL032", "SST-APL033", "SST-APL033"]
+
+
+def test_a_composite_without_a_handler_or_already_recorded_is_not_asked_to_prove_itself() -> None:
+    port = FakeSnowflake()
+    planned = composite("S")
+    [item] = recover(port, planned).artifacts
+    assert item.found == UNMARKED
+    recorded = empty_state({planned.key: applied_entry("DB.SCHEMA.S", "f" * 64)})
+    assert classify(planned, recorded) is None
+
+
+def test_a_proved_composite_an_apply_recorded_since_the_plan_is_left_as_it_is() -> None:
+    port = FakeSnowflake(state={"semantic_view:s": applied_entry("DB.SCHEMA.S", "e" * 64)})
+    planned = composite("S")
+    result = recover(port, planned, handlers={"skill": Proving(port, {planned.key: PROOF})})
+    assert result.recorded == () and (port.remote_state or {})[planned.key].fingerprint == "e" * 64
+
+
+def test_an_artifact_the_planned_state_records_is_left_out_of_what_recover_reports() -> None:
+    port = FakeSnowflake()
+    planned = empty_state({"semantic_view:a": applied_entry("DB.SCHEMA.A", "f" * 64)})
+    result = RecoverState(port, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(
+        changeset(proved("A"), unmanaged("B", None)), planned, "verify"
+    )
+    assert [item.key for item in result.artifacts] == ["semantic_view:b"] and not result.wrote

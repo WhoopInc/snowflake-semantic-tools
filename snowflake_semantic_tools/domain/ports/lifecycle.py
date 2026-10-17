@@ -9,6 +9,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ApplyOutcome,
     Change,
     CompositePlan,
+    RecoveryProof,
     RenderedArtifact,
 )
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
@@ -93,6 +94,24 @@ class CompositeLifecycleHandler(Protocol):
         Returns:
             What the new entry records: `current`, and any earlier resource the handler keeps
             as SST's although the run did not verify it.
+        """
+        ...
+
+    def recover(self, change: Change) -> RecoveryProof:
+        """Prove from what Snowflake holds that a planned artifact state does not record is SST's.
+
+        `sst state recover` asks for every planned change of the type, whatever its action or
+        reason: dependency blocking overwrites a composite change's reason. The proof must be as
+        strong as an ownership marker: the live objects are exactly the compiled definition,
+        under the compiled names, not merely objects of the right names. Reads Snowflake and
+        never writes it.
+
+        Returns:
+            `RECORDED`, with the component fingerprints and resources apply would record for
+            the definition; otherwise why the artifact is not recoverable.
+
+        Raises:
+            SnowflakePortError: a read failed, which proves nothing.
         """
         ...
 

@@ -21,6 +21,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.diagnostics.signatures import match_signature
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
+    UNMARKED,
     Action,
     ApplyOptions,
     ApplyOutcome,
@@ -31,12 +32,14 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositePlan,
     ExecResult,
     OutcomeStatus,
+    RecoveryProof,
     RenderedArtifact,
 )
 from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
 from snowflake_semantic_tools.domain.model.skill import BundleEntry
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.stage import StagePort
 from snowflake_semantic_tools.domain.sql import Sql, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
 from snowflake_semantic_tools.domain.validate.publication import refused_value, statement_diagnostic
@@ -52,6 +55,22 @@ PortT = TypeVar("PortT", bound=PublicationPort)
 def create_sse_stage_sql(stage: QualifiedName) -> Sql:
     """Return the statement that creates a server-side encrypted stage unless it exists."""
     return sql("CREATE STAGE IF NOT EXISTS {stage} ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE')", stage=qname(stage))
+
+
+def read_back(port: StagePort, prefix: str, entries: tuple[BundleEntry, ...]) -> tuple[tuple[str, ...], str | None]:
+    """List a stage prefix and read each entry back from it, as a publish verifies what it staged.
+
+    Returns:
+        The paths the prefix lists, sorted, and the path of the first entry that does not read
+        back byte for byte. None when every entry does, and when the listing is not the
+        entries' paths, which leaves the files unread.
+    """
+    listed = tuple(sorted(port.list_location(prefix)))
+    if listed != tuple(sorted(entry.path for entry in entries)):
+        return listed, None
+    return listed, next(
+        (entry.path for entry in entries if port.read_staged_file(f"{prefix}{entry.path}") != entry.content), None
+    )
 
 
 class PublicationRefused(Exception):
@@ -159,8 +178,8 @@ class CompositeHandler(CompositeLifecycleHandler, Generic[SubjectT, ObservedT, P
     ownership rules and locks. The other steps have defaults it may override. Prune is
     report-only: `report_prune` reports the artifact with the subclass's `_prune_detail`
     at its type's registry `ddl_position`, and `_apply_prune` skips it. `_apply_unrendered` skips a change
-    without an artifact, and `merge_physical_resources` records exactly the resources the
-    publish verified.
+    without an artifact, `merge_physical_resources` records exactly the resources the
+    publish verified, and `recover` proves nothing.
     """
 
     _prune_detail: str
@@ -255,6 +274,11 @@ class CompositeHandler(CompositeLifecycleHandler, Generic[SubjectT, ObservedT, P
         """Return the resources state records for a publish: by default, exactly those verified now."""
         del previous
         return current
+
+    def recover(self, change: Change) -> RecoveryProof:
+        """Prove nothing by default: a type whose handler reads no proof is not recoverable."""
+        del change
+        return RecoveryProof(UNMARKED)
 
     @abstractmethod
     def _subject(self, artifact: RenderedArtifact) -> SubjectT:
@@ -415,10 +439,9 @@ class PublicationRun(Generic[PortT]):
 
         `differs` words the failure from the listed paths when they are not the entries' paths.
         """
-        listed = tuple(sorted(self._port.list_location(prefix)))
+        listed, unread = read_back(self._port, prefix, entries)
         if listed != tuple(sorted(entry.path for entry in entries)):
             return self.fail(differs(listed), "SST-APL016")
-        for entry in entries:
-            if self._port.read_staged_file(f"{prefix}{entry.path}") != entry.content:
-                return self.fail(f"{prefix}{entry.path} does not read back byte for byte", "SST-APL016")
+        if unread is not None:
+            return self.fail(f"{prefix}{unread} does not read back byte for byte", "SST-APL016")
         return None

@@ -26,6 +26,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     GrantRow,
     OutcomeStatus,
     OwnershipMarker,
+    RecoveryProof,
     RenderedArtifact,
     RetryPolicy,
     ShowRow,
@@ -1117,6 +1118,9 @@ class _LifecycleHandler:
         del current, previous
         self.merged = True
         return (("TABLE", "DB.SCHEMA.MERGED"),)
+
+    def recover(self, change: Change) -> RecoveryProof:
+        raise NotImplementedError
 
 
 def test_a_temporary_run_publishes_and_records_no_eval_of_a_temporary_agent() -> None:
