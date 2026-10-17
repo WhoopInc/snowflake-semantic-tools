@@ -97,8 +97,8 @@ def test_the_session_reads_a_failure_from_the_table(
 # only write it: the privilege the role needs is on the line after the heading.
 _NO_CREATE_TABLE = (
     "003001 (42501): 01bf2c3d-0306-a1b2-0000-0001e2f3a4b5: SQL access control error:\n"
-    "Insufficient privileges to operate on schema 'STATE'. Your primary role SSTX_RESTRICTED must have "
-    "CREATE TABLE granted on SCHEMA SSTX_DEV_DB.STATE."
+    "Insufficient privileges to operate on schema 'STATE'. Your primary role ANALYST_ROLE must have "
+    "CREATE TABLE granted on SCHEMA ANALYTICS.STATE."
 )
 
 
@@ -108,7 +108,7 @@ def test_sno004_names_the_privilege_snowflake_says_is_missing() -> None:
     assert diagnostic.code == "SST-SNO004"
     assert diagnostic.message == (
         "insufficient privileges for STATE: Insufficient privileges to operate on schema 'STATE'. Your "
-        "primary role SSTX_RESTRICTED must have CREATE TABLE granted on SCHEMA SSTX_DEV_DB.STATE."
+        "primary role ANALYST_ROLE must have CREATE TABLE granted on SCHEMA ANALYTICS.STATE."
     )
     assert "must have CREATE TABLE granted" in diagnostic.message
 
