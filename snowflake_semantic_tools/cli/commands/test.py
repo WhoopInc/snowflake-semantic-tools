@@ -20,7 +20,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.adapters.snowflake.eval_state import SnowflakeEvalStateStore
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
-from snowflake_semantic_tools.app.evals.progress import EvalProgressEvent, StatusReadFailed
+from snowflake_semantic_tools.app.evals.progress import EvalProgressEvent, StatusReadFailed, StatusReadTimedOut
 from snowflake_semantic_tools.app.evals.run import suite_concurrency
 from snowflake_semantic_tools.app.evals.suite import (
     EvalGateOutcome,
@@ -314,8 +314,8 @@ def _run_evals(
 
 
 def _print_eval_progress(event: EvalProgressEvent) -> None:
-    """Print one eval progress event as a line; a status read that will be retried as a warning."""
-    print_progress(event.line, warning=isinstance(event, StatusReadFailed))
+    """Print one eval progress event as a line; a status read that failed or timed out as a warning."""
+    print_progress(event.line, warning=isinstance(event, (StatusReadFailed, StatusReadTimedOut)))
 
 
 def _eval_state_table(state_table: QualifiedName) -> QualifiedName:

@@ -19,7 +19,7 @@ from threading import Lock
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.options import EvalRunOptions
 from snowflake_semantic_tools.app.evals.poll import StatusPoll
-from snowflake_semantic_tools.app.evals.progress import EvalProgress, RunWatch, no_progress
+from snowflake_semantic_tools.app.evals.progress import EvalProgress, RunWatch, no_progress, short_reason
 from snowflake_semantic_tools.app.evals.retrieve import read_results, sum_costs
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.lifecycle.evals import (
@@ -406,7 +406,8 @@ class RunEvalSuite:
                 failed for good, or `max_read_failures` in a row failed in transit), it did not
                 end by the deadline, or it ended in a status that is neither a pass nor partial,
                 such as `FAILED` or one Snowflake does not document; the message carries its
-                status details.
+                status details. A run given up on while it may still be running is cancelled
+                first, and the message says whether the cancel went through.
             SST-APL024: the run ended partially completed, in a status the config does not
                 accept.
             SST-SNO001: the run completed but its results could not be read or did not match.
@@ -423,7 +424,8 @@ class RunEvalSuite:
             terminal_status, status_details = poll.until_terminal(compiled, run_name, setup.config_path)
         except (SnowflakePortError, ValueError) as exc:
             context.watch.ended(run_name, "STATUS_FAILED")
-            diagnostic = D("SST-APL023", artifact=compiled.artifact_key, detail=str(exc))
+            cancelled = self._cancel(compiled, run_name, setup.config_path, poll.read_timeout_seconds())
+            diagnostic = D("SST-APL023", artifact=compiled.artifact_key, detail=f"{exc}; {cancelled}")
             return EvalRunAttempt(run_name, attempt_number, "STATUS_FAILED", retrieval_error=str(exc)), (diagnostic,)
         context.watch.ended(run_name, terminal_status)
         diagnostics = _partial_status(compiled, setup.run, terminal_status) or _failed_status(
@@ -510,6 +512,24 @@ class RunEvalSuite:
                 started.discard(run_name)
             return str(exc)
         return None
+
+    def _cancel(self, compiled: CompiledEval, run_name: str, config_path: str, timeout_seconds: int) -> str:
+        """Cancel a run the attempt gave up on, so Snowflake stops computing it; say how that went.
+
+        A run whose status SST stopped reading would otherwise go on running, and billing, with
+        nothing to read it. The cancel is best effort: one that fails is reported, naming the
+        run, and does not fail the attempt any further.
+        """
+        try:
+            self._port.query_in_context(
+                SchemaScope.from_qualified_name(compiled.agent_target),
+                _evaluation_call("CANCEL", run_name, config_path),
+                timeout_seconds=timeout_seconds,
+            )
+        except SnowflakePortError as exc:
+            reason = short_reason(str(exc))
+            return f"cancelling run {run_name!r} failed, so it may still be running in Snowflake ({reason})"
+        return "SST cancelled the run in Snowflake"
 
 
 def validate_eval_publication(

@@ -416,6 +416,15 @@ A read that fails on the network is retried at the next poll and printed as
 attempt (`SST-APL023`), and then only after one last read, so a run that
 completed while the network was down is still kept.
 
+A read that times out (`status read timed out, polling until the deadline`)
+most often means Snowflake answered too slowly because the warehouse is busy
+with the runs' own judges. It does not count toward the five:
+polling goes on until the run's 20-minute deadline. If many runs share a small
+warehouse, pace them (`evals.+concurrency` or `--threads`) or let the warehouse
+scale out (`MAX_CLUSTER_COUNT` above 1). A run SST gives up on is cancelled in
+Snowflake; when the cancel fails, the `SST-APL023` message names the run, so
+you can cancel it yourself with `EXECUTE_AI_EVALUATION('CANCEL', ...)`.
+
 ## A baselined warning is shown, or the baseline will not prune
 
 A baseline entry matches a diagnostic by its fingerprint alone, so it

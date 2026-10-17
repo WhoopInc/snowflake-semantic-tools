@@ -6965,7 +6965,7 @@ Fix: check OWNERSHIP on the dataset
 
 `eval '<artifact>': <detail>`
 
-Raised when an eval could not run, or one of its attempts failed: it has no run configuration; its agent version could not be read or its config could not be staged; EXECUTE_AI_EVALUATION refused to start the run; its status could not be read (a read failed for good, or 5 reads in a row failed in transit); it did not reach a terminal status within 20 minutes; or it ended FAILED, CANCELLED, or in a status Snowflake does not document.
+Raised when an eval could not run, or one of its attempts failed: it has no run configuration; its agent version could not be read or its config could not be staged; EXECUTE_AI_EVALUATION refused to start the run; its status could not be read (a read failed for good, or 5 reads in a row failed in transit); it did not reach a terminal status within 20 minutes; or it ended FAILED, CANCELLED, or in a status Snowflake does not document. A run SST gives up on while it may still be running is cancelled in Snowflake, and the detail says whether the cancel went through.
 
 Fix: fix what the detail names, then re-run the eval
 

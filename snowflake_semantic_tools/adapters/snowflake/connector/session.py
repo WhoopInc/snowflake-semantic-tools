@@ -32,10 +32,14 @@ from typing import TYPE_CHECKING, Any, Self, TextIO, TypeVar, cast
 from snowflake_semantic_tools.adapters.json_files import parse_json
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
-from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, session_failure
+from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, match_signature, session_failure
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
-from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError, SnowflakeTransientError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import (
+    SnowflakePortError,
+    SnowflakeStatementTimedOut,
+    SnowflakeTransientError,
+)
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.sql import Sql, sql
 
@@ -64,6 +68,9 @@ _SECRET_SETTING = re.compile(
 )
 _KEY_FILE = re.compile(r"(?i)(?:[A-Za-z]:)?[\w.~-]*(?:[/\\][^\s/\\'\"]+)+\.(?:p8|pem|key|der|p12|pfx)\b")
 _REDACTED = "<redacted>"
+# The failures of a statement Snowflake took but did not finish in time: a statement timeout
+# (SQLSTATE 57014, whether the client's or Snowflake's), and a statement that queued too long.
+_TIMED_OUT = frozenset(("SST-SNO011", "SST-SNO024"))
 
 # The verbs whose answers a `ReadCache` keeps, and those that write nothing it must forget.
 _CACHED_VERBS = frozenset(("SHOW", "DESCRIBE", "DESC", "LIST"))
@@ -532,7 +539,8 @@ def _port_error(exc: Exception, *, connecting_to: str | None = None) -> Snowflak
     reading of it (`signatures.session_failure`), from its message, errno and SQLSTATE.
 
     The error is a `SnowflakeTransientError` when the failure happened in transit, as
-    `_in_transit` reads it, so a caller may send a read again.
+    `_in_transit` reads it, so a caller may send a read again; a `SnowflakeStatementTimedOut`
+    when that failure is a statement Snowflake took but did not finish in time.
 
     Diagnostics:
         SST-PRT002: Snowflake rejected the session's credential while connecting.
@@ -553,7 +561,10 @@ def _port_error(exc: Exception, *, connecting_to: str | None = None) -> Snowflak
         diagnostic = D("SST-PRT003", detail=f"its deadline ({message})")
     elif failure is SessionFailure.PRIVILEGE:
         diagnostic = D("SST-PRT004", value="the session's role", detail=f"a privilege the statement needs ({message})")
-    error_class = SnowflakeTransientError if _in_transit(exc, failure, errno) else SnowflakePortError
+    error_class: type[SnowflakePortError] = SnowflakePortError
+    if _in_transit(exc, failure, errno):
+        timed_out = match_signature(message, errno=errno, sqlstate=sqlstate).code in _TIMED_OUT
+        error_class = SnowflakeStatementTimedOut if timed_out else SnowflakeTransientError
     return error_class(message, sqlstate=sqlstate, errno=errno, diagnostic=diagnostic)
 
 

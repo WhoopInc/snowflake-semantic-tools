@@ -1,10 +1,15 @@
-"""Poll one evaluation run's status until it is terminal, through reads that fail in transit.
+"""Poll one evaluation run's status until it is terminal, through failed and timed-out reads.
 
 An eval run takes minutes in Snowflake, and the network between two of its status reads may
 drop. A read that fails in transit (`SnowflakeTransientError`) is retried at the next poll;
 only `max_read_failures` such failures in a row fail the attempt, and a read that succeeds
-resets the count. A read Snowflake answered with something SST cannot use -- a row describing
-another run, a malformed row -- fails the attempt at once, as no retry would change it.
+resets the count. A read that times out (`SnowflakeStatementTimedOut`) is retried too, but
+most often it says Snowflake is slow -- a warehouse busy with the runs' own judges -- not
+out of reach, so it does not count as a failure and resets the count as a success does:
+only the deadline ends polling through such reads, so a run is never abandoned while it may
+simply be slow to report. A read Snowflake answered with something SST cannot use -- a row
+describing another run, a malformed row -- fails the attempt at once, as no retry would
+change it.
 
 A partial status is provisional: Snowflake reports PARTIALLY_COMPLETED for up to a minute
 between a run's last metric and its finalizing steps, after which the same run reads
@@ -28,7 +33,11 @@ from snowflake_semantic_tools.app.evals.progress import RunWatch, duration_text,
 from snowflake_semantic_tools.app.evals.retrieve import read_status
 from snowflake_semantic_tools.domain.model.eval import eval_status_is_provisional, eval_status_is_terminal
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
-from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError, SnowflakeTransientError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import (
+    SnowflakePortError,
+    SnowflakeStatementTimedOut,
+    SnowflakeTransientError,
+)
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 
 _Status = tuple[str, tuple[str, ...]]
@@ -54,6 +63,8 @@ class StatusPoll:
         self._deadline = clock.monotonic_ms() + options.deadline_ms
         self._failures = 0
         self._last_failure = ""
+        # Why the reads since the last answered one timed out; None when the last did not.
+        self._timed_out: str | None = None
         self._last_status: str | None = None
         # The provisional status polling waits on, and when it was first read; None when none.
         self._settling: tuple[str, int] | None = None
@@ -63,12 +74,14 @@ class StatusPoll:
 
         Only the in-progress statuses, and a partial status still settling, keep a run polling,
         so a status Snowflake does not document ends it rather than polling it to the
-        deadline. Every status change, failed read and heartbeat is reported to the watch.
+        deadline. Every status change, failed read, stretch of timed-out reads and heartbeat
+        is reported to the watch.
 
         Raises:
             SnowflakePortError: `max_read_failures` reads in a row failed in transit and so did
-                the last read; or the run was not terminal by the deadline; or a read failed
-                for a reason a retry cannot cure, such as a row describing another run.
+                the last read; or the run was not terminal by the deadline, its reads timed out
+                or not; or a read failed for a reason a retry cannot cure, such as a row
+                describing another run.
             ValueError: a status row was malformed.
         """
         while True:
@@ -102,21 +115,32 @@ class StatusPoll:
         return now - self._settling[1] >= self._options.partial_settle_ms or self._remaining() <= 0
 
     def _read(self, compiled: CompiledEval, run_name: str, config_path: str, *, final: bool) -> _Status | None:
-        """Read the status once; None when the read failed in transit, which counts the failure.
+        """Read the status once; None when the read failed in transit or timed out.
 
-        A read is given `read_timeout_seconds`. A failed read is reported unless it is the last one.
+        A read is given `read_timeout_seconds`. A failed read counts toward the failures in a
+        row and is reported unless it is the last one. A timed-out read resets the count, as
+        it most often means a slow Snowflake; only the first of a stretch of them is
+        reported, unless it is the last.
         """
         try:
             found = read_status(
                 self._port, compiled, run_name, config_path, timeout_seconds=self.read_timeout_seconds()
             )
+        except SnowflakeStatementTimedOut as exc:
+            if self._timed_out is None and not final:
+                self._watch.read_timed_out(run_name, str(exc))
+            self._failures = 0
+            self._timed_out = str(exc)
+            return None
         except SnowflakeTransientError as exc:
             self._failures += 1
             self._last_failure = str(exc)
+            self._timed_out = None
             if not final:
                 self._watch.read_failed(run_name, self._failures, self._options.max_read_failures, str(exc))
             return None
         self._failures = 0
+        self._timed_out = None
         self._last_status = found[0]
         self._watch.status(run_name, found[0], self._settle_shown(found[0]))
         return found
@@ -150,7 +174,11 @@ class StatusPoll:
         return self._deadline - self._clock.monotonic_ms()
 
     def _why(self, run_name: str) -> str:
-        """Say why the attempt gave up: its deadline passed, or, with time left, its status reads kept failing."""
+        """Say why the attempt gave up: its deadline passed, or, with time left, its status reads kept failing.
+
+        Past the deadline, a last read that timed out is named, so a run lost to a busy
+        warehouse says so.
+        """
         if self._failures and self._remaining() > 0:
             return (
                 f"evaluation run {run_name!r}: its status could not be read in {self._failures} reads in a row "
@@ -158,4 +186,7 @@ class StatusPoll:
             )
         last = self._last_status or "unread"
         within = duration_text(self._options.deadline_ms)
-        return f"evaluation run {run_name!r} did not reach a terminal status within {within}; it was {last}"
+        why = f"evaluation run {run_name!r} did not reach a terminal status within {within}; it was {last}"
+        if self._timed_out is not None:
+            why += f", and its last status read timed out ({short_reason(self._timed_out)})"
+        return why

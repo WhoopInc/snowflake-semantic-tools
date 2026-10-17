@@ -160,23 +160,31 @@ RESULT_COLUMNS = (
 
 
 class EvalSnowflake(FakeSnowflake):
-    """The fake with every query scripted, which runs START on the eval's scoped session.
+    """The fake with every query scripted, which runs START and CANCEL on the eval's scoped session.
 
     Each query takes the next of `results` (an exception raises), and a query with none left
-    fails the test. A START is the one scoped call that writes: it takes the next of
+    fails the test. A START is a scoped call that writes: it takes the next of
     `execute_results`, is logged as a script `("IN <scope>", <statement>)`, and raises when
-    that result failed, as `query_in_context` raises for a refused statement.
+    that result failed, as `query_in_context` raises for a refused statement. A CANCEL is
+    logged the same way and takes the next of `cancel_results`, succeeding when none is left.
     """
 
     def __init__(self, results: list[QueryResult | Exception], **world: Any) -> None:
         super().__init__(query_results=tuple(results), **world)
         self.answer_unscripted = False
+        self.cancel_results: list[Exception | None] = []
         # The agent `compile_eval` targets has one committed version.
         self.agent_versions.setdefault(("DB.S.SALES_AGENT", "committed"), "VERSION$1")
 
     def query_in_context(
         self, scope: SchemaScope, sql: Sql, params: object = None, *, timeout_seconds: int | None = None
     ) -> QueryResult:
+        if "EXECUTE_AI_EVALUATION('CANCEL'" in str(sql):
+            self.log.append(Sent("script", (f"IN {scope.sql}", str(sql))))
+            failure = self.cancel_results.pop(0) if self.cancel_results else None
+            if failure is not None:
+                raise failure
+            return QueryResult()
         if "EXECUTE_AI_EVALUATION('START'" not in str(sql):
             return super().query_in_context(scope, sql, params, timeout_seconds=timeout_seconds)
         self.log.append(Sent("script", (f"IN {scope.sql}", str(sql))))

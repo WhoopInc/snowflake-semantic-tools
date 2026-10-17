@@ -44,5 +44,15 @@ class SnowflakeTransientError(SnowflakePortError):
     """
 
 
+class SnowflakeStatementTimedOut(SnowflakeTransientError):
+    """A statement that ran past its timeout, so the timeout cancelled it.
+
+    The caller's timeout or Snowflake's own cancelled it (SQLSTATE 57014), or it queued past
+    the warehouse's queue timeout. Most often Snowflake took the statement and is slow -- a
+    busy warehouse -- rather than out of reach: a dropped connection fails as a plain
+    `SnowflakeTransientError` instead.
+    """
+
+
 class AgentVersionNotFound(SnowflakePortError):
     """An agent version selector names no committed version: it was never created, or was dropped."""

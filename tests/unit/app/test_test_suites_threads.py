@@ -176,7 +176,7 @@ class EvalSession(TrackedSession):
         self.opened.saw()
         _pause()
         text = str(sql)
-        if "EXECUTE_AI_EVALUATION('START'" in text:
+        if "EXECUTE_AI_EVALUATION('START'" in text or "EXECUTE_AI_EVALUATION('CANCEL'" in text:
             return QueryResult()
         assert isinstance(params, tuple)
         run_name = next(str(value) for value in params if str(value).startswith("EVAL_"))

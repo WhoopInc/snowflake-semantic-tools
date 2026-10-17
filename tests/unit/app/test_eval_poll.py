@@ -20,6 +20,7 @@ from snowflake_semantic_tools.app.evals.progress import (
     EvalProgressEvent,
     StatusChanged,
     StatusReadFailed,
+    StatusReadTimedOut,
     StillWaiting,
     duration_text,
     short_reason,
@@ -27,7 +28,11 @@ from snowflake_semantic_tools.app.evals.progress import (
 from snowflake_semantic_tools.app.evals.run import EvalSuiteResult, RunEvalSuite
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
-from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError, SnowflakeTransientError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import (
+    SnowflakePortError,
+    SnowflakeStatementTimedOut,
+    SnowflakeTransientError,
+)
 from snowflake_semantic_tools.domain.sql import Sql
 from tests.helpers.clocks import PollClock
 from tests.helpers.eval_builders import EvalSnowflake, compiled_eval_of, result_rows, status_result
@@ -35,6 +40,8 @@ from tests.helpers.eval_inputs import settled
 
 RUN = "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z"
 DROPPED = SnowflakeTransientError("250003: Failed to execute request: Read timed out.\nretry 4 of 4")
+SLOW_REASON = "000604 (57014): SQL execution was cancelled by the client due to a timeout."
+SLOW = SnowflakeStatementTimedOut(SLOW_REASON, sqlstate="57014", errno=604)
 PARTIAL = status_result("PARTIALLY_COMPLETED")
 EventT = TypeVar("EventT")
 
@@ -84,6 +91,10 @@ def starts(port: EvalSnowflake) -> int:
     return sum("'START'" in statement for script in port.scripts for statement in script)
 
 
+def cancels(port: EvalSnowflake) -> list[str]:
+    return [statement for script in port.scripts for statement in script if "'CANCEL'" in statement]
+
+
 def of_kind(events: list[EvalProgressEvent], kind: type[EventT]) -> list[EventT]:
     return [event for event in events if isinstance(event, kind)]
 
@@ -115,11 +126,78 @@ def test_max_read_failures_in_a_row_then_a_failed_last_read_fail_the_attempt() -
     )
     [diagnostic] = result.diagnostics
     assert diagnostic.code == "SST-APL023"
+    assert diagnostic.message.endswith("; SST cancelled the run in Snowflake")
+    # The run given up on is cancelled, so Snowflake stops computing it.
+    [cancel] = cancels(port)
+    assert RUN in cancel
     # The last read is made, and fails, without a warning that it will be retried.
     assert status_reads(port) == 6
     assert [event.failures for event in of_kind(events, StatusReadFailed)] == [1, 2, 3, 4, 5]
     [ended] = of_kind(events, AttemptEnded)
     assert ended == events[-1] and ended.status == "STATUS_FAILED"
+
+
+def test_a_cancel_that_fails_names_the_run_that_may_still_be_running() -> None:
+    port = EvalSnowflake([DROPPED] * 6)
+    port.cancel_results = [SnowflakePortError("002003: Evaluation run not found.\nmore detail")]
+
+    result, _ = run_polled(port)
+
+    assert result.evals[0].attempts[0].terminal_status == "STATUS_FAILED"
+    [diagnostic] = result.diagnostics
+    assert diagnostic.message.endswith(
+        f"; cancelling run '{RUN}' failed, so it may still be running in Snowflake (002003: Evaluation run not found.)"
+    )
+
+
+def test_reads_that_time_out_keep_the_run_polling_and_are_reported_once() -> None:
+    port = EvalSnowflake([status_result("CREATED"), *[SLOW] * 8, status_result("COMPLETED"), result_rows()])
+
+    result, events = run_polled(port)
+
+    assert result.success and not result.diagnostics
+    assert result.evals[0].attempts[0].terminal_status == "COMPLETED"
+    assert status_reads(port) == 10
+    assert not of_kind(events, StatusReadFailed)
+    assert of_kind(events, StatusReadTimedOut) == [StatusReadTimedOut(RUN, SLOW_REASON)]
+    assert not cancels(port)
+
+
+def test_a_read_that_times_out_breaks_a_row_of_failed_reads() -> None:
+    dropped: list[QueryResult | Exception] = [DROPPED] * 4
+    port = EvalSnowflake([*dropped, SLOW, *dropped, status_result("COMPLETED"), result_rows()])
+
+    result, events = run_polled(port)
+
+    assert result.success
+    assert [event.failures for event in of_kind(events, StatusReadFailed)] == [1, 2, 3, 4, 1, 2, 3, 4]
+
+
+def test_a_last_read_that_times_out_after_the_failures_ran_out_goes_on_polling() -> None:
+    port = EvalSnowflake([*[DROPPED] * 5, SLOW, status_result("COMPLETED"), result_rows()])
+
+    result, events = run_polled(port)
+
+    assert result.success
+    assert status_reads(port) == 7
+    # The last read is not reported as a stretch of timed-out reads starting.
+    assert not of_kind(events, StatusReadTimedOut)
+
+
+def test_reads_that_time_out_until_the_deadline_fail_the_attempt_and_cancel_the_run() -> None:
+    port = EvalSnowflake([status_result("CREATED"), SLOW, SLOW])
+
+    result, _ = run_polled(port, deadline_ms=10_000)
+
+    [attempt] = result.evals[0].attempts
+    assert attempt.terminal_status == "STATUS_FAILED"
+    assert attempt.retrieval_error == (
+        f"evaluation run '{RUN}' did not reach a terminal status within {duration_text(10_000)}; "
+        f"it was CREATED, and its last status read timed out ({SLOW_REASON})"
+    )
+    [diagnostic] = result.diagnostics
+    assert diagnostic.message.endswith("; SST cancelled the run in Snowflake")
+    assert len(cancels(port)) == 1
 
 
 def test_a_success_resets_the_failures_in_a_row() -> None:
@@ -256,6 +334,9 @@ def test_progress_lines_render_durations_and_short_reasons() -> None:
     )
     assert StatusReadFailed(RUN, 1, 5, "Read timed out.").line == (
         f"eval run {RUN}: status read failed (1/5), retrying: Read timed out."
+    )
+    assert StatusReadTimedOut(RUN, "cancelled by the client").line == (
+        f"eval run {RUN}: status read timed out, polling until the deadline: cancelled by the client"
     )
     assert StatusChanged(RUN, "PARTIALLY_COMPLETED", 415_000, 180_000).line == (
         f"eval run {RUN}: PARTIALLY_COMPLETED after 6m55s (waiting up to 3m00s for it to settle)"

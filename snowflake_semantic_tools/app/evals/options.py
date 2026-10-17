@@ -21,7 +21,9 @@ class EvalRunOptions:
         max_read_failures: The status reads in a row that may fail in transit before the
             attempt fails, after one last read; any read that succeeds resets the count.
         read_timeout_ms: The longest one status read may take, network retries included,
-            before it fails as transient; never longer than what is left of the deadline.
+            before it times out; never longer than what is left of the deadline. A read that
+            times out is retried but does not count toward `max_read_failures`, as it most
+            often means a slow Snowflake: only the deadline ends polling through such reads.
         heartbeat_ms: How often, at most, the suite reports the runs it is still waiting on.
         partial_settle_ms: How long a partial status must persist before it ends the run, in
             milliseconds of the clock's monotonic time from its first read. Snowflake reports

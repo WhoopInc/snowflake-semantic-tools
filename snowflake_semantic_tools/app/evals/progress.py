@@ -2,7 +2,8 @@
 
 `RunWatch` follows every run in flight and reports an event when an attempt starts, when a
 run's status changes (saying, for a provisional status, how long it is given to settle), when
-a status read fails and is retried, and when an attempt ends; while runs are in flight, it
+a status read fails and is retried, when a run's status reads start timing out, and when an
+attempt ends; while runs are in flight, it
 reports at most one `StillWaiting` per heartbeat interval. It
 reports nothing for a poll that saw no change, so the events stay few however often runs are
 polled. Each event renders as one line of text; where the lines go, and whether they go
@@ -78,6 +79,23 @@ class StatusReadFailed:
 
 
 @dataclass(frozen=True, slots=True)
+class StatusReadTimedOut:
+    """A run's status reads started timing out, most often because Snowflake is slow to answer.
+
+    Polling goes on until the run's deadline, as a timed-out read does not count toward
+    `max_read_failures`. Reported once per stretch of timed-out reads, not for each one.
+    """
+
+    run_name: str
+    reason: str
+
+    @property
+    def line(self) -> str:
+        """Render the event as one progress line."""
+        return f"eval run {self.run_name}: status read timed out, polling until the deadline: {self.reason}"
+
+
+@dataclass(frozen=True, slots=True)
 class AttemptEnded:
     """An attempt's run ended in `status`: a terminal one, or why it ended without one."""
 
@@ -108,7 +126,7 @@ class StillWaiting:
         return f"waiting on {len(self.runs)} {noun}: {shown}"
 
 
-EvalProgressEvent = AttemptStarted | StatusChanged | StatusReadFailed | AttemptEnded | StillWaiting
+EvalProgressEvent = AttemptStarted | StatusChanged | StatusReadFailed | StatusReadTimedOut | AttemptEnded | StillWaiting
 EvalProgress = Callable[[EvalProgressEvent], None]
 
 
@@ -158,6 +176,11 @@ class RunWatch:
         """Report a status read that failed in transit and will be retried."""
         with self._lock:
             self._progress(StatusReadFailed(run_name, failures, limit, short_reason(reason)))
+
+    def read_timed_out(self, run_name: str, reason: str) -> None:
+        """Report that a run's status reads started timing out, and polling goes on."""
+        with self._lock:
+            self._progress(StatusReadTimedOut(run_name, short_reason(reason)))
 
     def ended(self, run_name: str, status: str) -> None:
         """Stop following a run, reporting how its attempt ended; a run never started is ignored."""

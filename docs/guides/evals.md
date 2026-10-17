@@ -393,16 +393,24 @@ status:
   details).
 - **Deadline.** A run that has not ended 20 minutes after SST asked Snowflake to
   start it fails (`SST-APL023`); the time the start itself takes counts. SST
-  does not cancel it in Snowflake.
+  cancels it in Snowflake (`EXECUTE_AI_EVALUATION('CANCEL', ...)`), so it does
+  not go on computing, and billing, with nothing to read it. It does the same
+  for any run whose status it gave up reading. The cancel is best effort: the
+  `SST-APL023` message says whether it went through, and names the run when it
+  did not.
 - **Per-read timeout.** Each status read may take 30 seconds at most, network
   retries included, and never longer than what is left of the deadline; a slow
   read uses up the time it took. Reading a completed run's results has the
   same limit.
-- **Transient reads.** A read that fails on the network or times out is retried
-  at the next poll, with a `warn` line. Only five failed reads in a row fail the
+- **Transient reads.** A read that fails on the network is retried at the next
+  poll, with a `warn` line. Only five failed reads in a row fail the
   attempt (`SST-APL023`), and then only after one last read, so a run that
   completed while the network was down is still kept rather than retried. A
-  read that succeeds resets the count. A read Snowflake answered with something
+  read that succeeds resets the count. A read that times out after its 30
+  seconds -- most often because the warehouse is busy with the runs' own judges
+  -- is retried too, but it is not a failed read: it resets the count, and
+  only the deadline ends polling through such reads. A `warn` line says when a
+  run's reads start timing out. A read Snowflake answered with something
   SST cannot use, such as a row describing another run, fails the attempt at
   once.
 - **Partial statuses settle.** `PARTIALLY_COMPLETED` and
@@ -423,7 +431,8 @@ None of these limits is configurable.
 
 A run takes minutes, so while it runs the suite prints to stderr when each
 attempt starts, when its status changes, when a status read fails and is
-retried, and when the attempt ends, plus a line naming the runs still in flight
+retried, when a run's status reads start timing out, and when the attempt ends,
+plus a line naming the runs still in flight
 at most once a minute. A poll that sees no change prints nothing. For example:
 
 ```text

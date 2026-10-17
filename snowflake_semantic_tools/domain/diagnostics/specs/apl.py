@@ -303,7 +303,8 @@ SPECS: tuple[ErrorSpec, ...] = (
             "EXECUTE_AI_EVALUATION refused to start the run; its status could not be read (a read "
             "failed for good, or 5 reads in a row failed in transit); it did not reach a terminal "
             "status within 20 minutes; or it ended FAILED, CANCELLED, or in a status Snowflake does "
-            "not document"
+            "not document. A run SST gives up on while it may still be running is cancelled in "
+            "Snowflake, and the detail says whether the cancel went through"
         ),
         note=(
             "The detail carries Snowflake's error or the run's status details. A missing run "

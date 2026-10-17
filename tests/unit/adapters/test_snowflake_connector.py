@@ -18,6 +18,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import (
     AgentVersionNotFound,
     SnowflakePortError,
+    SnowflakeStatementTimedOut,
     SnowflakeTransientError,
 )
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
@@ -522,6 +523,32 @@ def test_only_a_failure_in_transit_is_transient(error: Exception, transient: boo
     with pytest.raises(SnowflakePortError) as raised:
         SessionConnector(_session({"SELECT 1": error})).query_in_context(SCOPE, sql("SELECT 1"))
     assert isinstance(raised.value, SnowflakeTransientError) is transient
+
+
+@pytest.mark.parametrize(
+    ("error", "timed_out"),
+    [
+        (
+            ProgrammingError(
+                msg="SQL execution was cancelled by the client due to a timeout.", errno=604, sqlstate="57014"
+            ),
+            True,
+        ),
+        (
+            ProgrammingError(msg="Statement reached its statement or warehouse timeout", errno=630, sqlstate="57014"),
+            True,
+        ),
+        (OperationalError(msg="Statement queued beyond the statement_queued_timeout"), True),
+        (OperationalError(msg="Failed to execute request: Read timed out.", errno=250003), False),
+        (OperationalError(msg="Connection is closed", errno=250002, sqlstate="08003"), False),
+        (TimeoutError("The read operation timed out"), False),
+    ],
+    ids=["client-timeout", "statement-timeout", "queued-timeout", "request-timeout", "closed", "socket-timeout"],
+)
+def test_only_a_statement_that_ran_past_its_timeout_is_timed_out(error: Exception, timed_out: bool) -> None:
+    with pytest.raises(SnowflakeTransientError) as raised:
+        SessionConnector(_session({"SELECT 1": error})).query_in_context(SCOPE, sql("SELECT 1"))
+    assert isinstance(raised.value, SnowflakeStatementTimedOut) is timed_out
 
 
 def test_query_in_context_hands_its_timeout_to_the_driver_and_nothing_else_sends_one() -> None:

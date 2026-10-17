@@ -428,7 +428,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-SNO008`](error-codes.md#sst-sno008) | SNO | error | runtime | `snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno008.py` |
 | [`SST-SNO009`](error-codes.md#sst-sno009) | SNO | error | runtime | `snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno009.py` |
 | [`SST-SNO010`](error-codes.md#sst-sno010) | SNO | error | runtime | `snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno010.py` |
-| [`SST-SNO011`](error-codes.md#sst-sno011) | SNO | error | runtime | `snowflake_semantic_tools.cli.runner`<br>`snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno011.py` |
+| [`SST-SNO011`](error-codes.md#sst-sno011) | SNO | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.session`<br>`snowflake_semantic_tools.cli.runner`<br>`snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno011.py` |
 | [`SST-SNO012`](error-codes.md#sst-sno012) | SNO | error | runtime | `snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno012.py` |
 | [`SST-SNO013`](error-codes.md#sst-sno013) | SNO | error | runtime | `snowflake_semantic_tools.cli.runner`<br>`snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno013.py` |
 | [`SST-SNO014`](error-codes.md#sst-sno014) | SNO | error | runtime | `snowflake_semantic_tools.cli.runner`<br>`snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno014.py` |
@@ -440,7 +440,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-SNO020`](error-codes.md#sst-sno020) | SNO | error | runtime | `snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno020.py` |
 | [`SST-SNO022`](error-codes.md#sst-sno022) | SNO | error | runtime | `snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno022.py` |
 | [`SST-SNO023`](error-codes.md#sst-sno023) | SNO | error | runtime | `snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno023.py` |
-| [`SST-SNO024`](error-codes.md#sst-sno024) | SNO | error | runtime | `snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno024.py` |
+| [`SST-SNO024`](error-codes.md#sst-sno024) | SNO | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.session`<br>`snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno024.py` |
 | [`SST-SNO025`](error-codes.md#sst-sno025) | SNO | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.catalog` | `tests/codes/sno/test_sst_sno025.py` |
 | [`SST-SNO030`](error-codes.md#sst-sno030) | SNO | error | runtime | `snowflake_semantic_tools.app.enrich` | `tests/codes/sno/test_sst_sno030.py` |
 | [`SST-SNO031`](error-codes.md#sst-sno031) | SNO | error | runtime | `snowflake_semantic_tools.app.enrich`<br>`snowflake_semantic_tools.domain.enrich.columns` | `tests/codes/sno/test_sst_sno031.py` |

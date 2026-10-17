@@ -110,6 +110,8 @@ class RoundSession(FakeSnowflake):
             assert match is not None
             self.clock.start(match.group(1), self)
             return QueryResult()
+        if "EXECUTE_AI_EVALUATION('CANCEL'" in text:
+            return QueryResult()
         assert isinstance(params, tuple)
         run_name = next(str(value) for value in params if str(value).startswith("EVAL_"))
         if "STATUS" in text:
