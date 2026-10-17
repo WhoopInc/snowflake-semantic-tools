@@ -34,7 +34,11 @@ from snowflake_semantic_tools.domain.model.eval import (
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
-from snowflake_semantic_tools.domain.validate.eval import eval_placement, validate_eval_catalog
+from snowflake_semantic_tools.domain.validate.eval import (
+    eval_placement,
+    personal_database_placement,
+    validate_eval_catalog,
+)
 
 
 def test_resolved_eval_identity_sources_and_dependency_are_deterministic() -> None:
@@ -635,6 +639,18 @@ def test_eval_placement_accepts_bare_and_same_schema_names_and_reports_any_other
     assert placed(None, "{{ unknown }}") == []
     assert placed("A.B.C.EVAL_{{ agent }}", None) == []
     assert eval_placement(replace(value, config=replace(value.config, dataset=None)), target) == ()
+
+
+def test_an_eval_whose_agent_lives_in_a_personal_database_cannot_publish_there() -> None:
+    value = _resolved_eval()
+    [minted] = personal_database_placement(value, QualifiedName.parse("USER$JDOE.PUBLIC.SALES"), mints=True)
+    assert minted.code == "SST-VAL766" and minted.subject == value.key
+    assert minted.context["kind"] == "its source table, dataset and config stage"
+    assert minted.context["found"] == "USER$JDOE.PUBLIC"
+    [staged] = personal_database_placement(value, QualifiedName.parse('"user$jdoe".PUBLIC.SALES'), mints=False)
+    assert staged.context["kind"] == "its config stage"
+    assert personal_database_placement(value, QualifiedName.parse("DEV_USERS.JDOE.SALES"), mints=True) == ()
+    assert personal_database_placement(value, QualifiedName.parse("MY_USER$DB.S.SALES"), mints=True) == ()
 
 
 def test_a_setting_is_named_where_it_was_written_and_the_ceiling_is_the_roots() -> None:

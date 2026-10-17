@@ -687,4 +687,23 @@ SPECS: tuple[ErrorSpec, ...] = (
             "`name:`, compared casefolded, so a reference to it is ambiguous"
         ),
     ),
+    spec(
+        "SST-VAL766",
+        Severity.ERROR,
+        "Eval routed into a personal database",
+        "eval '{artifact}' would create {kind} in {found}, a personal database, which holds no table, dataset or stage",
+        "route the agent to a schema of an ordinary database, or try its evals with "
+        "`sst test --suite evals --unpublished`, which creates none of them",
+        condition=(
+            "an eval's agent resolves to a database whose name starts with `USER$`, so the eval's "
+            "source table, dataset and config stage, which publish in the agent's schema, would be "
+            "created in a personal database"
+        ),
+        note=(
+            "Measured on a live account: Snowflake refuses to create a table, a dataset or a stage in "
+            "a personal database (error 060119), while an agent may live there. `sst ask` and "
+            "unpublished eval runs create only temporary agents, so they work for an agent in "
+            "`USER$<user>.PUBLIC`."
+        ),
+    ),
 )

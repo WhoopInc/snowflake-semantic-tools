@@ -96,9 +96,10 @@ to development and production from the same authored files. A key that is not
 set, or is set to `""`, falls back to the target's own database, schema, or
 warehouse.
 
-A location key -- `+database` and `+schema` of every block, and `+bundle_stage`,
+A location key -- `+database` and `+schema` of every block, `+bundle_stage`,
 `+stage`, and `+registry_table`, which may also be written as a three-part
-name -- must name a Snowflake identifier, `{{ target.* }}` standing for the
+name, and `agents.+scratch_schema`, which must be a two-part `DATABASE.SCHEMA`
+-- must name a Snowflake identifier, `{{ target.* }}` standing for the
 target's own: a value of another type is `SST-CFG004`, and text that is no
 identifier, such as `" "` or `A.B` for a schema, is `SST-CFG008`. The key is
 then read as unset, so its diagnostic is reported with every other one.

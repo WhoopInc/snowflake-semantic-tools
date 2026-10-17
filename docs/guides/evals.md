@@ -630,6 +630,8 @@ agent version per edit. Before that, cheapest first:
 1. Ask the edited agent a question with [`sst ask`](agents.md#ask-the-edited-agent):
    one temporary agent, nothing published.
 2. Run its evals unpublished, below.
+3. Publish to a [per-developer target](#a-per-developer-target) and run the
+   published suite there.
 
 ### Unpublished eval runs
 
@@ -679,3 +681,50 @@ a refused command line, 4 no eval in the selection, 5 Snowflake unreachable.
 cannot: the agent calls the published views, search services and tools, so an
 unpublished edit to one of them is not tried, and each is warned of
 (`SST-ASK001`).
+
+### A per-developer target
+
+When a change needs the evaluation service itself, a baseline, or an edited view
+tried together with the agent, publish it to a target of your own, never the
+one others publish to, then run the loop under [Running](#running) against it:
+
+```yaml
+# profiles.yml
+my_project:
+  outputs:
+    dev_jdoe:
+      type: snowflake
+      account: my_account
+      user: JDOE
+      role: ANALYST
+      database: DEV_JDOE
+      schema: SEMANTIC
+      warehouse: DEV_WH
+```
+
+```bash
+sst plan --target dev_jdoe --defer-target prod
+sst apply --target dev_jdoe --defer-target prod
+sst test --suite evals --target dev_jdoe
+```
+
+- **Each developer needs a state table of their own, and object locations of
+  their own.** A target whose routes overlap another's, or that shares its state
+  table, sees every object the other published as unmanaged (`SST-PLN024`).
+  Routing every block and `state:` by `{{ target.database }}` and
+  `{{ target.schema }}`, as the reference project does, gives each target its
+  own.
+- **Agents may live in a personal database; evals may not.** Measured on a live
+  account, an agent in `USER$<user>.PUBLIC` is created and runs. But Snowflake
+  creates no table, dataset or stage in a personal database (error 060119), and
+  an eval publishes its source table, dataset and config stage in its agent's
+  schema. So `sst validate` and `sst plan` refuse an eval whose agent resolves
+  to a `USER$` database (`SST-VAL766`); `sst ask` and `--unpublished` runs,
+  which create only temporary agents, still work for it. Give an agent whose
+  evals you publish a schema in an ordinary database.
+- A permanent agent's specification is staged on `apply.agent_spec_stage`,
+  which defaults to the target's own database and schema, so a target whose own
+  database is a personal one needs that stage routed to an ordinary schema.
+  SST does not check this before apply.
+- `--defer-target prod` resolves the dbt models the views read to production's
+  relations, so the developer's views query production data.

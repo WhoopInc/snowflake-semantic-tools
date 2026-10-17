@@ -156,3 +156,25 @@ def test_a_scratch_schema_that_renders_unusable_is_refused(tmp_path: Path, monke
     assert result.exit_code == 4
     assert [item["code"] for item in json.loads(result.output)["diagnostics"]] == ["SST-CFG008"]
     assert port.inline_runs == []
+
+
+def test_an_agent_in_a_personal_database_can_be_asked_though_its_eval_cannot_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    config = project / "sst_config.yml"
+    personal = '\nagents:\n  +database: "USER$JDOE"\n  +schema: PUBLIC\n'
+    text = config.read_text(encoding="utf-8").replace("\nagents:\n", personal, 1)
+    config.write_text(
+        text.replace('  +database: "{{ target.database }}"\n  +schema: JAFFLE\n  +enabled', "  +enabled", 1),
+        encoding="utf-8",
+    )
+    port = FakeSnowflake(state={})
+    asked = _ask(monkeypatch, project, port, AGENT, "q")
+    assert asked.exit_code == 0, asked.output
+    assert port.inline_runs[0][0] == SchemaScope(Identifier.parse("USER$JDOE"), Identifier.parse("PUBLIC"))
+    validated = invoke_with_port(
+        monkeypatch, port, ["validate", *common(project), "--no-snowflake-syntax-check", "--output", "json"]
+    )
+    assert validated.exit_code == 1
+    assert "SST-VAL766" in [item["code"] for item in json.loads(validated.output)["diagnostics"]]

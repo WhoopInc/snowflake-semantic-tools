@@ -748,7 +748,7 @@ asking, `sst ask` reads the target's state table, read-only, and warns of each
 artifact the agent depends on whose compiled fingerprint state does not record:
 `SST-ASK001` says "calls the published X, not your edit". To try an edited view
 together with the agent, publish the view first, to a
-[dev target](evals.md#running).
+[per-developer target](evals.md#a-per-developer-target).
 
 ### Run its evals unpublished
 
@@ -759,3 +759,10 @@ threshold, and `answer_correctness` and custom metrics by an approximate judge,
 which never gates. Nothing is published, locked, staged or recorded, and no
 baseline is read or captured. [Unpublished eval runs](evals.md#unpublished-eval-runs)
 gives the scoring rules.
+
+### Publish to a target of your own
+
+For the evaluation service itself, a baseline, or an edited view tried with the
+agent, publish to a [per-developer target](evals.md#a-per-developer-target). An
+agent may live in a personal `USER$<user>.PUBLIC` schema, but its evals may not
+(`SST-VAL766`).

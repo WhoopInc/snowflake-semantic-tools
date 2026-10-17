@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 306 codes
+- [Validation (VAL)](#validation-val) -- 307 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
@@ -5001,6 +5001,18 @@ Note: Snowflake refuses `version: v1` when the run starts, though its docs list 
 Raised when two dataset files, or two config files, in one agent's `evals/` folder declare the same `name:`, compared casefolded, so a reference to it is ambiguous.
 
 Fix: give each file its own name:
+
+### SST-VAL766
+
+**Eval routed into a personal database** (error)
+
+`eval '<artifact>' would create <kind> in <found>, a personal database, which holds no table, dataset or stage`
+
+Raised when an eval's agent resolves to a database whose name starts with `USER$`, so the eval's source table, dataset and config stage, which publish in the agent's schema, would be created in a personal database.
+
+Fix: route the agent to a schema of an ordinary database, or try its evals with `sst test --suite evals --unpublished`, which creates none of them
+
+Note: Measured on a live account: Snowflake refuses to create a table, a dataset or a stage in a personal database (error 060119), while an agent may live there. `sst ask` and unpublished eval runs create only temporary agents, so they work for an agent in `USER$<user>.PUBLIC`.
 
 ### SST-VAL801
 

@@ -146,6 +146,41 @@ def eval_placement(resolved: ResolvedEval, agent_target: QualifiedName) -> tuple
     return tuple(diagnostics)
 
 
+# The prefix of a personal database's name: Snowflake gives each user `USER$<user>`.
+PERSONAL_DATABASE_PREFIX = "USER$"
+
+
+def personal_database_placement(
+    resolved: ResolvedEval, agent_target: QualifiedName, *, mints: bool
+) -> tuple[Diagnostic, ...]:
+    """Report an eval whose objects would be created in a personal database, which holds none of them.
+
+    An eval's source table, dataset and config stage live in its agent's schema, so an agent
+    routed into `USER$<user>` takes them there. The agent alone may live there.
+
+    Args:
+        mints: SST creates the source table and dataset, as `dataset.mint: auto` does; with
+            `never`, only the config stage is created and the dataset must already exist.
+
+    Diagnostics:
+        SST-VAL766: the agent's database is a personal one.
+    """
+    if not agent_target.database.folded.upper().startswith(PERSONAL_DATABASE_PREFIX):
+        return ()
+    kind = "its source table, dataset and config stage" if mints else "its config stage"
+    found = f"{agent_target.database.sql}.{agent_target.schema.sql}"
+    return (
+        D(
+            "SST-VAL766",
+            artifact=resolved.name,
+            kind=kind,
+            found=found,
+            origin=resolved.config.origin,
+            subject=resolved.key,
+        ),
+    )
+
+
 def _validate_eval(
     resolved: ResolvedEval,
     defaults: EvalDefaults,

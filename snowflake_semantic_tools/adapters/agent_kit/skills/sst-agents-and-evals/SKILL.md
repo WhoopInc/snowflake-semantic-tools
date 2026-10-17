@@ -195,3 +195,7 @@ agent in Snowflake and costs credits.
    nothing and touching no baseline. `tool_selection_accuracy` is scored exactly and gates on
    its threshold (`SST-ASK007`); `answer_correctness` and custom metrics are judged
    approximately and never gate. Never pass `--capture-baseline` with it (refused).
+3. A per-developer target: its own state table and object locations, never shared, with
+   `sst plan`, `sst apply` and `sst test --suite evals` against it. An agent may live in a
+   personal `USER$<user>.PUBLIC` schema, but its evals may not (`SST-VAL766`): Snowflake creates
+   no table, dataset or stage in a personal database.

@@ -24,6 +24,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.compile.agents.observe import ObserveLiveObjects
+from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.explain_projection import (
     ObservedTypes,
     column_types,
@@ -53,6 +54,7 @@ from snowflake_semantic_tools.domain.sql import (
     qname,
     sql,
 )
+from snowflake_semantic_tools.domain.validate.eval import personal_database_placement
 from snowflake_semantic_tools.domain.validate.shared import reference_cycle
 
 
@@ -165,6 +167,8 @@ class ValidateArtifacts:
 
         Diagnostics:
             SST-VAL010: the compiled artifacts depend on one another in a cycle.
+            SST-VAL766: an eval's agent lives in a personal database, where the eval's
+                objects cannot be created.
             SST-VAL020: once per connected rule, when the Snowflake checks were skipped:
                 disabled, or no port was given.
             SST-VAL418: Snowflake would not compile an expression or a verified query.
@@ -177,7 +181,7 @@ class ValidateArtifacts:
             Those of `check_orchestration_models`, with a model check.
             Those of `verify_columns`, with `verify_schema` and a catalog.
         """
-        found = [*compiled.diagnostics, *_cycle_diagnostics(compiled.rendered)]
+        found = [*compiled.diagnostics, *_cycle_diagnostics(compiled.rendered), *_personal_placements(compiled)]
         skipped = 0
         if not connected or self._port is None:
             detail = (
@@ -467,6 +471,20 @@ def _cycle_diagnostics(rendered: tuple[RenderedArtifact, ...]) -> tuple[Diagnost
     if not cycle:
         return ()
     return (D("SST-VAL010", subject=cycle[0], type=types[cycle[0]], cycle=" -> ".join(cycle)),)
+
+
+def _personal_placements(compiled: CompileResult) -> tuple[Diagnostic, ...]:
+    """Report each eval whose objects would be created in a personal database, in compile order.
+
+    Checked here rather than in compile, so `sst ask` and unpublished eval runs, which compile
+    and create only temporary agents, still run for an agent that lives in one.
+    """
+    return tuple(
+        diagnostic
+        for item in compiled.compiled
+        if isinstance(item, CompiledEval)
+        for diagnostic in personal_database_placement(item.resolved, item.agent_target, mints=item.mints)
+    )
 
 
 def _duplicate_key_query(relationship: Relationship, target: Table) -> Sql:
