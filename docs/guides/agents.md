@@ -749,3 +749,13 @@ artifact the agent depends on whose compiled fingerprint state does not record:
 `SST-ASK001` says "calls the published X, not your edit". To try an edited view
 together with the agent, publish the view first, to a
 [dev target](evals.md#running).
+
+### Run its evals unpublished
+
+`sst test --suite evals --unpublished` runs each of the agent's eval questions
+the same way, one temporary agent per question, and scores the replies without
+an evaluation run: `tool_selection_accuracy` exactly, which gates on its
+threshold, and `answer_correctness` and custom metrics by an approximate judge,
+which never gates. Nothing is published, locked, staged or recorded, and no
+baseline is read or captured. [Unpublished eval runs](evals.md#unpublished-eval-runs)
+gives the scoring rules.

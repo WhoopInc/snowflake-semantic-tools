@@ -253,6 +253,13 @@ FLAG_SCENARIOS: dict[str, tuple[str, int, Scenario]] = {
     "test-exclude": ("test", 0, lambda tmp, mp: _test_smoke(tmp, mp, "--exclude", "type:agent", applied=True)),
     "test-select-matches-nothing": ("test", 4, lambda tmp, _: _test_compiled(tmp, "--select", "nothing")),
     "test-select-no-suite-applies": ("test", 4, lambda tmp, _: _test_compiled(tmp, "--select", "type:tool")),
+    # An unpublished eval run needs no compiled manifest, and fails when the agent picks the wrong tools.
+    "test-unpublished": ("test", 1, lambda tmp, mp: _test_unpublished(tmp, mp)),
+    "test-unpublished-capture": (
+        "test",
+        3,
+        lambda tmp, _: _run("test", "--unpublished", "--capture-baseline", "--reason", "why"),
+    ),
     "enrich-not-production": ("enrich", 3, lambda tmp, _: _run("enrich", *common(project_copy(tmp)))),
     "enrich-allow-non-prod": ("enrich", 0, lambda tmp, mp: _enrich_allowed(tmp, mp)),
 }
@@ -292,6 +299,12 @@ def _test_smoke(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str, applied
     return invoke_with_port(
         monkeypatch, port, ["test", *common(project), "--target", "dev", "--suite", "smoke", *flags]
     )
+
+
+def _test_unpublished(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
+    """Run the eval suite unpublished on an uncompiled copy, every question answered with no tool."""
+    args = ["test", *common(project_copy(tmp)), "--target", "dev", "--suite", "evals", "--unpublished"]
+    return invoke_with_port(monkeypatch, FakeSnowflake(state={}), args)
 
 
 def _debug_invalid(tmp: Path) -> Result:

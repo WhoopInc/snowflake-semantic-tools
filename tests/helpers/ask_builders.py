@@ -2,7 +2,9 @@
 
 `compiled_agent` builds an agent whose tools depend on the artifact keys given, published as
 `DB.AGENTS.<NAME>`; `applied_entry` records one artifact in state as published, as compiled
-unless told otherwise; `ScriptedAgentRun` answers each question from a script.
+unless told otherwise; `ScriptedAgentRun` answers each question from a script. `inline_setup`
+pairs `eval_builders.resolved_eval()`'s eval, or another, with its agent, whose specification
+declares `SALES` and a chart tool, for an unpublished eval run.
 """
 
 from __future__ import annotations
@@ -11,13 +13,22 @@ from collections.abc import Mapping
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
+from snowflake_semantic_tools.app.evals.inline import InlineEvalSetup
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, ResolvedAgent, ResolvedAgentTool
+from snowflake_semantic_tools.domain.model.eval import ResolvedEval
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.ports.snowflake.agent_run import AgentReply
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import APPLIED, AppliedEntry
+from tests.helpers.eval_builders import compiled_eval_of
+
+# A specification declaring one Analyst tool and a chart tool, as `--emit-agent-spec` writes one.
+SALES_SPEC = (
+    '{"tools":[{"tool_spec":{"type":"cortex_analyst_text_to_sql","name":"SALES"}},'
+    '{"tool_spec":{"type":"data_to_chart","name":"chart"}}]}\n'
+)
 
 
 def compiled_agent(
@@ -66,3 +77,12 @@ class ScriptedAgentRun:
         if isinstance(answer, SnowflakePortError):
             raise answer
         return answer if answer is not None else AgentReply(f"answer to {question}")
+
+
+def inline_setup(
+    resolved: ResolvedEval | None = None, *, orchestration_model: str = "claude-sonnet-4-6"
+) -> InlineEvalSetup:
+    """An eval with its agent, `sales_agent`, whose temporary agents go in `DB.AGENTS`."""
+    compiled = compiled_eval_of(resolved)
+    agent = compiled_agent(compiled.resolved.agent.name, payload=SALES_SPEC, orchestration_model=orchestration_model)
+    return InlineEvalSetup(compiled, agent, SchemaScope.from_qualified_name(agent.target))

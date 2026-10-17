@@ -22,10 +22,13 @@ from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
+from snowflake_semantic_tools.app.state import table_state
 from snowflake_semantic_tools.cli.output import register_secrets, verbose_run
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_KEYS, config_block, config_int
 from snowflake_semantic_tools.domain.ports.project import UNKNOWN_GIT_SHA
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
+from snowflake_semantic_tools.domain.state import AppliedEntry
 
 # Where a command's shared `LoadCache` is kept, in the click context's `meta`.
 LOAD_CACHE = "sst.load_cache"
@@ -168,3 +171,16 @@ def state_store(files: ProjectPaths, target_name: str) -> StateFileStore:
     return StateFileStore(
         state_file(target_dir(files.project_dir), target_name), config_path=files.config_name, root=files.project_dir
     )
+
+
+def published_entries(port: StatePort, profile: ProfileTarget, config_path: str) -> dict[str, AppliedEntry] | None:
+    """Read the target's state entries from its state table, never the local cache; None when unreadable.
+
+    Only a check reads them, such as which dependencies an unpublished run cannot see, so a
+    read that fails is reported by that check and does not stop the run.
+    """
+    try:
+        state = table_state(port, profile.state_table, profile.identity, config_path)
+    except SnowflakePortError:
+        return None
+    return None if state is None else dict(state.applied)

@@ -24,6 +24,7 @@ EXEMPT: dict[tuple[str, str], str] = {
         "the dataset payload SST rendered with json.dumps from a loaded YAML dataset"
     ),
     ("app/evals/retrieve.py", "_variant"): "a VARIANT column of a row a Snowflake query returned",
+    ("app/evals/inline.py", "_plan"): "the agent specification SST rendered with json.dumps",
     ("app/lifecycle/eval_rules.py", "provenance"): (
         "a dataset version's METADATA, which SST rendered with json.dumps or SHOW VERSIONS returned"
     ),
@@ -33,6 +34,9 @@ EXEMPT: dict[tuple[str, str], str] = {
     ("app/prior.py", "_specification"): "the specification text SHOW VERSIONS IN AGENT returned",
     ("domain/model/lifecycle/version.py", "spec_fingerprint"): (
         "an agent specification SST rendered, or the text SHOW VERSIONS IN AGENT returned"
+    ),
+    ("domain/evaluate/judge.py", "judged_score"): (
+        "a judge's completion, which the connector decoded from its VARIANT column unless it was JSON text"
     ),
     ("domain/render/eval.py", "render_source_table_statements"): (
         "the payload render_dataset_payload rendered with json.dumps"

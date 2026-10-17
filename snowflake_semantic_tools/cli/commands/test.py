@@ -19,7 +19,10 @@ from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.adapters.snowflake.eval_state import SnowflakeEvalStateStore
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
+from snowflake_semantic_tools.app.ask import agent_scope, compiled_agents, stale_dependencies
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
+from snowflake_semantic_tools.app.compile.evals import CompiledEval
+from snowflake_semantic_tools.app.evals.inline import InlineEvalOutcome, InlineEvalSetup, RunInlineEvals
 from snowflake_semantic_tools.app.evals.progress import EvalProgressEvent, StatusReadFailed, StatusReadTimedOut
 from snowflake_semantic_tools.app.evals.run import suite_concurrency
 from snowflake_semantic_tools.app.evals.suite import (
@@ -52,10 +55,11 @@ from snowflake_semantic_tools.cli.wiring.project import (
     connect,
     open_connector,
     project_inputs,
+    published_entries,
     state_store,
     target_dir,
 )
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 
 SUITES = ("smoke", "evals")
@@ -63,13 +67,20 @@ SUITES = ("smoke", "evals")
 _EXIT_RANK = {OK: 0, ERROR: 1, CONFIG: 2, CONNECTION: 3}
 
 
-def _refuse_invocation(suites: tuple[str, ...], capture_baseline_requested: bool, reason: str | None) -> None:
+def _refuse_invocation(
+    suites: tuple[str, ...], capture_baseline_requested: bool, reason: str | None, unpublished: bool
+) -> None:
     """Refuse `--capture-baseline` and `--reason` apart, or where the command line runs no eval suite.
 
     Raises:
         SstUsageError: `--capture-baseline` and `--reason` are not given together, or are given
-            with a `--suite` that does not name `evals`.
+            with a `--suite` that does not name `evals`; or `--unpublished` is given with
+            `--capture-baseline`, or with a `--suite` that does not name `evals`.
     """
+    if unpublished and capture_baseline_requested:
+        raise SstUsageError("--unpublished never captures a baseline: an unpublished run is not comparable")
+    if unpublished and suites and "evals" not in suites:
+        raise SstUsageError("--unpublished runs the eval suite; add --suite evals")
     if capture_baseline_requested and not reason:
         raise SstUsageError("--capture-baseline requires --reason")
     if reason and not capture_baseline_requested:
@@ -88,6 +99,7 @@ def _refuse_invocation(suites: tuple[str, ...], capture_baseline_requested: bool
 @fail_fast_option()
 @click.option("--capture-baseline", "capture_baseline_requested", is_flag=True)
 @click.option("--reason")
+@click.option("--unpublished", is_flag=True)
 @break_stale_lock_option()
 @command_body("test", refusals=_refuse_invocation)
 def test_command(
@@ -101,6 +113,7 @@ def test_command(
     fail_fast: bool,
     capture_baseline_requested: bool,
     reason: str | None,
+    unpublished: bool,
     break_stale_lock: bool,
 ) -> CommandResult:
     """Run the smoke and eval suites: those --suite names, else every one that applies.
@@ -116,6 +129,13 @@ def test_command(
     lock while it runs, and `--break-stale-lock` takes it over only from a run that has
     expired; progress on its runs goes to stderr, except under --quiet or --output json or
     yaml. `--capture-baseline` exits 3 unless the eval suite runs.
+
+    `--unpublished` runs the eval suite, alone unless --suite names smoke too, against each
+    agent as it compiles now, through temporary agents: it needs no `sst compile` or `sst
+    apply` first, takes no lock, and reads and writes no baseline or eval state. Only
+    `tool_selection_accuracy`, which it scores exactly, can fail it; the metrics it judges are
+    approximate and reported only. It exits 3 with `--capture-baseline`, or with a --suite
+    that does not name evals.
     """
     compiled = compiling.compile_result(paths, target_name, manifest_path)
     if not compiled.success:
@@ -132,10 +152,14 @@ def test_command(
             "--capture-baseline captures an eval baseline, and the eval suite does not apply: "
             "run sst compile first, or select an eval"
         )
-    chosen = suites or _applying(paths, result)
+    chosen = suites or (("evals",) if unpublished else _applying(paths, result))
     reports: list[tuple[str, CommandResult]] = []
     for name in dict.fromkeys(chosen):
-        if name == "evals":
+        if name == "evals" and unpublished:
+            report = _run_unpublished_evals(
+                paths, target_name, (compiled, result), inputs, selected, workers, fail_fast
+            )
+        elif name == "evals":
             report = _run_evals(
                 paths,
                 target_name,
@@ -273,19 +297,9 @@ def _run_evals(
     Raises:
         ProjectError: the selection compiles no eval, the compiled manifest is stale, or another
             operation holds the target's lock; it carries what taking the lock reported.
-
-    Diagnostics:
-        SST-DIS010: the selection compiles no eval, one per selector; raised.
     """
     full, result = results
-    evals = compiled_evals(result)
-    if not evals:
-        # The suite selects the evals within `selected`; with no selection, its own `type:eval`.
-        named = selected or ("type:eval",)
-        raise ProjectError(
-            "no eval artifacts matched the project",
-            diagnostics=tuple(D("SST-DIS010", selector=value) for value in named),
-        )
+    evals = _selected_evals(result, selected)
     manifest = current_manifest(paths.project_dir, full, inputs, before="evals")
     profile, port = connect(paths, target_name)
     params = profile.connection_params
@@ -311,6 +325,90 @@ def _run_evals(
     if isinstance(outcome, EvalGateRefused):
         raise ProjectError(outcome.reason, diagnostics=tuple(outcome.diagnostics))
     return _eval_report(outcome)
+
+
+def _selected_evals(result: CompileResult, selected: tuple[str, ...]) -> tuple[CompiledEval, ...]:
+    """Return the evals the selection compiles, refusing a selection that compiles none.
+
+    Raises:
+        ProjectError: the selection compiles no eval.
+
+    Diagnostics:
+        SST-DIS010: the selection compiles no eval, one per selector; raised.
+    """
+    evals = compiled_evals(result)
+    if not evals:
+        # The suite selects the evals within `selected`; with no selection, its own `type:eval`.
+        named = selected or ("type:eval",)
+        raise ProjectError(
+            "no eval artifacts matched the project",
+            diagnostics=tuple(D("SST-DIS010", selector=value) for value in named),
+        )
+    return evals
+
+
+def _run_unpublished_evals(
+    paths: ProjectPaths,
+    target_name: str | None,
+    results: tuple[CompileResult, CompileResult],
+    inputs: YamlProjectInputs,
+    selected: tuple[str, ...],
+    threads: int,
+    fail_fast: bool,
+) -> CommandResult:
+    """Run the selected evals against their agents as they compile now; exit 1 unless the run passes.
+
+    `results` is the whole compile, which holds every eval's agent and every artifact an
+    agent depends on, and the selection. No lock is taken, and no manifest, state, baseline
+    or eval state is read or written beyond one read of the state table, which checks what
+    each agent calls that is published differently (SST-ASK001). Each question's end goes to
+    stderr, except under --quiet or --output json or yaml.
+
+    Raises:
+        ProjectError: the selection compiles no eval, or an agent's scratch schema renders
+            unusable; it carries the diagnostic.
+    """
+    full, result = results
+    evals = _selected_evals(result, selected)
+    agents = {agent.artifact_key: agent for agent in compiled_agents(full)}
+    defaults = inputs.eval_catalog().defaults
+    profile, port = connect(paths, target_name)
+    params = profile.connection_params
+    workers = suite_concurrency(evals, defaults, threads)
+    with closed_on_error(port), ConnectorPool(workers, lambda: open_connector(params)) as pool:
+        applied = published_entries(port, profile, paths.config_name)
+        setups: list[InlineEvalSetup] = []
+        notes: dict[str, tuple[Diagnostic, ...]] = {}
+        for item in evals:
+            agent = agents[item.resolved.agent.key]
+            scope = agent_scope(agent, profile.identity)
+            if isinstance(scope, Diagnostic):
+                raise ProjectError(scope.message, diagnostics=(scope,))
+            setups.append(InlineEvalSetup(item, agent, scope))
+            notes.setdefault(agent.artifact_key, stale_dependencies(agent, full, applied))
+        outcome = RunInlineEvals(port, pool, progress=print_progress).run(
+            setups,
+            defaults=defaults,
+            threads=threads,
+            fail_fast=fail_fast,
+            notes=tuple(item for found in notes.values() for item in found),
+        )
+    port.close()
+    return CommandResult(
+        OK if outcome.passed else ERROR,
+        outcome.diagnostics,
+        dict(outcome.data),
+        human=lambda: _print_unpublished(outcome),
+    )
+
+
+def _print_unpublished(outcome: InlineEvalOutcome) -> None:
+    """Print every eval as `sst test` prints a published run, then which metrics only approximate it."""
+    print_eval_results(outcome.suite)
+    approximated = outcome.data.get("approximated_metrics")
+    if isinstance(approximated, list) and approximated:
+        click.echo(f"approximate, never gating: {', '.join(str(name) for name in approximated)}")
+    click.echo(f"unpublished eval run {outcome.data.get('gate_verdict')}")
 
 
 def _print_eval_progress(event: EvalProgressEvent) -> None:

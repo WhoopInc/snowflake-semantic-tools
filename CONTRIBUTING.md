@@ -302,6 +302,7 @@ domain/
 ├── plan/         # what apply must change, and in what order
 ├── state/        # the manifest, the applied state, and saved plans
 ├── enrich/       # the rules `sst enrich` derives column metadata by
+├── evaluate/     # scoring one agent reply as an unpublished eval run does
 ├── migrate/      # the `sst migrate refs` rewrites and the `sst migrate split` plan
 ├── sql/          # typed SQL: the one way SST builds statement text
 ├── ports/        # the protocols adapters implement; ports/snowflake/ holds one module per role

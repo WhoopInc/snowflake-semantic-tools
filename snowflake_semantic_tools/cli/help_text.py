@@ -221,6 +221,12 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "sst ask",
         "--timeout",
     ): "Seconds the agent may take to answer before the run is cancelled, 1 to 3600; default 300.",
+    ("sst test", "--unpublished"): (
+        "Run the eval suite against each agent as it compiles now, through temporary agents, publishing "
+        "nothing: no `sst apply` first, no lock, no baseline, no eval state. `tool_selection_accuracy` is "
+        "scored exactly and gates on its threshold; `answer_correctness` and custom metrics are judged "
+        "approximately and never gate. Refused with `--capture-baseline`, or a `--suite` that does not name `evals`."
+    ),
     ("sst test", "--fail-fast"): (
         "Stop the smoke or eval suite at its first failing probe or eval, running them one at a time, and "
         "run no suite after one that fails."

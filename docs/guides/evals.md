@@ -621,3 +621,61 @@ when any eval's gate gave a reason, else `regressed` when any eval regressed,
 else `passed`.
 
 Drawn from: [gate.py](../../snowflake_semantic_tools/app/evals/gate.py), [suite.py](../../snowflake_semantic_tools/app/evals/suite.py), [results.py](../../snowflake_semantic_tools/domain/model/eval/results.py).
+
+## Trying a change before publishing
+
+Each published eval run grades a published agent, so the loop above adds an
+agent version per edit. Before that, cheapest first:
+
+1. Ask the edited agent a question with [`sst ask`](agents.md#ask-the-edited-agent):
+   one temporary agent, nothing published.
+2. Run its evals unpublished, below.
+
+### Unpublished eval runs
+
+```bash
+sst test --suite evals --unpublished --target dev
+sst test --suite evals --unpublished --select sales_analyst --output json
+```
+
+`--unpublished` asks each question of each selected eval's compiled dataset of
+its agent's compiled specification, as `sst ask` asks one: a temporary agent
+per question, dropped once it answers, in the agent's schema or
+`agents.+scratch_schema`. Questions run at once as the
+[suite's concurrency](#attempts-retries-and-concurrency) allows, each on a
+session of its own. Nothing else of the published suite happens: no `sst
+compile` or `sst apply` is needed first, no run lock is taken, the publication
+check (`SST-APL012`) and the agent version selector (`SST-VAL719`) do not
+apply, no config is staged, and no baseline or gate state is read or written.
+`--capture-baseline` is refused (exit 3), and so is a `--suite` that does not
+name `evals`; without `--suite`, `--unpublished` runs the eval suite alone.
+
+Each metric is scored from the reply:
+
+| Metric | Scored |
+|---|---|
+| `tool_selection_accuracy` | Exactly, and gates. Only calls of tools the agent's specification declares count, so Snowflake's own system tools (`server_skill`, `system_execute_sql`) never do, and a `data_to_chart` tool is ignored, called or expected, as the evaluation service ignores an extra chart (measured on a live account). The calls that remain must name exactly the tools `ground_truth_invocations` lists, as a set: 1.0, else 0.0. An empty list expects no call; a question without the key is unscored. |
+| `answer_correctness` | Approximately, by an SST-written judge prompt asking whether the answer meets `ground_truth_output`, on 0 to 1. The judge is the eval's `judge_model`, else the agent's orchestration model; with neither, or `auto`, it is unscored (`SST-ASK004`). A question with no `ground_truth_output` is unscored. |
+| a custom metric | Approximately, by its own prompt and `model`, on its own score bands, with `{{ input }}`, `{{ output }}`, `{{ ground_truth }}`, `{{ tool_info }}`, `{{ duration }}`, `{{ error }}` and `{{ status }}` filled from the reply. A prompt using `{{ start_timestamp }}`, a `{{ span_* }}` placeholder or `{{ llm_model }}`, which only a published run's trace fills, is unscored (`SST-ASK004`). |
+| `tool_execution_accuracy`, `logical_consistency` | Not at all: only the evaluation service scores them (`SST-ASK005`, info). |
+
+Each judge is one `AI_COMPLETE` call at temperature 0 asking for JSON with a
+`score` and a `reason`; one that fails, or answers no number on the metric's
+scale, leaves that question unscored (`SST-ASK006`). These rules are SST's own,
+to be calibrated against the evaluation service: an unpublished score is a
+signal for iterating, never a substitute for the published gate.
+
+**Gating.** Only exact metrics gate, on their thresholds alone: a question
+`tool_selection_accuracy` scores outside its `threshold` fails the run
+(`SST-ASK007`, exit 1). A judged metric's scores are reported, listed under
+`approximated_metrics`, and never fail the run. An agent that cannot answer a
+question also fails it (`SST-ASK002`). The output is the published suite's,
+with one attempt per eval named `unpublished`; `--output json` adds `"mode":
+"unpublished"`, `approximated_metrics`, `unscored_metrics` and a `gate_verdict`
+of `passed` or `failed`. The exit codes are the suite's: 0 passed, 1 failed, 3
+a refused command line, 4 no eval in the selection, 5 Snowflake unreachable.
+
+**What it cannot see** is what [`sst ask`](agents.md#ask-the-edited-agent)
+cannot: the agent calls the published views, search services and tools, so an
+unpublished edit to one of them is not tried, and each is warned of
+(`SST-ASK001`).

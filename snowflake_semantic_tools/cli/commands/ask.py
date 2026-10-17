@@ -24,19 +24,14 @@ from snowflake_semantic_tools.app.ask import (
     reply_json,
     stale_dependencies,
 )
-from snowflake_semantic_tools.app.state import table_state
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import defer_target_option, target_option
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring import compile as compiling
-from snowflake_semantic_tools.cli.wiring.project import connect
+from snowflake_semantic_tools.cli.wiring.project import connect, published_entries
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
-from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
-from snowflake_semantic_tools.domain.state import AppliedEntry
 
 
 @click.command(cls=SstCommand, name="ask")
@@ -80,7 +75,7 @@ def ask(
         scope = agent_scope(agent, profile.identity)
         if isinstance(scope, Diagnostic):
             raise ProjectError(scope.message, diagnostics=(scope,))
-        applied = _applied(port, profile.state_table, profile.identity, paths.config_name)
+        applied = published_entries(port, profile, paths.config_name)
         outcome = AskAgent(port).run(
             agent,
             asked,
@@ -108,21 +103,6 @@ def _question(question: str) -> str:
     if not text.strip():
         raise SstUsageError("the question is empty")
     return text.strip()
-
-
-def _applied(
-    port: StatePort, state_table: QualifiedName, target: TargetIdentity, config_path: str
-) -> dict[str, AppliedEntry] | None:
-    """Read the target's state entries from the state table, never the local cache; None when unreadable.
-
-    The read is only a check, so a failure to make it does not stop the question; it is
-    reported, with every dependency, as SST-ASK001.
-    """
-    try:
-        state = table_state(port, state_table, target, config_path)
-    except SnowflakePortError:
-        return None
-    return None if state is None else dict(state.applied)
 
 
 def _data(outcome: AskOutcome) -> dict[str, object]:

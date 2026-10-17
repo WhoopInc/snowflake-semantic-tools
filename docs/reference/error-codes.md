@@ -28,7 +28,7 @@ cannot be downgraded by any setting.
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 43 codes
 - [Apply (APL)](#apply-apl) -- 37 codes
-- [Unpublished runs (ASK)](#unpublished-runs-ask) -- 3 codes
+- [Unpublished runs (ASK)](#unpublished-runs-ask) -- 7 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 25 codes
 - [Internal (INT)](#internal-int) -- 12 codes
@@ -7187,6 +7187,48 @@ Fix: fix what the message names, then run it again
 Raised when `sst ask` names an agent that is not among the agents the project compiles.
 
 Fix: name an agent `sst list agents` lists
+
+### SST-ASK004
+
+**Metric cannot be scored unpublished** (warning)
+
+`eval '<artifact>': metric '<name>' is not scored without publishing: <reason>`
+
+Raised when an unpublished eval run cannot judge a custom metric whose prompt uses a placeholder only a published run's trace fills (`start_timestamp`, `span_*`, `llm_model`), or that has no prompt, score bands or judge model; or `answer_correctness`, when neither the eval's `judge_model` nor the agent's orchestration model names a model.
+
+Fix: run the published eval suite, `sst test --suite evals`, to score it
+
+### SST-ASK005
+
+**System metric is not scored unpublished** (info)
+
+`eval '<artifact>': system metric '<name>' is not scored without publishing`
+
+Raised when an unpublished eval run's config enables `tool_execution_accuracy` or `logical_consistency`, which only Snowflake's evaluation service scores.
+
+Fix: run the published eval suite, `sst test --suite evals`, to score it
+
+### SST-ASK006
+
+**Judge gave no score** (warning)
+
+`eval '<artifact>': the judge of '<name>' gave no score for question <index>: <detail>`
+
+Raised when an unpublished eval run's judge completion failed, or answered no number on the metric's scale; the metric is unscored on that question.
+
+Fix: run it again; a judge that keeps failing names a model the account cannot use
+
+### SST-ASK007
+
+**Unpublished eval fell outside a threshold** (error)
+
+`eval '<artifact>': '<name>' fell outside its threshold <expected> on <count> question(s): <detail>`
+
+Raised when in an unpublished eval run, an exact metric -- `tool_selection_accuracy` -- scored a question outside the metric's threshold.
+
+Fix: fix the agent until the metric passes, or the expectation if it is wrong
+
+Note: Only exact metrics gate an unpublished run. A judged metric is approximate: its scores are reported, and never fail the run.
 
 ## Snowflake (SNO)
 

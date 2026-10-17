@@ -637,6 +637,13 @@ lock while it runs, and `--break-stale-lock` takes it over only from a run that 
 expired; progress on its runs goes to stderr, except under --quiet or --output json or
 yaml. `--capture-baseline` exits 3 unless the eval suite runs.
 
+`--unpublished` runs the eval suite, alone unless --suite names smoke too, against each
+agent as it compiles now, through temporary agents: it needs no `sst compile` or `sst
+apply` first, takes no lock, and reads and writes no baseline or eval state. Only
+`tool_selection_accuracy`, which it scores exactly, can fail it; the metrics it judges are
+approximate and reported only. It exits 3 with `--capture-baseline`, or with a --suite
+that does not name evals.
+
 ```text
 sst test [OPTIONS]
 ```
@@ -651,6 +658,7 @@ sst test [OPTIONS]
 | `--fail-fast` | flag |  | Stop the smoke or eval suite at its first failing probe or eval, running them one at a time, and run no suite after one that fails. |
 | `--capture-baseline` | flag |  | Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires `--reason`, and a run of the eval suite: refused with a `--suite` that does not name `evals`, or no `--suite` when the eval suite does not apply. |
 | `--reason` | TEXT |  | Why the baseline is changing; stored with it. Requires `--capture-baseline`. |
+| `--unpublished` | flag |  | Run the eval suite against each agent as it compiles now, through temporary agents, publishing nothing: no `sst apply` first, no lock, no baseline, no eval state. `tool_selection_accuracy` is scored exactly and gates on its threshold; `answer_correctness` and custom metrics are judged approximately and never gate. Refused with `--capture-baseline`, or a `--suite` that does not name `evals`. |
 | `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 
 ## sst explain

@@ -191,3 +191,7 @@ agent in Snowflake and costs credits.
    no lock is taken. A role that cannot create agents in the agent's schema needs
    `agents.+scratch_schema: DATABASE.SCHEMA`. `SST-ASK001` means the agent called the published
    view, search service or tool, not the local edit to it: only the agent's own edit is tried.
+2. `sst test --suite evals --unpublished`: runs each eval question the same way, publishing
+   nothing and touching no baseline. `tool_selection_accuracy` is scored exactly and gates on
+   its threshold (`SST-ASK007`); `answer_correctness` and custom metrics are judged
+   approximately and never gate. Never pass `--capture-baseline` with it (refused).

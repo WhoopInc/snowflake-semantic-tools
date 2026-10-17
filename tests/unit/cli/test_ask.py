@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from click.testing import Result
 
+from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.identifier import Identifier, SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake.agent_run import AgentReply, ToolResult, ToolUse
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -145,3 +146,13 @@ def test_a_scratch_schema_holds_the_temporary_agent(tmp_path: Path, monkeypatch:
     port = FakeSnowflake(state={})
     assert _ask(monkeypatch, project, port, AGENT, "q").exit_code == 0
     assert port.inline_runs[0][0] == SchemaScope(Identifier.parse("SST_REF_DEV"), Identifier.parse("SCRATCH"))
+
+
+def test_a_scratch_schema_that_renders_unusable_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    refused = D("SST-CFG008", key="agents.+scratch_schema", found="'.S'", expected="two-part names, DATABASE.SCHEMA")
+    monkeypatch.setattr("snowflake_semantic_tools.cli.commands.ask.agent_scope", lambda agent, target: refused)
+    port = FakeSnowflake(state={})
+    result = _ask(monkeypatch, project_copy(tmp_path), port, AGENT, "q", "--output", "json")
+    assert result.exit_code == 4
+    assert [item["code"] for item in json.loads(result.output)["diagnostics"]] == ["SST-CFG008"]
+    assert port.inline_runs == []

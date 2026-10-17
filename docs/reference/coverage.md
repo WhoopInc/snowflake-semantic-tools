@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 748
+- Codes: 752
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -52,8 +52,12 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-APL105`](error-codes.md#sst-apl105) | APL | info | local | `snowflake_semantic_tools.app.apply.temporary` | `tests/codes/apl/test_sst_apl105.py` |
 | [`SST-APL900`](error-codes.md#sst-apl900) | APL | error | local | `snowflake_semantic_tools.app.apply.run` | `tests/codes/apl/test_sst_apl900.py` |
 | [`SST-ASK001`](error-codes.md#sst-ask001) | ASK | warning | observe | `snowflake_semantic_tools.app.ask` | `tests/codes/ask/test_sst_ask001.py` |
-| [`SST-ASK002`](error-codes.md#sst-ask002) | ASK | error | runtime | `snowflake_semantic_tools.app.ask` | `tests/codes/ask/test_sst_ask002.py` |
+| [`SST-ASK002`](error-codes.md#sst-ask002) | ASK | error | runtime | `snowflake_semantic_tools.app.ask`<br>`snowflake_semantic_tools.app.evals.inline` | `tests/codes/ask/test_sst_ask002.py` |
 | [`SST-ASK003`](error-codes.md#sst-ask003) | ASK | error | local | `snowflake_semantic_tools.app.ask` | `tests/codes/ask/test_sst_ask003.py` |
+| [`SST-ASK004`](error-codes.md#sst-ask004) | ASK | warning | local | `snowflake_semantic_tools.app.evals.inline` | `tests/codes/ask/test_sst_ask004.py` |
+| [`SST-ASK005`](error-codes.md#sst-ask005) | ASK | info | local | `snowflake_semantic_tools.app.evals.inline` | `tests/codes/ask/test_sst_ask005.py` |
+| [`SST-ASK006`](error-codes.md#sst-ask006) | ASK | warning | runtime | `snowflake_semantic_tools.app.evals.inline` | `tests/codes/ask/test_sst_ask006.py` |
+| [`SST-ASK007`](error-codes.md#sst-ask007) | ASK | error | runtime | `snowflake_semantic_tools.app.evals.inline` | `tests/codes/ask/test_sst_ask007.py` |
 | [`SST-CFG001`](error-codes.md#sst-cfg001) | CFG | error | local | `snowflake_semantic_tools.adapters.locations`<br>`snowflake_semantic_tools.adapters.yaml.semantic.pipeline`<br>`snowflake_semantic_tools.cli.commands.debug`<br>`snowflake_semantic_tools.cli.commands.format` | `tests/codes/cfg/test_sst_cfg001.py` |
 | [`SST-CFG002`](error-codes.md#sst-cfg002) | CFG | error | local | `snowflake_semantic_tools.adapters.dbt.profiles`<br>`snowflake_semantic_tools.adapters.yaml.config` | `tests/codes/cfg/test_sst_cfg002.py` |
 | [`SST-CFG003`](error-codes.md#sst-cfg003) | CFG | warning | local | `snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg003.py` |

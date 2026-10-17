@@ -330,6 +330,17 @@ def _result_question_key(
     return expected_key
 
 
+def compiled_questions(compiled: CompiledEval) -> tuple[tuple[str, str, Mapping[str, object]], ...]:
+    """Return each question of the compiled dataset as (key, input, ground truth), in dataset order.
+
+    The key is the one a run's results are matched to the question by.
+
+    Raises:
+        ValueError: as `_expected_question_map` raises it.
+    """
+    return tuple((key, query, truth) for query, (key, truth) in _expected_question_map(compiled).items())
+
+
 def _expected_question_map(compiled: CompiledEval) -> dict[str, tuple[str, Mapping[str, object]]]:
     """Map each question of the compiled dataset, by its input, to its key and ground truth.
 
