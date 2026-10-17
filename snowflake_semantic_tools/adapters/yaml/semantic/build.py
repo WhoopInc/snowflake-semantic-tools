@@ -139,6 +139,9 @@ def _build_view(
         scope=scope,
         member_origins=MappingProxyType({member.key: member.origin for member in selected.attached}),
         settings=tuple(settings[key] for key in sorted(settings)),
+        table_models=MappingProxyType(
+            {logical: models[model] for model, logical in logical_by_model.items() if model in models}
+        ),
     )
 
 
@@ -436,6 +439,9 @@ def _view_column(model: DbtModel, column: DbtColumn, logical: str) -> Column:
     subject = f"dbt_model:{model.name}"
     (name,) = _names((column.member_name,), subject, None)
     reference = column_ref(Identifier.parse(logical), column.identifier).text
+    # A sensitive column's values are never published, however they reached its YAML (SST-VAL328);
+    # without them, `IS_ENUM` would claim a closed set the view does not list.
+    published = not column.sensitive
     return Column(
         table=logical,
         name=name,
@@ -443,8 +449,8 @@ def _view_column(model: DbtModel, column: DbtColumn, logical: str) -> Column:
         expr=_expression(reference, kind=kind.value, name=name, subject=subject, origin=None),
         comment=column.description,
         synonyms=column.synonyms,
-        sample_values=column.sample_values,
-        is_enum=column.is_enum is True,
+        sample_values=column.sample_values if published else (),
+        is_enum=column.is_enum is True and published,
         data_type=column.data_type,
     )
 

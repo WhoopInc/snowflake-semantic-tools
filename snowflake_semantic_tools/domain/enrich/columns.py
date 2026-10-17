@@ -3,7 +3,10 @@
 The warehouse says which columns exist; the model YAML, through the manifest, says what is
 already written. A value already written is kept unless its component is forced, a column the
 YAML describes and the relation lacks is reported and never dropped, and an excluded column is
-left alone. A column carrying `pii_tags` is never sampled, and its values reach no prompt.
+left alone. A sensitive column -- one carrying `pii_tags` or `meta.sst.governance_tags` in its
+YAML, or a tag `governance:` names in Snowflake -- is never sampled, and its values reach no
+prompt. When a run reads column tags, each column's `meta.sst.governance_tags` is rewritten to
+exactly the sensitive tags it found.
 """
 
 from __future__ import annotations
@@ -27,11 +30,13 @@ from snowflake_semantic_tools.domain.enrich.infer import (
 from snowflake_semantic_tools.domain.enrich.prompts import EXAMPLES_PER_COLUMN, PromptColumn
 from snowflake_semantic_tools.domain.model.config_schema import EnrichmentConfig
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
+from snowflake_semantic_tools.domain.model.governance import sensitivity_reason
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.validate.column_metadata import printable
 
-# The `meta.sst` keys enrich writes, in the order it adds them to a column.
-WRITTEN_KEYS = ("column_type", "data_type", "synonyms", "sample_values", "is_enum")
+# The `meta.sst` keys enrich writes, in the order it adds them to a column. `governance_tags` is
+# written only by a run that reads column tags, and an empty list removes it.
+WRITTEN_KEYS = ("column_type", "data_type", "synonyms", "sample_values", "is_enum", "governance_tags")
 
 # The key each component fills; `sample-values` also decides `is_enum` beside the values it writes.
 COMPONENT_KEYS: Mapping[Component, str] = MappingProxyType(
@@ -52,10 +57,13 @@ class WarehouseColumn:
     Attributes:
         name: The name as Snowflake stores it: upper-cased unless it was created quoted.
         data_type: INFORMATION_SCHEMA's `DATA_TYPE`, such as `TEXT` or `NUMBER`.
+        governance_tags: The sensitive tags Snowflake lists on the column, each named as
+            `matching_tags` names it; empty when none matches, or no tag was read.
     """
 
     name: str
     data_type: str
+    governance_tags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +127,15 @@ def _declared(existing: DbtColumn | None) -> frozenset[str]:
     return existing.declared_keys if existing is not None else frozenset()
 
 
+def sensitive(existing: DbtColumn | None, column: WarehouseColumn) -> bool:
+    """Report whether a column's values must not be read: its YAML or Snowflake marks it sensitive.
+
+    It is tested on the warehouse column, so a column the YAML does not describe yet is
+    sensitive when Snowflake tags it.
+    """
+    return bool(column.governance_tags) or (existing is not None and existing.sensitive)
+
+
 def role(model: DbtModel, existing: DbtColumn | None, column: WarehouseColumn, options: EnrichOptions) -> str:
     """Return the column type a column has once enrich runs: the one written, unless re-derived."""
     written = existing.column_type if existing is not None else None
@@ -151,14 +168,14 @@ def sample_columns(
 ) -> tuple[WarehouseColumn, ...]:
     """Return the columns whose distinct values a run reads, in the relation's order.
 
-    A column is read when its type is sampled, it carries no `pii_tags`, and the run fills or
+    A column is read when its type is sampled, it is not `sensitive`, and the run fills or
     forces its sample values, or decides `is_enum` for the values it already has.
     """
     if not options.includes(Component.SAMPLE_VALUES):
         return ()
     selected = []
     for column, existing in _enrichable(model, warehouse):
-        if (existing is not None and existing.pii_tagged) or not is_sampled_type(column.data_type):
+        if sensitive(existing, column) or not is_sampled_type(column.data_type):
             continue
         declared = _declared(existing)
         wants_values = "sample_values" not in declared or options.forces(Component.SAMPLE_VALUES)
@@ -195,14 +212,14 @@ def prompt_columns(
 ) -> tuple[PromptColumn, ...]:
     """Describe columns for a synonym prompt, with examples from the values sampled or already written.
 
-    `samples` holds the values read this run, by casefolded relation column name. A column that
-    carries `pii_tags` is described without examples.
+    `samples` holds the values read this run, by casefolded relation column name. A `sensitive`
+    column is described without examples.
     """
     described = []
     for column in columns:
         existing = model.column(column.name)
         examples: tuple[str, ...] = ()
-        if existing is None or not existing.pii_tagged:
+        if not sensitive(existing, column):
             fetched = samples.get(column.name.casefold())
             written = existing.sample_values if existing is not None else ()
             examples = tuple(fetched if fetched is not None else written)[:EXAMPLES_PER_COLUMN]
@@ -378,6 +395,15 @@ def _synonym_value(
     return synonyms if synonyms != written else None
 
 
+def _governance_value(existing: DbtColumn | None, column: WarehouseColumn) -> tuple[str, ...] | None:
+    """Return the governance tags to write, the tags found this run; None when they are written already.
+
+    An empty tuple removes the key from a column that records tags Snowflake no longer lists.
+    """
+    written = existing.governance_tags if existing is not None else ()
+    return column.governance_tags if column.governance_tags != written else None
+
+
 def _absent_columns(model: DbtModel, warehouse: Sequence[WarehouseColumn]) -> list[Diagnostic]:
     """Report each column the YAML describes and the relation lacks.
 
@@ -392,25 +418,34 @@ def _absent_columns(model: DbtModel, warehouse: Sequence[WarehouseColumn]) -> li
     ]
 
 
-def _pii_samples(model: DbtModel, options: EnrichOptions) -> list[Diagnostic]:
-    """Report each column with `pii_tags` that carries sample values, when the run reads row data.
+def _governed_samples(
+    model: DbtModel, warehouse: Sequence[WarehouseColumn], options: EnrichOptions
+) -> list[Diagnostic]:
+    """Report each sensitive column that carries sample values, when the run reads row data.
+
+    A column is sensitive by its YAML, or by the tags Snowflake lists on it this run.
 
     Diagnostics:
         SST-VAL328: once per such column.
     """
     if not options.reads_data:
         return []
-    return [
-        D(
-            "SST-VAL328",
-            model=model.name,
-            column=column.name,
-            count=len(column.sample_values),
-            subject=_subject(model, column.name),
-        )
-        for column in model.columns
-        if column.pii_tagged and column.sample_values
-    ]
+    found = {column.name.casefold(): column.governance_tags for column in warehouse}
+    reported = []
+    for column in model.columns:
+        tags = found.get(column.name.casefold(), ())
+        if (column.sensitive or tags) and column.sample_values:
+            reported.append(
+                D(
+                    "SST-VAL328",
+                    model=model.name,
+                    column=column.name,
+                    reason=sensitivity_reason(column, tags),
+                    count=len(column.sample_values),
+                    subject=_subject(model, column.name),
+                )
+            )
+    return reported
 
 
 def _unwritten(model: DbtModel, name: str, refused: Sequence[str]) -> list[Diagnostic]:
@@ -443,17 +478,20 @@ def enrich_model(
     *,
     samples: Mapping[str, Sequence[str]],
     synonyms: Mapping[str, tuple[str, ...]],
+    tags_read: bool = False,
 ) -> ModelEnrichment:
     """Decide what enrich writes for one model, from its relation's columns and what the run read.
 
     `samples` and `synonyms` hold, by casefolded relation column name, the values sampled and the
     cleaned synonyms; a column absent from either is not changed by that component. A column the
-    YAML does not describe is added only when it gains a value.
+    YAML does not describe is added only when it gains a value. With `tags_read`, the run read
+    the relation's column tags into `warehouse`, and each column's `meta.sst.governance_tags`
+    becomes exactly the sensitive tags found: one no longer listed is removed.
 
     Diagnostics:
         SST-VAL325: a described column is absent from the relation.
         SST-VAL327: a written data type disagrees with the relation's.
-        SST-VAL328: a column with `pii_tags` carries sample values, and the run reads row data.
+        SST-VAL328: a sensitive column carries sample values, and the run reads row data.
         SST-VAL317: a written `is_enum: true` the sampled data contradicts.
         SST-SNO031: a column's name, or a value enrich would write for it, holds template syntax,
             and nothing is written for the column. A sampled value that does is not written.
@@ -466,11 +504,12 @@ def enrich_model(
         data_type, warning = _data_type_value(model, existing, column, options)
         if warning is not None:
             diagnostics.append(warning)
-        fetched = None if existing is not None and existing.pii_tagged else samples.get(folded)
+        fetched = None if sensitive(existing, column) else samples.get(folded)
         found: dict[str, object] = {
             "column_type": _column_type_value(model, existing, column, options),
             "data_type": data_type,
             "synonyms": _synonym_value(existing, options, synonyms.get(folded)),
+            "governance_tags": _governance_value(existing, column) if tags_read else None,
         }
         found.update(_sample_values(existing, column_role, options, settings, fetched))
         diagnostics.extend(_hand_edited_enum(model, existing, column_role, options, settings, fetched))
@@ -480,5 +519,5 @@ def enrich_model(
         diagnostics.extend(_unwritten(model, name, refused))
         if values and not refused:
             updates.append(ColumnUpdate(name, values, added=existing is None))
-    diagnostics.extend(_pii_samples(model, options))
+    diagnostics.extend(_governed_samples(model, warehouse, options))
     return ModelEnrichment(model.name, tuple(updates), tuple(diagnostics))

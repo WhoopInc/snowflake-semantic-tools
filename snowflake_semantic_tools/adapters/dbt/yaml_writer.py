@@ -4,7 +4,9 @@ A model's or column's `sst` block is edited where it already is -- bare `meta.ss
 `config.meta.sst`, as the manifest reader reads them -- and a new block goes under
 `config.meta.sst`, which a model gets before its `columns`. A column's keys take their place in
 `WRITTEN_KEYS` order, and a model's `synonyms` theirs in `MODEL_KEYS` order; a model or column
-the file does not describe yet is appended. Nothing else in the file changes.
+the file does not describe yet is appended. An update whose value is an empty list removes its
+key, as enrich removes `governance_tags` Snowflake no longer lists. Nothing else in the file
+changes.
 """
 
 from __future__ import annotations
@@ -123,7 +125,10 @@ def _apply(entry: CommentedMap, updates: Sequence[ColumnUpdate] | None, synonyms
             columns.append(column)
         sst = _sst_block(column, path)
         for key, value in update.values:
-            insert_key(sst, key, _value(value), WRITTEN_KEYS)
+            if value == ():
+                sst.pop(key, None)
+            else:
+                insert_key(sst, key, _value(value), WRITTEN_KEYS)
 
 
 def _document(text: str | None, path: str) -> EditableYaml:

@@ -257,3 +257,18 @@ def test_every_component_reads_values_and_asks_cortex_through_one_session(
     assert [call[0] for call in port.calls] == ["columns", "values", "cortex", "cortex"]
     assert "+            - store\n" in result.output and "+                - store manager\n" in result.output
     assert port.closed == 1
+
+
+def test_a_project_that_reads_column_tags_records_them_through_the_session(
+    monkeypatch: pytest.MonkeyPatch, project: Path
+) -> None:
+    config = project / "sst_config.yml"
+    governance = "\ngovernance:\n  sensitive_tags: [SEC.GOV.*]\n  read_column_tags: true\n"
+    config.write_text(config.read_text(encoding="utf-8") + governance, encoding="utf-8")
+    port = _Warehouse(columns={ORDER_ITEMS: ORDER_ITEMS_COLUMNS}, tags={ORDER_ITEMS: {"QUANTITY": ["SEC.GOV.COUNT"]}})
+    result = _invoke(monkeypatch, project, port, "--select", "model:order_items")
+    assert result.exit_code == 0, result.output
+    assert ("tags", ORDER_ITEMS) in port.calls
+    assert "              governance_tags:\n                - SEC.GOV.COUNT\n" in (project / YAML).read_text(
+        encoding="utf-8"
+    )

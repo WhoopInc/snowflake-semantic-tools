@@ -6,6 +6,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
 from snowflake_semantic_tools.domain.model.authored import ACCESS_MODIFIERS, MetricDef
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
+from snowflake_semantic_tools.domain.model.governance import sensitivity_reason
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.validate.column_metadata import is_numeric, is_sentinel, is_temporal
 from snowflake_semantic_tools.domain.validate.semantic.shape import synonym_diagnostics
@@ -20,7 +21,8 @@ def dbt_column_diagnostics(
     Only a model a view uses is checked for its metadata: `referenced_models` holds their
     casefolded names, and None means every model. Sentinel sample values are reported on every
     model. Per column the rules run in the order below, so its diagnostics come out rule by rule:
-    role, data type, sample values, description, unknown meta keys, declared type, sentinels.
+    role, data type, sample values, sensitive sample values, description, unknown meta keys,
+    declared type, sentinels.
     """
     diagnostics: list[Diagnostic] = []
     for model in sorted(models.values(), key=lambda item: item.name):
@@ -30,6 +32,7 @@ def dbt_column_diagnostics(
                 diagnostics.extend(_role_diagnostics(model, column))
                 diagnostics.extend(_data_type_diagnostics(model, column))
                 diagnostics.extend(_sample_value_diagnostics(model, column))
+                diagnostics.extend(_sensitive_sample_diagnostics(model, column))
                 diagnostics.extend(_column_description_diagnostics(model, column))
                 diagnostics.extend(_column_meta_diagnostics(model, column))
                 diagnostics.extend(_declared_type_diagnostics(model, column))
@@ -102,6 +105,29 @@ def _sample_value_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagno
             )
         ]
     return []
+
+
+def _sensitive_sample_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
+    """Report sample values on a column its YAML marks sensitive, written by hand or by an earlier enrich.
+
+    Such values are never published, so they only sit in the YAML, where review reads them.
+
+    Diagnostics:
+        SST-VAL328: when a column with `pii_tags` or `meta.sst.governance_tags` has sample values.
+    """
+    if not (column.sensitive and column.sample_values):
+        return []
+    _, subject = _column_keys(model, column)
+    return [
+        D(
+            "SST-VAL328",
+            model=model.name,
+            column=column.name,
+            reason=sensitivity_reason(column),
+            count=len(column.sample_values),
+            subject=subject,
+        )
+    ]
 
 
 def _column_description_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:

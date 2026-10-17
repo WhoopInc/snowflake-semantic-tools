@@ -249,10 +249,19 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL328",
         Severity.WARNING,
-        "PII-tagged column carries sample values",
-        "model '{model}': column '{column}' carries pii_tags and {count} sample_values",
-        "delete the `sample_values`; `sst enrich` never samples a column with `pii_tags`",
-        condition="an `sst enrich` run that reads row data finds a column with `pii_tags` that carries `sample_values`",
+        "Sensitive column carries sample values",
+        "model '{model}': column '{column}' carries {reason} and {count} sample_values",
+        "delete the `sample_values`; `sst enrich` never samples a sensitive column, and none is published",
+        condition=(
+            "a column with `pii_tags`, a `meta.sst.governance_tags` entry, or (in an `sst enrich` run "
+            "that reads column tags) a `governance.sensitive_tags` tag in Snowflake carries "
+            "`sample_values`: found by `sst validate` on a model a view uses, and by an `sst enrich` run "
+            "that reads row data"
+        ),
+        note=(
+            "The reason named is `pii_tags` when the column carries them, else its first governance tag. The "
+            "values are never rendered: a sensitive column publishes without `SAMPLE_VALUES` and `IS_ENUM`."
+        ),
     ),
     spec(
         "SST-VAL329",
@@ -356,5 +365,22 @@ SPECS: tuple[ErrorSpec, ...] = (
             "would read the data it hides, rather than publishing them or refusing the view. Bare "
             "column names in a verified query's SQL are not checked."
         ),
+    ),
+    spec(
+        "SST-VAL338",
+        Severity.WARNING,
+        "Governance tag the column's YAML does not record",
+        "model '{model}': column '{column}' carries governance tag {name} in Snowflake, which its YAML does not record",
+        "run `sst enrich` on the model to record it in `meta.sst.governance_tags`, or add `pii_tags` to the column",
+        condition=(
+            "the connected `sst validate`, with `governance.read_column_tags` on, finds a column of a model "
+            "a view reads carrying a `governance.sensitive_tags` tag in Snowflake, and the column's YAML "
+            "has neither `pii_tags` nor the tag in `meta.sst.governance_tags`"
+        ),
+        note=(
+            "A column the YAML does not describe yet is reported too, and an excluded one is not. A table "
+            "a view reads through `source()` has no model YAML, so it is not checked."
+        ),
+        precheck=Precheck.OBSERVE,
     ),
 )

@@ -1,7 +1,8 @@
 """`sst enrich`'s rules: what it fills, how it derives each value, and what it writes per model.
 
 `components` resolves the flags into what a run fills, `infer` holds the derivation rules,
-`prompts` the Cortex prompts and responses, `columns` what one model's columns gain, and
+`prompts` the Cortex prompts and responses, `columns` what one model's columns gain,
+`governance` the column-tag read and which tags it finds sensitive, and
 `tables` what a model gains as table synonyms. Everything here is pure: the use case
 reads the warehouse and the files, and passes what it read in.
 """
@@ -19,6 +20,7 @@ from snowflake_semantic_tools.domain.enrich.columns import (
     prompt_columns,
     role,
     sample_columns,
+    sensitive,
     synonym_columns,
     yaml_column_name,
 )
@@ -34,6 +36,7 @@ from snowflake_semantic_tools.domain.enrich.components import (
     parse_components,
     resolve_options,
 )
+from snowflake_semantic_tools.domain.enrich.governance import column_tags_sql, governed_columns, parse_column_tags
 from snowflake_semantic_tools.domain.enrich.infer import (
     SampleDecision,
     clean_synonyms,
@@ -81,12 +84,15 @@ __all__ = [
     "collection_refusal",
     "column_synonyms",
     "column_synonyms_prompt",
+    "column_tags_sql",
     "decide_samples",
     "derive_column_type",
     "enrich_model",
+    "governed_columns",
     "is_sampled_type",
     "needs_table_synonyms",
     "parse_column_synonyms",
+    "parse_column_tags",
     "parse_components",
     "parse_table_synonyms",
     "prompt_columns",
@@ -97,6 +103,7 @@ __all__ = [
     "same_data_type",
     "sample_columns",
     "semantic_data_type",
+    "sensitive",
     "synonym_columns",
     "table_synonyms",
     "table_synonyms_prompt",

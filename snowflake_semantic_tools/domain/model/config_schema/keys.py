@@ -251,6 +251,26 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "False refuses every run that reads row data, one that includes `sample-values` or `enums` (SST-CFG038).",
         default="true",
     ),
+    _key(
+        "governance",
+        _BLOCK,
+        "Which Snowflake column tags make a column sensitive, read only when `read_column_tags` is true.",
+    ),
+    _key(
+        "governance.sensitive_tags",
+        _L,
+        "Tags that make a column sensitive, each `<database>.<schema>.<tag>`, or `<database>.<schema>.*` for "
+        "every tag in that schema (SST-CFG057); an unquoted part matches without case. A column carrying one, "
+        "set on it or inherited, by any apply method, is never sampled and its values reach no prompt.",
+        default="[]",
+    ),
+    _key(
+        "governance.read_column_tags",
+        _B,
+        "Read each relation's column tags (`TAG_REFERENCES_ALL_COLUMNS`) in `sst enrich` and the connected "
+        "`sst validate`; false reads none, so only `pii_tags` and `meta.sst.governance_tags` mark a column.",
+        default="false",
+    ),
     _key("generation", _BLOCK, "How the commands that reach Snowflake pace their work."),
     _key(
         "generation.threads",

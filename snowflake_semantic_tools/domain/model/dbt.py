@@ -48,6 +48,8 @@ class DbtColumn:
     native_data_type: str | None = None
     # The column carries `pii_tags` in its meta, of any privacy category.
     pii_tagged: bool = False
+    # `meta.sst.governance_tags` as written: the sensitive Snowflake tags enrich recorded.
+    governance_tags: tuple[str, ...] = ()
     # `meta.sst.access_modifier` as written; None when the column writes none.
     access_modifier: str | None = None
     # dbt's `quote: true`: the column was created quoted, so its name is case-sensitive.
@@ -62,6 +64,11 @@ class DbtColumn:
     def identifier(self) -> Identifier:
         """The column as Snowflake names it: its exact name when quoted, else upper-cased."""
         return Identifier(self.name, quoted=self.quoted)
+
+    @property
+    def sensitive(self) -> bool:
+        """Report whether the YAML marks the column sensitive: `pii_tags`, or a recorded governance tag."""
+        return self.pii_tagged or bool(self.governance_tags)
 
     @property
     def member_name(self) -> str:

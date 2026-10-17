@@ -81,7 +81,7 @@ def test_validate_json_emits_one_v2_envelope(tmp_path: Path) -> None:
     assert envelope["summary"] == {
         "error": 0,
         "warning": 6,
-        "info": 52,
+        "info": 53,
         "promoted": 0,
         "suppressed_cascade": 0,
         "baselined": 0,

@@ -58,10 +58,14 @@ component; forcing a component includes it. `sample_values: []` counts as writte
   changed, unless `--force data-types`.
 - **Excluded columns are left alone.** A column with `meta.sst.exclude: true` is not read or
   written.
-- **PII is never sampled.** A column carrying `pii_tags` in its meta, of any category, is not
-  sampled, and its values are never sent to Cortex; its name, type and description still are
-  when it is asked synonyms for. Sample values still on such a column are reported
-  (`SST-VAL328`) when the run reads row data.
+- **Sensitive columns are never sampled.** A column carrying `pii_tags` in its meta, of any
+  category, or `meta.sst.governance_tags`, or, when the run reads column tags, a sensitive tag
+  in Snowflake (see [Governance tags](#governance-tags)), is not sampled, and its values are
+  never sent to Cortex; its name, type and description still are when it is asked synonyms for.
+  The Snowflake tag is checked on the relation's column, so a column the YAML does not describe
+  yet is covered too. Sample values still on such a column are reported (`SST-VAL328`) when the
+  run reads row data, and are never published: a sensitive column renders without
+  `SAMPLE_VALUES` or `IS_ENUM`.
 
 ## Sample values and enums
 
@@ -81,6 +85,47 @@ Set `enrichment.allow_sample_value_collection: false` to forbid reading row data
 a run that includes `sample-values` or `enums` then stops before reading anything
 (`SST-CFG038`), and no setting can demote that error.
 
+## Governance tags
+
+A column can be marked sensitive in Snowflake instead of, or as well as, in its YAML. Name the
+tags that count, and turn reading on:
+
+```yaml
+governance:
+  sensitive_tags:
+    - TAG_DB.PRIVACY.*                 # every tag in that schema
+    - SNOWFLAKE.CORE.PRIVACY_CATEGORY
+  read_column_tags: true
+```
+
+Each entry is a three-part tag name, or a database and schema followed by `.*`. An unquoted part
+matches without case and a quoted one exactly; an entry that is neither is an error
+(`SST-CFG057`) that no setting lowers, and stops the run before it reads anything. Nothing is
+read until `read_column_tags` is true and some tag is named.
+
+With both set, enrich reads `TAG_REFERENCES_ALL_COLUMNS` once per relation, after its columns.
+Every tag it lists counts, whatever its level and apply method: one set on the column, and one
+set on the table, schema or database that every column inherits, whether applied by hand,
+propagated, or set by classification. A read that fails fails the model (`SST-SNO031`, "reading
+column tags"): nothing is sampled or written for it, so no column the read would have protected
+is read. A refused privilege stops the whole run, as for any other read. What a role that cannot
+see a tag is answered has not been measured; the read fails closed only when Snowflake returns
+an error ([Snowflake behaviour](../design/snowflake-behaviour.md#tag_references_all_columns-lists-inherited-tags-on-every-column)).
+
+The sensitive tags found are written back to each column as `meta.sst.governance_tags`, sorted,
+each named as Snowflake stores it (upper case unless the tag was created quoted), so review sees
+them and an offline `compile` or `validate` treats the column as sensitive. The list is rewritten
+to exactly what the run read: a tag Snowflake no longer lists is removed, and the key with it
+when none is left. Enrich never writes `meta.pii_tags`, and never sets or unsets a tag in
+Snowflake. A column the YAML does not describe gains an entry only to record its tags. The
+connected `sst validate` reads the same tags and warns of each one a column's YAML records
+neither as `pii_tags` nor in `meta.sst.governance_tags` (`SST-VAL338`).
+
+SST computes no lineage. Snowflake's documentation describes tag propagation, set on each tag
+with `PROPAGATE`, as what carries a column's tag to the views and tables built from it; SST does
+not set it, and without it a downstream column carries only the tags applied to it or inherited
+from its own table, schema or database.
+
 ## Synonyms
 
 Before a run that fills synonyms reads anything, it asks the synonym model for a single
@@ -96,7 +141,7 @@ Synonyms are written by `enrichment.synonym_model` through `AI_COMPLETE`, at tem
 with structured output, inside the account. A prompt describes up to 50 columns, and a wider
 model is asked in batches: each column's name, type, description, and up to five example
 values, each cut to 40 characters, from the values sampled in the run or already written,
-never from a column with `pii_tags`. Each synonym is cleaned before it is written:
+never from a sensitive column. Each synonym is cleaned before it is written:
 
 - whitespace is collapsed;
 - one holding a quote, a control character or template syntax, or longer than 100

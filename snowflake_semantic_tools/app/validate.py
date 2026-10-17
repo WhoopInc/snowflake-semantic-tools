@@ -4,7 +4,9 @@ The offline checks live in `domain.validate`. The connected checks stay here bec
 run SQL through the `ExecutionPort`: the syntax check (SST-VAL418) compiles each expression
 over columns typed as the target describes its tables (`app.explain_projection`), the
 verified-query row count (SST-VAL415) runs each query that compiles, and the spot checks
-(SST-VAL212, SST-VAL218) read the joined tables. Each model `snowflake.orchestration_models`
+(SST-VAL212, SST-VAL218) read the joined tables. With `governance.read_column_tags`, each table's
+column tags are checked against its model's YAML (SST-VAL338, `app.validate_tags`). Each model
+`snowflake.orchestration_models`
 allows is run in a throwaway agent (SST-VAL551 to SST-VAL556, `app.validate_models`). SST-VAL020
 reports each one skipped. The
 live-object checks of agents and tools are in `app.compile.agents.observe`. Each distinct
@@ -30,10 +32,12 @@ from snowflake_semantic_tools.app.explain_projection import (
 )
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.validate_models import ModelCheck, check_orchestration_models
+from snowflake_semantic_tools.app.validate_tags import TagAnswer, read_tags, tag_findings
 from snowflake_semantic_tools.app.verify_schema import verify_columns
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.diagnostics.policy import SeverityPolicy, apply_policy
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.config_schema import GovernanceConfig
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult, RenderedArtifact
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, SemanticView, Table, VerifiedQuery
@@ -93,6 +97,8 @@ class ValidateArtifacts:
             None runs them on `port`, one at a time. Either way the findings are the same.
         models: The allowed orchestration models and the sessions their probe agents run on;
             None skips that check.
+        governance: Which column tags are sensitive; the column tags of each table the views
+            read are checked (SST-VAL338) only when it reads tags. None reads none.
     """
 
     def __init__(
@@ -104,6 +110,7 @@ class ValidateArtifacts:
         clock: ClockPort | None = None,
         readers: Fanout[ExecutionPort] | None = None,
         models: ModelCheck | None = None,
+        governance: GovernanceConfig | None = None,
     ) -> None:
         self._port = port
         self._catalog = catalog
@@ -111,6 +118,7 @@ class ValidateArtifacts:
         self._clock = clock
         self._readers = readers
         self._models = models
+        self._governance = governance
 
     def run(
         self,
@@ -163,6 +171,7 @@ class ValidateArtifacts:
             SST-VAL415: a verified query ran and returned no rows.
             SST-VAL212: a relationship's target holds more than one row for a join key.
             SST-VAL218: a distinct range's rows overlap.
+            Those of `tag_findings`, when `governance` reads tags.
             Those of `ObserveLiveObjects`, with a catalog; with `references` and the checks
                 skipped, those of its `references`.
             Those of `check_orchestration_models`, with a model check.
@@ -200,12 +209,17 @@ class ValidateArtifacts:
     def _connected_checks(self, readers: Fanout[ExecutionPort], views: tuple[CompiledView, ...]) -> list[Diagnostic]:
         """Run the views' connected checks, each distinct statement once, and report in view order.
 
-        Three rounds of reads, each on `readers`: every table the views read is described;
-        then every EXPLAIN is run; then each verified query that compiled is counted, and
-        each relationship spot-checked. Each view's findings are read from the answers.
+        Three rounds of reads, each on `readers`: every table the views read is described, and
+        its column tags read when `governance` asks; then every EXPLAIN is run; then each
+        verified query that compiled is counted, and each relationship spot-checked. Each
+        view's findings are read from the answers, and the tag findings follow them.
         """
         relations = tuple(sorted({table.fqn for item in views for table in item.view.tables}))
         observed = MappingProxyType(dict(zip(relations, readers.map(describe_columns, relations), strict=True)))
+        patterns = self._governance.sensitive_tags if self._governance and self._governance.reads_tags else ()
+        tagged: Mapping[str, TagAnswer] = (
+            MappingProxyType(dict(zip(relations, readers.map(read_tags, relations), strict=True))) if patterns else {}
+        )
         compiles = {item.artifact_key: _compile_checks(item, observed) for item in views}
         explained = self._answers(readers, (check.read for checks in compiles.values() for check in checks))
         diagnostics = {
@@ -228,6 +242,8 @@ class ValidateArtifacts:
                 if empty is not None:
                     found.append(empty)
             found.extend(_spot_findings(item, spots[item.artifact_key], answered))
+        if patterns:
+            found.extend(tag_findings(tuple(item.view for item in views), tagged, patterns))
         return found
 
     def _answers(self, readers: Fanout[ExecutionPort], reads: Iterable[_Read]) -> Mapping[_Read, _Answer]:
@@ -437,7 +453,7 @@ def _spot_finding(relationship: Relationship, target: Table, rows: tuple[tuple[o
 
 # The connected rules, which offline validation skips and reports as skipped; SST-VAL551
 # stands for the orchestration-model check.
-CONNECTED_RULES = ("SST-VAL418", "SST-VAL415", "SST-VAL212", "SST-VAL218", "SST-VAL551")
+CONNECTED_RULES = ("SST-VAL418", "SST-VAL415", "SST-VAL212", "SST-VAL218", "SST-VAL551", "SST-VAL338")
 # Every validation rule in the registry: one per VAL code, the connected rules among them.
 VALIDATION_RULES = tuple(sorted(code for code, spec in ERROR_REGISTRY.items() if spec.subsystem == "VAL"))
 

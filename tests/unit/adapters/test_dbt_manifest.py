@@ -386,6 +386,7 @@ def _enrich_document() -> dict[str, object]:
             "config": {"meta": {"sst": {"sample_values": [], "synonyms": []}}},
         },
         "notes": {"name": "notes", "config": {"meta": {"pii_tags": {}}}},
+        "phone": {"name": "phone", "config": {"meta": {"sst": {"governance_tags": ["SEC.GOV.PHONE"]}}}},
     }
     nodes["model.fixture.helper"] = {
         "resource_type": "model",
@@ -434,7 +435,7 @@ def test_enrich_inputs_are_read_from_columns_tests_and_the_model_node() -> None:
         "db.sch.product_catalog",
         "models/products.yml",
     )
-    product_id, email, notes = model.columns
+    product_id, email, notes, phone = model.columns
     assert (product_id.native_data_type, product_id.declared_keys, product_id.pii_tagged) == (
         "VARCHAR",
         frozenset(),
@@ -443,7 +444,10 @@ def test_enrich_inputs_are_read_from_columns_tests_and_the_model_node() -> None:
     assert email.pii_tagged and email.declared_keys == {"sample_values", "synonyms"}
     assert email.is_enum is None
     # An empty pii_tags block names no category, so the column is not gated.
-    assert not notes.pii_tagged
+    assert not notes.pii_tagged and not notes.sensitive
+    # A recorded governance tag marks the column sensitive offline, and is a key SST reads.
+    assert phone.governance_tags == ("SEC.GOV.PHONE",) and phone.sensitive and not phone.pii_tagged
+    assert phone.unknown_meta_keys == ()
     assert catalog.relationless_models == ("helper",)
 
 

@@ -72,7 +72,9 @@ Consequences:
   secrets from forks, never `pull_request_target`.
 - **`sst enrich` sends sample values to Cortex.** Synonym generation calls `AI_COMPLETE` in the
   account with column names, types, descriptions, and up to five example values per column.
-  Columns with `pii_tags` are never sampled and contribute no examples;
+  Sensitive columns -- `pii_tags`, `meta.sst.governance_tags`, or a Snowflake tag
+  `governance.sensitive_tags` names, read when `governance.read_column_tags` is on -- are never
+  sampled and contribute no examples;
   `enrichment.allow_sample_value_collection: false` refuses every enrich run that would read
   row data.
 - **Generated synonyms require human review.** SST refuses a synonym with quotes, control

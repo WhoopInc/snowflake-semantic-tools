@@ -67,6 +67,15 @@ What `sst enrich` collects from the warehouse, and how much.
 | `enrichment.synonym_max_count` | integer, 1 to 20 | `4` | Synonyms written per column and per table. |
 | `enrichment.allow_sample_value_collection` | boolean | `true` | False refuses every run that reads row data, one that includes `sample-values` or `enums` (SST-CFG038). |
 
+## governance
+
+Which Snowflake column tags make a column sensitive, read only when `read_column_tags` is true.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `governance.sensitive_tags` | list | `[]` | Tags that make a column sensitive, each `<database>.<schema>.<tag>`, or `<database>.<schema>.*` for every tag in that schema (SST-CFG057); an unquoted part matches without case. A column carrying one, set on it or inherited, by any apply method, is never sampled and its values reach no prompt. |
+| `governance.read_column_tags` | boolean | `false` | Read each relation's column tags (`TAG_REFERENCES_ALL_COLUMNS`) in `sst enrich` and the connected `sst validate`; false reads none, so only `pii_tags` and `meta.sst.governance_tags` mark a column. |
+
 ## generation
 
 How the commands that reach Snowflake pace their work.

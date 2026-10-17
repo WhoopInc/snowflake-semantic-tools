@@ -16,13 +16,13 @@ cannot be downgraded by any setting.
 ## Contents
 
 - [Registry (REG)](#registry-reg) -- 23 codes
-- [Configuration (CFG)](#configuration-cfg) -- 46 codes
+- [Configuration (CFG)](#configuration-cfg) -- 47 codes
 - [Discovery (DIS)](#discovery-dis) -- 14 codes
 - [Parsing (PRS)](#parsing-prs) -- 59 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 305 codes
+- [Validation (VAL)](#validation-val) -- 306 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
@@ -728,6 +728,18 @@ Fix: set {expected} once, at the root of {block}, and remove it here
 Raised when dbt_project.yml declares no `profile:`, the project has no dbt_project.yml and sets no `project.target_profile`, or the two name different profiles.
 
 Fix: set `profile:` in dbt_project.yml, or project.target_profile in sst_config.yml for a project without dbt; when both are set they must agree
+
+### SST-CFG057
+
+**Sensitive tag entry names no tag** (error, always an error)
+
+`'<key>' is <found>, which names no tag`
+
+Raised when an entry of `governance.sensitive_tags` is not text, or is neither a three-part tag name nor a database and schema followed by `.*`.
+
+Fix: write the entry as `<database>.<schema>.<tag>`, or `<database>.<schema>.*` for every tag in the schema
+
+Note: Such an entry would be read as naming nothing, so a column carrying the tag it meant would be sampled; no setting lowers it, and `sst enrich` stops on it before any read.
 
 ### SST-CFG200
 
@@ -3263,13 +3275,15 @@ Fix: correct `data_type`, or run `sst enrich --force data-types`
 
 ### SST-VAL328
 
-**PII-tagged column carries sample values** (warning)
+**Sensitive column carries sample values** (warning)
 
-`model '<model>': column '<column>' carries pii_tags and <count> sample_values`
+`model '<model>': column '<column>' carries <reason> and <count> sample_values`
 
-Raised when an `sst enrich` run that reads row data finds a column with `pii_tags` that carries `sample_values`.
+Raised when a column with `pii_tags`, a `meta.sst.governance_tags` entry, or (in an `sst enrich` run that reads column tags) a `governance.sensitive_tags` tag in Snowflake carries `sample_values`: found by `sst validate` on a model a view uses, and by an `sst enrich` run that reads row data.
 
-Fix: delete the `sample_values`; `sst enrich` never samples a column with `pii_tags`
+Fix: delete the `sample_values`; `sst enrich` never samples a sensitive column, and none is published
+
+Note: The reason named is `pii_tags` when the column carries them, else its first governance tag. The values are never rendered: a sensitive column publishes without `SAMPLE_VALUES` and `IS_ENUM`.
 
 ### SST-VAL329
 
@@ -3366,6 +3380,18 @@ Raised when a filter or verified query attaches to a view by its tables and read
 Fix: keep the column in the view to publish the member, or keep the scope to leave it out
 
 Note: No scope list names filters or verified queries, so a view leaves out the ones that would read the data it hides, rather than publishing them or refusing the view. Bare column names in a verified query's SQL are not checked.
+
+### SST-VAL338
+
+**Governance tag the column's YAML does not record** (warning)
+
+`model '<model>': column '<column>' carries governance tag <name> in Snowflake, which its YAML does not record`
+
+Raised when the connected `sst validate`, with `governance.read_column_tags` on, finds a column of a model a view reads carrying a `governance.sensitive_tags` tag in Snowflake, and the column's YAML has neither `pii_tags` nor the tag in `meta.sst.governance_tags`.
+
+Fix: run `sst enrich` on the model to record it in `meta.sst.governance_tags`, or add `pii_tags` to the column
+
+Note: A column the YAML does not describe yet is reported too, and an excluded one is not. A table a view reads through `source()` has no model YAML, so it is not checked.
 
 ### SST-VAL401
 

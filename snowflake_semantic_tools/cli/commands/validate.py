@@ -40,6 +40,7 @@ from snowflake_semantic_tools.cli.settings import (
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.project import connect, open_connector
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
+from snowflake_semantic_tools.domain.model.config_schema import governance_config
 from snowflake_semantic_tools.domain.plan.selectors import SelectionScope
 
 
@@ -107,7 +108,13 @@ def validate(
             readers = Fanout(port, pool, workers) if port is not None else None
             models = model_check(project_config(paths), readers) if readers is not None else None
             result = ValidateArtifacts(
-                port, catalog=port, target=target, clock=SystemClock(), readers=readers, models=models
+                port,
+                catalog=port,
+                target=target,
+                clock=SystemClock(),
+                readers=readers,
+                models=models,
+                governance=governance_config(project_config(paths)),
             ).run(
                 compiled,
                 strict=effective_strict,

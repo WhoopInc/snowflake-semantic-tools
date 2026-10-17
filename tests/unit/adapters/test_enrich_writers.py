@@ -201,3 +201,26 @@ def test_a_snapshot_or_seed_is_written_under_its_own_section() -> None:
     seeded = write_model_updates(None, "seeds/raw.yml", {}, {"raw": ("raw rows",)}, {"raw": "seeds"})
     assert seeded.text.startswith("version: 2\nseeds:\n  - name: raw\n")
     assert "models:" not in seeded.text
+
+
+def test_governance_tags_are_written_last_and_an_empty_list_removes_them() -> None:
+    text = (
+        "models:\n  - name: orders\n    columns:\n      - name: email\n        meta:\n          sst:\n"
+        "            column_type: dimension\n            governance_tags:\n            - OLD.GOV.TAG\n"
+        "      - name: phone\n"
+    )
+    updates = {
+        "orders": (
+            ColumnUpdate("email", (("governance_tags", ()),)),
+            ColumnUpdate("phone", (("column_type", "dimension"), ("governance_tags", ("SEC.GOV.PHONE",)))),
+        )
+    }
+    written = write_model_updates(text, "models/orders.yml", updates).text
+    assert "OLD.GOV.TAG" not in written and "governance_tags" in written
+    assert written.startswith(
+        "models:\n  - name: orders\n    columns:\n      - name: email\n        meta:\n          sst:\n"
+        "            column_type: dimension\n      - name: phone\n"
+    )
+    assert written.endswith(
+        "              column_type: dimension\n              governance_tags:\n                - SEC.GOV.PHONE\n"
+    )

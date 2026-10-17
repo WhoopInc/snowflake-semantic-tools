@@ -32,14 +32,17 @@ from snowflake_semantic_tools.domain.model.config_schema.settings import (
 from snowflake_semantic_tools.domain.model.config_schema.values import (
     DbtSettings,
     EnrichmentConfig,
+    GovernanceConfig,
     config_block,
     config_bool,
     config_int,
     configured_dir,
     dbt_settings,
     enrichment_config,
+    governance_config,
     route_root,
     stated,
+    tag_pattern,
     target_text,
 )
 
@@ -55,6 +58,7 @@ __all__ = [
     "ConfigKey",
     "DbtSettings",
     "EnrichmentConfig",
+    "GovernanceConfig",
     "KeyKind",
     "KeyStatus",
     "Setting",
@@ -65,10 +69,12 @@ __all__ = [
     "configured_dir",
     "dbt_settings",
     "enrichment_config",
+    "governance_config",
     "resolve_settings",
     "route_root",
     "setting_value",
     "stated",
+    "tag_pattern",
     "target_text",
     "with_defaults",
 ]

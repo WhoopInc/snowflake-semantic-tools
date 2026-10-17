@@ -16,6 +16,7 @@ def test_sst_val020_fires() -> None:
         "SST-VAL212",
         "SST-VAL218",
         "SST-VAL551",
+        "SST-VAL338",
     ]
     assert found[0].severity is Severity.INFO
     assert found[0].message == "SST-VAL418 skipped: Snowflake syntax checking was disabled"

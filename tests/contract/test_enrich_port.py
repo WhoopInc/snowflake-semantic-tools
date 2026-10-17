@@ -11,11 +11,12 @@ from snowflake_semantic_tools.adapters.snowflake.connector.profiler import (
     columns_sql,
     distinct_values_sql,
 )
-from snowflake_semantic_tools.domain.enrich import TABLE_SYNONYMS_SCHEMA, WarehouseColumn
+from snowflake_semantic_tools.domain.enrich import TABLE_SYNONYMS_SCHEMA, WarehouseColumn, column_tags_sql
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.enrich_ports import ScriptedEnrich
+from tests.helpers.val_codes import TAG_HEADINGS
 
 ORDERS = QualifiedName.parse('db.sch."Orders"')
 
@@ -58,6 +59,39 @@ def test_a_relation_the_role_cannot_see_has_no_columns(error: SnowflakePortError
 def test_any_other_failure_to_read_columns_propagates() -> None:
     with pytest.raises(SnowflakePortError, match="warehouse suspended"):
         _Recorded(SnowflakePortError("warehouse suspended", sqlstate="57P03")).relation_columns(ORDERS)
+
+
+def _tag_row(column: str, tag: str, level: str, method: str) -> tuple[object, ...]:
+    return (*tag.split("."), "v", level, "DB", "SCH", "Orders", "COLUMN", column, method)
+
+
+def test_column_tags_keep_every_level_and_apply_method_by_casefolded_column() -> None:
+    rows = (
+        _tag_row("A", "SEC.GOV.EMAIL", "COLUMN", "MANUAL"),
+        _tag_row("A", "SEC.GOV.INTERNAL", "SCHEMA", "INHERITED"),
+        _tag_row("B", "SEC.GOV.INTERNAL", "SCHEMA", "INHERITED"),
+        _tag_row("Total", "SEC.GOV.MONEY", "TABLE", "PROPAGATED"),
+        _tag_row("C", "SNOWFLAKE.CORE.PRIVACY_CATEGORY", "COLUMN", "CLASSIFIED"),
+    )
+    port = _Recorded(QueryResult(TAG_HEADINGS, rows))
+    tags = port.column_tags(ORDERS)
+    assert {column: [tag.sql for tag in found] for column, found in tags.items()} == {
+        "a": ["SEC.GOV.EMAIL", "SEC.GOV.INTERNAL"],
+        "b": ["SEC.GOV.INTERNAL"],
+        "total": ["SEC.GOV.MONEY"],
+        "c": ["SNOWFLAKE.CORE.PRIVACY_CATEGORY"],
+    }
+    assert port.statements == [(str(column_tags_sql(ORDERS)), None)]
+
+
+def test_a_tag_read_that_fails_or_answers_another_shape_raises() -> None:
+    # Measured: a missing table fails the read with errno 2003, which must not read as no tags.
+    missing = SnowflakePortError("Table 'DB.SCH.\"Orders\"' does not exist or not authorized.", errno=2003)
+    with pytest.raises(SnowflakePortError, match="does not exist"):
+        _Recorded(missing).column_tags(ORDERS)
+    with pytest.raises(SnowflakePortError, match="without its tag and column names"):
+        _Recorded(QueryResult(("NAME",), ())).column_tags(ORDERS)
+    assert _Recorded(QueryResult(TAG_HEADINGS, ())).column_tags(ORDERS) == {}
 
 
 def test_values_are_sampled_in_groups_of_columns_and_mapped_back_by_position() -> None:
@@ -123,6 +157,14 @@ def test_the_offline_double_follows_the_profiler_contract() -> None:
     with pytest.raises(SnowflakePortError, match="no model"):
         failing.complete_json("m", "p", {})
     assert failing.prompts == ["p"] and double.calls[0] == ("columns", ORDERS.sql)
+    tagged = ScriptedEnrich(
+        tags={ORDERS.sql: {"EMAIL": ["SEC.GOV.EMAIL"]}}, tag_failures={"DB.SCH.BROKEN": SnowflakePortError("no tags")}
+    )
+    assert tagged.column_tags(ORDERS) == {"email": (QualifiedName.parse("SEC.GOV.EMAIL"),)}
+    assert tagged.column_tags(QualifiedName.parse("db.sch.other")) == {}
+    with pytest.raises(SnowflakePortError, match="no tags"):
+        tagged.column_tags(QualifiedName.parse("db.sch.broken"))
+    assert tagged.calls[0] == ("tags", ORDERS.sql)
 
 
 def test_the_probe_asks_for_one_token_with_model_and_prompt_bound() -> None:

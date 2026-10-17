@@ -29,7 +29,16 @@ _TABLE_RESOURCES = frozenset(("model", "snapshot", "seed"))
 # refused (SST-DBT030); anything else is reported where a view uses the model.
 MODEL_META_KEYS = frozenset(("primary_key", "unique_keys", "synonyms", "distinct_range", "database", "schema"))
 COLUMN_META_KEYS = frozenset(
-    ("column_type", "data_type", "synonyms", "sample_values", "is_enum", "exclude", "access_modifier")
+    (
+        "column_type",
+        "data_type",
+        "synonyms",
+        "sample_values",
+        "is_enum",
+        "exclude",
+        "access_modifier",
+        "governance_tags",
+    )
 )
 
 # Tests whose columns hold keys. A numeric column one of them names is an identifier, so
@@ -201,6 +210,9 @@ def _column(name: str, value: object, *, node_path: str) -> DbtColumn:
         booleans=is_boolean_type(data_type),
     )
     column_type = _text(meta.get("column_type"))
+    governance_tags = _meta_texts(
+        meta.get("governance_tags"), path=f"{path}.meta.sst.governance_tags", field="governance_tags", wrong=wrong
+    )
     # dbt's own data_type wins; a meta.sst.data_type that says otherwise is reported.
     disagrees = (
         native_type is not None and declared_type is not None and _type_key(native_type) != _type_key(declared_type)
@@ -219,6 +231,7 @@ def _column(name: str, value: object, *, node_path: str) -> DbtColumn:
         declared_keys=frozenset(str(key) for key in meta),
         native_data_type=native_type,
         pii_tagged=_pii_tagged(node),
+        governance_tags=governance_tags,
         access_modifier=_meta_text(meta, "access_modifier", wrong),
         quoted=node.get("quote") is True,
         wrong_types=tuple(wrong),

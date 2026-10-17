@@ -26,6 +26,7 @@ from snowflake_semantic_tools.domain.enrich import (
     column_synonyms,
     column_synonyms_prompt,
     enrich_model,
+    governed_columns,
     needs_table_synonyms,
     parse_column_synonyms,
     parse_table_synonyms,
@@ -38,7 +39,12 @@ from snowflake_semantic_tools.domain.enrich import (
     taken_names,
     yaml_column_name,
 )
-from snowflake_semantic_tools.domain.model.config_schema import EnrichmentConfig, enrichment_config
+from snowflake_semantic_tools.domain.model.config_schema import (
+    EnrichmentConfig,
+    GovernanceConfig,
+    enrichment_config,
+    governance_config,
+)
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
@@ -50,6 +56,16 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 # A failure no other model would escape: the connection, a transient fault, or a privilege.
 # It stops the run as a connection failure instead of failing one model.
 _RUN_FAILURES = frozenset(("SST-PRT001", "SST-PRT002", "SST-PRT003", "SST-PRT004"))
+# The configuration blocks whose diagnostics decide whether enrich runs at all.
+_OWN_BLOCKS = ("config:enrichment", "config:governance")
+
+
+@dataclass(frozen=True, slots=True)
+class _Settings:
+    """The configuration one run reads: what it collects, and which column tags are sensitive."""
+
+    enrichment: EnrichmentConfig
+    governance: GovernanceConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,6 +299,8 @@ class EnrichProject:
         Diagnostics:
             SST-CFG003, SST-CFG004, SST-CFG008: the `enrichment:` block has an unknown key, a value
                 of the wrong type, or one out of bounds; an error stops the run before any read.
+            SST-CFG057: a `governance.sensitive_tags` entry names no tag; the run stops before
+                any read, as for any error in the `governance:` block.
             SST-CFG038: the run reads row data and the project forbids collecting it.
             SST-DBT031: a model selected by name has no relation.
             SST-DBT002: a name selected without a wildcard is no model the manifest knows.
@@ -291,17 +309,21 @@ class EnrichProject:
             SST-SNO033: SHOW CORTEX BASE MODELS lists the synonym model as INTERNAL, past
                 end-of-life, legacy or in preview, or does not list it.
             SST-SNO030: a model's relation is missing or not visible.
-            SST-SNO031: reading a model's values or asking Cortex failed; or a column's name, or
-                a value enrich would write for it, holds template syntax, and it is not written.
+            SST-SNO031: reading a model's columns, column tags or values, or asking Cortex, failed;
+                or a column's name, or a value enrich would write for it, holds template syntax,
+                and it is not written.
             SST-PRS030: Cortex proposed a synonym that can never be written; it is dropped.
             SST-PRS125: a file enrich writes is also reformatted.
         """
         config = self._inputs.config()
-        # Only the enrichment block decides what enrich does; the rest is validate's to report.
-        problems = [item for item in config.diagnostics if (item.subject or "").startswith("config:enrichment")]
+        # Only the enrichment and governance blocks decide what enrich does; the rest is
+        # validate's to report. A malformed sensitive tag stops the run, so it never samples a
+        # column the entry meant to protect.
+        problems = [item for item in config.diagnostics if (item.subject or "").startswith(_OWN_BLOCKS)]
         if DiagnosticBag(problems).has_errors:
             return EnrichReport(diagnostics=DiagnosticBag(problems), stopped=True)
         settings = enrichment_config(config.tree)
+        governance = governance_config(config.tree)
         refusal = collection_refusal(request.options, allowed=settings.allow_sample_value_collection)
         if refusal is not None:
             return EnrichReport(diagnostics=DiagnosticBag((*problems, refusal)), stopped=True)
@@ -313,10 +335,11 @@ class EnrichProject:
             if DiagnosticBag(checked).has_errors:
                 return EnrichReport(diagnostics=DiagnosticBag(diagnostics), stopped=True, selected=len(models))
         views = self._inputs.load_project().views if request.options.includes(Component.TABLE_SYNONYMS) else ()
+        run = _Settings(settings, governance)
         reports: list[ModelReport] = []
         stopped = False
         for model in models:
-            report, found = self._model(model, request, settings, views)
+            report, found = self._model(model, request, run, views)
             reports.append(report)
             diagnostics.extend(found)
             if report.failed and request.fail_fast:
@@ -341,15 +364,24 @@ class EnrichProject:
         return tuple(item.path for item in report.writable)
 
     def _model(
-        self, model: DbtModel, request: EnrichRequest, settings: EnrichmentConfig, views: Sequence[SemanticView]
+        self, model: DbtModel, request: EnrichRequest, run: _Settings, views: Sequence[SemanticView]
     ) -> tuple[ModelReport, list[Diagnostic]]:
-        """Read one model's relation, values and synonyms, and decide what its YAML gains."""
+        """Read one model's relation, its column tags, values and synonyms, and decide what its YAML gains."""
         path = model_file(model)
+        settings = run.enrichment
         try:
-            warehouse = self._columns(model, request)
+            warehouse = self._columns(model, request, run.governance)
             samples = self._samples(model, request, warehouse, settings)
             synonyms, dropped = self._column_synonyms(model, warehouse, samples, request.options, settings)
-            enrichment = enrich_model(model, warehouse, request.options, settings, samples=samples, synonyms=synonyms)
+            enrichment = enrich_model(
+                model,
+                warehouse,
+                request.options,
+                settings,
+                samples=samples,
+                synonyms=synonyms,
+                tags_read=run.governance.reads_tags,
+            )
             taken = taken_by_views(views, model.name)
             edits, dropped_tables = self._table_synonyms(model, warehouse, taken, request.options, settings)
         except _ModelFailed as failure:
@@ -382,7 +414,13 @@ class EnrichProject:
             D("SST-SNO031", model=model.name, step=step, detail=detail, subject=f"dbt_model:{model.name}")
         )
 
-    def _columns(self, model: DbtModel, request: EnrichRequest) -> tuple[WarehouseColumn, ...]:
+    def _columns(
+        self, model: DbtModel, request: EnrichRequest, governance: GovernanceConfig
+    ) -> tuple[WarehouseColumn, ...]:
+        """Read a model's relation's columns and, when `governance:` asks, the sensitive tags on each.
+
+        A tag read that fails fails the model, so no column it might have protected is sampled.
+        """
         target = relation(model, request)
         try:
             columns = self._port.relation_columns(target)
@@ -392,7 +430,13 @@ class EnrichProject:
             raise _ModelFailed(
                 D("SST-SNO030", model=model.name, relation=target.sql, subject=f"dbt_model:{model.name}")
             )
-        return columns
+        if not governance.reads_tags:
+            return columns
+        try:
+            tags = self._port.column_tags(target)
+        except SnowflakePortError as error:
+            raise self._failure(model, "reading column tags", error) from error
+        return governed_columns(columns, tags, governance.sensitive_tags)
 
     def _samples(
         self, model: DbtModel, request: EnrichRequest, warehouse: Sequence[WarehouseColumn], settings: EnrichmentConfig

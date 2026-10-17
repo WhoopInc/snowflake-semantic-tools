@@ -49,6 +49,7 @@ from snowflake_semantic_tools.domain.diagnostics.baseline import (
     with_entries,
     without_stale,
 )
+from snowflake_semantic_tools.domain.model.config_schema import governance_config
 
 _SUBCOMMANDS = ("add", "prune", "show", "renew")
 
@@ -328,7 +329,12 @@ def _current(
     try:
         models = model_check(project_config(paths), Fanout(port))
         result = ValidateArtifacts(
-            port, catalog=port, target=profile.target_name, clock=SystemClock(), models=models
+            port,
+            catalog=port,
+            target=profile.target_name,
+            clock=SystemClock(),
+            models=models,
+            governance=governance_config(project_config(paths)),
         ).run(compiled, strict=False, connected=True)
     finally:
         port.close()

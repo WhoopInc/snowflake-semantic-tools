@@ -476,6 +476,22 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
+        "SST-CFG057",
+        Severity.ERROR,
+        "Sensitive tag entry names no tag",
+        "'{key}' is {found}, which names no tag",
+        "write the entry as `<database>.<schema>.<tag>`, or `<database>.<schema>.*` for every tag in the schema",
+        demotable=False,
+        condition=(
+            "an entry of `governance.sensitive_tags` is not text, or is neither a three-part tag name nor a "
+            "database and schema followed by `.*`"
+        ),
+        note=(
+            "Such an entry would be read as naming nothing, so a column carrying the tag it meant would be "
+            "sampled; no setting lowers it, and `sst enrich` stops on it before any read."
+        ),
+    ),
+    spec(
         "SST-CFG200",
         Severity.ERROR,
         "Deprecated config key",

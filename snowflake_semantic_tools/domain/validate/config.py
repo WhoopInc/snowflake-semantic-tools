@@ -21,7 +21,7 @@ from snowflake_semantic_tools.domain.diagnostics import (
     Severity,
     override_refusal,
 )
-from snowflake_semantic_tools.domain.model.config_schema import stated
+from snowflake_semantic_tools.domain.model.config_schema import stated, tag_pattern
 from snowflake_semantic_tools.domain.model.config_schema.keys import (
     CHILDREN,
     CONFIG_FILE,
@@ -99,6 +99,7 @@ def validate_config(
             `snowflake.orchestration_models`.
         SST-CFG033: a severity override demotes a non-demotable code, an error below warning, or
             promotes an info code to error.
+        SST-CFG057: an entry of `governance.sensitive_tags` names no tag.
     """
     return _validated(tree, positions, file)[0]
 
@@ -427,12 +428,32 @@ def _child_spec(declared: Mapping[str, ConfigKey], policy: ChildPolicy, key: str
 def _block_problems(
     entry_path: str, value: Mapping[Any, object], actual: tuple[str, ...], positions: _Located
 ) -> list[Diagnostic]:
-    """Diagnose what one block's values imply together: the enrichment limits, the manifest versions."""
+    """Diagnose what a block's values imply together: enrichment limits, manifest versions, tag entries."""
     if entry_path == "enrichment":
         return _enrichment_limit_problems(value, actual, positions)
     if entry_path == "dbt":
         return _schema_version_problems(value, actual, positions)
+    if entry_path == "governance":
+        return _sensitive_tag_problems(value, actual, positions)
     return []
+
+
+def _sensitive_tag_problems(
+    value: Mapping[Any, object], actual: tuple[str, ...], positions: _Located
+) -> list[Diagnostic]:
+    """Diagnose each `governance.sensitive_tags` entry that names no tag, which the reader would drop.
+
+    A value that is not a list is reported by its type check, and is not looked into.
+    """
+    entries = value.get("sensitive_tags")
+    if not isinstance(entries, list):
+        return []
+    path = (*actual, "sensitive_tags")
+    return [
+        _diagnostic("SST-CFG057", path, positions, key=f"{'.'.join(path)}[{index}]", found=repr(entry))
+        for index, entry in enumerate(entries)
+        if tag_pattern(entry) is None
+    ]
 
 
 def _schema_version_problems(

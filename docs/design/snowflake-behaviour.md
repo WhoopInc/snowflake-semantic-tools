@@ -380,6 +380,69 @@ SELECT * FROM TABLE(<db>.INFORMATION_SCHEMA.TAG_REFERENCES(
 `test_tag_references_name_each_tag_set_on_a_view_and_leave_out_inherited_ones`
 in [test_snowflake_connector.py](../../tests/unit/adapters/test_snowflake_connector.py).
 
+## Column tags
+
+### TAG_REFERENCES_ALL_COLUMNS lists inherited tags on every column
+
+**Docs say**: not compared for this entry. What follows was measured, and SST
+relies on the measurement, not on the documentation's description.
+
+**Server does**: measured on a live account, on a table:
+
+```sql
+SELECT * FROM TABLE(<db>.INFORMATION_SCHEMA.TAG_REFERENCES_ALL_COLUMNS(
+  '<db>.<schema>.<table>', 'table'));
+```
+
+answers with the columns `TAG_DATABASE`, `TAG_SCHEMA`, `TAG_NAME`, `TAG_VALUE`,
+`LEVEL`, `OBJECT_DATABASE`, `OBJECT_SCHEMA`, `OBJECT_NAME`, `DOMAIN`,
+`COLUMN_NAME`, `APPLY_METHOD`. A tag set on one column is one row for that column,
+with `LEVEL = COLUMN` and `APPLY_METHOD = MANUAL`. A tag set on the schema is one
+row on every column of the table, with `LEVEL = SCHEMA` and
+`APPLY_METHOD = INHERITED`. The same read under the account's `PUBLIC` role
+answered the same rows. A table that does not exist fails the read with errno
+2003, "does not exist or not authorized".
+
+Not measured: what a role is answered for a tag it is not allowed to see (no row,
+or an error); the read on a view rather than a table; and the `PROPAGATED` and
+`CLASSIFIED` apply methods, which SST counts as it counts the others.
+
+**Evidence**: `Enforced` for SST's side. `parse_column_tags` in
+[governance.py](../../snowflake_semantic_tools/domain/enrich/governance.py) keeps
+every row whatever its `LEVEL` and `APPLY_METHOD`, so a tag inherited from the
+schema marks every column; `column_tags` in
+[profiler.py](../../snowflake_semantic_tools/adapters/snowflake/connector/profiler.py)
+lets a failed read escape, where `relation_columns` reads the same errno as "no
+relation", so `sst enrich` fails the model (`SST-SNO031`) rather than sampling a
+column it could not check. `test_every_level_and_apply_method_counts_and_each_tag_is_kept_once_per_column`
+in [test_governance.py](../../tests/unit/domain/test_governance.py), and
+`test_column_tags_keep_every_level_and_apply_method_by_casefolded_column` and
+`test_a_tag_read_that_fails_or_answers_another_shape_raises` in
+[test_enrich_port.py](../../tests/contract/test_enrich_port.py), pin it. The read
+fails closed only on an error: if Snowflake answers a role that may not see a tag
+with no row for it, the column reads as untagged, and only its YAML's `pii_tags`
+or `meta.sst.governance_tags` keeps its values unread. Probe:
+
+```sql
+-- In a scratch schema, as a role that may set tags:
+CREATE TAG <db>.<schema>.probe_tag;
+CREATE TABLE <db>.<schema>.probe_t (a TEXT, b TEXT);
+ALTER TABLE <db>.<schema>.probe_t MODIFY COLUMN a SET TAG <db>.<schema>.probe_tag = 'x';
+ALTER SCHEMA <db>.<schema> SET TAG <db>.<schema>.probe_tag = 'y';
+SELECT * FROM TABLE(<db>.INFORMATION_SCHEMA.TAG_REFERENCES_ALL_COLUMNS(
+  '<db>.<schema>.probe_t', 'table'));
+-- Expect: a COLUMN/MANUAL row on A, and a SCHEMA/INHERITED row on A and on B.
+-- Repeat as a role with SELECT on probe_t and no privilege on the tag, and record
+-- whether it sees the rows, sees none, or fails; then over a view on probe_t.
+```
+
+**SST depends on it at**: `column_tags_sql` and `parse_column_tags` in
+[governance.py](../../snowflake_semantic_tools/domain/enrich/governance.py);
+`column_tags` in
+[profiler.py](../../snowflake_semantic_tools/adapters/snowflake/connector/profiler.py);
+`read_tags` in [validate_tags.py](../../snowflake_semantic_tools/app/validate_tags.py);
+[Governance tags](../guides/enrich.md#governance-tags) in the enrich guide.
+
 ## Agents
 
 ### CREATE OR REPLACE AGENT destroys versions and aliases

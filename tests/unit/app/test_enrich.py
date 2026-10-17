@@ -344,3 +344,56 @@ def test_a_proposed_synonym_that_can_never_be_written_is_reported_not_dropped_un
     enrichment = report.models[0].enrichment
     assert enrichment is not None and enrichment.filled(C.COLUMN_SYNONYMS) == 1
     assert report.models[0].table_synonyms == ("sales orders",)
+
+
+GOVERNED = {"governance": {"sensitive_tags": ["SEC.GOV.*"], "read_column_tags": True}}
+
+
+def test_a_run_that_reads_column_tags_skips_sensitive_columns_and_records_their_tags() -> None:
+    port = ScriptedEnrich(
+        columns={"DB.SCH.ORDERS": [("ORDER_ID", "TEXT"), ("EMAIL", "TEXT")]},
+        values={"DB.SCH.ORDERS": {"ORDER_ID": ["a"], "EMAIL": ["x@y.z"]}},
+        tags={"DB.SCH.ORDERS": {"EMAIL": ["SEC.GOV.EMAIL", "OTHER.S.T"], "ORDER_ID": ["OTHER.S.T"]}},
+    )
+    project, _, files = _project(port=port, tree=GOVERNED)
+    report = project.run(_request(C.SAMPLE_VALUES))
+    assert port.calls == [
+        ("columns", "DB.SCH.ORDERS"),
+        ("tags", "DB.SCH.ORDERS"),
+        ("values", "DB.SCH.ORDERS", ("ORDER_ID",), 26),
+    ]
+    project.write(report)
+    written = files.texts["models/orders.yml"]
+    assert "      - name: email\n        config:\n          meta:\n            sst:\n" in written
+    assert "              governance_tags:\n                - SEC.GOV.EMAIL\n" in written
+
+
+def test_column_tags_are_read_only_when_the_project_asks_and_names_a_sensitive_tag() -> None:
+    for tree in ({}, {"governance": {"sensitive_tags": ["SEC.GOV.*"]}}, {"governance": {"read_column_tags": True}}):
+        project, port, _ = _project(tree=tree)
+        project.run(_request())
+        assert port.calls == [("columns", "DB.SCH.ORDERS")]
+
+
+def test_a_failed_tag_read_fails_its_model_so_nothing_is_sampled() -> None:
+    port = ScriptedEnrich(
+        columns={"DB.SCH.ORDERS": ORDERS_COLUMNS},
+        tag_failures={"DB.SCH.ORDERS": SnowflakePortError("Table 'DB.SCH.ORDERS' does not exist or not authorized.")},
+    )
+    project, _, _ = _project(port=port, tree=GOVERNED)
+    report = project.run(_request(C.SAMPLE_VALUES))
+    assert report.models[0].failed and project.write(report) == ()
+    [failure] = report.diagnostics
+    assert failure.code == "SST-SNO031"
+    assert failure.message.startswith("model 'orders': reading column tags failed: Table 'DB.SCH.ORDERS'")
+    assert [call[0] for call in port.calls] == ["columns", "tags"]
+
+
+def test_an_error_in_the_governance_block_stops_the_run_before_any_read() -> None:
+    refused = D(
+        "SST-CFG057", key="governance.sensitive_tags[0]", found="'SEC'", subject="config:governance.sensitive_tags"
+    )
+    inputs = InMemoryProjectInputs(tree=GOVERNED, dbt=_catalog(_model()), config_diagnostics=DiagnosticBag((refused,)))
+    port = ScriptedEnrich(columns={"DB.SCH.ORDERS": ORDERS_COLUMNS})
+    report = EnrichProject(inputs, port, InMemoryFiles({"models/orders.yml": ORDERS_YML})).run(_request())
+    assert report.stopped and [item.code for item in report.diagnostics] == ["SST-CFG057"] and port.calls == []

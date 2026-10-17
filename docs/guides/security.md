@@ -43,8 +43,12 @@ Snowflake credentials. In GitHub Actions, trigger such jobs with
 **Enrich sends data to Cortex.** `sst enrich` with `column-synonyms` or `table-synonyms` calls
 `AI_COMPLETE` inside the account. A column-synonym prompt carries the model's and columns'
 names, types, and descriptions, and up to five example values per column, each cut to 40
-characters: values read in the same run, or the `sample_values` already written. Columns with
-`pii_tags` contribute no examples and are never sampled. Set
+characters: values read in the same run, or the `sample_values` already written. A sensitive
+column -- one with `pii_tags` or `meta.sst.governance_tags`, or, with `governance.read_column_tags`
+on, a `governance.sensitive_tags` tag in Snowflake -- contributes no examples and is never sampled,
+and no sample value of it is published in a semantic view. A tag read that fails fails its model
+rather than reading it unprotected; what a role that cannot see a tag is answered is unmeasured
+(see [Enriching models](enrich.md#governance-tags)). Set
 `enrichment.allow_sample_value_collection: false` to refuse every `sst enrich` run that would
 read row data, that is, one including `sample-values` or `enums` (`SST-CFG038`; see
 [Enriching models](enrich.md#sample-values-and-enums)). A column-synonym prompt still carries

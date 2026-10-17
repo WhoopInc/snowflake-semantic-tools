@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
@@ -21,7 +22,7 @@ from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.eval import EvalBaselineRecord
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult, RenderedArtifact
 from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
-from snowflake_semantic_tools.domain.model.semantic_view import Relationship, SemanticView, Table
+from snowflake_semantic_tools.domain.model.semantic_view import Column, ColumnKind, Relationship, SemanticView, Table
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.render.semantic_view import render
@@ -35,6 +36,7 @@ from tests.helpers.eval_builders import attempt, compile_eval, gated_eval, run_r
 from tests.helpers.file_trees import write_tree
 from tests.helpers.semantic_members import ORDERS
 from tests.helpers.snowflake_fake import FakeSnowflake
+from tests.helpers.sql_values import authored
 
 
 def checked_tools(*members: ToolMember) -> list[Diagnostic]:
@@ -164,3 +166,61 @@ def eval_artifact() -> RenderedArtifact:
     """The compiled eval, rendered for publish under its manifest."""
     result = compile_eval()
     return compiled_as(result, CompiledEval).rendered_for_publish(build_manifest(result).manifest_id)
+
+
+# The headings TAG_REFERENCES_ALL_COLUMNS answers with, as measured on a live account.
+TAG_HEADINGS = (
+    "TAG_DATABASE",
+    "TAG_SCHEMA",
+    "TAG_NAME",
+    "TAG_VALUE",
+    "LEVEL",
+    "OBJECT_DATABASE",
+    "OBJECT_SCHEMA",
+    "OBJECT_NAME",
+    "DOMAIN",
+    "COLUMN_NAME",
+    "APPLY_METHOD",
+)
+
+
+class TaggedWarehouse(FakeSnowflake):
+    """A port whose tables carry column tags: `tags[fqn]` holds `(column, tag, level, apply method)` rows.
+
+    A tag read of a relation in `refused` raises its message, as for one the role cannot see.
+    """
+
+    def __init__(
+        self,
+        tags: Mapping[str, tuple[tuple[str, str, str, str], ...]],
+        refused: Mapping[str, str] | None = None,
+    ) -> None:
+        super().__init__()
+        self._tags = dict(tags)
+        self._refused = dict(refused or {})
+        self.tag_reads: list[str] = []
+
+    def query(self, sql: Sql, params: object = None) -> QueryResult:
+        text = str(sql)
+        if "TAG_REFERENCES_ALL_COLUMNS" not in text:
+            return super().query(sql, params)
+        fqn = text.split("COLUMNS('", 1)[1].split("'", 1)[0]
+        self.tag_reads.append(fqn)
+        if fqn in self._refused:
+            raise SnowflakePortError(self._refused[fqn], errno=2003)
+        rows = tuple(
+            (*tag.split("."), "x", level, *fqn.split("."), "COLUMN", column, method)
+            for column, tag, level, method in self._tags.get(fqn, ())
+        )
+        return QueryResult(TAG_HEADINGS, rows)
+
+
+def tagged_models(*columns: DbtColumn) -> SemanticView:
+    """A view over `orders`, whose model has `columns`, reading relation `DB.S.ORDERS`."""
+    model = DbtModel("model.p.orders", "orders", "DB.S.ORDERS", (), (), columns)
+    return SemanticView(
+        "DB.S.SALES",
+        (Table("ORDERS", "DB.S.ORDERS"),),
+        columns=(Column("ORDERS", "EMAIL", ColumnKind.DIMENSION, authored("ORDERS.EMAIL")),),
+        table_models=MappingProxyType({"ORDERS": model}),
+    )

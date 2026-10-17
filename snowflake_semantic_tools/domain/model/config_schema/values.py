@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from snowflake_semantic_tools.domain.model.config_schema.keys import CONFIG_KEYS
 from snowflake_semantic_tools.domain.model.dbt import DbtTarget
+from snowflake_semantic_tools.domain.model.governance import TagPattern
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
 from snowflake_semantic_tools.domain.model.registry import ArtifactType
 
@@ -158,4 +159,44 @@ def enrichment_config(config: Mapping[str, object]) -> EnrichmentConfig:
         synonym_model=model.strip() if isinstance(model, str) and model.strip() else defaults.synonym_model,
         synonym_max_count=limit("synonym_max_count", defaults.synonym_max_count),
         allow_sample_value_collection=defaults.allow_sample_value_collection if allowed is None else allowed,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class GovernanceConfig:
+    """The `governance:` block, each key at its default when unset.
+
+    Attributes:
+        sensitive_tags: The entries that parse, in order; one that does not is left out, and
+            validation refuses it (SST-CFG057).
+        read_column_tags: Whether enrich and the connected validate read column tags.
+    """
+
+    sensitive_tags: tuple[TagPattern, ...] = ()
+    read_column_tags: bool = False
+
+    @property
+    def reads_tags(self) -> bool:
+        """Report whether a run reads column tags: reading is on, and some tag is named sensitive."""
+        return self.read_column_tags and bool(self.sensitive_tags)
+
+
+def tag_pattern(entry: object) -> TagPattern | None:
+    """Return a `governance.sensitive_tags` entry as the tags it names; None when it is no tag name."""
+    if not isinstance(entry, str):
+        return None
+    try:
+        return TagPattern.parse(entry)
+    except ValueError:
+        return None
+
+
+def governance_config(config: Mapping[str, object]) -> GovernanceConfig:
+    """Read the `governance:` block; a key that is absent or of the wrong type reads as its default."""
+    block = config_block(config.get("governance"))
+    entries = block.get("sensitive_tags")
+    patterns = (tag_pattern(entry) for entry in (entries if isinstance(entries, list) else ()))
+    return GovernanceConfig(
+        tuple(pattern for pattern in patterns if pattern is not None),
+        config_bool(block.get("read_column_tags")) is True,
     )

@@ -1,9 +1,10 @@
-"""A relation's columns and the distinct values they hold, read for `sst enrich`.
+"""A relation's columns, the tags on them, and the distinct values they hold, read for `sst enrich`.
 
 Nothing here writes. Columns come from the database's INFORMATION_SCHEMA, which describes views
-as well as tables, under the names Snowflake stores. Distinct values come from one query per
-group of columns: each column is a parenthesized branch of a UNION ALL that groups its non-null
-values, counts them, and keeps the most frequent, so the whole sample costs one scan per column.
+as well as tables, under the names Snowflake stores, and their tags from its
+TAG_REFERENCES_ALL_COLUMNS table function. Distinct values come from one query per group of
+columns: each column is a parenthesized branch of a UNION ALL that groups its non-null values,
+counts them, and keeps the most frequent, so the whole sample costs one scan per column.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from collections.abc import Mapping, Sequence
 
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session
 from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, session_failure
-from snowflake_semantic_tools.domain.enrich import WarehouseColumn
+from snowflake_semantic_tools.domain.enrich import WarehouseColumn, column_tags_sql, parse_column_tags
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.ports.enrich import RelationProfilerPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -76,6 +77,14 @@ class ProfilerMethods(Session, RelationProfilerPort):
             raise
         columns = tuple(WarehouseColumn(str(name), str(data_type)) for name, data_type in result.rows)
         return columns or None
+
+    def column_tags(self, relation: QualifiedName) -> Mapping[str, tuple[QualifiedName, ...]]:
+        # Unlike `relation_columns`, a relation the role cannot see is an error: the caller has
+        # just read its columns, and a read that fails must not pass for one that found no tag.
+        tags = parse_column_tags(self.query(column_tags_sql(relation)))
+        if tags is None:
+            raise SnowflakePortError("TAG_REFERENCES_ALL_COLUMNS answered without its tag and column names")
+        return tags
 
     def distinct_values(
         self, relation: QualifiedName, columns: Sequence[str], limit: int

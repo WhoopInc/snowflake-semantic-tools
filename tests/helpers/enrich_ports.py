@@ -18,7 +18,9 @@ class ScriptedEnrich:
     """Answer enrich's reads from dictionaries, recording every call in order.
 
     Relations are keyed by their SQL name, such as `DB.SCH.ORDERS`. A relation in `failures`
-    raises its error from whichever read reaches it first; Cortex raises `cortex_failure`
+    raises its error from whichever read reaches it first, and one in `tag_failures` from its
+    tag read alone; `tags` gives each relation's column tags, by column, as three-part names.
+    Cortex raises `cortex_failure`
     when one is set, and otherwise returns what `answer` makes of the prompt and schema.
     The synonym-model check is recorded apart, in `probed`, so `calls` holds the reads alone:
     the probe answers unless `refused_model` gives Snowflake's reason, and SHOW lists `listed`,
@@ -36,6 +38,8 @@ class ScriptedEnrich:
         refused_model: str | None = None,
         listed: Sequence[CortexBaseModel] | None = None,
         show_failure: SnowflakePortError | None = None,
+        tags: Mapping[str, Mapping[str, Sequence[str]]] | None = None,
+        tag_failures: Mapping[str, SnowflakePortError] | None = None,
     ) -> None:
         self._columns = {
             relation: tuple(WarehouseColumn(name, data_type) for name, data_type in described)
@@ -48,6 +52,13 @@ class ScriptedEnrich:
         self._refused_model = refused_model
         self._listed = None if listed is None else tuple(listed)
         self._show_failure = show_failure
+        self._tags = {
+            relation: {
+                column.casefold(): tuple(QualifiedName.parse(tag) for tag in found) for column, found in by.items()
+            }
+            for relation, by in (tags or {}).items()
+        }
+        self._tag_failures = dict(tag_failures or {})
         self.probed: list[str] = []
         self.calls: list[tuple[object, ...]] = []
         self.prompts: list[str] = []
@@ -60,6 +71,13 @@ class ScriptedEnrich:
         self.calls.append(("columns", relation.sql))
         self._fail(relation)
         return self._columns.get(relation.sql)
+
+    def column_tags(self, relation: QualifiedName) -> Mapping[str, tuple[QualifiedName, ...]]:
+        self.calls.append(("tags", relation.sql))
+        self._fail(relation)
+        if relation.sql in self._tag_failures:
+            raise self._tag_failures[relation.sql]
+        return self._tags.get(relation.sql, {})
 
     def distinct_values(
         self, relation: QualifiedName, columns: Sequence[str], limit: int

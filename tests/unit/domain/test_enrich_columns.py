@@ -301,3 +301,53 @@ def test_a_column_whose_name_or_value_holds_template_syntax_gets_nothing_written
         "dbt_column:orders.note",
         "dbt_column:orders.kind",
     }
+
+
+def test_a_column_snowflake_tags_sensitive_is_never_sampled_nor_shown_even_when_undescribed() -> None:
+    model = _model(_column("email"), _column("note", governance_tags=("SEC.GOV.NOTE",)))
+    warehouse = [W("EMAIL", "TEXT", ("SEC.GOV.EMAIL",)), W("NOTE", "TEXT"), W("PHONE", "TEXT", ("SEC.GOV.PHONE",))]
+    warehouse.append(W("CITY", "TEXT"))
+    assert [column.name for column in sample_columns(model, warehouse, _options(C.SAMPLE_VALUES))] == ["CITY"]
+    samples = {"email": ["a@b.c"], "note": ["n"], "phone": ["1"], "city": ["x"]}
+    described = prompt_columns(model, warehouse, samples)
+    assert [(column.name, column.examples) for column in described] == [
+        ("email", ()),
+        ("note", ()),
+        ("phone", ()),
+        ("city", ("x",)),
+    ]
+    result = enrich_model(model, warehouse, _options(C.SAMPLE_VALUES), SETTINGS, samples=samples, synonyms={})
+    assert [update.name for update in result.updates] == ["city"]
+
+
+def test_a_tag_read_rewrites_governance_tags_to_exactly_what_it_found() -> None:
+    model = _model(
+        _column("email", governance_tags=("sec.gov.email",)),
+        _column("phone", governance_tags=("SEC.GOV.PHONE",)),
+        _column("gone", governance_tags=("SEC.GOV.GONE",)),
+        _column("plain"),
+    )
+    warehouse = [
+        W("EMAIL", "TEXT", ("SEC.GOV.EMAIL",)),
+        W("PHONE", "TEXT", ("SEC.GOV.PHONE",)),
+        W("GONE", "TEXT"),
+        W("PLAIN", "TEXT"),
+        W("SSN", "TEXT", ("SEC.GOV.SSN",)),
+    ]
+    options = _options(C.COLUMN_SYNONYMS)
+    result = enrich_model(model, warehouse, options, SETTINGS, samples={}, synonyms={}, tags_read=True)
+    assert result.updates == (
+        ColumnUpdate("email", (("governance_tags", ("SEC.GOV.EMAIL",)),)),
+        ColumnUpdate("gone", (("governance_tags", ()),)),
+        ColumnUpdate("ssn", (("governance_tags", ("SEC.GOV.SSN",)),), added=True),
+    )
+    assert enrich_model(model, warehouse, options, SETTINGS, samples={}, synonyms={}).updates == ()
+
+
+def test_sample_values_on_a_column_snowflake_tags_sensitive_are_reported_by_its_tag() -> None:
+    model = _model(_column("email", sample_values=("a@b.c",)), _column("city", sample_values=("x",)))
+    warehouse = [W("EMAIL", "TEXT", ("SEC.GOV.EMAIL",)), W("CITY", "TEXT")]
+    result = enrich_model(model, warehouse, _options(C.SAMPLE_VALUES), SETTINGS, samples={}, synonyms={})
+    assert [item.message for item in result.diagnostics] == [
+        "model 'orders': column 'email' carries SEC.GOV.EMAIL and 1 sample_values"
+    ]

@@ -488,6 +488,21 @@ The synonym model `sst enrich` uses is checked apart: connected validate
 reports its lifecycle (`SST-VAL557`), and enrich asks it for one token before
 it reads anything, stopping on a refusal (`SST-SNO032`).
 
+## A column carries a governance tag its YAML does not record (`SST-VAL338`)
+
+With `governance.read_column_tags: true` and `governance.sensitive_tags` naming at least one
+tag, connected `sst validate` reads the column tags of each table a view reads, once per table,
+beside its `DESCRIBE`. A column carrying a sensitive tag, set on it or inherited from its table,
+schema or database, is a warning when its YAML has neither `pii_tags` nor the tag in
+`meta.sst.governance_tags`. A column the YAML does not describe yet is reported too; an excluded
+column, and a table read through `source()`, are not.
+
+Run `sst enrich` on the model with the same settings: it records each sensitive tag it finds
+in `meta.sst.governance_tags`, and stops sampling the column. Or add `pii_tags` to the column by
+hand. A table whose tags cannot be read is reported as skipped (`SST-VAL020`) rather than
+checked. Offline, `sst validate` reports sample values left on a column the YAML marks sensitive
+(`SST-VAL328`); a view never publishes them.
+
 ## A file name is refused
 
 **`SST-VAL857`**: a stage accepts only letters, digits, `.`, `_`, `-`, and `$` in

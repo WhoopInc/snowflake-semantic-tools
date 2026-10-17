@@ -19,7 +19,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.cortex_models import BaseMo
 
 
 class RelationProfilerPort(Protocol):
-    """Read a relation's columns and the distinct values they hold."""
+    """Read a relation's columns, the tags on them, and the distinct values they hold."""
 
     def relation_columns(self, relation: QualifiedName) -> tuple[WarehouseColumn, ...] | None:
         """Return a table's or a view's columns in their ordinal order, as INFORMATION_SCHEMA has them.
@@ -31,6 +31,22 @@ class RelationProfilerPort(Protocol):
 
         Raises:
             SnowflakePortError: the lookup failed for another reason.
+        """
+        ...
+
+    def column_tags(self, relation: QualifiedName) -> Mapping[str, tuple[QualifiedName, ...]]:
+        """Return the tags on each of a relation's columns, as `TAG_REFERENCES_ALL_COLUMNS` lists them.
+
+        Every tag counts: one set on the column, and one its table, schema or database carries,
+        whether applied by hand, propagated, classified or inherited. Never writes.
+
+        Returns:
+            Each column's tags, by its casefolded name, each tag named as Snowflake stores it;
+            a column with no tag is absent.
+
+        Raises:
+            SnowflakePortError: the read failed, a relation that is missing or not visible
+                included, or its answer named no tag or column.
         """
         ...
 
