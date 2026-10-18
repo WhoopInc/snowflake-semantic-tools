@@ -1,0 +1,11 @@
+$ sst --project-dir <project> --manifest <manifest> diff --from dev --to prod
+--- exit 2
+--- stdout
+modified  semantic_view:jaffle_menu  metric order_items.line_item_count
+      [33m~ metric order_items.line_item_count[0m
+          expression:
+            [31m- COUNT(ORDER_ITEMS.ORDER_ITEM_ID)[0m
+            [32m+ COUNT(DISTINCT ORDER_ITEMS.ORDER_ITEM_ID)[0m
+1 artifact(s) differ between dev and prod
+--- stderr
+[33m[1m~[0m [1mdiff: differences found[0m · <n>s

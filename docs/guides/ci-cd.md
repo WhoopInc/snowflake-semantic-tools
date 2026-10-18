@@ -31,6 +31,49 @@ sst plan --target prod --output json > plan.json || test $? -eq 2
   instead. It also saves the plan to `target/sst/plan.json` (`--plan-out` to put
   it elsewhere).
 
+### Reviewing what an update changes
+
+Under each update, `sst plan` shows what it changes member by member: the live
+object as Snowflake holds it, against what SST would publish. Plan only updates
+an object that still matches what SST last wrote, so the live side is exactly
+what apply replaces.
+
+```
+  ~ update  semantic_view:sales  SALES_DB.SEMANTIC_VIEWS.SALES  metric orders.total_revenue
+      ~ metric orders.total_revenue
+          comment:
+            - Revenue before tax.
+            + Revenue before tax, in dollars.
+```
+
+The members are a semantic view's tables, relationships, facts, dimensions,
+filters, metrics, verified queries and instructions; an agent's instructions,
+sample questions, tools and skills, from the version it serves; a procedure's,
+function's or search service's settings, comment and body; and a skill's,
+plugin's or profile's files and an eval's config and questions. A list shows the
+items it loses and gains, text shows the lines that change, and sample values
+are counted rather than listed. What Snowflake's DESCRIBE has not been seen to
+report (a view's variables, a window metric's expression, `USING`) is not
+compared, so an update that changes only those says
+`definition (no member-level difference)`.
+
+The terminal cuts a long diff short; every plan writes all of it, as a unified
+diff an editor or a pull request colours red and green, to
+`target/sst/plan.<target>.diff` (`--diff-out` to put it elsewhere). Paste it
+into the pull request, or upload it as an artifact. JSON reports each change's
+members as `diff`, with `diff_status` saying whether it was compared. Each
+update costs one read (a DESCRIBE, the agent's versions, or one GET per staged
+file); `--no-diff` skips them. A read the role may not make leaves the update
+uncompared, with an info note (`SST-PLN041`), and plans as before. `apply`
+shows the same diff when it asks to confirm; with `--yes` it shows nothing, so
+it reads nothing.
+
+Before promoting, `sst diff --from dev --to prod` compares the two targets the
+same way. Each target's physical names are first replaced by what they stand
+for, so two targets that publish the same project to different databases
+agree; only a real difference, such as one target's metric edited by hand or a
+warehouse configured per target, is listed.
+
 ### Recording what an update replaces
 
 `sst plan --capture-prior` also reads the current definition of each live object

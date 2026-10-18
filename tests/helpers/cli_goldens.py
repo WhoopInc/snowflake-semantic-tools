@@ -21,10 +21,15 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from snowflake_semantic_tools.adapters.locations import locate_project
+from snowflake_semantic_tools.app.compile import CompiledView
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.render.terminal import Terminal
+from snowflake_semantic_tools.cli.wiring.compile import compile_result
 from tests.helpers.cli_projects import common, compile_project
-from tests.helpers.reference_project import project_copy
+from tests.helpers.described_objects import described_view
+from tests.helpers.published_target import published
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 GOLDEN_DIR = Path(__file__).resolve().parents[1] / "golden" / "expected" / "cli"
@@ -46,6 +51,8 @@ class Case:
         args: The command line after `sst`; `<project>` stands for the project's directory.
         variants: The terminals it is pinned on; one, `plain`, when the others would not differ.
         snowflake: Runs with a fake Snowflake that holds nothing, so a plan creates everything.
+        connect: Makes the fake Snowflake accounts the case runs against, once the project is
+            prepared, and returns what each connection opens; None for `snowflake`'s empty one.
     """
 
     name: str
@@ -53,6 +60,7 @@ class Case:
     args: tuple[str, ...]
     variants: tuple[str, ...] = tuple(VARIANTS)
     snowflake: bool = False
+    connect: Callable[[Path, pytest.MonkeyPatch], Callable[[dict[str, object]], FakeSnowflake]] | None = None
 
 
 def _clean(root: Path) -> Path:
@@ -72,6 +80,36 @@ def _compiled(root: Path) -> Path:
     return project
 
 
+_METRIC = Path("semantic_models") / "metrics" / "line_item_count.yml"
+
+
+def _edited(project: Path) -> None:
+    """Count distinct order items in `line_item_count`, and compile the edit."""
+    path = project / _METRIC
+    path.write_text(path.read_text(encoding="utf-8").replace("COUNT({{", "COUNT(DISTINCT {{", 1), encoding="utf-8")
+    compile_project(project)
+
+
+def _one_update(project: Path, patch: pytest.MonkeyPatch) -> Callable[[dict[str, object]], FakeSnowflake]:
+    """dev, applied and described as published, then one metric edited: a plan updates one view."""
+    port = published(project, patch)
+    _edited(project)
+    return lambda params: port
+
+
+def _two_targets(project: Path, patch: pytest.MonkeyPatch) -> Callable[[dict[str, object]], FakeSnowflake]:
+    """dev and prod each applied to its own account, prod's view then holding the edited metric."""
+    dev = published(project, patch, "dev", agents=True)
+    prod = published(project, patch, "prod", agents=True)
+    edited = project_copy(project.parent / "edited")
+    _edited(edited)
+    for item in compile_result(locate_project(edited), "prod", DBT_MANIFEST).compiled:
+        if isinstance(item, CompiledView):
+            prod.view_descriptions[item.rendered_artifact.target.sql] = described_view(item.view)
+    by_database = {"SST_REF_DEV": dev, "SST_REF_PROD": prod}
+    return lambda params: by_database[str(params["database"]).upper()]
+
+
 _PROJECT = ("--project-dir", "<project>")
 _OFFLINE = (*_PROJECT, "--manifest", "<manifest>")
 CASES = (
@@ -82,6 +120,14 @@ CASES = (
     Case("compile-help", _clean, ("compile", "--help"), variants=("plain",)),
     Case("plan-changes", _compiled, (*_OFFLINE, "plan", "--target", "dev", "--no-plan-out"), snowflake=True),
     Case("agent-validate-errors", _broken, ("-o", "agent", *_OFFLINE, "validate"), variants=("plain",)),
+    Case("plan-updates", _compiled, (*_OFFLINE, "plan", "--target", "dev", "--no-plan-out"), connect=_one_update),
+    Case(
+        "diff-targets",
+        _compiled,
+        (*_OFFLINE, "diff", "--from", "dev", "--to", "prod"),
+        variants=("color", "plain"),
+        connect=_two_targets,
+    ),
 )
 
 
@@ -98,6 +144,9 @@ def render_case(case: Case, variant: str, root: Path) -> str:
             port = FakeSnowflake(state={})
             port.close = lambda: None  # type: ignore[attr-defined]
             patch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", lambda params: port)
+        if case.connect is not None:
+            opened = case.connect(project, patch)
+            patch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", opened)
         result = CliRunner().invoke(cli, args, color=terminal.color, prog_name="sst")
     head = f"$ sst {' '.join(case.args)}\n--- exit {result.exit_code}\n"
     text = f"{head}--- stdout\n{result.stdout}--- stderr\n{result.stderr}"

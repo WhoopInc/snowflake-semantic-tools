@@ -577,7 +577,11 @@ covers how skill versions are named.
 ## Publishing
 
 `sst plan` shows each agent as a create, an update, or unchanged, and its
-summary counts an agent's updates as `update`. Apply uploads the rendered spec
+summary counts an agent's updates as `update`. Under an update it shows what
+changes in the specification, member by member, against the version the agent
+serves (the one carrying its alias, else the default, else the last): each
+instruction, the sample questions, each tool with its resources, and each skill.
+Apply uploads the rendered spec
 to `@<stage>/<agent>/<commit>/agent_spec.yaml` under `apply.agent_spec_stage`
 (default stage `AGENT_SPECS`, in the target's database and schema), then:
 
