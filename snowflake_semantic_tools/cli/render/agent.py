@@ -6,8 +6,8 @@ act and nothing else, in a grammar a line-by-line reader can rely on:
 - the first line is the verdict, `sst <command>: <OUTCOME> key=value ...`;
 - each finding is one line, `E`, `W` or `I`, then its code, location, subject and message,
   with a `fix:` line under it and the follow-on findings it caused as `cascade` lines;
-- a plan's changes, apply's outcomes, or list's items follow, one line each, marked
-  `+ ~ - ! =`;
+- a plan's changes, apply's outcomes, list's items, or the kit skills `agent-kit status` finds
+  not current follow, one line each, the first two marked `+ ~ - ! =`;
 - the last line is `next:`, which never tells an agent to change Snowflake on its own.
 
 Its own marks are ASCII, and it has no colour, progress, links, info findings, or baselined
@@ -62,8 +62,8 @@ def agent_document(
     Args:
         baselined: The stable fingerprints the run's baseline holds; those findings are counted.
         fingerprint: Returns a diagnostic's stable fingerprint, as `baseline` matches it.
-        data: The envelope's `data`; a plan's `changes`, apply's `outcomes` and list's `items`
-            are listed from it.
+        data: The envelope's `data`; a plan's `changes`, apply's `outcomes`, list's `items` and
+            the skills `agent-kit status` finds not current are listed from it.
         note: Why the format was chosen, when the run did not ask for it.
 
     Example:
@@ -185,10 +185,12 @@ def _body(command: str, data: Mapping[str, object]) -> list[str]:
 
 
 def _listed(command: str, data: Mapping[str, object]) -> list[str]:
-    """Return one line per item `list` lists, or per node `lineage` traces; none for another command."""
+    """Return one line per item `list` lists, node `lineage` traces, or kit skill not current."""
     if command == "list":
         listed = ("key", "status", "target", "relation")
         return [" ".join(str(item.get(key)) for key in listed if item.get(key)) for item in _rows(data.get("items"))]
+    if command == "agent-kit status":
+        return _kit_skills(data)
     if command != "lineage":
         return []
     traced = ("direction", "depth", "key", "kind", "relation")
@@ -197,6 +199,16 @@ def _listed(command: str, data: Mapping[str, object]) -> list[str]:
         + (" changed" if item.get("changed") else "")
         + (f" | {item['marker']}" if item.get("marker") else "")
         for item in _rows(data.get("nodes"))
+    ]
+
+
+def _kit_skills(data: Mapping[str, object]) -> list[str]:
+    """Return `<state> <agent> <skill>` per kit skill that is outdated, missing or modified."""
+    return [
+        f"{skill.get('state')} {agent.get('agent')} {skill.get('name')}"
+        for agent in _rows(data.get("agents"))
+        for skill in _rows(agent.get("skills"))
+        if skill.get("state") not in ("current", "not installed")
     ]
 
 

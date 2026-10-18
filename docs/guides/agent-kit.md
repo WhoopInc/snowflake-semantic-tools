@@ -109,8 +109,10 @@ sst agent-kit status --check
 list each skill as `current`, `outdated` (an upgrade would change it), `modified` (you
 changed a file SST wrote), `missing` (its folder is gone), or `not installed`. With
 `--check` the command exits 2 when a skill is outdated or missing, so a job can tell the kit
-fell behind the installed SST. `sst debug` also reports which SST installed the kit, and
-whether that is the one running.
+fell behind the installed SST. Either way, a kit that is behind ends with how many skills
+are out of date and the next step, `sst agent-kit upgrade`; agent output lists each skill
+that is not current as `<state> <agent> <skill>`. `sst debug` also reports which SST
+installed the kit, and whether that is the one running.
 
 ## Removing
 

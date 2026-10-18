@@ -142,7 +142,26 @@ def test_status_compares_the_files_with_the_kit(tmp_path: Path, kit: dict[str, o
     }
     result = _kit(tmp_path, "status")
     assert result.exit_code == 0
-    assert "  outdated       sst-core" in result.output and "run `sst agent-kit upgrade`" in result.output
+    assert "  outdated       sst-core" in result.output
+    assert result.output.count("run `sst agent-kit upgrade`") == 1
+    assert envelope["next_steps"] == ["run `sst agent-kit upgrade` to bring the kit up to date"]
+    checked = _kit(tmp_path, "status", "--check")
+    assert checked.exit_code == 2 and checked.output.count("run `sst agent-kit upgrade`") == 1
+
+
+def test_status_tells_an_agent_which_skills_to_upgrade(tmp_path: Path, kit: dict[str, object]) -> None:
+    assert _kit(tmp_path, "install", "--agent", "cortex").exit_code == 0
+    (tmp_path / ".cortex/skills/sst-fix/SKILL.md").write_bytes(b"mine\n")
+    kit["kit"] = KIT_V2
+    result = CliRunner().invoke(cli, ["-o", "agent", "agent-kit", "status", "--project-dir", str(tmp_path)])
+    assert result.exit_code == 0
+    lines = result.stdout.splitlines()
+    assert lines[0].startswith("sst agent-kit status: PASS")
+    assert "outdated cortex sst-core" in lines and "modified cortex sst-fix" in lines
+    assert lines[-1] == "next: run `sst agent-kit upgrade` to bring the kit up to date"
+    assert _kit(tmp_path, "upgrade").exit_code == 0
+    current = CliRunner().invoke(cli, ["-o", "agent", "agent-kit", "status", "--project-dir", str(tmp_path)])
+    assert current.stdout.splitlines()[1:] == ["modified cortex sst-fix", "next: nothing to do"]
 
 
 def test_status_with_nothing_installed_lists_every_agent(tmp_path: Path, kit: object) -> None:

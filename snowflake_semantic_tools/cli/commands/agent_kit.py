@@ -187,7 +187,7 @@ def status_command(paths: ProjectPaths, agents: tuple[str, ...], check: bool) ->
         (agent, skill_statuses(session.digests, session.lock, session.installed(agent, session.lock), agent))
         for agent in targets or tuple(AgentTarget)
     ]
-    stale = any(status.outdated or status.missing for _, statuses in report for status in statuses)
+    stale = sum(status.outdated or status.missing for _, statuses in report for status in statuses)
     data = {
         "kit_version": VERSION,
         "installed_by": session.lock.sst_version or None,
@@ -204,7 +204,13 @@ def status_command(paths: ProjectPaths, agents: tuple[str, ...], check: bool) ->
         ],
     }
     exit_code = CHANGES if check and stale else OK
-    return CommandResult(exit_code, data=data, human=lambda: _print_status(session.lock, report, stale=stale))
+    return CommandResult(
+        exit_code,
+        data=data,
+        human=lambda: _print_status(session.lock, report),
+        headline=f"{stale} skill(s) out of date" if stale else None,
+        next_steps=("run `sst agent-kit upgrade` to bring the kit up to date",) if stale else None,
+    )
 
 
 @agent_kit.command(cls=SstCommand, name="remove")
@@ -404,13 +410,11 @@ def _print_plans(verb: str, plans: Sequence[AgentPlan], *, dry_run: bool, refuse
         click.echo(f"{verb}: nothing to change")
 
 
-def _print_status(lock: KitLock, report: Sequence[tuple[AgentTarget, Sequence[SkillStatus]]], *, stale: bool) -> None:
-    """Print each agent's skills and their states, then whether the kit is up to date."""
+def _print_status(lock: KitLock, report: Sequence[tuple[AgentTarget, Sequence[SkillStatus]]]) -> None:
+    """Print each agent's skills and their states; the verdict says whether to upgrade."""
     installed = f"installed by SST {lock.sst_version}" if lock.sst_version else "nothing installed"
     click.echo(f"kit of SST {VERSION}; {installed}")
     for agent, statuses in report:
         click.echo(f"{agent.value} ({agent.skills_root}){'' if agent in lock.agents else ': not installed'}")
         for status in statuses:
             click.echo(f"  {status.state:<14} {status.name}")
-    if stale:
-        click.echo("run `sst agent-kit upgrade` to bring the kit up to date")
