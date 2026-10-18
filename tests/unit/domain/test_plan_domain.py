@@ -21,10 +21,15 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     RenderedArtifact,
     SnowflakeObservation,
 )
-from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY, SEMANTIC_REGISTRY, ArtifactLifecycle
+from snowflake_semantic_tools.domain.model.registry import (
+    ARTIFACT_REGISTRY,
+    SEMANTIC_REGISTRY,
+    ArtifactLifecycle,
+    GrantPreservation,
+)
 from snowflake_semantic_tools.domain.plan import build_changeset, dependency_waves, topological_order
 from snowflake_semantic_tools.domain.plan.prune import KEPT_DETAILS
-from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, Manifest, State
+from snowflake_semantic_tools.domain.state import DEACTIVATED, STATE_SCHEMA_VERSION, AppliedEntry, Manifest, State
 from tests.helpers.manifests import build_minimal_manifest
 from tests.helpers.plan_codes import live
 from tests.helpers.sql_values import statement
@@ -673,3 +678,50 @@ def test_every_type_sst_never_drops_says_what_to_do_with_a_kept_object() -> None
         if not artifact_type.prunable and artifact_type.lifecycle is not ArtifactLifecycle.COMPOSITE
     }
     assert kept == set(KEPT_DETAILS) == {"tool"}
+
+
+def test_a_rendered_artifact_keeps_grants_unless_a_clause_type_replaces_without_copy_grants() -> None:
+    replacing = rendered("v", "create or replace semantic view v")
+    assert not replacing.keeps_grants
+    assert rendered("v", "create or replace semantic view v\n  COPY grants").keeps_grants
+    assert rendered("v").keeps_grants  # nothing replaces the object
+    for preservation in (GrantPreservation.REPLAY, GrantPreservation.NONE):
+        assert replace(replacing, grant_preservation=preservation).keeps_grants
+
+
+def test_prune_reports_only_recorded_objects_of_a_type_never_dropped() -> None:
+    def recorded(key: str, outcome: str = "applied") -> AppliedEntry:
+        return AppliedEntry("a" * 64, "DB.SCH." + key.split(":")[1].upper(), "now", "run", outcome, "a" * 64, "m" * 64)
+
+    declared = rendered("declared")
+    entries = {
+        "tool:kept": recorded("tool:kept"),
+        "tool:retired": recorded("tool:retired", DEACTIVATED),
+        "tool:declared": recorded("tool:declared"),
+        "semantic_view:orphan": recorded("semantic_view:orphan"),  # prunable: dropped when observed
+        "skill:composite": recorded("skill:composite"),  # its handler reports it
+        "widget:unknown": recorded("widget:unknown"),  # no such type
+    }
+    artifacts = {declared.key: declared, "tool:declared": replace(declared, key="tool:declared", artifact_type="tool")}
+    manifest, _ = context(artifacts, {})
+    state = State(STATE_SCHEMA_VERSION, target(), manifest.manifest_id, "cfg", None, MappingProxyType(entries))
+    observation = SnowflakeObservation(MappingProxyType({}), "now")
+
+    def kept(prune_types: frozenset[str] | None = None, prune_keys: frozenset[str] | None = None) -> list[str]:
+        result = build_changeset(
+            artifacts,
+            observation,
+            manifest,
+            state,
+            ARTIFACT_REGISTRY,
+            target(),
+            include_prune=True,
+            prune_types=prune_types,
+            prune_keys=prune_keys,
+        )
+        return [change.key for change in result.changes if change.action is Action.PRUNE]
+
+    assert kept() == ["tool:kept"]
+    assert kept(prune_types=frozenset(("semantic_view",))) == []
+    assert kept(prune_keys=frozenset(("tool:other",))) == []
+    assert kept(prune_keys=frozenset(("tool:kept",))) == ["tool:kept"]
