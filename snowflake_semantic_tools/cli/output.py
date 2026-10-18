@@ -13,8 +13,6 @@ from __future__ import annotations
 import contextlib
 import io
 import json
-import os
-import sys
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable
@@ -28,13 +26,24 @@ from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.app.evals.run import EvalRunsInterrupted
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, INTERRUPTED, OK
+from snowflake_semantic_tools.cli.render.diagnostics import (
+    HIDDEN_FLAGS,
+    FindingNotes,
+    Verdict,
+    render_collapsed,
+    render_finding,
+    render_verdict,
+    sorted_for_reading,
+)
+from snowflake_semantic_tools.cli.render.next_steps import default_next_steps
+from snowflake_semantic_tools.cli.render.style import Style
+from snowflake_semantic_tools.cli.render.terminal import PLAIN, Terminal, system_terminal
 from snowflake_semantic_tools.cli.signals import received_signal
 from snowflake_semantic_tools.domain.diagnostics import (
     ERROR_REGISTRY,
     D,
     Diagnostic,
     DiagnosticBag,
-    render_diagnostic,
 )
 from snowflake_semantic_tools.domain.diagnostics.baseline import stable_fingerprint
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
@@ -225,6 +234,7 @@ def json_envelope(
     status: str | None = None,
     promoted: int = 0,
     data: object | None = None,
+    next_steps: tuple[str, ...] | None = None,
 ) -> dict[str, object]:
     """Build the one JSON document `--output json` prints for a run of `command`.
 
@@ -232,7 +242,8 @@ def json_envelope(
     without `status`, it follows the exit code: `ok`, `changes` for 2, else `error`. A callable
     `data` is called here, once the run's baseline is matched, for a payload that counts what
     the baseline suppressed. The summary counts as `summary_counts` does: a baselined diagnostic
-    under `baselined`, and under no severity.
+    under `baselined`, and under no severity. `next_steps` is what to do next, first step first;
+    None takes the defaults for the command and its exit code, as `next_steps_for` gives them.
     """
     if callable(data):
         data = data()
@@ -259,6 +270,7 @@ def json_envelope(
             "baselined": counts["baselined"],
         },
         "data": data if data is not None else {},
+        "next_steps": list(next_steps_for(command, resolved_exit, diagnostics, next_steps)),
     }
 
 
@@ -370,7 +382,7 @@ def interrupted(command: str, output: str, cause: BaseException) -> NoReturn:
         )
     else:
         _echo_err(aborted_line())
-        _echo_err(render_diagnostic(notice))
+        _echo_err(_render(notice, _POLICY[0]))
     raise click.exceptions.Exit(INTERRUPTED) from cause
 
 
@@ -388,7 +400,7 @@ def announce_interrupt(notice: Diagnostic) -> None:
     """
     _echo_err(aborted_line())
     if _hidden_reason(notice, frozenset(), _POLICY[0]) is not None:
-        _echo_err(render_diagnostic(notice))
+        _echo_err(_render(notice, _POLICY[0]))
 
 
 def _echo_err(text: str) -> None:
@@ -412,10 +424,13 @@ class RenderPolicy:
     """How the human render shows diagnostics, from the global visibility and format flags.
 
     Attributes:
-        color: Whether severity labels are coloured: `table` output on a terminal, unless
-            `--no-color`, `$SST_NO_COLOR`, or a non-empty `$NO_COLOR` says otherwise.
-        progress: Whether a long-running command prints progress lines on stderr: never with
-            `--quiet`, nor with `--output json` or `yaml`, whose readers expect no other text.
+        color: Whether stderr is coloured: `table` output on a terminal, as `--color` decides,
+            unless `--no-color`, `$SST_NO_COLOR`, or a non-empty `$NO_COLOR` says otherwise.
+        terminal: What the terminal can show; `detect_terminal` decides it once per run.
+        progress: Whether a long-running command reports progress on stderr: never with
+            `--quiet`, nor with `--output json`, `yaml`, `csv` or `agent`, whose readers expect
+            no other text.
+        agent: The run prints the `agent` document instead of human text.
     """
 
     def __init__(
@@ -423,30 +438,40 @@ class RenderPolicy:
         *,
         output: str = "table",
         no_color: bool = False,
+        color: str = "auto",
         verbose: bool = False,
         quiet: bool = False,
         show_info: bool = False,
         show_baselined: bool = False,
         show_cascade: bool = False,
         show_all_occurrences: bool = False,
+        terminal: Terminal | None = None,
     ) -> None:
-        self.color = output == "table" and not no_color and not os.environ.get("NO_COLOR") and sys.stderr.isatty()
+        choice = "never" if no_color else color
+        self.terminal = terminal or system_terminal(choice=choice, colorable=output == "table")
+        self.color = self.terminal.color
         self.verbose = verbose
         self.quiet = quiet
         self.show_info = show_info
         self.show_baselined = show_baselined
         self.show_cascade = show_cascade
         self.show_all_occurrences = show_all_occurrences
-        self.progress = output not in ("json", "yaml") and not quiet
+        self.agent = output == "agent"
+        self.progress = output in ("table", "plain") and not quiet
 
 
-_DEFAULT_POLICY = RenderPolicy()
+_DEFAULT_POLICY = RenderPolicy(terminal=PLAIN)
 _POLICY: list[RenderPolicy] = [_DEFAULT_POLICY]
 
 
 def use_render_policy(policy: RenderPolicy) -> None:
     """Make `policy` the one every human render of this run follows."""
     _POLICY[0] = policy
+
+
+def render_policy() -> RenderPolicy:
+    """Return the render policy this run follows."""
+    return _POLICY[0]
 
 
 def verbose_run() -> bool:
@@ -468,39 +493,158 @@ def print_progress(line: str, *, warning: bool = False) -> None:
 
 
 def render_diagnostics(diagnostics: Iterable[Diagnostic]) -> None:
-    """Print the diagnostics on stderr as this run's render policy shows them, then their counts.
+    """Print the diagnostics on stderr as this run's render policy shows them, most severe first.
 
     Baselined, info, and cascade diagnostics are counted rather than shown unless the matching
-    `--show-*` flag asks; `--quiet` shows errors only. Four or more of one code show the first
-    three and a count, unless `--show-all-occurrences`.
+    `--show-*` flag asks, and `print_verdict` reports the counts; `--quiet` shows errors only.
+    A hidden cascade is counted under the finding it follows from. Four or more of one code
+    show the first three and a count, unless `--show-all-occurrences`.
     """
     policy = _POLICY[0]
-    bag = DiagnosticBag(diagnostics)
-    if not bag:
+    shown, _ = _partition(DiagnosticBag(diagnostics), policy)
+    cascades = _cascades_by_cause(DiagnosticBag(diagnostics), shown, policy)
+    style = Style(policy.terminal)
+    seen: Counter[str] = Counter()
+    totals = Counter(item.code for item in shown)
+    for index, diagnostic in enumerate(shown):
+        seen[diagnostic.code] += 1
+        grouped = totals[diagnostic.code] >= _GROUP_AT and not policy.show_all_occurrences
+        if grouped and seen[diagnostic.code] > _GROUP_SHOWN:
+            if seen[diagnostic.code] == totals[diagnostic.code]:
+                _echo_err(render_collapsed(diagnostic.code, totals[diagnostic.code] - _GROUP_SHOWN, style))
+            continue
+        rendered = _render(diagnostic, policy, hidden_cascades=cascades.get(index, 0))
+        _echo_err(_render(_secret_refusal("diagnostic text"), policy) if _leaks(rendered) else rendered)
+        if not policy.quiet:
+            _echo_err("")
+
+
+def hidden_counts(diagnostics: DiagnosticBag) -> dict[str, int]:
+    """Count the diagnostics the human render hides, by why: info, cascade, or baselined."""
+    _, hidden = _partition(diagnostics, _POLICY[0])
+    return {kind: hidden[kind] for kind in HIDDEN_FLAGS if hidden[kind]}
+
+
+def print_verdict(
+    command: str,
+    exit_code: int,
+    diagnostics: DiagnosticBag,
+    *,
+    headline: str | None = None,
+    next_step: str | None = None,
+    counts: bool = True,
+    hidden: bool = True,
+) -> None:
+    """Print the run's closing line on stderr: how it ended, its counts, wall time, then the next step.
+
+    A run that succeeded says what it did when `headline` does, and `<command> passed` otherwise;
+    one that failed says `<command> failed`, and one interrupted `<command> interrupted`. Nothing
+    is printed under `--quiet`. The line is checked for credentials as every report is.
+
+    Args:
+        counts: False leaves the error and warning counts out, for a command that reports none.
+        hidden: False leaves out what the render hid, for a command that shows no diagnostics.
+    """
+    policy = _POLICY[0]
+    if policy.quiet or policy.agent:
         return
+    summary = summary_counts(diagnostics)
+    outcome = "ok" if exit_code == OK else "changes" if exit_code == CHANGES else "fail"
+    if outcome == "fail":
+        title = f"{command} {'interrupted' if exit_code == INTERRUPTED else 'failed'}"
+    else:
+        title = headline or f"{command} passed"
+    verdict = Verdict(
+        outcome=outcome,
+        headline=title,
+        errors=summary["error"] if counts or summary["error"] or summary["warning"] else None,
+        warnings=summary["warning"],
+        baselined=summary["baselined"],
+        hidden=hidden_counts(diagnostics) if hidden else {},
+        seconds=run_seconds(),
+        next_step=next_step,
+        note=output_note(),
+    )
+    rendered = render_verdict(verdict, Style(policy.terminal))
+    _echo_err(_render(_secret_refusal("verdict"), policy) if _leaks(rendered) else rendered)
+
+
+def next_steps_for(
+    command: str, exit_code: int, diagnostics: DiagnosticBag, given: tuple[str, ...] | None
+) -> tuple[str, ...]:
+    """Return the run's next steps: those the command gave, else the defaults for how it ended."""
+    if given is not None:
+        return given
+    counts = summary_counts(diagnostics)
+    return default_next_steps(command, exit_code, errors=counts["error"], warnings=counts["warning"])
+
+
+def first_next_step(command: str, exit_code: int, diagnostics: DiagnosticBag) -> str | None:
+    """Return the first default next step for how the run ended; None when there is none."""
+    steps = next_steps_for(command, exit_code, diagnostics, None)
+    return steps[0] if steps else None
+
+
+def report_failure(command: str, diagnostics: DiagnosticBag, exit_code: int) -> None:
+    """Print a run that failed before its report: its diagnostics, then its verdict, on stderr."""
+    render_diagnostics(diagnostics)
+    print_verdict(command, exit_code, diagnostics, next_step=first_next_step(command, exit_code, diagnostics))
+
+
+def run_seconds() -> float | None:
+    """Return how long this run has taken so far; None before `start_invocation` records its start."""
+    started = _INVOCATION.get("started_monotonic")
+    return max(time.monotonic() - started, 0.0) if isinstance(started, float) else None
+
+
+def note_output_choice(note: str | None) -> None:
+    """Record why this run chose its output format, which its verdict and agent document disclose."""
+    _INVOCATION["output_note"] = note
+
+
+def output_note() -> str | None:
+    """Return why this run chose its output format; None when it was asked for."""
+    value = _INVOCATION.get("output_note")
+    return value if isinstance(value, str) else None
+
+
+def project_root() -> Path:
+    """Return the project directory this run resolved, which finding locations are relative to."""
+    value = _INVOCATION.get("project_dir")
+    return Path(value) if isinstance(value, str) else Path(".")
+
+
+def _partition(diagnostics: DiagnosticBag, policy: RenderPolicy) -> tuple[list[Diagnostic], Counter[str]]:
+    """Return the diagnostics the render shows, most severe first, and the count it hides by reason."""
     baselined = baselined_fingerprints()
     hidden: Counter[str] = Counter()
     shown: list[Diagnostic] = []
-    for diagnostic in bag:
+    for diagnostic in diagnostics:
         reason = _hidden_reason(diagnostic, baselined, policy)
         if reason is None:
             shown.append(diagnostic)
         else:
             hidden[reason] += 1
-    seen: Counter[str] = Counter()
-    totals = Counter(item.code for item in shown)
-    for diagnostic in shown:
-        seen[diagnostic.code] += 1
-        grouped = totals[diagnostic.code] >= _GROUP_AT and not policy.show_all_occurrences
-        if grouped and seen[diagnostic.code] > _GROUP_SHOWN:
-            if seen[diagnostic.code] == totals[diagnostic.code]:
-                more = totals[diagnostic.code] - _GROUP_SHOWN
-                click.echo(f"  ... and {more} more {diagnostic.code} (--show-all-occurrences)", err=True)
-            continue
-        rendered = _render(diagnostic, policy)
-        click.echo(_render(_secret_refusal("diagnostic text"), policy) if _leaks(rendered) else rendered, err=True)
-    if not policy.quiet:
-        click.echo(_summary(bag, baselined, hidden), err=True)
+    return sorted_for_reading(shown), hidden
+
+
+def _cascades_by_cause(diagnostics: DiagnosticBag, shown: list[Diagnostic], policy: RenderPolicy) -> dict[int, int]:
+    """Count each hidden cascade under the shown finding it follows from, by that finding's index.
+
+    A cascade names its cause's code, not the finding: it goes under the first shown finding of
+    that code about the same subject, else the first of that code; one with neither is counted
+    in the verdict alone.
+    """
+    if policy.show_cascade:
+        return {}
+    counts: Counter[int] = Counter()
+    for cascade in (item for item in diagnostics if item.cascaded):
+        same_code = [index for index, item in enumerate(shown) if item.code == cascade.caused_by]
+        same_subject = [index for index in same_code if shown[index].subject == cascade.subject]
+        targets = same_subject or same_code
+        if targets:
+            counts[targets[0]] += 1
+    return dict(counts)
 
 
 def _hidden_reason(diagnostic: Diagnostic, baselined: frozenset[str], policy: RenderPolicy) -> str | None:
@@ -517,34 +661,12 @@ def _hidden_reason(diagnostic: Diagnostic, baselined: frozenset[str], policy: Re
     return None
 
 
-def _render(diagnostic: Diagnostic, policy: RenderPolicy) -> str:
-    """Render one diagnostic as text, disclosing a promotion, coloured and detailed as the policy says."""
-    text = render_diagnostic(diagnostic)
-    label = f"{diagnostic.severity.name.lower()}[{diagnostic.code}]"
-    declared = diagnostic.promoted_from
-    replacement = label
-    if policy.color:
-        colour = {"ERROR": "red", "WARNING": "yellow", "INFO": "blue"}[diagnostic.severity.name]
-        replacement = click.style(label, fg=colour, bold=True)
-    if declared is not None:
-        replacement += f" (promoted from {declared.name.lower()})"
-    elif diagnostic.demoted_from is not None and not diagnostic.cascaded:
-        replacement += f" (demoted from {diagnostic.demoted_from.name.lower()})"
-    text = text.replace(label, replacement, 1)
-    if policy.verbose:
-        text += f"\n  phase: {diagnostic.phase}; fingerprint: {stable_fingerprint(diagnostic)}"
-    return text
-
-
-def _summary(diagnostics: DiagnosticBag, baselined: frozenset[str], hidden: Counter[str]) -> str:
-    """Return the counts line: every severity, how many were baselined apart, and what was not shown."""
-    counts = summary_counts(diagnostics, baselined)
-    held = counts["baselined"]
-    parts = [
-        counted(counts["error"], "error"),
-        counted(counts["warning"], "warning") + (f" ({held} baselined)" if held else ""),
-        counted(counts["info"], "info"),
-    ]
-    flags = {"info": "--show-info", "baselined": "--show-baselined", "cascade": "--show-cascade"}
-    notes = [f"{count} {reason} not shown ({flags[reason]})" for reason, count in hidden.items() if reason in flags]
-    return "; ".join(parts) + (f"; {'; '.join(notes)}" if notes else "")
+def _render(diagnostic: Diagnostic, policy: RenderPolicy, *, hidden_cascades: int = 0) -> str:
+    """Render one diagnostic as a framed finding, disclosing a promotion and the baseline's hold."""
+    fingerprint = stable_fingerprint(diagnostic)
+    notes = FindingNotes(
+        baselined=fingerprint in baselined_fingerprints(),
+        hidden_cascades=hidden_cascades,
+        fingerprint=fingerprint if policy.verbose else None,
+    )
+    return render_finding(diagnostic, Style(policy.terminal), project_root(), notes)

@@ -58,12 +58,16 @@ from snowflake_semantic_tools.cli.output import (
     RenderPolicy,
     captured,
     emit_json,
+    first_next_step,
     interrupted,
     json_envelope,
+    next_steps_for,
     print_report,
+    print_verdict,
     record_baselined,
     record_reported,
     render_diagnostics,
+    report_failure,
     resolve_invocation,
     use_render_policy,
 )
@@ -114,6 +118,11 @@ class CommandResult:
         gated: True when the exit code is 1 only because a diagnostic is an error, so a run
             whose every error is a baselined, promoted warning exits 0 instead.
         rows: The flat rows `--output csv` prints, one per item; None for a command without them.
+        headline: What a run that succeeded did, which its verdict says (`validated 29 artifacts`);
+            a callable builds it once the baseline is matched. None says `<command> passed`, and
+            a run with no diagnostics and no headline prints no verdict at all.
+        next_steps: What to do next, first step first, which the verdict suggests and the JSON
+            envelope lists; None takes the defaults for the command and its exit code.
     """
 
     exit_code: int = OK
@@ -124,6 +133,8 @@ class CommandResult:
     show_diagnostics: bool = True
     gated: bool = False
     rows: list[dict[str, object]] | None = None
+    headline: str | Callable[[], str | None] | None = None
+    next_steps: tuple[str, ...] | None = None
 
 
 def command_body(
@@ -375,7 +386,12 @@ def _report(command: str, options: GlobalOptions, result: CommandResult) -> None
     append_run_log(options.project_dir, target_dir(options.project_dir), result.diagnostics, command=command)
     if options.output in ("json", "yaml"):
         envelope = json_envelope(
-            command, result.diagnostics, exit_code=result.exit_code, promoted=result.promoted, data=result.data
+            command,
+            result.diagnostics,
+            exit_code=result.exit_code,
+            promoted=result.promoted,
+            data=result.data,
+            next_steps=result.next_steps,
         )
         if options.output == "json":
             emit_json(envelope, result.exit_code)
@@ -385,9 +401,20 @@ def _report(command: str, options: GlobalOptions, result: CommandResult) -> None
         _exit(result.exit_code, withheld=print_report(_csv(result.rows or []), "CSV report"))
     if result.show_diagnostics:
         render_diagnostics(result.diagnostics)
-    # A human report that counts diagnostics counts these, as the summary line above did.
+    # A human report that counts diagnostics counts these, as the verdict below does.
     record_reported(result.diagnostics)
     withheld = result.human is not None and print_report(captured(result.human), "human report")
+    headline = result.headline() if callable(result.headline) else result.headline
+    if result.diagnostics or headline or result.exit_code:
+        steps = next_steps_for(command, result.exit_code, result.diagnostics, result.next_steps)
+        print_verdict(
+            command,
+            result.exit_code,
+            result.diagnostics,
+            headline=headline,
+            next_step=steps[0] if steps else None,
+            hidden=result.show_diagnostics,
+        )
     if result.exit_code or withheld:
         _exit(result.exit_code, withheld=withheld)
 
@@ -454,7 +481,7 @@ def _snowflake_failed(command: str, output: str, exc: SnowflakePortError, projec
             json_envelope(command, diagnostics, exit_code=exit_code, status="error", data={"error": str(exc)}),
             exit_code,
         )
-    render_diagnostics(diagnostics)
+    report_failure(command, diagnostics, exit_code)
     raise click.exceptions.Exit(exit_code) from exc
 
 
@@ -540,7 +567,7 @@ def _write_failed(command: str, output: str, exc: WriteFailure) -> NoReturn:
     diagnostics = DiagnosticBag((diagnostic,))
     if output == "json":
         emit_json(json_envelope(command, diagnostics, exit_code=ERROR, status="error", data={"error": str(exc)}), ERROR)
-    render_diagnostics(diagnostics)
+    report_failure(command, diagnostics, ERROR)
     raise click.exceptions.Exit(ERROR) from exc
 
 
@@ -563,6 +590,7 @@ def _unusable(command: str, output: str, exc: Exception) -> NoReturn:
     render_diagnostics(diagnostics)
     if not diagnostics.has_errors:
         click.echo(f"error: {exc}", err=True)
+    print_verdict(command, CONFIG, diagnostics, next_step=first_next_step(command, CONFIG, diagnostics))
     raise click.exceptions.Exit(CONFIG) from exc
 
 
@@ -576,7 +604,7 @@ def _internal_error(command: str, output: str, exc: Exception) -> NoReturn:
     diagnostics = DiagnosticBag((D("SST-INT001", subject=command, detail=detail),))
     if output == "json":
         emit_json(json_envelope(command, diagnostics, exit_code=ERROR, status="error", data={"error": str(exc)}), ERROR)
-    render_diagnostics(diagnostics)
+    report_failure(command, diagnostics, ERROR)
     raise click.exceptions.Exit(ERROR) from exc
 
 
