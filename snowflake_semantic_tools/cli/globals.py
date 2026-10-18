@@ -21,6 +21,7 @@ from typing import Any
 import click
 
 from snowflake_semantic_tools.cli.options import Decorator, stacked
+from snowflake_semantic_tools.cli.render.terminal import COLOR_CHOICES
 
 # The `--output` values in the order help lists them; `human` is accepted as `table` for one release.
 OUTPUT_FORMATS = ("table", "plain", "json", "yaml", "csv")
@@ -111,6 +112,7 @@ class GlobalOptions:
         profiles_dir: `--profiles-dir`, else `$SST_PROFILES_DIR`; None searches.
         manifest: The dbt manifest to read instead of running `dbt parse`; None runs it.
         baseline: The baseline file; None reads `.sst/baseline.json` when it exists.
+        color: `auto`, `always` or `never`; `--no-color` wins over it, as `never`.
     """
 
     output: str = "table"
@@ -118,6 +120,7 @@ class GlobalOptions:
     quiet: bool = False
     log_level: str = "warn"
     no_color: bool = False
+    color: str = "auto"
     project_dir: Path = Path(".")
     config: Path | None = None
     profiles_dir: Path | None = None
@@ -167,6 +170,7 @@ def _declarations() -> tuple[Declaration, ...]:
         (("--quiet", "-q", "quiet"), {"is_flag": True, "default": None}, None),
         (("--log-level", "log_level"), {"type": click.Choice(LOG_LEVELS)}, "SST_LOG_LEVEL"),
         (("--no-color", "no_color"), {"is_flag": True, "default": None, "type": STRICT_BOOL}, "SST_NO_COLOR"),
+        (("--color", "color"), {"type": click.Choice(COLOR_CHOICES)}, "SST_COLOR"),
         (("--project-dir", "project_dir"), {"type": click.Path(file_okay=False, path_type=Path)}, "SST_PROJECT_DIR"),
         (("--config", "config"), {"type": path}, "SST_CONFIG"),
         (("--profiles-dir", "profiles_dir"), {"type": click.Path(file_okay=False, path_type=Path)}, "SST_PROFILES_DIR"),

@@ -16,6 +16,7 @@ from snowflake_semantic_tools.adapters.paths import make_folders_within, output_
 from snowflake_semantic_tools.cli import confirm as asking
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
+from snowflake_semantic_tools.cli.render.diagnostics import plural
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body, write_text
 from snowflake_semantic_tools.cli.settings import semantic_models_dir
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
@@ -91,7 +92,13 @@ def init(paths: ProjectPaths, skip_prompts: bool, check_only: bool, options: Glo
     if check_only:
         status = "incomplete" if missing else "complete"
         data = {"created": [], "skipped": present, "missing": missing, "status": status}
-        return CommandResult(ERROR if missing else OK, data=data, human=lambda: click.echo(f"setup {status}"))
+        listed = f": missing {', '.join(missing)}" if missing else ""
+        return CommandResult(
+            ERROR if missing else OK,
+            data=data,
+            human=lambda: click.echo(f"setup {status}{listed}"),
+            headline=f"setup {status}",
+        )
     created: list[str] = []
     if not config.exists():
         if not skip_prompts and options.output != "json" and asking.can_ask():
@@ -104,6 +111,4 @@ def init(paths: ProjectPaths, skip_prompts: bool, check_only: bool, options: Glo
         created.append((Path(semantic_dir) / "semantic_views").as_posix())
     skipped = [item for item in present if item not in created]
     data = {"created": created, "skipped": skipped, "status": "scaffolded"}
-    return CommandResult(
-        data=data, human=lambda: click.echo(f"initialized SST project; created {len(created)} item(s)")
-    )
+    return CommandResult(data=data, headline=f"initialized the SST project; created {plural(len(created), 'item')}")

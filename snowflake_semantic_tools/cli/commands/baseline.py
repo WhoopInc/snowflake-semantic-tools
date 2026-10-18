@@ -33,6 +33,7 @@ from snowflake_semantic_tools.cli.exit_codes import ERROR
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import Decorator, selection_options
+from snowflake_semantic_tools.cli.render.diagnostics import plural
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, project_path, write_text
 from snowflake_semantic_tools.cli.settings import project_config
 from snowflake_semantic_tools.cli.wiring import compile as compiling
@@ -136,7 +137,7 @@ def add_command(
     write_text(output_root(paths.project_dir, path.parent), path, baseline_text(written))
     data = _data(path, written, added=added)
     return CommandResult(
-        diagnostics=notes, data=data, human=lambda: click.echo(f"baselined {len(added)} diagnostic(s) in {path}")
+        diagnostics=notes, data=data, headline=f"baselined {plural(len(added), 'diagnostic')} in {path}"
     )
 
 
@@ -178,9 +179,7 @@ def prune_command(
         pruned = (*pruned, *dropped)
     write_text(output_root(paths.project_dir, path.parent), path, baseline_text(written))
     data = _data(path, written, pruned=pruned)
-    return CommandResult(
-        diagnostics=notes, data=data, human=lambda: click.echo(f"pruned {len(pruned)} entry(ies) from {path}")
-    )
+    return CommandResult(diagnostics=notes, data=data, headline=f"pruned {plural(len(pruned), 'entry')} from {path}")
 
 
 @baseline.command(cls=SstCommand, name="show")
@@ -252,7 +251,7 @@ def renew_command(paths: ProjectPaths, options: GlobalOptions, reason: str, expi
     written = renewed(current, today=today.isoformat(), expires_on=_date(today, expires_in), reason=reason)
     write_text(output_root(paths.project_dir, path.parent), path, baseline_text(written))
     data = _data(path, written)
-    return CommandResult(data=data, human=lambda: click.echo(f"renewed {path}; expires on {written.expires_on}"))
+    return CommandResult(data=data, headline=f"renewed {path}; it expires on {written.expires_on}")
 
 
 def _wanted_code(code: str | None, all_warnings: bool) -> str | None:

@@ -26,7 +26,7 @@ from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.app.evals.run import EvalRunsInterrupted
-from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, INTERRUPTED, OK
+from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, ERROR, INTERRUPTED, OK
 from snowflake_semantic_tools.cli.render.diagnostics import (
     HIDDEN_FLAGS,
     FindingNotes,
@@ -352,7 +352,7 @@ def print_report(text: str, where: str) -> bool:
     if _leaks(text):
         render_diagnostics(DiagnosticBag((_secret_refusal(where),)))
         return True
-    click.echo(text, nl=False)
+    click.echo(text, nl=False, color=True if _POLICY[0].terminal.color_out else None)
     return False
 
 
@@ -406,8 +406,9 @@ def announce_interrupt(notice: Diagnostic) -> None:
 
 
 def _echo_err(text: str) -> None:
+    # click strips ANSI from a stream that is not a terminal; `--color always` keeps it.
     with contextlib.suppress(OSError):
-        click.echo(text, err=True)
+        click.echo(text, err=True, color=True if _POLICY[0].terminal.color else None)
 
 
 def _what_remains(command: str, cause: BaseException) -> str:
@@ -605,7 +606,8 @@ def print_verdict(
     is printed under `--quiet`. The line is checked for credentials as every report is.
 
     Args:
-        counts: False leaves the error and warning counts out, for a command that reports none.
+        counts: False leaves the error and warning counts out, for a command that reports none;
+            they are left out of a failure that counted neither, too.
         hidden: False leaves out what the render hid, for a command that shows no diagnostics.
     """
     policy = _POLICY[0]
@@ -620,7 +622,8 @@ def print_verdict(
     verdict = Verdict(
         outcome=outcome,
         headline=title,
-        errors=summary["error"] if counts or summary["error"] or summary["warning"] else None,
+        # A failure nothing counted (a suite, a check) is not "0 errors": it reports its own way.
+        errors=summary["error"] if _counted(counts, outcome, summary) else None,
         warnings=summary["warning"],
         baselined=summary["baselined"],
         hidden=hidden_counts(diagnostics) if hidden else {},
@@ -632,13 +635,26 @@ def print_verdict(
     _echo_err(_render(_secret_refusal("verdict"), policy) if _leaks(rendered) else rendered)
 
 
+def _counted(counts: bool, outcome: str, summary: dict[str, int]) -> bool:
+    """Report whether the verdict counts errors and warnings, as `print_verdict` decides."""
+    found = bool(summary["error"] or summary["warning"])
+    return found or (counts and outcome != "fail")
+
+
 def next_steps_for(
     command: str, exit_code: int, diagnostics: DiagnosticBag, given: tuple[str, ...] | None
 ) -> tuple[str, ...]:
-    """Return the run's next steps: those the command gave, else the defaults for how it ended."""
+    """Return the run's next steps: those the command gave, else the defaults for how it ended.
+
+    A setup failure (exit 4) whose one error says how to fix it, as SST-MAN009's "run sst
+    compile" does, takes that fix as its step instead of the generic one.
+    """
     if given is not None:
         return given
     counts = summary_counts(diagnostics)
+    errors = [item for item in diagnostics if item.blocks and stable_fingerprint(item) not in baselined_fingerprints()]
+    if exit_code == CONFIG and len(errors) == 1 and errors[0].suggestion:
+        return (errors[0].suggestion,)
     return default_next_steps(command, exit_code, errors=counts["error"], warnings=counts["warning"])
 
 
@@ -722,6 +738,16 @@ def _hidden_reason(diagnostic: Diagnostic, baselined: frozenset[str], policy: Re
     if diagnostic.informational and not policy.show_info:
         return "info"
     return None
+
+
+def refusal_text(diagnostic: Diagnostic) -> str:
+    """Render a refusal made before the run's options are read, such as a usage error, for stderr.
+
+    Colour follows the environment alone (`$NO_COLOR`, a terminal), since `--no-color` may be
+    the very flag that did not parse.
+    """
+    terminal = system_terminal(choice="auto", colorable=True)
+    return render_finding(diagnostic, Style(terminal), project_root(), FindingNotes())
 
 
 def _render(diagnostic: Diagnostic, policy: RenderPolicy, *, hidden_cascades: int = 0) -> str:

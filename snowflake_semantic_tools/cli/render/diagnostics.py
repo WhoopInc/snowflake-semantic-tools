@@ -141,8 +141,12 @@ def location(origin: Origin) -> str:
 
 
 def plural(count: int, noun: str) -> str:
-    """Return `count` and `noun`, plural unless the count is 1: `1 error`, `2 errors`, `3 info`."""
-    return f"{count} {noun}" if count == 1 or noun == "info" else f"{count} {noun}s"
+    """Return `count` and `noun`, plural unless the count is 1: `1 error`, `2 entries`, `3 info`."""
+    if count == 1 or noun == "info":
+        return f"{count} {noun}"
+    if noun.endswith("y") and noun[-2:-1] not in ("a", "e", "o", "u"):
+        return f"{count} {noun[:-1]}ies"
+    return f"{count} {noun}s"
 
 
 def located_message(diagnostic: Diagnostic) -> str:

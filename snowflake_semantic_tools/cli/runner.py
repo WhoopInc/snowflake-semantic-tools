@@ -313,6 +313,7 @@ def _render_policy(options: GlobalOptions) -> RenderPolicy:
     return RenderPolicy(
         output=options.output,
         no_color=options.no_color,
+        color=options.color,
         verbose=options.verbose,
         quiet=options.quiet,
         show_info=options.show_info,
@@ -422,6 +423,7 @@ def _report(command: str, options: GlobalOptions, result: CommandResult) -> None
             result.diagnostics,
             headline=headline,
             next_step=steps[0] if steps else None,
+            counts=result.show_diagnostics and bool(result.diagnostics),
             hidden=result.show_diagnostics,
         )
     if result.exit_code or withheld:

@@ -20,8 +20,14 @@ import click
 from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, INTERRUPTED, OK, USAGE
 from snowflake_semantic_tools.cli.globals import MIGRATION_GUIDE, REMOVED_COMMANDS, forwarded, group_global_options
-from snowflake_semantic_tools.cli.output import aborted_line, json_envelope, print_envelope, start_invocation
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, render_diagnostic
+from snowflake_semantic_tools.cli.output import (
+    aborted_line,
+    json_envelope,
+    print_envelope,
+    refusal_text,
+    start_invocation,
+)
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 
 
 class SstUsageError(click.UsageError):
@@ -44,9 +50,9 @@ class SstUsageError(click.UsageError):
         """Print the usage line, then the refusal as a diagnostic, then any further explanation, on stderr."""
         if self.ctx is not None:
             click.echo(self.ctx.get_usage(), file=file, err=True)
-        click.echo(render_diagnostic(self.diagnostic), file=file, err=True)
+        click.echo(refusal_text(self.diagnostic), file=file, err=True)
         if self.message != self.diagnostic.message:
-            click.echo(f"  note: {self.message}", file=file, err=True)
+            click.echo(f"  = note: {self.message}", file=file, err=True)
 
 
 class SstConfigError(click.ClickException):
@@ -64,7 +70,7 @@ class SstConfigError(click.ClickException):
 
     def show(self, file: IO[Any] | None = None) -> None:
         """Print the refusal as a diagnostic, on stderr."""
-        click.echo(render_diagnostic(self.diagnostic), file=file, err=True)
+        click.echo(refusal_text(self.diagnostic), file=file, err=True)
 
 
 def usage_refusal(exc: click.UsageError) -> SstUsageError | SstConfigError:
@@ -244,7 +250,7 @@ def cli(ctx: click.Context, /, **params: Any) -> None:
     A global option goes before the command, after it, or both: a value written after the
     command wins, then one written before it, then its environment variable, then the
     built-in default. The global options read SST_OUTPUT, SST_LOG_LEVEL, SST_NO_COLOR,
-    SST_PROJECT_DIR, SST_CONFIG and SST_PROFILES_DIR; the commands whose help names them read
+    SST_COLOR, SST_PROJECT_DIR, SST_CONFIG and SST_PROFILES_DIR; the commands whose help names them read
     SST_TARGET, SST_DEFER_TARGET, SST_STATE_DIR, SST_STRICT and SST_THREADS. A boolean
     variable takes 1, true, yes, on, or their negations, and a value that does not parse
     exits 4 before anything runs. NO_COLOR and DBT_PROFILES_DIR are honoured.

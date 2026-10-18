@@ -49,9 +49,12 @@ _OPTION_HELP: Mapping[str, str] = {
         "runs, such as the Snowflake connector, log each request at `info`; those records show only "
         "at `debug`. Independent of `--verbose`."
     ),
-    "--no-color": (
-        "No ANSI colour, else `$SST_NO_COLOR`; a non-empty `$NO_COLOR` does the same. Only `table` "
-        "output on a terminal is ever coloured."
+    "--no-color": ("No ANSI colour, else `$SST_NO_COLOR`; a non-empty `$NO_COLOR` does the same. Wins over `--color`."),
+    "--color": (
+        "When to colour `table` output: `auto` (the default) on a terminal, `always` even through a "
+        "pipe, as a CI log viewer renders it, or `never`; else `$SST_COLOR`. Under `auto`, a "
+        "non-empty `$FORCE_COLOR` or `$CLICOLOR_FORCE` turns colour on and `$NO_COLOR` off. No other "
+        "format is ever coloured."
     ),
     "--allow-unsupported-manifest-schema": "Read a dbt manifest of an unsupported schema version, for this run only.",
     "--allow-stale-manifest": (

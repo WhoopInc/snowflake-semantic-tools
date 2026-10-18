@@ -14,7 +14,7 @@ from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.adapters.yaml.ownership import ownership_report
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.policy import strict_reach
-from snowflake_semantic_tools.app.validate import ValidateArtifacts, ValidationResult
+from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.app.validate_models import model_check
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
@@ -28,7 +28,8 @@ from snowflake_semantic_tools.cli.options import (
     validation_options,
     with_model_paths,
 )
-from snowflake_semantic_tools.cli.output import counted, reported_diagnostics, summary_counts, suppressed_by_baseline
+from snowflake_semantic_tools.cli.output import suppressed_by_baseline
+from snowflake_semantic_tools.cli.render.diagnostics import plural
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import (
     project_config,
@@ -139,24 +140,7 @@ def validate(
             "artifacts_checked": result.artifacts_checked,
             "suppressed_by_baseline": suppressed_by_baseline(diagnostics),
         },
-        human=lambda: _print_counts(result, diagnostics),
+        headline=f"validated {plural(len(result.rendered), 'artifact')}",
         promoted=result.promoted,
         gated=True,
-    )
-
-
-def _print_counts(result: ValidationResult, diagnostics: DiagnosticBag) -> None:
-    """Print what was validated, once the baseline is matched, unless an error it does not hold remains.
-
-    The counts are those of the diagnostics the run reports, so they match the summary line
-    above them; a diagnostic the baseline holds is counted apart, so a run it lets pass
-    reports no errors.
-    """
-    counts = summary_counts(reported_diagnostics(diagnostics))
-    if counts["error"]:
-        return
-    held = f" ({counts['baselined']} baselined)" if counts["baselined"] else ""
-    click.echo(
-        f"validated {len(result.rendered)} artifact(s): "
-        f"{counted(counts['error'], 'error')}, {counted(counts['warning'], 'warning')}{held}"
     )

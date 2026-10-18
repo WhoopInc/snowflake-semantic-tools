@@ -35,9 +35,7 @@ def clean(paths: ProjectPaths, dry_run: bool) -> CommandResult:
     existed = path.exists()
     if dry_run:
         data = {"removed": [], "would_remove": [str(path)] if existed else []}
-        return CommandResult(
-            data=data, human=lambda: click.echo(f"would remove {path}" if existed else "nothing to remove")
-        )
+        return CommandResult(data=data, headline=f"would remove {path}" if existed else "nothing to remove")
     if existed:
         try:
             remove_tree_within(paths.project_dir, path)
@@ -47,5 +45,5 @@ def clean(paths: ProjectPaths, dry_run: bool) -> CommandResult:
     data = {"removed": [str(path)] if existed else [], "would_remove": []}
     return CommandResult(
         data=data,
-        human=lambda: click.echo(f"removed {path}" if existed else f"nothing to remove at {path}"),
+        headline=f"removed {path}" if existed else f"nothing to remove at {path}",
     )

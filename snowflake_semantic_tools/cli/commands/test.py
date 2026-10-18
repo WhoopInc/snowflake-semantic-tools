@@ -46,6 +46,7 @@ from snowflake_semantic_tools.cli.options import (
 )
 from snowflake_semantic_tools.cli.output import print_progress
 from snowflake_semantic_tools.cli.plan_output import print_eval_results
+from snowflake_semantic_tools.cli.render.diagnostics import plural
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import threads_setting
 from snowflake_semantic_tools.cli.wiring import compile as compiling
@@ -274,7 +275,7 @@ def _run_smoke(
         exit_code,
         smoke.diagnostics,
         data={"suite": "smoke", "attempted": attempted},
-        human=None if exit_code else lambda: click.echo(f"smoke suite passed: {attempted} probe(s)"),
+        headline=f"smoke suite passed: {plural(attempted, 'probe')}",
     )
 
 
