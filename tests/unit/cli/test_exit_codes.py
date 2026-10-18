@@ -46,6 +46,7 @@ _DECLARED = {
     "plan": {0, 1, 2, 3, 4, 5},
     "apply": {0, 1, 3, 4, 5},
     "list": {0, 1, 3, 4},
+    "lineage": {0, 1, 3, 4},
     "test": {0, 1, 3, 4, 5},
     "docs": {0, 1, 2, 3, 4},
     "clean": {0, 1, 3, 4},
@@ -172,6 +173,10 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("list", 0): lambda tmp, _: _listed(tmp),
     ("list", 3): lambda tmp, _: _run("list", "not-a-type"),
     ("list", 4): lambda tmp, _: _run("list", "--project-dir", str(project_copy(tmp))),
+    ("lineage", 0): lambda tmp, _: _traced(tmp, "model:orders"),
+    ("lineage", 1): lambda tmp, _: _traced(tmp, "model:orders", "--no-manifest", broken=True),
+    ("lineage", 3): lambda tmp, _: _traced(tmp, "model:nope"),
+    ("lineage", 4): lambda tmp, _: _run("lineage", "--project-dir", str(project_copy(tmp)), "model:orders"),
     ("test", 0): lambda tmp, mp: _test_smoke(tmp, mp, applied=True),
     ("test", 1): lambda tmp, mp: _test_smoke(tmp, mp, applied=False),
     ("test", 3): lambda tmp, _: _run("test", "--suite", "every"),
@@ -428,6 +433,15 @@ def _listed(tmp: Path) -> Result:
     return _run("list", "--project-dir", str(project), "semantic-views", "--long", "--exclude", "jaffle_menu")
 
 
+def _traced(tmp: Path, *args: str, broken: bool = False) -> Result:
+    """Trace one node of the reference project, compiled, or with `broken` one view that fails to."""
+    project = project_copy(tmp)
+    compile_project(project)
+    if broken:
+        break_menu_view(project)
+    return _run("lineage", *common(project), *args)
+
+
 def _docs_unwritable(tmp: Path) -> Result:
     (tmp / "docs").write_text("a file where the docs directory goes", encoding="utf-8")
     return _run("docs", "--project-dir", str(tmp))
@@ -468,7 +482,13 @@ def test_every_command_is_in_the_exit_code_table() -> None:
 
 
 # A command line each body is reached by: a group's subcommand, and a command's required arguments.
-_INVOCATIONS = {"explain": ("SST-VAL009",), "drop": DROP, "convert": ("--to", "hybrid"), "ask": ("agent", "q")}
+_INVOCATIONS = {
+    "explain": ("SST-VAL009",),
+    "drop": DROP,
+    "convert": ("--to", "hybrid"),
+    "ask": ("agent", "q"),
+    "lineage": ("model:orders",),
+}
 
 
 def _interruptible(name: str, command: click.Command) -> list[list[str]]:

@@ -117,6 +117,7 @@ COMMAND_ORDER = (
     "validate",
     "baseline",
     "list",
+    "lineage",
     "plan",
     "apply",
     "diff",

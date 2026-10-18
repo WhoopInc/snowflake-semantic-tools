@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 755
+- Codes: 756
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -188,11 +188,11 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-LOD200`](error-codes.md#sst-lod200) | LOD | info | local | `snowflake_semantic_tools.adapters.yaml.discover` | `tests/codes/lod/test_sst_lod200.py` |
 | [`SST-LOD201`](error-codes.md#sst-lod201) | LOD | info | local | `snowflake_semantic_tools.adapters.yaml.documents` | `tests/codes/lod/test_sst_lod201.py` |
 | [`SST-LOD202`](error-codes.md#sst-lod202) | LOD | info | local | `snowflake_semantic_tools.adapters.yaml.text_checks` | `tests/codes/lod/test_sst_lod202.py` |
-| [`SST-MAN001`](error-codes.md#sst-man001) | MAN | error | local | `snowflake_semantic_tools.cli.wiring.manifest`<br>`snowflake_semantic_tools.cli.wiring.plan` | `tests/codes/man/test_sst_man001.py` |
+| [`SST-MAN001`](error-codes.md#sst-man001) | MAN | error | local | `snowflake_semantic_tools.cli.commands.lineage`<br>`snowflake_semantic_tools.cli.wiring.manifest`<br>`snowflake_semantic_tools.cli.wiring.plan` | `tests/codes/man/test_sst_man001.py` |
 | [`SST-MAN002`](error-codes.md#sst-man002) | MAN | error | local | `snowflake_semantic_tools.adapters.fs.local`<br>`snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man002.py` |
 | [`SST-MAN003`](error-codes.md#sst-man003) | MAN | error | local | `snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man003.py` |
 | [`SST-MAN005`](error-codes.md#sst-man005) | MAN | error | local | `snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man005.py` |
-| [`SST-MAN006`](error-codes.md#sst-man006) | MAN | error | local | `snowflake_semantic_tools.app.manifest`<br>`snowflake_semantic_tools.cli.commands.list` | `tests/codes/man/test_sst_man006.py` |
+| [`SST-MAN006`](error-codes.md#sst-man006) | MAN | error | local | `snowflake_semantic_tools.app.manifest`<br>`snowflake_semantic_tools.cli.wiring.manifest` | `tests/codes/man/test_sst_man006.py` |
 | [`SST-MAN007`](error-codes.md#sst-man007) | MAN | error | runtime | `snowflake_semantic_tools.cli.commands.compile` | `tests/codes/man/test_sst_man007.py` |
 | [`SST-MAN008`](error-codes.md#sst-man008) | MAN | error | local | `snowflake_semantic_tools.cli.commands.compile` | `tests/codes/man/test_sst_man008.py` |
 | [`SST-MAN009`](error-codes.md#sst-man009) | MAN | error | local | `snowflake_semantic_tools.app.manifest` | `tests/codes/man/test_sst_man009.py` |
@@ -355,6 +355,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-PRT109`](error-codes.md#sst-prt109) | PRT | error | local | `snowflake_semantic_tools.cli.commands.apply`<br>`snowflake_semantic_tools.cli.commands.baseline`<br>`snowflake_semantic_tools.cli.commands.drop`<br>`snowflake_semantic_tools.cli.confirm` | `tests/codes/prt/test_sst_prt109.py` |
 | [`SST-PRT110`](error-codes.md#sst-prt110) | PRT | error | local | `snowflake_semantic_tools.cli.commands.drop`<br>`snowflake_semantic_tools.cli.runner` | `tests/codes/prt/test_sst_prt110.py` |
 | [`SST-PRT111`](error-codes.md#sst-prt111) | PRT | error | local | `snowflake_semantic_tools.cli.commands.compile` | `tests/codes/prt/test_sst_prt111.py` |
+| [`SST-PRT112`](error-codes.md#sst-prt112) | PRT | error | local | `snowflake_semantic_tools.cli.commands.lineage` | `tests/codes/prt/test_sst_prt112.py` |
 | [`SST-REF001`](error-codes.md#sst-ref001) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.build`<br>`snowflake_semantic_tools.adapters.yaml.semantic.relationships`<br>`snowflake_semantic_tools.domain.resolve.routine_body`<br>`snowflake_semantic_tools.domain.resolve.template`<br>`snowflake_semantic_tools.domain.validate.semantic.expressions`<br>`snowflake_semantic_tools.domain.validate.semantic.metrics` | `tests/codes/ref/test_sst_ref001.py` |
 | [`SST-REF002`](error-codes.md#sst-ref002) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.relationships`<br>`snowflake_semantic_tools.domain.resolve.template`<br>`snowflake_semantic_tools.domain.validate.semantic.expressions`<br>`snowflake_semantic_tools.domain.validate.semantic.metrics` | `tests/codes/ref/test_sst_ref002.py` |
 | [`SST-REF003`](error-codes.md#sst-ref003) | REF | error | local | `snowflake_semantic_tools.domain.resolve.calls` | `tests/codes/ref/test_sst_ref003.py` |

@@ -181,11 +181,22 @@ def _body(command: str, data: Mapping[str, object]) -> list[str]:
             continue
         error = f" | {_one_line(str(outcome['error']))}" if outcome.get("error") else ""
         lines.append(f"{outcome.get('status')} {outcome.get('artifact_key')} {outcome.get('action')}{error}")
+    return [*lines, *_listed(command, data)]
+
+
+def _listed(command: str, data: Mapping[str, object]) -> list[str]:
+    """Return one line per item `list` lists, or per node `lineage` traces; none for another command."""
     if command == "list":
-        for item in _rows(data.get("items")):
-            parts = [str(item.get(key)) for key in ("key", "status", "target", "relation") if item.get(key)]
-            lines.append(" ".join(parts))
-    return lines
+        listed = ("key", "status", "target", "relation")
+        return [" ".join(str(item.get(key)) for key in listed if item.get(key)) for item in _rows(data.get("items"))]
+    if command != "lineage":
+        return []
+    traced = ("direction", "depth", "key", "kind", "relation")
+    return [
+        " ".join(str(item.get(key)) for key in traced if item.get(key) is not None)
+        + (" changed" if item.get("changed") else "")
+        for item in _rows(data.get("nodes"))
+    ]
 
 
 def _members(diff: list[Mapping[str, object]]) -> list[str]:

@@ -25,6 +25,7 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst baseline renew`](#sst-baseline-renew) | Re-date the baseline --expires-in days from today, recording --reason as its audit record. |
 | [`sst baseline show`](#sst-baseline-show) | List the baseline's entries: those of one --code, or with --expired only once it has expired. |
 | [`sst list`](#sst-list) | List compiled artifacts and their cached application status, optionally of one TYPE. |
+| [`sst lineage`](#sst-lineage) | Show what NODE reads and what reads it: dbt models and sources, members, and artifacts. |
 | [`sst plan`](#sst-plan) | Observe live Snowflake state and compute a non-writing plan. |
 | [`sst apply`](#sst-apply) | Apply a current reviewed plan; smoke probes never run here. |
 | [`sst diff`](#sst-diff) | Compare two states -- local, a dbt target, or a saved plan -- and list what differs. |
@@ -478,6 +479,37 @@ sst list [OPTIONS] [TYPE]
 | `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. dbt's graph operators add lineage: `model:orders+` is every artifact `orders` feeds, `+agent:a` all an agent reads, and `2+x` or `x+1` bound the steps; `model:`, `source:`, `exposure:` and a member such as `metric:<name>` work inside them. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--long` | flag |  | Also print each artifact's applied fingerprint and published version; `json`, `yaml` and `csv` also carry its source files. |
+| `--no-manifest` | flag |  | Compile the project's files in memory instead of reading the compiled manifest. |
+| `--dbt` | DIRECTORY |  | With `--no-manifest`, read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`. |
+| `--semantic` | DIRECTORY |  | With `--no-manifest`, read the semantic models from this directory instead of `project.semantic_models_dir`. |
+
+## sst lineage
+
+Show what NODE reads and what reads it: dbt models and sources, members, and artifacts.
+
+NODE is an artifact key such as semantic_view:sales, a member key such as
+metric:total_revenue, model:&lt;name&gt;, source:&lt;source&gt;.&lt;table&gt;, exposure:&lt;name&gt;, or a bare name,
+which names every node of that name; the name after a kind may glob. Both directions are
+shown unless --upstream or --downstream picks one, as far as the graph goes unless --depth
+stops it. Without --no-manifest the manifest `sst compile` wrote is read, and its absence
+exits 4; with it, the project is compiled in memory, nothing is written, and what fails to
+compile is reported and exits 1. --state marks what changed since that directory's
+manifest. A NODE the graph does not hold exits 3 (SST-PRT112).
+
+```text
+sst lineage [OPTIONS] NODE
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--upstream` | flag |  | Show only what NODE reads: the dbt models, sources and members it comes from. |
+| `--downstream` | flag |  | Show only what reads NODE: the members and artifacts it feeds. |
+| `--depth` | INTEGER RANGE |  | Walk at most this many steps from NODE each way; the whole graph by default. |
+| `--state` | DIRECTORY |  | Previous run's build directory, else `$SST_STATE_DIR`: mark each artifact and member that changed since its `manifest.json`. |
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--defer-target` | TEXT |  | The `profiles.yml` target whose relations dbt objects resolve to, while publishing to `--target`; else `$SST_DEFER_TARGET`, else `defer.target`. |
+| `--no-defer` | flag |  | Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say. |
+| `--database` | TEXT |  | Read from this database instead of the target's; never where an artifact is published. |
 | `--no-manifest` | flag |  | Compile the project's files in memory instead of reading the compiled manifest. |
 | `--dbt` | DIRECTORY |  | With `--no-manifest`, read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`. |
 | `--semantic` | DIRECTORY |  | With `--no-manifest`, read the semantic models from this directory instead of `project.semantic_models_dir`. |

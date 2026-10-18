@@ -267,4 +267,15 @@ SPECS: tuple[ErrorSpec, ...] = (
             "file, as names that differ only in case do; nothing is emitted, though the manifest is written"
         ),
     ),
+    spec(
+        "SST-PRT112",
+        Severity.ERROR,
+        "Lineage names no node",
+        "no lineage node is named '{value}'",
+        "name an artifact, a member such as metric:<name>, model:<name> or source:<source>.<table>{detail}",
+        condition=(
+            "`sst lineage NODE` names nothing the lineage graph holds: no artifact, member, dbt model, "
+            "source or exposure of that key or name"
+        ),
+    ),
 )

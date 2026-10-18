@@ -116,6 +116,7 @@ CASES = (
     Case("validate-errors", _broken, (*_OFFLINE, "validate", "--no-snowflake-syntax-check")),
     Case("validate-clean", _clean, (*_OFFLINE, "validate", "--no-snowflake-syntax-check")),
     Case("list", _compiled, (*_OFFLINE, "list")),
+    Case("lineage", _compiled, (*_OFFLINE, "lineage", "tool:order_status"), variants=("color", "plain", "narrow")),
     Case("usage-error", _clean, ("validate", "--bogus")),
     Case("compile-help", _clean, ("compile", "--help"), variants=("plain",)),
     Case("plan-changes", _compiled, (*_OFFLINE, "plan", "--target", "dev", "--no-plan-out"), snowflake=True),

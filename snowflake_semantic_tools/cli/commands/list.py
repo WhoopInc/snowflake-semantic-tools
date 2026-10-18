@@ -17,7 +17,6 @@ from pathlib import Path
 
 import click
 
-from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.local import STATE_FILE_GLOB, StateFileStore
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.app.listing import (
@@ -45,14 +44,13 @@ from snowflake_semantic_tools.cli.render.style import Style
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.compile import checked_scope, manifest_universe
-from snowflake_semantic_tools.cli.wiring.manifest import build_manifest, compiled_manifest
+from snowflake_semantic_tools.cli.wiring.manifest import build_manifest, compiled_manifest, refuse_another_target
 from snowflake_semantic_tools.cli.wiring.project import target_dir
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.lineage.graph import manifest_lineage
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan.selectors import SelectionScope
-from snowflake_semantic_tools.domain.state import Manifest
 from snowflake_semantic_tools.domain.state.manifest import ArtifactEntry
 
 LIST_OUTPUTS = ("table", "plain", "agent", "json", "yaml", "csv")
@@ -117,7 +115,7 @@ def list_command(
         found: tuple[Diagnostic, ...] = tuple(compiled.diagnostics)
     else:
         manifest = compiled_manifest(paths.project_dir)
-        _refuse_another_target(manifest, target_name)
+        refuse_another_target(manifest, target_name)
         found = read_notes(manifest, str(target_dir(paths.project_dir) / "manifest.json"))
     failed = DiagnosticBag(found).has_errors
     universe = manifest_universe(manifest)
@@ -154,20 +152,6 @@ def list_command(
 
 # How much of a fingerprint the table shows.
 _SHORT = 12
-
-
-def _refuse_another_target(manifest: Manifest, target_name: str | None) -> None:
-    """Refuse a --target other than the one the compiled manifest was compiled for.
-
-    A manifest compiled without a target, or a run with none, agrees with any.
-
-    Raises:
-        ProjectError: the manifest records another target (SST-MAN006).
-    """
-    found = str(manifest.project.get("target") or "")
-    if target_name and found and found != target_name:
-        mismatch = D("SST-MAN006", found=found, expected=target_name)
-        raise ProjectError(mismatch.message, diagnostics=(mismatch,))
 
 
 def _item(summary: ArtifactSummary, entry: ArtifactEntry | None) -> dict[str, object]:

@@ -30,7 +30,7 @@ cannot be downgraded by any setting.
 - [Apply (APL)](#apply-apl) -- 37 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 7 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
-- [External systems (PRT)](#external-systems-prt) -- 25 codes
+- [External systems (PRT)](#external-systems-prt) -- 26 codes
 - [Internal (INT)](#internal-int) -- 12 codes
 - [Retired numbers](#retired-numbers) -- 70 numbers
 
@@ -7825,6 +7825,16 @@ Fix: name one object, or use apply --prune for set-based removal
 Raised when two artifacts of one type would write the same `sst compile --emit-ddl` or `--emit-agent-spec` file, as names that differ only in case do; nothing is emitted, though the manifest is written.
 
 Fix: rename one of the two artifacts; names that differ only in case name one file
+
+### SST-PRT112
+
+**Lineage names no node** (error)
+
+`no lineage node is named '<value>'`
+
+Raised when `sst lineage NODE` names nothing the lineage graph holds: no artifact, member, dbt model, source or exposure of that key or name.
+
+Fix: name an artifact, a member such as metric:&lt;name&gt;, model:&lt;name&gt; or source:&lt;source&gt;.&lt;table&gt;{detail}
 
 ## Internal (INT)
 

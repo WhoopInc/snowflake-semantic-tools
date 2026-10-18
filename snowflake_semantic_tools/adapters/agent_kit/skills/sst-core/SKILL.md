@@ -47,6 +47,7 @@ skills, and CoCo Desktop profiles, then publishes them. This kit was installed b
 | `sst explain` | offline | Explains one diagnostic code; needs no project. |
 | `sst compile` | offline | Writes `target/sst/manifest.json`; `--emit-ddl <dir>` writes the DDL to read. |
 | `sst list` | offline | Lists compiled artifacts and their cached status. |
+| `sst lineage` | offline | What a model, member or artifact reads and what reads it; `--state <dir>` marks changes. Use it before an edit to see what it reaches, and `--select model:<name>+` to plan only that. |
 | `sst format` | offline, edits files | `--check` exits 2 when a file would change; run it after editing SST YAML. |
 | `sst init` | offline, edits files | Scaffolds `sst_config.yml`; never overwrites a file. |
 | `sst clean` | offline, edits files | Removes `target/sst` only. |

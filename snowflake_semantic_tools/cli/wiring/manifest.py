@@ -30,6 +30,20 @@ def lineage_of(
     return lambda: manifest_lineage(build_manifest(paths, result, manifest_path, target_name))
 
 
+def refuse_another_target(manifest: Manifest, target_name: str | None) -> None:
+    """Refuse a --target other than the one the compiled manifest was compiled for.
+
+    A manifest compiled without a target, or a run with none, agrees with any.
+
+    Raises:
+        ProjectError: the manifest records another target (SST-MAN006).
+    """
+    found = str(manifest.project.get("target") or "")
+    if target_name and found and found != target_name:
+        mismatch = D("SST-MAN006", found=found, expected=target_name)
+        raise ProjectError(mismatch.message, diagnostics=(mismatch,))
+
+
 def compiled_manifest(project_dir: Path) -> Manifest:
     """The manifest `sst compile` wrote; plan, apply, list, and the suites read it.
 

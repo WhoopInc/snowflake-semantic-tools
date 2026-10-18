@@ -78,6 +78,39 @@ for, so two targets that publish the same project to different databases
 agree; only a real difference, such as one target's metric edited by hand or a
 warehouse configured per target, is listed.
 
+### What a change reaches
+
+The compiled manifest records the project's lineage: dbt's graph as the target
+reads it (models, seeds, snapshots, sources and exposures), what each view member
+reads, and what each artifact reads, a procedure's or function's body included
+when it names its tables with `{{ ref() }}`. `sst lineage NODE` shows one node of
+it, offline:
+
+```bash
+sst lineage model:orders --downstream            # every member and artifact orders feeds
+sst lineage tool:order_status --upstream          # the models the procedure's body reads
+sst lineage metric:total_revenue --state prod-run/ # and which of them changed since then
+```
+
+NODE is an artifact key, a member key such as `metric:<name>`, `model:<name>`,
+`source:<source>.<table>`, `exposure:<name>`, or a bare name. `--depth` bounds
+the walk, `--state` marks each artifact and member that changed since another
+run's manifest, and `--no-manifest` traces the project as it compiles now.
+
+Every `--select` and `--exclude` takes dbt's graph operators over the same
+graph, so a pull request can plan only what a model change reaches:
+
+```bash
+sst plan --target prod --select model:orders+          # what orders feeds
+sst plan --target prod --select +agent:support_agent   # what the agent reads
+sst plan --target prod --select 2+metric:total_revenue+1
+```
+
+`+X` adds what X reads, `X+` what reads X, and a number bounds the steps.
+`model:`, `source:`, `exposure:` and members name no artifact on their own, so
+they are refused outside the operators. `sst enrich --select +model:orders`
+walks dbt's graph alone, to enrich a model and those it is built from.
+
 ### Recording what an update replaces
 
 `sst plan --capture-prior` also reads the current definition of each live object

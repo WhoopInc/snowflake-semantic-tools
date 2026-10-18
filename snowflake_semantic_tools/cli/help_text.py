@@ -265,6 +265,20 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst list", "--semantic"): (
         "With `--no-manifest`, read the semantic models from this directory instead of `project.semantic_models_dir`."
     ),
+    ("sst lineage", "--upstream"): "Show only what NODE reads: the dbt models, sources and members it comes from.",
+    ("sst lineage", "--downstream"): "Show only what reads NODE: the members and artifacts it feeds.",
+    ("sst lineage", "--depth"): "Walk at most this many steps from NODE each way; the whole graph by default.",
+    ("sst lineage", "--state"): (
+        "Previous run's build directory, else `$SST_STATE_DIR`: mark each artifact and member that "
+        "changed since its `manifest.json`."
+    ),
+    ("sst lineage", "--no-manifest"): "Compile the project's files in memory instead of reading the compiled manifest.",
+    ("sst lineage", "--dbt"): (
+        "With `--no-manifest`, read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`."
+    ),
+    ("sst lineage", "--semantic"): (
+        "With `--no-manifest`, read the semantic models from this directory instead of `project.semantic_models_dir`."
+    ),
     ("sst validate", "--show-info"): (
         "Show info diagnostics instead of counting them, among them which registered type owns each "
         "semantic-model file."
