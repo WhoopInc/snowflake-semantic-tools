@@ -72,7 +72,7 @@ We use GitHub issue templates to help structure your report. When you [create a 
 
 ### Prerequisites
 
-- Python 3.11–3.13 (`pyproject.toml` declares `>=3.11,<3.14`; CI runs 3.11)
+- Python 3.11–3.13 (`pyproject.toml` declares `>=3.11,<3.14`; CI tests and installs the wheel on each, and measures coverage on 3.11)
 - Poetry 2 for dependency management (CI pins 2.2.1)
 - Nothing else for the test suite: it needs no Snowflake account and no dbt install
 

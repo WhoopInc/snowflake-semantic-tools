@@ -148,6 +148,38 @@ def test_the_required_gate_parses_the_reference_project_with_every_admitted_dbt_
     )
 
 
+def _admitted_pythons() -> list[str]:
+    """The `3.<minor>` releases pyproject.toml's `python = ">=3.A,<3.B"` admits, in order."""
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    found = re.search(r'^python = ">=3\.(\d+),<3\.(\d+)"$', pyproject, re.MULTILINE)
+    assert found, "pyproject.toml declares python as >=3.A,<3.B"
+    return [f"3.{minor}" for minor in range(int(found.group(1)), int(found.group(2)))]
+
+
+def test_the_required_gate_tests_and_installs_on_every_python_pyproject_admits() -> None:
+    # The README and getting-started promise these versions; CI must run each of them.
+    admitted = _admitted_pythons()
+    jobs = _workflow("test-and-lint.yml")["jobs"]
+    for name in ("test", "wheel"):
+        job = jobs[name]
+        assert job["strategy"]["matrix"]["python"] == admitted, name
+        assert job["strategy"]["fail-fast"] is False, name
+        setup = next(step for step in job["steps"] if str(step.get("uses", "")).startswith("actions/setup-python@"))
+        assert setup["with"]["python-version"] == "${{ matrix.python }}", name
+    cache = next(step for step in jobs["test"]["steps"] if step.get("id") == "cached-poetry-dependencies")
+    assert "${{ matrix.python }}" in cache["with"]["key"]
+    # The coverage numbers are one version's: the ratchet and the floors run on the oldest only.
+    coverage = [
+        step
+        for step in jobs["test"]["steps"]
+        if str(step.get("name", "")).startswith("Check") and "coverage" in str(step.get("name", ""))
+    ]
+    assert len(coverage) == 5 and all(step.get("if") == f"matrix.python == '{admitted[0]}'" for step in coverage)
+    for page in ("README.md", "docs/getting-started.md", "CONTRIBUTING.md"):
+        text = (REPO_ROOT / page).read_text(encoding="utf-8")
+        assert f"{admitted[0]}–{admitted[-1]}" in text or ", ".join(admitted[:-1]) in text, page
+
+
 def test_the_required_gate_runs_the_built_wheel_installed_alone_outside_the_checkout() -> None:
     job = _workflow("test-and-lint.yml")["jobs"]["wheel"]
     runs = [" ".join(str(step.get("run", "")).split()) for step in job["steps"]]

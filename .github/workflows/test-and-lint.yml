@@ -19,11 +19,18 @@ permissions:
   contents: read
 
 jobs:
+  # Every Python pyproject.toml admits and the README promises: a regression that shows on only
+  # one of them fails here. The coverage numbers are 3.11's alone (the ratchet and the per-ring
+  # floors below); every other check runs on each version.
   test:
-    name: Run tests and linting
+    name: Run tests and linting (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
     env:
       # Deterministic property tests, so a failure on a pull request reproduces on rerun.
       HYPOTHESIS_PROFILE: ci
@@ -37,7 +44,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python }}
 
       - name: Install Poetry
         uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
@@ -60,7 +67,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .venv
-          key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
+          key: venv-${{ runner.os }}-${{ matrix.python }}-${{ hashFiles('**/poetry.lock') }}
 
       - name: Install dependencies
         run: poetry install --no-interaction --no-root
@@ -91,27 +98,33 @@ jobs:
 
       # Per-layer line and branch coverage over the whole suite may not fall below
       # tests/coverage_baseline.json. Lowering a number is an edit to that file, in review.
+      # The baseline and the floors are measured on 3.11, so only that run checks them.
       - name: Check that coverage did not fall
+        if: matrix.python == '3.11'
         run: poetry run python -m tests.helpers.coverage_ratchet check --coverage-json coverage.json
 
       - name: Check adapters coverage
+        if: matrix.python == '3.11'
         run: >-
           poetry run coverage report --include='snowflake_semantic_tools/adapters/*'
           --fail-under=90 --skip-covered
 
       - name: Check domain coverage
+        if: matrix.python == '3.11'
         run: >-
           poetry run pytest -q --cov=snowflake_semantic_tools.domain --cov-branch
           --cov-report=term --cov-fail-under=100
           tests/unit/domain tests/unit/test_render_semantic_view.py
 
       - name: Check application coverage
+        if: matrix.python == '3.11'
         run: >-
           poetry run pytest -q --cov=snowflake_semantic_tools.app --cov-branch
           --cov-report=term --cov-fail-under=95
           tests/unit/app tests/unit/test_compile_use_case.py tests/unit/test_manifest_v1.py
 
       - name: Check CLI coverage
+        if: matrix.python == '3.11'
         run: >-
           poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch
           --cov-report=term --cov-fail-under=90
@@ -247,10 +260,14 @@ jobs:
           --dbt-manifest "$REFERENCE_PROJECT/target/manifest.json"
 
   wheel:
-    name: Install the built wheel alone and run it
+    name: Install the built wheel alone and run it (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
 
     steps:
       - name: Check out repository
@@ -261,7 +278,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python }}
 
       - name: Install Poetry
         uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
