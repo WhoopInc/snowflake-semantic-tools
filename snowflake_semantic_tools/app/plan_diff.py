@@ -11,31 +11,76 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
+from typing import TypeVar
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompiledView
+from snowflake_semantic_tools.app.compile.agents import CompiledAgent
+from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.app.fanout import Fanout
+from snowflake_semantic_tools.app.prior import served_version
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, Change
+from snowflake_semantic_tools.domain.model.tool import ToolKind
+from snowflake_semantic_tools.domain.plan.definitions.agent import spec_definition
 from snowflake_semantic_tools.domain.plan.definitions.semantic_view import desired_view, live_view
+from snowflake_semantic_tools.domain.plan.definitions.tool import (
+    desired_routine,
+    desired_search,
+    live_routine,
+    live_search,
+    search_query,
+)
 from snowflake_semantic_tools.domain.plan.member_diff import Definition, diff_definitions
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
 # How one artifact type's two sides are read: (live, desired), from a session, what compiled, and
-# the object the update replaces.
-DefinitionRead = Callable[[SnowflakePort, CompiledArtifact, QualifiedName], tuple[Definition, Definition]]
+# the change; None for an artifact of the type that is not compared, such as a stage tool.
+DefinitionRead = Callable[[SnowflakePort, CompiledArtifact, Change], tuple[Definition, Definition] | None]
 
 
-def _semantic_view(
-    port: SnowflakePort, compiled: CompiledArtifact, name: QualifiedName
-) -> tuple[Definition, Definition]:
-    if not isinstance(compiled, CompiledView):
-        raise TypeError(f"{compiled.artifact_key} did not compile as a semantic view")
-    return live_view(port.describe_semantic_view(name)), desired_view(compiled.view)
+def _semantic_view(port: SnowflakePort, compiled: CompiledArtifact, change: Change) -> tuple[Definition, Definition]:
+    view = _compiled_as(compiled, CompiledView).view
+    return live_view(port.describe_semantic_view(_replaced(change))), desired_view(view)
 
 
-READS: Mapping[str, DefinitionRead] = {"semantic_view": _semantic_view}
+def _agent(port: SnowflakePort, compiled: CompiledArtifact, change: Change) -> tuple[Definition, Definition]:
+    """The specification the version the agent serves holds, against the one SST renders."""
+    agent = _compiled_as(compiled, CompiledAgent)
+    alias = change.rendered.desired_alias if change.rendered is not None else None
+    served = served_version(port.observe_agent_versions(_replaced(change)).versions, alias)
+    if served is None or served.specification is None:
+        raise SnowflakePortError("the role may not read the specification of the version the agent serves")
+    try:
+        live = spec_definition(served.specification)
+    except ValueError as exc:
+        raise SnowflakePortError(f"the specification the agent serves is not a JSON object: {exc}") from exc
+    return live, spec_definition(agent.payload)
+
+
+def _tool(port: SnowflakePort, compiled: CompiledArtifact, change: Change) -> tuple[Definition, Definition] | None:
+    """A procedure, function or search service as DESCRIBE shows it, against its render; None for a stage."""
+    tool = _compiled_as(compiled, CompiledTool)
+    member, name = tool.member, _replaced(change)
+    if member.type == ToolKind.CORTEX_SEARCH_SERVICE.value:
+        described = port.describe_properties("CORTEX SEARCH SERVICE", name)
+        if described is None:
+            raise SnowflakePortError(f"no search service {name.sql} to describe")
+        return live_search(member.name, described), desired_search(member, search_query(tool.rendered.ddl))
+    if member.type not in (ToolKind.PROCEDURE.value, ToolKind.FUNCTION.value):
+        return None
+    procedure = member.type == ToolKind.PROCEDURE.value
+    signature = tuple(parameter.type for parameter in member.signature)
+    if change.observed is not None and change.observed.routine_signature:
+        signature = change.observed.routine_signature
+    described = port.describe_routine(member.type.upper(), name, signature)
+    comment = change.observed.comment if change.observed is not None else None
+    live = live_routine(member.name, described, comment, procedure=procedure)
+    return live, desired_routine(member, procedure=procedure)
+
+
+READS: Mapping[str, DefinitionRead] = {"semantic_view": _semantic_view, "agent": _agent, "tool": _tool}
 
 
 def diff_updates(
@@ -60,12 +105,12 @@ def diff_updates(
 
     def compared(port: SnowflakePort, index: int) -> Change | Diagnostic:
         change = changes[index]
-        name = _replaced(change)
         try:
-            live, desired = reads[change.artifact_type](port, compiled[change.key], name)
+            sides = reads[change.artifact_type](port, compiled[change.key], change)
         except SnowflakePortError as exc:
-            return D("SST-PLN041", subject=change.key, artifact=change.key, value=name.sql, detail=str(exc))
-        return replace(change, member_diff=diff_definitions(live, desired))
+            name = _replaced(change).sql
+            return D("SST-PLN041", subject=change.key, artifact=change.key, value=name, detail=str(exc))
+        return change if sides is None else replace(change, member_diff=diff_definitions(*sides))
 
     results = dict(zip(comparable, readers.map(compared, comparable), strict=True))
     updated = tuple(
@@ -74,6 +119,15 @@ def diff_updates(
     )
     refused = tuple(result for result in results.values() if isinstance(result, Diagnostic))
     return updated, refused
+
+
+ArtifactT = TypeVar("ArtifactT", bound=CompiledArtifact)
+
+
+def _compiled_as(compiled: CompiledArtifact, kind: type[ArtifactT]) -> ArtifactT:
+    if not isinstance(compiled, kind):
+        raise TypeError(f"{compiled.artifact_key} did not compile as a {kind.__name__}")
+    return compiled
 
 
 def _replaced(change: Change) -> QualifiedName:

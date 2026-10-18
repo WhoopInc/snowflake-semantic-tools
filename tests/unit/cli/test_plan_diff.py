@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 from typing import Any
@@ -10,33 +11,49 @@ import pytest
 
 from snowflake_semantic_tools.adapters.locations import locate_project
 from snowflake_semantic_tools.app.compile import CompiledView
+from snowflake_semantic_tools.app.compile.agents import CompiledAgent
+from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.cli.wiring.compile import compile_result
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.plan.definitions.tool import search_query
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.cli_projects import common, compile_project, invoke_with_port
+from tests.helpers.described_objects import described_search, described_view
 from tests.helpers.published_target import PublishingSnowflake, publishing_port
 from tests.helpers.reference_project import DBT_MANIFEST, project_copy
-from tests.helpers.semantic_view_rows import described_view
 
-_METRIC = "semantic_models/metrics/line_item_count.yml"
-_BEFORE = "COUNT({{ ref('order_items', 'order_item_id') }})"
-_AFTER = "COUNT(DISTINCT {{ ref('order_items', 'order_item_id') }})"
+_METRIC = ("semantic_models/metrics/line_item_count.yml", "COUNT({{", "COUNT(DISTINCT {{")
 
 
-def _published(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, PublishingSnowflake]:
-    """The reference project applied to a fake target whose views DESCRIBE as published, then one metric edited."""
+def _published(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, edit: tuple[str, str, str] = _METRIC, *, agents: bool = False
+) -> tuple[Path, PublishingSnowflake]:
+    """The reference project applied to a fake target that describes each object as published, then one edit made.
+
+    Each view and search service DESCRIBEs as it was published. With `agents`, each agent serves
+    one version, the default, holding the specification published; the fake then reads each
+    agent's versions as drifted, so every agent plans an update.
+    """
     project = project_copy(tmp_path)
     compile_project(project)
     port = publishing_port(project)
     applied = invoke_with_port(monkeypatch, port, ["apply", *common(project), "--target", "dev", "--yes"])
     assert applied.exit_code == 0, applied.output
     for item in compile_result(locate_project(project), "dev", DBT_MANIFEST).compiled:
+        target = item.rendered_artifact.target.sql
         if isinstance(item, CompiledView):
-            port.view_descriptions[QualifiedName.parse(item.view.fqn).sql] = described_view(item.view)
-    path = project / _METRIC
+            port.view_descriptions[target] = described_view(item.view)
+        elif isinstance(item, CompiledAgent) and agents:
+            alias = item.rendered_artifact.desired_alias
+            port.agent_version_rows[target] = (AgentVersion("VERSION$1", alias, True, specification=item.payload),)
+        elif isinstance(item, CompiledTool) and item.member.type == "cortex_search_service":
+            described = described_search(item.member, search_query(item.rendered.ddl))
+            port.descriptions[f"CORTEX SEARCH SERVICE {target}"] = described
+    relative, before, after = edit
+    path = project / relative
     text = path.read_text(encoding="utf-8")
-    assert _BEFORE in text
-    path.write_text(text.replace(_BEFORE, _AFTER, 1), encoding="utf-8")
+    assert before in text
+    path.write_text(text.replace(before, after, 1), encoding="utf-8")
     compile_project(project)
     return project, port
 
@@ -152,3 +169,46 @@ def test_a_diff_path_with_no_diff_is_refused(tmp_path: Path, monkeypatch: pytest
 def publishing_port_for(project: Path) -> PublishingSnowflake:
     compile_project(project)
     return publishing_port(project)
+
+
+def test_an_agent_update_names_the_instruction_it_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    edit = (
+        "agents/jaffle_analytics/instructions/orchestration.md",
+        "## Tool selection\n",
+        "## Tool selection\n\nPrefer the semantic views over the documents.\n",
+    )
+    project, port = _published(tmp_path, monkeypatch, edit, agents=True)
+    change = _change(_plan(monkeypatch, port, project), "agent:jaffle_analytics_agent")
+    assert change["diff_status"] == "compared"
+    [member] = change["diff"]
+    assert (member["kind"], member["member"], member["op"]) == ("instruction", "orchestration", "changed")
+    [prop] = member["properties"]
+    assert "Prefer the semantic views over the documents." in prop["after"]
+    assert "Prefer the semantic views over the documents." not in prop["before"]
+
+
+def test_a_search_service_update_names_the_setting_it_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    edit = ("tools/platform/menu_docs_search.yml", "target_lag: 1 hour", "target_lag: 2 hours")
+    project, port = _published(tmp_path, monkeypatch, edit)
+    data = _plan(monkeypatch, port, project)
+    [change] = [item for item in data["changes"] if item["artifact_key"].startswith("tool:")]
+    [member] = change["diff"]
+    assert (member["kind"], member["op"]) == ("search_service", "changed")
+    assert [(prop["property"], prop["after"]) for prop in member["properties"]] == [("target_lag", "2 hours")]
+
+
+def test_an_agent_whose_served_specification_cannot_be_read_is_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    edit = ("agents/jaffle_analytics/instructions/orchestration.md", "## Tool selection\n", "## Tool choice\n")
+    project, port = _published(tmp_path, monkeypatch, edit, agents=True)
+    for target, rows in port.agent_version_rows.items():
+        port.agent_version_rows[target] = tuple(dataclasses.replace(row, specification=None) for row in rows)
+    result = invoke_with_port(
+        monkeypatch, port, ["plan", *common(project), "--target", "dev", "--output", "json", "--no-plan-out"]
+    )
+    payload = json.loads(result.output)
+    assert _change(payload["data"], "agent:jaffle_analytics_agent")["diff_status"] == "unavailable"
+    notes = [item for item in payload["diagnostics"] if item["code"] == "SST-PLN041"]
+    [note] = [item for item in notes if "JAFFLE_ANALYTICS_AGENT" in item["message"].upper()]
+    assert "the role may not read the specification of the version the agent serves" in note["message"]

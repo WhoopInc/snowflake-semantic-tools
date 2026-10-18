@@ -9,8 +9,8 @@ from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import Action, Change, ChangeReason
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView, Table
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from tests.helpers.described_objects import described_view
 from tests.helpers.plan_codes import view
-from tests.helpers.semantic_view_rows import described_view
 from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import statement
 

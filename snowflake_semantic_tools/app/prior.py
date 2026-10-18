@@ -288,13 +288,10 @@ def agent_prior(agent: QualifiedName, versions: tuple[AgentVersion, ...], alias:
     agent lists no version.
     """
     named = tuple(version for version in versions if version.name is not None)
-    aliased = next(
-        (version for version in named if alias and version.alias and version.alias.casefold() == alias.casefold()),
-        None,
-    )
+    aliased = _aliased(named, alias)
     default = next((version for version in named if version.is_default), None)
     last = max(named, key=_version_number, default=None)
-    served = aliased or default or last or next(iter(versions), None)
+    served = served_version(versions, alias)
     if served is None:
         return None
     lines = [f"-- agent {qname(agent)} serves {_described(served, last)}."]
@@ -351,6 +348,24 @@ def _restore_default(agent: QualifiedName, version: AgentVersion) -> str:
         version=literal(str(version.name)),
     )
     return str(statement)
+
+
+def served_version(versions: tuple[AgentVersion, ...], alias: str | None) -> AgentVersion | None:
+    """Return the version an agent serves: the one carrying `alias`, else the default, else the last.
+
+    The live version when there is no committed one; None when the agent lists no version.
+    """
+    named = tuple(version for version in versions if version.name is not None)
+    default = next((version for version in named if version.is_default), None)
+    last = max(named, key=_version_number, default=None)
+    return _aliased(named, alias) or default or last or next(iter(versions), None)
+
+
+def _aliased(named: tuple[AgentVersion, ...], alias: str | None) -> AgentVersion | None:
+    return next(
+        (version for version in named if alias and version.alias and version.alias.casefold() == alias.casefold()),
+        None,
+    )
 
 
 def _version_number(version: AgentVersion) -> int:

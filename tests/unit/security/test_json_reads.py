@@ -45,6 +45,9 @@ EXEMPT: dict[tuple[str, str], str] = {
     ("domain/validate/publication.py", "_unknown_metadata"): (
         "dataset version METADATA SST rendered, or Snowflake reported for a version"
     ),
+    ("domain/plan/definitions/agent.py", "spec_definition"): (
+        "an agent specification SST rendered, or the version an agent serves returned"
+    ),
     ("domain/plan/definitions/semantic_view.py", "_parse"): (
         "one property value DESCRIBE SEMANTIC VIEW returned, such as a member's synonyms"
     ),

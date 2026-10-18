@@ -1,4 +1,4 @@
-"""The rows `DESCRIBE SEMANTIC VIEW` returns for a published view, made from its model.
+"""What DESCRIBE returns for a published semantic view, search service or routine, made from its model.
 
 A fake Snowflake answers a describe with these, so a plan against it can compare an update member
 by member. The shapes are those a live account returned for a published view: JSON lists for keys,
@@ -15,6 +15,7 @@ import json
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle.marker import marked_comment
 from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind, SemanticView
+from snowflake_semantic_tools.domain.model.tool import ToolMember
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import DescribedMember
 
 
@@ -103,3 +104,42 @@ def described_view(view: SemanticView) -> tuple[DescribedMember, ...]:
 
 def _json(values: tuple[str, ...]) -> str:
     return json.dumps(list(values)) if values else ""
+
+
+def described_search(member: ToolMember, query: str, comment: str | None = None) -> dict[str, str]:
+    """Return the one row DESCRIBE CORTEX SEARCH SERVICE shows of a published search service member."""
+    columns = dict.fromkeys(
+        (*(column.name for column in member.columns), *member.attribute_columns, member.search_column)
+    )
+    return {
+        "search_column": (member.search_column or "").upper(),
+        "attribute_columns": ",".join(name.upper() for name in member.attribute_columns),
+        "columns": ",".join(name.upper() for name in columns if name),
+        "warehouse": (member.warehouse or "").upper(),
+        "target_lag": member.target_lag or "",
+        "embedding_model": member.embedding_model or "snowflake-arctic-embed-m-v1.5",
+        "refresh_mode": (member.refresh_mode or "INCREMENTAL").upper(),
+        "definition": query,
+        "comment": comment if comment is not None else member.description or "",
+    }
+
+
+def described_routine(member: ToolMember) -> dict[str, str]:
+    """Return the rows DESCRIBE PROCEDURE or FUNCTION shows of a published routine member, by property."""
+    signature = ", ".join(f"{parameter.name.upper()} {parameter.type}" for parameter in member.signature)
+    rows = {
+        "signature": f"({signature})",
+        "returns": member.returns or "",
+        "language": (member.language or "").upper(),
+        "body": f"\n{(member.body or '').rstrip()}\n",
+    }
+    if member.type == "procedure":
+        rows["execute as"] = (member.execute_as or "caller").upper()
+    if (member.language or "").casefold() in ("java", "python", "scala"):
+        rows |= {
+            "runtime_version": member.runtime_version or "",
+            "handler": member.handler or "",
+            "packages": str(list(member.packages)),
+            "imports": str(list(member.imports)),
+        }
+    return rows
