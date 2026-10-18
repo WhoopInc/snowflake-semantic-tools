@@ -390,7 +390,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.INFO,
         "Prune is report-only",
         "{artifact} is no longer declared; SST never removes {value}: {detail}",
-        "the plan lists it until the objects are removed by hand; it is never a write, and the plan exits 2 only "
+        "the plan lists it while state records it; it is never a write, and the plan exits 2 only "
         "until an apply records it",
         condition=(
             "an artifact recorded in state is no longer declared; prune reports the resources SST "

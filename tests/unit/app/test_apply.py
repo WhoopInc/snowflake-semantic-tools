@@ -1055,6 +1055,27 @@ def test_a_report_only_prune_without_an_entry_records_the_object_it_observed() -
     assert (recorded.outcome, recorded.manifest_id) == ("observed", ownership.manifest_id)
 
 
+def test_a_report_only_prune_of_an_object_gone_from_snowflake_keeps_its_entry() -> None:
+    # A deleted tool is reported from its state entry even once dropped by hand: apply runs
+    # nothing for it, and the entry stays.
+    from snowflake_semantic_tools.domain.state import AppliedEntry
+
+    artifact = rendered()
+    recorded = AppliedEntry(
+        artifact.fingerprint, artifact.target.sql, "now", "prior", "applied", artifact.fingerprint, "o" * 64
+    )
+    prior = replace(state(), applied=MappingProxyType({artifact.key: recorded}))
+    report_only = replace(change(artifact, Action.PRUNE), artifact_type="tool", prune_executable=False)
+    use_case, port, store, _ = runner()
+    port.remote_state = prior.applied
+
+    result = use_case.run(changeset(report_only), prior, ApplyOptions(allow_prune=True))
+
+    assert result.outcomes[0].status is OutcomeStatus.SKIPPED and port.scripts == []
+    assert result.state_written and store.state is not None
+    assert store.state.applied[artifact.key] == recorded
+
+
 def test_outcomes_that_do_not_account_for_every_change_report_apl900() -> None:
     artifact = rendered()
     use_case, port, _, _ = runner()

@@ -2,7 +2,8 @@
 
 `plan_prunes` proposes dropping an object SST owns that nothing renders any more, and only
 when its ownership marker and state agree it is exactly what apply created; it also counts,
-per schema, the live objects the project does not declare that it leaves in place. `block_unsafe`
+per schema, the live objects the project does not declare that it leaves in place, and
+reports, without ever dropping it, each recorded object of a type SST never drops. `block_unsafe`
 then blocks a write that pins a version this plan neither observes nor publishes, and each
 change that depends on a blocked one. A blocked change stays in the plan, so it is reported.
 """
@@ -22,8 +23,8 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     RenderedArtifact,
     SnowflakeObservation,
 )
-from snowflake_semantic_tools.domain.model.registry import ArtifactType, Registry
-from snowflake_semantic_tools.domain.state import State
+from snowflake_semantic_tools.domain.model.registry import ArtifactLifecycle, ArtifactType, Registry
+from snowflake_semantic_tools.domain.state import DEACTIVATED, State
 
 
 def plan_prunes(
@@ -45,8 +46,9 @@ def plan_prunes(
         prune_keys: The artifact keys to consider; None considers every key.
 
     Returns:
-        The PRUNE changes in key order, and the diagnostics: those for the candidates
-        skipped, in key order, then one per schema holding a skipped candidate, in schema order.
+        The PRUNE changes in key order, then the report-only ones in key order; and the
+        diagnostics: those for the candidates skipped, in key order, then one per schema holding
+        a skipped candidate, in schema order, then each report-only prune's.
 
     Diagnostics:
         SST-PLN003: the candidate carries no SST ownership marker.
@@ -55,6 +57,8 @@ def plan_prunes(
             leaves in place: the candidates skipped above. A candidate that becomes a PRUNE
             change is accounted for. Names compare folded, so a declaration that differs from
             its object only by case is not one.
+        SST-PLN034: state records an object of a type SST never drops, which nothing renders
+            (`_kept`).
     """
     changes: list[Change] = []
     diagnostics: list[Diagnostic] = []
@@ -93,7 +97,73 @@ def plan_prunes(
             )
         )
     reconciled = (D("SST-PLN021", count=count, value=scope) for scope, count in sorted(undeclared.items()))
-    return tuple(changes), (*diagnostics, *reconciled)
+    kept = _kept(rendered, observation, state, registry, prune_types, prune_keys)
+    return (*changes, *kept), (*diagnostics, *reconciled, *(item for change in kept for item in change.diagnostics))
+
+
+# What a report-only prune of a type that publishes objects says to do, by type. Every type
+# neither prunable nor composite needs one here, which registry tests check.
+KEPT_DETAILS: Mapping[str, str] = {
+    "tool": (
+        "a tool can hold what SST does not own, such as staged files or a search index; "
+        "drop it by hand once nothing uses it"
+    ),
+}
+
+
+def _kept(
+    rendered: Mapping[str, RenderedArtifact],
+    observation: SnowflakeObservation,
+    state: State,
+    registry: Registry,
+    prune_types: frozenset[str] | None,
+    prune_keys: frozenset[str] | None,
+) -> tuple[Change, ...]:
+    """Report, in key order, each recorded object of a type SST never drops that nothing renders.
+
+    The type is neither prunable nor composite (whose handler reports its own prunes), so the
+    prune is report-only: apply skips it and keeps the state entry. The change carries the live
+    object when observation holds one, which names its target.
+
+    Diagnostics:
+        SST-PLN034: the object SST keeps, and what to do before removing it.
+    """
+    kept: list[Change] = []
+    for key, entry in sorted(state.applied.items()):
+        type_name = split_artifact_key(key)[0]
+        artifact_type = registry.artifacts.get(type_name)
+        if (
+            key in rendered
+            or artifact_type is None
+            or artifact_type.prunable
+            or artifact_type.lifecycle is ArtifactLifecycle.COMPOSITE
+            or entry.outcome == DEACTIVATED
+            or (prune_types is not None and type_name not in prune_types)
+            or (prune_keys is not None and key not in prune_keys)
+        ):
+            continue
+        diagnostic = D(
+            "SST-PLN034",
+            subject=key,
+            artifact=key,
+            value=entry.qualified_name or key,
+            detail=KEPT_DETAILS[type_name],
+        )
+        kept.append(
+            Change(
+                key,
+                type_name,
+                Action.PRUNE,
+                ChangeReason.ORPHANED,
+                None,
+                observation.artifacts.get(key),
+                (),
+                artifact_type.ddl_position,
+                DiagnosticBag((diagnostic,)),
+                prune_executable=False,
+            )
+        )
+    return tuple(kept)
 
 
 def _prunable_type(

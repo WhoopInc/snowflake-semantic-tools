@@ -21,8 +21,9 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     RenderedArtifact,
     SnowflakeObservation,
 )
-from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
+from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY, SEMANTIC_REGISTRY, ArtifactLifecycle
 from snowflake_semantic_tools.domain.plan import build_changeset, dependency_waves, topological_order
+from snowflake_semantic_tools.domain.plan.prune import KEPT_DETAILS
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, Manifest, State
 from tests.helpers.manifests import build_minimal_manifest
 from tests.helpers.plan_codes import live
@@ -661,3 +662,14 @@ def test_a_narrowed_plan_keeps_its_order_and_hashes_its_id_anew() -> None:
     assert kept.changes == (second,) and [item.code for item in kept.diagnostics] == ["SST-PLN032"]
     assert kept.plan_id not in ("old", "") and kept.plan_id == narrowed(plan, (second,), DiagnosticBag()).plan_id
     assert kept.plan_id != narrowed(plan, (first, second), DiagnosticBag()).plan_id
+
+
+def test_every_type_sst_never_drops_says_what_to_do_with_a_kept_object() -> None:
+    # A composite type's handler reports its own prunes; any other type that is never pruned
+    # is reported by plan_prunes, which needs the advice its SST-PLN034 gives.
+    kept = {
+        name
+        for name, artifact_type in ARTIFACT_REGISTRY.artifacts.items()
+        if not artifact_type.prunable and artifact_type.lifecycle is not ArtifactLifecycle.COMPOSITE
+    }
+    assert kept == set(KEPT_DETAILS) == {"tool"}

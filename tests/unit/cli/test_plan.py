@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import shutil
 from hashlib import md5
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import pytest
@@ -22,7 +24,14 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from tests.helpers.cli_projects import common, compile_project, invoke_counting_closes, invoke_with_port, skill_project
+from tests.helpers.cli_projects import (
+    applied_port,
+    common,
+    compile_project,
+    invoke_counting_closes,
+    invoke_with_port,
+    skill_project,
+)
 from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 from tests.helpers.snowflake_fake import PROFILE_REGISTRY_SHAPE, FakeSnowflake
 
@@ -675,8 +684,6 @@ def test_a_strict_plan_goes_ahead_when_the_baseline_holds_the_promoted_warning(
 
 
 def test_report_only_prunes_are_listed_but_are_not_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import shutil
-
     project = skill_project(tmp_path / "skills")
     port = FakeSnowflake(existing=())
     assert CliRunner().invoke(cli, ["compile", "--project-dir", str(project)]).exit_code == 0
@@ -726,3 +733,23 @@ def test_report_only_prunes_are_listed_but_are_not_changes(tmp_path: Path, monke
             ("SST-MAN026", "info"),
             ("SST-PLN016", "info"),
         ]
+
+
+def test_a_deleted_tool_is_listed_as_a_report_only_prune(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    port = applied_port(project)
+    # State records a stage tool whose source the project no longer has.
+    retired = AppliedEntry("e" * 64, "SST_TEST.REFERENCE.RETIRED_EXPORTS", "now", "run", "applied", "e" * 64, "f" * 64)
+    port.remote_state = MappingProxyType({**(port.remote_state or {}), "tool:retired_exports": retired})
+
+    planned = invoke_with_port(monkeypatch, port, ["plan", *common(project), "--prune", "--output", "json"])
+    payload = json.loads(planned.stdout)
+    assert payload["data"]["report_only"] == ["tool:retired_exports"], planned.output
+    [row] = [item for item in payload["data"]["changes"] if item["name"] == "retired_exports"]
+    assert (row["action"], row["report_only"]) == ("prune", True)
+    [kept] = [item for item in payload["diagnostics"] if item["code"] == "SST-PLN034"]
+    assert "SST never removes SST_TEST.REFERENCE.RETIRED_EXPORTS" in kept["message"]
+    human = invoke_with_port(monkeypatch, port, ["plan", *common(project), "--prune"])
+    [line] = [line for line in human.output.splitlines() if "tool:retired_exports" in line]
+    assert "prune" in line and "report only: SST never removes these" in line

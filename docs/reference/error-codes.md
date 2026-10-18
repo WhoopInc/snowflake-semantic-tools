@@ -6644,7 +6644,7 @@ Fix: fix that error first; a configuration error, or an error in a semantic view
 
 Raised when an artifact recorded in state is no longer declared; prune reports the resources SST keeps and never executes.
 
-Fix: the plan lists it until the objects are removed by hand; it is never a write, and the plan exits 2 only until an apply records it
+Fix: the plan lists it while state records it; it is never a write, and the plan exits 2 only until an apply records it
 
 ### SST-PLN035
 

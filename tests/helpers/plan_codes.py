@@ -109,6 +109,7 @@ def plan(
     preflight: Preflight | None = None,
     include_prune: bool = False,
     manifest: Manifest | None = None,
+    prune_types: frozenset[str] | None = None,
 ) -> ChangeSet:
     """Plan `rendered` against `observed` and the state `applied` records, in the domain."""
     planned = manifest or manifest_of(*rendered)
@@ -121,6 +122,7 @@ def plan(
         target(),
         include_prune=include_prune,
         preflight=preflight,
+        prune_types=prune_types,
     )
 
 
