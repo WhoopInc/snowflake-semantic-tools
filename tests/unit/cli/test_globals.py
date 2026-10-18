@@ -244,7 +244,7 @@ def test_four_or_more_of_one_code_collapse_to_three_and_a_count(tmp_path: Path) 
     partner.write_text(partner.read_text(encoding="utf-8").rstrip() + "\n" + extra + "\n", encoding="utf-8")
     grouped = CliRunner().invoke(cli, ["validate", *common(project), "--no-strict"])
     assert grouped.output.count("warning[SST-CFG018]") == 3
-    assert "... and 2 more SST-CFG018 (--show-all-occurrences)" in grouped.output
+    assert "... and 2 more SST-CFG018 (--show-all-occurrences)\n\n" in grouped.output
     every = CliRunner().invoke(cli, ["validate", *common(project), "--no-strict", "--show-all-occurrences"])
     assert every.output.count("warning[SST-CFG018]") == 5
 

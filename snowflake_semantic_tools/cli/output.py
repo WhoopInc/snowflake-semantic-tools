@@ -587,6 +587,8 @@ def render_diagnostics(diagnostics: Iterable[Diagnostic]) -> None:
         if grouped and seen[diagnostic.code] > _GROUP_SHOWN:
             if seen[diagnostic.code] == totals[diagnostic.code]:
                 _echo_err(render_collapsed(diagnostic.code, totals[diagnostic.code] - _GROUP_SHOWN, style))
+                if not policy.quiet:
+                    _echo_err("")
             continue
         _echo_err(scrubbed(_render(diagnostic, policy, hidden_cascades=cascades.get(index, 0)), "diagnostic text"))
         if not policy.quiet:
