@@ -133,7 +133,7 @@ def test_a_plan_lists_its_changes_and_counts_the_unchanged() -> None:
                 "artifact_key": "agent:b",
                 "target": "DB.S.B",
                 "reason": "fingerprint_differs",
-                "properties": [{"property": "instructions"}],
+                "properties": [{"property": "fingerprint"}, {"property": "manifest_id"}, {"property": "aliases"}],
             },
             {"action": "noop", "artifact_key": "semantic_view:c", "target": "DB.S.C", "reason": "unchanged"},
         ],
@@ -154,7 +154,7 @@ def test_a_plan_lists_its_changes_and_counts_the_unchanged() -> None:
     )
     assert lines[1:3] == [
         "+ semantic_view:a DB.S.A not_present",
-        "~ agent:b DB.S.B fingerprint_differs props=instructions",
+        "~ agent:b DB.S.B fingerprint_differs changes=definition,version_alias",
     ]
     assert "run it only when they ask" in lines[-1]
     assert all(LINE.match(line) for line in lines)

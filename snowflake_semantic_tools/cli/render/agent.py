@@ -25,6 +25,7 @@ from pathlib import Path
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, CONNECTION, ERROR, INTERRUPTED, OK, USAGE
 from snowflake_semantic_tools.cli.render.diagnostics import located_message, location
 from snowflake_semantic_tools.cli.render.frames import HINT_KEYS, pinpoint
+from snowflake_semantic_tools.cli.render.report import property_labels
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag, Severity
 
 MAX_LINES = 200
@@ -159,8 +160,9 @@ def _body(command: str, data: Mapping[str, object]) -> list[str]:
     for change in _rows(data.get("changes")):
         if change.get("action") == "noop":
             continue
-        props = [str(item.get("property")) for item in _rows(change.get("properties"))]
-        detail = f" props={','.join(props)}" if props else ""
+        names = [str(item.get("property")) for item in _rows(change.get("properties"))]
+        props = [label.replace(" ", "_") for label in property_labels(names)]
+        detail = f" changes={','.join(props)}" if props else ""
         only = " report_only" if change.get("report_only") else ""
         mark = _MARKS.get(str(change.get("action")), "?")
         lines.append(f"{mark} {change.get('artifact_key')} {change.get('target')} {change.get('reason')}{detail}{only}")

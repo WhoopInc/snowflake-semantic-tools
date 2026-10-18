@@ -197,7 +197,15 @@ def _plan_row(change: Change, manifest_id: str) -> list[str]:
 
 def _changed_labels(change: Change, manifest_id: str) -> list[str]:
     """Return what an update changes, as a person names it: `definition`, `version alias`, ..."""
-    names = [item.name for item in changed_properties(change, manifest_id)]
+    return property_labels([item.name for item in changed_properties(change, manifest_id)])
+
+
+def property_labels(names: Sequence[str]) -> list[str]:
+    """Return the properties an update changes as a person names them, the marker only when alone.
+
+    Example:
+        `["fingerprint", "manifest_id", "aliases"]` is `["definition", "version alias"]`.
+    """
     if "fingerprint" in names:
         names = [name for name in names if name != "manifest_id"]
     return [_PROPERTY_LABELS.get(name, name) for name in names]
