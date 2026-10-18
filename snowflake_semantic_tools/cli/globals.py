@@ -26,10 +26,10 @@ from snowflake_semantic_tools.cli.options import Decorator, stacked
 from snowflake_semantic_tools.cli.render.terminal import COLOR_CHOICES
 
 # The `--output` values in the order help lists them; `human` is accepted as `table` for one release.
-OUTPUT_FORMATS = ("table", "plain", "json", "yaml", "csv")
+OUTPUT_FORMATS = ("table", "plain", "agent", "json", "yaml", "csv")
 HIDDEN_OUTPUT_ALIASES: Mapping[str, str] = {"human": "table"}
 # What every command but `list` supports; an unsupported value is a usage error, never a fallback.
-DEFAULT_OUTPUTS = ("table", "plain", "json")
+DEFAULT_OUTPUTS = ("table", "plain", "agent", "json")
 LOG_LEVELS = ("debug", "info", "warn", "error")
 _TRUE = frozenset(("1", "true", "yes", "on"))
 _FALSE = frozenset(("0", "false", "no", "off"))

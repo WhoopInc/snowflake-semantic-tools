@@ -37,7 +37,8 @@ import inspect
 import io
 import json
 import os
-from collections.abc import Callable, Collection
+import sys
+from collections.abc import Callable, Collection, Mapping
 from enum import Enum
 from pathlib import Path
 from typing import Any, NoReturn
@@ -52,16 +53,24 @@ from snowflake_semantic_tools.adapters.paths import write_within
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.adapters.yaml.dump import dump_yaml
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, CONNECTION, ERROR, OK
-from snowflake_semantic_tools.cli.globals import DEFAULT_OUTPUTS, GLOBAL_NAMES, GlobalOptions, command_global_options
+from snowflake_semantic_tools.cli.globals import (
+    DEFAULT_OUTPUTS,
+    GLOBAL_NAMES,
+    OUTPUT_FORMATS,
+    GlobalOptions,
+    command_global_options,
+)
 from snowflake_semantic_tools.cli.output import (
     RenderPolicy,
     captured,
     configure_logging,
+    emit_agent,
     emit_json,
     first_next_step,
     interrupted,
     json_envelope,
     next_steps_for,
+    note_output_choice,
     print_report,
     print_verdict,
     record_baselined,
@@ -73,6 +82,7 @@ from snowflake_semantic_tools.cli.output import (
 )
 from snowflake_semantic_tools.cli.policy import ran_under_1_0, run_is_strict, with_baseline, with_policy
 from snowflake_semantic_tools.cli.render.progress import progress_display
+from snowflake_semantic_tools.cli.render.terminal import agent_marker
 from snowflake_semantic_tools.cli.run_log import append_run_log
 from snowflake_semantic_tools.cli.signals import terminated_as_interrupt
 from snowflake_semantic_tools.cli.wiring.project import target_dir
@@ -167,7 +177,7 @@ def command_body(
 
         @functools.wraps(body)
         def callback(**params: Any) -> None:
-            options = GlobalOptions.from_params(params)
+            options = _detected_output(GlobalOptions.from_params(params), params)
             # Only an envelope reports the run's timings, so a run that prints none records none;
             # a progress display switches them on too, to read what the run is doing.
             if options.output in ("json", "yaml"):
@@ -309,6 +319,23 @@ class _Run:
         return arguments
 
 
+def _detected_output(options: GlobalOptions, params: Mapping[str, Any]) -> GlobalOptions:
+    """Choose `agent` output for a run a coding agent started, when no format was asked for.
+
+    Neither `--output` nor `$SST_OUTPUT` may be set, an agent's environment variable must be
+    (`AGENT_MARKERS`), and stdout must not be a terminal; the run's verdict and its agent
+    document then say why the format was chosen.
+    """
+    note_output_choice(None)
+    if params.get("output") is not None:
+        return options
+    marker = agent_marker(os.environ, sys.stdout)
+    if marker is None:
+        return options
+    note_output_choice(f"detected {marker}")
+    return dataclasses.replace(options, output="agent")
+
+
 def _render_policy(options: GlobalOptions) -> RenderPolicy:
     return RenderPolicy(
         output=options.output,
@@ -331,7 +358,7 @@ def _refuse_output(command: str, found: str, supported: frozenset[str]) -> NoRet
     """
     from snowflake_semantic_tools.cli.group import SstUsageError
 
-    expected = ", ".join(value for value in ("table", "plain", "json", "yaml", "csv") if value in supported)
+    expected = ", ".join(value for value in OUTPUT_FORMATS if value in supported)
     diagnostic = D("SST-PRT106", subject="cli", found=found, command=f"sst {command}", expected=expected)
     raise SstUsageError(diagnostic.message, diagnostic=diagnostic)
 
@@ -394,6 +421,8 @@ def _report(command: str, options: GlobalOptions, result: CommandResult) -> None
         exit_code = ERROR if result.exit_code in (OK, CHANGES) else result.exit_code
         result = dataclasses.replace(result, diagnostics=audited, exit_code=exit_code)
     append_run_log(options.project_dir, target_dir(options.project_dir), result.diagnostics, command=command)
+    if options.output == "agent":
+        emit_agent(command, result.diagnostics, result.exit_code, data=result.data, next_steps=result.next_steps)
     if options.output in ("json", "yaml"):
         envelope = json_envelope(
             command,
@@ -492,6 +521,8 @@ def _snowflake_failed(command: str, output: str, exc: SnowflakePortError, projec
             json_envelope(command, diagnostics, exit_code=exit_code, status="error", data={"error": str(exc)}),
             exit_code,
         )
+    if output == "agent":
+        emit_agent(command, diagnostics, exit_code)
     report_failure(command, diagnostics, exit_code)
     raise click.exceptions.Exit(exit_code) from exc
 
@@ -578,6 +609,8 @@ def _write_failed(command: str, output: str, exc: WriteFailure) -> NoReturn:
     diagnostics = DiagnosticBag((diagnostic,))
     if output == "json":
         emit_json(json_envelope(command, diagnostics, exit_code=ERROR, status="error", data={"error": str(exc)}), ERROR)
+    if output == "agent":
+        emit_agent(command, diagnostics, ERROR)
     report_failure(command, diagnostics, ERROR)
     raise click.exceptions.Exit(ERROR) from exc
 
@@ -598,6 +631,8 @@ def _unusable(command: str, output: str, exc: Exception) -> NoReturn:
         emit_json(
             json_envelope(command, diagnostics, exit_code=CONFIG, status="error", data={"error": str(exc)}), CONFIG
         )
+    if output == "agent":
+        emit_agent(command, diagnostics, CONFIG)
     render_diagnostics(diagnostics)
     if not diagnostics.has_errors:
         click.echo(f"error: {exc}", err=True)
@@ -615,6 +650,8 @@ def _internal_error(command: str, output: str, exc: Exception) -> NoReturn:
     diagnostics = DiagnosticBag((D("SST-INT001", subject=command, detail=detail),))
     if output == "json":
         emit_json(json_envelope(command, diagnostics, exit_code=ERROR, status="error", data={"error": str(exc)}), ERROR)
+    if output == "agent":
+        emit_agent(command, diagnostics, ERROR)
     report_failure(command, diagnostics, ERROR)
     raise click.exceptions.Exit(ERROR) from exc
 

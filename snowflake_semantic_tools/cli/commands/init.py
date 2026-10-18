@@ -101,7 +101,7 @@ def init(paths: ProjectPaths, skip_prompts: bool, check_only: bool, options: Glo
         )
     created: list[str] = []
     if not config.exists():
-        if not skip_prompts and options.output != "json" and asking.can_ask():
+        if not skip_prompts and options.output not in ("json", "agent") and asking.can_ask():
             semantic_dir = asking.ask("Semantic models directory", _DEFAULT_SEMANTIC_DIR)
         write_text(output_root(project_dir, config.parent), config, config_template(semantic_dir))
         created.append(config.name)

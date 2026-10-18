@@ -3,7 +3,7 @@ name: sst-core
 description: |-
   Use first for any task in a project that publishes with Snowflake Semantic Tools (SST):
   which `sst` command does what, which ones connect to Snowflake, write to it, or cost
-  credits, the safe edit-validate-plan-apply loop, exit codes, and reading `--output json`.
+  credits, the safe edit-validate-plan-apply loop, exit codes, and reading `-o agent` and `-o json`.
   Routes to the other sst-* skills for authoring, diagnostics, agents and evals,
   troubleshooting, migration, and bug reports. Do NOT use for dbt modelling questions that
   do not involve SST, or for SST's own source code.
@@ -30,9 +30,13 @@ skills, and CoCo Desktop profiles, then publishes them. This kit was installed b
 4. **Facts come from the installed CLI, not from memory.** Run `sst <command> --help` for
    flags and `sst explain <CODE>` for any diagnostic. Both work offline and match the SST
    that is installed.
-5. **Parse JSON, not text.** Add `-o json` (a global option, before the command name) when you
-   need to read the result: one JSON object on stdout with `exit_code`, `diagnostics`,
-   `summary`, and `data`.
+5. **Read `-o agent`; parse `-o json`.** When `sst` runs in your shell with stdout piped, it
+   prints the `agent` format on its own (its first line ends `output=agent(detected ...)`);
+   `-o agent` (a global option, before the command name) asks for it anywhere. Its first line
+   is the verdict (`sst <command>: <OUTCOME> exit=1 errors=2 ...`), then one `E`/`W` line per
+   finding with a `fix:` line under it, then the last line, `next:`. When you need a field
+   that is not there, use `-o json`: one JSON object on stdout with `exit_code`,
+   `diagnostics`, `summary`, `data`, and `next_steps`. Never scrape `table` output.
 6. **Never baseline a diagnostic to make a run pass** unless the user asks; fix it instead.
    See the `sst-fix-diagnostics` skill.
 

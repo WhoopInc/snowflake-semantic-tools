@@ -22,6 +22,7 @@ from snowflake_semantic_tools.cli.exit_codes import CONFIG, INTERRUPTED, OK, USA
 from snowflake_semantic_tools.cli.globals import MIGRATION_GUIDE, REMOVED_COMMANDS, forwarded, group_global_options
 from snowflake_semantic_tools.cli.output import (
     aborted_line,
+    emit_agent,
     json_envelope,
     print_envelope,
     refusal_text,
@@ -185,7 +186,8 @@ class SstGroup(click.Group):
         """
         arguments = list(args if args is not None else sys.argv[1:])
         start_invocation([prog_name or "sst", *arguments])
-        json_requested = _json_requested(arguments)
+        machine = _machine_output(arguments)
+        json_requested = machine is not None
         try:
             result = super().main(
                 args=arguments,
@@ -199,6 +201,8 @@ class SstGroup(click.Group):
                 raise
             refusal = usage_refusal(exc) if isinstance(exc, click.UsageError) else exc
             command = next((value for value in arguments if value in self.commands), "")
+            if machine == "agent":
+                return _agent_refusal(command, refusal, standalone_mode)
             print_envelope(
                 json_envelope(
                     command,
@@ -216,15 +220,31 @@ class SstGroup(click.Group):
         return result
 
 
-def _json_requested(arguments: list[str]) -> bool:
-    """Return whether the command line asks for `--output json`, in any spelling."""
-    return any(
-        value in ("--output=json", "-ojson")
-        or value in ("--output", "-o")
-        and index + 1 < len(arguments)
-        and arguments[index + 1] == "json"
-        for index, value in enumerate(arguments)
-    )
+def _machine_output(arguments: list[str]) -> str | None:
+    """Return `json` or `agent` when the command line asks for that `--output`, in any spelling; else None.
+
+    The last one written wins, as click reads it.
+    """
+    found = None
+    for index, value in enumerate(arguments):
+        if value.startswith("--output="):
+            found = value.removeprefix("--output=")
+        elif value.startswith("-o") and len(value) > 2:
+            found = value[2:]
+        elif value in ("--output", "-o") and index + 1 < len(arguments):
+            found = arguments[index + 1]
+    return found if found in ("json", "agent") else None
+
+
+def _agent_refusal(command: str, refusal: SstUsageError | SstConfigError, standalone_mode: bool) -> int:
+    """Print a refused command line as an agent document, and end with its exit code."""
+    try:
+        emit_agent(command, DiagnosticBag((refusal.diagnostic,)), refusal.exit_code)
+    except click.exceptions.Exit as done:
+        if standalone_mode:
+            raise SystemExit(done.exit_code) from None
+        return done.exit_code
+    return refusal.exit_code
 
 
 def forward_globals(ctx: click.Context, group: click.Group, values: dict[str, Any]) -> None:

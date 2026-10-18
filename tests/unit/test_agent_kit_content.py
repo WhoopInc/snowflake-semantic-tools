@@ -33,7 +33,7 @@ TEXTS = {
     if path.endswith(".md")
 }
 SPAN = re.compile(r"`([^`\n]+)`")
-FENCE = re.compile(r"^```[^\n]*\n(.*?)^```", re.MULTILINE | re.DOTALL)
+FENCE = re.compile(r"^```([^\n]*)\n(.*?)^```", re.MULTILINE | re.DOTALL)
 CODE = re.compile(r"\bSST-[A-Z]{3}\d{3}\b")
 # 0.3 commands the migration skill names as gone; anywhere else they are a mistake.
 RETIRED = {"deploy", "generate", "extract", "migrate-meta"}
@@ -48,10 +48,13 @@ def _global_options() -> dict[str, bool]:
 
 
 def _command_lines(text: str) -> Iterator[list[str]]:
-    """Yield each `sst ...` command line in the text's code spans and fenced blocks, as tokens."""
+    """Yield each `sst ...` command line in the text's code spans and fenced blocks, as tokens.
+
+    A ```` ```text ```` block is output a skill shows, not a command line, so it is skipped.
+    """
     pieces = [
         *SPAN.findall(FENCE.sub("", text)),
-        *(line for block in FENCE.findall(text) for line in block.splitlines()),
+        *(line for info, block in FENCE.findall(text) if info.strip() != "text" for line in block.splitlines()),
     ]
     for piece in pieces:
         tokens = piece.split()

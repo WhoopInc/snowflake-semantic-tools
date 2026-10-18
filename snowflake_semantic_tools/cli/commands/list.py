@@ -54,7 +54,7 @@ from snowflake_semantic_tools.domain.plan.selectors import SelectionScope
 from snowflake_semantic_tools.domain.state import Manifest
 from snowflake_semantic_tools.domain.state.manifest import ArtifactEntry
 
-LIST_OUTPUTS = ("table", "plain", "json", "yaml", "csv")
+LIST_OUTPUTS = ("table", "plain", "agent", "json", "yaml", "csv")
 
 
 def type_name(registered: str) -> str:

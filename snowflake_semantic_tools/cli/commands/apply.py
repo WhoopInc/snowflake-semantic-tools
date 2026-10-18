@@ -88,15 +88,15 @@ def _refuse_invocation(
 ) -> None:
     """Refuse a command line apply cannot run.
 
-    JSON or a prune without `--yes`, a run without `--yes` that could not ask for it, a partial
+    JSON or agent output, or a prune, without `--yes`, a run without `--yes` that could not ask for it, a partial
     prune, or a syntax check with `--no-validate`. Each is refused before anything is planned.
 
     Raises:
         SstUsageError: as `_require_yes`, `require_answerable`, `refuse_partial_prune` and
             `refuse_unvalidated` say.
     """
-    if options.output == "json" and not confirmed:
-        _require_yes("sst apply --output json")
+    if options.output in ("json", "agent") and not confirmed:
+        _require_yes(f"sst apply --output {options.output}")
     if prune and not confirmed:
         _require_yes("sst apply --prune")
     if not confirmed:

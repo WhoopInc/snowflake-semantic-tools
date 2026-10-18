@@ -36,8 +36,12 @@ _OPTION_HELP: Mapping[str, str] = {
         "is refused all the same (SST-APL011)."
     ),
     "--output": (
-        "`table` (default), `plain` (`table` without colour), or `json`, else `$SST_OUTPUT`; `list` also "
-        "takes `yaml` and `csv`. A format the command does not take is refused (SST-PRT106)."
+        "`table` (default), `plain` (`table` without colour), `agent` (short fixed-grammar text for "
+        "coding agents), or `json`, else `$SST_OUTPUT`; `list` also takes `yaml` and `csv`. With "
+        "neither set, a run whose stdout is not a terminal defaults to `agent` when a coding agent's "
+        "variable is set (`SST_AGENT`, `CLAUDECODE`, `COCO_AGENT`, `CURSOR_AGENT`, `CODEX_SANDBOX`, "
+        "`GEMINI_CLI`; `0` or empty is unset) and says so. A format the command does not take is "
+        "refused (SST-PRT106)."
     ),
     "--verbose": (
         "Add each diagnostic's phase and fingerprint, and report each file the run's parse cache served "
@@ -46,8 +50,8 @@ _OPTION_HELP: Mapping[str, str] = {
     "--quiet": "Show error diagnostics only, with no counts line or progress lines; the report still prints.",
     "--log-level": (
         "Threshold for log records on stderr, else `$SST_LOG_LEVEL`, else `warn`. The libraries SST "
-        "runs, such as the Snowflake connector, log each request at `info`; those records show only "
-        "at `debug`. Independent of `--verbose`."
+        "runs, such as the Snowflake connector, log each request at `info`, so `info` shows those. "
+        "Independent of `--verbose`."
     ),
     "--no-color": ("No ANSI colour, else `$SST_NO_COLOR`; a non-empty `$NO_COLOR` does the same. Wins over `--color`."),
     "--color": (

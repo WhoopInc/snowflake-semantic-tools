@@ -2,7 +2,7 @@
 name: sst-fix-diagnostics
 description: |-
   Use when an `sst` command reports diagnostics (codes such as SST-VAL101 or SST-REF001), or
-  exits non-zero, and you need to understand and fix them: reading the JSON envelope,
+  exits non-zero, and you need to understand and fix them: reading `-o agent` and the JSON envelope,
   `sst explain`, severities, strict mode, cascades, and when the baseline file is and is not
   the answer. Do NOT use for environment problems such as dbt parse failures, profiles, or
   connections (use sst-troubleshoot), or to decide whether SST itself is wrong (use
@@ -17,15 +17,35 @@ Every problem SST reports is a diagnostic with a stable code, such as `SST-VAL40
   prints `(promoted from warning)`;
 - an **info** never blocks, and is counted rather than shown unless `--show-info`.
 
-## Read the diagnostics as data
+## Read the diagnostics
+
+```bash
+sst -o agent validate --no-snowflake-syntax-check
+```
+
+prints a short text document, the format `sst` picks on its own when you run it with stdout
+piped:
+
+```text
+sst validate: FAIL exit=1 errors=1 warnings=0 baselined=8 info_hidden=166 time=0.6s
+E SST-REF002 semantic_models/metrics/customer_count.yml:5:46 metric:customer_count | 'customer_uuid' is not a column on customers
+  fix: correct the column name, or add it to the model's columns: block
+  cascade SST-MEM107 semantic_models/metrics/customer_count.yml:3:3 | metric:customer_count skipped: 1 unresolved references
+next: fix the error, then run `sst validate` again; `sst explain <CODE>` explains a code
+```
+
+An `E` or `W` line gives the code, the `file:line:col` of the value at fault, the artifact,
+and the message; `fix:` is the suggested fix, and a `cascade` line is a follow-on finding the
+fix should clear. Info and baselined findings are only counted in the first line.
 
 ```bash
 sst -o json validate --no-snowflake-syntax-check
 ```
 
-prints one JSON object. Each entry of `diagnostics` has `code`, `severity`, `message`,
-`location` (file, line, column), and a `help_url`; `summary` counts them by severity, and
-`exit_code` is the process exit code. Work from this, not from scraped text.
+prints every field instead: each entry of `diagnostics` has `code`, `severity`, `message`,
+`location` (file, line, column), and a `help_url`; `summary` counts them by severity,
+`exit_code` is the process exit code, and `next_steps` is what to do next. Work from one of
+these, not from scraped `table` text.
 
 ## Explain before you change anything
 

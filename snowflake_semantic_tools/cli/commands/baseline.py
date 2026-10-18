@@ -280,12 +280,12 @@ def _confirm(options: GlobalOptions, count: int, *, assume_yes: bool) -> None:
     """Confirm baselining every warning: by `--yes`, else by a question on a terminal; none for none.
 
     Diagnostics:
-        SST-PRT109: there is no terminal to ask on, or the output is JSON; raised.
+        SST-PRT109: there is no terminal to ask on, or the output is JSON or agent text; raised.
     """
     if assume_yes or not count:
         return
     command = "sst baseline add --all-warnings"
-    if options.output == "json":
+    if options.output in ("json", "agent"):
         diagnostic = D("SST-PRT109", subject="cli", command=command)
         raise SstUsageError(diagnostic.message, diagnostic=diagnostic)
     require_answerable(command)

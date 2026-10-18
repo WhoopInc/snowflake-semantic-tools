@@ -201,21 +201,21 @@ def root_logging() -> Iterator[logging.Logger]:
     yield root
     root.setLevel(level)
     root.handlers[:] = handlers
-    for name in output.QUIET_LOGGERS:
-        logging.getLogger(name).setLevel(logging.NOTSET)
 
 
 @pytest.mark.usefixtures("policy")
-def test_library_chatter_is_heard_only_at_debug(
+def test_library_chatter_is_quiet_by_default_and_heard_when_asked(
     root_logging: logging.Logger, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    configure_logging("info")
-    configure_logging("info")
+    configure_logging("warn")
+    configure_logging("warn")
     assert sum(type(item).__name__ == "_LogHandler" for item in root_logging.handlers) == 1
     logging.getLogger("snowflake.connector.connection").info("Snowflake Connector for Python Version")
     logging.getLogger("snowflake.connector").warning("retrying")
-    logging.getLogger("other").info("noted %s", "this")
-    assert capsys.readouterr().err == "warn  snowflake.connector: retrying\ninfo  other: noted this\n"
+    assert capsys.readouterr().err == "warn  snowflake.connector: retrying\n"
+    configure_logging("info")
+    logging.getLogger("snowflake.connector.connection").info("noted %s", "this")
+    assert capsys.readouterr().err == "info  snowflake.connector.connection: noted this\n"
     configure_logging("debug")
     logging.getLogger("snowflake.connector").debug("a request")
     assert capsys.readouterr().err == "debug snowflake.connector: a request\n"

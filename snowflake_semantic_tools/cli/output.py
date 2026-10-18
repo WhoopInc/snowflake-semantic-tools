@@ -27,6 +27,7 @@ from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.app.evals.run import EvalRunsInterrupted
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, ERROR, INTERRUPTED, OK
+from snowflake_semantic_tools.cli.render.agent import agent_document
 from snowflake_semantic_tools.cli.render.diagnostics import (
     HIDDEN_FLAGS,
     FindingNotes,
@@ -272,7 +273,7 @@ def json_envelope(
             "baselined": counts["baselined"],
         },
         "data": data if data is not None else {},
-        "next_steps": list(next_steps_for(command, resolved_exit, diagnostics, next_steps)),
+        "next_steps": list(next_steps_for(command, resolved_exit, diagnostics, next_steps, audience="agent")),
     }
 
 
@@ -338,6 +339,51 @@ def emit_json(envelope: dict[str, object], exit_code: int) -> NoReturn:
     raise click.exceptions.Exit(ERROR if refused else exit_code)
 
 
+def emit_agent(
+    command: str,
+    diagnostics: DiagnosticBag,
+    exit_code: int,
+    *,
+    data: object = None,
+    next_steps: tuple[str, ...] | None = None,
+) -> NoReturn:
+    """Print the run's `agent` document on stdout, and exit with `exit_code`.
+
+    The document is checked for credentials as an envelope is: one that would carry a credential
+    is withheld, SST-PRT012 printed in its place, and the run exits 1.
+    """
+    steps = next_steps_for(command, exit_code, diagnostics, next_steps, audience="agent")
+    document = agent_document(
+        command,
+        exit_code,
+        diagnostics,
+        baselined=baselined_fingerprints(),
+        fingerprint=stable_fingerprint,
+        project_dir=project_root(),
+        data=data,
+        seconds=run_seconds(),
+        note=output_note(),
+        next_steps=steps,
+    )
+    if _leaks(document):
+        refusal = DiagnosticBag((_secret_refusal("agent document"),))
+        click.echo(
+            agent_document(
+                command,
+                ERROR,
+                refusal,
+                baselined=frozenset(),
+                fingerprint=stable_fingerprint,
+                project_dir=project_root(),
+            ),
+            nl=False,
+        )
+        raise click.exceptions.Exit(ERROR)
+    with contextlib.suppress(OSError):
+        click.echo(document, nl=False)
+    raise click.exceptions.Exit(exit_code)
+
+
 def print_report(text: str, where: str) -> bool:
     """Print a YAML, CSV, or human report on stdout as written, unless it would carry a credential.
 
@@ -382,6 +428,8 @@ def interrupted(command: str, output: str, cause: BaseException) -> NoReturn:
                 command, DiagnosticBag((notice,)), exit_code=INTERRUPTED, status="error", data={"error": "interrupted"}
             )
         )
+    elif output == "agent":
+        emit_agent(command, DiagnosticBag((notice,)), INTERRUPTED)
     else:
         _echo_err(aborted_line())
         _echo_err(_render(notice, _POLICY[0]))
@@ -512,26 +560,19 @@ def announce(*parts: str) -> None:
         display.line(f"{style(style.symbol('ok'), 'success')} {style.sep.join(parts)}")
 
 
-# Loggers of libraries SST runs, which speak at INFO about every request they make; they are
-# heard at WARNING and above unless `--log-level debug` asks for everything.
-QUIET_LOGGERS = ("snowflake.connector", "botocore", "boto3", "urllib3", "filelock", "asyncio")
-
-
 def configure_logging(level: str) -> None:
     """Send log records at `level` and above to stderr, through progress and the credential check.
 
-    Replaces only the handler this function installed, so calling it again, as each run in one
-    process does, never stacks handlers or removes another's. A record is printed as
-    `warn  snowflake.connector: message`.
+    The libraries SST runs, the Snowflake connector above all, log every request at INFO, so the
+    default `warn` keeps them quiet and an explicit `info` shows them. Replaces only the handler
+    this function installed, so calling it again, as each run in one process does, never stacks
+    handlers or removes another's. A record is printed as `warn  snowflake.connector: message`.
     """
-    numeric = _LOG_NUMBERS[level]
     root = logging.getLogger()
     for handler in [item for item in root.handlers if isinstance(item, _LogHandler)]:
         root.removeHandler(handler)
     root.addHandler(_LogHandler())
-    root.setLevel(numeric)
-    for name in QUIET_LOGGERS:
-        logging.getLogger(name).setLevel(numeric if numeric <= logging.DEBUG else max(numeric, logging.WARNING))
+    root.setLevel(_LOG_NUMBERS[level])
 
 
 _LOG_NUMBERS = {"debug": logging.DEBUG, "info": logging.INFO, "warn": logging.WARNING, "error": logging.ERROR}
@@ -642,7 +683,12 @@ def _counted(counts: bool, outcome: str, summary: dict[str, int]) -> bool:
 
 
 def next_steps_for(
-    command: str, exit_code: int, diagnostics: DiagnosticBag, given: tuple[str, ...] | None
+    command: str,
+    exit_code: int,
+    diagnostics: DiagnosticBag,
+    given: tuple[str, ...] | None,
+    *,
+    audience: str = "person",
 ) -> tuple[str, ...]:
     """Return the run's next steps: those the command gave, else the defaults for how it ended.
 
@@ -655,7 +701,7 @@ def next_steps_for(
     errors = [item for item in diagnostics if item.blocks and stable_fingerprint(item) not in baselined_fingerprints()]
     if exit_code == CONFIG and len(errors) == 1 and errors[0].suggestion:
         return (errors[0].suggestion,)
-    return default_next_steps(command, exit_code, errors=counts["error"], warnings=counts["warning"])
+    return default_next_steps(command, exit_code, errors=counts["error"], warnings=counts["warning"], audience=audience)
 
 
 def first_next_step(command: str, exit_code: int, diagnostics: DiagnosticBag) -> str | None:
