@@ -25,6 +25,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
     AgentVersion,
     AgentVersions,
     CatalogPort,
+    DescribedMember,
     ExtensionObservation,
     ExtensionVersion,
 )
@@ -217,6 +218,20 @@ class CatalogMethods(Session, CatalogPort):
     def show_row(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
         rows = self._show_like(object_type, qualified_name, str.upper)
         return _text_row(rows[0]) if rows else None
+
+    def describe_semantic_view(self, qualified_name: QualifiedName) -> tuple[DescribedMember, ...]:
+        rows = self._dict_rows(sql("DESCRIBE SEMANTIC VIEW {name}", name=qname(qualified_name)))
+        return tuple(
+            DescribedMember(
+                _optional_text(row.get("object_kind")),
+                _optional_text(row.get("object_name")),
+                _optional_text(row.get("parent_entity")),
+                _text(row.get("property")),
+                # Kept exactly: a verified query's SQL or an instruction is compared as written.
+                None if row.get("property_value") is None else str(row.get("property_value")),
+            )
+            for row in rows
+        )
 
     def describe_properties(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
         if not self.object_exists(object_type, qualified_name):

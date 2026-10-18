@@ -26,7 +26,7 @@ cannot be downgraded by any setting.
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
-- [Planning (PLN)](#planning-pln) -- 43 codes
+- [Planning (PLN)](#planning-pln) -- 44 codes
 - [Apply (APL)](#apply-apl) -- 37 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 7 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
@@ -6705,6 +6705,18 @@ Raised when reading the tags on a semantic view a planned update replaces failed
 Fix: check that the role can read the view's tags with TAG_REFERENCES, or plan with --no-grants to skip the read
 
 Note: The plan is otherwise unaffected: the update is planned as before, and `SST-PLN039` is not checked for the view.
+
+### SST-PLN041
+
+**Update not compared member by member** (info)
+
+`what the update of <value> changes was not compared member by member: <detail>`
+
+Raised when reading the live definition of an object a planned update changes failed, so the plan cannot show which members the update changes.
+
+Fix: check that the role can DESCRIBE the object and read its versions or staged files, or plan with --no-diff to skip the read
+
+Note: The plan is otherwise unaffected: the update is planned as before, and reported as a changed definition without its members.
 
 ### SST-PLN100
 

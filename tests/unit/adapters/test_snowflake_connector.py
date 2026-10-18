@@ -14,7 +14,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConne
 from snowflake_semantic_tools.adapters.snowflake.connector import session as session_module
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult
-from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion, DescribedMember
 from snowflake_semantic_tools.domain.ports.snowflake.errors import (
     AgentVersionNotFound,
     SnowflakePortError,
@@ -746,6 +746,42 @@ def test_describe_properties_reads_property_rows_or_a_single_row() -> None:
     single = StubSnowflakeConnector({**present, "DESCRIBE AGENT": ({"name": "SALES_AGENT", "agent_spec": "{}"},)})
     assert single.describe_properties("AGENT", name) == {"name": "SALES_AGENT", "agent_spec": "{}"}
     assert StubSnowflakeConnector({}).describe_properties("AGENT", name) is None
+
+
+def test_describe_semantic_view_keeps_each_value_exactly_as_returned() -> None:
+    sql_text = "SELECT 1\n  -- counts\n"
+    connector = StubSnowflakeConnector(
+        {
+            "DESCRIBE SEMANTIC VIEW": (
+                {
+                    "object_kind": "METRIC",
+                    "object_name": "N",
+                    "parent_entity": "T",
+                    "property": "EXPRESSION",
+                    "property_value": "COUNT(1)",
+                },
+                {
+                    "object_kind": "AI_VERIFIED_QUERY",
+                    "object_name": "Q",
+                    "parent_entity": None,
+                    "property": "SQL",
+                    "property_value": sql_text,
+                },
+                {
+                    "object_kind": None,
+                    "object_name": None,
+                    "parent_entity": None,
+                    "property": "COMMENT",
+                    "property_value": None,
+                },
+            )
+        }
+    )
+    assert connector.describe_semantic_view(QualifiedName.parse("DB.S.SALES")) == (
+        DescribedMember("METRIC", "N", "T", "EXPRESSION", "COUNT(1)"),
+        DescribedMember("AI_VERIFIED_QUERY", "Q", None, "SQL", sql_text),
+        DescribedMember(None, None, None, "COMMENT", None),
+    )
 
 
 def _described_agent(aliases: object) -> dict[str, object]:

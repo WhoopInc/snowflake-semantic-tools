@@ -37,6 +37,25 @@ class ExtensionVersion:
 
 
 @dataclass(frozen=True, slots=True)
+class DescribedMember:
+    """One row `DESCRIBE SEMANTIC VIEW` returns: one property of one member, or of the view.
+
+    Attributes:
+        kind: The row's `object_kind`, such as `METRIC` or `TABLE`; None for the view's own.
+        name: The member's name; None for the view's own row.
+        parent: The logical table a fact, dimension, or table-scoped metric belongs to.
+        property: What the row states, such as `EXPRESSION`.
+        value: What it states; None when Snowflake returned none.
+    """
+
+    kind: str | None
+    name: str | None
+    parent: str | None
+    property: str
+    value: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class AgentVersion:
     """One `SHOW VERSIONS IN AGENT` row.
 
@@ -351,6 +370,16 @@ class CatalogPort(Protocol):
 
         Raises:
             SnowflakePortError: the SHOW failed.
+        """
+        ...
+
+    def describe_semantic_view(self, qualified_name: QualifiedName) -> tuple[DescribedMember, ...]:
+        """Return what `DESCRIBE SEMANTIC VIEW` reports of a view: one row per member property.
+
+        Never writes.
+
+        Raises:
+            SnowflakePortError: the DESCRIBE failed, as when the view does not exist.
         """
         ...
 

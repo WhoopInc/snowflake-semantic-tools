@@ -88,7 +88,13 @@ def test_a_live_plan_records_what_it_read_and_a_cached_plan_reuses_it_without_co
     cached = _cached(project, monkeypatch, "--select", VIEW, "-o", "json")
     assert cached.exit_code == 2, cached.output
     data = json.loads(cached.stdout)["data"]
-    assert data["changes"] == live_data["changes"]
+    # The same changes; only the live plan read what the update replaces, which a cached one cannot.
+    unread = ("diff_status", "diff")
+    assert [{k: v for k, v in item.items() if k not in unread} for item in data["changes"]] == [
+        {k: v for k, v in item.items() if k not in unread} for item in live_data["changes"]
+    ]
+    assert [item["diff_status"] for item in live_data["changes"]] == ["unavailable"]
+    assert [item["diff_status"] for item in data["changes"]] == ["not_compared"]
     assert data["changes"][0]["action"] == "update"
     observation = data["observation"]
     assert (observation["cached"], observation["fetched_at"]) == (True, live_data["observation"]["fetched_at"])

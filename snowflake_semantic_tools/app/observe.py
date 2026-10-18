@@ -65,11 +65,14 @@ class ObserveOptions:
         drift_check: `plan.drift_check`: `full` also reads, for each procedure and semantic
             view SST's marker claims, one DESCRIBE or GET_DDL to digest; `basic` digests only
             what the listing and an agent's versions show.
+        diff: Read, for each planned update, the live definition it replaces, so the plan shows
+            what the update changes member by member; `plan --no-diff` turns it off.
     """
 
     grants: bool = True
     capture_prior: bool = False
     drift_check: str = DRIFT_CHECK_FULL
+    diff: bool = True
 
 
 # What a plan reads when no flag says otherwise: grants, and no definitions.

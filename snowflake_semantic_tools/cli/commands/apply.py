@@ -147,7 +147,9 @@ def apply(
 
     Without --plan, apply plans afresh as `sst plan` does, prints the plan, and asks before it
     writes; --yes skips the question, and is required with --prune, with --output json, and
-    whenever stdin or stderr is not a terminal, which apply refuses before it plans.
+    whenever stdin or stderr is not a terminal, which apply refuses before it plans. The plan it
+    asks about shows what each update changes, member by member, as `sst plan` does; with --yes
+    nothing is shown, so those definitions are not read.
     With --plan, the saved plan's selection and --prune are used: --select, --exclude, --prune
     and --partial must agree with it, and it must have been made for this target, from the
     manifest the project compiles now, observing what Snowflake holds now. The statements are
@@ -189,7 +191,7 @@ def apply(
         temporary=temporary,
         state_dir=state_dir,
         threads=threads_setting(paths, threads),
-        observe_options=ObserveOptions(drift_check=drift_check_setting(paths)),
+        observe_options=ObserveOptions(drift_check=drift_check_setting(paths), diff=not confirmed),
         validate=not no_validate,
         baseline=run_baseline(options),
     )
@@ -297,7 +299,7 @@ def _confirmed_options(
         notes = DiagnosticBag((stale,) if stale is not None else ())
     sql_path = write_plan_sql(request.project_dir, changeset, sql_out)
     if changeset.writes and not confirmed:
-        print_plan(changeset)
+        print_plan(changeset, more="sst plan --full shows all")
         confirm("Apply this plan?")
     options = ApplyOptions(
         parallelism=apply_parallelism(request.paths, threads),

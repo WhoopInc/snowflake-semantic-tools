@@ -14,6 +14,14 @@ from snowflake_semantic_tools.cli.render.style import Style
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOutcome, Change, ChangeSet
 from snowflake_semantic_tools.domain.model.lifecycle.action import ChangeReason
 from snowflake_semantic_tools.domain.model.lifecycle.apply import OutcomeStatus
+from snowflake_semantic_tools.domain.plan.member_diff import (
+    ADDED,
+    REMOVED,
+    MemberDiff,
+    printable,
+    property_lines,
+    summary,
+)
 from snowflake_semantic_tools.domain.plan.properties import changed_properties
 
 _ACTION_STYLE = {
@@ -53,6 +61,14 @@ _PROPERTY_LABELS = {
     "aliases": "version alias",
     "tags": "tags",
 }
+# How much of an update's member diff a plan prints without `--full`: lines per property, lines
+# per change, and characters per line. The diff file holds all of it.
+DIFF_PROPERTY_LINES = 12
+DIFF_CHANGE_LINES = 40
+DIFF_LINE_CHARS = 160
+# The role each member and line sign is painted in.
+_MEMBER_MARKS = {ADDED: ("+", "create"), REMOVED: ("-", "prune")}
+_LINE_ROLES = {"-": "before", "+": "after", "~": "update", " ": "dim"}
 
 
 def table(rows: Sequence[Sequence[str]], width: int, *, gap: int = 2, keep: int | None = None) -> list[str]:
@@ -87,17 +103,30 @@ def table(rows: Sequence[Sequence[str]], width: int, *, gap: int = 2, keep: int 
     return lines
 
 
-def plan_lines(changeset: ChangeSet, style: Style, *, verbose: bool = False, full: bool = False) -> list[str]:
+def plan_lines(
+    changeset: ChangeSet,
+    style: Style,
+    *,
+    verbose: bool = False,
+    full: bool = False,
+    more: str = "--full shows all",
+) -> list[str]:
     """Return the plan as a person reads it: each change in apply order, then what stays the same.
 
-    An update names the properties it changes. A prune SST only reports is marked
-    `report only`. Unchanged artifacts are counted on one line, unless `verbose` lists them.
-    With `full`, each update is followed by its properties' before and after, and the
-    definition it replaces when `--capture-prior` read it.
+    An update names the members it changes, or the properties when it was not compared member by
+    member, and is followed by what changes in each member, cut short where long with `more` said
+    of the rest. A prune SST only reports is marked `report only`. Unchanged artifacts are
+    counted on one line, unless `verbose` lists them. With `full`, the member diff is not cut, and
+    each update is followed by its properties' before and after, and the definition it replaces
+    when `--capture-prior` read it.
 
     Example:
         `  + create  semantic_view:sales_partner  SALES_DB.SEMANTIC_VIEWS.SALES_PARTNER`
-        `  ~ update  agent:jaffle_analyst         SALES_DB.AGENTS.JAFFLE_ANALYST  definition`
+        `  ~ update  semantic_view:sales  SALES_DB.SEMANTIC_VIEWS.SALES  metric orders.total_revenue`
+        `      ~ metric orders.total_revenue`
+        `          comment:`
+        `            - Revenue before tax.`
+        `            + Revenue before tax, in dollars.`
         `  29 unchanged (--verbose lists them)`
     """
     listed = [change for change in changeset.changes if verbose or change.action is not Action.NOOP]
@@ -107,6 +136,8 @@ def plan_lines(changeset: ChangeSet, style: Style, *, verbose: bool = False, ful
     for change, row, text in zip(listed, rows, laid, strict=True):
         head = row[0]
         lines.append("  " + style(head, _ACTION_STYLE[change.action][2]) + text[len(head) :])
+        if change.action is Action.UPDATE and change.member_diff:
+            lines += member_diff_lines(change.member_diff, style, full=full, more=more)
         if full:
             lines += _detail(change, changeset.manifest_id, style)
     unchanged = sum(change.action is Action.NOOP for change in changeset.changes)
@@ -196,8 +227,17 @@ def _plan_row(change: Change, manifest_id: str) -> list[str]:
 
 
 def _changed_labels(change: Change, manifest_id: str) -> list[str]:
-    """Return what an update changes, as a person names it: `definition`, `version alias`, ..."""
-    return property_labels([item.name for item in changed_properties(change, manifest_id)])
+    """Return what an update changes, as a person names it: its members, `version alias`, ...
+
+    An update compared member by member names each member it changes in place of `definition`,
+    or says no member differs when only what the comparison cannot see changed.
+    """
+    labels = property_labels([item.name for item in changed_properties(change, manifest_id)])
+    if change.member_diff is None or "definition" not in labels:
+        return labels
+    members = list(summary(change.member_diff)) or ["definition (no member-level difference)"]
+    at = labels.index("definition")
+    return [*labels[:at], *members, *labels[at + 1 :]]
 
 
 def property_labels(names: Sequence[str]) -> list[str]:
@@ -209,6 +249,43 @@ def property_labels(names: Sequence[str]) -> list[str]:
     if "fingerprint" in names:
         names = [name for name in names if name != "manifest_id"]
     return [_PROPERTY_LABELS.get(name, name) for name in names]
+
+
+def member_diff_lines(diffs: Sequence[MemberDiff], style: Style, *, full: bool, more: str) -> list[str]:
+    """Return an update's member diff as a person reads it, under the update's row.
+
+    Each member is headed `~`, `+` or `-` for a changed, added or removed one; a changed member
+    lists each property it changes, then the property's lines. An added or removed member lists
+    its properties only with `full`. Without it, a property shows at most `DIFF_PROPERTY_LINES`
+    lines, the whole diff `DIFF_CHANGE_LINES`, and a line `DIFF_LINE_CHARS` characters, the rest
+    counted on a last line that says `more`.
+    """
+    lines: list[str] = []
+    hidden = 0
+    for item in diffs:
+        mark, role = _MEMBER_MARKS.get(item.op, ("~", "update"))
+        lines.append("      " + style(f"{mark} {printable(item.label)}", role))
+        if item.op in (ADDED, REMOVED) and not full:
+            continue
+        for prop in item.properties:
+            body = property_lines(prop)
+            shown = body if full else body[:DIFF_PROPERTY_LINES]
+            hidden += len(body) - len(shown)
+            lines.append(f"          {printable(prop.name)}:")
+            lines += ["            " + style(f"{sign} {_clip(text, full)}", _LINE_ROLES[sign]) for sign, text in shown]
+    if not full and len(lines) > DIFF_CHANGE_LINES:
+        hidden += len(lines) - DIFF_CHANGE_LINES
+        lines = lines[:DIFF_CHANGE_LINES]
+    if hidden:
+        noun = "line" if hidden == 1 else "lines"
+        lines.append("      " + style(f"{style.symbol('ellipsis')} {hidden} more {noun} ({more})", "dim"))
+    return lines
+
+
+def _clip(text: str, full: bool) -> str:
+    if full or len(text) <= DIFF_LINE_CHARS:
+        return text
+    return text[: DIFF_LINE_CHARS - 3] + "..."
 
 
 def _detail(change: Change, manifest_id: str, style: Style) -> list[str]:

@@ -23,86 +23,41 @@ from __future__ import annotations
 import difflib
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
 
-# A property value: one string, or a list of them.
-Value = str | tuple[str, ...]
+from snowflake_semantic_tools.domain.model.lifecycle.member import (
+    ADDED,
+    CHANGED,
+    REMOVED,
+    Definition,
+    Member,
+    MemberDiff,
+    PropertyDiff,
+    Value,
+)
 
-ADDED, REMOVED, CHANGED = "added", "removed", "changed"
+__all__ = [
+    "ADDED",
+    "CHANGED",
+    "COUNTED",
+    "REMOVED",
+    "Definition",
+    "Member",
+    "MemberDiff",
+    "NameMap",
+    "PropertyDiff",
+    "Value",
+    "diff_definitions",
+    "normalize",
+    "printable",
+    "property_lines",
+    "summary",
+    "unified_text",
+]
+
 # Properties shown as a count rather than item by item: their items are refreshed data.
 COUNTED = frozenset(("sample_values",))
 # C0 and C1 control characters, but for tab and newline, and DEL: none reach a reader.
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
-
-
-@dataclass(frozen=True, slots=True)
-class Member:
-    """One part of an artifact, with the properties SST authors for it.
-
-    Attributes:
-        kind: What the member is, as a person names it: `metric`, `dimension`, `tool`, `file`.
-        name: Its name as the desired side spells it, for display; matched casefolded.
-        properties: Each property's name and value, in display order.
-    """
-
-    kind: str
-    name: str
-    properties: tuple[tuple[str, Value], ...] = ()
-
-    @property
-    def key(self) -> tuple[str, str]:
-        """Return what two sides' members are matched by: the kind, and the name casefolded."""
-        return self.kind, self.name.casefold()
-
-
-@dataclass(frozen=True, slots=True)
-class Definition:
-    """Every member one side holds of one artifact, in display order.
-
-    Raises:
-        ValueError: two members share a kind and a casefolded name.
-    """
-
-    members: tuple[Member, ...] = ()
-
-    def __post_init__(self) -> None:
-        keys = [member.key for member in self.members]
-        duplicates = sorted({key for key in keys if keys.count(key) > 1})
-        if duplicates:
-            raise ValueError(f"a definition names {duplicates[0][0]} {duplicates[0][1]!r} twice")
-
-
-@dataclass(frozen=True, slots=True)
-class PropertyDiff:
-    """One property a member's two sides disagree on: its value before, and after.
-
-    For an added member `before` is None, and for a removed one `after` is.
-    """
-
-    name: str
-    before: Value | None
-    after: Value | None
-
-
-@dataclass(frozen=True, slots=True)
-class MemberDiff:
-    """One member the two sides disagree on.
-
-    Attributes:
-        op: `added` when only the after side holds it, `removed` when only the before side
-            does, `changed` when both do and a property both state differs.
-        properties: The properties that differ: every property of an added or removed member.
-    """
-
-    kind: str
-    name: str
-    op: str
-    properties: tuple[PropertyDiff, ...]
-
-    @property
-    def label(self) -> str:
-        """Return the member as a person names it: `metric orders.total_revenue`."""
-        return f"{self.kind} {self.name}"
 
 
 def diff_definitions(before: Definition, after: Definition) -> tuple[MemberDiff, ...]:

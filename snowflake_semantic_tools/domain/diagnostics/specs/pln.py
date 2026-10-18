@@ -475,6 +475,23 @@ SPECS: tuple[ErrorSpec, ...] = (
         precheck=Precheck.OBSERVE,
     ),
     spec(
+        "SST-PLN041",
+        Severity.INFO,
+        "Update not compared member by member",
+        "what the update of {value} changes was not compared member by member: {detail}",
+        "check that the role can DESCRIBE the object and read its versions or staged files, or plan with "
+        "--no-diff to skip the read",
+        condition=(
+            "reading the live definition of an object a planned update changes failed, so the plan cannot "
+            "show which members the update changes"
+        ),
+        note=(
+            "The plan is otherwise unaffected: the update is planned as before, and reported as a changed "
+            "definition without its members."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
         "SST-PLN100",
         Severity.ERROR,
         "Smoke query failed",

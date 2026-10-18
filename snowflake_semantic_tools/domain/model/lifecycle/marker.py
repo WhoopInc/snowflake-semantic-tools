@@ -64,3 +64,8 @@ def marked_comment(text: str | None, marker: str) -> str:
     """Return the comment SST publishes: `comment_text(text)`, then `marker`; the marker alone if blank."""
     body = comment_text(text)
     return f"{body} {marker}" if body else marker
+
+
+def unmarked_comment(comment: str | None) -> str:
+    """Return a published comment without any ownership marker it carries: the text a reader sees."""
+    return comment_text(_MARKER.sub("", comment or ""))

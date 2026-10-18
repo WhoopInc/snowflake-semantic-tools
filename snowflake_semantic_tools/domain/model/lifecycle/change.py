@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle.action import Action, ChangeReason
+from snowflake_semantic_tools.domain.model.lifecycle.member import MemberDiff
 from snowflake_semantic_tools.domain.model.lifecycle.observation import (
     ArtifactKey,
     CompositeObservation,
@@ -44,6 +45,9 @@ class Change:
             prunes run in reverse.
         composite_observation: What a composite handler observed; None for any other artifact.
         prune_executable: False for a prune plan reports but apply never executes.
+        member_diff: What an update changes, member by member, live object against render; None
+            when it was not compared, as for any other action, under `--no-diff`, or when the
+            live definition could not be read.
     """
 
     key: ArtifactKey
@@ -57,6 +61,7 @@ class Change:
     diagnostics: DiagnosticBag = DiagnosticBag()
     composite_observation: CompositeObservation | None = None
     prune_executable: bool = True
+    member_diff: tuple[MemberDiff, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)

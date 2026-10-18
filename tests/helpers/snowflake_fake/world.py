@@ -24,7 +24,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, GrantRow, OwnershipMarker, QueryResult, ShowRow
-from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion, DescribedMember
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.state import AppliedEntry
@@ -168,6 +168,8 @@ class SnowflakeWorld:
         # (type, object name, parameter), each upper-cased.
         self.show_rows: dict[str, Mapping[str, str]] = {}
         self.descriptions: dict[str, Mapping[str, str]] = {}
+        # DESCRIBE SEMANTIC VIEW rows by the view's qualified name.
+        self.view_descriptions: dict[str, tuple[DescribedMember, ...]] = {}
         self.object_parameters: dict[tuple[str, str, str], str] = {}
         self.preflight = PreflightAnswers()
         self.halted: str | None = None

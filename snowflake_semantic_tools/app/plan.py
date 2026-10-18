@@ -35,6 +35,7 @@ from snowflake_semantic_tools.app.plan_artifacts import (
     plan_changes,
     unrecorded_composites,
 )
+from snowflake_semantic_tools.app.plan_diff import diff_updates
 from snowflake_semantic_tools.app.policy import strict_reach
 from snowflake_semantic_tools.app.state import change_summary, read_state
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
@@ -403,7 +404,6 @@ class PreparePlan:
             state, state_diagnostics = read_state(state_store, port, state_table=state_table, target=target)
         apply_config = config_block(self._inputs.config().tree.get("apply"))
         handlers = _lifecycle_handlers(port, candidates.full, apply_config)
-        scope = candidates.scope
         rendered = self._publication(result, manifest, apply_config, target, temporary=temporary)
         fetched_at = self._clock.now_iso()
         started = self._clock.monotonic_ms()
@@ -418,24 +418,44 @@ class PreparePlan:
                 state,
                 target,
                 fetched_at=fetched_at,
-                include_prune=scope.include_prune,
-                prune_types=scope.prune_types,
+                include_prune=candidates.scope.include_prune,
+                prune_types=candidates.scope.prune_types,
                 observation_targets=_observation_targets(candidates.full, state),
                 state_tables=(state_table, lock_table_for(state_table)),
                 state_table_kind=state_table_kind,
             )
         with self._phases.phase("classify"):
             changeset = _decided(candidates, rendered, reading, manifest, state, target, handlers, composite_plans)
+        changeset, unread = self._diffed(changeset, result, port, readers, observe_options)
         stale = stale_observation(target, self._clock.monotonic_ms() - started)
         # A reading with a refused read is incomplete, so no later plan may reuse it. An advisory
         # read the role may not make (SST-VAL020) is as complete as the role can ever read it.
         recorded = RecordedObservation(target, reading.observation, state, reading.preflight)
         leading = (*state_diagnostics, *((stale,) if stale else ()))
-        trailing = channel_divergence(port, result)
+        trailing = (*channel_divergence(port, result), *unread)
         ready = _ready(
             candidates, result, manifest, state, changeset, handlers, held, leading=leading, trailing=trailing
         )
         return replace(ready, recorded=None if reading.failures.has_errors else recorded)
+
+    def _diffed(
+        self,
+        changeset: ChangeSet,
+        result: CompileResult,
+        port: SnowflakePort,
+        readers: Fanout[PlanReadPort] | None,
+        observe_options: ObserveOptions,
+    ) -> tuple[ChangeSet, tuple[Diagnostic, ...]]:
+        """Return the plan with each update's member diff, unless `--no-diff`, and the reads refused."""
+        if not observe_options.diff:
+            return changeset, ()
+        with self._phases.phase("diff"):
+            compiled = {item.artifact_key: item for item in result.compiled}
+            diff_readers: Fanout[SnowflakePort] = Fanout(port)
+            if readers is not None:
+                diff_readers = readers
+            changes, unread = diff_updates(changeset.changes, compiled, diff_readers)
+        return replace(changeset, changes=changes), unread
 
     def run_recorded(
         self,

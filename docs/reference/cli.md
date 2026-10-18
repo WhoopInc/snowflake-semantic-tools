@@ -493,9 +493,12 @@ by hand in either way is blocked (SST-PLN014).
 The plan is saved as `target/sst/plan.json` unless --plan-out or --no-plan-out says
 otherwise, and each create's and update's statements go to `target/sst/sql`, or --sql-out.
 `--names-only` prints only the name of each changed artifact, and wins over `--full`.
-What the plan read of the target is recorded as `target/sst/observation.<target>.json`;
-`--use-cached-state` plans from the one `--state` holds instead, without connecting, and
-reports how old it is.
+Each update is followed by what it changes, member by member, the live object against what
+SST renders, cut short where long; all of it is written as a unified diff to
+`target/sst/plan.<target>.diff`, or --diff-out, on every plan. `--no-diff` skips reading
+the live definitions. What the plan read of the target is recorded as
+`target/sst/observation.<target>.json`; `--use-cached-state` plans from the one `--state`
+holds instead, without connecting, and reports how old it is.
 
 ```text
 sst plan [OPTIONS]
@@ -516,10 +519,12 @@ sst plan [OPTIONS]
 | `--grants / --no-grants` | flag |  | Read the grants on each object an update replaces, one `SHOW GRANTS` each, to report what a replace would drop (SST-PLN013), and the tags on each semantic view it replaces, to report those the replace removes (SST-PLN039). On by default; `--no-grants` skips the reads. |
 | `--use-cached-state` | flag |  | Plan from the observation an earlier `sst plan` recorded in `--state` instead of reading the target, without connecting; the plan says what the target held then, and its age is reported. Requires `--state`; refused with `--snowflake-syntax-check` or `--capture-prior`; composite artifacts are blocked. |
 | `--capture-prior` | flag |  | Read the current definition of each live object a planned artifact names, so a review can see what an update replaces and restore it: `GET_DDL` for a semantic view, search service, procedure or function (needs REFERENCES or OWNERSHIP); for an agent, which an update never replaces, the version it serves, its specification, and the `ALTER AGENT` statements that point back at it. A stage, skill, plugin, profile or eval has none. Shown by `--full` and as `prior_definition` in JSON; a read that fails is a warning (SST-PLN037), not a failed plan. |
+| `--no-diff` | flag |  | Do not read the live definition each update replaces, so the plan does not show what the update changes member by member: one DESCRIBE, version or staged-file read per update fewer. |
+| `--diff-out` | FILE |  | Write what each update changes, member by member, as a unified diff here instead of `target/sst/plan.<target>.diff`. Refused with `--no-diff`. |
 | `--sql-out` | DIRECTORY |  | Write each create's and update's statements into this directory instead of `target/sst/sql`. |
 | `--no-validate` | flag |  | Skip validation: no cycle check, connected check, agent reference lookup, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`. |
 | `--threads` | INTEGER RANGE |  | Sessions to validate and observe on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 4; 1 reads serially. The plan is the same for any count. |
-| `--full` | flag |  | Also print, under each update, the properties it changes on the object, and the definition it replaces when `--capture-prior` read it. |
+| `--full` | flag |  | Also print, under each update, the properties it changes on the object, and the definition it replaces when `--capture-prior` read it; and show each member's diff whole, not cut short. |
 | `--names-only` | flag |  | Print the name of each changed artifact, one per line, and nothing else. |
 | `--no-detailed-exitcode` | flag |  | Exit 0 when changes are pending, instead of 2. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error; `--no-strict` promotes none. Else `$SST_STRICT`, else `validation.strict`, off when unset. A warning about an artifact the selection leaves out stays one. |
@@ -531,7 +536,9 @@ Apply a current reviewed plan; smoke probes never run here.
 
 Without --plan, apply plans afresh as `sst plan` does, prints the plan, and asks before it
 writes; --yes skips the question, and is required with --prune, with --output json, and
-whenever stdin or stderr is not a terminal, which apply refuses before it plans.
+whenever stdin or stderr is not a terminal, which apply refuses before it plans. The plan it
+asks about shows what each update changes, member by member, as `sst plan` does; with --yes
+nothing is shown, so those definitions are not read.
 With --plan, the saved plan's selection and --prune are used: --select, --exclude, --prune
 and --partial must agree with it, and it must have been made for this target, from the
 manifest the project compiles now, observing what Snowflake holds now. The statements are

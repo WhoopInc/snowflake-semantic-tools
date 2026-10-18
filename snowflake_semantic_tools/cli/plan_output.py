@@ -27,6 +27,7 @@ from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.file_names import file_name
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOutcome, Change, ChangeSet
+from snowflake_semantic_tools.domain.plan.member_diff import MemberDiff, Value, unified_text
 from snowflake_semantic_tools.domain.plan.properties import changed_properties
 
 
@@ -50,12 +51,14 @@ def plan_exit_code(
     return OK
 
 
-def change_json(change: Change, manifest_id: str) -> dict[str, object]:
+def change_json(change: Change, manifest_id: str, *, unread: frozenset[str] = frozenset()) -> dict[str, object]:
     """Return one planned change as `--output json` lists it, with its target and fingerprints.
 
     A prune `sst` will not execute is marked `report_only`. `properties` names what an update
     changes on the object, publishing under `manifest_id`, and `prior_definition` is the
-    object's definition when `--capture-prior` read it, else null.
+    object's definition when `--capture-prior` read it, else null. `diff_status` is `compared`
+    for an update compared member by member, its members in `diff`; `unavailable` for one in
+    `unread`, whose live definition could not be read; else `not_compared`.
     """
     rendered = change.rendered
     observed = change.observed
@@ -86,7 +89,28 @@ def change_json(change: Change, manifest_id: str) -> dict[str, object]:
             for item in changed_properties(change, manifest_id)
         ],
         "prior_definition": observed.definition if observed is not None else None,
+        "diff_status": (
+            "compared" if change.member_diff is not None else "unavailable" if change.key in unread else "not_compared"
+        ),
+        "diff": [member_json(item) for item in change.member_diff or ()],
     }
+
+
+def member_json(item: MemberDiff) -> dict[str, object]:
+    """Return one member an update changes as `--output json` lists it: every value in full."""
+    return {
+        "kind": item.kind,
+        "member": item.name,
+        "op": item.op,
+        "properties": [
+            {"property": prop.name, "before": _json_value(prop.before), "after": _json_value(prop.after)}
+            for prop in item.properties
+        ],
+    }
+
+
+def _json_value(value: Value | None) -> object:
+    return list(value) if isinstance(value, tuple) else value
 
 
 def change_counts(changeset: ChangeSet) -> dict[str, int]:
@@ -111,13 +135,15 @@ def outcome_json(outcome: ApplyOutcome) -> dict[str, object]:
     }
 
 
-def print_plan(changeset: ChangeSet, *, full: bool = False) -> None:
+def print_plan(changeset: ChangeSet, *, full: bool = False, more: str = "--full shows all") -> None:
     """Print the plan as `render.report.plan_lines` lays it out: each change, then what stays the same.
 
-    `--verbose` lists the unchanged artifacts too; the verdict says the counts.
+    `--verbose` lists the unchanged artifacts too; the verdict says the counts. `more` says where
+    the rest of a member diff cut short is.
     """
     policy = render_policy()
-    for line in plan_lines(changeset, Style(policy.terminal, stdout=True), verbose=policy.verbose, full=full):
+    lines = plan_lines(changeset, Style(policy.terminal, stdout=True), verbose=policy.verbose, full=full, more=more)
+    for line in lines:
         click.echo(line, color=True if policy.terminal.color_out else None)
 
 
@@ -204,6 +230,54 @@ def write_plan_sql(project_dir: Path, changeset: ChangeSet, sql_out: Path | None
         )
         write_within(root, path, content)
     return output
+
+
+def plan_diff_path(project_dir: Path, changeset: ChangeSet, diff_out: Path | None) -> Path:
+    """Return where a plan writes its member diff: `--diff-out`, else `target/sst/plan.<target>.diff`."""
+    return diff_out or target_dir(project_dir) / f"plan.{file_name(changeset.target.name)}.diff"
+
+
+def plan_diff_text(changeset: ChangeSet, *, plan_id: str, skipped: str | None = None) -> str:
+    """Return the plan's member diff as a unified diff: what each update changes, live against desired.
+
+    A header names the target, the plan and when it observed. Each update compared member by
+    member is a section; an update that was not, or whose members all agree, is named in a
+    comment; with no update, or when `skipped` says why the diffs were not read, the header says so.
+    """
+    target = changeset.target
+    plan = plan_id or "-"
+    lines = [f"# sst plan: target {target.name} ({target.scope.sql}), plan {plan}, observed {changeset.observation_at}"]
+    updates = [change for change in changeset.changes if change.action is Action.UPDATE]
+    if skipped is not None:
+        lines.append(f"# member diffs not read: {skipped}")
+    elif not updates:
+        lines.append("# no updates: nothing to compare")
+    for change in updates if skipped is None else ():
+        if change.member_diff is None:
+            lines.append(f"# {change.key}: not compared member by member")
+        elif not change.member_diff:
+            lines.append(f"# {change.key}: definition changed; no member-level difference")
+    text = "\n".join(lines) + "\n"
+    sections = (
+        (change.key, change.rendered.target.sql if change.rendered is not None else "", change.member_diff)
+        for change in updates
+        if skipped is None and change.member_diff
+    )
+    body = unified_text(sections)
+    return text + ("\n" + body if body else "")
+
+
+def write_plan_diff(project_dir: Path, path: Path, text: str) -> Path:
+    """Write the plan's member diff at `path`, under the project's output root; return the path.
+
+    Raises:
+        UnsafeWrite: A symbolic link is on the way to the file or at it.
+        OSError: The file cannot be written.
+    """
+    root = output_root(project_dir, path.parent)
+    make_folders_within(root, path.parent)
+    write_within(root, path, text)
+    return path
 
 
 def artifact_suffix(render_dialect: str) -> str:

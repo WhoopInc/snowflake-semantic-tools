@@ -14,6 +14,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName, Sche
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
     AgentVersions,
+    DescribedMember,
     ExtensionObservation,
     ExtensionVersion,
 )
@@ -219,6 +220,13 @@ class FakeCatalog(SnowflakeWorld):
             "owner": self.dataset_owners.get(qualified_name.sql, self.role),
             "versions": json.dumps(self.dataset_version_names.get(qualified_name.sql, [])),
         }
+
+    def describe_semantic_view(self, qualified_name: QualifiedName) -> tuple[DescribedMember, ...]:
+        self._check("describe_semantic_view")
+        described = self.view_descriptions.get(qualified_name.sql)
+        if described is None:
+            raise SnowflakePortError(f"SQL compilation error: semantic view '{qualified_name.sql}' does not exist.")
+        return described
 
     def describe_properties(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
         self._check("describe_properties")

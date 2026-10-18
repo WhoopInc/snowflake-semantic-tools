@@ -202,7 +202,15 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ),
     ("sst plan", "--full"): (
         "Also print, under each update, the properties it changes on the object, and the definition it "
-        "replaces when `--capture-prior` read it."
+        "replaces when `--capture-prior` read it; and show each member's diff whole, not cut short."
+    ),
+    ("sst plan", "--no-diff"): (
+        "Do not read the live definition each update replaces, so the plan does not show what the update "
+        "changes member by member: one DESCRIBE, version or staged-file read per update fewer."
+    ),
+    ("sst plan", "--diff-out"): (
+        "Write what each update changes, member by member, as a unified diff here instead of "
+        "`target/sst/plan.<target>.diff`. Refused with `--no-diff`."
     ),
     ("sst plan", "--names-only"): "Print the name of each changed artifact, one per line, and nothing else.",
     ("sst plan", "--no-detailed-exitcode"): "Exit 0 when changes are pending, instead of 2.",

@@ -29,6 +29,8 @@ from snowflake_semantic_tools.cli.render.report import property_labels
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag, Severity
 
 MAX_LINES = 200
+# The most members a changed line names; the rest are counted.
+_MAX_MEMBERS = 6
 _OUTCOMES = {
     OK: "PASS",
     CHANGES: "CHANGES",
@@ -162,6 +164,9 @@ def _body(command: str, data: Mapping[str, object]) -> list[str]:
             continue
         names = [str(item.get("property")) for item in _rows(change.get("properties"))]
         props = [label.replace(" ", "_") for label in property_labels(names)]
+        if change.get("diff_status") == "compared" and "definition" in props:
+            at = props.index("definition")
+            props[at : at + 1] = _members(_rows(change.get("diff"))) or ["definition"]
         detail = f" changes={','.join(props)}" if props else ""
         only = " report_only" if change.get("report_only") else ""
         mark = _MARKS.get(str(change.get("action")), "?")
@@ -178,6 +183,17 @@ def _body(command: str, data: Mapping[str, object]) -> list[str]:
             parts = [str(item.get(key)) for key in ("key", "status", "target", "relation") if item.get(key)]
             lines.append(" ".join(parts))
     return lines
+
+
+def _members(diff: list[Mapping[str, object]]) -> list[str]:
+    """Name each member an update changes as `kind:name` and `~`, `+` or `-`, at most `_MAX_MEMBERS`."""
+    marks = {"changed": "~", "added": "+", "removed": "-"}
+    names = [
+        _printable(f"{item.get('kind')}:{item.get('member')}{marks.get(str(item.get('op')), '~')}").replace(" ", "_")
+        for item in diff
+    ]
+    more = len(names) - _MAX_MEMBERS
+    return names[:_MAX_MEMBERS] + ([f"{more}_more"] if more > 0 else [])
 
 
 def _rows(value: object) -> list[Mapping[str, object]]:
