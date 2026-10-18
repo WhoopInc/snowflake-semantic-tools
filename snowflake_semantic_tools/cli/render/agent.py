@@ -165,7 +165,9 @@ def _body(command: str, data: Mapping[str, object]) -> list[str]:
         detail = f" changes={','.join(props)}" if props else ""
         only = " report_only" if change.get("report_only") else ""
         mark = _MARKS.get(str(change.get("action")), "?")
-        lines.append(f"{mark} {change.get('artifact_key')} {change.get('target')} {change.get('reason')}{detail}{only}")
+        # A report-only prune of an object nothing observed has no target, as in the table.
+        target = change.get("target") or "-"
+        lines.append(f"{mark} {change.get('artifact_key')} {target} {change.get('reason')}{detail}{only}")
     for outcome in _rows(data.get("outcomes")):
         if outcome.get("action") == "noop":
             continue

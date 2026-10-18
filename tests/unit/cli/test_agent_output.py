@@ -136,6 +136,8 @@ def test_a_plan_lists_its_changes_and_counts_the_unchanged() -> None:
                 "properties": [{"property": "fingerprint"}, {"property": "manifest_id"}, {"property": "aliases"}],
             },
             {"action": "noop", "artifact_key": "semantic_view:c", "target": "DB.S.C", "reason": "unchanged"},
+            # Report-only, with nothing observed: no target, as the table shows it.
+            {"action": "prune", "artifact_key": "tool:d", "target": None, "reason": "orphaned", "report_only": True},
         ],
     }
     out = agent_document(
@@ -152,9 +154,10 @@ def test_a_plan_lists_its_changes_and_counts_the_unchanged() -> None:
     assert lines[0].startswith(
         "sst plan: CHANGES exit=2 errors=0 warnings=0 create=1 update=1 prune=0 blocked=0 unchanged=3"
     )
-    assert lines[1:3] == [
+    assert lines[1:4] == [
         "+ semantic_view:a DB.S.A not_present",
         "~ agent:b DB.S.B fingerprint_differs changes=definition,version_alias",
+        "- tool:d - orphaned report_only",
     ]
     assert "run it only when they ask" in lines[-1]
     assert all(LINE.match(line) for line in lines)
