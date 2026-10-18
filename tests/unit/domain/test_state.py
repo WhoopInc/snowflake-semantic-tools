@@ -64,6 +64,10 @@ def test_canonical_json_is_deterministic_and_rejects_nan() -> None:
 def test_artifact_entry_round_trip() -> None:
     entry = ArtifactEntry("semantic_view", "v", "a" * 64, ("v.yml",), ("metric:m",), (), "DB.S.V", 10)
     assert ArtifactEntry.from_dict(entry.as_dict()) == entry
+    fingerprinted = replace(entry, member_fingerprints=(("metric:t.m", "f" * 64),))
+    assert ArtifactEntry.from_dict(fingerprinted.as_dict()) == fingerprinted
+    with pytest.raises(ValueError, match="component metadata"):
+        ArtifactEntry.from_dict({**entry.as_dict(), "member_fingerprints": []})
     generic = ArtifactEntry(
         "agent",
         "a",
@@ -186,7 +190,12 @@ def test_state_round_trip_and_empty_state() -> None:
             AppliedResource("table", "DB.S.V_SRC", ResourceStatus.RETAINED),
             AppliedResource("DATASET", "DB.S.V", ResourceStatus.UNVERIFIED_AFTER_WRITE),
         ),
+        member_fingerprints=(("metric:t.m", "f" * 64), ("dimension:t.d", "e" * 64)),
     )
+    assert [key for key, _ in applied.member_fingerprints] == ["dimension:t.d", "metric:t.m"]
+    assert "member_fingerprints" not in replace(applied, member_fingerprints=()).as_dict()
+    with pytest.raises(ValueError, match="component metadata"):
+        AppliedEntry.from_dict({**applied.as_dict(), "member_fingerprints": []})
     last = LastRun("run", "start", "finish", "1.0", "apply", "ok", "actor")
     state = State(
         STATE_SCHEMA_VERSION, target(), "m", "sst_config.yml", last, MappingProxyType({"semantic_view:v": applied})

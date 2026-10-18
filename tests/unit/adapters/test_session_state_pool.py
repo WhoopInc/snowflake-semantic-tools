@@ -104,11 +104,11 @@ def test_a_state_write_merges_the_changes_in_one_fenced_transaction_with_every_v
     )
     assert all("DROP TABLE x" not in statement for statement in statements)
     merged = [(statement, params) for statement, params in driver.executed if statement.startswith("MERGE")]
-    # One SELECT of bound values per entry, in key order, every entry's thirteen values bound.
+    # One SELECT of bound values per entry, in key order, every entry's fourteen values bound.
     assert [statement.count("SELECT ") for statement, _ in merged] == [2]
     params = merged[0][1]
-    assert params is not None and len(params) == 26
-    assert [params[1], params[14]] == ["semantic_view:v'; DROP TABLE x; --", "skill:b"]
+    assert params is not None and len(params) == 28
+    assert [params[1], params[15]] == ["semantic_view:v'; DROP TABLE x; --", "skill:b"]
     assert driver.executed[-3] == (
         "DELETE FROM DB.S.SST_STATE WHERE TARGET_NAME = %s AND ARTIFACT_KEY = %s",
         ("dev", "agent:gone"),
@@ -125,7 +125,7 @@ def test_a_state_write_of_many_entries_merges_them_in_batches_in_key_order() -> 
     assert DriverConnector(driver).write_state(STATE_TABLE, "dev", "m" * 64, StateWrite(upserts, ()), FENCE)
     merged = [(statement, params) for statement, params in driver.executed if statement.startswith("MERGE")]
     assert [statement.count("SELECT ") for statement, _ in merged] == [50, 50, 20]
-    keys = [params[index] for _, params in merged if params is not None for index in range(1, len(params), 13)]
+    keys = [params[index] for _, params in merged if params is not None for index in range(1, len(params), 14)]
     assert keys == sorted(upserts)
 
 
@@ -161,6 +161,7 @@ def test_ensure_state_table_adds_only_the_columns_an_older_table_lacks() -> None
         "SELECT IS_HYBRID FROM DB.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
         "ALTER TABLE DB.S.SST_STATE ADD COLUMN IF NOT EXISTS COMPONENT_FINGERPRINTS OBJECT",
         "ALTER TABLE DB.S.SST_STATE ADD COLUMN IF NOT EXISTS LIVE_DIGEST VARCHAR",
+        "ALTER TABLE DB.S.SST_STATE ADD COLUMN IF NOT EXISTS MEMBER_FINGERPRINTS OBJECT",
         "ALTER TABLE DB.S.SST_STATE ADD COLUMN IF NOT EXISTS STATE_MANIFEST_ID VARCHAR(64)",
     ]
 
@@ -169,7 +170,13 @@ def test_an_existing_state_table_gets_no_ddl_so_a_role_that_may_only_write_it_ca
     # Snowflake checks CREATE TABLE on the schema for CREATE TABLE IF NOT EXISTS even when the
     # table exists, which a role granted only SELECT, INSERT, UPDATE and DELETE lacks.
     driver = _driver(rows={"SELECT RUN_ID, GENERATION": [("run", 3)]})
-    columns = ("COMPONENT_FINGERPRINTS", "PHYSICAL_RESOURCES", "LIVE_DIGEST", "STATE_MANIFEST_ID")
+    columns = (
+        "COMPONENT_FINGERPRINTS",
+        "PHYSICAL_RESOURCES",
+        "LIVE_DIGEST",
+        "MEMBER_FINGERPRINTS",
+        "STATE_MANIFEST_ID",
+    )
     assert DriverConnector(driver, columns=columns).write_state(
         STATE_TABLE, "dev", "m", StateWrite({"k": ENTRY}), FENCE
     )

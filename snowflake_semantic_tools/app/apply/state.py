@@ -72,7 +72,23 @@ def _applied_after(
         )
     _record_observed(applied, changeset.changes, previous, failed_without_write, stamp)
     _record_digests(applied, changeset.changes)
+    _record_member_fingerprints(applied, changeset.changes)
     return applied
+
+
+def _record_member_fingerprints(applied: dict[str, AppliedEntry], changes: tuple[Change, ...]) -> None:
+    """Record the member fingerprints of an unchanged artifact whose entry has none yet.
+
+    An unchanged artifact publishes what it compiles to, so its render's fingerprints are those of
+    the object; an entry written before SST recorded them gains them on the first apply after.
+    """
+    for change in changes:
+        entry = applied.get(change.key)
+        rendered = change.rendered
+        if change.action is not Action.NOOP or entry is None or entry.member_fingerprints or rendered is None:
+            continue
+        if rendered.member_fingerprints:
+            applied[change.key] = replace(entry, member_fingerprints=rendered.member_fingerprints)
 
 
 def _record_digests(applied: dict[str, AppliedEntry], changes: tuple[Change, ...]) -> None:
@@ -176,6 +192,7 @@ def _written_entry(
         physical_resources=_recorded_resources(change, outcome, previous_entry, lifecycle_handler),
         # Apply reads a digest back only once a write is verified; any other is unknown.
         live_digest=outcome.live_digest,
+        member_fingerprints=change.rendered.member_fingerprints,
     )
 
 
@@ -266,6 +283,7 @@ def _recovered_entry(
         git_sha=stamp.git_sha,
         component_fingerprints=proof.component_fingerprints,
         physical_resources=proof.physical_resources,
+        member_fingerprints=rendered.member_fingerprints,
     )
 
 

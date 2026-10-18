@@ -2,8 +2,8 @@
 
 One column table drives every statement the table sees: the CREATE, the ALTERs that migrate
 an older table, the SELECT that reads a target's entries, and the MERGE that writes one.
-COMPONENT_FINGERPRINTS, PHYSICAL_RESOURCES, LIVE_DIGEST and STATE_MANIFEST_ID came later, so a
-table created before them reads the first three as NULL and records no manifest until
+COMPONENT_FINGERPRINTS, PHYSICAL_RESOURCES, LIVE_DIGEST, MEMBER_FINGERPRINTS and STATE_MANIFEST_ID came
+later, so a table created before them reads the first four as NULL and records no manifest until
 `ensure_state_table` adds them with ADD COLUMN IF NOT EXISTS, which is safe to repeat.
 
 A run writes only the entries it changed: one MERGE per batch of changed entries and one DELETE
@@ -80,6 +80,8 @@ _COLUMNS = (
     _StateColumn("PHYSICAL_RESOURCES", sql("ARRAY"), sql("PARSE_JSON(%s)"), added=True),
     # Added after the two above, so a table may hold them and lack it; it reads as NULL alone.
     _StateColumn("LIVE_DIGEST", sql("VARCHAR"), added=True),
+    # Added after LIVE_DIGEST, and read as NULL alone when a table lacks it.
+    _StateColumn("MEMBER_FINGERPRINTS", sql("OBJECT"), sql("PARSE_JSON(%s)"), added=True),
 )
 # The columns added together, which a table holds both of or reads as holding neither.
 _PAIRED = frozenset(("COMPONENT_FINGERPRINTS", "PHYSICAL_RESOURCES"))
@@ -119,6 +121,7 @@ class StateTableMethods(LockTableMethods, StatePort, CatalogPort):
                     component_fingerprints=_component_fingerprints(row[9]),
                     physical_resources=_physical_resources(row[10]),
                     live_digest=str(row[11]) if row[11] else None,
+                    member_fingerprints=_member_fingerprints(row[12]),
                 )
                 for row in result.rows
             }
@@ -342,6 +345,7 @@ def _state_values(target_name: str, artifact_key: str, entry: AppliedEntry) -> t
         _json_components(entry),
         _json_resources(entry),
         entry.live_digest,
+        _json_text(pairs_to_json(entry.member_fingerprints)),
     )
 
 
@@ -370,6 +374,13 @@ def _component_fingerprints(value: object) -> tuple[tuple[str, str], ...]:
     parsed = _variant_value(value, {})
     if not isinstance(parsed, dict):
         raise SnowflakePortError("state COMPONENT_FINGERPRINTS must be an object")
+    return pairs_from_json(parsed)
+
+
+def _member_fingerprints(value: object) -> tuple[tuple[str, str], ...]:
+    parsed = _variant_value(value, {})
+    if not isinstance(parsed, dict):
+        raise SnowflakePortError("state MEMBER_FINGERPRINTS must be an object")
     return pairs_from_json(parsed)
 
 

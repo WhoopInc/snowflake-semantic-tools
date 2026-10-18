@@ -595,6 +595,15 @@ the members it uses (`uses`), read from the resolved view by
 sources, `dbt_nodes` adds about 1.4 MB. A schema-4 manifest migrates with an
 empty graph.
 
+Each artifact entry also carries `member_fingerprints`: the hash of each member of
+the definition plan compares, keyed `<kind>:<name>` as the member diff names it
+(`domain/plan/member_fingerprints.py`). Apply records the same fingerprints in
+each state entry (the `MEMBER_FINGERPRINTS` column), and an unchanged entry
+written before them gains them on the next apply. A plan that does not read an
+update's object (`--no-diff`, or a refused read) compares the two and names the
+members that changed; lineage compares a `--state` manifest's the same way. The
+fields are optional, so neither the state schema nor the saved plan's changed.
+
 Drawn from: [domain/state/manifest.py](../../snowflake_semantic_tools/domain/state/manifest.py), [domain/state/applied.py](../../snowflake_semantic_tools/domain/state/applied.py), [domain/model/lifecycle/rendered.py](../../snowflake_semantic_tools/domain/model/lifecycle/rendered.py), [domain/plan/classify.py](../../snowflake_semantic_tools/domain/plan/classify.py), [domain/plan/impact.py](../../snowflake_semantic_tools/domain/plan/impact.py), [app/manifest.py](../../snowflake_semantic_tools/app/manifest.py), [adapters/project_source.py](../../snowflake_semantic_tools/adapters/project_source.py).
 
 ## What connects to Snowflake

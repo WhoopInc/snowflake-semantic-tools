@@ -138,6 +138,8 @@ def plan_lines(
         lines.append("  " + style(head, _ACTION_STYLE[change.action][2]) + text[len(head) :])
         if change.action is Action.UPDATE and change.member_diff:
             lines += member_diff_lines(change.member_diff, style, full=full, more=more)
+        elif change.action is Action.UPDATE and change.changed_members:
+            lines += changed_member_lines(change.changed_members, style, full=full)
         if full:
             lines += _detail(change, changeset.manifest_id, style)
     unchanged = sum(change.action is Action.NOOP for change in changeset.changes)
@@ -282,6 +284,20 @@ def member_diff_lines(diffs: Sequence[MemberDiff], style: Style, *, full: bool, 
     if hidden:
         noun = "line" if hidden == 1 else "lines"
         lines.append("      " + style(f"{style.symbol('ellipsis')} {hidden} more {noun} ({more})", "dim"))
+    return lines
+
+
+def changed_member_lines(keys: Sequence[str], style: Style, *, full: bool) -> list[str]:
+    """Return the members state's fingerprints say an update changes, under the update's row.
+
+    Each is headed `~`, as plan did not read what changed in it; without `full`, at most
+    `DIFF_CHANGE_LINES` are named, the rest counted.
+    """
+    shown = keys if full else keys[:DIFF_CHANGE_LINES]
+    lines = ["      " + style(f"~ {printable(key.replace(':', ' ', 1))}", "update") for key in shown]
+    hidden = len(keys) - len(shown)
+    note = f", {hidden} more" if hidden else ""
+    lines.append("      " + style(f"(named from the fingerprints state records; not read{note})", "dim"))
     return lines
 
 

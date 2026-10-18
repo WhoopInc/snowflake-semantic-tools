@@ -114,9 +114,30 @@ def test_no_diff_reads_no_live_definition_and_says_so_in_the_file(
     project, port = _published(tmp_path, monkeypatch)
     port.fail("describe_semantic_view", AssertionError("--no-diff must not describe a view"))
     data = _plan(monkeypatch, port, project, "--no-diff")
-    assert _change(data, "semantic_view:jaffle_menu")["diff_status"] == "not_compared"
+    change = _change(data, "semantic_view:jaffle_menu")
+    # What apply published recorded each member's fingerprint, so the one edited is still named.
+    assert (change["diff_status"], change["changed_members"]) == ("from_state", ["metric:order_items.line_item_count"])
     text = (project / "target" / "sst" / "plan.dev.diff").read_text(encoding="utf-8")
-    assert text.splitlines()[1] == "# member diffs not read: --no-diff"
+    assert text.splitlines()[1:] == [
+        "# member diffs not read: --no-diff",
+        "# semantic_view:jaffle_menu: not read; the fingerprints state records name metric:order_items.line_item_count",
+    ]
+
+
+def test_a_plan_that_reads_no_definition_names_the_changed_member_under_its_update(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, port = _published(tmp_path, monkeypatch)
+    result = invoke_with_port(
+        monkeypatch, port, ["plan", *common(project), "--target", "dev", "--no-diff", "--no-plan-out", "-o", "plain"]
+    )
+    assert result.exit_code == 2, result.output
+    lines = result.output.splitlines()
+    row = next(index for index, line in enumerate(lines) if "semantic_view:jaffle_menu" in line and "update" in line)
+    assert lines[row + 1 : row + 3] == [
+        "      ~ metric order_items.line_item_count",
+        "      (named from the fingerprints state records; not read)",
+    ]
 
 
 def test_a_refused_describe_leaves_the_update_unavailable_with_a_note(
@@ -138,7 +159,10 @@ def test_a_refused_describe_leaves_the_update_unavailable_with_a_note(
     assert [item["code"] for item in payload["diagnostics"] if item["code"] == "SST-PLN041"] == ["SST-PLN041"]
     written = Path(payload["data"]["diff_path"])
     assert written.name == "p.diff"
-    assert "# semantic_view:jaffle_menu: not compared member by member" in written.read_text(encoding="utf-8")
+    assert (
+        "# semantic_view:jaffle_menu: not read; the fingerprints state records name metric:order_items.line_item_count"
+        in written.read_text(encoding="utf-8")
+    )
 
 
 def test_a_diff_path_with_no_diff_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -9,6 +9,7 @@ from snowflake_semantic_tools.cli.render.report import (
     DIFF_CHANGE_LINES,
     DIFF_LINE_CHARS,
     DIFF_PROPERTY_LINES,
+    changed_member_lines,
     member_diff_lines,
 )
 from snowflake_semantic_tools.cli.render.style import Style
@@ -84,4 +85,40 @@ def test_an_agent_document_names_at_most_six_members_and_counts_the_rest() -> No
     [sales, menu] = [line for line in out.splitlines() if line.startswith("~ ")]
     assert sales.endswith("changes=" + ",".join(f"metric:orders.m_{n}~" for n in range(6)) + ",3_more")
     # A compared update whose members all agree still says its definition changed.
+    assert menu.endswith("changes=definition")
+
+
+def test_the_members_state_names_are_listed_under_the_update_with_where_the_names_came_from() -> None:
+    keys = [f"metric:orders.m{index:02d}" for index in range(DIFF_CHANGE_LINES + 2)]
+    lines = changed_member_lines(keys, _STYLE, full=False)
+    assert lines[0] == "      ~ metric orders.m00"
+    assert len(lines) == DIFF_CHANGE_LINES + 1
+    assert lines[-1] == "      (named from the fingerprints state records; not read, 2 more)"
+    assert (
+        changed_member_lines(keys[:1], _STYLE, full=True)[-1]
+        == "      (named from the fingerprints state records; not read)"
+    )
+
+
+def test_an_agent_document_names_the_members_state_names_for_an_update_not_read() -> None:
+    change = {
+        "action": "update",
+        "artifact_key": "semantic_view:sales",
+        "target": "DB.S.SALES",
+        "reason": "fingerprint_differs",
+        "properties": [{"property": "fingerprint"}],
+        "diff_status": "from_state",
+        "changed_members": [f"metric:orders.m{n}" for n in range(7)],
+    }
+    out = agent_document(
+        "plan",
+        2,
+        DiagnosticBag(),
+        baselined=frozenset(),
+        fingerprint=stable_fingerprint,
+        project_dir=Path("."),
+        data={"changes": [change, {**change, "changed_members": None, "artifact_key": "semantic_view:menu"}]},
+    )
+    [sales, menu] = [line for line in out.splitlines() if line.startswith("~ ")]
+    assert sales.endswith("changes=" + ",".join(f"metric:orders.m{n}~" for n in range(6)) + ",1_more")
     assert menu.endswith("changes=definition")

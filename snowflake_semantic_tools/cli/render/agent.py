@@ -167,6 +167,9 @@ def _body(command: str, data: Mapping[str, object]) -> list[str]:
         if change.get("diff_status") == "compared" and "definition" in props:
             at = props.index("definition")
             props[at : at + 1] = _members(_rows(change.get("diff"))) or ["definition"]
+        elif change.get("diff_status") == "from_state" and "definition" in props:
+            at = props.index("definition")
+            props[at : at + 1] = _changed(change.get("changed_members")) or ["definition"]
         detail = f" changes={','.join(props)}" if props else ""
         only = " report_only" if change.get("report_only") else ""
         mark = _MARKS.get(str(change.get("action")), "?")
@@ -192,6 +195,13 @@ def _members(diff: list[Mapping[str, object]]) -> list[str]:
         _printable(f"{item.get('kind')}:{item.get('member')}{marks.get(str(item.get('op')), '~')}").replace(" ", "_")
         for item in diff
     ]
+    more = len(names) - _MAX_MEMBERS
+    return names[:_MAX_MEMBERS] + ([f"{more}_more"] if more > 0 else [])
+
+
+def _changed(keys: object) -> list[str]:
+    """Name each member state's fingerprints say an update changes as `kind:name~`, at most `_MAX_MEMBERS`."""
+    names = [_printable(f"{key}~").replace(" ", "_") for key in keys] if isinstance(keys, list) else []
     more = len(names) - _MAX_MEMBERS
     return names[:_MAX_MEMBERS] + ([f"{more}_more"] if more > 0 else [])
 

@@ -11,7 +11,7 @@ from snowflake_semantic_tools.app.compile import CompiledView
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
 from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.app.fanout import Fanout
-from snowflake_semantic_tools.app.plan_diff import diff_updates
+from snowflake_semantic_tools.app.plan_diff import compiled_fingerprints, diff_updates, from_state
 from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, Change, ChangeReason
@@ -23,7 +23,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.render.tool import render_tool
 from tests.helpers.described_objects import described_routine, described_search, described_view
-from tests.helpers.plan_codes import live
+from tests.helpers.plan_codes import entry, live
 from tests.helpers.plan_codes import view as rendered_view
 from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import authored, statement
@@ -206,3 +206,29 @@ def test_an_agent_is_compared_with_the_version_it_serves_and_one_serving_none_is
     port.agent_version_rows[rendered.target.sql] = ()
     [unread], [note] = diff_updates((change,), {"agent:analyst": agent}, Fanout(port))
     assert (unread.member_diff, "may not read the specification" in note.message) == (None, True)
+
+
+def test_a_compiled_artifact_is_fingerprinted_member_by_member_when_its_type_is_compared() -> None:
+    (view,) = _compiled(_model()).values()
+    keys = [key for key, _ in compiled_fingerprints(view)]
+    assert "metric:orders.order_count" in keys and "dimension:orders.order_id" in keys
+    stage = _tool(type="stage")
+    assert compiled_fingerprints(stage) == ()
+    # An artifact that is not what its type compiles to, as a test double may be, has none.
+    assert compiled_fingerprints(SimpleNamespace(artifact_type="agent", artifact_key="agent:a")) == ()
+    assert compiled_fingerprints(SimpleNamespace(artifact_type="lineage")) == ()
+
+
+def test_an_update_not_compared_names_the_members_state_s_fingerprints_say_changed() -> None:
+    before = compiled_fingerprints(next(iter(_compiled(_model()).values())))
+    after = compiled_fingerprints(next(iter(_compiled(_model("Orders taken.")).values())))
+    change = replace(_change(), rendered=replace(rendered_view("sales"), member_fingerprints=after))
+    recorded = {change.key: replace(entry(change.rendered, "m"), member_fingerprints=before)}  # type: ignore[arg-type]
+    (named,) = from_state((change,), recorded)
+    assert named.changed_members == ("metric:orders.order_count",)
+    compared = replace(change, member_diff=())
+    unrecorded = {change.key: entry(change.rendered, "m")}  # type: ignore[arg-type]
+    noop = replace(change, action=Action.NOOP)
+    assert from_state((compared, noop), recorded) == (compared, noop)
+    assert from_state((change,), unrecorded) == (change,)
+    assert from_state((replace(change, rendered=rendered_view("sales")),), recorded)[0].changed_members is None

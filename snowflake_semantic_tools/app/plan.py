@@ -35,7 +35,7 @@ from snowflake_semantic_tools.app.plan_artifacts import (
     plan_changes,
     unrecorded_composites,
 )
-from snowflake_semantic_tools.app.plan_diff import diff_updates
+from snowflake_semantic_tools.app.plan_diff import compiled_fingerprints, diff_updates, from_state
 from snowflake_semantic_tools.app.policy import strict_reach
 from snowflake_semantic_tools.app.state import change_summary, read_state
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
@@ -447,16 +447,19 @@ class PreparePlan:
         observe_options: ObserveOptions,
         state: State,
     ) -> tuple[ChangeSet, tuple[Diagnostic, ...]]:
-        """Return the plan with each update's member diff, unless `--no-diff`, and the reads refused."""
+        """Return the plan with each update's member diff, unless `--no-diff`, and the reads refused.
+
+        An update left without one names the members it changes from what state recorded.
+        """
         if not observe_options.diff:
-            return changeset, ()
+            return replace(changeset, changes=from_state(changeset.changes, state.applied)), ()
         with self._phases.phase("diff"):
             compiled = {item.artifact_key: item for item in result.compiled}
             diff_readers: Fanout[SnowflakePort] = Fanout(port)
             if readers is not None:
                 diff_readers = readers
             changes, unread = diff_updates(changeset.changes, compiled, diff_readers, state.applied)
-        return replace(changeset, changes=changes), unread
+        return replace(changeset, changes=from_state(changes, state.applied)), unread
 
     def run_recorded(
         self,
@@ -544,7 +547,8 @@ class PreparePlan:
         Each agent is staged under `apply.agent_spec_stage`, in the target's database and
         schema unless the block names others, beneath a folder for the project's commit; each
         eval's dataset version records that commit. The agent's upload names the stage, so the
-        preflight checks it and apply creates it when it is absent.
+        preflight checks it and apply creates it when it is absent. Each carries its members'
+        fingerprints, which apply records in state.
         """
         stage_config = config_block(apply_config.get("agent_spec_stage"))
         database = target.database.folded
@@ -566,8 +570,10 @@ class PreparePlan:
             )
             for item in result.compiled
         )
+        # Hashed from the artifacts as compiled, so state records what the manifest does.
+        fingerprints = {item.artifact_key: compiled_fingerprints(item) for item in result.compiled}
         return {
-            artifact.key: artifact
+            artifact.key: replace(artifact, member_fingerprints=fingerprints.get(artifact.key, ()))
             for artifact in replace(result, compiled=compiled).rendered_for_publish(manifest.manifest_id)
         }
 

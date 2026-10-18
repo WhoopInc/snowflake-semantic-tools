@@ -136,6 +136,9 @@ class AppliedEntry:
         live_digest: The digest of the object's properties its marker does not prove, read back
             after the write; None when unknown, as for an entry written before SST read one,
             which plan never takes for drift.
+        member_fingerprints: The fingerprint of each member of what was published, keyed
+            `<kind>:<name>`; empty for an artifact plan does not compare, and for an entry written
+            before SST recorded them.
     """
 
     fingerprint: str
@@ -149,9 +152,11 @@ class AppliedEntry:
     component_fingerprints: tuple[tuple[str, str], ...] = ()
     physical_resources: tuple[AppliedResourceInput, ...] = ()
     live_digest: str | None = None
+    member_fingerprints: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "component_fingerprints", tuple(sorted(self.component_fingerprints)))
+        object.__setattr__(self, "member_fingerprints", tuple(sorted(self.member_fingerprints)))
         object.__setattr__(self, "physical_resources", _applied_resources(self.physical_resources))
 
     @property
@@ -160,7 +165,10 @@ class AppliedEntry:
         return cast(tuple[AppliedResource, ...], self.physical_resources)
 
     def as_dict(self) -> dict[str, object]:
-        """Return the entry as the state document stores it under `applied`; `live_digest` only when known."""
+        """Return the entry as the state document stores it under `applied`.
+
+        `live_digest` is written only when known, and `member_fingerprints` only when there are any.
+        """
         document: dict[str, object] = {
             "fingerprint": self.fingerprint,
             "qualified_name": self.qualified_name,
@@ -175,6 +183,8 @@ class AppliedEntry:
         }
         if self.live_digest is not None:
             document["live_digest"] = self.live_digest
+        if self.member_fingerprints:
+            document["member_fingerprints"] = pairs_to_json(self.member_fingerprints)
         return document
 
     @classmethod
@@ -188,7 +198,8 @@ class AppliedEntry:
             raise ValueError("applied entry must be an object")
         components = value.get("component_fingerprints", {})
         resources = value.get("physical_resources", [])
-        if not isinstance(components, dict) or not isinstance(resources, list):
+        members = value.get("member_fingerprints", {})
+        if not isinstance(components, dict) or not isinstance(resources, list) or not isinstance(members, dict):
             raise ValueError("applied entry component metadata must be structured")
         parsed_resources = tuple(AppliedResource.from_dict(resource) for resource in resources)
         return cls(
@@ -203,6 +214,7 @@ class AppliedEntry:
             component_fingerprints=pairs_from_json(components),
             physical_resources=parsed_resources,
             live_digest=str(value["live_digest"]) if value.get("live_digest") else None,
+            member_fingerprints=pairs_from_json(members),
         )
 
 

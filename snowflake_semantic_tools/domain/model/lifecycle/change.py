@@ -48,6 +48,9 @@ class Change:
         member_diff: What an update changes, member by member, live object against render; None
             when it was not compared, as for any other action, under `--no-diff`, or when the
             live definition could not be read.
+        changed_members: For an update with no member diff, the members whose fingerprints differ
+            from those state recorded, as `<kind>:<name>` keys; None when there is a member diff,
+            or state recorded none to compare.
     """
 
     key: ArtifactKey
@@ -62,6 +65,7 @@ class Change:
     composite_observation: CompositeObservation | None = None
     prune_executable: bool = True
     member_diff: tuple[MemberDiff, ...] | None = None
+    changed_members: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)

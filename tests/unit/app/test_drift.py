@@ -204,3 +204,28 @@ def test_an_agent_digests_its_newest_committed_specification() -> None:
 
 def test_the_read_names_report_what_failed() -> None:
     assert drift._READS == {"PROCEDURE": "DESCRIBE PROCEDURE", "SEMANTIC VIEW": "GET_DDL"}
+
+
+def test_apply_records_member_fingerprints_and_an_unchanged_entry_without_them_gains_them() -> None:
+    fingerprints = (("procedure:order_status", "f" * 64),)
+    artifact = replace(_artifact("PROCEDURE", PROCEDURE), member_fingerprints=fingerprints)
+    older = AppliedEntry("b" * 64, PROCEDURE.sql, "then", "run", APPLIED, "b" * 64, "a" * 64)
+    bare = replace(artifact, key="tool:q", member_fingerprints=())
+    noop = Change(artifact.key, "tool", Action.NOOP, ChangeReason.UNCHANGED, artifact, None, (), 50)
+    unfingerprinted = Change("tool:q", "tool", Action.NOOP, ChangeReason.UNCHANGED, bare, None, (), 50)
+    port = _port()
+    created = replace(_artifact("PROCEDURE", QualifiedName.parse("DB.SCHEMA.R")), member_fingerprints=fingerprints)
+    port.markers[created.target.sql] = MARKER
+    create = Change(created.key, "tool", Action.CREATE, ChangeReason.NOT_PRESENT, created, None, (), 50)
+    store = InMemoryStateStore()
+    previous = empty_state({artifact.key: older, "tool:q": older})
+    port.remote_state = previous.applied
+    result = apply_plan(changeset(noop, unfingerprinted, create), port, previous=previous, store=store)
+    assert result.success, result.diagnostics
+    assert store.state is not None
+    applied = store.state.applied
+    assert (applied[artifact.key].member_fingerprints, applied[created.key].member_fingerprints) == (
+        fingerprints,
+        fingerprints,
+    )
+    assert applied["tool:q"].member_fingerprints == ()

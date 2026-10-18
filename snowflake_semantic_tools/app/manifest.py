@@ -16,6 +16,7 @@ from __future__ import annotations
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompiledView, CompileResult
+from snowflake_semantic_tools.app.plan_diff import compiled_fingerprints
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Severity
 from snowflake_semantic_tools.domain.lineage.members import member_edges
 from snowflake_semantic_tools.domain.model.dbt import DbtNode
@@ -234,4 +235,5 @@ def _artifact_entry(compiled: CompiledArtifact, result: CompileResult) -> Artifa
         component_fingerprints=rendered.component_fingerprints,
         physical_resources=tuple((object_type, name.sql) for object_type, name in rendered.physical_resources),
         settings=compiled.settings,
+        member_fingerprints=compiled_fingerprints(compiled),
     )

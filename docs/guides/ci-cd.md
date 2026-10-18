@@ -64,7 +64,11 @@ into the pull request, or upload it as an artifact. JSON reports each change's
 members as `diff`, with `diff_status` saying whether it was compared. Each
 update costs one read (a DESCRIBE, the agent's versions, or one GET per staged
 file); `--no-diff` skips them. A read the role may not make leaves the update
-uncompared, with an info note (`SST-PLN041`), and plans as before. `apply`
+uncompared, with an info note (`SST-PLN041`), and plans as before. Either way,
+apply records a fingerprint per member in state, so an update that was not read
+still names the members that changed since the last apply, without their
+values: `diff_status` is then `from_state` (or `unavailable` for a refused
+read) and `changed_members` lists them, as the table and the diff file do. `apply`
 shows the same diff when it asks to confirm; with `--yes` it shows nothing, so
 it reads nothing.
 

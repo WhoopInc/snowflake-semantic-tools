@@ -313,6 +313,7 @@ class StateRowsConnector(SnowflakeConnector):
                     "{}",
                     "[]",
                     None,
+                    '{"metric:t.m": "abc"}' if index == 0 else None,
                 )
                 for index, value in enumerate(self._applied_at)
             ),
@@ -337,6 +338,8 @@ def test_state_applied_at_reads_back_in_the_clock_form_it_was_written_in() -> No
         "2026-09-29T11:56:32Z",
         "2026-09-29T11:56:32Z",
     ]
+    # An entry's member fingerprints read back, and a row from before the column reads as none.
+    assert [state[f"skill:s{index}"].member_fingerprints for index in range(2)] == [(("metric:t.m", "abc"),), ()]
 
 
 def test_routine_observation_skips_builtins_and_reads_catalog_and_description() -> None:

@@ -190,6 +190,10 @@ class RenderedArtifact:
         version_metadata: The METADATA the dataset version an eval mints carries, commit and all,
             set only on what is published; None otherwise. It is neither a component nor in the
             fingerprint, so the plan and the compiled manifest report the same components.
+        member_fingerprints: One `(member, fingerprint)` pair per member of the artifact's
+            definition, as `member_fingerprints` hashes them, keyed `<kind>:<name>`; empty for an
+            artifact plan does not compare. Not in the fingerprint: state records them, so a later
+            plan can name which members an update changes without reading the object.
     """
 
     key: ArtifactKey
@@ -223,6 +227,7 @@ class RenderedArtifact:
     physical_resources: tuple[tuple[str, QualifiedName], ...] = ()
     generic_apply_safe: bool = True
     version_metadata: str | None = None
+    member_fingerprints: tuple[tuple[str, str], ...] = ()
 
     @classmethod
     def create(

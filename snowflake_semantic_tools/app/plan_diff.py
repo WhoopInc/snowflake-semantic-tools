@@ -45,6 +45,7 @@ from snowflake_semantic_tools.domain.plan.definitions.tool import (
     search_query,
 )
 from snowflake_semantic_tools.domain.plan.member_diff import Definition, diff_definitions
+from snowflake_semantic_tools.domain.plan.member_fingerprints import changed_members, member_fingerprints
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry
@@ -173,6 +174,41 @@ def diff_updates(
     )
     refused = tuple(result for result in results.values() if isinstance(result, Diagnostic))
     return updated, refused
+
+
+def compiled_fingerprints(
+    compiled: CompiledArtifact, comparisons: Mapping[str, Comparison] = COMPARISONS
+) -> tuple[tuple[str, str], ...]:
+    """Return the member fingerprints of what `compiled` renders; none for a type plan does not compare.
+
+    A definition that cannot be built, such as one naming a member twice, has none either, and so
+    has an artifact that is not what its type's compiler builds.
+    """
+    comparison = comparisons.get(compiled.artifact_type)
+    try:
+        desired = comparison.desired(compiled) if comparison is not None else None
+    except (TypeError, ValueError):
+        return ()
+    return member_fingerprints(desired) if desired is not None else ()
+
+
+def from_state(changes: Sequence[Change], recorded: Mapping[str, AppliedEntry]) -> tuple[Change, ...]:
+    """Name the members each update plan did not compare changes, from the fingerprints state records.
+
+    An update with a member diff keeps it. One whose recorded entry, or whose render, holds no
+    member fingerprints, such as an entry an earlier SST wrote, names none.
+    """
+    return tuple(
+        replace(change, changed_members=changed_members(entry.member_fingerprints, change.rendered.member_fingerprints))
+        if change.action is Action.UPDATE
+        and change.member_diff is None
+        and change.rendered is not None
+        and change.rendered.member_fingerprints
+        and (entry := recorded.get(change.key)) is not None
+        and entry.member_fingerprints
+        else change
+        for change in changes
+    )
 
 
 def live_object(change: Change, recorded: AppliedEntry | None) -> LiveObject:

@@ -48,6 +48,8 @@ class ArtifactEntry:
             and commands; never a publish edge, so `depends_on` does not hold them.
         settings: The artifact's resolved settings, each with where its value came from, sorted
             by key; empty for a tool, and in a manifest written before they were recorded.
+        member_fingerprints: The fingerprint of each member of the artifact's definition, keyed
+            `<kind>:<name>`; empty for an artifact plan does not compare.
     """
 
     type: str
@@ -66,6 +68,7 @@ class ArtifactEntry:
     physical_resources: tuple[tuple[str, str], ...] = ()
     references: tuple[str, ...] = ()
     settings: tuple[Setting, ...] = ()
+    member_fingerprints: tuple[tuple[str, str], ...] = ()
 
     def as_dict(self) -> dict[str, object]:
         """Return the entry as `manifest.json` stores it under `artifacts`."""
@@ -91,6 +94,7 @@ class ArtifactEntry:
             "component_fingerprints": pairs_to_json(self.component_fingerprints),
             "physical_resources": resources_to_json(self.physical_resources),
             "settings": {item.key: item.as_dict() for item in self.settings},
+            "member_fingerprints": pairs_to_json(self.member_fingerprints),
         }
 
     @classmethod
@@ -110,7 +114,8 @@ class ArtifactEntry:
             raise ValueError("artifact entry requires render and publish_target")
         components = value.get("component_fingerprints", {})
         resources = value.get("physical_resources", [])
-        if not isinstance(components, dict) or not isinstance(resources, list):
+        members = value.get("member_fingerprints", {})
+        if not isinstance(components, dict) or not isinstance(resources, list) or not isinstance(members, dict):
             raise ValueError("artifact entry component metadata must be structured")
         parsed_resources = resources_from_json(resources, "artifact physical resource must be an object")
         settings = value.get("settings", {})
@@ -135,6 +140,7 @@ class ArtifactEntry:
             settings=tuple(
                 Setting(str(key), item.get("value"), str(item.get("source", ""))) for key, item in settings.items()
             ),
+            member_fingerprints=pairs_from_json(members),
         )
 
 

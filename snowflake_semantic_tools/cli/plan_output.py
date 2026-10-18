@@ -60,7 +60,9 @@ def change_json(change: Change, manifest_id: str, *, unread: frozenset[str] = fr
     changes on the object, publishing under `manifest_id`, and `prior_definition` is the
     object's definition when `--capture-prior` read it, else null. `diff_status` is `compared`
     for an update compared member by member, its members in `diff`; `unavailable` for one in
-    `unread`, whose live definition could not be read; else `not_compared`.
+    `unread`, whose live definition could not be read; `from_state` for one that was not read,
+    whose changed members the fingerprints state records name; else `not_compared`. Any update
+    not compared lists those members in `changed_members`, when state names them.
     """
     rendered = change.rendered
     observed = change.observed
@@ -91,11 +93,19 @@ def change_json(change: Change, manifest_id: str, *, unread: frozenset[str] = fr
             for item in changed_properties(change, manifest_id)
         ],
         "prior_definition": observed.definition if observed is not None else None,
-        "diff_status": (
-            "compared" if change.member_diff is not None else "unavailable" if change.key in unread else "not_compared"
-        ),
+        "diff_status": _diff_status(change, unread),
         "diff": [member_json(item) for item in change.member_diff or ()],
+        "changed_members": list(change.changed_members or ()),
     }
+
+
+def _diff_status(change: Change, unread: frozenset[str]) -> str:
+    """Name how an update's members were compared: read, named from state, refused, or not at all."""
+    if change.member_diff is not None:
+        return "compared"
+    if change.key in unread:
+        return "unavailable"
+    return "from_state" if change.changed_members is not None else "not_compared"
 
 
 def member_json(item: MemberDiff) -> dict[str, object]:
@@ -268,7 +278,8 @@ def plan_diff_text(changeset: ChangeSet, *, plan_id: str, skipped: str | None = 
 
     A header names the target, the plan and when it observed. Each update compared member by
     member is a section; an update that was not, or whose members all agree, is named in a
-    comment; with no update, or when `skipped` says why the diffs were not read, the header says so.
+    comment, which names the members state's fingerprints say it changes when they do; with no
+    update, or when `skipped` says why the diffs were not read, the header says so.
     """
     target = changeset.target
     plan = plan_id or "-"
@@ -278,8 +289,13 @@ def plan_diff_text(changeset: ChangeSet, *, plan_id: str, skipped: str | None = 
         lines.append(f"# member diffs not read: {skipped}")
     elif not updates:
         lines.append("# no updates: nothing to compare")
-    for change in updates if skipped is None else ():
-        if change.member_diff is None:
+    for change in updates:
+        if change.member_diff is None and change.changed_members:
+            names = ", ".join(change.changed_members)
+            lines.append(f"# {change.key}: not read; the fingerprints state records name {names}")
+        elif skipped is not None:
+            continue
+        elif change.member_diff is None:
             lines.append(f"# {change.key}: not compared member by member")
         elif not change.member_diff:
             lines.append(f"# {change.key}: definition changed; no member-level difference")
