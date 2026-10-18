@@ -11,7 +11,7 @@ from hashlib import md5
 
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
-from tests.helpers.snowflake_fake.extensions import files, versions
+from tests.helpers.snowflake_fake.extensions import files, version_source, versions
 from tests.helpers.snowflake_fake.world import Sent, SnowflakeWorld
 
 
@@ -26,6 +26,9 @@ class FakeStage(SnowflakeWorld):
 
     def read_staged_file(self, stage_path: str) -> bytes | None:
         self._check("read_staged_file")
+        if stage_path.startswith("snow://"):
+            source = version_source(self.extensions, stage_path)
+            return self.staged_file_contents.get(source) if source is not None else None
         return self.staged_file_contents.get(stage_path)
 
     def upload(self, stage_path: str, content: bytes) -> None:
@@ -35,7 +38,12 @@ class FakeStage(SnowflakeWorld):
             for extension in self.extensions.values():
                 live = extension.get("live")
                 if isinstance(live, dict) and stage_path.startswith(str(live["location"])):
-                    files(live).append(stage_path[len(str(live["location"])) :])
+                    relative = stage_path[len(str(live["location"])) :]
+                    files(live).append(relative)
+                    sources = live.setdefault("sources", {})
+                    assert isinstance(sources, dict)
+                    sources[relative] = stage_path
+                    self.staged_file_contents[stage_path] = content
                     return
             raise SnowflakePortError(f"no open live version accepts {stage_path}")
         with self.stage_guard:

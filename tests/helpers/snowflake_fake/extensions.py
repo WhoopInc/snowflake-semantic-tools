@@ -1,7 +1,8 @@
 """Cortex extensions as the fake keeps them, and the statements that change them.
 
 An extension is a dict: `type`, `comment`, `versions` (each a dict of `name`, `alias`,
-`location`, `files`, `is_default`, `certification`), and `live`, the open live version or None.
+`location`, `files`, `sources`, `is_default`, `certification`), and `live`, the open live version
+or None. A version's `sources` maps each file to the staged path holding its bytes.
 """
 
 from __future__ import annotations
@@ -67,9 +68,9 @@ def apply_extension_statement(
             if upper[7:8] == ["FROM"] and upper[9:10] == ["VERSION"]:
                 # MEASURED: CREATE ... FROM <prefix> VERSION <alias> makes VERSION$1 that bundle.
                 source = tokens[8]
-                contents = [path[len(source) :] for path in sorted(stage_files) if path.startswith(source)]
+                sources = _sources(stage_files, source)
                 extensions[name]["versions"] = []
-                _add_version(name, extensions[name], tokens[10], contents)
+                _add_version(name, extensions[name], tokens[10], list(sources), sources)
         return
     name = tokens[3]
     if name not in extensions:
@@ -104,21 +105,21 @@ def _alter(
     stage_files: Sequence[str],
 ) -> None:
     if clause.startswith("ADD VERSION ") and " FROM " in clause:
-        source = tokens[8]
-        _add_version(
-            name, extension, tokens[6], [path[len(source) :] for path in sorted(stage_files) if path.startswith(source)]
-        )
+        sources = _sources(stage_files, tokens[8])
+        _add_version(name, extension, tokens[6], list(sources), sources)
     elif clause.startswith("ADD LIVE VERSION "):
         extension["live"] = {
             "alias": tokens[7],
             "location": f"snow://cortex_extension/{name}/versions/live/",
             "files": [],
+            "sources": {},
         }
     elif clause == "COMMIT":
         live = extension["live"]
         if not isinstance(live, dict):
             raise SnowflakePortError(f"Cortex extension {name} has no open live version")
-        _add_version(name, extension, str(live["alias"]), files(live))
+        uploaded = live.get("sources")
+        _add_version(name, extension, str(live["alias"]), files(live), uploaded if isinstance(uploaded, dict) else {})
         extension["live"] = None
     elif clause == "ABORT":
         extension["live"] = None
@@ -131,7 +132,27 @@ def _alter(
                 version["certification"] = quoted[0]
 
 
-def _add_version(name: str, extension: dict[str, object], alias: str, contents: list[str]) -> None:
+def _sources(stage_files: Sequence[str], source: str) -> dict[str, str]:
+    """Each staged file under `source`, by its path below it, mapped to its staged path."""
+    return {path[len(source) :]: path for path in sorted(stage_files) if path.startswith(source)}
+
+
+def version_source(extensions: Mapping[str, Mapping[str, object]], path: str) -> str | None:
+    """The staged path holding the bytes of a file of a committed or live version; None when none does."""
+    for extension in extensions.values():
+        live = extension.get("live")
+        for version in (*versions(extension), *((live,) if isinstance(live, dict) else ())):
+            location = str(version["location"])
+            sources = version.get("sources")
+            if path.casefold().startswith(location.casefold()) and isinstance(sources, dict):
+                found = sources.get(path[len(location) :])
+                return str(found) if found is not None else None
+    return None
+
+
+def _add_version(
+    name: str, extension: dict[str, object], alias: str, contents: list[str], sources: dict[str, str]
+) -> None:
     listed = versions(extension)
     if any(str(version["alias"]).casefold() == alias.casefold() for version in listed):
         raise SnowflakePortError(f"version alias {alias} already exists in {name}")
@@ -144,6 +165,7 @@ def _add_version(name: str, extension: dict[str, object], alias: str, contents: 
             "alias": alias,
             "location": f"snow://cortex_extension/{name}/versions/{system.lower()}/",
             "files": list(contents),
+            "sources": dict(sources),
             "is_default": True,
             "certification": None,
         }

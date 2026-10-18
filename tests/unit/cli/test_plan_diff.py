@@ -212,3 +212,51 @@ def test_an_agent_whose_served_specification_cannot_be_read_is_unavailable(
     notes = [item for item in payload["diagnostics"] if item["code"] == "SST-PLN041"]
     [note] = [item for item in notes if "JAFFLE_ANALYTICS_AGENT" in item["message"].upper()]
     assert "the role may not read the specification of the version the agent serves" in note["message"]
+
+
+def test_a_skill_edit_shows_as_the_file_it_changes_in_the_skill_its_plugin_and_profiles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    edit = (
+        "skills/jaffle-semantics/SKILL.md",
+        "# Jaffle semantics\n",
+        "# Jaffle semantics\n\nRead the join paths first.\n",
+    )
+    project, port = _published(tmp_path, monkeypatch, edit)
+    data = _plan(monkeypatch, port, project)
+    changed = {
+        item["artifact_key"]: [(member["kind"], member["member"], member["op"]) for member in item["diff"]]
+        for item in data["changes"]
+        if item["artifact_type"] in ("skill", "plugin", "profile")
+        if item["action"] == "update"
+    }
+    assert changed == {
+        "skill:jaffle-semantics": [("file", "skills/jaffle-semantics/SKILL.md", "changed")],
+        "plugin:jaffle-toolkit": [("file", "skills/jaffle-semantics/SKILL.md", "changed")],
+        "profile:jaffle-analyst": [("file", "skills/jaffle-analyst/jaffle-semantics/SKILL.md", "changed")],
+        "profile:jaffle-operator": [
+            ("file", "plugins/jaffle-operator/jaffle-toolkit/skills/jaffle-semantics/SKILL.md", "changed")
+        ],
+    }
+    skill = _change(data, "skill:jaffle-semantics")
+    [prop] = skill["diff"][0]["properties"]
+    assert "Read the join paths first." in prop["after"] and "Read the join paths first." not in prop["before"]
+
+
+def test_an_eval_edit_shows_as_the_question_it_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    asked = "in each location?"
+    edit = ("agents/jaffle_analytics/evals/dataset.yml", asked, "in every location?")
+    project, port = _published(tmp_path, monkeypatch, edit)
+    change = _change(_plan(monkeypatch, port, project), "eval:jaffle_analytics_agent")
+    assert change["diff_status"] == "compared"
+    # The config names the new dataset; a question is matched by its text, so an edited one is
+    # one added and one removed.
+    assert [(member["kind"], member["op"]) for member in change["diff"]] == [
+        ("config", "changed"),
+        ("question", "added"),
+        ("question", "removed"),
+    ]
+    [config] = change["diff"][0]["properties"]
+    assert "dataset_name:" in config["before"] and config["before"] != config["after"]
+    assert change["diff"][1]["member"].endswith("in every location?")
+    assert change["diff"][2]["member"].endswith(asked)

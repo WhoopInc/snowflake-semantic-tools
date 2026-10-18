@@ -54,12 +54,17 @@ class StageMethods(Session, StagePort):
         """Download one staged file and return its bytes; None when the stage holds no such file.
 
         GET matches a prefix, so it can download siblings (`a.yaml` brings `a.yaml.bak`); the
-        file is found by name among the rows the driver reports, never assumed to be there.
+        file is found by name among the rows the driver reports, never assumed to be there. An
+        extension version's file, `snow://cortex_extension/<name>/versions/<version>/<path>`, is
+        read the same way.
 
         Raises:
             SnowflakePortError: GET failed, or reported the file as anything but downloaded.
         """
-        stage_path = _validated_stage_path(stage_path)
+        if stage_path.startswith("snow://"):
+            stage_path = _extension_uri(stage_path, directory=False)
+        else:
+            stage_path = _validated_stage_path(stage_path)
         with scratch_folder("sst-stage-read-") as temp_dir:
             statement = sql("GET {source} {target}", source=literal(stage_path), target=local_file(str(temp_dir)))
             downloaded = _downloaded_name(self._dict_rows(statement), stage_path)

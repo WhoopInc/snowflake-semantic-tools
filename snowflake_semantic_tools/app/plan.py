@@ -426,7 +426,7 @@ class PreparePlan:
             )
         with self._phases.phase("classify"):
             changeset = _decided(candidates, rendered, reading, manifest, state, target, handlers, composite_plans)
-        changeset, unread = self._diffed(changeset, result, port, readers, observe_options)
+        changeset, unread = self._diffed(changeset, result, port, readers, observe_options, state)
         stale = stale_observation(target, self._clock.monotonic_ms() - started)
         # A reading with a refused read is incomplete, so no later plan may reuse it. An advisory
         # read the role may not make (SST-VAL020) is as complete as the role can ever read it.
@@ -445,6 +445,7 @@ class PreparePlan:
         port: SnowflakePort,
         readers: Fanout[PlanReadPort] | None,
         observe_options: ObserveOptions,
+        state: State,
     ) -> tuple[ChangeSet, tuple[Diagnostic, ...]]:
         """Return the plan with each update's member diff, unless `--no-diff`, and the reads refused."""
         if not observe_options.diff:
@@ -454,7 +455,7 @@ class PreparePlan:
             diff_readers: Fanout[SnowflakePort] = Fanout(port)
             if readers is not None:
                 diff_readers = readers
-            changes, unread = diff_updates(changeset.changes, compiled, diff_readers)
+            changes, unread = diff_updates(changeset.changes, compiled, diff_readers, state.applied)
         return replace(changeset, changes=changes), unread
 
     def run_recorded(

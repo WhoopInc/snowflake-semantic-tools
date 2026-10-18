@@ -52,6 +52,7 @@ __all__ = [
     "property_lines",
     "summary",
     "unified_text",
+    "unique",
 ]
 
 # Properties shown as a count rather than item by item: their items are refreshed data.
@@ -95,6 +96,16 @@ def _whole(member: Member, op: str) -> MemberDiff:
         if value not in ("", ())
     )
     return MemberDiff(member.kind, member.name, op, properties)
+
+
+def unique(members: Iterable[Member]) -> tuple[Member, ...]:
+    """Return the members, a name its kind already holds suffixed `#2`, `#3`: a source may repeat one."""
+    seen: dict[tuple[str, str], int] = {}
+    kept = []
+    for member in members:
+        count = seen[member.key] = seen.get(member.key, 0) + 1
+        kept.append(member if count == 1 else Member(member.kind, f"{member.name}#{count}", member.properties))
+    return tuple(kept)
 
 
 def summary(diffs: Sequence[MemberDiff]) -> tuple[str, ...]:

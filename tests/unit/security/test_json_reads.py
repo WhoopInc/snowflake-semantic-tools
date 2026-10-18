@@ -48,6 +48,13 @@ EXEMPT: dict[tuple[str, str], str] = {
     ("domain/plan/definitions/agent.py", "spec_definition"): (
         "an agent specification SST rendered, or the version an agent serves returned"
     ),
+    ("domain/plan/definitions/composite.py", "_json"): (
+        "a profile registry column or eval ground truth, as SST rendered it or a VARIANT returned it"
+    ),
+    (
+        "domain/plan/definitions/composite.py",
+        "payload_questions",
+    ): "the dataset payload render_dataset_payload rendered",
     ("domain/plan/definitions/semantic_view.py", "_parse"): (
         "one property value DESCRIBE SEMANTIC VIEW returned, such as a member's synonyms"
     ),

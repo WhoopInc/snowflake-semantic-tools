@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 
-from snowflake_semantic_tools.domain.plan.member_diff import Definition, Member, Value
+from snowflake_semantic_tools.domain.plan.member_diff import Definition, Member, Value, unique
 
 
 def spec_definition(spec: str) -> Definition:
@@ -41,7 +41,7 @@ def spec_definition(spec: str) -> Definition:
         for name, resource in resources.items()
         if name.casefold() not in named
     )
-    return Definition(_unique(members))
+    return Definition(unique(members))
 
 
 def _instructions(instructions: dict[str, object]) -> list[Member]:
@@ -76,16 +76,6 @@ def _skills(skills: list[object]) -> list[Member]:
         properties = tuple((field, _text(value)) for field, value in fields.items() if field != "name")
         members.append(Member("skill", str(fields.get("name") or f"#{index + 1}"), properties))
     return members
-
-
-def _unique(members: list[Member]) -> tuple[Member, ...]:
-    """The members, a name a kind already holds suffixed `#2`, `#3`: a specification may repeat one."""
-    seen: dict[tuple[str, str], int] = {}
-    unique = []
-    for member in members:
-        count = seen[member.key] = seen.get(member.key, 0) + 1
-        unique.append(member if count == 1 else Member(member.kind, f"{member.name}#{count}", member.properties))
-    return tuple(unique)
 
 
 def _items(value: object) -> list[tuple[str, object]]:

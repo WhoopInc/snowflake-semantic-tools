@@ -11,12 +11,14 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
+from types import MappingProxyType
 from typing import TypeVar
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompiledView
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
 from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.app.fanout import Fanout
+from snowflake_semantic_tools.app.plan_diff_composites import eval_sides, extension_sides, profile_sides
 from snowflake_semantic_tools.app.prior import served_version
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
@@ -34,18 +36,26 @@ from snowflake_semantic_tools.domain.plan.definitions.tool import (
 from snowflake_semantic_tools.domain.plan.member_diff import Definition, diff_definitions
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.state import AppliedEntry
 
-# How one artifact type's two sides are read: (live, desired), from a session, what compiled, and
-# the change; None for an artifact of the type that is not compared, such as a stage tool.
-DefinitionRead = Callable[[SnowflakePort, CompiledArtifact, Change], tuple[Definition, Definition] | None]
+# How one artifact type's two sides are read: (live, desired), from a session, what compiled, the
+# change, and what state records of the artifact; None for an artifact of the type that is not
+# compared, such as a stage tool.
+DefinitionRead = Callable[
+    [SnowflakePort, CompiledArtifact, Change, AppliedEntry | None], tuple[Definition, Definition] | None
+]
 
 
-def _semantic_view(port: SnowflakePort, compiled: CompiledArtifact, change: Change) -> tuple[Definition, Definition]:
+def _semantic_view(
+    port: SnowflakePort, compiled: CompiledArtifact, change: Change, _recorded: AppliedEntry | None
+) -> tuple[Definition, Definition]:
     view = _compiled_as(compiled, CompiledView).view
     return live_view(port.describe_semantic_view(_replaced(change))), desired_view(view)
 
 
-def _agent(port: SnowflakePort, compiled: CompiledArtifact, change: Change) -> tuple[Definition, Definition]:
+def _agent(
+    port: SnowflakePort, compiled: CompiledArtifact, change: Change, _recorded: AppliedEntry | None
+) -> tuple[Definition, Definition]:
     """The specification the version the agent serves holds, against the one SST renders."""
     agent = _compiled_as(compiled, CompiledAgent)
     alias = change.rendered.desired_alias if change.rendered is not None else None
@@ -59,7 +69,9 @@ def _agent(port: SnowflakePort, compiled: CompiledArtifact, change: Change) -> t
     return live, spec_definition(agent.payload)
 
 
-def _tool(port: SnowflakePort, compiled: CompiledArtifact, change: Change) -> tuple[Definition, Definition] | None:
+def _tool(
+    port: SnowflakePort, compiled: CompiledArtifact, change: Change, _recorded: AppliedEntry | None
+) -> tuple[Definition, Definition] | None:
     """A procedure, function or search service as DESCRIBE shows it, against its render; None for a stage."""
     tool = _compiled_as(compiled, CompiledTool)
     member, name = tool.member, _replaced(change)
@@ -80,19 +92,41 @@ def _tool(port: SnowflakePort, compiled: CompiledArtifact, change: Change) -> tu
     return live, desired_routine(member, procedure=procedure)
 
 
-READS: Mapping[str, DefinitionRead] = {"semantic_view": _semantic_view, "agent": _agent, "tool": _tool}
+def _extension(
+    port: SnowflakePort, compiled: CompiledArtifact, change: Change, _recorded: AppliedEntry | None
+) -> tuple[Definition, Definition]:
+    return extension_sides(port, compiled, change)
+
+
+def _profile(
+    port: SnowflakePort, compiled: CompiledArtifact, change: Change, _recorded: AppliedEntry | None
+) -> tuple[Definition, Definition]:
+    return profile_sides(port, compiled, change)
+
+
+READS: Mapping[str, DefinitionRead] = {
+    "semantic_view": _semantic_view,
+    "agent": _agent,
+    "tool": _tool,
+    "skill": _extension,
+    "plugin": _extension,
+    "profile": _profile,
+    "eval": eval_sides,
+}
 
 
 def diff_updates(
     changes: Sequence[Change],
     compiled: Mapping[str, CompiledArtifact],
     readers: Fanout[SnowflakePort],
+    recorded: Mapping[str, AppliedEntry] = MappingProxyType({}),
     reads: Mapping[str, DefinitionRead] = READS,
 ) -> tuple[tuple[Change, ...], tuple[Diagnostic, ...]]:
     """Return the changes with each comparable update's member diff, and a diagnostic per refused read.
 
     An update is comparable when `reads` has its artifact type and `compiled` its artifact. The
-    reads run on `readers`, one item each, and the changes come back in their order.
+    reads run on `readers`, one item each, and the changes come back in their order; `recorded`
+    is what state records of each artifact, which an eval's earlier publish is read from.
 
     Diagnostics:
         SST-PLN041: reading an update's live definition failed; the change has no member diff.
@@ -106,7 +140,7 @@ def diff_updates(
     def compared(port: SnowflakePort, index: int) -> Change | Diagnostic:
         change = changes[index]
         try:
-            sides = reads[change.artifact_type](port, compiled[change.key], change)
+            sides = reads[change.artifact_type](port, compiled[change.key], change, recorded.get(change.key))
         except SnowflakePortError as exc:
             name = _replaced(change).sql
             return D("SST-PLN041", subject=change.key, artifact=change.key, value=name, detail=str(exc))
