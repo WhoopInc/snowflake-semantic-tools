@@ -158,7 +158,16 @@ def test_a_finding_discloses_a_promotion_and_the_baseline() -> None:
     warning = D("SST-PRS004", artifact="semantic_view:v", field="f")
     diagnostic = dataclasses.replace(warning, severity=Severity.ERROR, declared=Severity.WARNING)
     text = render_finding(diagnostic, Style(PLAIN), Path("."), FindingNotes(baselined=True))
-    assert text.startswith("error[SST-PRS004] (promoted from warning, baselined): ")
+    assert text.startswith("error[SST-PRS004] (baselined, promoted from warning): ")
+
+
+def test_a_baselined_finding_is_dim_not_red(tmp_path: Path) -> None:
+    diagnostic = D("SST-REF002", column="customer_uuid", model="customers", origin=Origin("metric.yml", 4, 33))
+    colour = Style(Terminal(color=True))
+    held = render_finding(diagnostic, colour, _project(tmp_path), FindingNotes(baselined=True))
+    blocking = render_finding(diagnostic, colour, _project(tmp_path), FindingNotes())
+    assert "\x1b[31m" in blocking and "\x1b[31m" not in held and "\x1b[34m" not in held
+    assert "\x1b[2m" in held and "^" in held
 
 
 def test_a_finding_lists_the_related_places() -> None:

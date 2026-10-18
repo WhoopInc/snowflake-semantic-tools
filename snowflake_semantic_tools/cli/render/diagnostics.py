@@ -75,7 +75,11 @@ def render_finding(diagnostic: Diagnostic, style: Style, project_dir: Path, note
            |   ^^^^
            = help: correct the column name, or add it to the model's columns: block
            = sst explain SST-REF002
+
+    A finding the baseline holds is dim throughout, as it blocks nothing.
     """
+    if notes.baselined:
+        style = style.muted()
     origin = diagnostic.origin
     if origin is not None:
         hints = [str(diagnostic.context[key]) for key in HINT_KEYS if diagnostic.context.get(key) is not None]
@@ -176,14 +180,12 @@ def _headline(diagnostic: Diagnostic, style: Style, role: str, notes: FindingNot
 
 
 def _disclosed(diagnostic: Diagnostic, notes: FindingNotes) -> list[str]:
-    """Say why a finding has the severity it shows, and that the baseline holds it."""
-    found: list[str] = []
+    """Say that the baseline holds a finding, then why it has the severity it shows."""
+    found = ["baselined"] if notes.baselined else []
     if diagnostic.promoted_from is not None:
         found.append(f"promoted from {diagnostic.promoted_from.name.lower()}")
     elif diagnostic.demoted_from is not None and not diagnostic.cascaded:
         found.append(f"demoted from {diagnostic.demoted_from.name.lower()}")
-    if notes.baselined:
-        found.append("baselined")
     return found
 
 

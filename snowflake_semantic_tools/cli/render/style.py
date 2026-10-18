@@ -7,6 +7,8 @@ own background, light or dark.
 
 from __future__ import annotations
 
+import copy
+
 import click
 
 from snowflake_semantic_tools.cli.render.terminal import Terminal
@@ -54,13 +56,20 @@ class Style:
     def __init__(self, terminal: Terminal, *, stdout: bool = False) -> None:
         self.terminal = terminal
         self.enabled = terminal.color_out if stdout else terminal.color
+        self._muted = False
 
     def __call__(self, text: str, role: str) -> str:
         """Return `text` in `role`'s style, or as it is when colour is off."""
         if not self.enabled or not text:
             return text
-        fg, bold, dim = _ROLES[role]
+        fg, bold, dim = _ROLES["dim" if self._muted else role]
         return click.style(text, fg=fg, bold=bold or None, dim=dim or None)
+
+    def muted(self) -> Style:
+        """Return this style painting every role dim, for text that reports what blocks nothing."""
+        muted = copy.copy(self)
+        muted._muted = True
+        return muted
 
     def symbol(self, name: str) -> str:
         """Return the symbol `name`, in ASCII when the terminal cannot show Unicode."""
