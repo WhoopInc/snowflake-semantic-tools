@@ -9,13 +9,16 @@ gives exactly the answers, the lookup by name does.
 from __future__ import annotations
 
 import re
+import threading
+import time
+from collections.abc import Callable
 
 import pytest
 from snowflake.connector.errors import ProgrammingError
 
 from snowflake_semantic_tools.adapters.snowflake.connector.session import ReadCache
 from snowflake_semantic_tools.cli.wiring.plan import _keeping_reads, _reads_kept
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import sql
 from tests.helpers.snowflake_fake.driver import FakeDriverConnector, FakeDriverSession, Rows
@@ -224,3 +227,124 @@ def test_a_double_that_is_no_session_plans_without_a_cache() -> None:
     assert _keeping_reads(double, ReadCache()) is double
     with _reads_kept(double, ReadCache()):
         pass
+
+
+def _asked_at_once(cache: ReadCache, key: str, read: Callable[[], object], askers: int) -> list[object]:
+    """Ask `cache` for `key` from `askers` threads released together; return each answer, or what it raised."""
+    start = threading.Barrier(askers)
+    answers: list[object] = [None] * askers
+
+    def ask(index: int) -> None:
+        start.wait()
+        try:
+            answers[index] = cache.answer(key, read)
+        except Exception as exc:
+            answers[index] = exc
+
+    threads = [threading.Thread(target=ask, args=(index,)) for index in range(askers)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    return answers
+
+
+def test_askers_of_one_key_at_once_share_one_read() -> None:
+    reads: list[int] = []
+
+    def read() -> object:
+        reads.append(1)
+        time.sleep(0.05)
+        return ("rows",)
+
+    assert _asked_at_once(ReadCache(), "SHOW LOCKS IN ACCOUNT", read, 8) == [("rows",)] * 8
+    assert len(reads) == 1
+
+
+def test_askers_waiting_on_a_read_that_raised_each_read_again() -> None:
+    reads: list[int] = []
+    guard = threading.Lock()
+
+    def read() -> object:
+        with guard:
+            reads.append(1)
+            count = len(reads)
+        time.sleep(0.02)
+        raise SnowflakePortError(f"refused {count}")
+
+    answers = _asked_at_once(ReadCache(), "SHOW LOCKS IN ACCOUNT", read, 4)
+    # Nothing is kept from a refusal, so each asker read, and saw its own refusal.
+    assert len(reads) == 4
+    assert sorted(str(answer) for answer in answers) == [f"refused {count}" for count in range(1, 5)]
+
+
+def test_a_read_in_flight_when_the_cache_forgets_keeps_nothing() -> None:
+    cache = ReadCache()
+    reading, forgotten = threading.Event(), threading.Event()
+
+    def read() -> object:
+        reading.set()
+        forgotten.wait(timeout=10)
+        return "before the write"
+
+    first = threading.Thread(target=cache.answer, args=("k", read))
+    first.start()
+    reading.wait(timeout=10)
+    cache.forget()
+    forgotten.set()
+    first.join(timeout=10)
+    assert cache.answer("k", lambda: "after the write") == "after the write"
+
+
+def test_different_keys_read_at_once() -> None:
+    cache = ReadCache()
+    start = threading.Barrier(2, timeout=10)
+
+    def read() -> object:
+        # Both reads must be in flight together to pass the barrier.
+        start.wait()
+        return "rows"
+
+    threads = [threading.Thread(target=cache.answer, args=(key, read)) for key in ("a", "b")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    assert cache.answer("a", lambda: "again") == cache.answer("b", lambda: "again") == "rows"
+
+
+def test_a_thread_asking_again_for_the_key_it_reads_reads_it_anew() -> None:
+    cache = ReadCache()
+    assert cache.answer("k", lambda: ("outer", cache.answer("k", lambda: "inner"))) == ("outer", "inner")
+    assert cache.answer("k", lambda: ("again", "")) == ("outer", "inner")
+
+
+def test_sessions_reading_the_account_s_locks_at_once_read_them_once() -> None:
+    sessions = [FakeDriverSession(respond=_locks) for _ in range(6)]
+    reads = ReadCache()
+    connectors = [FakeDriverConnector(session) for session in sessions]
+    for connector in connectors:
+        connector.keep_reads(reads)
+    start = threading.Barrier(len(connectors), timeout=10)
+    scopes = [SchemaScope.from_qualified_name(QualifiedName.parse(f"DB.S{index}.X")) for index in range(6)]
+    found: list[tuple[QualifiedName, ...]] = [()] * len(connectors)
+
+    def locked(index: int) -> None:
+        start.wait()
+        found[index] = connectors[index].locked_objects(scopes[index])
+
+    threads = [threading.Thread(target=locked, args=(index,)) for index in range(len(connectors))]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    assert sum(session.statements.count("SHOW LOCKS IN ACCOUNT") for session in sessions) == 1
+    assert [tuple(name.sql for name in names) for names in found] == [(f"DB.S{index}.T",) for index in range(6)]
+
+
+def _locks(statement: str, binds: tuple[object, ...]) -> tuple[Rows | None, int]:
+    del binds
+    if statement != "SHOW LOCKS IN ACCOUNT":
+        return None, 0
+    time.sleep(0.02)
+    return [{"resource": f"DB.S{index}.T", "status": "HOLDING"} for index in range(6)], 0

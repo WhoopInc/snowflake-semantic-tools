@@ -25,7 +25,7 @@ import json
 import re
 import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from threading import Lock, RLock
+from threading import Event, Lock, RLock, get_ident
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Self, TextIO, TypeVar, cast
 
@@ -115,31 +115,64 @@ class _LoginStdout:
 _LOGIN_STDOUT = _LoginStdout()
 
 
+class _Reading:
+    """A read of one key in flight: who reads it, and when it ends."""
+
+    def __init__(self) -> None:
+        self.thread = get_ident()
+        self.ended = Event()
+
+
 class ReadCache:
     """What the reads of one run answered, by what was read, shared by the sessions it reads on.
 
-    Only an answer is kept: a read that raised is read again the next time it is asked for.
-    Two sessions asking for the same answer at once may both read it; either answer is kept.
+    A key is read once at a time: whoever asks for it while it is being read waits for that
+    read and takes its answer. Only an answer is kept: when the read raised, the next asker
+    reads it again, one waiting asker after another. A read that was in flight when `forget`
+    ran keeps nothing, since what it read may predate the write that made the cache forget.
     """
 
     def __init__(self) -> None:
         self._answers: dict[str, object] = {}
+        self._reading: dict[str, _Reading] = {}
+        # Bumped by every `forget`, so a read that started before one keeps no answer.
+        self._generation = 0
         self._guard = Lock()
 
     def answer(self, key: str, read: Callable[[], ValueT]) -> ValueT:
-        """Return what `read` answered for `key` before, else read it now and keep the answer."""
-        with self._guard:
-            if key in self._answers:
-                return cast(ValueT, self._answers[key])
-        value = read()
-        with self._guard:
-            self._answers[key] = value
+        """Return what `read` answered for `key` before, else read it now and keep the answer.
+
+        Waits while another thread reads `key`. A thread already reading `key` that asks for it
+        again reads it anew rather than waiting on itself.
+        """
+        while True:
+            with self._guard:
+                if key in self._answers:
+                    return cast(ValueT, self._answers[key])
+                pending = self._reading.get(key)
+                if pending is not None and pending.thread == get_ident():
+                    return read()
+                if pending is None:
+                    pending = self._reading[key] = _Reading()
+                    generation = self._generation
+                    break
+            pending.ended.wait()
+        try:
+            value = read()
+            with self._guard:
+                if self._generation == generation:
+                    self._answers[key] = value
+        finally:
+            with self._guard:
+                del self._reading[key]
+            pending.ended.set()
         return value
 
     def forget(self) -> None:
         """Forget every answer, as a write must, so the next read of anything reads it anew."""
         with self._guard:
             self._answers.clear()
+            self._generation += 1
 
 
 class Session(ExecutionPort):
