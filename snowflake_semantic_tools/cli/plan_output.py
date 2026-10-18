@@ -19,6 +19,9 @@ from snowflake_semantic_tools.app.baseline import blocking
 from snowflake_semantic_tools.app.evals.run import EvalSuiteResult, eval_suite_json
 from snowflake_semantic_tools.app.plan import PlanReady
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
+from snowflake_semantic_tools.cli.output import render_policy
+from snowflake_semantic_tools.cli.render.report import plan_lines, table
+from snowflake_semantic_tools.cli.render.style import Style
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.file_names import file_name
@@ -109,58 +112,13 @@ def outcome_json(outcome: ApplyOutcome) -> dict[str, object]:
 
 
 def print_plan(changeset: ChangeSet, *, full: bool = False) -> None:
-    """Print the plan's counts, then one line per change: its marker, key, action, target, and reason.
+    """Print the plan as `render.report.plan_lines` lays it out: each change, then what stays the same.
 
-    A prune `sst` only reports is counted apart from the prunes and marked `(report only)`.
-    With `full`, each update is followed by the properties it changes and, when
-    `--capture-prior` read it, the definition it replaces.
+    `--verbose` lists the unchanged artifacts too; the verdict says the counts.
     """
-    counts = change_counts(changeset)
-    report_only = counts["report_only"]
-    click.echo(
-        "Plan: "
-        f"{counts['create']} to create, {counts['update']} to update, "
-        f"{counts['prune']} to prune, {counts['noop']} unchanged, "
-        f"{counts['blocked']} blocked"
-        + (f", {report_only} report-only (SST never removes these)." if report_only else ".")
-    )
-    markers = {
-        Action.CREATE: "+",
-        Action.UPDATE: "~",
-        Action.PRUNE: "-",
-        Action.NOOP: "=",
-        Action.BLOCKED: "!",
-    }
-    for change in changeset.changes:
-        target = (
-            change.rendered.target.sql
-            if change.rendered
-            else change.observed.qualified_name.sql
-            if change.observed
-            else "-"
-        )
-        alias = dict(change.rendered.component_fingerprints).get("alias") if change.rendered else None
-        click.echo(
-            f"{markers[change.action]} {change.key} {change.action.value.upper()} {target} {change.reason.value}"
-            + (f" {alias}" if alias else "")
-            + (" (report only)" if change.action is Action.PRUNE and not change.prune_executable else "")
-        )
-        if full:
-            _print_detail(change, changeset.manifest_id)
-
-
-def _print_detail(change: Change, manifest_id: str) -> None:
-    """Print what an update changes, property by property, then the definition it replaces when read.
-
-    Only an update replaces a definition, so an unchanged artifact's is not printed, though
-    JSON reports it.
-    """
-    for item in changed_properties(change, manifest_id):
-        click.echo(f"    {item.name}: {item.before or '-'} -> {item.after or '-'}")
-    if change.action is Action.UPDATE and change.observed is not None and change.observed.definition is not None:
-        click.echo("    prior definition:")
-        for line in change.observed.definition.splitlines():
-            click.echo(f"      {line}")
+    policy = render_policy()
+    for line in plan_lines(changeset, Style(policy.terminal, stdout=True), verbose=policy.verbose, full=full):
+        click.echo(line, color=True if policy.terminal.color_out else None)
 
 
 def print_changed_names(changeset: ChangeSet) -> None:
@@ -175,34 +133,45 @@ def print_changed_names(changeset: ChangeSet) -> None:
 
 
 def print_eval_results(result: EvalSuiteResult) -> None:
-    """Print every attempt of every eval: its run, status and cost, then each metric's pass rate.
+    """Print every attempt of every eval: its run, status, time and tokens, then each metric's pass rate.
 
     Status details and a retrieval error follow the attempt they belong to.
+
+    Example:
+        eval:jaffle_analyst
+          attempt 1  EVAL_RUN_A1  COMPLETED  41.2s  9,812 tokens (6,034 in, 3,778 out)  12 LLM calls
+            answer_correctness  5/6 passed  average 0.917
     """
+    terminal = render_policy().terminal
+    style = Style(terminal, stdout=True)
     for eval_result in result.evals:
-        click.echo(f"{eval_result.eval_key}:")
+        click.echo(style(eval_result.eval_key, "strong"), color=True if terminal.color_out else None)
         for attempt in eval_result.attempts:
-            click.echo(
-                f"  attempt {attempt.attempt}: {attempt.run_name} {attempt.terminal_status} "
-                f"duration_ms={attempt.cost.duration_ms} tokens={attempt.cost.total_tokens} "
-                f"agent_input={attempt.cost.total_input_tokens} agent_output={attempt.cost.total_output_tokens} "
-                f"llm_calls={attempt.cost.llm_call_count}"
-            )
+            cost = attempt.cost
+            tokens = f"{cost.total_tokens:,} tokens ({cost.total_input_tokens:,} in, {cost.total_output_tokens:,} out)"
+            row = [f"attempt {attempt.attempt}", attempt.run_name, attempt.terminal_status]
+            row += [f"{cost.duration_ms / 1000:.1f}s", tokens, f"{cost.llm_call_count} LLM calls"]
+            click.echo("  " + table([row], terminal.width - 2)[0])
             attempt_payload = eval_suite_json(
                 dataclasses.replace(result, evals=(dataclasses.replace(eval_result, attempts=(attempt,)),))
             )
             eval_payloads = cast(list[dict[str, object]], attempt_payload["evals"])
             attempt_payloads = cast(list[dict[str, object]], eval_payloads[0]["attempts"])
             summaries = cast(list[dict[str, object]], attempt_payloads[0]["metric_summaries"])
-            for summary in summaries:
-                click.echo(
-                    f"    {summary['metric_name']}: passed={summary['passed_count']}/{summary['record_count']} "
-                    f"average={summary['average_score']}"
-                )
+            rows = [
+                [
+                    str(summary["metric_name"]),
+                    f"{summary['passed_count']}/{summary['record_count']} passed",
+                    f"average {summary['average_score']}",
+                ]
+                for summary in summaries
+            ]
+            for line in table(rows, terminal.width - 4):
+                click.echo("    " + line)
             if attempt.status_details:
-                click.echo("    status_details: " + "; ".join(attempt.status_details))
+                click.echo("    status details: " + "; ".join(attempt.status_details))
             if attempt.retrieval_error:
-                click.echo(f"    retrieval_error: {attempt.retrieval_error}")
+                click.echo(f"    retrieval error: {attempt.retrieval_error}")
 
 
 def write_plan_sql(project_dir: Path, changeset: ChangeSet, sql_out: Path | None) -> Path:

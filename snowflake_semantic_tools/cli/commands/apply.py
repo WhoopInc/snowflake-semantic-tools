@@ -43,9 +43,11 @@ from snowflake_semantic_tools.cli.options import (
     threads_option,
     validation_options,
 )
-from snowflake_semantic_tools.cli.output import announce_interrupt
+from snowflake_semantic_tools.cli.output import announce_interrupt, render_policy
 from snowflake_semantic_tools.cli.plan_output import outcome_json, print_plan, write_plan_sql
 from snowflake_semantic_tools.cli.render.progress import active_display
+from snowflake_semantic_tools.cli.render.report import apply_headline, outcome_lines
+from snowflake_semantic_tools.cli.render.style import Style
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, run_baseline
 from snowflake_semantic_tools.cli.settings import (
     apply_fail_fast,
@@ -371,7 +373,12 @@ def _apply_plan(
 
         return CommandResult(INTERRUPTED, shown, data, human=report, promoted=ready.promoted)
     return CommandResult(
-        exit_code, shown, data, human=lambda: _print_outcomes(apply_result.outcomes), promoted=ready.promoted
+        exit_code,
+        shown,
+        data,
+        human=lambda: _print_outcomes(apply_result.outcomes),
+        promoted=ready.promoted,
+        headline=apply_headline(apply_result.outcomes),
     )
 
 
@@ -398,5 +405,6 @@ def _keys(outcomes: tuple[ApplyOutcome, ...], status: OutcomeStatus, *, prune: b
 
 
 def _print_outcomes(outcomes: tuple[ApplyOutcome, ...]) -> None:
-    for outcome in outcomes:
-        click.echo(f"{outcome.status.value}: {outcome.key} ({outcome.action.value})")
+    terminal = render_policy().terminal
+    for line in outcome_lines(outcomes, Style(terminal, stdout=True)):
+        click.echo(line, color=True if terminal.color_out else None)

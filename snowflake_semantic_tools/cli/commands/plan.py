@@ -39,6 +39,7 @@ from snowflake_semantic_tools.cli.plan_output import (
     print_plan,
     write_plan_sql,
 )
+from snowflake_semantic_tools.cli.render.report import plan_headline
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, run_baseline
 from snowflake_semantic_tools.cli.settings import drift_check_setting, strict_disagreement, threads_setting
 from snowflake_semantic_tools.cli.wiring.plan import (
@@ -271,7 +272,12 @@ def _plan_report(
         data["partial"] = {"excluded": partial_excluded(ready.result.diagnostics)}
     if names_only:
         return CommandResult(
-            exit_code, shown, data, human=lambda: print_changed_names(changeset), promoted=ready.promoted
+            exit_code,
+            shown,
+            data,
+            human=lambda: print_changed_names(changeset),
+            promoted=ready.promoted,
+            headline=plan_headline(changeset),
         )
 
     def human() -> None:
@@ -279,7 +285,9 @@ def _plan_report(
             click.echo(f"planned from the observation recorded at {ready.cached.fetched_at} ({ready.cached.age} old)")
         print_plan(changeset, full=full)
 
-    return CommandResult(exit_code, shown, data, human=human, promoted=ready.promoted)
+    return CommandResult(
+        exit_code, shown, data, human=human, promoted=ready.promoted, headline=plan_headline(changeset)
+    )
 
 
 def _observation_data(ready: PlanReady, path: Path | None) -> dict[str, object]:

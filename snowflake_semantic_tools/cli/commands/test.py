@@ -230,14 +230,18 @@ def _combined(reports: list[tuple[str, CommandResult]], *, skipped: tuple[str, .
         "skipped_suites": list(skipped),
     }
 
+    summary = f"{plural(len(reports) - len(failed), 'suite')} passed, {len(failed)} failed, {len(skipped)} skipped"
+
     def human() -> None:
         for _, report in reports:
             if report.human is not None:
                 report.human()
-        click.echo(f"{len(reports) - len(failed)} suite(s) passed, {len(failed)} failed, {len(skipped)} skipped")
+        # A run that passed says this in its verdict; one that failed says which suites did.
+        if failed:
+            click.echo(f"{summary}: {', '.join(failed)} failed")
 
     diagnostics = DiagnosticBag(tuple(item for _, report in reports for item in report.diagnostics))
-    return CommandResult(worst, diagnostics, data, human=human)
+    return CommandResult(worst, diagnostics, data, human=human, headline=summary)
 
 
 def _run_smoke(

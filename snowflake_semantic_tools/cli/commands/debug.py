@@ -28,7 +28,9 @@ from snowflake_semantic_tools.adapters.yaml.parse import read_yaml_mapping
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, ERROR, OK
 from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.options import target_option
-from snowflake_semantic_tools.cli.output import register_secrets
+from snowflake_semantic_tools.cli.output import register_secrets, render_policy
+from snowflake_semantic_tools.cli.render.report import table
+from snowflake_semantic_tools.cli.render.style import Style
 from snowflake_semantic_tools.cli.run_log import signature_report
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body
 from snowflake_semantic_tools.cli.wiring.project import open_connector, target_dir
@@ -72,6 +74,7 @@ def debug(
     Diagnostics:
         SST-CFG001: there is no configuration file.
         SST-DBT017: the dbt manifest on disk declares a schema the run does not accept.
+        SST-DBT027: SST runs dbt for the manifest, and dbt cannot be run; exit 1.
         SST-PRT001: the connection could not be opened.
         Each code the configuration file's own checks report, at exit 1 when one is an error.
     """
@@ -81,8 +84,9 @@ def debug(
         return CommandResult(data=data, human=lambda: _print_fields(report))
     settings = _dbt_settings(paths, target_name)
     manifest = _manifest(paths, manifest_path, settings)
+    versions, unrunnable = _versions(paths, runs_dbt=manifest["runs_dbt"] is True)
     data = {
-        "versions": _versions(paths, runs_dbt=manifest["runs_dbt"] is True),
+        "versions": versions,
         "config": _config(paths),
         "registry": sorted(SEMANTIC_REGISTRY.artifacts),
         "manifest": manifest,
@@ -90,17 +94,19 @@ def debug(
     }
     if paths.config_file is None:
         missing = D("SST-CFG001", subject="config:discovery", path=str(paths.project_dir))
-        return CommandResult(CONFIG, DiagnosticBag((missing,)), data, human=lambda: _print_fields(data))
+        return CommandResult(CONFIG, DiagnosticBag((missing, *unrunnable)), data, human=lambda: _print_report(data))
     try:
         checked = resolved_config(paths, target_name).diagnostics
         state = config_block(resolved_config(paths, target_name).tree.get("state"))
         profile = load_profile_target(paths, target_name, state=state)
     except ProjectError as exc:
-        return CommandResult(CONFIG, DiagnosticBag(exc.diagnostics), data, human=lambda: _print_fields(data))
+        return CommandResult(
+            CONFIG, DiagnosticBag((*exc.diagnostics, *unrunnable)), data, human=lambda: _print_report(data)
+        )
     # As every connecting command does, so no output of this run can echo a credential.
     register_secrets(profile.secrets)
     data["target"] = _target(profile, paths)
-    invalid = (*checked, *_unsupported_manifest(manifest, allowed=paths.allow_unsupported_manifest_schema))
+    invalid = (*checked, *unrunnable, *_unsupported_manifest(manifest, allowed=paths.allow_unsupported_manifest_schema))
     diagnostics = DiagnosticBag((*invalid, *profile.diagnostics, *profile.connection_warnings))
     exit_code = ERROR if diagnostics.has_errors else OK
     if no_connect:
@@ -110,7 +116,9 @@ def debug(
         if failure is not None:
             exit_code = CONNECTION
             diagnostics = DiagnosticBag((*diagnostics, failure))
-    return CommandResult(exit_code, diagnostics, data, human=lambda: _print_fields(data))
+    return CommandResult(
+        exit_code, diagnostics, data, human=lambda: _print_report(data), headline="everything resolved"
+    )
 
 
 def _dbt_settings(paths: ProjectPaths, target_name: str | None) -> DbtSettings:
@@ -124,42 +132,55 @@ def _dbt_settings(paths: ProjectPaths, target_name: str | None) -> DbtSettings:
         return DbtSettings()
 
 
-def _versions(paths: ProjectPaths, *, runs_dbt: bool) -> dict[str, object]:
+def _versions(paths: ProjectPaths, *, runs_dbt: bool) -> tuple[dict[str, object], tuple[Diagnostic, ...]]:
     """Report SST's version and, when SST runs dbt, which `dbt` on `PATH`, its version and installation.
 
     The installation is the kind `installation_type` names -- `core`, `cloud`, `v2` or `v2-oss` --
-    and None when dbt names none SST knows.
+    and None when dbt names none SST knows. A dbt SST runs that cannot be run is an error now,
+    rather than the first thing the next command reports.
+
+    Diagnostics:
+        SST-DBT027: SST runs dbt for the manifest, and `dbt --version` cannot be run or fails.
     """
     if not runs_dbt:
-        return {"sst": VERSION, "dbt": None, "dbt_installation": None, "dbt_path": None}
-    version, installation = _dbt_version(paths.project_dir)
-    return {"sst": VERSION, "dbt": version, "dbt_installation": installation, "dbt_path": shutil.which("dbt")}
+        return {"sst": VERSION, "dbt": None, "dbt_installation": None, "dbt_path": None}, ()
+    version, installation, failure = _dbt_version(paths.project_dir)
+    found: dict[str, object] = {
+        "sst": VERSION,
+        "dbt": version,
+        "dbt_installation": installation,
+        "dbt_path": shutil.which("dbt"),
+    }
+    return found, (() if failure is None else (D("SST-DBT027", subject="config:dbt", detail=failure),))
 
 
-def _dbt_version(project_dir: Path) -> tuple[str | None, str | None]:
-    """Return the version `dbt --version` reports, as SST runs it, and the installation it names.
+def _dbt_version(project_dir: Path) -> tuple[str | None, str | None, str | None]:
+    """Return the version `dbt --version` reports, as SST runs it, the installation it names, and why not.
 
-    Either is None when dbt cannot say.
+    The version and installation are None when dbt cannot say; the third value then says why
+    when dbt could not be run or failed, and is None when dbt ran but printed nothing SST reads.
     """
     try:
         completed = dbt_runner(("dbt", "--version"), project_dir)
-    except OSError:
-        return None, None
+    except OSError as exc:
+        return None, None, f"dbt: {exc.strerror or exc}"
     output = f"{completed.stdout}\n{completed.stderr}"
     lines = [line.strip() for line in output.splitlines() if line.strip()]
-    if completed.returncode != 0 or not lines:
-        return None, None
+    if completed.returncode != 0:
+        return None, None, f"`dbt --version` exited {completed.returncode}"
+    if not lines:
+        return None, None, None
     installation = installation_type(output)
     if installation in ("v2", "v2-oss"):
         # dbt v2 prints one line, `dbt 2.0.8`.
-        return lines[0].split()[1], installation
+        return lines[0].split()[1], installation, None
     for line in lines:
         # dbt-core prints `- installed: 1.8.0`; the dbt Cloud CLI prints `dbt Cloud CLI - 0.38.6`.
         if "installed:" in line:
-            return line.split("installed:", 1)[1].split()[0], installation
+            return line.split("installed:", 1)[1].split()[0], installation, None
         if "cloud cli" in line.casefold() and " - " in line:
-            return line.rsplit(" - ", 1)[1].split()[0], installation
-    return lines[0], installation
+            return line.rsplit(" - ", 1)[1].split()[0], installation, None
+    return lines[0], installation, None
 
 
 def _agent_kit(project_dir: Path) -> dict[str, object]:
@@ -273,6 +294,87 @@ def _connection(profile: ProfileTarget) -> tuple[dict[str, object], Diagnostic |
         }, None
     finally:
         port.close()
+
+
+def _print_report(data: Mapping[str, object]) -> None:
+    """Print what resolved as one row per check, each marked when it can fail, then the target.
+
+    Example:
+        sst         1.0.0
+        dbt       ✓ 2.0.8 (v2) at /usr/local/bin/dbt
+        config    ✓ sst_config.yml
+        manifest  ✓ dbt parse -> target/manifest.json (v12; accepts v10, v11, v12)
+        connection ✓ UAB68110 as ACCOUNTADMIN
+    """
+    terminal = render_policy().terminal
+    style = Style(terminal, stdout=True)
+    checks = _checks(data)
+    marks = [" " if ok is None else style.symbol("ok" if ok else "fail") for _, ok, _ in checks]
+    lines = table(
+        [[name, mark, text] for (name, _, text), mark in zip(checks, marks, strict=True)], terminal.width, gap=1
+    )
+    # Laid out plain, then the mark is coloured in place: a styled cell would throw the columns off.
+    at = max(len(name) for name, _, _ in checks) + 1
+    for (_, ok, _), mark, line in zip(checks, marks, lines, strict=True):
+        if ok is not None:
+            line = line[:at] + style(mark, "success" if ok else "error") + line[at + len(mark) :]
+        click.echo(line, color=True if terminal.color_out else None)
+
+
+def _checks(data: Mapping[str, object]) -> list[tuple[str, bool | None, str]]:
+    """Return each row `_print_report` prints: its name, whether it passed (None: not a check), its text."""
+    versions = _mapping(data.get("versions"))
+    config = _mapping(data.get("config"))
+    manifest = _mapping(data.get("manifest"))
+    kit = _mapping(data.get("agent_kit"))
+    rows: list[tuple[str, bool | None, str]] = [("sst", None, str(versions.get("sst")))]
+    if manifest.get("runs_dbt"):
+        found = versions.get("dbt")
+        where = f" at {versions.get('dbt_path')}" if versions.get("dbt_path") else ""
+        kind = f" ({versions.get('dbt_installation')})" if versions.get("dbt_installation") else ""
+        rows.append(("dbt", found is not None, f"{found}{kind}{where}" if found else "cannot be run"))
+    rows.append(("config", config.get("file") is not None, str(config.get("file") or "no sst_config.yml found")))
+    listed = manifest.get("accepted_schema_versions")
+    accepted = ", ".join(str(item) for item in listed) if isinstance(listed, list) else ""
+    schema = manifest.get("schema_version")
+    schema_text = f" ({str(schema).rsplit('/', 1)[-1].removesuffix('.json')}; accepts {accepted})" if schema else ""
+    rows.append(
+        (
+            "manifest",
+            _flag(manifest.get("supported")),
+            f"{manifest.get('source')} -> {manifest.get('path')}{schema_text}",
+        )
+    )
+    agents = kit.get("agents")
+    if isinstance(agents, list) and agents:
+        text = f"installed by SST {kit.get('installed_by')} for {', '.join(str(item) for item in agents)}"
+        rows.append(("agent kit", kit.get("matches_sst") is not False, text))
+    target = _mapping(data.get("target"))
+    if target:
+        rows.append(
+            ("target", None, f"{target.get('name')} (profile {target.get('profile')}, {target.get('authentication')})")
+        )
+        for key in ("role", "warehouse", "database", "schema", "state_table"):
+            rows.append(("", None, f"{key.replace('_', ' ')}: {target.get(key) or '-'}"))
+    connection = _mapping(data.get("connection"))
+    if connection.get("tested"):
+        ok = bool(connection.get("ok"))
+        text = f"{connection.get('account')} as {connection.get('role')}" if ok else str(connection.get("error"))
+        rows.append(("connection", ok, text))
+    elif connection:
+        rows.append(("connection", None, "not tested (--no-connect)"))
+    registry = data.get("registry")
+    if isinstance(registry, list):
+        rows.append(("registry", None, f"{len(registry)} artifact types"))
+    return rows
+
+
+def _flag(value: object) -> bool | None:
+    return value if isinstance(value, bool) else None
+
+
+def _mapping(value: object) -> Mapping[str, object]:
+    return value if isinstance(value, Mapping) else {}
 
 
 def _print_fields(data: Mapping[str, object], indent: str = "") -> None:

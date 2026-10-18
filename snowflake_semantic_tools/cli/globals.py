@@ -14,6 +14,8 @@ case-insensitively, and anything else is a configuration error rather than a sil
 from __future__ import annotations
 
 import dataclasses
+import inspect
+import re
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -216,6 +218,20 @@ class GlobalOption(click.Option):
 
 class SstCommand(click.Command):
     """An `sst` command, whose help lists its own options, then the global ones under their own heading."""
+
+    def format_help_text(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        """Write the command's help, keeping its `Diagnostics:` list one code per line.
+
+        click rewraps every paragraph as prose; `\\b` before the list is its marker to leave
+        that paragraph's lines as written. The reference page reads `help` itself and is unchanged.
+        """
+        written = self.help
+        if written is not None:
+            self.help = re.sub(r"\n(\s*)Diagnostics:\n", "\n\\1\b\nDiagnostics:\n", inspect.cleandoc(written))
+        try:
+            super().format_help_text(ctx, formatter)
+        finally:
+            self.help = written
 
     def format_options(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         """Write the command's options, then `Global options`: each section only when it has a row."""

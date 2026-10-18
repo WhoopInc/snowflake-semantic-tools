@@ -38,6 +38,10 @@ from snowflake_semantic_tools.cli.options import (
     target_option,
     with_model_paths,
 )
+from snowflake_semantic_tools.cli.output import render_policy
+from snowflake_semantic_tools.cli.render.diagnostics import plural
+from snowflake_semantic_tools.cli.render.report import table
+from snowflake_semantic_tools.cli.render.style import Style
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.compile import checked_scope, manifest_universe
@@ -140,7 +144,12 @@ def list_command(
         human=lambda: _print_summaries(summaries, entries),
         rows=items,
         gated=True,
+        headline=f"listed {plural(len(items), 'artifact')}",
     )
+
+
+# How much of a fingerprint the table shows.
+_SHORT = 12
 
 
 def _refuse_another_target(manifest: Manifest, target_name: str | None) -> None:
@@ -167,15 +176,27 @@ def _item(summary: ArtifactSummary, entry: ArtifactEntry | None) -> dict[str, ob
 
 
 def _print_summaries(summaries: tuple[ArtifactSummary, ...], entries: Mapping[str, ArtifactEntry]) -> None:
-    """Print one line per artifact; with `--long`, then one indented line per setting and its source."""
+    """Print a table of the artifacts; with `--long`, each row is followed by its settings and their sources.
+
+    Fingerprints are cut to their first 12 characters, enough to tell them apart by eye; JSON
+    and CSV carry them whole.
+    """
+    header = ["ARTIFACT", "STATUS", "TARGET", "FINGERPRINT"] + (["APPLIED", "VERSION"] if entries else [])
+    rows = [header]
     for item in summaries:
-        line = f"{item.key} {item.status} {item.target} {item.fingerprint}"
-        entry = entries.get(item.key)
-        if entry is not None:
-            line += f" applied={item.applied_fingerprint or '-'} version={item.version or '-'}"
+        row = [item.key, item.status, item.target, item.fingerprint[:_SHORT]]
+        if entries:
+            row += [(item.applied_fingerprint or "-")[:_SHORT], str(item.version or "-")]
+        rows.append(row)
+    terminal = render_policy().terminal
+    style = Style(terminal, stdout=True)
+    lines = table(rows, terminal.width)
+    click.echo(style(lines[0], "dim"), color=True if terminal.color_out else None)
+    for item, line in zip(summaries, lines[1:], strict=True):
         click.echo(line)
+        entry = entries.get(item.key)
         for setting in entry.settings if entry is not None else ():
-            click.echo(f"  {setting.key}={json.dumps(setting.value, sort_keys=True)} ({setting.source})")
+            click.echo(f"    {setting.key}={json.dumps(setting.value, sort_keys=True)} ({setting.source})")
 
 
 def _member_result(
@@ -202,6 +223,7 @@ def _member_result(
         human=lambda: _print_members(members),
         rows=rows,
         gated=True,
+        headline=f"listed {plural(len(rows), 'table' if list_type == 'tables' else 'member')}",
     )
 
 
@@ -218,6 +240,14 @@ def _member_item(summary: MemberSummary) -> dict[str, object]:
 
 
 def _print_members(members: tuple[MemberSummary, ...]) -> None:
-    for item in members:
-        relation = f" {item.relation}" if item.relation else ""
-        click.echo(f"{item.key}{relation} {', '.join(item.artifacts) or '-'}")
+    """Print a table of the members: each key, its relation when it has one, and its artifacts."""
+    related = any(item.relation for item in members)
+    header = ["MEMBER", *(["RELATION"] if related else []), "ARTIFACTS"]
+    rows = [header] + [
+        [item.key, *([item.relation or "-"] if related else []), ", ".join(item.artifacts) or "-"] for item in members
+    ]
+    terminal = render_policy().terminal
+    lines = table(rows, terminal.width)
+    click.echo(Style(terminal, stdout=True)(lines[0], "dim"), color=True if terminal.color_out else None)
+    for line in lines[1:]:
+        click.echo(line)
