@@ -50,11 +50,12 @@ These go before the command name.
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--version` | flag |  | Show the version and exit. |
-| `--output / -o` | table\|plain\|json\|yaml\|csv |  | `table` (default), `plain` (`table` without colour), or `json`, else `$SST_OUTPUT`; `list` also takes `yaml` and `csv`. A format the command does not take is refused (SST-PRT106). |
+| `--output / -o` | table\|plain\|agent\|json\|yaml\|csv |  | `table` (default), `plain` (`table` without colour), `agent` (short fixed-grammar text for coding agents), or `json`, else `$SST_OUTPUT`; `list` also takes `yaml` and `csv`. With neither set, a run whose stdout is not a terminal defaults to `agent` when a coding agent's variable is set (`SST_AGENT`, `CLAUDECODE`, `COCO_AGENT`, `CURSOR_AGENT`, `CODEX_SANDBOX`, `GEMINI_CLI`; `0` or empty is unset) and says so. A format the command does not take is refused (SST-PRT106). |
 | `--verbose / -v` | flag |  | Add each diagnostic's phase and fingerprint, and report each file the run's parse cache served (SST-LOD201). Cannot be combined with `--quiet`. |
 | `--quiet / -q` | flag |  | Show error diagnostics only, with no counts line or progress lines; the report still prints. |
-| `--log-level` | debug\|info\|warn\|error |  | Threshold for log records on stderr, such as the Snowflake connector's, else `$SST_LOG_LEVEL`, else `info`. Independent of `--verbose`. |
-| `--no-color` | flag |  | No ANSI colour, else `$SST_NO_COLOR`; a non-empty `$NO_COLOR` does the same. Only `table` output on a terminal is ever coloured. |
+| `--log-level` | debug\|info\|warn\|error |  | Threshold for log records on stderr, else `$SST_LOG_LEVEL`, else `warn`. The libraries SST runs, such as the Snowflake connector, log each request at `info`, so `info` shows those. Independent of `--verbose`. |
+| `--no-color` | flag |  | No ANSI colour, else `$SST_NO_COLOR`; a non-empty `$NO_COLOR` does the same. Wins over `--color`. |
+| `--color` | auto\|always\|never |  | When to colour `table` output: `auto` (the default) on a terminal, `always` even through a pipe, as a CI log viewer renders it, or `never`; else `$SST_COLOR`. Under `auto`, a non-empty `$FORCE_COLOR` or `$CLICOLOR_FORCE` turns colour on and `$NO_COLOR` off. No other format is ever coloured. |
 | `--project-dir` | DIRECTORY |  | Project root, else `$SST_PROJECT_DIR`, else the current directory: where `sst_config.yml` and `dbt_project.yml` are. |
 | `--config` | PATH |  | Read this configuration file, else `$SST_CONFIG`, instead of discovering one in the project. |
 | `--profiles-dir` | DIRECTORY |  | Look for `profiles.yml` here first, else in `$SST_PROFILES_DIR`; then in `$DBT_PROFILES_DIR`, the project root, and `~/.dbt`. The first that has one wins. |
@@ -123,6 +124,7 @@ or profile cannot be, and 5 when the connection fails.
 Diagnostics:
     SST-CFG001: there is no configuration file.
     SST-DBT017: the dbt manifest on disk declares a schema the run does not accept.
+    SST-DBT027: SST runs dbt for the manifest, and dbt cannot be run; exit 1.
     SST-PRT001: the connection could not be opened.
     Each code the configuration file's own checks report, at exit 1 when one is an error.
 

@@ -46,9 +46,10 @@ def test_a_human_report_is_captured_before_anything_is_printed(capsys: pytest.Ca
         (output.RenderPolicy(output="csv"), True),
         (output.RenderPolicy(output="json"), False),
         (output.RenderPolicy(output="yaml"), False),
+        (output.RenderPolicy(output="agent"), False),
         (output.RenderPolicy(quiet=True), False),
     ],
-    ids=["table", "csv", "json", "yaml", "quiet"],
+    ids=["table", "csv", "json", "yaml", "agent", "quiet"],
 )
 def test_progress_lines_go_to_stderr_unless_the_output_is_machine_read_or_quiet(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, policy: output.RenderPolicy, shown: bool

@@ -425,9 +425,8 @@ def test_eval_suite_reports_every_attempt_in_human_output(
     )
 
     assert result.exit_code == 0, result.output
-    assert "attempt 2: EVAL_RUN_R2 COMPLETED" in result.output
-    assert "answer_correctness: passed=1/1 average=0.9" in result.output
-    assert "duration_ms=50 tokens=8" in result.output
+    assert "  attempt 2  EVAL_RUN_R2  COMPLETED  0.1s  8 tokens (" in result.output
+    assert "    answer_correctness  1/1 passed  average 0.9" in result.output
 
 
 def test_eval_suite_preflight_failure_keeps_json_schema_stable(
@@ -526,7 +525,7 @@ def test_a_bare_run_runs_every_suite_that_applies(tmp_path: Path, monkeypatch: p
     )
     result = invoke_with_port(monkeypatch, applied_port(project), ["test", *common(project), "--target", "dev"])
     assert result.exit_code == 0, result.output
-    assert "2 suite(s) passed, 0 failed, 0 skipped" in result.output
+    assert "✓ 2 suites passed, 0 failed, 0 skipped · " in result.output
 
 
 def test_smoke_failure_exits_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -60,7 +60,11 @@ def test_list_members_and_tables_with_what_carries_or_reads_them(tmp_path: Path)
 
     tables = CliRunner().invoke(cli, ["list", "tables", "--project-dir", str(project)])
     assert tables.exit_code == 0, tables.output
-    assert "table:customers SST_REF_DEV.JAFFLE.CUSTOMERS semantic_view:jaffle_sales" in tables.output
+    rows = [" ".join(line.split()) for line in tables.stdout.splitlines()]
+    assert rows[0] == "MEMBER RELATION ARTIFACTS"
+    assert any(
+        row.startswith("table:customers SST_REF_DEV.JAFFLE.CUSTOMERS semantic_view:jaffle_sales") for row in rows
+    )
     as_csv = CliRunner().invoke(cli, ["list", "tables", "--project-dir", str(project), "-o", "csv"])
     assert as_csv.output.splitlines()[0].startswith("key,name,artifacts")
     assert CliRunner().invoke(cli, ["list", "semantic_view", "--project-dir", str(project)]).exit_code == 3
@@ -91,12 +95,12 @@ def test_list_long_prints_each_setting_with_where_it_came_from(tmp_path: Path) -
     lines = printed.output.splitlines()
     menu = lines.index(next(line for line in lines if line.startswith("semantic_view:jaffle_menu ")))
     assert lines[menu + 1 : menu + 4] == [
-        '  database="SST_REF_DEV" (root)',
-        "  enabled=true (root)",
-        '  schema="CORE" (route:core)',
+        '    database="SST_REF_DEV" (root)',
+        "    enabled=true (root)",
+        '    schema="CORE" (route:core)',
     ]
-    assert '  orchestration_model="claude-sonnet-4-6" (config)' in lines
-    assert "  secure=false (default)" in lines
+    assert '    orchestration_model="claude-sonnet-4-6" (config)' in lines
+    assert "    secure=false (default)" in lines
 
     listed = CliRunner().invoke(cli, [*run, "-o", "json"])
     items = {item["key"]: item for item in json.loads(listed.output)["data"]["items"]}

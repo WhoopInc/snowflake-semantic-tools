@@ -92,9 +92,9 @@ def test_full_names_the_properties_an_update_changes(tmp_path: Path, monkeypatch
     plain = _plan(project, _published(target), monkeypatch)
     assert "fingerprint:" not in plain.output
     full = _plan(project, _published(target), monkeypatch, "--full", "--capture-prior")
-    assert f"    fingerprint: {RECORDED} -> " in full.output
-    assert f"    manifest_id: {OTHER_MANIFEST} -> " in full.output
-    assert "    prior definition:\n      create or replace semantic view JAFFLE_MINIMAL\n" in full.output
+    assert f"      fingerprint: {RECORDED} → " in full.output
+    assert f"      manifest_id: {OTHER_MANIFEST} → " in full.output
+    assert "      prior definition:\n        create or replace semantic view JAFFLE_MINIMAL\n" in full.output
 
 
 def test_names_only_prints_each_changed_name_and_nothing_else(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

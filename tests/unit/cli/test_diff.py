@@ -75,11 +75,12 @@ def test_names_only_selection_and_no_detailed_exitcode(tmp_path: Path, monkeypat
     compile_project(project)
     port = _deployed(project, drop="semantic_view:jaffle_menu", change="agent:jaffle_minimal_agent")
     names = _diff(monkeypatch, port, project, "--names-only", "--select", "type:agent")
-    assert (names.exit_code, names.output) == (2, "jaffle_minimal_agent\n")
+    # The names alone on stdout, for a script; the verdict goes to stderr.
+    assert (names.exit_code, names.stdout) == (2, "jaffle_minimal_agent\n")
     excluded = _diff(monkeypatch, port, project, "--exclude", "type:agent", "--names-only", "--no-detailed-exitcode")
     assert excluded.exit_code == 0
     assert "jaffle_minimal_agent" not in excluded.output
-    assert _diff(monkeypatch, port, project, "--select", "path:nothing/*", "--names-only").output == ""
+    assert _diff(monkeypatch, port, project, "--select", "path:nothing/*", "--names-only").stdout == ""
 
 
 def test_two_targets_agree_with_no_local_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

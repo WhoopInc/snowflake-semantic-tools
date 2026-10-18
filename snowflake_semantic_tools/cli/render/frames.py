@@ -9,6 +9,7 @@ drive the terminal, and a line wider than the terminal is cut to a window around
 from __future__ import annotations
 
 import dataclasses
+import re
 import unicodedata
 from collections.abc import Sequence
 from pathlib import Path
@@ -23,9 +24,10 @@ _TOKEN_STOPS = frozenset(" \t:,[]{}()#\"'")
 _ELLIPSIS = "..."
 _CACHE: dict[tuple[str, int, int], tuple[str, ...]] = {}
 # The template values that name the text a finding is about, in the order they are searched for.
-HINT_KEYS = ("column", "name", "field", "value", "found", "key", "identifier", "var", "selector")
+HINT_KEYS = ("column", "name", "field", "value", "found", "key", "identifier", "var", "selector", "model", "metric")
 # A block longer than this is not searched for a hint; the origin stands as it is.
 _BLOCK_LINES = 400
+_QUOTED = re.compile(r"'([^']+)'")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -122,12 +124,16 @@ def _lines(path: Path) -> tuple[str, ...] | None:
 
 
 def _forms(hint: str) -> list[str]:
-    """Return the spellings to look for: the hint, then a dotted hint's last part."""
+    """Return the spellings to look for: the hint, a dotted hint's last part, a template's quoted names.
+
+    A template call as a finding quotes it, `{{ ref('missing') }}`, is often written with more
+    arguments in the file, so the names it quotes are looked for too.
+    """
     hint = hint.strip()
     if len(hint) < 2:
         return []
-    tail = hint.rsplit(".", 1)[-1]
-    return [hint, tail] if tail != hint and len(tail) >= 2 else [hint]
+    forms = [hint, hint.rsplit(".", 1)[-1], *_QUOTED.findall(hint)]
+    return [form for index, form in enumerate(forms) if len(form) >= 2 and form not in forms[:index]]
 
 
 def _block(lines: tuple[str, ...], first: int) -> range:

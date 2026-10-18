@@ -15,7 +15,7 @@ def test_sst_prt106_fires(tmp_path: Path) -> None:
     result = CliRunner().invoke(cli, ["validate", *common(project_copy(tmp_path)), "--output", "csv"])
     assert result.exit_code == 3
     assert (
-        "error[SST-PRT106]: 'csv' is not a supported format for sst validate; supported: table, plain, json"
+        "error[SST-PRT106]: 'csv' is not a supported format for sst validate; supported: table, plain, agent, json"
         in result.output
     )
 

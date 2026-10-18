@@ -114,7 +114,7 @@ def test_debug_reports_every_candidate_and_refuses_what_it_cannot_resolve(tmp_pa
     unresolved = CliRunner().invoke(cli, ["debug", "--project-dir", str(tmp_path), "--output", "json"])
     assert (unresolved.exit_code, json.loads(unresolved.output)["diagnostics"][0]["code"]) == (4, "SST-CFG009")
     human = CliRunner().invoke(cli, ["debug", "--project-dir", str(tmp_path)])
-    assert human.exit_code == 4 and "candidates:" in human.output
+    assert human.exit_code == 4 and "checked " in human.output
 
 
 def test_debug_reports_a_refused_connection_and_the_signature_rate(

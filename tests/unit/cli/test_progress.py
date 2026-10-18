@@ -12,13 +12,8 @@ import pytest
 
 from snowflake_semantic_tools.adapters.timings import LiveCounts, RunTimings
 from snowflake_semantic_tools.cli import output
-from snowflake_semantic_tools.cli.output import (
-    RenderPolicy,
-    announce,
-    configure_logging,
-    print_progress,
-    use_render_policy,
-)
+from snowflake_semantic_tools.cli.logs import configure_logging
+from snowflake_semantic_tools.cli.output import RenderPolicy, announce, print_progress, use_render_policy
 from snowflake_semantic_tools.cli.render import progress
 from snowflake_semantic_tools.cli.render.progress import (
     ProgressDisplay,

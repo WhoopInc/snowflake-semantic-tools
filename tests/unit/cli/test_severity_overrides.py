@@ -110,7 +110,7 @@ def test_promoting_a_cascade_reports_it_at_the_override_and_counts_it_as_no_casc
     _, before = validate_json(plain, "--no-strict")
     assert _of(before, "SST-MEM107") == {("info", None, None)}
     hidden = CliRunner().invoke(cli, ["validate", *common(plain), "--no-strict"]).output
-    assert "SST-MEM107" not in hidden and "cascade not shown (--show-cascade)" in hidden
+    assert "SST-MEM107" not in hidden and "1 cascade (--show-cascade)" in hidden
 
     promoted = broken(tmp_path / "b", {"SST-MEM107": "warning"})
     payload = json.loads(
@@ -122,4 +122,4 @@ def test_promoting_a_cascade_reports_it_at_the_override_and_counts_it_as_no_casc
     assert "SST-INT007" not in _codes(payload["diagnostics"])
     shown = CliRunner().invoke(cli, ["validate", *common(promoted), "--no-strict"]).output
     assert "warning[SST-MEM107] (promoted from info): metric:order_count skipped" in shown
-    assert "cascade not shown" not in shown
+    assert "cascade (--show-cascade)" not in shown

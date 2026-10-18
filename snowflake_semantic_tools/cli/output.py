@@ -13,7 +13,6 @@ from __future__ import annotations
 import contextlib
 import io
 import json
-import logging
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable
@@ -132,6 +131,15 @@ def _secret_refusal(where: str) -> Diagnostic:
         SST-PRT012: a resolved credential reached the output unredacted.
     """
     return D("SST-PRT012", subject="cli", value=f"a credential in the {where}")
+
+
+def scrubbed(text: str, where: str) -> str:
+    """Return `text`, or SST-PRT012 rendered in its place when it would carry a resolved credential.
+
+    Args:
+        where: What the text is, as SST-PRT012 names it, such as `log output`.
+    """
+    return _render(_secret_refusal(where), _POLICY[0]) if _leaks(text) else text
 
 
 def baselined_fingerprints() -> frozenset[str]:
@@ -479,8 +487,8 @@ class RenderPolicy:
             unless `--no-color`, `$SST_NO_COLOR`, or a non-empty `$NO_COLOR` says otherwise.
         terminal: What the terminal can show; `detect_terminal` decides it once per run.
         progress: Whether a long-running command reports progress on stderr: never with
-            `--quiet`, nor with `--output json`, `yaml`, `csv` or `agent`, whose readers expect
-            no other text.
+            `--quiet`, nor with `--output json`, `yaml` or `agent`, whose readers expect no
+            other text.
         agent: The run prints the `agent` document instead of human text.
     """
 
@@ -508,7 +516,7 @@ class RenderPolicy:
         self.show_cascade = show_cascade
         self.show_all_occurrences = show_all_occurrences
         self.agent = output == "agent"
-        self.progress = output in ("table", "plain") and not quiet
+        self.progress = output in ("table", "plain", "csv") and not quiet
 
 
 _DEFAULT_POLICY = RenderPolicy(terminal=PLAIN)
@@ -539,8 +547,7 @@ def print_progress(line: str, *, warning: bool = False) -> None:
     policy = _POLICY[0]
     if not policy.progress:
         return
-    text = f"warn  {line}" if warning else line
-    text = _render(_secret_refusal("progress output"), policy) if _leaks(text) else text
+    text = scrubbed(f"warn  {line}" if warning else line, "progress output")
     display = active_display()
     if display is not None:
         display.line(text)
@@ -558,43 +565,6 @@ def announce(*parts: str) -> None:
     if display is not None and _POLICY[0].progress:
         style = Style(_POLICY[0].terminal)
         display.line(f"{style(style.symbol('ok'), 'success')} {style.sep.join(parts)}")
-
-
-def configure_logging(level: str) -> None:
-    """Send log records at `level` and above to stderr, through progress and the credential check.
-
-    The libraries SST runs, the Snowflake connector above all, log every request at INFO, so the
-    default `warn` keeps them quiet and an explicit `info` shows them. Replaces only the handler
-    this function installed, so calling it again, as each run in one process does, never stacks
-    handlers or removes another's. A record is printed as `warn  snowflake.connector: message`.
-    """
-    root = logging.getLogger()
-    for handler in [item for item in root.handlers if isinstance(item, _LogHandler)]:
-        root.removeHandler(handler)
-    root.addHandler(_LogHandler())
-    root.setLevel(_LOG_NUMBERS[level])
-
-
-_LOG_NUMBERS = {"debug": logging.DEBUG, "info": logging.INFO, "warn": logging.WARNING, "error": logging.ERROR}
-_LOG_PREFIX = {logging.DEBUG: "debug", logging.INFO: "info ", logging.WARNING: "warn ", logging.ERROR: "error"}
-
-
-class _LogHandler(logging.Handler):
-    """Print a log record on stderr above the progress line, a credential in it refused."""
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            prefix = _LOG_PREFIX.get(record.levelno, "error")
-            text = f"{prefix} {record.name}: {record.getMessage()}"
-        except Exception:  # a record whose arguments do not format must not end the run
-            self.handleError(record)
-            return
-        text = _render(_secret_refusal("log output"), _POLICY[0]) if _leaks(text) else text
-        display = active_display()
-        if display is not None:
-            display.line(text)
-        else:
-            click.echo(text, err=True)
 
 
 def render_diagnostics(diagnostics: Iterable[Diagnostic]) -> None:
@@ -618,8 +588,7 @@ def render_diagnostics(diagnostics: Iterable[Diagnostic]) -> None:
             if seen[diagnostic.code] == totals[diagnostic.code]:
                 _echo_err(render_collapsed(diagnostic.code, totals[diagnostic.code] - _GROUP_SHOWN, style))
             continue
-        rendered = _render(diagnostic, policy, hidden_cascades=cascades.get(index, 0))
-        _echo_err(_render(_secret_refusal("diagnostic text"), policy) if _leaks(rendered) else rendered)
+        _echo_err(scrubbed(_render(diagnostic, policy, hidden_cascades=cascades.get(index, 0)), "diagnostic text"))
         if not policy.quiet:
             _echo_err("")
 
@@ -642,8 +611,9 @@ def print_verdict(
 ) -> None:
     """Print the run's closing line on stderr: how it ended, its counts, wall time, then the next step.
 
-    A run that succeeded says what it did when `headline` does, and `<command> passed` otherwise;
-    one that failed says `<command> failed`, and one interrupted `<command> interrupted`. Nothing
+    A run that succeeded says what it did when `headline` does, and `<command> passed` otherwise,
+    or `<command>: differences found` for exit 2; one that failed says `<command> failed`, and one
+    interrupted `<command> interrupted`. Nothing
     is printed under `--quiet`. The line is checked for credentials as every report is.
 
     Args:
@@ -659,7 +629,7 @@ def print_verdict(
     if outcome == "fail":
         title = f"{command} {'interrupted' if exit_code == INTERRUPTED else 'failed'}"
     else:
-        title = headline or f"{command} passed"
+        title = headline or (f"{command} passed" if outcome == "ok" else f"{command}: differences found")
     verdict = Verdict(
         outcome=outcome,
         headline=title,
@@ -672,8 +642,7 @@ def print_verdict(
         next_step=next_step,
         note=output_note(),
     )
-    rendered = render_verdict(verdict, Style(policy.terminal))
-    _echo_err(_render(_secret_refusal("verdict"), policy) if _leaks(rendered) else rendered)
+    _echo_err(scrubbed(render_verdict(verdict, Style(policy.terminal)), "verdict"))
 
 
 def _counted(counts: bool, outcome: str, summary: dict[str, int]) -> bool:

@@ -334,6 +334,12 @@ def _checks(data: Mapping[str, object]) -> list[tuple[str, bool | None, str]]:
         kind = f" ({versions.get('dbt_installation')})" if versions.get("dbt_installation") else ""
         rows.append(("dbt", found is not None, f"{found}{kind}{where}" if found else "cannot be run"))
     rows.append(("config", config.get("file") is not None, str(config.get("file") or "no sst_config.yml found")))
+    # Every path discovery checked, so which file configured the run is never a guess.
+    for candidate in _rows(config.get("candidates")):
+        found = " (exists)" if candidate.get("exists") else ""
+        rows.append(("", None, f"checked {candidate.get('path')}{found}"))
+    rows += [("", None, f"shadowed {path}") for path in _strings(config.get("shadowed"))]
+    rows += [("", None, f"profiles from {path}") for path in _strings(config.get("profiles_candidates"))]
     listed = manifest.get("accepted_schema_versions")
     accepted = ", ".join(str(item) for item in listed) if isinstance(listed, list) else ""
     schema = manifest.get("schema_version")
@@ -367,6 +373,14 @@ def _checks(data: Mapping[str, object]) -> list[tuple[str, bool | None, str]]:
     if isinstance(registry, list):
         rows.append(("registry", None, f"{len(registry)} artifact types"))
     return rows
+
+
+def _rows(value: object) -> list[Mapping[str, object]]:
+    return [item for item in value if isinstance(item, Mapping)] if isinstance(value, list) else []
+
+
+def _strings(value: object) -> list[str]:
+    return [str(item) for item in value] if isinstance(value, list) else []
 
 
 def _flag(value: object) -> bool | None:

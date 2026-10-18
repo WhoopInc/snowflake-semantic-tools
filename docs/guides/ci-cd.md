@@ -273,7 +273,8 @@ shown indented here:
     "timings": {"wall_s": 4.2, "phases": {"load": 1.1, "observe": 2.4}, "snowflake": {"queries": 12, "client_s": 3.1, "max_s": 0.6, "busy_s": 2.6, "connects": 1, "connect_s": 0.4}, "dbt_runs": 0, "dbt_s": 0.0}},
   "diagnostics": [],
   "summary": {"error": 0, "warning": 0, "info": 3, "promoted": 0, "suppressed_cascade": 0, "baselined": 0},
-  "data": {}
+  "data": {},
+  "next_steps": ["show the user this plan; `sst apply` changes Snowflake, so run it only when they ask"]
 }
 ```
 
@@ -285,8 +286,10 @@ shown indented here:
 - `invocation.timings` says where the run's time went, in seconds as the client
   observed them: `wall_s` (the run, as `duration_s`); `phases`, the seconds of
   each step the command names (`load`, the configuration and the compile with
-  any `dbt parse`; `validate`; `state_read`, `observe`, `classify` for `plan`
-  and `apply`; `lock`, `publish`, `state_write` for `apply`; `smoke`), a phase
+  any `dbt parse`; `validate`; `state_read`, `composites` (the agents' and
+  evals' own reads), `observe`, `classify` for `plan` and `apply`; `lock`,
+  `publish`, `state_write` for `apply`; `smoke`; `disconnect`, closing the
+  parallel sessions), a phase
   absent when the run did not reach it; `snowflake`, with `queries` (statements
   sent, failed ones included), `client_s` (their summed time, which statements
   on parallel sessions push past the wall clock), `max_s` (the slowest),
@@ -306,14 +309,31 @@ shown indented here:
   severity.
 - `data` holds the command's result: the planned changes for `plan`, the
   outcomes for `apply`, the artifacts for `compile`.
+- `next_steps` is what to do next, first step first; it never tells the reader
+  to run `apply`, `drop`, or a baseline or state write on its own.
 - With `--output json`, no progress line is printed on stderr, so a long
-  `sst test --suite evals` stays silent until its envelope; in the default
-  output it reports each eval run's progress on stderr as it goes.
+  `sst test --suite evals` stays silent until its envelope.
 - An envelope that would carry a credential is replaced by one reporting
   `SST-PRT012`, and the run exits `1`.
 
 `schema_version` changes only when a field is removed or changes meaning; new
 fields can appear in the same version.
+
+## Progress and colour in a CI log
+
+With the default output, a run on a terminal shows one live progress line on
+stderr after its first second. A CI runner has no terminal, so `sst` prints
+progress there only when `$CI` is set, as GitHub Actions, GitLab CI and most
+runners set it: a line as each slow phase ends, a heartbeat every 15 seconds
+while one runs, and, for a command that connects, the account and role it
+connected as. Library log records stay below `--log-level`, which defaults to
+`warn`; `--log-level info` shows the Snowflake connector's request logs again.
+Colour is off without a terminal; `--color always` (or `SST_COLOR=always`, or
+`FORCE_COLOR=1`) keeps it for a log viewer that renders ANSI.
+
+A coding agent that runs `sst` in a pipeline step gets `--output agent` on its
+own when it sets its marker variable; set `SST_OUTPUT` to choose the format
+for every step.
 
 ## Exit codes
 

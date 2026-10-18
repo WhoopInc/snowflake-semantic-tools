@@ -224,7 +224,9 @@ depend on, and changing what one means is a breaking change. The human output is
 With `--output json`, every command prints one JSON object on stdout, keys sorted. Its top-level fields
 are `tool`, `sst_version`, `schema_version`, `command`, `status` (`ok`, `changes`, or `error`),
 `exit_code`, `invocation` (the command line, target, project, configuration file, overrides, and
-timings), `diagnostics`, `summary`, and `data`, the command's own result. Each diagnostic carries
+timings), `diagnostics`, `summary`, `data`, the command's own result, and `next_steps`, what to
+do next, first step first, which never tells the reader to apply, drop, or write the baseline or
+state on its own. Each diagnostic carries
 its code, effective and declared severity, `promoted_from` or `demoted_from`, message, suggestion,
 phase, help URL, fingerprint, template values as `params`, the artifact or member it concerns, its
 location and related locations, whether a baseline holds it, `caused_by`, and `internal_detail`,
@@ -238,9 +240,19 @@ replaced by one reporting `SST-PRT012`.
 The human output lists every diagnostic the envelope does, shaped by the visibility flags: info,
 baselined, and cascade diagnostics are counted rather than shown unless `--show-info`,
 `--show-baselined`, or `--show-cascade` asks for them (a cascade is info, but only `--show-cascade`
-shows it), four or more of one code collapse to the
-first three unless `--show-all-occurrences`, and `--quiet` shows errors only. None of it changes the
-exit code, and its layout may change between releases. A script reads the envelope.
+shows it, and a hidden one is counted under the finding it follows from), four or more of one
+code collapse to the first three unless `--show-all-occurrences`, and `--quiet` shows errors only.
+Each finding shows the source line it points at, with a caret under the value it names; the
+caret may stand further into the artifact's YAML block than the envelope's `location`, which is
+always the origin the check reported. A run ends with one verdict line on stderr: how it ended,
+its counts, its wall time, what was hidden, and the first next step. None of it changes the exit
+code, and its layout may change between releases. A script reads the envelope.
+
+`--output agent` is for a coding agent reading the result: a verdict line of `key=value`
+counts, one line per error and warning with its fix and the cascades it caused, a plan's changes
+or apply's outcomes, and a last `next:` line, at most 200 lines. Its grammar is kept within 1.x,
+so an agent's instructions stay right, but its fields are a subset of the envelope's: a program
+parses `--output json`.
 
 Drawn from: [cli/output.py](../../snowflake_semantic_tools/cli/output.py),
 [integrity.py](../../snowflake_semantic_tools/domain/diagnostics/integrity.py),

@@ -60,10 +60,10 @@ from snowflake_semantic_tools.cli.globals import (
     GlobalOptions,
     command_global_options,
 )
+from snowflake_semantic_tools.cli.logs import configure_logging
 from snowflake_semantic_tools.cli.output import (
     RenderPolicy,
     captured,
-    configure_logging,
     emit_agent,
     emit_json,
     first_next_step,
@@ -444,7 +444,8 @@ def _report(command: str, options: GlobalOptions, result: CommandResult) -> None
     record_reported(result.diagnostics)
     withheld = result.human is not None and print_report(captured(result.human), "human report")
     headline = result.headline() if callable(result.headline) else result.headline
-    if result.diagnostics or headline or result.exit_code:
+    # A run says how it ended when it showed findings, said what it did, or failed.
+    if (result.diagnostics and result.show_diagnostics) or headline or result.exit_code:
         steps = next_steps_for(command, result.exit_code, result.diagnostics, result.next_steps)
         print_verdict(
             command,

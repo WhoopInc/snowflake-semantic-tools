@@ -1,0 +1,8 @@
+$ sst validate --bogus
+--- exit 3
+--- stdout
+--- stderr
+Usage: sst validate [OPTIONS]
+[31m[1merror[[0m[31m[1mSST-PRT100[0m[31m[1m][0m: [1mNo such option '--bogus'. Did you mean '--verbose'?[0m
+  [34m[1m=[0m [36mhelp:[0m see sst <command> --help
+  [34m[1m=[0m [2msst explain SST-PRT100[0m

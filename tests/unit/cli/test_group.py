@@ -65,7 +65,7 @@ def test_usage_errors_exit_three() -> None:
 def test_a_usage_error_before_any_command_exits_three_in_both_modes() -> None:
     human = CliRunner().invoke(cli, ["--output", "xml", "list"])
     assert human.exit_code == 3 and "error[SST-PRT100]" in human.output
-    assert "'xml' is not one of 'table', 'plain', 'json', 'yaml', 'csv'." in human.output
+    assert "'xml' is not one of 'table', 'plain', 'agent', 'json', 'yaml', 'csv'." in human.output
     machine = CliRunner().invoke(cli, ["--output", "json", "--no-such-option"])
     envelope = json.loads(machine.output)
     assert (machine.exit_code, envelope["command"], envelope["exit_code"], envelope["status"]) == (3, "", 3, "error")
@@ -87,4 +87,5 @@ def test_without_standalone_mode_main_returns_the_exit_code(tmp_path: Path, caps
     assert json.loads(capsys.readouterr().out)["exit_code"] == 3
     (tmp_path / "sst_config.yml").write_text("validation:\n  snowflake_syntax_check: false\n", encoding="utf-8")
     assert cli.main(["clean", "--project-dir", str(tmp_path)], prog_name="sst", standalone_mode=False) is None
-    assert capsys.readouterr().out == f"nothing to remove at {tmp_path / 'target' / 'sst'}\n"
+    # `clean` reports in its verdict, on stderr.
+    assert capsys.readouterr().err.startswith(f"✓ nothing to remove at {tmp_path / 'target' / 'sst'}")

@@ -90,10 +90,10 @@ def _findings(
     live = [item for item in diagnostics if item not in held]
     cascades = [item for item in live if item.cascaded]
     shown = [item for item in live if not item.cascaded and not item.informational]
-    shown.sort(key=lambda item: 0 if item.severity is Severity.ERROR else 1)
+    shown.sort(key=lambda item: not item.blocks)
     counts = {
         "errors": sum(item.blocks for item in live),
-        "warnings": sum(item.severity is Severity.WARNING for item in live),
+        "warnings": sum(not item.blocks and not item.informational for item in live),
         "baselined": len(held),
         "info_hidden": sum(item.informational and not item.cascaded for item in live),
         "cascade_hidden": 0,

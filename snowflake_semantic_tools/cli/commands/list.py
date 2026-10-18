@@ -176,7 +176,7 @@ def _item(summary: ArtifactSummary, entry: ArtifactEntry | None) -> dict[str, ob
 
 
 def _print_summaries(summaries: tuple[ArtifactSummary, ...], entries: Mapping[str, ArtifactEntry]) -> None:
-    """Print a table of the artifacts; with `--long`, each row is followed by its settings and their sources.
+    """Print a table of the artifacts; with `--long`, each row is followed by its settings' sources.
 
     Fingerprints are cut to their first 12 characters, enough to tell them apart by eye; JSON
     and CSV carry them whole.
@@ -190,7 +190,7 @@ def _print_summaries(summaries: tuple[ArtifactSummary, ...], entries: Mapping[st
         rows.append(row)
     terminal = render_policy().terminal
     style = Style(terminal, stdout=True)
-    lines = table(rows, terminal.width)
+    lines = table(rows, terminal.width, keep=0)
     click.echo(style(lines[0], "dim"), color=True if terminal.color_out else None)
     for item, line in zip(summaries, lines[1:], strict=True):
         click.echo(line)
@@ -247,7 +247,7 @@ def _print_members(members: tuple[MemberSummary, ...]) -> None:
         [item.key, *([item.relation or "-"] if related else []), ", ".join(item.artifacts) or "-"] for item in members
     ]
     terminal = render_policy().terminal
-    lines = table(rows, terminal.width)
+    lines = table(rows, terminal.width, keep=0)
     click.echo(Style(terminal, stdout=True)(lines[0], "dim"), color=True if terminal.color_out else None)
     for line in lines[1:]:
         click.echo(line)

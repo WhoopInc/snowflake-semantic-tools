@@ -31,8 +31,7 @@ def test_validate_accepts_the_recorded_manifest_offline(tmp_path: Path) -> None:
     # tool's resources, SST-CFG018 for each of the two partner tool members nothing references,
     # and SST-CFG034 for `--no-strict` against the copy's `validation.strict: true`. The counts
     # line agrees with the summary line above it.
-    assert "0 errors; 6 warnings;" in result.output
-    assert "validated 14 artifact(s): 0 errors, 6 warnings" in result.output
+    assert "✓ validated 14 artifacts · 0 errors, 6 warnings · " in result.output
 
 
 def test_validate_uses_config_strict_unless_cli_overrides(tmp_path: Path) -> None:

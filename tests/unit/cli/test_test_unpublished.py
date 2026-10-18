@@ -71,7 +71,7 @@ def test_the_human_report_names_the_approximate_metrics(tmp_path: Path, monkeypa
     port.agent_replies = _right_tools(project)  # type: ignore[assignment]
     result = _unpublished(monkeypatch, project, port, "--fail-fast", "--threads", "2")
     assert result.exit_code == 0, result.output
-    assert "attempt 1: unpublished COMPLETED" in result.stdout
+    assert "  attempt 1  unpublished  COMPLETED  " in result.stdout
     assert "approximate, never gating: answer_correctness, answer_grounding" in result.stdout
     assert result.stdout.rstrip().endswith("unpublished eval run passed")
 

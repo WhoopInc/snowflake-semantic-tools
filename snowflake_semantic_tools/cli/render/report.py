@@ -46,12 +46,13 @@ _STATUS_STYLE = {
 _MAX_LISTED_PROPERTIES = 4
 
 
-def table(rows: Sequence[Sequence[str]], width: int, *, gap: int = 2) -> list[str]:
+def table(rows: Sequence[Sequence[str]], width: int, *, gap: int = 2, keep: int | None = None) -> list[str]:
     """Lay rows out in left-aligned columns within `width`; cells are plain text, styled after.
 
     The last column takes what is left and may run past `width`; the earlier columns are cut,
     the widest first, with `...`, only while they leave the last column less than a third of
-    the width (at least 20 columns), and none below 12.
+    the width (at least 20 columns), and none below 12. Column `keep`, the one that names
+    each row, is cut only once no other can be.
 
     Example:
         `[["+", "semantic_view:sales", "SALES_DB.SV.SALES"]]` lays out as
@@ -63,10 +64,11 @@ def table(rows: Sequence[Sequence[str]], width: int, *, gap: int = 2) -> list[st
     widths = [max((display_width(row[index]) for row in rows if index < len(row)), default=0) for index in range(count)]
     room_for_last = min(widths[-1], max(20, width // 3))
     while sum(widths[:-1]) + room_for_last + gap * (count - 1) > width and count > 1:
-        widest = max(range(count - 1), key=lambda index: widths[index])
-        if widths[widest] <= 12:
+        cuttable = [index for index in range(count - 1) if widths[index] > 12]
+        others = [index for index in cuttable if index != keep]
+        if not cuttable:
             break
-        widths[widest] -= 1
+        widths[max(others or cuttable, key=lambda index: widths[index])] -= 1
     lines = []
     for row in rows:
         cells = [_cut(cell, widths[index]) if index < count - 1 else cell for index, cell in enumerate(row)]
@@ -90,7 +92,7 @@ def plan_lines(changeset: ChangeSet, style: Style, *, verbose: bool = False, ful
     """
     listed = [change for change in changeset.changes if verbose or change.action is not Action.NOOP]
     rows = [_plan_row(change, changeset.manifest_id) for change in listed]
-    laid = table(rows, style.terminal.width - 2)
+    laid = table(rows, style.terminal.width - 2, keep=1)
     lines: list[str] = []
     for change, row, text in zip(listed, rows, laid, strict=True):
         head = row[0]
@@ -141,11 +143,11 @@ def outcome_lines(outcomes: Sequence[ApplyOutcome], style: Style) -> list[str]:
     for outcome in outcomes:
         verb = _past(outcome)
         detail = outcome.error.message.splitlines()[0] if outcome.error else f"{outcome.duration_ms / 1000:.1f}s"
-        rows.append([style.symbol(_STATUS_STYLE[outcome.status][0]), verb, outcome.key, detail])
+        rows.append([f"{style.symbol(_STATUS_STYLE[outcome.status][0])} {verb}", outcome.key, detail])
     lines = []
-    for outcome, text, row in zip(outcomes, table(rows, style.terminal.width - 2), rows, strict=True):
+    for outcome, text, row in zip(outcomes, table(rows, style.terminal.width - 2, keep=1), rows, strict=True):
         role = _STATUS_STYLE[outcome.status][1]
-        head = f"{row[0]} {row[1]}"
+        head = row[0]
         lines.append("  " + style(head, role) + text[len(head) :])
     return lines
 
@@ -159,6 +161,11 @@ def apply_headline(outcomes: Sequence[ApplyOutcome]) -> str:
 
 
 def _plan_row(change: Change, manifest_id: str) -> list[str]:
+    """Return one change's cells: its mark and action, key, target, and what a person should know of it.
+
+    The note says the reason when the action alone does not, the properties an update changes,
+    that a prune is only reported, and the alias an agent's version moves to.
+    """
     marker, action, _ = _ACTION_STYLE[change.action]
     if change.rendered is not None:
         target = change.rendered.target.sql

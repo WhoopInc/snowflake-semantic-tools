@@ -113,6 +113,15 @@ def test_pinpoint_finds_a_dotted_hint_by_its_last_part(tmp_path: Path) -> None:
     assert moved.line == 4
 
 
+def test_pinpoint_finds_the_names_a_template_hint_quotes(tmp_path: Path) -> None:
+    project = _project(tmp_path, "metrics:\n  - name: order_count\n    expr: \"{{ ref('missing', 'order_id') }}\"\n")
+    moved = pinpoint(project, Origin("metric.yml", 2, 5), ["{{ ref('missing') }}"])
+    assert (moved.line, moved.col) == (
+        3,
+        project.joinpath("metric.yml").read_text().splitlines()[2].index("missing") + 1,
+    )
+
+
 def test_pinpoint_skips_a_hint_inside_a_longer_name(tmp_path: Path) -> None:
     project = _project(tmp_path, "m:\n  name: customer_uuid_x\n  expr: customer_uuid\n")
     moved = pinpoint(project, Origin("metric.yml", 2, 3), ["customer_uuid"])

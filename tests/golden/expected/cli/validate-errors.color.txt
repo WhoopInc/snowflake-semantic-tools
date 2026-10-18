@@ -1,0 +1,52 @@
+$ sst --project-dir <project> --manifest <manifest> validate --no-snowflake-syntax-check
+--- exit 1
+--- stdout
+--- stderr
+[31m[1merror[[0m[31m[1mSST-REF002[0m[31m[1m][0m: [1m{{ ref('supplies','supply_costs') }}: 'supply_costs' is not a column on supplies[0m
+ [34m[1m-->[0m [1msemantic_models/metrics/total_supply_cost.yml:8:34[0m
+  [34m[1m|[0m
+[34m[1m8[0m [34m[1m|[0m   expr: "SUM({{ ref('supplies', 'supply_costs') }})"
+  [34m[1m|[0m                                  [31m[1m^^^^^^^^^^^^[0m
+  [34m[1m=[0m [36mhelp:[0m correct the column name, or add it to the model's columns: block
+  [34m[1m=[0m [2msst explain SST-REF002[0m
+  [34m[1m=[0m [2m1 follow-on finding hidden (--show-cascade)[0m
+
+[33m[1mwarning[[0m[33m[1mSST-VAL007[0m[33m[1m][0m: [1mmetric 'gross_margin_rate' is referenced by nothing[0m
+ [34m[1m-->[0m [1msemantic_models/metrics/gross_margin_rate.yml:4:9[0m
+  [34m[1m|[0m
+[34m[1m4[0m [34m[1m|[0m   name: gross_margin_rate
+  [34m[1m|[0m         [33m[1m^^^^^^^^^^^^^^^^^[0m
+  [34m[1m=[0m [36mhelp:[0m add its tables to a view (a custom instruction: list it in a view's `custom_instructions:`), or delete it
+  [34m[1m=[0m [2msst explain SST-VAL007[0m
+
+[33m[1mwarning[[0m[33m[1mSST-RND013[0m[33m[1m][0m: [1magent 'jaffle_analytics_agent': tool_resources for 'order_tier_lookup' is not validated by Snowflake[0m
+  [34m[1m=[0m [36mhelp:[0m confirm the key and the backing object yourself; `CREATE AGENT` will accept a wrong one
+  [34m[1m=[0m [2msst explain SST-RND013[0m
+
+[33m[1mwarning[[0m[33m[1mSST-VAL528[0m[33m[1m][0m: [1magent 'jaffle_delivery_agent' inherits the tools of another agent through toolset 'partner_delivery_agent'[0m
+  [34m[1m=[0m [36mhelp:[0m accept that tool-name uniqueness and eval coverage are incomplete here
+  [34m[1m=[0m [2msst explain SST-VAL528[0m
+
+[33m[1mwarning[[0m[33m[1mSST-RND010[0m[33m[1m][0m: [1magent 'jaffle_minimal_agent' renders with no tools[0m
+  [34m[1m=[0m [36mhelp:[0m declare at least one tool
+  [34m[1m=[0m [2msst explain SST-RND010[0m
+
+[33m[1mwarning[[0m[33m[1mSST-CFG018[0m[33m[1m][0m: [1mtool member 'payment_settlement_view' is referenced by nothing[0m
+  [34m[1m-->[0m [1mtools/partner/partner_objects.yml:13:11[0m
+   [34m[1m|[0m
+[34m[1m13[0m [34m[1m|[0m   - name: payment_settlement_view
+   [34m[1m|[0m           [33m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+   [34m[1m=[0m [36mhelp:[0m reference it from an agent, or delete it
+   [34m[1m=[0m [2msst explain SST-CFG018[0m
+
+[33m[1mwarning[[0m[33m[1mSST-CFG018[0m[33m[1m][0m: [1mtool member 'partner_invoice_stage' is referenced by nothing[0m
+  [34m[1m-->[0m [1mtools/partner/partner_objects.yml:27:11[0m
+   [34m[1m|[0m
+[34m[1m27[0m [34m[1m|[0m   - name: partner_invoice_stage
+   [34m[1m|[0m           [33m[1m^^^^^^^^^^^^^^^^^^^^^[0m
+   [34m[1m=[0m [36mhelp:[0m reference it from an agent, or delete it
+   [34m[1m=[0m [2msst explain SST-CFG018[0m
+
+[31m[1m✗[0m [1mvalidate failed[0m: 1 error, 6 warnings · <n>s
+[2m  hidden: 53 info (--show-info), 1 cascade (--show-cascade)[0m
+  [36mnext:[0m fix the error, then run `sst validate` again

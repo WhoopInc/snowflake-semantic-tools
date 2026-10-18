@@ -129,7 +129,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-DBT024`](error-codes.md#sst-dbt024) | DBT | warning | local | `snowflake_semantic_tools.domain.validate.dbt_seam` | `tests/codes/dbt/test_sst_dbt024.py` |
 | [`SST-DBT025`](error-codes.md#sst-dbt025) | DBT | info | local | `snowflake_semantic_tools.domain.validate.dbt_seam` | `tests/codes/dbt/test_sst_dbt025.py` |
 | [`SST-DBT026`](error-codes.md#sst-dbt026) | DBT | error | local | `snowflake_semantic_tools.adapters.dbt.invoke` | `tests/codes/dbt/test_sst_dbt026.py` |
-| [`SST-DBT027`](error-codes.md#sst-dbt027) | DBT | error | local | `snowflake_semantic_tools.adapters.dbt.invoke` | `tests/codes/dbt/test_sst_dbt027.py` |
+| [`SST-DBT027`](error-codes.md#sst-dbt027) | DBT | error | local | `snowflake_semantic_tools.adapters.dbt.invoke`<br>`snowflake_semantic_tools.cli.commands.debug` | `tests/codes/dbt/test_sst_dbt027.py` |
 | [`SST-DBT028`](error-codes.md#sst-dbt028) | DBT | error | runtime | `snowflake_semantic_tools.adapters.dbt.invoke` | `tests/codes/dbt/test_sst_dbt028.py` |
 | [`SST-DBT029`](error-codes.md#sst-dbt029) | DBT | error | runtime | `snowflake_semantic_tools.adapters.dbt.invoke` | `tests/codes/dbt/test_sst_dbt029.py` |
 | [`SST-DBT030`](error-codes.md#sst-dbt030) | DBT | error | local | `snowflake_semantic_tools.domain.validate.semantic.dbt` | `tests/codes/dbt/test_sst_dbt030.py` |

@@ -77,7 +77,7 @@ def test_test_runs_every_applicable_suite_by_default(tmp_path: Path, monkeypatch
     data = json.loads(result.stdout)["data"]
     assert (data["suites"], data["skipped_suites"], data["passed"]) == (["smoke", "evals"], [], 2)
     human = invoke_with_port(monkeypatch, applied_port(project), args)
-    assert "2 suite(s) passed, 0 failed, 0 skipped" in human.output
+    assert "2 suites passed, 0 failed, 0 skipped" in human.output
     smoke_only = invoke_with_port(monkeypatch, applied_port(project), [*args, "--exclude", "type:eval", "-o", "json"])
     data = json.loads(smoke_only.stdout)["data"]
     assert (data["suites"], data["skipped_suites"]) == (["smoke"], ["evals"])
@@ -96,7 +96,7 @@ def test_fail_fast_counts_the_selected_suites_it_never_ran_as_skipped(
     data = json.loads(stopped.stdout)["data"]
     assert (data["suites"], data["skipped_suites"], data["skipped"]) == (["smoke"], ["evals"], 1)
     human = invoke_with_port(monkeypatch, FakeSnowflake(state={}), args)
-    assert "0 suite(s) passed, 1 failed, 1 skipped" in human.output
+    assert "0 suites passed, 1 failed, 1 skipped: smoke failed" in human.output
 
 
 def test_debug_lists_fragile_signatures_and_refuses_an_unsupported_manifest(tmp_path: Path) -> None:

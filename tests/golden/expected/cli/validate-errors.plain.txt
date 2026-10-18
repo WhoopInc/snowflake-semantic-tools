@@ -1,0 +1,52 @@
+$ sst --project-dir <project> --manifest <manifest> validate --no-snowflake-syntax-check
+--- exit 1
+--- stdout
+--- stderr
+error[SST-REF002]: {{ ref('supplies','supply_costs') }}: 'supply_costs' is not a column on supplies
+ --> semantic_models/metrics/total_supply_cost.yml:8:34
+  |
+8 |   expr: "SUM({{ ref('supplies', 'supply_costs') }})"
+  |                                  ^^^^^^^^^^^^
+  = help: correct the column name, or add it to the model's columns: block
+  = sst explain SST-REF002
+  = 1 follow-on finding hidden (--show-cascade)
+
+warning[SST-VAL007]: metric 'gross_margin_rate' is referenced by nothing
+ --> semantic_models/metrics/gross_margin_rate.yml:4:9
+  |
+4 |   name: gross_margin_rate
+  |         ^^^^^^^^^^^^^^^^^
+  = help: add its tables to a view (a custom instruction: list it in a view's `custom_instructions:`), or delete it
+  = sst explain SST-VAL007
+
+warning[SST-RND013]: agent 'jaffle_analytics_agent': tool_resources for 'order_tier_lookup' is not validated by Snowflake
+  = help: confirm the key and the backing object yourself; `CREATE AGENT` will accept a wrong one
+  = sst explain SST-RND013
+
+warning[SST-VAL528]: agent 'jaffle_delivery_agent' inherits the tools of another agent through toolset 'partner_delivery_agent'
+  = help: accept that tool-name uniqueness and eval coverage are incomplete here
+  = sst explain SST-VAL528
+
+warning[SST-RND010]: agent 'jaffle_minimal_agent' renders with no tools
+  = help: declare at least one tool
+  = sst explain SST-RND010
+
+warning[SST-CFG018]: tool member 'payment_settlement_view' is referenced by nothing
+  --> tools/partner/partner_objects.yml:13:11
+   |
+13 |   - name: payment_settlement_view
+   |           ^^^^^^^^^^^^^^^^^^^^^^^
+   = help: reference it from an agent, or delete it
+   = sst explain SST-CFG018
+
+warning[SST-CFG018]: tool member 'partner_invoice_stage' is referenced by nothing
+  --> tools/partner/partner_objects.yml:27:11
+   |
+27 |   - name: partner_invoice_stage
+   |           ^^^^^^^^^^^^^^^^^^^^^
+   = help: reference it from an agent, or delete it
+   = sst explain SST-CFG018
+
+✗ validate failed: 1 error, 6 warnings · <n>s
+  hidden: 53 info (--show-info), 1 cascade (--show-cascade)
+  next: fix the error, then run `sst validate` again

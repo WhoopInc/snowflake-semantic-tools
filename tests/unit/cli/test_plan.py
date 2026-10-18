@@ -697,8 +697,9 @@ def test_report_only_prunes_are_listed_but_are_not_changes(tmp_path: Path, monke
         monkeypatch, port, ["plan", "--project-dir", str(project), "--prune", "--no-detailed-exitcode"]
     )
     assert quiet.exit_code == 0, quiet.output
-    assert "0 to prune" in human.output and "1 report-only (SST never removes these)." in human.output
-    assert "- skill:month-close PRUNE - orphaned (report only)" in human.output
+    assert "plan: nothing to change; " in human.output and ", 1 report-only" in human.output
+    [line] = [line for line in human.output.splitlines() if line.startswith("  - prune")]
+    assert "skill:month-close" in line and "report only: SST never removes these" in line
 
     # Apply executes nothing on Snowflake's objects; it still records the run.
     pruned = invoke_with_port(

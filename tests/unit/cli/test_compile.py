@@ -159,7 +159,7 @@ def test_compile_emits_each_agent_specification_and_nothing_else(tmp_path: Path)
         "jaffle_delivery_agent.json",
         "jaffle_minimal_agent.json",
     ]
-    assert f"wrote 3 file(s) to {specs}" in result.output
+    assert f"wrote 3 files to {specs}" in result.output
     database = CliRunner().invoke(cli, ["compile", *common(project), "--database", "ELSEWHERE", "--output", "json"])
     targets = {item["artifact_key"]: item["target"] for item in json.loads(database.output)["data"]["artifacts"]}
     assert targets["semantic_view:jaffle_minimal"].startswith("ELSEWHERE.")

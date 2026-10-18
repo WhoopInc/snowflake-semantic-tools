@@ -26,7 +26,7 @@ def test_a_global_option_after_the_command_wins_over_one_before_it(tmp_path: Pat
     result = CliRunner().invoke(cli, ["-o", "table", "validate", *common(project), "-o", "json"])
     assert json.loads(result.output)["command"] == "validate"
     before = CliRunner().invoke(cli, ["--project-dir", str(project), "--manifest", str(common(project)[3]), "validate"])
-    assert before.exit_code == 0 and "validated 14 artifact(s)" in before.output
+    assert before.exit_code == 0 and "validated 14 artifacts" in before.output
 
 
 def _leaf_commands(group: click.Group, path: tuple[str, ...] = ()) -> list[tuple[tuple[str, ...], click.Command]]:
@@ -141,7 +141,9 @@ def test_a_baseline_marks_and_counts_what_it_holds_and_never_drops_it(tmp_path: 
     assert "no-baseline" in _warnings(project, "--no-baseline")[1]["invocation"]["overrides"][0]
     human = CliRunner().invoke(cli, ["validate", *common(project), "--no-strict"])
     assert (
-        "SST-CFG018" not in human.output and "(2 baselined)" in human.output and "2 baselined not shown" in human.output
+        "SST-CFG018" not in human.output
+        and " · 2 baselined · " in human.output
+        and "2 baselined (--show-baselined)" in human.output
     )
     shown = CliRunner().invoke(cli, ["validate", *common(project), "--no-strict", "--show-baselined", "--show-info"])
     assert shown.output.count("warning[SST-CFG018]") == 2 and "info[SST-VAL854]" in shown.output
@@ -186,9 +188,8 @@ def test_strict_promoted_warnings_the_baseline_holds_are_counted_apart_not_as_er
     )
     human = CliRunner().invoke(cli, ["validate", *common(project), "--strict"])
     assert human.exit_code == 0, human.output
-    assert "0 errors; 1 warning (5 baselined); " in human.output
-    # The closing line counts what the summary line counts.
-    assert "validated 14 artifact(s): 0 errors, 1 warning (5 baselined)" in human.output
+    # Baselined findings are counted apart from every severity, never as warnings.
+    assert "✓ validated 14 artifacts · 0 errors, 1 warning · 5 baselined · " in human.output
 
 
 _PROMOTED = frozenset({"SST-CFG018", "SST-RND010", "SST-RND013", "SST-VAL528"})
@@ -225,9 +226,9 @@ def test_verbose_quiet_grouping_and_colour_shape_only_the_human_render(tmp_path:
     project = project_copy(tmp_path)
     args = ["validate", *common(project), "--no-strict"]
     verbose = CliRunner().invoke(cli, [*args, "-v"])
-    assert "phase: cfg; fingerprint: " in verbose.output
+    assert "phase: cfg · fingerprint: " in verbose.output
     quiet = CliRunner().invoke(cli, [*args, "-q"])
-    assert "warning[" not in quiet.output and "errors;" not in quiet.output
+    assert "warning[" not in quiet.output and "errors," not in quiet.output
     plain = CliRunner().invoke(cli, [*args, "-o", "plain"])
     assert "\x1b[" not in plain.output and "warning[SST-CFG018]" in plain.output
 

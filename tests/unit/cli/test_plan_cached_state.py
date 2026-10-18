@@ -112,7 +112,7 @@ def test_a_cached_plan_says_how_old_its_observation_is(tmp_path: Path, monkeypat
     human = _cached(project, monkeypatch, "--select", VIEW)
     assert human.exit_code == 2, human.output
     line = "planned from the observation recorded at 2020-01-01T00:00:00+00:00 ("
-    assert line in human.output and human.output.index(line) < human.output.index("Plan: 1 to create")
+    assert line in human.output and human.output.index(line) < human.output.index("  + create")
     data = json.loads(_cached(project, monkeypatch, "--select", VIEW, "-o", "json").stdout)["data"]
     assert data["observation"]["age_seconds"] > 365 * 24 * 3600
     assert data["changes"][0]["action"] == "create"

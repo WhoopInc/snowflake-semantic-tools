@@ -1,0 +1,21 @@
+$ sst -o agent --project-dir <project> --manifest <manifest> validate
+--- exit 1
+--- stdout
+sst validate: FAIL exit=1 errors=1 warnings=6 info_hidden=53 time=<n>s
+E SST-REF002 semantic_models/metrics/total_supply_cost.yml:8:34 metric:total_supply_cost | {{ ref('supplies','supply_costs') }}: 'supply_costs' is not a column on supplies
+  fix: correct the column name, or add it to the model's columns: block
+  cascade SST-MEM107 semantic_models/metrics/total_supply_cost.yml:5:3 | metric:total_supply_cost skipped: 1 unresolved references
+W SST-VAL007 semantic_models/metrics/gross_margin_rate.yml:4:9 metric:gross_margin_rate | metric 'gross_margin_rate' is referenced by nothing
+  fix: add its tables to a view (a custom instruction: list it in a view's `custom_instructions:`), or delete it
+W SST-RND013 agent:jaffle_analytics_agent | agent 'jaffle_analytics_agent': tool_resources for 'order_tier_lookup' is not validated by Snowflake
+  fix: confirm the key and the backing object yourself; `CREATE AGENT` will accept a wrong one
+W SST-VAL528 agent:jaffle_delivery_agent | agent 'jaffle_delivery_agent' inherits the tools of another agent through toolset 'partner_delivery_agent'
+  fix: accept that tool-name uniqueness and eval coverage are incomplete here
+W SST-RND010 agent:jaffle_minimal_agent | agent 'jaffle_minimal_agent' renders with no tools
+  fix: declare at least one tool
+W SST-CFG018 tools/partner/partner_objects.yml:13:11 tool:payment_settlement_view | tool member 'payment_settlement_view' is referenced by nothing
+  fix: reference it from an agent, or delete it
+W SST-CFG018 tools/partner/partner_objects.yml:27:11 tool:partner_invoice_stage | tool member 'partner_invoice_stage' is referenced by nothing
+  fix: reference it from an agent, or delete it
+next: fix the error, then run `sst validate` again; `sst explain <CODE>` explains a code; `sst -o json validate` has every field
+--- stderr

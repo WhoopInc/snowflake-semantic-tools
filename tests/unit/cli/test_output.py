@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 from pathlib import Path
 
 import click
@@ -18,11 +19,12 @@ from snowflake_semantic_tools.cli.output import (
     counted,
     diagnostic_json,
     json_envelope,
-    render_diagnostics,
+    print_verdict,
     resolve_invocation,
     start_invocation,
     use_render_policy,
 )
+from snowflake_semantic_tools.cli.render.terminal import Terminal
 from snowflake_semantic_tools.cli.runner import _internal_error
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.diagnostics.baseline import stable_fingerprint
@@ -113,11 +115,11 @@ def test_a_member_an_unresolved_ref_poisons_reports_its_skip_as_a_cascade(tmp_pa
     assert (skipped["severity"], skipped["caused_by"]) == ("info", "SST-REF001")
     assert payload["summary"]["suppressed_cascade"] >= 1
     hidden = CliRunner().invoke(cli, args).output
-    assert "SST-MEM107" not in hidden and "1 cascade not shown (--show-cascade)" in hidden
+    assert "SST-MEM107" not in hidden and "1 cascade (--show-cascade)" in hidden
     # A cascade is info, yet `--show-cascade` alone shows it.
     shown = CliRunner().invoke(cli, [*args, "--show-cascade"]).output
     assert "info[SST-MEM107]: metric:order_count skipped: 1 unresolved references" in shown
-    assert "cascade not shown" not in shown
+    assert "cascade (--show-cascade)" not in shown
 
 
 def test_an_internal_error_reports_the_exception_as_its_internal_detail() -> None:
@@ -160,27 +162,32 @@ def _promoted_warning(name: str = "lookup") -> Diagnostic:
     return dataclasses.replace(found, severity=Severity.ERROR)
 
 
-def _summary_line(tmp_path: Path, capsys: pytest.CaptureFixture[str], *found: Diagnostic, held: int = 0) -> str:
-    """Render `found` with its first `held` diagnostics baselined, and return the counts line."""
+def _summary_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], *found: Diagnostic, held: int = 0, exit_code: int = 1
+) -> str:
+    """Render `found` with its first `held` diagnostics baselined; return the verdict without its time."""
     baselined = frozenset(stable_fingerprint(item) for item in found[:held])
     resolve_invocation(project_dir=tmp_path, config_file=None, target=None, baselined=baselined)
-    use_render_policy(RenderPolicy())
+    use_render_policy(RenderPolicy(terminal=Terminal(unicode=False)))
     capsys.readouterr()
-    render_diagnostics(found)
-    return capsys.readouterr().err.splitlines()[-1]
+    print_verdict("validate", exit_code, DiagnosticBag(found))
+    lines = capsys.readouterr().err.splitlines()
+    return re.sub(r" - \d+\.\ds$", "", lines[0]) + "".join(
+        f" | {line.strip()}" for line in lines[1:2] if "hidden" in line
+    )
 
 
 def test_one_baselined_promoted_warning_is_counted_apart_and_counts_are_pluralised(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     promoted = _promoted_warning()
-    assert _summary_line(tmp_path, capsys, promoted, held=1) == (
-        "0 errors; 0 warnings (1 baselined); 0 info; 1 baselined not shown (--show-baselined)"
+    assert _summary_line(tmp_path, capsys, promoted, held=1, exit_code=0) == (
+        "ok validate passed - 0 errors, 0 warnings - 1 baselined | hidden: 1 baselined (--show-baselined)"
     )
-    assert _summary_line(tmp_path, capsys, promoted) == "1 error; 0 warnings; 0 info"
+    assert _summary_line(tmp_path, capsys, promoted) == "x validate failed: 1 error, 0 warnings"
     warning = D("SST-CFG018", subject="tool:other", name="other")
     assert _summary_line(tmp_path, capsys, promoted, _promoted_warning("third"), warning) == (
-        "2 errors; 1 warning; 0 info"
+        "x validate failed: 2 errors, 1 warning"
     )
     assert [counted(count, noun) for count, noun in ((1, "warning"), (2, "warning"), (1, "info"), (3, "info"))] == [
         "1 warning",
@@ -220,10 +227,10 @@ def test_human_output_and_usage_branches(tmp_path: Path, monkeypatch: pytest.Mon
     initialized = CliRunner().invoke(cli, ["init", "--project-dir", str(tmp_path / "human")])
     assert initialized.exit_code == 0 and "initialized" in initialized.output
     debugged = CliRunner().invoke(cli, ["debug", "--project-dir", str(project), "--no-connect"])
-    assert debugged.exit_code == 0 and "state_table:" in debugged.output
-    assert "candidates:" in debugged.output and "sst_config.yaml" in debugged.output
+    assert debugged.exit_code == 0 and "state table:" in debugged.output
+    assert "checked " in debugged.output and "sst_config.yaml" in debugged.output
     compiled = CliRunner().invoke(cli, ["compile", *common(project)])
-    assert compiled.exit_code == 0 and "compiled 14 artifact(s)" in compiled.output
+    assert compiled.exit_code == 0 and "compiled 14 artifacts" in compiled.output
 
     conflict = CliRunner().invoke(
         cli,
@@ -235,7 +242,7 @@ def test_human_output_and_usage_branches(tmp_path: Path, monkeypatch: pytest.Mon
 
     port = FakeSnowflake(state={})
     planned = invoke_with_port(monkeypatch, port, ["plan", *common(project), "--target", "dev"])
-    assert planned.exit_code == 2 and "Plan:" in planned.output
+    assert planned.exit_code == 2 and "plan: 14 to create, 0 to update, 0 to prune" in planned.output
     cleaned = CliRunner().invoke(cli, ["clean", "--project-dir", str(project)])
     assert cleaned.exit_code == 0 and "removed" in cleaned.output
     nothing = CliRunner().invoke(cli, ["clean", "--project-dir", str(project)])

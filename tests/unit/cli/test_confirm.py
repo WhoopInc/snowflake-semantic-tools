@@ -106,7 +106,7 @@ def test_an_interrupted_apply_exits_130_and_says_what_state_records(
     )
 
     assert human.exit_code == 130, human.output
-    assert "applied:" in human.output and "Aborted." in human.output
+    assert "  ✓ created  " in human.output and "Aborted." in human.output
     assert (
         "info[SST-PRT107]: interrupted after sst apply started; the changes that finished are recorded in "
         "state and the rest were skipped; run sst plan to see what remains"

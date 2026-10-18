@@ -21,6 +21,13 @@ is compared byte for byte; none carries a header. `python -m tests.helpers.updat
 does not write them: when enrich's output is meant to change, run that test to see the diff
 and edit the golden to match.
 
+`expected/cli/` holds what `sst` itself prints: a few command lines on the reference project
+(validate with and without errors, list, a usage error, help, a plan on a fake Snowflake that
+holds nothing, and the agent document), each as a transcript of its exit code, stdout and
+stderr, on up to four terminals (`color`, `plain`, `ascii`, `narrow`), with the project's path
+and every run's seconds normalised. `unit/cli/test_cli_goldens.py` compares them;
+`python -m tests.helpers.cli_goldens` rewrites the ones that differ, and is refused in CI.
+
 ## How a golden is compared
 
 `unit/test_goldens.py` compiles the reference project and compares every artifact's rendered
