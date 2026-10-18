@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.tools import CompiledTool
-from snowflake_semantic_tools.app.diff import compiled_definitions, live_definitions, name_map
+from snowflake_semantic_tools.app.diff import _agent_references, compiled_definitions, live_definitions, name_map
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
@@ -88,3 +89,20 @@ def test_each_name_a_target_publishes_is_labelled_and_one_two_artifacts_claim_is
     names = name_map(CompileResult((_PROCEDURE, _STAGE)))
     assert names[("DB", "TOOLS", "ORDER_STATUS")] == "tool:order_status"
     assert ("DB", "TOOLS", "ORDER_STATUS") not in name_map(CompileResult((_PROCEDURE, clash)))
+
+
+def test_an_agent_labels_the_outside_objects_its_tools_and_skills_name_and_nothing_else() -> None:
+    tool = SimpleNamespace(member=None, name="LOOKUP", resources={"identifier": "DB.EXT.LOOKUP", "max_results": 5})
+    skills = (SimpleNamespace(path="DB.EXT.GLOSSARY", name=""), SimpleNamespace(path="@DB.S.STAGE/skill/", name="x"))
+    agent = SimpleNamespace(resolved=SimpleNamespace(tools=(tool,), model=SimpleNamespace(skills=skills)))
+    assert [(name.sql, label) for name, label in _agent_references(agent)] == [  # type: ignore[arg-type]
+        ("DB.EXT.LOOKUP", "tool:LOOKUP"),
+        ("DB.EXT.GLOSSARY", "extension:glossary"),
+    ]
+    # A model whose relation did not resolve labels nothing.
+    unresolved = SimpleNamespace(
+        artifact_key="semantic_view:v",
+        rendered_artifact=SimpleNamespace(target=QualifiedName.parse("DB.S.V"), physical_resources=()),
+        dbt_relations=(("orders", ""),),
+    )
+    assert dict(name_map(CompileResult((unresolved,)))) == {("DB", "S", "V"): "semantic_view:v"}
