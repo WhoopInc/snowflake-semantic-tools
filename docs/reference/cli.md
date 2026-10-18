@@ -216,7 +216,7 @@ sst enrich [OPTIONS] [PATH]...
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
-| `--select` | TEXT, repeatable |  | Only these dbt models: `model:<name>` or a bare name; globs such as `fct_*` work. |
+| `--select` | TEXT, repeatable |  | Only these dbt models: `model:<name>` or a bare name; globs such as `fct_*` work, and dbt's graph operators, as in `+model:orders` for the models it is built from. |
 | `--exclude` | TEXT, repeatable |  | Leave these dbt models out; same forms as `--select`. |
 | `--include` | TEXT, repeatable |  | Components to fill, repeatable or comma-separated: column-types, data-types, sample-values, enums, column-synonyms, table-synonyms, synonyms, all. Defaults to column-types and data-types. |
 | `--force` | TEXT, repeatable |  | Components to derive again over values already written; forcing one includes it. |
@@ -323,7 +323,7 @@ sst validate [OPTIONS]
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
 | `--defer-target` | TEXT |  | The `profiles.yml` target whose relations dbt objects resolve to, while publishing to `--target`; else `$SST_DEFER_TARGET`, else `defer.target`. |
 | `--no-defer` | flag |  | Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say. |
-| `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. |
+| `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. dbt's graph operators add lineage: `model:orders+` is every artifact `orders` feeds, `+agent:a` all an agent reads, and `2+x` or `x+1` bound the steps; `model:`, `source:`, `exposure:` and a member such as `metric:<name>` work inside them. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--database` | TEXT |  | Read from this database instead of the target's; never where an artifact is published. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error; `--no-strict` promotes none. Else `$SST_STRICT`, else `validation.strict`, off when unset. A warning about an artifact the selection leaves out stays one. |
@@ -475,7 +475,7 @@ sst list [OPTIONS] [TYPE]
 | `--defer-target` | TEXT |  | The `profiles.yml` target whose relations dbt objects resolve to, while publishing to `--target`; else `$SST_DEFER_TARGET`, else `defer.target`. |
 | `--no-defer` | flag |  | Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say. |
 | `--database` | TEXT |  | Read from this database instead of the target's; never where an artifact is published. |
-| `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. |
+| `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. dbt's graph operators add lineage: `model:orders+` is every artifact `orders` feeds, `+agent:a` all an agent reads, and `2+x` or `x+1` bound the steps; `model:`, `source:`, `exposure:` and a member such as `metric:<name>` work inside them. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--long` | flag |  | Also print each artifact's applied fingerprint and published version; `json`, `yaml` and `csv` also carry its source files. |
 | `--no-manifest` | flag |  | Compile the project's files in memory instead of reading the compiled manifest. |
@@ -507,7 +507,7 @@ sst plan [OPTIONS]
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
-| `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. |
+| `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. dbt's graph operators add lineage: `model:orders+` is every artifact `orders` feeds, `+agent:a` all an agent reads, and `2+x` or `x+1` bound the steps; `model:`, `source:`, `exposure:` and a member such as `metric:<name>` work inside them. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--state` | DIRECTORY |  | Previous run's build directory, else `$SST_STATE_DIR`: `state:` selectors compare with its `manifest.json`, and `--use-cached-state` plans from its `observation.<target>.json`. |
 | `--defer-target` | TEXT |  | The `profiles.yml` target whose relations dbt objects resolve to, while publishing to `--target`; else `$SST_DEFER_TARGET`, else `defer.target`. |
@@ -574,7 +574,7 @@ sst apply [OPTIONS]
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
-| `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. |
+| `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. dbt's graph operators add lineage: `model:orders+` is every artifact `orders` feeds, `+agent:a` all an agent reads, and `2+x` or `x+1` bound the steps; `model:`, `source:`, `exposure:` and a member such as `metric:<name>` work inside them. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--state` | DIRECTORY |  | Previous run's build directory, else `$SST_STATE_DIR`, whose `manifest.json` `state:` selectors read. |
 | `--defer-target` | TEXT |  | The `profiles.yml` target whose relations dbt objects resolve to, while publishing to `--target`; else `$SST_DEFER_TARGET`, else `defer.target`. |
@@ -631,7 +631,7 @@ sst diff [OPTIONS]
 |---|---|---|---|
 | `--from` | TEXT | `local` | The state compared from: `local` (default), a dbt target, or a saved plan's `.json` path. |
 | `--to` | TEXT |  | The state compared with: `local`, a dbt target (default: the resolved one), or a saved plan. |
-| `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. |
+| `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. dbt's graph operators add lineage: `model:orders+` is every artifact `orders` feeds, `+agent:a` all an agent reads, and `2+x` or `x+1` bound the steps; `model:`, `source:`, `exposure:` and a member such as `metric:<name>` work inside them. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--target / -t` | TEXT |  | Target from `profiles.yml` that `--to` defaults to, else `$SST_TARGET`, else the profile's. |
 | `--full` | flag |  | Also name which recorded fields of a modified artifact differ, and show each member's diff whole, not cut short. |
@@ -671,7 +671,7 @@ sst test [OPTIONS]
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--suite` | smoke\|evals, repeatable |  | Repeatable. `smoke` probes deployed semantic views; `evals` runs agent evaluations. Defaults to every suite that applies. |
-| `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. |
+| `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. dbt's graph operators add lineage: `model:orders+` is every artifact `orders` feeds, `+agent:a` all an agent reads, and `2+x` or `x+1` bound the steps; `model:`, `source:`, `exposure:` and a member such as `metric:<name>` work inside them. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
 | `--threads` | INTEGER RANGE |  | Smoke probes, and eval runs neither `evals.+concurrency` nor an eval's `concurrency` setting paces, run at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1. |

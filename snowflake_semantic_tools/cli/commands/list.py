@@ -48,6 +48,7 @@ from snowflake_semantic_tools.cli.wiring.compile import checked_scope, manifest_
 from snowflake_semantic_tools.cli.wiring.manifest import build_manifest, compiled_manifest
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.lineage.graph import manifest_lineage
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan.selectors import SelectionScope
@@ -120,7 +121,10 @@ def list_command(
         found = read_notes(manifest, str(target_dir(paths.project_dir) / "manifest.json"))
     failed = DiagnosticBag(found).has_errors
     universe = manifest_universe(manifest)
-    scope, report = checked_scope(paths.project_dir, selected, excluded, universe, refuse=not failed)
+    lineage = manifest
+    scope, report = checked_scope(
+        paths.project_dir, selected, excluded, universe, refuse=not failed, graph=lambda: manifest_lineage(lineage)
+    )
     notes = (*found, *report)
     kind, registered = LIST_TYPES[artifact_type] if artifact_type is not None else ("artifact", None)
     if kind != "artifact":

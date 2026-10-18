@@ -7,6 +7,7 @@ or one whose selection matches nothing, never connects.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import NoReturn
 
@@ -18,6 +19,7 @@ from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.wiring.project import connect, project_inputs
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.enrich import WarehouseColumn
+from snowflake_semantic_tools.domain.lineage.graph import parse_graph_selector
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, production_like
 from snowflake_semantic_tools.domain.ports.enrich import EnrichPort
 from snowflake_semantic_tools.domain.ports.snowflake.cortex_models import CortexBaseModel
@@ -118,28 +120,35 @@ def project_paths(project_dir: Path, paths: Sequence[Path]) -> tuple[str, ...]:
 def model_selectors(values: Sequence[str], flag: str) -> tuple[str, ...]:
     """Return the model names or globs that `--select` or `--exclude` values name.
 
-    `model:<name>` and a bare `<name>` both name a model.
+    `model:<name>` and a bare `<name>` both name a model. dbt's graph operators, as in
+    `+model:orders` or `orders+2`, are kept around the name, for selecting to walk dbt's graph.
 
     Raises:
         SstUsageError: a value holds a comma (SST-PRT101), or is not a model selector (SST-PRT105).
 
     Diagnostics:
         SST-PRT101: a selector contains a comma; raised.
-        SST-PRT105: a selector names a directory, another kind than a model, or nothing; raised.
+        SST-PRT105: a selector names a directory, another kind than a model, or nothing, or
+            places a graph operator anywhere but around the name; raised.
     """
     names = []
     for value in values:
         if "," in value:
             _refuse(D("SST-PRT101", subject="cli", value=value), f"; repeat {flag} for each model")
-        prefix, separator, name = value.partition(":")
-        name = (name if separator else value).strip()
+        try:
+            operators = parse_graph_selector(value)
+        except ValueError as exc:
+            _refuse_model(value, str(exc))
+        core = operators.core if operators is not None else value
+        prefix, separator, name = core.partition(":")
+        name = (name if separator else core).strip()
         if "/" in value:
             _refuse_model(value, f"{flag} selects models by name; pass directories as PATH arguments instead")
         if separator and prefix.strip().casefold() != "model":
             _refuse_model(value, f"sst enrich selects dbt models only; write {flag} model:<name>")
         if not name:
             _refuse_model(value, f"{flag} {value!r} names no model")
-        names.append(name)
+        names.append(name if operators is None else replace(operators, core=name).text)
     return tuple(names)
 
 

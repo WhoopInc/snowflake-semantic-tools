@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import fnmatch
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.enrich import (
@@ -39,6 +39,7 @@ from snowflake_semantic_tools.domain.enrich import (
     taken_names,
     yaml_column_name,
 )
+from snowflake_semantic_tools.domain.lineage.graph import GraphSelector, dbt_lineage, parse_graph_selector
 from snowflake_semantic_tools.domain.model.config_schema import (
     EnrichmentConfig,
     GovernanceConfig,
@@ -180,7 +181,9 @@ def select_models(catalog: DbtCatalog, request: EnrichRequest) -> tuple[tuple[Db
     """Return the project's models the request selects, in name order, with what selecting found.
 
     Only the root project's models are selected; an installed package's are never edited. With
-    no name or path, only models are: a snapshot or seed is selected by name or path alone.
+    no name or path, only models are: a snapshot or seed is selected by name or path alone. A
+    name inside dbt's graph operators, such as `+orders`, also selects the models dbt's graph
+    reaches from it.
 
     Diagnostics:
         SST-DBT031: a model selected by name has no relation.
@@ -191,9 +194,10 @@ def select_models(catalog: DbtCatalog, request: EnrichRequest) -> tuple[tuple[Db
     }
     absent = [
         D("SST-DBT002", model=pattern, subject=f"dbt_model:{pattern}")
-        for pattern in request.selected
+        for pattern in (_core(item) for item in request.selected)
         if not any(character in pattern for character in "*?[") and pattern.casefold() not in known
     ]
+    request = replace(request, selected=_walked(request.selected, catalog), excluded=_walked(request.excluded, catalog))
     models = _filtered(
         [model for model in catalog.models if model.package_name in (None, catalog.project_name)], request
     )
@@ -206,6 +210,46 @@ def select_models(catalog: DbtCatalog, request: EnrichRequest) -> tuple[tuple[Db
         ),
     ]
     return tuple(sorted(models, key=lambda model: model.name.casefold())), diagnostics
+
+
+def _operators(pattern: str) -> GraphSelector | None:
+    """Return the graph operators a pattern writes; None when it writes none, or misplaces them."""
+    try:
+        return parse_graph_selector(pattern)
+    except ValueError:
+        return None
+
+
+def _core(pattern: str) -> str:
+    """Return the name a pattern's graph operators apply to; the pattern itself when it writes none."""
+    operators = _operators(pattern)
+    return operators.core if operators is not None else pattern
+
+
+def _walked(patterns: Sequence[str], catalog: DbtCatalog) -> tuple[str, ...]:
+    """Return the patterns, each one with graph operators replaced by the models dbt's graph reaches.
+
+    The walk starts from every model, seed or snapshot the pattern's name matches.
+    """
+    graph = None
+    found: list[str] = []
+    for pattern in patterns:
+        operators = _operators(pattern)
+        if operators is None:
+            found.append(pattern)
+            continue
+        graph = graph if graph is not None else dbt_lineage(catalog.nodes)
+        name = operators.core.casefold()
+        start = [
+            key for key, node in graph.nodes.items() if node.kind in _TABLES and fnmatch.fnmatchcase(node.name, name)
+        ]
+        walked = graph.walk(start, operators)
+        found.extend(sorted(graph.nodes[key].name for key in walked if graph.nodes[key].kind in _TABLES))
+    return tuple(found)
+
+
+# The dbt resource types enrich edits, by the kind the lineage graph records.
+_TABLES = frozenset(("model", "seed", "snapshot"))
 
 
 def yaml_section(model: DbtModel) -> str:

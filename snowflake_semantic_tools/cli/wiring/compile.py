@@ -21,6 +21,7 @@ from snowflake_semantic_tools.app.manifest import dbt_manifest_moved
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.wiring.project import project_inputs
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.lineage.graph import GraphSource, LineageGraph
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan.selectors import Selectable, Selection, SelectionScope, resolve_selectors
 from snowflake_semantic_tools.domain.state import Manifest
@@ -77,18 +78,24 @@ class Narrowed:
 
 
 def selected_within(
-    project_dir: Path, result: CompileResult, selected: tuple[str, ...], excluded: tuple[str, ...] = ()
+    project_dir: Path,
+    result: CompileResult,
+    selected: tuple[str, ...],
+    excluded: tuple[str, ...] = (),
+    *,
+    graph: GraphSource | None = None,
 ) -> Narrowed:
     """Return `result` with only the artifacts `selected` names, less those `excluded` names.
 
-    No selector keeps every artifact, and no exclusion removes any.
+    No selector keeps every artifact, and no exclusion removes any. `graph` builds the lineage a
+    selector with graph operators walks; without it, such a selector is refused.
 
     Raises:
         SstUsageError: a selector is refused, as `selection` says.
         ProjectError: the selectors matched no artifact (SST-DIS010).
     """
     universe = compiled_universe(result.compiled)
-    scope, report = checked_scope(project_dir, selected, excluded, universe)
+    scope, report = checked_scope(project_dir, selected, excluded, universe, graph=graph)
     compiled = tuple(item for item in result.compiled if scope.covers(item.artifact_type, item.artifact_key))
     return Narrowed(dataclasses.replace(result, compiled=compiled), scope, report)
 
@@ -100,12 +107,14 @@ def checked_scope(
     universe: tuple[Selectable, ...],
     *,
     refuse: bool = True,
+    graph: GraphSource | None = None,
 ) -> tuple[SelectionScope, DiagnosticBag]:
     """Resolve the selectors over `universe`, with `selector_report`'s report, refusing a scope of nothing.
 
     Args:
         refuse: False to report a scope of nothing only as the report does, as where the
             compile's own errors explain why an artifact is not there to select.
+        graph: As `selection` takes it.
 
     Raises:
         SstUsageError: a selector is refused, as `selection` says.
@@ -114,17 +123,20 @@ def checked_scope(
     Diagnostics:
         SST-DIS010: raised, one per `--select` value, when the scope chooses no artifact.
     """
-    scope = selection_scope(selected, excluded, universe)
+    scope = selection_scope(selected, excluded, universe, graph=graph)
     if refuse and (selected or excluded) and not any(scope.covers(item.type, item.key) for item in universe):
         raise ProjectError(
             f"selector {' '.join(selected)!r} matched no artifact in {project_dir}",
             diagnostics=tuple(D("SST-DIS010", selector=value) for value in selected),
         )
-    return scope, selector_report(selected, excluded, universe)
+    return scope, selector_report(selected, excluded, universe, graph)
 
 
 def selector_report(
-    selected: tuple[str, ...], excluded: tuple[str, ...], universe: Iterable[Selectable]
+    selected: tuple[str, ...],
+    excluded: tuple[str, ...],
+    universe: Iterable[Selectable],
+    graph: GraphSource | None = None,
 ) -> DiagnosticBag:
     """Report each selector value that matches no artifact, then what `--exclude` removed.
 
@@ -133,6 +145,7 @@ def selector_report(
 
     Args:
         universe: The artifacts the selectors resolve against: a compile's, or a manifest's.
+        graph: As `selection` takes it.
 
     Raises:
         SstUsageError: a selector cannot be parsed, as `selection` says.
@@ -145,16 +158,18 @@ def selector_report(
     artifacts = tuple(universe)
     selected = tuple(value for value in selected if not _is_state(value))
     excluded = tuple(value for value in excluded if not _is_state(value))
-    found = [D("SST-DIS010", selector=value) for value in selected if not _matching(artifacts, (value,))]
-    found.extend(D("SST-DIS011", selector=value) for value in excluded if not _matching(artifacts, (value,)))
-    left_out = _matching(artifacts, excluded) if excluded else ()
+    found = [D("SST-DIS010", selector=value) for value in selected if not _matching(artifacts, (value,), graph)]
+    found.extend(D("SST-DIS011", selector=value) for value in excluded if not _matching(artifacts, (value,), graph))
+    left_out = _matching(artifacts, excluded, graph) if excluded else ()
     if left_out:
         found.append(D("SST-DIS201", count=len({path for item in left_out for path in item.source_files})))
     return DiagnosticBag(found)
 
 
-def _matching(artifacts: tuple[Selectable, ...], selectors: tuple[str, ...]) -> tuple[Selectable, ...]:
-    named = selection(selectors, artifacts)
+def _matching(
+    artifacts: tuple[Selectable, ...], selectors: tuple[str, ...], graph: GraphSource | None
+) -> tuple[Selectable, ...]:
+    named = selection(selectors, artifacts, graph=graph)
     return tuple(item for item in artifacts if named.names(item.type, item.key))
 
 
@@ -185,19 +200,25 @@ def manifest_universe(manifest: Manifest) -> tuple[Selectable, ...]:
 
 
 def selection(
-    values: tuple[str, ...], universe: tuple[Selectable, ...] = (), previous: Mapping[str, str] | None = None
+    values: tuple[str, ...],
+    universe: tuple[Selectable, ...] = (),
+    previous: Mapping[str, str] | None = None,
+    *,
+    graph: GraphSource | None = None,
 ) -> Selection:
     """Resolve selectors into the artifact types and the artifact keys they name.
 
     Args:
         universe: The compiled artifacts names, paths, and states resolve against.
         previous: Each key's fingerprint in the `--state` manifest; None without `--state`.
+        graph: Builds the lineage a selector with graph operators walks, once and only when one
+            is given; None refuses such a selector.
 
     Raises:
         SstUsageError: a selector is refused, carrying its diagnostic.
     """
     resolved = resolve_selectors(
-        values, artifact_types=SEMANTIC_REGISTRY.artifacts, universe=universe, previous=previous
+        values, artifact_types=SEMANTIC_REGISTRY.artifacts, universe=universe, previous=previous, graph=graph
     )
     if isinstance(resolved, Diagnostic):
         raise SstUsageError(resolved.message, diagnostic=resolved)
@@ -209,6 +230,8 @@ def selection_scope(
     excluded: tuple[str, ...],
     universe: tuple[Selectable, ...],
     previous: Mapping[str, str] | None = None,
+    *,
+    graph: GraphSource | None = None,
 ) -> SelectionScope:
     """Resolve `--select` and `--exclude` into the scope every command applies the same way.
 
@@ -218,8 +241,8 @@ def selection_scope(
         SstUsageError: a selector is refused, as `selection` says.
     """
     return SelectionScope(
-        selection(selected, universe, previous) if selected else None,
-        selection(excluded, universe, previous) if excluded else None,
+        selection(selected, universe, previous, graph=graph) if selected else None,
+        selection(excluded, universe, previous, graph=graph) if excluded else None,
     )
 
 
@@ -241,7 +264,10 @@ def check_selectors(
     if values is None:
         return None
     given = tuple(part for value in ((values,) if isinstance(values, str) else values) for part in _split(value))
-    resolved = resolve_selectors(given, artifact_types=SEMANTIC_REGISTRY.artifacts, previous={})
+    # An empty graph checks a graph operator's grammar; what it walks is resolved later.
+    resolved = resolve_selectors(
+        given, artifact_types=SEMANTIC_REGISTRY.artifacts, previous={}, graph=lambda: LineageGraph()
+    )
     if isinstance(resolved, Diagnostic):
         raise SstUsageError(resolved.message, ctx, diagnostic=resolved)
     return given

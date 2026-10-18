@@ -53,6 +53,7 @@ from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest
 from snowflake_semantic_tools.cli.wiring.plan import refuse_together
 from snowflake_semantic_tools.cli.wiring.project import connect, open_connector
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.lineage.graph import LineageGraph, manifest_lineage
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.config_schema import config_block
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
@@ -304,8 +305,17 @@ def _selected(
     """Keep the differences the selectors choose, resolved against every artifact either state holds."""
     if not (selected or excluded):
         return differences
-    scope = selection_scope(selected, excluded, _universe(paths, states))
+    scope = selection_scope(selected, excluded, _universe(paths, states), graph=lambda: _lineage(paths))
     return tuple(item for item in differences if scope.covers(split_artifact_key(item.key)[0], item.key))
+
+
+def _lineage(paths: ProjectPaths) -> LineageGraph:
+    """Return the lineage the compiled manifest records, which a graph operator walks.
+
+    Raises:
+        ProjectError: no compiled manifest exists (SST-MAN001).
+    """
+    return manifest_lineage(compiled_manifest(paths.project_dir))
 
 
 def _universe(paths: ProjectPaths, states: tuple[ArtifactStates, ArtifactStates]) -> tuple[Selectable, ...]:

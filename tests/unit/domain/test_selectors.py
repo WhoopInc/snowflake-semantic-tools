@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
+from snowflake_semantic_tools.domain.lineage.graph import LineageGraph, LineageNode
 from snowflake_semantic_tools.domain.plan.selectors import Selectable, Selection, SelectionScope, resolve_selectors
 
 TYPES = ("semantic_view", "agent", "tool")
@@ -36,12 +37,12 @@ def test_names_globs_types_paths_and_keys_resolve_against_the_compiled_artifacts
         (
             "+orders",
             "SST-PRT100",
-            "selector '+orders': graph operators (+name, name+) are not supported in this release",
+            "selector '+orders': graph operators need the lineage the compiled manifest records",
         ),
         (
-            "orders+",
+            "or+ders",
             "SST-PRT100",
-            "selector 'orders+': graph operators (+name, name+) are not supported in this release",
+            "selector 'or+ders': a graph operator goes before or after one selector: +x, x+, 2+x or x+3",
         ),
         ("agent:", "SST-PRT100", "selector 'agent:': agent: names no artifact"),
         (
@@ -50,13 +51,23 @@ def test_names_globs_types_paths_and_keys_resolve_against_the_compiled_artifacts
             "selector 'type:nope': unknown artifact type 'nope'; one of agent, semantic_view, tool",
         ),
         ("tag:core", "SST-PRT100", "selector 'tag:core': tag: selectors are not supported by this command"),
-        ("model:orders", "SST-PRT100", "selector 'model:orders': model: selectors are not supported by this command"),
+        (
+            "model:orders",
+            "SST-PRT100",
+            "selector 'model:orders': model: names a dbt node, not an artifact; write model:orders+ for what reads it",
+        ),
+        (
+            "metric:revenue",
+            "SST-PRT100",
+            "selector 'metric:revenue': metric: names a member of a view, not an artifact; "
+            "write metric:revenue+ for what reads it",
+        ),
         (
             "state:stale",
             "SST-PRT100",
             "selector 'state:stale': unknown state 'stale'; one of new, modified, unmodified, orphaned",
         ),
-        ("source:*", "SST-PRT102", "selector 'source:*' names an unknown kind"),
+        ("nope:*", "SST-PRT102", "selector 'nope:*' names an unknown kind"),
         ("a,b", "SST-PRT101", "selector 'a,b' contains a comma"),
     ],
 )
@@ -86,6 +97,8 @@ def test_a_state_selector_without_state_and_a_typed_glob_are_refused() -> None:
     assert (
         glob.suggestion == "use an exact value after 'tool:', or the bare glob 'd*', which matches a name of every type"
     )
+    typed = _resolve("type:ag*")
+    assert isinstance(typed, Diagnostic) and typed.code == "SST-PRT102"
 
 
 def test_an_unknown_kind_is_refused_with_the_kinds_there_are() -> None:
@@ -122,3 +135,53 @@ def test_a_scope_reaches_what_it_chooses_and_every_subject_that_names_no_artifac
     assert not excluding.reaches("agent:orders", artifact_types=TYPES)
     assert excluding.reaches("agent:other", artifact_types=TYPES)
     assert SelectionScope().reaches("agent:orders", artifact_types=TYPES)
+
+
+def _graph() -> LineageGraph:
+    nodes = {
+        "model:stg": LineageNode("model:stg", "model", "stg"),
+        "model:orders": LineageNode("model:orders", "model", "orders"),
+        "metric:revenue": LineageNode("metric:revenue", "metric", "revenue"),
+        "semantic_view:orders": LineageNode("semantic_view:orders", "semantic_view", "orders"),
+        "tool:docs": LineageNode("tool:docs", "tool", "docs"),
+        "agent:orders": LineageNode("agent:orders", "agent", "orders"),
+    }
+    edges = (
+        ("model:stg", "model:orders"),
+        ("model:orders", "metric:revenue"),
+        ("model:orders", "tool:docs"),
+        ("metric:revenue", "semantic_view:orders"),
+        ("semantic_view:orders", "agent:orders"),
+        ("tool:docs", "agent:orders"),
+    )
+    parents: dict[str, list[str]] = {}
+    children: dict[str, list[str]] = {}
+    for upstream, downstream in edges:
+        parents.setdefault(downstream, []).append(upstream)
+        children.setdefault(upstream, []).append(downstream)
+    return LineageGraph(
+        nodes,
+        {key: tuple(sorted(value)) for key, value in parents.items()},
+        {key: tuple(sorted(value)) for key, value in children.items()},
+    )
+
+
+def test_graph_operators_select_the_artifacts_lineage_reaches_and_build_the_graph_once() -> None:
+    built: list[LineageGraph] = []
+
+    def graph() -> LineageGraph:
+        built.append(_graph())
+        return built[-1]
+
+    def walked(*values: str) -> Selection | Diagnostic:
+        return resolve_selectors(values, artifact_types=TYPES, universe=UNIVERSE, graph=graph)
+
+    assert walked("model:orders+") == Selection(None, frozenset(("semantic_view:orders", "tool:docs", "agent:orders")))
+    assert walked("1+model:orders+1", "model:st*+1") == Selection(None, frozenset(("tool:docs",)))
+    assert walked("+agent:orders") == Selection(None, frozenset(("semantic_view:orders", "tool:docs", "agent:orders")))
+    assert walked("metric:rev*+") == Selection(None, frozenset(("semantic_view:orders", "agent:orders")))
+    assert walked("type:tool+") == Selection(None, frozenset(("tool:docs", "agent:orders")))
+    assert walked("docs+", "tool:docs+") == Selection(None, frozenset(("tool:docs", "agent:orders")))
+    assert len(built) == 6
+    refused = walked("tag:core+")
+    assert isinstance(refused, Diagnostic) and refused.code == "SST-PRT100"

@@ -1,21 +1,32 @@
 """Resolve `--select` and `--exclude` selectors into the artifact types and keys they name.
 
 The grammar is closed: a name (with `*` and `?` globs), `type:<type>`, `path:<glob>`,
-`state:<state>`, or an artifact key `<type>:<name>`. Anything else is refused rather than read
-as a literal name, because a selector that silently matches nothing turns a prune or a rollback
-into a run that reports success having done nothing. A comma is refused outright: union is
-spelled with spaces, and intersection is not supported. Names, types, and states compare
-casefolded; a path glob compares against the project-relative POSIX paths an artifact was
-compiled from.
+`state:<state>`, or an artifact key `<type>:<name>`, each optionally inside dbt's graph
+operators, `+X`, `X+`, `2+X` or `X+3`, which add what X reads or what reads it in the lineage
+graph. Inside the operators X may also be a dbt node, `model:<name>`, `source:<source>.<table>`
+or `exposure:<name>`, or a view's member such as `metric:<name>`, each globbable; written bare,
+those name no artifact and are refused. Anything else is refused rather than read as a literal
+name, because a selector that silently matches nothing turns a prune or a rollback into a run
+that reports success having done nothing. A comma is refused outright: union is spelled with
+spaces, and intersection is not supported. Names, types, and states compare casefolded; a path
+glob compares against the project-relative POSIX paths an artifact was compiled from.
 """
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.lineage.graph import (
+    DBT_KINDS,
+    MEMBER_KINDS,
+    GraphSelector,
+    GraphSource,
+    LineageGraph,
+    parse_graph_selector,
+)
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.plan.diff import STATES, state_classes
 
@@ -103,6 +114,7 @@ def resolve_selectors(
     artifact_types: Iterable[str],
     universe: Iterable[Selectable] = (),
     previous: Mapping[str, str] | None = None,
+    graph: GraphSource | None = None,
 ) -> Selection | Diagnostic:
     """Resolve selectors against the artifacts there are, or return the refusal of the first that fails.
 
@@ -114,24 +126,86 @@ def resolve_selectors(
         universe: The compiled artifacts, which names, paths, and states are resolved against.
         previous: Each artifact key's fingerprint in the previous run's manifest, from
             `--state`; None when no state was given.
+        graph: Builds the lineage graph a selector with graph operators walks, called only when
+            one is given; None where lineage cannot be read.
 
     Diagnostics:
         SST-PRT101: a selector contains a comma.
         SST-PRT102: a selector's prefix is not a registered kind, or globs a fixed vocabulary.
         SST-PRT103: a `state:` selector was given without `--state`.
-        SST-PRT100: a registered kind names an unknown type or state, or is not supported here.
+        SST-PRT100: a registered kind names an unknown type or state, or is not supported here;
+            a graph operator is misplaced, or given where lineage cannot be read; or a dbt node
+            or a member is named without one.
     """
     known_types = frozenset(artifact_types)
     artifacts = tuple(universe)
     named: dict[str, set[str]] = {}
+    built: list[LineageGraph] = []
+
+    def lineage() -> LineageGraph | None:
+        if graph is None:
+            return None
+        if not built:
+            built.append(graph())
+        return built[0]
+
     for value in values:
-        resolved = _resolve_one(value, known_types, artifacts, previous)
+        resolved = _resolve_graph(value, known_types, artifacts, previous, lineage)
         if isinstance(resolved, Diagnostic):
             return resolved
         kind, names = resolved
         named.setdefault(kind, set()).update(names)
     types, keys = named.get("type"), named.get("key")
     return Selection(frozenset(types) if types is not None else None, frozenset(keys) if keys is not None else None)
+
+
+def _resolve_graph(
+    value: str,
+    known_types: frozenset[str],
+    artifacts: tuple[Selectable, ...],
+    previous: Mapping[str, str] | None,
+    lineage: Callable[[], LineageGraph | None],
+) -> tuple[str, frozenset[str]] | Diagnostic:
+    """Resolve one selector, walking the lineage graph when it writes graph operators."""
+    if "," in value:
+        return D("SST-PRT101", subject="cli", value=value)
+    try:
+        operators = parse_graph_selector(value)
+    except ValueError as exc:
+        return _unsupported(value, str(exc))
+    if operators is None:
+        return _resolve_one(value, known_types, artifacts, previous)
+    graph = lineage()
+    if graph is None:
+        return _unsupported(value, "graph operators need the lineage the compiled manifest records")
+    start = _graph_start(operators, known_types, artifacts, previous, graph)
+    if isinstance(start, Diagnostic):
+        return start
+    walked = graph.walk(start, operators)
+    return "key", frozenset(key for key in walked if graph.nodes[key].kind in known_types)
+
+
+def _graph_start(
+    operators: GraphSelector,
+    known_types: frozenset[str],
+    artifacts: tuple[Selectable, ...],
+    previous: Mapping[str, str] | None,
+    graph: LineageGraph,
+) -> frozenset[str] | Diagnostic:
+    """Return the nodes a graph selector's walk starts from: what its core selector names."""
+    core = operators.core
+    prefix, separator, rest = core.partition(":")
+    kind = prefix.casefold()
+    if separator and kind in (*DBT_KINDS, *MEMBER_KINDS):
+        pattern = f"{kind}:{rest.casefold()}"
+        return frozenset(key for key in graph.nodes if fnmatchcase(key, pattern))
+    resolved = _resolve_one(core, known_types, artifacts, previous)
+    if isinstance(resolved, Diagnostic):
+        return resolved
+    found, names = resolved
+    if found == "type":
+        return frozenset(key for key, node in graph.nodes.items() if node.kind in names)
+    return names
 
 
 def _resolve_one(
@@ -141,10 +215,6 @@ def _resolve_one(
     previous: Mapping[str, str] | None,
 ) -> tuple[str, frozenset[str]] | Diagnostic:
     """Resolve one selector to `("type", types)` or `("key", keys)`, or return its refusal."""
-    if "," in value:
-        return D("SST-PRT101", subject="cli", value=value)
-    if value.startswith("+") or value.endswith("+"):
-        return _unsupported(value, "graph operators (+name, name+) are not supported in this release")
     prefix, separator, rest = value.partition(":")
     if not separator:
         return "key", _names(value.casefold(), artifacts)
@@ -156,9 +226,12 @@ def _resolve_one(
         if not rest:
             return _unsupported(value, f"{prefix}: names no artifact")
         return "key", frozenset((artifact_key(kind, rest.casefold()),))
+    if kind in (*DBT_KINDS, *MEMBER_KINDS):
+        what = "a dbt node" if kind in DBT_KINDS else "a member of a view"
+        return _unsupported(value, f"{prefix}: names {what}, not an artifact; write {value}+ for what reads it")
     if kind not in SELECTOR_KINDS:
         return D("SST-PRT102", subject="cli", value=value, expected=f"one of {', '.join(SELECTOR_KINDS)}")
-    if kind in ("type", "state", "model", "source") and _GLOB & set(rest):
+    if kind in ("type", "state") and _GLOB & set(rest):
         return _globbed(value, prefix, "since only a bare name or a path: selector takes a glob")
     if kind == "type":
         if rest.casefold() not in known_types:

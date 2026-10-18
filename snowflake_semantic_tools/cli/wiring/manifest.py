@@ -12,6 +12,7 @@ from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest, target_mismatch
 from snowflake_semantic_tools.cli.wiring.project import project_inputs, target_dir
 from snowflake_semantic_tools.domain.diagnostics import D
+from snowflake_semantic_tools.domain.lineage.graph import GraphSource, manifest_lineage
 from snowflake_semantic_tools.domain.state import Manifest
 
 
@@ -20,6 +21,13 @@ def build_manifest(
 ) -> Manifest:
     """Build the manifest `result` publishes for `target_name`, reading what it records of the files now."""
     return manifest_for(result, project_inputs(paths, target_name, manifest_path).manifest_sources())
+
+
+def lineage_of(
+    paths: ProjectPaths, result: CompileResult, manifest_path: Path | None, target_name: str | None = None
+) -> GraphSource:
+    """Return what builds the lineage of `result`, from the manifest it publishes, when first asked."""
+    return lambda: manifest_lineage(build_manifest(paths, result, manifest_path, target_name))
 
 
 def compiled_manifest(project_dir: Path) -> Manifest:

@@ -79,7 +79,10 @@ _OPTION_HELP: Mapping[str, str] = {
     "--show-all-occurrences": "Show every occurrence of a code, not the first three of four or more.",
     "--select": (
         "Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, "
-        "or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`."
+        "or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. "
+        "dbt's graph operators add lineage: `model:orders+` is every artifact `orders` feeds, `+agent:a` "
+        "all an agent reads, and `2+x` or `x+1` bound the steps; `model:`, `source:`, `exposure:` and a "
+        "member such as `metric:<name>` work inside them."
     ),
     "--exclude": "Leave these artifacts out; same forms as `--select`.",
     "--state": "Previous run's build directory, else `$SST_STATE_DIR`, whose `manifest.json` `state:` selectors read.",
@@ -166,7 +169,10 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "Repeatable. Generate only these references: `errors`, `coverage` (the code-to-test matrix), "
         "`artifacts`, `cli`, `config`. Defaults to all of them."
     ),
-    ("sst enrich", "--select"): "Only these dbt models: `model:<name>` or a bare name; globs such as `fct_*` work.",
+    ("sst enrich", "--select"): (
+        "Only these dbt models: `model:<name>` or a bare name; globs such as `fct_*` work, and dbt's "
+        "graph operators, as in `+model:orders` for the models it is built from."
+    ),
     ("sst enrich", "--exclude"): "Leave these dbt models out; same forms as `--select`.",
     ("sst enrich", "--include"): (
         "Components to fill, repeatable or comma-separated: column-types, data-types, sample-values, enums, "

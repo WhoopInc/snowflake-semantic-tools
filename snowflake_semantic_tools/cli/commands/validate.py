@@ -39,6 +39,7 @@ from snowflake_semantic_tools.cli.settings import (
     validation_settings,
 )
 from snowflake_semantic_tools.cli.wiring import compile as compiling
+from snowflake_semantic_tools.cli.wiring.manifest import lineage_of
 from snowflake_semantic_tools.cli.wiring.project import connect, open_connector
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.config_schema import governance_config
@@ -85,7 +86,8 @@ def validate(
     compiled = compiling.compile_result(paths, target_name, manifest_path, database=database)
     scope = SelectionScope()
     if selected or excluded:
-        narrowed = compiling.selected_within(paths.project_dir, compiled, selected, excluded)
+        graph = lineage_of(paths, compiled, manifest_path, target_name)
+        narrowed = compiling.selected_within(paths.project_dir, compiled, selected, excluded, graph=graph)
         # Validated as the compile's own, so `--strict` promotes a selector that matched nothing.
         scope = narrowed.scope
         compiled = dataclasses.replace(

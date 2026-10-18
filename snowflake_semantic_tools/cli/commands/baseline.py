@@ -37,6 +37,7 @@ from snowflake_semantic_tools.cli.render.diagnostics import plural
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, project_path, write_text
 from snowflake_semantic_tools.cli.settings import project_config
 from snowflake_semantic_tools.cli.wiring import compile as compiling
+from snowflake_semantic_tools.cli.wiring.manifest import lineage_of
 from snowflake_semantic_tools.cli.wiring.project import connect
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.diagnostics.baseline import (
@@ -317,7 +318,8 @@ def _current(
     compiled = compiling.compile_result(paths, target_name, manifest_path)
     notes = DiagnosticBag()
     if selected or excluded:
-        narrowed = compiling.selected_within(paths.project_dir, compiled, selected, excluded)
+        graph = lineage_of(paths, compiled, manifest_path, target_name)
+        narrowed = compiling.selected_within(paths.project_dir, compiled, selected, excluded, graph=graph)
         compiled, notes = narrowed.result, narrowed.report
     if target_name is None:
         result = ValidateArtifacts(None, catalog=None, target="", clock=SystemClock()).run(
@@ -351,9 +353,9 @@ def _scope(
     """Return which entries `prune` considers, all or the chosen artifacts', and the selectors' report."""
     if not (selected or excluded):
         return (lambda entry: True), DiagnosticBag()
-    narrowed = compiling.selected_within(
-        paths.project_dir, compiling.compile_result(paths, None, manifest_path), selected, excluded
-    )
+    compiled = compiling.compile_result(paths, None, manifest_path)
+    graph = lineage_of(paths, compiled, manifest_path)
+    narrowed = compiling.selected_within(paths.project_dir, compiled, selected, excluded, graph=graph)
     keys = {item.artifact_key for item in narrowed.result.compiled}
     files = {path for item in narrowed.result.compiled for path in item.source_files}
     return (lambda entry: entry.artifact in keys or entry.file in files), narrowed.report

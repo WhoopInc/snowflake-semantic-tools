@@ -36,6 +36,7 @@ from snowflake_semantic_tools.cli.wiring.manifest import build_manifest
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.file_names import file_name
+from snowflake_semantic_tools.domain.lineage.graph import manifest_lineage
 from snowflake_semantic_tools.domain.state import Manifest
 
 _DIRECTORY = click.Path(file_okay=False, path_type=Path)
@@ -104,7 +105,11 @@ def compile(
     except OSError as exc:
         failed = D("SST-MAN007", path=str(exc.filename or destination.parent), detail=exc.strerror or str(exc))
         return CommandResult(ERROR, DiagnosticBag((*shown, failed)))
-    narrowed = None if selected is None else compiling.selected_within(paths.project_dir, healthy, selected)
+    narrowed = (
+        None
+        if selected is None
+        else compiling.selected_within(paths.project_dir, healthy, selected, graph=lambda: manifest_lineage(manifest))
+    )
     result = healthy if narrowed is None else narrowed.result
     # A selector that matched nothing is shown even when the compile's own warnings are not.
     notes = DiagnosticBag() if narrowed is None else narrowed.report

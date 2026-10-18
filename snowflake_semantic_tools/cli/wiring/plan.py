@@ -44,6 +44,7 @@ from snowflake_semantic_tools.cli.wiring.project import (
 )
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
+from snowflake_semantic_tools.domain.lineage.graph import manifest_lineage
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan.impact import STATE_MODIFIED
@@ -129,11 +130,13 @@ def plan_scope(request: PlanRequest) -> PlanScope:
     """
     impact = request.state_dir is not None and STATE_MODIFIED in request.selected
     named = _named(request)
-    universe = manifest_universe(compiled_manifest(request.project_dir)) if named or request.excluded else ()
+    manifest = compiled_manifest(request.project_dir) if named or request.excluded else None
+    universe = manifest_universe(manifest) if manifest is not None else ()
+    graph = (lambda: manifest_lineage(manifest)) if manifest is not None else None
     stateful = any(_is_state(value) for value in (*named, *request.excluded))
     previous = _previous_fingerprints(request.state_dir) if stateful else None
-    named_selection = selection(named, universe, previous)
-    excluded_selection = selection(request.excluded, universe, previous)
+    named_selection = selection(named, universe, previous, graph=graph)
+    excluded_selection = selection(request.excluded, universe, previous, graph=graph)
     prune_types, prune_keys = named_selection.types, named_selection.keys
     excluded_types, excluded_keys = excluded_selection.types, excluded_selection.keys
     if excluded_types is not None:
@@ -355,7 +358,13 @@ def _prepared(request: PlanRequest) -> tuple[PreparePlan, PlanCandidates, Diagno
     scope = plan_scope(request)
     project_dir = request.project_dir
     full_result = compiling.compile_result(request.paths, request.target_name, request.manifest_path)
-    selectors = selector_report(_named(request), request.excluded, compiled_universe(full_result.compiled))
+    # The compiled manifest is the one this compile matches, or the run is refused as stale.
+    selectors = selector_report(
+        _named(request),
+        request.excluded,
+        compiled_universe(full_result.compiled),
+        lambda: manifest_lineage(compiled_manifest(project_dir)),
+    )
     inputs = project_inputs(request.paths, request.target_name, request.manifest_path)
     prepare = PreparePlan(inputs, SystemClock(), baseline=request.baseline, phases=RUN_TIMINGS)
     candidates = prepare.select(

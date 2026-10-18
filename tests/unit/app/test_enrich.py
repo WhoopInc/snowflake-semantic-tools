@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 
 import pytest
 
@@ -18,7 +19,7 @@ from snowflake_semantic_tools.app.enrich import (
 )
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.enrich import COLUMNS_PER_PROMPT, Component, resolve_options
-from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtNode
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView, Table
@@ -397,3 +398,25 @@ def test_an_error_in_the_governance_block_stops_the_run_before_any_read() -> Non
     port = ScriptedEnrich(columns={"DB.SCH.ORDERS": ORDERS_COLUMNS})
     report = EnrichProject(inputs, port, InMemoryFiles({"models/orders.yml": ORDERS_YML})).run(_request())
     assert report.stopped and [item.code for item in report.diagnostics] == ["SST-CFG057"] and port.calls == []
+
+
+def test_dbt_s_graph_operators_select_the_models_dbt_s_graph_reaches() -> None:
+    nodes = (
+        DbtNode("model.shop.stg_orders", "model", "stg_orders", depends_on=("source.shop.raw.orders",)),
+        DbtNode("source.shop.raw.orders", "source", "raw.orders"),
+        DbtNode("model.shop.orders", "model", "orders", depends_on=("model.shop.stg_orders",)),
+        DbtNode("model.shop.refunds", "model", "refunds", depends_on=("model.shop.orders",)),
+    )
+    models = tuple(_model(name) for name in ("orders", "refunds", "stg_orders"))
+    catalog = replace(_catalog(*models), nodes=nodes)
+
+    def chosen(*selected: str, excluded: tuple[str, ...] = ()) -> list[str]:
+        found, diagnostics = select_models(catalog, EnrichRequest(selected=selected, excluded=excluded))
+        assert diagnostics == []
+        return [model.name for model in found]
+
+    assert chosen("+orders") == ["orders", "stg_orders"]
+    assert chosen("orders+") == ["orders", "refunds"]
+    assert chosen("stg_*+1") == ["orders", "stg_orders"]
+    assert chosen("+refunds", excluded=("1+orders",)) == ["refunds"]
+    assert [item.code for item in select_models(catalog, EnrichRequest(selected=("+gone",)))[1]] == ["SST-DBT002"]

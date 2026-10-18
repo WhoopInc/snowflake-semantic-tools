@@ -50,7 +50,7 @@ from snowflake_semantic_tools.cli.render.diagnostics import plural
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import threads_setting
 from snowflake_semantic_tools.cli.wiring import compile as compiling
-from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest, current_manifest
+from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest, current_manifest, lineage_of
 from snowflake_semantic_tools.cli.wiring.project import (
     closed_on_error,
     connect,
@@ -141,8 +141,11 @@ def test_command(
     compiled = compiling.compile_result(paths, target_name, manifest_path)
     if not compiled.success:
         return CommandResult(ERROR, compiled.diagnostics)
+    graph = lineage_of(paths, compiled, manifest_path, target_name)
     narrowed = (
-        compiling.selected_within(paths.project_dir, compiled, selected, excluded) if selected or excluded else None
+        compiling.selected_within(paths.project_dir, compiled, selected, excluded, graph=graph)
+        if selected or excluded
+        else None
     )
     result = compiled if narrowed is None else narrowed.result
     notes = DiagnosticBag() if narrowed is None else narrowed.report
