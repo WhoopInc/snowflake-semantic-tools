@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
+import time
 from collections.abc import Mapping, Sequence
 
 import pytest
@@ -401,6 +403,38 @@ def test_a_pool_closes_every_sibling_even_when_one_fails_to_close() -> None:
     with pytest.raises(OSError, match="close failed"):
         pool.close()
     assert broken.closed and fine.closed and pool.opened == 0
+
+
+class _SlowClose(_Pooled):
+    """Takes a while to close, then fails if named so, recording how many closed at once."""
+
+    running = 0
+    most_running = 0
+    guard = threading.Lock()
+
+    def close(self) -> None:
+        with _SlowClose.guard:
+            _SlowClose.running += 1
+            _SlowClose.most_running = max(_SlowClose.most_running, _SlowClose.running)
+        # The later-opened failure finishes first, so completion order is not opened order.
+        time.sleep(0.05 if self.name == "first" else 0.01)
+        with _SlowClose.guard:
+            _SlowClose.running -= 1
+        self.closed = True
+        if self.name in ("first", "second"):
+            raise OSError(f"{self.name} close failed")
+
+
+def test_a_pool_closes_its_siblings_at_once_and_raises_the_earliest_opened_failure() -> None:
+    _SlowClose.most_running = 0
+    siblings = iter((_SlowClose("first"), _SlowClose("second"), *(_SlowClose(f"s{index}") for index in range(6))))
+    pool = ConnectorPool(8, lambda: next(siblings))
+    with contextlib.ExitStack() as leases:
+        leased = [leases.enter_context(pool.lease()) for _ in range(8)]
+    with pytest.raises(OSError, match="first close failed"):
+        pool.close()
+    assert all(item.closed for item in leased) and pool.opened == 0
+    assert _SlowClose.most_running > 1
 
 
 def test_a_sibling_that_cannot_open_frees_its_slot() -> None:

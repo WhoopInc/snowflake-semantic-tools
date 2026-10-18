@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from types import TracebackType
 from typing import Generic, Protocol, TypeVar
@@ -37,8 +38,8 @@ SessionT = TypeVar("SessionT", bound=_Pooled)
 class ConnectorPool(SessionPool[SessionT], Generic[SessionT]):
     """Lend up to `size` connectors at once, each a sibling opened as leases overlap.
 
-    Use it as a context manager; leaving the block closes every connector it opened, even
-    when closing one of them fails, and re-raises the first such failure.
+    Use it as a context manager; leaving the block closes every connector it opened, all at
+    once, even when closing one of them fails, and re-raises the failure of the earliest opened.
 
     Raises:
         ValueError: `size` is below 1.
@@ -84,17 +85,19 @@ class ConnectorPool(SessionPool[SessionT], Generic[SessionT]):
             connector.halt(halted)
 
     def close(self) -> None:
-        """Close every connector the pool opened."""
+        """Close every connector the pool opened, all at once; the first opened to fail raises.
+
+        Each close waits on its own connector alone, so closing several takes about as long
+        as the slowest close, not the sum of them.
+        """
         with self._lock:
             opened, self._opened = self._opened, []
             self._idle = []
-        failure: BaseException | None = None
-        with RUN_TIMINGS.phase("disconnect") if opened else contextlib.nullcontext():
-            for connector in opened:
-                try:
-                    connector.close()
-                except Exception as exc:
-                    failure = failure or exc
+        if not opened:
+            return
+        with RUN_TIMINGS.phase("disconnect"):
+            failures = _closed(opened)
+        failure = next((item for item in failures if item is not None), None)
         if failure is not None:
             raise failure
 
@@ -130,3 +133,19 @@ class ConnectorPool(SessionPool[SessionT], Generic[SessionT]):
         if halted is not None:
             sibling.halt(halted)
         return sibling
+
+
+def _closed(connectors: list[SessionT]) -> tuple[Exception | None, ...]:
+    """Close each connector on a thread of its own; return what each close raised, in their order."""
+
+    def close(connector: SessionT) -> Exception | None:
+        try:
+            connector.close()
+        except Exception as exc:
+            return exc
+        return None
+
+    if len(connectors) == 1:
+        return (close(connectors[0]),)
+    with ThreadPoolExecutor(max_workers=len(connectors), thread_name_prefix="sst-close") as closing:
+        return tuple(closing.map(close, connectors))
