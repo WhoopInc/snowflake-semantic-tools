@@ -22,13 +22,14 @@ from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.output import RenderPolicy, emit_agent, interrupted, use_render_policy
 from snowflake_semantic_tools.cli.render.agent import agent_document
 from snowflake_semantic_tools.cli.render.progress import ProgressDisplay
-from snowflake_semantic_tools.cli.render.report import outcome_lines, table
+from snowflake_semantic_tools.cli.render.report import outcome_lines, plan_lines, table
 from snowflake_semantic_tools.cli.render.style import Style
 from snowflake_semantic_tools.cli.render.terminal import PLAIN, Terminal
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.diagnostics.baseline import stable_fingerprint
-from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOutcome
+from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOutcome, OwnershipMarker
 from snowflake_semantic_tools.domain.model.lifecycle.apply import ClassifiedError, ErrorKind, OutcomeStatus
+from tests.helpers import artifact_builders as builders
 from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 from tests.helpers.seam_projects import FakeDbt
 
@@ -210,6 +211,28 @@ def test_a_table_cuts_the_widest_column_but_keeps_the_named_one_until_last() -> 
     assert table([], 60) == []
     [narrow] = table([["a" * 30, "b" * 30, "c" * 30]], 20)
     assert narrow.count("...") == 2
+
+
+def test_a_cut_qualified_name_keeps_its_database_and_its_object() -> None:
+    rows = [["+", "semantic_view:sales_by_location", "SALES_DB.SEMANTIC_VIEWS.SALES_BY_LOCATION", "n" * 30]]
+    [line] = table(rows, 100, keep=1)
+    assert "SALES_DB...SALES_BY_LOCATION" in line
+    [tight] = table([["SALES_DB.SEMANTIC_VIEWS.SALES_BY_LOCATION", "n" * 30]], 42)
+    assert tight.startswith("...SALES_BY_LOCATION ")
+    [prose] = table([["a b c.d.e " * 4, "n" * 30]], 40)
+    assert prose.startswith("a b c.d.e") and "..." in prose
+
+
+def test_an_update_says_its_definition_changed_not_its_marker() -> None:
+    view = builders.rendered("SALES")
+    stale = builders.observed(view, ownership=OwnershipMarker("a" * 64, "b" * 64))
+    remarked = builders.observed(view, ownership=OwnershipMarker("a" * 64, view.fingerprint))
+    plan = builders.changeset(
+        builders.change(view, Action.UPDATE, live=stale), builders.change(view, Action.UPDATE, live=remarked)
+    )
+    edited, marker_only = plan_lines(plan, Style(PLAIN))
+    assert edited.endswith("  definition") and "fingerprint" not in edited
+    assert marker_only.endswith("  ownership marker")
 
 
 def test_stderr_writes_go_around_a_live_line(monkeypatch: pytest.MonkeyPatch) -> None:

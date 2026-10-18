@@ -44,6 +44,15 @@ _STATUS_STYLE = {
     OutcomeStatus.SKIPPED: ("changes", "dim"),
 }
 _MAX_LISTED_PROPERTIES = 4
+# What each property an update changes means to a person. The marker records the manifest that
+# wrote the object, so it changes with every definition and is named only when it changes alone.
+_PROPERTY_LABELS = {
+    "target": "renamed",
+    "fingerprint": "definition",
+    "manifest_id": "ownership marker",
+    "aliases": "version alias",
+    "tags": "tags",
+}
 
 
 def table(rows: Sequence[Sequence[str]], width: int, *, gap: int = 2, keep: int | None = None) -> list[str]:
@@ -52,7 +61,8 @@ def table(rows: Sequence[Sequence[str]], width: int, *, gap: int = 2, keep: int 
     The last column takes what is left and may run past `width`; the earlier columns are cut,
     the widest first, with `...`, only while they leave the last column less than a third of
     the width (at least 20 columns), and none below 12. Column `keep`, the one that names
-    each row, is cut only once no other can be.
+    each row, is cut only once no other can be. A cut qualified name keeps its first and last
+    parts, the database and the object, else its object alone, so names in one schema differ.
 
     Example:
         `[["+", "semantic_view:sales", "SALES_DB.SV.SALES"]]` lays out as
@@ -87,7 +97,7 @@ def plan_lines(changeset: ChangeSet, style: Style, *, verbose: bool = False, ful
 
     Example:
         `  + create  semantic_view:sales_partner  SALES_DB.SEMANTIC_VIEWS.SALES_PARTNER`
-        `  ~ update  agent:jaffle_analyst         SALES_DB.AGENTS.JAFFLE_ANALYST  instructions`
+        `  ~ update  agent:jaffle_analyst         SALES_DB.AGENTS.JAFFLE_ANALYST  definition`
         `  29 unchanged (--verbose lists them)`
     """
     listed = [change for change in changeset.changes if verbose or change.action is not Action.NOOP]
@@ -173,7 +183,7 @@ def _plan_row(change: Change, manifest_id: str) -> list[str]:
         target = change.observed.qualified_name.sql if change.observed is not None else "-"
     notes = [_REASONS.get(change.reason, change.reason.value)]
     if change.action is Action.UPDATE:
-        names = [item.name for item in changed_properties(change, manifest_id)]
+        names = _changed_labels(change, manifest_id)
         if names:
             more = len(names) - _MAX_LISTED_PROPERTIES
             notes.append(", ".join(names[:_MAX_LISTED_PROPERTIES]) + (f" and {more} more" if more > 0 else ""))
@@ -183,6 +193,14 @@ def _plan_row(change: Change, manifest_id: str) -> list[str]:
     if alias:
         notes.append(f"alias {alias}")
     return [f"{marker} {action}", change.key, target, "; ".join(note for note in notes if note)]
+
+
+def _changed_labels(change: Change, manifest_id: str) -> list[str]:
+    """Return what an update changes, as a person names it: `definition`, `version alias`, ..."""
+    names = [item.name for item in changed_properties(change, manifest_id)]
+    if "fingerprint" in names:
+        names = [name for name in names if name != "manifest_id"]
+    return [_PROPERTY_LABELS.get(name, name) for name in names]
 
 
 def _detail(change: Change, manifest_id: str, style: Style) -> list[str]:
@@ -208,6 +226,11 @@ def _past(outcome: ApplyOutcome) -> str:
 def _cut(cell: str, width: int) -> str:
     if display_width(cell) <= width:
         return cell
+    parts = cell.split(".")
+    if len(parts) > 2 and " " not in cell:
+        for short in (f"{parts[0]}...{parts[-1]}", f"...{parts[-1]}"):
+            if display_width(short) <= width:
+                return short
     kept = ""
     for char in cell:
         if display_width(kept + char) > width - 3:

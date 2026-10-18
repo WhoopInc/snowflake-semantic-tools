@@ -5,7 +5,7 @@ ARTIFACT                      STATUS   TARGET                                   
 agent:jaffle_analytics_agent  pending  SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT        be7844e54bd3
 agent:jaffle_delivery_agent   pending  SST_REF_DEV.JAFFLE.JAFFLE_DELIVERY_AGENT         587ccbb3cf86
 agent:jaffle_minimal_agent    pending  SST_REF_DEV.OPS.JAFFLE_MINIMAL_AGENT             506d43050765
-eval:jaffle_analytics_agent   pending  SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANALYTICS_AGE...  4343526c2cbf
+eval:jaffle_analytics_agent   pending  ...EVAL_JAFFLE_ANALYTICS_AGENT_DCE1F8A           4343526c2cbf
 plugin:jaffle-toolkit         pending  SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT                2d87d777ba51
 profile:jaffle-analyst        pending  SST_REF_DEV.JAFFLE.PROFILE_REGISTRY              f68a9b13df0e
 profile:jaffle-operator       pending  SST_REF_DEV.JAFFLE.PROFILE_REGISTRY              0690ad04afe9
