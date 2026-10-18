@@ -45,6 +45,7 @@ from snowflake_semantic_tools.cli.options import (
 )
 from snowflake_semantic_tools.cli.output import announce_interrupt
 from snowflake_semantic_tools.cli.plan_output import outcome_json, print_plan, write_plan_sql
+from snowflake_semantic_tools.cli.render.progress import active_display
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, run_baseline
 from snowflake_semantic_tools.cli.settings import (
     apply_fail_fast,
@@ -71,6 +72,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     FailurePolicy,
     OutcomeStatus,
 )
+from snowflake_semantic_tools.domain.ports.progress import NO_PROGRESS
 from snowflake_semantic_tools.domain.state import SavedPlan
 
 
@@ -338,6 +340,7 @@ def _apply_plan(
                 sessions=pool,
                 heartbeat=heartbeat,
                 phases=RUN_TIMINGS,
+                progress=active_display() or NO_PROGRESS,
                 reconnect=lambda: contextlib.closing(project.open_connector(params)),
             ).run(ready.changeset, ready.state, options)
     finally:

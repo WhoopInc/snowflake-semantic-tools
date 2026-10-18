@@ -47,6 +47,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
+from snowflake_semantic_tools.domain.ports.progress import NO_PROGRESS, Progress
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.execution import SessionPool, WriteGuardPort
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
@@ -84,6 +85,7 @@ class ApplyArtifacts:
             `state_write`.
         reconnect: Opens a fresh connection, used only once Snowflake ended the run's own
             session, to write state and release the lock; None lets that failure propagate.
+        progress: Counts the changes of step `publish` as each one's outcome is known.
     """
 
     def __init__(
@@ -102,6 +104,7 @@ class ApplyArtifacts:
         lock_policy: LockPolicy = _DEFAULT_LOCK_POLICY,
         phases: PhaseTimer = NO_PHASES,
         reconnect: Reconnect | None = None,
+        progress: Progress = NO_PROGRESS,
     ) -> None:
         self._port = port
         self._state_store = state_store
@@ -116,6 +119,7 @@ class ApplyArtifacts:
         self._lock_policy = lock_policy
         self._phases = phases
         self._reconnect = reconnect
+        self._progress = progress
 
     def run(self, changeset: ChangeSet, previous: State, options: ApplyOptions = ApplyOptions()) -> ApplyResult:
         """Execute the plan's writes under the apply lock and record their outcomes in state.
@@ -269,14 +273,18 @@ class ApplyArtifacts:
         skipped = temporary_evals(changeset)
 
         def apply_one(change: Change, options: ApplyOptions) -> ApplyOutcome:
-            if change.key in skipped:
-                return _skipped(change, _rendered_ddl(change))
-            return self._apply_one(change, options, stages, lease)
+            try:
+                if change.key in skipped:
+                    return _skipped(change, _rendered_ddl(change))
+                return self._apply_one(change, options, stages, lease)
+            finally:
+                self._progress.advance("publish")
 
         waves = _WaveRun(
             changeset, options, apply_one, lost, verify=lease.verify, on_second_interrupt=self._halt_interrupted
         )
         if outcomes is None:
+            self._progress.expect("publish", len(changeset.changes))
             with self._phases.phase("publish"):
                 outcomes, wave_diagnostics = waves.run()
         accounted = (

@@ -4,8 +4,9 @@
 hands the driver and every login, the dbt runner every process it starts, and the use cases
 each phase they name through the `PhaseTimer` port; `--output json` (and `yaml`) reports
 `snapshot()` as the envelope's `invocation.timings`. `sst` resets the recorder, switched off, as
-each run starts, and switches it on only for a run that prints an envelope, so a run that
-prints none records nothing: each hook is then a `nullcontext`. Times are as the client observes
+each run starts, and switches it on only for a run that prints an envelope or shows progress,
+so a run that does neither records nothing: each hook is then a `nullcontext`. A progress
+display reads `live()` and hears each phase start and end through `watch`. Times are as the client observes
 them, from the process's monotonic clock. Workers on plan's and apply's thread pools record at
 once, so every update takes the recorder's lock; a call still in flight when the recorder is
 reset is left out of the new run's totals.
@@ -14,12 +15,42 @@ reset is left out of the new run's totals.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager
+from typing import Protocol
 
 from snowflake_semantic_tools.domain.ports.timing import PhaseTimer
+
+
+class PhaseListener(Protocol):
+    """Hears each phase of a run start and end, from whichever thread runs it."""
+
+    def phase_started(self, name: str) -> None:
+        """Note that phase `name` started; must not raise or block."""
+
+    def phase_finished(self, name: str, seconds: float) -> None:
+        """Note that phase `name` ended after `seconds`; must not raise or block."""
+
+
+@dataclasses.dataclass(frozen=True)
+class LiveCounts:
+    """What a run is doing at one instant, for a progress display.
+
+    Attributes:
+        phases: The phases in flight, outermost first.
+        queries, connects: The statements and logins finished so far.
+        querying, connecting, dbt: The statements, logins and dbt processes in flight.
+    """
+
+    phases: tuple[str, ...] = ()
+    queries: int = 0
+    connects: int = 0
+    querying: int = 0
+    connecting: int = 0
+    dbt: int = 0
 
 
 class RunTimings(PhaseTimer):
@@ -50,6 +81,10 @@ class RunTimings(PhaseTimer):
         self._busy_since = 0.0
         self._dbt_runs = 0
         self._dbt_s = 0.0
+        self._open_phases: list[str] = []
+        self._logins_in_flight = 0
+        self._dbt_in_flight = 0
+        self._listeners: list[PhaseListener] = []
 
     @property
     def enabled(self) -> bool:
@@ -69,7 +104,9 @@ class RunTimings(PhaseTimer):
             self._enabled = False
             self._generation += 1
             self._phases = {}
+            self._open_phases = []
             self._queries = self._connects = self._dbt_runs = self._in_flight = 0
+            self._logins_in_flight = self._dbt_in_flight = 0
             self._query_s = self._max_query_s = self._connect_s = self._busy_s = self._dbt_s = 0.0
 
     def phase(self, name: str) -> AbstractContextManager[None]:
@@ -88,9 +125,37 @@ class RunTimings(PhaseTimer):
         """Time the block as one dbt process, however it ends."""
         return self._timed_dbt() if self._enabled else contextlib.nullcontext()
 
+    def watch(self, listener: PhaseListener) -> None:
+        """Tell `listener` of every phase that starts or ends from now on, until `unwatch`."""
+        with self._lock:
+            self._listeners.append(listener)
+
+    def unwatch(self, listener: PhaseListener) -> None:
+        """Stop telling `listener` of phases; one not watching is ignored."""
+        with self._lock:
+            if listener in self._listeners:
+                self._listeners.remove(listener)
+
+    def live(self) -> LiveCounts:
+        """Return what the run is doing now: its open phases, and its calls finished and in flight."""
+        with self._lock:
+            return LiveCounts(
+                phases=tuple(self._open_phases),
+                queries=self._queries,
+                connects=self._connects,
+                querying=self._in_flight - self._logins_in_flight,
+                connecting=self._logins_in_flight,
+                dbt=self._dbt_in_flight,
+            )
+
     @contextlib.contextmanager
     def _timed_phase(self, name: str) -> Iterator[None]:
-        generation, started = self._generation, self._clock()
+        with self._lock:
+            generation, started = self._generation, self._clock()
+            self._open_phases.append(name)
+            listeners = tuple(self._listeners)
+        for listener in listeners:
+            listener.phase_started(name)
         try:
             yield
         finally:
@@ -98,16 +163,27 @@ class RunTimings(PhaseTimer):
             with self._lock:
                 if generation == self._generation:
                     self._phases[name] = self._phases.get(name, 0.0) + elapsed
+                    # The innermost open phase of the name: a phase entered again nests inside itself.
+                    for index in range(len(self._open_phases) - 1, -1, -1):
+                        if self._open_phases[index] == name:
+                            del self._open_phases[index]
+                            break
+                listeners = tuple(self._listeners)
+            for listener in listeners:
+                listener.phase_finished(name, elapsed)
 
     @contextlib.contextmanager
     def _timed_dbt(self) -> Iterator[None]:
-        generation, started = self._generation, self._clock()
+        with self._lock:
+            generation, started = self._generation, self._clock()
+            self._dbt_in_flight += 1
         try:
             yield
         finally:
             elapsed = self._clock() - started
             with self._lock:
                 if generation == self._generation:
+                    self._dbt_in_flight -= 1
                     self._dbt_runs += 1
                     self._dbt_s += elapsed
 
@@ -119,6 +195,7 @@ class RunTimings(PhaseTimer):
             if self._in_flight == 0:
                 self._busy_since = started
             self._in_flight += 1
+            self._logins_in_flight += login
         try:
             yield
         finally:
@@ -130,6 +207,7 @@ class RunTimings(PhaseTimer):
     def _finish(self, ended: float, elapsed: float, *, login: bool) -> None:
         """Count one finished Snowflake call; the caller holds the lock."""
         self._in_flight -= 1
+        self._logins_in_flight -= login
         if self._in_flight == 0:
             self._busy_s += ended - self._busy_since
         if login:

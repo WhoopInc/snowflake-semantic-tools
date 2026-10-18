@@ -15,6 +15,7 @@ from typing import IO, Any
 import click
 
 from snowflake_semantic_tools.cli.group import SstUsageError
+from snowflake_semantic_tools.cli.render.progress import progress_paused
 from snowflake_semantic_tools.domain.diagnostics import D
 
 _NO_TERMINAL = "there is no terminal to ask on: stdin and stderr must both be terminals"
@@ -47,7 +48,8 @@ def confirm(question: str) -> None:
     Raises:
         click.exceptions.Abort: the user declined, or input ended.
     """
-    click.confirm(question, abort=True, err=True)
+    with progress_paused():
+        click.confirm(question, abort=True, err=True)
 
 
 def ask(question: str, default: str) -> str:
@@ -56,7 +58,8 @@ def ask(question: str, default: str) -> str:
     Raises:
         click.exceptions.Abort: input ended.
     """
-    return str(click.prompt(question, default=default, err=True))
+    with progress_paused():
+        return str(click.prompt(question, default=default, err=True))
 
 
 def _is_terminal(stream: IO[Any] | None) -> bool:

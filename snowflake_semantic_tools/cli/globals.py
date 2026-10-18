@@ -116,7 +116,7 @@ class GlobalOptions:
     output: str = "table"
     verbose: bool = False
     quiet: bool = False
-    log_level: str = "info"
+    log_level: str = "warn"
     no_color: bool = False
     project_dir: Path = Path(".")
     config: Path | None = None

@@ -45,8 +45,9 @@ _OPTION_HELP: Mapping[str, str] = {
     ),
     "--quiet": "Show error diagnostics only, with no counts line or progress lines; the report still prints.",
     "--log-level": (
-        "Threshold for log records on stderr, such as the Snowflake connector's, else `$SST_LOG_LEVEL`, "
-        "else `info`. Independent of `--verbose`."
+        "Threshold for log records on stderr, else `$SST_LOG_LEVEL`, else `warn`. The libraries SST "
+        "runs, such as the Snowflake connector, log each request at `info`; those records show only "
+        "at `debug`. Independent of `--verbose`."
     ),
     "--no-color": (
         "No ANSI colour, else `$SST_NO_COLOR`; a non-empty `$NO_COLOR` does the same. Only `table` "

@@ -265,7 +265,7 @@ def parse_project(
     *,
     runner: DbtRunner = subprocess_runner,
     auto_compile: bool = False,
-    echo: Callable[[str], object] = sys.stderr.write,
+    echo: Callable[[str], object] = lambda text: sys.stderr.write(text),
     profiles_dir: Path | None = None,
     target_path: Path | None = None,
     command: str = "parse",

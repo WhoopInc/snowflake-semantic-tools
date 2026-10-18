@@ -9,6 +9,7 @@ A connection opened here is closed again if anything fails before it is handed b
 from __future__ import annotations
 
 import dataclasses
+import time
 from collections.abc import Iterator, Mapping
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
@@ -23,7 +24,7 @@ from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
 from snowflake_semantic_tools.app.state import table_state
-from snowflake_semantic_tools.cli.output import register_secrets, verbose_run
+from snowflake_semantic_tools.cli.output import announce, register_secrets, verbose_run
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_KEYS, config_block, config_int
 from snowflake_semantic_tools.domain.ports.project import UNKNOWN_GIT_SHA
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -121,6 +122,7 @@ def connect(
             {"STATEMENT_TIMEOUT_IN_SECONDS": view_timeout(config)}
         )
     register_secrets(resolved_profile.secrets)
+    started = time.monotonic()
     port = open_connector(resolved_profile.connection_params)
     with ExitStack() as cleanup:
         cleanup.callback(port.close)
@@ -145,6 +147,8 @@ def connect(
         )
         # Connected and bound: the caller owns the session from here, so nothing closes it.
         cleanup.pop_all()
+    seconds = time.monotonic() - started
+    announce(f"connected to {live_account} as {live_role}", f"target {resolved.target_name}", f"{seconds:.1f}s")
     return resolved, port
 
 

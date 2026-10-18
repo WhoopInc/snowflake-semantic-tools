@@ -36,8 +36,7 @@ import functools
 import inspect
 import io
 import json
-import logging
-import sys
+import os
 from collections.abc import Callable, Collection
 from enum import Enum
 from pathlib import Path
@@ -57,6 +56,7 @@ from snowflake_semantic_tools.cli.globals import DEFAULT_OUTPUTS, GLOBAL_NAMES, 
 from snowflake_semantic_tools.cli.output import (
     RenderPolicy,
     captured,
+    configure_logging,
     emit_json,
     first_next_step,
     interrupted,
@@ -72,6 +72,7 @@ from snowflake_semantic_tools.cli.output import (
     use_render_policy,
 )
 from snowflake_semantic_tools.cli.policy import ran_under_1_0, run_is_strict, with_baseline, with_policy
+from snowflake_semantic_tools.cli.render.progress import progress_display
 from snowflake_semantic_tools.cli.run_log import append_run_log
 from snowflake_semantic_tools.cli.signals import terminated_as_interrupt
 from snowflake_semantic_tools.cli.wiring.project import target_dir
@@ -86,8 +87,6 @@ from snowflake_semantic_tools.domain.diagnostics.signatures import (
 )
 from snowflake_semantic_tools.domain.model.lifecycle import ErrorKind
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-
-_LOG_LEVELS = {"debug": logging.DEBUG, "info": logging.INFO, "warn": logging.WARNING, "error": logging.ERROR}
 
 
 class ConfigNeed(Enum):
@@ -169,7 +168,8 @@ def command_body(
         @functools.wraps(body)
         def callback(**params: Any) -> None:
             options = GlobalOptions.from_params(params)
-            # Only an envelope reports the run's timings, so a run that prints none records none.
+            # Only an envelope reports the run's timings, so a run that prints none records none;
+            # a progress display switches them on too, to read what the run is doing.
             if options.output in ("json", "yaml"):
                 RUN_TIMINGS.enable()
             given = {key: value for key, value in params.items() if key not in GLOBAL_NAMES}
@@ -234,8 +234,9 @@ class _Run:
             names = frozenset(inspect.signature(self.refusals).parameters)
             supplied = {"options": options, "project_dir": options.project_dir}
             self.refusals(**{key: value for key, value in {**self.given, **supplied}.items() if key in names})
-        logging.basicConfig(level=_LOG_LEVELS[options.log_level], stream=sys.stderr)
-        use_render_policy(_render_policy(options))
+        policy = _render_policy(options)
+        use_render_policy(policy)
+        configure_logging(options.log_level)
         files = self._files()
         resolve_invocation(
             project_dir=options.project_dir,
@@ -247,7 +248,15 @@ class _Run:
         baseline = run_baseline(options) if reads else None
         # Read before the body, which may write the manifest this asks about.
         first_run = not ran_under_1_0(files.project_dir)
-        result = self.body(**self._arguments(files))
+        display = progress_display(policy.terminal, os.environ) if policy.progress else None
+        if display is not None:
+            display.start()
+        try:
+            result = self.body(**self._arguments(files))
+        finally:
+            # Stopped before anything reports, an interrupt or a failure included.
+            if display is not None:
+                display.stop()
         diagnostics, exit_code = with_policy(
             self.name,
             result.diagnostics,

@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import logging
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable
@@ -36,6 +37,7 @@ from snowflake_semantic_tools.cli.render.diagnostics import (
     sorted_for_reading,
 )
 from snowflake_semantic_tools.cli.render.next_steps import default_next_steps
+from snowflake_semantic_tools.cli.render.progress import active_display
 from snowflake_semantic_tools.cli.render.style import Style
 from snowflake_semantic_tools.cli.render.terminal import PLAIN, Terminal, system_terminal
 from snowflake_semantic_tools.cli.signals import received_signal
@@ -489,7 +491,68 @@ def print_progress(line: str, *, warning: bool = False) -> None:
     if not policy.progress:
         return
     text = f"warn  {line}" if warning else line
-    click.echo(_render(_secret_refusal("progress output"), policy) if _leaks(text) else text, err=True)
+    text = _render(_secret_refusal("progress output"), policy) if _leaks(text) else text
+    display = active_display()
+    if display is not None:
+        display.line(text)
+    else:
+        click.echo(text, err=True)
+
+
+def announce(*parts: str) -> None:
+    """Print a fact about the run, such as the account it connected to, where progress shows.
+
+    The parts are joined by the separator the terminal can show. The line is printed only while
+    a progress display shows, on a terminal or in CI, so a short run and every test see nothing.
+    """
+    display = active_display()
+    if display is not None and _POLICY[0].progress:
+        style = Style(_POLICY[0].terminal)
+        display.line(f"{style(style.symbol('ok'), 'success')} {style.sep.join(parts)}")
+
+
+# Loggers of libraries SST runs, which speak at INFO about every request they make; they are
+# heard at WARNING and above unless `--log-level debug` asks for everything.
+QUIET_LOGGERS = ("snowflake.connector", "botocore", "boto3", "urllib3", "filelock", "asyncio")
+
+
+def configure_logging(level: str) -> None:
+    """Send log records at `level` and above to stderr, through progress and the credential check.
+
+    Replaces only the handler this function installed, so calling it again, as each run in one
+    process does, never stacks handlers or removes another's. A record is printed as
+    `warn  snowflake.connector: message`.
+    """
+    numeric = _LOG_NUMBERS[level]
+    root = logging.getLogger()
+    for handler in [item for item in root.handlers if isinstance(item, _LogHandler)]:
+        root.removeHandler(handler)
+    root.addHandler(_LogHandler())
+    root.setLevel(numeric)
+    for name in QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(numeric if numeric <= logging.DEBUG else max(numeric, logging.WARNING))
+
+
+_LOG_NUMBERS = {"debug": logging.DEBUG, "info": logging.INFO, "warn": logging.WARNING, "error": logging.ERROR}
+_LOG_PREFIX = {logging.DEBUG: "debug", logging.INFO: "info ", logging.WARNING: "warn ", logging.ERROR: "error"}
+
+
+class _LogHandler(logging.Handler):
+    """Print a log record on stderr above the progress line, a credential in it refused."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            prefix = _LOG_PREFIX.get(record.levelno, "error")
+            text = f"{prefix} {record.name}: {record.getMessage()}"
+        except Exception:  # a record whose arguments do not format must not end the run
+            self.handleError(record)
+            return
+        text = _render(_secret_refusal("log output"), _POLICY[0]) if _leaks(text) else text
+        display = active_display()
+        if display is not None:
+            display.line(text)
+        else:
+            click.echo(text, err=True)
 
 
 def render_diagnostics(diagnostics: Iterable[Diagnostic]) -> None:

@@ -15,6 +15,7 @@ from threading import Lock
 from types import TracebackType
 from typing import Generic, Protocol, TypeVar
 
+from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.domain.ports.snowflake.execution import SessionPool
 
 
@@ -88,11 +89,12 @@ class ConnectorPool(SessionPool[SessionT], Generic[SessionT]):
             opened, self._opened = self._opened, []
             self._idle = []
         failure: BaseException | None = None
-        for connector in opened:
-            try:
-                connector.close()
-            except Exception as exc:
-                failure = failure or exc
+        with RUN_TIMINGS.phase("disconnect") if opened else contextlib.nullcontext():
+            for connector in opened:
+                try:
+                    connector.close()
+                except Exception as exc:
+                    failure = failure or exc
         if failure is not None:
             raise failure
 

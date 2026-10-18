@@ -225,7 +225,8 @@ class PreparePlan:
     Args:
         baseline: The run's baseline. A validation error it holds -- a warning `--strict`
             promoted -- does not refuse the plan, as it does not fail `sst validate`.
-        phases: Times `validate`, `state_read`, `observe`, and `classify`.
+        phases: Times `validate`, `state_read`, `composites` (the composite artifacts' own
+            reads), `observe`, and `classify`.
     """
 
     def __init__(
@@ -410,7 +411,8 @@ class PreparePlan:
         planner = PlanArtifacts(
             port, lifecycle_handlers=handlers, preflight=preflight, readers=readers, observe_options=observe_options
         )
-        composite_plans = planner.composite_plans(rendered, manifest, state)
+        with self._phases.phase("composites"):
+            composite_plans = planner.composite_plans(rendered, manifest, state)
         with self._phases.phase("observe"):
             reading = planner.read(
                 rendered,
