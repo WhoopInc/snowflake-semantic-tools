@@ -80,34 +80,10 @@ warehouse configured per target, is listed.
 
 ### What a change reaches
 
-The compiled manifest records the project's lineage: dbt's graph as the target
-reads it (models, seeds, snapshots, sources and exposures), what each view member
-reads, and what each artifact reads, a procedure's or function's body included
-when it names its tables with `{{ ref() }}`. `sst lineage NODE` shows one node of
-it, offline:
-
-```bash
-sst lineage model:orders --downstream            # every member and artifact orders feeds
-sst lineage tool:order_status --upstream          # the models the procedure's body reads
-sst lineage metric:total_revenue --state prod-run/ # and which of them changed since then
-```
-
-NODE is an artifact key, a member key such as `metric:<name>`, a dbt node
-(`model:`, `seed:`, `snapshot:`, `test:`, `exposure:`, or
-`source:<source>.<table>`), `tool_ref:<name>` for a tool member another team
-owns, or a bare name. Each direction prints as a tree, a node under the one it
-was reached from, and a subtree reached twice is shown once. `--depth` bounds
-the walk, `--state` marks each artifact and member that changed since another
-run's manifest, and `--no-manifest` traces the project as it compiles now;
-`-o plain` prints one `<depth> <key>` line per node (upstream negative), and
-`-o json` the nodes and the edges between them.
-
-Where the walk meets someone else's work, the node says so rather than ending
-silently: a source is a `(raw source)`; a model of another dbt package that
-reads nothing here is `(defined in another project; upstream continues there)`;
-a tool member another team owns is `(owned by another team)`; and a procedure
-or function whose body names no `ref()` is `(reads: unknown; body names no
-ref())`, since SST cannot see what a literal name reads.
+The compiled manifest records the project's lineage, from dbt sources to agents
+and evals; [Lineage](lineage.md) covers it and `sst lineage`. In a pull request,
+`sst lineage <node> --downstream --state prod-run/` shows what a change reaches
+and marks what changed since production's last run.
 
 Every `--select` and `--exclude` takes dbt's graph operators over the same
 graph, so a pull request can plan only what a model change reaches:

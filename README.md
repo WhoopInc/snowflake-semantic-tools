@@ -19,7 +19,7 @@ It publishes seven artifact types from one project:
 - **Semantic views**, assembled from dbt models plus metrics, relationships,
   filters, verified queries, and custom instructions written in YAML;
 - **tools** that agents call: Cortex Search services, procedures, functions, and
-  stages;
+  stages, a routine's body naming its tables with `{{ ref() }}` as a view does;
 - **Cortex Agents**, with every tool, view, and skill they use resolved and pinned;
 - **evals** that score an agent against a fixed question set and gate a change
   on the result;
@@ -27,6 +27,11 @@ It publishes seven artifact types from one project:
   their content;
 - **CoCo Desktop profiles** that bundle skills, a system prompt, MCP servers, and
   hooks.
+
+It records the lineage between them as it compiles, from each dbt source,
+through the models built on it, to the view members, tools, agents and evals
+that read them. `sst lineage` shows what any of them is built from and what a
+change to it reaches, and `--select model:orders+` plans only that.
 
 ## Quick start
 
@@ -60,6 +65,7 @@ semantic view end to end.
 | `sst test` | Run smoke probes against published semantic views, and agent evals |
 | `sst ask` | Ask an agent a question as it compiles now, through a temporary agent, publishing nothing |
 | `sst list` | List compiled artifacts and their status |
+| `sst lineage` | Show what a dbt node, member, or artifact reads and what reads it, from dbt sources to agents and evals |
 | `sst baseline` | Record known, not yet fixed warnings so they stop blocking under `--strict`, and maintain that file |
 | `sst explain` | Explain one diagnostic code, offline |
 | `sst migrate refs` | Write every bare reference as its `{{ }}` call, 0.3 `table()` / `column()` as `ref()`, and old item settings under `config:`; a dry run unless `--write` |
@@ -83,7 +89,8 @@ result on stdout.
   [skills](docs/guides/skills.md),
   [plugins and profiles](docs/guides/plugins-and-profiles.md),
   [configuration](docs/guides/configuration.md),
-  [references](docs/guides/references.md), [CI/CD](docs/guides/ci-cd.md),
+  [references](docs/guides/references.md), [lineage](docs/guides/lineage.md),
+  [CI/CD](docs/guides/ci-cd.md),
   [security](docs/guides/security.md),
   [troubleshooting](docs/guides/troubleshooting.md),
   [agent kit](docs/guides/agent-kit.md),
