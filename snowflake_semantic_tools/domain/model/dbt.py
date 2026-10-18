@@ -154,6 +154,29 @@ class DbtSource:
 
 
 @dataclass(frozen=True, slots=True)
+class DbtNode:
+    """One node of dbt's graph, as lineage walks it: a model, seed, snapshot, source, test or exposure.
+
+    Attributes:
+        unique_id: dbt's id, such as `model.jaffle.orders` or `source.jaffle.raw.orders`.
+        kind: `model`, `seed`, `snapshot`, `source`, `test` or `exposure`.
+        name: The model's, seed's, snapshot's, test's or exposure's name; a source's
+            `<source>.<table>`.
+        package: The dbt package that defines it; None when the manifest does not say.
+        relation: The relation it builds or reads, as dbt renders it upper-cased; None for a
+            test, an exposure, or a model with no relation.
+        depends_on: The unique ids of the nodes it reads, sorted.
+    """
+
+    unique_id: str
+    kind: str
+    name: str
+    package: str | None = None
+    relation: str | None = None
+    depends_on: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class DbtCatalog:
     """All dbt models visible to one parsed target."""
 
@@ -168,6 +191,8 @@ class DbtCatalog:
     unreadable_models: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
     # The declared dbt sources, in sorted unique-id order.
     sources: tuple[DbtSource, ...] = ()
+    # dbt's graph: every model, seed, snapshot, source, test and exposure, in unique-id order.
+    nodes: tuple[DbtNode, ...] = ()
     # What reading the manifest found wrong with nodes SST skipped or with the project as a whole.
     diagnostics: tuple[Diagnostic, ...] = ()
 

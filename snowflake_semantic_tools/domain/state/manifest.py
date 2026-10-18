@@ -2,7 +2,7 @@
 
 `Manifest.as_dict` is the `manifest.json` document. Its `manifest_id` is the `content_hash`
 of everything but the id and the schema version, so `Manifest.from_dict` detects an edited
-manifest. A schema-1, schema-2 or schema-3 manifest is migrated in memory, and records the
+manifest. A schema-1 to schema-4 manifest is migrated in memory, and records the
 schema it was read from; an older schema, which has no migration, and a newer one are refused.
 Nothing here rewrites the file.
 """
@@ -23,7 +23,7 @@ from snowflake_semantic_tools.domain.state.codec import (
 )
 from snowflake_semantic_tools.domain.state.documents import StoredDocumentError, content_hash
 
-MANIFEST_SCHEMA_VERSION = 4
+MANIFEST_SCHEMA_VERSION = 5
 
 _UNHASHED = ("manifest_id", "schema_version")
 
@@ -146,6 +146,10 @@ class Manifest:
     hold what compile recorded; nothing in this module reads into them.
 
     Attributes:
+        members: By member key, the views it attaches to (`attached_to`), the dbt models and
+            sources under the tables it reads (`tables`), and the members it uses (`uses`).
+        dbt_nodes: dbt's graph, by unique id: each node's `kind`, `name`, `package`, `relation`
+            for the target, and the unique ids it `depends_on`.
         generator: The writer's name and SST version.
         diagnostics_summary: How many diagnostics compile reported, per severity.
         migrated_from: The schema the stored document declared when `from_dict` migrated it
@@ -162,6 +166,7 @@ class Manifest:
     dbt_models: Mapping[str, object]
     files: Mapping[str, object]
     diagnostics_summary: Mapping[str, int]
+    dbt_nodes: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
     migrated_from: int | None = field(default=None, compare=False)
 
     def hash_material(self) -> dict[str, object]:
@@ -186,6 +191,7 @@ class Manifest:
             "artifacts": {key: value.as_dict() for key, value in sorted(self.artifacts.items())},
             "members": dict(sorted(self.members.items())),
             "dbt_models": dict(sorted(self.dbt_models.items())),
+            "dbt_nodes": dict(sorted(self.dbt_nodes.items())),
             "files": dict(sorted(self.files.items())),
             "diagnostics_summary": dict(self.diagnostics_summary),
         }
@@ -237,22 +243,23 @@ class Manifest:
 
 
 def migrate_manifest(value: Mapping[str, object]) -> dict[str, object]:
-    """Migrate a schema-1, -2 or -3 manifest document to the current schema, leaving the input unchanged.
+    """Migrate a schema-1 to schema-4 manifest document to the current schema, leaving the input unchanged.
 
     The sections schema 2 added start empty. Schema 3 stopped writing the impact index, so an
     `impact` key is dropped unread. Schema 4 records each artifact's `references`, which start
-    empty. The migrated document's id is recomputed. A schema-2 or schema-3 id is first checked
-    against the document as stored, so an edited manifest of either is still refused; a schema-1
-    id is not, so an edit to a schema-1 manifest goes undetected.
+    empty. Schema 5 records dbt's graph, which starts empty, and each member's tables and uses,
+    which a member without them lacks. The migrated document's id is recomputed. A schema-2 to
+    schema-4 id is first checked against the document as stored, so an edited manifest of any of
+    them is still refused; a schema-1 id is not, so an edit to a schema-1 manifest goes undetected.
 
     Raises:
-        StoredDocumentError: SST-MAN202 when the document is not schema 1, 2 or 3; SST-MAN005 when
-            a schema-2 or schema-3 document's `manifest_id` is not the hash of its content.
+        StoredDocumentError: SST-MAN202 when the document is not schema 1 to 4; SST-MAN005 when a
+            schema-2 to schema-4 document's `manifest_id` is not the hash of its content.
     """
     version = value.get("schema_version")
-    if version not in (1, 2, 3):
+    if version not in (1, 2, 3, 4):
         raise StoredDocumentError("SST-MAN202", f"manifest schema {version} has no migration", found=version)
-    if version in (2, 3):
+    if version in (2, 3, 4):
         found = value.get("manifest_id")
         expected = content_hash({key: item for key, item in value.items() if key not in _UNHASHED})
         if found != expected:
@@ -264,6 +271,7 @@ def migrate_manifest(value: Mapping[str, object]) -> dict[str, object]:
     migrated.setdefault("members", {})
     migrated.setdefault("dbt_models", {})
     migrated.setdefault("files", {})
+    migrated.setdefault("dbt_nodes", {})
     manifest = _manifest_from_dict_unchecked(migrated)
     migrated["manifest_id"] = content_hash(manifest.hash_material())
     return migrated
@@ -298,6 +306,7 @@ def _manifest_from_dict_unchecked(value: Mapping[str, object]) -> Manifest:
         dbt_models=MappingProxyType(_object_map(value.get("dbt_models"))),
         files=MappingProxyType(_object_map(value.get("files"))),
         diagnostics_summary=MappingProxyType(parsed_summary),
+        dbt_nodes=MappingProxyType(_object_map(value.get("dbt_nodes"))),
     )
 
 

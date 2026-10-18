@@ -43,7 +43,7 @@ def sourced() -> Manifest:
 
 def test_a_written_manifest_has_no_impact_index() -> None:
     assert "impact" not in sourced().as_dict()
-    assert sourced().schema_version == MANIFEST_SCHEMA_VERSION == 4
+    assert sourced().schema_version == MANIFEST_SCHEMA_VERSION == 5
 
 
 def test_a_schema_2_manifest_reads_with_its_impact_index_ignored() -> None:

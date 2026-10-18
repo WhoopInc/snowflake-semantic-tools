@@ -11,7 +11,7 @@ from typing import Any, NoReturn
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.json_files import read_json_file
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
-from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtSource
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtNode, DbtSource
 from snowflake_semantic_tools.domain.text import unstorable
 from snowflake_semantic_tools.domain.validate.column_metadata import is_boolean_type
 
@@ -24,6 +24,8 @@ _SCHEMA_URL = re.compile(r"^https?://schemas\.getdbt\.com/dbt/manifest/v(\d+)(?:
 # The dbt resources that are relations `ref()` names, so a semantic view can use them as tables:
 # a model, a snapshot (its SCD-2 history table) and a seed (the table a CSV loads into).
 _TABLE_RESOURCES = frozenset(("model", "snapshot", "seed"))
+# The nodes lineage walks besides sources and exposures: what builds a relation, and its tests.
+_GRAPH_RESOURCES = frozenset((*_TABLE_RESOURCES, "test"))
 
 # The `meta.sst` keys SST reads. `database` and `schema` are read only to be
 # refused (SST-DBT030); anything else is reported where a view uses the model.
@@ -519,6 +521,49 @@ def _sources(root: Mapping[str, Any]) -> tuple[tuple[DbtSource, ...], tuple[Diag
     return tuple(sources), (*wrong, *duplicates)
 
 
+def _graph(root: Mapping[str, Any]) -> tuple[DbtNode, ...]:
+    """Return dbt's graph: each model, seed, snapshot and test, source and exposure, by unique id.
+
+    A model's relation is upper-cased as `DbtModel.relation_name` is; one with none, such as an
+    ephemeral model, is still a node, so lineage passes through it. A node that is not a mapping
+    is skipped here, as the model pass reports it.
+    """
+    found: list[DbtNode] = []
+    for unique_id, node in _section(root, "nodes"):
+        if node.get("resource_type") in _GRAPH_RESOURCES:
+            relation = _relation_name(node) or None
+            kind = str(node.get("resource_type"))
+            found.append(_node(unique_id, kind, str(node.get("name") or ""), node, relation))
+    for unique_id, node in _section(root, "sources"):
+        name = f"{node.get('source_name') or ''}.{node.get('name') or ''}"
+        relation = str(node.get("relation_name") or "").strip().upper() or None
+        found.append(_node(unique_id, "source", name, node, relation))
+    for unique_id, node in _section(root, "exposures"):
+        found.append(_node(unique_id, "exposure", str(node.get("name") or ""), node, None))
+    return tuple(sorted(found, key=lambda item: item.unique_id))
+
+
+def _section(root: Mapping[str, Any], key: str) -> list[tuple[str, Mapping[str, Any]]]:
+    """Return the mapping entries of one top-level section of the manifest; none when it is absent."""
+    section = root.get(key)
+    if not isinstance(section, dict):
+        return []
+    return [(str(unique_id), node) for unique_id, node in section.items() if isinstance(node, dict)]
+
+
+def _node(unique_id: str, kind: str, name: str, node: Mapping[str, Any], relation: str | None) -> DbtNode:
+    depends_on = node.get("depends_on")
+    upstream = depends_on.get("nodes") if isinstance(depends_on, dict) else None
+    return DbtNode(
+        unique_id=unique_id,
+        kind=kind,
+        name=name,
+        package=_text(node.get("package_name")),
+        relation=relation,
+        depends_on=tuple(sorted({item for item in upstream or () if isinstance(item, str)})),
+    )
+
+
 def catalog_from_document(
     document: object, *, allow_unsupported_schema: bool = False, supported_versions: frozenset[int] | None = None
 ) -> DbtCatalog:
@@ -571,6 +616,7 @@ def catalog_from_document(
         relationless_models=tuple(relationless),
         unreadable_models=MappingProxyType(unreadable),
         sources=sources,
+        nodes=_graph(root),
         diagnostics=(*diagnostics, *duplicate_sources),
     )
 

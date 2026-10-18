@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from types import MappingProxyType
+
 import pytest
 
 from snowflake_semantic_tools.app.compile import CompileArtifacts, CompiledView, CompileResult
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
+from snowflake_semantic_tools.domain.model.dbt import DbtModel, DbtNode
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import CompositeFacts, PublishShape, RenderedArtifact
 from snowflake_semantic_tools.domain.model.semantic_view import (
@@ -122,6 +125,33 @@ def test_manifest_builder_records_sources_members_and_diagnostics() -> None:
     assert manifest.dbt_models["t"]["relation"] == "DB.S.T"  # type: ignore[index]
     assert manifest.sources["semantic_file_count"] == 1
     assert build_manifest(result).as_dict()["manifest_id"] == build_manifest(result).manifest_id
+
+
+def test_the_manifest_records_what_each_member_reads_and_dbt_s_graph() -> None:
+    model = DbtModel("model.p.t", "t", "DB.S.T", (), (), ())
+    view = SemanticView(
+        "DB.S.V",
+        (Table("T", "DB.S.T"),),
+        metrics=(Metric("M", authored("COUNT(1)"), "T"), Metric("N", authored("M * 2"))),
+        custom_instruction_names=("tone",),
+        referenced_models=("t",),
+        table_models=MappingProxyType({"T": model}),
+    )
+    compiled = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"))
+    graph = (DbtNode("model.p.t", "model", "t", "p", "DB.S.T", ("source.p.raw.a",)),)
+    manifest = build_manifest(CompileResult((compiled,)), dbt_graph=graph)
+    assert manifest.members["metric:m"] == {"attached_to": ["semantic_view:v"], "tables": ["t"]}
+    assert manifest.members["metric:n"] == {"attached_to": ["semantic_view:v"], "uses": ["metric:m"]}
+    assert manifest.members["custom_instruction:tone"] == {"attached_to": ["semantic_view:v"]}
+    assert manifest.dbt_nodes == {
+        "model.p.t": {
+            "kind": "model",
+            "name": "t",
+            "package": "p",
+            "relation": "DB.S.T",
+            "depends_on": ["source.p.raw.a"],
+        }
+    }
 
 
 class _CompiledTool:

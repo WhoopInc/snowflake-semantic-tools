@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.model.config_schema import DbtSettings, dbt_settings
-from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtSource
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtNode, DbtSource
 from snowflake_semantic_tools.domain.resolve.config import render_config
 from snowflake_semantic_tools.domain.resolve.defer import defer_relations
 
@@ -36,6 +36,25 @@ def test_defer_relations_takes_the_deferred_relation_of_each_node_both_hold() ->
         ("DEV.S.NEW", "dev.s.new"),
     ]
     assert [source.relation_name for source in result.sources] == ["PROD.RAW.A", "DEV.RAW.B"]
+
+
+def test_defer_relations_points_the_graph_at_the_deferred_relations() -> None:
+    nodes = (
+        DbtNode("model.p.orders", "model", "orders", relation="DEV.S.ORDERS"),
+        DbtNode("source.p.raw.a", "source", "raw.a", relation="DEV.RAW.A"),
+        DbtNode("source.p.raw.b", "source", "raw.b", relation="DEV.RAW.B"),
+        DbtNode("test.p.unique", "test", "unique", depends_on=("model.p.orders",)),
+    )
+    current = DbtCatalog("v12", None, "p", (), nodes=nodes)
+    deferred = DbtCatalog(
+        "v12",
+        None,
+        "p",
+        (_model("model.p.orders", "PROD.S.ORDERS"),),
+        sources=(DbtSource("source.p.raw.a", "raw", "a", "prod.raw.a"), DbtSource("source.p.raw.b", "raw", "b", None)),
+    )
+    result = defer_relations(current, deferred)
+    assert [node.relation for node in result.nodes] == ["PROD.S.ORDERS", "PROD.RAW.A", "DEV.RAW.B", None]
 
 
 def test_the_dbt_block_reads_its_defaults_and_its_values() -> None:

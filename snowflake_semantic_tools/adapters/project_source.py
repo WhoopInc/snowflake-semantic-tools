@@ -449,6 +449,7 @@ class YamlProjectInputs(ProjectInputs):
                 self._files, config.tree, self._load_cache, refused=directory_refused(config.diagnostics)
             ),
             target_name=self._selected_target(),
+            dbt_graph=catalog.nodes,
         )
 
     def _selected_target(self) -> str:

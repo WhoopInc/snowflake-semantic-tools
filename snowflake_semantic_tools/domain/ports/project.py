@@ -16,7 +16,7 @@ from typing import Any, Protocol
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
-from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtNode
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
 from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
@@ -93,6 +93,8 @@ class ManifestSources:
         file_checksums: The SHA-256 of every input file, by project-relative path.
         target_name: The `profiles.yml` target the artifacts were compiled for; empty when
             none resolves.
+        dbt_graph: dbt's graph as the target reads it, deferral applied; empty without a dbt
+            project.
     """
 
     semantic_path: str
@@ -104,6 +106,7 @@ class ManifestSources:
     model_count: int
     file_checksums: Mapping[str, str]
     target_name: str = ""
+    dbt_graph: tuple[DbtNode, ...] = ()
 
 
 class ProjectInputs(SemanticViewSource, Protocol):

@@ -561,7 +561,7 @@ manifest twice and sees two digests reports `SST-MAN031`.
 
 ### Schema versions of SST's own files
 
-The manifest and the state document each carry a `schema_version` (3 for the
+The manifest and the state document each carry a `schema_version` (5 for the
 manifest, 2 for state). An older schema with a migration is migrated in memory,
 and reading it never rewrites the file: a
 manifest read that way records `migrated_from`, which is never written, hashed,
@@ -582,6 +582,18 @@ might want are still recorded: each artifact's `source_files`, each member's
 `attached_to`, and each dbt model's `referenced_by`. The `state:modified`
 selector in `domain/plan/impact.py` compares fingerprints between the `--state`
 manifest and the current one.
+
+### The lineage graph
+
+Schema 5 carries what lineage walks, so lineage and graph selection read one file.
+`dbt_nodes` is dbt's graph as the target reads it, deferral applied: each model,
+seed, snapshot, source, test and exposure by unique id, with its kind, name,
+package, relation and the nodes it depends on. Each member records, beside
+`attached_to`, the dbt models and sources under the tables it reads (`tables`) and
+the members it uses (`uses`), read from the resolved view by
+`domain/lineage/members.py`. Measured on a project of about 1,400 models and 3,000
+sources, `dbt_nodes` adds about 1.4 MB. A schema-4 manifest migrates with an
+empty graph.
 
 Drawn from: [domain/state/manifest.py](../../snowflake_semantic_tools/domain/state/manifest.py), [domain/state/applied.py](../../snowflake_semantic_tools/domain/state/applied.py), [domain/model/lifecycle/rendered.py](../../snowflake_semantic_tools/domain/model/lifecycle/rendered.py), [domain/plan/classify.py](../../snowflake_semantic_tools/domain/plan/classify.py), [domain/plan/impact.py](../../snowflake_semantic_tools/domain/plan/impact.py), [app/manifest.py](../../snowflake_semantic_tools/app/manifest.py), [adapters/project_source.py](../../snowflake_semantic_tools/adapters/project_source.py).
 

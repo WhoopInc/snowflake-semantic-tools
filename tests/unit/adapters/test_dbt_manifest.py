@@ -9,6 +9,7 @@ import pytest
 
 from snowflake_semantic_tools.adapters.dbt.manifest import (
     SUPPORTED_SCHEMA,
+    _graph,
     catalog_from_document,
     load_manifest_catalog,
 )
@@ -74,6 +75,49 @@ def test_projects_resolved_model_metadata_and_relation() -> None:
     assert model.description == "Products exposed to semantic views."
     assert model.column("PRODUCT_ID") is not None
     assert model.column("product_id").sample_values == ("1", "2")  # type: ignore[union-attr]
+
+
+def test_the_catalog_carries_dbt_s_graph_with_tests_sources_and_exposures() -> None:
+    document = manifest_document()
+    nodes = document["nodes"]
+    assert isinstance(nodes, dict)
+    nodes["model.fixture.staged"] = {
+        "resource_type": "model",
+        "name": "staged",
+        "config": {"materialized": "ephemeral"},
+    }
+    nodes["model.fixture.products"]["depends_on"] = {"nodes": ["model.fixture.staged", "source.fixture.raw.items", 3]}
+    nodes["test.fixture.unique_products"] = {
+        "resource_type": "test",
+        "name": "unique_products",
+        "package_name": "fixture",
+        "depends_on": {"nodes": ["model.fixture.products"]},
+    }
+    document["sources"] = {
+        "source.fixture.raw.items": {"source_name": "raw", "name": "items", "relation_name": "raw.app.items"},
+        "source.fixture.raw.none": {"source_name": "raw", "name": "none", "depends_on": []},
+    }
+    document["exposures"] = {
+        "exposure.fixture.board": {"name": "board", "depends_on": {"nodes": ["model.fixture.products"]}}
+    }
+    graph = {node.unique_id: node for node in catalog_from_document(document).nodes}
+    assert [node.kind for node in graph.values()] == ["exposure", "model", "model", "source", "source", "test"]
+    assert graph["model.fixture.products"].depends_on == ("model.fixture.staged", "source.fixture.raw.items")
+    assert graph["model.fixture.products"].relation == "DB.SCH.PRODUCT_CATALOG"
+    assert (graph["model.fixture.staged"].relation, graph["model.fixture.staged"].depends_on) == (None, ())
+    assert (graph["source.fixture.raw.items"].name, graph["source.fixture.raw.items"].relation) == (
+        "raw.items",
+        "RAW.APP.ITEMS",
+    )
+    assert graph["source.fixture.raw.none"].relation is None
+    assert (graph["test.fixture.unique_products"].package, graph["exposure.fixture.board"].relation) == (
+        "fixture",
+        None,
+    )
+
+
+def test_a_graph_node_that_is_not_a_mapping_is_left_to_the_model_pass() -> None:
+    assert _graph({"nodes": {"seed.fixture.broken": "not a node"}, "sources": []}) == ()
 
 
 def test_column_data_type_falls_back_to_sst_metadata() -> None:

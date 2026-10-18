@@ -28,7 +28,7 @@ from snowflake_semantic_tools.domain.state import (
     migrate_manifest,
     migrate_state,
 )
-from snowflake_semantic_tools.domain.state.manifest import _manifest_from_dict_unchecked, _object_map
+from snowflake_semantic_tools.domain.state.manifest import _UNHASHED, _manifest_from_dict_unchecked, _object_map
 from tests.helpers.artifact_builders import target
 from tests.helpers.manifests import build_minimal_manifest
 from tests.helpers.sql_values import statement
@@ -129,6 +129,22 @@ def test_manifest_v1_migrates_in_memory_and_bad_migrations_fail() -> None:
         migrate_manifest({"schema_version": 0})
     with pytest.raises(ValueError, match="no migration"):
         migrate_manifest({"schema_version": MANIFEST_SCHEMA_VERSION})
+
+
+def test_a_schema_4_manifest_migrates_with_an_empty_graph_and_an_edited_one_is_refused() -> None:
+    value = manifest().as_dict()
+    value["schema_version"] = 4
+    value.pop("dbt_nodes")
+    value["manifest_id"] = content_hash({key: item for key, item in value.items() if key not in _UNHASHED})
+    migrated = Manifest.from_dict(value)
+    assert (migrated.schema_version, migrated.migrated_from, dict(migrated.dbt_nodes)) == (
+        MANIFEST_SCHEMA_VERSION,
+        4,
+        {},
+    )
+    value["project"] = {"root": "elsewhere"}
+    with pytest.raises(ValueError, match="recomputed"):
+        Manifest.from_dict(value)
 
 
 def test_manifest_rejects_malformed_nested_shapes() -> None:

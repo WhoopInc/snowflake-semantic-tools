@@ -15,8 +15,10 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
-from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
+from snowflake_semantic_tools.app.compile import CompiledArtifact, CompiledView, CompileResult
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Severity
+from snowflake_semantic_tools.domain.lineage.members import member_edges
+from snowflake_semantic_tools.domain.model.dbt import DbtNode
 from snowflake_semantic_tools.domain.ports.project import ManifestSources
 from snowflake_semantic_tools.domain.state import MANIFEST_SCHEMA_VERSION, SST_VERSION, ArtifactEntry, Manifest
 
@@ -35,6 +37,7 @@ def manifest_for(result: CompileResult, sources: ManifestSources) -> Manifest:
         model_count=sources.model_count,
         file_checksums=dict(sources.file_checksums),
         target_name=sources.target_name,
+        dbt_graph=sources.dbt_graph,
     )
 
 
@@ -107,6 +110,7 @@ def build_manifest(
     model_count: int = 0,
     file_checksums: dict[str, str] | None = None,
     target_name: str = "",
+    dbt_graph: tuple[DbtNode, ...] = (),
 ) -> Manifest:
     """Build the manifest of `result`, with what the keyword arguments say about the project.
 
@@ -159,8 +163,9 @@ def build_manifest(
             }
         ),
         artifacts=MappingProxyType(artifacts),
-        members=MappingProxyType({key: {"attached_to": list(value)} for key, value in sorted(by_member.items())}),
+        members=MappingProxyType(_members(by_member, result)),
         dbt_models=MappingProxyType(dbt_models),
+        dbt_nodes=MappingProxyType({node.unique_id: _dbt_node(node) for node in dbt_graph}),
         files=MappingProxyType(files),
         diagnostics_summary=MappingProxyType(
             {
@@ -171,6 +176,41 @@ def build_manifest(
         ),
     )
     return manifest.with_computed_id()
+
+
+def _members(by_member: dict[str, tuple[str, ...]], result: CompileResult) -> dict[str, object]:
+    """Return each member's entry: the views it attaches to, then what it reads in any of them.
+
+    A member several views attach is one node of lineage, so what it reads is the union of what
+    each view's copy reads.
+    """
+    tables: dict[str, set[str]] = {}
+    uses: dict[str, set[str]] = {}
+    for compiled in result.compiled:
+        if not isinstance(compiled, CompiledView):
+            continue
+        for key, edges in member_edges(compiled.view).items():
+            tables.setdefault(key, set()).update(edges.tables)
+            uses.setdefault(key, set()).update(edges.uses)
+    return {
+        key: {
+            "attached_to": list(views),
+            **({"tables": sorted(tables[key])} if tables.get(key) else {}),
+            **({"uses": sorted(uses[key])} if uses.get(key) else {}),
+        }
+        for key, views in sorted(by_member.items())
+    }
+
+
+def _dbt_node(node: DbtNode) -> dict[str, object]:
+    """Return one node of dbt's graph as the manifest records it under `dbt_nodes`."""
+    return {
+        "kind": node.kind,
+        "name": node.name,
+        "package": node.package,
+        "relation": node.relation,
+        "depends_on": list(node.depends_on),
+    }
 
 
 def _artifact_entry(compiled: CompiledArtifact, result: CompileResult) -> ArtifactEntry:
