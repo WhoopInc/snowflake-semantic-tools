@@ -9,12 +9,13 @@ plan exits.
 from __future__ import annotations
 
 import dataclasses
+import re
 from pathlib import Path
 from typing import cast
 
 import click
 
-from snowflake_semantic_tools.adapters.paths import make_folders_within, output_root, write_within
+from snowflake_semantic_tools.adapters.paths import make_folders_within, output_root, remove_within, write_within
 from snowflake_semantic_tools.app.baseline import blocking
 from snowflake_semantic_tools.app.evals.run import EvalSuiteResult, eval_suite_json
 from snowflake_semantic_tools.app.plan import PlanReady
@@ -27,6 +28,7 @@ from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.file_names import file_name
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOutcome, Change, ChangeSet
+from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan.member_diff import MemberDiff, Value, unified_text
 from snowflake_semantic_tools.domain.plan.properties import changed_properties
 
@@ -205,15 +207,19 @@ def write_plan_sql(project_dir: Path, changeset: ChangeSet, sql_out: Path | None
 
     The directory is `--sql-out`, else `target/sst/sql`. A JSON or YAML payload is written
     as it is; statements are joined, each ending in a semicolon. A file is named by
-    `file_name`, so no artifact key can place it outside the directory.
+    `file_name`, so no artifact key can place it outside the directory. A file an earlier run
+    wrote there for a change this one does not make is removed, so the directory holds this
+    plan's statements only: a regular file named as this names one, `<type>__<name>.<suffix>`.
+    Any other file, and any link, is left as it is.
 
     Raises:
         UnsafeWrite: A symbolic link is on the way to the directory or at a file in it.
-        OSError: The directory or a file cannot be written.
+        OSError: The directory or a file cannot be written, or a stale file removed.
     """
     output = sql_out or target_dir(project_dir) / "sql"
     root = output_root(project_dir, output)
     make_folders_within(root, output)
+    written: set[str] = set()
     for change in changeset.changes:
         if change.rendered is None or change.action not in (
             Action.CREATE,
@@ -229,7 +235,27 @@ def write_plan_sql(project_dir: Path, changeset: ChangeSet, sql_out: Path | None
             else ";\n\n".join(str(statement) for statement in change.rendered.statements) + ";\n"
         )
         write_within(root, path, content)
+        written.add(path.name)
+    for stale in _stale_files(output, written):
+        remove_within(root, output / stale)
     return output
+
+
+# A file `write_plan_sql` names: an artifact type, two underscores, a name, and a payload suffix.
+_PLAN_FILE = re.compile(r"(?P<type>[a-z_]+)__.+\.(?:sql|json|yaml)")
+
+
+def _stale_files(output: Path, written: set[str]) -> list[str]:
+    """The files in `output` an earlier run wrote and this one did not: regular files, never a link."""
+    types = frozenset(SEMANTIC_REGISTRY.artifacts) | {"profile"}
+    stale = []
+    for entry in sorted(output.iterdir()):
+        match = _PLAN_FILE.fullmatch(entry.name)
+        if entry.name in written or match is None or match.group("type") not in types:
+            continue
+        if not entry.is_symlink() and entry.is_file():
+            stale.append(entry.name)
+    return stale
 
 
 def plan_diff_path(project_dir: Path, changeset: ChangeSet, diff_out: Path | None) -> Path:

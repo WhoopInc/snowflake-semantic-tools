@@ -10,19 +10,11 @@ from typing import Any
 import pytest
 from click.testing import CliRunner
 
-from snowflake_semantic_tools.adapters.locations import locate_project
-from snowflake_semantic_tools.app.compile import CompiledView
-from snowflake_semantic_tools.app.compile.agents import CompiledAgent
-from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.cli.main import cli
-from snowflake_semantic_tools.cli.wiring.compile import compile_result
-from snowflake_semantic_tools.domain.plan.definitions.tool import search_query
-from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.cli_projects import common, compile_project, invoke_with_port
-from tests.helpers.described_objects import described_search, described_view
-from tests.helpers.published_target import PublishingSnowflake, publishing_port
-from tests.helpers.reference_project import DBT_MANIFEST, project_copy
+from tests.helpers.published_target import PublishingSnowflake, describe_published, publishing_port
+from tests.helpers.reference_project import project_copy
 
 _METRIC = ("semantic_models/metrics/line_item_count.yml", "COUNT({{", "COUNT(DISTINCT {{")
 
@@ -41,7 +33,7 @@ def _published(
     port = publishing_port(project)
     applied = invoke_with_port(monkeypatch, port, ["apply", *common(project), "--target", "dev", "--yes"])
     assert applied.exit_code == 0, applied.output
-    _describe(port, project, "dev", agents=agents)
+    describe_published(port, project, "dev", agents=agents)
     relative, before, after = edit
     path = project / relative
     text = path.read_text(encoding="utf-8")
@@ -49,20 +41,6 @@ def _published(
     path.write_text(text.replace(before, after, 1), encoding="utf-8")
     compile_project(project)
     return project, port
-
-
-def _describe(port: PublishingSnowflake, project: Path, target: str, *, agents: bool) -> None:
-    """Make each view and search service the target compiles DESCRIBE as published, and each agent with `agents`."""
-    for item in compile_result(locate_project(project), target, DBT_MANIFEST).compiled:
-        name = item.rendered_artifact.target.sql
-        if isinstance(item, CompiledView):
-            port.view_descriptions[name] = described_view(item.view)
-        elif isinstance(item, CompiledAgent) and agents:
-            alias = item.rendered_artifact.desired_alias
-            port.agent_version_rows[name] = (AgentVersion("VERSION$1", alias, True, specification=item.payload),)
-        elif isinstance(item, CompiledTool) and item.member.type == "cortex_search_service":
-            described = described_search(item.member, search_query(item.rendered.ddl))
-            port.descriptions[f"CORTEX SEARCH SERVICE {name}"] = described
 
 
 def _plan(monkeypatch: pytest.MonkeyPatch, port: PublishingSnowflake, project: Path, *flags: str) -> dict[str, Any]:
@@ -278,7 +256,7 @@ def _two_targets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path,
         port = ports[target] = publishing_port(project, target)
         applied = invoke_with_port(monkeypatch, port, ["apply", *common(project), "--target", target, "--yes"])
         assert applied.exit_code == 0, applied.output
-        _describe(port, project, target, agents=True)
+        describe_published(port, project, target, agents=True)
     by_database = {"SST_REF_DEV": ports["dev"], "SST_REF_PROD": ports["prod"]}
     for port in ports.values():
         port.close = lambda: None  # type: ignore[attr-defined]
@@ -355,3 +333,25 @@ def test_diff_refuses_a_diff_path_with_no_diff(tmp_path: Path) -> None:
     result = CliRunner().invoke(cli, ["diff", *common(project), "--no-diff", "--diff-out", "x.diff"])
     assert result.exit_code == 3
     assert "SST-PRT104" in result.output
+
+
+def test_the_sql_directory_holds_this_plans_statements_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # 2026-10-18-plan-sql-dir-keeps-stale-files: an earlier plan's files used to stay.
+    project, port = _published(tmp_path, monkeypatch)
+    sql = project / "target" / "sst" / "sql"
+    sql.mkdir(parents=True, exist_ok=True)
+    (sql / "agent__gone.json").write_text("{}", encoding="utf-8")
+    (sql / "skill__gone.json").write_text("{}", encoding="utf-8")
+    (sql / "notes.md").write_text("mine", encoding="utf-8")
+    (sql / "widget__mine.sql").write_text("mine", encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere.sql"
+    elsewhere.write_text("kept", encoding="utf-8")
+    (sql / "tool__linked.sql").symlink_to(elsewhere)
+    _plan(monkeypatch, port, project)
+    assert sorted(path.name for path in sql.iterdir()) == [
+        "notes.md",
+        "semantic_view__jaffle_menu.sql",
+        "tool__linked.sql",
+        "widget__mine.sql",
+    ]
+    assert elsewhere.read_text(encoding="utf-8") == "kept"

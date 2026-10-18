@@ -110,7 +110,11 @@ _OPTION_HELP: Mapping[str, str] = {
         "Go ahead with every artifact that has no errors and depends on nothing that does; "
         "still exits 1 while errors remain. Cannot be combined with `--prune`."
     ),
-    "--sql-out": "Write each create's and update's statements into this directory instead of `target/sst/sql`.",
+    "--sql-out": (
+        "Write each create's and update's statements into this directory instead of `target/sst/sql`. A file "
+        "an earlier run wrote there, named `<type>__<name>.sql`, `.json` or `.yaml`, for a change this run does "
+        "not make is removed; any other file is left."
+    ),
     "--fail-fast": "Stop at the first failure instead of continuing.",
     "--no-validate": (
         "Skip validation: no cycle check, connected check, agent reference lookup, or strict promotion. "

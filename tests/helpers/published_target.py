@@ -5,6 +5,9 @@ the profile registry, eval datasets -- but no statement leaves an object SHOW li
 `PublishingSnowflake`, a script that succeeds and names a compiled semantic view, tool or agent
 leaves that object listed under its compiled name with the marker apply writes, and each eval's
 source table counts its questions, so the next plan reads every artifact as unchanged.
+
+`published` makes such a target and has its views, search services and, when asked, agents
+DESCRIBE as published, so a plan compares updates member by member.
 """
 
 from __future__ import annotations
@@ -13,11 +16,22 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
+import pytest
+from click.testing import CliRunner
+
 from snowflake_semantic_tools.adapters.locations import locate_project
+from snowflake_semantic_tools.app.compile import CompiledView
+from snowflake_semantic_tools.app.compile.agents import CompiledAgent
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
+from snowflake_semantic_tools.app.compile.tools import CompiledTool
+from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.wiring.compile import compile_result
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, OwnershipMarker, QueryResult, ShowRow
+from snowflake_semantic_tools.domain.plan.definitions.tool import search_query
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.sql import Sql
+from tests.helpers.cli_projects import common
+from tests.helpers.described_objects import described_search, described_view
 from tests.helpers.reference_project import DBT_MANIFEST
 from tests.helpers.snowflake_fake import FakeSnowflake, Sent
 
@@ -102,3 +116,39 @@ def publishing_port(project: Path, target: str = "dev") -> PublishingSnowflake:
         for item in evals
     }
     return PublishingSnowflake(manifest["manifest_id"], marked, questions, existing, rows)
+
+
+def describe_published(port: PublishingSnowflake, project: Path, target: str, *, agents: bool = False) -> None:
+    """Make each view and search service `target` compiles DESCRIBE as published, and each agent with `agents`.
+
+    Each view's GET_DDL returns its render, so a plan's drift check reads it.
+
+    With `agents`, each agent serves one version, the default, holding the specification published;
+    the fake then reads each agent's versions as drifted, so a plan updates every agent.
+    """
+    for item in compile_result(locate_project(project), target, DBT_MANIFEST).compiled:
+        name = item.rendered_artifact.target.sql
+        if isinstance(item, CompiledView):
+            port.view_descriptions[name] = described_view(item.view)
+            port.definitions[name] = item.rendered_artifact.ddl
+        elif isinstance(item, CompiledAgent) and agents:
+            alias = item.rendered_artifact.desired_alias
+            port.agent_version_rows[name] = (AgentVersion("VERSION$1", alias, True, specification=item.payload),)
+        elif isinstance(item, CompiledTool) and item.member.type == "cortex_search_service":
+            described = described_search(item.member, search_query(item.rendered.ddl))
+            port.descriptions[f"CORTEX SEARCH SERVICE {name}"] = described
+
+
+def published(
+    project: Path, patch: pytest.MonkeyPatch, target: str = "dev", *, agents: bool = False
+) -> PublishingSnowflake:
+    """Compile `project` for `target`, apply it to a fresh fake account, and have what it holds DESCRIBE."""
+    result = CliRunner().invoke(cli, ["compile", *common(project), "--target", target])
+    assert result.exit_code == 0, result.output
+    port = publishing_port(project, target)
+    port.close = lambda: None  # type: ignore[attr-defined]
+    patch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", lambda params: port)
+    applied = CliRunner().invoke(cli, ["apply", *common(project), "--target", target, "--yes"])
+    assert applied.exit_code == 0, applied.output
+    describe_published(port, project, target, agents=agents)
+    return port
