@@ -23,6 +23,10 @@ $ sst --project-dir <project> --manifest <manifest> validate --no-snowflake-synt
   [34m[1m=[0m [36mhelp:[0m confirm the key and the backing object yourself; `CREATE AGENT` will accept a wrong one
   [34m[1m=[0m [2msst explain SST-RND013[0m
 
+[33m[1mwarning[[0m[33m[1mSST-RND013[0m[33m[1m][0m: [1magent 'jaffle_analytics_agent': tool_resources for 'order_status' is not validated by Snowflake[0m
+  [34m[1m=[0m [36mhelp:[0m confirm the key and the backing object yourself; `CREATE AGENT` will accept a wrong one
+  [34m[1m=[0m [2msst explain SST-RND013[0m
+
 [33m[1mwarning[[0m[33m[1mSST-VAL528[0m[33m[1m][0m: [1magent 'jaffle_delivery_agent' inherits the tools of another agent through toolset 'partner_delivery_agent'[0m
   [34m[1m=[0m [36mhelp:[0m accept that tool-name uniqueness and eval coverage are incomplete here
   [34m[1m=[0m [2msst explain SST-VAL528[0m
@@ -47,6 +51,6 @@ $ sst --project-dir <project> --manifest <manifest> validate --no-snowflake-synt
    [34m[1m=[0m [36mhelp:[0m reference it from an agent, or delete it
    [34m[1m=[0m [2msst explain SST-CFG018[0m
 
-[31m[1m✗[0m [1mvalidate failed[0m: 1 error, 6 warnings · <n>s
+[31m[1m✗[0m [1mvalidate failed[0m: 1 error, 7 warnings · <n>s
 [2m  hidden: 53 info (--show-info), 1 cascade (--show-cascade)[0m
   [36mnext:[0m fix the error, then run `sst validate` again

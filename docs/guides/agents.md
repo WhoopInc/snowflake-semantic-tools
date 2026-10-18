@@ -421,7 +421,7 @@ description changes the fingerprint, and `plan` shows the routine as an update.
 
 | Key | Type | Required | Renders to |
 |---|---|---|---|
-| `body` | `"{{ file('<path>') }}"`, relative to the tool file's folder | yes | the body, as `AS $$ ... $$`; it may not contain `$$` |
+| `body` | `"{{ file('<path>') }}"`, relative to the tool file's folder | yes | the body, as `AS $$ ... $$`, its `ref()`, `source()` and `var()` calls rendered for the target; it may not contain `$$` |
 | `language` | `sql`, `python`, `java`, `javascript`, or `scala` | yes | `LANGUAGE` (`SST-PRS013`) |
 | `returns` | a Snowflake type, or `TABLE (<column> <type>, ...)`, which a generic tool cannot call (`SST-VAL623`) | yes | `RETURNS` (`SST-PRS003`) |
 | `signature` | list of `name:` and `type:` maps; every parameter is required, and an entry that writes `required:` is an error (`SST-PRS130`) | no | the argument list, in order |
@@ -446,6 +446,15 @@ DDL writes must be an identifier and each secret a three-part name
 in type, and its `required` must list every parameter, since none renders a
 `DEFAULT` (`SST-VAL607`). A procedure that runs as `owner` and that an agent reaches is a
 warning (`SST-VAL610`): it lets a conversation act with the owner's privileges.
+
+The body file names the tables it reads with `{{ ref('<model>') }}` or
+`{{ source('<source>', '<table>') }}`, as a view does, so each target's routine
+reads that target's relations and lineage sees them; `{{ var('<name>') }}` takes a
+project variable. Only those three calls are rewritten, and every other character
+is published as written. In a non-SQL body the call goes inside a single-quoted
+string. A literal three-part name of a project relation is `SST-VAL626`, a
+warning; another team's table may be named literally. See
+[Routine bodies](references.md#routine-bodies).
 
 ```yaml
 # tools/orders/order_status.yml

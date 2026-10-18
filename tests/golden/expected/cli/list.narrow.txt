@@ -2,7 +2,7 @@ $ sst --project-dir <project> --manifest <manifest> list
 --- exit 0
 --- stdout
 ARTIFACT                      STATUS   TARGET                       FINGERPRINT
-agent:jaffle_analytics_agent  pending  ...JAFFLE_ANALYTICS_AGENT    be7844e54bd3
+agent:jaffle_analytics_agent  pending  ...JAFFLE_ANALYTICS_AGENT    f8105d1926e8
 agent:jaffle_delivery_agent   pending  ...JAFFLE_DELIVERY_AGENT     587ccbb3cf86
 agent:jaffle_minimal_agent    pending  ...JAFFLE_MINIMAL_AGENT      506d43050765
 eval:jaffle_analytics_agent   pending  SST_REF_DEV.JAFFLE.EVAL_...  4343526c2cbf
@@ -16,5 +16,6 @@ skill:jaffle-catalogue        pending  ...JAFFLE_CATALOGUE          9c68ceaf219f
 skill:jaffle-operations       pending  ...JAFFLE_OPERATIONS         5c9c04dce568
 skill:jaffle-semantics        pending  ...JAFFLE_SEMANTICS          6f3926606207
 tool:menu_docs_search         pending  ...MENU_DOCS_SEARCH          151cfa8cf07b
+tool:order_status             pending  SST_REF_DEV...ORDER_STATUS   388f79da674d
 --- stderr
-✓ listed 14 artifacts · <n>s
+✓ listed 15 artifacts · <n>s

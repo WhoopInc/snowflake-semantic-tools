@@ -177,7 +177,7 @@ def test_a_search_service_update_names_the_setting_it_changes(tmp_path: Path, mo
     edit = ("tools/platform/menu_docs_search.yml", "target_lag: 1 hour", "target_lag: 2 hours")
     project, port = _published(tmp_path, monkeypatch, edit)
     data = _plan(monkeypatch, port, project)
-    [change] = [item for item in data["changes"] if item["artifact_key"].startswith("tool:")]
+    change = _change(data, "tool:menu_docs_search")
     [member] = change["diff"]
     assert (member["kind"], member["op"]) == ("search_service", "changed")
     assert [(prop["property"], prop["after"]) for prop in member["properties"]] == [("target_lag", "2 hours")]

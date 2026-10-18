@@ -31,7 +31,7 @@ def test_validate_accepts_the_recorded_manifest_offline(tmp_path: Path) -> None:
     # tool's resources, SST-CFG018 for each of the two partner tool members nothing references,
     # and SST-CFG034 for `--no-strict` against the copy's `validation.strict: true`. The counts
     # line agrees with the summary line above it.
-    assert "✓ validated 14 artifacts · 0 errors, 6 warnings · " in result.output
+    assert "✓ validated 15 artifacts · 0 errors, 7 warnings · " in result.output
 
 
 def test_validate_uses_config_strict_unless_cli_overrides(tmp_path: Path) -> None:
@@ -126,11 +126,11 @@ def test_validate_json_data_counts_rules_artifacts_and_what_the_baseline_suppres
     data = json.loads(plain.output)["data"]
     assert data == {
         "rules_run": len(VALIDATION_RULES) - len(CONNECTED_RULES),
-        "artifacts_checked": 14,
+        "artifacts_checked": 15,
         "suppressed_by_baseline": 0,
     }
     added = CliRunner().invoke(cli, ["baseline", "add", "--all-warnings", "--yes", *args[:4]])
     assert added.exit_code == 0, added.output
     baselined = CliRunner().invoke(cli, ["validate", *args])
     envelope = json.loads(baselined.output)
-    assert envelope["data"]["suppressed_by_baseline"] == envelope["summary"]["baselined"] == 5
+    assert envelope["data"]["suppressed_by_baseline"] == envelope["summary"]["baselined"] == 6

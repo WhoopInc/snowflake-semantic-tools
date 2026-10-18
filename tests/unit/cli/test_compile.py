@@ -104,6 +104,7 @@ def test_compile_writes_deterministic_manifest(tmp_path: Path) -> None:
         "skill:jaffle-operations",
         "skill:jaffle-semantics",
         "tool:menu_docs_search",
+        "tool:order_status",
     ]
     assert "generated_at" not in document
 
@@ -124,7 +125,7 @@ def test_compile_json_emits_artifact_fingerprints(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     envelope = json.loads(result.output)
-    assert len(envelope["data"]["artifacts"]) == 14
+    assert len(envelope["data"]["artifacts"]) == 15
     assert all(len(artifact["fingerprint"]) == 64 for artifact in envelope["data"]["artifacts"])
 
 
@@ -181,7 +182,7 @@ def test_compile_selection_keeps_the_canonical_manifest_full(tmp_path: Path) -> 
     )
     assert result.exit_code == 0, result.output
     canonical = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
-    assert len(canonical["artifacts"]) == 14
+    assert len(canonical["artifacts"]) == 15
 
 
 @pytest.mark.parametrize(

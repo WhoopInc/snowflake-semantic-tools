@@ -32,6 +32,7 @@ from tests.helpers.cli_projects import (
     invoke_with_port,
     skill_project,
 )
+from tests.helpers.published_target import describe_routines, object_types
 from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 from tests.helpers.snowflake_fake import PROFILE_REGISTRY_SHAPE, FakeSnowflake
 
@@ -184,6 +185,7 @@ def test_plan_live_observation_saved_plan_and_detailed_exitcode(
         ("semantic_view:jaffle_minimal", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_MINIMAL"),
         ("semantic_view:jaffle_sales", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_SALES"),
         ("tool:menu_docs_search", "create", "not_present", "SST_REF_DEV.JAFFLE.MENU_DOCS_SEARCH"),
+        ("tool:order_status", "create", "not_present", "SST_REF_DEV.JAFFLE.ORDER_STATUS"),
         ("skill:jaffle-catalogue", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_CATALOGUE"),
         ("skill:jaffle-operations", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_OPERATIONS"),
         ("skill:jaffle-semantics", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS"),
@@ -254,14 +256,11 @@ def published_target(project: Path, payload: dict[str, Any]) -> FakeSnowflake:
         for item in payload["data"]["changes"]
     }
     objects: dict[tuple[str, str], list[ShowRow]] = {}
+    shown = object_types(project)
     for item in payload["data"]["changes"]:
         if item["artifact_type"] in ("eval", "skill", "plugin", "profile"):
             continue
-        object_type = {
-            "semantic_view": "SEMANTIC VIEW",
-            "tool": "CORTEX SEARCH SERVICE",
-            "agent": "AGENT",
-        }[item["artifact_type"]]
+        object_type = shown[item["artifact_key"]]
         parts = item["target"].split(".")
         scope = ".".join(parts[:2])
         objects.setdefault((object_type, scope), []).append(
@@ -276,6 +275,7 @@ def published_target(project: Path, payload: dict[str, Any]) -> FakeSnowflake:
             )
         )
     port = FakeSnowflake(objects={key: tuple(value) for key, value in objects.items()}, state=state)
+    describe_routines(port, project)
     eval_config = project / "target" / "sst" / "sql" / "eval__jaffle_analytics_agent.yaml"
     configure_eval_as_applied(
         port,
@@ -366,14 +366,14 @@ def test_one_edit_plans_only_what_its_render_reaches(
     actions = {item["artifact_key"]: (item["action"], item["reason"]) for item in payload["data"]["changes"]}
     assert {key for key, (action, _) in actions.items() if action != "noop"} == updated
     assert {actions[key] for key in updated} == {("update", "fingerprint_differs")}
-    assert len(actions) == 14
+    assert len(actions) == 15
 
 
 def test_capture_prior_reads_every_published_kind_without_failing_the_plan(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The reference project publishes views, a search service, agents, skills, a plugin, a
-    # profile, and an eval; a plan capturing their priors must still exit as it would without.
+    # The reference project publishes views, a search service, a procedure, agents, skills, a
+    # plugin, a profile, and an eval; a plan capturing their priors must still exit as it would without.
     project = project_copy(tmp_path)
     first = invoke_with_port(
         monkeypatch,
@@ -383,9 +383,14 @@ def test_capture_prior_reads_every_published_kind_without_failing_the_plan(
     payload = json.loads(first.output)
     port = published_target(project, payload)
     targets = {str(item["artifact_key"]): str(item["target"]) for item in payload["data"]["changes"]}
+    # GET_DDL addresses a routine by its name with its argument types.
+    addressed = {key: f"{target}(VARCHAR)" if key == "tool:order_status" else target for key, target in targets.items()}
     for key, target in targets.items():
-        if key.startswith("tool:"):
-            port.definitions[target] = f"create or replace {key}"
+        if key == "tool:order_status":
+            # A routine's GET_DDL in the form that keeps its grants, which the capture keeps as it is.
+            port.definitions[addressed[key]] = f"create or replace procedure {target}(ORDER_ID VARCHAR)\n  COPY GRANTS"
+        elif key.startswith("tool:"):
+            port.definitions[addressed[key]] = f"create or replace {key}"
         if key.startswith("semantic_view:"):
             # A view's GET_DDL text in the restorable form, which the capture keeps as it is.
             port.definitions[target] = f"create or replace semantic view {target}\n  COPY GRANTS"
@@ -413,7 +418,7 @@ def test_capture_prior_reads_every_published_kind_without_failing_the_plan(
         assert prior.endswith('{\n  "models": {\n    "orchestration": "auto"\n  }\n}\n')
     for key, prior in priors.items():
         if key.startswith(("semantic_view:", "tool:")):
-            assert prior == port.definitions[targets[key]]
+            assert prior == port.definitions[addressed[key]]
         elif not key.startswith("agent:"):
             # A skill, plugin, profile, or eval publishes content-addressed resources.
             assert prior is None, key
@@ -548,6 +553,8 @@ def test_an_agent_is_never_planned_without_the_skill_version_it_pins(
             "type:semantic_view",
             "--select",
             "tool:menu_docs_search",
+            "--select",
+            "tool:order_status",
             "--no-plan-out",
             "--output",
             "json",

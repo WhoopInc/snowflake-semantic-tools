@@ -133,7 +133,7 @@ def test_names_only_prints_each_changed_name_and_nothing_else(tmp_path: Path, mo
     )
     changes = json.loads(data.stdout)["data"]
     assert every.stdout.splitlines() == [item["name"] for item in changes["changes"]]
-    assert changes["counts"] == {"create": 14, "update": 0, "noop": 0, "prune": 0, "blocked": 0, "report_only": 0}
+    assert changes["counts"] == {"create": 15, "update": 0, "noop": 0, "prune": 0, "blocked": 0, "report_only": 0}
 
 
 def test_no_validate_skips_strict_promotion_and_refuses_a_syntax_check(

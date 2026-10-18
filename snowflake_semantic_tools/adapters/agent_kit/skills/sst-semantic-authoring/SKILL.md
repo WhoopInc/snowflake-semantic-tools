@@ -196,8 +196,9 @@ mapping per file under `project.tools_dir` (a `tools:` list still reads), at any
 groups. Their settings come from `tools:` folder routes and the member's own `config:`, and
 `meta.owner` names the owner. An agent names a member as `{{ tool('<name>') }}`, one argument
 (`SST-REF015`), and a defined search service writes every column as
-`{{ ref('<on model>', '<column>') }}` (`SST-VAL622` for another model). For the rest, use
-sst-agents-and-evals.
+`{{ ref('<on model>', '<column>') }}` (`SST-VAL622` for another model). A routine's body file
+names the tables it reads with `{{ ref() }}` or `{{ source() }}`, as a view does. For the rest,
+use sst-agents-and-evals.
 
 ## After every edit
 

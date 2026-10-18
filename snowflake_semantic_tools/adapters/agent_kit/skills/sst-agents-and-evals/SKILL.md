@@ -99,7 +99,10 @@ tool:
   created by SST. A member name is unique in the project (`SST-VAL001`).
 - A defined member writes every column as `{{ ref('<on model>', '<column>') }}`: a bare column
   is `SST-REF050`, another model `SST-VAL622`. A referenced member writes its columns bare.
-- A routine's body is `body: "{{ file('<path>') }}"`, relative to the tool file's folder.
+- A routine's body is `body: "{{ file('<path>') }}"`, relative to the tool file's folder. In the
+  file, name each table it reads as `{{ ref('<model>') }}` or `{{ source('<source>', '<table>') }}`,
+  inside a single-quoted string outside SQL, never as a literal three-part name (`SST-VAL626`), so
+  every target reads its own tables. `{{ var('<name>') }}` is the one other call a body takes.
 - Settings go under `config:`, the `tools:` `+` keys without the `+`: `database`, `schema`,
   `warehouse`, `target_lag`, `embedding_model`, `execute_as`, `immutable`. Never write them on
   the member itself, and never write `group:`, `define:`, or `reference:` (`SST-PRS126`).

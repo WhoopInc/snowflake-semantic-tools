@@ -6,6 +6,10 @@ warning[SST-RND013]: agent 'jaffle_analytics_agent': tool_resources for 'order_t
   = help: confirm the key and the backing object yourself; `CREATE AGENT` will accept a wrong one
   = sst explain SST-RND013
 
+warning[SST-RND013]: agent 'jaffle_analytics_agent': tool_resources for 'order_status' is not validated by Snowflake
+  = help: confirm the key and the backing object yourself; `CREATE AGENT` will accept a wrong one
+  = sst explain SST-RND013
+
 warning[SST-VAL528]: agent 'jaffle_delivery_agent' inherits the tools of another agent through toolset 'partner_delivery_agent'
   = help: accept that tool-name uniqueness and eval coverage are incomplete here
   = sst explain SST-VAL528
@@ -30,5 +34,5 @@ warning[SST-CFG018]: tool member 'partner_invoice_stage' is referenced by nothin
    = help: reference it from an agent, or delete it
    = sst explain SST-CFG018
 
-✓ validated 14 artifacts · 0 errors, 5 warnings · <n>s
+✓ validated 15 artifacts · 0 errors, 6 warnings · <n>s
   hidden: 53 info (--show-info)

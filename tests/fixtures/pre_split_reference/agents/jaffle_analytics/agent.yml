@@ -163,6 +163,27 @@ spec:
       # `agents.+warehouse` (here the target's SST_REF_WH); none is SST-VAL527.
       query_timeout: 60
 
+    # ---- 5. A `generic` tool over a `define:` member ----------------------
+    - type: generic
+      name: order_status
+      identifier: "{{ tool('jaffle_platform', 'order_status') }}"
+      description: |-
+        Returns where one order is in its lifecycle, given its id. Use only
+        when a question names a single order and asks for its status.
+
+        Do NOT use for counts or breakdowns of orders by status -- those
+        belong to JAFFLE_SALES.
+      input_schema:
+        type: object
+        properties:
+          order_id:
+            type: string
+            description: |-
+              The order to look up.
+        required:
+          - order_id
+      query_timeout: 60
+
   # =========================================================================
   # SKILLS
   # =========================================================================

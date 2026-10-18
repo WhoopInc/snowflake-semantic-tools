@@ -26,7 +26,7 @@ def test_a_global_option_after_the_command_wins_over_one_before_it(tmp_path: Pat
     result = CliRunner().invoke(cli, ["-o", "table", "validate", *common(project), "-o", "json"])
     assert json.loads(result.output)["command"] == "validate"
     before = CliRunner().invoke(cli, ["--project-dir", str(project), "--manifest", str(common(project)[3]), "validate"])
-    assert before.exit_code == 0 and "validated 14 artifacts" in before.output
+    assert before.exit_code == 0 and "validated 15 artifacts" in before.output
 
 
 def _leaf_commands(group: click.Group, path: tuple[str, ...] = ()) -> list[tuple[tuple[str, ...], click.Command]]:
@@ -175,21 +175,21 @@ def test_strict_does_not_block_on_what_the_baseline_holds(tmp_path: Path) -> Non
 def test_strict_promoted_warnings_the_baseline_holds_are_counted_apart_not_as_errors(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
     _, before = _warnings(project)
-    # The five warnings --strict promotes are baselined; SST-CFG034, about the flag itself, is
+    # The six warnings --strict promotes are baselined; SST-CFG034, about the flag itself, is
     # neither promoted nor baselined, so it stays the one warning.
     held = [item["fingerprint"] for item in before["diagnostics"] if item["code"] in _PROMOTED]
     _baseline(project, held)
     exit_code, envelope = _json(["validate", *common(project), "--strict", "--output", "json"])
     summary = envelope["summary"]
-    assert (exit_code, envelope["status"], summary["promoted"]) == (0, "ok", 5)
-    assert (summary["error"], summary["warning"], summary["baselined"]) == (0, 1, 5)
+    assert (exit_code, envelope["status"], summary["promoted"]) == (0, "ok", 6)
+    assert (summary["error"], summary["warning"], summary["baselined"]) == (0, 1, 6)
     assert summary["error"] + summary["warning"] + summary["info"] + summary["baselined"] == len(
         envelope["diagnostics"]
     )
     human = CliRunner().invoke(cli, ["validate", *common(project), "--strict"])
     assert human.exit_code == 0, human.output
     # Baselined findings are counted apart from every severity, never as warnings.
-    assert "✓ validated 14 artifacts · 0 errors, 1 warning · 5 baselined · " in human.output
+    assert "✓ validated 15 artifacts · 0 errors, 1 warning · 6 baselined · " in human.output
 
 
 _PROMOTED = frozenset({"SST-CFG018", "SST-RND010", "SST-RND013", "SST-VAL528"})

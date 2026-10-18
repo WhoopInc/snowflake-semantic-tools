@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 307 codes
+- [Validation (VAL)](#validation-val) -- 308 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
@@ -4393,6 +4393,18 @@ Raised when a parameter of a generic agent tool's procedure or function member i
 Fix: take the value as VARCHAR, and parse it in the routine with PARSE_JSON
 
 Note: Snowflake's tool runtime refuses those argument types on a warehouse, so every call fails. Calling the routine outside a generic tool is unaffected.
+
+### SST-VAL626
+
+**Routine body hard-codes a project relation** (warning)
+
+`tool member '<name>': body hard-codes <relation>, which is <expected>`
+
+Raised when a procedure's or function's body writes the three-part name of a relation that a dbt model, seed, snapshot or source of the project resolves to for the target.
+
+Fix: write {expected} instead, so each target's routine reads its own relation
+
+Note: A literal name reads that one target's relation from every target, and lineage cannot see it. A name no project relation has, such as another team's table, and a two-part name are never reported. In a SQL body, names in strings and comments are skipped; any other language is scanned whole, since a table name there sits in a string. A deliberate literal can be baselined.
 
 ### SST-VAL701
 

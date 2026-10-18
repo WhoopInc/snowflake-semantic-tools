@@ -47,6 +47,7 @@ from snowflake_semantic_tools.domain.resolve.tool_column import ColumnSite, tool
 from snowflake_semantic_tools.domain.validate.dbt_seam import literal_relation_diagnostic
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 from snowflake_semantic_tools.domain.validate.tool import validate_tool_catalog
+from snowflake_semantic_tools.domain.validate.tool_body import hardcoded_relations
 
 # The tool type as the registry declares it, as every other loader reads its type: the root
 # holding one member (`tool:`) and the root holding a list (`tools:`), the `sst_config.yml` block
@@ -310,7 +311,9 @@ def _parse_member(source: _Source, path: NodePath, value: object) -> tuple[ToolM
             origin_of=lambda key: source.origin((*path, "config", key) if key else (*path, "config")),
         )
     )
-    body_file, body, body_relations = _body(source, entry.get("body"), name, (*path, "body"), diagnostics)
+    body_file, body, body_relations = _body(
+        source, entry.get("body"), name, (*path, "body"), diagnostics, language=optional_string(entry.get("language"))
+    )
     relations = _string_map(entry.get("relations"), "relations", subject, origin, diagnostics)
     member = ToolMember(
         name=name,
@@ -451,12 +454,19 @@ def _at(value: Mapping[Any, Any], keys: tuple[str, ...]) -> object:
 
 
 def _body(
-    source: _Source, value: object, name: str, path: NodePath, diagnostics: list[Diagnostic]
+    source: _Source,
+    value: object,
+    name: str,
+    path: NodePath,
+    diagnostics: list[Diagnostic],
+    *,
+    language: str | None,
 ) -> tuple[str | None, str | None, Mapping[str, str]]:
     """Read a routine's `body: "{{ file('<path>') }}"` through `resolve_file`, relative to the tool file.
 
     The file's `ref()`, `source()` and `var()` calls are replaced by their values for the target,
-    as `expand_body` replaces them; every other character is kept as written.
+    as `expand_body` replaces them; every other character is kept as written. A project relation
+    the file still names literally is reported, as `hardcoded_relations` finds them in `language`.
 
     Returns:
         The file relative to the project root, its expanded text, and the relations its calls
@@ -468,6 +478,7 @@ def _body(
         Every code `file_call` lists, for a `body:` that is not one `file()` call.
         Every code `resolve_file` lists, for the file it names.
         Every code `expand_body` lists, for the calls in the file.
+        SST-VAL626: as `hardcoded_relations` reports it.
     """
     subject = artifact_key(_TOOL.name, name.casefold())
     origin = source.origin(path)
@@ -490,6 +501,9 @@ def _body(
         return None, None, none
     expanded, problems = expand_body(sidecar.text, sidecar.path, source.dbt, source.variables, subject=subject)
     diagnostics.extend(problems)
+    diagnostics.extend(
+        hardcoded_relations(sidecar.text, language, source.dbt, file=sidecar.path, name=name, subject=subject)
+    )
     return sidecar.path, expanded.text, expanded.relations
 
 

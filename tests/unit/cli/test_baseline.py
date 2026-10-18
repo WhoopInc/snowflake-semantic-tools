@@ -72,8 +72,8 @@ def test_add_all_warnings_needs_yes_off_a_terminal_and_prompts_on_one(
     assert declined.exit_code == 130
     accepted = CliRunner().invoke(cli, ["baseline", "add", "--all-warnings", *common(project)], input="y\n")
     assert accepted.exit_code == 0, accepted.output
-    assert "baseline all 5 current warning(s)?" in accepted.output
-    assert len(_file(project)["entries"]) == 5
+    assert "baseline all 6 current warning(s)?" in accepted.output
+    assert len(_file(project)["entries"]) == 6
 
 
 def test_add_refuses_errors_unregistered_codes_and_bad_combinations(tmp_path: Path) -> None:
@@ -101,7 +101,7 @@ def test_prune_removes_what_no_longer_matches_within_the_selection(tmp_path: Pat
     pruned = _run(project, "prune", "--output", "json")
     assert pruned.exit_code == 0, pruned.output
     assert [item["artifact"] for item in json.loads(pruned.output)["data"]["pruned"]] == ["agent:gone"]
-    assert len(_file(project)["entries"]) == 5
+    assert len(_file(project)["entries"]) == 6
 
 
 def test_show_lists_entries_by_code_and_expiry(tmp_path: Path) -> None:
@@ -118,7 +118,7 @@ def test_show_lists_entries_by_code_and_expiry(tmp_path: Path) -> None:
     (project / BASELINE).write_text(json.dumps(document), encoding="utf-8")
     lapsed = _run(project, "show", "--expired")
     assert "expired on 2020-01-01" in lapsed.output
-    assert lapsed.output.count("SST-") == 5
+    assert lapsed.output.count("SST-") == 6
 
 
 def test_renew_needs_a_reason_records_it_and_caps_the_expiry(tmp_path: Path) -> None:

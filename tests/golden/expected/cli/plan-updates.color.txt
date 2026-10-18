@@ -6,8 +6,8 @@ $ sst --project-dir <project> --manifest <manifest> plan --target dev --no-plan-
           expression:
             [31m- COUNT(ORDER_ITEMS.ORDER_ITEM_ID)[0m
             [32m+ COUNT(DISTINCT ORDER_ITEMS.ORDER_ITEM_ID)[0m
-  [2m13 unchanged (--verbose lists them)[0m
+  [2m14 unchanged (--verbose lists them)[0m
 --- stderr
-[33m[1m~[0m [1mplan: 0 to create, 1 to update, 0 to prune; 13 unchanged[0m · 0 errors, 0 warnings · <n>s
-[2m  hidden: 15 info (--show-info)[0m
+[33m[1m~[0m [1mplan: 0 to create, 1 to update, 0 to prune; 14 unchanged[0m · 0 errors, 0 warnings · <n>s
+[2m  hidden: 16 info (--show-info)[0m
   [36mnext:[0m review the plan; `sst apply` makes these changes in Snowflake, so run it only when you mean to

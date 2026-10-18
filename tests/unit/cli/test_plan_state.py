@@ -44,7 +44,7 @@ def test_state_modified_plans_only_what_changed_since_the_previous_manifest(
     empty.mkdir()
     full = _plan(monkeypatch, project, "--state", str(empty))
     full_data, full_diagnostics = full["data"], full["diagnostics"]
-    assert isinstance(full_data, dict) and len(full_data["changes"]) == 14
+    assert isinstance(full_data, dict) and len(full_data["changes"]) == 15
     assert isinstance(full_diagnostics, list) and full_diagnostics[0]["code"] == "SST-PLN006"
 
 

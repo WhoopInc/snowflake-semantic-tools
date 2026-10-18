@@ -68,12 +68,13 @@ def test_validate_json_emits_one_v2_envelope(tmp_path: Path) -> None:
     # what attached where (SST-MEM011 for each of the fifteen members both jaffle views hold,
     # SST-MEM103 for each of the three views), and the compiled views' shape: SST-VAL125 (9),
     # SST-VAL216, SST-VAL217 (2) and SST-VAL319 (3). The warnings are SST-CFG034, as --no-strict
-    # contradicts the fixture's `validation.strict: true`; SST-RND013 for the generic tool's
+    # contradicts the fixture's `validation.strict: true`; SST-RND013 for each generic tool's
     # resources; SST-VAL528; SST-RND010 for the minimal agent's empty tool list; and SST-CFG018
     # for each partner tool member nothing references (the delivery agent's toolset names the
     # third). The plugin has a consumer, the operator profile.
     assert [item["code"] for item in envelope["diagnostics"] if item["severity"] == "warning"] == [
         "SST-CFG034",
+        "SST-RND013",
         "SST-RND013",
         "SST-VAL528",
         "SST-RND010",
@@ -82,7 +83,7 @@ def test_validate_json_emits_one_v2_envelope(tmp_path: Path) -> None:
     ]
     assert envelope["summary"] == {
         "error": 0,
-        "warning": 6,
+        "warning": 7,
         "info": 53,
         "promoted": 0,
         "suppressed_cascade": 0,
@@ -230,7 +231,7 @@ def test_human_output_and_usage_branches(tmp_path: Path, monkeypatch: pytest.Mon
     assert debugged.exit_code == 0 and "state table:" in debugged.output
     assert "checked " in debugged.output and "sst_config.yaml" in debugged.output
     compiled = CliRunner().invoke(cli, ["compile", *common(project)])
-    assert compiled.exit_code == 0 and "compiled 14 artifacts" in compiled.output
+    assert compiled.exit_code == 0 and "compiled 15 artifacts" in compiled.output
 
     conflict = CliRunner().invoke(
         cli,
@@ -242,7 +243,7 @@ def test_human_output_and_usage_branches(tmp_path: Path, monkeypatch: pytest.Mon
 
     port = FakeSnowflake(state={})
     planned = invoke_with_port(monkeypatch, port, ["plan", *common(project), "--target", "dev"])
-    assert planned.exit_code == 2 and "plan: 14 to create, 0 to update, 0 to prune" in planned.output
+    assert planned.exit_code == 2 and "plan: 15 to create, 0 to update, 0 to prune" in planned.output
     cleaned = CliRunner().invoke(cli, ["clean", "--project-dir", str(project)])
     assert cleaned.exit_code == 0 and "removed" in cleaned.output
     nothing = CliRunner().invoke(cli, ["clean", "--project-dir", str(project)])

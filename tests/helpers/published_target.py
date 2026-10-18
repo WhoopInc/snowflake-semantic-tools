@@ -31,12 +31,12 @@ from snowflake_semantic_tools.domain.plan.definitions.tool import search_query
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.sql import Sql
 from tests.helpers.cli_projects import common
-from tests.helpers.described_objects import described_search, described_view
+from tests.helpers.described_objects import described_routine, described_search, described_view
 from tests.helpers.reference_project import DBT_MANIFEST
 from tests.helpers.snowflake_fake import FakeSnowflake, Sent
 
-# The object type SHOW lists each marked artifact type under, in the reference project.
-SHOWN_AS = {"semantic_view": "SEMANTIC VIEW", "tool": "CORTEX SEARCH SERVICE", "agent": "AGENT"}
+# The artifact types apply marks with the object they publish, which SHOW then lists.
+MARKED_TYPES = frozenset(("semantic_view", "tool", "agent"))
 _ROW_COUNT = "SELECT COUNT(*) AS ROW_COUNT FROM "
 _ROWS = "SELECT INPUT_QUERY, GROUND_TRUTH FROM "
 
@@ -46,7 +46,7 @@ class PublishingSnowflake(FakeSnowflake):
 
     Attributes:
         manifest_id: The manifest apply publishes, which every marker names.
-        marked: `(artifact type, fingerprint)` of each marked artifact, by its compiled target.
+        marked: `(object type, fingerprint)` of each marked artifact, by its compiled target.
         questions: Each eval source table's question count, which COUNT(*) answers.
         rows: Each eval source table's questions and ground truths, which reading it answers.
     """
@@ -69,9 +69,9 @@ class PublishingSnowflake(FakeSnowflake):
         result = super().execute_script(statements)
         if result.ok:
             text = "\n".join(str(statement) for statement in statements)
-            for name, (artifact_type, fingerprint) in self.marked.items():
+            for name, (object_type, fingerprint) in self.marked.items():
                 if name in text:
-                    self._list(name, SHOWN_AS[artifact_type], fingerprint)
+                    self._list(name, object_type, fingerprint)
         return result
 
     def query(self, sql: Sql, params: object = None) -> QueryResult:
@@ -96,15 +96,22 @@ class PublishingSnowflake(FakeSnowflake):
         self.objects[key] = (*kept, row)
 
 
+def object_types(project: Path, target: str = "dev") -> dict[str, str]:
+    """Return, by artifact key, the object type each artifact `project` compiles for `target` becomes."""
+    compiled = compile_result(locate_project(project), target, DBT_MANIFEST)
+    return {item.artifact_key: item.rendered_artifact.object_type for item in compiled.compiled}
+
+
 def publishing_port(project: Path, target: str = "dev") -> PublishingSnowflake:
     """Return an empty fake target for `project`, compiled, where every relation its artifacts read exists."""
     manifest = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
-    marked = {
-        value["publish_target"]["qualified_name"]: (key.split(":", 1)[0], value["fingerprint"])
-        for key, value in manifest["artifacts"].items()
-        if key.split(":", 1)[0] in SHOWN_AS
-    }
     compiled = compile_result(locate_project(project), target, DBT_MANIFEST)
+    shown = object_types(project, target)
+    marked = {
+        value["publish_target"]["qualified_name"]: (shown[key], value["fingerprint"])
+        for key, value in manifest["artifacts"].items()
+        if key.split(":", 1)[0] in MARKED_TYPES
+    }
     existing = {relation.sql for item in compiled.compiled for relation in item.rendered_artifact.required_relations}
     evals = [item for item in compiled.compiled if isinstance(item, CompiledEval)]
     questions = {item.source_table.sql: len(item.resolved.dataset.questions) for item in evals}
@@ -119,7 +126,7 @@ def publishing_port(project: Path, target: str = "dev") -> PublishingSnowflake:
 
 
 def describe_published(port: PublishingSnowflake, project: Path, target: str, *, agents: bool = False) -> None:
-    """Make each view and search service `target` compiles DESCRIBE as published, and each agent with `agents`.
+    """Make each view, search service and routine `target` compiles DESCRIBE as published, and each agent with `agents`.
 
     Each view's GET_DDL returns its render, so a plan's drift check reads it.
 
@@ -137,6 +144,16 @@ def describe_published(port: PublishingSnowflake, project: Path, target: str, *,
         elif isinstance(item, CompiledTool) and item.member.type == "cortex_search_service":
             described = described_search(item.member, search_query(item.rendered.ddl))
             port.descriptions[f"CORTEX SEARCH SERVICE {name}"] = described
+    describe_routines(port, project, target)
+
+
+def describe_routines(port: FakeSnowflake, project: Path, target: str = "dev") -> None:
+    """Make each procedure and function `target` compiles DESCRIBE as published."""
+    for item in compile_result(locate_project(project), target, DBT_MANIFEST).compiled:
+        if isinstance(item, CompiledTool) and item.rendered.object_type in ("PROCEDURE", "FUNCTION"):
+            types = ", ".join(parameter.type for parameter in item.member.signature)
+            key = f"{item.rendered.object_type} {item.rendered.target.sql}({types})"
+            port.routine_descriptions[key] = described_routine(item.member)
 
 
 def published(

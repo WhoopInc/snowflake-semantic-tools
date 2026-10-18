@@ -22,7 +22,7 @@ GOLDENS = REPO_ROOT / "tests" / "golden" / "expected"
 VIEWS = ("jaffle_menu", "jaffle_minimal", "jaffle_sales")
 AGENTS = ("jaffle_analytics_agent", "jaffle_delivery_agent", "jaffle_minimal_agent")
 # The warnings the reference project carries on purpose (sst_config.yml says why).
-EXPECTED_WARNINGS = Counter({"SST-RND013": 1, "SST-VAL528": 1, "SST-RND010": 1, "SST-CFG018": 2})
+EXPECTED_WARNINGS = Counter({"SST-RND013": 2, "SST-VAL528": 1, "SST-RND010": 1, "SST-CFG018": 2})
 
 
 def sst(*args: str) -> int:
@@ -69,9 +69,8 @@ def test_the_pre_split_reference_project_migrates_to_the_goldens(tmp_path: Path,
     for view in VIEWS:
         rendered = (ddl / "semantic_view" / f"{view}.sql").read_text(encoding="utf-8")
         assert without_header(rendered) == without_header((GOLDENS / "ddl" / f"{view}.sql").read_text(encoding="utf-8"))
-    tool = (ddl / "tool" / "menu_docs_search.sql").read_text(encoding="utf-8")
-    assert without_header(tool) == without_header(
-        (GOLDENS / "tool" / "menu_docs_search.sql").read_text(encoding="utf-8")
-    )
+    for name in ("menu_docs_search", "order_status"):
+        tool = (ddl / "tool" / f"{name}.sql").read_text(encoding="utf-8")
+        assert without_header(tool) == without_header((GOLDENS / "tool" / f"{name}.sql").read_text(encoding="utf-8"))
     for agent in AGENTS:
         assert (specs / f"{agent}.json").read_bytes() == (GOLDENS / "agent" / f"{agent}.json").read_bytes()

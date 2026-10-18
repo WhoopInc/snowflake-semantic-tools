@@ -131,6 +131,7 @@ takes only the functions listed, as many times as it needs:
 | `metric.expr`, `metric.window` | `ref`, `metric`, `var` |
 | `filter.expr` | `ref`, `var` |
 | `tool.where` | `ref`, `var`; a column `ref` renders as the bare column |
+| The file a routine's `tool.body` names | one-argument `ref`, `source`, `var`; see [Routine bodies](#routine-bodies) |
 | `verified_query.sql`, written inline | `ref`, `metric`, `var` |
 | A custom instruction's text | `filter`, `relationship`, `verified_query` |
 | Any value in `sst_config.yml` | `{{ target.database }}`, `{{ target.schema }}`, `{{ target.warehouse }}`; a `tool()` there must name a declared member (`SST-CFG017`) |
@@ -160,6 +161,32 @@ a hook's `script:`.
   without a BOM.
 - Each file is read once. It joins its artifact's source files, so a change to
   it changes the artifact's fingerprint and shows up in `sst plan`.
+
+## Routine bodies
+
+A procedure's or function's body is code in another language, so SST runs no
+template engine over the file `body:` names. It rewrites exactly three calls
+and leaves every other character as written:
+
+- `{{ ref('<model>') }}` and `{{ source('<source>', '<table>') }}` become the
+  relation the model or source resolves to for the target being compiled,
+  deferral included, written as a view's `tables:` entry writes it: unquoted
+  when every part is a plain identifier, double-quoted parts otherwise. So each
+  target's routine reads that target's tables, and the manifest records them as
+  the tool's dbt inputs, which apply checks exist before it publishes.
+- `{{ var('<name>') }}` becomes the project variable's value.
+- Any other call of the dialect, such as `metric()`, is `SST-REF041`, and a
+  two-argument `ref()` is `SST-REF015`. A `{{` that opens no call of the
+  dialect, such as an escaped brace in a Python f-string, is left alone.
+
+In SQL the call stands where the table name goes. In Python, JavaScript, Java or
+Scala it goes inside a single-quoted string, since a rendered name may hold
+double quotes: `session.table('{{ ref('orders') }}')`.
+
+A body that still writes the three-part name of a relation a project model,
+seed, snapshot or source resolves to is `SST-VAL626`, a warning naming the call
+to write instead. A name no project relation has, such as another team's table,
+is never reported, so a routine may read one by name.
 
 ## Characters no file may hold
 

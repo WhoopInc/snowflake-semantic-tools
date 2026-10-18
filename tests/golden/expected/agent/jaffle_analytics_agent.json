@@ -67,6 +67,25 @@
           ]
         }
       }
+    },
+    {
+      "tool_spec": {
+        "type": "generic",
+        "name": "order_status",
+        "description": "Returns where one order is in its lifecycle, given its id. Use only\nwhen a question names a single order and asks for its status.\n\nDo NOT use for counts or breakdowns of orders by status -- those\nbelong to JAFFLE_SALES.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "order_id": {
+              "type": "string",
+              "description": "The order to look up."
+            }
+          },
+          "required": [
+            "order_id"
+          ]
+        }
+      }
     }
   ],
   "tool_resources": {
@@ -125,6 +144,15 @@
     },
     "order_tier_lookup": {
       "identifier": "SST_TEST.REFERENCE.ORDER_TIER_LOOKUP",
+      "type": "procedure",
+      "execution_environment": {
+        "type": "warehouse",
+        "warehouse": "SST_REF_WH",
+        "query_timeout": 60
+      }
+    },
+    "order_status": {
+      "identifier": "SST_REF_DEV.JAFFLE.ORDER_STATUS",
       "type": "procedure",
       "execution_environment": {
         "type": "warehouse",

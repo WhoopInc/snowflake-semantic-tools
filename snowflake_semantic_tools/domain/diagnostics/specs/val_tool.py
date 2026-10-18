@@ -189,6 +189,24 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
+        "SST-VAL626",
+        Severity.WARNING,
+        "Routine body hard-codes a project relation",
+        "tool member '{name}': body hard-codes {relation}, which is {expected}",
+        "write {expected} instead, so each target's routine reads its own relation",
+        condition=(
+            "a procedure's or function's body writes the three-part name of a relation that a dbt "
+            "model, seed, snapshot or source of the project resolves to for the target"
+        ),
+        note=(
+            "A literal name reads that one target's relation from every target, and lineage cannot "
+            "see it. A name no project relation has, such as another team's table, and a two-part "
+            "name are never reported. In a SQL body, names in strings and comments are skipped; any "
+            "other language is scanned whole, since a table name there sits in a string. A "
+            "deliberate literal can be baselined."
+        ),
+    ),
+    spec(
         "SST-VAL614",
         Severity.ERROR,
         "Search service publish order violated",

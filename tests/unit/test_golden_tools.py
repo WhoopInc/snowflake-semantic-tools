@@ -9,10 +9,10 @@ from tests.helpers.projects import project_paths
 
 ROOT = Path(__file__).parents[2]
 FIXTURE = ROOT / "tests" / "fixtures" / "reference_project"
-GOLDEN = ROOT / "tests" / "golden" / "expected" / "tool" / "menu_docs_search.sql"
+GOLDEN = ROOT / "tests" / "golden" / "expected" / "tool"
 
 
-def test_reference_search_service_matches_golden() -> None:
+def test_reference_tools_match_their_goldens() -> None:
     manifest_path = ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
     catalog = YamlProjectSource(
         project_paths(FIXTURE),
@@ -32,5 +32,7 @@ def test_reference_search_service_matches_golden() -> None:
         },
     ).run_result()
     assert not result.diagnostics.has_errors
-    assert len(result.compiled) == 1
-    assert result.compiled[0].rendered_artifact.ddl == GOLDEN.read_text(encoding="utf-8").rstrip() + "\n"
+    assert [item.name for item in result.compiled] == ["menu_docs_search", "order_status"]
+    for item in result.compiled:
+        golden = GOLDEN / f"{item.name}.sql"
+        assert item.rendered_artifact.ddl == golden.read_text(encoding="utf-8").rstrip() + "\n"

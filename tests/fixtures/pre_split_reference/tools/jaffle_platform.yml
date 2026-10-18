@@ -81,6 +81,19 @@ tools:
     # =======================================================================
     # reference: -- owned elsewhere; no DDL is emitted
     # =======================================================================
+      - name: order_status
+        type: procedure
+        description: |-
+          Returns the status of one order, given its id. Answers where an order is,
+          not how many orders there were -- that is a question for the Analyst tools.
+        language: sql
+        returns: VARCHAR
+        signature:
+          - name: order_id
+            type: VARCHAR
+            description: The order's id, as the customer quotes it.
+        body_file: tools/sql/order_status.sql
+
     reference:
       - name: order_tier_lookup
         type: procedure
