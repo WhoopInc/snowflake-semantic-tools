@@ -66,9 +66,9 @@ class PlanArtifacts:
     other artifact is planned from what `observe` finds in Snowflake.
 
     Args:
-        readers: Sessions, opened from `port` and `preflight`, to run the observation's
-            listings and each phase of preflight reads on concurrently; None reads on `port`
-            and `preflight`, one at a time. Either way the change set is the same.
+        readers: Sessions, opened from `port` and `preflight`, to run the composite plans, the
+            observation's listings, and each phase of preflight reads on concurrently; None
+            reads on `port` and `preflight`, one at a time. Either way the change set is the same.
         observe_options: Which per-object reads the observation makes, as `ObserveOptions` says.
     """
 
@@ -155,16 +155,29 @@ class PlanArtifacts:
         manifest: Manifest,
         state: State,
     ) -> dict[str, CompositePlan]:
-        """Ask each composite artifact's handler to plan it, in rendered order."""
-        return {
-            key: self._lifecycle_handlers[artifact.artifact_type].plan(
-                artifact,
-                state.applied.get(key),
-                manifest,
-            )
-            for key, artifact in rendered.items()
-            if artifact.artifact_type in self._lifecycle_handlers
-        }
+        """Ask each composite artifact's handler to plan it, keyed in rendered order.
+
+        With `readers` of more than one worker, the artifacts are planned concurrently, each by
+        its handler bound to a session leased for it alone; otherwise one at a time on the
+        handlers' own session. A handler's plan never raises for a refused read, so either way
+        the plans are the same.
+        """
+        composites = tuple(
+            (key, artifact) for key, artifact in rendered.items() if artifact.artifact_type in self._lifecycle_handlers
+        )
+
+        def planned(handler: CompositeLifecycleHandler, item: tuple[str, RenderedArtifact]) -> CompositePlan:
+            key, artifact = item
+            return handler.plan(artifact, state.applied.get(key), manifest)
+
+        def leased(session: PlanReadPort, item: tuple[str, RenderedArtifact]) -> CompositePlan:
+            return planned(self._lifecycle_handlers[item[1].artifact_type].for_session(session), item)
+
+        if self._readers is None or self._readers.workers < 2:
+            plans = tuple(planned(self._lifecycle_handlers[item[1].artifact_type], item) for item in composites)
+        else:
+            plans = self._readers.map(leased, composites)
+        return {key: plan for (key, _), plan in zip(composites, plans, strict=True)}
 
     def read(
         self,

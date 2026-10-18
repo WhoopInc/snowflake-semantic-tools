@@ -375,9 +375,9 @@ class PreparePlan:
             temporary: Render each agent as a session-scoped temporary agent, as
                 `apply --temporary` publishes it.
             preflight: The port the preflight checks read the target through; None skips them.
-            readers: Sessions, opened from `port`, to run the connected validation checks, the observation, and the
-                preflight reads on concurrently, as `ValidateArtifacts` and `PlanArtifacts` do; None runs them on
-                `port`, one at a time. Either way the plan and its diagnostics are the same.
+            readers: Sessions, opened from `port`, to run the connected validation checks, the composite plans, the
+                observation, and the preflight reads on concurrently, as `ValidateArtifacts` and `PlanArtifacts` do;
+                None runs them on `port`, one at a time. Either way the plan and its diagnostics are the same.
             observe_options: Which per-object reads the observation makes, as `ObserveOptions` says.
             validate: False skips validation, as `--no-validate` asks once `sst validate` ran on
                 the same tree: no cycle check, no connected check, and no strict promotion of what

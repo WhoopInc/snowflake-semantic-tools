@@ -103,6 +103,16 @@ class _Session:
         _pause(self._owner)
         return bool(self._recorded.database_exists(database))
 
+    def stage_type(self, stage: QualifiedName) -> str | None:
+        _pause(self._owner)
+        return self._recorded.stage_type(stage)
+
+    def observe_extension(self, qualified_name: QualifiedName) -> Any:
+        _pause(self._owner)
+        if "OPERATIONS" in qualified_name.sql.upper():
+            raise SnowflakePortError(f"describing {qualified_name.sql} refused")
+        return self._recorded.observe_extension(qualified_name)
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self._recorded, name)
 
@@ -143,6 +153,8 @@ def test_plan_reports_the_same_on_one_thread_and_on_four(monkeypatch: pytest.Mon
     assert any("AVG_ORDER_VALUE" in message for message in refused)
     assert any(message.startswith("observation of AGENT in") for message in refused)
     assert any("locks in" in message for message in refused)
+    # The composite plans run on the workers too, so a refused extension read is compared as well.
+    assert "describing" in json.dumps(one["data"]["changes"]) + json.dumps(one["diagnostics"])
     assert len(one_sessions.opened) == 1 and one_sessions.threads == {"MainThread"}
     # The command's own session, and at most one per worker: the pool never lends the command's.
     assert 1 < len(four_sessions.opened) <= 5
