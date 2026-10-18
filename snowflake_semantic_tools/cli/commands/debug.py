@@ -304,7 +304,7 @@ def _print_report(data: Mapping[str, object]) -> None:
         dbt       ✓ 2.0.8 (v2) at /usr/local/bin/dbt
         config    ✓ sst_config.yml
         manifest  ✓ dbt parse -> target/manifest.json (v12; accepts v10, v11, v12)
-        connection ✓ UAB68110 as ACCOUNTADMIN
+        connection ✓ AB12345 as ANALYST
     """
     terminal = render_policy().terminal
     style = Style(terminal, stdout=True)
