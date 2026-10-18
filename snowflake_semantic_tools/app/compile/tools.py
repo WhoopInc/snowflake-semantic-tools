@@ -74,12 +74,19 @@ class CompiledTool(StandaloneArtifact):
 
     @property
     def referenced_models(self) -> tuple[str, ...]:
-        """Return the model a search service reads, if the member names one."""
-        return (self.member.on_model,) if self.member.on_model else ()
+        """Return the model a search service reads, or the models and sources a routine's body names."""
+        if self.member.on_model:
+            return (self.member.on_model,)
+        return tuple(self.member.body_relations)
 
     @property
     def dbt_relations(self) -> tuple[tuple[str, str], ...]:
-        """Return the model with the relation the search service renders over; empty without one."""
+        """Return each model with the relation the tool reads; empty when it reads none.
+
+        A search service reads the one it renders over, and a routine those its body names.
+        """
+        if self.member.body_relations:
+            return tuple(self.member.body_relations.items())
         if not self.member.on_model or not self.rendered.required_relations:
             return ()
         return ((self.member.on_model, self.rendered.required_relations[0].sql),)

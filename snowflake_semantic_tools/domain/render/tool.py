@@ -243,7 +243,8 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
     EXECUTE AS, CALLER by default; then the body. A procedure also requires `warehouse`,
     which the DDL itself does not name. The comment is in the text the fingerprint digests, so
     an edit of only the description is a change; Snowflake refuses COMMENT after EXECUTE AS.
-    Publishing then sets the comment again with the ownership marker after it.
+    Publishing then sets the comment again with the ownership marker after it. The relations
+    the body's `ref()` and `source()` calls named are the ones apply checks exist first.
 
     Args:
         procedure: Render a procedure rather than a function.
@@ -326,6 +327,9 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
                     routine=routine_signature(object_type, target, types),
                 ),
             ),
+        ),
+        required_relations=tuple(
+            QualifiedName.parse(relation) for relation in sorted(set(member.body_relations.values()))
         ),
     )
 

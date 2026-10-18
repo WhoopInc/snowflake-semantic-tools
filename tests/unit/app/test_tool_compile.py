@@ -85,6 +85,34 @@ def test_compiled_tool_projections_cover_sidecars_relations_and_routine_markers(
     assert str(published.statements[-1]).startswith("ALTER FUNCTION DB.S.ROUTINE(NUMBER) SET COMMENT")
 
 
+def test_a_routine_reads_the_relations_its_body_names_and_apply_checks_they_exist() -> None:
+    relations = MappingProxyType({"orders": "SALES.MARTS.ORDERS", "raw.items": "RAW.ECOM.ITEMS"})
+    member = ToolMember(
+        "lookup",
+        "procedure",
+        ToolOwnership.DEFINE,
+        Origin("tools.yml"),
+        "tools.yml",
+        language="sql",
+        body_file="lookup.sql",
+        body="SELECT 1 FROM SALES.MARTS.ORDERS JOIN RAW.ECOM.ITEMS",
+        body_relations=relations,
+        returns="NUMBER",
+    )
+    result = CompileTools(
+        ToolCatalog((member,), "dev", frozenset(("dev",))),
+        default=ToolPlacement("DB", "S", "WH", None, None, None),
+        dbt_relations={},
+    ).run_result()
+    compiled = compiled_as(result, CompiledTool)
+    assert compiled.referenced_models == ("orders", "raw.items")
+    assert compiled.dbt_relations == (("orders", "SALES.MARTS.ORDERS"), ("raw.items", "RAW.ECOM.ITEMS"))
+    assert [relation.sql for relation in compiled.rendered.required_relations] == [
+        "RAW.ECOM.ITEMS",
+        "SALES.MARTS.ORDERS",
+    ]
+
+
 def test_tool_compiler_skips_poisoned_and_reports_render_invariant() -> None:
     poisoned = ToolMember(
         "poisoned",

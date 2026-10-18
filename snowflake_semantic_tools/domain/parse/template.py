@@ -177,12 +177,33 @@ def _quoted(body: str, cursor: int, *, text: str, body_offset: int) -> tuple[str
 
 def scan_template_calls(text: str) -> tuple[TemplateCall, ...]:
     """Parse every template call in source order, retaining source positions."""
+    return _scan(text, None)
+
+
+def scan_calls_of(text: str, functions: frozenset[str]) -> tuple[TemplateCall, ...]:
+    """Parse every call of one of `functions` in source order, and leave every other `{{` alone.
+
+    A span is a call when its `{{` is followed, after optional whitespace, by one of `functions`
+    and then `(`. Code in another language holds `{{` for its own reasons, such as an escaped
+    brace in a Python f-string, so a `{{` that opens no such call is not SST's to parse.
+
+    Raises:
+        TemplateSyntaxError: a call never closes, holds another `{{`, or does not parse.
+    """
+    return _scan(text, functions)
+
+
+def _scan(text: str, functions: frozenset[str] | None) -> tuple[TemplateCall, ...]:
+    """Parse the template calls in `text`: every `{{`, or with `functions` only those opening one of them."""
     calls: list[TemplateCall] = []
     cursor = 0
     while True:
         start = text.find("{{", cursor)
         if start < 0:
             return tuple(calls)
+        if functions is not None and _opening_function(text, start + 2) not in functions:
+            cursor = start + 2
+            continue
         end = text.find("}}", start + 2)
         if end < 0:
             raise _syntax(text, start, "unterminated template expression", span=text[start:])
@@ -196,18 +217,24 @@ def scan_template_calls(text: str) -> tuple[TemplateCall, ...]:
             exc.span = raw
             raise
         line, col = _position(text, start)
-        calls.append(
-            TemplateCall(
-                function=function,
-                args=args,
-                raw=raw,
-                start=start,
-                end=end + 2,
-                line=line,
-                col=col,
-            )
-        )
+        calls.append(TemplateCall(function, args, raw, start, end + 2, line, col))
         cursor = end + 2
+
+
+def _opening_function(text: str, cursor: int) -> str | None:
+    """Return the name that opens a call at `cursor`, past whitespace and before `(`; None when none does."""
+    length = len(text)
+    while cursor < length and text[cursor].isspace():
+        cursor += 1
+    start = cursor
+    while cursor < length and (text[cursor].isalnum() or text[cursor] == "_"):
+        cursor += 1
+    name = text[start:cursor]
+    while cursor < length and text[cursor].isspace():
+        cursor += 1
+    if not name or name[0].isdigit() or cursor >= length or text[cursor] != "(":
+        return None
+    return name
 
 
 def single_template_call(text: str, function: str) -> TemplateCall | None:

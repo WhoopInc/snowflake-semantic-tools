@@ -154,7 +154,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "'{value}' is not a three-part fully-qualified name",
         "use database.schema.object",
         condition=(
-            "a tool member's relation, a view table's dbt relation, or a resolved tag name is not a three-part name"
+            "a tool member's relation, a view table's or a routine body's dbt relation, or a resolved tag "
+            "name is not a three-part name"
         ),
     ),
     spec(

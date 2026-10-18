@@ -6,7 +6,7 @@ import pytest
 
 from snowflake_semantic_tools.adapters.yaml import tools as tools_loader
 from snowflake_semantic_tools.adapters.yaml.tools import load_tool_catalog
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolOwnership
@@ -453,6 +453,23 @@ def test_a_body_that_names_no_readable_file_is_reported(
 ) -> None:
     codes, _ = _body(tmp_path, body, files)
     assert code in codes and "SST-PRT009" not in codes
+
+
+def test_a_body_s_ref_calls_become_the_target_s_relations_and_its_inputs(tmp_path: Path) -> None:
+    sql = b"SELECT body FROM {{ ref('docs') }}\n-- '{{ not a call }}' stays\n"
+    codes, catalog = _body(tmp_path, "\"{{ file('lookup.sql') }}\"", {"lookup.sql": sql})
+    member = catalog.members[0]
+    assert codes == []
+    assert member.body == "SELECT body FROM DB.S.DOCS\n-- '{{ not a call }}' stays\n"
+    assert dict(member.body_relations) == {"docs": "DB.S.DOCS"}
+
+
+def test_a_body_call_that_cannot_resolve_is_reported_in_the_body_file(tmp_path: Path) -> None:
+    sql = b"SELECT 1\nFROM {{ ref('nope') }}\n"
+    _, catalog = _body(tmp_path, "\"{{ file('lookup.sql') }}\"", {"lookup.sql": sql})
+    (diagnostic,) = _codes(catalog, "SST-REF001")
+    assert diagnostic.origin == Origin("tools/ops/lookup.sql", 2, 6)
+    assert catalog.members[0].body_relations == {}
 
 
 def test_a_body_file_that_cannot_be_read_is_reported(tmp_path: Path) -> None:

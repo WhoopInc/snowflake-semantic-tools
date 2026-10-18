@@ -17,6 +17,7 @@ from snowflake_semantic_tools.domain.resolve.template import (
     DESCRIPTION,
     FILTER_EXPR,
     METRIC_EXPR,
+    ROUTINE_BODY,
     STAGE_PATH,
     TAG_NAME,
     VQR_SQL,
@@ -32,6 +33,7 @@ REF_POLICIES: Mapping[str, RefPolicy] = MappingProxyType(
         "tag_name": TAG_NAME,
         "description": DESCRIPTION,
         "stage_path": STAGE_PATH,
+        "routine_body": ROUTINE_BODY,
     }
 )
 
@@ -57,6 +59,10 @@ UNBOUND_POLICIES: Mapping[str, str] = MappingProxyType(
         "stage_path": (
             "a stage path takes one opening tool() call, which resolve_stage_path resolves against the "
             "tool catalog rather than through resolve_scalar"
+        ),
+        "routine_body": (
+            "a routine's body is code in another language, which expand_body scans for these calls "
+            "alone, leaving every other `{{` as written"
         ),
     }
 )

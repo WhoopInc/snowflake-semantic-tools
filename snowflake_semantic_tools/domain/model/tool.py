@@ -101,7 +101,11 @@ class ToolMember:
             written; None leaves it to Snowflake, which refreshes incrementally where it can.
         body_file: The file `body:`'s `{{ file() }}` names, relative to the project root; None
             when `body:` names none.
-        body: The text of `body_file`; None when it could not be read, which loading reports.
+        body: The text of `body_file`, its `ref()`, `source()` and `var()` calls replaced by
+            their values for the target; None when it could not be read, which loading reports.
+        body_relations: Each relation a `ref()` or `source()` in the body names, by the key the
+            manifest records it under: a model's name or a source's `<source>.<table>`,
+            casefolded.
         secrets: Each secret variable's name, mapped to the three-part name of its secret.
         relations: For a referenced member, each target's name mapped to the three-part name
             of the existing object on that target.
@@ -139,6 +143,7 @@ class ToolMember:
     handler: str | None = None
     body_file: str | None = None
     body: str | None = None
+    body_relations: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
     returns: str | None = None
     execute_as: str | None = None
     packages: tuple[str, ...] = ()

@@ -1920,7 +1920,7 @@ Fix: declare a relation for every target you publish to
 
 `'<value>' is not a three-part fully-qualified name`
 
-Raised when a tool member's relation, a view table's dbt relation, or a resolved tag name is not a three-part name.
+Raised when a tool member's relation, a view table's or a routine body's dbt relation, or a resolved tag name is not a three-part name.
 
 Fix: use database.schema.object
 

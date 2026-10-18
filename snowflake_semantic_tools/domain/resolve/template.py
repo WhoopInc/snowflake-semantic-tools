@@ -65,6 +65,8 @@ DESCRIPTION = RefPolicy(frozenset())
 # A stage path names a stage SST declares by its tool member, `{{ tool('<stage>') }}/<path>`;
 # a path with no call is an external stage, kept as written.
 STAGE_PATH = RefPolicy(frozenset(("tool",)), multi=False)
+# A routine's body names the relations it reads, per target, and the project variables it takes.
+ROUTINE_BODY = RefPolicy(frozenset(("ref", "source", "var")))
 
 # The value of a two-argument `ref()`, given the call and its column: a value or a diagnostic.
 ColumnValue = Callable[[TemplateCall, str], "str | Diagnostic"]

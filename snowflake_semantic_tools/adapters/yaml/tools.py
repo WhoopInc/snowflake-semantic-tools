@@ -41,6 +41,7 @@ from snowflake_semantic_tools.domain.parse.fields import unknown_field
 from snowflake_semantic_tools.domain.parse.template import TemplateCall, TemplateSyntaxError, scan_template_calls
 from snowflake_semantic_tools.domain.resolve.calls import literal_problem, syntax_problem
 from snowflake_semantic_tools.domain.resolve.ref_fields import ref_field
+from snowflake_semantic_tools.domain.resolve.routine_body import expand_body
 from snowflake_semantic_tools.domain.resolve.template import ResolveContext, resolve_scalar
 from snowflake_semantic_tools.domain.resolve.tool_column import ColumnSite, tool_column
 from snowflake_semantic_tools.domain.validate.dbt_seam import literal_relation_diagnostic
@@ -309,7 +310,7 @@ def _parse_member(source: _Source, path: NodePath, value: object) -> tuple[ToolM
             origin_of=lambda key: source.origin((*path, "config", key) if key else (*path, "config")),
         )
     )
-    body_file, body = _body(source, entry.get("body"), name, (*path, "body"), diagnostics)
+    body_file, body, body_relations = _body(source, entry.get("body"), name, (*path, "body"), diagnostics)
     relations = _string_map(entry.get("relations"), "relations", subject, origin, diagnostics)
     member = ToolMember(
         name=name,
@@ -342,6 +343,7 @@ def _parse_member(source: _Source, path: NodePath, value: object) -> tuple[ToolM
         handler=optional_string(entry.get("handler")),
         body_file=body_file,
         body=body,
+        body_relations=body_relations,
         returns=optional_string(entry.get("returns")),
         packages=strings(entry.get("packages")),
         imports=strings(entry.get("imports")),
@@ -450,38 +452,45 @@ def _at(value: Mapping[Any, Any], keys: tuple[str, ...]) -> object:
 
 def _body(
     source: _Source, value: object, name: str, path: NodePath, diagnostics: list[Diagnostic]
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, Mapping[str, str]]:
     """Read a routine's `body: "{{ file('<path>') }}"` through `resolve_file`, relative to the tool file.
 
+    The file's `ref()`, `source()` and `var()` calls are replaced by their values for the target,
+    as `expand_body` replaces them; every other character is kept as written.
+
     Returns:
-        The file relative to the project root, and its text; None and None when `body:` is
-        absent or refused. A refused `body:` is still declared, so the member is not also
-        reported as having none (SST-VAL604).
+        The file relative to the project root, its expanded text, and the relations its calls
+        name; None, None and none when `body:` is absent or refused. A refused `body:` is still
+        declared, so the member is not also reported as having none (SST-VAL604).
 
     Diagnostics:
         SST-PRS003: `body:` is not a string.
         Every code `file_call` lists, for a `body:` that is not one `file()` call.
         Every code `resolve_file` lists, for the file it names.
+        Every code `expand_body` lists, for the calls in the file.
     """
     subject = artifact_key(_TOOL.name, name.casefold())
     origin = source.origin(path)
+    none: Mapping[str, str] = MappingProxyType({})
     if value is None:
-        return None, None
+        return None, None, none
     if not isinstance(value, str):
         found = type(value).__name__
         diagnostics.append(
             D("SST-PRS003", artifact=subject, field="body", expected="string", found=found, origin=origin)
         )
-        return None, None
+        return None, None, none
     call = file_call(value, origin, field="body", artifact=subject, subject=subject)
     if isinstance(call, Diagnostic):
         diagnostics.append(call)
-        return None, None
+        return None, None, none
     sidecar = resolve_file(source.project_dir, source.source_file, call, origin=origin, subject=subject)
     if isinstance(sidecar, Diagnostic):
         diagnostics.append(sidecar)
-        return None, None
-    return sidecar.path, sidecar.text
+        return None, None, none
+    expanded, problems = expand_body(sidecar.text, sidecar.path, source.dbt, source.variables, subject=subject)
+    diagnostics.extend(problems)
+    return sidecar.path, expanded.text, expanded.relations
 
 
 def _where(
