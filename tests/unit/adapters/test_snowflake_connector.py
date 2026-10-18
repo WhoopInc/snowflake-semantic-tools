@@ -722,6 +722,17 @@ def test_a_staged_file_get_does_not_report_downloaded_fails_closed() -> None:
         SessionConnector(session).read_staged_file(config)
 
 
+def test_a_file_of_an_extension_version_is_read_and_an_unsafe_one_refused_unsent() -> None:
+    skill = "snow://cortex_extension/DB.S.SKILL/versions/version$2/skills/a/SKILL.md"
+    session = _get_session({skill: b"---\nname: a\n---\n"})
+    assert SessionConnector(session).read_staged_file(skill) == b"---\nname: a\n---\n"
+    assert session.statements[0].startswith(f"GET '{skill}' 'file://")
+    unsafe = _get_session({})
+    with pytest.raises(SnowflakePortError, match="extension path must be"):
+        SessionConnector(unsafe).read_staged_file("snow://cortex_extension/DB.S.SKILL/versions/version$2/../x")
+    assert unsafe.statements == []
+
+
 def test_show_row_reads_the_named_object_as_text() -> None:
     connector = StubSnowflakeConnector(
         {"SHOW AGENTS LIKE": ({"name": "SALES_AGENT_OLD"}, {"name": "SALES_AGENT", "OWNER": "ADMIN", "comment": None})}
