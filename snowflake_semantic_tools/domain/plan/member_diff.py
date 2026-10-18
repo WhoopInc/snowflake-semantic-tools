@@ -55,6 +55,9 @@ __all__ = [
     "unique",
 ]
 
+# A one-line value longer than this is shown from shortly before its first difference.
+WINDOW = 120
+WINDOW_LEAD = 40
 # Properties shown as a count rather than item by item: their items are refreshed data.
 COUNTED = frozenset(("sample_values",))
 # C0 and C1 control characters, but for tab and newline, and DEL: none reach a reader.
@@ -137,7 +140,9 @@ def property_lines(diff: PropertyDiff) -> tuple[tuple[str, str], ...]:
     A list of sample values is one `~` line counting its items. Any other list is shown item
     by item, or as one `~` line when only its order changed. A value holding a newline on
     either side is a line diff with one line of context, `...` between distant hunks. Any other
-    value is its old line and its new one; an empty one reads `(none)`.
+    value is its old line and its new one; an empty one reads `(none)`. Two values both longer
+    than `WINDOW` characters are shown from shortly before where they first differ, so an edit
+    deep in a long one-line comment is on the line a reader sees.
     """
     before, after = diff.before, diff.after
     if diff.name in COUNTED and _is_list(before, after):
@@ -147,12 +152,23 @@ def property_lines(diff: PropertyDiff) -> tuple[tuple[str, str], ...]:
     old, new = _text(before), _text(after)
     if "\n" in old or "\n" in new:
         return _text_lines(old, new)
+    if before is not None and after is not None and min(len(old), len(new)) > WINDOW:
+        old, new = _windowed(old, new)
     lines: list[tuple[str, str]] = []
     if before is not None:
         lines.append(("-", printable(old) or "(none)"))
     if after is not None:
         lines.append(("+", printable(new) or "(none)"))
     return tuple(lines)
+
+
+def _windowed(old: str, new: str) -> tuple[str, str]:
+    """Both values from `WINDOW_LEAD` characters before where they first differ, marked `...` when cut."""
+    start = next((index for index, pair in enumerate(zip(old, new, strict=False)) if pair[0] != pair[1]), 0)
+    cut = max(0, start - WINDOW_LEAD)
+    if cut == 0:
+        return old, new
+    return f"...{old[cut:]}", f"...{new[cut:]}"
 
 
 def _is_list(*values: Value | None) -> bool:
@@ -192,7 +208,9 @@ def _text_lines(old: str, new: str) -> tuple[tuple[str, str], ...]:
                 lines.append((" ", "..."))
             hunks += 1
             continue
-        lines.append((line[:1], printable(line[1:])))
+        sign, text = line[:1], printable(line[1:])
+        # A context line keeps no trailing space; a changed one keeps it, which may be the change.
+        lines.append((sign, text.rstrip() if sign == " " else text))
     return tuple(lines)
 
 
@@ -223,7 +241,7 @@ def unified_text(
             out.append(printable(f"@@ {item.op} {item.label} @@"))
             for prop in item.properties:
                 out.append(printable(f"   {prop.name}:"))
-                out.extend(f"{sign}  {text}" for sign, text in property_lines(prop))
+                out.extend(f"{sign}  {text}" if text else sign for sign, text in property_lines(prop))
     return "\n".join(out) + ("\n" if out else "")
 
 

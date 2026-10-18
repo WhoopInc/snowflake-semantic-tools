@@ -86,3 +86,8 @@ def test_an_eval_compares_its_config_and_each_question_by_its_text() -> None:
         ("Q?", (("ground_truth", "plain"),)),
         ("Q?#2", (("ground_truth", "quoted"),)),
     ]
+
+
+def test_an_eval_whose_questions_were_not_read_holds_its_config_alone() -> None:
+    partial = eval_definition("a: 1\n", None)
+    assert ([member.kind for member in partial.members], partial.kinds) == (["config"], frozenset(("config",)))

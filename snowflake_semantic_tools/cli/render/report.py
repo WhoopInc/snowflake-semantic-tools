@@ -272,7 +272,10 @@ def member_diff_lines(diffs: Sequence[MemberDiff], style: Style, *, full: bool, 
             shown = body if full else body[:DIFF_PROPERTY_LINES]
             hidden += len(body) - len(shown)
             lines.append(f"          {printable(prop.name)}:")
-            lines += ["            " + style(f"{sign} {_clip(text, full)}", _LINE_ROLES[sign]) for sign, text in shown]
+            lines += [
+                "            " + style(f"{sign} {_clip(text, full)}" if text else sign, _LINE_ROLES[sign])
+                for sign, text in shown
+            ]
     if not full and len(lines) > DIFF_CHANGE_LINES:
         hidden += len(lines) - DIFF_CHANGE_LINES
         lines = lines[:DIFF_CHANGE_LINES]

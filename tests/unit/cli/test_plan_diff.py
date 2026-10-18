@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from click.testing import CliRunner
 
+from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.cli_projects import common, compile_project, invoke_with_port
@@ -355,3 +356,20 @@ def test_the_sql_directory_holds_this_plans_statements_only(tmp_path: Path, monk
         "widget__mine.sql",
     ]
     assert elsewhere.read_text(encoding="utf-8") == "kept"
+
+
+def test_a_side_that_does_not_compile_is_compared_by_fingerprint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, port = _published(tmp_path, monkeypatch)
+
+    def refused(*_args: object) -> None:
+        raise ProjectError("the dbt manifest cannot be read", diagnostics=())
+
+    monkeypatch.setattr("snowflake_semantic_tools.cli.commands.diff.compile_result", refused)
+    result = invoke_with_port(monkeypatch, port, ["diff", *common(project), "--to", "dev", "-o", "json"])
+    assert result.exit_code == 2, result.output
+    view = next(
+        item for item in json.loads(result.output)["data"]["differences"] if item["key"] == "semantic_view:jaffle_menu"
+    )
+    assert (view["status"], view["diff_status"], view["diff"]) == ("modified", "not_compared", [])

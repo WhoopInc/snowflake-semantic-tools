@@ -195,3 +195,34 @@ def test_two_targets_that_differ_only_in_names_compare_equal_once_normalized() -
     left = normalize(dev, {("DEV_DB", "MARTS", "ORDERS"): "ref('orders')"})
     right = normalize(prod, {("SALES_DB", "MARTS", "ORDERS"): "ref('orders')"})
     assert diff_definitions(left, right) == ()
+
+
+def test_a_long_one_line_value_is_shown_from_shortly_before_its_first_difference() -> None:
+    before = "Searches menu items: " + "x" * 150 + " and which items suit a taste."
+    after = "Searches menu items: " + "x" * 150 + " and Edited. which items suit a taste."
+    [(old_sign, old), (new_sign, new)] = property_lines(PropertyDiff("comment", before, after))
+    assert (old_sign, new_sign) == ("-", "+")
+    assert old.startswith("...") and new.startswith("...")
+    assert "and which" in old and "and Edited." in new
+    # Differing from the start, nothing is cut.
+    assert property_lines(PropertyDiff("comment", "a" * 130, "b" * 130)) == (("-", "a" * 130), ("+", "b" * 130))
+
+
+def test_a_blank_context_line_carries_no_trailing_space_and_a_changed_one_keeps_its_own() -> None:
+    lines = property_lines(PropertyDiff("body", "a\n  \nb\nc \n", "a\n  \nB\nc\n"))
+    assert lines == ((" ", ""), ("-", "b"), ("-", "c "), ("+", "B"), ("+", "c"))
+    # In the file, a blank context line is a lone space, as a unified diff writes one.
+    diff = MemberDiff("tool", "t", CHANGED, (PropertyDiff("body", "a\n\nb", "a\n\nB"),))
+    assert unified_text((("tool:t", "", (diff,)),)) == (
+        "--- live/tool:t\n+++ desired/tool:t\n@@ changed tool t @@\n   body:\n \n-  b\n+  B\n"
+    )
+
+
+def test_a_kind_one_side_did_not_read_is_not_compared() -> None:
+    config_only = Definition((Member("config", "yaml", (("text", "a"),)),), frozenset(("config",)))
+    everything = Definition(
+        (Member("config", "yaml", (("text", "b"),)), Member("question", "Q?", (("ground_truth", "1"),)))
+    )
+    assert [item.label for item in diff_definitions(config_only, everything)] == ["config yaml"]
+    assert [item.label for item in diff_definitions(everything, config_only)] == ["config yaml"]
+    assert normalize(config_only, {("A", "B", "C"): "x"}).kinds == frozenset(("config",))
