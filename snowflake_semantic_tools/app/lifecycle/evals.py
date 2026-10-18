@@ -69,6 +69,17 @@ class EvalLifecycleConfig:
     config_stage_name: str = DEFAULT_EVAL_CONFIG_STAGE
 
 
+def config_folder(artifact: RenderedArtifact, stage_name: str) -> str:
+    """Return where an eval's configs are staged: `@<stage>/<agent segment>`, in the eval's schema.
+
+    The agent segment names the agent the eval depends on, else the eval itself.
+    """
+    stage = QualifiedName(artifact.target.database, artifact.target.schema, Identifier.parse(stage_name))
+    agent_prefix = artifact_key("agent", "")
+    dependency = next((key for key in artifact.depends_on if key.startswith(agent_prefix)), artifact.key)
+    return f"@{stage.sql}/{safe_stage_segment(split_artifact_key(dependency)[1])}"
+
+
 class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservation, CatalogPublicationPort]):
     """Plan and publish one agent's evaluation: its source table, dataset, and staged config.
 
@@ -406,12 +417,7 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
         config = dict(artifact.component_fingerprints).get("config")
         if config is None:
             raise ValueError("eval artifact requires a config fingerprint")
-        stage = self._config_stage(artifact)
-        agent_prefix = artifact_key("agent", "")
-        dependency = next((key for key in artifact.depends_on if key.startswith(agent_prefix)), artifact.key)
-        agent_name = split_artifact_key(dependency)[1]
-        segment = safe_stage_segment(agent_name)
-        return f"@{stage.sql}/{segment}/{config}.yaml"
+        return f"{config_folder(artifact, self._config.config_stage_name)}/{config}.yaml"
 
     def _changed_since_plan(self, planned: CompositeObservation, artifact: RenderedArtifact) -> bool:
         """Report whether an eval changed since its plan, allowing for a config stage this run created."""

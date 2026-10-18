@@ -4,33 +4,33 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
-from snowflake_semantic_tools.app.compile.skills import CompiledExtension
 from snowflake_semantic_tools.app.plan_diff_composites import (
-    eval_sides,
-    extension_sides,
-    profile_sides,
+    desired_eval,
+    desired_extension,
+    live_eval,
+    live_extension,
+    live_profile,
     served_extension,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.lifecycle import Action, Change, ChangeReason, CompositeObservation
+from snowflake_semantic_tools.domain.plan.member_diff import diff_definitions
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import ExtensionObservation, ExtensionVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from tests.helpers.plan_codes import view
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 _NAME = QualifiedName.parse("DB.S.SKILL")
-_CHANGE = Change("eval:a", "eval", Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS, view("a"), None, (), 0)
 
 
-def _stand_in(kind: type, **fields: object) -> object:
+def _stand_in(kind: type, **fields: object) -> Any:
     """An instance of a frozen compiled artifact class holding only the fields a read uses."""
-    item: object = object.__new__(kind)
+    item: Any = object.__new__(kind)
     for name, value in fields.items():
         object.__setattr__(item, name, value)
     return item
@@ -58,27 +58,21 @@ def test_the_served_version_is_the_effective_one_else_the_default_else_the_last(
 def test_reads_with_nothing_to_compare_say_so() -> None:
     port = FakeSnowflake()
     with pytest.raises(TypeError, match="CompiledExtension"):
-        extension_sides(port, SimpleNamespace(artifact_key="skill:a"), _CHANGE)
+        desired_extension(SimpleNamespace(artifact_key="skill:a"))
     with pytest.raises(TypeError, match="CompiledProfile"):
-        profile_sides(port, SimpleNamespace(artifact_key="profile:a"), _CHANGE)
+        live_profile(port, SimpleNamespace(artifact_key="profile:a"))
     with pytest.raises(TypeError, match="CompiledEval"):
-        eval_sides(port, SimpleNamespace(artifact_key="eval:a"), _CHANGE, None)
-    release = SimpleNamespace(target=_NAME, comment=None, bundle=SimpleNamespace(entries=()))
+        desired_eval(SimpleNamespace(artifact_key="eval:a"))
     port.extensions[_NAME.sql] = {"type": "SKILL", "comment": None, "versions": [], "live": None}
     with pytest.raises(SnowflakePortError, match="serves no version to compare"):
-        extension_sides(port, _stand_in(CompiledExtension, release=release), _CHANGE)  # type: ignore[arg-type]
+        live_extension(port, _NAME)
     profile = _stand_in(
         CompiledProfile,
         release=SimpleNamespace(name="team", trees=(), row={}),
         channel=SimpleNamespace(registry=QualifiedName.parse("DB.S.REGISTRY")),
     )
     with pytest.raises(SnowflakePortError, match="holds no row for profile team"):
-        profile_sides(port, profile, _CHANGE)  # type: ignore[arg-type]
-
-
-def _eval() -> object:
-    payload = json.dumps([{"input_query": "Q?", "ground_truth": {"answer": "1"}}])
-    return _stand_in(CompiledEval, rendered=SimpleNamespace(config_yaml="a: 2\n", dataset_payload=payload))
+        live_profile(port, profile)
 
 
 def _entry(*, config: str | None = "c0ffee", table: bool = True) -> AppliedEntry:
@@ -95,34 +89,29 @@ def _entry(*, config: str | None = "c0ffee", table: bool = True) -> AppliedEntry
     )
 
 
-def _eval_change() -> Change:
-    observation = CompositeObservation("eval:a", config_path="@DB.S.CONFIGS/agent/feed.yaml")
-    return Change(
-        "eval:a",
-        "eval",
-        Action.UPDATE,
-        ChangeReason.FINGERPRINT_DIFFERS,
-        view("a"),
-        None,
-        (),
-        0,
-        composite_observation=observation,
-    )
+_FOLDER = "@DB.S.CONFIGS/agent"
 
 
 def test_an_eval_without_its_earlier_publish_in_state_is_not_compared() -> None:
     port = FakeSnowflake()
     with pytest.raises(SnowflakePortError, match="no earlier publish"):
-        eval_sides(port, _eval(), _eval_change(), None)  # type: ignore[arg-type]
+        live_eval(port, _FOLDER, None)
     with pytest.raises(SnowflakePortError, match="no config the eval published"):
-        eval_sides(port, _eval(), _eval_change(), _entry(config=None))  # type: ignore[arg-type]
+        live_eval(port, _FOLDER, _entry(config=None))
+    with pytest.raises(SnowflakePortError, match="no config the eval published"):
+        live_eval(port, None, _entry())
     with pytest.raises(SnowflakePortError, match="could not be read"):
-        eval_sides(port, _eval(), _eval_change(), _entry())  # type: ignore[arg-type]
+        live_eval(port, _FOLDER, _entry())
 
 
 def test_an_eval_whose_source_table_state_does_not_record_compares_its_config_alone() -> None:
     port = FakeSnowflake()
-    port.staged_file_contents["@DB.S.CONFIGS/agent/c0ffee.yaml"] = b"a: 1\n"
-    live, desired = eval_sides(port, _eval(), _eval_change(), _entry(table=False))  # type: ignore[arg-type]
-    assert [member.label if hasattr(member, "label") else member.kind for member in live.members] == ["config"]
-    assert [member.kind for member in desired.members] == ["config"]
+    port.staged_file_contents[f"{_FOLDER}/c0ffee.yaml"] = b"a: 1\n"
+    live = live_eval(port, _FOLDER, _entry(table=False))
+    assert ([member.kind for member in live.members], live.kinds) == (["config"], frozenset(("config",)))
+    payload = json.dumps([{"input_query": "Q?", "ground_truth": {"answer": "1"}}])
+    desired = desired_eval(
+        _stand_in(CompiledEval, rendered=SimpleNamespace(config_yaml="a: 2\n", dataset_payload=payload))
+    )
+    # The questions the live side did not read are not shown as added; the config's change is.
+    assert [(item.op, item.label) for item in diff_definitions(live, desired)] == [("changed", "config yaml")]

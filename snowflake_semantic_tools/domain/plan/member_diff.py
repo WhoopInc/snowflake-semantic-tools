@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import difflib
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from snowflake_semantic_tools.domain.model.lifecycle.member import (
     ADDED,
@@ -66,12 +66,15 @@ def diff_definitions(before: Definition, after: Definition) -> tuple[MemberDiff,
 
     Members are listed in the after side's order, then those only the before side holds, in its
     order. A member both hold is changed only when a property both state differs; a property
-    only one side states is not compared.
+    only one side states is not compared, and nor is a member of a kind one side did not read.
     """
-    earlier = {member.key: member for member in before.members}
-    later = {member.key for member in after.members}
+    read = _kinds_read(before, after)
+    earlier = {member.key: member for member in before.members if read(member)}
+    later = {member.key for member in after.members if read(member)}
     diffs: list[MemberDiff] = []
     for member in after.members:
+        if not read(member):
+            continue
         previous = earlier.get(member.key)
         if previous is None:
             diffs.append(_whole(member, ADDED))
@@ -84,8 +87,13 @@ def diff_definitions(before: Definition, after: Definition) -> tuple[MemberDiff,
         )
         if changed:
             diffs.append(MemberDiff(member.kind, member.name, CHANGED, changed))
-    diffs.extend(_whole(member, REMOVED) for member in before.members if member.key not in later)
+    diffs.extend(_whole(member, REMOVED) for member in before.members if read(member) and member.key not in later)
     return tuple(diffs)
+
+
+def _kinds_read(before: Definition, after: Definition) -> Callable[[Member], bool]:
+    """Whether both sides read a member's kind."""
+    return lambda member: all(side.kinds is None or member.kind in side.kinds for side in (before, after))
 
 
 def _whole(member: Member, op: str) -> MemberDiff:
@@ -227,16 +235,15 @@ def normalize(definition: Definition, names: NameMap) -> Definition:
     """Return the definition with each physical name `names` maps replaced by its label.
 
     A value that is one qualified name is replaced whole; inside any other text, each mapped
-    name written unquoted is replaced where it appears as a whole name. A name `names` does
-    not map, such as one a procedure body hard-codes, is kept as written.
+    name written unquoted is replaced where it appears as a whole name, not as the end of a
+    longer dotted one. A name `names` does not map, such as one a procedure body hard-codes, is
+    kept as written.
     """
     if not names:
         return definition
     by_text = {".".join(parts): label for parts, label in names.items()}
     pattern = re.compile(
-        r"(?<![\w$.\"])("
-        + "|".join(re.escape(text) for text in sorted(by_text, key=len, reverse=True))
-        + r")(?![\w$])",
+        r"(?<![\w$.])(" + "|".join(re.escape(text) for text in sorted(by_text, key=len, reverse=True)) + r")(?![\w$])",
         re.IGNORECASE,
     )
 
@@ -255,7 +262,8 @@ def normalize(definition: Definition, names: NameMap) -> Definition:
                 member.kind, mapped(member.name), tuple((name, value_of(value)) for name, value in member.properties)
             )
             for member in definition.members
-        )
+        ),
+        definition.kinds,
     )
 
 

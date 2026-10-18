@@ -38,11 +38,17 @@ class Member:
 class Definition:
     """Every member one side holds of one artifact, in display order.
 
+    Attributes:
+        kinds: The member kinds this side read, when it could read only some, such as an eval's
+            config without its questions; None when it read every kind. A kind one side did not
+            read is not compared.
+
     Raises:
         ValueError: two members share a kind and a casefolded name.
     """
 
     members: tuple[Member, ...] = ()
+    kinds: frozenset[str] | None = None
 
     def __post_init__(self) -> None:
         keys = [member.key for member in self.members]

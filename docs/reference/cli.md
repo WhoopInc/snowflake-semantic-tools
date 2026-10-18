@@ -603,8 +603,16 @@ table records whose object still carries SST's ownership marker. --from defaults
 `local` and --to to the resolved target, so `sst diff` alone compares the last compile with
 Snowflake, and `--from dev --to prod` compares two targets. An artifact is `new` when only
 --to holds it, `orphaned` when only --from does, and `modified` when their fingerprints
-differ. --select and --exclude keep the differences of the artifacts they choose. Diff only
-reads: it validates nothing, writes no plan, and works on a project that does not
+differ. Each modified artifact is then compared member by member, as `sst plan` compares an
+update: `local` as it compiles for the target it is compared with, a target as its objects
+hold it, on up to --threads sessions; --full shows each member's diff whole, and --diff-out
+writes them all as a unified diff. Comparing two targets, each one's physical names are first
+replaced by what they stand for -- an artifact's object by its key, a dbt model's relation by
+`ref('<model>')` -- and an artifact whose members then agree is not a difference, so two
+targets that publish the same project to different databases agree. A saved plan, an
+artifact whose definition cannot be read, and every artifact under --no-diff are compared by
+fingerprint alone. --select and --exclude keep the differences of the artifacts they choose.
+Diff only reads: it validates nothing, writes no plan, and works on a project that does not
 validate; only a target connects.
 
 Exit 0 when they agree, 2 when they differ, 1 when a state cannot be read, 4 when a target
@@ -626,8 +634,11 @@ sst diff [OPTIONS]
 | `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--target / -t` | TEXT |  | Target from `profiles.yml` that `--to` defaults to, else `$SST_TARGET`, else the profile's. |
-| `--full` | flag |  | Also name which recorded fields of a modified artifact differ. |
+| `--full` | flag |  | Also name which recorded fields of a modified artifact differ, and show each member's diff whole, not cut short. |
 | `--names-only` | flag |  | Print the name of each differing artifact, one per line, and nothing else. |
+| `--no-diff` | flag |  | Compare by fingerprint alone, as an artifact's recorded state says, reading no definition: two targets that publish to different databases then differ in every artifact. |
+| `--diff-out` | FILE |  | Write what differs in each modified artifact, member by member, as a unified diff here. Refused with `--no-diff`. |
+| `--threads` | INTEGER RANGE |  | Read a target's definitions on up to this many sessions at once, 1 to 16; else `$SST_THREADS`, else `generation.threads`. |
 | `--no-detailed-exitcode` | flag |  | Exit 0 when the states differ, instead of 2. |
 
 ## sst test

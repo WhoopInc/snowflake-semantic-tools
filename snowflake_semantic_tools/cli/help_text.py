@@ -291,7 +291,22 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "sst diff",
         "--target",
     ): "Target from `profiles.yml` that `--to` defaults to, else `$SST_TARGET`, else the profile's.",
-    ("sst diff", "--full"): "Also name which recorded fields of a modified artifact differ.",
+    ("sst diff", "--full"): (
+        "Also name which recorded fields of a modified artifact differ, and show each member's diff whole, "
+        "not cut short."
+    ),
+    ("sst diff", "--no-diff"): (
+        "Compare by fingerprint alone, as an artifact's recorded state says, reading no definition: "
+        "two targets that publish to different databases then differ in every artifact."
+    ),
+    ("sst diff", "--diff-out"): (
+        "Write what differs in each modified artifact, member by member, as a unified diff here. Refused with "
+        "`--no-diff`."
+    ),
+    ("sst diff", "--threads"): (
+        "Read a target's definitions on up to this many sessions at once, 1 to 16; else `$SST_THREADS`, "
+        "else `generation.threads`."
+    ),
     ("sst diff", "--names-only"): "Print the name of each differing artifact, one per line, and nothing else.",
     ("sst diff", "--no-detailed-exitcode"): "Exit 0 when the states differ, instead of 2.",
     (

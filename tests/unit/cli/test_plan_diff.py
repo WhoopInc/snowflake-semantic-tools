@@ -8,11 +8,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from click.testing import CliRunner
 
 from snowflake_semantic_tools.adapters.locations import locate_project
 from snowflake_semantic_tools.app.compile import CompiledView
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
 from snowflake_semantic_tools.app.compile.tools import CompiledTool
+from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.wiring.compile import compile_result
 from snowflake_semantic_tools.domain.plan.definitions.tool import search_query
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
@@ -39,16 +41,7 @@ def _published(
     port = publishing_port(project)
     applied = invoke_with_port(monkeypatch, port, ["apply", *common(project), "--target", "dev", "--yes"])
     assert applied.exit_code == 0, applied.output
-    for item in compile_result(locate_project(project), "dev", DBT_MANIFEST).compiled:
-        target = item.rendered_artifact.target.sql
-        if isinstance(item, CompiledView):
-            port.view_descriptions[target] = described_view(item.view)
-        elif isinstance(item, CompiledAgent) and agents:
-            alias = item.rendered_artifact.desired_alias
-            port.agent_version_rows[target] = (AgentVersion("VERSION$1", alias, True, specification=item.payload),)
-        elif isinstance(item, CompiledTool) and item.member.type == "cortex_search_service":
-            described = described_search(item.member, search_query(item.rendered.ddl))
-            port.descriptions[f"CORTEX SEARCH SERVICE {target}"] = described
+    _describe(port, project, "dev", agents=agents)
     relative, before, after = edit
     path = project / relative
     text = path.read_text(encoding="utf-8")
@@ -56,6 +49,20 @@ def _published(
     path.write_text(text.replace(before, after, 1), encoding="utf-8")
     compile_project(project)
     return project, port
+
+
+def _describe(port: PublishingSnowflake, project: Path, target: str, *, agents: bool) -> None:
+    """Make each view and search service the target compiles DESCRIBE as published, and each agent with `agents`."""
+    for item in compile_result(locate_project(project), target, DBT_MANIFEST).compiled:
+        name = item.rendered_artifact.target.sql
+        if isinstance(item, CompiledView):
+            port.view_descriptions[name] = described_view(item.view)
+        elif isinstance(item, CompiledAgent) and agents:
+            alias = item.rendered_artifact.desired_alias
+            port.agent_version_rows[name] = (AgentVersion("VERSION$1", alias, True, specification=item.payload),)
+        elif isinstance(item, CompiledTool) and item.member.type == "cortex_search_service":
+            described = described_search(item.member, search_query(item.rendered.ddl))
+            port.descriptions[f"CORTEX SEARCH SERVICE {name}"] = described
 
 
 def _plan(monkeypatch: pytest.MonkeyPatch, port: PublishingSnowflake, project: Path, *flags: str) -> dict[str, Any]:
@@ -260,3 +267,91 @@ def test_an_eval_edit_shows_as_the_question_it_changes(tmp_path: Path, monkeypat
     assert "dataset_name:" in config["before"] and config["before"] != config["after"]
     assert change["diff"][1]["member"].endswith("in every location?")
     assert change["diff"][2]["member"].endswith(asked)
+
+
+def _two_targets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, dict[str, PublishingSnowflake]]:
+    """The reference project applied to dev and to prod, each its own fake account, every view described."""
+    project = project_copy(tmp_path)
+    ports: dict[str, PublishingSnowflake] = {}
+    for target in ("dev", "prod"):
+        CliRunner().invoke(cli, ["compile", *common(project), "--target", target])
+        port = ports[target] = publishing_port(project, target)
+        applied = invoke_with_port(monkeypatch, port, ["apply", *common(project), "--target", target, "--yes"])
+        assert applied.exit_code == 0, applied.output
+        _describe(port, project, target, agents=True)
+    by_database = {"SST_REF_DEV": ports["dev"], "SST_REF_PROD": ports["prod"]}
+    for port in ports.values():
+        port.close = lambda: None  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        "snowflake_semantic_tools.cli.main.SnowflakeConnector",
+        lambda params: by_database[str(params["database"]).upper()],
+    )
+    return project, ports
+
+
+def _diff_targets(project: Path, *flags: str) -> tuple[int, dict[str, Any]]:
+    result = CliRunner().invoke(cli, ["diff", *common(project), "--from", "dev", "--to", "prod", "-o", "json", *flags])
+    return result.exit_code, json.loads(result.output)["data"]
+
+
+def test_two_targets_that_publish_one_project_to_different_databases_agree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, _ = _two_targets(tmp_path, monkeypatch)
+    code, data = _diff_targets(project)
+    # Every fingerprint differs, the databases being baked in; no member does once names are labels.
+    assert (code, data["differences"]) == (0, [])
+    # Fingerprints alone call every view modified.
+    code, data = _diff_targets(project, "--no-diff")
+    assert code == 2
+    assert {item["status"] for item in data["differences"] if item["artifact_type"] == "semantic_view"} == {"modified"}
+
+
+def test_one_member_edited_on_one_target_is_the_one_difference(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project, ports = _two_targets(tmp_path, monkeypatch)
+    prod = ports["prod"]
+    target, rows = next((name, rows) for name, rows in prod.view_descriptions.items() if "JAFFLE_MENU" in name)
+    at = next(index for index, row in enumerate(rows) if (row.kind, row.property) == ("METRIC", "COMMENT"))
+    prod.view_descriptions[target] = (
+        *rows[:at],
+        dataclasses.replace(rows[at], value="Edited in prod."),
+        *rows[at + 1 :],
+    )
+    code, data = _diff_targets(project, "--diff-out", str(project / "dev-prod.diff"))
+    [view] = [item for item in data["differences"] if item["artifact_type"] == "semantic_view"]
+    assert (code, view["key"], view["diff_status"]) == (2, "semantic_view:jaffle_menu", "compared")
+    [member] = view["diff"]
+    assert (member["kind"], member["op"], [prop["property"] for prop in member["properties"]]) == (
+        "metric",
+        "changed",
+        ["comment"],
+    )
+    assert member["properties"][0]["after"] == "Edited in prod."
+    text = (project / "dev-prod.diff").read_text(encoding="utf-8")
+    assert text.startswith("--- dev/semantic_view:jaffle_menu\n+++ prod/semantic_view:jaffle_menu\n")
+
+
+def test_local_against_its_target_shows_each_member_and_a_refused_read_falls_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, port = _published(tmp_path, monkeypatch)
+    human = invoke_with_port(monkeypatch, port, ["diff", *common(project), "--to", "dev"])
+    assert human.exit_code == 2, human.output
+    row = next(line for line in human.output.splitlines() if line.startswith("modified  semantic_view:jaffle_menu"))
+    assert row.endswith("metric order_items.line_item_count")
+    assert "          expression:" in human.output
+    port.fail("describe_semantic_view", SnowflakePortError("denied"))
+    data = json.loads(
+        invoke_with_port(monkeypatch, port, ["diff", *common(project), "--to", "dev", "-o", "json"]).output
+    )
+    view = next(item for item in data["data"]["differences"] if item["key"] == "semantic_view:jaffle_menu")
+    assert (view["status"], view["diff_status"], view["diff_unavailable"]) == ("modified", "unavailable", "denied")
+    fallback = invoke_with_port(monkeypatch, port, ["diff", *common(project), "--to", "dev"])
+    assert "semantic_view:jaffle_menu  (not compared member by member: denied)" in fallback.output
+
+
+def test_diff_refuses_a_diff_path_with_no_diff(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    result = CliRunner().invoke(cli, ["diff", *common(project), "--no-diff", "--diff-out", "x.diff"])
+    assert result.exit_code == 3
+    assert "SST-PRT104" in result.output

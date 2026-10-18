@@ -11,9 +11,11 @@ Snowflake reads an object back compare equal.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
+from snowflake_semantic_tools.domain.model.lifecycle.member import Definition, MemberDiff
+from snowflake_semantic_tools.domain.plan.member_diff import diff_definitions
 
 NEW, MODIFIED, UNMODIFIED, ORPHANED = "new", "modified", "unmodified", "orphaned"
 STATES = (NEW, MODIFIED, UNMODIFIED, ORPHANED)
@@ -60,6 +62,8 @@ class Difference:
         status: `new`, `modified`, or `orphaned`, comparing `after` with `before`.
         before, after: What each state records; None where the artifact is absent.
         properties: The names of the recorded fields that differ, for a modified artifact.
+        member_diff: What differs member by member, for a modified artifact both states hold
+            the definitions of; None when they were not compared.
     """
 
     key: str
@@ -67,6 +71,7 @@ class Difference:
     before: ArtifactState | None
     after: ArtifactState | None
     properties: tuple[str, ...] = ()
+    member_diff: tuple[MemberDiff, ...] | None = None
 
     @property
     def artifact_type(self) -> str:
@@ -102,3 +107,29 @@ def _difference(
             field for field in ("fingerprint", *known) if getattr(before, field) != getattr(after, field)
         )
     return Difference(key, status, before, after, properties)
+
+
+def member_differences(
+    differences: tuple[Difference, ...],
+    before: Mapping[str, Definition],
+    after: Mapping[str, Definition],
+    *,
+    across_targets: bool,
+) -> tuple[Difference, ...]:
+    """Return the differences with each modified artifact's member diff, where both definitions are known.
+
+    Across two targets, each publishing to its own databases, every fingerprint differs, so a
+    modified artifact whose members all agree -- compared with physical names replaced by their
+    labels -- is no difference and is left out. Within one target the fingerprint decides, and an
+    artifact whose members all agree stays modified: what changed is what the members do not show.
+    """
+    kept = []
+    for item in differences:
+        if item.status != MODIFIED or item.key not in before or item.key not in after:
+            kept.append(item)
+            continue
+        members = diff_definitions(before[item.key], after[item.key])
+        if across_targets and not members:
+            continue
+        kept.append(replace(item, member_diff=members))
+    return tuple(kept)

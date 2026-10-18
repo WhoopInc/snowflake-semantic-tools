@@ -76,9 +76,14 @@ def tree_root(pointer: str) -> tuple[str, str] | None:
     return (f"{match.group(2)}/{match.group(3)}/", match.group(1)) if match else None
 
 
-def eval_definition(config_yaml: str, questions: Iterable[tuple[str, object]]) -> Definition:
-    """Return an eval's definition: its config, then each question with its ground truth."""
+def eval_definition(config_yaml: str, questions: Iterable[tuple[str, object]] | None) -> Definition:
+    """Return an eval's definition: its config, then each question with its ground truth.
+
+    With `questions` None, the questions were not read, and the definition holds the config alone.
+    """
     members = [Member("config", "yaml", (("text", config_yaml),))]
+    if questions is None:
+        return Definition(tuple(members), frozenset(("config",)))
     members += [Member("question", question, (("ground_truth", _json(truth)),)) for question, truth in questions]
     return Definition(unique(members))
 

@@ -5,20 +5,31 @@ definition is exactly what apply replaces. For each update of a type it can comp
 that definition, builds the one SST compiled, and records their `member_diff` on the change. It
 reads nothing for any other change, and a read Snowflake refuses only leaves the change without
 its member diff (SST-PLN041): the plan is otherwise the same.
+
+Each artifact type has a desired builder, from what compiled, and a live read, from a session and
+a `LiveObject` saying where the published object is, so `sst diff` compares the same definitions
+plan does, from what a target's state records rather than from a planned change.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from types import MappingProxyType
-from typing import TypeVar
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompiledView
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
 from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.app.fanout import Fanout
-from snowflake_semantic_tools.app.plan_diff_composites import eval_sides, extension_sides, profile_sides
+from snowflake_semantic_tools.app.plan_diff_composites import (
+    compiled_as,
+    desired_eval,
+    desired_extension,
+    desired_profile,
+    live_eval,
+    live_extension,
+    live_profile,
+)
 from snowflake_semantic_tools.app.prior import served_version
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
@@ -38,80 +49,85 @@ from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry
 
-# How one artifact type's two sides are read: (live, desired), from a session, what compiled, the
-# change, and what state records of the artifact; None for an artifact of the type that is not
-# compared, such as a stage tool.
-DefinitionRead = Callable[
-    [SnowflakePort, CompiledArtifact, Change, AppliedEntry | None], tuple[Definition, Definition] | None
-]
+
+@dataclass(frozen=True, slots=True)
+class LiveObject:
+    """Where an artifact's published object is, and what is known of it, for its live read.
+
+    Attributes:
+        name: The object: what plan observed under the key, else what state records.
+        alias: An agent's desired version alias, which picks the version it serves.
+        comment: The comment SHOW lists on it, which a routine's DESCRIBE does not report.
+        routine_signature: A procedure's or function's argument types, as observed.
+        recorded: What state records of the artifact, from which an eval's earlier publish is read.
+        config_folder: Where an eval's configs are staged: `@<stage>/<agent segment>`.
+    """
+
+    name: QualifiedName
+    alias: str | None = None
+    comment: str | None = None
+    routine_signature: tuple[str, ...] = ()
+    recorded: AppliedEntry | None = None
+    config_folder: str | None = None
 
 
-def _semantic_view(
-    port: SnowflakePort, compiled: CompiledArtifact, change: Change, _recorded: AppliedEntry | None
-) -> tuple[Definition, Definition]:
-    view = _compiled_as(compiled, CompiledView).view
-    return live_view(port.describe_semantic_view(_replaced(change))), desired_view(view)
+@dataclass(frozen=True, slots=True)
+class Comparison:
+    """How one artifact type is compared: its desired definition, and the live one a session reads.
+
+    Each returns None for an artifact of the type that is not compared, such as a stage tool.
+    """
+
+    desired: Callable[[CompiledArtifact], Definition | None]
+    live: Callable[[SnowflakePort, CompiledArtifact, LiveObject], Definition]
 
 
-def _agent(
-    port: SnowflakePort, compiled: CompiledArtifact, change: Change, _recorded: AppliedEntry | None
-) -> tuple[Definition, Definition]:
-    """The specification the version the agent serves holds, against the one SST renders."""
-    agent = _compiled_as(compiled, CompiledAgent)
-    alias = change.rendered.desired_alias if change.rendered is not None else None
-    served = served_version(port.observe_agent_versions(_replaced(change)).versions, alias)
+def _live_agent(port: SnowflakePort, compiled: CompiledArtifact, live: LiveObject) -> Definition:
+    """The specification the version the agent serves holds."""
+    served = served_version(port.observe_agent_versions(live.name).versions, live.alias)
     if served is None or served.specification is None:
         raise SnowflakePortError("the role may not read the specification of the version the agent serves")
     try:
-        live = spec_definition(served.specification)
+        return spec_definition(served.specification)
     except ValueError as exc:
         raise SnowflakePortError(f"the specification the agent serves is not a JSON object: {exc}") from exc
-    return live, spec_definition(agent.payload)
 
 
-def _tool(
-    port: SnowflakePort, compiled: CompiledArtifact, change: Change, _recorded: AppliedEntry | None
-) -> tuple[Definition, Definition] | None:
-    """A procedure, function or search service as DESCRIBE shows it, against its render; None for a stage."""
-    tool = _compiled_as(compiled, CompiledTool)
-    member, name = tool.member, _replaced(change)
+def _desired_tool(compiled: CompiledArtifact) -> Definition | None:
+    """A procedure, function or search service as SST renders it; None for a stage."""
+    tool = compiled_as(compiled, CompiledTool)
+    member = tool.member
     if member.type == ToolKind.CORTEX_SEARCH_SERVICE.value:
-        described = port.describe_properties("CORTEX SEARCH SERVICE", name)
+        return desired_search(member, search_query(tool.rendered.ddl))
+    if member.type in (ToolKind.PROCEDURE.value, ToolKind.FUNCTION.value):
+        return desired_routine(member, procedure=member.type == ToolKind.PROCEDURE.value)
+    return None
+
+
+def _live_tool(port: SnowflakePort, compiled: CompiledArtifact, live: LiveObject) -> Definition:
+    """A procedure, function or search service as DESCRIBE shows it."""
+    member = compiled_as(compiled, CompiledTool).member
+    if member.type == ToolKind.CORTEX_SEARCH_SERVICE.value:
+        described = port.describe_properties("CORTEX SEARCH SERVICE", live.name)
         if described is None:
-            raise SnowflakePortError(f"no search service {name.sql} to describe")
-        return live_search(member.name, described), desired_search(member, search_query(tool.rendered.ddl))
-    if member.type not in (ToolKind.PROCEDURE.value, ToolKind.FUNCTION.value):
-        return None
-    procedure = member.type == ToolKind.PROCEDURE.value
-    signature = tuple(parameter.type for parameter in member.signature)
-    if change.observed is not None and change.observed.routine_signature:
-        signature = change.observed.routine_signature
-    described = port.describe_routine(member.type.upper(), name, signature)
-    comment = change.observed.comment if change.observed is not None else None
-    live = live_routine(member.name, described, comment, procedure=procedure)
-    return live, desired_routine(member, procedure=procedure)
+            raise SnowflakePortError(f"no search service {live.name.sql} to describe")
+        return live_search(member.name, described)
+    signature = live.routine_signature or tuple(parameter.type for parameter in member.signature)
+    described_routine = port.describe_routine(member.type.upper(), live.name, signature)
+    return live_routine(member.name, described_routine, live.comment, procedure=member.type == ToolKind.PROCEDURE.value)
 
 
-def _extension(
-    port: SnowflakePort, compiled: CompiledArtifact, change: Change, _recorded: AppliedEntry | None
-) -> tuple[Definition, Definition]:
-    return extension_sides(port, compiled, change)
-
-
-def _profile(
-    port: SnowflakePort, compiled: CompiledArtifact, change: Change, _recorded: AppliedEntry | None
-) -> tuple[Definition, Definition]:
-    return profile_sides(port, compiled, change)
-
-
-READS: Mapping[str, DefinitionRead] = {
-    "semantic_view": _semantic_view,
-    "agent": _agent,
-    "tool": _tool,
-    "skill": _extension,
-    "plugin": _extension,
-    "profile": _profile,
-    "eval": eval_sides,
+COMPARISONS: Mapping[str, Comparison] = {
+    "semantic_view": Comparison(
+        lambda compiled: desired_view(compiled_as(compiled, CompiledView).view),
+        lambda port, _compiled, live: live_view(port.describe_semantic_view(live.name)),
+    ),
+    "agent": Comparison(lambda compiled: spec_definition(compiled_as(compiled, CompiledAgent).payload), _live_agent),
+    "tool": Comparison(_desired_tool, _live_tool),
+    "skill": Comparison(desired_extension, lambda port, _compiled, live: live_extension(port, live.name)),
+    "plugin": Comparison(desired_extension, lambda port, _compiled, live: live_extension(port, live.name)),
+    "profile": Comparison(desired_profile, lambda port, compiled, _live: live_profile(port, compiled)),
+    "eval": Comparison(desired_eval, lambda port, _compiled, live: live_eval(port, live.config_folder, live.recorded)),
 }
 
 
@@ -120,13 +136,13 @@ def diff_updates(
     compiled: Mapping[str, CompiledArtifact],
     readers: Fanout[SnowflakePort],
     recorded: Mapping[str, AppliedEntry] = MappingProxyType({}),
-    reads: Mapping[str, DefinitionRead] = READS,
+    comparisons: Mapping[str, Comparison] = COMPARISONS,
 ) -> tuple[tuple[Change, ...], tuple[Diagnostic, ...]]:
     """Return the changes with each comparable update's member diff, and a diagnostic per refused read.
 
-    An update is comparable when `reads` has its artifact type and `compiled` its artifact. The
-    reads run on `readers`, one item each, and the changes come back in their order; `recorded`
-    is what state records of each artifact, which an eval's earlier publish is read from.
+    An update is comparable when `comparisons` has its artifact type and `compiled` its artifact.
+    The reads run on `readers`, one item each, and the changes come back in their order;
+    `recorded` is what state records of each artifact, which an eval's earlier publish is read from.
 
     Diagnostics:
         SST-PLN041: reading an update's live definition failed; the change has no member diff.
@@ -134,17 +150,21 @@ def diff_updates(
     comparable = tuple(
         index
         for index, change in enumerate(changes)
-        if change.action is Action.UPDATE and change.artifact_type in reads and change.key in compiled
+        if change.action is Action.UPDATE and change.artifact_type in comparisons and change.key in compiled
     )
 
     def compared(port: SnowflakePort, index: int) -> Change | Diagnostic:
         change = changes[index]
+        comparison, artifact = comparisons[change.artifact_type], compiled[change.key]
+        desired = comparison.desired(artifact)
+        if desired is None:
+            return change
+        live = live_object(change, recorded.get(change.key))
         try:
-            sides = reads[change.artifact_type](port, compiled[change.key], change, recorded.get(change.key))
+            before = comparison.live(port, artifact, live)
         except SnowflakePortError as exc:
-            name = _replaced(change).sql
-            return D("SST-PLN041", subject=change.key, artifact=change.key, value=name, detail=str(exc))
-        return change if sides is None else replace(change, member_diff=diff_definitions(*sides))
+            return D("SST-PLN041", subject=change.key, artifact=change.key, value=live.name.sql, detail=str(exc))
+        return replace(change, member_diff=diff_definitions(before, desired))
 
     results = dict(zip(comparable, readers.map(compared, comparable), strict=True))
     updated = tuple(
@@ -155,19 +175,26 @@ def diff_updates(
     return updated, refused
 
 
-ArtifactT = TypeVar("ArtifactT", bound=CompiledArtifact)
+def live_object(change: Change, recorded: AppliedEntry | None) -> LiveObject:
+    """Where a planned update's object is: the one observed, else the one it publishes to.
 
-
-def _compiled_as(compiled: CompiledArtifact, kind: type[ArtifactT]) -> ArtifactT:
-    if not isinstance(compiled, kind):
-        raise TypeError(f"{compiled.artifact_key} did not compile as a {kind.__name__}")
-    return compiled
-
-
-def _replaced(change: Change) -> QualifiedName:
-    """The object an update replaces: the one observed, else the one it publishes to."""
-    if change.observed is not None:
-        return change.observed.qualified_name
-    if change.rendered is None:
+    Raises:
+        ValueError: the change names no object, which no update does.
+    """
+    observed, rendered = change.observed, change.rendered
+    if observed is not None:
+        name = observed.qualified_name
+    elif rendered is not None:
+        name = rendered.target
+    else:
         raise ValueError(f"update {change.key} names no object")
-    return change.rendered.target
+    composite = change.composite_observation
+    config_path = composite.config_path if composite is not None else ""
+    return LiveObject(
+        name,
+        alias=rendered.desired_alias if rendered is not None else None,
+        comment=observed.comment if observed is not None else None,
+        routine_signature=observed.routine_signature if observed is not None else (),
+        recorded=recorded,
+        config_folder=config_path.rpartition("/")[0] if config_path else None,
+    )
