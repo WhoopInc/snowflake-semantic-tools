@@ -97,9 +97,11 @@ def test_a_live_plan_records_what_it_read_and_a_cached_plan_reuses_it_without_co
     [age] = [item for item in _diagnostics(cached) if item["message"].startswith("planned from the observation")]
     assert (age["code"], age["severity"]) == ("SST-PLN016", "info")
     assert f"recorded at {observation['fetched_at']}, 0h 00m old" in age["message"]
-    # The recorded grants still report what a replace would drop, and SST-PLN018 never fires.
+    # The observation keeps the grants it read for the cached plan, and SST-PLN018 never fires.
+    # The replace says COPY GRANTS, so neither plan reports them dropped (SST-PLN013).
+    assert "ANALYST" in recorded.read_text(encoding="utf-8")
     codes = {item["code"] for item in _diagnostics(cached)}
-    assert "SST-PLN013" in codes and "SST-PLN018" not in codes
+    assert "SST-PLN013" not in codes and "SST-PLN018" not in codes
 
 
 def test_a_cached_plan_says_how_old_its_observation_is(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

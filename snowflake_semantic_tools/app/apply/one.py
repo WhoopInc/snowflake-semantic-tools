@@ -49,18 +49,11 @@ from snowflake_semantic_tools.domain.validate.publication import refused_value, 
 def preserves_grants(change: Change) -> bool:
     """Report whether an update keeps the object's grants: a clause-preserving replace needs COPY GRANTS.
 
-    Only an update whose artifact preserves grants by clause is checked; every statement that
-    replaces the object must say COPY GRANTS, however it is spaced or cased.
+    Only an update is checked, by the rule plan warns with (`RenderedArtifact.keeps_grants`).
     """
     if change.action is not Action.UPDATE or change.rendered is None:
         return True
-    if change.rendered.grant_preservation is not GrantPreservation.CLAUSE:
-        return True
-    for statement in change.rendered.statements:
-        normalized = " ".join(str(statement).upper().split())
-        if "CREATE OR REPLACE" in normalized and "COPY GRANTS" not in normalized:
-            return False
-    return True
+    return change.rendered.keeps_grants
 
 
 class ChangeApplier:

@@ -18,9 +18,9 @@ unchanged whatever else the project, or the manifest that last stamped state, ch
 
 A blocking diagnostic travels on the change as well as in the plan's list. Three warnings
 never change a decision: a declared name whose case differs from the live object's
-(SST-PLN023), reported before the decision's own diagnostic; and an update of an object that
-carries explicit grants (SST-PLN013), then of a semantic view that carries tags the project
-does not declare (SST-PLN039), reported after it. An agent updated for version drift reports
+(SST-PLN023), reported before the decision's own diagnostic; and an update whose statements
+would drop the object's explicit grants (SST-PLN013), then of a semantic view that carries
+tags the project does not declare (SST-PLN039), reported after it. An agent updated for version drift reports
 what drifted (SST-PLN102) after them.
 
 An agent's ownership marker means "SST is writing this definition": publishing writes the
@@ -91,7 +91,8 @@ def classify(
 
     Diagnostics:
         SST-PLN002: an object of another type holds the artifact's name.
-        SST-PLN013: an update replaces an object that carries explicit grants.
+        SST-PLN013: an update's statements would drop the explicit grants the object carries:
+            its type keeps them by COPY GRANTS, and a statement that replaces it omits the clause.
         SST-PLN014: the object changed after apply recorded it: its marker, or a property apply
             read back after writing it.
         SST-PLN023: the declared name's case differs from the live object's.
@@ -171,7 +172,12 @@ def _compare(
     action, reason, blocking = _state_verdict(key, artifact, observed, recorded)
     change = _change(artifact, observed, action, reason, registry, blocking)
     reported.extend(blocking)
-    if change.action is Action.UPDATE and observed.explicit_grants:
+    if (
+        change.action is Action.UPDATE
+        and observed.explicit_grants
+        and change.rendered is not None
+        and not change.rendered.keeps_grants
+    ):
         reported.append(
             D("SST-PLN013", artifact=key, count=len(observed.explicit_grants), value=observed.qualified_name.sql)
         )

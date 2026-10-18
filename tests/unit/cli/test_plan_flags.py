@@ -12,6 +12,7 @@ from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, ShowRow
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from tests.helpers.cli_projects import common, invoke_with_port
@@ -58,16 +59,38 @@ def _codes(result: Result) -> set[str]:
     return {item["code"] for item in json.loads(result.stdout)["diagnostics"]}
 
 
+def _grant_reads(port: FakeSnowflake) -> list[str]:
+    """Record the name of each object the plan reads the grants of."""
+    reads: list[str] = []
+    original = port.show_grants
+
+    def show_grants(object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...] = ()) -> Any:
+        reads.append(qualified_name.sql)
+        return original(object_type, qualified_name, routine_signature)
+
+    port.show_grants = show_grants  # type: ignore[method-assign]
+    return reads
+
+
 def test_grants_are_read_by_default_and_no_grants_skips_them(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project, target = _target(tmp_path, monkeypatch)
-    read = _plan(project, _published(target), monkeypatch, "-o", "json")
+    port = _published(target)
+    reads = _grant_reads(port)
+    read = _plan(project, port, monkeypatch, "-o", "json")
     assert read.exit_code == 2, read.output
     assert _update(read)["action"] == "update"
-    assert "SST-PLN013" in _codes(read)
-    skipped = _plan(project, _published(target), monkeypatch, "--no-grants", "-o", "json")
+    assert reads == [target]
+    # The replace says COPY GRANTS, so the grant it reads is kept and nothing is reported.
+    assert "SST-PLN013" not in _codes(read)
+    port = _published(target)
+    reads = _grant_reads(port)
+    skipped = _plan(project, port, monkeypatch, "--no-grants", "-o", "json")
     assert skipped.exit_code == 2, skipped.output
-    assert "SST-PLN013" not in _codes(skipped)
-    assert _codes(_plan(project, _published(target), monkeypatch, "--grants", "-o", "json")) >= {"SST-PLN013"}
+    assert reads == []
+    port = _published(target)
+    reads = _grant_reads(port)
+    _plan(project, port, monkeypatch, "--grants", "-o", "json")
+    assert reads == [target]
 
 
 def test_capture_prior_reads_the_definition_an_update_replaces(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

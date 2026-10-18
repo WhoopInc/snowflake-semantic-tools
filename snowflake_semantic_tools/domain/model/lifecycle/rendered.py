@@ -305,6 +305,22 @@ class RenderedArtifact:
         """Return the rendered text, whatever its dialect: the same string as `ddl`."""
         return self.ddl
 
+    @property
+    def keeps_grants(self) -> bool:
+        """Report whether running `statements` keeps the object's explicit grants.
+
+        A type that re-applies its grants (REPLAY) or is never replaced (NONE) keeps them. A
+        type that keeps them by clause does only when every statement that replaces the object
+        says COPY GRANTS, however it is spaced or cased.
+        """
+        if self.grant_preservation is not GrantPreservation.CLAUSE:
+            return True
+        for statement in self.statements:
+            normalized = " ".join(str(statement).upper().split())
+            if "CREATE OR REPLACE" in normalized and "COPY GRANTS" not in normalized:
+                return False
+        return True
+
     def for_action(self, action: Action, observed: ObservedArtifact | None) -> RenderedArtifact:
         """Return the artifact with `statements` set to what the action runs.
 

@@ -35,13 +35,17 @@ def view(
     relations: tuple[str, ...] = (),
     database: str = "db",
     schema: str = "sch",
+    ddl: str | None = None,
 ) -> RenderedArtifact:
-    """A semantic view `database.schema.name` that depends on `depends_on` and reads `relations`."""
+    """A semantic view `database.schema.name` that depends on `depends_on` and reads `relations`.
+
+    `ddl` is the statement it renders; a plain CREATE when None.
+    """
     return RenderedArtifact.create(
         key=f"semantic_view:{name.casefold()}",
         artifact_type="semantic_view",
         target=QualifiedName.from_parts(database, schema, name),
-        ddl=statement(f"create semantic view {name}"),
+        ddl=statement(ddl or f"create semantic view {name}"),
         depends_on=depends_on,
         required_relations=tuple(QualifiedName.parse(relation) for relation in relations),
     )

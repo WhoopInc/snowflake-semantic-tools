@@ -6434,13 +6434,13 @@ Fix: grant USAGE, or name an existing warehouse
 
 **Live object carries grants that a replace would drop** (warning)
 
-`<artifact>: <count> explicit grants exist on <value>`
+`<artifact>: replacing <value> would drop its explicit grants (<count>)`
 
-Raised when a planned update replaces an object that carries explicit grants.
+Raised when a planned update replaces an object that carries explicit grants, with a statement that omits COPY GRANTS although the object's type keeps its grants only by that clause.
 
-Fix: confirm COPY GRANTS is emitted before applying
+Fix: report this as a bug; SST renders COPY GRANTS on every such replace, and apply refuses one without it
 
-Note: Apply checks every one survives the replace, and fails the change if not (SST-APL009).
+Note: An update that keeps the grants -- by COPY GRANTS, by granting them again, or by not replacing the object -- reports nothing; apply still checks every grant survives it (SST-APL009). One that would drop them is refused at apply (SST-APL004).
 
 ### SST-PLN014
 

@@ -73,7 +73,8 @@ def applied(artifact: RenderedArtifact, manifest_id: str) -> AppliedEntry:
 
 def test_plan_classifies_create_update_noop_and_reports_grants_and_case() -> None:
     create = rendered("create")
-    update = rendered("update")
+    # A replace that omits COPY GRANTS, so the grant the live object carries would be dropped.
+    update = rendered("update", "create or replace semantic view update")
     noop = rendered("noop")
     artifacts = {item.key: item for item in (create, update, noop)}
     manifest, _ = context(artifacts, {})
