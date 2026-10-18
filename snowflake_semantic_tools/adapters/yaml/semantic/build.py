@@ -7,7 +7,7 @@ the view are built in `build_members`.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Container, Mapping
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
@@ -281,6 +281,61 @@ def _view_tables(node: Mapping[str, Any], view: _View) -> tuple[tuple[Table, ...
         logical_by_model[model_key] = table.logical_name
         tables.append(table)
     return tuple(tables), logical_by_model
+
+
+# What a table entry can be wrong about, as `_view_table` reports it. The view's other checks
+# never report these, so a view poisoned before its build would hide them.
+TABLE_ENTRY_CODES = frozenset(("SST-REF044", "SST-REF001", "SST-DBT011", "SST-PRS006"))
+
+
+def view_table_diagnostics(
+    node: Mapping[str, Any],
+    path: Path,
+    project_dir: Path,
+    models: dict[str, DbtModel],
+    sources: tuple[DbtSource, ...] = (),
+    unavailable: Container[str] = frozenset(),
+) -> tuple[Diagnostic, ...]:
+    """Report every table entry of the view that does not resolve, without stopping at the first.
+
+    The build resolves the same entries the same way, but stops at the first problem, and only
+    a view nothing else poisons is built. This runs before the views are poisoned, so a view
+    with another error still reports its tables. A problem of another kind, which the build
+    reports, is left to it.
+
+    Args:
+        unavailable: The casefolded names of the models that are disabled or produce no
+            relation, which SST-VAL303 reports on the view; an entry naming one reports nothing.
+
+    Diagnostics:
+        SST-REF044, SST-REF001, SST-DBT011, SST-PRS006: as `_view_table` reports them, one per
+            entry, in entry order.
+    """
+    view = _View(
+        str(node["name"]),
+        path,
+        Origin(path.resolve().relative_to(project_dir.resolve()).as_posix()),
+        models,
+        DbtCatalog("v12", None, None, tuple(models.values()), sources=sources),
+        MappingProxyType({}),
+    )
+    found: list[Diagnostic] = []
+    logical_by_model: dict[str, str] = {}
+    for raw in node.get("tables") or []:
+        try:
+            model_key, table = _view_table(raw, view, logical_by_model)
+        except ProjectError as exc:
+            found.extend(item for item in exc.diagnostics if _table_entry_problem(item, unavailable))
+            continue
+        logical_by_model[model_key] = table.logical_name
+    return tuple(found)
+
+
+def _table_entry_problem(diagnostic: Diagnostic, unavailable: Container[str]) -> bool:
+    """Report whether `diagnostic` is a table-entry problem, and not a model SST-VAL303 names."""
+    if diagnostic.code not in TABLE_ENTRY_CODES:
+        return False
+    return diagnostic.code != "SST-REF001" or str(diagnostic.context.get("model", "")).casefold() not in unavailable
 
 
 def _view_table(raw: object, view: _View, logical_by_model: Mapping[str, str]) -> tuple[str, Table]:

@@ -19,7 +19,7 @@ from snowflake_semantic_tools.adapters.yaml.discover import FileSet, directory_r
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache, RawDocument, RawDocuments, load_documents
 from snowflake_semantic_tools.adapters.yaml.ownership import assign_owners
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
-from snowflake_semantic_tools.adapters.yaml.semantic.build import _build_view
+from snowflake_semantic_tools.adapters.yaml.semantic.build import _build_view, view_table_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.collect import parse_semantic_project
 from snowflake_semantic_tools.adapters.yaml.semantic.file_reads import file_texts
 from snowflake_semantic_tools.adapters.yaml.semantic.phases import (
@@ -143,7 +143,9 @@ def load_semantic_views_result(
        view is poisoned.
     7. The healthy metrics' `using_relationships`; a metric naming a relationship that is
        missing or starts elsewhere is poisoned.
-    8. View instructions, scope and content: each view's `custom_instructions()` entries and
+    8. View tables, instructions, scope and content: each table entry of each view that would
+       be built that does not resolve (every one, not just the first), then each view's
+       `custom_instructions()` entries and
        the pairs of them one view attaches that contradict each other, the columns, metrics and
        relationships it lists or excludes, then the file, prose and per-view rules of
        `domain.validate.semantic.rules`.
@@ -191,12 +193,14 @@ def load_semantic_views_result(
     instruction_names, view_diagnostics = _view_content_checks(
         context, parsed, members, poison.member_keys, instruction_text_diagnostics
     )
+    table_diagnostics = _view_table_checks(context, parsed, structure.duplicate_views, structure.legacy_files)
     reported = (
         *parsed.diagnostics,
         *structure.diagnostics,
         *semantic.diagnostics,
         *relationship_diagnostics,
         *using_diagnostics,
+        *table_diagnostics,
         *view_diagnostics,
     )
     # After every check: the views left unbuilt are read from the errors reported so far.
@@ -269,6 +273,53 @@ def _view_content_checks(
             context.catalog.unreadable_models,
         ),
     )
+
+
+def _view_table_checks(
+    context: LoadContext,
+    parsed: ParsedProject,
+    duplicate_views: frozenset[str],
+    legacy_files: frozenset[str],
+) -> tuple[Diagnostic, ...]:
+    """Phase 8, first: every table entry that does not resolve, of each view the build would reach.
+
+    The build stops at a view's first bad entry, and a view another check poisons is never
+    built, so its tables were never reported: a user fixed the reported error only to learn of
+    the next. These run before poisoning, so their errors poison the view in turn and the build
+    never reports them again. A view that is disabled, repeats a name, has malformed tables, or
+    uses the legacy globals is left to what already reports it.
+
+    Diagnostics:
+        SST-REF044, SST-REF001, SST-DBT011, SST-PRS006: as `view_table_diagnostics` reports
+            them, at the view's node and key when they name neither; each distinct one once.
+    """
+    parsed_views = {view_key(view.name): view for view in parsed.views}
+    unbuilt = {key for key, view in parsed_views.items() if view.poisoned or view.origin.file in legacy_files}
+    found: list[Diagnostic] = []
+    for path, node, enabled in _named_views(context):
+        name = str(node["name"])
+        key = view_key(name)
+        if not enabled or name.casefold() in duplicate_views or key in unbuilt:
+            continue
+        table_findings = view_table_diagnostics(
+            node,
+            path,
+            context.project_dir,
+            context.models,
+            context.catalog.sources,
+            unavailable=context.catalog.unreadable_models,
+        )
+        view = parsed_views.get(key)
+        origin = (
+            view.origin
+            if view is not None
+            else Origin(path.resolve().relative_to(context.project_dir.resolve()).as_posix())
+        )
+        for item in table_findings:
+            located = replace(item, origin=item.origin or origin, subject=item.subject or key)
+            if located not in found:
+                found.append(located)
+    return tuple(found)
 
 
 def _resolve_and_build(
