@@ -8,9 +8,16 @@ from snowflake_semantic_tools.domain.state import ArtifactEntry, Manifest
 
 
 def _entry(
-    kind: str, name: str, *, depends_on: tuple[str, ...] = (), references: tuple[str, ...] = ()
+    kind: str,
+    name: str,
+    *,
+    depends_on: tuple[str, ...] = (),
+    references: tuple[str, ...] = (),
+    object_type: str = "SEMANTIC VIEW",
 ) -> ArtifactEntry:
-    return ArtifactEntry(kind, name, "f" * 64, (), (), depends_on, f"DB.S.{name.upper()}", 1, references=references)
+    return ArtifactEntry(
+        kind, name, "f" * 64, (), (), depends_on, f"DB.S.{name.upper()}", 1, object_type, references=references
+    )
 
 
 def lineage_manifest(*, dbt_nodes: dict[str, object] | None = None) -> Manifest:
@@ -18,14 +25,18 @@ def lineage_manifest(*, dbt_nodes: dict[str, object] | None = None) -> Manifest:
         schema_version=5,
         manifest_id="",
         generator=MappingProxyType({}),
-        project=MappingProxyType({}),
+        project=MappingProxyType({"dbt_project_name": "p"}),
         sources=MappingProxyType({}),
         artifacts=MappingProxyType(
             {
                 "semantic_view:sales": _entry("semantic_view", "sales"),
-                "tool:status": _entry("tool", "status"),
+                "tool:status": _entry("tool", "status", object_type="PROCEDURE"),
+                "tool:lookup": _entry("tool", "lookup", object_type="FUNCTION"),
                 "agent:helper": _entry(
-                    "agent", "helper", depends_on=("semantic_view:sales", "tool:status"), references=("command:x",)
+                    "agent",
+                    "helper",
+                    depends_on=("semantic_view:sales", "tool:status"),
+                    references=("command:x", "tool_ref:partner"),
                 ),
                 "profile:p": _entry("profile", "p", references=("agent:helper",)),
             }
@@ -66,6 +77,14 @@ def lineage_manifest(*, dbt_nodes: dict[str, object] | None = None) -> Manifest:
                 "source.p.raw.orders": {"kind": "source", "name": "raw.orders", "relation": "RAW.APP.ORDERS"},
                 "test.p.unique": {"kind": "test", "name": "unique", "depends_on": ["model.p.orders"]},
                 "exposure.p.board": {"kind": "exposure", "name": "board", "depends_on": ["model.p.orders"]},
+                "model.other.shared": {"kind": "model", "name": "shared", "package": "other", "relation": "X.Y.SHARED"},
+                "model.other.built": {
+                    "kind": "model",
+                    "name": "built",
+                    "package": "other",
+                    "depends_on": ["model.p.orders"],
+                },
+                "snapshot.p.history": {"kind": "snapshot", "name": "history", "depends_on": ["model.other.shared"]},
                 "seed.p.broken": "not a node",
             }
         ),

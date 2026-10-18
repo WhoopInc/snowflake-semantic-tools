@@ -185,3 +185,18 @@ def test_graph_operators_select_the_artifacts_lineage_reaches_and_build_the_grap
     assert len(built) == 6
     refused = walked("tag:core+")
     assert isinstance(refused, Diagnostic) and refused.code == "SST-PRT100"
+
+
+def test_a_tool_another_team_owns_is_refused_bare_and_selects_its_callers_inside_the_operators() -> None:
+    bare = _resolve("tool_ref:partner")
+    assert isinstance(bare, Diagnostic) and "names a tool another team owns" in bare.message
+    graph = LineageGraph(
+        {
+            "tool_ref:partner": LineageNode("tool_ref:partner", "tool_ref", "partner"),
+            "agent:orders": LineageNode("agent:orders", "agent", "orders"),
+        },
+        {"agent:orders": ("tool_ref:partner",)},
+        {"tool_ref:partner": ("agent:orders",)},
+    )
+    walked = resolve_selectors(("tool_ref:partner+",), artifact_types=TYPES, universe=UNIVERSE, graph=lambda: graph)
+    assert walked == Selection(None, frozenset(("agent:orders",)))

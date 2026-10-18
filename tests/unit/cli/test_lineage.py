@@ -10,6 +10,7 @@ from typing import Any
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
+from snowflake_semantic_tools.domain.state.documents import content_hash
 from tests.helpers.cli_projects import common, compile_project
 from tests.helpers.reference_project import project_copy
 
@@ -62,3 +63,27 @@ def test_without_the_manifest_the_project_is_compiled_in_memory(tmp_path: Path) 
         cli, ["lineage", "--project-dir", str(project), "model:orders", "--state", str(tmp_path)]
     )
     assert absent.exit_code == 4
+
+
+def test_each_output_says_where_a_walk_ends_and_plain_prints_one_signed_depth_per_node(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    plain = _lineage(project, "agent:jaffle_analytics_agent", "--upstream", "--depth", "1", output="plain")
+    assert "0 agent:jaffle_analytics_agent" in plain and "-1 tool_ref:order_tier_lookup" in plain
+    table = _lineage(project, "agent:jaffle_analytics_agent", "--upstream", "--depth", "1", output="table")
+    assert "  tool_ref:order_tier_lookup  tool_ref  (owned by another team)" in table
+    agent = _lineage(project, "agent:jaffle_analytics_agent", "--upstream", "--depth", "1", output="agent")
+    assert "upstream 1 tool_ref:order_tier_lookup tool_ref | owned by another team" in agent
+    data = _lineage(project, "tool_ref:order_tier_lookup")
+    assert data["dbt_graph"] is True and data["nodes"][0]["marker"] == "owned by another team"
+
+
+def test_a_manifest_without_dbt_s_graph_says_to_compile_again(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    path = project / "target" / "sst" / "manifest.json"
+    document = {**json.loads(path.read_text(encoding="utf-8")), "dbt_nodes": {}}
+    material = {key: value for key, value in document.items() if key not in ("manifest_id", "schema_version")}
+    path.write_text(json.dumps({**document, "manifest_id": content_hash(material)}), encoding="utf-8")
+    assert "run `sst compile` to trace through dbt" in _lineage(project, "tool:order_status", output="table")
+    assert _lineage(project, "tool:order_status")["dbt_graph"] is False

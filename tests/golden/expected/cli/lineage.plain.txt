@@ -1,10 +1,11 @@
 $ sst --project-dir <project> --manifest <manifest> lineage tool:order_status
 --- exit 0
 --- stdout
-DIRECTION   DEPTH  NODE                          KIND   RELATION
-self        0      tool:order_status             tool   SST_REF_DEV.JAFFLE.ORDER_STATUS
-upstream    1      model:orders                  model  SST_REF_DEV.JAFFLE.ORDERS
-downstream  1      agent:jaffle_analytics_agent  agent  SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT
-downstream  2      eval:jaffle_analytics_agent   eval   SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANALYTICS_AGENT_DCE1F8A
+tool:order_status  tool  SST_REF_DEV.JAFFLE.ORDER_STATUS
+upstream
+  model:orders  model  SST_REF_DEV.JAFFLE.ORDERS
+downstream
+  agent:jaffle_analytics_agent  agent  SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT
+    eval:jaffle_analytics_agent  eval  SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANALYTICS_AGENT_DCE1F8A
 --- stderr
 ✓ traced 4 nodes from tool:order_status · <n>s

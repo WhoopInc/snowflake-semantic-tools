@@ -81,8 +81,8 @@ _OPTION_HELP: Mapping[str, str] = {
         "Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, "
         "or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. "
         "dbt's graph operators add lineage: `model:orders+` is every artifact `orders` feeds, `+agent:a` "
-        "all an agent reads, and `2+x` or `x+1` bound the steps; `model:`, `source:`, `exposure:` and a "
-        "member such as `metric:<name>` work inside them."
+        "all an agent reads, and `2+x` or `x+1` bound the steps; dbt nodes (`model:`, `seed:`, `source:`), "
+        "members such as `metric:<name>` and `tool_ref:<name>` work inside them."
     ),
     "--exclude": "Leave these artifacts out; same forms as `--select`.",
     "--state": "Previous run's build directory, else `$SST_STATE_DIR`, whose `manifest.json` `state:` selectors read.",

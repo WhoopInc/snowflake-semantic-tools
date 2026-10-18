@@ -348,7 +348,9 @@ def _delegate(
             diagnostics.extend(relation_problems)
             if relation is not None:
                 description = authored.description or backing.description or ""
-                resolution = _Resolution(name, description, {"agent_name": relation.sql}, external=True)
+                resolution = _Resolution(
+                    name, description, {"agent_name": relation.sql}, member=backing.name, external=True
+                )
     else:
         label = name or authored.type
         diagnostics.append(

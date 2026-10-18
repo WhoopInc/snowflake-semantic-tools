@@ -1,14 +1,16 @@
 """`sst lineage NODE`: what one node of the project's lineage reads, and what reads it, offline.
 
-NODE is an artifact key, a member key such as `metric:<name>`, `model:<name>`,
-`source:<source>.<table>` or `exposure:<name>`, or a bare name, which names every node of that
-name; a key's name may glob. The graph is the one the compiled manifest records, or with
-`--no-manifest` the one the project compiles to now. `--state` marks what changed since another
-manifest: an artifact by its fingerprint, a member by the fingerprints its views record.
+NODE is an artifact key, a member key such as `metric:<name>`, a dbt node such as
+`model:<name>`, `seed:<name>` or `source:<source>.<table>`, a tool member another team owns as
+`tool_ref:<name>`, or a bare name, which names every node of that name; a key's name may glob.
+The graph is the one the compiled manifest records, or with `--no-manifest` the one the project
+compiles to now. `--state` marks what changed since another manifest: an artifact by its
+fingerprint, a member by the fingerprints its views record.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import click
@@ -30,14 +32,13 @@ from snowflake_semantic_tools.cli.options import (
 )
 from snowflake_semantic_tools.cli.output import render_policy
 from snowflake_semantic_tools.cli.render.diagnostics import plural
-from snowflake_semantic_tools.cli.render.report import table
 from snowflake_semantic_tools.cli.render.style import Style
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.manifest import build_manifest, compiled_manifest, refuse_another_target
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
-from snowflake_semantic_tools.domain.lineage.graph import manifest_lineage
+from snowflake_semantic_tools.domain.lineage.graph import LineageGraph, manifest_lineage
 from snowflake_semantic_tools.domain.lineage.trace import (
     DOWNSTREAM,
     UPSTREAM,
@@ -46,6 +47,7 @@ from snowflake_semantic_tools.domain.lineage.trace import (
     find_nodes,
     near_miss,
     trace,
+    tree,
 )
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.state import Manifest
@@ -81,13 +83,17 @@ def lineage_command(
     """Show what NODE reads and what reads it: dbt models and sources, members, and artifacts.
 
     NODE is an artifact key such as semantic_view:sales, a member key such as
-    metric:total_revenue, model:<name>, source:<source>.<table>, exposure:<name>, or a bare name,
-    which names every node of that name; the name after a kind may glob. Both directions are
-    shown unless --upstream or --downstream picks one, as far as the graph goes unless --depth
-    stops it. Without --no-manifest the manifest `sst compile` wrote is read, and its absence
-    exits 4; with it, the project is compiled in memory, nothing is written, and what fails to
-    compile is reported and exits 1. --state marks what changed since that directory's
-    manifest. A NODE the graph does not hold exits 3 (SST-PRT112).
+    metric:total_revenue, a dbt node (model:, seed:, snapshot:, test:, exposure:, or
+    source:<source>.<table>), tool_ref:<name> for a tool another team owns, or a bare name, which
+    names every node of that name; the name after a kind may glob. Both directions are shown, as
+    trees, unless --upstream or --downstream picks one, as far as the graph goes unless --depth
+    stops it; a node where the walk meets someone else's work says so, such as a raw source.
+    `-o plain` prints one `<depth> <key>` line per node, upstream depths negative.
+
+    Without --no-manifest the manifest `sst compile` wrote is read, and its absence exits 4; with
+    it, the project is compiled in memory, nothing is written, and what fails to compile is
+    reported and exits 1. --state marks what changed since that directory's manifest. A NODE
+    the graph does not hold exits 3 (SST-PRT112).
     """
     paths = with_model_paths(paths, dbt_dir, semantic_dir)
     if no_manifest:
@@ -108,12 +114,14 @@ def lineage_command(
     traced = trace(
         graph, start, upstream=direction != DOWNSTREAM, downstream=direction != UPSTREAM, depth=depth, changed=changed
     )
-    data = _data(node, start, traced, compared=state_dir is not None)
+    data = {**_data(node, start, traced, compared=state_dir is not None), "dbt_graph": bool(manifest.dbt_nodes)}
+    directions = tuple(item for item in (UPSTREAM, DOWNSTREAM) if direction in (None, item))
+    shown = _Shown(graph, traced, start, directions, depth, changed, dbt_graph=bool(manifest.dbt_nodes))
     return CommandResult(
         ERROR if DiagnosticBag(notes).has_errors else OK,
         DiagnosticBag(notes),
         data,
-        human=lambda: _print(traced, compared=state_dir is not None),
+        human=lambda: _print(shown),
         gated=True,
         headline=f"traced {plural(len(traced.nodes), 'node')} from {', '.join(start)}",
     )
@@ -144,6 +152,7 @@ def _data(node: str, start: tuple[str, ...], traced: Trace, *, compared: bool) -
             "direction": item.direction,
             "depth": item.depth,
             "relation": item.node.relation,
+            "marker": item.node.marker,
         }
         if compared:
             entry["changed"] = item.changed
@@ -152,22 +161,57 @@ def _data(node: str, start: tuple[str, ...], traced: Trace, *, compared: bool) -
     return {"node": node, "start": list(start), "nodes": nodes, "edges": edges, "count": len(nodes)}
 
 
-def _print(traced: Trace, *, compared: bool) -> None:
-    """Print a table of the nodes: starts first, then upstream and downstream, each by depth."""
-    header = ["DIRECTION", "DEPTH", "NODE", "KIND", "RELATION", *(["CHANGED"] if compared else [])]
-    rows = [header] + [
-        [
-            item.direction,
-            str(item.depth),
-            item.node.key,
-            item.node.kind,
-            item.node.relation or "-",
-            *(["yes" if item.changed else "-"] if compared else []),
-        ]
-        for item in traced.nodes
-    ]
-    terminal = render_policy().terminal
-    lines = table(rows, terminal.width, keep=2)
-    click.echo(Style(terminal, stdout=True)(lines[0], "dim"), color=True if terminal.color_out else None)
-    for line in lines[1:]:
-        click.echo(line)
+@dataclass(frozen=True, slots=True)
+class _Shown:
+    """What the human render of one trace draws from: the graph, the trace, and how it was asked for."""
+
+    graph: LineageGraph
+    traced: Trace
+    start: tuple[str, ...]
+    directions: tuple[str, ...]
+    depth: int | None
+    changed: frozenset[str]
+    dbt_graph: bool = True
+
+
+def _print(shown: _Shown) -> None:
+    """Print the trace: with `plain`, one `<depth> <key>` line per node, upstream depths negative.
+
+    Otherwise each start, then each direction as a tree, a node under the one it was reached
+    from, with its kind, its Snowflake name, why the walk ends there, and whether it changed; a
+    manifest that records no dbt graph, as one migrated from schema 4, says to compile again.
+    """
+    policy = render_policy()
+    if policy.output == "plain":
+        for item in shown.traced.nodes:
+            click.echo(f"{-item.depth if item.direction == UPSTREAM else item.depth} {item.node.key}")
+        return
+    style = Style(policy.terminal, stdout=True)
+    color = True if policy.terminal.color_out else None
+    for key in shown.start:
+        click.echo(_line(shown, key, style), color=color)
+    for direction in shown.directions:
+        rows = tree(shown.graph, shown.start, upstream=direction == UPSTREAM, depth=shown.depth)
+        if not rows:
+            continue
+        click.echo(style(direction, "dim"), color=color)
+        for row in rows:
+            line = _line(shown, row.key, style) if not row.repeated else f"{row.key}  {style('(shown above)', 'dim')}"
+            click.echo("  " * row.level + line, color=color)
+    if not shown.dbt_graph:
+        click.echo(
+            style("(this manifest records no dbt graph; run `sst compile` to trace through dbt)", "dim"), color=color
+        )
+
+
+def _line(shown: _Shown, key: str, style: Style) -> str:
+    """Return one node as a tree line names it: key, kind, relation, why it ends a walk, changed."""
+    node = shown.graph.nodes[key]
+    parts = [key, style(node.kind, "dim")]
+    if node.relation:
+        parts.append(node.relation)
+    if node.marker:
+        parts.append(style(f"({node.marker})", "dim"))
+    if key in shown.changed:
+        parts.append(style("~ changed", "update"))
+    return "  ".join(parts)

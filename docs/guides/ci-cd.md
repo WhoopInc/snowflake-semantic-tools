@@ -92,10 +92,22 @@ sst lineage tool:order_status --upstream          # the models the procedure's b
 sst lineage metric:total_revenue --state prod-run/ # and which of them changed since then
 ```
 
-NODE is an artifact key, a member key such as `metric:<name>`, `model:<name>`,
-`source:<source>.<table>`, `exposure:<name>`, or a bare name. `--depth` bounds
+NODE is an artifact key, a member key such as `metric:<name>`, a dbt node
+(`model:`, `seed:`, `snapshot:`, `test:`, `exposure:`, or
+`source:<source>.<table>`), `tool_ref:<name>` for a tool member another team
+owns, or a bare name. Each direction prints as a tree, a node under the one it
+was reached from, and a subtree reached twice is shown once. `--depth` bounds
 the walk, `--state` marks each artifact and member that changed since another
-run's manifest, and `--no-manifest` traces the project as it compiles now.
+run's manifest, and `--no-manifest` traces the project as it compiles now;
+`-o plain` prints one `<depth> <key>` line per node (upstream negative), and
+`-o json` the nodes and the edges between them.
+
+Where the walk meets someone else's work, the node says so rather than ending
+silently: a source is a `(raw source)`; a model of another dbt package that
+reads nothing here is `(defined in another project; upstream continues there)`;
+a tool member another team owns is `(owned by another team)`; and a procedure
+or function whose body names no `ref()` is `(reads: unknown; body names no
+ref())`, since SST cannot see what a literal name reads.
 
 Every `--select` and `--exclude` takes dbt's graph operators over the same
 graph, so a pull request can plan only what a model change reaches:
@@ -107,8 +119,8 @@ sst plan --target prod --select 2+metric:total_revenue+1
 ```
 
 `+X` adds what X reads, `X+` what reads X, and a number bounds the steps.
-`model:`, `source:`, `exposure:` and members name no artifact on their own, so
-they are refused outside the operators. `sst enrich --select +model:orders`
+dbt nodes, members and `tool_ref:` name no artifact on their own, so they are
+refused outside the operators. `sst enrich --select +model:orders`
 walks dbt's graph alone, to enrich a model and those it is built from.
 
 ### Recording what an update replaces

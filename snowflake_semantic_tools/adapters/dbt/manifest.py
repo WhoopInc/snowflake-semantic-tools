@@ -552,15 +552,18 @@ def _section(root: Mapping[str, Any], key: str) -> list[tuple[str, Mapping[str, 
 
 
 def _node(unique_id: str, kind: str, name: str, node: Mapping[str, Any], relation: str | None) -> DbtNode:
+    """Project one graph node; a test also reads the node it is attached to."""
     depends_on = node.get("depends_on")
-    upstream = depends_on.get("nodes") if isinstance(depends_on, dict) else None
+    listed = depends_on.get("nodes") if isinstance(depends_on, dict) else None
+    attached = node.get("attached_node")
+    upstream = [*(listed if isinstance(listed, list) else ()), *((attached,) if isinstance(attached, str) else ())]
     return DbtNode(
         unique_id=unique_id,
         kind=kind,
         name=name,
         package=_text(node.get("package_name")),
         relation=relation,
-        depends_on=tuple(sorted({item for item in upstream or () if isinstance(item, str)})),
+        depends_on=tuple(sorted({item for item in upstream if isinstance(item, str)})),
     )
 
 

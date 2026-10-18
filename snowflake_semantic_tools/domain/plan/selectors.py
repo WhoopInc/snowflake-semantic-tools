@@ -3,9 +3,10 @@
 The grammar is closed: a name (with `*` and `?` globs), `type:<type>`, `path:<glob>`,
 `state:<state>`, or an artifact key `<type>:<name>`, each optionally inside dbt's graph
 operators, `+X`, `X+`, `2+X` or `X+3`, which add what X reads or what reads it in the lineage
-graph. Inside the operators X may also be a dbt node, `model:<name>`, `source:<source>.<table>`
-or `exposure:<name>`, or a view's member such as `metric:<name>`, each globbable; written bare,
-those name no artifact and are refused. Anything else is refused rather than read as a literal
+graph. Inside the operators X may also be a dbt node, such as `model:<name>`, `seed:<name>` or
+`source:<source>.<table>`, a view's member such as `metric:<name>`, or a tool member another
+team owns, `tool_ref:<name>`, each globbable; written bare, those name no artifact and are
+refused. Anything else is refused rather than read as a literal
 name, because a selector that silently matches nothing turns a prune or a rollback into a run
 that reports success having done nothing. A comma is refused outright: union is spelled with
 spaces, and intersection is not supported. Names, types, and states compare casefolded; a path
@@ -22,6 +23,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.lineage.graph import (
     DBT_KINDS,
     MEMBER_KINDS,
+    TOOL_REF,
     GraphSelector,
     GraphSource,
     LineageGraph,
@@ -196,7 +198,7 @@ def _graph_start(
     core = operators.core
     prefix, separator, rest = core.partition(":")
     kind = prefix.casefold()
-    if separator and kind in (*DBT_KINDS, *MEMBER_KINDS):
+    if separator and kind in (*DBT_KINDS, *MEMBER_KINDS, TOOL_REF):
         pattern = f"{kind}:{rest.casefold()}"
         return frozenset(key for key in graph.nodes if fnmatchcase(key, pattern))
     resolved = _resolve_one(core, known_types, artifacts, previous)
@@ -226,8 +228,14 @@ def _resolve_one(
         if not rest:
             return _unsupported(value, f"{prefix}: names no artifact")
         return "key", frozenset((artifact_key(kind, rest.casefold()),))
-    if kind in (*DBT_KINDS, *MEMBER_KINDS):
-        what = "a dbt node" if kind in DBT_KINDS else "a member of a view"
+    if kind in (*DBT_KINDS, *MEMBER_KINDS, TOOL_REF):
+        what = (
+            "a dbt node"
+            if kind in DBT_KINDS
+            else "a tool another team owns"
+            if kind == TOOL_REF
+            else "a member of a view"
+        )
         return _unsupported(value, f"{prefix}: names {what}, not an artifact; write {value}+ for what reads it")
     if kind not in SELECTOR_KINDS:
         return D("SST-PRT102", subject="cli", value=value, expected=f"one of {', '.join(SELECTOR_KINDS)}")

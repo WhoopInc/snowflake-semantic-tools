@@ -1,12 +1,18 @@
 """The lineage graph: dbt's nodes, SST's members and artifacts, and what reads what, offline.
 
 Every node is keyed so a selector can name it: an artifact by its key (`semantic_view:sales`), a
-member by its member key (`metric:total_revenue`), a dbt model, seed or snapshot as
-`model:<name>`, a source as `source:<source>.<table>`, and an exposure as `exposure:<name>`, each
-name casefolded. An edge runs from what is read to what reads it: a model to the models built
-from it, to the members whose tables it holds and to the artifacts that read it; a member to the
+member by its member key (`metric:total_revenue`), a tool member another team owns as
+`tool_ref:<name>`, and a dbt node by its resource type and name, as `model:<name>`, `seed:`,
+`snapshot:`, `test:` and `exposure:`, a source as `source:<source>.<table>`; each name casefolded.
+An edge runs from what is read to what reads it: a model to the models built from it, its tests
+and exposures, the members whose tables it holds and the artifacts that read it; a member to the
 members that use it and the views it attaches to; and an artifact to the artifacts that depend
-on it or name it. dbt's tests are not lineage and are left out.
+on it or name it, an agent naming the tool members it calls.
+
+Where a walk ends at someone else's work, the node says so in its `marker`: a source is a raw
+source, a model of another dbt package that reads nothing here is defined in another project, a
+`tool_ref:` is owned by another team, and a procedure or function that reads no model has a body
+that names no `ref()`, so what it reads is unknown.
 
 `parse_graph_selector` reads dbt's `+` operators: `+X` adds what X reads, `X+` what reads X, and
 a number before or after the `+` bounds how many steps the walk takes.
@@ -16,7 +22,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.model.dbt import DbtNode
@@ -25,8 +31,15 @@ from snowflake_semantic_tools.domain.state.manifest import Manifest
 # The member kinds a manifest keys its members by, so a selector can name one.
 MEMBER_KINDS = ("custom_instruction", "dimension", "fact", "filter", "metric", "relationship", "verified_query")
 # The dbt kinds a node key names, with the resource types each covers.
-DBT_KINDS = ("model", "source", "exposure")
+DBT_KINDS = ("model", "seed", "snapshot", "source", "test", "exposure")
 _RELATIONS = frozenset(("model", "seed", "snapshot"))
+# A tool member another team owns, which an agent calls but SST never publishes.
+TOOL_REF = "tool_ref"
+RAW_SOURCE = "raw source"
+OTHER_PROJECT = "defined in another project; upstream continues there"
+OTHER_TEAM = "owned by another team"
+UNKNOWN_READS = "reads: unknown; body names no ref()"
+_ROUTINES = frozenset(("PROCEDURE", "FUNCTION"))
 _GRAPH_SELECTOR = re.compile(r"(?:(\d*)\+)?([^+]+?)(?:\+(\d*))?")
 
 
@@ -41,6 +54,7 @@ class LineageNode:
         relation: The relation a dbt node builds or reads, or the object an artifact publishes
             to; None for a member, an exposure, or a dbt node with none.
         package: The dbt package that defines a dbt node; None for anything else.
+        marker: Why a walk ends here, as the module lists them; None for a node that says nothing.
     """
 
     key: str
@@ -48,6 +62,7 @@ class LineageNode:
     name: str
     relation: str | None = None
     package: str | None = None
+    marker: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,8 +150,8 @@ def _depth(written: str | None) -> int | None:
 
 
 def node_key(kind: str, name: str) -> str:
-    """Return the key of a dbt node: `model:` for a model, seed or snapshot, else its kind."""
-    return f"{'model' if kind in _RELATIONS else kind}:{name.casefold()}"
+    """Return the key of a dbt node: its resource type and its name, casefolded."""
+    return f"{kind}:{name.casefold()}"
 
 
 def dbt_lineage(nodes: Iterable[DbtNode]) -> LineageGraph:
@@ -157,6 +172,7 @@ def manifest_lineage(manifest: Manifest) -> LineageGraph:
     builder = _Builder()
     builder.add_dbt(_recorded_dbt(manifest.dbt_nodes))
     tables = {node.name: node.key for node in builder.nodes.values() if node.kind in (*_RELATIONS, "source")}
+    read: set[str] = set()
 
     def table(name: str) -> str:
         if name not in tables:
@@ -170,6 +186,7 @@ def manifest_lineage(manifest: Manifest) -> LineageGraph:
         model = table(str(name).casefold())
         for artifact in _strings(recorded, "referenced_by"):
             builder.edge(model, artifact)
+            read.add(artifact)
     for key, recorded in manifest.members.items():
         kind, _, name = key.partition(":")
         builder.node(LineageNode(key, kind, name))
@@ -181,9 +198,29 @@ def manifest_lineage(manifest: Manifest) -> LineageGraph:
             builder.edge(key, view)
     for key, entry in manifest.artifacts.items():
         for upstream in (*entry.depends_on, *entry.references):
-            if upstream in manifest.artifacts:
+            if upstream.startswith(f"{TOOL_REF}:"):
+                name = upstream.partition(":")[2]
+                builder.node(LineageNode(upstream, TOOL_REF, name, marker=OTHER_TEAM))
+            if upstream in manifest.artifacts or upstream.startswith(f"{TOOL_REF}:"):
                 builder.edge(upstream, key)
-    return builder.graph()
+    project = str(manifest.project.get("dbt_project_name") or "")
+    return builder.graph(lambda node, parents: _marker(node, parents, read=read, project=project, manifest=manifest))
+
+
+def _marker(
+    node: LineageNode, parents: tuple[str, ...], *, read: set[str], project: str, manifest: Manifest
+) -> str | None:
+    """Say why a walk ends at `node`, as the module lists the ends; None for a node that is no end."""
+    if node.marker is not None:
+        return node.marker
+    if node.kind == "source":
+        return RAW_SOURCE
+    if node.kind in _RELATIONS and not parents and project and node.package not in (None, project):
+        return OTHER_PROJECT
+    entry = manifest.artifacts.get(node.key)
+    if entry is not None and entry.object_type in _ROUTINES and node.key not in read:
+        return UNKNOWN_READS
+    return None
 
 
 def _recorded_dbt(
@@ -225,11 +262,11 @@ class _Builder:
         self.edges.add((upstream, downstream))
 
     def add_dbt(self, nodes: Iterable[tuple[str, str, str, str | None, str | None, tuple[str, ...]]]) -> None:
-        """Add dbt's models, seeds, snapshots, sources and exposures, and the edges between them."""
+        """Add dbt's models, seeds, snapshots, sources, tests and exposures, and the edges between them."""
         keys: dict[str, str] = {}
         depends: dict[str, tuple[str, ...]] = {}
         for unique_id, kind, name, package, relation, depends_on in sorted(nodes):
-            if kind not in (*_RELATIONS, "source", "exposure"):
+            if kind not in DBT_KINDS:
                 continue
             node = self.node(LineageNode(node_key(kind, name), kind, name.casefold(), relation, package))
             keys[unique_id] = node.key
@@ -239,15 +276,20 @@ class _Builder:
                 if upstream in keys:
                     self.edge(keys[upstream], keys[unique_id])
 
-    def graph(self) -> LineageGraph:
+    def graph(self, marker: Callable[[LineageNode, tuple[str, ...]], str | None] | None = None) -> LineageGraph:
+        """Freeze the nodes and edges; `marker` says why a walk ends at a node, given its parents."""
         parents: dict[str, set[str]] = {}
         children: dict[str, set[str]] = {}
         for upstream, downstream in self.edges:
             if upstream in self.nodes and downstream in self.nodes and upstream != downstream:
                 parents.setdefault(downstream, set()).add(upstream)
                 children.setdefault(upstream, set()).add(downstream)
+        nodes = {
+            key: replace(node, marker=marker(node, tuple(sorted(parents.get(key, ()))))) if marker is not None else node
+            for key, node in sorted(self.nodes.items())
+        }
         return LineageGraph(
-            MappingProxyType(dict(sorted(self.nodes.items()))),
+            MappingProxyType(nodes),
             MappingProxyType({key: tuple(sorted(value)) for key, value in sorted(parents.items())}),
             MappingProxyType({key: tuple(sorted(value)) for key, value in sorted(children.items())}),
         )

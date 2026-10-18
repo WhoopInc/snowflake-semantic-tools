@@ -93,6 +93,12 @@ def test_the_catalog_carries_dbt_s_graph_with_tests_sources_and_exposures() -> N
         "package_name": "fixture",
         "depends_on": {"nodes": ["model.fixture.products"]},
     }
+    # A test dbt records only by the node it is attached to still reads that node.
+    nodes["test.fixture.attached"] = {
+        "resource_type": "test",
+        "name": "attached",
+        "attached_node": "model.fixture.staged",
+    }
     document["sources"] = {
         "source.fixture.raw.items": {"source_name": "raw", "name": "items", "relation_name": "raw.app.items"},
         "source.fixture.raw.none": {"source_name": "raw", "name": "none", "depends_on": []},
@@ -101,7 +107,8 @@ def test_the_catalog_carries_dbt_s_graph_with_tests_sources_and_exposures() -> N
         "exposure.fixture.board": {"name": "board", "depends_on": {"nodes": ["model.fixture.products"]}}
     }
     graph = {node.unique_id: node for node in catalog_from_document(document).nodes}
-    assert [node.kind for node in graph.values()] == ["exposure", "model", "model", "source", "source", "test"]
+    assert [node.kind for node in graph.values()] == ["exposure", "model", "model", "source", "source", "test", "test"]
+    assert graph["test.fixture.attached"].depends_on == ("model.fixture.staged",)
     assert graph["model.fixture.products"].depends_on == ("model.fixture.staged", "source.fixture.raw.items")
     assert graph["model.fixture.products"].relation == "DB.SCH.PRODUCT_CATALOG"
     assert (graph["model.fixture.staged"].relation, graph["model.fixture.staged"].depends_on) == (None, ())

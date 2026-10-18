@@ -12,7 +12,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 
-from snowflake_semantic_tools.domain.lineage.graph import DBT_KINDS, MEMBER_KINDS, LineageGraph, LineageNode
+from snowflake_semantic_tools.domain.lineage.graph import DBT_KINDS, MEMBER_KINDS, TOOL_REF, LineageGraph, LineageNode
 from snowflake_semantic_tools.domain.state import Manifest
 
 SELF, UPSTREAM, DOWNSTREAM = "self", "upstream", "downstream"
@@ -53,11 +53,11 @@ class Trace:
 def find_nodes(graph: LineageGraph, text: str, artifact_types: Iterable[str]) -> tuple[str, ...]:
     """Return the keys of the nodes `text` names, sorted; none when it names none.
 
-    A `<kind>:<name>` of an artifact type, a dbt kind or a member kind names the node of that key,
+    A `<kind>:<name>` of an artifact type, a dbt kind, a member kind or `tool_ref` names that node,
     its name globbable; any other text names every node of that name.
     """
     kind, separator, _ = text.partition(":")
-    if separator and kind.casefold() in (*artifact_types, *DBT_KINDS, *MEMBER_KINDS):
+    if separator and kind.casefold() in (*artifact_types, *DBT_KINDS, *MEMBER_KINDS, TOOL_REF):
         pattern = text.casefold()
         return tuple(key for key in graph.nodes if fnmatchcase(key, pattern))
     name = text.casefold()
@@ -98,6 +98,42 @@ def trace(
     held = {item.node.key for item in found}
     edges = tuple((parent, key) for key in sorted(held) for parent in graph.parents.get(key, ()) if parent in held)
     return Trace(tuple(found), edges)
+
+
+@dataclass(frozen=True, slots=True)
+class TreeRow:
+    """One line of a lineage tree: a node, how deep it sits, and whether its subtree is shown above.
+
+    Attributes:
+        level: 1 for a node one step from the start, 2 for the next, and so on.
+        repeated: The node, and so its subtree, is already shown, so this line does not repeat it.
+    """
+
+    key: str
+    level: int
+    repeated: bool = False
+
+
+def tree(graph: LineageGraph, start: Iterable[str], *, upstream: bool, depth: int | None = None) -> tuple[TreeRow, ...]:
+    """Lay what a walk from `start` reaches out as a tree, each node under the one it was reached from.
+
+    Children are taken in key order. A node shown once is shown again only as a repeat, without
+    its subtree, so a diamond in the graph prints each node's subtree once.
+    """
+    edges = graph.parents if upstream else graph.children
+    rows: list[TreeRow] = []
+    shown: set[str] = set(start)
+    stack = list(reversed([(key, 1) for root in sorted(set(start)) for key in edges.get(root, ())]))
+    while stack:
+        key, level = stack.pop()
+        if key in shown:
+            rows.append(TreeRow(key, level, repeated=True))
+            continue
+        shown.add(key)
+        rows.append(TreeRow(key, level))
+        if depth is None or level < depth:
+            stack.extend((child, level + 1) for child in reversed(edges.get(key, ())))
+    return tuple(rows)
 
 
 def member_node(definition_key: str) -> str | None:

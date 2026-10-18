@@ -182,7 +182,8 @@ class RenderedArtifact:
         depends_on: The keys of the artifacts that must be published before this one.
         references: What the artifact names but does not wait on: a plugin's or profile's
             members, as artifact keys and component keys such as `command:<name>`,
-            `hook:<name>` and `mcp:<name>`. Recorded in the manifest; never a publish edge.
+            `hook:<name>` and `mcp:<name>`, and the tool members another team owns that an
+            agent calls, as `tool_ref:<name>`. Recorded in the manifest; never a publish edge.
         smoke: The probes the smoke suite runs once the artifact is published.
         required_relations: The tables and views apply checks exist before it writes anything.
         component_fingerprints, physical_resources: As `CompositeFacts` describes them.

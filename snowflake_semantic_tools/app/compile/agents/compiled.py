@@ -148,6 +148,16 @@ class CompiledAgent(StandaloneArtifact):
                 spec_fingerprint=None if self.temporary else self.spec_fingerprint,
             ),
             depends_on=self.resolved.depends_on,
+            # The tool members another team owns, which the agent calls but nothing publishes.
+            references=tuple(
+                sorted(
+                    {
+                        f"tool_ref:{tool.member.casefold()}"
+                        for tool in self.resolved.tools
+                        if tool.external and tool.member
+                    }
+                )
+            ),
             smoke=(
                 SmokeProbe(
                     f"{self.artifact_key}:describe",

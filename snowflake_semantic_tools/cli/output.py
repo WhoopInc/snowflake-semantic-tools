@@ -490,6 +490,7 @@ class RenderPolicy:
             `--quiet`, nor with `--output json`, `yaml` or `agent`, whose readers expect no
             other text.
         agent: The run prints the `agent` document instead of human text.
+        output: The `--output` format the run prints, such as `table` or `plain`.
     """
 
     def __init__(
@@ -516,6 +517,7 @@ class RenderPolicy:
         self.show_cascade = show_cascade
         self.show_all_occurrences = show_all_occurrences
         self.agent = output == "agent"
+        self.output = output
         self.progress = output in ("table", "plain", "csv") and not quiet
 
 

@@ -7,11 +7,13 @@ from snowflake_semantic_tools.domain.lineage.trace import (
     DOWNSTREAM,
     SELF,
     UPSTREAM,
+    TreeRow,
     changed_nodes,
     find_nodes,
     member_node,
     near_miss,
     trace,
+    tree,
 )
 from snowflake_semantic_tools.domain.state import ArtifactEntry
 from tests.helpers.lineage import lineage_manifest
@@ -94,3 +96,19 @@ def test_what_changed_is_each_artifact_by_fingerprint_and_each_member_by_what_it
     assert changed_nodes(old, new) == {"semantic_view:sales", "tool:new", "metric:revenue", "dimension:events.kind"}
     # A previous manifest with no member fingerprints says nothing of its members.
     assert changed_nodes(previous, new) == {"semantic_view:sales", "tool:new"}
+
+
+def test_a_tree_shows_each_subtree_once_and_stops_at_its_depth() -> None:
+    assert tree(_GRAPH, ("model:orders",), upstream=False) == (
+        TreeRow("metric:revenue", 1),
+        TreeRow("semantic_view:orders", 2),
+        TreeRow("agent:helper", 3),
+        TreeRow("semantic_view:orders", 1, repeated=True),
+    )
+    assert tree(_GRAPH, ("agent:helper",), upstream=True, depth=1) == (TreeRow("semantic_view:orders", 1),)
+    # A start reached again from another start is a repeat, and the starts go in key order.
+    assert tree(_GRAPH, ("model:orders", "metric:revenue"), upstream=False, depth=1) == (
+        TreeRow("semantic_view:orders", 1),
+        TreeRow("metric:revenue", 1, repeated=True),
+        TreeRow("semantic_view:orders", 1, repeated=True),
+    )

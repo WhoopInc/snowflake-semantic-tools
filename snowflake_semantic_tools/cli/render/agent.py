@@ -195,6 +195,7 @@ def _listed(command: str, data: Mapping[str, object]) -> list[str]:
     return [
         " ".join(str(item.get(key)) for key in traced if item.get(key) is not None)
         + (" changed" if item.get("changed") else "")
+        + (f" | {item['marker']}" if item.get("marker") else "")
         for item in _rows(data.get("nodes"))
     ]
 
