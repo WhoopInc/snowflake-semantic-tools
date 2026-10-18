@@ -76,7 +76,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "skill reconciliation: {value}",
         "publish the missing sources, and reap the orphan objects",
         condition=("a plan finds an extension SST published whose source is gone from the project; SST never drops it"),
-        note="Restore the source, or drop the object yourself once nothing pins it (SST-PLN021 says what is kept).",
+        note="Restore the source, or drop the object yourself once nothing pins it (SST-PLN034 says what is kept).",
         precheck=Precheck.OBSERVE,
     ),
     spec(

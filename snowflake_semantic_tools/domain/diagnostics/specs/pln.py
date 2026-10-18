@@ -258,12 +258,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-PLN021",
         Severity.WARNING,
         "Prune reconciliation found objects the repo does not declare",
-        "{count} objects in {value} are not declared here",
+        "{value} holds objects this project does not declare and the plan leaves in place ({count})",
         "declare them in the project, or drop them by hand",
         condition=(
             "under `--prune`, a schema holds live objects of a prunable type that the project does "
-            "not declare, compared case-folded; one per schema, counting every candidate whether "
-            "or not it is pruned"
+            "not declare, compared case-folded, and that the plan does not prune: each one lacks an "
+            "SST ownership marker (SST-PLN003) or state disagrees with its marker (SST-PLN004); one "
+            "per schema"
         ),
         precheck=Precheck.OBSERVE,
     ),

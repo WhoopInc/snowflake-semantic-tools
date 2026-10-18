@@ -5072,7 +5072,7 @@ Raised when a plan finds an extension SST published whose source is gone from th
 
 Fix: publish the missing sources, and reap the orphan objects
 
-Note: Restore the source, or drop the object yourself once nothing pins it (SST-PLN021 says what is kept).
+Note: Restore the source, or drop the object yourself once nothing pins it (SST-PLN034 says what is kept).
 
 ### SST-VAL806
 
@@ -6520,9 +6520,9 @@ Note: Raised by `sst test --suite smoke`, which then runs no probe.
 
 **Prune reconciliation found objects the repo does not declare** (warning)
 
-`<count> objects in <value> are not declared here`
+`<value> holds objects this project does not declare and the plan leaves in place (<count>)`
 
-Raised when under `--prune`, a schema holds live objects of a prunable type that the project does not declare, compared case-folded; one per schema, counting every candidate whether or not it is pruned.
+Raised when under `--prune`, a schema holds live objects of a prunable type that the project does not declare, compared case-folded, and that the plan does not prune: each one lacks an SST ownership marker (SST-PLN003) or state disagrees with its marker (SST-PLN004); one per schema.
 
 Fix: declare them in the project, or drop them by hand
 

@@ -180,8 +180,9 @@ def test_each_preflight_finding_reports_its_code() -> None:
         preflight=preflight,
         manifest=planned_manifest,
     )
+    # The orphan is pruned, so no SST-PLN021 counts it as left undeclared.
     assert sorted(_codes(planned.diagnostics)) == sorted(
-        ["SST-PLN011", "SST-PLN008", "SST-PLN008", "SST-PLN009", "SST-PLN019", "SST-PLN017", "SST-PLN021", "SST-PLN012"]
+        ["SST-PLN011", "SST-PLN008", "SST-PLN008", "SST-PLN009", "SST-PLN019", "SST-PLN017", "SST-PLN012"]
     )
 
 

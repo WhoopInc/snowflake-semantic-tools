@@ -2,7 +2,7 @@
 
 `plan_prunes` proposes dropping an object SST owns that nothing renders any more, and only
 when its ownership marker and state agree it is exactly what apply created; it also counts,
-per schema, the live objects the project does not declare. `block_unsafe`
+per schema, the live objects the project does not declare that it leaves in place. `block_unsafe`
 then blocks a write that pins a version this plan neither observes nor publishes, and each
 change that depends on a blocked one. A blocked change stays in the plan, so it is reported.
 """
@@ -46,13 +46,15 @@ def plan_prunes(
 
     Returns:
         The PRUNE changes in key order, and the diagnostics: those for the candidates
-        skipped, in key order, then one per schema holding a candidate, in schema order.
+        skipped, in key order, then one per schema holding a skipped candidate, in schema order.
 
     Diagnostics:
         SST-PLN003: the candidate carries no SST ownership marker.
         SST-PLN004: state has no entry for the marked candidate, or its entry disagrees.
-        SST-PLN021: a schema holds live objects the project does not declare. Names compare
-            folded, so a declaration that differs from its object only by case is not one.
+        SST-PLN021: a schema holds live objects the project does not declare and this plan
+            leaves in place: the candidates skipped above. A candidate that becomes a PRUNE
+            change is accounted for. Names compare folded, so a declaration that differs from
+            its object only by case is not one.
     """
     changes: list[Change] = []
     diagnostics: list[Diagnostic] = []
@@ -62,8 +64,8 @@ def plan_prunes(
         if artifact_type is None:
             continue
         scope = SchemaScope.from_qualified_name(observed.qualified_name).sql
-        undeclared[scope] = undeclared.get(scope, 0) + 1
         if observed.marker is None:
+            undeclared[scope] = undeclared.get(scope, 0) + 1
             diagnostics.append(D("SST-PLN003", value=observed.qualified_name.sql))
             continue
         applied = state.applied.get(key)
@@ -74,6 +76,7 @@ def plan_prunes(
             or applied.ddl_sha256 != observed.marker.fingerprint
             or QualifiedName.parse(applied.qualified_name).folded != observed.qualified_name.folded
         ):
+            undeclared[scope] = undeclared.get(scope, 0) + 1
             diagnostics.append(D("SST-PLN004", value=observed.qualified_name.sql))
             continue
         changes.append(
