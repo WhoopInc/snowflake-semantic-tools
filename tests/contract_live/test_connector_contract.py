@@ -8,6 +8,7 @@ something the real connector does not, and every offline test that leans on them
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 from types import MappingProxyType
 
 import pytest
@@ -217,3 +218,33 @@ def test_state_tables_convert_to_hybrid_and_back_keeping_their_rows_and_backups(
         assert back.state_backup.name.value == "SST_STATE_CONVERT_HYBRID_BAK"
     finally:
         hybrid.close()
+
+
+def test_a_state_table_written_before_member_fingerprints_gains_the_column_and_keeps_its_rows(
+    live_connector: SnowflakeConnector, scratch_schema: Scratch
+) -> None:
+    state_table = _name(scratch_schema("members"), "SST_STATE_MEMBERS")
+    older = AppliedEntry("b" * 64, "DB.S.V", "2026-10-17T00:00:00Z", "run", "applied", "b" * 64, "a" * 64)
+    live_connector.ensure_state_table(state_table)
+    dropped = live_connector.execute_script(
+        (sql("ALTER TABLE {table} DROP COLUMN MEMBER_FINGERPRINTS", table=qname(state_table)),)
+    )
+    assert dropped.ok, dropped.error
+    taken = live_connector.acquire_run_lock(state_table, "live", LockClaim("run-a"), break_stale=False)
+    assert taken.acquired and taken.fence is not None
+    # A table without the column reads it as none, and keeps the row a write lands.
+    assert live_connector.write_state(
+        state_table, "live", "m" * 64, StateWrite(MappingProxyType({"semantic_view:v": older})), taken.fence
+    )
+    assert live_connector.read_state(state_table, "live") == {"semantic_view:v": older}
+    # The next run's ensure adds the column, and a fingerprinted entry reads back whole.
+    live_connector.ensure_state_table(state_table)
+    fingerprinted = replace(older, member_fingerprints=(("metric:orders.total_revenue", "f" * 64),))
+    assert live_connector.write_state(
+        state_table, "live", "m" * 64, StateWrite(MappingProxyType({"semantic_view:w": fingerprinted})), taken.fence
+    )
+    assert live_connector.read_state(state_table, "live") == {
+        "semantic_view:v": older,
+        "semantic_view:w": fingerprinted,
+    }
+    live_connector.release_run_lock(state_table, "live", taken.fence)
