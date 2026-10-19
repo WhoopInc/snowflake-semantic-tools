@@ -23,8 +23,8 @@ def clean(paths: ProjectPaths, dry_run: bool) -> CommandResult:
     """Remove local SST build artifacts only; never touch Snowflake.
 
     Removes `sst_target/` under the project, where SST writes the compiled manifest, saved plans
-    and observations, statement files, local state, and the run log; and `target/sst/`, where SST
-    wrote them before they moved, when an earlier run left it. Authored files, `.sst/` with its
+    and observations, statement files, local state, the run log, and `sst ask` transcripts; and
+    `target/sst/`, where SST wrote them before they moved, when an earlier run left it. Authored files, `.sst/` with its
     baseline, and dbt's `target/` are kept. With --dry-run, nothing is removed. Exit 1 when a
     build directory cannot be removed, or a symbolic link is on the way to it.
 

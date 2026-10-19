@@ -71,8 +71,13 @@ only when the search member itself is edited.
 ## The conversation
 
 On a terminal, `sst ask` without a question opens a full-screen conversation.
-Without an agent named, it starts with a picker: type to filter, Enter opens the
-first match. The header names the agent and what was copied for it.
+Without an agent named, it starts with a picker: type to filter, the arrow and
+Page Up/Down keys move the highlight (which starts on the first match), and Enter
+opens the highlighted agent. The header names the agent and what was copied for
+it, and says `agent spec edited` or `agent not published` when the agent itself
+is not what the target publishes. Its own specification needs no copy: it is
+sent with every question, so an edit to its instructions, tools or model is
+what the next question runs.
 
 The answer streams in as it is generated. Reasoning, each tool call (its name,
 type and input) and each tool result (the SQL an Analyst tool ran, its rows as a
@@ -84,14 +89,49 @@ answer; the status line says what the agent is doing.
 | Enter | Sends the question |
 | Ctrl-C | Cancels the reply in flight; quits when none is |
 | Ctrl-T | Shows or hides the reasoning and tool blocks |
-| Ctrl-A | Picks another agent: a new thread, and new copies |
-| Ctrl-R | Compiles again and rebuilds the copies; the thread, and so the conversation, goes on |
+| Ctrl-A | Shows the picker over the conversation, which goes on behind it. Esc goes back; the agent already open goes back too; another agent ends this session (its thread and copies) and starts a new one |
+| Ctrl-R | Compiles again and rebuilds the copies; the thread, and so the conversation, goes on. Says what changed: `compiled again; changed: instructions.response, semantic_view:sales`, or `nothing changed`. Pressed during a reply, it runs once the reply ends |
+| Ctrl-P | The command palette, whose "Change theme" changes the colors for this session |
 | Ctrl-D, `/exit` | Quits |
 | `/copy`, `/copy-chart` | Copies the last answer, or the last chart's Vega-Lite specification |
+| `/path` | Prints where the transcript is, when one is kept |
+
+Ctrl-R names what differs in the agent's specification, `instructions.<name>`
+for each instruction and every other section whole (`tools`, `models`,
+`orchestration`), and each dependency whose copy is new, changed or gone.
+`nothing changed` means the project compiles as before: if the next answer still
+ignores an edit, the agent is not following it, which a broad instruction such as
+"refuse every question" may not be. When a copy is refused (`SST-ASK008`) the
+conversation keeps no copies and runs the agent as it compiles against what is
+published, and the status line says so.
 
 A cancelled reply is saved to the thread as far as it got, and the next question
 follows it. On exit `sst ask` prints the agents, the turns, the tokens they used,
-and how many scratch objects were removed.
+how many scratch objects were removed, and the transcript, when one was kept.
+
+### Transcripts
+
+`--transcript` keeps one JSON file per run of `sst ask` in `sst_target/ask/`,
+named for when it started (UTC), the first agent it opened, and an id:
+`sst_target/ask/20261019T141500Z-jaffle_analyst-1a2b3c4d.json`. It holds each
+turn whole: the question, the answer, the reasoning, each tool call and result
+with every row, the warnings and the error, the run id and the tokens. It also
+holds each specification the agent ran on, numbered, with what changed from the
+last, so a turn names the revision it was asked against. The file is replaced
+after every turn and every Ctrl-R that changed something, so a run that dies keeps
+what it had. `ask.transcripts: true` keeps one by default; `--no-transcript`
+keeps none whatever the key says. A file that cannot be written is `SST-ASK012`,
+once, and the conversation goes on. `sst clean` removes them, with the rest of
+`sst_target/`; nothing else does. With a question, `--transcript` keeps the one
+turn, and `--output json` names the file as `data.transcript`.
+
+### Themes
+
+The conversation draws in `sst-dark`, black with a mint green accent, unless
+`--theme NAME`, else `$SST_ASK_THEME`, else `ask.theme` names another: any of
+Textual's own themes, such as `nord`, `dracula` or `textual-light`. An unknown
+name from the flag or the variable exits 3; from `ask.theme`, it is
+`SST-ASK011`. Ctrl-P changes the theme for the session only.
 
 ## Asking once
 
@@ -105,9 +145,10 @@ at most 900) cancels a turn still running.
 
 Exit 0 when the agent answered; 1 when the project does not compile, a copy is
 refused (`SST-ASK008`), a tool is unreachable (`SST-ASK010`) or the run fails
-(`SST-ASK002`); 3 for an empty question, or none without a terminal; 4 when no
-agent of that name compiles (`SST-ASK003`); 5 when Snowflake is unreachable or
-refuses the session.
+(`SST-ASK002`); 3 for an empty question, or none without a terminal, or a
+`--theme` or `$SST_ASK_THEME` that names no theme; 4 when no agent of that name
+compiles (`SST-ASK003`) or `ask.theme` names no theme (`SST-ASK011`); 5 when
+Snowflake is unreachable or refuses the session.
 
 ## How SST reaches the API
 

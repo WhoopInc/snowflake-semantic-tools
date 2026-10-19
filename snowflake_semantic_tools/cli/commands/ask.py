@@ -15,17 +15,20 @@ import contextlib
 import secrets
 import sys
 import threading
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import click
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.fs.local import TranscriptFiles
+from snowflake_semantic_tools.adapters.locations import ProjectPaths, sst_target_dir
 from snowflake_semantic_tools.app.ask import agent_scope, compiled_agents, find_agent
 from snowflake_semantic_tools.app.ask_conversation import turn_diagnostics
 from snowflake_semantic_tools.app.ask_scratch import sweep
 from snowflake_semantic_tools.app.ask_session import AskSession, end_session, start_session
+from snowflake_semantic_tools.app.ask_transcript import TranscriptRecorder
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
@@ -35,12 +38,15 @@ from snowflake_semantic_tools.cli.options import defer_target_option, target_opt
 from snowflake_semantic_tools.cli.output import print_progress, render_policy
 from snowflake_semantic_tools.cli.render.progress import progress_paused
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.settings import ask_theme, ask_transcripts
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.project import connect, published_entries
 from snowflake_semantic_tools.domain.ask.conversation import Turn
 from snowflake_semantic_tools.domain.ask.events import Status, TextDelta, ToolResult, ToolUse
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.ask.transcript import TranscriptHead
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope, TargetIdentity
+from snowflake_semantic_tools.domain.state import SST_VERSION
 
 # How long one turn may run when the command line says nothing: within a background run's own
 # 15-minute budget, and well past the 5 to 30 seconds the measured turns took.
@@ -56,6 +62,8 @@ DEFAULT_TURN_TIMEOUT_SECONDS = 600
 @click.option("--cleanup", is_flag=True)
 @click.option("--show-tools", is_flag=True)
 @click.option("--timeout", "timeout", type=click.IntRange(1, 900), default=DEFAULT_TURN_TIMEOUT_SECONDS)
+@click.option("--transcript/--no-transcript", "transcript", default=None)
+@click.option("--theme", "theme", envvar="SST_ASK_THEME", metavar="NAME")
 @command_body("ask")
 def ask(
     paths: ProjectPaths,
@@ -67,6 +75,8 @@ def ask(
     cleanup: bool,
     show_tools: bool,
     timeout: int,
+    transcript: bool | None,
+    theme: str | None,
 ) -> CommandResult:
     """Talk to AGENT as it compiles now, publishing nothing; with QUESTION, ask it once. `-` reads stdin.
 
@@ -80,12 +90,14 @@ def ask(
     writes no state.
 
     Without QUESTION, on a terminal, a conversation opens, with a picker when AGENT is not
-    named; without a terminal, QUESTION is required.
+    named; without a terminal, QUESTION is required. `--transcript` keeps each run's
+    transcript in `sst_target/ask/`, which `sst clean` removes.
 
     Exit 0 when the agent answered; 1 when the project does not compile, a copy is refused
     (SST-ASK008), a tool is unreachable (SST-ASK010) or the run fails (SST-ASK002); 3 for an
-    empty question, or none without a terminal; 4 when no agent of that name compiles
-    (SST-ASK003); and 5 when Snowflake is unreachable or refuses the session.
+    empty question, or none without a terminal, or a `--theme` or `$SST_ASK_THEME` that names no
+    theme; 4 when no agent of that name compiles (SST-ASK003) or `ask.theme` names no theme
+    (SST-ASK011); and 5 when Snowflake is unreachable or refuses the session.
     """
     if question is None and not cleanup and not _interactive():
         raise SstUsageError("QUESTION is required without a terminal; name the agent and the question")
@@ -94,12 +106,24 @@ def ask(
         return CommandResult(ERROR, compiled.diagnostics)
     if cleanup:
         return _cleanup(paths, target_name, compiled)
+    keep = ask_transcripts(paths, transcript)
     if question is None:
-        return _conversation(paths, target_name, manifest_path, compiled, agent_name, published)
+        opened = _Conversation(target_name, manifest_path, agent_name, published, keep, theme)
+        return _conversation(paths, compiled, opened)
     assert agent_name is not None, "click fills AGENT before QUESTION"
     asked = _question(question)
     agent = _agent(compiled, agent_name)
-    return _one_shot(paths, target_name, compiled, agent, asked, published=published, show=show_tools, timeout=timeout)
+    return _one_shot(
+        paths,
+        target_name,
+        compiled,
+        agent,
+        asked,
+        published=published,
+        show=show_tools,
+        timeout=timeout,
+        transcript=keep,
+    )
 
 
 def _interactive() -> bool:
@@ -144,6 +168,13 @@ def _scope(agent: CompiledAgent, identity: TargetIdentity) -> SchemaScope:
     return scope
 
 
+def _recorder(paths: ProjectPaths, target: str, *, published: bool) -> TranscriptRecorder:
+    """Return a transcript for this run, kept in `sst_target/ask/` and named when its first agent opens."""
+    files = TranscriptFiles(sst_target_dir(paths.project_dir) / "ask", root=paths.project_dir)
+    head = TranscriptHead(secrets.token_hex(4), datetime.now(UTC).isoformat(), SST_VERSION, target, published)
+    return TranscriptRecorder(files, head, lambda: datetime.now(UTC))
+
+
 def _one_shot(
     paths: ProjectPaths,
     target_name: str | None,
@@ -154,9 +185,12 @@ def _one_shot(
     published: bool,
     show: bool,
     timeout: int,
+    transcript: bool = False,
 ) -> CommandResult:
     """Ask once: start a session, stream the turn, end the session, and report the answer."""
     profile, port = connect(paths, target_name)
+    kept = _recorder(paths, profile.target_name, published=published) if transcript else None
+    written: list[Diagnostic] = []
     try:
         scope = _scope(agent, profile.identity)
         applied = published_entries(port, profile, paths.config_name)
@@ -174,18 +208,28 @@ def _one_shot(
         if isinstance(started, Diagnostic):
             return CommandResult(ERROR, DiagnosticBag((started,)))
         try:
+            asked_at = datetime.now(UTC)
             turn = _streamed(started, question, show=show, timeout=timeout)
         finally:
             left = end_session(started)
+        if kept is not None:
+            written.extend(item for item in (kept.turn(started, question, turn, asked_at),) if item is not None)
     finally:
         port.close()
-    found = (*started.notes, *started.swept.diagnostics, *turn_diagnostics(agent.artifact_key, turn), *left)
+    found = (
+        *started.notes,
+        *started.swept.diagnostics,
+        *turn_diagnostics(agent.artifact_key, turn),
+        *left,
+        *written,
+    )
     bag = DiagnosticBag(found)
+    data = {**_data(started, question, turn), "transcript": kept.path if kept is not None else None}
     return CommandResult(
         ERROR if bag.has_errors or turn.status != "completed" else OK,
         bag,
-        _data(started, question, turn),
-        human=lambda: _print_answer(turn),
+        data,
+        human=lambda: _print_answer(turn, kept.path if kept is not None else None),
     )
 
 
@@ -224,8 +268,10 @@ def _streams_to_terminal() -> bool:
     return sys.stdout.isatty() and policy.output == "table" and not policy.agent
 
 
-def _print_answer(turn: Turn) -> None:
-    """Print the answer, unless it already streamed to the terminal."""
+def _print_answer(turn: Turn, transcript: str | None = None) -> None:
+    """Print the answer, unless it already streamed, and where the transcript is, on stderr."""
+    if transcript is not None:
+        click.echo(f"transcript: {transcript}", err=True)
     if _streams_to_terminal():
         return
     if turn.error is None:
@@ -272,21 +318,49 @@ def _cleanup(paths: ProjectPaths, target_name: str | None, compiled: CompileResu
     )
 
 
-def _conversation(
-    paths: ProjectPaths,
-    target_name: str | None,
-    manifest_path: Path | None,
-    compiled: CompileResult,
-    agent_name: str | None,
-    published: bool,
-) -> CommandResult:
+@dataclass(frozen=True, slots=True)
+class _Conversation:
+    """What the command line asks of a conversation: where, which agent, and how it is kept and shown."""
+
+    target_name: str | None
+    manifest_path: Path | None
+    agent_name: str | None
+    published: bool
+    transcript: bool
+    theme: str | None
+
+
+def _theme(paths: ProjectPaths, flag: str | None) -> str:
+    """Return the conversation's theme: `--theme` or `$SST_ASK_THEME`, else `ask.theme`, else `sst-dark`.
+
+    Raises:
+        SstUsageError: `--theme` or `$SST_ASK_THEME` names no theme.
+        ProjectError: `ask.theme` names no theme (SST-ASK011).
+    """
+    from snowflake_semantic_tools.cli.tui.themes import DEFAULT_THEME, theme_names
+
+    names = theme_names()
+    if flag is not None:
+        if flag not in names:
+            raise SstUsageError(f"--theme names no theme: '{flag}'; the themes are {', '.join(names)}")
+        return flag
+    configured = ask_theme(paths)
+    if configured is not None and configured not in names:
+        unknown = D("SST-ASK011", value=configured, detail=", ".join(names))
+        raise ProjectError(unknown.message, diagnostics=(unknown,))
+    return configured or DEFAULT_THEME
+
+
+def _conversation(paths: ProjectPaths, compiled: CompileResult, asked: _Conversation) -> CommandResult:
     """Open the full-screen conversation; its summary is what the command reports once it closes."""
     agents = compiled_agents(compiled)
     if not agents:
         raise SstUsageError("no agent compiles in this project")
-    first = _agent(compiled, agent_name) if agent_name is not None else None
+    first = _agent(compiled, asked.agent_name) if asked.agent_name is not None else None
+    theme = _theme(paths, asked.theme)
     from snowflake_semantic_tools.cli.tui.ask_app import AskApp, AskBackend
 
+    target_name, manifest_path = asked.target_name, asked.manifest_path
     profile, port = connect(paths, target_name)
     try:
         backend = AskBackend(
@@ -294,10 +368,11 @@ def _conversation(
             compile=lambda: compiling.compile_result(paths, target_name, manifest_path),
             applied=lambda: published_entries(port, profile, paths.config_name),
             scope=lambda agent: _scope(agent, profile.identity),
-            published=published,
+            published=asked.published,
+            transcript=_recorder(paths, profile.target_name, published=asked.published) if asked.transcript else None,
         )
         with progress_paused():
-            summary = AskApp(backend, agents=agents, first=first).run()
+            summary = AskApp(backend, agents=agents, first=first, theme=theme).run()
     finally:
         port.close()
     found = DiagnosticBag(summary.diagnostics if summary else ())

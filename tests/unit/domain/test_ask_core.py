@@ -31,7 +31,7 @@ from snowflake_semantic_tools.domain.ask.events import (
     decode,
     result_table,
 )
-from snowflake_semantic_tools.domain.ask.spec import Rename, referenced_names, rewrite_spec
+from snowflake_semantic_tools.domain.ask.spec import Rename, referenced_names, rewrite_spec, spec_changes
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.sql import literal, qname, renamed, sql
 
@@ -99,6 +99,23 @@ def test_every_named_object_is_listed_once_and_a_spec_must_be_an_object() -> Non
         rewrite_spec("[]", {"a": Rename("b")})
     with pytest.raises(ValueError, match="JSON object"):
         referenced_names("[]")
+
+
+def test_what_changed_in_a_spec_is_named_per_instruction_and_per_top_level_key() -> None:
+    before = {"instructions": {"response": "Be brief.", "system": "S"}, "models": {"orchestration": "a"}}
+    after = {"instructions": {"response": "Be long.", "system": "S", "orchestration": "O"}, "tools": []}
+    assert spec_changes(json.dumps(before), json.dumps(after)) == (
+        "instructions.orchestration",
+        "instructions.response",
+        "models",
+        "tools",
+    )
+    assert spec_changes(json.dumps(before), json.dumps(before)) == ()
+    # Instructions added or removed whole are named by each instruction they hold.
+    assert spec_changes("{}", json.dumps({"instructions": {"response": "R"}})) == ("instructions.response",)
+    assert spec_changes(json.dumps({"instructions": "odd"}), "{}") == ("instructions",)
+    with pytest.raises(ValueError, match="JSON object"):
+        spec_changes("[]", "{}")
 
 
 # A recorded stream's shapes, every event type once, an unknown one and a split payload included.

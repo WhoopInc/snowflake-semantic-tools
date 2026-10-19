@@ -652,6 +652,21 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         default="true",
     ),
     _deprecated("deploy", "apply"),
+    _key("ask", _BLOCK, "How `sst ask` keeps and shows a conversation."),
+    _key(
+        "ask.transcripts",
+        _B,
+        "Keep a transcript of each run in `sst_target/ask/`, every turn whole with each specification it ran on; "
+        "`--transcript` and `--no-transcript` override it.",
+        default="false",
+    ),
+    _key(
+        "ask.theme",
+        _S,
+        "The full-screen conversation's color theme: `sst-dark` or one of Textual's own; `--theme` and "
+        "`$SST_ASK_THEME` override it, and an unknown one is SST-ASK011.",
+        default="sst-dark",
+    ),
     _key("plan", _BLOCK, "What plan compares beyond each object's ownership marker."),
     _key(
         "plan.drift_check",

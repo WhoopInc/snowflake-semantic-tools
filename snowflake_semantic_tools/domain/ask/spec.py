@@ -82,6 +82,39 @@ def rewrite_spec(spec_json: str, renames: Mapping[str, Rename]) -> tuple[str, tu
     return json.dumps(spec, separators=(",", ":")), tuple(renamed)
 
 
+def spec_changes(before_json: str, after_json: str) -> tuple[str, ...]:
+    """Return what differs between two specifications of one agent, as dotted keys, sorted.
+
+    `instructions` is compared key by key, so a changed response instruction is
+    `instructions.response`; every other top-level key is compared whole, so a changed tool is
+    `tools` and a changed model `models`.
+
+    Raises:
+        ValueError: either specification is not a JSON object.
+    """
+    before, after = _spec_object(before_json), _spec_object(after_json)
+    found: list[str] = []
+    for key in sorted(before.keys() | after.keys()):
+        old, new = before.get(key), after.get(key)
+        if key == "instructions" and isinstance(old, dict | None) and isinstance(new, dict | None):
+            old_parts, new_parts = old or {}, new or {}
+            found.extend(
+                f"instructions.{part}"
+                for part in sorted(old_parts.keys() | new_parts.keys())
+                if old_parts.get(part) != new_parts.get(part)
+            )
+        elif old != new:
+            found.append(key)
+    return tuple(found)
+
+
+def _spec_object(spec_json: str) -> dict[str, object]:
+    spec = json.loads(spec_json)
+    if not isinstance(spec, dict):
+        raise ValueError("an agent specification is a JSON object")
+    return spec
+
+
 def referenced_names(spec_json: str) -> tuple[str, ...]:
     """Return every object the specification's `tool_resources` and `skills` name, casefolded, in order.
 

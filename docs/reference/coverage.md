@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 763
+- Codes: 765
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -65,6 +65,8 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-ASK008`](error-codes.md#sst-ask008) | ASK | error | runtime | `snowflake_semantic_tools.app.ask_scratch` | `tests/codes/ask/test_sst_ask008.py` |
 | [`SST-ASK009`](error-codes.md#sst-ask009) | ASK | warning | runtime | `snowflake_semantic_tools.app.ask_conversation`<br>`snowflake_semantic_tools.app.ask_scratch` | `tests/codes/ask/test_sst_ask009.py` |
 | [`SST-ASK010`](error-codes.md#sst-ask010) | ASK | error | runtime | `snowflake_semantic_tools.app.ask_conversation` | `tests/codes/ask/test_sst_ask010.py` |
+| [`SST-ASK011`](error-codes.md#sst-ask011) | ASK | error | local | `snowflake_semantic_tools.cli.commands.ask` | `tests/codes/ask/test_sst_ask011.py` |
+| [`SST-ASK012`](error-codes.md#sst-ask012) | ASK | warning | runtime | `snowflake_semantic_tools.app.ask_transcript` | `tests/codes/ask/test_sst_ask012.py` |
 | [`SST-CFG001`](error-codes.md#sst-cfg001) | CFG | error | local | `snowflake_semantic_tools.adapters.locations`<br>`snowflake_semantic_tools.adapters.yaml.semantic.pipeline`<br>`snowflake_semantic_tools.cli.commands.debug`<br>`snowflake_semantic_tools.cli.commands.format` | `tests/codes/cfg/test_sst_cfg001.py` |
 | [`SST-CFG002`](error-codes.md#sst-cfg002) | CFG | error | local | `snowflake_semantic_tools.adapters.dbt.profiles`<br>`snowflake_semantic_tools.adapters.yaml.config` | `tests/codes/cfg/test_sst_cfg002.py` |
 | [`SST-CFG003`](error-codes.md#sst-cfg003) | CFG | warning | local | `snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg003.py` |

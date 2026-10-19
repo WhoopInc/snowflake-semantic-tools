@@ -41,6 +41,8 @@ EXEMPT: dict[tuple[str, str], str] = {
     ("app/ask_conversation.py", "_spec_fields"): "the agent specification SST rendered with json.dumps",
     ("domain/ask/spec.py", "rewrite_spec"): "the agent specification SST rendered with json.dumps",
     ("domain/ask/spec.py", "referenced_names"): "the agent specification SST rendered with json.dumps",
+    ("domain/ask/spec.py", "_spec_object"): "the agent specification SST rendered with json.dumps",
+    ("domain/ask/transcript.py", "_revision"): "the agent specification SST rendered and sent, as rewrite_spec made it",
     ("domain/ask/events.py", "_parsed"): "one server-sent event's payload, whose lines the stream adapter bounds",
     ("domain/model/lifecycle/version.py", "spec_fingerprint"): (
         "an agent specification SST rendered, or the text SHOW VERSIONS IN AGENT returned"

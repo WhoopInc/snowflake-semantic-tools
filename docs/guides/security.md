@@ -124,9 +124,10 @@ and computes is still the author's, and runs with the target's role.
   every symbolic link, and every file reached through one, as the loaders refuse them, so no
   checksum is read from outside the project.
 - **Writes stay inside a root.** Every file SST writes -- the manifest, rendered DDL, formatted
-  or enriched YAML, a baseline, a lock -- goes under the project, or under the output
-  directory you named. Each folder on the way is opened without following links, so a `..` or
-  a symbolic link refuses the write (`SST-PRT008`) instead of reaching outside.
+  or enriched YAML, a baseline, a lock, an `sst ask` transcript -- goes under the project, or
+  under the output directory you named. Each folder on the way is opened without following
+  links, so a `..` or a symbolic link refuses the write (`SST-PRT008`, or `SST-ASK012` for a
+  transcript) instead of reaching outside.
 
 ### Credentials stay out of what SST prints
 
@@ -196,6 +197,12 @@ before (see [state and ownership](../concepts.md#state-and-ownership)).
   Cortex Agents REST API with the connector session's own token, so it runs as
   that session's role and sends no other credential; the token never leaves the
   `Authorization` header, and no diagnostic or log line carries it.
+- **An `sst ask` transcript holds what the agent returned.** Off unless `--transcript` or
+  `ask.transcripts: true` asks: it then keeps, in `sst_target/ask/`, every question and
+  answer, each tool's SQL and every row a tool returned, and the specification sent. That is
+  warehouse data on your disk, readable as your own files are. `sst_target/` belongs in
+  `.gitignore`, as `target/` does, so no transcript is committed; `sst clean` removes them.
+  A transcript never holds a credential or the session token.
 - **Give evals one primary role.** An eval runs as Snowflake tasks, and a task runs with the
   session's primary role only, never its secondary roles. That role needs `CREATE TASK`,
   `CREATE STAGE`, and `CREATE FILE FORMAT` on each agent's schema, directly or through a role

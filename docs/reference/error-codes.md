@@ -28,7 +28,7 @@ cannot be downgraded by any setting.
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 44 codes
 - [Apply (APL)](#apply-apl) -- 41 codes
-- [Unpublished runs (ASK)](#unpublished-runs-ask) -- 10 codes
+- [Unpublished runs (ASK)](#unpublished-runs-ask) -- 12 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
 - [Internal (INT)](#internal-int) -- 12 codes
@@ -7345,6 +7345,30 @@ Raised when the run sets `orchestration.tool_not_accessible: reject`, as a run o
 Fix: grant the role access to the object the message names, then ask again
 
 Note: Without `reject`, an agent answers without a tool it cannot reach, and says nothing; with it, the refusal names each such tool.
+
+### SST-ASK011
+
+**No such conversation theme** (error)
+
+`` `ask.theme` names no theme: '<value>'; the themes are <detail> ``
+
+Raised when a conversation opens and the configuration's `ask.theme` names a theme the full-screen conversation does not have.
+
+Fix: set `ask.theme` to one of the themes the message lists, or remove it for `sst-dark`
+
+Note: `--theme` and `$SST_ASK_THEME`, which win over the key, are usage errors instead (exit 3).
+
+### SST-ASK012
+
+**Transcript could not be written** (warning)
+
+`the transcript <value> could not be written: <detail>`
+
+Raised when `sst ask --transcript` could not replace its transcript file in `sst_target/ask/`.
+
+Fix: make `sst_target/ask/` writable, or ask without `--transcript`
+
+Note: Reported once; the conversation goes on, and each later turn tries the write again.
 
 ## Snowflake (SNO)
 

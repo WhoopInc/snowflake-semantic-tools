@@ -138,4 +138,26 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         precheck=Precheck.RUNTIME,
     ),
+    spec(
+        "SST-ASK011",
+        Severity.ERROR,
+        "No such conversation theme",
+        "`ask.theme` names no theme: '{value}'; the themes are {detail}",
+        "set `ask.theme` to one of the themes the message lists, or remove it for `sst-dark`",
+        condition=(
+            "a conversation opens and the configuration's `ask.theme` names a theme the full-screen "
+            "conversation does not have"
+        ),
+        note="`--theme` and `$SST_ASK_THEME`, which win over the key, are usage errors instead (exit 3).",
+    ),
+    spec(
+        "SST-ASK012",
+        Severity.WARNING,
+        "Transcript could not be written",
+        "the transcript {value} could not be written: {detail}",
+        "make `sst_target/ask/` writable, or ask without `--transcript`",
+        condition="`sst ask --transcript` could not replace its transcript file in `sst_target/ask/`",
+        note="Reported once; the conversation goes on, and each later turn tries the write again.",
+        precheck=Precheck.RUNTIME,
+    ),
 )

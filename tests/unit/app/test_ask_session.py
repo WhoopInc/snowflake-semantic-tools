@@ -21,7 +21,7 @@ from snowflake_semantic_tools.app.ask_scratch import (
     scratch_name,
     sweep,
 )
-from snowflake_semantic_tools.app.ask_session import end_session, rebuild, start_session
+from snowflake_semantic_tools.app.ask_session import agent_edited, end_session, rebuild, start_session
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
 from snowflake_semantic_tools.cli.wiring import compile as compiling
@@ -286,20 +286,67 @@ def test_a_session_sweeps_copies_talks_rebuilds_and_ends(tmp_path: Path) -> None
     assert lines[0] == "removing what earlier sessions left"
     list(started.conversation.ask("q"))
     port.query_results = []
-    assert rebuild(started, agent, result, {}) is None and started.scratch.copies
+    same = rebuild(started, agent, result, {})
+    assert same.failed is None and not same.changed and started.scratch.copies
+    assert started.agent_state == "agent not published"
     assert end_session(started) == () and started.scratch.copies == []
     published = start_session(FakeSnowflake(), agent, result, {}, scope=WHERE, session="cd", now=NOW, published=True)
     assert not isinstance(published, Diagnostic)
     assert published.edited.keys == () and published.notes and "__SST_ASK_" not in published.conversation.spec_json
-    assert rebuild(published, agent, result, {}) is None and published.notes
+    assert rebuild(published, agent, result, {}).failed is None and published.notes
     refused = FakeSnowflake()
     refused.execute_results = [failed("no CREATE")]
     failed_start = start_session(refused, agent, result, {}, scope=WHERE, session="ef", now=NOW)
     assert isinstance(failed_start, Diagnostic) and failed_start.code == "SST-ASK008"
     again = start_session(FakeSnowflake(), agent, result, {}, scope=WHERE, session="gh", now=NOW)
     assert not isinstance(again, Diagnostic)
+    copied = again.edited.keys
     again.scratch.port.execute_results = [_ok() for _ in again.scratch.copies] + [failed("no CREATE")]  # type: ignore[attr-defined]
-    assert rebuild(again, agent, result, {}) is not None
+    refused_again = rebuild(again, agent, result, {})
+    # A refused copy leaves the conversation on the agent as it compiles, pointed at what is published.
+    assert refused_again.failed is not None and refused_again.failed.code == "SST-ASK008"
+    assert again.edited.keys == () and again.conversation.spec_json == agent.payload
+    assert refused_again.dependencies == copied
+
+
+def test_a_rebuild_says_what_of_the_agent_and_its_copies_changed(tmp_path: Path) -> None:
+    result = _compiled(tmp_path)
+    agent = _agent(result)
+    session = start_session(FakeSnowflake(), agent, result, {}, scope=WHERE, session="ab", now=NOW)
+    assert not isinstance(session, Diagnostic)
+    spec = json.loads(agent.payload)
+    spec["instructions"] = {**spec.get("instructions", {}), "response": "Answer in French."}
+    spec["models"] = {"orchestration": "other"}
+    edited = dataclasses.replace(agent, payload=json.dumps(spec))
+    # The first dependency now publishes as it compiles, so it is no longer copied.
+    applied = {key: entry for key, entry in _all_applied(result).items() if key == agent.resolved.depends_on[0]}
+    done = rebuild(session, edited, result, applied)
+    assert done.failed is None and done.changed
+    assert done.spec == ("instructions.response", "models")
+    assert done.dependencies == (agent.resolved.depends_on[0],)
+    assert json.loads(session.conversation.spec_json)["instructions"]["response"] == "Answer in French."
+
+
+def test_an_old_copy_that_will_not_drop_on_a_rebuild_is_reported(tmp_path: Path) -> None:
+    result = _compiled(tmp_path)
+    agent = _agent(result)
+    port = FakeSnowflake()
+    session = start_session(port, agent, result, {}, scope=WHERE, session="ab", now=NOW)
+    assert not isinstance(session, Diagnostic)
+    port.execute_results = [failed("no DROP")]
+    done = rebuild(session, agent, result, {})
+    assert done.failed is None and [item.code for item in done.left] == ["SST-ASK009"]
+
+
+def test_the_agent_itself_is_said_to_be_edited_unpublished_or_unknown(tmp_path: Path) -> None:
+    result = _compiled(tmp_path)
+    agent = _agent(result)
+    published = _all_applied(result)
+    assert agent_edited(agent, published) is None
+    assert agent_edited(agent, None) == "agent's published state unknown"
+    assert agent_edited(agent, {}) == "agent not published"
+    stale = dataclasses.replace(published[agent.artifact_key], fingerprint="0" * 64)
+    assert agent_edited(agent, {**published, agent.artifact_key: stale}) == "agent spec edited"
 
 
 def test_a_sub_agent_copy_is_created_from_its_rewritten_specification_and_skills_share_one_stage(

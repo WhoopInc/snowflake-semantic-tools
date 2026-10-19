@@ -266,6 +266,15 @@ Stages apply uploads through.
 | `apply.fail_fast` | boolean | `false` | Stop at the first failure instead of continuing; `--fail-fast` and `--no-fail-fast` override it. |
 | `apply.create_schemas` | boolean | `true` | Create each absent schema the plan publishes into, as dbt does, `CREATE SCHEMA IF NOT EXISTS`, before anything else; false makes an absent schema SST-PLN010. Never a database, and never dropped. |
 
+## ask
+
+How `sst ask` keeps and shows a conversation.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `ask.transcripts` | boolean | `false` | Keep a transcript of each run in `sst_target/ask/`, every turn whole with each specification it ran on; `--transcript` and `--no-transcript` override it. |
+| `ask.theme` | string | `sst-dark` | The full-screen conversation's color theme: `sst-dark` or one of Textual's own; `--theme` and `$SST_ASK_THEME` override it, and an unknown one is SST-ASK011. |
+
 ## plan
 
 What plan compares beyond each object's ownership marker.

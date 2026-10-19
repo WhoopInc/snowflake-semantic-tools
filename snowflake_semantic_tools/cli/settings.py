@@ -93,6 +93,19 @@ def apply_fail_fast(paths: ProjectPaths, flag: bool | None) -> bool:
     return config_bool(config_block(project_config(paths).get("apply")).get("fail_fast")) or False
 
 
+def ask_transcripts(paths: ProjectPaths, flag: bool | None) -> bool:
+    """Return whether `sst ask` keeps a transcript: the flag pair when given, else `ask.transcripts`."""
+    if flag is not None:
+        return flag
+    return config_bool(config_block(project_config(paths).get("ask")).get("transcripts")) or False
+
+
+def ask_theme(paths: ProjectPaths) -> str | None:
+    """Return the theme `ask.theme` names; None when it is unset, so the conversation's default applies."""
+    value = config_block(project_config(paths).get("ask")).get("theme")
+    return value if isinstance(value, str) and value else None
+
+
 def validation_settings(paths: ProjectPaths, *, strict: bool | None, connected: bool | None) -> tuple[bool, bool]:
     """Return whether to validate strictly, and against Snowflake: each flag given, else `validation:`.
 

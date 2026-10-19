@@ -774,8 +774,8 @@ sst docs [OPTIONS]
 Remove local SST build artifacts only; never touch Snowflake.
 
 Removes `sst_target/` under the project, where SST writes the compiled manifest, saved plans
-and observations, statement files, local state, and the run log; and `target/sst/`, where SST
-wrote them before they moved, when an earlier run left it. Authored files, `.sst/` with its
+and observations, statement files, local state, the run log, and `sst ask` transcripts; and
+`target/sst/`, where SST wrote them before they moved, when an earlier run left it. Authored files, `.sst/` with its
 baseline, and dbt's `target/` are kept. With --dry-run, nothing is removed. Exit 1 when a
 build directory cannot be removed, or a symbolic link is on the way to it.
 
@@ -1040,12 +1040,14 @@ copies nothing and warns of each edit the agent does not see (SST-ASK001). Takes
 writes no state.
 
 Without QUESTION, on a terminal, a conversation opens, with a picker when AGENT is not
-named; without a terminal, QUESTION is required.
+named; without a terminal, QUESTION is required. `--transcript` keeps each run's
+transcript in `sst_target/ask/`, which `sst clean` removes.
 
 Exit 0 when the agent answered; 1 when the project does not compile, a copy is refused
 (SST-ASK008), a tool is unreachable (SST-ASK010) or the run fails (SST-ASK002); 3 for an
-empty question, or none without a terminal; 4 when no agent of that name compiles
-(SST-ASK003); and 5 when Snowflake is unreachable or refuses the session.
+empty question, or none without a terminal, or a `--theme` or `$SST_ASK_THEME` that names no
+theme; 4 when no agent of that name compiles (SST-ASK003) or `ask.theme` names no theme
+(SST-ASK011); and 5 when Snowflake is unreachable or refuses the session.
 
 ```text
 sst ask [OPTIONS] [AGENT] [QUESTION]
@@ -1060,3 +1062,5 @@ sst ask [OPTIONS] [AGENT] [QUESTION]
 | `--cleanup` | flag |  | Remove every scratch copy and `sst_ask` thread earlier sessions left, in each agent's scratch schema, then exit. |
 | `--show-tools` | flag |  | With QUESTION, also print each tool call the agent made and each tool result, on stderr. |
 | `--timeout` | INTEGER RANGE | `600` | Seconds one turn may take before it is cancelled, 1 to 900; default 600. |
+| `--transcript / --no-transcript` | flag |  | Keep a transcript in `sst_target/ask/`: each turn whole, rows included, and each specification the agent ran on, replaced after every turn; `--no-transcript` keeps none. Else `ask.transcripts`, else none. `sst clean` removes them. |
+| `--theme` | TEXT |  | The conversation's color theme, else `$SST_ASK_THEME`, else `ask.theme`, else `sst-dark`; Textual's own themes are named too, and Ctrl-P changes it for the session. |

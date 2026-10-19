@@ -273,3 +273,82 @@ def test_on_a_terminal_the_answer_streams_as_it_is_generated(tmp_path: Path, mon
     assert result.exit_code == 0, result.output
     assert "Because so." in result.stdout
     assert "Planning the next steps…" in result.stderr
+
+
+def _with_ask_config(project: Path, block: str) -> None:
+    config = project / "sst_config.yml"
+    config.write_text(config.read_text(encoding="utf-8") + f"\nask:\n{block}", encoding="utf-8")
+
+
+def test_a_transcript_is_kept_in_sst_target_when_asked_for_and_not_otherwise(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    port = FakeSnowflake(state={})
+    port.agent_streams = {"Why?": [TextDelta("Because.")]}
+    result = _ask(monkeypatch, project, port, AGENT, "Why?", "--transcript", "--output", "json")
+    assert result.exit_code == 0, result.output
+    written = Path(json.loads(result.output)["data"]["transcript"])
+    assert written.parent == project / "sst_target" / "ask" and written.name.endswith(".json")
+    assert f"-{AGENT}-" in written.name
+    document = json.loads(written.read_text(encoding="utf-8"))
+    assert (document["turn_count"], document["agents"], document["target"]) == (1, [f"agent:{AGENT}"], "dev")
+    [turn] = document["turns"]
+    assert (turn["question"], turn["answer"], turn["spec_revision"]) == ("Why?", "Because.", 1)
+    assert "__SST_ASK_" in json.dumps(document["spec_revisions"][0]["spec"])
+    # On a person's terminal the path goes to stderr, so stdout stays the answer.
+    human = _ask(monkeypatch, project, FakeSnowflake(state={}), AGENT, "q", "--transcript")
+    assert human.exit_code == 0 and "transcript: " in human.stderr and "transcript: " not in human.stdout
+    # The key keeps one; `--no-transcript` keeps none, whatever the key says.
+    _with_ask_config(project, "  transcripts: true\n")
+    keyed = _ask(monkeypatch, project, FakeSnowflake(state={}), AGENT, "q", "--output", "json")
+    assert json.loads(keyed.output)["data"]["transcript"] is not None
+    off = _ask(monkeypatch, project, FakeSnowflake(state={}), AGENT, "q", "--no-transcript", "--output", "json")
+    assert json.loads(off.output)["data"]["transcript"] is None
+    assert len(list((project / "sst_target" / "ask").iterdir())) == 3
+
+
+def test_a_transcript_that_cannot_be_written_warns_and_the_answer_stands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    (project / "sst_target").write_text("not a folder", encoding="utf-8")
+    result = _ask(monkeypatch, project, FakeSnowflake(state={}), AGENT, "q", "--transcript", "--output", "json")
+    assert result.exit_code == 0, result.output
+    envelope = json.loads(result.output)
+    assert [item["code"] for item in envelope["diagnostics"]] == ["SST-ASK012"]
+    assert envelope["data"]["transcript"] is None
+
+
+def test_a_theme_that_does_not_exist_is_refused_before_connecting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from snowflake_semantic_tools.cli.tui.ask_app import AskApp
+
+    themes: list[str] = []
+    monkeypatch.setattr("snowflake_semantic_tools.cli.commands.ask._interactive", lambda: True)
+    monkeypatch.setattr(AskApp, "run", lambda self: themes.append(self._theme_name))
+    project = project_copy(tmp_path)
+    port = FakeSnowflake(state={})
+    flagged = _ask(monkeypatch, project, port, "--theme", "neon")
+    assert flagged.exit_code == 3 and "--theme names no theme: 'neon'" in flagged.output
+    monkeypatch.setenv("SST_ASK_THEME", "neon")
+    assert _ask(monkeypatch, project, port).exit_code == 3
+    monkeypatch.setenv("SST_ASK_THEME", "nord")
+    assert _ask(monkeypatch, project, port).exit_code == 0
+    monkeypatch.delenv("SST_ASK_THEME")
+    assert _ask(monkeypatch, project, port).exit_code == 0
+    _with_ask_config(project, "  theme: neon\n")
+    configured = _ask(monkeypatch, project, port, "--output", "json")
+    assert configured.exit_code == 4
+    assert [item["code"] for item in json.loads(configured.output)["diagnostics"]] == ["SST-ASK011"]
+    # The flag wins over the key, and the key over the default.
+    assert _ask(monkeypatch, project, port, "--theme", "sst-dark").exit_code == 0
+    config = project / "sst_config.yml"
+    config.write_text(config.read_text(encoding="utf-8").replace("theme: neon", "theme: dracula"), encoding="utf-8")
+    assert _ask(monkeypatch, project, port).exit_code == 0
+    assert themes == ["nord", "sst-dark", "sst-dark", "dracula"]
+    assert port.stream_runs == []
+    from snowflake_semantic_tools.cli.tui.themes import theme_names
+
+    assert theme_names()[0] == "sst-dark" and "nord" in theme_names()

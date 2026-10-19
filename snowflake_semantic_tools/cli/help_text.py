@@ -247,6 +247,15 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "--show-tools",
     ): "With QUESTION, also print each tool call the agent made and each tool result, on stderr.",
     ("sst ask", "--timeout"): "Seconds one turn may take before it is cancelled, 1 to 900; default 600.",
+    ("sst ask", "--transcript"): (
+        "Keep a transcript in `sst_target/ask/`: each turn whole, rows included, and each specification "
+        "the agent ran on, replaced after every turn; `--no-transcript` keeps none. Else `ask.transcripts`, "
+        "else none. `sst clean` removes them."
+    ),
+    ("sst ask", "--theme"): (
+        "The conversation's color theme, else `$SST_ASK_THEME`, else `ask.theme`, else `sst-dark`; "
+        "Textual's own themes are named too, and Ctrl-P changes it for the session."
+    ),
     ("sst test", "--unpublished"): (
         "Run the eval suite against each agent as it compiles now, through temporary agents, publishing "
         "nothing: no `sst apply` first, no lock, no baseline, no eval state. `tool_selection_accuracy` is "

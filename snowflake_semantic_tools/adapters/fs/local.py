@@ -1,17 +1,18 @@
-"""Atomic local persistence for manifest, state, plan, and apply locks."""
+"""Atomic local persistence for manifest, state, plan, apply locks, and `sst ask` transcripts."""
 
 from __future__ import annotations
 
 import contextlib
 import hashlib
-from collections.abc import Callable, Iterator
+import json
+from collections.abc import Callable, Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Generic, TypeVar
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.json_files import JsonFileError, parse_json, read_json_file
-from snowflake_semantic_tools.adapters.paths import create_within, remove_within, write_within
+from snowflake_semantic_tools.adapters.paths import UnsafeWrite, create_within, remove_within, write_within
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.file_names import file_name
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
@@ -141,6 +142,32 @@ def observation_file(directory: Path, target_name: str) -> Path:
     holding a separator, `..`, a NUL, or a leading dot among them, places the file elsewhere.
     """
     return directory / f"observation.{file_name(target_name)}.json"
+
+
+class TranscriptFiles:
+    """`sst ask` transcripts: one JSON file each in a folder of the build directory, kept inside `root`.
+
+    Written indented, in the order the document lists its keys, for a person to read; replaced
+    atomically, as `adapters.paths.write_within` writes.
+    """
+
+    def __init__(self, folder: Path, *, root: Path) -> None:
+        self.folder = folder
+        self.root = root
+
+    def write(self, name: str, document: Mapping[str, object]) -> str:
+        """Replace the transcript `name`, one path segment, with `document`; return its absolute path.
+
+        Raises:
+            UnsafeWrite: `name` is not one segment, or a link is on the way to the file.
+            OSError: The folder or the file cannot be written.
+        """
+        path = self.folder / name
+        if path.parent != self.folder or name in ("", ".", ".."):
+            raise UnsafeWrite(path, f"{name!r} is not one file name")
+        text = json.dumps(document, indent=2, ensure_ascii=False, default=str) + "\n"
+        write_within(self.root, path, text)
+        return str(path.absolute())
 
 
 class ObservationFileStore(JsonStore[RecordedObservation]):
