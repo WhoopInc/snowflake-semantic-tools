@@ -17,7 +17,8 @@ from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.options import EvalRunOptions
-from snowflake_semantic_tools.app.evals.run import EvalSuiteResult, RunEvalSuite, eval_suite_json
+from snowflake_semantic_tools.app.evals.projection import eval_suite_json
+from snowflake_semantic_tools.app.evals.run import EvalSuiteResult, RunEvalSuite
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.manifest import manifest_for
 from snowflake_semantic_tools.app.smoke import SmokePublished, SmokeResult

@@ -27,8 +27,9 @@ from typing import Protocol
 from snowflake_semantic_tools.app.ask import DEFAULT_RUN_TIMEOUT_SECONDS
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
+from snowflake_semantic_tools.app.evals.projection import eval_suite_json
 from snowflake_semantic_tools.app.evals.retrieve import compiled_questions, sum_costs
-from snowflake_semantic_tools.app.evals.run import EvalRunResult, EvalSuiteResult, eval_suite_json, suite_concurrency
+from snowflake_semantic_tools.app.evals.run import EvalRunResult, EvalSuiteResult, suite_concurrency
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.evaluate.judge import (

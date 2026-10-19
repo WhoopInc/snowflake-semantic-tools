@@ -12,7 +12,8 @@ import pytest
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.evals.options import EvalRunOptions
-from snowflake_semantic_tools.app.evals.run import EvalRunsInterrupted, empty_eval_suite_json
+from snowflake_semantic_tools.app.evals.projection import empty_eval_suite_json
+from snowflake_semantic_tools.app.evals.run import EvalRunsInterrupted
 from snowflake_semantic_tools.app.evals.suite import (
     EvalGateOutcome,
     EvalGateRefused,

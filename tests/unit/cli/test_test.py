@@ -425,7 +425,10 @@ def test_eval_suite_reports_every_attempt_in_human_output(
     )
 
     assert result.exit_code == 0, result.output
-    assert "eval:jaffle_analytics_agent  attempt 2  COMPLETED  1/1 question passed\n├── run  EVAL_RUN_R2\n" in result.output
+    assert (
+        "eval:jaffle_analytics_agent  attempt 2  COMPLETED  1/1 question passed\n├── run  EVAL_RUN_R2\n"
+        in result.output
+    )
     assert "├── answer_correctness  1/1 passed  average 0.900\n" in result.output
     # Each count names whose it is: the agent's time and tokens, the judge's tokens.
     assert "├── cost  0.1s agent time · agent 10 in / 5 out · 1 LLM call · judge 8 tokens\n" in result.output

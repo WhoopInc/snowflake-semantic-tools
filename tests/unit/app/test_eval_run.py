@@ -11,6 +11,7 @@ import pytest
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.options import EvalRunOptions
+from snowflake_semantic_tools.app.evals.projection import empty_eval_suite_json, eval_suite_json
 from snowflake_semantic_tools.app.evals.retrieve import (
     _expected_question_map,
     _metric_passed,
@@ -31,8 +32,6 @@ from snowflake_semantic_tools.app.evals.run import (
     RunEvalSuite,
     _compact_timestamp,
     _StartedRuns,
-    empty_eval_suite_json,
-    eval_suite_json,
     suite_concurrency,
     validate_eval_publication,
 )

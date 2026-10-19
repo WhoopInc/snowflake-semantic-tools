@@ -21,11 +21,10 @@ from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_g
 from snowflake_semantic_tools.app.evals.options import EvalRunOptions
 from snowflake_semantic_tools.app.evals.privileges import EvalRolePort, eval_role_diagnostics
 from snowflake_semantic_tools.app.evals.progress import EvalProgress, no_progress
+from snowflake_semantic_tools.app.evals.projection import empty_eval_suite_json, eval_suite_json
 from snowflake_semantic_tools.app.evals.run import (
     EvalSuiteResult,
     RunEvalSuite,
-    empty_eval_suite_json,
-    eval_suite_json,
     validate_eval_publication,
 )
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
