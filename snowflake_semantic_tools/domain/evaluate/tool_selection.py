@@ -18,10 +18,14 @@ The rule, which the Snowflake evaluation service is to be calibrated against:
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from collections.abc import Iterable, Mapping
 
 CHART_TOOL_TYPES = frozenset(("data_to_chart",))
+# The evaluation service's tool-selection criteria name each side as a bracketed list, such
+# as "**Invoked:** `[menu_search, menu_search]` (2 tools)" (measured on a live account).
+_SERVICE_LIST = re.compile(r"\*\*(Expected|Invoked):\*\*\s*`\[([^\]`]*)\]`")
 
 
 def declared_tools(spec: object) -> dict[str, str]:
@@ -69,6 +73,34 @@ def selected_tools(called: Iterable[str], declared: Mapping[str, str]) -> Counte
         for name in called
         if name.casefold() in types and types[name.casefold()] not in CHART_TOOL_TYPES
     )
+
+
+def counted_calls(called: Iterable[str], declared: Mapping[str, str]) -> tuple[str, ...]:
+    """Return the calls of declared, non-chart tools among `called`, in call order, as called.
+
+    These are the calls `tool_selection_score` compares; a system tool and a chart are left out.
+    """
+    types = {name.casefold(): kind for name, kind in declared.items()}
+    return tuple(name for name in called if name.casefold() in types and types[name.casefold()] not in CHART_TOOL_TYPES)
+
+
+def service_tools(criteria: object, side: str) -> tuple[str, ...] | None:
+    """Read one side of the evaluation service's tool-selection criteria.
+
+    Args:
+        criteria: The metric call's `criteria` text.
+        side: `Expected` or `Invoked`.
+
+    Returns:
+        The tool names that side lists, in its order; `()` for an empty list; None when the
+        text names no such list.
+    """
+    if not isinstance(criteria, str):
+        return None
+    for label, names in _SERVICE_LIST.findall(criteria):
+        if label == side:
+            return tuple(name.strip() for name in names.split(",") if name.strip())
+    return None
 
 
 def tool_selection_score(

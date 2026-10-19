@@ -13,26 +13,36 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class EvalMetricResult:
-    """One metric's result on one question in one attempt; `score` is None when none was reported."""
+    """One metric's result on one question in one attempt.
+
+    Attributes:
+        score: None when none was reported.
+        explanation: Why the scorer gave that score, as it said it; None when it gave no reason.
+    """
 
     question_key: str
     metric_name: str
     score: float | None
     passed: bool
-
-
-@dataclass(frozen=True, slots=True)
-class EvalResultRow:
-    """One question's results in one attempt, one entry per metric."""
-
-    question_key: str
-    input_query: str
-    metrics: tuple[EvalMetricResult, ...]
+    explanation: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class EvalCostSummary:
-    """Time and token totals for a record, an attempt or a suite; an unreported value counts as 0."""
+    """Time and token totals for a record, an attempt or a suite; an unreported value counts as 0.
+
+    Attributes:
+        duration_ms: The agent's time answering; an attempt's or suite's adds its questions' times,
+            which ran concurrently, so it exceeds the time the run took.
+        prompt_tokens: The judge's prompt tokens, over every metric call.
+        completion_tokens: The judge's completion tokens, over every metric call.
+        total_tokens: The judge's tokens, over every metric call.
+        total_input_tokens: The agent's input tokens.
+        total_output_tokens: The agent's output tokens.
+        llm_call_count: The agent's model calls.
+        tokens_measured: False when no token or call count was read, so every count is 0
+            because nothing was counted, not because nothing was used.
+    """
 
     duration_ms: int = 0
     prompt_tokens: int = 0
@@ -41,6 +51,33 @@ class EvalCostSummary:
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     llm_call_count: int = 0
+    tokens_measured: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class EvalResultRow:
+    """One question's results in one attempt, one entry per metric.
+
+    Attributes:
+        index: The question's 1-based position in the eval's dataset; None when unknown.
+        answer: The agent's reply text; None when not read.
+        error: Why the agent answered with an error instead of a reply; None when it replied.
+        expected_tools: The tools the question's ground truth expects, in its order; `()` expects
+            none, and None states no expectation.
+        called_tools: The calls of the agent's own tools the reply made, in call order, by name;
+            None when not known.
+        cost: The question's own time and tokens; None when not read.
+    """
+
+    question_key: str
+    input_query: str
+    metrics: tuple[EvalMetricResult, ...]
+    index: int | None = None
+    answer: str | None = None
+    error: str | None = None
+    expected_tools: tuple[str, ...] | None = None
+    called_tools: tuple[str, ...] | None = None
+    cost: EvalCostSummary | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +91,8 @@ class EvalRunAttempt:
         rows: The results, read only from a completed attempt; `()` otherwise.
         retrieval_error: Why starting, polling or reading the attempt failed; None when nothing did.
         agent_version: The concrete version the run resolved the agent to; None when unknown.
+        wall_ms: How long the attempt took from its first question to its last answer; None
+            when not measured.
     """
 
     run_name: str
@@ -64,6 +103,7 @@ class EvalRunAttempt:
     retrieval_error: str | None = None
     status_details: tuple[str, ...] = ()
     agent_version: str | None = None
+    wall_ms: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

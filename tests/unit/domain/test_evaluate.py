@@ -16,12 +16,16 @@ from snowflake_semantic_tools.domain.evaluate.judge import (
     judged_score,
     unfillable_placeholders,
 )
+from snowflake_semantic_tools.domain.evaluate.scores import average_text, score_text, threshold_phrase
 from snowflake_semantic_tools.domain.evaluate.tool_selection import (
+    counted_calls,
     declared_tools,
     expected_tools,
     selected_tools,
+    service_tools,
     tool_selection_score,
 )
+from snowflake_semantic_tools.domain.model.eval.model import ThresholdRange
 
 SPEC = {
     "tools": [
@@ -158,3 +162,54 @@ def test_answer_correctness_is_judged_against_the_ground_truth_output_alone() ->
 )
 def test_a_judges_score_is_read_only_when_it_is_on_the_scale(answer: object, score: float | None) -> None:
     assert judged_score(answer, 0, 5) == score
+
+
+def test_the_counted_calls_keep_their_order_and_spelling_and_drop_system_and_chart_tools() -> None:
+    called = ["sales", "server_skill", "chart", "docs", "SALES"]
+
+    assert counted_calls(called, DECLARED) == ("sales", "docs", "SALES")
+
+
+@pytest.mark.parametrize(
+    ("criteria", "side", "tools"),
+    [
+        (
+            "**Expected:** `[menu_search]` (1 tools)\n\n**Invoked:** `[menu_search, menu_search]` (2 tools)",
+            "Invoked",
+            ("menu_search", "menu_search"),
+        ),
+        ("**Expected:** `[menu_search]` (1 tools)\n\n**Invoked:** `[]` (0 tools)", "Expected", ("menu_search",)),
+        ("**Expected:** `[]` (0 tools)\n\n**Invoked:** `[]` (0 tools)", "Invoked", ()),
+        ("**Expected:** `[menu_search]` (1 tools)", "Invoked", None),
+        ("a judge's prose criteria", "Invoked", None),
+        (None, "Invoked", None),
+    ],
+)
+def test_the_services_criteria_name_each_side_as_a_list(
+    criteria: object, side: str, tools: tuple[str, ...] | None
+) -> None:
+    assert service_tools(criteria, side) == tools
+
+
+@pytest.mark.parametrize(
+    ("threshold", "phrase"),
+    [
+        (ThresholdRange(min=0.8), "needs at least 0.8"),
+        (ThresholdRange(max=0.25), "needs at most 0.25"),
+        (ThresholdRange(min=0.5, max=1.0), "needs 0.5 to 1"),
+        (ThresholdRange(), None),
+        (None, None),
+    ],
+)
+def test_a_threshold_reads_as_the_score_it_needs(threshold: ThresholdRange | None, phrase: str | None) -> None:
+    assert threshold_phrase(threshold) == phrase
+
+
+def test_a_score_has_two_places_and_an_average_three() -> None:
+    assert (score_text(0.5), score_text(1), score_text(None)) == ("0.50", "1.00", "no score")
+    assert (average_text(0.9285714285714286), average_text(1), average_text(None), average_text(True)) == (
+        "0.929",
+        "1.000",
+        "no score",
+        "no score",
+    )
