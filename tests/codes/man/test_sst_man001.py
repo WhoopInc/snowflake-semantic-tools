@@ -18,10 +18,10 @@ def test_sst_man001_fires(tmp_path: Path) -> None:
         compiled_manifest(tmp_path)
     [diagnostic] = raised.value.diagnostics
     assert (diagnostic.code, diagnostic.severity) == ("SST-MAN001", Severity.ERROR)
-    assert diagnostic.message == f"no SST manifest at {tmp_path / 'target' / 'sst' / 'manifest.json'}"
+    assert diagnostic.message == f"no SST manifest at {tmp_path / 'sst_target' / 'manifest.json'}"
 
 
 def test_sst_man001_silent(tmp_path: Path) -> None:
     written = manifest({"semantic_view:v": rendered()})
-    ManifestFileStore(tmp_path / "target" / "sst" / "manifest.json").write(written)
+    ManifestFileStore(tmp_path / "sst_target" / "manifest.json").write(written)
     assert compiled_manifest(tmp_path) == written

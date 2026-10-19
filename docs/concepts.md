@@ -185,7 +185,7 @@ compile  ->  validate  ->  plan  ->  apply  ->  test
 ```
 
 - **`compile`** renders every artifact and writes the SST manifest to
-  `target/sst/manifest.json`. It is offline, and an error stops it before it
+  `sst_target/manifest.json`. It is offline, and an error stops it before it
   writes anything (`SST-MAN008`), unless `--partial` is given. `--emit-ddl <dir>`
   also writes each artifact's rendered payload, and `--emit-agent-spec <dir>`
   each agent's specification.
@@ -193,7 +193,7 @@ compile  ->  validate  ->  plan  ->  apply  ->  test
   dependency-cycle check, `--strict`, and, when asked for, the connected checks.
   It writes nothing.
 - **`plan`** compiles and validates, reads what is live in Snowflake, and saves
-  the changes to `target/sst/plan.json`. It never writes to Snowflake, and it
+  the changes to `sst_target/plan.json`. It never writes to Snowflake, and it
   exits `2` when there are changes.
 - **`apply`** plans again and executes the changes, after asking unless `--yes`
   is given. With `--plan <file>`, it executes that saved plan only if it was
@@ -220,7 +220,7 @@ run.
 was published to, and the manifest and commit it came from -- in a state table,
 `SST_STATE` in the target's database and schema by default (`state:` in
 `sst_config.yml` moves it). A copy is cached locally in
-`target/sst/state.<target>.json`. The next `plan` compares the project against
+`sst_target/state.<target>.json`. The next `plan` compares the project against
 that record and against what is live.
 
 Each artifact is compared with its own entry. Its fingerprint covers everything

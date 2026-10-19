@@ -114,7 +114,7 @@ _OPTION_HELP: Mapping[str, str] = {
         "still exits 1 while errors remain. Cannot be combined with `--prune`."
     ),
     "--sql-out": (
-        "Write each create's and update's statements into this directory instead of `target/sst/sql`. A file "
+        "Write each create's and update's statements into this directory instead of `sst_target/sql`. A file "
         "an earlier run wrote there, named `<type>__<name>.sql`, `.json` or `.yaml`, for a change this run does "
         "not make is removed; any other file is left."
     ),
@@ -189,7 +189,7 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst enrich", "--dry-run"): "Write nothing; print each file's change as a diff.",
     ("sst enrich", "--no-detailed-exitcode"): "With `--check`, exit 0 when files would change, instead of 2.",
     ("sst enrich", "--fail-fast"): "Stop at the first model that fails, and write nothing.",
-    ("sst plan", "--plan-out"): "Write the saved plan here instead of `target/sst/plan.json`.",
+    ("sst plan", "--plan-out"): "Write the saved plan here instead of `sst_target/plan.json`.",
     ("sst plan", "--no-plan-out"): "Do not write a saved plan.",
     ("sst plan", "--grants"): (
         "Read the grants on each object an update replaces, one `SHOW GRANTS` each, to report what a "
@@ -220,7 +220,7 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ),
     ("sst plan", "--diff-out"): (
         "Write what each update changes, member by member, as a unified diff here instead of "
-        "`target/sst/plan.<target>.diff`. Refused with `--no-diff`."
+        "`sst_target/plan.<target>.diff`. Refused with `--no-diff`."
     ),
     ("sst plan", "--names-only"): "Print the name of each changed artifact, one per line, and nothing else.",
     ("sst plan", "--no-detailed-exitcode"): "Exit 0 when changes are pending, instead of 2.",

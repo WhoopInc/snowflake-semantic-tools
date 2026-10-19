@@ -219,7 +219,7 @@ def print_eval_results(result: EvalSuiteResult) -> None:
 def write_plan_sql(project_dir: Path, changeset: ChangeSet, sql_out: Path | None) -> Path:
     """Write what each create or update executes, one file per change; return the directory.
 
-    The directory is `--sql-out`, else `target/sst/sql`. A JSON or YAML payload is written
+    The directory is `--sql-out`, else `sst_target/sql`. A JSON or YAML payload is written
     as it is; statements are joined, each ending in a semicolon. A file is named by
     `file_name`, so no artifact key can place it outside the directory. A file an earlier run
     wrote there for a change this one does not make is removed, so the directory holds this
@@ -273,7 +273,7 @@ def _stale_files(output: Path, written: set[str]) -> list[str]:
 
 
 def plan_diff_path(project_dir: Path, changeset: ChangeSet, diff_out: Path | None) -> Path:
-    """Return where a plan writes its member diff: `--diff-out`, else `target/sst/plan.<target>.diff`."""
+    """Return where a plan writes its member diff: `--diff-out`, else `sst_target/plan.<target>.diff`."""
     return diff_out or target_dir(project_dir) / f"plan.{file_name(changeset.target.name)}.diff"
 
 

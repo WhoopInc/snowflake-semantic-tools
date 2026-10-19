@@ -28,7 +28,7 @@ from snowflake_semantic_tools.adapters.dbt.project import (
 )
 from snowflake_semantic_tools.adapters.deferral import resolve_deferral
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.locations import ProjectPaths, sst_target_dir
 from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
@@ -147,13 +147,13 @@ class YamlProjectSource:
         return path
 
     def _installation_cache(self) -> Path | None:
-        """Where what `dbt --version` answered is kept: `sst/dbt_installation.json` under dbt's target path.
+        """Where what `dbt --version` answered is kept: `dbt_installation.json` in SST's build directory.
 
         Only for the `dbt` on `PATH`: a runner passed in answers for itself, so None.
         """
         if self._runner is not subprocess_runner:
             return None
-        return target_path(self._project_dir, read_yaml_mapping).parent / "sst" / "dbt_installation.json"
+        return sst_target_dir(self._project_dir) / "dbt_installation.json"
 
     def _auto_compile(self) -> bool:
         """Read `defer.auto_compile`: SST produces the deferred target's manifest itself."""

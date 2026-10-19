@@ -116,7 +116,7 @@ def configure_skills_as_published(port: FakeSnowflake, changes: list[dict[str, o
         if artifact_type not in ("skill", "plugin"):
             continue
         name = str(item["artifact_key"]).split(":", 1)[1]
-        bundle = json.loads((project / "target" / "sst" / "sql" / f"{artifact_type}__{name}.json").read_text())
+        bundle = json.loads((project / "sst_target" / "sql" / f"{artifact_type}__{name}.json").read_text())
         resources = item["physical_resources"]
         assert isinstance(resources, list)
         stage = next(str(resource["qualified_name"]) for resource in resources if resource["object_type"] == "STAGE")
@@ -148,7 +148,7 @@ def configure_profiles_as_published(port: FakeSnowflake, changes: list[dict[str,
         if item["artifact_type"] != "profile":
             continue
         name = str(item["artifact_key"]).split(":", 1)[1]
-        document = json.loads((project / "target" / "sst" / "sql" / f"profile__{name}.json").read_text())
+        document = json.loads((project / "sst_target" / "sql" / f"profile__{name}.json").read_text())
         resources = item["physical_resources"]
         assert isinstance(resources, list)
         stage, registry = (
@@ -237,9 +237,7 @@ def published_target(project: Path, payload: dict[str, Any]) -> FakeSnowflake:
                             (
                                 "config_stage_md5",
                                 md5(
-                                    (
-                                        project / "target" / "sst" / "sql" / "eval__jaffle_analytics_agent.yaml"
-                                    ).read_bytes(),
+                                    (project / "sst_target" / "sql" / "eval__jaffle_analytics_agent.yaml").read_bytes(),
                                     usedforsecurity=False,
                                 ).hexdigest(),
                             ),
@@ -276,7 +274,7 @@ def published_target(project: Path, payload: dict[str, Any]) -> FakeSnowflake:
         )
     port = FakeSnowflake(objects={key: tuple(value) for key, value in objects.items()}, state=state)
     describe_routines(port, project)
-    eval_config = project / "target" / "sst" / "sql" / "eval__jaffle_analytics_agent.yaml"
+    eval_config = project / "sst_target" / "sql" / "eval__jaffle_analytics_agent.yaml"
     configure_eval_as_applied(
         port,
         payload["data"]["changes"],
@@ -572,7 +570,7 @@ def test_plan_without_a_compiled_manifest_names_the_missing_file(tmp_path: Path)
     with pytest.raises(ProjectError) as raised:
         _compiled_manifest(tmp_path)
     assert [item.code for item in raised.value.diagnostics] == ["SST-MAN001"]
-    assert str(tmp_path / "target" / "sst" / "manifest.json") in raised.value.diagnostics[0].message
+    assert str(tmp_path / "sst_target" / "manifest.json") in raised.value.diagnostics[0].message
 
 
 def test_plan_closes_its_connection_when_it_fails_after_connecting(
@@ -592,7 +590,7 @@ def test_plan_closes_its_connection_when_it_fails_after_connecting(
     )
     assert closes == ["closed"]
 
-    (project / "target" / "sst" / "state.dev.json").write_text("[]", encoding="utf-8")
+    (project / "sst_target" / "state.dev.json").write_text("[]", encoding="utf-8")
     unreadable, closes = invoke_counting_closes(monkeypatch, FakeSnowflake(state={}), plan)
     assert unreadable.exit_code == 4
     assert [item["code"] for item in json.loads(unreadable.output)["diagnostics"]] == ["SST-MAN022"]

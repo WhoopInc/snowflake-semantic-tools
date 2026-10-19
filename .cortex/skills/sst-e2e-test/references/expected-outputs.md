@@ -35,7 +35,7 @@ After a compile, `sst list --project-dir tests/fixtures/reference_project` lists
 
 ## Compile (`--emit-ddl`)
 
-`compiled 14 artifact(s); manifest tests/fixtures/reference_project/target/sst/manifest.json`, then `wrote 14 file(s) to <dir>`, exit 0:
+`compiled 14 artifact(s); manifest tests/fixtures/reference_project/sst_target/manifest.json`, then `wrote 14 file(s) to <dir>`, exit 0:
 
 | Files | Artifacts |
 |-------|-----------|

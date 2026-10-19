@@ -22,7 +22,7 @@ TABLE = QualifiedName.from_parts("DB", "S", "SST_STATE")
 
 
 def _local(project: Path) -> dict[str, tuple[str, str]]:
-    manifest = ManifestFileStore(project / "target" / "sst" / "manifest.json").read()
+    manifest = ManifestFileStore(project / "sst_target" / "manifest.json").read()
     assert manifest is not None
     return {key: (entry.fingerprint, entry.publish_target) for key, entry in manifest.artifacts.items()}
 
@@ -101,7 +101,7 @@ def test_local_against_a_saved_plan_and_unreadable_states(tmp_path: Path, monkey
     assert (absent.exit_code, "there is no saved plan" in absent.output) == (1, True)
     planned = invoke_with_port(monkeypatch, FakeSnowflake(state={}), ["plan", *common(project)])
     assert planned.exit_code == 2, planned.output
-    saved = CliRunner().invoke(cli, ["diff", *common(project), "--to", "target/sst/plan.json"])
+    saved = CliRunner().invoke(cli, ["diff", *common(project), "--to", "sst_target/plan.json"])
     assert saved.exit_code == 0, saved.output
     (project / "broken.json").write_text("{", encoding="utf-8")
     assert CliRunner().invoke(cli, ["diff", *common(project), "--to", "broken.json"]).exit_code == 1

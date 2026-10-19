@@ -99,7 +99,7 @@ def list_command(
 
     TYPE is an artifact type such as semantic-views or agents, a member type such as
     metrics or verified-queries, or tables. An artifact's status -- pending, applied,
-    failed, or deactivated -- is what the one local state file under `target/sst` records;
+    failed, or deactivated -- is what the one local state file under `sst_target` records;
     with none there, or more than one target's, every artifact is pending. Without
     --no-manifest the manifest `sst compile` wrote is read, and its absence exits 4; with
     it, the project's files are compiled in memory, nothing is written, and what fails to

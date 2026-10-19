@@ -38,7 +38,7 @@ def test_compile_list_and_the_manifest_carry_the_routed_location(tmp_path: Path)
     # The agents outside agents/ops/ keep the block's schema.
     assert targets["agent:jaffle_analytics_agent"] == "SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT"
 
-    manifest = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((project / "sst_target" / "manifest.json").read_text(encoding="utf-8"))
     entry = manifest["artifacts"]["agent:jaffle_minimal_agent"]
     assert entry["publish_target"]["qualified_name"] == ROUTED
     assert entry["source_files"] == ["agents/ops/jaffle_minimal/agent.yml"]

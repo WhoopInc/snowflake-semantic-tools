@@ -152,11 +152,11 @@ def test_the_manifest_is_never_written_through_a_symlinked_build_folder(tmp_path
     project = project_copy(tmp_path)
     outside = tmp_path / "outside"
     outside.mkdir()
-    os.symlink(outside, project / "target")
+    os.symlink(outside, project / "sst_target")
     exit_code, envelope = _invoke("compile", *common(project))
     assert exit_code == 1
     assert _messages(envelope, "SST-MAN007") == [
-        f"could not write {project / 'target' / 'sst' / 'manifest.json'}: target is a symbolic link, "
+        f"could not write {project / 'sst_target' / 'manifest.json'}: sst_target is a symbolic link, "
         "which SST does not write through"
     ]
     assert list(outside.iterdir()) == []
@@ -165,12 +165,12 @@ def test_the_manifest_is_never_written_through_a_symlinked_build_folder(tmp_path
 def test_clean_refuses_a_build_folder_reached_through_a_link(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
     outside = tmp_path / "outside"
-    (outside / "sst").mkdir(parents=True)
-    (outside / "sst" / "keep.txt").write_text("keep", encoding="utf-8")
-    os.symlink(outside, project / "target")
+    outside.mkdir()
+    (outside / "keep.txt").write_text("keep", encoding="utf-8")
+    os.symlink(outside, project / "sst_target")
     exit_code, envelope = _invoke("clean", "--project-dir", str(project))
     assert exit_code == 1 and _codes(envelope) == ["SST-PRT010"]
-    assert (outside / "sst" / "keep.txt").exists()
+    assert (outside / "keep.txt").exists()
 
 
 def test_enrich_and_migrate_refuse_to_write_a_symlinked_yaml_file(tmp_path: Path) -> None:
@@ -191,8 +191,8 @@ def test_the_state_cache_and_its_lock_are_never_written_through_a_link(tmp_path:
     project, outside = tmp_path / "project", tmp_path / "outside"
     project.mkdir()
     outside.mkdir()
-    os.symlink(outside, project / "target")
-    store = StateFileStore(project / "target" / "sst" / "state.dev.json", root=project)
+    os.symlink(outside, project / "sst_target")
+    store = StateFileStore(project / "sst_target" / "state.dev.json", root=project)
     with pytest.raises(UnsafeWrite):
         store.acquire_lock("run", break_stale=False)
     assert list(outside.iterdir()) == []

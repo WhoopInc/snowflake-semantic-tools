@@ -153,14 +153,14 @@ def plan(
     Nothing to change means each live object carries the ownership marker state records, and
     the properties `plan.drift_check` compares are as apply read them back; an object edited
     by hand in either way is blocked (SST-PLN014).
-    The plan is saved as `target/sst/plan.json` unless --plan-out or --no-plan-out says
-    otherwise, and each create's and update's statements go to `target/sst/sql`, or --sql-out.
+    The plan is saved as `sst_target/plan.json` unless --plan-out or --no-plan-out says
+    otherwise, and each create's and update's statements go to `sst_target/sql`, or --sql-out.
     `--names-only` prints only the name of each changed artifact, and wins over `--full`.
     Each update is followed by what it changes, member by member, the live object against what
     SST renders, cut short where long; all of it is written as a unified diff to
-    `target/sst/plan.<target>.diff`, or --diff-out, on every plan. `--no-diff` skips reading
+    `sst_target/plan.<target>.diff`, or --diff-out, on every plan. `--no-diff` skips reading
     the live definitions. What the plan read of the target is recorded as
-    `target/sst/observation.<target>.json`; `--use-cached-state` plans from the one `--state`
+    `sst_target/observation.<target>.json`; `--use-cached-state` plans from the one `--state`
     holds instead, without connecting, and reports how old it is.
     """
     request = PlanRequest(

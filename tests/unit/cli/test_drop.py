@@ -61,7 +61,7 @@ def test_drop_removes_an_owned_object_and_forgets_it_remote_and_local(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = _project(tmp_path)
-    cache = StateFileStore(state_file(project / "target" / "sst", "dev"), config_path="sst_config.yml")
+    cache = StateFileStore(state_file(project / "sst_target", "dev"), config_path="sst_config.yml")
     target = QualifiedName.parse(VIEW)
     identity = TargetIdentity("dev", "acct", target.database, target.schema)
     cache.write_local(

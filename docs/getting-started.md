@@ -201,24 +201,26 @@ sst plan
 ```
 
 ```text
-compiled 1 artifact(s); manifest target/sst/manifest.json
+compiled 1 artifact(s); manifest sst_target/manifest.json
 semantic_view:sales pending ANALYTICS_DEV.SEMANTIC.SALES 38edd49c...
 ```
 
 `compile` renders every artifact and writes the SST manifest to
-`target/sst/manifest.json`, offline; `sst list` shows what it holds, and
+`sst_target/manifest.json`, offline. `sst_target/` is SST's build directory,
+beside dbt's `target/` and fixed as dbt's is: add `sst_target/` to the
+project's `.gitignore`, and `sst clean` removes it. `sst list` shows what it holds, and
 `sst compile --emit-ddl <dir>` writes the `CREATE SEMANTIC VIEW` statement to
 read. `plan` connects: it validates and compiles the project again, and refuses
-to go on when `target/sst/manifest.json` was compiled for another target
+to go on when `sst_target/manifest.json` was compiled for another target
 (`SST-MAN006`) or no longer matches the project (run `sst compile` again). It
 then reads what is live in Snowflake and saves the difference to
-`target/sst/plan.json`. It never writes to Snowflake. It exits `2` when there
+`sst_target/plan.json`. It never writes to Snowflake. It exits `2` when there
 are changes and `0` when there are none, so CI can tell the two apart.
 
 ## 8. Apply
 
 ```bash
-sst apply --plan target/sst/plan.json --yes
+sst apply --plan sst_target/plan.json --yes
 ```
 
 `apply` executes exactly the saved plan, and refuses one that no longer matches

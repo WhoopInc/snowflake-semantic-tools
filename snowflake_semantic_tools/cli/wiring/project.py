@@ -18,7 +18,7 @@ import click
 
 from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_profile_target
 from snowflake_semantic_tools.adapters.fs.local import StateFileStore, state_file
-from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.locations import ProjectPaths, sst_target_dir
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
@@ -38,8 +38,8 @@ VIEW_TIMEOUT_SECONDS = int(CONFIG_KEYS["generation.view_timeout"].default or 0)
 
 
 def target_dir(project_dir: Path) -> Path:
-    """Return where SST writes its build artifacts: `target/sst` under the project."""
-    return project_dir / "target" / "sst"
+    """Return where SST writes its build artifacts: `sst_target/` under the project."""
+    return sst_target_dir(project_dir)
 
 
 def git_sha(project_dir: Path) -> str:

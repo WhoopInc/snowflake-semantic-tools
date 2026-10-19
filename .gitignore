@@ -81,6 +81,9 @@ docs/_build/
 # PyBuilder
 target/
 
+# SST's build directory, in the reference project and any project the tests copy
+sst_target/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 

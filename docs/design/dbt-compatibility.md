@@ -91,7 +91,7 @@ target is a dbt target: `--target` names an output of the profile that
 `dbt_project.yml`'s `profile:` names, SST passes the same name to dbt, and an
 output whose `type` names another adapter is refused (`SST-CFG011`). A deferred
 target's manifest lives under `defer.state_path`, by default
-`target/sst/defer/<target>`: with `defer.auto_compile` SST parses that target
+`sst_target/defer/<target>`: with `defer.auto_compile` SST parses that target
 the same way, passing that directory as `--target-path`; otherwise the manifest
 there is read as supplied. dbt runs in SST's own
 environment, so every variable SST sees reaches dbt too.

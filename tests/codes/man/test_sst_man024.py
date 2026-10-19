@@ -20,7 +20,7 @@ def test_sst_man024_fires() -> None:
     state, diagnostics = read_written_by("99.1.0")
     [diagnostic] = diagnostics
     assert (diagnostic.code, diagnostic.severity) == ("SST-MAN024", Severity.WARNING)
-    assert diagnostic.message == f"target/sst/state.verify.json was written by SST 99.1.0; this is {SST_VERSION}"
+    assert diagnostic.message == f"sst_target/state.verify.json was written by SST 99.1.0; this is {SST_VERSION}"
     assert "semantic_view:v" in state.applied
 
 

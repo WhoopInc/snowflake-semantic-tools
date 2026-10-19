@@ -23,7 +23,7 @@ def invoke_with_port(
 ) -> Result:
     if "--project-dir" in args and args[0] in ("plan", "apply"):
         project = Path(args[args.index("--project-dir") + 1])
-        if not (project / "target" / "sst" / "manifest.json").is_file():
+        if not (project / "sst_target" / "manifest.json").is_file():
             compile_project(project)
     monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", lambda params: port)
     port.close = lambda: None  # type: ignore[attr-defined]
@@ -40,7 +40,7 @@ def applied_port(project: Path) -> FakeSnowflake:
     The state table records each one and its live marker matches, so the smoke suite runs its
     probes, each of which answers.
     """
-    manifest = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((project / "sst_target" / "manifest.json").read_text(encoding="utf-8"))
     manifest_id = manifest["manifest_id"]
     artifacts = manifest["artifacts"]
     state = {

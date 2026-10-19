@@ -62,7 +62,7 @@ def test_a_question_runs_on_copies_of_what_is_not_published_and_removes_them(
     dropped = " ".join(statement for script in port.scripts for statement in script if statement.startswith("DROP"))
     assert made and all(name in dropped for name in made)
     assert port.threads == {} and port.deleted_threads
-    assert envelope["diagnostics"] == [] and not (project / "target" / "sst").exists()
+    assert envelope["diagnostics"] == [] and not (project / "sst_target").exists()
 
 
 def test_published_copies_nothing_and_warns_of_each_edit_it_cannot_see(

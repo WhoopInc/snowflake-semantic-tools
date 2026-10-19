@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.locations import LEGACY_SST_TARGET, ProjectPaths
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.app.baseline import gate_baseline
 from snowflake_semantic_tools.app.policy import STRICT_COMMANDS, hold_to_policy
@@ -24,9 +24,13 @@ def ran_under_1_0(project_dir: Path) -> bool:
     """Report whether the project has an SST 1.0 manifest, which only a 1.0 run writes.
 
     0.3 wrote `target/sst_manifest.json`, so this file is the recorded fact that a 1.0 run
-    happened. Read before a command runs, it says the same thing on every run until one compiles.
+    happened: in `sst_target/`, or in `target/sst/`, where 1.0 wrote it before it moved. Read
+    before a command runs, it says the same thing on every run until one compiles.
     """
-    return (target_dir(project_dir) / "manifest.json").is_file()
+    return any(
+        (directory / "manifest.json").is_file()
+        for directory in (target_dir(project_dir), project_dir / LEGACY_SST_TARGET)
+    )
 
 
 def with_policy(

@@ -45,12 +45,12 @@ skills, and CoCo Desktop profiles, then publishes them. This kit was installed b
 | Command | Risk | Notes |
 |---|---|---|
 | `sst explain` | offline | Explains one diagnostic code; needs no project. |
-| `sst compile` | offline | Writes `target/sst/manifest.json`; `--emit-ddl <dir>` writes the DDL to read. |
+| `sst compile` | offline | Writes `sst_target/manifest.json`; `--emit-ddl <dir>` writes the DDL to read. |
 | `sst list` | offline | Lists compiled artifacts and their cached status. |
 | `sst lineage` | offline | What a model, member or artifact reads and what reads it; `--state <dir>` marks changes. Use it before an edit to see what it reaches, and `--select model:<name>+` to plan only that. |
 | `sst format` | offline, edits files | `--check` exits 2 when a file would change; run it after editing SST YAML. |
 | `sst init` | offline, edits files | Scaffolds `sst_config.yml`; never overwrites a file. |
-| `sst clean` | offline, edits files | Removes `target/sst` only. |
+| `sst clean` | offline, edits files | Removes `sst_target` only. |
 | `sst migrate refs` | offline, edits files | Dry run by default; `--write` rewrites references and moves old settings under `config:`. |
 | `sst migrate split` | offline, edits files | Dry run by default; `--write` writes one file per listed member and removes the list. |
 | `sst docs` | offline, edits files | Regenerates SST's own reference pages; for SST maintainers, not projects. |
@@ -65,7 +65,7 @@ skills, and CoCo Desktop profiles, then publishes them. This kit was installed b
 | `sst validate` | reads Snowflake | Offline with `--no-snowflake-syntax-check`. |
 | `sst debug` | reads Snowflake | Offline with `--no-connect`: shows the config, profile, and target SST resolved. |
 | `sst diff` | reads Snowflake | Offline only when `--from` and `--to` are both `local` or saved plans. |
-| `sst plan` | reads Snowflake | Never writes; exits 2 when there are changes. Saves `target/sst/plan.json`. |
+| `sst plan` | reads Snowflake | Never writes; exits 2 when there are changes. Saves `sst_target/plan.json`. |
 | `sst enrich` | reads Snowflake, edits files | Reads the warehouse into model YAML; `--include synonyms` calls Cortex, which costs credits. |
 | `sst test` | billed | Smoke reads, evals run agents. Always pass `--suite`. |
 | `sst ask` | billed | Runs one agent on one question, on scratch copies of your edits; publishes nothing. Always pass the question: without one it opens a full-screen conversation for a person. |
@@ -89,7 +89,7 @@ When the user wants a connected check or a release:
 ```bash
 sst validate                                # also has Snowflake compile each expression
 sst plan                                    # what would change; exit 2 = changes pending
-sst apply --plan target/sst/plan.json --yes # only when the user asks to publish
+sst apply --plan sst_target/plan.json --yes # only when the user asks to publish
 sst test --suite smoke                      # queries what was published
 ```
 
@@ -119,7 +119,7 @@ sst test --suite smoke                      # queries what was published
 - `agents/`, `tools/`, `skills/`, `plugins/`, `profiles/`: agents and what SST publishes for
   them. The `skills/` folder there is published to Snowflake. These kit skills are not, and
   must stay out of it.
-- `target/sst/`: build output. Never edit it, and never commit it.
+- `sst_target/`: build output. Never edit it, and never commit it.
 - `.sst/`: the diagnostic baseline and this kit's lock. Commit both.
 
 ## Other skills in this kit

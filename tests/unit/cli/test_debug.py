@@ -138,7 +138,7 @@ def test_debug_reports_a_refused_connection_and_the_signature_rate(
     assert refused.exit_code == 5 and payload["data"]["connection"]["ok"] is False
     assert [item["code"] for item in payload["diagnostics"]][-1] == "SST-PRT001"
 
-    build = project / "target" / "sst"
+    build = project / "sst_target"
     append_run_log(project, build, (D("SST-PRT001", value="a", detail="b"),), command="plan")
     assert not (build / "run_log.jsonl").exists()
     append_run_log(project, build, (D("SST-SNO001", detail="x"), D("SST-SNO002", value="y")), command="apply")

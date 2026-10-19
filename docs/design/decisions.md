@@ -319,7 +319,7 @@ Drawn from: [rendered artifact](../../snowflake_semantic_tools/domain/model/life
 
 ### Each artifact is compared with its own state entry
 
-**Chosen.** `compile` writes the manifest to `target/sst/` as build output, and
+**Chosen.** `compile` writes the manifest to `sst_target/` as build output, and
 an artifact's fingerprint is a digest of its canonical rendered payload,
 including what it resolves from its dependencies. Plan compares it with that
 artifact's own state entry and with the live object, so an artifact whose

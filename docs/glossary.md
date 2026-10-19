@@ -60,7 +60,7 @@ where it is explained.
 - **Lock.** The row a writing run holds in the lock table beside the state
   table, so one run at a time writes to a target. See
   [the run lock](concepts.md#concurrent-applies-and-the-run-lock).
-- **Manifest.** SST's record of one compile, `target/sst/manifest.json`. See
+- **Manifest.** SST's record of one compile, `sst_target/manifest.json`. See
   [the pipeline](concepts.md#the-pipeline).
 - **Member.** A fact, dimension, time dimension, metric, relationship, filter,
   verified query, or custom instruction: it reaches Snowflake inside the views
@@ -72,7 +72,7 @@ where it is explained.
   depends on none that has. See
   [ownership, grants, and prune](concepts.md#ownership-grants-and-prune).
 - **Plan.** The command that compares the project with state and with what is
-  live, and saves the changes to `target/sst/plan.json` without writing to
+  live, and saves the changes to `sst_target/plan.json` without writing to
   Snowflake. See [the pipeline](concepts.md#the-pipeline).
 - **Plugin.** A bundle of skills published as one plugin-type Cortex
   Extension. See [plugins](guides/plugins-and-profiles.md#plugins).
@@ -126,7 +126,7 @@ Drawn from: [artifact keys](../snowflake_semantic_tools/domain/model/artifact_ke
 |---|---|---|---|
 | model | a language model, such as an agent's orchestration model or a search service's embedding model | a SQL model and the relation it builds | a dbt model, as `{{ ref('<model>') }}` names it; an agent's `orchestration_model` setting and a search service's `embedding_model` keep Snowflake's sense |
 | target | no object; `TARGET_LAG` is the freshness a search service keeps | an output of a profile in `profiles.yml` | the same `profiles.yml` target, chosen by `--target`, which decides where every artifact lands |
-| manifest | an application package's `manifest.yml` | `target/manifest.json`, which SST reads | `target/sst/manifest.json`, the record of one SST compile; a plugin's `plugin.yml` is also called its manifest |
+| manifest | an application package's `manifest.yml` | `target/manifest.json`, which SST reads | `sst_target/manifest.json`, the record of one SST compile; a plugin's `plugin.yml` is also called its manifest |
 | state | -- | `--state`, a directory of an earlier run's artifacts | the state table apply writes; `--state` also names an earlier build directory, as in dbt |
 | version | a numbered version of an agent or extension, such as `VERSION$1` | a model version, or dbt's own release | an extension version named for its content, or an agent version added by each change |
 | alias | a name on an agent or extension version | the name a model's relation takes instead of the model's | an agent's `alias` setting, moved to each new version |

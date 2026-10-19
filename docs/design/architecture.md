@@ -392,7 +392,7 @@ Drawn from: [domain/resolve/calls.py](../../snowflake_semantic_tools/domain/reso
 
 `plan` reads and never writes Snowflake. It compiles, validates, reads state and
 what is live, decides one change per artifact, and saves the result as
-`target/sst/plan.json`. `apply` plans again and executes. With `--plan <file>`
+`sst_target/plan.json`. `apply` plans again and executes. With `--plan <file>`
 it executes the saved plan only when `SavedPlan.check_applicable` finds the
 fresh plan identical to it: the same target (`SST-APL005` otherwise), the same
 manifest, the same observation of Snowflake, and the same ordered changes,
@@ -491,7 +491,7 @@ flowchart LR
         drop["sst drop"]
         evals["sst test --suite evals"]
     end
-    subgraph files ["Local files in target/sst/"]
+    subgraph files ["Local files in sst_target/"]
         direction TB
         M["manifest.json"]
         P["plan.json"]
@@ -535,7 +535,7 @@ local lock, a file beside the state cache: `<state file>.lock`.
 | | Manifest | State |
 |---|---|---|
 | Produced by | `sst compile` | `sst apply`, `sst drop`, `sst state recover` |
-| Lives in | `target/sst/manifest.json` | the state table, cached in `target/sst/state.<target>.json` |
+| Lives in | `sst_target/manifest.json` | the state table, cached in `sst_target/state.<target>.json` |
 | Describes | what the project renders now | what was published, with each object's fingerprint and the manifest it came from |
 | Deterministic | yes: its id is the hash of its content | no: it records run ids, times, and the commit |
 | When stale | `plan`, `apply`, and the smoke and eval suites refuse to start until `sst compile` runs again | online, the table wins and a disagreeing cache is rewritten (`SST-MAN027`); a state table changed since the plan refuses the apply (`SST-APL012`) |

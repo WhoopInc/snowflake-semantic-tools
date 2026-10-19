@@ -31,7 +31,7 @@ def test_state_modified_plans_only_what_changed_since_the_previous_manifest(
     compile_project(project)
     previous = tmp_path / "previous"
     previous.mkdir()
-    shutil.copy(project / "target" / "sst" / "manifest.json", previous / "manifest.json")
+    shutil.copy(project / "sst_target" / "manifest.json", previous / "manifest.json")
 
     unchanged = _plan(monkeypatch, project, "--state", str(previous))
     data = unchanged["data"]
@@ -70,7 +70,7 @@ def test_a_state_selection_with_nothing_in_that_state_plans_nothing_to_change(
     result = invoke_with_port(
         monkeypatch,
         FakeSnowflake(state={}),
-        [*command, *common(project), "--target", "dev", "--state", str(project / "target" / "sst")]
+        [*command, *common(project), "--target", "dev", "--state", str(project / "sst_target")]
         + ["--select", selector, "--output", "json"],
     )
     assert result.exit_code == 0, result.output

@@ -88,4 +88,4 @@ def test_without_standalone_mode_main_returns_the_exit_code(tmp_path: Path, caps
     (tmp_path / "sst_config.yml").write_text("validation:\n  snowflake_syntax_check: false\n", encoding="utf-8")
     assert cli.main(["clean", "--project-dir", str(tmp_path)], prog_name="sst", standalone_mode=False) is None
     # `clean` reports in its verdict, on stderr.
-    assert capsys.readouterr().err.startswith(f"✓ nothing to remove at {tmp_path / 'target' / 'sst'}")
+    assert capsys.readouterr().err.startswith(f"✓ nothing to remove at {tmp_path / 'sst_target'}")

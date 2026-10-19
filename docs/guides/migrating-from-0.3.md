@@ -28,7 +28,7 @@ current forms.
 
 | SST 0.3 | SST 1.0 |
 |---|---|
-| `sst deploy`, `sst generate` | `sst compile`, `sst plan`, then `sst apply --plan target/sst/plan.json --yes` |
+| `sst deploy`, `sst generate` | `sst compile`, `sst plan`, then `sst apply --plan sst_target/plan.json --yes` |
 | `sst generate --dry-run` | `sst plan`, with `--sql-out <dir>` for the statements, or `sst compile --emit-ddl <dir>` for DDL offline |
 | `--only-modified` | `--select state:modified --state <dir>` on `plan` and `apply` |
 | `--skip-validation` | `--no-validate` on `plan` and `apply` |
@@ -350,4 +350,4 @@ rendered views.
   (`sst explain SST-V052` names `SST-VAL012` and `SST-PRS020`); tooling that
   matched a 0.3 code should match those, listed in the
   [error code reference](../reference/error-codes.md).
-- The SST manifest is written to `target/sst/manifest.json`.
+- The SST manifest is written to `sst_target/manifest.json`.

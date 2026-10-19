@@ -206,7 +206,7 @@ before (see [state and ownership](../concepts.md#state-and-ownership)).
   of your own, and run `plan` and `apply` there before any change reaches a shared target.
 - **Apply only a reviewed plan.** Plan on pull requests from the repository's own branches,
   review the plan, and apply exactly that plan from the protected branch with
-  `sst apply --plan target/sst/plan.json`.
+  `sst apply --plan sst_target/plan.json`.
 - **Prune deliberately.** `--prune` drops semantic views and agents whose source was deleted,
   and SST recognises its objects by the ownership marker in their comments together with the
   state table's record. Anyone who can alter an object's comment and write the state table can

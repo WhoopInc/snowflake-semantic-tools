@@ -52,7 +52,7 @@ from tests.helpers.snowflake_fake.world import Sent
 def test_smoke_suite_is_separate_from_apply(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = project_copy(tmp_path)
     compile_project(project)
-    manifest = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((project / "sst_target" / "manifest.json").read_text(encoding="utf-8"))
     manifest_id = manifest["manifest_id"]
     from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
     from snowflake_semantic_tools.domain.state import AppliedEntry
@@ -136,7 +136,7 @@ def test_eval_suite_uses_common_json_envelope_and_prints_progress_only_as_text(
     compile_project(project)
     compiled = _compile_result(project_paths(project), "dev", DBT_MANIFEST)
     compiled_eval = next(item for item in compiled.compiled if isinstance(item, CompiledEval))
-    manifest = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((project / "sst_target" / "manifest.json").read_text(encoding="utf-8"))
     manifest_id = manifest["manifest_id"]
     eval_manifest = manifest["artifacts"][compiled_eval.artifact_key]
     config_content = compiled_eval.rendered.config_yaml.encode("utf-8")
@@ -496,17 +496,17 @@ def test_the_eval_suite_closes_its_connection_when_it_fails_before_running(
     project = project_copy(tmp_path)
     compile_project(project)
     evals = ["test", *common(project), "--target", "dev", "--suite", "evals", "--output", "json"]
-    StateFileStore(project / "target" / "sst" / "state.dev.json").acquire_lock("apply-run", break_stale=False)
+    StateFileStore(project / "sst_target" / "state.dev.json").acquire_lock("apply-run", break_stale=False)
     locked, closes = invoke_counting_closes(monkeypatch, FakeSnowflake(state={}), evals)
     assert locked.exit_code == 4 and "apply-run holds the target lock" in json.loads(locked.output)["data"]["error"]
     assert closes == ["closed"]
 
     def unwritable(self: StateFileStore, run_id: str, *, break_stale: bool) -> tuple[bool, str | None, bool]:
-        raise PermissionError("target/sst is read-only")
+        raise PermissionError("sst_target is read-only")
 
     monkeypatch.setattr("snowflake_semantic_tools.cli.wiring.project.StateFileStore.acquire_lock", unwritable)
     failed, closes = invoke_counting_closes(monkeypatch, FakeSnowflake(state={}), evals)
-    assert failed.exit_code == 4 and json.loads(failed.output)["data"]["error"] == "target/sst is read-only"
+    assert failed.exit_code == 4 and json.loads(failed.output)["data"]["error"] == "sst_target is read-only"
     assert closes == ["closed"]
 
 

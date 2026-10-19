@@ -74,7 +74,7 @@ def test_an_update_lists_the_members_it_changes_in_json_and_in_the_diff_file(
     # Every other change is not an update, so none is compared.
     assert {item["diff_status"] for item in data["changes"] if item is not change} == {"not_compared"}
 
-    diff_path = project / "target" / "sst" / "plan.dev.diff"
+    diff_path = project / "sst_target" / "plan.dev.diff"
     assert data["diff_path"] == str(diff_path)
     text = diff_path.read_text(encoding="utf-8")
     assert text.startswith("# sst plan: target dev (")
@@ -117,7 +117,7 @@ def test_no_diff_reads_no_live_definition_and_says_so_in_the_file(
     change = _change(data, "semantic_view:jaffle_menu")
     # What apply published recorded each member's fingerprint, so the one edited is still named.
     assert (change["diff_status"], change["changed_members"]) == ("from_state", ["metric:order_items.line_item_count"])
-    text = (project / "target" / "sst" / "plan.dev.diff").read_text(encoding="utf-8")
+    text = (project / "sst_target" / "plan.dev.diff").read_text(encoding="utf-8")
     assert text.splitlines()[1:] == [
         "# member diffs not read: --no-diff",
         "# semantic_view:jaffle_menu: not read; the fingerprints state records name metric:order_items.line_item_count",
@@ -363,7 +363,7 @@ def test_diff_refuses_a_diff_path_with_no_diff(tmp_path: Path) -> None:
 def test_the_sql_directory_holds_this_plans_statements_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # 2026-10-18-plan-sql-dir-keeps-stale-files: an earlier plan's files used to stay.
     project, port = _published(tmp_path, monkeypatch)
-    sql = project / "target" / "sst" / "sql"
+    sql = project / "sst_target" / "sql"
     sql.mkdir(parents=True, exist_ok=True)
     (sql / "agent__gone.json").write_text("{}", encoding="utf-8")
     (sql / "skill__gone.json").write_text("{}", encoding="utf-8")

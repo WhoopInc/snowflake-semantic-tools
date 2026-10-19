@@ -28,7 +28,7 @@ Read `references/expected-outputs.md` for the baselines and `references/setup-gu
   P=tests/fixtures/reference_project
   M=tests/fixtures/reference_project_manifest.json
   ```
-- Never write inside the repo except gitignored build output: `sst compile` writes `$P/target/sst/`, which git ignores, and `sst clean --project-dir $P` removes it. Never run `sst migrate refs --write` on `tests/fixtures/`.
+- Never write inside the repo except gitignored build output: `sst compile` writes `$P/sst_target/`, which git ignores, and `sst clean --project-dir $P` removes it. Never run `sst migrate refs --write` on `tests/fixtures/`.
 - Never hardcode user-specific paths.
 
 ---
@@ -69,7 +69,7 @@ ls "$OUT"
 ```
 
 ### Pass Criteria
-- Exit code 0, with `compiled 14 artifact(s); manifest tests/fixtures/reference_project/target/sst/manifest.json` and `wrote 14 file(s) to <dir>`
+- Exit code 0, with `compiled 14 artifact(s); manifest tests/fixtures/reference_project/sst_target/manifest.json` and `wrote 14 file(s) to <dir>`
 - The file names match `expected-outputs.md`
 - The rendered files reflect the change under test (for example, read `$OUT/jaffle_sales.sql` after a semantic view change)
 
@@ -129,7 +129,7 @@ poetry run sst debug --project-dir "$PROJ" --target "$T" --no-connect  # offline
 poetry run sst debug --project-dir "$PROJ" --target "$T"               # connects: the role and account SST signs in as
 poetry run sst validate --project-dir "$PROJ" --target "$T"            # syntax checks connect unless the project turns them off
 poetry run sst compile --project-dir "$PROJ" --target "$T"             # plan and apply need a manifest for this target
-poetry run sst plan --project-dir "$PROJ" --target "$T"                # never writes; saves $PROJ/target/sst/plan.json
+poetry run sst plan --project-dir "$PROJ" --target "$T"                # never writes; saves $PROJ/sst_target/plan.json
 ```
 
 `plan` exits 2 when there are changes. Add `--sql-out "$(mktemp -d)"` to see the statements.
@@ -137,7 +137,7 @@ poetry run sst plan --project-dir "$PROJ" --target "$T"                # never w
 **⚠️ MANDATORY STOPPING POINT**: Show the user the plan. Apply only after explicit approval.
 
 ```bash
-poetry run sst apply --project-dir "$PROJ" --target "$T" --plan "$PROJ/target/sst/plan.json" --yes
+poetry run sst apply --project-dir "$PROJ" --target "$T" --plan "$PROJ/sst_target/plan.json" --yes
 poetry run sst test --suite smoke --project-dir "$PROJ" --target "$T"
 poetry run sst plan --project-dir "$PROJ" --target "$T"                     # exit 0: nothing left to change
 ```

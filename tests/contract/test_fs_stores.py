@@ -17,20 +17,20 @@ from tests.helpers.artifact_builders import change, changeset, manifest, rendere
 def test_manifest_state_and_plan_stores_round_trip_atomically(tmp_path: Path) -> None:
     artifact = rendered()
     manifest_value = manifest({artifact.key: artifact})
-    manifest_store = ManifestFileStore(tmp_path / "target/sst/manifest.json")
+    manifest_store = ManifestFileStore(tmp_path / "sst_target/manifest.json")
     assert manifest_store.read() is None
     manifest_store.write(manifest_value)
     assert manifest_store.read() == manifest_value
 
-    state_store = StateFileStore(tmp_path / "target/sst/state.json")
+    state_store = StateFileStore(tmp_path / "sst_target/state.json")
     state_store.write_local(state())
     assert state_store.read_local() == state()
 
     saved = SavedPlan.from_changeset(changeset(change(artifact)))
-    plan_store = PlanFileStore(tmp_path / "target/sst/plan.json")
+    plan_store = PlanFileStore(tmp_path / "sst_target/plan.json")
     plan_store.write(saved)
     assert plan_store.read() == saved
-    assert not tuple((tmp_path / "target/sst").glob(".*.tmp*"))
+    assert not tuple((tmp_path / "sst_target").glob(".*.tmp*"))
 
 
 def test_plan_store_detects_tampering_and_shape_errors(tmp_path: Path) -> None:

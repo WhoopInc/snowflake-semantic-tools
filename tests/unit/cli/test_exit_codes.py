@@ -449,7 +449,7 @@ def _docs_unwritable(tmp: Path) -> Result:
 
 def _clean_refused(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
     project = project_copy(tmp)
-    (project / "target" / "sst").mkdir(parents=True)
+    (project / "sst_target").mkdir(parents=True)
 
     def refuse(path: Path) -> None:
         raise PermissionError("read-only")

@@ -1,6 +1,6 @@
 """The local run log: one line per Snowflake refusal a run reported, under the build directory.
 
-Every command appends the `SST-SNO` diagnostics it reports to `target/sst/run_log.jsonl`, and
+Every command appends the `SST-SNO` diagnostics it reports to `sst_target/run_log.jsonl`, and
 `sst debug --snowflake-signatures` reads it back as a rate: of the refusals SST saw, how many it
 recognised, and how many it reported as SST-SNO001 because no signature matched. That rate is
 the size of the failure surface SST does not yet classify.

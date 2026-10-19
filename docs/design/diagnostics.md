@@ -292,7 +292,7 @@ and can shrink as numbers are observed.
 An error no row matches is `SST-SNO001`, "Snowflake refused and SST does not recognise the refusal",
 and never a guessed specific code. A wrong specific code sends the user to the wrong fix; `SNO001`
 is honest and countable. Every command appends the `SNO` diagnostics its result reports to
-`target/sst/run_log.jsonl`, and a refusal that reaches the exception guard below under the signature
+`sst_target/run_log.jsonl`, and a refusal that reaches the exception guard below under the signature
 it matched, whether or not the error carries its own diagnostic, so an unrecognised one reported as
 `SST-PRT001` still counts as `SNO001`. `sst debug
 --snowflake-signatures` reports what share went unrecognised, which is the signal to add a signature.

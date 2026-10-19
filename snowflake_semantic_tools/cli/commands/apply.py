@@ -153,7 +153,7 @@ def apply(
     With --plan, the saved plan's selection and --prune are used: --select, --exclude, --prune
     and --partial must agree with it, and it must have been made for this target, from the
     manifest the project compiles now, observing what Snowflake holds now. The statements are
-    written to `target/sst/sql`, or --sql-out, before anything runs, and the changes run under
+    written to `sst_target/sql`, or --sql-out, before anything runs, and the changes run under
     the target's run lock. A failed change skips the changes that depend on it; with
     --fail-fast, every change not yet run. `--fail-fast` and `--no-fail-fast` override
     `apply.fail_fast`, false by default, for this run. With --partial, the changes no error

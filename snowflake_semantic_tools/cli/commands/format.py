@@ -35,7 +35,7 @@ from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, comma
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 
 # Directories a walk never enters: build output, installed packages, and anything hidden.
-_SKIPPED_DIRS = frozenset(("target", "dbt_packages", "dbt_modules", "node_modules", "logs"))
+_SKIPPED_DIRS = frozenset(("target", "sst_target", "dbt_packages", "dbt_modules", "node_modules", "logs"))
 
 
 @click.command(cls=SstCommand, name="format")

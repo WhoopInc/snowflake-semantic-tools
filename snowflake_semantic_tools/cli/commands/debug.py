@@ -66,7 +66,7 @@ def debug(
     database, schema, state table, and how it authenticates, never a credential. The
     connection is then opened, and its role and account reported; with --no-connect nothing
     connects. --snowflake-signatures reports instead how often Snowflake refusals went
-    unrecognised, from `target/sst/run_log.jsonl`, offline.
+    unrecognised, from `sst_target/run_log.jsonl`, offline.
 
     Exit 0 when everything resolved, 1 when a resolved value is invalid, 4 when the configuration
     or profile cannot be, and 5 when the connection fails.

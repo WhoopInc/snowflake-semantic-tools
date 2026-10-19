@@ -6118,7 +6118,7 @@ Fix: report this as a bug
 
 `no SST manifest at <path>`
 
-Raised when there is no manifest where it is read: `target/sst/manifest.json`, which `sst compile` writes, or the `manifest.json` of the `--state` directory.
+Raised when there is no manifest where it is read: `sst_target/manifest.json`, which `sst compile` writes, or the `manifest.json` of the `--state` directory.
 
 Fix: run sst compile
 
@@ -6210,7 +6210,7 @@ Fix: check `state.+table` is readable on this target; a full plan is the safe fa
 
 `<path> is present and unreadable: <detail>`
 
-Raised when the local state cache, `target/sst/state.<target>.json`, exists but cannot be read; `sst diff` also reports it for a state table that exists and cannot be read.
+Raised when the local state cache, `sst_target/state.<target>.json`, exists but cannot be read; `sst diff` also reports it for a state table that exists and cannot be read.
 
 Fix: fix or delete the file explicitly
 

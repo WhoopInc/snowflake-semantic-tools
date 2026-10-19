@@ -102,7 +102,7 @@ Resolve dbt objects to another target's relations while publishing to `--target`
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `defer.target` | string |  | The `profiles.yml` target relations resolve to; `--defer-target` overrides it. |
-| `defer.state_path` | string | `target/sst/defer/<target>` | Directory holding that target's dbt `manifest.json`. |
+| `defer.state_path` | string | `sst_target/defer/<target>` | Directory holding that target's dbt `manifest.json`. |
 | `defer.auto_compile` | boolean | `false` | Run dbt for the deferred target to write its manifest under `state_path` (dbt Core only). |
 
 ## vars

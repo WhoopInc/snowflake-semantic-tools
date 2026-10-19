@@ -75,7 +75,7 @@ until it is migrated.
    `sst plan`; applying is the user's call. The 0.3 objects are dropped by hand once nothing
    reads them.
 7. In CI, replace `sst deploy` and `sst generate` with `sst compile`, `sst plan`, then
-   `sst apply --plan target/sst/plan.json --yes`.
+   `sst apply --plan sst_target/plan.json --yes`.
 
 ## Commands that changed
 

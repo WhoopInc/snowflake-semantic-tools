@@ -99,7 +99,7 @@ def defer_target_option() -> Decorator:
 
 
 def sql_out_option() -> Decorator:
-    """`--sql-out`, the directory for each change's statements in place of `target/sst/sql`."""
+    """`--sql-out`, the directory for each change's statements in place of `sst_target/sql`."""
     return click.option("--sql-out", type=click.Path(file_okay=False, path_type=Path))
 
 

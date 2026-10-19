@@ -5,6 +5,10 @@
 against. Every reader takes the `ProjectPaths` value, so `--config` and discovery can never
 disagree about the file. Discovery looks in exactly one directory, the project root: there is no
 parent-directory walk and no home-directory fallback for the configuration.
+
+SST's own build directory is `sst_target/` under the project, beside dbt's `target/` and not in it,
+so `dbt clean` never removes a saved plan and `sst clean` removes only what SST wrote. It is fixed,
+as dbt's is, and `sst_target_dir` is the one place that names it.
 """
 
 from __future__ import annotations
@@ -21,6 +25,14 @@ from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE, CON
 from snowflake_semantic_tools.domain.ports.project import ProjectConfig
 
 PROFILES_FILE = "profiles.yml"
+# SST's build directory under the project, and where SST before it moved wrote the same files.
+SST_TARGET = "sst_target"
+LEGACY_SST_TARGET = Path("target") / "sst"
+
+
+def sst_target_dir(project_dir: Path) -> Path:
+    """Return where SST writes its build artifacts: `sst_target/` under the project."""
+    return project_dir / SST_TARGET
 
 
 @dataclass(frozen=True, slots=True)

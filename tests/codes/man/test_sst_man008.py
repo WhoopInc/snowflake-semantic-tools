@@ -15,11 +15,11 @@ def test_sst_man008_fires(tmp_path: Path) -> None:
     errors = sum(item["severity"] == "error" for item in diagnostics) - 1
     assert exit_code == 1 and diagnostic["severity"] == "error"
     assert diagnostic["message"] == f"compile failed: {errors} error(s); no manifest was written"
-    assert not (project / "target" / "sst" / "manifest.json").exists()
+    assert not (project / "sst_target" / "manifest.json").exists()
 
 
 def test_sst_man008_silent(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
     exit_code, diagnostics = compile_json(project)
     assert exit_code == 0 and "SST-MAN008" not in [item["code"] for item in diagnostics]
-    assert (project / "target" / "sst" / "manifest.json").is_file()
+    assert (project / "sst_target" / "manifest.json").is_file()

@@ -28,7 +28,7 @@ sst plan --target prod --output json > plan.json || test $? -eq 2
   anything. It exits `2` when there are changes, so a pipeline that should
   accept a pending change treats `2` as success; any other non-zero exit is a
   failure. `--no-detailed-exitcode` makes it exit `0` with changes pending
-  instead. It also saves the plan to `target/sst/plan.json` (`--plan-out` to put
+  instead. It also saves the plan to `sst_target/plan.json` (`--plan-out` to put
   it elsewhere).
 
 ### Reviewing what an update changes
@@ -59,7 +59,7 @@ compared, so an update that changes only those says
 
 The terminal cuts a long diff short; every plan writes all of it, as a unified
 diff an editor or a pull request colours red and green, to
-`target/sst/plan.<target>.diff` (`--diff-out` to put it elsewhere). Paste it
+`sst_target/plan.<target>.diff` (`--diff-out` to put it elsewhere). Paste it
 into the pull request, or upload it as an artifact. JSON reports each change's
 members as `diff`, with `diff_status` saying whether it was compared. Each
 update costs one read (a DESCRIBE, the agent's versions, or one GET per staged
@@ -105,7 +105,7 @@ walks dbt's graph alone, to enrich a model and those it is built from.
 a planned artifact names, so a reviewer can see what an update replaces and
 restore it afterwards. `--full` prints it under each update, JSON reports it as
 each change's `prior_definition`, and the observation the plan records in
-`target/sst/observation.<target>.json` keeps it as each object's `definition`.
+`sst_target/observation.<target>.json` keeps it as each object's `definition`.
 What is read depends on how the kind is published:
 
 | Kind | Prior definition | To restore it |
@@ -137,7 +137,7 @@ which publishes the earlier spec as a new version.
 ```bash
 sst compile --target prod
 sst plan --target prod
-sst apply --target prod --plan target/sst/plan.json --yes
+sst apply --target prod --plan sst_target/plan.json --yes
 sst test --suite smoke --target prod
 ```
 
@@ -145,7 +145,7 @@ sst test --suite smoke --target prod
 refuses the saved plan, exiting `4`, if it was made for another target, from
 another manifest, or from a different reading of Snowflake, so it cannot
 publish something no one planned. Keep the `plan` and `apply` in one job, or
-pass `target/sst/plan.json` between jobs as an artifact. Pass `--yes` in a
+pass `sst_target/plan.json` between jobs as an artifact. Pass `--yes` in a
 pipeline: it is required with `--output json` or `--prune`, and without it
 `apply` stops to ask before it writes.
 
@@ -292,10 +292,10 @@ jobs:
           echo "SNOWFLAKE_PRIVATE_KEY_PATH=$RUNNER_TEMP/snowflake_key.p8" >> "$GITHUB_ENV"
       - run: dbt deps
       - run: sst compile --target prod
-      - name: Plan, saving it to target/sst/plan.json
+      - name: Plan, saving it to sst_target/plan.json
         run: sst plan --target prod || test $? -eq 2
       - name: Apply exactly the saved plan
-        run: sst apply --target prod --plan target/sst/plan.json --yes
+        run: sst apply --target prod --plan sst_target/plan.json --yes
       - run: sst test --suite smoke --target prod
       - if: always()
         run: rm -f "$RUNNER_TEMP/snowflake_key.p8"

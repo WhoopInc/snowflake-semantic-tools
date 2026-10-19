@@ -293,7 +293,7 @@ and `plan` exits 0 from then on.
 
 `apply`, `drop`, and `test --suite evals` take a run lock on the target: a row in
 the lock table beside the state table (`SST_STATE_LOCK` by default) and a file
-beside the local state cache, `target/sst/state.<target>.json.lock`. A live run
+beside the local state cache, `sst_target/state.<target>.json.lock`. A live run
 extends its lock every 5 minutes; a lock not extended for 30 minutes has
 expired.
 

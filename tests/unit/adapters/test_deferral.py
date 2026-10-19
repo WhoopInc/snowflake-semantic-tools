@@ -48,7 +48,7 @@ def test_a_run_defers_to_the_flag_else_the_config_and_to_nothing_when_told_not_t
     defaulted = tmp_path / "defaulted"
     _small(defaulted)
     found = resolve_deferral(dataclasses.replace(project_paths(defaulted), defer_target="prod"))
-    assert found == Deferral("prod", defaulted / "target" / "sst" / "defer" / "prod", produce=False)
+    assert found == Deferral("prod", defaulted / "sst_target" / "defer" / "prod", produce=False)
 
 
 def test_deferring_to_a_target_the_profile_does_not_declare_is_refused(tmp_path: Path) -> None:
@@ -68,7 +68,7 @@ def _deferred_manifest(path: Path) -> None:
 
 def test_the_catalog_and_the_manifest_digest_read_the_deferred_relations(tmp_path: Path) -> None:
     manifest_path = _small(tmp_path, "defer:\n  target: prod\n")
-    _deferred_manifest(tmp_path / "target" / "sst" / "defer" / "prod" / "manifest.json")
+    _deferred_manifest(tmp_path / "sst_target" / "defer" / "prod" / "manifest.json")
     paths = project_paths(tmp_path)
     source = YamlProjectSource(paths, manifest_path=manifest_path, invoke_dbt=False)
     assert [model.relation_name for model in source.dbt_catalog().models] == ["PROD_DB.SCH.PRODUCTS"]
@@ -99,7 +99,7 @@ def test_auto_compile_runs_dbt_for_the_deferred_target_into_its_state_path(tmp_p
 
 def test_dbt_invoke_false_reads_the_deferred_manifest_as_supplied(tmp_path: Path) -> None:
     manifest_path = _small(tmp_path, "dbt:\n  invoke: false\ndefer:\n  target: prod\n  auto_compile: true\n")
-    _deferred_manifest(tmp_path / "target" / "sst" / "defer" / "prod" / "manifest.json")
+    _deferred_manifest(tmp_path / "sst_target" / "defer" / "prod" / "manifest.json")
     dbt = FakeDbt(version=CompletedRun(1, "", "no dbt"))
     source = YamlProjectSource(project_paths(tmp_path), manifest_path=manifest_path, dbt_runner=dbt)
     assert [model.relation_name for model in source.dbt_catalog().models] == ["PROD_DB.SCH.PRODUCTS"]
@@ -108,7 +108,7 @@ def test_dbt_invoke_false_reads_the_deferred_manifest_as_supplied(tmp_path: Path
 
 def _defer_project(tmp_path: Path) -> Path:
     project = project_copy(tmp_path)
-    prod = project / "target" / "sst" / "defer" / "prod" / "manifest.json"
+    prod = project / "sst_target" / "defer" / "prod" / "manifest.json"
     prod.parent.mkdir(parents=True)
     prod.write_text(DBT_MANIFEST.read_text(encoding="utf-8").replace("SST_REF_DEV", "SST_REF_PROD"), encoding="utf-8")
     return project
@@ -116,7 +116,7 @@ def _defer_project(tmp_path: Path) -> Path:
 
 def _compiled(project: Path, *flags: str, env: dict[str, str] | None = None) -> tuple[int, str]:
     result = CliRunner().invoke(cli, ["compile", *common(project), *flags, "--output", "json"], env=env)
-    manifest_file = project / "target" / "sst" / "manifest.json"
+    manifest_file = project / "sst_target" / "manifest.json"
     return result.exit_code, manifest_file.read_text(encoding="utf-8") if manifest_file.is_file() else result.output
 
 

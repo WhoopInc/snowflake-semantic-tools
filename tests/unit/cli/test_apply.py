@@ -154,7 +154,7 @@ def test_partial_runs_publish_what_is_healthy_and_still_exit_one(
 ) -> None:
     project = project_copy(tmp_path)
     break_menu_view(project)
-    manifest_file = project / "target" / "sst" / "manifest.json"
+    manifest_file = project / "sst_target" / "manifest.json"
     refused = CliRunner().invoke(cli, ["compile", *common(project), "--output", "json"])
     assert refused.exit_code == 1 and not manifest_file.exists()
 
@@ -356,14 +356,14 @@ def test_skills_only_project_publishes_through_plan_and_apply(tmp_path: Path, mo
     change = json.loads(planned.output)["data"]["changes"][0]
     assert (change["action"], change["artifact_type"]) == ("create", "skill")
     assert change["component_fingerprints"]["alias"].startswith("SST_")
-    assert (project / "target" / "sst" / "sql" / "skill__month-close.json").is_file()
+    assert (project / "sst_target" / "sql" / "skill__month-close.json").is_file()
 
     applied = invoke_with_port(monkeypatch, port, ["apply", "--project-dir", str(project), "--yes", "--output", "json"])
     assert applied.exit_code == 0, applied.output
     applied_data = json.loads(applied.output)["data"]
     assert applied_data["outcomes"][0]["status"] == "applied"
     assert (applied_data["applied"], applied_data["failed"], applied_data["pruned"]) == (["skill:month-close"], [], [])
-    assert Path(applied_data["sql_path"]) == project / "target" / "sst" / "sql"
+    assert Path(applied_data["sql_path"]) == project / "sst_target" / "sql"
     assert "DB.SCH.MONTH_CLOSE" in port.extensions
 
     replanned = invoke_with_port(monkeypatch, port, ["plan", "--project-dir", str(project), "--output", "json"])

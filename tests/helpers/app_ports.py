@@ -23,7 +23,7 @@ class InMemoryStateStore:
 
     @property
     def location(self) -> str:
-        return "target/sst/state.verify.json"
+        return "sst_target/state.verify.json"
 
     def read_local(self) -> State | None:
         return self.state

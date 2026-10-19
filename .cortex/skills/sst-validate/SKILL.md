@@ -52,7 +52,7 @@ sst compile --project-dir <project> --emit-ddl "$(mktemp -d)"
 ```
 
 - It prints `compiled N artifact(s); manifest <path>`, then `wrote N file(s) to <dir>`. One file per artifact: `.sql` for semantic views and tools, `.json` for agents, skills, plugins, and profiles, `.yaml` for evals. `--select <name>` narrows the report and the files to those artifacts (the manifest still holds everything), and `--emit-agent-spec <dir>` writes each agent's specification on its own.
-- `compile` also writes the SST manifest to `<project>/target/sst/manifest.json`. `list` reads it, and `plan`, `apply`, and the smoke and eval suites refuse to run unless it is current and was compiled for the same `--target` (`SST-MAN001`, `SST-MAN006`, or `compiled SST manifest is stale`).
+- `compile` also writes the SST manifest to `<project>/sst_target/manifest.json`. `list` reads it, and `plan`, `apply`, and the smoke and eval suites refuse to run unless it is current and was compiled for the same `--target` (`SST-MAN001`, `SST-MAN006`, or `compiled SST manifest is stale`).
 - `compile` never connects to Snowflake.
 
 ### Step 6: A 0.3 project

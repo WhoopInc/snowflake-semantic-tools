@@ -62,7 +62,7 @@ def test_an_agent_that_calls_the_right_tools_passes_with_no_publish_lock_or_stat
     assert [item["eval_key"] for item in data["evals"]] == ["eval:jaffle_analytics_agent"]
     assert len(port.inline_runs) == 4
     # No `sst compile` ran first, and nothing was written beside the project either.
-    assert not (project / "target" / "sst").exists()
+    assert not (project / "sst_target").exists()
 
 
 def test_a_wrong_tool_fails_the_run_on_the_exact_metric(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

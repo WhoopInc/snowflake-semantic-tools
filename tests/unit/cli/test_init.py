@@ -63,4 +63,4 @@ def test_init_debug_clean_and_list_json(tmp_path: Path) -> None:
     assert json.loads(listed.output)["data"]["count"] == 15
     cleaned = CliRunner().invoke(cli, ["clean", "--project-dir", str(project), "--output", "json"])
     assert cleaned.exit_code == 0
-    assert not (project / "target" / "sst").exists()
+    assert not (project / "sst_target").exists()

@@ -1,6 +1,6 @@
 """`sst compile`: render every artifact and write the canonical manifest, offline.
 
-The canonical manifest, `target/sst/manifest.json`, always holds everything that compiled,
+The canonical manifest, `sst_target/manifest.json`, always holds everything that compiled,
 even with `--select`, which narrows only what is reported and emitted. `--emit-ddl` writes
 every rendered payload and `--emit-agent-spec` every agent's rendered specification, one
 file per artifact; both are offline, because rendering is a pure function.
@@ -66,7 +66,7 @@ def compile(
 ) -> CommandResult:
     """Compile every artifact and write the canonical manifest, offline.
 
-    The manifest, `target/sst/manifest.json`, always holds everything that compiled; --select
+    The manifest, `sst_target/manifest.json`, always holds everything that compiled; --select
     narrows only what is reported and emitted. --emit-ddl writes each rendered payload, one
     file per artifact under a folder named for its type, as `tool/<name>.sql`; and
     --emit-agent-spec each agent's specification, one file per agent. With --partial, a

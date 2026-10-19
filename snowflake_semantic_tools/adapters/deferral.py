@@ -3,7 +3,7 @@
 `--defer-target` (else `$SST_DEFER_TARGET`, else `defer.target`) names a `profiles.yml` target
 whose relations the project's dbt objects resolve to, while the run itself publishes to its own
 target; `--no-defer` turns deferral off whatever is configured. The deferred target's manifest is
-`manifest.json` under `defer.state_path`, else under `target/sst/defer/<target>`, the target's name
+`manifest.json` under `defer.state_path`, else under `sst_target/defer/<target>`, the target's name
 written as `domain.file_names.file_name` writes it so it is always one folder there. With
 `defer.auto_compile`, SST produces it by running dbt for that target into that directory;
 otherwise it is read as supplied.
@@ -16,14 +16,14 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.dbt.profiles import declared_targets
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.locations import SST_TARGET, ProjectPaths
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.domain.diagnostics import D, Origin
 from snowflake_semantic_tools.domain.file_names import file_name
 from snowflake_semantic_tools.domain.model.config_schema import config_block, config_bool
 
 # Where a deferred target's manifest is kept when `defer.state_path` does not say.
-DEFAULT_STATE_DIR = Path("target") / "sst" / "defer"
+DEFAULT_STATE_DIR = Path(SST_TARGET) / "defer"
 
 
 @dataclass(frozen=True, slots=True)

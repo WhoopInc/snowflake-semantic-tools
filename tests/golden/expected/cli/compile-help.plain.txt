@@ -5,7 +5,7 @@ Usage: sst compile [OPTIONS]
 
   Compile every artifact and write the canonical manifest, offline.
 
-  The manifest, `target/sst/manifest.json`, always holds everything that
+  The manifest, `sst_target/manifest.json`, always holds everything that
   compiled; --select narrows only what is reported and emitted. --emit-ddl
   writes each rendered payload, one file per artifact under a folder named for
   its type, as `tool/<name>.sql`; and --emit-agent-spec each agent's

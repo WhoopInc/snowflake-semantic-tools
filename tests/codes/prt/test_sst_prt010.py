@@ -14,7 +14,7 @@ from tests.helpers.reference_project import project_copy
 
 def test_sst_prt010_fires(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = project_copy(tmp_path)
-    (project / "target" / "sst").mkdir(parents=True)
+    (project / "sst_target").mkdir(parents=True)
 
     def refuse(name: str, *, dir_fd: int) -> None:
         raise PermissionError("read-only")
@@ -23,14 +23,14 @@ def test_sst_prt010_fires(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     result = CliRunner().invoke(cli, ["clean", "--project-dir", str(project), "--output", "json"])
     [diagnostic] = json.loads(result.output)["diagnostics"]
     assert (result.exit_code, diagnostic["code"], diagnostic["severity"]) == (1, "SST-PRT010", "error")
-    assert diagnostic["message"] == f"could not remove {project / 'target' / 'sst'}: read-only"
+    assert diagnostic["message"] == f"could not remove {project / 'sst_target'}: read-only"
 
 
 def test_sst_prt010_silent(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
-    (project / "target" / "sst").mkdir(parents=True)
+    (project / "sst_target").mkdir(parents=True)
     preview = CliRunner().invoke(cli, ["clean", "--project-dir", str(project), "--dry-run", "--output", "json"])
-    assert json.loads(preview.output)["data"]["would_remove"] == [str(project / "target" / "sst")]
-    assert (project / "target" / "sst").is_dir()
+    assert json.loads(preview.output)["data"]["would_remove"] == [str(project / "sst_target")]
+    assert (project / "sst_target").is_dir()
     result = CliRunner().invoke(cli, ["clean", "--project-dir", str(project), "--output", "json"])
-    assert result.exit_code == 0 and not (project / "target" / "sst").exists()
+    assert result.exit_code == 0 and not (project / "sst_target").exists()

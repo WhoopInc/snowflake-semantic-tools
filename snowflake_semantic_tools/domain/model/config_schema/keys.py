@@ -324,7 +324,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "defer.state_path",
         _S,
         "Directory holding that target's dbt `manifest.json`.",
-        default="target/sst/defer/<target>",
+        default="sst_target/defer/<target>",
     ),
     _key(
         "defer.auto_compile",

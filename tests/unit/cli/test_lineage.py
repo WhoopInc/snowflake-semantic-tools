@@ -41,7 +41,7 @@ def test_state_marks_what_changed_since_another_manifest(tmp_path: Path) -> None
     compile_project(project)
     state = tmp_path / "state"
     state.mkdir()
-    shutil.copy(project / "target" / "sst" / "manifest.json", state / "manifest.json")
+    shutil.copy(project / "sst_target" / "manifest.json", state / "manifest.json")
     metric = project / "semantic_models" / "metrics" / "line_item_count.yml"
     metric.write_text(metric.read_text(encoding="utf-8").replace("COUNT({{", "COUNT(DISTINCT {{", 1), encoding="utf-8")
     compile_project(project)
@@ -57,7 +57,7 @@ def test_without_the_manifest_the_project_is_compiled_in_memory(tmp_path: Path) 
     project = project_copy(tmp_path)
     result = CliRunner().invoke(cli, ["lineage", *common(project), "model:orders", "--no-manifest", "-o", "json"])
     assert result.exit_code == 0, result.output
-    assert not (project / "target" / "sst" / "manifest.json").exists()
+    assert not (project / "sst_target" / "manifest.json").exists()
     missing = CliRunner().invoke(cli, ["lineage", "--project-dir", str(project), "model:orders", "-o", "json"])
     assert missing.exit_code == 4
     absent = CliRunner().invoke(
@@ -82,7 +82,7 @@ def test_each_output_says_where_a_walk_ends_and_plain_prints_one_signed_depth_pe
 def test_a_manifest_without_dbt_s_graph_says_to_compile_again(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
     compile_project(project)
-    path = project / "target" / "sst" / "manifest.json"
+    path = project / "sst_target" / "manifest.json"
     document = {**json.loads(path.read_text(encoding="utf-8")), "dbt_nodes": {}}
     material = {key: value for key, value in document.items() if key not in ("manifest_id", "schema_version")}
     path.write_text(json.dumps({**document, "manifest_id": content_hash(material)}), encoding="utf-8")

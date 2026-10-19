@@ -47,7 +47,7 @@ It is vendored in this repository, so there is nothing to clone.
 
    `sst debug` connects unless given `--no-connect`; for the fixture's credential-less targets, a plain `sst debug` exits 5 (`SST-PRT001`).
 
-6. **Build output.** `sst compile` writes `target/sst/` inside the project; in the fixture, git ignores it, and `sst clean --project-dir tests/fixtures/reference_project` removes it. Never run `sst migrate refs --write` on `tests/fixtures/`; use a copy.
+6. **Build output.** `sst compile` writes `sst_target/` inside the project; in the fixture, git ignores it, and `sst clean --project-dir tests/fixtures/reference_project` removes it. Never run `sst migrate refs --write` on `tests/fixtures/`; use a copy.
 
 7. **The `verify` target** reads `SST_TEST_SNOWFLAKE_ACCOUNT`, `_USER`, `_ROLE`, `_DATABASE`, `_SCHEMA`, and `_WAREHOUSE`, the same variables the live tests read (`docs/guides/testing-live.md`, template `tests/live.example.env`); only the authenticator has a default (`externalbrowser`). An unset one stops at profile load with `SST-CFG013`, exit 4. The fixture documents the target for building its dbt models in a real account (`dbt deps`, then `dbt build --target verify`). SST itself cannot compile the fixture for `verify`: the tool `relations:` maps cover only `dev` and `prod`, so compile stops with `SST-REF018` (and `SST-MAN008`, no manifest written), and `--partial` cannot go ahead either (`SST-PLN033`): some of those errors cannot be traced to an artifact to exclude.
 

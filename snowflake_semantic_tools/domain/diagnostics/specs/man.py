@@ -14,7 +14,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "no SST manifest at {path}",
         "run sst compile",
         condition=(
-            "there is no manifest where it is read: `target/sst/manifest.json`, which "
+            "there is no manifest where it is read: `sst_target/manifest.json`, which "
             "`sst compile` writes, or the `manifest.json` of the `--state` directory"
         ),
     ),
@@ -94,7 +94,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{path} is present and unreadable: {detail}",
         "fix or delete the file explicitly",
         condition=(
-            "the local state cache, `target/sst/state.<target>.json`, exists but cannot be read; "
+            "the local state cache, `sst_target/state.<target>.json`, exists but cannot be read; "
             "`sst diff` also reports it for a state table that exists and cannot be read"
         ),
         note="SST refuses rather than discard the file, because discarding it is what makes a prune unsafe.",

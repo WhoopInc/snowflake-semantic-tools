@@ -219,9 +219,9 @@ def test_a_failing_human_report_fails_the_command_like_its_body() -> None:
             id="port-error-connection",
         ),
         pytest.param(
-            ProjectError(diagnostics=(D("SST-MAN001", path="target/sst/manifest.json"),)),
+            ProjectError(diagnostics=(D("SST-MAN001", path="sst_target/manifest.json"),)),
             4,
-            "error[SST-MAN001]: no SST manifest at target/sst/manifest.json",
+            "error[SST-MAN001]: no SST manifest at sst_target/manifest.json",
             4,
             ["SST-MAN001"],
             id="project-error",
@@ -310,10 +310,10 @@ def test_a_refusal_reaching_the_guard_is_logged_under_the_signature_it_matched(
     with pytest.raises(click.exceptions.Exit) as exited:
         guarded(fail, command="plan", output="table", project_dir=tmp_path)
     assert exited.value.exit_code == 5
-    log = tmp_path / "target" / "sst" / RUN_LOG
+    log = tmp_path / "sst_target" / RUN_LOG
     lines = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
     assert [json.loads(line) for line in lines] == [{"command": "plan", "code": code} for code in logged]
-    report = signature_report(tmp_path / "target" / "sst")
+    report = signature_report(tmp_path / "sst_target")
     assert (report["matched"], report["unmatched"]) == (
         len([code for code in logged if code != "SST-SNO001"]),
         logged.count("SST-SNO001"),
@@ -339,7 +339,7 @@ def test_a_command_logs_a_refusal_that_reaches_its_guard_in_its_project(tmp_path
     command = demo_command(raising(SnowflakePortError("some unknown failure")))
     result = CliRunner().invoke(command, ["--project-dir", str(tmp_path)])
     assert result.exit_code == 5 and "SST-PRT001" in result.output
-    assert signature_report(tmp_path / "target" / "sst")["unmatched"] == 1
+    assert signature_report(tmp_path / "sst_target")["unmatched"] == 1
 
 
 # One error per signature whose spec note names the code a command reports for it instead.

@@ -177,18 +177,19 @@ def test_folders_are_made_inside_the_root_or_as_the_root(tmp_path: Path) -> None
 
 def test_a_tree_is_removed_unless_a_link_leads_to_it(tmp_path: Path) -> None:
     root, outside = _outside(tmp_path)
-    (root / "target" / "sst").mkdir(parents=True)
-    (root / "target" / "sst" / "manifest.json").write_text("{}", encoding="utf-8")
-    remove_tree_within(root, root / "target" / "sst")
-    assert not (root / "target" / "sst").exists()
-    remove_tree_within(root, root / "target" / "sst")
-    (outside / "sst").mkdir()
-    (outside / "sst" / "keep.txt").write_text("keep", encoding="utf-8")
-    (root / "target").rmdir()
-    os.symlink(outside, root / "target")
+    (root / "sst_target").mkdir(parents=True)
+    (root / "sst_target" / "manifest.json").write_text("{}", encoding="utf-8")
+    remove_tree_within(root, root / "sst_target")
+    assert not (root / "sst_target").exists()
+    remove_tree_within(root, root / "sst_target")
+    (outside / "defer").mkdir()
+    (outside / "defer" / "keep.txt").write_text("keep", encoding="utf-8")
+    os.symlink(outside, root / "sst_target")
     with pytest.raises(UnsafeWrite):
-        remove_tree_within(root, root / "target" / "sst")
-    assert (outside / "sst" / "keep.txt").exists()
+        remove_tree_within(root, root / "sst_target")
+    with pytest.raises(UnsafeWrite):
+        remove_tree_within(root, root / "sst_target" / "defer")
+    assert (outside / "defer" / "keep.txt").exists()
 
 
 def test_a_scratch_folder_is_removed_after_use() -> None:

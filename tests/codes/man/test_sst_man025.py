@@ -23,7 +23,7 @@ def test_sst_man025_fires() -> None:
     state, diagnostics = read_state(store, port, state_table=STATE_TABLE, target=target())
     [diagnostic] = diagnostics
     assert (diagnostic.code, diagnostic.severity) == ("SST-MAN025", Severity.ERROR)
-    assert diagnostic.message == "target/sst/state.verify.json was written by target verify for DB.OTHER_SCHEMA"
+    assert diagnostic.message == "sst_target/state.verify.json was written by target verify for DB.OTHER_SCHEMA"
     # The other writer's file is neither read nor rewritten.
     assert state.applied == {} and store.writes == []
 

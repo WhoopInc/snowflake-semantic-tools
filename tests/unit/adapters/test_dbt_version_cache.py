@@ -30,7 +30,7 @@ def _dbt_on_path(monkeypatch: pytest.MonkeyPatch, folder: Path, body: str = "#!/
 def _parse(project: Path, dbt: FakeDbt, *, auto_compile: bool = False, cache: Path | None = None) -> tuple[str, ...]:
     """Parse with `dbt` and the cache under the project's target; return the codes it warned with."""
     target = project / "target" / "manifest.json"
-    chosen = cache or project / "target" / "sst" / "dbt_installation.json"
+    chosen = cache or project / "sst_target" / "dbt_installation.json"
     warnings = parse_project(project, None, target, runner=dbt, auto_compile=auto_compile, installation_cache=chosen)
     return tuple(item.code for item in warnings)
 
@@ -53,7 +53,7 @@ def test_a_second_parse_with_the_same_dbt_does_not_ask_it_what_it_is(
     assert _parse(project, dbt) == ()
     assert _parse(project, dbt) == ()
     assert [run[1] for run in dbt.runs] == ["--version", "parse", "parse"]
-    kept = json.loads((project / "target" / "sst" / "dbt_installation.json").read_text(encoding="utf-8"))
+    kept = json.loads((project / "sst_target" / "dbt_installation.json").read_text(encoding="utf-8"))
     assert kept == {"key": executable_key(), "kind": "core"}
 
 
@@ -67,7 +67,7 @@ def test_a_dbt_v2_is_kept_like_core_and_still_writes_json_from_the_cache(
     assert _parse(project, dbt) == ()
     assert _parse(project, dbt) == ()
     assert _asked(dbt) == 1
-    kept = json.loads((project / "target" / "sst" / "dbt_installation.json").read_text(encoding="utf-8"))
+    kept = json.loads((project / "sst_target" / "dbt_installation.json").read_text(encoding="utf-8"))
     assert kept["kind"] == kind
     assert all("--write-json" in run for run in dbt.runs if run[1] == "parse")
 
@@ -105,7 +105,7 @@ def test_an_unidentified_or_failing_dbt_is_asked_every_run_and_warns_every_run(
     dbt.version = CompletedRun(2, "", "boom")
     assert _parse(project, dbt) == ("SST-DBT020",)
     assert _asked(dbt) == 2
-    assert not (project / "target" / "sst" / "dbt_installation.json").exists()
+    assert not (project / "sst_target" / "dbt_installation.json").exists()
 
 
 def test_a_kept_cloud_cli_still_refuses_auto_compile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -142,7 +142,7 @@ def test_a_cache_that_does_not_answer_for_this_dbt_is_asked_past_and_replaced(
 ) -> None:
     _dbt_on_path(monkeypatch, tmp_path / "bin")
     project, dbt = _project(tmp_path)
-    cache = project / "target" / "sst" / "dbt_installation.json"
+    cache = project / "sst_target" / "dbt_installation.json"
     cache.parent.mkdir(parents=True)
     if held == "KEY_WITH_ODD_KIND":
         held = json.dumps({"key": executable_key(), "kind": "fusion"})
@@ -173,5 +173,5 @@ def test_without_a_cache_dbt_is_asked_every_run(tmp_path: Path, monkeypatch: pyt
 def test_only_the_dbt_on_path_is_cached_by_a_project_source(tmp_path: Path) -> None:
     SmallProject(tmp_path).write()
     paths = project_paths(tmp_path)
-    assert YamlProjectSource(paths)._installation_cache() == tmp_path / "target" / "sst" / "dbt_installation.json"
+    assert YamlProjectSource(paths)._installation_cache() == tmp_path / "sst_target" / "dbt_installation.json"
     assert YamlProjectSource(paths, dbt_runner=FakeDbt())._installation_cache() is None

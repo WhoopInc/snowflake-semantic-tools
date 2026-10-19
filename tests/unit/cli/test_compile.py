@@ -86,7 +86,7 @@ def test_compile_writes_deterministic_manifest(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
     result = CliRunner().invoke(cli, ["compile", *common(project)])
     assert result.exit_code == 0, result.output
-    document = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
+    document = json.loads((project / "sst_target" / "manifest.json").read_text(encoding="utf-8"))
     assert document["schema_version"] == 6
     assert "impact" not in document
     assert sorted(document["artifacts"]) == [
@@ -181,7 +181,7 @@ def test_compile_selection_keeps_the_canonical_manifest_full(tmp_path: Path) -> 
         ],
     )
     assert result.exit_code == 0, result.output
-    canonical = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
+    canonical = json.loads((project / "sst_target" / "manifest.json").read_text(encoding="utf-8"))
     assert len(canonical["artifacts"]) == 15
 
 
@@ -220,7 +220,7 @@ def test_a_partial_run_still_stops_on_an_error_that_names_no_artifact(tmp_path: 
     result = CliRunner().invoke(cli, ["compile", *common(project), "--partial", "--output", "json"])
     assert result.exit_code == 1
     assert "SST-CFG047" in {item["code"] for item in json.loads(result.output)["diagnostics"]}
-    assert not (project / "target" / "sst" / "manifest.json").exists()
+    assert not (project / "sst_target" / "manifest.json").exists()
 
 
 def test_a_partial_run_refuses_to_publish_a_view_without_a_broken_member(tmp_path: Path) -> None:
@@ -241,7 +241,7 @@ def test_a_partial_run_refuses_to_publish_a_view_without_a_broken_member(tmp_pat
     assert {"SST-CFG029", "SST-PLN033"} <= {item["code"] for item in diagnostics}
     refusal = next(item for item in diagnostics if item["code"] == "SST-PLN033")
     assert "metric:total_revenue" in refusal["message"]
-    assert not (project / "target" / "sst" / "manifest.json").exists()
+    assert not (project / "sst_target" / "manifest.json").exists()
 
 
 def test_project_without_dbt_compiles_from_target_profile(tmp_path: Path) -> None:
@@ -250,7 +250,7 @@ def test_project_without_dbt_compiles_from_target_profile(tmp_path: Path) -> Non
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert payload["data"]["artifacts"] == []
-    manifest = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((project / "sst_target" / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["sources"]["dbt_manifest"]["path"] == ""
     assert manifest["sources"]["dbt_manifest"]["model_count"] == 0
 

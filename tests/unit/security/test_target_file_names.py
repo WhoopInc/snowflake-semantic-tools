@@ -47,7 +47,7 @@ def test_target_files_are_distinct_for_distinct_names_and_plain_for_plain_ones(t
 
 def test_a_hostile_target_state_is_written_inside_the_project(tmp_path: Path) -> None:
     project = tmp_path / "project"
-    build = project / "target" / "sst"
+    build = project / "sst_target"
     path = state_file(build, "../../../evil")
     StateFileStore(path, root=project).write({"schema_version": 1})
     assert [found.parent for found in project.rglob("state.*.json")] == [build]
@@ -66,4 +66,4 @@ def test_a_hostile_deferred_target_keeps_its_manifest_folder_under_defer(tmp_pat
     SmallProject(tmp_path, files=files).write()
     found = resolve_deferral(dataclasses.replace(project_paths(tmp_path), defer_target=target))
     assert found is not None and found.target == target
-    assert _is_one_safe_segment(found.state_dir, tmp_path / "target" / "sst" / "defer")
+    assert _is_one_safe_segment(found.state_dir, tmp_path / "sst_target" / "defer")

@@ -104,7 +104,7 @@ def object_types(project: Path, target: str = "dev") -> dict[str, str]:
 
 def publishing_port(project: Path, target: str = "dev") -> PublishingSnowflake:
     """Return an empty fake target for `project`, compiled, where every relation its artifacts read exists."""
-    manifest = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((project / "sst_target" / "manifest.json").read_text(encoding="utf-8"))
     compiled = compile_result(locate_project(project), target, DBT_MANIFEST)
     shown = object_types(project, target)
     marked = {

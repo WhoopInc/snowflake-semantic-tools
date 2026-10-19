@@ -117,7 +117,7 @@ whether it is this one; and the resolved target: profile, role, warehouse,
 database, schema, state table, and how it authenticates, never a credential. The
 connection is then opened, and its role and account reported; with --no-connect nothing
 connects. --snowflake-signatures reports instead how often Snowflake refusals went
-unrecognised, from `target/sst/run_log.jsonl`, offline.
+unrecognised, from `sst_target/run_log.jsonl`, offline.
 
 Exit 0 when everything resolved, 1 when a resolved value is invalid, 4 when the configuration
 or profile cannot be, and 5 when the connection fails.
@@ -267,7 +267,7 @@ sst format [OPTIONS] [PATH]...
 
 Compile every artifact and write the canonical manifest, offline.
 
-The manifest, `target/sst/manifest.json`, always holds everything that compiled; --select
+The manifest, `sst_target/manifest.json`, always holds everything that compiled; --select
 narrows only what is reported and emitted. --emit-ddl writes each rendered payload, one
 file per artifact under a folder named for its type, as `tool/<name>.sql`; and
 --emit-agent-spec each agent's specification, one file per agent. With --partial, a
@@ -456,7 +456,7 @@ List compiled artifacts and their cached application status, optionally of one T
 
 TYPE is an artifact type such as semantic-views or agents, a member type such as
 metrics or verified-queries, or tables. An artifact's status -- pending, applied,
-failed, or deactivated -- is what the one local state file under `target/sst` records;
+failed, or deactivated -- is what the one local state file under `sst_target` records;
 with none there, or more than one target's, every artifact is pending. Without
 --no-manifest the manifest `sst compile` wrote is read, and its absence exits 4; with
 it, the project's files are compiled in memory, nothing is written, and what fails to
@@ -530,14 +530,14 @@ Exit 0 with nothing to change, 2 with changes pending, and 1 on an error or a bl
 Nothing to change means each live object carries the ownership marker state records, and
 the properties `plan.drift_check` compares are as apply read them back; an object edited
 by hand in either way is blocked (SST-PLN014).
-The plan is saved as `target/sst/plan.json` unless --plan-out or --no-plan-out says
-otherwise, and each create's and update's statements go to `target/sst/sql`, or --sql-out.
+The plan is saved as `sst_target/plan.json` unless --plan-out or --no-plan-out says
+otherwise, and each create's and update's statements go to `sst_target/sql`, or --sql-out.
 `--names-only` prints only the name of each changed artifact, and wins over `--full`.
 Each update is followed by what it changes, member by member, the live object against what
 SST renders, cut short where long; all of it is written as a unified diff to
-`target/sst/plan.<target>.diff`, or --diff-out, on every plan. `--no-diff` skips reading
+`sst_target/plan.<target>.diff`, or --diff-out, on every plan. `--no-diff` skips reading
 the live definitions. What the plan read of the target is recorded as
-`target/sst/observation.<target>.json`; `--use-cached-state` plans from the one `--state`
+`sst_target/observation.<target>.json`; `--use-cached-state` plans from the one `--state`
 holds instead, without connecting, and reports how old it is.
 
 ```text
@@ -554,14 +554,14 @@ sst plan [OPTIONS]
 | `--no-defer` | flag |  | Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say. |
 | `--prune` | flag |  | Also act on managed artifacts whose source was deleted, as far as each type allows: drop, deactivate, or report. |
 | `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
-| `--plan-out` | FILE |  | Write the saved plan here instead of `target/sst/plan.json`. |
+| `--plan-out` | FILE |  | Write the saved plan here instead of `sst_target/plan.json`. |
 | `--no-plan-out` | flag |  | Do not write a saved plan. |
 | `--grants / --no-grants` | flag |  | Read the grants on each object an update replaces, one `SHOW GRANTS` each, to report what a replace would drop (SST-PLN013), and the tags on each semantic view it replaces, to report those the replace removes (SST-PLN039). On by default; `--no-grants` skips the reads. |
 | `--use-cached-state` | flag |  | Plan from the observation an earlier `sst plan` recorded in `--state` instead of reading the target, without connecting; the plan says what the target held then, and its age is reported. Requires `--state`; refused with `--snowflake-syntax-check` or `--capture-prior`; composite artifacts are blocked. |
 | `--capture-prior` | flag |  | Read the current definition of each live object a planned artifact names, so a review can see what an update replaces and restore it: `GET_DDL` for a semantic view, search service, procedure or function (needs REFERENCES or OWNERSHIP); for an agent, which an update never replaces, the version it serves, its specification, and the `ALTER AGENT` statements that point back at it. A stage, skill, plugin, profile or eval has none. Shown by `--full` and as `prior_definition` in JSON; a read that fails is a warning (SST-PLN037), not a failed plan. |
 | `--no-diff` | flag |  | Do not read the live definition each update replaces, so the plan does not show what the update changes member by member: one DESCRIBE, version or staged-file read per update fewer. |
-| `--diff-out` | FILE |  | Write what each update changes, member by member, as a unified diff here instead of `target/sst/plan.<target>.diff`. Refused with `--no-diff`. |
-| `--sql-out` | DIRECTORY |  | Write each create's and update's statements into this directory instead of `target/sst/sql`. A file an earlier run wrote there, named `<type>__<name>.sql`, `.json` or `.yaml`, for a change this run does not make is removed; any other file is left. |
+| `--diff-out` | FILE |  | Write what each update changes, member by member, as a unified diff here instead of `sst_target/plan.<target>.diff`. Refused with `--no-diff`. |
+| `--sql-out` | DIRECTORY |  | Write each create's and update's statements into this directory instead of `sst_target/sql`. A file an earlier run wrote there, named `<type>__<name>.sql`, `.json` or `.yaml`, for a change this run does not make is removed; any other file is left. |
 | `--no-validate` | flag |  | Skip validation: no cycle check, connected check, agent reference lookup, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`. |
 | `--threads` | INTEGER RANGE |  | Sessions to validate and observe on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 4; 1 reads serially. The plan is the same for any count. |
 | `--full` | flag |  | Also print, under each update, the properties it changes on the object, and the definition it replaces when `--capture-prior` read it; and show each member's diff whole, not cut short. |
@@ -582,7 +582,7 @@ nothing is shown, so those definitions are not read.
 With --plan, the saved plan's selection and --prune are used: --select, --exclude, --prune
 and --partial must agree with it, and it must have been made for this target, from the
 manifest the project compiles now, observing what Snowflake holds now. The statements are
-written to `target/sst/sql`, or --sql-out, before anything runs, and the changes run under
+written to `sst_target/sql`, or --sql-out, before anything runs, and the changes run under
 the target's run lock. A failed change skips the changes that depend on it; with
 --fail-fast, every change not yet run. `--fail-fast` and `--no-fail-fast` override
 `apply.fail_fast`, false by default, for this run. With --partial, the changes no error
@@ -628,7 +628,7 @@ sst apply [OPTIONS]
 | `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 | `--temporary` | flag |  | Publish agents as temporary agents, dropped when the apply's session ends, and skip their evals; views, tools and skills still publish permanently. Refused for a production-like target. |
 | `--no-validate` | flag |  | Skip validation: no cycle check, connected check, agent reference lookup, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`. |
-| `--sql-out` | DIRECTORY |  | Write each create's and update's statements into this directory instead of `target/sst/sql`. A file an earlier run wrote there, named `<type>__<name>.sql`, `.json` or `.yaml`, for a change this run does not make is removed; any other file is left. |
+| `--sql-out` | DIRECTORY |  | Write each create's and update's statements into this directory instead of `sst_target/sql`. A file an earlier run wrote there, named `<type>__<name>.sql`, `.json` or `.yaml`, for a change this run does not make is removed; any other file is left. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error; `--no-strict` promotes none. Else `$SST_STRICT`, else `validation.strict`, off when unset. A warning about an artifact the selection leaves out stays one. |
 | `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Connects: compile expressions against Snowflake, and run each model `snowflake.orchestration_models` allows in a throwaway agent. Defaults to `validation.snowflake_syntax_check`, on when unset. |
 
@@ -773,14 +773,14 @@ sst docs [OPTIONS]
 
 Remove local SST build artifacts only; never touch Snowflake.
 
-Removes `target/sst` under the project, where SST writes the compiled manifest, saved plans
-and observations, statement files, local state, and the run log. Authored files, `.sst/`
-with its baseline, and the rest of dbt's `target/` are kept. With --dry-run, nothing is
-removed. Exit 1 when the build directory cannot be removed, or a symbolic link is on the
-way to it.
+Removes `sst_target/` under the project, where SST writes the compiled manifest, saved plans
+and observations, statement files, local state, and the run log; and `target/sst/`, where SST
+wrote them before they moved, when an earlier run left it. Authored files, `.sst/` with its
+baseline, and dbt's `target/` are kept. With --dry-run, nothing is removed. Exit 1 when a
+build directory cannot be removed, or a symbolic link is on the way to it.
 
 Diagnostics:
-    SST-PRT010: the build directory could not be removed, or is reached through a link.
+    SST-PRT010: a build directory could not be removed, or is reached through a link.
 
 ```text
 sst clean [OPTIONS]
