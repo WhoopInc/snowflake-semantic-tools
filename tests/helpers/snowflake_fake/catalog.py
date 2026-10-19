@@ -2,7 +2,9 @@
 
 Each read answers from the account `SnowflakeWorld` holds and never writes. A read armed with
 `fail` raises before it answers, as the connector raises `SnowflakePortError` when Snowflake
-refuses the statement behind it.
+refuses the statement behind it. An existence read of an object in a schema
+`preflight.missing_schemas` lists raises too, as Snowflake refuses `SHOW ... IN SCHEMA` for a
+schema that does not exist (002043, measured on a live account).
 """
 
 from __future__ import annotations
@@ -85,8 +87,17 @@ class FakeCatalog(SnowflakeWorld):
             raise SnowflakePortError(f"GET_DDL refused for {object_type} {qualified_name.sql}")
         return self.definitions[qualified_name.sql]
 
+    def _schema_present(self, qualified_name: QualifiedName) -> None:
+        """Raise as Snowflake does for a read in a schema that does not exist."""
+        scope = SchemaScope.from_qualified_name(qualified_name)
+        if scope.sql in self.preflight.missing_schemas:
+            raise SnowflakePortError(
+                "002043 (02000): SQL compilation error:\nObject does not exist, or operation cannot be performed."
+            )
+
     def object_exists(self, object_type: str, qualified_name: QualifiedName) -> bool:
         self._check("object_exists")
+        self._schema_present(qualified_name)
         if object_type.upper() == "DATASET":
             return self.dataset_exists(qualified_name)
         if object_type.upper() == "STAGE" and qualified_name.sql in self.stage_formats:
@@ -130,6 +141,7 @@ class FakeCatalog(SnowflakeWorld):
 
     def table_columns(self, qualified_name: QualifiedName) -> tuple[tuple[str, str], ...] | None:
         self._check("table_columns")
+        self._schema_present(qualified_name)
         return self.tables.get(qualified_name.sql)
 
     def describe_stage_file_format(self, qualified_name: QualifiedName) -> str | None:
@@ -138,12 +150,14 @@ class FakeCatalog(SnowflakeWorld):
 
     def stage_type(self, qualified_name: QualifiedName) -> str | None:
         self._check("stage_type")
+        self._schema_present(qualified_name)
         if qualified_name.sql in self.stage_types:
             return self.stage_types[qualified_name.sql]
         return "INTERNAL NO CSE" if self.object_exists("STAGE", qualified_name) else None
 
     def observe_extension(self, qualified_name: QualifiedName) -> ExtensionObservation | None:
         self._check("observe_extension")
+        self._schema_present(qualified_name)
         extension = self.extensions.get(qualified_name.sql)
         if extension is None:
             return None

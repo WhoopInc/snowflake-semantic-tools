@@ -648,7 +648,9 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "apply.create_schemas",
         _B,
         "Create each absent schema the plan publishes into, as dbt does, `CREATE SCHEMA IF NOT EXISTS`, "
-        "before anything else; false makes an absent schema SST-PLN010. Never a database, and never dropped.",
+        "before anything else; false makes an absent schema SST-PLN010. Plan reads nothing in one it creates, so "
+        "everything published there, skills, profiles and evals among them, plans as a create. Never a database, "
+        "and never dropped.",
         default="true",
     ),
     _deprecated("deploy", "apply"),

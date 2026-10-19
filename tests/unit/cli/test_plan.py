@@ -760,6 +760,25 @@ def test_a_deleted_tool_is_listed_as_a_report_only_prune(tmp_path: Path, monkeyp
     assert "prune" in line and "report only: SST never removes these" in line
 
 
+def test_every_artifact_in_a_schema_apply_creates_plans_as_a_create(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A fresh target: the one schema everything publishes into is absent, so a read in it is
+    # refused as Snowflake refuses it (002043). Skills, the plugin, profiles and the eval
+    # read their stages and registry there too, and plan as creates like every other type.
+    project = project_copy(tmp_path)
+    port = FakeSnowflake(state={})
+    port.preflight.missing_schemas.add("SST_REF_DEV.JAFFLE")
+    result = invoke_with_port(monkeypatch, port, ["plan", *common(project), "--target", "dev", "--output", "json"])
+    payload = json.loads(result.output)
+    assert "SST-PLN001" not in [item["code"] for item in payload["diagnostics"]]
+    actions = {change["artifact_key"]: change["action"] for change in payload["data"]["changes"]}
+    composites = [key for key in actions if key.split(":")[0] in ("skill", "plugin", "profile", "eval")]
+    assert len(composites) == 7 and all(actions[key] == "create" for key in composites), actions
+    assert "SST_REF_DEV.JAFFLE" in payload["data"]["schemas"]
+    assert result.exit_code == 2
+
+
 def test_an_absent_schema_is_a_row_apply_creates_and_with_the_setting_off_is_sst_pln010(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

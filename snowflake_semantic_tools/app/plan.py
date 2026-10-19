@@ -409,21 +409,20 @@ class PreparePlan:
         planner = PlanArtifacts(
             port, lifecycle_handlers=handlers, preflight=preflight, readers=readers, observe_options=observe_options
         )
-        with self._phases.phase("composites"):
-            composite_plans = planner.composite_plans(rendered, manifest, state)
-        with self._phases.phase("observe"):
-            reading = planner.read(
-                rendered,
-                state,
-                target,
-                fetched_at=fetched_at,
-                include_prune=candidates.scope.include_prune,
-                prune_types=candidates.scope.prune_types,
-                observation_targets=_observation_targets(candidates.full, state),
-                state_tables=(state_table, lock_table_for(state_table)),
-                state_table_kind=state_table_kind,
-                create_schemas=config_bool(apply_config.get("create_schemas")) is not False,
-            )
+        composite_plans, reading = planner.read_target(
+            rendered,
+            manifest,
+            state,
+            target,
+            fetched_at=fetched_at,
+            phases=self._phases,
+            include_prune=candidates.scope.include_prune,
+            prune_types=candidates.scope.prune_types,
+            observation_targets=_observation_targets(candidates.full, state),
+            state_tables=(state_table, lock_table_for(state_table)),
+            state_table_kind=state_table_kind,
+            create_schemas=config_bool(apply_config.get("create_schemas")) is not False,
+        )
         with self._phases.phase("classify"):
             changeset = _decided(candidates, rendered, reading, manifest, state, target, handlers, composite_plans)
         changeset, unread = self._diffed(changeset, result, port, readers, observe_options, state)

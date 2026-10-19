@@ -264,7 +264,7 @@ Stages apply uploads through.
 | `apply.eval_config_stage` | block |  | Stage for eval run configs, in each agent's schema. |
 | `apply.eval_config_stage.stage` | string | `EVAL_CONFIGS` | Stage name. |
 | `apply.fail_fast` | boolean | `false` | Stop at the first failure instead of continuing; `--fail-fast` and `--no-fail-fast` override it. |
-| `apply.create_schemas` | boolean | `true` | Create each absent schema the plan publishes into, as dbt does, `CREATE SCHEMA IF NOT EXISTS`, before anything else; false makes an absent schema SST-PLN010. Never a database, and never dropped. |
+| `apply.create_schemas` | boolean | `true` | Create each absent schema the plan publishes into, as dbt does, `CREATE SCHEMA IF NOT EXISTS`, before anything else; false makes an absent schema SST-PLN010. Plan reads nothing in one it creates, so everything published there, skills, profiles and evals among them, plans as a create. Never a database, and never dropped. |
 
 ## ask
 
