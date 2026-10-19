@@ -1,0 +1,66 @@
+$ sst --project-dir <project> --manifest <manifest> -v test --suite evals --unpublished --target dev
+--- exit 1
+--- stdout
+[1meval:jaffle_analytics_agent[0m  unpublished  [32m[1mCOMPLETED[0m  3/4 questions passed
+[2m├── [0manswer_correctness       4/4 passed  average 1.000  [2mapproximate, never gates[0m
+[2m├── [0manswer_grounding         0/4 passed  average 1.000  needs at least 3  [2mapproximate, never gates[0m
+[2m├── [0mtool_selection_accuracy  3/4 passed  average 0.875  needs at least 0.8
+[2m├── [0mcost  <n>s wall · <n>s agent time · agent 3,600 in / 160 out
+[2m│   [0m      not measured: LLM calls, judge tokens
+[2m└── [0mquestions  3 of 4 passed
+[2m    ├── [0m[31m[1m✗[0m 1  How does order event volume compare with the number of orders in each location?
+[2m    │   │[0m    [2m1.0s · 900 in / 40 out[0m
+[2m    │   ├── [0manswer_correctness       [32m[1m1.00[0m
+[2m    │   │   └── [0mreason  The answer says what the expected answer says.
+[2m    │   ├── [0manswer_grounding         [31m[1m1.00[0m  needs at least 3
+[2m    │   │   └── [0mreason  The answer says what the expected answer says.
+[2m    │   ├── [0mtool_selection_accuracy  [31m[1m0.50[0m  needs at least 0.8
+[2m    │   │   ├── [0mexpected  JAFFLE_MENU, JAFFLE_SALES
+[2m    │   │   └── [0mcalled    JAFFLE_MENU, JAFFLE_SALES, JAFFLE_MENU, JAFFLE_SALES
+[2m    │   └── [0manswer  Answer 1.
+[2m    ├── [0m[32m[1m✓[0m 2  Which menu item description mentions the broadest set of ingredients?
+[2m    │   │[0m    [2m2.0s · 900 in / 40 out[0m
+[2m    │   ├── [0manswer_correctness       [32m[1m1.00[0m
+[2m    │   │   └── [0mreason  The answer says what the expected answer says.
+[2m    │   ├── [0manswer_grounding         [31m[1m1.00[0m  needs at least 3
+[2m    │   │   └── [0mreason  The answer says what the expected answer says.
+[2m    │   ├── [0mtool_selection_accuracy  [32m[1m1.00[0m
+[2m    │   │   ├── [0mexpected  menu_docs_search
+[2m    │   │   └── [0mcalled    menu_docs_search
+[2m    │   └── [0manswer  Answer 2.
+[2m    ├── [0m[32m[1m✓[0m 3  What is the home location of one specific customer?  [2m3.0s · 900 in / 40 out[0m
+[2m    │   ├── [0manswer_correctness       [32m[1m1.00[0m
+[2m    │   │   └── [0mreason  The answer says what the expected answer says.
+[2m    │   ├── [0manswer_grounding         [31m[1m1.00[0m  needs at least 3
+[2m    │   │   └── [0mreason  The answer says what the expected answer says.
+[2m    │   ├── [0mtool_selection_accuracy  [32m[1m1.00[0m
+[2m    │   │   ├── [0mexpected  none
+[2m    │   │   └── [0mcalled    none
+[2m    │   └── [0manswer  Answer 3.
+[2m    └── [0m[32m[1m✓[0m 4  How many distinct products are on the menu?  [2m4.0s · 900 in / 40 out[0m
+[2m        ├── [0manswer_correctness       [32m[1m1.00[0m
+[2m        │   └── [0mreason  The answer says what the expected answer says.
+[2m        ├── [0manswer_grounding         [31m[1m1.00[0m  needs at least 3
+[2m        │   └── [0mreason  The answer says what the expected answer says.
+[2m        ├── [0mtool_selection_accuracy  [32m[1m1.00[0m
+[2m        │   ├── [0mexpected  JAFFLE_SALES
+[2m        │   └── [0mcalled    JAFFLE_SALES
+[2m        └── [0manswer  Answer 4.
+unpublished eval run failed
+--- stderr
+copying semantic_view:jaffle_sales to SST_REF_DEV.JAFFLE.JAFFLE_SALES__SST_ASK_5F680229
+copying semantic_view:jaffle_menu to SST_REF_DEV.JAFFLE.JAFFLE_MENU__SST_ASK_5F680229
+copying tool:menu_docs_search to SST_REF_DEV.JAFFLE.MENU_DOCS_SEARCH__SST_ASK_5F680229
+copying tool:order_status to SST_REF_DEV.JAFFLE.ORDER_STATUS__SST_ASK_5F680229
+copying skill:jaffle-semantics to SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS__SST_ASK_5F680229
+eval:jaffle_analytics_agent: question 1 answered
+eval:jaffle_analytics_agent: question 2 answered
+eval:jaffle_analytics_agent: question 3 answered
+eval:jaffle_analytics_agent: question 4 answered
+[31m[1merror[[0m[31m[1mSST-ASK007[0m[31m[1m][0m: [1meval 'jaffle_analytics_agent': tool_selection_accuracy needs at least 0.8, and 1 of 4 question(s) fell short: question 1 scored 0.50 (expected: JAFFLE_MENU, JAFFLE_SALES; called: JAFFLE_MENU, JAFFLE_SALES, JAFFLE_MENU, JAFFLE_SALES)[0m
+  [34m[1m=[0m [36mhelp:[0m fix the agent until the metric passes, or the expectation if it is wrong
+  [34m[1m=[0m [2msst explain SST-ASK007[0m
+  [34m[1m=[0m [2mphase: ask · fingerprint: f748b56c8b924149[0m
+
+[31m[1m✗[0m [1mtest failed[0m: 1 error, 0 warnings · <n>s
+  [36mnext:[0m fix the error, then run `sst test` again

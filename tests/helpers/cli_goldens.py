@@ -11,6 +11,7 @@ rewrites them (refused in CI, as `update_goldens` is).
 from __future__ import annotations
 
 import dataclasses
+import json
 import os
 import re
 import sys
@@ -23,9 +24,23 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools.adapters.locations import locate_project
 from snowflake_semantic_tools.app.compile import CompiledView
+from snowflake_semantic_tools.app.compile.evals import CompiledEval
+from snowflake_semantic_tools.app.evals.retrieve import compiled_questions
+from snowflake_semantic_tools.app.evals.run import EvalRunResult, EvalSuiteResult
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.render.terminal import Terminal
 from snowflake_semantic_tools.cli.wiring.compile import compile_result
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
+from snowflake_semantic_tools.domain.evaluate.tool_selection import expected_tools
+from snowflake_semantic_tools.domain.model.eval import (
+    EvalCostSummary,
+    EvalGateVerdict,
+    EvalMetricResult,
+    EvalResultRow,
+    EvalRunAttempt,
+    ThresholdRange,
+)
+from snowflake_semantic_tools.domain.ports.snowflake.agent_run import AgentReply, ToolUse
 from tests.helpers.cli_projects import common, compile_project
 from tests.helpers.described_objects import described_view
 from tests.helpers.published_target import published
@@ -110,6 +125,61 @@ def _two_targets(project: Path, patch: pytest.MonkeyPatch) -> Callable[[dict[str
     return lambda params: by_database[str(params["database"]).upper()]
 
 
+def _unpublished_miss(project: Path, patch: pytest.MonkeyPatch) -> Callable[[dict[str, object]], FakeSnowflake]:
+    """Every question answered with the tools it expects, but the first that expects one calls it twice."""
+    # One question at a time, and one scratch suffix, so every run prints the same lines.
+    patch.setattr("snowflake_semantic_tools.app.evals.inline.suite_concurrency", lambda *args: 1)
+    patch.setattr("snowflake_semantic_tools.cli.commands.test.secrets.token_hex", lambda size: "5f680229")
+    port = FakeSnowflake(state={})
+    port.judge_answer = {"score": 1, "reason": "The answer says what the expected answer says."}
+    [item] = [
+        entry
+        for entry in compile_result(locate_project(project), "dev", DBT_MANIFEST).compiled
+        if isinstance(entry, CompiledEval)
+    ]
+    replies: dict[str, AgentReply] = {}
+    doubled = False
+    for index, row in enumerate(json.loads(item.rendered.dataset_payload), start=1):
+        tools = [call["tool_name"] for call in row["ground_truth"].get("ground_truth_invocations", [])]
+        if tools and not doubled:
+            tools, doubled = tools * 2, True
+        uses = tuple(ToolUse(name, "") for name in tools)
+        replies[row["input_query"]] = AgentReply(f"Answer {index}.", uses, duration_ms=1000 * index, tokens=(900, 40))
+    port.agent_replies = replies  # type: ignore[assignment]
+    port.close = lambda: None  # type: ignore[attr-defined]
+    return lambda params: port
+
+
+def _published_pass(project: Path, patch: pytest.MonkeyPatch) -> Callable[[dict[str, object]], FakeSnowflake]:
+    """One published attempt in which every question passed, read back with its answers and costs."""
+    [item] = [
+        entry
+        for entry in compile_result(locate_project(project), "dev", DBT_MANIFEST).compiled
+        if isinstance(entry, CompiledEval)
+    ]
+    rows = []
+    for index, (key, query, truth) in enumerate(compiled_questions(item), start=1):
+        expected = expected_tools(truth)
+        metrics = (
+            EvalMetricResult(key, "answer_correctness", 1.0, True, "Matches the expected answer."),
+            EvalMetricResult(key, "tool_selection_accuracy", 1.0, True, "**Score:** 1.00", ThresholdRange(0.8)),
+        )
+        cost = EvalCostSummary(2000 + index, 30, 10, 40, 38862, 715, 2)
+        rows.append(EvalResultRow(key, query, metrics, index, f"Answer {index}.", None, expected, expected, cost))
+    total = EvalCostSummary(8010, 120, 40, 160, 155448, 2860, 8)
+    attempt = EvalRunAttempt("EVAL_JAFFLE_ANALYTICS_AGENT_RUN", 1, "COMPLETED", tuple(rows), total)
+    suite = EvalSuiteResult((EvalRunResult(item.artifact_key, (attempt,), DiagnosticBag(), True),), DiagnosticBag())
+    patch.setattr("snowflake_semantic_tools.app.evals.run.RunEvalSuite.run", lambda *args, **kwargs: suite)
+    patch.setattr("snowflake_semantic_tools.app.evals.suite.validate_eval_publication", lambda *args: DiagnosticBag())
+    passed = EvalGateVerdict("blocking", (), True)
+    patch.setattr(
+        "snowflake_semantic_tools.app.evals.suite.evaluate_gate", lambda *args, **kwargs: (passed, DiagnosticBag())
+    )
+    port = FakeSnowflake(state={})
+    port.close = lambda: None  # type: ignore[attr-defined]
+    return lambda params: port
+
+
 _PROJECT = ("--project-dir", "<project>")
 _OFFLINE = (*_PROJECT, "--manifest", "<manifest>")
 CASES = (
@@ -148,6 +218,22 @@ CASES = (
         (*_OFFLINE, "diff", "--from", "dev", "--to", "prod"),
         variants=("color", "plain"),
         connect=_two_targets,
+    ),
+    Case(
+        "test-unpublished",
+        _clean,
+        (*_OFFLINE, "test", "--suite", "evals", "--unpublished", "--target", "dev"),
+        connect=_unpublished_miss,
+    ),
+    Case(
+        "test-unpublished-verbose",
+        _clean,
+        (*_OFFLINE, "-v", "test", "--suite", "evals", "--unpublished", "--target", "dev"),
+        variants=("color", "plain", "narrow"),
+        connect=_unpublished_miss,
+    ),
+    Case(
+        "test-published", _compiled, (*_OFFLINE, "test", "--suite", "evals", "--target", "dev"), connect=_published_pass
     ),
 )
 

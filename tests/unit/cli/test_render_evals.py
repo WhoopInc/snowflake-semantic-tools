@@ -151,16 +151,17 @@ def test_a_published_attempt_counts_every_cost_and_several_attempts_are_numbered
     )
     marks = EvalMarks(unscored=frozenset({"logical_consistency"}))
     lines = _lines(failed, EvalRunAttempt("RUN_R2", 2, "COMPLETED", (_row(1, 1.0),), measured), marks=marks)
-    assert lines[:4] == [
-        "eval:concierge  attempt 1  RUN  FAILED",
+    assert lines[:5] == [
+        "eval:concierge  attempt 1  FAILED",
+        "├── run  RUN",
         "├── cost  43.6s agent time · agent 250,640 in / 1,651 out · 13 LLM calls · judge 4,846 tokens",
         "├── status details  partial; timeout",
         "└── retrieval error  no rows",
     ]
-    assert lines[4] == "eval:concierge  attempt 2  RUN_R2  COMPLETED  1/1 question passed"
+    assert lines[5:7] == ["eval:concierge  attempt 2  COMPLETED  1/1 question passed", "├── run  RUN_R2"]
     assert lines[-1] == "└── the question passed  (-v shows it)"
     one_call = EvalRunAttempt("R", 1, "COMPLETED", (), EvalCostSummary(llm_call_count=1))
-    assert "1 LLM call ·" in _lines(one_call)[1]
+    assert "1 LLM call ·" in _lines(one_call)[2]
 
 
 def test_an_eval_with_no_attempt_is_named_alone() -> None:

@@ -1,7 +1,8 @@
 """How `sst test` shows eval results: each attempt as a tree of its metrics, cost and questions.
 
-An attempt's line names its eval, run and status, and how many questions passed. Under it come
-each metric's pass count, average and threshold, what the attempt cost, and the questions:
+An attempt's line names its eval and status, and how many questions passed. Under it come a
+published attempt's run, each metric's pass count, average and threshold, what the attempt
+cost, and the questions:
 those that fell short, or every one under `-v`, each with its score per metric, the tools it
 was expected to call and called, and why a judge scored it as it did. `-v` adds each
 question's time and tokens and the agent's answer. A reason or an answer is cut to two lines.
@@ -18,12 +19,16 @@ import textwrap
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+import click
+
 from snowflake_semantic_tools.cli.render.style import Style
 from snowflake_semantic_tools.cli.render.tree import TreeNode, connectors, tree_lines
 from snowflake_semantic_tools.domain.evaluate.scores import average_text, score_text, threshold_phrase
 from snowflake_semantic_tools.domain.model.eval import EvalCostSummary, EvalMetricResult, EvalResultRow, EvalRunAttempt
 
 TOOL_METRIC = "tool_selection_accuracy"
+# The run name an unpublished attempt reports, as `app.evals.inline` names it.
+UNPUBLISHED_RUN = "unpublished"
 # Each count a cost reports, by the fields it is made of, and what it is called when unmeasured.
 _UNMEASURED_LABELS = (
     (("total_input_tokens", "total_output_tokens"), "agent tokens"),
@@ -112,12 +117,17 @@ class _Layout:
 
 
 def _header(eval_key: str, attempt: EvalRunAttempt, several: bool, style: Style, marks: EvalMarks) -> str:
-    """Name the eval, the attempt when there are several, its run and status, and how many passed."""
+    """Name the eval, the attempt when there are several, its status, and how many passed.
+
+    An unpublished attempt says so here; a published one's run is the first row under it.
+    """
     status_role = "success" if attempt.terminal_status == "COMPLETED" else "error"
     parts = [style(eval_key, "strong")]
     if several:
         parts.append(f"attempt {attempt.attempt}")
-    parts += [attempt.run_name, style(attempt.terminal_status, status_role)]
+    if attempt.run_name == UNPUBLISHED_RUN:
+        parts.append(attempt.run_name)
+    parts.append(style(attempt.terminal_status, status_role))
     if attempt.rows:
         passed = sum(not _fell_short(row, marks) for row in attempt.rows)
         parts.append(f"{passed}/{_count(len(attempt.rows), 'question')} passed")
@@ -127,7 +137,8 @@ def _header(eval_key: str, attempt: EvalRunAttempt, several: bool, style: Style,
 def _attempt_nodes(attempt: EvalRunAttempt, layout: _Layout, summary_only: bool) -> list[TreeNode]:
     """Return what goes under an attempt's line: metrics, cost, its trouble, then its questions."""
     style = layout.style
-    nodes = list(_metric_nodes(attempt.rows, layout))
+    nodes = [] if attempt.run_name == UNPUBLISHED_RUN else [TreeNode("run  " + attempt.run_name)]
+    nodes.extend(_metric_nodes(attempt.rows, layout))
     first, more = _packed("cost  ", _cost_parts(attempt.cost, attempt.wall_ms), style.sep, layout.width, 1)
     nodes.append(TreeNode(first, more))
     if attempt.status_details:
@@ -163,7 +174,7 @@ def _metric_nodes(rows: tuple[EvalResultRow, ...], layout: _Layout) -> list[Tree
     marks, style = layout.marks, layout.style
     nodes = []
     for name, results in sorted(by_name.items()):
-        parts = [name.ljust(width)]
+        parts = []
         if name in marks.unscored:
             parts.append(style("not scored by this run", "dim"))
         else:
@@ -178,7 +189,8 @@ def _metric_nodes(rows: tuple[EvalResultRow, ...], layout: _Layout) -> list[Tree
         regressed = sum((result.question_key, name) in marks.regressions for result in results)
         if regressed:
             parts.append(style(f"{regressed} regressed", "error"))
-        nodes.append(TreeNode("  ".join(parts).rstrip()))
+        first, more = _packed(name.ljust(width) + "  ", parts, "  ", layout.width, 1)
+        nodes.append(TreeNode(first, more))
     return nodes
 
 
@@ -192,7 +204,14 @@ def _question_node(row: EvalResultRow, layout: _Layout, depth: int) -> TreeNode:
     first, more = _wrapped(plain_label, row.input_query, layout, depth)
     first = label + first[len(plain_label) :]
     if layout.verbose and row.cost is not None:
-        first += "  " + style(_question_cost(row.cost, style.sep), "dim")
+        # The question's cost follows its text, on a line of its own when the last one is full.
+        spent = style(_question_cost(row.cost, style.sep), "dim")
+        lines = [first, *more]
+        if layout.width is not None and _visible(lines[-1]) + 2 + _visible(spent) > layout.width - _INDENT * depth:
+            lines.append(" " * len(plain_label) + spent)
+        else:
+            lines[-1] += "  " + spent
+        first, more = lines[0], tuple(lines[1:])
     children: list[TreeNode] = []
     if row.error is not None:
         children.append(_labelled(style("error", "error"), "error", row.error, layout, depth + 1))
@@ -259,14 +278,21 @@ def _fell_short(row: EvalResultRow, marks: EvalMarks) -> bool:
 
 def _packed(label: str, parts: list[str], sep: str, width: int | None, depth: int) -> tuple[str, tuple[str, ...]]:
     """Join `parts` after `label`, on as many lines as fit `depth` levels down, each part whole."""
+    if not parts:
+        return label.rstrip(), ()
     room = None if width is None else max(width - _INDENT * depth - len(label), _MIN_ROOM)
     lines = [parts[0]]
     for part in parts[1:]:
-        if room is not None and len(lines[-1]) + len(sep) + len(part) > room:
+        if room is not None and _visible(lines[-1]) + len(sep) + _visible(part) > room:
             lines.append(part)
         else:
             lines[-1] += sep + part
     return label + lines[0], tuple(" " * len(label) + line for line in lines[1:])
+
+
+def _visible(text: str) -> int:
+    """Count the characters of `text` a terminal shows, leaving out colour codes."""
+    return len(click.unstyle(text))
 
 
 def _cost_parts(cost: EvalCostSummary, wall_ms: int | None) -> list[str]:

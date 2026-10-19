@@ -1,0 +1,66 @@
+$ sst --project-dir <project> --manifest <manifest> -v test --suite evals --unpublished --target dev
+--- exit 1
+--- stdout
+eval:jaffle_analytics_agent  unpublished  COMPLETED  3/4 questions passed
+├── answer_correctness       4/4 passed  average 1.000  approximate, never gates
+├── answer_grounding         0/4 passed  average 1.000  needs at least 3  approximate, never gates
+├── tool_selection_accuracy  3/4 passed  average 0.875  needs at least 0.8
+├── cost  <n>s wall · <n>s agent time · agent 3,600 in / 160 out
+│         not measured: LLM calls, judge tokens
+└── questions  3 of 4 passed
+    ├── ✗ 1  How does order event volume compare with the number of orders in each location?
+    │   │    <n>s · 900 in / 40 out
+    │   ├── answer_correctness       1.00
+    │   │   └── reason  The answer says what the expected answer says.
+    │   ├── answer_grounding         1.00  needs at least 3
+    │   │   └── reason  The answer says what the expected answer says.
+    │   ├── tool_selection_accuracy  0.50  needs at least 0.8
+    │   │   ├── expected  JAFFLE_MENU, JAFFLE_SALES
+    │   │   └── called    JAFFLE_MENU, JAFFLE_SALES, JAFFLE_MENU, JAFFLE_SALES
+    │   └── answer  Answer 1.
+    ├── ✓ 2  Which menu item description mentions the broadest set of ingredients?
+    │   │    <n>s · 900 in / 40 out
+    │   ├── answer_correctness       1.00
+    │   │   └── reason  The answer says what the expected answer says.
+    │   ├── answer_grounding         1.00  needs at least 3
+    │   │   └── reason  The answer says what the expected answer says.
+    │   ├── tool_selection_accuracy  1.00
+    │   │   ├── expected  menu_docs_search
+    │   │   └── called    menu_docs_search
+    │   └── answer  Answer 2.
+    ├── ✓ 3  What is the home location of one specific customer?  <n>s · 900 in / 40 out
+    │   ├── answer_correctness       1.00
+    │   │   └── reason  The answer says what the expected answer says.
+    │   ├── answer_grounding         1.00  needs at least 3
+    │   │   └── reason  The answer says what the expected answer says.
+    │   ├── tool_selection_accuracy  1.00
+    │   │   ├── expected  none
+    │   │   └── called    none
+    │   └── answer  Answer 3.
+    └── ✓ 4  How many distinct products are on the menu?  <n>s · 900 in / 40 out
+        ├── answer_correctness       1.00
+        │   └── reason  The answer says what the expected answer says.
+        ├── answer_grounding         1.00  needs at least 3
+        │   └── reason  The answer says what the expected answer says.
+        ├── tool_selection_accuracy  1.00
+        │   ├── expected  JAFFLE_SALES
+        │   └── called    JAFFLE_SALES
+        └── answer  Answer 4.
+unpublished eval run failed
+--- stderr
+copying semantic_view:jaffle_sales to SST_REF_DEV.JAFFLE.JAFFLE_SALES__SST_ASK_5F680229
+copying semantic_view:jaffle_menu to SST_REF_DEV.JAFFLE.JAFFLE_MENU__SST_ASK_5F680229
+copying tool:menu_docs_search to SST_REF_DEV.JAFFLE.MENU_DOCS_SEARCH__SST_ASK_5F680229
+copying tool:order_status to SST_REF_DEV.JAFFLE.ORDER_STATUS__SST_ASK_5F680229
+copying skill:jaffle-semantics to SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS__SST_ASK_5F680229
+eval:jaffle_analytics_agent: question 1 answered
+eval:jaffle_analytics_agent: question 2 answered
+eval:jaffle_analytics_agent: question 3 answered
+eval:jaffle_analytics_agent: question 4 answered
+error[SST-ASK007]: eval 'jaffle_analytics_agent': tool_selection_accuracy needs at least 0.8, and 1 of 4 question(s) fell short: question 1 scored 0.50 (expected: JAFFLE_MENU, JAFFLE_SALES; called: JAFFLE_MENU, JAFFLE_SALES, JAFFLE_MENU, JAFFLE_SALES)
+  = help: fix the agent until the metric passes, or the expectation if it is wrong
+  = sst explain SST-ASK007
+  = phase: ask · fingerprint: f748b56c8b924149
+
+✗ test failed: 1 error, 0 warnings · <n>s
+  next: fix the error, then run `sst test` again

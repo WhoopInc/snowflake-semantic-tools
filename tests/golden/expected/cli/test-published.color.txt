@@ -1,0 +1,10 @@
+$ sst --project-dir <project> --manifest <manifest> test --suite evals --target dev
+--- exit 0
+--- stdout
+[1meval:jaffle_analytics_agent[0m  [32m[1mCOMPLETED[0m  4/4 questions passed
+[2m├── [0mrun  EVAL_JAFFLE_ANALYTICS_AGENT_RUN
+[2m├── [0manswer_correctness       4/4 passed  average 1.000
+[2m├── [0mtool_selection_accuracy  4/4 passed  average 1.000  needs at least 0.8
+[2m├── [0mcost  <n>s agent time · agent 155,448 in / 2,860 out · 8 LLM calls · judge 160 tokens
+[2m└── [0mall 4 questions passed  [2m(-v lists them)[0m
+--- stderr
