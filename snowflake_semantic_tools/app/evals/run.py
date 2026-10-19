@@ -572,10 +572,12 @@ def validate_eval_publication(
     return DiagnosticBag(tuple(diagnostics))
 
 
-def eval_suite_json(result: EvalSuiteResult) -> dict[str, object]:
-    """Project a suite result for the CLI: each attempt's summary and cost, and the suite's totals.
+def eval_suite_json(result: EvalSuiteResult, lenient: frozenset[str] = frozenset()) -> dict[str, object]:
+    """Project a suite result for the CLI: each attempt's summary, cost and questions, and totals.
 
-    The regression count and gate verdict are placeholders the gate fills in when it runs.
+    A question passed when it answered and every metric that can fail it passed; `lenient`
+    names the metrics that cannot, such as those an unpublished run approximates or cannot
+    score. The regression count and gate verdict are placeholders the gate fills in when it runs.
     """
     attempts = tuple(attempt for eval_result in result.evals for attempt in eval_result.attempts)
     total_cost = sum_costs(tuple(attempt.cost for attempt in attempts))
@@ -593,6 +595,8 @@ def eval_suite_json(result: EvalSuiteResult) -> dict[str, object]:
                         "retrieval_error": attempt.retrieval_error,
                         "metric_summaries": _metric_summaries(attempt.rows),
                         "cost": _cost_json(attempt.cost),
+                        "wall_ms": attempt.wall_ms,
+                        "questions": [_question_json(row, lenient) for row in attempt.rows],
                     }
                     for attempt in eval_result.attempts
                 ],
@@ -754,6 +758,34 @@ def _metric_summaries(rows: tuple[EvalResultRow, ...]) -> list[dict[str, object]
     ]
 
 
+def _question_json(row: EvalResultRow, lenient: frozenset[str]) -> dict[str, object]:
+    """Project one question: what the agent said and called, each metric's result, and its cost."""
+    passed = row.error is None and all(metric.passed for metric in row.metrics if metric.metric_name not in lenient)
+    return {
+        "index": row.index,
+        "question_key": row.question_key,
+        "input_query": row.input_query,
+        "passed": passed,
+        "answer": row.answer,
+        "error": row.error,
+        "expected_tools": None if row.expected_tools is None else list(row.expected_tools),
+        "called_tools": None if row.called_tools is None else list(row.called_tools),
+        "metrics": [
+            {
+                "metric_name": metric.metric_name,
+                "score": metric.score,
+                "passed": metric.passed,
+                "threshold": None
+                if metric.threshold is None
+                else {"min": metric.threshold.min, "max": metric.threshold.max},
+                "explanation": metric.explanation,
+            }
+            for metric in row.metrics
+        ],
+        "cost": None if row.cost is None else _cost_json(row.cost),
+    }
+
+
 def _cost_json(value: EvalCostSummary) -> dict[str, object]:
     return {
         "duration_ms": value.duration_ms,
@@ -763,6 +795,7 @@ def _cost_json(value: EvalCostSummary) -> dict[str, object]:
         "total_input_tokens": value.total_input_tokens,
         "total_output_tokens": value.total_output_tokens,
         "llm_call_count": value.llm_call_count,
+        "unmeasured": list(value.unmeasured),
         "credits": None,
         "credit_attribution": "not_requested",
     }

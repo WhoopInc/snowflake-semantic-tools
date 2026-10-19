@@ -38,6 +38,7 @@ from snowflake_semantic_tools.cli.options import (
 from snowflake_semantic_tools.cli.output import render_policy
 from snowflake_semantic_tools.cli.render.diagnostics import plural
 from snowflake_semantic_tools.cli.render.style import Style
+from snowflake_semantic_tools.cli.render.tree import connectors, tree_prefixes
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.manifest import build_manifest, compiled_manifest, refuse_another_target
@@ -61,9 +62,6 @@ from snowflake_semantic_tools.domain.state import Manifest
 LINEAGE_OUTPUTS = ("table", "plain", "agent", "json")
 # The node kinds a trace of column lineage starts from, which show the wide columns by default.
 COLUMN_KINDS = frozenset(("dimension", "fact", "column"))
-# Tree connectors: a branch, the last branch, a line continuing past a row, and none; then ASCII.
-_UNICODE_TREE = ("├── ", "└── ", "│   ", "    ")
-_ASCII_TREE = ("|-- ", "`-- ", "|   ", "    ")
 _HEADINGS = {UPSTREAM: "reads", DOWNSTREAM: "read by"}
 
 
@@ -236,7 +234,7 @@ def _print(shown: _Shown) -> None:
 
 def _lines(shown: _Shown, unicode: bool) -> list[_Line]:
     """Return each line of the drawing, starts first, then each direction's heading and tree."""
-    branch, last, through, blank = _UNICODE_TREE if unicode else _ASCII_TREE
+    drawn = connectors(unicode)
     lines = [_Line("", key) for key in shown.start]
     sections = [
         (direction, rows)
@@ -245,13 +243,10 @@ def _lines(shown: _Shown, unicode: bool) -> list[_Line]:
     ]
     for index, (direction, rows) in enumerate(sections):
         closing = index == len(sections) - 1
-        lines.append(_Line(last if closing else branch, heading=_HEADINGS[direction]))
-        base = blank if closing else through
-        open_levels: list[bool] = []
-        for row in rows:
-            del open_levels[row.level - 1 :]
-            prefix = base + "".join(through if more else blank for more in open_levels) + (last if row.last else branch)
-            open_levels.append(not row.last)
+        lines.append(_Line(drawn.last if closing else drawn.branch, heading=_HEADINGS[direction]))
+        base = drawn.blank if closing else drawn.through
+        prefixes = tree_prefixes([(row.level, row.last) for row in rows], drawn, base)
+        for prefix, row in zip(prefixes, rows, strict=True):
             lines.append(_Line(prefix, row.key, edge=_edge(shown.graph, row, direction), cycle=row.cycle))
     return lines
 

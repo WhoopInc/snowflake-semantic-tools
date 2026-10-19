@@ -58,6 +58,7 @@ from snowflake_semantic_tools.cli.options import (
 from snowflake_semantic_tools.cli.output import print_progress
 from snowflake_semantic_tools.cli.plan_output import print_eval_results
 from snowflake_semantic_tools.cli.render.diagnostics import plural
+from snowflake_semantic_tools.cli.render.evals import EvalMarks
 from snowflake_semantic_tools.cli.render.progress import active_display
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import threads_setting
@@ -439,12 +440,21 @@ def _run_unpublished_evals(
 
 
 def _print_unpublished(outcome: InlineEvalOutcome) -> None:
-    """Print every eval as `sst test` prints a published run, then which metrics only approximate it."""
-    print_eval_results(outcome.suite)
-    approximated = outcome.data.get("approximated_metrics")
-    if isinstance(approximated, list) and approximated:
-        click.echo(f"approximate, never gating: {', '.join(str(name) for name in approximated)}")
+    """Print every eval as `sst test` prints a published run, then the run's verdict.
+
+    Its judged metrics are marked approximate, and those only the evaluation service scores
+    unscored.
+    """
+    marks = EvalMarks(
+        approximate=frozenset(_names(outcome.data.get("approximated_metrics"))),
+        unscored=frozenset(_names(outcome.data.get("unscored_metrics"))),
+    )
+    print_eval_results(outcome.suite, marks)
     click.echo(f"unpublished eval run {outcome.data.get('gate_verdict')}")
+
+
+def _names(value: object) -> list[str]:
+    return [str(name) for name in value] if isinstance(value, list) else []
 
 
 # The eval key each run in flight is shown under on a terminal, by run name.
@@ -514,5 +524,16 @@ def _eval_report(outcome: EvalGateOutcome) -> CommandResult:
         OK if outcome.passed else ERROR,
         outcome.diagnostics,
         dict(outcome.data),
-        human=None if suite is None else lambda: print_eval_results(suite),
+        human=None if suite is None else lambda: print_eval_results(suite, _gate_marks(outcome.data)),
     )
+
+
+def _gate_marks(data: Mapping[str, object]) -> EvalMarks:
+    """Mark the questions and metrics the gate found regressed."""
+    regressions = data.get("regressions")
+    pairs = (
+        (str(item.get("question_key")), str(item.get("metric_name")))
+        for item in (regressions if isinstance(regressions, list) else ())
+        if isinstance(item, dict)
+    )
+    return EvalMarks(regressions=frozenset(pairs))

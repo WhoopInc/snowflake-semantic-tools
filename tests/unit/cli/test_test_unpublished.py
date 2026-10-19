@@ -80,8 +80,14 @@ def test_the_human_report_names_the_approximate_metrics(tmp_path: Path, monkeypa
     port.agent_replies = _right_tools(project)  # type: ignore[assignment]
     result = _unpublished(monkeypatch, project, port, "--fail-fast", "--threads", "2")
     assert result.exit_code == 0, result.output
-    assert "  attempt 1  unpublished  COMPLETED  " in result.stdout
-    assert "approximate, never gating: answer_correctness, answer_grounding" in result.stdout
+    assert "eval:jaffle_analytics_agent  unpublished  COMPLETED  4/4 questions passed\n" in result.stdout
+    assert "├── answer_correctness       4/4 passed  average 1.000  approximate, never gates\n" in result.stdout
+    # A judged metric's miss fails no question, so only -v lists them.
+    assert "answer_grounding         0/4 passed  average 1.000  needs at least 3  approximate, never gates" in (
+        result.stdout
+    )
+    assert "not measured: agent tokens, LLM calls, judge tokens" in result.stdout
+    assert "└── all 4 questions passed  (-v lists them)\n" in result.stdout
     assert result.stdout.rstrip().endswith("unpublished eval run passed")
 
 

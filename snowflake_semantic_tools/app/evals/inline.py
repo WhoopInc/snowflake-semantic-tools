@@ -280,8 +280,11 @@ class RunInlineEvals:
         judged: JudgedReply,
         found: list[Diagnostic],
     ) -> tuple[float | None, str | None]:
-        """Score one metric on an answered question, with the judge's reason; a judge's failure
-        is added to `found`. An exact metric gives no reason: the row's tools say why."""
+        """Score one metric on an answered question, with the judge's reason.
+
+        A judge's failure is added to `found`. An exact metric gives no reason: the row's tools
+        say why.
+        """
         if metric.kind == _EXACT:
             called = (use.name for use in reply.tool_uses)
             return tool_selection_score(called, question.plan.declared, expected_tools(question.ground_truth)), None
@@ -504,7 +507,7 @@ def _data(
     unscored = sorted({name for _, plan in results for name in plan.unscored})
     return {
         "suite": "evals",
-        **eval_suite_json(suite),
+        **eval_suite_json(suite, frozenset((*approximated, *unscored))),
         "mode": "unpublished",
         "approximated_metrics": approximated,
         "unscored_metrics": unscored,

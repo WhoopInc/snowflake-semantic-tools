@@ -1252,12 +1252,78 @@ def test_eval_suite_json_normalizes_metrics_costs_and_empty_results() -> None:
             "total_input_tokens": 0,
             "total_output_tokens": 0,
             "llm_call_count": 0,
+            "unmeasured": [],
             "credits": None,
             "credit_attribution": "not_requested",
         },
         "regression_count": 0,
         "gate_verdict": "not_evaluated",
     }
+
+
+def test_each_attempt_projects_its_questions_and_a_lenient_metric_fails_none() -> None:
+    tools = EvalMetricResult("q1", "tool_selection_accuracy", 0.5, False, None, ThresholdRange(0.8))
+    judged = EvalMetricResult("q1", "answer_correctness", 0.4, False, "Too vague.")
+    cost = EvalCostSummary(duration_ms=40, total_input_tokens=100, total_output_tokens=9, unmeasured=("total_tokens",))
+    failing = EvalResultRow(
+        "q1",
+        "No meat?",
+        (judged, tools),
+        index=6,
+        answer="The veggie jaffle.",
+        expected_tools=("menu_search",),
+        called_tools=("menu_search", "menu_search"),
+        cost=cost,
+    )
+    lenient = EvalResultRow("q2", "Free?", (replace(judged, question_key="q2"),), index=7)
+    attempt = EvalRunAttempt("unpublished", 1, "COMPLETED", (failing, lenient), cost, wall_ms=1200)
+    suite = EvalSuiteResult((EvalRunResult("eval:sales_agent", (attempt,), DiagnosticBag(), True),), DiagnosticBag())
+
+    payload: Any = eval_suite_json(suite, frozenset({"answer_correctness"}))
+
+    shown = payload["evals"][0]["attempts"][0]
+    assert shown["wall_ms"] == 1200
+    first, second = shown["questions"]
+    assert first == {
+        "index": 6,
+        "question_key": "q1",
+        "input_query": "No meat?",
+        "passed": False,
+        "answer": "The veggie jaffle.",
+        "error": None,
+        "expected_tools": ["menu_search"],
+        "called_tools": ["menu_search", "menu_search"],
+        "metrics": [
+            {
+                "metric_name": "answer_correctness",
+                "score": 0.4,
+                "passed": False,
+                "threshold": None,
+                "explanation": "Too vague.",
+            },
+            {
+                "metric_name": "tool_selection_accuracy",
+                "score": 0.5,
+                "passed": False,
+                "threshold": {"min": 0.8, "max": None},
+                "explanation": None,
+            },
+        ],
+        "cost": {
+            "duration_ms": 40,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "total_input_tokens": 100,
+            "total_output_tokens": 9,
+            "llm_call_count": 0,
+            "unmeasured": ["total_tokens"],
+            "credits": None,
+            "credit_attribution": "not_requested",
+        },
+    }
+    # Only the approximate metric missed the second question, so it passed.
+    assert (second["passed"], second["cost"], second["expected_tools"]) == (True, None, None)
 
 
 def test_suite_concurrency_prefers_the_project_setting_then_the_largest_request() -> None:

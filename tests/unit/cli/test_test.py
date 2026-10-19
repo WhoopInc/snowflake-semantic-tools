@@ -425,8 +425,11 @@ def test_eval_suite_reports_every_attempt_in_human_output(
     )
 
     assert result.exit_code == 0, result.output
-    assert "  attempt 2  EVAL_RUN_R2  COMPLETED  0.1s  8 tokens (" in result.output
-    assert "    answer_correctness  1/1 passed  average 0.9" in result.output
+    assert "eval:jaffle_analytics_agent  attempt 2  EVAL_RUN_R2  COMPLETED  1/1 question passed" in result.output
+    assert "├── answer_correctness  1/1 passed  average 0.900\n" in result.output
+    # Each count names whose it is: the agent's time and tokens, the judge's tokens.
+    assert "├── cost  0.1s agent time · agent 10 in / 5 out · 1 LLM call · judge 8 tokens\n" in result.output
+    assert "└── the question passed  (-v shows it)" in result.output
 
 
 def test_eval_suite_preflight_failure_keeps_json_schema_stable(
@@ -452,6 +455,7 @@ def test_eval_suite_preflight_failure_keeps_json_schema_stable(
         "total_input_tokens": 0,
         "total_output_tokens": 0,
         "llm_call_count": 0,
+        "unmeasured": [],
         "credits": None,
         "credit_attribution": "not_requested",
     }

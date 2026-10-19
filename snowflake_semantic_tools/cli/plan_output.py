@@ -8,20 +8,19 @@ plan exits.
 
 from __future__ import annotations
 
-import dataclasses
 import re
 from pathlib import Path
-from typing import cast
 
 import click
 
 from snowflake_semantic_tools.adapters.paths import make_folders_within, output_root, remove_within, write_within
 from snowflake_semantic_tools.app.baseline import blocking
-from snowflake_semantic_tools.app.evals.run import EvalSuiteResult, eval_suite_json
+from snowflake_semantic_tools.app.evals.run import EvalSuiteResult
 from snowflake_semantic_tools.app.plan import PlanReady
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
 from snowflake_semantic_tools.cli.output import render_policy
-from snowflake_semantic_tools.cli.render.report import plan_lines, table
+from snowflake_semantic_tools.cli.render.evals import NO_MARKS, EvalMarks, EvalShown, eval_lines
+from snowflake_semantic_tools.cli.render.report import plan_lines
 from snowflake_semantic_tools.cli.render.style import Style
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
@@ -174,46 +173,37 @@ def print_changed_names(changeset: ChangeSet) -> None:
             click.echo(split_artifact_key(change.key)[1])
 
 
-def print_eval_results(result: EvalSuiteResult) -> None:
-    """Print every attempt of every eval: its run, status, time and tokens, then each metric's pass rate.
+def print_eval_results(result: EvalSuiteResult, marks: EvalMarks = NO_MARKS) -> None:
+    """Print every attempt of every eval as `render.evals.eval_lines` lays it out.
 
-    Status details and a retrieval error follow the attempt they belong to.
+    `-v` lists every question, else only those that fell short; `--quiet` shows each attempt's
+    metrics and cost alone; `-o plain` prints the tree without connectors.
 
     Example:
-        eval:jaffle_analyst
-          attempt 1  EVAL_RUN_A1  COMPLETED  41.2s  9,812 tokens (6,034 in, 3,778 out)  12 LLM calls
-            answer_correctness  5/6 passed  average 0.917
+        eval:jaffle_concierge  unpublished  COMPLETED  6/7 questions passed
+        ├── answer_correctness       7/7 passed  average 0.986  approximate, never gates
+        ├── tool_selection_accuracy  6/7 passed  average 0.929  needs at least 0.8
+        ├── cost  37.2s wall · 102.6s agent time · agent 250,640 in / 1,651 out · not measured: LLM calls, judge tokens
+        └── 1 of 7 questions fell short  (-v lists every question)
+            └── ✗ 6  Which jaffles on the menu have no meat in them?
+                ├── answer_correctness       1.00
+                └── tool_selection_accuracy  0.50  needs at least 0.8
+                    ├── expected  menu_search
+                    └── called    menu_search, menu_search
     """
-    terminal = render_policy().terminal
-    style = Style(terminal, stdout=True)
-    for eval_result in result.evals:
-        click.echo(style(eval_result.eval_key, "strong"), color=True if terminal.color_out else None)
-        for attempt in eval_result.attempts:
-            cost = attempt.cost
-            tokens = f"{cost.total_tokens:,} tokens ({cost.total_input_tokens:,} in, {cost.total_output_tokens:,} out)"
-            row = [f"attempt {attempt.attempt}", attempt.run_name, attempt.terminal_status]
-            row += [f"{cost.duration_ms / 1000:.1f}s", tokens, f"{cost.llm_call_count} LLM calls"]
-            click.echo("  " + table([row], terminal.width - 2)[0])
-            attempt_payload = eval_suite_json(
-                dataclasses.replace(result, evals=(dataclasses.replace(eval_result, attempts=(attempt,)),))
-            )
-            eval_payloads = cast(list[dict[str, object]], attempt_payload["evals"])
-            attempt_payloads = cast(list[dict[str, object]], eval_payloads[0]["attempts"])
-            summaries = cast(list[dict[str, object]], attempt_payloads[0]["metric_summaries"])
-            rows = [
-                [
-                    str(summary["metric_name"]),
-                    f"{summary['passed_count']}/{summary['record_count']} passed",
-                    f"average {summary['average_score']}",
-                ]
-                for summary in summaries
-            ]
-            for line in table(rows, terminal.width - 4):
-                click.echo("    " + line)
-            if attempt.status_details:
-                click.echo("    status details: " + "; ".join(attempt.status_details))
-            if attempt.retrieval_error:
-                click.echo(f"    retrieval error: {attempt.retrieval_error}")
+    policy = render_policy()
+    style = Style(policy.terminal, stdout=True)
+    shown = [EvalShown(item.eval_key, item.attempts) for item in result.evals]
+    lines = eval_lines(
+        shown,
+        style,
+        verbose=policy.verbose,
+        summary_only=policy.quiet,
+        plain=policy.output == "plain",
+        marks=marks,
+    )
+    for line in lines:
+        click.echo(line, color=True if policy.terminal.color_out else None)
 
 
 def write_plan_sql(project_dir: Path, changeset: ChangeSet, sql_out: Path | None) -> Path:
