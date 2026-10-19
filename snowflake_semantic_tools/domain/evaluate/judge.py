@@ -136,6 +136,21 @@ def judged_score(answer: object, low: float, high: float) -> float | None:
     return value if math.isfinite(value) and low <= value <= high else None
 
 
+def judged_reason(answer: object) -> str | None:
+    """Read the reason a judge gave for its score, stripped; None when it gave none.
+
+    Args:
+        answer: The completion, decoded or as JSON text.
+    """
+    if isinstance(answer, str):
+        try:
+            answer = json.loads(answer)
+        except json.JSONDecodeError:
+            return None
+    reason = answer.get("reason") if isinstance(answer, Mapping) else None
+    return reason.strip() or None if isinstance(reason, str) else None
+
+
 def _answer_format(low: float, high: float) -> str:
     return (
         f'Reply with a JSON object: "score", a number from {low:g} to {high:g}, and "reason", one sentence saying why.'

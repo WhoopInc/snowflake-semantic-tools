@@ -7302,7 +7302,7 @@ Fix: run it again; a judge that keeps failing names a model the account cannot u
 
 **Unpublished eval fell outside a threshold** (error)
 
-`eval '<artifact>': '<name>' fell outside its threshold <expected> on <count> question(s): <detail>`
+`eval '<artifact>': <name> <expected>, and <count> of <total> question(s) fell short: <detail>`
 
 Raised when in an unpublished eval run, an exact metric -- `tool_selection_accuracy` -- scored a question outside the metric's threshold.
 

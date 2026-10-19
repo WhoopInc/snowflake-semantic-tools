@@ -35,7 +35,8 @@ PLACEHOLDERS = frozenset(
         *("metric", "model", "module", "name", "offset", "other", "outside", "path", "placeholder"),
         *("policy", "position", "problem", "profile", "reason", "ref_function", "relation"),
         *("relationship", "root", "root_key", "row_count", "rule_id", "selector", "severity"),
-        *("shadowed", "size", "step", "subsystem", "suggestion", "target", "text", "type", "types"),
+        *("shadowed", "size", "step", "subsystem", "suggestion", "target", "text", "total", "type"),
+        *("types",),
         *("used", "value", "var", "version", "view"),
     }
 )

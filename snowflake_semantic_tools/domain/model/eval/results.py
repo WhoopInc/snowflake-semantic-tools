@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from snowflake_semantic_tools.domain.model.eval.model import ThresholdRange
+
 
 @dataclass(frozen=True, slots=True)
 class EvalMetricResult:
@@ -18,6 +20,7 @@ class EvalMetricResult:
     Attributes:
         score: None when none was reported.
         explanation: Why the scorer gave that score, as it said it; None when it gave no reason.
+        threshold: The band the score had to fall in to pass; None when the metric has none.
     """
 
     question_key: str
@@ -25,6 +28,7 @@ class EvalMetricResult:
     score: float | None
     passed: bool
     explanation: str | None = None
+    threshold: ThresholdRange | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,8 +44,8 @@ class EvalCostSummary:
         total_input_tokens: The agent's input tokens.
         total_output_tokens: The agent's output tokens.
         llm_call_count: The agent's model calls.
-        tokens_measured: False when no token or call count was read, so every count is 0
-            because nothing was counted, not because nothing was used.
+        unmeasured: The names of the fields above that were not counted, sorted; each is 0
+            because nothing counted it, not because nothing was used.
     """
 
     duration_ms: int = 0
@@ -51,7 +55,7 @@ class EvalCostSummary:
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     llm_call_count: int = 0
-    tokens_measured: bool = True
+    unmeasured: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

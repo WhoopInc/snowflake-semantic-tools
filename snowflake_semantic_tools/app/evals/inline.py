@@ -19,6 +19,7 @@ written to the eval state table, and no baseline is read, captured or compared.
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
@@ -26,7 +27,7 @@ from typing import Protocol
 from snowflake_semantic_tools.app.ask import DEFAULT_RUN_TIMEOUT_SECONDS
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.evals.retrieve import compiled_questions
+from snowflake_semantic_tools.app.evals.retrieve import compiled_questions, sum_costs
 from snowflake_semantic_tools.app.evals.run import EvalRunResult, EvalSuiteResult, eval_suite_json, suite_concurrency
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
@@ -36,10 +37,17 @@ from snowflake_semantic_tools.domain.evaluate.judge import (
     JudgedReply,
     answer_correctness_prompt,
     custom_judge_prompt,
+    judged_reason,
     judged_score,
     unfillable_placeholders,
 )
-from snowflake_semantic_tools.domain.evaluate.tool_selection import declared_tools, expected_tools, tool_selection_score
+from snowflake_semantic_tools.domain.evaluate.scores import score_text, threshold_phrase
+from snowflake_semantic_tools.domain.evaluate.tool_selection import (
+    counted_calls,
+    declared_tools,
+    expected_tools,
+    tool_selection_score,
+)
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_COMPLETED,
     CustomEvalMetric,
@@ -61,6 +69,10 @@ UNAVAILABLE_METRICS = frozenset(("tool_execution_accuracy", "logical_consistency
 # The name every inline attempt reports in place of an evaluation run's.
 INLINE_RUN_NAME = "unpublished"
 _EXACT, _JUDGED = "exact", "judged"
+# What an inline run never counts: the judge's tokens, which AI_COMPLETE's answer omits, and
+# the agent's model calls, which its usage omits (measured on a live account).
+_NEVER_COUNTED = ("completion_tokens", "llm_call_count", "prompt_tokens", "total_tokens")
+_AGENT_TOKENS = ("total_input_tokens", "total_output_tokens")
 
 
 class InlineEvalPort(AgentRunPort, CortexPort, Protocol):
@@ -186,9 +198,11 @@ class RunInlineEvals:
         try:
             for batch in [[plan] for plan, _ in planned] if fail_fast else [[plan for plan, _ in planned]]:
                 questions = [question for plan in batch for question in _questions(plan)]
+                started = time.monotonic()
                 answered = fanout.map(self._scored, questions)
+                wall_ms = int((time.monotonic() - started) * 1000)
                 for plan in batch:
-                    result = _eval_result(plan, questions, answered, planned)
+                    result = _eval_result(plan, questions, answered, planned, wall_ms)
                     results.append((result, plan))
                 last = results[-1][0]
                 if fail_fast and (not last.success or last.diagnostics.has_errors):
@@ -204,8 +218,11 @@ class RunInlineEvals:
         diagnostics = DiagnosticBag((*notes, *suite.diagnostics))
         return InlineEvalOutcome(diagnostics, suite, not diagnostics.has_errors, _data(suite, results, diagnostics))
 
-    def _scored(self, port: InlineEvalPort, question: _Question) -> tuple[EvalResultRow, int, tuple[Diagnostic, ...]]:
+    def _scored(self, port: InlineEvalPort, question: _Question) -> tuple[EvalResultRow, tuple[Diagnostic, ...]]:
         """Ask one question and score each metric on the reply; unscored metrics have no score.
+
+        The row keeps what the reply said and did: its answer or error, the tools it called
+        against those expected, each judge's reason, and the question's time and tokens.
 
         A run that fails, or answers with an error, scores nothing. A judge that fails or
         answers no number on its scale leaves its metric unscored on this question.
@@ -233,13 +250,26 @@ class RunInlineEvals:
         judged = _judged_reply(question, reply)
         metrics = []
         for metric in question.plan.metrics:
-            score = None if reply.error is not None else self._score(port, metric, question, reply, judged, found)
-            metrics.append(EvalMetricResult(question.key, metric.name, score, _within(metric.threshold, score)))
+            score, reason = (
+                (None, None) if reply.error is not None else self._score(port, metric, question, reply, judged, found)
+            )
+            passed = _within(metric.threshold, score)
+            metrics.append(EvalMetricResult(question.key, metric.name, score, passed, reason, metric.threshold))
         metrics.extend(EvalMetricResult(question.key, name, None, False) for name in question.plan.unscored)
         row = EvalResultRow(
-            question.key, question.input_query, tuple(sorted(metrics, key=lambda item: item.metric_name))
+            question.key,
+            question.input_query,
+            tuple(sorted(metrics, key=lambda item: item.metric_name)),
+            index=question.index,
+            answer=None if reply.error is not None else reply.answer,
+            error=reply.error,
+            expected_tools=expected_tools(question.ground_truth),
+            called_tools=None
+            if reply.error is not None
+            else counted_calls((use.name for use in reply.tool_uses), question.plan.declared),
+            cost=_reply_cost(reply),
         )
-        return row, reply.duration_ms, tuple(found)
+        return row, tuple(found)
 
     def _score(
         self,
@@ -249,11 +279,12 @@ class RunInlineEvals:
         reply: AgentReply,
         judged: JudgedReply,
         found: list[Diagnostic],
-    ) -> float | None:
-        """Score one metric on an answered question; a judge's failure is added to `found`."""
+    ) -> tuple[float | None, str | None]:
+        """Score one metric on an answered question, with the judge's reason; a judge's failure
+        is added to `found`. An exact metric gives no reason: the row's tools say why."""
         if metric.kind == _EXACT:
             called = (use.name for use in reply.tool_uses)
-            return tool_selection_score(called, question.plan.declared, expected_tools(question.ground_truth))
+            return tool_selection_score(called, question.plan.declared, expected_tools(question.ground_truth)), None
         custom = metric.custom
         if custom is None:
             low, high = ANSWER_CORRECTNESS_SCALE
@@ -263,16 +294,16 @@ class RunInlineEvals:
             low, high = custom.score_ranges.min_score[0], custom.score_ranges.max_score[1]
             prompt = custom_judge_prompt(custom.prompt, judged, low, high)
         if prompt is None:
-            return None
+            return None, None
         try:
             answer = port.complete_json(metric.model, prompt, JUDGE_SCHEMA)
         except SnowflakePortError as exc:
             found.append(_no_score(question, metric, str(exc)))
-            return None
+            return None, None
         score = judged_score(answer, low, high)
         if score is None:
             found.append(_no_score(question, metric, f"it answered no number from {low:g} to {high:g}"))
-        return score
+        return score, judged_reason(answer)
 
 
 def _plan(setup: InlineEvalSetup, defaults: EvalDefaults) -> tuple[_Plan, tuple[Diagnostic, ...]]:
@@ -341,27 +372,28 @@ def _questions(plan: _Plan) -> list[_Question]:
 def _eval_result(
     plan: _Plan,
     questions: list[_Question],
-    answered: tuple[tuple[EvalResultRow, int, tuple[Diagnostic, ...]], ...],
+    answered: tuple[tuple[EvalResultRow, tuple[Diagnostic, ...]], ...],
     planned: list[tuple[_Plan, tuple[Diagnostic, ...]]],
+    wall_ms: int,
 ) -> EvalRunResult:
     """Collect one eval's questions into one attempt, then gate it on its exact metrics.
 
     The attempt is COMPLETED when every question was answered, PARTIALLY_COMPLETED when some
-    were, and FAILED when none was. The eval is accepted when the attempt completed.
+    were, and FAILED when none was. The eval is accepted when the attempt completed. Its cost
+    adds its questions'; `wall_ms` is how long the batch it ran in took.
 
     Diagnostics:
         SST-ASK007: an exact metric scored some question outside its threshold.
     """
     mine = [outcome for question, outcome in zip(questions, answered, strict=True) if question.plan is plan]
     setup_notes = next(notes for candidate, notes in planned if candidate is plan)
-    rows = tuple(row for row, _, _ in mine)
-    failed = sum(any(item.code == "SST-ASK002" for item in notes) for _, _, notes in mine)
+    rows = tuple(row for row, _ in mine)
+    failed = sum(any(item.code == "SST-ASK002" for item in notes) for _, notes in mine)
     status = EVAL_COMPLETED if not failed else "FAILED" if failed == len(mine) else "PARTIALLY_COMPLETED"
-    attempt = EvalRunAttempt(
-        INLINE_RUN_NAME, 1, status, rows, EvalCostSummary(duration_ms=sum(duration for _, duration, _ in mine))
-    )
+    cost = sum_costs(tuple(row.cost for row in rows if row.cost is not None))
+    attempt = EvalRunAttempt(INLINE_RUN_NAME, 1, status, rows, cost, wall_ms=wall_ms)
     gated = tuple(_gate(plan, rows))
-    diagnostics = DiagnosticBag((*setup_notes, *(item for _, _, notes in mine for item in notes), *gated))
+    diagnostics = DiagnosticBag((*setup_notes, *(item for _, notes in mine for item in notes), *gated))
     return EvalRunResult(plan.setup.compiled.artifact_key, (attempt,), diagnostics, status == EVAL_COMPLETED)
 
 
@@ -371,16 +403,18 @@ def _gate(plan: _Plan, rows: tuple[EvalResultRow, ...]) -> list[Diagnostic]:
     A question the metric left unscored, having no expectation, does not count.
 
     Diagnostics:
-        SST-ASK007: once per such metric, naming the questions by number.
+        SST-ASK007: once per such metric, naming each question by number with its score and
+            the tools it was expected to call and called.
     """
     found = []
     compiled = plan.setup.compiled
     for metric in plan.metrics:
-        if metric.kind != _EXACT or metric.threshold is None:
+        phrase = threshold_phrase(metric.threshold)
+        if metric.kind != _EXACT or phrase is None:
             continue
         outside = [
-            index
-            for index, row in enumerate(rows, start=1)
+            (row, result)
+            for row in rows
             for result in row.metrics
             if result.metric_name == metric.name and result.score is not None and not result.passed
         ]
@@ -391,12 +425,40 @@ def _gate(plan: _Plan, rows: tuple[EvalResultRow, ...]) -> list[Diagnostic]:
                     subject=compiled.artifact_key,
                     artifact=compiled.name,
                     name=metric.name,
-                    expected=_band(metric.threshold),
+                    expected=phrase,
                     count=len(outside),
-                    detail="questions " + ", ".join(str(index) for index in outside),
+                    total=len(rows),
+                    detail="; ".join(_short(row, result.score) for row, result in outside),
                 )
             )
     return found
+
+
+def _short(row: EvalResultRow, score: float | None) -> str:
+    """Say how one question fell short: its number, its score, and the tools behind it."""
+    return (
+        f"question {row.index} scored {score_text(score)} "
+        f"(expected: {_tool_list(row.expected_tools)}; called: {_tool_list(row.called_tools)})"
+    )
+
+
+def _tool_list(tools: tuple[str, ...] | None) -> str:
+    return "none" if not tools else ", ".join(tools)
+
+
+def _reply_cost(reply: AgentReply) -> EvalCostSummary:
+    """One question's cost: the agent's time and tokens, and which counts it never had."""
+    if reply.tokens is None:
+        return EvalCostSummary(
+            duration_ms=reply.duration_ms, unmeasured=tuple(sorted((*_NEVER_COUNTED, *_AGENT_TOKENS)))
+        )
+    tokens_in, tokens_out = reply.tokens
+    return EvalCostSummary(
+        duration_ms=reply.duration_ms,
+        total_input_tokens=tokens_in,
+        total_output_tokens=tokens_out,
+        unmeasured=_NEVER_COUNTED,
+    )
 
 
 def _judged_reply(question: _Question, reply: AgentReply) -> JudgedReply:
@@ -432,12 +494,6 @@ def _within(threshold: ThresholdRange | None, score: float | None) -> bool:
     if threshold is None:
         return True
     return (threshold.min is None or score >= threshold.min) and (threshold.max is None or score <= threshold.max)
-
-
-def _band(threshold: ThresholdRange) -> str:
-    low = "-inf" if threshold.min is None else f"{threshold.min:g}"
-    high = "inf" if threshold.max is None else f"{threshold.max:g}"
-    return f"{low}..{high}"
 
 
 def _data(

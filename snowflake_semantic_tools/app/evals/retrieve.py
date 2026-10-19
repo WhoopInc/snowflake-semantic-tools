@@ -450,7 +450,7 @@ def _row_cost(row: Mapping[str, object]) -> EvalCostSummary:
 
 
 def sum_costs(values: tuple[EvalCostSummary, ...]) -> EvalCostSummary:
-    """Add up costs field by field."""
+    """Add up costs field by field; a count any of them did not measure is unmeasured in the sum."""
     return EvalCostSummary(
         duration_ms=sum(value.duration_ms for value in values),
         prompt_tokens=sum(value.prompt_tokens for value in values),
@@ -459,6 +459,7 @@ def sum_costs(values: tuple[EvalCostSummary, ...]) -> EvalCostSummary:
         total_input_tokens=sum(value.total_input_tokens for value in values),
         total_output_tokens=sum(value.total_output_tokens for value in values),
         llm_call_count=sum(value.llm_call_count for value in values),
+        unmeasured=tuple(sorted({name for value in values for name in value.unmeasured})),
     )
 
 

@@ -150,3 +150,11 @@ def test_the_run_response_decodes_to_a_reply_or_its_error(raw: object, expected:
 def test_an_item_without_its_body_reads_as_empty() -> None:
     raw = {"content": [{"type": "tool_use"}, {"type": "tool_result", "tool_result": "x"}, {"type": "text"}]}
     assert read_agent_reply(raw, 7) == AgentReply("", (ToolUse("", ""),), (ToolResult("", ""),), None, 7)
+
+
+def test_the_run_response_reports_its_tokens_when_its_usage_does() -> None:
+    usage = {"tokens_consumed": [{"input_tokens": {"total": 120}, "output_tokens": {"total": 30}}]}
+    counted = {"content": [{"type": "text", "text": "Hi"}], "metadata": {"usage": usage}}
+    assert read_agent_reply(json.dumps(counted)).tokens == (120, 30)
+    assert read_agent_reply({"content": [], "metadata": "none"}).tokens is None
+    assert read_agent_reply({"content": []}).tokens is None

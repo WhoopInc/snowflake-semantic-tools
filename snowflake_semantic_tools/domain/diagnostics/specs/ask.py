@@ -87,7 +87,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-ASK007",
         Severity.ERROR,
         "Unpublished eval fell outside a threshold",
-        "eval '{artifact}': '{name}' fell outside its threshold {expected} on {count} question(s): {detail}",
+        "eval '{artifact}': {name} {expected}, and {count} of {total} question(s) fell short: {detail}",
         "fix the agent until the metric passes, or the expectation if it is wrong",
         condition=(
             "in an unpublished eval run, an exact metric -- `tool_selection_accuracy` -- scored a "

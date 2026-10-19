@@ -327,17 +327,31 @@ def _finished(data: Mapping[str, object], sequence: int | None) -> Finished:
     )
 
 
-def _tokens(usage: object) -> int:
-    """Sum the input and output tokens each model the run used reports."""
+def usage_tokens(usage: object) -> tuple[int, int] | None:
+    """Read a run's `usage`: the input and output tokens every model it used reports, summed.
+
+    The same `tokens_consumed` list ends a streamed run and a run answered whole (measured on
+    a live account), one entry per model, each with `input_tokens` and `output_tokens` totals.
+
+    Returns:
+        `(input, output)`; None when `usage` holds no `tokens_consumed` list.
+    """
     consumed = usage.get("tokens_consumed") if isinstance(usage, dict) else None
-    total = 0
-    for item in consumed if isinstance(consumed, list) else ():
+    if not isinstance(consumed, list):
+        return None
+    sides = [0, 0]
+    for item in consumed:
         if not isinstance(item, dict):
             continue
-        for side in ("input_tokens", "output_tokens"):
+        for position, side in enumerate(("input_tokens", "output_tokens")):
             counted = item.get(side)
-            total += _number(counted.get("total")) or 0 if isinstance(counted, dict) else 0
-    return total
+            sides[position] += _number(counted.get("total")) or 0 if isinstance(counted, dict) else 0
+    return sides[0], sides[1]
+
+
+def _tokens(usage: object) -> int:
+    """Sum the input and output tokens each model the run used reports."""
+    return sum(usage_tokens(usage) or ())
 
 
 def _text(value: object) -> str:

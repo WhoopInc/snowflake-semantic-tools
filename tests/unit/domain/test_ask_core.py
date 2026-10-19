@@ -30,6 +30,7 @@ from snowflake_semantic_tools.domain.ask.events import (
     Warning,
     decode,
     result_table,
+    usage_tokens,
 )
 from snowflake_semantic_tools.domain.ask.spec import Rename, referenced_names, rewrite_spec, spec_changes
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
@@ -212,3 +213,26 @@ def test_a_reference_to_the_object_is_renamed_and_nothing_else_is() -> None:
 def test_an_orchestration_that_is_not_an_object_is_left_as_it_is() -> None:
     text, done = rewrite_spec(json.dumps({**_SPEC, "orchestration": "odd"}), {"db.sv.sales": Rename("A.B.C")})
     assert json.loads(text)["orchestration"] == "odd" and done == ("db.sv.sales",)
+
+
+@pytest.mark.parametrize(
+    ("usage", "tokens"),
+    [
+        (
+            {
+                "tokens_consumed": [
+                    {"input_tokens": {"total": 19327, "cache_read": 8850}, "output_tokens": {"total": 65}},
+                    {"input_tokens": {"total": 10}, "output_tokens": "not counted"},
+                    "not an entry",
+                ]
+            },
+            (19337, 65),
+        ),
+        ({"tokens_consumed": []}, (0, 0)),
+        ({"tokens_consumed": "none"}, None),
+        ({}, None),
+        (None, None),
+    ],
+)
+def test_a_runs_usage_reads_as_its_input_and_output_tokens(usage: object, tokens: tuple[int, int] | None) -> None:
+    assert usage_tokens(usage) == tokens

@@ -10,8 +10,10 @@ import pytest
 from snowflake_semantic_tools.app.ask import stale_dependencies
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.evals.inline import INLINE_RUN_NAME, RunInlineEvals
+from snowflake_semantic_tools.app.evals.retrieve import sum_costs
 from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
 from snowflake_semantic_tools.domain.model.eval import (
+    EvalCostSummary,
     EvalDefaults,
     EvalGroundTruth,
     EvalInvocation,
@@ -101,10 +103,14 @@ def test_an_exact_metric_outside_its_threshold_fails_the_run_and_a_judged_one_ne
     [failed] = outcome.diagnostics
     assert (failed.code, failed.severity) == ("SST-ASK007", Severity.ERROR)
     assert failed.message == (
-        "eval 'sales_agent': 'tool_selection_accuracy' fell outside its threshold 0.8..inf "
-        "on 1 question(s): questions 1"
+        "eval 'sales_agent': tool_selection_accuracy needs at least 0.8, and 1 of 2 question(s) fell short: "
+        "question 1 scored 0.00 (expected: SALES; called: none)"
     )
     assert outcome.data["gate_verdict"] == "failed"
+    # The judged metric's reason is kept on its question, though it never gates.
+    [first, _] = outcome.suite.evals[0].attempts[0].rows
+    judged = next(item for item in first.metrics if item.metric_name == "grounding")
+    assert (judged.score, judged.explanation) == (0.0, "wrong")
 
 
 def test_an_ungated_exact_metric_reports_its_score_without_failing() -> None:
@@ -272,3 +278,45 @@ def test_the_callers_notes_come_first_and_progress_hears_each_question() -> None
     assert _codes(outcome.diagnostics)[0] == "SST-ASK001"
     assert heard == ["eval:sales_agent: question 1 answered"]
     assert json.dumps(outcome.data)  # the projection is plain JSON
+
+
+def test_each_question_keeps_its_answer_tools_and_cost_and_the_attempt_its_wall_time() -> None:
+    port = FakeSnowflake()
+    port.agent_replies = {
+        "Orders?": AgentReply(
+            "12.", (SALES, SALES, ToolUse("chart", "data_to_chart")), duration_ms=40, tokens=(100, 9)
+        ),
+        "Free?": AgentReply("Free.", (), duration_ms=25),
+        "Down?": AgentReply(error="the agent is down", duration_ms=5),
+    }
+    questions = (_question("Orders?", "SALES"), _question("Free?", invocations=False), _question("Down?", "SALES"))
+    outcome = RunInlineEvals(port).run((inline_setup(_eval(_tool_selection(), questions=questions)),))
+    [attempt] = outcome.suite.evals[0].attempts
+    orders, free, down = attempt.rows
+    assert (orders.index, orders.answer, orders.error) == (1, "12.", None)
+    # A chart call does not count, and a repeated call counts each time.
+    assert (orders.expected_tools, orders.called_tools) == (("SALES",), ("SALES", "SALES"))
+    assert orders.cost == EvalCostSummary(
+        duration_ms=40,
+        total_input_tokens=100,
+        total_output_tokens=9,
+        unmeasured=("completion_tokens", "llm_call_count", "prompt_tokens", "total_tokens"),
+    )
+    tool = next(item for item in orders.metrics if item.metric_name == "tool_selection_accuracy")
+    assert (tool.score, tool.passed, tool.threshold, tool.explanation) == (0.5, False, ThresholdRange(0.8), None)
+    # A reply without usage leaves the agent's tokens unmeasured; no expectation stays None.
+    assert (free.expected_tools, free.called_tools) == (None, ())
+    assert free.cost is not None and "total_input_tokens" in free.cost.unmeasured
+    assert (down.answer, down.error, down.called_tools) == (None, "the agent is down", None)
+    assert attempt.cost.duration_ms == 70 and attempt.cost.total_input_tokens == 100
+    assert "total_input_tokens" in attempt.cost.unmeasured
+    assert attempt.wall_ms is not None and attempt.wall_ms >= 0
+
+
+def test_a_sum_leaves_unmeasured_every_count_one_of_its_parts_did_not_measure() -> None:
+    counted = EvalCostSummary(duration_ms=1, total_input_tokens=5, unmeasured=("llm_call_count",))
+    uncounted = EvalCostSummary(duration_ms=2, unmeasured=("total_input_tokens", "llm_call_count"))
+    assert sum_costs((counted, uncounted)) == EvalCostSummary(
+        duration_ms=3, total_input_tokens=5, unmeasured=("llm_call_count", "total_input_tokens")
+    )
+    assert sum_costs(()) == EvalCostSummary()

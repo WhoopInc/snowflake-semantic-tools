@@ -33,8 +33,8 @@ def test_sst_ask007_fires() -> None:
     diagnostic = only(RunInlineEvals(port).run((_setup(),)).diagnostics, "SST-ASK007")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
-        "eval 'sales_agent': 'tool_selection_accuracy' fell outside its threshold 0.8..inf on 1 question(s): "
-        "questions 1"
+        "eval 'sales_agent': tool_selection_accuracy needs at least 0.8, and 1 of 1 question(s) fell short: "
+        "question 1 scored 0.00 (expected: none; called: SALES)"
     )
     assert diagnostic.subject == "eval:sales_agent"
 

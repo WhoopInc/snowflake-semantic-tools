@@ -13,6 +13,7 @@ from snowflake_semantic_tools.domain.evaluate.judge import (
     answer_correctness_prompt,
     custom_judge_prompt,
     fill_judge_prompt,
+    judged_reason,
     judged_score,
     unfillable_placeholders,
 )
@@ -213,3 +214,19 @@ def test_a_score_has_two_places_and_an_average_three() -> None:
         "no score",
         "no score",
     )
+
+
+@pytest.mark.parametrize(
+    ("answer", "reason"),
+    [
+        ({"score": 0.5, "reason": " Half right. "}, "Half right."),
+        ('{"score": 1, "reason": "ok"}', "ok"),
+        ({"score": 1, "reason": "  "}, None),
+        ({"score": 1, "reason": 3}, None),
+        ({"score": 1}, None),
+        ("not json", None),
+        ([1], None),
+    ],
+)
+def test_a_judges_reason_is_read_stripped_when_it_gave_one(answer: object, reason: str | None) -> None:
+    assert judged_reason(answer) == reason

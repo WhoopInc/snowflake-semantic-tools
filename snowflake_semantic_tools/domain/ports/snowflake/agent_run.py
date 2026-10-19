@@ -50,6 +50,8 @@ class AgentReply:
         error: Snowflake's message when the run answered with an error instead of a reply;
             None when it replied.
         duration_ms: How long the run took, from asking to the answer; 0 when not measured.
+        tokens: The run's input and output tokens, over every model it used; None when the
+            response reported none.
     """
 
     answer: str = ""
@@ -57,6 +59,7 @@ class AgentReply:
     tool_results: tuple[ToolResult, ...] = ()
     error: str | None = None
     duration_ms: int = 0
+    tokens: tuple[int, int] | None = None
 
 
 class AgentRunPort(Protocol):

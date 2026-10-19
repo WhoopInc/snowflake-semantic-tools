@@ -25,6 +25,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector.session import (
     _fetch,
     _headline,
 )
+from snowflake_semantic_tools.domain.ask.events import usage_tokens
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake.agent_run import AgentReply, AgentRunPort, ToolResult, ToolUse
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -64,7 +65,8 @@ def ask_request(question: str) -> str:
 def read_agent_reply(raw: object, duration_ms: int = 0) -> AgentReply:
     """Read what `DATA_AGENT_RUN` returned: the reply's text, tool calls and tool results, or its error.
 
-    A response with no `content`, or with a `code`, is an error, reported by its `message`;
+    Its `metadata.usage` gives the run's tokens, when it reports them. A response with no
+    `content`, or with a `code`, is an error, reported by its `message`;
     one that is not JSON, or not an object, is an error reported by its text. Items of other
     types, and items that are not objects, are skipped.
     """
@@ -78,6 +80,7 @@ def read_agent_reply(raw: object, duration_ms: int = 0) -> AgentReply:
         return AgentReply(error=_headline(detail), duration_ms=duration_ms)
     items = [item for item in response["content"] if isinstance(item, dict)]
     texts = [str(item.get("text") or "") for item in items if item.get("type") == "text"]
+    metadata = response.get("metadata")
     return AgentReply(
         answer="\n\n".join(text for text in texts if text),
         tool_uses=tuple(_tool_use(item.get("tool_use")) for item in items if item.get("type") == "tool_use"),
@@ -85,6 +88,7 @@ def read_agent_reply(raw: object, duration_ms: int = 0) -> AgentReply:
             _tool_result(item.get("tool_result")) for item in items if item.get("type") == "tool_result"
         ),
         duration_ms=duration_ms,
+        tokens=usage_tokens(metadata.get("usage")) if isinstance(metadata, dict) else None,
     )
 
 
