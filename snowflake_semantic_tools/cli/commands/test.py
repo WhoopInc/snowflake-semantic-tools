@@ -144,8 +144,8 @@ def test_command(
     the summary counts the suites that passed, failed, and were skipped: not named, not
     applying, or not reached once --fail-fast stopped. The eval suite holds the target's run
     lock while it runs, and `--break-stale-lock` takes it over only from a run that has
-    expired; progress on its runs goes to stderr, except under --quiet or --output json or
-    yaml. `--capture-baseline` exits 3 unless the eval suite runs.
+    expired; progress on its runs goes to stderr, except under --quiet or --output json.
+    `--capture-baseline` exits 3 unless the eval suite runs.
 
     `--unpublished` runs the eval suite, alone unless --suite names smoke too, against each
     agent as it compiles now, through temporary agents: it needs no `sst compile` or `sst
@@ -395,7 +395,7 @@ def _run_unpublished_evals(
     agent depends on, and the selection. No lock is taken, and no manifest, state, baseline
     or eval state is read or written beyond one read of the state table, which checks what
     each agent calls that is published differently (SST-ASK001). Each question's end goes to
-    stderr, except under --quiet or --output json or yaml.
+    stderr, except under --quiet or --output json.
 
     Raises:
         ProjectError: the selection compiles no eval, or an agent's scratch schema renders

@@ -484,8 +484,8 @@ eval run EVAL_SALES_ANALYST_1a2b3c4_ci_20261008T091500Z: ended COMPLETED after 7
 An attempt that ends without a terminal status says why: `ended START_FAILED`
 or `ended STATUS_FAILED`. With several runs in flight their lines interleave,
 each whole, and the `waiting on` line lists every run, a run no read has
-described yet as `STARTING`. `--quiet`, `--output json` and `--output yaml`
-print none of these lines.
+described yet as `STARTING`. `--quiet` and `--output json` print none of
+these lines.
 
 ### How long a run takes
 
