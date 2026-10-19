@@ -56,3 +56,12 @@ class SnowflakeStatementTimedOut(SnowflakeTransientError):
 
 class AgentVersionNotFound(SnowflakePortError):
     """An agent version selector names no committed version: it was never created, or was dropped."""
+
+
+class ScopeUnavailable(SnowflakePortError):
+    """A session for `query_in_context` that did not start in its database and schema.
+
+    The schema or database does not exist, or the role cannot use it; nothing was run. A
+    schema apply has yet to create is one, so a caller that can run the statement without
+    the scope may do so.
+    """

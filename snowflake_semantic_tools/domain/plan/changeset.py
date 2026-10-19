@@ -23,7 +23,7 @@ from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
-from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
+from snowflake_semantic_tools.domain.model.identifier import SchemaScope, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Change,
     ChangeSet,
@@ -34,7 +34,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from snowflake_semantic_tools.domain.model.registry import Registry
 from snowflake_semantic_tools.domain.plan.classify import classify
 from snowflake_semantic_tools.domain.plan.order import order_changes, render_order
-from snowflake_semantic_tools.domain.plan.preflight import Preflight, check_preflight
+from snowflake_semantic_tools.domain.plan.preflight import Preflight, check_preflight, schemas_to_create
 from snowflake_semantic_tools.domain.plan.prune import block_unpublished_dependencies, block_unsafe, plan_prunes
 from snowflake_semantic_tools.domain.state import Manifest, State, content_hash
 
@@ -89,7 +89,8 @@ def build_changeset(
     decided, preflighted = check_preflight(candidates, preflight) if preflight else (candidates, ())
     safe, unpinned = block_unsafe(decided, registry)
     diagnostics = (*classified, *skipped, *unordered, *preflighted, *unpinned)
-    return _ordered(safe, diagnostics, manifest, target, observation, full)
+    schemas = schemas_to_create(safe, preflight) if preflight else ()
+    return _ordered(safe, diagnostics, manifest, target, observation, full, schemas)
 
 
 def _classify_all(
@@ -127,15 +128,23 @@ def _ordered(
     target: TargetIdentity,
     observation: SnowflakeObservation,
     full: bool,
+    schemas: tuple[SchemaScope, ...] = (),
 ) -> ChangeSet:
     """Order the changes by dependency into the plan; without an order, it has no changes and no id."""
     ordered, unordered = order_changes(changes)
     if unordered is not None:
         failed = DiagnosticBag((*diagnostics, unordered))
         return ChangeSet(manifest.manifest_id, target, (), failed, observation.fetched_at, full)
-    plan_id = _plan_id(manifest.manifest_id, target, observation.fetched_at, ordered)
+    plan_id = _plan_id(manifest.manifest_id, target, observation.fetched_at, ordered, schemas)
     return ChangeSet(
-        manifest.manifest_id, target, ordered, DiagnosticBag(diagnostics), observation.fetched_at, full, plan_id
+        manifest.manifest_id,
+        target,
+        ordered,
+        DiagnosticBag(diagnostics),
+        observation.fetched_at,
+        full,
+        plan_id,
+        schemas,
     )
 
 
@@ -150,8 +159,12 @@ def _plan_id(
     target: TargetIdentity,
     observation_at: str,
     ordered: tuple[Change, ...],
+    schemas: tuple[SchemaScope, ...] = (),
 ) -> str:
-    """Hash what identifies a plan: its manifest, target, observation time, and each decision."""
+    """Hash what identifies a plan: its manifest, target, observation time, each decision, and its schemas.
+
+    A plan that creates no schema hashes as it did before schemas were planned.
+    """
     identity = {
         "manifest_id": manifest_id,
         "target": target.as_dict(),
@@ -166,4 +179,6 @@ def _plan_id(
             for change in ordered
         ],
     }
+    if schemas:
+        identity["schemas"] = [scope.sql for scope in schemas]
     return content_hash(identity)

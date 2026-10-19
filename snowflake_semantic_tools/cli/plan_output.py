@@ -147,14 +147,18 @@ def outcome_json(outcome: ApplyOutcome) -> dict[str, object]:
     }
 
 
-def print_plan(changeset: ChangeSet, *, full: bool = False, more: str = "--full shows all") -> None:
+def print_plan(
+    changeset: ChangeSet, *, full: bool = False, more: str = "--full shows all", unchecked: bool = False
+) -> None:
     """Print the plan as `render.report.plan_lines` lays it out: each change, then what stays the same.
 
     `--verbose` lists the unchanged artifacts too; the verdict says the counts. `more` says where
-    the rest of a member diff cut short is.
+    the rest of a member diff cut short is. `unchecked` marks the schemas to create as read from
+    a recorded observation, not checked now.
     """
     policy = render_policy()
-    lines = plan_lines(changeset, Style(policy.terminal, stdout=True), verbose=policy.verbose, full=full, more=more)
+    style = Style(policy.terminal, stdout=True)
+    lines = plan_lines(changeset, style, verbose=policy.verbose, full=full, more=more, unchecked=unchecked)
     for line in lines:
         click.echo(line, color=True if policy.terminal.color_out else None)
 

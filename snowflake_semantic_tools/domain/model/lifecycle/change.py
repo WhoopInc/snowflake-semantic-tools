@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
-from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
+from snowflake_semantic_tools.domain.model.identifier import SchemaScope, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle.action import Action, ChangeReason
 from snowflake_semantic_tools.domain.model.lifecycle.member import MemberDiff
 from snowflake_semantic_tools.domain.model.lifecycle.observation import (
@@ -76,6 +76,9 @@ class ChangeSet:
         observation_at: When plan observed Snowflake, as the observation recorded it.
         plan_id: The content hash of the planned changes; empty when plan produced no
             changes to hash, as for a dependency cycle.
+        schemas: The absent schemas apply creates before anything else, with
+            `apply.create_schemas` on: those the writes, their upload stages and the state
+            tables go in, in the order the plan first needs them.
     """
 
     manifest_id: str
@@ -85,6 +88,7 @@ class ChangeSet:
     observation_at: str
     full: bool = True
     plan_id: str = ""
+    schemas: tuple[SchemaScope, ...] = ()
 
     @property
     def writes(self) -> tuple[Change, ...]:

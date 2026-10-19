@@ -54,6 +54,7 @@ from tests.helpers.artifact_builders import (
     target,
 )
 from tests.helpers.clocks import FixedClock
+from tests.helpers.progress_recorder import RecordedProgress
 from tests.helpers.snowflake_fake import FakeSnowflake, failed
 from tests.helpers.sql_values import statement, texts
 
@@ -1194,3 +1195,20 @@ def test_a_write_that_ran_whole_without_leaving_its_marker_says_so() -> None:
     assert reported.message == (
         "agent:sales: DB.SCHEMA.SALES, whose ownership marker the write did not leave, changed since the plan"
     )
+
+
+def test_each_change_is_a_unit_of_publish_that_says_how_it_ended() -> None:
+    applied, refused = rendered("ALPHA"), rendered("BRAVO")
+    port = FakeSnowflake()
+    port.execute_results = [ExecResult(True, ("q1",)), failed("not authorized")]
+    progress = RecordedProgress()
+    use_case = ApplyArtifacts(
+        port, InMemoryStateStore(), FixedClock(), state_table=rendered("STATE").target, progress=progress
+    )
+    use_case.run(changeset(change(applied), change(refused)), state(), ApplyOptions(parallelism=1))
+    assert progress.units() == [
+        ("started", "publish", applied.key, "create"),
+        ("finished", "publish", applied.key, True, "create applied"),
+        ("started", "publish", refused.key, "create"),
+        ("finished", "publish", refused.key, False, "create failed"),
+    ]

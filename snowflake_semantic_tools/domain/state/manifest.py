@@ -2,7 +2,7 @@
 
 `Manifest.as_dict` is the `manifest.json` document. Its `manifest_id` is the `content_hash`
 of everything but the id and the schema version, so `Manifest.from_dict` detects an edited
-manifest. A schema-1 to schema-4 manifest is migrated in memory, and records the
+manifest. A schema-1 to schema-5 manifest is migrated in memory, and records the
 schema it was read from; an older schema, which has no migration, and a newer one are refused.
 Nothing here rewrites the file.
 """
@@ -23,7 +23,7 @@ from snowflake_semantic_tools.domain.state.codec import (
 )
 from snowflake_semantic_tools.domain.state.documents import StoredDocumentError, content_hash
 
-MANIFEST_SCHEMA_VERSION = 5
+MANIFEST_SCHEMA_VERSION = 6
 
 _UNHASHED = ("manifest_id", "schema_version")
 
@@ -153,7 +153,10 @@ class Manifest:
 
     Attributes:
         members: By member key, the views it attaches to (`attached_to`), the dbt models and
-            sources under the tables it reads (`tables`), and the members it uses (`uses`).
+            sources under the tables it reads (`tables`), the members it uses (`uses`), the
+            columns it reads as `<table>.<column>` (`columns`), the columns it names that no
+            one table was found for (`unresolved_columns`), and a fact's, dimension's, filter's
+            or metric's resolved expression (`expr`).
         dbt_nodes: dbt's graph, by unique id: each node's `kind`, `name`, `package`, `relation`
             for the target, and the unique ids it `depends_on`.
         generator: The writer's name and SST version.
@@ -249,23 +252,25 @@ class Manifest:
 
 
 def migrate_manifest(value: Mapping[str, object]) -> dict[str, object]:
-    """Migrate a schema-1 to schema-4 manifest document to the current schema, leaving the input unchanged.
+    """Migrate a schema-1 to schema-5 manifest document to the current schema, leaving the input unchanged.
 
     The sections schema 2 added start empty. Schema 3 stopped writing the impact index, so an
     `impact` key is dropped unread. Schema 4 records each artifact's `references`, which start
     empty. Schema 5 records dbt's graph, which starts empty, and each member's tables and uses,
-    which a member without them lacks. The migrated document's id is recomputed. A schema-2 to
-    schema-4 id is first checked against the document as stored, so an edited manifest of any of
-    them is still refused; a schema-1 id is not, so an edit to a schema-1 manifest goes undetected.
+    which a member without them lacks. Schema 6 records the columns each member reads, which a
+    member migrated from an earlier schema lacks until the project compiles again. The migrated
+    document's id is recomputed. A schema-2 to schema-5 id is first checked against the document
+    as stored, so an edited manifest of any of them is still refused; a schema-1 id is not, so an
+    edit to a schema-1 manifest goes undetected.
 
     Raises:
-        StoredDocumentError: SST-MAN202 when the document is not schema 1 to 4; SST-MAN005 when a
-            schema-2 to schema-4 document's `manifest_id` is not the hash of its content.
+        StoredDocumentError: SST-MAN202 when the document is not schema 1 to 5; SST-MAN005 when a
+            schema-2 to schema-5 document's `manifest_id` is not the hash of its content.
     """
     version = value.get("schema_version")
-    if version not in (1, 2, 3, 4):
+    if version not in (1, 2, 3, 4, 5):
         raise StoredDocumentError("SST-MAN202", f"manifest schema {version} has no migration", found=version)
-    if version in (2, 3, 4):
+    if version in (2, 3, 4, 5):
         found = value.get("manifest_id")
         expected = content_hash({key: item for key, item in value.items() if key not in _UNHASHED})
         if found != expected:

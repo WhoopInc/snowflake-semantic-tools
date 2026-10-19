@@ -309,6 +309,7 @@ def _plan_report(
         "changes": [change_json(change, changeset.manifest_id, unread=unread) for change in changeset.changes],
         "counts": change_counts(changeset),
         "report_only": [change.key for change in changeset.report_only],
+        "schemas": [scope.sql for scope in changeset.schemas],
     }
     if request.partial:
         data["partial"] = {"excluded": partial_excluded(ready.result.diagnostics)}
@@ -325,7 +326,7 @@ def _plan_report(
     def human() -> None:
         if ready.cached is not None:
             click.echo(f"planned from the observation recorded at {ready.cached.fetched_at} ({ready.cached.age} old)")
-        print_plan(changeset, full=full, more=f"all of it in {written.diff}")
+        print_plan(changeset, full=full, more=f"all of it in {written.diff}", unchecked=ready.cached is not None)
 
     return CommandResult(
         exit_code, shown, data, human=human, promoted=ready.promoted, headline=plan_headline(changeset)

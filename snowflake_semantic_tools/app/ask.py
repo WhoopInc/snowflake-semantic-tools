@@ -1,23 +1,20 @@
-"""`sst ask`: run an agent's compiled specification once, as a temporary agent, publishing nothing.
+"""What running an agent as it compiles now needs: its agent, its scratch schema, and what it calls.
 
-The specification is the one `sst compile --emit-agent-spec` writes, so an edit to the agent
-itself -- its instructions, a tool's description, its tool list -- is what runs. Every object
-it names is reached by its published name, so an edit to one of them is not tried: each such
-dependency whose compiled fingerprint the target's state does not record is reported. Nothing
-here takes a lock, and nothing writes state.
+`sst ask` and unpublished evals run an agent's compiled specification, the one `sst compile
+--emit-agent-spec` writes, publishing nothing. `unpublished_reason` says why a dependency the
+agent names is not on the target as it compiles now: what `ask_scratch` copies, and what
+`stale_dependencies` warns of when nothing is copied. Nothing here takes a lock or writes state.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.config_schema import setting_value, target_text
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope, TargetIdentity
-from snowflake_semantic_tools.domain.ports.snowflake.agent_run import AgentReply, AgentRunPort
 from snowflake_semantic_tools.domain.state import APPLIED, AppliedEntry
 
 # How long one question may run when the command line says nothing: well past the 9 to 26
@@ -95,7 +92,7 @@ def stale_dependencies(
         if artifact is None:
             continue
         rendered = artifact.rendered_artifact
-        reason = _unpublished_reason(applied, key, rendered.fingerprint, rendered.target)
+        reason = unpublished_reason(applied, key, rendered.fingerprint, rendered.target)
         if reason is not None:
             found.append(
                 D(
@@ -109,7 +106,7 @@ def stale_dependencies(
     return tuple(found)
 
 
-def _unpublished_reason(
+def unpublished_reason(
     applied: Mapping[str, AppliedEntry] | None, key: str, fingerprint: str, target: QualifiedName
 ) -> str | None:
     """Say why the target may not hold `key` as it compiles now; None when state records it so."""
@@ -121,74 +118,3 @@ def _unpublished_reason(
     if entry.fingerprint != fingerprint or QualifiedName.parse(entry.qualified_name).folded != target.folded:
         return "what is published differs from what compiles now"
     return None
-
-
-@dataclass(frozen=True, slots=True)
-class AskOutcome:
-    """What one question to an unpublished agent got back.
-
-    Attributes:
-        scope: Where the temporary agent was created.
-        diagnostics: The notes the caller passed, then SST-ASK002 when the agent answered with
-            an error.
-    """
-
-    agent: CompiledAgent
-    scope: SchemaScope
-    question: str
-    reply: AgentReply
-    diagnostics: DiagnosticBag
-
-    @property
-    def answered(self) -> bool:
-        """Report whether the agent replied rather than answering with an error."""
-        return self.reply.error is None
-
-
-class AskAgent:
-    """Ask a compiled agent one question through a temporary agent; nothing is published or recorded."""
-
-    def __init__(self, port: AgentRunPort) -> None:
-        self._port = port
-
-    def run(
-        self,
-        agent: CompiledAgent,
-        question: str,
-        *,
-        scope: SchemaScope,
-        timeout: int = DEFAULT_RUN_TIMEOUT_SECONDS,
-        notes: tuple[Diagnostic, ...] = (),
-    ) -> AskOutcome:
-        """Run the agent's specification as a temporary agent in `scope`, and report its reply.
-
-        Args:
-            notes: What the caller found before asking, such as `stale_dependencies`' warnings;
-                reported first.
-
-        Raises:
-            SnowflakePortError: the temporary agent could not be created, or the run failed or
-                timed out.
-            ValueError: the specification holds `$$`.
-
-        Diagnostics:
-            SST-ASK002: the agent answered with an error message.
-        """
-        reply = self._port.run_inline(scope, agent.name, agent.payload, question, timeout)
-        failed = (
-            ()
-            if reply.error is None
-            else (D("SST-ASK002", subject=agent.artifact_key, artifact=agent.artifact_key, detail=reply.error),)
-        )
-        return AskOutcome(agent, scope, question, reply, DiagnosticBag((*notes, *failed)))
-
-
-def reply_json(reply: AgentReply) -> dict[str, object]:
-    """Project a reply for the CLI: the answer, each tool call and result, the error, and the time taken."""
-    return {
-        "answer": reply.answer,
-        "tool_uses": [{"name": use.name, "type": use.type, "input": dict(use.input)} for use in reply.tool_uses],
-        "tool_results": [{"name": result.name, "status": result.status} for result in reply.tool_results],
-        "error": reply.error,
-        "duration_ms": reply.duration_ms,
-    }

@@ -390,11 +390,14 @@ fields can appear in the same version.
 ## Progress and colour in a CI log
 
 With the default output, a run on a terminal shows one live progress line on
-stderr after its first second. A CI runner has no terminal, so `sst` prints
+stderr after its first second; a command doing several things at once (eval
+runs, smoke probes, the changes apply publishes) adds a live row above it for
+each in flight, and prints each one once, as a finished line, when it ends. A CI
+runner has no terminal, so `sst` prints
 progress there only when `$CI` is set, as GitHub Actions, GitLab CI and most
 runners set it: a line as each slow phase ends, a heartbeat every 15 seconds
-while one runs, and, for a command that connects, the account and role it
-connected as. Library log records stay below `--log-level`, which defaults to
+while one runs, a finished line for each probe or change, and, for a command that
+connects, the account and role it connected as. Library log records stay below `--log-level`, which defaults to
 `warn`; `--log-level info` shows the Snowflake connector's request logs again.
 Colour is off without a terminal; `--color always` (or `SST_COLOR=always`, or
 `FORCE_COLOR=1`) keeps it for a log viewer that renders ANSI.

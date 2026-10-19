@@ -66,6 +66,8 @@ def _preflight() -> Preflight:
         absent_state_tables=(QualifiedName.parse("DB.S.SST_STATE_LOCK"),),
         state_table_kind="hybrid",
         state_table_kinds=((QualifiedName.parse("DB.S.SST_STATE"), "standard"),),
+        create_schemas=True,
+        missing_state_schemas=frozenset({("DB", "STATE")}),
     )
 
 

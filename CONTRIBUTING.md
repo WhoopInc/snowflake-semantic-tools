@@ -324,7 +324,7 @@ Imports run one way, `cli` → (`app` | `adapters`) → `domain`:
 - Only `adapters/yaml` (SST's own files), `adapters/dbt` (dbt's), and `adapters/bounded_yaml.py` (the depth-bounded loader both parse through) import `yaml`; everything else reaches YAML through them.
 - Only `adapters/roundtrip.py` and the `yaml` adapter import `ruamel`; the `dbt` adapter edits YAML in place through `roundtrip.py`.
 
-`poetry run lint-imports` enforces these as eight contracts in `pyproject.toml`, and `tests/unit/test_ring_boundaries.py` proves that each contract rejects a crossing and that the package root holds nothing else:
+`poetry run lint-imports` enforces these as nine contracts in `pyproject.toml`, and `tests/unit/test_ring_boundaries.py` proves that each contract rejects a crossing and that the package root holds nothing else:
 
 | Contract | Rule |
 |----------|------|
@@ -336,6 +336,7 @@ Imports run one way, `cli` → (`app` | `adapters`) → `domain`:
 | adapter subpackages are independent | `adapters.yaml`, `.dbt`, `.snowflake`, `.fs` never import one another |
 | only roundtrip and the yaml adapter import ruamel | no other module imports `ruamel` directly |
 | only bounded_yaml and the yaml and dbt adapters import PyYAML | no other module imports `yaml` directly |
+| only the cli's tui package imports Textual | no module outside `cli/tui/` imports `textual` |
 
 ### Diagnostics
 

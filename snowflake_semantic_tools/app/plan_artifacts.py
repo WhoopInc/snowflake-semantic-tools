@@ -17,7 +17,7 @@ from snowflake_semantic_tools.app.observe import DEFAULT_OBSERVE_OPTIONS, Observ
 from snowflake_semantic_tools.app.preflight import read_preflight
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     Change,
@@ -34,6 +34,7 @@ from snowflake_semantic_tools.domain.plan.preflight import Preflight
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightPort
 from snowflake_semantic_tools.domain.state import DEACTIVATED, Manifest, State
 from snowflake_semantic_tools.domain.state.lock import STANDARD_TABLES
@@ -191,6 +192,7 @@ class PlanArtifacts:
         observation_targets: tuple[QualifiedName, ...] | None = None,
         state_tables: tuple[QualifiedName, ...] = (),
         state_table_kind: str = STANDARD_TABLES,
+        create_schemas: bool = False,
     ) -> TargetReading:
         """Read the target for a plan: observe it, then preflight it when given a preflight port.
 
@@ -199,22 +201,25 @@ class PlanArtifacts:
         the rendered artifacts. Unless the options turn grants off, it then holds the tags of
         each semantic view the plan will replace, as `observe_replaced_tags` reads them. The
         preflight read is `read_preflight`'s, `state_tables` among what it checks, each that
-        exists expected to be a `state_table_kind` table.
+        exists expected to be a `state_table_kind` table, and with `create_schemas` each absent
+        schema one apply creates.
 
         Diagnostics:
             SST-PLN001: observing Snowflake, or a preflight read, failed.
             SST-PLN040: reading the tags on a semantic view the plan will replace failed.
         """
+        targets = observation_targets or tuple(artifact.target for artifact in rendered.values())
         observation, failures = observe(
             self._port,
             self._registry,
-            observation_targets or tuple(artifact.target for artifact in rendered.values()),
+            targets,
             fetched_at=fetched_at,
             artifact_types=self._observed_artifact_types(rendered, include_prune, prune_types),
             observed_object_types=self._observed_object_types(rendered),
             desired_artifacts=rendered,
             readers=self._readers,
             options=self._observe_options,
+            absent_schemas=self._absent_schemas(targets, state) if create_schemas else frozenset(),
         )
         if self._observe_options.grants:
             observation, unread = observe_replaced_tags(
@@ -233,8 +238,35 @@ class PlanArtifacts:
             readers=self._readers,
             state_tables=state_tables,
             state_table_kind=state_table_kind,
+            create_schemas=create_schemas,
         )
         return TargetReading(observation, preflight, DiagnosticBag((*failures, *refused)))
+
+    def _absent_schemas(self, targets: tuple[QualifiedName, ...], state: State) -> frozenset[tuple[str, str]]:
+        """Return the target schemas the preflight port says do not exist; none without that port.
+
+        A schema apply creates holds nothing yet, so observing it would only fail. A schema
+        state records an object in is never one: the role may only be unable to see it, and
+        observing it reports that. A read that fails counts the schema present, too.
+        """
+        if self._preflight is None:
+            return frozenset()
+        recorded = {
+            QualifiedName.parse(entry.qualified_name).folded[:2]
+            for entry in state.applied.values()
+            if entry.qualified_name
+        }
+        absent: set[tuple[str, str]] = set()
+        for scope in dict.fromkeys(SchemaScope.from_qualified_name(target) for target in targets):
+            if (scope.database.folded, scope.schema.folded) in recorded:
+                continue
+            try:
+                found = self._preflight.schema_exists(scope)
+            except SnowflakePortError:
+                continue
+            if not found:
+                absent.add((scope.database.folded, scope.schema.folded))
+        return frozenset(absent)
 
     def _observed_artifact_types(
         self,

@@ -32,6 +32,16 @@ EXEMPT: dict[tuple[str, str], str] = {
         "the dataset version METADATA SST rendered with json.dumps itself"
     ),
     ("app/prior.py", "_specification"): "the specification text SHOW VERSIONS IN AGENT returned",
+    ("adapters/snowflake/connector/agent_stream.py", "_answer"): (
+        "a Cortex REST call's answer, which Snowflake sends as one small JSON object"
+    ),
+    ("adapters/snowflake/connector/agent_stream.py", "_failure"): (
+        "a Cortex REST error body, cut to its first 2000 characters before it is parsed"
+    ),
+    ("app/ask_conversation.py", "_spec_fields"): "the agent specification SST rendered with json.dumps",
+    ("domain/ask/spec.py", "rewrite_spec"): "the agent specification SST rendered with json.dumps",
+    ("domain/ask/spec.py", "referenced_names"): "the agent specification SST rendered with json.dumps",
+    ("domain/ask/events.py", "_parsed"): "one server-sent event's payload, whose lines the stream adapter bounds",
     ("domain/model/lifecycle/version.py", "spec_fingerprint"): (
         "an agent specification SST rendered, or the text SHOW VERSIONS IN AGENT returned"
     ),

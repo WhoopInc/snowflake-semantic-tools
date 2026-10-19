@@ -110,7 +110,12 @@ def unstorable_diagnostics(
 
 
 def normalised_text(text: str, path: str) -> tuple[str, tuple[Diagnostic, ...]]:
-    """Return `text` with CRLF line endings made LF, and what its formatting is found to be.
+    """Return `text` with CRLF line endings made LF and trailing whitespace dropped, and what was found.
+
+    Both are dropped in memory so that neither changes a published value: YAML already drops
+    trailing whitespace in a plain or quoted scalar, but keeps it in a `|` block scalar, so
+    without this a stray space in a description or a verified query's SQL would change the
+    rendered DDL and its fingerprint. The file itself is never rewritten; `sst format` does that.
 
     Diagnostics:
         SST-LOD012: lines end in CRLF, or carry trailing whitespace; once for each.
@@ -122,8 +127,10 @@ def normalised_text(text: str, path: str) -> tuple[str, tuple[Diagnostic, ...]]:
         text = text.replace("\r\n", "\n")
         findings.append(D("SST-LOD012", origin=Origin(path), file=path, detail=f"{crlf} line(s) end in CRLF"))
         findings.append(D("SST-LOD202", origin=Origin(path), file=path, count=crlf))
-    trailing = [number for number, line in enumerate(text.split("\n"), start=1) if line != line.rstrip(" \t")]
+    lines = text.split("\n")
+    trailing = [number for number, line in enumerate(lines, start=1) if line != line.rstrip(" \t")]
     if trailing:
+        text = "\n".join(line.rstrip(" \t") for line in lines)
         findings.append(
             D(
                 "SST-LOD012",

@@ -58,12 +58,13 @@ def test_list_members_and_tables_with_what_carries_or_reads_them(tmp_path: Path)
     )
     assert json.loads(excluded.output)["data"]["count"] == 0
 
-    tables = CliRunner().invoke(cli, ["list", "tables", "--project-dir", str(project)])
+    tables = CliRunner(env={"COLUMNS": "400"}).invoke(cli, ["list", "tables", "--project-dir", str(project)])
     assert tables.exit_code == 0, tables.output
     rows = [" ".join(line.split()) for line in tables.stdout.splitlines()]
-    assert rows[0] == "MEMBER RELATION ARTIFACTS"
+    assert rows[0] == "MEMBER RELATION ARTIFACTS MEMBERS"
     assert any(
-        row.startswith("table:customers SST_REF_DEV.JAFFLE.CUSTOMERS semantic_view:jaffle_sales") for row in rows
+        row.startswith("table:customers SST_REF_DEV.JAFFLE.CUSTOMERS semantic_view:jaffle_sales dimension:customers.")
+        for row in rows
     )
     as_csv = CliRunner().invoke(cli, ["list", "tables", "--project-dir", str(project), "-o", "csv"])
     assert as_csv.output.splitlines()[0].startswith("key,name,artifacts")
@@ -182,3 +183,27 @@ def test_list_refuses_a_target_the_compiled_manifest_was_not_compiled_for(tmp_pa
     [diagnostic] = json.loads(refused.output)["diagnostics"]
     assert diagnostic["code"] == "SST-MAN006"
     assert diagnostic["message"] == "manifest target 'dev', current target 'prod'"
+
+
+def test_a_member_row_shows_what_it_lives_in_and_uses_and_with_wide_its_columns_and_expression(
+    tmp_path: Path,
+) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    data = json.loads(CliRunner().invoke(cli, ["list", "metrics", "--project-dir", str(project), "-o", "json"]).output)
+    items = {item["key"]: item for item in data["data"]["items"]}
+    assert items["metric:total_revenue"]["tables"] == ["orders"]
+    assert items["metric:total_revenue"]["columns"] == ["orders.order_total"]
+    assert items["metric:revenue_per_order"]["uses"] == ["metric:order_count", "metric:total_revenue"]
+    assert items["metric:revenue_per_order"]["columns"] == []
+    assert items["metric:total_revenue"]["expression"].startswith("SUM(")
+    runner = CliRunner(env={"COLUMNS": "400"})
+    narrow = runner.invoke(cli, ["list", "metrics", "--project-dir", str(project)]).stdout.splitlines()
+    assert narrow[0].split() == ["MEMBER", "TABLES", "USES", "ARTIFACTS"]
+    wide = runner.invoke(cli, ["list", "metrics", "--wide", "--project-dir", str(project)]).stdout.splitlines()
+    assert wide[0].split() == ["MEMBER", "TABLES", "USES", "COLUMNS", "ARTIFACTS", "EXPRESSION"]
+    total = next(line for line in wide if line.startswith("metric:total_revenue "))
+    assert "orders.order_total" in total and "SUM(ORDERS.ORDER_TOTAL)" in total
+    tables = json.loads(CliRunner().invoke(cli, ["list", "tables", "--project-dir", str(project), "-o", "json"]).output)
+    orders = next(item for item in tables["data"]["items"] if item["key"] == "table:orders")
+    assert "metric:total_revenue" in orders["members"] and "tables" not in orders

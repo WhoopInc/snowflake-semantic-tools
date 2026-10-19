@@ -36,7 +36,7 @@ hands it to a use case. A use case receives everything it touches through a
 protocol in `domain/ports/`, or a union of those declared beside it, so `app` and
 `adapters` meet only in `cli`.
 
-`poetry run lint-imports` enforces eight contracts, by these exact names:
+`poetry run lint-imports` enforces nine contracts, by these exact names:
 
 | Contract | Why it exists |
 |---|---|
@@ -48,6 +48,7 @@ protocol in `domain/ports/`, or a union of those declared beside it, so `app` an
 | adapter subpackages are independent | `yaml`, `dbt`, `snowflake`, and `fs` never import one another, so each can be tested and swapped on its own; a top-level adapter module such as `project_source.py` composes them. |
 | only roundtrip and the yaml adapter import ruamel | Writing a file back with `ruamel` preserves comments and layout; confining it keeps that delicate step to `adapters/roundtrip.py` and the formatter in `adapters/yaml/format.py`. |
 | only bounded_yaml and the yaml and dbt adapters import PyYAML | Each file is parsed at the edge that owns its format, through the depth-bounded loader in `adapters/bounded_yaml.py`: `adapters.yaml` for SST's own files, `adapters.dbt` for dbt's. Every module is covered and the importers are an allow-list, so a new module that imports `yaml` breaks the contract; only direct imports count, so everything else reaches YAML through those. |
+| only the cli's tui package imports Textual | The full-screen `sst ask` conversation is the one thing that needs Textual, and only `sst ask` opens it, lazily, so no other command pays to import it. |
 
 A contract that has never rejected anything proves nothing, so
 `tests/unit/test_ring_boundaries.py` writes a module that crosses each boundary
@@ -585,7 +586,7 @@ manifest and the current one.
 
 ### The lineage graph
 
-Schema 5 carries what lineage walks, so lineage and graph selection read one file.
+Schema 5 and later carry what lineage walks, so lineage and graph selection read one file.
 `dbt_nodes` is dbt's graph as the target reads it, deferral applied: each model,
 seed, snapshot, source, test and exposure by unique id, with its kind, name,
 package, relation and the nodes it depends on. Each member records, beside
@@ -594,6 +595,17 @@ the members it uses (`uses`), read from the resolved view by
 `domain/lineage/members.py`. Measured on a project of about 1,400 models and 3,000
 sources, `dbt_nodes` adds about 1.4 MB. A schema-4 manifest migrates with an
 empty graph.
+
+Schema 6 adds, per member, the columns it reads (`columns`, as `<table>.<column>`
+keyed by the table's model or source), the columns it names that no one table was
+found for (`unresolved_columns`), and a fact's, dimension's, filter's or metric's
+resolved expression (`expr`). The columns are lexed from the resolved view, not
+parsed: a two-argument `ref()` resolves to `TABLE.COLUMN`, a verified query names a
+column through the alias its `FROM` or `JOIN` gives a table, and a bare column is
+recorded only on the one table of the member's whose dbt model has it. Lineage keys
+each column `column:<table>.<column>`, between its model and the members that read
+it, and `sst list` shows a member's tables, uses, columns and expression. A
+schema-5 manifest migrates with no member columns until the project compiles again.
 
 Each artifact entry also carries `member_fingerprints`: the hash of each member of
 the definition plan compares, keyed `<kind>:<name>` as the member diff names it
@@ -624,6 +636,8 @@ These are the commands that connect, and what they do once connected:
 | `test --suite smoke` | yes | state, ownership markers, the probes' queries | nothing in Snowflake |
 | `test --suite evals` | yes | the published agents | evaluation runs, the lock table, the eval table |
 | `drop` | yes | the object's marker, the state table | one `DROP`, the lock table, the state table |
+| `ask` | yes; besides SQL, the Cortex Agents REST API, on the same session's token and role | the state table; the agent's streamed run | scratch copies `<NAME>__SST_ASK_<id>` and an `sst_ask` thread, both removed when the session ends |
+| `test --suite evals --unpublished` | yes | the state table, one temporary agent run per question, the judges | scratch copies and temporary agents, dropped when the run ends |
 
 Run without `--suite`, `sst test` runs each suite that applies once `sst compile`
 has written the manifest, and exits 4 when none applies: `SST-MAN001` with no

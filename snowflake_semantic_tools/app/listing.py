@@ -81,32 +81,55 @@ class MemberSummary:
         key: `<member type>:<name>`, or `table:<dbt model>` for a table.
         artifacts: The artifacts the member attaches to, or that read the table, in key order.
         relation: The relation a table resolves to; empty for any other member.
+        tables: The dbt models and sources under the tables a member reads; empty for a table.
+        uses: The members a member uses, such as a derived metric's metrics.
+        columns: The columns a member reads, as `<table>.<column>`.
+        expression: A fact's, dimension's, filter's or metric's resolved expression; else empty.
+        members: The members that read a table; empty for a member.
     """
 
     key: str
     name: str
     artifacts: tuple[str, ...]
     relation: str = ""
+    tables: tuple[str, ...] = ()
+    uses: tuple[str, ...] = ()
+    columns: tuple[str, ...] = ()
+    expression: str = ""
+    members: tuple[str, ...] = ()
 
 
 def list_members(manifest: Manifest, member_type: str) -> tuple[MemberSummary, ...]:
-    """Summarize each member of one type the manifest records, in key order, with what it attaches to."""
+    """Summarize each member of one type, in key order: what it attaches to, and what it reads."""
     prefix = f"{member_type}:"
     return tuple(
-        MemberSummary(key, key[len(prefix) :], _names(entry, "attached_to"))
+        MemberSummary(
+            key,
+            key[len(prefix) :],
+            _names(entry, "attached_to"),
+            tables=_names(entry, "tables"),
+            uses=_names(entry, "uses"),
+            columns=_names(entry, "columns"),
+            expression=str(entry.get("expr") or "") if isinstance(entry, Mapping) else "",
+        )
         for key, entry in sorted(manifest.members.items())
         if key.startswith(prefix)
     )
 
 
 def list_tables(manifest: Manifest) -> tuple[MemberSummary, ...]:
-    """Summarize each dbt model an artifact reads, in name order, with its relation and its readers."""
+    """Summarize each dbt model an artifact reads, in name order: its relation, readers and members."""
+    readers: dict[str, list[str]] = {}
+    for key, entry in sorted(manifest.members.items()):
+        for name in _names(entry, "tables"):
+            readers.setdefault(name, []).append(key)
     return tuple(
         MemberSummary(
             f"table:{name}",
             name,
             _names(entry, "referenced_by"),
             str(entry.get("relation") or "") if isinstance(entry, Mapping) else "",
+            members=tuple(readers.get(str(name).casefold(), ())),
         )
         for name, entry in sorted(manifest.dbt_models.items())
     )

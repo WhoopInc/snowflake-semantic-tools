@@ -28,7 +28,8 @@ def test_a_routine_reads_the_model_its_body_refs_and_an_agent_calls_it(tmp_path:
     nodes = {(item["key"], item["direction"], item["depth"]) for item in data["nodes"]}
     assert {("tool:order_status", "self", 0), ("model:orders", "upstream", 1)} <= nodes
     assert ("agent:jaffle_analytics_agent", "downstream", 1) in nodes
-    assert {"from": "model:orders", "to": "tool:order_status"} in data["edges"]
+    assert {"from": "model:orders", "to": "tool:order_status", "kind": "reads"} in data["edges"]
+    assert {"from": "tool:order_status", "to": "agent:jaffle_analytics_agent", "kind": "calls"} in data["edges"]
     upstream = _lineage(project, "tool:order_status", "--upstream")
     assert {item["direction"] for item in upstream["nodes"]} == {"self", "upstream"}
     near = _lineage(project, "metric:total_revenue", "--downstream", "--depth", "1")
@@ -71,7 +72,7 @@ def test_each_output_says_where_a_walk_ends_and_plain_prints_one_signed_depth_pe
     plain = _lineage(project, "agent:jaffle_analytics_agent", "--upstream", "--depth", "1", output="plain")
     assert "0 agent:jaffle_analytics_agent" in plain and "-1 tool_ref:order_tier_lookup" in plain
     table = _lineage(project, "agent:jaffle_analytics_agent", "--upstream", "--depth", "1", output="table")
-    assert "  tool_ref:order_tier_lookup  tool_ref  (owned by another team)" in table
+    assert "─ tool_ref:order_tier_lookup  (owned by another team)" in table
     agent = _lineage(project, "agent:jaffle_analytics_agent", "--upstream", "--depth", "1", output="agent")
     assert "upstream 1 tool_ref:order_tier_lookup tool_ref | owned by another team" in agent
     data = _lineage(project, "tool_ref:order_tier_lookup")
@@ -87,3 +88,23 @@ def test_a_manifest_without_dbt_s_graph_says_to_compile_again(tmp_path: Path) ->
     path.write_text(json.dumps({**document, "manifest_id": content_hash(material)}), encoding="utf-8")
     assert "run `sst compile` to trace through dbt" in _lineage(project, "tool:order_status", output="table")
     assert _lineage(project, "tool:order_status")["dbt_graph"] is False
+
+
+def test_a_tree_has_connectors_headings_and_with_wide_aligned_names_and_edges(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    narrow = _lineage(project, "tool:order_status", output="table").splitlines()
+    assert narrow[:3] == ["tool:order_status", "├── reads", "│   └── model:orders"]
+    assert narrow[3:6] == [
+        "└── read by",
+        "    └── agent:jaffle_analytics_agent",
+        "        └── eval:jaffle_analytics_agent",
+    ]
+    wide = _lineage(project, "tool:order_status", "--wide", output="table").splitlines()
+    assert wide[2].split() == ["│", "└──", "model:orders", "SST_REF_DEV.JAFFLE.ORDERS", "read", "by", "it"]
+    assert wide[4].endswith("calls it as a tool") and wide[5].endswith("tests it")
+    columns = {line.index("SST_REF_DEV") for line in wide if "SST_REF_DEV" in line}
+    assert len(columns) == 1
+    # A trace from a dimension is column lineage, so it is wide without the flag.
+    dimension = _lineage(project, "dimension:orders.order_id", "--depth", "1", output="table")
+    assert "SST_REF_DEV.JAFFLE.ORDERS" in dimension and "holds it" in dimension

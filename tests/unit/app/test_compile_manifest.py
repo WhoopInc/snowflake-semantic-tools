@@ -7,7 +7,7 @@ import pytest
 from snowflake_semantic_tools.app.compile import CompileArtifacts, CompiledView, CompileResult
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
-from snowflake_semantic_tools.domain.model.dbt import DbtModel, DbtNode
+from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel, DbtNode
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import CompositeFacts, PublishShape, RenderedArtifact
 from snowflake_semantic_tools.domain.model.semantic_view import (
@@ -118,7 +118,7 @@ def test_manifest_builder_records_sources_members_and_diagnostics() -> None:
     assert entry.source_files == ("semantic_models/views.yml", "semantic_models/metrics.yml")
     assert "metric:m" in entry.member_keys
     assert entry.diagnostic_codes == ("SST-LOD003",)
-    assert manifest.members["metric:m"] == {"attached_to": ["semantic_view:v"]}
+    assert manifest.members["metric:m"] == {"attached_to": ["semantic_view:v"], "expr": "COUNT(1)"}
     assert manifest.dbt_models["t"]["referenced_by"] == ["semantic_view:v"]  # type: ignore[index]
     assert manifest.schema_version == MANIFEST_SCHEMA_VERSION
     assert "impact" not in manifest.as_dict()
@@ -128,11 +128,15 @@ def test_manifest_builder_records_sources_members_and_diagnostics() -> None:
 
 
 def test_the_manifest_records_what_each_member_reads_and_dbt_s_graph() -> None:
-    model = DbtModel("model.p.t", "t", "DB.S.T", (), (), ())
+    model = DbtModel("model.p.t", "t", "DB.S.T", (), (), (DbtColumn("id", None, None, None),))
     view = SemanticView(
         "DB.S.V",
         (Table("T", "DB.S.T"),),
-        metrics=(Metric("M", authored("COUNT(1)"), "T"), Metric("N", authored("M * 2"))),
+        metrics=(
+            Metric("M", authored("COUNT(T.ID)"), "T"),
+            Metric("N", authored("M * 2")),
+            Metric("O", authored("COUNT(DISTINCT ID) + MAX(cte.x)"), "T"),
+        ),
         custom_instruction_names=("tone",),
         referenced_models=("t",),
         table_models=MappingProxyType({"T": model}),
@@ -140,8 +144,15 @@ def test_the_manifest_records_what_each_member_reads_and_dbt_s_graph() -> None:
     compiled = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"))
     graph = (DbtNode("model.p.t", "model", "t", "p", "DB.S.T", ("source.p.raw.a",)),)
     manifest = build_manifest(CompileResult((compiled,)), dbt_graph=graph)
-    assert manifest.members["metric:m"] == {"attached_to": ["semantic_view:v"], "tables": ["t"]}
-    assert manifest.members["metric:n"] == {"attached_to": ["semantic_view:v"], "uses": ["metric:m"]}
+    assert manifest.members["metric:m"] == {
+        "attached_to": ["semantic_view:v"],
+        "tables": ["t"],
+        "columns": ["t.id"],
+        "expr": "COUNT(T.ID)",
+    }
+    assert manifest.members["metric:n"] == {"attached_to": ["semantic_view:v"], "uses": ["metric:m"], "expr": "M * 2"}
+    # A bare column of the metric's one table is recorded; a qualifier no table has is not a metric's to resolve.
+    assert manifest.members["metric:o"]["columns"] == ["t.id"]  # type: ignore[index]
     assert manifest.members["custom_instruction:tone"] == {"attached_to": ["semantic_view:v"]}
     assert manifest.dbt_nodes == {
         "model.p.t": {

@@ -669,7 +669,9 @@ apply:
   (`SST-PLN026`);
 - an absent stage when the role lacks `CREATE STAGE` on its schema, or an
   existing one it lacks `READ` or `WRITE` on (`SST-PLN008`);
-- an absent schema or database for the stage (`SST-PLN010`, `SST-PLN011`).
+- an absent database for the stage (`SST-PLN011`), or an absent schema with
+  `apply.create_schemas: false` (`SST-PLN010`); with it on, apply creates the
+  schema first.
 
 Once a stage exists, a later plan uses it as it is, so an apply that stopped
 part-way can be planned and applied again.
@@ -723,45 +725,21 @@ anything in state. Try them in this order: each costs more than the one before.
 ### Ask the edited agent
 
 ```bash
+sst ask sales_analyst                                   # a conversation, on a terminal
 sst ask sales_analyst "How many orders were placed in March 2026?"
-sst ask sales_analyst "Which location grew fastest?" --show-tools --target dev
 echo "Why did returns rise?" | sst ask sales_analyst - --output json
 ```
 
-`sst ask` compiles the project in memory, as `sst test` does, and runs the
-named agent's rendered specification -- exactly what
-`sst compile --emit-agent-spec` writes -- as a temporary agent, on one session:
-`CREATE OR REPLACE TEMPORARY AGENT <schema>.SST_ASK_<AGENT>_<8 hex> FROM
-SPECIFICATION`, then `SNOWFLAKE.CORTEX.DATA_AGENT_RUN`, then `DROP AGENT IF
-EXISTS`, whatever the run did. So an edited instruction, tool description or
-tool list is what answers. It takes no lock and writes nothing, in Snowflake or
-under `target/sst`.
-
-- The temporary agent is created in the agent's own compiled schema. A role
-  that cannot create agents there sets `agents.+scratch_schema: DATABASE.SCHEMA`
-  (a two-part name; `{{ target.* }}` templates render, and a folder route or the
-  agent's `config:` may set it too), and the agent is created there instead.
-  Measured on a live account, a personal `USER$<user>.PUBLIC` schema works.
-- `--show-tools` prints each tool call, with its input, and each tool result
-  before the answer; `--output json` always carries them, with the answer, the
-  error and the time the run took. Snowflake also reports calls of its own
-  system tools, such as `server_skill` and `system_execute_sql`.
-- `-` reads the question from stdin; an empty question exits 3. `--timeout`
-  (default 300 seconds) bounds the run; the agent's own `budget_seconds` still
-  applies.
-- Exit 0 when the agent answered, 1 when the project does not compile or the
-  agent answered with an error (`SST-ASK002`), 4 when no agent of that name
-  compiles (`SST-ASK003`), and 5 when Snowflake is unreachable, refuses a
-  privilege, or the run times out.
-
-**What it cannot see.** The specification names every semantic view, search
-service, procedure, function and skill by its published name, so the agent
-calls what the target holds now, not an unpublished edit to one of them. Before
-asking, `sst ask` reads the target's state table, read-only, and warns of each
-artifact the agent depends on whose compiled fingerprint state does not record:
-`SST-ASK001` says "calls the published X, not your edit". To try an edited view
-together with the agent, publish the view first, to a
-[per-developer target](evals.md#a-per-developer-target).
+`sst ask` runs the agent as the project compiles now: its own edits, and each
+semantic view, search service, procedure, function, skill and sub-agent it
+reaches that compiles differently from what the target's state records, through
+a scratch copy of each, made for the session in `agents.+scratch_schema` (else
+the agent's own schema) and dropped when it ends. The agent runs over the Cortex
+Agents REST API, streamed, on a thread, so a conversation carries over from one
+question to the next. It takes no lock and writes no state. `--published` copies
+nothing and warns of each edit the agent does not see (`SST-ASK001`).
+[Asking an agent](ask.md) covers the conversation's keys, the copies and their
+privileges, cleanup, and how SST reaches the API.
 
 ### Run its evals unpublished
 

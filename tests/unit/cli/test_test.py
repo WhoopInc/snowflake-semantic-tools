@@ -93,7 +93,7 @@ def test_smoke_suite_is_separate_from_apply(tmp_path: Path, monkeypatch: pytest.
         ["test", *common(project), "--target", "dev", "--suite", "smoke", "--output", "json"],
     )
     assert unapplied.exit_code == 1
-    assert json.loads(unapplied.output)["diagnostics"][0]["code"] == "SST-APL012"
+    assert [item["code"] for item in json.loads(unapplied.output)["diagnostics"]] == ["SST-APL037"]
 
     views = project / "semantic_models" / "semantic_views" / "jaffle_minimal.yml"
     views.write_text(
@@ -312,7 +312,7 @@ def test_eval_suite_refuses_unpublished_eval_before_start(
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
-    assert payload["diagnostics"][0]["code"] == "SST-APL012"
+    assert [item["code"] for item in payload["diagnostics"]] == ["SST-APL037"]
     assert payload["data"]["attempt_count"] == 0
     assert port.scripts == []
 
@@ -555,3 +555,18 @@ def test_the_eval_state_table_keeps_a_quoted_state_tables_exact_name(state_table
     source = QualifiedName.parse(state_table)
     table = _eval_state_table(source)
     assert (table.database, table.schema, table.name.sql) == (source.database, source.schema, expected)
+
+
+def test_smoke_on_a_target_nothing_was_applied_to_says_the_probes_were_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    result = invoke_with_port(
+        monkeypatch, FakeSnowflake(state={}), ["test", *common(project), "--target", "dev", "--suite", "smoke"]
+    )
+    assert result.exit_code == 1
+    assert "smoke probes skipped: " in result.output and " not published as compiled" in result.output
+    assert "ran smoke probes" not in result.output
+    assert "error[SST-APL037]: nothing the smoke suite tests is published on this target" in result.output
+    assert "run `sst plan`, then `sst apply`" in result.output

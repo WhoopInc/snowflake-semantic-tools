@@ -77,6 +77,7 @@ LIST_TYPES: dict[str, tuple[str, str]] = {
 @database_option()
 @selection_options()
 @click.option("--long", "long_format", is_flag=True)
+@click.option("--wide", is_flag=True)
 @click.option("--no-manifest", is_flag=True)
 @model_path_options()
 @command_body("list", outputs=LIST_OUTPUTS)
@@ -88,6 +89,7 @@ def list_command(
     selected: tuple[str, ...],
     excluded: tuple[str, ...],
     long_format: bool,
+    wide: bool,
     no_manifest: bool,
     dbt_dir: Path | None,
     semantic_dir: Path | None,
@@ -127,7 +129,7 @@ def list_command(
     kind, registered = LIST_TYPES[artifact_type] if artifact_type is not None else ("artifact", None)
     if kind != "artifact":
         listed = list_tables(manifest) if kind == "table" else list_members(manifest, registered or "")
-        return _member_result(artifact_type, listed, scope, notes)
+        return _member_result(artifact_type, listed, scope, notes, wide=wide)
     states = tuple(sorted(target_dir(paths.project_dir).glob(STATE_FILE_GLOB)))
     state = StateFileStore(states[0]).read_local() if len(states) == 1 else None
     summaries = tuple(
@@ -192,6 +194,8 @@ def _member_result(
     listed: tuple[MemberSummary, ...],
     scope: SelectionScope,
     notes: tuple[Diagnostic, ...],
+    *,
+    wide: bool = False,
 ) -> CommandResult:
     """List members or tables: those belonging to an artifact the scope keeps.
 
@@ -208,7 +212,7 @@ def _member_result(
         _exit_code(notes),
         DiagnosticBag(notes),
         {"type": list_type, "items": rows, "count": len(rows)},
-        human=lambda: _print_members(members),
+        human=lambda: _print_members(members, wide=wide),
         rows=rows,
         gated=True,
         headline=f"listed {plural(len(rows), 'table' if list_type == 'tables' else 'member')}",
@@ -224,18 +228,57 @@ def _member_item(summary: MemberSummary) -> dict[str, object]:
     item: dict[str, object] = {"key": summary.key, "name": summary.name, "artifacts": list(summary.artifacts)}
     if summary.relation:
         item["relation"] = summary.relation
+    if summary.key.startswith("table:"):
+        item["members"] = list(summary.members)
+        return item
+    item.update({"tables": list(summary.tables), "uses": list(summary.uses), "columns": list(summary.columns)})
+    if summary.expression:
+        item["expression"] = summary.expression
     return item
 
 
-def _print_members(members: tuple[MemberSummary, ...]) -> None:
-    """Print a table of the members: each key, its relation when it has one, and its artifacts."""
-    related = any(item.relation for item in members)
-    header = ["MEMBER", *(["RELATION"] if related else []), "ARTIFACTS"]
-    rows = [header] + [
-        [item.key, *([item.relation or "-"] if related else []), ", ".join(item.artifacts) or "-"] for item in members
-    ]
+def _print_members(members: tuple[MemberSummary, ...], *, wide: bool = False) -> None:
+    """Print a table of the members: each key, what it lives in and uses, and its artifacts.
+
+    A member row shows the tables it reads and, when any member uses another, what it uses;
+    `wide` adds the columns it reads and its expression. A table row shows its relation, the
+    artifacts that read it, and the members that read it.
+    """
+    if members and all(item.key.startswith("table:") for item in members):
+        rows = [["MEMBER", "RELATION", "ARTIFACTS", "MEMBERS"]] + [
+            [item.key, item.relation or "-", _joined(item.artifacts), _joined(item.members)] for item in members
+        ]
+    else:
+        related = any(item.relation for item in members)
+        uses = any(item.uses for item in members)
+        header = [
+            "MEMBER",
+            *(["RELATION"] if related else []),
+            "TABLES",
+            *(["USES"] if uses else []),
+            *(["COLUMNS"] if wide else []),
+            "ARTIFACTS",
+            *(["EXPRESSION"] if wide else []),
+        ]
+        rows = [header] + [
+            [
+                item.key,
+                *([item.relation or "-"] if related else []),
+                _joined(item.tables),
+                *([_joined(item.uses)] if uses else []),
+                *([_joined(item.columns)] if wide else []),
+                _joined(item.artifacts),
+                *([" ".join(item.expression.split()) or "-"] if wide else []),
+            ]
+            for item in members
+        ]
     terminal = render_policy().terminal
     lines = table(rows, terminal.width, keep=0)
     click.echo(Style(terminal, stdout=True)(lines[0], "dim"), color=True if terminal.color_out else None)
     for line in lines[1:]:
         click.echo(line)
+
+
+def _joined(values: tuple[str, ...]) -> str:
+    """Return values joined by commas, or `-` for none."""
+    return ", ".join(values) or "-"

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from snowflake_semantic_tools.domain.lineage.graph import (
+    EDGE_KINDS,
     OTHER_PROJECT,
     OTHER_TEAM,
     RAW_SOURCE,
@@ -109,3 +112,32 @@ def test_dbt_s_graph_operators_parse_and_write_back(value: str, parsed: GraphSel
 def test_a_misplaced_graph_operator_is_refused(value: str) -> None:
     with pytest.raises(ValueError, match="before or after one selector"):
         parse_graph_selector(value)
+
+
+def test_each_edge_records_how_its_reader_uses_what_it_reads() -> None:
+    graph = manifest_lineage(lineage_manifest())
+    assert graph.kind("model:stg_orders", "model:orders") == "builds"
+    assert graph.kind("model:orders", "test:unique") == "tests"
+    assert graph.kind("model:orders", "exposure:board") == "exposes"
+    assert graph.kind("model:orders", "metric:revenue") == "reads"
+    assert graph.kind("model:orders", "semantic_view:sales") == "reads"
+    assert graph.kind("metric:revenue", "metric:per_order") == "uses"
+    assert graph.kind("metric:revenue", "semantic_view:sales") == "attaches"
+    assert graph.kind("tool:status", "agent:helper") == "calls"
+    assert graph.kind("tool_ref:partner", "agent:helper") == "calls"
+    assert graph.kind("semantic_view:sales", "agent:helper") == "calls"
+    # No phrase is recorded for a profile reading an agent, and none for a pair with no edge.
+    assert graph.kind("agent:helper", "profile:p") == "depends"
+    assert graph.kind("model:orders", "agent:helper") == "depends"
+    assert set(graph.kinds.values()) <= set(EDGE_KINDS)
+
+
+def test_a_column_a_member_reads_sits_between_its_model_and_the_member() -> None:
+    document = lineage_manifest()
+    revenue = document.members["metric:revenue"]
+    assert isinstance(revenue, dict)
+    members = {**document.members, "metric:revenue": {**revenue, "columns": ["orders.total"]}}
+    graph = manifest_lineage(dataclasses.replace(document, members=members))
+    assert graph.nodes["column:orders.total"].kind == "column"
+    assert graph.kind("model:orders", "column:orders.total") == "contains"
+    assert graph.kind("column:orders.total", "metric:revenue") == "reads"

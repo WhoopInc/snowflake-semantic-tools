@@ -103,10 +103,13 @@ Drawn from: [manifest](../../snowflake_semantic_tools/domain/state/manifest.py),
 - **Not a UI.** It is a CLI whose JSON output is a contract for CI.
 - **Not a library.** There is no Python API; new behaviour is a command or an
   option.
-- **Not a manager of the account.** Databases, schemas, warehouses, and roles
-  exist before SST runs. Beyond the objects it publishes, SST creates only what
-  publishing needs -- the tables it records state, locks, eval baselines, and
-  profiles in, and the stages it uploads to -- and only when they are absent.
+- **Not a manager of the account.** Databases, warehouses, and roles exist
+  before SST runs. Beyond the objects it publishes, SST creates only what
+  publishing needs -- the schemas it publishes into, as dbt creates the schemas
+  it builds into (`apply.create_schemas`, on by default), the tables it records
+  state, locks, eval baselines, and profiles in, and the stages it uploads to --
+  and only when they are absent. A schema it creates is never transient, never
+  recorded in state, and never dropped by `--prune` or `sst drop`.
 
 Drawn from: [dbt invocation](../../snowflake_semantic_tools/adapters/dbt/invoke.py),
 [dbt manifest reader](../../snowflake_semantic_tools/adapters/dbt/manifest.py),

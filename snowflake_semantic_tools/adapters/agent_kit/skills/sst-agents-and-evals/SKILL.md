@@ -189,12 +189,17 @@ When the user wants to know whether an edit makes the agent answer better, befor
 or publishing it, offer these in order, and run each only when the user asks: each runs the
 agent in Snowflake and costs credits.
 
-1. `sst ask <agent> "<question>" --show-tools`: runs the agent's compiled specification once as
-   a temporary agent, which is dropped after it answers. Nothing is published or recorded, and
-   no lock is taken. A role that cannot create agents in the agent's schema needs
-   `agents.+scratch_schema: DATABASE.SCHEMA`. `SST-ASK001` means the agent called the published
-   view, search service or tool, not the local edit to it: only the agent's own edit is tried.
-2. `sst test --suite evals --unpublished`: runs each eval question the same way, publishing
+1. `sst ask <agent> "<question>" --show-tools --output json`: runs the agent as it compiles
+   now, once, on scratch copies (`<NAME>__SST_ASK_<id>`) of each view, search service, tool,
+   skill and sub-agent it reaches that is not published as compiled; the copies and the thread
+   are removed when it ends. Nothing is published or recorded, and no lock is taken. Always
+   pass the question: without one, on a terminal, `sst ask` opens a full-screen conversation
+   meant for a person, so suggest the user run `sst ask <agent>` in their own terminal for that.
+   The copies go in `agents.+scratch_schema` (else the agent's schema); a refused copy is
+   `SST-ASK008`, an unreachable tool `SST-ASK010`. `--published` copies nothing, and then
+   `SST-ASK001` names each edit the agent did not see. `sst ask --cleanup` removes copies and
+   threads a crashed session left.
+2. `sst test --suite evals --unpublished`: runs each eval question on the same copies, publishing
    nothing and touching no baseline. `tool_selection_accuracy` is scored exactly and gates on
    its threshold (`SST-ASK007`); `answer_correctness` and custom metrics are judged
    approximately and never gate. Never pass `--capture-baseline` with it (refused).

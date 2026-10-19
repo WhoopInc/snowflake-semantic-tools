@@ -25,6 +25,8 @@ pyyaml = ">=6.0.2,<7.0"
 ruamel-yaml = ">=0.18.6,<0.19"
 snowflake-connector-python = {extras = ["secure-local-storage"], version = ">=4.7.1,<5.0"}
 click = ">=8.3.3,<9.0"
+# The full-screen `sst ask` conversation; imported only when one opens.
+textual = ">=8.2,<9.0"
 dbt-snowflake = {version = ">=1.10,<2.0", optional = true}
 
 [tool.poetry.extras]
@@ -218,6 +220,14 @@ forbidden_modules = [
 # SST runs the dbt executable and reads the manifest it writes; it never imports dbt, whose
 # Python API is not a stable interface and which is only an optional extra. External imports
 # are read from source, so this holds whether or not dbt is installed.
+[[tool.importlinter.contracts]]
+name = "only the cli's tui package imports Textual"
+type = "forbidden"
+source_modules = ["snowflake_semantic_tools"]
+forbidden_modules = ["textual"]
+ignore_imports = ["snowflake_semantic_tools.cli.tui.** -> textual"]
+allow_indirect_imports = true
+
 [[tool.importlinter.contracts]]
 name = "SST never imports dbt -- it runs the executable"
 type = "forbidden"

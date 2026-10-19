@@ -1,16 +1,23 @@
 $ sst --project-dir <project> --manifest <manifest> lineage metric:gross_margin_rate --upstream
 --- exit 0
 --- stdout
-metric:gross_margin_rate  metric
-upstream
-  metric:gross_margin  metric
-    metric:total_line_item_revenue  metric
-      model:order_items  model  SST_REF_DEV.JAFFLE.ORDER_ITEMS
-    metric:total_supply_cost  metric
-      model:supplies  model  SST_REF_DEV.JAFFLE.SUPPLIES
-    model:order_items  (shown above)
-    model:supplies  (shown above)
-  metric:total_line_item_revenue  (shown above)
-  model:order_items  (shown above)
+metric:gross_margin_rate
+└── reads
+    ├── metric:gross_margin
+    │   ├── metric:total_line_item_revenue
+    │   │   ├── column:order_items.item_price
+    │   │   │   └── model:order_items
+    │   │   └── model:order_items
+    │   ├── metric:total_supply_cost
+    │   │   ├── column:supplies.supply_cost
+    │   │   │   └── model:supplies
+    │   │   └── model:supplies
+    │   ├── model:order_items
+    │   └── model:supplies
+    ├── metric:total_line_item_revenue
+    │   ├── column:order_items.item_price
+    │   │   └── model:order_items
+    │   └── model:order_items
+    └── model:order_items
 --- stderr
-✓ traced 6 nodes from metric:gross_margin_rate · <n>s
+✓ traced 8 nodes from metric:gross_margin_rate · <n>s

@@ -1,0 +1,46 @@
+: a comment
+event: metadata
+data: {"metadata":{"message_id":11,"role":"user","run_id":"5-11"},"sequence_number":0}
+
+event: response.status
+data: {"message":"Planning the next steps","sequence_number":1,"status":"planning"}
+
+event: response.thinking.delta
+data: {"content_index":0,"sequence_number":2,"text":"Thinking"}
+
+event: response.tool_use
+data: {"content_index":1,"input":{"query":"x"},"name":"SALES","sequence_number":3,"tool_use_id":"t1","type":"cortex_analyst_text_to_sql"}
+
+event: response.tool_result.status
+data: {"message":"Running SALES","sequence_number":4,"status":"executing_tool","tool_use_id":"t1"}
+
+event: response.tool_result
+data: {"content":[{"json":{"sql":"SELECT 1","semantic_model_path":"SCR.X.SALES__SST_ASK_1","result_set":{"data":[["61948"]],"resultSetMetaData":{"rowType":[{"name":"ORDER_COUNT"}]}}},"type":"json"}],"name":"SALES","sequence_number":5,"status":"success","tool_use_id":"t1","type":"cortex_analyst_text_to_sql"}
+
+event: response.text.delta
+data: {"content_index":2,"sequence_number":6,"text":"There are "}
+
+event: response.text.delta
+data: {"content_index":2,
+data: "sequence_number":7,"text":"61,948 orders."}
+
+event: response.chart
+data: {"chart_spec":"{\"mark\":\"bar\"}","sequence_number":8}
+
+event: response.warning
+data: {"code":"399569","message":"a tool was skipped","sequence_number":9}
+
+event: response.suggested_queries
+data: {"suggested_queries":[{"query":"And by month?"},"not an object"],"sequence_number":10}
+
+event: metadata
+data: {"metadata":{"message_id":12,"role":"assistant"},"sequence_number":11}
+
+event: response.something_new
+data: {"sequence_number":12}
+
+event: response
+data: {"status":"completed","metadata":{"run_id":"5-11","assistant_message_id":12,"usage":{"tokens_consumed":[{"input_tokens":{"total":100},"output_tokens":{"total":7}},"not an object",{"input_tokens":"odd"}]}},"sequence_number":13}
+
+event: done
+data: [DONE]

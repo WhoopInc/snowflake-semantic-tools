@@ -63,7 +63,7 @@ semantic view end to end.
 | `sst apply` | Execute a saved plan |
 | `sst diff` | Compare two states -- local, a dbt target, or a saved plan |
 | `sst test` | Run smoke probes against published semantic views, and agent evals |
-| `sst ask` | Ask an agent a question as it compiles now, through a temporary agent, publishing nothing |
+| `sst ask` | Talk to an agent as it compiles now, on scratch copies of your edits, publishing nothing |
 | `sst list` | List compiled artifacts and their status |
 | `sst lineage` | Show what a dbt node, member, or artifact reads and what reads it, from dbt sources to agents and evals |
 | `sst baseline` | Record known, not yet fixed warnings so they stop blocking under `--strict`, and maintain that file |

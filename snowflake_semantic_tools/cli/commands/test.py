@@ -7,7 +7,9 @@ Every suite first compiles the project and stops on its errors, then refuses to 
 from __future__ import annotations
 
 import dataclasses
+import secrets
 import socket
+from collections.abc import Mapping
 from pathlib import Path
 
 import click
@@ -19,11 +21,20 @@ from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.adapters.snowflake.eval_state import SnowflakeEvalStateStore
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
-from snowflake_semantic_tools.app.ask import agent_scope, compiled_agents, stale_dependencies
+from snowflake_semantic_tools.app.ask import agent_scope, compiled_agents
+from snowflake_semantic_tools.app.ask_scratch import ScratchPort, ScratchSession, edited_dependencies
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
+from snowflake_semantic_tools.app.compile.agents import CompiledAgent
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.inline import InlineEvalOutcome, InlineEvalSetup, RunInlineEvals
-from snowflake_semantic_tools.app.evals.progress import EvalProgressEvent, StatusReadFailed, StatusReadTimedOut
+from snowflake_semantic_tools.app.evals.progress import (
+    AttemptEnded,
+    AttemptStarted,
+    EvalProgressEvent,
+    StatusChanged,
+    StatusReadFailed,
+    StatusReadTimedOut,
+)
 from snowflake_semantic_tools.app.evals.run import suite_concurrency
 from snowflake_semantic_tools.app.evals.suite import (
     EvalGateOutcome,
@@ -47,6 +58,7 @@ from snowflake_semantic_tools.cli.options import (
 from snowflake_semantic_tools.cli.output import print_progress
 from snowflake_semantic_tools.cli.plan_output import print_eval_results
 from snowflake_semantic_tools.cli.render.diagnostics import plural
+from snowflake_semantic_tools.cli.render.progress import active_display
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import threads_setting
 from snowflake_semantic_tools.cli.wiring import compile as compiling
@@ -60,8 +72,12 @@ from snowflake_semantic_tools.cli.wiring.project import (
     state_store,
     target_dir,
 )
+from snowflake_semantic_tools.domain.ask.spec import rewrite_spec
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
-from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
+from snowflake_semantic_tools.domain.model.eval.model import EVAL_PASS_STATUSES
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
+from snowflake_semantic_tools.domain.ports.progress import NO_PROGRESS
+from snowflake_semantic_tools.domain.state import AppliedEntry
 
 SUITES = ("smoke", "evals")
 # Which exit code wins when suites disagree: Snowflake unreachable, then a setup failure, then 1.
@@ -266,8 +282,15 @@ def _run_smoke(
     profile, port = connect(paths, target_name)
     params = profile.connection_params
     try:
-        with RUN_TIMINGS.phase("smoke"), ConnectorPool(threads, lambda: open_connector(params)) as pool:
-            smoke = SmokePublished(port, state_store(paths, profile.target_name), Fanout(port, pool, threads)).run(
+        with ConnectorPool(threads, lambda: open_connector(params)) as pool:
+            readers = Fanout(port, pool, threads)
+            smoke = SmokePublished(
+                port,
+                state_store(paths, profile.target_name),
+                readers,
+                phases=RUN_TIMINGS,
+                progress=active_display() or NO_PROGRESS,
+            ).run(
                 result,
                 manifest,
                 target=profile.identity,
@@ -276,6 +299,8 @@ def _run_smoke(
             )
     finally:
         port.close()
+    if smoke.unpublished:
+        print_progress(f"- smoke probes skipped: {plural(smoke.unpublished, 'artifact')} not published as compiled")
     exit_code = OK if smoke.success else ERROR
     attempted = len(smoke.attempted)
     return CommandResult(
@@ -383,28 +408,31 @@ def _run_unpublished_evals(
     profile, port = connect(paths, target_name)
     params = profile.connection_params
     workers = suite_concurrency(evals, defaults, threads)
+    sessions: dict[str, ScratchSession] = {}
     with closed_on_error(port), ConnectorPool(workers, lambda: open_connector(params)) as pool:
         applied = published_entries(port, profile, paths.config_name)
         setups: list[InlineEvalSetup] = []
-        notes: dict[str, tuple[Diagnostic, ...]] = {}
-        for item in evals:
-            agent = agents[item.resolved.agent.key]
-            scope = agent_scope(agent, profile.identity)
-            if isinstance(scope, Diagnostic):
-                raise ProjectError(scope.message, diagnostics=(scope,))
-            setups.append(InlineEvalSetup(item, agent, scope))
-            notes.setdefault(agent.artifact_key, stale_dependencies(agent, full, applied))
-        outcome = RunInlineEvals(port, pool, progress=print_progress).run(
-            setups,
-            defaults=defaults,
-            threads=threads,
-            fail_fast=fail_fast,
-            notes=tuple(item for found in notes.values() for item in found),
-        )
+        notes: list[Diagnostic] = []
+        try:
+            for item in evals:
+                agent = agents[item.resolved.agent.key]
+                scope = agent_scope(agent, profile.identity)
+                if isinstance(scope, Diagnostic):
+                    raise ProjectError(scope.message, diagnostics=(scope,))
+                copied = _scratch_agent(port, agent, full, applied, scope, sessions)
+                if isinstance(copied, Diagnostic):
+                    return CommandResult(ERROR, DiagnosticBag((copied,)), {"suite": "evals"})
+                setups.append(InlineEvalSetup(item, copied, scope))
+            outcome = RunInlineEvals(port, pool, progress=print_progress).run(
+                setups, defaults=defaults, threads=threads, fail_fast=fail_fast
+            )
+        finally:
+            for session in sessions.values():
+                notes.extend(session.drop())
     port.close()
     return CommandResult(
         OK if outcome.passed else ERROR,
-        outcome.diagnostics,
+        DiagnosticBag((*outcome.diagnostics, *notes)),
         dict(outcome.data),
         human=lambda: _print_unpublished(outcome),
     )
@@ -419,9 +447,59 @@ def _print_unpublished(outcome: InlineEvalOutcome) -> None:
     click.echo(f"unpublished eval run {outcome.data.get('gate_verdict')}")
 
 
+# The eval key each run in flight is shown under on a terminal, by run name.
+_EVAL_LABELS: dict[str, str] = {}
+
+
+def _scratch_agent(
+    port: ScratchPort,
+    agent: CompiledAgent,
+    full: CompileResult,
+    applied: Mapping[str, AppliedEntry] | None,
+    scope: SchemaScope,
+    sessions: dict[str, ScratchSession],
+) -> CompiledAgent | Diagnostic:
+    """Return the agent pointed at scratch copies of what you edited that it reaches; made once per agent.
+
+    Diagnostics:
+        SST-ASK008: a copy was refused.
+    """
+    session = sessions.get(agent.artifact_key)
+    if session is None:
+        session = ScratchSession(port, scope, secrets.token_hex(4), print_progress)
+        sessions[agent.artifact_key] = session
+        failed = session.build(edited_dependencies(agent, full, applied))
+        if failed is not None:
+            return failed
+    payload, _ = rewrite_spec(agent.payload, session.renames)
+    return dataclasses.replace(agent, payload=payload)
+
+
 def _print_eval_progress(event: EvalProgressEvent) -> None:
-    """Print one eval progress event as a line; a status read that failed or timed out as a warning."""
-    print_progress(event.line, warning=isinstance(event, (StatusReadFailed, StatusReadTimedOut)))
+    """Show one eval progress event: as a row of the live block on a terminal, else as a line.
+
+    On a terminal each run is a unit, labelled with its eval's key, whose status the events
+    change, and which leaves one finished line when it ends; the heartbeat says nothing the rows
+    do not. A status read that failed or timed out is also printed as a warning, so it outlives
+    the row. Elsewhere each event prints as its line, a failed or timed-out read as a warning.
+    """
+    display = active_display()
+    if display is None or not display.live:
+        print_progress(event.line, warning=isinstance(event, (StatusReadFailed, StatusReadTimedOut)))
+        return
+    if isinstance(event, AttemptStarted):
+        _EVAL_LABELS[event.run_name] = event.label or event.run_name
+        attempt = f"attempt {event.attempt} of {event.attempt_limit}" if event.attempt_limit > 1 else "starting"
+        display.unit_started("evals", _EVAL_LABELS[event.run_name], attempt)
+    elif isinstance(event, StatusChanged):
+        display.unit_status("evals", _EVAL_LABELS.get(event.run_name, event.run_name), event.status)
+    elif isinstance(event, AttemptEnded):
+        label = _EVAL_LABELS.pop(event.run_name, event.run_name)
+        display.unit_finished("evals", label, ok=event.status in EVAL_PASS_STATUSES, status=event.status)
+    elif isinstance(event, (StatusReadFailed, StatusReadTimedOut)):
+        label = _EVAL_LABELS.get(event.run_name, event.run_name)
+        display.unit_status("evals", label, "status read retrying")
+        print_progress(event.line, warning=True)
 
 
 def _eval_state_table(state_table: QualifiedName) -> QualifiedName:

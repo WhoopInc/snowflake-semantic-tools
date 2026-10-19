@@ -4,7 +4,8 @@ Plan reads the target before it decides, so a write Snowflake would refuse is re
 blocked, before apply runs it. `Preflight` is what that read found; `check_preflight` turns
 it into diagnostics on the decided changes. Each code is the precheck for the SNO code apply
 would report instead: a missing database (SST-PLN011, for SST-SNO006) or schema
-(SST-PLN010, for SST-SNO005), a missing referenced relation (SST-PLN007, for SST-SNO003),
+(SST-PLN010, for SST-SNO005; with `apply.create_schemas`, apply creates the schema instead,
+and `schemas_to_create` lists it), a missing referenced relation (SST-PLN007, for SST-SNO003),
 and a privilege the role lacks (SST-PLN008, for SST-SNO004) each block the write; a create
 whose name is taken (SST-PLN009, for SST-SNO002) and an object another session holds a lock
 on (SST-PLN019, for SST-SNO022) are warnings. A prune of an object something outside the
@@ -88,6 +89,10 @@ class Preflight:
         state_table_kind: The kind `state.+table_kind` names, `standard` or `hybrid`.
         state_table_kinds: Each state and lock table that exists, with the kind it was read to
             be, in table order. A table whose kind could not be read is not listed.
+        create_schemas: `apply.create_schemas`: apply creates each absent schema in a database
+            that exists, so a missing one is no SST-PLN010.
+        missing_state_schemas: The folded scopes of the state and lock tables' schemas that do
+            not exist, read only with `create_schemas` on.
     """
 
     target_name: str
@@ -109,6 +114,8 @@ class Preflight:
     absent_state_tables: tuple[QualifiedName, ...] = ()
     state_table_kind: str = STANDARD_TABLES
     state_table_kinds: tuple[tuple[QualifiedName, str], ...] = ()
+    create_schemas: bool = False
+    missing_state_schemas: frozenset[_Scope] = frozenset()
 
 
 def required_privilege(change: Change) -> str | None:
@@ -237,11 +244,40 @@ def _missing_scope(
     key = _scope_key(scope)
     if scope.database.folded in preflight.missing_databases:
         diagnostic = scoped.setdefault(key, D("SST-PLN011", value=scope.database.sql))
-    elif key in preflight.missing_schemas:
+    elif key in preflight.missing_schemas and not preflight.create_schemas:
         diagnostic = scoped.setdefault(key, D("SST-PLN010", value=scope.sql))
     else:
         return ()
     return (diagnostic,)
+
+
+def schemas_to_create(changes: tuple[Change, ...], preflight: Preflight) -> tuple[SchemaScope, ...]:
+    """Return the absent schemas apply creates, with `create_schemas` on: none with it off.
+
+    The state and lock tables' schemas come first, when the plan writes, as apply takes the lock
+    before anything else; then each schema a write that is not blocked, or its upload stage,
+    goes in, in change order. A schema in a missing database is SST-PLN011's, never created.
+    """
+    if not preflight.create_schemas:
+        return ()
+    writes = [change for change in changes if change.action in (Action.CREATE, Action.UPDATE) and change.rendered]
+    found: dict[_Scope, SchemaScope] = {}
+    if writes:
+        for table in preflight.absent_state_tables:
+            scope = SchemaScope.from_qualified_name(table)
+            if _scope_key(scope) in preflight.missing_state_schemas:
+                found.setdefault(_scope_key(scope), scope)
+    for change in writes:
+        assert change.rendered is not None
+        names = (change.rendered.target, *((change.rendered.upload_stage,) if change.rendered.upload_stage else ()))
+        for name in names:
+            scope = SchemaScope.from_qualified_name(name)
+            if (
+                _scope_key(scope) in preflight.missing_schemas
+                and scope.database.folded not in preflight.missing_databases
+            ):
+                found.setdefault(_scope_key(scope), scope)
+    return tuple(found.values())
 
 
 def _stage_blocking(

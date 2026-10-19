@@ -104,15 +104,18 @@ SPECS: tuple[ErrorSpec, ...] = (
     ),
     spec(
         "SST-VAL009",
-        Severity.WARNING,
+        Severity.INFO,
         "File is not canonically formatted",
         "{path} is not canonically formatted",
         "run sst format",
         condition=(
-            "a semantic-model file has a carriage return, trailing whitespace, a tab in its indentation, "
-            "or not exactly one final newline"
+            "a semantic-model file has a tab in its indentation, or not exactly one final newline; "
+            "SST-LOD012 reports carriage returns and trailing whitespace, so each problem is reported once"
         ),
-        note="`sst format` also rewrites indentation and key order; this check does not report those.",
+        note=(
+            "Information only, so strict mode never promotes it; `sst format --check` is the gate for "
+            "layout. `sst format` also rewrites indentation and key order; this check does not report those."
+        ),
     ),
     spec(
         "SST-VAL010",

@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.state import AppliedEntry, Manifest, State
 from tests.helpers.agent_builders import compile_tools, search_member
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.compile_builders import compiled
+from tests.helpers.progress_recorder import RecordedProgress
 from tests.helpers.project_inputs import EMPTY_SOURCES, dev_target
 from tests.helpers.snowflake_fake import FakeSnowflake
 
@@ -160,6 +161,36 @@ def test_an_entry_that_does_not_match_is_reported_without_reading_the_live_marke
     assert port.described == ["DB.SCH.CHARLIE"]
 
 
+def test_each_unpublished_artifact_says_whether_it_was_never_published_or_published_older() -> None:
+    result = compiled("ALPHA", "BRAVO", "CHARLIE")
+    manifest, port = published(result)
+    state = dict(port.remote_state or {})
+    state.pop("semantic_view:alpha")
+    state["semantic_view:bravo"] = replace(state["semantic_view:bravo"], fingerprint="f" * 64)
+    port.remote_state = MappingProxyType(state)
+
+    outcome = smoke(result, manifest, port)
+
+    assert [(item.code, item.context["artifact"]) for item in outcome.diagnostics] == [
+        ("SST-APL036", "semantic_view:alpha"),
+        ("SST-APL038", "semantic_view:bravo"),
+    ]
+    assert (outcome.attempted, outcome.unpublished) == ((), 2)
+
+
+def test_a_target_nothing_was_applied_to_is_one_finding() -> None:
+    result = compiled("ALPHA", "BRAVO")
+    manifest, port = published(result)
+    port.remote_state = MappingProxyType({})
+
+    outcome = smoke(result, manifest, port)
+
+    assert [item.message for item in outcome.diagnostics] == [
+        "nothing the smoke suite tests is published on this target (2 not published)"
+    ]
+    assert (outcome.unpublished, port.described) == (2, [])
+
+
 def test_anything_reading_state_reports_keeps_the_probes_from_running_even_a_warning() -> None:
     result = compiled()
     manifest, port = published(result)
@@ -171,12 +202,30 @@ def test_anything_reading_state_reports_keeps_the_probes_from_running_even_a_war
     assert outcome.success and outcome.attempted == ()
 
 
-def test_unreadable_state_is_reported_with_every_object_it_cannot_vouch_for() -> None:
+def test_unreadable_state_is_reported_alone_and_keeps_the_probes_from_running() -> None:
+    # Unreadable state proves nothing either way, so no object is called unpublished.
     result = compiled()
     manifest, port = published(result)
     port.remote_state = None
 
     outcome = smoke(result, manifest, port)
 
-    assert [item.code for item in outcome.diagnostics] == ["SST-PLN001", "SST-APL012"]
-    assert port.queries == []
+    assert [item.code for item in outcome.diagnostics] == ["SST-PLN001"]
+    assert port.queries == [] and outcome.unpublished == 0
+
+
+def test_each_probe_is_a_unit_of_the_smoke_step() -> None:
+    result = compiled("MENU", "SALES")
+    manifest, port = published(result)
+    progress = RecordedProgress()
+
+    outcome = SmokePublished(port, InMemoryStateStore(), progress=progress).run(
+        result, manifest, target=dev_target(), state_table=STATE_TABLE, fail_fast=True
+    )
+
+    keys = [probe.key for probe in outcome.attempted]
+    assert progress.units() == [
+        event
+        for key in keys
+        for event in (("started", "smoke", key, "probing"), ("finished", "smoke", key, True, "answered"))
+    ]

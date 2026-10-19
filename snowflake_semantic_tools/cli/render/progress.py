@@ -1,4 +1,4 @@
-"""Progress on stderr while a long command runs: one live line on a terminal, plain lines in CI.
+"""Progress on stderr while a long command runs: one live block on a terminal, plain lines in CI.
 
 The display reads only what `RUN_TIMINGS` records -- the phase in flight, the Snowflake
 statements and logins finished and in flight, the dbt processes -- and what the `Progress`
@@ -7,6 +7,14 @@ looks as it did. While the live line shows, every other write to stderr clears i
 it is drawn again after, and `paused` stops it for a prompt. A phase that took a while leaves
 one finished line behind (`✓ observed Snowflake · 12.3s`).
 
+A run that does several units of work at once (eval runs, smoke probes, the changes apply
+publishes) reports each unit as it starts, changes and ends. Each unit in flight is one row of
+the live block, above the line, in the order they started: a spinner, its key, its status and
+its time. A unit that ends leaves the block and prints once as a finished line (`✓` or `✗`, its
+status and time), so only work in flight is live and a long suite is never summarised. When
+more units are in flight than the terminal has rows, the block shows the first ones and
+`+N more running`. Without a terminal, in CI, each unit prints its finished line only.
+
 Without a terminal the display prints only where `$CI` is set: a line as each slow phase ends,
 and one every `HEARTBEAT_SECONDS` while a phase runs, so a CI log shows the run is alive.
 """
@@ -14,10 +22,12 @@ and one every `HEARTBEAT_SECONDS` while a phase runs, so a CI log shows the run 
 from __future__ import annotations
 
 import contextlib
+import shutil
 import sys
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass
 from typing import TextIO, cast
 
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS, LiveCounts, RunTimings
@@ -37,13 +47,26 @@ PHASE_LABELS: dict[str, tuple[str, str]] = {
     "observe": ("observing Snowflake", "observed Snowflake"),
     "classify": ("deciding the changes", "decided the changes"),
     "validate": ("checking against Snowflake", "checked against Snowflake"),
+    "schemas": ("creating schemas", "created schemas"),
     "lock": ("taking the run lock", "took the run lock"),
     "publish": ("publishing", "published"),
     "state_write": ("recording state", "recorded state"),
+    "smoke_check": ("checking what is published", "checked what is published"),
     "smoke": ("running smoke probes", "ran smoke probes"),
     "disconnect": ("closing sessions", "closed sessions"),
 }
 _ACTIVE: list[ProgressDisplay] = []
+# Rows the live block leaves the terminal: the status line and one more for the cursor.
+_SPARE_ROWS = 2
+
+
+@dataclass(slots=True)
+class _Unit:
+    """One unit of work in flight: its step, how it is now, and when it started."""
+
+    step: str
+    status: str
+    started: float
 
 
 class ProgressDisplay:
@@ -72,6 +95,8 @@ class ProgressDisplay:
         self._started = 0.0
         self._shown = False
         self._drawn = ""
+        self._drawn_rows = 0
+        self._units: dict[str, _Unit] = {}
         self._paused = 0
         self._frame = 0
         self._counts: dict[str, tuple[int, int]] = {}
@@ -148,6 +173,37 @@ class ProgressDisplay:
             done, total = self._counts.get(step, (0, 0))
             self._counts[step] = (done + count, total)
 
+    @property
+    def live(self) -> bool:
+        """Report whether the display redraws in place, on a terminal, rather than printing lines."""
+        return self._live
+
+    def unit_started(self, step: str, key: str, status: str = "") -> None:
+        """Show `key` as a row of the live block from now on, in start order."""
+        with self._lock:
+            self._units[key] = _Unit(step, status, self._clock())
+
+    def unit_status(self, step: str, key: str, status: str) -> None:
+        """Show the unit `key` as `status` from now on; one not in flight is started."""
+        with self._lock:
+            unit = self._units.get(key)
+            if unit is None:
+                self._units[key] = _Unit(step, status, self._clock())
+            else:
+                unit.status = status
+
+    def unit_finished(self, step: str, key: str, *, ok: bool, status: str) -> None:
+        """Take `key` out of the live block and print it once as a finished line, with its time."""
+        with self._lock:
+            unit = self._units.pop(key, None)
+            seconds = self._clock() - unit.started if unit is not None else 0.0
+            mark = (
+                self._style(self._style.symbol("ok"), "success")
+                if ok
+                else self._style(self._style.symbol("fail"), "error")
+            )
+            self.line(f"{mark} {key}  {status}{self._style.sep}{seconds:.1f}s".rstrip())
+
     def phase_started(self, name: str) -> None:
         """Note when phase `name` started, for its heartbeat lines."""
         with self._lock:
@@ -205,20 +261,43 @@ class ProgressDisplay:
                         self._write(f"... {self.describe(counts)}\n")
 
     def _redraw(self) -> None:
-        """Draw the live line again; the caller holds the lock."""
+        """Draw the live block again: a row per unit in flight, then the live line; the caller holds the lock."""
         if not self._live or not self._shown or self._paused or self._stop.is_set():
             return
         self._frame = (self._frame + 1) % len(self._style.spinner)
         spinner = self._style(self._style.spinner[self._frame], "info")
         text = self._fit(f"{spinner} {self.describe(self._timings.live())}")
-        self._write(f"\r{text}\x1b[K")
-        self._drawn = text
+        rows = self._unit_rows(spinner)
+        if not rows and not self._drawn_rows:
+            self._write(f"\r{text}\x1b[K")
+            self._drawn = text
+            return
+        self._clear()
+        self._write("\n".join(f"{line}\x1b[K" for line in (*rows, text)))
+        self._drawn, self._drawn_rows = text, len(rows)
+
+    def _unit_rows(self, spinner: str) -> list[str]:
+        """Return a row for each unit in flight, as many as the terminal has room for, then how many more."""
+        if not self._units:
+            return []
+        room = max(shutil.get_terminal_size((80, 24)).lines - _SPARE_ROWS, 1)
+        units = list(self._units.items())
+        shown = units if len(units) <= room else units[: max(room - 1, 1)]
+        width = max(len(key) for key, _ in shown)
+        now = self._clock()
+        rows = []
+        for key, unit in shown:
+            parts = (f"{spinner} {key.ljust(width)}", unit.status, _elapsed(now - unit.started))
+            rows.append(self._fit("  ".join(part for part in parts if part)))
+        if len(shown) < len(units):
+            rows.append(self._style(f"  +{len(units) - len(shown)} more running", "dim"))
+        return rows
 
     def _clear(self) -> None:
-        """Erase the live line, if one is drawn; the caller holds the lock."""
-        if self._drawn:
-            self._write("\r\x1b[K")
-            self._drawn = ""
+        """Erase the live block, if one is drawn; the caller holds the lock."""
+        if self._drawn or self._drawn_rows:
+            self._write("\r\x1b[K" + "\x1b[1A\x1b[K" * self._drawn_rows)
+            self._drawn, self._drawn_rows = "", 0
 
     def _fit(self, text: str) -> str:
         width = self._style.terminal.width - 1
@@ -232,6 +311,12 @@ class ProgressDisplay:
         with contextlib.suppress(OSError, ValueError):
             stream.write(text)
             stream.flush()
+
+
+def _elapsed(seconds: float) -> str:
+    """Render a unit's time in flight as whole seconds, or minutes and seconds: `12s`, `1m05s`."""
+    whole = max(int(seconds), 0)
+    return f"{whole}s" if whole < 60 else f"{whole // 60}m{whole % 60:02d}s"
 
 
 class _ClearingStream:

@@ -30,6 +30,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Table,
     VerifiedQuery,
 )
+from snowflake_semantic_tools.domain.ports.snowflake.errors import ScopeUnavailable
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.sql import Sql
 from tests.helpers.sql_values import authored, authored_query, statement
@@ -182,3 +183,25 @@ def test_one_session_at_a_time_reads_describe_then_explain_then_count_and_spot_c
         "SELECT COUNT(*) AS R",
         "SELECT COUNT(*) - CO",
     ]
+
+
+class Unbuilt(Warehouse):
+    """A warehouse in which schema `DB.T` does not exist yet: no session starts there."""
+
+    def query_in_context(
+        self, scope: SchemaScope, sql: Sql, params: object = None, *, timeout_seconds: int | None = None
+    ) -> QueryResult:
+        if scope.sql == "DB.T":
+            raise ScopeUnavailable("a session for DB.T started in DB")
+        return super().query_in_context(scope, sql, params, timeout_seconds=timeout_seconds)
+
+
+def test_a_verified_query_in_a_schema_apply_has_yet_to_create_is_explained_on_the_plain_session() -> None:
+    warehouse = Unbuilt()
+    found = _diagnostics(warehouse, None)
+    bound = (
+        "WITH ORDERS AS (SELECT * FROM DB.S.ORDERS), CUSTOMERS AS (SELECT * FROM DB.S.CUSTOMERS) "
+        "SELECT * FROM (SELECT COUNT(*) FROM DB.S.ORDERS) AS SST_VQ"
+    )
+    assert [scope for scope, text in warehouse.ran if text == f"EXPLAIN {bound}"] == ["DB.S", None]
+    assert not [item for item in found if item.code == "SST-VAL418" and item.context["type"] == "verified_query"]

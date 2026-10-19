@@ -27,8 +27,8 @@ cannot be downgraded by any setting.
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 44 codes
-- [Apply (APL)](#apply-apl) -- 37 codes
-- [Unpublished runs (ASK)](#unpublished-runs-ask) -- 7 codes
+- [Apply (APL)](#apply-apl) -- 41 codes
+- [Unpublished runs (ASK)](#unpublished-runs-ask) -- 10 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
 - [Internal (INT)](#internal-int) -- 12 codes
@@ -1618,13 +1618,15 @@ Fix: use |- so line breaks survive
 
 ### SST-LOD012
 
-**Trailing whitespace or CRLF line endings** (warning)
+**Trailing whitespace or CRLF line endings** (info)
 
 `<file>: <detail>`
 
 Raised when lines end in CRLF, or carry trailing whitespace; reported once for each.
 
 Fix: run sst format
+
+Note: Both are dropped when the file is read, so neither changes what publishes, and the finding is information only: strict mode promotes warnings, so it never blocks a command. `sst format --check` is the gate for whitespace.
 
 ### SST-LOD013
 
@@ -2416,15 +2418,15 @@ Fix: use |- so line breaks survive
 
 ### SST-VAL009
 
-**File is not canonically formatted** (warning)
+**File is not canonically formatted** (info)
 
 `<path> is not canonically formatted`
 
-Raised when a semantic-model file has a carriage return, trailing whitespace, a tab in its indentation, or not exactly one final newline.
+Raised when a semantic-model file has a tab in its indentation, or not exactly one final newline; SST-LOD012 reports carriage returns and trailing whitespace, so each problem is reported once.
 
 Fix: run sst format
 
-Note: `sst format` also rewrites indentation and key order; this check does not report those.
+Note: Information only, so strict mode never promotes it; `sst format --check` is the gate for layout. `sst format` also rewrites indentation and key order; this check does not report those.
 
 ### SST-VAL010
 
@@ -3578,7 +3580,7 @@ Raised when offline: an expression or a tool member's `where:` is not one SQL ex
 
 Fix: fix the expression or query; the message carries the reason
 
-Note: Offline, verified-query SQL is checked for its shape only, so a misspelt keyword or column needs the connected check. That check compiles a verified query over its view's own tables, each logical table it names bound to the relation the view reads, wherever the view publishes. It compiles a metric, dimension or filter over a projection with no rows, in which each `TABLE.COLUMN` reference is a NULL of the column's type: the type `DESCRIBE TABLE` reports in the target, else the `data_type` the dbt model declares, else none. It therefore catches a syntax error, an unknown function, and an argument type Snowflake refuses when it compiles, such as `SUM` over a timestamp, but not a value that fails only when a query runs, such as `SUM` over text that is not numeric, nor a column the table lacks (`--verify-schema` reports that, SST-VAL325); a reference to a metric, a filter, or a variable is untyped, and facts are not compiled. A finding is reported once, its detail naming every semantic view that holds the member.
+Note: Offline, verified-query SQL is checked for its shape only, so a misspelt keyword or column needs the connected check. That check compiles a verified query over its view's own tables, each logical table it names bound to the relation the view reads, wherever the view publishes, and resolves any other name in the view's schema; before apply creates that schema, on the session's own. It compiles a metric, dimension or filter over a projection with no rows, in which each `TABLE.COLUMN` reference is a NULL of the column's type: the type `DESCRIBE TABLE` reports in the target, else the `data_type` the dbt model declares, else none. It therefore catches a syntax error, an unknown function, and an argument type Snowflake refuses when it compiles, such as `SUM` over a timestamp, but not a value that fails only when a query runs, such as `SUM` over text that is not numeric, nor a column the table lacks (`--verify-schema` reports that, SST-VAL325); a reference to a metric, a filter, or a variable is untyped, and facts are not compiled. A finding is reported once, its detail naming every semantic view that holds the member.
 
 ### SST-VAL506
 
@@ -4060,7 +4062,7 @@ Raised when connected validation runs a throwaway agent on a model `snowflake.or
 
 Fix: remove it from snowflake.orchestration_models, or enable it for the role and region
 
-Note: `CREATE AGENT` accepts any model name, so a model agents do not accept fails only when someone asks the agent something. Snowflake keeps no list of the models agents accept: `SHOW CORTEX BASE MODELS` lists models agents refuse, such as embedding models. So SST creates a TEMPORARY agent with no tools and a small budget in the schema of the first agent the project publishes, runs it once with `DATA_AGENT_RUN` as the session's role, and drops it. The detail is the first line of Snowflake's message: 'not an allowed model for Agent requests' for a model agents never accept, 'not authorized or not available in your region' for one the account cannot reach. Run the check as the role that deploys: ACCOUNTADMIN reaches models other roles cannot.
+Note: `CREATE AGENT` accepts any model name, so a model agents do not accept fails only when someone asks the agent something. Snowflake keeps no list of the models agents accept: `SHOW CORTEX BASE MODELS` lists models agents refuse, such as embedding models. So SST creates a TEMPORARY agent with no tools and a small budget where the first agent the project publishes makes its temporary agents, `agents.+scratch_schema`, else that agent's own schema, runs it once with `DATA_AGENT_RUN` as the session's role, and drops it. The detail is the first line of Snowflake's message: 'not an allowed model for Agent requests' for a model agents never accept, 'not authorized or not available in your region' for one the account cannot reach. Run the check as the role that deploys: ACCOUNTADMIN reaches models other roles cannot.
 
 ### SST-VAL552
 
@@ -4116,7 +4118,7 @@ Note: Snowflake does not intend preview models for production workloads.
 
 Raised when connected validation could not run a throwaway agent on a model `snowflake.orchestration_models` lists, or could not read `SHOW CORTEX BASE MODELS`: the project publishes no agent, or Snowflake refused the CREATE, the run or the SHOW, or the run did not answer within 60 seconds.
 
-Fix: fix what the reason names, such as the role's CREATE AGENT in the first agent's schema, then validate again as the deploying role
+Fix: fix what the reason names, such as the role's CREATE AGENT in `agents.+scratch_schema`, else the first agent's schema, or that schema not existing yet, then validate again as the deploying role
 
 Note: An unchecked model is neither accepted nor refused; the reason says what stopped the check.
 
@@ -6914,11 +6916,11 @@ Note: The message names the holder: its run id and, for the lock in Snowflake, t
 
 `<artifact>: <value> changed since the plan`
 
-Raised when the target changed after the plan was computed: its state table no longer reads as the plan read it, an object the plan would create now exists, an ownership marker changed or was not installed, or a composite artifact's resources changed; `sst test` also reports it when an artifact it would smoke or eval is not published as the compiled manifest renders it; and `sst apply --plan` reports it, exiting 4, when the saved plan's manifest, observation, or ordered changes are not a fresh plan's.
+Raised when the target changed after the plan was computed: its state table no longer reads as the plan read it, an object the plan would create now exists, an ownership marker changed or was not installed, or a composite artifact's resources changed; `sst test` also reports it when an artifact it would smoke or eval is recorded as published as compiled but its live object changed since; and `sst apply --plan` reports it, exiting 4, when the saved plan's manifest, observation, or ordered changes are not a fresh plan's.
 
 Fix: re-run plan
 
-Note: Under `sst test`, run `sst plan` and `sst apply` for the current manifest first.
+Note: Under `sst test`, the object was changed outside SST after it was applied: run `sst plan` and `sst apply` to publish it again. An artifact never published on the target is SST-APL036, and one published from an older compile SST-APL038.
 
 ### SST-APL013
 
@@ -7144,6 +7146,48 @@ Fix: set state.+table_kind: standard
 
 Note: Its error number is not measured, so it is recognised by a message that names hybrid tables; any other refusal is reported as Snowflake gave it
 
+### SST-APL036
+
+**Artifact not published on this target** (error)
+
+`<artifact>: <value> is not published on this target`
+
+Raised when `sst test` would smoke or eval an artifact the target's state records no successful publish of; when that is true of every artifact the suite tests, SST-APL037 reports it once.
+
+Fix: run `sst plan`, then `sst apply`
+
+### SST-APL037
+
+**Nothing the suite tests is published on this target** (error)
+
+`nothing the <kind> suite tests is published on this target (<count> not published)`
+
+Raised when no artifact `sst test` would smoke or eval is published on the target, as on a target nothing was applied to; reported once instead of SST-APL036 for each.
+
+Fix: run `sst plan`, then `sst apply`
+
+### SST-APL038
+
+**Artifact published from an older compile** (error)
+
+`<artifact>: <value> is published from an older compile`
+
+Raised when `sst test` would smoke or eval an artifact the target's state records at another fingerprint or name than the project compiles to now.
+
+Fix: run `sst plan`, then `sst apply`, to publish the current compile
+
+### SST-APL039
+
+**Schema could not be created** (error)
+
+`<value>: the schema could not be created: <detail>`
+
+Raised when with `apply.create_schemas` on, apply ran `CREATE SCHEMA IF NOT EXISTS` for an absent schema the plan publishes into, before taking the lock, and Snowflake refused it; nothing else ran.
+
+Fix: create the schema, or have its database's owner let the role create schemas, then apply again
+
+Note: Set `apply.create_schemas: false` to have plan report an absent schema as SST-PLN010 instead.
+
 ### SST-APL100
 
 **Smoke query failed** (error)
@@ -7202,7 +7246,7 @@ Raised when a semantic view, tool, skill, plugin or agent the agent's specificat
 
 Fix: publish it first (`sst plan`, then `sst apply`) to try the two together
 
-Note: The temporary agent's specification names objects by their published names, so a tool resolves to what the target holds now: only the agent's own edit is tried.
+Note: Reported where nothing stands in for your edit: under `sst ask --published`, and for an unpublished eval run. Otherwise `sst ask` runs the agent on a scratch copy of each such dependency, so your edit is what it calls.
 
 ### SST-ASK002
 
@@ -7265,6 +7309,42 @@ Raised when in an unpublished eval run, an exact metric -- `tool_selection_accur
 Fix: fix the agent until the metric passes, or the expectation if it is wrong
 
 Note: Only exact metrics gate an unpublished run. A judged metric is approximate: its scores are reported, and never fail the run.
+
+### SST-ASK008
+
+**Scratch copy could not be created** (error)
+
+`<artifact>: the scratch copy <value> could not be created: <detail>`
+
+Raised when `sst ask` copies each dependency your edit changed into `agents.+scratch_schema`, and Snowflake refused a copy's statement; the copies made before it are dropped.
+
+Fix: grant the role the CREATE privilege the message names in the scratch schema, or run `sst ask --published`
+
+Note: Nothing is published: the copies are throwaway objects named `<NAME>__SST_ASK_<id>`.
+
+### SST-ASK009
+
+**Scratch copy or thread left behind** (warning)
+
+`<value> could not be removed: <detail>`
+
+Raised when ending a session, `sst ask` could not drop a scratch copy or delete its thread.
+
+Fix: run `sst ask --cleanup`, which removes what an earlier session left
+
+Note: Each session also removes the copies and threads older sessions left, after a while.
+
+### SST-ASK010
+
+**Agent cannot reach a tool** (error)
+
+`<artifact> cannot reach a tool: <detail>`
+
+Raised when the run sets `orchestration.tool_not_accessible: reject`, as a run on scratch copies does, and Snowflake refused it because a tool's object is missing or the role cannot use it.
+
+Fix: grant the role access to the object the message names, then ask again
+
+Note: Without `reject`, an agent answers without a tool it cannot reach, and says nothing; with it, the refusal names each such tool.
 
 ## Snowflake (SNO)
 

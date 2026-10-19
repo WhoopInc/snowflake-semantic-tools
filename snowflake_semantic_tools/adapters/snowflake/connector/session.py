@@ -36,6 +36,7 @@ from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailur
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.errors import (
+    ScopeUnavailable,
     SnowflakePortError,
     SnowflakeStatementTimedOut,
     SnowflakeTransientError,
@@ -360,8 +361,9 @@ class Session(ExecutionPort):
         """Connect a session whose current database and schema are `target`, and check they are.
 
         Raises:
-            SnowflakePortError: connecting failed, or the session did not start in `target`,
-                as when the database or schema does not exist or the role cannot use it.
+            ScopeUnavailable: the session did not start in `target`, as when the database or
+                schema does not exist or the role cannot use it.
+            SnowflakePortError: connecting failed.
         """
         settings = {**self._connection_params, "database": target.database.sql, "schema": target.schema.sql}
         session = self._connect(settings)
@@ -374,7 +376,7 @@ class Session(ExecutionPort):
         if current != (target.database.folded, target.schema.folded):
             session.close()
             shown = ".".join(current) or "no schema"
-            raise SnowflakePortError(f"a session for {target.sql} started in {shown}")
+            raise ScopeUnavailable(f"a session for {target.sql} started in {shown}")
         return session
 
     @contextlib.contextmanager

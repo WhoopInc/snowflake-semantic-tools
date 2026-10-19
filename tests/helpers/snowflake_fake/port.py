@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError
-from tests.helpers.snowflake_fake.agent_run import FakeAgentRun
+from tests.helpers.snowflake_fake.agent_stream import FakeAgentStream
 from tests.helpers.snowflake_fake.catalog import FakeCatalog
 from tests.helpers.snowflake_fake.cortex_models import FakeCortexModels
 from tests.helpers.snowflake_fake.execution import FakeExecution
@@ -21,7 +21,7 @@ class FakeSnowflake(
     FakeState,
     FakePreflight,
     FakeCortexModels,
-    FakeAgentRun,
+    FakeAgentStream,
 ):
     """`SnowflakePort` and `PreflightPort` in memory, each role over the same account.
 

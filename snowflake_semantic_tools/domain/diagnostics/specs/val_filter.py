@@ -198,7 +198,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         note=(
             "Offline, verified-query SQL is checked for its shape only, so a misspelt keyword or column needs "
             "the connected check. That check compiles a verified query over its view's own tables, each "
-            "logical table it names bound to the relation the view reads, wherever the view publishes. "
+            "logical table it names bound to the relation the view reads, wherever the view publishes, "
+            "and resolves any other name in the view's schema; before apply creates that schema, on the "
+            "session's own. "
             "It compiles a metric, dimension or filter over a projection with no rows, in which each "
             "`TABLE.COLUMN` reference is a NULL of the column's type: the type `DESCRIBE TABLE` reports in the "
             "target, else the `data_type` the dbt model declares, else none. It therefore catches a syntax error, "

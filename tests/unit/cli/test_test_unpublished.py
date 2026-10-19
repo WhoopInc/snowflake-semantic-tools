@@ -43,10 +43,19 @@ def test_an_agent_that_calls_the_right_tools_passes_with_no_publish_lock_or_stat
     project = project_copy(tmp_path)
     port = FakeSnowflake(state={})
     port.agent_replies = _right_tools(project)  # type: ignore[assignment]
-    for method in ("acquire_run_lock", "write_state", "upload", "execute_script"):
+    for method in ("acquire_run_lock", "write_state"):
         port.fail(method, SnowflakePortError(f"an unpublished run never calls {method}"))
     result = _unpublished(monkeypatch, project, port, "--output", "json")
     assert result.exit_code == 0, result.output
+    # Nothing is published to this target, so the agent runs on scratch copies of what it calls,
+    # each made and then dropped: every statement names a copy, and every upload goes to one's stage.
+    statements = [statement for script in port.scripts for statement in script]
+    assert statements and all("__SST_ASK_" in statement for statement in statements)
+    assert all("__SST_ASK_" in sent.statements[0] for sent in port.log if sent.kind == "upload")
+    assert len([item for item in statements if item.startswith("DROP")]) == len(
+        [item for item in statements if item.startswith("CREATE")]
+    )
+    assert "__SST_ASK_" in port.inline_runs[0][2]
     data = json.loads(result.output)["data"]
     assert (data["mode"], data["gate_verdict"]) == ("unpublished", "passed")
     assert data["approximated_metrics"] == ["answer_correctness", "answer_grounding"]

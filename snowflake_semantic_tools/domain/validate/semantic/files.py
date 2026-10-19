@@ -28,7 +28,7 @@ def file_diagnostics(documents: AuthoredDocuments, texts: Mapping[str, str]) -> 
 
     Diagnostics:
         SST-VAL008: a multi-line string of a semantic-model node uses `>` or `>-`.
-        SST-VAL009: the file is not canonically formatted.
+        SST-VAL009: a tab indents a line, or the file does not end in exactly one newline.
     """
     diagnostics: list[Diagnostic] = []
     for document in documents.documents:
@@ -36,9 +36,17 @@ def file_diagnostics(documents: AuthoredDocuments, texts: Mapping[str, str]) -> 
         if text is None:
             continue
         diagnostics.extend(folded_scalars(document, text))
-        if formatting_problem(text) is not None:
+        if layout_problem(text) is not None:
             diagnostics.append(D("SST-VAL009", origin=Origin(document.path), path=document.path))
     return tuple(diagnostics)
+
+
+def layout_problem(text: str) -> str | None:
+    """Name the first formatting problem SST-LOD012 does not already report: a tab or the final newline.
+
+    Carriage returns and trailing whitespace are SST-LOD012's, raised when the file is read.
+    """
+    return formatting_problem("\n".join(line.rstrip() for line in text.replace("\r", "").split("\n")))
 
 
 def formatting_problem(text: str) -> str | None:

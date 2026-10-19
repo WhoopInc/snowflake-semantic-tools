@@ -180,6 +180,22 @@ before (see [state and ownership](../concepts.md#state-and-ownership)).
   names it, so read the plan's drops yourself before confirming with `--yes`. Even with the
   grant the check is a warning, never a block, and Snowflake's dependency record can lag by up
   to three hours.
+- **Schemas.** With `apply.create_schemas` on, its default, apply runs
+  `CREATE SCHEMA IF NOT EXISTS` for each absent schema the plan lists as
+  `+ schema`, before it takes the run lock, so the role needs `CREATE SCHEMA` on
+  those databases; a refusal is `SST-APL039`, and nothing else runs. The schema
+  is owned by the role that ran apply, as dbt's are, with no grant and no
+  comment. Set `apply.create_schemas: false` to keep `CREATE SCHEMA` out of the
+  role's privileges: plan then reports an absent schema as `SST-PLN010`. SST
+  never creates a database (`SST-PLN011`).
+- **`sst ask` and unpublished evals.** They publish nothing, but they create
+  scratch copies, `<NAME>__SST_ASK_<id>`, of what you edited, in
+  `agents.+scratch_schema` (else the agent's schema), and drop them when the
+  session ends: the role needs the `CREATE` privilege of each kind copied there
+  ([asking an agent](ask.md#where-the-copies-go)). `sst ask` also calls the
+  Cortex Agents REST API with the connector session's own token, so it runs as
+  that session's role and sends no other credential; the token never leaves the
+  `Authorization` header, and no diagnostic or log line carries it.
 - **Give evals one primary role.** An eval runs as Snowflake tasks, and a task runs with the
   session's primary role only, never its secondary roles. That role needs `CREATE TASK`,
   `CREATE STAGE`, and `CREATE FILE FORMAT` on each agent's schema, directly or through a role

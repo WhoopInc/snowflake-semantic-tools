@@ -28,6 +28,7 @@ from snowflake_semantic_tools.app.lifecycle.evals import (
     eval_stage_format_matches,
 )
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
+from snowflake_semantic_tools.app.publication import Checked, Publication, unpublished_findings
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_PARTIAL_STATUSES,
@@ -413,7 +414,7 @@ class RunEvalSuite:
             SST-SNO001: the run completed but its results could not be read or did not match.
         """
         run_name = _run_name(compiled, setup, context.options, attempt_number)
-        context.watch.started(run_name, attempt_number, setup.attempt_limit)
+        context.watch.started(run_name, attempt_number, setup.attempt_limit, compiled.artifact_key)
         poll = StatusPoll(self._port, self._clock, context.options, context.watch)
         refused = self._start(compiled, run_name, setup.config_path, context.started)
         if refused is not None:
@@ -544,25 +545,30 @@ def validate_eval_publication(
     manifest last published it, and its handler must plan no change against what is live now.
 
     Diagnostics:
-        SST-APL012: an eval is not applied as this manifest renders it, or the live eval differs.
-        Whatever the handler's plan reports is passed on, ahead of that eval's SST-APL012.
+        SST-APL036, SST-APL037, SST-APL038, SST-APL012: an eval is not applied on the target,
+            none is, one is applied from an older compile, or the live eval differs from what
+            state records; as `unpublished_findings` says.
+        Whatever the handler's plan reports is passed on, ahead of those.
     """
     diagnostics: list[Diagnostic] = []
+    checked: list[Checked] = []
     for item in compiled:
         artifact = item.rendered_for_publish(manifest.manifest_id)
         entry = state.applied.get(item.artifact_key)
-        if (
-            entry is None
-            or entry.fingerprint != artifact.fingerprint
+        if entry is None or entry.outcome != APPLIED:
+            publication = Publication.ABSENT
+        elif (
+            entry.fingerprint != artifact.fingerprint
             or entry.qualified_name.casefold() != artifact.target.sql.casefold()
-            or entry.outcome != APPLIED
         ):
-            diagnostics.append(D("SST-APL012", artifact=item.artifact_key, value=artifact.target.sql))
-            continue
-        plan = handler.plan(artifact, entry, manifest)
-        diagnostics.extend(plan.diagnostics)
-        if plan.action is not Action.NOOP and not plan.diagnostics.has_errors:
-            diagnostics.append(D("SST-APL012", artifact=item.artifact_key, value=artifact.target.sql))
+            publication = Publication.OLDER
+        else:
+            plan = handler.plan(artifact, entry, manifest)
+            diagnostics.extend(plan.diagnostics)
+            changed = plan.action is not Action.NOOP and not plan.diagnostics.has_errors
+            publication = Publication.DRIFTED if changed else Publication.PUBLISHED
+        checked.append(Checked(item.artifact_key, artifact.target.sql, publication))
+    diagnostics.extend(unpublished_findings(checked, suite="evals"))
     return DiagnosticBag(tuple(diagnostics))
 
 

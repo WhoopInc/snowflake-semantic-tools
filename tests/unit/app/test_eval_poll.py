@@ -282,7 +282,7 @@ def test_a_status_is_reported_once_per_change_with_the_attempts_start_and_end() 
 
     _, events = run_polled(port, compiled=retrying_eval())
 
-    assert events[0] == AttemptStarted(RUN, 1, 2)
+    assert events[0] == AttemptStarted(RUN, 1, 2, retrying_eval().artifact_key)
     assert [event.status for event in of_kind(events, StatusChanged)] == [
         "CREATED",
         "INVOCATION_IN_PROGRESS",

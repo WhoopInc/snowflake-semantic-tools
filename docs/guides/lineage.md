@@ -17,6 +17,7 @@ only what a model change reaches.
 | A view member | `metric:<name>`, `filter:`, `relationship:`, `verified_query:`, `custom_instruction:`; `dimension:<table>.<name>`, `fact:<table>.<name>` | the models its `{{ ref() }}` and `{{ source() }}` calls name, and the members it uses, such as a metric another metric builds on |
 | An artifact | `semantic_view:<name>`, `tool:<name>`, `agent:<name>`, `eval:<name>`, ... | its members, the artifacts it uses (an agent's views, tools and skills; an eval's agent), and a routine body's `ref()` and `source()` calls |
 | A tool another team owns | `tool_ref:<name>` | nothing SST can see |
+| A column a member reads | `column:<table>.<column>`, its table a model's name or a source's `<source>.<table>` | its model or source; the members that read it read it |
 
 dbt's part of the graph is read as the target resolves it, deferral included,
 so it is the graph that target would build. A procedure's or function's body
@@ -37,21 +38,58 @@ sst lineage model:orders --downstream --depth 2   # at most two steps away
 NODE is any key in the table above, or a bare name, which matches every node of
 that name. The name after a kind may glob: `model:stg_*`.
 
-The trace prints as a tree, each node under the one it was reached from, with
-its kind and the Snowflake object it is:
+The trace prints as a tree, each node under the one it was reached from: what
+NODE reads under `reads`, and what reads it under `read by`:
 
 ```text
-tool:order_status  tool  SST_REF_DEV.JAFFLE.ORDER_STATUS
-upstream
-  model:orders  model  SST_REF_DEV.JAFFLE.ORDERS
-downstream
-  agent:jaffle_analytics_agent  agent  SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT
-    eval:jaffle_analytics_agent  eval  SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANALYTICS_AGENT_DCE1F8A
+tool:order_status
+├── reads
+│   └── model:orders
+└── read by
+    └── agent:jaffle_analytics_agent
+        └── eval:jaffle_analytics_agent
 ✓ traced 4 nodes from tool:order_status
 ```
 
-A subtree reached a second time prints once, and after that as
-`<key>  (shown above)`.
+`--wide` adds two aligned columns: the Snowflake object each node is, and how it
+uses the node above it. A name too long for the terminal is cut short with `…`:
+
+```text
+skill:jaffle-semantics                   SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS
+└── read by
+    ├── agent:jaffle_analytics_agent     SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT  loads it
+    │   └── eval:jaffle_analytics_agent  SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANALYTICS…  tests it
+    ├── plugin:jaffle-toolkit            SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT          bundles it
+    │   └── profile:jaffle-operator      SST_REF_DEV.JAFFLE.PROFILE_REGISTRY        includes it
+    └── profile:jaffle-analyst           SST_REF_DEV.JAFFLE.PROFILE_REGISTRY        includes it
+```
+
+A trace from a `column:`, `dimension:` or `fact:` node traces a column, so it
+shows both columns without `--wide`. A member reads a column when its expression
+names it as `TABLE.COLUMN` (what a two-argument `ref()` resolves to), through the
+alias a verified query's `FROM` or `JOIN` gives a table, or bare when exactly one
+of its tables' dbt models has that column. `sst list <member type>` shows each
+member's `TABLES` and `USES`, and with `--wide` its `COLUMNS` and expression;
+`sst list tables` shows the `MEMBERS` that read each table. Where the terminal shows no Unicode, the connectors are
+`|--` and `` `-- ``.
+
+| How a node uses the one it reads | Under `read by` | Under `reads` |
+|---|---|---|
+| a dbt model selects from it | `built from it` | `builds it` |
+| a dbt test, an eval tests it | `tests it` | `tested by it` |
+| a dbt exposure names it | `exposes it` | `exposed by it` |
+| a member, a routine or a view reads its table | `reads it` | `read by it` |
+| a member builds on another member | `uses it` | `used by it` |
+| a view holds a member | `holds it` | `attaches to it` |
+| an agent loads a skill | `loads it` | `loaded by it` |
+| an agent calls a view, tool or agent as a tool | `calls it as a tool` | `a tool it calls` |
+| a plugin bundles a skill | `bundles it` | `bundled by it` |
+| a profile includes a plugin or skill | `includes it` | `included by it` |
+| anything else | `depends on it` | `needed by it` |
+
+Every reference is drawn: a node two nodes read is shown, subtree included,
+under each of them. On a wide project one model can sit under dozens of members,
+so `--depth` is the way to keep such a trace short.
 
 ### Where the walk ends
 
@@ -98,7 +136,9 @@ NODE the graph does not hold exits 3 (`SST-PRT112`).
 
 `-o json` returns the nodes, each with `key`, `kind`, `name`, `relation`,
 `depth`, `direction` and `marker` (and `changed` under `--state`), and the
-edges between them as `from` / `to` pairs.
+edges between them, each with `from`, `to` and `kind`: one of `builds`,
+`tests`, `exposes`, `reads`, `uses`, `attaches`, `loads`, `calls`, `bundles`,
+`includes` and `depends`, as the table above names them.
 
 ## Selecting by lineage
 

@@ -111,11 +111,16 @@ SPECS: tuple[ErrorSpec, ...] = (
     ),
     spec(
         "SST-LOD012",
-        Severity.WARNING,
+        Severity.INFO,
         "Trailing whitespace or CRLF line endings",
         "{file}: {detail}",
         "run sst format",
         condition="lines end in CRLF, or carry trailing whitespace; reported once for each",
+        note=(
+            "Both are dropped when the file is read, so neither changes what publishes, and the finding "
+            "is information only: strict mode promotes warnings, so it never blocks a command. "
+            "`sst format --check` is the gate for whitespace."
+        ),
     ),
     spec(
         "SST-LOD013",

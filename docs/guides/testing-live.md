@@ -193,8 +193,9 @@ account, and to create the reference project's objects where its `sst_config.yml
 - semantic views, the search service, agents, evals and skills in `DATABASE.JAFFLE`,
   `DATABASE.CORE` and `DATABASE.OPS`.
 
-Apply creates none of those schemas (a missing one is `SST-PLN010`), and SST never creates a tag
-object, so the schemas and the tags under `tags:` must already exist. The `apply.agent_spec_stage`
+Apply creates each of those schemas that is absent (`apply.create_schemas`, on by default), but
+never a database, and SST never creates a tag object, so the databases and the tags under `tags:`
+must already exist. The `apply.agent_spec_stage`
 stage need not: apply creates it when it is absent, which needs `CREATE STAGE` on its schema
 (`SST-PLN008` otherwise).
 

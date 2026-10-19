@@ -335,8 +335,11 @@ runs have completed.
    with `SST-VAL755` naming each semantic view an eval's agent uses when the
    holder is an apply. `--break-stale-lock` takes over a lock whose run has
    expired (`SST-APL010`), never a live one.
-3. Every eval it would run must be applied exactly as this manifest renders it
-   (`SST-APL012`), so a result always describes the published agent.
+3. Every eval it would run must be applied exactly as this manifest renders it,
+   so a result always describes the published agent. An eval never applied on
+   the target is `SST-APL036` (`SST-APL037` once, when no eval is), one applied
+   from an older compile `SST-APL038`, and one whose live eval changed since it
+   was applied `SST-APL012`.
 4. **Role preflight.** An evaluation runs as Snowflake tasks, which run as the
    session's primary role and ignore secondary roles. So the primary role must
    hold `CREATE TASK`, `CREATE STAGE` and `CREATE FILE FORMAT` on each agent's
@@ -429,7 +432,26 @@ None of these limits is configurable.
 
 ### Progress on stderr
 
-A run takes minutes, so while it runs the suite prints to stderr when each
+A run takes minutes, so the suite shows its runs on stderr while they go on.
+
+On a terminal, each run in flight is one live row, redrawn in place under its
+eval's key: a spinner, its status, and its time so far, in the order the runs
+started, above the run's own progress line. A run that ends leaves the rows and
+prints once as a finished line, so only work in flight stays live, however many
+evals the suite has:
+
+```text
+✓ eval:jaffle_analyst  COMPLETED · 72.4s
+⠋ eval:store_ops_analyst         INVOCATION_IN_PROGRESS  1m05s
+⠋ eval:guest_experience_analyst  CREATED  14s
+```
+
+A retried attempt keeps its row (`attempt 2 of 3`), and a status read that fails
+or times out shows on the row and also prints as a warning line, so it outlives
+the row. When more runs are in flight than the terminal has rows, the rows show
+the first of them and `+N more running`.
+
+Without a terminal (CI, a pipe), the suite prints a line to stderr when each
 attempt starts, when its status changes, when a status read fails and is
 retried, when a run's status reads start timing out, and when the attempt ends,
 plus a line naming the runs still in flight
@@ -627,7 +649,7 @@ Drawn from: [gate.py](../../snowflake_semantic_tools/app/evals/gate.py), [suite.
 Each published eval run grades a published agent, so the loop above adds an
 agent version per edit. Before that, cheapest first:
 
-1. Ask the edited agent a question with [`sst ask`](agents.md#ask-the-edited-agent):
+1. Ask the edited agent a question with [`sst ask`](ask.md):
    one temporary agent, nothing published.
 2. Run its evals unpublished, below.
 3. Publish to a [per-developer target](#a-per-developer-target) and run the
@@ -641,13 +663,16 @@ sst test --suite evals --unpublished --select sales_analyst --output json
 ```
 
 `--unpublished` asks each question of each selected eval's compiled dataset of
-its agent's compiled specification, as `sst ask` asks one: a temporary agent
-per question, dropped once it answers, in the agent's schema or
-`agents.+scratch_schema`. Questions run at once as the
+its agent's compiled specification: a temporary agent per question, dropped
+once it answers, in the agent's schema or `agents.+scratch_schema`. As
+[`sst ask`](ask.md) does, each view, search service, tool, skill and sub-agent the
+agent reaches that compiles differently from what the target's state records is
+copied there first, once per agent, and the agent is pointed at the copies, which
+are dropped when the run ends. Questions run at once as the
 [suite's concurrency](#attempts-retries-and-concurrency) allows, each on a
 session of its own. Nothing else of the published suite happens: no `sst
 compile` or `sst apply` is needed first, no run lock is taken, the publication
-check (`SST-APL012`) and the agent version selector (`SST-VAL719`) do not
+checks (`SST-APL036` to `SST-APL038`, `SST-APL012`) and the agent version selector (`SST-VAL719`) do not
 apply, no config is staged, and no baseline or gate state is read or written.
 `--capture-baseline` is refused (exit 3), and so is a `--suite` that does not
 name `evals`; without `--suite`, `--unpublished` runs the eval suite alone.
@@ -679,10 +704,10 @@ with one attempt per eval named `unpublished`; `--output json` adds `"mode":
 of `passed` or `failed`. The exit codes are the suite's: 0 passed, 1 failed, 3
 a refused command line, 4 no eval in the selection, 5 Snowflake unreachable.
 
-**What it cannot see** is what [`sst ask`](agents.md#ask-the-edited-agent)
-cannot: the agent calls the published views, search services and tools, so an
-unpublished edit to one of them is not tried, and each is warned of
-(`SST-ASK001`).
+**What it sees** is what [`sst ask`](ask.md) sees: the agent on scratch copies
+of each edited view, search service, tool, skill and sub-agent it reaches, so an
+unpublished edit to one of them is what its questions run against. A copy
+Snowflake refuses fails the run (`SST-ASK008`).
 
 ### A per-developer target
 

@@ -1,13 +1,22 @@
 """The lineage graph: dbt's nodes, SST's members and artifacts, and what reads what, offline.
 
 Every node is keyed so a selector can name it: an artifact by its key (`semantic_view:sales`), a
-member by its member key (`metric:total_revenue`), a tool member another team owns as
-`tool_ref:<name>`, and a dbt node by its resource type and name, as `model:<name>`, `seed:`,
+member by its member key (`metric:total_revenue`), a column a member reads as
+`column:<table>.<column>` (its table a model's name or a source's `<source>.<table>`), a tool
+member another team owns as `tool_ref:<name>`, and a dbt node by its resource type and name, as
+`model:<name>`, `seed:`,
 `snapshot:`, `test:` and `exposure:`, a source as `source:<source>.<table>`; each name casefolded.
 An edge runs from what is read to what reads it: a model to the models built from it, its tests
-and exposures, the members whose tables it holds and the artifacts that read it; a member to the
-members that use it and the views it attaches to; and an artifact to the artifacts that depend
-on it or name it, an agent naming the tool members it calls.
+and exposures, its columns, the members whose tables it holds and the artifacts that read it; a
+column to the members that read it; a member to the members that use it and the views it
+attaches to; and an artifact to the artifacts that depend on it or name it, an agent naming the
+tool members it calls.
+
+Each edge records how the reader uses what it reads, as one of `EDGE_KINDS`: a model is built
+from the nodes it selects from, a test tests and an exposure exposes its models, a member or an
+artifact reads a model's table, a member uses another and attaches to its view, an agent loads
+a skill and calls a view, a tool or another agent as a tool, an eval tests its agent, a plugin
+bundles a skill and a profile includes a plugin or a skill; anything else depends on it.
 
 Where a walk ends at someone else's work, the node says so in its `marker`: a source is a raw
 source, a model of another dbt package that reads nothing here is defined in another project, a
@@ -35,12 +44,45 @@ DBT_KINDS = ("model", "seed", "snapshot", "source", "test", "exposure")
 _RELATIONS = frozenset(("model", "seed", "snapshot"))
 # A tool member another team owns, which an agent calls but SST never publishes.
 TOOL_REF = "tool_ref"
+# A column of a model or source that a member reads.
+COLUMN = "column"
 RAW_SOURCE = "raw source"
 OTHER_PROJECT = "defined in another project; upstream continues there"
 OTHER_TEAM = "owned by another team"
 UNKNOWN_READS = "reads: unknown; body names no ref()"
 _ROUTINES = frozenset(("PROCEDURE", "FUNCTION"))
 _GRAPH_SELECTOR = re.compile(r"(?:(\d*)\+)?([^+]+?)(?:\+(\d*))?")
+# Each edge kind, as the reader's side says it and as the side it reads says it.
+EDGE_KINDS: Mapping[str, tuple[str, str]] = MappingProxyType(
+    {
+        "builds": ("built from it", "builds it"),
+        "tests": ("tests it", "tested by it"),
+        "exposes": ("exposes it", "exposed by it"),
+        "reads": ("reads it", "read by it"),
+        "uses": ("uses it", "used by it"),
+        "contains": ("a column of it", "has it"),
+        "attaches": ("holds it", "attaches to it"),
+        "loads": ("loads it", "loaded by it"),
+        "calls": ("calls it as a tool", "a tool it calls"),
+        "bundles": ("bundles it", "bundled by it"),
+        "includes": ("includes it", "included by it"),
+        "depends": ("depends on it", "needed by it"),
+    }
+)
+# What an artifact reading another artifact does with it, by (read type, reader type).
+_ARTIFACT_EDGES: Mapping[tuple[str, str], str] = MappingProxyType(
+    {
+        ("skill", "agent"): "loads",
+        ("semantic_view", "agent"): "calls",
+        ("tool", "agent"): "calls",
+        ("agent", "agent"): "calls",
+        (TOOL_REF, "agent"): "calls",
+        ("agent", "eval"): "tests",
+        ("skill", "plugin"): "bundles",
+        ("plugin", "profile"): "includes",
+        ("skill", "profile"): "includes",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,11 +114,17 @@ class LineageGraph:
     Attributes:
         parents: By key, the nodes it reads, sorted.
         children: By key, the nodes that read it, sorted.
+        kinds: By `(read, reader)`, how the reader uses what it reads: a key of `EDGE_KINDS`.
     """
 
     nodes: Mapping[str, LineageNode] = field(default_factory=lambda: MappingProxyType({}))
     parents: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
     children: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
+    kinds: Mapping[tuple[str, str], str] = field(default_factory=lambda: MappingProxyType({}))
+
+    def kind(self, read: str, reader: str) -> str:
+        """Return how `reader` uses `read`, a key of `EDGE_KINDS`; `depends` for an edge none was recorded for."""
+        return self.kinds.get((read, reader), "depends")
 
     def reach(self, start: Iterable[str], *, upstream: bool, depth: int | None = None) -> dict[str, int]:
         """Return each node a walk from `start` reaches, with the fewest steps it took; `start` at 0.
@@ -185,24 +233,29 @@ def manifest_lineage(manifest: Manifest) -> LineageGraph:
     for name, recorded in manifest.dbt_models.items():
         model = table(str(name).casefold())
         for artifact in _strings(recorded, "referenced_by"):
-            builder.edge(model, artifact)
+            builder.edge(model, artifact, "reads")
             read.add(artifact)
     for key, recorded in manifest.members.items():
         kind, _, name = key.partition(":")
         builder.node(LineageNode(key, kind, name))
         for model in _strings(recorded, "tables"):
-            builder.edge(table(model), key)
+            builder.edge(table(model), key, "reads")
+        for column in _strings(recorded, "columns"):
+            column_key = builder.node(LineageNode(f"{COLUMN}:{column}", COLUMN, column)).key
+            builder.edge(table(column.rsplit(".", 1)[0]), column_key, "contains")
+            builder.edge(column_key, key, "reads")
         for used in _strings(recorded, "uses"):
-            builder.edge(used, key)
+            builder.edge(used, key, "uses")
         for view in _strings(recorded, "attached_to"):
-            builder.edge(key, view)
+            builder.edge(key, view, "attaches")
     for key, entry in manifest.artifacts.items():
         for upstream in (*entry.depends_on, *entry.references):
             if upstream.startswith(f"{TOOL_REF}:"):
                 name = upstream.partition(":")[2]
                 builder.node(LineageNode(upstream, TOOL_REF, name, marker=OTHER_TEAM))
             if upstream in manifest.artifacts or upstream.startswith(f"{TOOL_REF}:"):
-                builder.edge(upstream, key)
+                read_type = manifest.artifacts[upstream].type if upstream in manifest.artifacts else TOOL_REF
+                builder.edge(upstream, key, _ARTIFACT_EDGES.get((read_type, entry.type), "depends"))
     project = str(manifest.project.get("dbt_project_name") or "")
     return builder.graph(lambda node, parents: _marker(node, parents, read=read, project=project, manifest=manifest))
 
@@ -252,14 +305,15 @@ class _Builder:
     """Collect nodes and edges, then freeze them into a graph; an edge to an unknown node is dropped."""
 
     nodes: dict[str, LineageNode] = field(default_factory=dict)
-    edges: set[tuple[str, str]] = field(default_factory=set)
+    edges: dict[tuple[str, str], str] = field(default_factory=dict)
 
     def node(self, node: LineageNode) -> LineageNode:
         """Add `node` unless one of its key is there; return the one kept."""
         return self.nodes.setdefault(node.key, node)
 
-    def edge(self, upstream: str, downstream: str) -> None:
-        self.edges.add((upstream, downstream))
+    def edge(self, upstream: str, downstream: str, kind: str) -> None:
+        """Add an edge from what is read to its reader; the first kind given an edge is kept."""
+        self.edges.setdefault((upstream, downstream), kind)
 
     def add_dbt(self, nodes: Iterable[tuple[str, str, str, str | None, str | None, tuple[str, ...]]]) -> None:
         """Add dbt's models, seeds, snapshots, sources, tests and exposures, and the edges between them."""
@@ -272,18 +326,22 @@ class _Builder:
             keys[unique_id] = node.key
             depends[unique_id] = depends_on
         for unique_id, depends_on in depends.items():
+            kind = self.nodes[keys[unique_id]].kind
+            edge = "tests" if kind == "test" else "exposes" if kind == "exposure" else "builds"
             for upstream in depends_on:
                 if upstream in keys:
-                    self.edge(keys[upstream], keys[unique_id])
+                    self.edge(keys[upstream], keys[unique_id], edge)
 
     def graph(self, marker: Callable[[LineageNode, tuple[str, ...]], str | None] | None = None) -> LineageGraph:
         """Freeze the nodes and edges; `marker` says why a walk ends at a node, given its parents."""
         parents: dict[str, set[str]] = {}
         children: dict[str, set[str]] = {}
-        for upstream, downstream in self.edges:
+        kinds: dict[tuple[str, str], str] = {}
+        for (upstream, downstream), kind in self.edges.items():
             if upstream in self.nodes and downstream in self.nodes and upstream != downstream:
                 parents.setdefault(downstream, set()).add(upstream)
                 children.setdefault(upstream, set()).add(downstream)
+                kinds[(upstream, downstream)] = kind
         nodes = {
             key: replace(node, marker=marker(node, tuple(sorted(parents.get(key, ()))))) if marker is not None else node
             for key, node in sorted(self.nodes.items())
@@ -292,6 +350,7 @@ class _Builder:
             MappingProxyType(nodes),
             MappingProxyType({key: tuple(sorted(value)) for key, value in sorted(parents.items())}),
             MappingProxyType({key: tuple(sorted(value)) for key, value in sorted(children.items())}),
+            MappingProxyType(dict(sorted(kinds.items()))),
         )
 
 

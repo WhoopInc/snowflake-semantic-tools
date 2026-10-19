@@ -90,6 +90,7 @@ def observe(
     desired_artifacts: Mapping[str, RenderedArtifact] | None = None,
     readers: Fanout[CatalogPort] | None = None,
     options: ObserveOptions = DEFAULT_OBSERVE_OPTIONS,
+    absent_schemas: frozenset[tuple[str, str]] = frozenset(),
 ) -> tuple[SnowflakeObservation, DiagnosticBag]:
     """Observe every object of the requested artifact types in the targets' schemas, by artifact key.
 
@@ -107,6 +108,8 @@ def observe(
             concurrently; None reads on `port`, one at a time. Either way the observation and
             its diagnostics are the same.
         options: Which per-object reads to make, as `ObserveOptions` says.
+        absent_schemas: The folded `(database, schema)` of target schemas found not to exist,
+            which hold nothing and are not listed: a plan that creates them reads them so.
 
     Diagnostics:
         SST-PLN001: listing an object type in a schema, or reading an object's grants, failed.
@@ -125,6 +128,7 @@ def observe(
         if artifact_types is None or artifact_type.name in artifact_types
         for object_type in _active_object_types(artifact_type, observed_object_types)
         for scope in scopes
+        if (scope.database.folded, scope.schema.folded) not in absent_schemas
     ]
     readers = readers or Fanout(port)
     listings = readers.map(lambda session, unit: _list_scope(session, unit[1], unit[2]), units)

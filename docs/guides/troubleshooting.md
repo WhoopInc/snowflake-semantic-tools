@@ -111,8 +111,10 @@ role may not see, so the message alone does not say which. Check in this order:
   `--defer-target`, dbt models resolve to the other target's relations.
 - **The role lacks `USAGE` on the database or the schema.** Without both, every
   object inside reads as absent, whatever the role holds on the object itself.
-  Plan reports a database or schema it cannot see as `SST-PLN011` or
-  `SST-PLN010`, and a warehouse as `SST-PLN012`.
+  Plan reports a database it cannot see as `SST-PLN011`, a warehouse as
+  `SST-PLN012`, and a schema as `SST-PLN010` with `apply.create_schemas: false`;
+  with it on, a schema it cannot see is one apply tries to create, and a refusal
+  is `SST-APL039`.
 - **The privilege is on a database role your role does not hold.** A grant to
   a database role reaches a session only once that database role is granted to
   the session's role, or to a role it inherits. `SHOW GRANTS TO ROLE <role>`
@@ -456,15 +458,20 @@ message names the reason and quotes the text from where it starts, such as
 `';' ends the statement at '; DROP ...', so SST will not send it to Snowflake`;
 it reads `expression failed to compile` even though nothing was sent. Offline,
 this is the only cause of `SST-VAL418`; under connected validation it also
-reports an expression or query Snowflake will not compile.
+reports an expression or query Snowflake will not compile. A verified query is
+compiled in its view's schema, or on the plain session while that schema does
+not exist yet, before the first apply creates it.
 
 ## An allowed orchestration model fails the check (`SST-VAL551` to `SST-VAL556`)
 
 `CREATE AGENT` accepts any model name, and Snowflake keeps no list of the
 models agents accept, so the connected check runs each model
 `snowflake.orchestration_models` lists, `auto` aside, in a throwaway agent:
-TEMPORARY, no tools, a small budget, created in the schema of the first agent
-the project publishes, and dropped once it answers. `SHOW CORTEX BASE MODELS`
+TEMPORARY, no tools, a small budget, created where the first agent the project
+publishes makes its temporary agents (`agents.+scratch_schema`, else its own
+schema), and dropped once it answers. Before the first apply creates an agent's
+schema, only a scratch schema that already exists lets the probe run; otherwise
+it is `SST-VAL556`. `SHOW CORTEX BASE MODELS`
 adds each model's lifecycle.
 
 - **`SST-VAL551`**: the run refused the model. "not an allowed model for Agent

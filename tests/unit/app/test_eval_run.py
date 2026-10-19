@@ -511,7 +511,8 @@ def test_eval_publication_preflight_refuses_unapplied_state() -> None:
         EvalLifecycleHandler(FakeSnowflake()),
     )
 
-    assert diagnostics[0].code == "SST-APL012"
+    assert [item.code for item in diagnostics] == ["SST-APL037"]
+    assert diagnostics[0].message == "nothing the evals suite tests is published on this target (1 not published)"
 
 
 def test_eval_runner_rejects_duplicate_metric_rows_and_nonfinite_scores() -> None:
@@ -1035,8 +1036,8 @@ def test_eval_publication_preflight_accepts_an_eval_an_earlier_manifest_publishe
     )
 
     assert not accepted
-    assert stale[0].code == "SST-APL012"
-    assert compiled.artifact_key in stale[0].message
+    assert stale[0].code == "SST-APL038"
+    assert stale[0].message.startswith(f"{compiled.artifact_key}: ") and "older compile" in stale[0].message
 
 
 def test_eval_publication_preflight_allows_unrelated_rows_from_older_manifests() -> None:

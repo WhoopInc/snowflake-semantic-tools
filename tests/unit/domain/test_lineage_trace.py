@@ -98,17 +98,33 @@ def test_what_changed_is_each_artifact_by_fingerprint_and_each_member_by_what_it
     assert changed_nodes(previous, new) == {"semantic_view:sales", "tool:new"}
 
 
-def test_a_tree_shows_each_subtree_once_and_stops_at_its_depth() -> None:
+def test_a_tree_draws_every_reference_in_full_and_stops_at_its_depth() -> None:
     assert tree(_GRAPH, ("model:orders",), upstream=False) == (
-        TreeRow("metric:revenue", 1),
-        TreeRow("semantic_view:orders", 2),
-        TreeRow("agent:helper", 3),
-        TreeRow("semantic_view:orders", 1, repeated=True),
+        TreeRow("metric:revenue", 1, "model:orders", last=False),
+        TreeRow("semantic_view:orders", 2, "metric:revenue"),
+        TreeRow("agent:helper", 3, "semantic_view:orders"),
+        # Reached a second way, the view is drawn again, subtree included.
+        TreeRow("semantic_view:orders", 1, "model:orders"),
+        TreeRow("agent:helper", 2, "semantic_view:orders"),
     )
-    assert tree(_GRAPH, ("agent:helper",), upstream=True, depth=1) == (TreeRow("semantic_view:orders", 1),)
-    # A start reached again from another start is a repeat, and the starts go in key order.
+    assert tree(_GRAPH, ("agent:helper",), upstream=True, depth=1) == (
+        TreeRow("semantic_view:orders", 1, "agent:helper"),
+    )
+    # The starts go in key order, each one's children under it, the last of them closing.
     assert tree(_GRAPH, ("model:orders", "metric:revenue"), upstream=False, depth=1) == (
-        TreeRow("semantic_view:orders", 1),
-        TreeRow("metric:revenue", 1, repeated=True),
-        TreeRow("semantic_view:orders", 1, repeated=True),
+        TreeRow("semantic_view:orders", 1, "metric:revenue", last=False),
+        TreeRow("metric:revenue", 1, "model:orders", last=False),
+        TreeRow("semantic_view:orders", 1, "model:orders"),
+    )
+
+
+def test_a_node_already_on_its_own_path_is_a_cycle_drawn_once_without_its_subtree() -> None:
+    graph = LineageGraph(
+        {key: LineageNode(key, "metric", key) for key in ("metric:a", "metric:b")},
+        {"metric:a": ("metric:b",), "metric:b": ("metric:a",)},
+        {"metric:a": ("metric:b",), "metric:b": ("metric:a",)},
+    )
+    assert tree(graph, ("metric:a",), upstream=True) == (
+        TreeRow("metric:b", 1, "metric:a"),
+        TreeRow("metric:a", 2, "metric:b", cycle=True),
     )

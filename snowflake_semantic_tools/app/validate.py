@@ -44,7 +44,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import QueryResult, Rendere
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, SemanticView, Table, VerifiedQuery
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
-from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import ScopeUnavailable, SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.render.semantic_view import bound_verified_query
 from snowflake_semantic_tools.domain.sql import (
@@ -256,12 +256,22 @@ class ValidateArtifacts:
         return MappingProxyType(dict(zip(distinct, readers.map(self._answer, distinct), strict=True)))
 
     def _answer(self, port: ExecutionPort, read: _Read) -> _Answer:
-        """Run one read on `port`, in its scope when it has one, keeping a refusal as its answer."""
+        """Run one read on `port`, in its scope when it has one, keeping a refusal as its answer.
+
+        A scope no session can start in, such as a view's schema apply has yet to create, runs
+        the read on the plain session instead: a verified query binds every logical table to its
+        qualified relation, so only a name that would have to live in that schema goes unresolved.
+        """
         started = self._clock.monotonic_ms() if self._clock is not None else 0
         try:
-            result = (
-                port.query(read.statement) if read.scope is None else port.query_in_context(read.scope, read.statement)
-            )
+            try:
+                result = (
+                    port.query(read.statement)
+                    if read.scope is None
+                    else port.query_in_context(read.scope, read.statement)
+                )
+            except ScopeUnavailable:
+                result = port.query(read.statement)
         except SnowflakePortError as exc:
             return _Answer(None, exc, 0)
         elapsed = (self._clock.monotonic_ms() - started) if self._clock is not None else 0

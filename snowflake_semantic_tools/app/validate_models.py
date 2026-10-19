@@ -1,8 +1,9 @@
 """The connected check of `snowflake.orchestration_models`: does each model work for agents here.
 
 Snowflake keeps no list of the models Cortex Agents accept, so each model the project allows,
-`auto` aside, is run once in a throwaway agent, as the session's role, in the schema of the
-first agent the project publishes. `SHOW CORTEX BASE MODELS` is read once beside that for each
+`auto` aside, is run once in a throwaway agent, as the session's role, where the first agent the
+project publishes makes its temporary agents: `agents.+scratch_schema`, else its own schema.
+`SHOW CORTEX BASE MODELS` is read once beside that for each
 model's lifecycle: it lists every model, but marks none as one agents accept, so it cannot
 stand in for the run. The runs are independent, so a `Fanout` runs them concurrently, and the
 findings come back in model order whatever the thread count. The same SHOW also says whether
@@ -15,12 +16,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from snowflake_semantic_tools.app.ask import agent_scope
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.agents.compiled import CompiledAgent
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.config_schema import enrichment_config
-from snowflake_semantic_tools.domain.model.identifier import SchemaScope
+from snowflake_semantic_tools.domain.model.identifier import SchemaScope, TargetIdentity
 from snowflake_semantic_tools.domain.ports.snowflake.cortex_models import (
     AgentProbe,
     CortexBaseModel,
@@ -47,16 +49,20 @@ class ModelCheck:
         models: `snowflake.orchestration_models` as configured, `auto` included.
         probes: Sessions to run the probe agents on, concurrently when it has a pool.
         synonym_model: `enrichment.synonym_model`, its default when unset; None checks none.
+        identity: The target `agents.+scratch_schema` is rendered for; None ignores the setting.
     """
 
     models: tuple[str, ...]
     probes: Fanout[CortexModelsPort]
     synonym_model: str | None = None
+    identity: TargetIdentity | None = None
 
 
-def model_check(config: Mapping[str, object], probes: Fanout[CortexModelsPort]) -> ModelCheck:
-    """Return the check of the models the config tree names, run on `probes`."""
-    return ModelCheck(configured_models(config), probes, enrichment_config(config).synonym_model)
+def model_check(
+    config: Mapping[str, object], probes: Fanout[CortexModelsPort], identity: TargetIdentity | None = None
+) -> ModelCheck:
+    """Return the check of the models the config tree names, run on `probes`, for `identity`."""
+    return ModelCheck(configured_models(config), probes, enrichment_config(config).synonym_model, identity)
 
 
 def configured_models(config: Mapping[str, object]) -> tuple[str, ...]:
@@ -66,16 +72,21 @@ def configured_models(config: Mapping[str, object]) -> tuple[str, ...]:
     return tuple(str(item) for item in raw) if isinstance(raw, list) else (AUTO,)
 
 
-def probe_scope(compiled: CompileResult) -> SchemaScope | None:
-    """Return the schema the probe agents are created in: the first published agent's, by key.
+def probe_scope(compiled: CompileResult, identity: TargetIdentity | None = None) -> SchemaScope | None:
+    """Return the schema the probe agents are created in, from the first published agent by key.
 
-    The role that publishes agents there may create one, so it may create the probes too.
-    None when the compile publishes no agent.
+    That is where the agent's own temporary agents go, `sst ask`'s: `agents.+scratch_schema`
+    rendered for `identity`, else the agent's schema, which the role that publishes agents
+    there may create one in. A scratch schema exists before the first apply, where an agent's
+    schema may not. None when the compile publishes no agent.
     """
     agents = sorted(
         (item for item in compiled.compiled if isinstance(item, CompiledAgent)), key=lambda item: item.artifact_key
     )
-    return SchemaScope.from_qualified_name(agents[0].target) if agents else None
+    if not agents:
+        return None
+    scope = agent_scope(agents[0], identity) if identity is not None else None
+    return scope if isinstance(scope, SchemaScope) else SchemaScope.from_qualified_name(agents[0].target)
 
 
 def check_orchestration_models(check: ModelCheck, compiled: CompileResult, *, target: str) -> list[Diagnostic]:
@@ -106,7 +117,7 @@ def check_orchestration_models(check: ModelCheck, compiled: CompileResult, *, ta
     if not distinct and check.synonym_model is None:
         return []
     listed, unread = _listed(check.probes.port)
-    scope = probe_scope(compiled)
+    scope = probe_scope(compiled, check.identity)
     probes: Sequence[AgentProbe | None]
     if scope is None:
         probes = (None,) * len(distinct)

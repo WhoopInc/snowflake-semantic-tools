@@ -180,7 +180,7 @@ Defaults for Cortex Agents, overridable per folder and by an agent's own `config
 | `agents.+alias` | string |  | Version alias assigned after publication. |
 | `agents.+enabled` | boolean | `true` | Whether agents are compiled; false leaves them out of the project. |
 | `agents.+secure` | boolean | `false` | Publish agents with `SECURE = TRUE`. |
-| `agents.+scratch_schema` | two-part name | the agent's own schema | `DATABASE.SCHEMA` where `sst ask` and `sst test --suite evals --unpublished` create their temporary agents, for a role that cannot create agents in the agent's own schema. Nothing publishes there. |
+| `agents.+scratch_schema` | two-part name | the agent's own schema | `DATABASE.SCHEMA` where `sst ask` and `sst test --suite evals --unpublished` make their scratch copies and temporary agents, and connected validate its model probes (SST-VAL551), for a role that cannot create them in the agent's own schema, or an agent in a personal database, which cannot hold a semantic view. Nothing publishes there. |
 | `agents.+tags` | list |  | Tags, as `name` and `value` entries, set with ALTER AGENT ... SET TAG; a closer setting replaces the list. |
 | `agents.<route>` | block |  | Folder route: overrides for agents under that directory. |
 
@@ -264,6 +264,7 @@ Stages apply uploads through.
 | `apply.eval_config_stage` | block |  | Stage for eval run configs, in each agent's schema. |
 | `apply.eval_config_stage.stage` | string | `EVAL_CONFIGS` | Stage name. |
 | `apply.fail_fast` | boolean | `false` | Stop at the first failure instead of continuing; `--fail-fast` and `--no-fail-fast` override it. |
+| `apply.create_schemas` | boolean | `true` | Create each absent schema the plan publishes into, as dbt does, `CREATE SCHEMA IF NOT EXISTS`, before anything else; false makes an absent schema SST-PLN010. Never a database, and never dropped. |
 
 ## plan
 

@@ -62,8 +62,9 @@ class ExecutionPort(Protocol):
 
         Raises:
             SnowflakeTransientError: the statement failed in transit, or ran out of time.
-            SnowflakePortError: the scoped session could not connect in `scope`, or the
-                statement failed.
+            ScopeUnavailable: the scoped session did not start in `scope`: it does not exist,
+                or the role cannot use it.
+            SnowflakePortError: the scoped session could not connect, or the statement failed.
         """
         ...
 

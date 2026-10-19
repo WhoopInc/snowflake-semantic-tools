@@ -101,15 +101,17 @@ def validate(
     port = None
     params: dict[str, object] = {}
     target = target_name or ""
+    identity = None
     workers = threads_setting(paths, threads)
     if effective_connected or verify_schema:
         profile, port = connect(paths, target_name)
         target = profile.target_name
         params = profile.connection_params
+        identity = profile.identity
     try:
         with ConnectorPool(workers, lambda: open_connector(params)) as pool, RUN_TIMINGS.phase("validate"):
             readers = Fanout(port, pool, workers) if port is not None else None
-            models = model_check(project_config(paths), readers) if readers is not None else None
+            models = model_check(project_config(paths), readers, identity) if readers is not None else None
             result = ValidateArtifacts(
                 port,
                 catalog=port,

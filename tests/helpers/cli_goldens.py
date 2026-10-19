@@ -123,6 +123,12 @@ CASES = (
         (*_OFFLINE, "lineage", "metric:gross_margin_rate", "--upstream"),
         variants=("color", "plain"),
     ),
+    Case(
+        "lineage-wide",
+        _compiled,
+        (*_OFFLINE, "lineage", "skill:jaffle-semantics", "--downstream", "--wide"),
+        variants=("plain", "ascii"),
+    ),
     Case("list-graph", _compiled, (*_OFFLINE, "list", "--select", "model:orders+"), variants=("plain",)),
     Case(
         "plan-graph",

@@ -162,6 +162,7 @@ def read_preflight(
     readers: Fanout[PreflightPort] | None = None,
     state_tables: tuple[QualifiedName, ...] = (),
     state_table_kind: str = STANDARD_TABLES,
+    create_schemas: bool = False,
 ) -> tuple[Preflight, tuple[Diagnostic, ...]]:
     """Read the target's containers, relations, stages, privileges, locks, references, and warehouse.
 
@@ -176,6 +177,9 @@ def read_preflight(
             needs CREATE TABLE on its schema. A read of one Snowflake refuses counts it present.
         state_table_kind: The kind `state.+table_kind` names, which each state table that
             exists must be.
+        create_schemas: `apply.create_schemas`: an absent schema in a database that exists is
+            one apply creates, so the schemas of absent state tables are read too, and their
+            CREATE TABLE is not asked for, as the role that creates a schema owns it.
 
     Returns:
         What the reads found, and the failed reads.
@@ -199,7 +203,11 @@ def read_preflight(
         QualifiedName.parse(entry.qualified_name).folded for entry in state.applied.values() if entry.qualified_name
     }
     absent_state = _absent_state_tables(reader, state_tables)
-    needs = _with_state_needs(_create_needs(created, present, stages, absent_stages), absent_state)
+    state_schemas = _missing_state_schemas(reader, absent_state) if create_schemas else frozenset()
+    creatable = tuple(
+        table for table in absent_state if _folded(SchemaScope.from_qualified_name(table)) not in state_schemas
+    )
+    needs = _with_state_needs(_create_needs(created, present, stages, absent_stages), creatable)
     # The primary role is read once: the profile's role names it, but CURRENT_ROLE() spells it.
     primary = (current if not target.role else _current_role(reader)) if needs else None
     missing_privileges, secondary_privileges, unreached_privileges = _missing_privileges(reader, needs, primary)
@@ -225,6 +233,8 @@ def read_preflight(
         state_table_kinds=_state_table_kinds(
             reader, tuple(table for table in state_tables if table not in absent_state)
         ),
+        create_schemas=create_schemas,
+        missing_state_schemas=state_schemas,
     )
     return preflight, tuple(reader.failures)
 
@@ -354,6 +364,17 @@ def _absent_state_tables(reader: _Reader, state_tables: tuple[QualifiedName, ...
         state_tables, lambda port, table: port.relation_exists(table), lambda item: f"table {item.sql}", refused=True
     )
     return tuple(table for table, found in zip(state_tables, exists, strict=True) if not found)
+
+
+def _folded(scope: SchemaScope) -> _Scope:
+    return scope.database.folded, scope.schema.folded
+
+
+def _missing_state_schemas(reader: _Reader, absent: tuple[QualifiedName, ...]) -> frozenset[_Scope]:
+    """Return the folded schemas of the absent state tables that do not exist, in databases that do."""
+    scopes = tuple(dict.fromkeys(SchemaScope.from_qualified_name(table) for table in absent))
+    missing_databases, missing_schemas, _ = _containers(reader, scopes)
+    return frozenset(scope for scope in missing_schemas if scope[0] not in missing_databases)
 
 
 def _state_table_kinds(reader: _Reader, tables: tuple[QualifiedName, ...]) -> tuple[tuple[QualifiedName, str], ...]:

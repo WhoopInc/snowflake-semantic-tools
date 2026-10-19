@@ -1,26 +1,24 @@
-"""SST-ASK002: the temporary agent answered a question with an error message.
+"""SST-ASK002: an unpublished run of an agent failed, or ended other than completed or cancelled.
 
-Fires for a reply carrying Snowflake's error; a reply with an answer stays quiet.
+Fires for a turn that answered Snowflake's error, or timed out; a completed or cancelled turn stays quiet.
 """
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.app.ask import AskAgent
+from snowflake_semantic_tools.app.ask_conversation import turn_diagnostics
+from snowflake_semantic_tools.domain.ask.conversation import Turn
+from snowflake_semantic_tools.domain.ask.events import RunError
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from snowflake_semantic_tools.domain.model.identifier import Identifier, SchemaScope
-from snowflake_semantic_tools.domain.ports.snowflake.agent_run import AgentReply
-from tests.helpers.ask_builders import ScriptedAgentRun, compiled_agent
-
-SCOPE = SchemaScope(Identifier.parse("DB"), Identifier.parse("AGENTS"))
 
 
 def test_sst_ask002_fires() -> None:
-    port = ScriptedAgentRun({"q": AgentReply(error="Agent model 'm' is not available")})
-    [diagnostic] = AskAgent(port).run(compiled_agent("sales"), "q", scope=SCOPE).diagnostics
+    [diagnostic] = turn_diagnostics("agent:sales", Turn(error=RunError("Agent model 'm' is not available")))
     assert (diagnostic.code, diagnostic.severity) == ("SST-ASK002", Severity.ERROR)
     assert diagnostic.message == "agent:sales returned an error: Agent model 'm' is not available"
     assert diagnostic.subject == "agent:sales"
+    assert [item.code for item in turn_diagnostics("agent:sales", Turn(status="timed_out"))] == ["SST-ASK002"]
 
 
 def test_sst_ask002_silent() -> None:
-    assert AskAgent(ScriptedAgentRun()).run(compiled_agent("sales"), "q", scope=SCOPE).diagnostics == ()
+    assert turn_diagnostics("agent:sales", Turn(status="completed")) == ()
+    assert turn_diagnostics("agent:sales", Turn(status="cancelled")) == ()

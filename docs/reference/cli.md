@@ -42,7 +42,7 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst agent-kit remove`](#sst-agent-kit-remove) | Remove the kit's skills, or those --only names, from each --agent, else every agent installed. |
 | [`sst agent-kit status`](#sst-agent-kit-status) | Show each skill's state against the kit of the SST now installed; change nothing. |
 | [`sst agent-kit upgrade`](#sst-agent-kit-upgrade) | Bring every installed skill to the kit of the SST now installed. |
-| [`sst ask`](#sst-ask) | Ask AGENT one QUESTION as it compiles now, publishing nothing; `-` reads the question from stdin. |
+| [`sst ask`](#sst-ask) | Talk to AGENT as it compiles now, publishing nothing; with QUESTION, ask it once. `-` reads stdin. |
 
 ## Global options
 
@@ -479,6 +479,7 @@ sst list [OPTIONS] [TYPE]
 | `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. dbt's graph operators add lineage: `model:orders+` is every artifact `orders` feeds, `+agent:a` all an agent reads, and `2+x` or `x+1` bound the steps; dbt nodes (`model:`, `seed:`, `source:`), members such as `metric:<name>` and `tool_ref:<name>` work inside them. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--long` | flag |  | Also print each artifact's applied fingerprint and published version; `json`, `yaml` and `csv` also carry its source files. |
+| `--wide` | flag |  | For a member type, also show the columns each member reads and its expression. |
 | `--no-manifest` | flag |  | Compile the project's files in memory instead of reading the compiled manifest. |
 | `--dbt` | DIRECTORY |  | With `--no-manifest`, read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`. |
 | `--semantic` | DIRECTORY |  | With `--no-manifest`, read the semantic models from this directory instead of `project.semantic_models_dir`. |
@@ -493,7 +494,9 @@ source:&lt;source&gt;.&lt;table&gt;), tool_ref:&lt;name&gt; for a tool another t
 names every node of that name; the name after a kind may glob. Both directions are shown, as
 trees, unless --upstream or --downstream picks one, as far as the graph goes unless --depth
 stops it; a node where the walk meets someone else's work says so, such as a raw source.
-`-o plain` prints one `<depth> <key>` line per node, upstream depths negative.
+Every reference is drawn, so a node two nodes read is shown under each; --wide adds each
+node's Snowflake name and how it uses the node above it, as it does by default for a dimension
+or a fact. `-o plain` prints one `<depth> <key>` line per node, upstream depths negative.
 
 Without --no-manifest the manifest `sst compile` wrote is read, and its absence exits 4; with
 it, the project is compiled in memory, nothing is written, and what fails to compile is
@@ -509,6 +512,7 @@ sst lineage [OPTIONS] NODE
 | `--upstream` | flag |  | Show only what NODE reads: the dbt models, sources and members it comes from. |
 | `--downstream` | flag |  | Show only what reads NODE: the members and artifacts it feeds. |
 | `--depth` | INTEGER RANGE |  | Walk at most this many steps from NODE each way; the whole graph by default. |
+| `--wide` | flag |  | Also show each node's Snowflake name and how it uses the node above it; on by default when NODE is a dimension or fact. |
 | `--state` | DIRECTORY |  | Previous run's build directory, else `$SST_STATE_DIR`: mark each artifact and member that changed since its `manifest.json`. |
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
 | `--defer-target` | TEXT |  | The `profiles.yml` target whose relations dbt objects resolve to, while publishing to `--target`; else `$SST_DEFER_TARGET`, else `defer.target`. |
@@ -1024,20 +1028,27 @@ sst agent-kit upgrade [OPTIONS]
 
 ## sst ask
 
-Ask AGENT one QUESTION as it compiles now, publishing nothing; `-` reads the question from stdin.
+Talk to AGENT as it compiles now, publishing nothing; with QUESTION, ask it once. `-` reads stdin.
 
-Connects: the agent's compiled specification runs as a temporary agent in its own schema,
-or in `agents.+scratch_schema`, and is dropped once it answers. Every view, search service
-and tool it names is the published one, so each that compiles differently from what the
-target's state records is a warning (SST-ASK001): the answer does not reflect that edit.
-Takes no lock and writes no state.
+Connects: each view, search service, tool, skill and sub-agent the agent reaches that
+compiles differently from what the target's state records is copied into the agent's
+schema, or `agents.+scratch_schema`, as `<NAME>__SST_ASK_<id>`, and the agent's
+specification, pointed at the copies, runs over the Cortex Agents REST API, streamed, on a
+thread. The copies are dropped and the thread deleted when the session ends; a later
+session removes what one that died left, and `--cleanup` removes it now. `--published`
+copies nothing and warns of each edit the agent does not see (SST-ASK001). Takes no lock and
+writes no state.
 
-Exit 0 when the agent answered; 1 when the project does not compile or the agent answered
-with an error (SST-ASK002); 3 for an empty question; 4 when no agent of that name compiles
-(SST-ASK003); and 5 when Snowflake is unreachable, refuses a privilege, or the run times out.
+Without QUESTION, on a terminal, a conversation opens, with a picker when AGENT is not
+named; without a terminal, QUESTION is required.
+
+Exit 0 when the agent answered; 1 when the project does not compile, a copy is refused
+(SST-ASK008), a tool is unreachable (SST-ASK010) or the run fails (SST-ASK002); 3 for an
+empty question, or none without a terminal; 4 when no agent of that name compiles
+(SST-ASK003); and 5 when Snowflake is unreachable or refuses the session.
 
 ```text
-sst ask [OPTIONS] AGENT QUESTION
+sst ask [OPTIONS] [AGENT] [QUESTION]
 ```
 
 | Option | Value | Default | Description |
@@ -1045,5 +1056,7 @@ sst ask [OPTIONS] AGENT QUESTION
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`: the agent's names resolve, and its temporary agent runs, there. Defaults to the profile's own default target. |
 | `--defer-target` | TEXT |  | The `profiles.yml` target whose relations dbt objects resolve to, while publishing to `--target`; else `$SST_DEFER_TARGET`, else `defer.target`. |
 | `--no-defer` | flag |  | Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say. |
-| `--show-tools` | flag |  | Also print each tool call the agent made, with its input, and each tool result. |
-| `--timeout` | INTEGER RANGE | `300` | Seconds the agent may take to answer before the run is cancelled, 1 to 3600; default 300. |
+| `--published` | flag |  | Copy nothing: run the agent on the published views, tools, skills and agents it names, and warn of each edit it does not see (SST-ASK001). |
+| `--cleanup` | flag |  | Remove every scratch copy and `sst_ask` thread earlier sessions left, in each agent's scratch schema, then exit. |
+| `--show-tools` | flag |  | With QUESTION, also print each tool call the agent made and each tool result, on stderr. |
+| `--timeout` | INTEGER RANGE | `600` | Seconds one turn may take before it is cancelled, 1 to 900; default 600. |

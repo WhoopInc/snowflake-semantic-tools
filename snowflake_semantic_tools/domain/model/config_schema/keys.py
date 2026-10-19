@@ -463,8 +463,10 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "agents.+scratch_schema",
         _SCH,
-        "`DATABASE.SCHEMA` where `sst ask` and `sst test --suite evals --unpublished` create their "
-        "temporary agents, for a role that cannot create agents in the agent's own schema. Nothing "
+        "`DATABASE.SCHEMA` where `sst ask` and `sst test --suite evals --unpublished` make their "
+        "scratch copies and temporary agents, and connected validate its model probes "
+        "(SST-VAL551), for a role that cannot create them in the agent's own "
+        "schema, or an agent in a personal database, which cannot hold a semantic view. Nothing "
         "publishes there.",
         default="the agent's own schema",
     ),
@@ -641,6 +643,13 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         _B,
         "Stop at the first failure instead of continuing; `--fail-fast` and `--no-fail-fast` override it.",
         default="false",
+    ),
+    _key(
+        "apply.create_schemas",
+        _B,
+        "Create each absent schema the plan publishes into, as dbt does, `CREATE SCHEMA IF NOT EXISTS`, "
+        "before anything else; false makes an absent schema SST-PLN010. Never a database, and never dropped.",
+        default="true",
     ),
     _deprecated("deploy", "apply"),
     _key("plan", _BLOCK, "What plan compares beyond each object's ownership marker."),

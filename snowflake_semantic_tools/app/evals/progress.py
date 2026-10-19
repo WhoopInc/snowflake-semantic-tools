@@ -24,11 +24,17 @@ _REASON_LIMIT = 120
 
 @dataclass(frozen=True, slots=True)
 class AttemptStarted:
-    """An attempt is about to start its run: attempt `attempt` of the eval's `attempt_limit`."""
+    """An attempt is about to start its run: attempt `attempt` of the eval's `attempt_limit`.
+
+    Attributes:
+        label: The eval's artifact key, which a display can show in place of the long run name;
+            empty when the caller gave none.
+    """
 
     run_name: str
     attempt: int
     attempt_limit: int
+    label: str = ""
 
     @property
     def line(self) -> str:
@@ -151,14 +157,14 @@ class RunWatch:
         self._runs: dict[str, tuple[int, str | None]] = {}
         self._last_beat: int | None = None
 
-    def started(self, run_name: str, attempt: int, attempt_limit: int) -> None:
-        """Follow a run from now on, reporting that its attempt starts."""
+    def started(self, run_name: str, attempt: int, attempt_limit: int, label: str = "") -> None:
+        """Follow a run from now on, reporting that its attempt starts; `label` names its eval."""
         with self._lock:
             now = self._clock.monotonic_ms()
             self._runs[run_name] = (now, None)
             if self._last_beat is None:
                 self._last_beat = now
-            self._progress(AttemptStarted(run_name, attempt, attempt_limit))
+            self._progress(AttemptStarted(run_name, attempt, attempt_limit, label))
 
     def status(self, run_name: str, status: str, settle_ms: int | None = None) -> None:
         """Record a status a read found, reporting it only when it differs from the run's last one.

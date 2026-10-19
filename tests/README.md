@@ -51,6 +51,7 @@ tests/
 │   ├── scoped_views/                     # two include- and exclude-mode views, copied into a project copy
 │   ├── v1_dialect/                       # the 0.3 dialect corpus for `sst migrate split` / `refs`
 │   ├── pre_split_reference/              # the reference project's files before `sst migrate split` / `refs`
+│   ├── ask/stream.sse                    # a Cortex Agents event stream, every event type once, as `sst ask` reads it
 │   └── negative_overlays/                # one broken change per case, laid over the reference project; expected.json
 ├── golden/
 │   ├── README.md

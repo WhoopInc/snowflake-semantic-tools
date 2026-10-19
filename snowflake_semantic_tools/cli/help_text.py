@@ -242,11 +242,11 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "Target from `profiles.yml`, else `$SST_TARGET`: the agent's names resolve, and its temporary agent "
         "runs, there. Defaults to the profile's own default target."
     ),
-    ("sst ask", "--show-tools"): "Also print each tool call the agent made, with its input, and each tool result.",
     (
         "sst ask",
-        "--timeout",
-    ): "Seconds the agent may take to answer before the run is cancelled, 1 to 3600; default 300.",
+        "--show-tools",
+    ): "With QUESTION, also print each tool call the agent made and each tool result, on stderr.",
+    ("sst ask", "--timeout"): "Seconds one turn may take before it is cancelled, 1 to 900; default 600.",
     ("sst test", "--unpublished"): (
         "Run the eval suite against each agent as it compiles now, through temporary agents, publishing "
         "nothing: no `sst apply` first, no lock, no baseline, no eval state. `tool_selection_accuracy` is "
@@ -258,6 +258,7 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "run no suite after one that fails."
     ),
     ("sst validate", "--verify-schema"): "Connects: confirm each column a semantic view reads exists in the warehouse.",
+    ("sst list", "--wide"): "For a member type, also show the columns each member reads and its expression.",
     ("sst list", "--no-manifest"): "Compile the project's files in memory instead of reading the compiled manifest.",
     ("sst list", "--dbt"): (
         "With `--no-manifest`, read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`."
@@ -265,12 +266,24 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst list", "--semantic"): (
         "With `--no-manifest`, read the semantic models from this directory instead of `project.semantic_models_dir`."
     ),
+    ("sst ask", "--published"): (
+        "Copy nothing: run the agent on the published views, tools, skills and agents it names, "
+        "and warn of each edit it does not see (SST-ASK001)."
+    ),
+    ("sst ask", "--cleanup"): (
+        "Remove every scratch copy and `sst_ask` thread earlier sessions left, in each agent's "
+        "scratch schema, then exit."
+    ),
     ("sst lineage", "--upstream"): "Show only what NODE reads: the dbt models, sources and members it comes from.",
     ("sst lineage", "--downstream"): "Show only what reads NODE: the members and artifacts it feeds.",
     ("sst lineage", "--depth"): "Walk at most this many steps from NODE each way; the whole graph by default.",
     ("sst lineage", "--state"): (
         "Previous run's build directory, else `$SST_STATE_DIR`: mark each artifact and member that "
         "changed since its `manifest.json`."
+    ),
+    ("sst lineage", "--wide"): (
+        "Also show each node's Snowflake name and how it uses the node above it; on by default when "
+        "NODE is a dimension or fact."
     ),
     ("sst lineage", "--no-manifest"): "Compile the project's files in memory instead of reading the compiled manifest.",
     ("sst lineage", "--dbt"): (

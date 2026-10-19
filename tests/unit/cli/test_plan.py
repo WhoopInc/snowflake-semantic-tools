@@ -760,3 +760,26 @@ def test_a_deleted_tool_is_listed_as_a_report_only_prune(tmp_path: Path, monkeyp
     human = invoke_with_port(monkeypatch, port, ["plan", *common(project), "--prune"])
     [line] = [line for line in human.output.splitlines() if "tool:retired_exports" in line]
     assert "prune" in line and "report only: SST never removes these" in line
+
+
+def test_an_absent_schema_is_a_row_apply_creates_and_with_the_setting_off_is_sst_pln010(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    port = FakeSnowflake(state={})
+    port.preflight.missing_schemas.add("SST_REF_DEV.OPS")
+    human = invoke_with_port(monkeypatch, port, ["plan", *common(project), "--target", "dev", "--no-plan-out"])
+    assert "  + schema  SST_REF_DEV.OPS" in human.output
+    assert "SST-PLN010" not in human.output
+    as_json = invoke_with_port(monkeypatch, port, ["plan", *common(project), "--target", "dev", "--output", "json"])
+    assert json.loads(as_json.output)["data"]["schemas"] == ["SST_REF_DEV.OPS"]
+    config = project / "sst_config.yml"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace("\napply:\n", "\napply:\n  create_schemas: false\n", 1),
+        encoding="utf-8",
+    )
+    compile_project(project)
+    off = invoke_with_port(monkeypatch, port, ["plan", *common(project), "--target", "dev", "--output", "json"])
+    payload = json.loads(off.output)
+    assert payload["data"].get("schemas", []) == []
+    assert "SST-PLN010" in [item["code"] for item in payload["diagnostics"]]

@@ -36,7 +36,7 @@ SST is a command-line compiler and publisher for a Snowflake semantic layer kept
 
 No module in any ring imports `dbt`: SST runs the dbt executable and reads its manifest.
 
-`poetry run lint-imports` enforces these as the eight contracts in `pyproject.toml`; `tests/unit/test_ring_boundaries.py` proves each one rejects a crossing.
+`poetry run lint-imports` enforces these as the nine contracts in `pyproject.toml`; `tests/unit/test_ring_boundaries.py` proves each one rejects a crossing.
 
 ## Gates
 

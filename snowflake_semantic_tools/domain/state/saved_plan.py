@@ -181,6 +181,8 @@ class SavedPlan:
             composite metadata; apply refuses the plan when a fresh plan's differs.
         selected, excluded, include_prune, partial: The selection the plan was made with, which
             apply repeats; `partial` is written only when set.
+        schemas: The schemas apply creates first, as `DATABASE.SCHEMA`; written only when there
+            are any, so a plan that creates none reads and hashes as it did before.
     """
 
     schema_version: int
@@ -194,6 +196,7 @@ class SavedPlan:
     excluded: tuple[str, ...] = ()
     include_prune: bool = False
     partial: bool = False
+    schemas: tuple[str, ...] = ()
 
     @classmethod
     def from_changeset(
@@ -218,6 +221,7 @@ class SavedPlan:
             for change in changes
         ]
         observation_fingerprint = content_hash(observed)
+        schemas = tuple(scope.sql for scope in changeset.schemas)
         body = {
             "schema_version": PLAN_SCHEMA_VERSION,
             "manifest_id": changeset.manifest_id,
@@ -226,6 +230,7 @@ class SavedPlan:
             "observation_fingerprint": observation_fingerprint,
             "changes": [change.as_dict() for change in changes],
             "selection": _selection(selected, excluded, include_prune, partial),
+            **({"schemas": list(schemas)} if schemas else {}),
         }
         return cls(
             PLAN_SCHEMA_VERSION,
@@ -239,6 +244,7 @@ class SavedPlan:
             excluded,
             include_prune,
             partial,
+            schemas,
         )
 
     def as_dict(self) -> dict[str, object]:
@@ -252,6 +258,7 @@ class SavedPlan:
             "observation_fingerprint": self.observation_fingerprint,
             "changes": [change.as_dict() for change in self.changes],
             "selection": _selection(self.selected, self.excluded, self.include_prune, self.partial),
+            **({"schemas": list(self.schemas)} if self.schemas else {}),
         }
 
     def matches(self, manifest_id: str, target: TargetIdentity) -> bool:
@@ -270,6 +277,7 @@ class SavedPlan:
         3. What it observed in Snowflake is what the fresh plan observes.
         4. Its ordered changes, every statement hash included, are the fresh plan's: every
            recorded field of every change, in order.
+        5. The schemas it creates are the fresh plan's.
 
         Args:
             source: How a report names the saved plan, such as its file path.
@@ -287,6 +295,8 @@ class SavedPlan:
             changed = "the live Snowflake observation"
         elif self.changes != current.changes:
             changed = "the ordered changes or their statement hashes"
+        elif self.schemas != current.schemas:
+            changed = "the schemas it creates"
         else:
             return None
         return PlanMismatch(D("SST-APL012", artifact=source, value=changed))
@@ -324,6 +334,7 @@ class SavedPlan:
             excluded=tuple(str(item) for item in raw_selection.get("excluded", [])),
             include_prune=bool(raw_selection.get("include_prune", False)),
             partial=bool(raw_selection.get("partial", False)),
+            schemas=tuple(str(item) for item in value.get("schemas", [])),
         )
         expected_body = dict(value)
         expected_body.pop("plan_id", None)

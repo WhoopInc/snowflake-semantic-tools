@@ -43,7 +43,7 @@ from snowflake_semantic_tools.app.validate_models import ModelCheck, model_check
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
 from snowflake_semantic_tools.domain.diagnostics.policy import SeverityPolicy, apply_overrides, apply_policy
-from snowflake_semantic_tools.domain.model.config_schema import config_block, target_text
+from snowflake_semantic_tools.domain.model.config_schema import config_block, config_bool, target_text
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import ChangeSet, CompositePlan, RenderedArtifact
@@ -385,8 +385,7 @@ class PreparePlan:
                 compile reported. The project's severity overrides still apply, the compile's own
                 errors still refuse the plan, or with `--partial` split it, and strict mode still
                 promotes the warnings planning itself reports, which `sst validate` never sees.
-            models: Sessions the connected checks run probe agents on, one per model
-                `snowflake.orchestration_models` allows; None skips that check.
+            models: Sessions to probe each model `snowflake.orchestration_models` allows; None skips it.
 
         Diagnostics:
             SST-PLN018: observing and planning took longer than the observation stays current.
@@ -423,6 +422,7 @@ class PreparePlan:
                 observation_targets=_observation_targets(candidates.full, state),
                 state_tables=(state_table, lock_table_for(state_table)),
                 state_table_kind=state_table_kind,
+                create_schemas=config_bool(apply_config.get("create_schemas")) is not False,
             )
         with self._phases.phase("classify"):
             changeset = _decided(candidates, rendered, reading, manifest, state, target, handlers, composite_plans)

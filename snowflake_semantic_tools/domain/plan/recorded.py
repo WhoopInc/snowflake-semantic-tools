@@ -223,6 +223,8 @@ def _preflight_to_json(preflight: Preflight) -> dict[str, object]:
         "absent_state_tables": [table.sql for table in preflight.absent_state_tables],
         "state_table_kind": preflight.state_table_kind,
         "state_table_kinds": [[table.sql, kind] for table, kind in preflight.state_table_kinds],
+        "create_schemas": preflight.create_schemas,
+        "missing_state_schemas": [list(scope) for scope in sorted(preflight.missing_state_schemas)],
     }
 
 
@@ -230,8 +232,10 @@ def _preflight_from_json(value: Mapping[str, Any]) -> Preflight:
     """Read the preflight facts `_preflight_to_json` wrote; a record without the later facts has none.
 
     The later facts are the stage facts, the privileges only a secondary role holds, those
-    the walk up from the primary role stopped short of, the absent state tables, and the
-    state tables' kinds; a record without the kinds read none, so nothing is of the wrong kind.
+    the walk up from the primary role stopped short of, the absent state tables, the
+    state tables' kinds, and `create_schemas` with the state tables' missing schemas; a record
+    without the kinds read none, so nothing is of the wrong kind, and one without
+    `create_schemas` was made with it off.
     """
     privileges: dict[_Scope, tuple[str, ...]] = {}
     for entry in _list(value.get("missing_privileges"), "missing_privileges"):
@@ -277,6 +281,10 @@ def _preflight_from_json(value: Mapping[str, Any]) -> Preflight:
         state_table_kind=str(value.get("state_table_kind", STANDARD_TABLES)),
         state_table_kinds=tuple(
             _table_kind(entry) for entry in _list(value.get("state_table_kinds", []), "state_table_kinds")
+        ),
+        create_schemas=bool(value.get("create_schemas", False)),
+        missing_state_schemas=frozenset(
+            _pair(scope) for scope in _list(value.get("missing_state_schemas", []), "missing_state_schemas")
         ),
     )
 

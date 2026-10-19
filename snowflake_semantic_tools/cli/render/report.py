@@ -110,6 +110,7 @@ def plan_lines(
     verbose: bool = False,
     full: bool = False,
     more: str = "--full shows all",
+    unchecked: bool = False,
 ) -> list[str]:
     """Return the plan as a person reads it: each change in apply order, then what stays the same.
 
@@ -120,7 +121,11 @@ def plan_lines(
     each update is followed by its properties' before and after, and the definition it replaces
     when `--capture-prior` read it.
 
+    Each absent schema apply creates first is a row of its own, before the changes; `unchecked`
+    marks them as a recorded observation found them, which `--use-cached-state` did not check.
+
     Example:
+        `  + schema  SALES_DB.SEMANTIC_VIEWS`
         `  + create  semantic_view:sales_partner  SALES_DB.SEMANTIC_VIEWS.SALES_PARTNER`
         `  ~ update  semantic_view:sales  SALES_DB.SEMANTIC_VIEWS.SALES  metric orders.total_revenue`
         `      ~ metric orders.total_revenue`
@@ -132,7 +137,8 @@ def plan_lines(
     listed = [change for change in changeset.changes if verbose or change.action is not Action.NOOP]
     rows = [_plan_row(change, changeset.manifest_id) for change in listed]
     laid = table(rows, style.terminal.width - 2, keep=1)
-    lines: list[str] = []
+    mark = "  " + style("(recorded; unchecked)", "dim") if unchecked else ""
+    lines = ["  " + style("+ schema", "create") + f"  {scope.sql}{mark}" for scope in changeset.schemas]
     for change, row, text in zip(listed, rows, laid, strict=True):
         head = row[0]
         lines.append("  " + style(head, _ACTION_STYLE[change.action][2]) + text[len(head) :])
@@ -153,7 +159,8 @@ def plan_headline(changeset: ChangeSet) -> str:
 
     Example:
         `plan: 1 to create, 2 to update, 0 to prune; 26 unchanged`, or
-        `plan: nothing to change; 29 unchanged`.
+        `plan: nothing to change; 29 unchanged`; a plan that creates schemas first says how many,
+        `plan: 2 schemas, 29 to create, 0 to update, 0 to prune; 0 unchanged`.
     """
     counts = {action: sum(change.action is action for change in changeset.changes) for action in Action}
     report_only = len(changeset.report_only)
@@ -164,6 +171,8 @@ def plan_headline(changeset: ChangeSet) -> str:
         if changing
         else ["nothing to change"]
     )
+    if changeset.schemas:
+        parts.insert(0, f"{len(changeset.schemas)} {'schema' if len(changeset.schemas) == 1 else 'schemas'}")
     tail = [f"{counts[Action.NOOP]} unchanged"]
     if counts[Action.BLOCKED]:
         tail.append(f"{counts[Action.BLOCKED]} blocked")

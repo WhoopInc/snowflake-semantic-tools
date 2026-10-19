@@ -12,7 +12,14 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 
-from snowflake_semantic_tools.domain.lineage.graph import DBT_KINDS, MEMBER_KINDS, TOOL_REF, LineageGraph, LineageNode
+from snowflake_semantic_tools.domain.lineage.graph import (
+    COLUMN,
+    DBT_KINDS,
+    MEMBER_KINDS,
+    TOOL_REF,
+    LineageGraph,
+    LineageNode,
+)
 from snowflake_semantic_tools.domain.state import Manifest
 
 SELF, UPSTREAM, DOWNSTREAM = "self", "upstream", "downstream"
@@ -53,11 +60,11 @@ class Trace:
 def find_nodes(graph: LineageGraph, text: str, artifact_types: Iterable[str]) -> tuple[str, ...]:
     """Return the keys of the nodes `text` names, sorted; none when it names none.
 
-    A `<kind>:<name>` of an artifact type, a dbt kind, a member kind or `tool_ref` names that node,
+    A `<kind>:<name>` of an artifact type, a dbt kind, a member kind, `column` or `tool_ref` names that node,
     its name globbable; any other text names every node of that name.
     """
     kind, separator, _ = text.partition(":")
-    if separator and kind.casefold() in (*artifact_types, *DBT_KINDS, *MEMBER_KINDS, TOOL_REF):
+    if separator and kind.casefold() in (*artifact_types, *DBT_KINDS, *MEMBER_KINDS, COLUMN, TOOL_REF):
         pattern = text.casefold()
         return tuple(key for key in graph.nodes if fnmatchcase(key, pattern))
     name = text.casefold()
@@ -102,37 +109,50 @@ def trace(
 
 @dataclass(frozen=True, slots=True)
 class TreeRow:
-    """One line of a lineage tree: a node, how deep it sits, and whether its subtree is shown above.
+    """One line of a lineage tree: a node, how deep it sits, and where it sits among its siblings.
 
     Attributes:
         level: 1 for a node one step from the start, 2 for the next, and so on.
-        repeated: The node, and so its subtree, is already shown, so this line does not repeat it.
+        parent: The node it sits under, which it was reached from; a start for a level-1 row.
+        last: It is the last row under its parent, so a tree drawing closes its branch here.
+        cycle: The node is already on the path to it, so its subtree is not drawn again.
     """
 
     key: str
     level: int
-    repeated: bool = False
+    parent: str
+    last: bool = True
+    cycle: bool = False
 
 
 def tree(graph: LineageGraph, start: Iterable[str], *, upstream: bool, depth: int | None = None) -> tuple[TreeRow, ...]:
     """Lay what a walk from `start` reaches out as a tree, each node under the one it was reached from.
 
-    Children are taken in key order. A node shown once is shown again only as a repeat, without
-    its subtree, so a diamond in the graph prints each node's subtree once.
+    Children are taken in key order. Every reference is drawn: a node reached from two nodes is
+    drawn in full, subtree included, under each, so a wide graph can repeat a subtree many times
+    and `depth` is what keeps one short. A node already on the path to it is a cycle, drawn once
+    more without its subtree.
     """
     edges = graph.parents if upstream else graph.children
     rows: list[TreeRow] = []
-    shown: set[str] = set(start)
-    stack = list(reversed([(key, 1) for root in sorted(set(start)) for key in edges.get(root, ())]))
+    roots = sorted(set(start))
+    first = [(root, key) for root in roots for key in edges.get(root, ())]
+    # Each entry: the parent, the node, its level, the path to it, and whether it is the last sibling.
+    stack: list[tuple[str, str, int, tuple[str, ...], bool]] = [
+        (root, key, 1, (root,), index == len(first) - 1) for index, (root, key) in reversed(list(enumerate(first)))
+    ]
     while stack:
-        key, level = stack.pop()
-        if key in shown:
-            rows.append(TreeRow(key, level, repeated=True))
+        parent, key, level, path, last = stack.pop()
+        if key in path:
+            rows.append(TreeRow(key, level, parent, last, cycle=True))
             continue
-        shown.add(key)
-        rows.append(TreeRow(key, level))
+        rows.append(TreeRow(key, level, parent, last))
         if depth is None or level < depth:
-            stack.extend((child, level + 1) for child in reversed(edges.get(key, ())))
+            below = edges.get(key, ())
+            stack.extend(
+                (key, child, level + 1, (*path, key), index == len(below) - 1)
+                for index, child in reversed(list(enumerate(below)))
+            )
     return tuple(rows)
 
 

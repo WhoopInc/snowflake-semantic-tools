@@ -1,4 +1,4 @@
-"""SST's canonical YAML form: what `sst format` writes and what SST-VAL009 checks a file against.
+"""SST's canonical YAML form: what `sst format` writes and `sst format --check` checks a file against.
 
 The canonical form is a re-layout that never changes what the file means:
 

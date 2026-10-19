@@ -19,7 +19,7 @@ def test_sst_man201_fires(tmp_path: Path) -> None:
     assert read is not None and read.migrated_from == 1
     [diagnostic] = read_notes(read, str(path))
     assert (diagnostic.code, diagnostic.severity) == ("SST-MAN201", Severity.INFO)
-    assert diagnostic.message == f"{path} schema 1 migrated to 5 in memory"
+    assert diagnostic.message == f"{path} schema 1 migrated to 6 in memory"
     assert json.loads(path.read_text(encoding="utf-8"))["schema_version"] == 1
 
 

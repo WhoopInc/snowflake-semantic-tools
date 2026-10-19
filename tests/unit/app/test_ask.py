@@ -5,19 +5,16 @@ from __future__ import annotations
 import pytest
 
 from snowflake_semantic_tools.app.ask import (
-    AskAgent,
     agent_scope,
     compiled_agents,
     find_agent,
-    reply_json,
     stale_dependencies,
 )
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.identifier import Identifier, SchemaScope, TargetIdentity
-from snowflake_semantic_tools.domain.ports.snowflake.agent_run import AgentReply, ToolResult, ToolUse
 from snowflake_semantic_tools.domain.state import DEACTIVATED, AppliedEntry
-from tests.helpers.ask_builders import ScriptedAgentRun, applied_entry, compiled_agent
+from tests.helpers.ask_builders import applied_entry, compiled_agent
 
 TARGET = TargetIdentity("dev", "acct", Identifier.parse("DB"), Identifier.parse("S"), "ROLE", "WH")
 
@@ -88,36 +85,3 @@ def test_a_dependency_published_as_compiled_is_not_named() -> None:
     view = compiled_agent("helper")
     agent = compiled_agent("sales", view.artifact_key)
     assert stale_dependencies(agent, CompileResult((agent, view)), {view.artifact_key: applied_entry(view)}) == ()
-
-
-def test_a_question_runs_the_compiled_specification_and_reports_the_reply() -> None:
-    agent = compiled_agent("sales")
-    scope = SchemaScope(Identifier.parse("DB"), Identifier.parse("S"))
-    port = ScriptedAgentRun(
-        {
-            "How many?": AgentReply(
-                "12 orders", (ToolUse("SALES", "generic", {"q": 1}),), (ToolResult("SALES", "success"),)
-            )
-        }
-    )
-    note = stale_dependencies(compiled_agent("x", "agent:sales"), CompileResult((agent,)), None)
-    outcome = AskAgent(port).run(agent, "How many?", scope=scope, timeout=30, notes=note)
-    assert port.asked == [(scope, "sales", "{}\n", "How many?", 30)]
-    assert outcome.answered and [item.code for item in outcome.diagnostics] == ["SST-ASK001"]
-    assert reply_json(outcome.reply) == {
-        "answer": "12 orders",
-        "tool_uses": [{"name": "SALES", "type": "generic", "input": {"q": 1}}],
-        "tool_results": [{"name": "SALES", "status": "success"}],
-        "error": None,
-        "duration_ms": 0,
-    }
-
-
-def test_an_error_reply_is_reported() -> None:
-    scope = SchemaScope(Identifier.parse("DB"), Identifier.parse("S"))
-    outcome = AskAgent(ScriptedAgentRun({"q": AgentReply(error="model not allowed")})).run(
-        compiled_agent("sales"), "q", scope=scope
-    )
-    assert not outcome.answered
-    [failed] = outcome.diagnostics
-    assert (failed.code, failed.message) == ("SST-ASK002", "agent:sales returned an error: model not allowed")

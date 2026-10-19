@@ -386,10 +386,10 @@ def _select(
     return candidates
 
 
-def test_run_preflights_through_the_port_it_is_given() -> None:
+def _preflighted(tree: dict[str, object]) -> PlanReady:
     port = FakeSnowflake()
     port.preflight.missing_schemas.add("DB.SCH")
-    ready = PreparePlan(InMemoryProjectInputs(), FixedClock()).run(
+    ready = PreparePlan(InMemoryProjectInputs(tree=tree), FixedClock()).run(
         _select(compiled()),
         port,
         InMemoryStateStore(State.empty(dev_target())),
@@ -398,8 +398,18 @@ def test_run_preflights_through_the_port_it_is_given() -> None:
         preflight=port,
     )
     assert isinstance(ready, PlanReady)
-    assert "SST-PLN010" in [item.code for item in ready.changeset.diagnostics]
-    assert ready.changeset.diagnostics[-1].code == "SST-PLN016"
+    return ready
+
+
+def test_run_preflights_through_the_port_it_is_given() -> None:
+    # `apply.create_schemas` is on unless set false: the absent schema is one apply creates.
+    ready = _preflighted({})
+    assert [scope.sql for scope in ready.changeset.schemas] == ["DB.SCH"]
+    assert "SST-PLN010" not in [item.code for item in ready.changeset.diagnostics]
+    off = _preflighted({"apply": {"create_schemas": False}})
+    assert off.changeset.schemas == ()
+    assert "SST-PLN010" in [item.code for item in off.changeset.diagnostics]
+    assert off.changeset.diagnostics[-1].code == "SST-PLN016"
 
 
 class _SlowClock(FixedClock):
@@ -646,3 +656,47 @@ def test_a_session_read_refused_leaves_what_the_primary_role_lacks_unexplained()
     assert preflight.secondary_privileges == {}
     # The profile's role names the role in the message; CURRENT_ROLE() is what the walk climbs to.
     assert preflight.role == "DEPLOYER"
+
+
+class _RefusesAbsentSchemas(FakeSnowflake):
+    """Refuse to list an absent schema, as Snowflake does (002003)."""
+
+    def show_objects(self, object_type: str, scope: SchemaScope) -> tuple[ShowRow, ...]:
+        if scope.sql in self.preflight.missing_schemas:
+            raise SnowflakePortError(f"Schema '{scope.sql}' does not exist or not authorized.")
+        return super().show_objects(object_type, scope)
+
+
+def _planned_on(port: FakeSnowflake, tree: dict[str, object]) -> PlanReady:
+    ready = PreparePlan(InMemoryProjectInputs(tree=tree), FixedClock()).run(
+        _select(compiled()),
+        port,
+        InMemoryStateStore(State.empty(dev_target())),
+        target=dev_target(),
+        state_table=STATE_TABLE,
+        preflight=port,
+    )
+    assert isinstance(ready, PlanReady)
+    return ready
+
+
+def test_a_schema_apply_creates_is_not_observed_and_one_state_records_or_unreadable_still_is() -> None:
+    port = _RefusesAbsentSchemas()
+    port.preflight.missing_schemas.add("DB.SCH")
+    created = _planned_on(port, {})
+    assert "SST-PLN001" not in [item.code for item in created.changeset.diagnostics]
+    assert [scope.sql for scope in created.changeset.schemas] == ["DB.SCH"]
+    # With the setting off, observing the absent schema fails as it always did.
+    off = _planned_on(port, {"apply": {"create_schemas": False}})
+    assert {"SST-PLN001", "SST-PLN010"} <= {item.code for item in off.changeset.diagnostics}
+    # A schema state records an object in may only be one the role cannot see: it is observed.
+    held = _RefusesAbsentSchemas()
+    held.preflight.missing_schemas.add("DB.SCH")
+    entry = AppliedEntry("f" * 64, "DB.SCH.OTHER", "now", "run", "applied", "f" * 64, "m" * 64)
+    held.remote_state = MappingProxyType({"semantic_view:other": entry})
+    assert "SST-PLN001" in [item.code for item in _planned_on(held, {}).changeset.diagnostics]
+    # A schema whose existence cannot be read counts present, so its observation reports why.
+    unreadable = _RefusesAbsentSchemas()
+    unreadable.preflight.missing_schemas.add("DB.SCH")
+    unreadable.fail("schema_exists", SnowflakePortError("refused"))
+    assert "SST-PLN001" in [item.code for item in _planned_on(unreadable, {}).changeset.diagnostics]

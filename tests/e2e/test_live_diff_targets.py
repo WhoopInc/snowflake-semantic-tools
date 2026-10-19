@@ -23,6 +23,9 @@ from tests.helpers.live_snowflake import LiveAccount, profile_target
 pytestmark = [pytest.mark.live, pytest.mark.e2e]
 
 
+# Two full publishes, a third of one target and three diffs, each an `sst` subprocess that signs
+# in: about 130 seconds on a sandbox, past the suite's 120-second default.
+@pytest.mark.timeout(300)
 def test_two_targets_agree_member_by_member_then_differ_in_the_one_edited(
     live_account: LiveAccount,
     live_connector: SnowflakeConnector,

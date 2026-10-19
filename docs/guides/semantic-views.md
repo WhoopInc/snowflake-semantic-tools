@@ -702,9 +702,11 @@ these changes the statement.
 
 Every comment SST publishes, a view's or a member's `COMMENT`, a tool's
 description, an agent's comment, is its authored text with whitespace trimmed
-from both ends. Everything between is published byte for byte: line breaks,
-carriage returns, tabs, and the spaces at the end of an inner line, so a
-`description` written with Windows line endings keeps them. A metric's
+from both ends. Reading a YAML file, SST makes CRLF line endings LF and drops
+the whitespace at the end of each line, in memory, so neither reaches what
+publishes: a stray space inside a `|` block, where YAML would keep it, renders
+the same DDL as none. Everything else between is published byte for byte: line
+breaks, tabs, and every other character. A metric's
 `description` is the one exception: its lines are joined with a space into one
 line. A routine's `body:` file is published as written but for whitespace at its
 end, and an agent's instruction file loses its trailing whitespace. A plan

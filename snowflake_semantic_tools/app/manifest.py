@@ -18,7 +18,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompiledView, CompileResult
 from snowflake_semantic_tools.app.plan_diff import compiled_fingerprints
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Severity
-from snowflake_semantic_tools.domain.lineage.members import member_edges
+from snowflake_semantic_tools.domain.lineage.members import member_edges, member_expressions
 from snowflake_semantic_tools.domain.model.dbt import DbtNode
 from snowflake_semantic_tools.domain.ports.project import ManifestSources
 from snowflake_semantic_tools.domain.state import MANIFEST_SCHEMA_VERSION, SST_VERSION, ArtifactEntry, Manifest
@@ -179,25 +179,34 @@ def build_manifest(
     return manifest.with_computed_id()
 
 
+# What a member's manifest entry records it reads, in `MemberEdges` order.
+_MEMBER_READS = ("tables", "uses", "columns", "unresolved_columns")
+
+
 def _members(by_member: dict[str, tuple[str, ...]], result: CompileResult) -> dict[str, object]:
     """Return each member's entry: the views it attaches to, then what it reads in any of them.
 
     A member several views attach is one node of lineage, so what it reads is the union of what
-    each view's copy reads.
+    each view's copy reads; its expression is the first view's, in compile order.
     """
-    tables: dict[str, set[str]] = {}
-    uses: dict[str, set[str]] = {}
+    read: dict[str, dict[str, set[str]]] = {}
+    expressions: dict[str, str] = {}
     for compiled in result.compiled:
         if not isinstance(compiled, CompiledView):
             continue
+        for key, text in member_expressions(compiled.view).items():
+            expressions.setdefault(key, text)
         for key, edges in member_edges(compiled.view).items():
-            tables.setdefault(key, set()).update(edges.tables)
-            uses.setdefault(key, set()).update(edges.uses)
+            found = read.setdefault(key, {field: set() for field in _MEMBER_READS})
+            for field, values in zip(
+                _MEMBER_READS, (edges.tables, edges.uses, edges.columns, edges.unresolved), strict=True
+            ):
+                found[field].update(values)
     return {
         key: {
             "attached_to": list(views),
-            **({"tables": sorted(tables[key])} if tables.get(key) else {}),
-            **({"uses": sorted(uses[key])} if uses.get(key) else {}),
+            **{field: sorted(values) for field, values in read.get(key, {}).items() if values},
+            **({"expr": expressions[key]} if key in expressions else {}),
         }
         for key, views in sorted(by_member.items())
     }

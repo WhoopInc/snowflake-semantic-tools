@@ -14,16 +14,19 @@ from typing import Protocol
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.fanout import Fanout
+from snowflake_semantic_tools.app.publication import Checked, Publication, unpublished_count, unpublished_findings
 from snowflake_semantic_tools.app.state import read_state
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
+from snowflake_semantic_tools.domain.ports.progress import NO_PROGRESS, Progress
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.ports.state import StateStore
+from snowflake_semantic_tools.domain.ports.timing import NO_PHASES, PhaseTimer
 from snowflake_semantic_tools.domain.state import AppliedEntry, Manifest, State
 
 
@@ -33,10 +36,16 @@ class SmokePort(CatalogPort, ExecutionPort, StatePort, Protocol):
 
 @dataclass(frozen=True, slots=True)
 class SmokeResult:
-    """The probes a smoke run attempted, in order, with what they reported."""
+    """The probes a smoke run attempted, in order, with what they reported.
+
+    Attributes:
+        unpublished: How many artifacts with probes were not published as compiled, which kept
+            every probe from running; 0 when they all were, or state could not be read.
+    """
 
     attempted: tuple[SmokeProbe, ...]
     diagnostics: DiagnosticBag
+    unpublished: int = 0
 
     @property
     def success(self) -> bool:
@@ -50,11 +59,15 @@ class RunSmokeSuite:
     Args:
         readers: Sessions, opened from `port`, to run the probes on concurrently; None
             runs them on `port`, one at a time. `fail_fast` always runs them one at a time.
+        progress: Told of each probe as a unit of step `smoke`, as it starts and ends.
     """
 
-    def __init__(self, port: ExecutionPort, readers: Fanout[ExecutionPort] | None = None) -> None:
+    def __init__(
+        self, port: ExecutionPort, readers: Fanout[ExecutionPort] | None = None, *, progress: Progress = NO_PROGRESS
+    ) -> None:
         self._port = port
         self._readers = readers
+        self._progress = progress
 
     def run(self, rendered: tuple[RenderedArtifact, ...], *, fail_fast: bool = False) -> SmokeResult:
         """Run every probe, in artifact order; with `fail_fast`, stop at the first that fails.
@@ -70,26 +83,25 @@ class RunSmokeSuite:
         attempted: list[SmokeProbe] = []
         failures: list[Diagnostic] = []
         skipped: list[Diagnostic] = []
+        # Run one at a time only under `fail_fast`, so the first failure ends the run here.
         for artifact in rendered:
-            if failures and fail_fast:
+            if failures:
                 if artifact.smoke:
                     skipped.append(_skipped(artifact, "--fail-fast stopped the suite at an earlier failure"))
                 continue
             for probe in artifact.smoke:
                 attempted.append(probe)
-                try:
-                    self._port.query(probe.sql)
-                except SnowflakePortError as exc:
-                    failures.append(_probe_failure(artifact, probe, str(exc)))
-                    if fail_fast:
-                        break
+                error = self._probe_error(self._port, (artifact, probe))
+                if error is not None:
+                    failures.append(_probe_failure(artifact, probe, error))
+                    break
         tally = (D("SST-APL006", count=len(failures)),) if failures else ()
         return SmokeResult(tuple(attempted), DiagnosticBag((*failures, *tally, *skipped)))
 
     def _run_all(self, rendered: tuple[RenderedArtifact, ...]) -> SmokeResult:
         """Run every probe, concurrently when given sessions, and report failures in probe order."""
         probes = tuple((artifact, probe) for artifact in rendered for probe in artifact.smoke)
-        errors = (self._readers or Fanout(self._port)).map(_probe_error, probes)
+        errors = (self._readers or Fanout(self._port)).map(self._probe_error, probes)
         failures = tuple(
             _probe_failure(artifact, probe, error)
             for (artifact, probe), error in zip(probes, errors, strict=True)
@@ -98,14 +110,17 @@ class RunSmokeSuite:
         tally = (D("SST-APL006", count=len(failures)),) if failures else ()
         return SmokeResult(tuple(probe for _, probe in probes), DiagnosticBag((*failures, *tally)))
 
-
-def _probe_error(port: ExecutionPort, item: tuple[RenderedArtifact, SmokeProbe]) -> str | None:
-    """Run one probe; why it failed, or None when it answered."""
-    try:
-        port.query(item[1].sql)
-    except SnowflakePortError as exc:
-        return str(exc)
-    return None
+    def _probe_error(self, port: ExecutionPort, item: tuple[RenderedArtifact, SmokeProbe]) -> str | None:
+        """Run one probe, reporting it as a unit; why it failed, or None when it answered."""
+        key = item[1].key
+        self._progress.unit_started("smoke", key, "probing")
+        try:
+            port.query(item[1].sql)
+        except SnowflakePortError as exc:
+            self._progress.unit_finished("smoke", key, ok=False, status="failed")
+            return str(exc)
+        self._progress.unit_finished("smoke", key, ok=True, status="answered")
+        return None
 
 
 def _probe_failure(artifact: RenderedArtifact, probe: SmokeProbe, detail: str) -> Diagnostic:
@@ -147,12 +162,24 @@ class SmokePublished:
     Args:
         readers: Sessions, opened from `port`, to read the markers and run the probes on
             concurrently; None runs them on `port`, one at a time.
+        phases: Times `smoke_check` (state and markers) and `smoke` (the probes, only when they run).
+        progress: Told of each probe as a unit, as `RunSmokeSuite` tells it.
     """
 
-    def __init__(self, port: SmokePort, state_store: StateStore, readers: Fanout[SmokePort] | None = None) -> None:
+    def __init__(
+        self,
+        port: SmokePort,
+        state_store: StateStore,
+        readers: Fanout[SmokePort] | None = None,
+        *,
+        phases: PhaseTimer = NO_PHASES,
+        progress: Progress = NO_PROGRESS,
+    ) -> None:
         self._port = port
         self._state_store = state_store
         self._readers = readers
+        self._phases = phases
+        self._progress = progress
 
     def run(
         self,
@@ -180,22 +207,28 @@ class SmokePublished:
             manifest: The manifest the project compiles to, which `sst compile` wrote.
 
         Diagnostics:
-            SST-APL012: an object with probes is not the one apply published at the
-                fingerprint the project compiles to.
+            SST-APL036, SST-APL037, SST-APL038, SST-APL012: an object with probes is not published
+                on the target, nothing the suite probes is, one is published from an older
+                compile, or one changed since it was applied; as `unpublished_findings` says.
+                None is reported when state could not be read, which says so itself.
             Those of `read_state`, any of which also keeps the probes from running, and the
             probes' own.
         """
-        state, state_diagnostics = read_state(self._state_store, self._port, state_table=state_table, target=target)
-        problems: list[Diagnostic] = list(state_diagnostics)
-        published = {artifact.key: artifact for artifact in result.rendered_for_publish(manifest.manifest_id)}
-        problems.extend(self._unowned(result, state))
-        problems.extend(unprobed_metrics(result))
+        with self._phases.phase("smoke_check"):
+            state, state_diagnostics = read_state(self._state_store, self._port, state_table=state_table, target=target)
+            problems: list[Diagnostic] = list(state_diagnostics)
+            published = {artifact.key: artifact for artifact in result.rendered_for_publish(manifest.manifest_id)}
+            checked = () if state_diagnostics.has_errors else self._checked(result, state)
+            problems.extend(unpublished_findings(checked, suite="smoke"))
+            problems.extend(unprobed_metrics(result))
         if problems:
-            return SmokeResult((), DiagnosticBag(tuple(problems)))
-        return RunSmokeSuite(self._port, self._readers).run(tuple(published.values()), fail_fast=fail_fast)
+            return SmokeResult((), DiagnosticBag(tuple(problems)), unpublished_count(checked))
+        with self._phases.phase("smoke"):
+            suite = RunSmokeSuite(self._port, self._readers, progress=self._progress)
+            return suite.run(tuple(published.values()), fail_fast=fail_fast)
 
-    def _unowned(self, result: CompileResult, state: State) -> list[Diagnostic]:
-        """Report each artifact with probes whose state entry or live marker is not apply's, in compile order.
+    def _checked(self, result: CompileResult, state: State) -> tuple[Checked, ...]:
+        """Say how each artifact with probes is published, in compile order.
 
         The live marker is read only for an artifact whose state entry matches.
         """
@@ -211,12 +244,19 @@ class SmokePublished:
                 strict=True,
             )
         )
-        return [
-            D("SST-APL012", artifact=artifact.key, value=artifact.target.sql)
-            for artifact in probed
-            if artifact.key not in recorded
-            or markers.get(artifact.key) != OwnershipMarker(recorded[artifact.key].manifest_id, artifact.fingerprint)
-        ]
+        return tuple(
+            Checked(artifact.key, artifact.target.sql, _publication(artifact, state, markers)) for artifact in probed
+        )
+
+
+def _publication(artifact: RenderedArtifact, state: State, markers: dict[str, OwnershipMarker | None]) -> Publication:
+    """Say how one artifact is published, from its state entry and, when that matches, its marker."""
+    entry = _recorded(artifact, state)
+    if entry is None:
+        return Publication.ABSENT if artifact.key not in state.applied else Publication.OLDER
+    if markers.get(artifact.key) != OwnershipMarker(entry.manifest_id, artifact.fingerprint):
+        return Publication.DRIFTED
+    return Publication.PUBLISHED
 
 
 def _recorded(artifact: RenderedArtifact, state: State) -> AppliedEntry | None:

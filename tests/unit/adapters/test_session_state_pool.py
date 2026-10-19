@@ -12,7 +12,7 @@ from snowflake.connector.errors import OperationalError, ProgrammingError
 
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool, SnowflakeConnector
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
-from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import ScopeUnavailable, SnowflakePortError
 from snowflake_semantic_tools.domain.sql import sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from snowflake_semantic_tools.domain.state.lock import LockFence, StateWrite
@@ -256,7 +256,7 @@ def test_each_scope_has_a_session_of_its_own_and_a_quoted_name_keeps_its_quotes(
     quoted = SchemaScope(Identifier("my db", quoted=True), Identifier("S"))
     connector.query_in_context(quoted, sql("SELECT 1"))
     assert opened[1][0] == {"account": "acme", "database": '"my db"', "schema": "S"}
-    with pytest.raises(SnowflakePortError, match="started in my db.S"):
+    with pytest.raises(ScopeUnavailable, match="started in my db.S"):
         connector.query_in_context(SchemaScope.from_qualified_name(STATE_TABLE), sql("SELECT 1"))
     # The session that started elsewhere was closed, never kept for its scope.
     assert opened[2][1].closed and len(opened) == 3

@@ -508,8 +508,9 @@ SPECS: tuple[ErrorSpec, ...] = (
             "`CREATE AGENT` accepts any model name, so a model agents do not accept fails only when "
             "someone asks the agent something. Snowflake keeps no list of the models agents accept: "
             "`SHOW CORTEX BASE MODELS` lists models agents refuse, such as embedding models. So SST "
-            "creates a TEMPORARY agent with no tools and a small budget in the schema of the first "
-            "agent the project publishes, runs it once with `DATA_AGENT_RUN` as the session's role, "
+            "creates a TEMPORARY agent with no tools and a small budget where the first agent the "
+            "project publishes makes its temporary agents, `agents.+scratch_schema`, else that agent's "
+            "own schema, runs it once with `DATA_AGENT_RUN` as the session's role, "
             "and drops it. The detail is the first line of Snowflake's message: 'not an allowed model "
             "for Agent requests' for a model agents never accept, 'not authorized or not available in "
             "your region' for one the account cannot reach. Run the check as the role that deploys: "
@@ -580,8 +581,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Allowed orchestration model was not fully checked",
         "orchestration model '{model}' was not fully checked: {reason}",
-        "fix what the reason names, such as the role's CREATE AGENT in the first agent's schema, then validate "
-        "again as the deploying role",
+        "fix what the reason names, such as the role's CREATE AGENT in `agents.+scratch_schema`, else the first "
+        "agent's schema, or that schema not existing yet, then validate again as the deploying role",
         condition=(
             "connected validation could not run a throwaway agent on a model "
             "`snowflake.orchestration_models` lists, or could not read `SHOW CORTEX BASE MODELS`: the "

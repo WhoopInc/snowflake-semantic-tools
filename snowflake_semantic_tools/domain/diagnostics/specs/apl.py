@@ -178,11 +178,15 @@ SPECS: tuple[ErrorSpec, ...] = (
             "the target changed after the plan was computed: its state table no longer reads as the "
             "plan read it, an object the plan would create now exists, an ownership marker changed "
             "or was not installed, or a composite artifact's resources changed; `sst test` also "
-            "reports it when an artifact it would smoke or eval is not published as the compiled "
-            "manifest renders it; and `sst apply --plan` reports it, exiting 4, when the saved plan's "
-            "manifest, observation, or ordered changes are not a fresh plan's"
+            "reports it when an artifact it would smoke or eval is recorded as published as compiled "
+            "but its live object changed since; and `sst apply --plan` reports it, exiting 4, when "
+            "the saved plan's manifest, observation, or ordered changes are not a fresh plan's"
         ),
-        note="Under `sst test`, run `sst plan` and `sst apply` for the current manifest first.",
+        note=(
+            "Under `sst test`, the object was changed outside SST after it was applied: run `sst plan` "
+            "and `sst apply` to publish it again. An artifact never published on the target is "
+            "SST-APL036, and one published from an older compile SST-APL038."
+        ),
         precheck=Precheck.RUNTIME,
     ),
     spec(
@@ -467,6 +471,55 @@ SPECS: tuple[ErrorSpec, ...] = (
             "Its error number is not measured, so it is recognised by a message that names hybrid "
             "tables; any other refusal is reported as Snowflake gave it"
         ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL036",
+        Severity.ERROR,
+        "Artifact not published on this target",
+        "{artifact}: {value} is not published on this target",
+        "run `sst plan`, then `sst apply`",
+        condition=(
+            "`sst test` would smoke or eval an artifact the target's state records no successful "
+            "publish of; when that is true of every artifact the suite tests, SST-APL037 reports it once"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL037",
+        Severity.ERROR,
+        "Nothing the suite tests is published on this target",
+        "nothing the {kind} suite tests is published on this target ({count} not published)",
+        "run `sst plan`, then `sst apply`",
+        condition=(
+            "no artifact `sst test` would smoke or eval is published on the target, as on a target "
+            "nothing was applied to; reported once instead of SST-APL036 for each"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL038",
+        Severity.ERROR,
+        "Artifact published from an older compile",
+        "{artifact}: {value} is published from an older compile",
+        "run `sst plan`, then `sst apply`, to publish the current compile",
+        condition=(
+            "`sst test` would smoke or eval an artifact the target's state records at another "
+            "fingerprint or name than the project compiles to now"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL039",
+        Severity.ERROR,
+        "Schema could not be created",
+        "{value}: the schema could not be created: {detail}",
+        "create the schema, or have its database's owner let the role create schemas, then apply again",
+        condition=(
+            "with `apply.create_schemas` on, apply ran `CREATE SCHEMA IF NOT EXISTS` for an absent schema "
+            "the plan publishes into, before taking the lock, and Snowflake refused it; nothing else ran"
+        ),
+        note="Set `apply.create_schemas: false` to have plan report an absent schema as SST-PLN010 instead.",
         precheck=Precheck.RUNTIME,
     ),
     spec(

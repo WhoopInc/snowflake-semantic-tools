@@ -44,6 +44,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ClassifiedError,
     ErrorKind,
     FailurePolicy,
+    OutcomeStatus,
 )
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
@@ -53,6 +54,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.execution import SessionPoo
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.ports.timing import NO_PHASES, PhaseTimer
+from snowflake_semantic_tools.domain.sql import scope, sql
 from snowflake_semantic_tools.domain.state import SST_VERSION, STATE_SCHEMA_VERSION, LastRun, State
 from snowflake_semantic_tools.domain.state.lock import LockClaim, LockFence, state_write
 from snowflake_semantic_tools.domain.validate.publication import channel_outcome_diagnostics
@@ -177,6 +179,7 @@ class ApplyArtifacts:
             SST-APL015: a temporary artifact's alias was ignored.
             SST-APL105: an eval of an agent published as temporary was skipped.
             SST-APL103: Snowflake ended a session the run used, after it took its lock.
+            SST-APL039: an absent schema the plan creates first could not be created; nothing ran.
             SST-APL900: the outcomes do not account for every planned change.
             SST-VAL828: a skill, plugin or profile change, a publication channel's, has no
                 outcome or several, so the run's result would not show that channel's state.
@@ -186,7 +189,7 @@ class ApplyArtifacts:
         """
         run_id = self._clock.new_run_id()
         started = self._clock.now_iso()
-        refusal = _refusal(changeset, options)
+        refusal = _refusal(changeset, options) or self._create_schemas(changeset)
         if refusal is not None:
             return self._refused(refusal, run_id, started)
         lease = RunLease(
@@ -218,6 +221,25 @@ class ApplyArtifacts:
                 _release(lease, recovery)
         finally:
             recovery.close()
+
+    def _create_schemas(self, changeset: ChangeSet) -> tuple[Diagnostic, ...] | None:
+        """Create each absent schema the plan lists, in order; None, or the refusal with SST-APL039.
+
+        This runs before the lock, as the state and lock tables may live in one of them.
+        `IF NOT EXISTS` makes a schema another run created meanwhile no failure, and a schema
+        is never recorded in state, so no prune or drop ever removes one.
+        """
+        if not changeset.schemas:
+            return None
+        with self._phases.phase("schemas"):
+            for created in changeset.schemas:
+                result = self._port.execute_script(
+                    (sql("CREATE SCHEMA IF NOT EXISTS {schema}", schema=scope(created)),)
+                )
+                if not result.ok:
+                    detail = result.error.message.splitlines()[0] if result.error else "no error reported"
+                    return (*changeset.diagnostics, D("SST-APL039", value=created.sql, detail=detail))
+        return None
 
     def _halt(self, reason: str) -> None:
         """Stop every worker session before its next statement, once the run lost its lock."""
@@ -273,12 +295,21 @@ class ApplyArtifacts:
         skipped = temporary_evals(changeset)
 
         def apply_one(change: Change, options: ApplyOptions) -> ApplyOutcome:
+            self._progress.unit_started("publish", change.key, change.action.value)
+            outcome: ApplyOutcome | None = None
             try:
                 if change.key in skipped:
-                    return _skipped(change, _rendered_ddl(change))
-                return self._apply_one(change, options, stages, lease)
+                    outcome = _skipped(change, _rendered_ddl(change))
+                else:
+                    outcome = self._apply_one(change, options, stages, lease)
+                return outcome
             finally:
                 self._progress.advance("publish")
+                failed = outcome is None or outcome.status is OutcomeStatus.FAILED
+                status = "failed" if outcome is None else outcome.status.value
+                self._progress.unit_finished(
+                    "publish", change.key, ok=not failed, status=f"{change.action.value} {status}"
+                )
 
         waves = _WaveRun(
             changeset, options, apply_one, lost, verify=lease.verify, on_second_interrupt=self._halt_interrupted

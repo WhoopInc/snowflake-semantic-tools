@@ -1,0 +1,12 @@
+$ sst --project-dir <project> --manifest <manifest> lineage skill:jaffle-semantics --downstream --wide
+--- exit 0
+--- stdout
+skill:jaffle-semantics                   SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS
+└── read by
+    ├── agent:jaffle_analytics_agent     SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT       loads it
+    │   └── eval:jaffle_analytics_agent  SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANALYTICS_AGEN…  tests it
+    ├── plugin:jaffle-toolkit            SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT               bundles it
+    │   └── profile:jaffle-operator      SST_REF_DEV.JAFFLE.PROFILE_REGISTRY             includes it
+    └── profile:jaffle-analyst           SST_REF_DEV.JAFFLE.PROFILE_REGISTRY             includes it
+--- stderr
+✓ traced 6 nodes from skill:jaffle-semantics · <n>s

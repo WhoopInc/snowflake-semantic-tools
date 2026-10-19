@@ -184,7 +184,7 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("test", 5): lambda tmp, mp: _connected(tmp, mp, "test", "--suite", "smoke"),
     ("ask", 0): lambda tmp, mp: _ask(tmp, mp),
     ("ask", 1): lambda tmp, mp: _ask(tmp, mp, reply=AgentReply(error="refused")),
-    ("ask", 3): lambda tmp, _: _run("ask", "jaffle_analytics_agent"),
+    ("ask", 3): lambda tmp, _: _run("ask", "jaffle_analytics_agent", *common(project_copy(tmp))),
     ("ask", 4): lambda tmp, mp: _ask(tmp, mp, agent="finance"),
     ("ask", 5): lambda tmp, mp: _connected(tmp, mp, "ask", "jaffle_analytics_agent", "q"),
     ("docs", 0): lambda tmp, _: _run("docs", "--project-dir", str(REPO_ROOT), "--check"),

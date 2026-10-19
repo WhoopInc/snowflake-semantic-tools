@@ -1,6 +1,6 @@
 """Unpublished-run codes (ASK): `sst ask`, and evals run against an agent's edit before it publishes.
 
-Both run the agent's compiled specification as a temporary agent, so what they report is
+Both run the agent's compiled specification without publishing it, so what they report is
 about that run: an agent that answered with an error, a name that compiles no agent, the
 published objects the edited agent still calls, and what an unpublished eval run could and
 could not score.
@@ -24,8 +24,9 @@ SPECS: tuple[ErrorSpec, ...] = (
             "to a fingerprint the target's state does not record for it, or the state cannot be read"
         ),
         note=(
-            "The temporary agent's specification names objects by their published names, so a "
-            "tool resolves to what the target holds now: only the agent's own edit is tried."
+            "Reported where nothing stands in for your edit: under `sst ask --published`, and for "
+            "an unpublished eval run. Otherwise `sst ask` runs the agent on a scratch copy of each "
+            "such dependency, so your edit is what it calls."
         ),
         precheck=Precheck.OBSERVE,
     ),
@@ -95,6 +96,45 @@ SPECS: tuple[ErrorSpec, ...] = (
         note=(
             "Only exact metrics gate an unpublished run. A judged metric is approximate: its "
             "scores are reported, and never fail the run."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-ASK008",
+        Severity.ERROR,
+        "Scratch copy could not be created",
+        "{artifact}: the scratch copy {value} could not be created: {detail}",
+        "grant the role the CREATE privilege the message names in the scratch schema, or run `sst ask --published`",
+        condition=(
+            "`sst ask` copies each dependency your edit changed into `agents.+scratch_schema`, and "
+            "Snowflake refused a copy's statement; the copies made before it are dropped"
+        ),
+        note="Nothing is published: the copies are throwaway objects named `<NAME>__SST_ASK_<id>`.",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-ASK009",
+        Severity.WARNING,
+        "Scratch copy or thread left behind",
+        "{value} could not be removed: {detail}",
+        "run `sst ask --cleanup`, which removes what an earlier session left",
+        condition="ending a session, `sst ask` could not drop a scratch copy or delete its thread",
+        note="Each session also removes the copies and threads older sessions left, after a while.",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-ASK010",
+        Severity.ERROR,
+        "Agent cannot reach a tool",
+        "{artifact} cannot reach a tool: {detail}",
+        "grant the role access to the object the message names, then ask again",
+        condition=(
+            "the run sets `orchestration.tool_not_accessible: reject`, as a run on scratch copies "
+            "does, and Snowflake refused it because a tool's object is missing or the role cannot use it"
+        ),
+        note=(
+            "Without `reject`, an agent answers without a tool it cannot reach, and says nothing; "
+            "with it, the refusal names each such tool."
         ),
         precheck=Precheck.RUNTIME,
     ),

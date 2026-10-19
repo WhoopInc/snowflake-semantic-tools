@@ -14,6 +14,7 @@ from collections.abc import Iterable
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.sql.core import Sql, _seal, join, sql
 from snowflake_semantic_tools.domain.sql.datatype import datatype
+from snowflake_semantic_tools.domain.sql.lexer import Token, TokenKind, tokenize
 from snowflake_semantic_tools.domain.text import unstorable
 
 _UNQUOTED = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
@@ -243,6 +244,55 @@ def routine_ref(target: QualifiedName, types: Iterable[str]) -> Sql:
         ValueError: a part of the name is not an identifier, or a type is not a Snowflake type.
     """
     return sql("{target}({types})", target=qname(target), types=join(", ", (datatype(value) for value in types)))
+
+
+def renamed(statement: Sql, old: QualifiedName, new: QualifiedName) -> Sql:
+    """Return `statement` with every reference to the object `old` written as `new` instead.
+
+    A reference is the three parts of `old`, matched as identifiers the way Snowflake folds
+    them, joined by dots outside every string, comment and `$$` body; the rest of the text is
+    kept as it is. `sst ask` builds a scratch copy of an object this way: the object's own
+    statements, naming the copy.
+    """
+    tokens = list(tokenize(statement.text))
+    wanted = old.folded
+    out: list[str] = []
+    index = 0
+    while index < len(tokens):
+        found = _name_at(tokens, index)
+        if found is not None and found[0] == wanted:
+            out.append(qname(new).text)
+            index = found[1]
+            continue
+        out.append(tokens[index].text)
+        index += 1
+    return _seal("".join(out))
+
+
+def _name_at(tokens: list[Token], index: int) -> tuple[tuple[str, ...], int] | None:
+    """Return the folded parts of a three-part name starting at `index`, and the index after it."""
+    parts: list[str] = []
+    at = index
+    while at < len(tokens) and len(parts) < 3:
+        token = tokens[at]
+        if token.kind is TokenKind.WORD:
+            parts.append(token.text.upper())
+        elif token.kind is TokenKind.QUOTED_IDENTIFIER:
+            parts.append(token.text[1:-1].replace('""', '"'))
+        else:
+            return None
+        at += 1
+        if len(parts) < 3:
+            if at >= len(tokens) or tokens[at].text != ".":
+                return None
+            at += 1
+    if (
+        len(parts) != 3
+        or (index > 0 and tokens[index - 1].text == ".")
+        or (at < len(tokens) and tokens[at].text == ".")
+    ):
+        return None
+    return tuple(parts), at
 
 
 def scope(value: SchemaScope) -> Sql:
