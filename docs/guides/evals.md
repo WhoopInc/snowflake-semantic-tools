@@ -515,16 +515,87 @@ Ctrl-C or `SIGTERM` stops the suite and releases the lock (exit 130). A run
 already started goes on in Snowflake: the message names each one, for you to
 check or cancel.
 
-### Results
+### Reading results
 
-Each attempt is reported with its run name, terminal status, duration, token
-counts, and each metric's pass count and average score; status details and any
-retrieval error follow it. With `--output json`, `data` carries `evals` (each
-eval's retention class and attempts, with `metric_summaries` and `cost`),
-`attempt_count`, `cost_totals`, `regression_count`, `regressions`,
+Each attempt prints as a tree. Its line names the eval, its status and how many
+questions passed; under it come a published attempt's run name, each metric's
+pass count, average and threshold, what the attempt cost, and the questions that
+fell short, each with its score per metric and why:
+
+```text
+eval:jaffle_concierge  unpublished  COMPLETED  6/7 questions passed
+├── answer_correctness       7/7 passed  average 0.986  approximate, never gates
+├── tool_selection_accuracy  6/7 passed  average 0.929  needs at least 0.8
+├── cost  37.2s wall · 102.6s agent time · agent 250,640 in / 1,651 out
+│         not measured: LLM calls, judge tokens
+└── 1 of 7 questions fell short  (-v lists every question)
+    └── ✗ 6  Which jaffles on the menu have no meat in them?
+        ├── answer_correctness       1.00
+        └── tool_selection_accuracy  0.50  needs at least 0.8
+            ├── expected  menu_search
+            └── called    menu_search, menu_search
+```
+
+Here the agent called `menu_search` twice where the question expects one call,
+so it scored 0.5 (one match over one match and one extra call) and the run
+failed on question 6. `-v` (`sst -v test ...`) lists every question instead, each
+with its time and the agent's tokens, every metric's tools or judge's reason,
+and the agent's answer; a reason or an answer is cut to two lines:
+
+```text
+└── questions  6 of 7 passed
+    ├── ✓ 1  How long are deliveries from Brooklyn taking?  4.1s · 38,862 in / 715 out
+    │   ├── answer_correctness       1.00
+    │   │   └── reason  The answer gives the Brooklyn store's current delivery time
+    │   │               in minutes, as the expected answer does.
+    │   ├── tool_selection_accuracy  1.00
+    │   │   ├── expected  delivery_eta
+    │   │   └── called    delivery_eta
+    │   └── answer  Deliveries from the Brooklyn store are currently taking about
+    │               **40 minutes**.
+```
+
+How to read the numbers:
+
+- **A question's score** has two places; an **average** has three, over the
+  questions that metric scored. `needs at least 0.8` is the metric's
+  `threshold` (`{min: 0.8}`); `needs at most`, and `needs 0.5 to 0.9` for a
+  band, read the same way. A failing score shows the threshold beside it.
+- **Agent time** adds each question's time with the agent. Questions run at
+  once, so it can exceed **wall**, how long the attempt took from its first
+  question to its last answer; wall is measured for unpublished runs only.
+- **Agent tokens** and **LLM calls** are the agent's own: what it read and
+  wrote answering, and how many model calls it made. **Judge tokens** are the
+  scoring calls' tokens, which a published run reports per metric.
+- A count nothing measured is listed after `not measured:` instead of showing 0.
+  An unpublished run measures the agent's tokens, from each reply's usage, but
+  not its LLM calls or the judge's tokens, which `DATA_AGENT_RUN` and
+  `AI_COMPLETE` do not report.
+- A published run's called tools come from the evaluation service's
+  tool-selection criteria; when those cannot be read, the service's explanation
+  is shown instead. A regression the gate found is marked `regressed` on its
+  question and counted on its metric's line.
+
+`--quiet` prints each attempt's line, metrics and cost, and no questions.
+`-o plain` prints the same tree without connectors or colour, each line indented
+by its depth, and cuts nothing.
+
+With `--output json`, `data` carries `evals` (each eval's retention class and
+attempts), `attempt_count`, `cost_totals`, `regression_count`, `regressions`,
 `gate_verdict` (`passed`, `regressed`, `no_signal`, `captured`, or
 `not_evaluated` when a baseline capture captured nothing, as when it falls
-short), `gate_reasons`, and `captured_baselines`. Credits are not attributed.
+short), `gate_reasons`, and `captured_baselines`. Each attempt carries its
+`run_name`, `attempt`, `terminal_status`, `status_details`, `retrieval_error`,
+`metric_summaries`, `cost`, `wall_ms` (null unless measured) and `questions`.
+Each question carries its `index` in the dataset, `question_key`,
+`input_query`, `passed`, the agent's `answer` or `error`, `expected_tools`
+(null when the question states no expectation) and `called_tools` (null when
+not known), `metrics` (each with `metric_name`, `score`, `passed`, `threshold`
+as `{min, max}` and `explanation`), and its own `cost`. Every cost carries
+`duration_ms` (agent time), the judge's `prompt_tokens`, `completion_tokens`
+and `total_tokens`, the agent's `total_input_tokens`, `total_output_tokens` and
+`llm_call_count`, and `unmeasured`, the names of the fields nothing measured.
+Credits are not attributed.
 
 ## Baselines
 
@@ -696,12 +767,15 @@ for iterating, never a substitute for the published gate.
 
 **Gating.** Only exact metrics gate, on their thresholds alone: a question
 `tool_selection_accuracy` scores outside its `threshold` fails the run
-(`SST-ASK007`, exit 1). A judged metric's scores are reported, listed under
-`approximated_metrics`, and never fail the run. An agent that cannot answer a
-question also fails it (`SST-ASK002`). The output is the published suite's,
-with one attempt per eval named `unpublished`; `--output json` adds `"mode":
-"unpublished"`, `approximated_metrics`, `unscored_metrics` and a `gate_verdict`
-of `passed` or `failed`. The exit codes are the suite's: 0 passed, 1 failed, 3
+(`SST-ASK007`, exit 1), which names each such question with its score and the
+tools it was expected to call and called. A judged metric's scores are
+reported, marked `approximate, never gates` and listed under
+`approximated_metrics`, and never fail the run or a question. An agent that
+cannot answer a question also fails it (`SST-ASK002`). The output is the
+published suite's, [read the same way](#reading-results), with one attempt per
+eval named `unpublished` and the judge's reason for each judged score;
+`--output json` adds `"mode": "unpublished"`, `approximated_metrics`,
+`unscored_metrics` and a `gate_verdict` of `passed` or `failed`. The exit codes are the suite's: 0 passed, 1 failed, 3
 a refused command line, 4 no eval in the selection, 5 Snowflake unreachable.
 
 **What it sees** is what [`sst ask`](ask.md) sees: the agent on scratch copies
