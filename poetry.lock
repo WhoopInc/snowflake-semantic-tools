@@ -1679,7 +1679,7 @@ version = "2.2.0"
 description = "Links recognition library with FULL unicode support."
 optional = false
 python-versions = ">=3.10"
-groups = ["dev"]
+groups = ["main", "dev"]
 files = [
     {file = "linkify_it_py-2.2.0-py3-none-any.whl", hash = "sha256:3adc40eb5af300b2605fcfdb968c24e1d780a90f1f2221af7c15e5111e94d443"},
     {file = "linkify_it_py-2.2.0.tar.gz", hash = "sha256:907acd2d17ac1fbb9ddb62c8957ccbd6158cac602231a15c3b0cd1e215f03cee"},
@@ -3986,4 +3986,4 @@ dbt = ["dbt-snowflake"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "e5e7dabfe0aa9e46541148c7a0b9750de83ad9383268597256bd1d80e5063ee3"
+content-hash = "002af1eb7a0468bce731723f2f94dc9af126f9bb61e4fefa6bd2dc6f3c1a32fc"

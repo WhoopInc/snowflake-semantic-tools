@@ -3,7 +3,8 @@
 This document records the license of every direct dependency, so that a release can be checked
 against the requirements of Apache-2.0-licensed open source distribution. Versions are the ranges
 `pyproject.toml` declares; `poetry.lock` pins the exact releases. A pull request that adds or
-re-pins a dependency updates this file with `pyproject.toml` and `poetry.lock`.
+re-pins a dependency updates this file with `pyproject.toml` and `poetry.lock`;
+`tests/unit/test_dependencies.py` fails when the tables below and `pyproject.toml` disagree.
 
 ## Runtime Dependencies
 
@@ -14,19 +15,30 @@ Installed with the package (`pip install snowflake-semantic-tools`).
 | pyyaml | >=6.0.2,<7.0 | MIT | ✅ Permissive |
 | ruamel-yaml | >=0.18.6,<0.19 | MIT | ✅ Permissive |
 | snowflake-connector-python (with `secure-local-storage`) | >=4.7.1,<5.0 | Apache 2.0 | ✅ Permissive |
+| certifi | >=2024.7.4 | MPL-2.0 | ⚠️ Weak copyleft, used unmodified |
+| cryptography | >=46.0.5 | Apache 2.0 or BSD-3-Clause | ✅ Permissive |
 | click | >=8.3.3,<9.0 | BSD-3-Clause | ✅ Permissive |
+| textual | >=8.2,<9.0 | MIT | ✅ Permissive |
 
 The `secure-local-storage` extra adds keyring (MIT) to cache SSO tokens.
 
-The connector brings transitive dependencies of its own. All are permissive (MIT, BSD, Apache 2.0,
-PSF-2.0, Unlicense) except `certifi`, the CA bundle, which is MPL-2.0: a file-level copyleft whose
-conditions attach to certifi's own files, which SST neither modifies nor bundles.
+SST imports certifi and cryptography directly -- certifi's CA bundle verifies the agent stream, and
+cryptography reads a key-pair profile's private key -- so both are declared, though the connector
+requires them too. certifi is MPL-2.0: a file-level copyleft whose conditions attach to certifi's
+own files, which SST neither modifies nor bundles.
+
+Textual draws the `sst ask` conversation. It brings rich, pygments, markdown-it-py with
+mdit-py-plugins, linkify-it-py and mdurl, platformdirs and typing-extensions: MIT, BSD-2-Clause and
+PSF-2.0.
+
+The connector's own transitive dependencies are all permissive: MIT or MIT-0, BSD, Apache 2.0 and
+PSF-2.0.
 
 ## Optional Dependencies
 
 | Package | Version | Extra | License | Status |
 |---------|---------|-------|---------|--------|
-| dbt-snowflake | >=1.8,<2.0 | `dbt` | Apache 2.0 | ✅ Permissive |
+| dbt-snowflake | >=1.10,<2.0 | `dbt` | Apache 2.0 | ✅ Permissive |
 
 The extra installs dbt Core and its own dependency tree, which is dbt's, not SST's: SST never
 imports dbt and only runs whichever `dbt` executable is on `PATH`. That tree is not all permissive.
@@ -64,9 +76,9 @@ Installed by CI outside the project's environment, so `poetry.lock` does not res
 
 ## Summary
 
-✅ **Every direct runtime and optional dependency is under a permissive license** (MIT, BSD, or
-Apache 2.0). Of the runtime dependencies' transitive dependencies, only certifi (MPL-2.0) is not
-permissive, and it is used unmodified. The optional `dbt` extra's own tree is described above.
+✅ **Every direct runtime and optional dependency but certifi is under a permissive license** (MIT,
+BSD, or Apache 2.0). certifi (MPL-2.0) is the one runtime dependency, direct or transitive, that is
+not permissive, and it is used unmodified. The optional `dbt` extra's own tree is described above.
 
 Two tools that never ship with the package carry copyleft licenses: hypothesis (MPL-2.0), which the
 test suite imports, and semgrep (LGPL-2.1-or-later), which CI runs as a separate program. Neither is

@@ -24,6 +24,11 @@ pyyaml = ">=6.0.2,<7.0"
 # Round-trip YAML for sst enrich, which edits dbt and view files in place.
 ruamel-yaml = ">=0.18.6,<0.19"
 snowflake-connector-python = {extras = ["secure-local-storage"], version = ">=4.7.1,<5.0"}
+# Imported directly, though the connector also requires both: certifi's CA bundle verifies the
+# agent stream, and cryptography reads a key-pair profile's private key. The floors are the
+# connector's own, so declaring them never narrows what it accepts.
+certifi = ">=2024.7.4"
+cryptography = ">=46.0.5"
 click = ">=8.3.3,<9.0"
 # The full-screen `sst ask` conversation; imported only when one opens.
 textual = ">=8.2,<9.0"
