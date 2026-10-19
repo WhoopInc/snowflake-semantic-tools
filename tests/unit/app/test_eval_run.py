@@ -22,6 +22,8 @@ from snowflake_semantic_tools.app.evals.retrieve import (
     _single_row,
     _status_details,
     _variant,
+    compiled_questions,
+    read_results,
 )
 from snowflake_semantic_tools.app.evals.run import (
     EvalRunResult,
@@ -36,13 +38,17 @@ from snowflake_semantic_tools.app.evals.run import (
 )
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT, EvalLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.model.eval import (
     EvalCostSummary,
     EvalDefaults,
+    EvalGroundTruth,
+    EvalInvocation,
     EvalMetricResult,
+    EvalQuestion,
     EvalResultRow,
     EvalRunAttempt,
+    EvalSystemMetric,
     ThresholdRange,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
@@ -59,6 +65,7 @@ from tests.helpers.eval_builders import (
     EvalSnowflake,
     compile_eval,
     compiled_eval_of,
+    resolved_eval,
     result_row,
     result_rows,
     seed_dataset_version,
@@ -66,6 +73,8 @@ from tests.helpers.eval_builders import (
 )
 from tests.helpers.eval_inputs import settled
 from tests.helpers.snowflake_fake import FakeSnowflake, Sent
+
+ORIGIN = Origin("dataset.yml", 1, 1)
 
 
 class ResolveErrorSnowflake(EvalSnowflake):
@@ -1365,3 +1374,66 @@ def test_flattened_ground_truth_matches_as_sent_or_parsed_and_an_absent_one_only
         )
     with pytest.raises(ValueError, match="unrecognized flattened ground truth"):
         _result_question_key({"INPUT": "Question", "GROUND_TRUTH": "Answer"}, reference_free)
+
+
+def test_a_published_run_reads_each_questions_answer_tools_explanations_and_cost_in_dataset_order() -> None:
+    base = resolved_eval()
+    tools = EvalSystemMetric(ORIGIN, "tool_selection_accuracy", "v3", gate=True, threshold=ThresholdRange(0.8))
+    questions = (
+        EvalQuestion(ORIGIN, "Brooklyn?", EvalGroundTruth(ORIGIN, (EvalInvocation(ORIGIN, "delivery_eta"),), "40")),
+        EvalQuestion(ORIGIN, "No meat?", EvalGroundTruth(ORIGIN, (EvalInvocation(ORIGIN, "menu_search"),), "Veg")),
+    )
+    resolved = replace(
+        base,
+        dataset=replace(base.dataset, questions=questions),
+        config=replace(base.config, system_metrics=(base.config.system_metrics[0], tools)),
+    )
+    compiled = compiled_eval_of(resolved)
+    truths = {query: truth for _, query, truth in compiled_questions(compiled)}
+
+    def record(query: str, metric: str, score: float, calls: list[object], *, record_id: str) -> tuple[object, ...]:
+        row = list(
+            result_row(
+                metric,
+                score,
+                record_id=record_id,
+                request_id=record_id,
+                input_query=query,
+                ground_truth=truths[query],
+                metric_type="custom" if metric == "grounding" else "system",
+                calls=calls,
+            ).rows[0]
+        )
+        row[6] = "\n\nThe veggie jaffle." if query == "No meat?" else "About 40 minutes."
+        return tuple(row)
+
+    tokens = {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
+    doubled = "**Expected:** `[menu_search]` (1 tools)\n\n**Invoked:** `[menu_search, menu_search]` (2 tools)"
+    doubled_call = {"criteria": doubled, "explanation": "**Score:** 0.50", "full_metadata": tokens}
+    judged_call = {"criteria": "c", "explanation": " Names the veggie jaffle. ", "full_metadata": tokens}
+    single_call = {"criteria": "**Invoked:** `[delivery_eta]` (1 tools)"}
+    # The service answers in record order; the second question's record sorts first.
+    rows = (
+        record("No meat?", "tool_selection_accuracy", 0.5, [doubled_call], record_id="a"),
+        record("No meat?", "answer_correctness", 1.0, [judged_call], record_id="a"),
+        record("No meat?", "grounding", 4.0, [], record_id="a"),
+        record("Brooklyn?", "tool_selection_accuracy", 1.0, [single_call], record_id="b"),
+        record("Brooklyn?", "answer_correctness", 1.0, ["not a call"], record_id="b"),
+        record("Brooklyn?", "grounding", 4.0, [], record_id="b"),
+    )
+    found, cost = read_results(EvalSnowflake([QueryResult(RESULT_COLUMNS, rows)]), compiled, "RUN")
+
+    brooklyn, meat = found
+    assert (brooklyn.index, brooklyn.input_query, meat.index, meat.input_query) == (1, "Brooklyn?", 2, "No meat?")
+    assert (meat.answer, meat.error) == ("The veggie jaffle.", None)
+    assert (meat.expected_tools, meat.called_tools) == (("menu_search",), ("menu_search", "menu_search"))
+    assert brooklyn.called_tools == ("delivery_eta",)
+    by_name = {item.metric_name: item for item in meat.metrics}
+    assert (by_name["tool_selection_accuracy"].score, by_name["tool_selection_accuracy"].passed) == (0.5, False)
+    assert by_name["tool_selection_accuracy"].threshold == ThresholdRange(0.8)
+    assert by_name["answer_correctness"].explanation == "Names the veggie jaffle."
+    assert by_name["grounding"].explanation is None
+    # Each question's cost counts its own request: the judge's tokens add over its metric calls.
+    assert meat.cost == EvalCostSummary(123, 10, 6, 16, 11, 7, 2)
+    assert brooklyn.cost == EvalCostSummary(123, 0, 0, 0, 11, 7, 2)
+    assert cost == EvalCostSummary(246, 10, 6, 16, 22, 14, 4)

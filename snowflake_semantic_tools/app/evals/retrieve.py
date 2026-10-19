@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from hashlib import sha256
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
+from snowflake_semantic_tools.domain.evaluate.tool_selection import expected_tools, service_tools
 from snowflake_semantic_tools.domain.model.eval import EvalCostSummary, EvalMetricResult, EvalResultRow, ThresholdRange
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -85,7 +86,11 @@ def read_results(
     *,
     timeout_seconds: int | None = None,
 ) -> tuple[tuple[EvalResultRow, ...], EvalCostSummary]:
-    """Read a completed run's results: one row per question, in record order, and the run's cost.
+    """Read a completed run's results: one row per question, in dataset order, and the run's cost.
+
+    Each row carries the agent's answer or error, the tools its ground truth expects and, from
+    the tool-selection metric's criteria, the ones it called, each metric's explanation and
+    threshold, and the question's own cost.
 
     Raises:
         SnowflakePortError: the read failed, or took longer than `timeout_seconds`.
@@ -119,7 +124,8 @@ class _ResultCollector:
 
     A record is one metric's result on one question. A record id answers one question and a
     question has one record id; a metric appears once per record, with the type the config
-    gives it. The cost counts each request once, however many metric rows repeat it.
+    gives it. The cost counts each request once, however many metric rows repeat it; a
+    question's cost counts its own requests.
     """
 
     def __init__(
@@ -136,6 +142,15 @@ class _ResultCollector:
         self._seen_metrics: set[tuple[str, str, str]] = set()
         self._record_questions: dict[str, str] = {}
         self._question_records: dict[str, str] = {}
+        self._replies: dict[_RecordQuestion, tuple[str | None, str | None]] = {}
+        self._called: dict[_RecordQuestion, tuple[str, ...]] = {}
+        self._requests: dict[_RecordQuestion, set[str]] = {}
+        self._positions = {
+            key: (index, truth)
+            for index, (key, _, truth) in enumerate(
+                ((key, query, truth) for query, (key, truth) in expected_questions.items()), start=1
+            )
+        }
 
     def add(self, record: Mapping[str, object]) -> None:
         """Add one record's metric result and cost, refusing one that contradicts what came before.
@@ -157,9 +172,25 @@ class _ResultCollector:
             record.get("METRIC_STATUS"),
             record.get("ERROR"),
         )
-        self._grouped.setdefault(group_key, []).append(EvalMetricResult(question_key, metric_name, score, passed))
+        calls = _variant(record.get("METRIC_CALLS"))
+        calls = calls if isinstance(calls, list) else []
+        result = EvalMetricResult(
+            question_key,
+            metric_name,
+            score,
+            passed,
+            _explanation(calls),
+            _metric_threshold(self._compiled, metric_name),
+        )
+        self._grouped.setdefault(group_key, []).append(result)
         self._record_input(group_key, record_id, str(record.get("INPUT") or ""))
+        self._record_reply(group_key, record)
+        for call in calls:
+            invoked = service_tools(call.get("criteria") if isinstance(call, dict) else None, "Invoked")
+            if invoked is not None and metric_name.casefold() == "tool_selection_accuracy":
+                self._called.setdefault(group_key, invoked)
         request_id = _required_text(record, "REQUEST_ID")
+        self._requests.setdefault(group_key, set()).add(request_id)
         self._costs[request_id] = _merge_record_cost(self._costs.get(request_id), _row_cost(record))
 
     def check_complete(self) -> None:
@@ -188,16 +219,26 @@ class _ResultCollector:
                 )
 
     def rows(self) -> tuple[EvalResultRow, ...]:
-        """Return one row per question, ordered by record id, with its metrics ordered by name."""
-        return tuple(
-            EvalResultRow(
-                question_key,
-                self._inputs[group_key],
-                tuple(sorted(metrics, key=lambda item: item.metric_name)),
+        """Return one row per question, in dataset order, with its metrics ordered by name."""
+        rows = []
+        for group_key, metrics in self._grouped.items():
+            question_key = group_key[1]
+            index, truth = self._positions[question_key]
+            answer, error = self._replies.get(group_key, (None, None))
+            rows.append(
+                EvalResultRow(
+                    question_key,
+                    self._inputs[group_key],
+                    tuple(sorted(metrics, key=lambda item: item.metric_name)),
+                    index=index,
+                    answer=answer,
+                    error=error,
+                    expected_tools=expected_tools(truth),
+                    called_tools=self._called.get(group_key),
+                    cost=sum_costs(tuple(self._costs[request] for request in sorted(self._requests[group_key]))),
+                )
             )
-            for group_key, metrics in sorted(self._grouped.items(), key=lambda item: item[0])
-            for question_key in (group_key[1],)
-        )
+        return tuple(sorted(rows, key=lambda row: row.index or 0))
 
     def cost(self) -> EvalCostSummary:
         """Return the run's cost: the sum over its requests."""
@@ -227,11 +268,28 @@ class _ResultCollector:
         self._seen_metrics.add(duplicate_key)
         return metric_name
 
+    def _record_reply(self, group_key: _RecordQuestion, record: Mapping[str, object]) -> None:
+        """Keep the question's answer and error, the first metric row that carries each."""
+        answer, error = self._replies.get(group_key, (None, None))
+        self._replies[group_key] = (answer or _text(record.get("OUTPUT")), error or _text(record.get("ERROR")))
+
     def _record_input(self, group_key: _RecordQuestion, record_id: str, input_query: str) -> None:
         """Keep the question's input, refusing a record whose metric rows disagree on it."""
         if group_key in self._inputs and self._inputs[group_key] != input_query:
             raise ValueError(f"evaluation record {record_id!r} contains conflicting inputs")
         self._inputs[group_key] = input_query
+
+
+def _explanation(calls: list[object]) -> str | None:
+    """Join the explanations a metric's calls gave, each stripped; None when none gave one."""
+    said = [text for call in calls if isinstance(call, dict) for text in (_text(call.get("explanation")),) if text]
+    return "\n\n".join(said) or None
+
+
+def _text(value: object) -> str | None:
+    """Return a value as stripped text; None when it is null or blank."""
+    text = "" if value is None else str(value).strip()
+    return text or None
 
 
 def _expected_metrics(compiled: CompiledEval) -> dict[str, str]:
