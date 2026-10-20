@@ -16,6 +16,7 @@ from dataclasses import dataclass, replace
 from hashlib import blake2b
 
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Diagnostic, Origin, Severity
+from snowflake_semantic_tools.domain.diagnostics.core import Precheck
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 
 # Context keys a message may print but a stable fingerprint never hashes: where a finding sits
@@ -89,10 +90,14 @@ class BaselineMatch:
         baselined: The stable fingerprints of the diagnostics the baseline holds.
         notices: SST-CFG035, SST-CFG039 or SST-INT009 about the baseline itself; empty when none
             applies.
+        hints: SST-INT011 for each blocking diagnostic an unmatched entry may once have held.
+            They explain diagnostics the run already reports, so unlike a notice none decides
+            whether it passes.
     """
 
     baselined: frozenset[str]
     notices: tuple[Diagnostic, ...]
+    hints: tuple[Diagnostic, ...] = ()
 
 
 def stable_fingerprint(diagnostic: Diagnostic) -> str:
@@ -117,6 +122,11 @@ def baselinable(code: str) -> bool:
     return spec is not None and spec.severity is not Severity.ERROR and spec.demotable
 
 
+def found_offline(code: str) -> bool:
+    """Report whether an offline validate finds a registered code: its condition needs no connection."""
+    return ERROR_REGISTRY[code].precheck is Precheck.LOCAL
+
+
 def match_baseline(
     diagnostics: Iterable[Diagnostic], baseline: Baseline | None, *, today: str, warn_from: str
 ) -> BaselineMatch:
@@ -134,9 +144,12 @@ def match_baseline(
         SST-CFG035: the baseline expires within 30 days.
         SST-INT009: an entry matches more than one diagnostic, so it baselines none of them;
             one per entry, in file order.
+        SST-INT011: a blocking diagnostic the baseline does not hold has the code and artifact
+            type of an entry that matches nothing, as after a rename; one per code and artifact.
     """
     if baseline is None:
         return BaselineMatch(frozenset(), ())
+    diagnostics = tuple(diagnostics)
     origin = Origin(baseline.path)
     count = len(baseline.entries)
     subject = f"config:{baseline.path}"
@@ -155,7 +168,38 @@ def match_baseline(
         for fingerprint in recorded
         if matched[fingerprint] > 1
     )
-    return BaselineMatch(baselined, (*notices, *ambiguous))
+    hints = tuple(
+        D("SST-INT011", origin=origin, subject=subject, code=code, artifact=artifact, other=", ".join(others))
+        for (code, artifact), others in _moved(baseline.entries, diagnostics, matched, baselined).items()
+    )
+    return BaselineMatch(baselined, (*notices, *ambiguous), hints)
+
+
+def _moved(
+    entries: tuple[BaselineEntry, ...],
+    diagnostics: tuple[Diagnostic, ...],
+    matched: Counter[str],
+    baselined: frozenset[str],
+) -> dict[tuple[str, str], tuple[str, ...]]:
+    """Pair each blocking diagnostic not held with the artifacts of the unmatched entries it may be.
+
+    A rename or a move changes an entry's fingerprint, so its warning comes back unheld under the
+    new name. Only the code and the artifact type are compared, so every unmatched entry of the
+    two is named. By `(code, subject)`, in the order the diagnostics come.
+    """
+    unmatched: dict[tuple[str, str], set[str]] = {}
+    for entry in entries:
+        if baselinable(entry.code) and not matched[entry.fingerprint] and ":" in entry.artifact:
+            unmatched.setdefault((entry.code, split_artifact_key(entry.artifact)[0]), set()).add(entry.artifact)
+    found: dict[tuple[str, str], tuple[str, ...]] = {}
+    for item in diagnostics:
+        artifact = item.subject or ""
+        if not item.blocks or ":" not in artifact or stable_fingerprint(item) in baselined:
+            continue
+        others = unmatched.get((item.code, split_artifact_key(artifact)[0]))
+        if others:
+            found.setdefault((item.code, artifact), tuple(sorted(others)))
+    return found
 
 
 def _day(text: str) -> tuple[int, ...]:
@@ -191,7 +235,8 @@ def with_entries(
     Args:
         note: The note for an entry of a code, given the code.
         target: The target of the connected validate that reported `diagnostics`; empty for
-            an offline one. Each entry added records it.
+            an offline one. Each entry added records it, but one of a code an offline validate
+            finds (`found_offline`), which an offline prune judges whatever target found it.
 
     Returns:
         The baseline, and the entries added, in the order the diagnostics came.
@@ -203,7 +248,7 @@ def with_entries(
     for item in candidates:
         fingerprint = stable_fingerprint(item)
         if counts[fingerprint] == 1 and fingerprint not in recorded:
-            added.append(baseline_entry(item, note(item.code), target))
+            added.append(baseline_entry(item, note(item.code), "" if found_offline(item.code) else target))
             recorded.add(fingerprint)
     return replace(baseline, entries=(*baseline.entries, *added)), tuple(added)
 

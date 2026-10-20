@@ -324,14 +324,14 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst baseline add", "--select"): "Baseline only the diagnostics of these artifacts.",
     ("sst baseline add", "--exclude"): "Leave the diagnostics of these artifacts out.",
     ("sst baseline add", "--target"): (
-        "Connects: baseline what `sst validate --target` finds there, recording the target in each "
-        "entry. Never `$SST_TARGET`; offline without it."
+        "Baseline what `sst validate` finds as this target compiles; a CODE only a connection finds, or "
+        "every warning, connects, and those entries record the target. Never `$SST_TARGET`; offline without it."
     ),
     ("sst baseline prune", "--select"): "Prune only the entries of these artifacts.",
     ("sst baseline prune", "--exclude"): "Leave the entries of these artifacts as they are.",
     ("sst baseline prune", "--target"): (
-        "Connects: also prune the entries a connected validate against this target recorded. "
-        "Without it, connected entries are kept."
+        "Judge the entries as this target compiles, and the connected ones recorded against it too, "
+        "connecting only when there is one. Without it, connected entries are kept."
     ),
     ("sst baseline show", "--code"): "Show only the entries of this code.",
     ("sst baseline show", "--expired"): "Show the entries only once the baseline has expired.",

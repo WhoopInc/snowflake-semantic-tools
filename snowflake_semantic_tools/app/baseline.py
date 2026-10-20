@@ -23,7 +23,7 @@ class BaselineGate:
     """What the baseline did to one run's result.
 
     Attributes:
-        diagnostics: The notices about the baseline itself, then the run's own diagnostics.
+        diagnostics: The notices about the baseline itself, its hints, then the run's own diagnostics.
         baselined: The stable fingerprints of the diagnostics the baseline holds.
         forgiven: Whether the run has a blocking diagnostic and the baseline holds every one, so a
             run whose exit follows its diagnostics passes after all.
@@ -45,13 +45,15 @@ def gate_baseline(
 
     The notices about the baseline itself join the run after its policy promoted the rest, so a
     strict run promotes them here: none is exempt from strict mode, the expiry notice included.
-    They name the baseline file, no artifact, so every selection reaches them.
+    They name the baseline file, no artifact, so every selection reaches them. The hints follow
+    them, promoted the same way; each explains a blocking diagnostic of the run, so none decides
+    whether the run passes.
 
     Args:
         strict: Whether the run is strict, so each warning among the notices is an error.
 
     Diagnostics:
-        Those of `match_baseline`: SST-CFG039, SST-CFG035, SST-INT009.
+        Those of `match_baseline`: SST-CFG039, SST-CFG035, SST-INT009, SST-INT011.
     """
     today = clock_today(clock)
     match = match_baseline(
@@ -61,13 +63,14 @@ def gate_baseline(
         warn_from=days_after(today, EXPIRY_WARNING_DAYS),
     )
     notices, promoted = resolve_severities(DiagnosticBag(match.notices), strict=strict)
+    hints, hinted = resolve_severities(DiagnosticBag(match.hints), strict=strict)
     errors = [item for item in diagnostics if item.blocks]
     return BaselineGate(
-        DiagnosticBag((*notices, *diagnostics)),
+        DiagnosticBag((*notices, *hints, *diagnostics)),
         match.baselined,
         forgiven=bool(errors) and all(stable_fingerprint(item) in match.baselined for item in errors),
         expired=any(item.blocks for item in notices),
-        promoted=promoted,
+        promoted=promoted + hinted,
     )
 
 

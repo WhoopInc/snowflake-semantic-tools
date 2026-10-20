@@ -1,9 +1,10 @@
 """Internal codes (INT): a defect in SST itself, never a problem with the project.
 
-Every one is a non-demotable error. `D` emits SST-INT900 for an unregistered code and SST-INT901
-for missing template context, `audit` the emission invariants, and the CLI SST-INT001 for an
-exception nothing expected and SST-INT010 for a refusal that names no code. The module is `int_`
-so it does not shadow the builtin.
+Every one but SST-INT011 is a non-demotable error. `D` emits SST-INT900 for an unregistered code
+and SST-INT901 for missing template context, `audit` the emission invariants, and the CLI
+SST-INT001 for an exception nothing expected and SST-INT010 for a refusal that names no code.
+SST-INT011 is a warning about the baseline, beside SST-INT009: a hint, which fails no run. The
+module is `int_` so it does not shadow the builtin.
 """
 
 from __future__ import annotations
@@ -105,6 +106,21 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "a command refuses an unusable project, configuration, or saved plan with an error that "
             "carries no diagnostic of its own; the command still exits 4"
+        ),
+    ),
+    spec(
+        "SST-INT011",
+        Severity.WARNING,
+        "Unheld diagnostic may be one an unmatched baseline entry held",
+        "{code} on {artifact} may be what was baselined under {other}",
+        "if the artifact was renamed or its file moved, run `sst baseline add {code}`, then `sst baseline prune`",
+        condition=(
+            "a blocking diagnostic the baseline does not hold has the code and artifact type of a baseline "
+            "entry that matches no diagnostic, as after the artifact is renamed; once per code and artifact"
+        ),
+        note=(
+            "An entry is keyed on the artifact's name and file, so a rename or a move leaves it matching "
+            "nothing. The hint explains a diagnostic the run already reports: it decides no exit code."
         ),
     ),
     spec(

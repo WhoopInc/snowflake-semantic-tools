@@ -31,7 +31,7 @@ cannot be downgraded by any setting.
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 12 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
-- [Internal (INT)](#internal-int) -- 12 codes
+- [Internal (INT)](#internal-int) -- 13 codes
 - [Retired numbers](#retired-numbers) -- 70 numbers
 
 ## Registry (REG)
@@ -8101,6 +8101,18 @@ Fix: re-generate the baseline
 Raised when a command refuses an unusable project, configuration, or saved plan with an error that carries no diagnostic of its own; the command still exits 4.
 
 Fix: report this as a bug
+
+### SST-INT011
+
+**Unheld diagnostic may be one an unmatched baseline entry held** (warning)
+
+`<code> on <artifact> may be what was baselined under <other>`
+
+Raised when a blocking diagnostic the baseline does not hold has the code and artifact type of a baseline entry that matches no diagnostic, as after the artifact is renamed; once per code and artifact.
+
+Fix: if the artifact was renamed or its file moved, run `sst baseline add {code}`, then `sst baseline prune`
+
+Note: An entry is keyed on the artifact's name and file, so a rename or a move leaves it matching nothing. The hint explains a diagnostic the run already reports: it decides no exit code.
 
 ### SST-INT900
 

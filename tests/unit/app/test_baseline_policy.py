@@ -73,6 +73,24 @@ def test_an_expired_baseline_blocks_and_one_nearing_expiry_only_warns() -> None:
     assert (nearing.expired, nearing.diagnostics[0].code) == (False, "SST-CFG035")
 
 
+def test_a_hint_follows_the_notices_is_promoted_by_strict_and_decides_no_exit() -> None:
+    old, renamed = D("SST-CFG018", name="m", subject="tool:old"), D("SST-CFG018", name="m", subject="tool:new")
+    baseline = Baseline(
+        ".sst/baseline.json", "2026-11-01", (BaselineEntry(stable_fingerprint(old), old.code, "tool:old"),)
+    )
+    promoted, _ = resolve_severities(DiagnosticBag((renamed,)), strict=True)
+    gate = gate_baseline(promoted, baseline, clock=CLOCK, strict=True)
+    assert [(item.code, item.severity) for item in gate.diagnostics] == [
+        ("SST-CFG035", Severity.ERROR),
+        ("SST-INT011", Severity.ERROR),
+        ("SST-CFG018", Severity.ERROR),
+    ]
+    # The nearing expiry blocks under strict; the hint only explains an error the run already has.
+    assert (gate.expired, gate.forgiven, gate.promoted) == (True, False, 2)
+    later = Baseline(baseline.path, "2999-01-01", baseline.entries)
+    assert gate_baseline(promoted, later, clock=CLOCK, strict=True).expired is False
+
+
 def test_the_policy_applies_overrides_and_says_whether_a_gated_result_blocks() -> None:
     config = _config({"diagnostics": {"severity_overrides": {"SST-REF001": "warning"}}})
     held = hold_to_policy(

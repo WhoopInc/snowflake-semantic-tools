@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Origin, Severity, override_refusal
+from snowflake_semantic_tools.domain.diagnostics import (
+    ERROR_REGISTRY,
+    D,
+    Diagnostic,
+    DiagnosticBag,
+    Origin,
+    Severity,
+    override_refusal,
+    resolve_severities,
+)
 from snowflake_semantic_tools.domain.diagnostics.baseline import (
     POSITION_KEYS,
     Baseline,
@@ -79,3 +88,40 @@ def test_expiry_is_judged_on_dates_across_a_month_boundary() -> None:
     assert notices("2026-11-01") == ["SST-CFG035"]
     assert notices("2026-11-15") == ["SST-CFG035"]
     assert notices("2026-11-16") == []
+
+
+def _toolset(agent: str) -> Diagnostic:
+    return D("SST-VAL528", artifact=agent, name="other", subject=f"agent:{agent}", origin=Origin(f"agents/{agent}.yml"))
+
+
+def _blocking(*diagnostics: Diagnostic) -> tuple[Diagnostic, ...]:
+    return tuple(resolve_severities(DiagnosticBag(diagnostics), strict=True)[0])
+
+
+def test_a_blocking_diagnostic_an_entry_for_another_artifact_of_its_type_matched_is_pointed_at_it() -> None:
+    old, other = _toolset("concierge"), _toolset("greeter")
+    entries = tuple(BaselineEntry(stable_fingerprint(item), item.code, item.subject or "") for item in (old, other))
+    stray = BaselineEntry("0" * 16, "SST-VAL528", "")
+    renamed = Baseline("b.json", "2030-01-01", (*entries, stray, BaselineEntry("1" * 16, "SST-CFG001", "agent:x")))
+    found = match_baseline(
+        _blocking(_toolset("host"), _toolset("host"), _toolset("host2")), renamed, today=TODAY, warn_from=WARN_FROM
+    )
+    # Once per code and artifact; an entry naming no artifact, or of an error, points nowhere.
+    assert [(item.code, item.message) for item in found.hints] == [
+        ("SST-INT011", "SST-VAL528 on agent:host may be what was baselined under agent:concierge, agent:greeter"),
+        ("SST-INT011", "SST-VAL528 on agent:host2 may be what was baselined under agent:concierge, agent:greeter"),
+    ]
+    assert (found.notices, found.hints[0].subject) == ((), "config:b.json")
+
+
+def test_no_hint_for_a_held_or_unblocking_diagnostic_or_an_entry_that_still_matches() -> None:
+    old, new = _toolset("concierge"), _toolset("host")
+    baseline = Baseline("b.json", "2030-01-01", (BaselineEntry(stable_fingerprint(old), old.code, "agent:concierge"),))
+
+    def hints(*diagnostics: Diagnostic) -> list[str]:
+        return [item.code for item in match_baseline(diagnostics, baseline, today=TODAY, warn_from=WARN_FROM).hints]
+
+    assert hints(new) == []
+    assert hints(*_blocking(old, new)) == []
+    assert hints(*_blocking(D("SST-CFG003", key="k", subject="config:k"))) == []
+    assert hints(*_blocking(D("SST-CFG003", key="k"))) == []

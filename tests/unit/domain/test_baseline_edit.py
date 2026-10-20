@@ -12,6 +12,7 @@ from snowflake_semantic_tools.domain.diagnostics.baseline import (
     baseline_entry,
     baseline_refusal,
     chosen_for_baseline,
+    found_offline,
     renewed,
     stable_fingerprint,
     with_entries,
@@ -87,8 +88,17 @@ def test_add_chooses_one_code_or_every_warning() -> None:
 
 
 def test_an_entry_a_connected_run_added_is_judged_only_by_a_run_against_its_target() -> None:
-    _, [connected] = with_entries(EMPTY, [_warning("a")], lambda code: "", "verify")
+    unread = D("SST-VAL542", artifact="a", value="ROLE", name="ext", subject="agent:a")
+    _, [connected] = with_entries(EMPTY, [unread], lambda code: "", "verify")
     offline = baseline_entry(_warning("b"), "")
     assert (connected.connected, connected.target, offline.connected) == (True, "verify", False)
     assert connected.judged_by("verify") and not connected.judged_by(None) and not connected.judged_by("prod")
     assert offline.judged_by(None) and not offline.judged_by("verify")
+
+
+def test_a_connected_run_records_no_target_on_an_entry_an_offline_validate_finds() -> None:
+    # SST-CFG003 is `local`: an offline validate finds it, so an offline prune judges its entry.
+    unread = D("SST-VAL542", artifact="a", value="ROLE", name="ext", subject="agent:a")
+    _, added = with_entries(EMPTY, [_warning("a"), unread], lambda code: "", "verify")
+    assert [(entry.code, entry.target) for entry in added] == [("SST-CFG003", ""), ("SST-VAL542", "verify")]
+    assert found_offline("SST-CFG003") and not found_offline("SST-VAL542")

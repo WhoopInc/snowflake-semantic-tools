@@ -172,7 +172,7 @@ a baseline instead of turning strict off:
 
 ```bash
 sst baseline add <CODE>                 # every current instance of one warning
-sst baseline add <CODE> --target prod   # what a connected validate of prod reports
+sst baseline add <CODE> --target prod   # as prod compiles; connects for a code only a connection finds
 ```
 
 Commit the file, `.sst/baseline.json`. A diagnostic it holds no longer fails a

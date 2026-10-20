@@ -464,6 +464,11 @@ suppresses the diagnostic in any run, offline or against any target.
   `sst baseline show` lists each entry as `offline` or `connected:<target>`.
 - **The baseline expired.** Past its date it matches nothing and every warning
   it held blocks again. `sst baseline renew` moves the date.
+- **An artifact was renamed or its file moved.** An entry is keyed on the
+  artifact's name and file, so its warning comes back under the new name.
+  When it blocks, `SST-INT011` names the entry it may have been:
+  run `sst baseline add <CODE>` for the new name, then `sst baseline prune` to
+  drop the old entry.
 
 The summary counts baselined warnings apart, as `1 warning (3 baselined)`;
 `--show-baselined` prints them.

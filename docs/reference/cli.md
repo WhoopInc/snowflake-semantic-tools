@@ -342,7 +342,9 @@ Write and maintain the baseline file of known, not yet fixed, diagnostics.
 The file is the global --baseline, else `.sst/baseline.json`. Only a code below error that
 the registry lets be demoted can be baselined: a baseline suppresses and never demotes.
 `add`, `prune`, and `renew` write the file and `show` only reads it. Each runs offline;
-`add --target` and `prune --target` connect, and `$SST_TARGET` is never read.
+`add --target` connects to look for a code only a connection finds, or for every warning,
+and `prune --target` to judge an entry only a connection found there. `$SST_TARGET` is
+never read.
 
 Subcommands: [`sst baseline add`](#sst-baseline-add), [`sst baseline prune`](#sst-baseline-prune), [`sst baseline renew`](#sst-baseline-renew), [`sst baseline show`](#sst-baseline-show).
 
@@ -351,13 +353,16 @@ Subcommands: [`sst baseline add`](#sst-baseline-add), [`sst baseline prune`](#ss
 Baseline every current instance of CODE, or with --all-warnings every current warning.
 
 CODE is a registered code, in any case. The current diagnostics are those an offline
-`sst validate` reports, narrowed by --select and --exclude; with --target, those the
-connected `sst validate --target` reports there, and each entry added records that target.
-Additive: an entry is never removed, and a diagnostic already recorded, or sharing its
-fingerprint with another current one, is not added. A new file expires in --expires-in
-days; an existing one keeps its date, which only `renew` moves. --all-warnings asks first
-when there are warnings to add, on a terminal; off one (stdin and stderr must both be
-terminals), or with --output json, it needs --yes.
+`sst validate` reports, for --target when it is given, narrowed by --select and --exclude.
+With --target, a CODE only a connection finds (its precheck is not `local`), or with
+--all-warnings every warning, is looked for by the connected `sst validate --target`
+instead, and each entry of such a code records the target; an entry of a code an offline
+validate finds records none, and a `local` CODE never connects. Additive: an entry is never
+removed, and a diagnostic already recorded, or sharing its fingerprint with another current
+one, is not added. A new file expires in --expires-in days; an existing one keeps its date,
+which only `renew` moves. --all-warnings asks first when there are warnings to add, on a
+terminal; off one (stdin and stderr must both be terminals), or with --output json, it needs
+--yes.
 
 Exit 0 when the file is written, even with nothing added; 1 when CODE is an error or
 non-demotable; 3 when CODE is missing, unregistered, or given with --all-warnings, or a
@@ -376,7 +381,7 @@ sst baseline add [OPTIONS] [CODE]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
-| `--target / -t` | TEXT |  | Connects: baseline what `sst validate --target` finds there, recording the target in each entry. Never `$SST_TARGET`; offline without it. |
+| `--target / -t` | TEXT |  | Baseline what `sst validate` finds as this target compiles; a CODE only a connection finds, or every warning, connects, and those entries record the target. Never `$SST_TARGET`; offline without it. |
 | `--select` | TEXT, repeatable |  | Baseline only the diagnostics of these artifacts. |
 | `--exclude` | TEXT, repeatable |  | Leave the diagnostics of these artifacts out. |
 | `--all-warnings` | flag |  | Baseline every current warning; prints the count and needs `--yes`. |
@@ -388,10 +393,12 @@ sst baseline add [OPTIONS] [CODE]
 
 Remove the entries no current diagnostic matches; the only way an entry leaves the file.
 
-The offline entries are judged by an offline validate. A connected entry is judged only by
-`--target` naming its target, which runs the connected validate too; every other is kept.
-With --select or --exclude, only the entries of the artifacts chosen, by artifact or source
-file, are considered. An expired baseline is pruned all the same.
+The project is compiled once, for --target when it is given. The offline entries are judged
+by an offline validate of that compile, and so is an entry recording --target whose code an
+offline validate finds, as an earlier SST recorded one. Any other entry recording --target is
+judged by the connected validate, which runs only when there is one; an entry recording
+another target is kept. With --select or --exclude, only the entries of the artifacts chosen,
+by artifact or source file, are considered. An expired baseline is pruned all the same.
 
 Exit 0 when the file is written, even with nothing pruned; 1 when there is no baseline
 file; 5 when --target cannot be reached.
@@ -405,7 +412,7 @@ sst baseline prune [OPTIONS]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
-| `--target / -t` | TEXT |  | Connects: also prune the entries a connected validate against this target recorded. Without it, connected entries are kept. |
+| `--target / -t` | TEXT |  | Judge the entries as this target compiles, and the connected ones recorded against it too, connecting only when there is one. Without it, connected entries are kept. |
 | `--select` | TEXT, repeatable |  | Prune only the entries of these artifacts. |
 | `--exclude` | TEXT, repeatable |  | Leave the entries of these artifacts as they are. |
 

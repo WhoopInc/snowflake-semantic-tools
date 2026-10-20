@@ -55,8 +55,8 @@ skills, and CoCo Desktop profiles, then publishes them. This kit was installed b
 | `sst migrate split` | offline, edits files | Dry run by default; `--write` writes one file per listed member and removes the list. |
 | `sst docs` | offline, edits files | Regenerates SST's own reference pages; for SST maintainers, not projects. |
 | `sst baseline show` | offline | Lists the baseline file's entries. |
-| `sst baseline add` | offline, edits files | Writes `.sst/baseline.json`; `--target` connects. Ask before using it. |
-| `sst baseline prune` | offline, edits files | Removes stale entries; `--target` connects. |
+| `sst baseline add` | offline, edits files | Writes `.sst/baseline.json`; `--target` connects for a code only a connection finds, or with `--all-warnings`. Ask before using it. |
+| `sst baseline prune` | offline, edits files | Removes stale entries; `--target` connects only to judge an entry only a connection to it found. |
 | `sst baseline renew` | offline, edits files | Re-dates the baseline; needs `--reason`. Ask before using it. |
 | `sst agent-kit install` | offline, edits files | Installs these skills. |
 | `sst agent-kit upgrade` | offline, edits files | Brings these skills to the installed SST's kit. |

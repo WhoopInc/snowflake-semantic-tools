@@ -11,7 +11,8 @@ from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.adapters.fs.baseline import baseline_text, read_baseline
 from snowflake_semantic_tools.cli.main import cli
-from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, BaselineEntry, Renewal
+from snowflake_semantic_tools.cli.wiring import compile as compiling
+from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, BaselineEntry, Renewal, found_offline
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow
 from tests.helpers.cli_projects import common, invoke_with_port, on_a_terminal
 from tests.helpers.reference_project import project_copy
@@ -199,8 +200,11 @@ def test_an_offline_prune_keeps_connected_entries_and_a_prune_against_their_targ
     held.grants.update({name: (GrantRow("READ", "ROLE", "TEST_ROLE"),) for name in _PINNED})
     elsewhere = _connected(project, monkeypatch, held, "prune", "--target", "prod")
     assert json.loads(elsewhere.stdout)["data"]["pruned"] == []
+    # prod records no connected entry, so nothing is asked of it.
+    assert held.log == []
     judged = _connected(project, monkeypatch, held, "prune", "--target", "dev")
     assert judged.exit_code == 0, judged.output
+    assert held.log != []
     assert [item["code"] for item in json.loads(judged.stdout)["data"]["pruned"]] == ["SST-VAL542"] * 2
     assert {entry["code"] for entry in _file(project)["entries"]} == {"SST-CFG018"}
 
@@ -229,3 +233,89 @@ def test_a_connected_entry_round_trips_and_an_offline_one_omits_the_target(tmp_p
     assert read_baseline(path, "b.json").entries == entries[::-1]
     written = json.loads(path.read_text(encoding="utf-8"))["entries"]
     assert [("connected" in entry, entry.get("target")) for entry in written] == [(False, None), (True, "verify")]
+
+
+def _connections(monkeypatch: pytest.MonkeyPatch) -> list[object]:
+    """Record every connection a command opens, and refuse it."""
+    opened: list[object] = []
+
+    def connector(params: object) -> object:
+        opened.append(params)
+        raise AssertionError("connected")
+
+    monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", connector)
+    return opened
+
+
+def _compiles(monkeypatch: pytest.MonkeyPatch) -> list[str | None]:
+    """Record the target of every compile a command runs."""
+    targets: list[str | None] = []
+    real = compiling.compile_result
+
+    def counted(paths: Any, target_name: str | None, *args: Any, **kwargs: Any) -> Any:
+        targets.append(target_name)
+        return real(paths, target_name, *args, **kwargs)
+
+    monkeypatch.setattr(compiling, "compile_result", counted)
+    return targets
+
+
+def test_add_of_a_local_code_with_a_target_compiles_for_it_and_never_connects(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    opened, compiles = _connections(monkeypatch), _compiles(monkeypatch)
+    added = _run(project, "add", "SST-CFG018", "--target", "dev", "--output", "json")
+    assert added.exit_code == 0, added.output
+    data = json.loads(added.stdout)["data"]
+    # An offline validate finds a `local` code, so its entries are offline ones whatever --target says.
+    assert [(item["code"], item["target"]) for item in data["added"]] == [("SST-CFG018", None)] * 2
+    assert (opened, compiles) == ([], ["dev"])
+
+
+def test_add_all_warnings_with_a_target_records_it_only_on_what_the_connection_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    added = _connected(project, monkeypatch, FakeSnowflake(), "add", "--all-warnings", "--yes", "--target", "dev")
+    assert added.exit_code == 0, added.output
+    entries = _file(project)["entries"]
+    assert {"SST-VAL542", "SST-CFG018"} <= {entry["code"] for entry in entries}
+    # Each entry records the target exactly when an offline validate cannot find its code.
+    assert all((entry.get("target") == "dev") is not found_offline(entry["code"]) for entry in entries)
+
+
+def test_prune_compiles_once_and_connects_only_for_an_entry_only_a_connection_judges(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    assert _run(project, "add", "SST-CFG018").exit_code == 0
+    document = _file(project)
+    # An entry an earlier SST stamped with its --target although an offline validate finds its code,
+    # on a tool --select chooses.
+    stamped = {"fingerprint": "1" * 16, "code": "SST-CFG018", "artifact": "tool:order_status", "connected": True}
+    document["entries"] = [*document["entries"], {**stamped, "target": "dev"}]
+    (project / BASELINE).write_text(json.dumps(document), encoding="utf-8")
+    opened, compiles = _connections(monkeypatch), _compiles(monkeypatch)
+    pruned = _run(project, "prune", "--target", "dev", "--select", "type:tool", "--output", "json")
+    assert pruned.exit_code == 0, pruned.output
+    assert [item["artifact"] for item in json.loads(pruned.stdout)["data"]["pruned"]] == ["tool:order_status"]
+    assert (opened, compiles) == ([], ["dev"])
+    assert len(_file(project)["entries"]) == 2
+
+
+def test_a_strict_run_points_a_warning_no_entry_holds_at_the_entry_its_old_name_left(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    assert _run(project, "add", "SST-VAL528").exit_code == 0
+    document = _file(project)
+    # As if the agent had been renamed since: its entry matches nothing now.
+    document["entries"] = [{**entry, "fingerprint": "0" * 16, "artifact": "agent:old"} for entry in document["entries"]]
+    (project / BASELINE).write_text(json.dumps(document), encoding="utf-8")
+    result = CliRunner().invoke(
+        cli, ["validate", *common(project), "--strict", "--no-snowflake-syntax-check", "-o", "json"]
+    )
+    assert result.exit_code == 1, result.output
+    found = json.loads(result.stdout)["diagnostics"]
+    [blocking] = {item["params"]["artifact"] for item in found if item["code"] == "SST-VAL528"}
+    hints = [item["message"] for item in found if item["code"] == "SST-INT011"]
+    assert hints == [f"SST-VAL528 on agent:{blocking} may be what was baselined under agent:old"]

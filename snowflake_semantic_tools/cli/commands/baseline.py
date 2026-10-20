@@ -3,12 +3,14 @@
 `add` records every current instance of one code, or with `--all-warnings` of every warning,
 and never removes an entry. `prune` removes only the entries no current diagnostic matches.
 `show` lists the entries. `renew` re-dates the file and records why. The current diagnostics are
-those an offline `sst validate` reports; with `--target`, those the connected `sst validate
---target` reports, and each entry `add` writes then records that target. An offline run cannot
-see what only a connected one finds, so an offline `prune` keeps every connected entry, and
-`prune --target` judges that target's connected entries as well. An error, or any non-demotable
-code, cannot be baselined: a baseline suppresses and never demotes. The file is the global
-`--baseline`, else `.sst/baseline.json`.
+those an offline `sst validate` reports, for `--target` when it is given. A code only a
+connection finds -- its precheck is not `local` -- is looked for by the connected `sst validate
+--target`, and its entries record that target; every other entry is an offline one, since an
+offline validate finds it. An offline run cannot see what only a connected one finds, so an
+offline `prune` keeps every connected entry, and `prune --target` judges that target's connected
+entries as well, connecting only when it holds one. An error, or any non-demotable code, cannot
+be baselined: a baseline suppresses and never demotes. The file is the global `--baseline`, else
+`.sst/baseline.json`.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from snowflake_semantic_tools.adapters.fs.baseline import BASELINE_FILE, baselin
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.app.baseline import clock_stamp, clock_today, days_after
+from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.app.validate_models import model_check
@@ -45,8 +48,10 @@ from snowflake_semantic_tools.domain.diagnostics.baseline import (
     MAX_EXPIRY_DAYS,
     Baseline,
     BaselineEntry,
+    baselinable,
     baseline_refusal,
     chosen_for_baseline,
+    found_offline,
     renewed,
     with_entries,
     without_stale,
@@ -72,7 +77,9 @@ def baseline(ctx: click.Context) -> None:
     The file is the global --baseline, else `.sst/baseline.json`. Only a code below error that
     the registry lets be demoted can be baselined: a baseline suppresses and never demotes.
     `add`, `prune`, and `renew` write the file and `show` only reads it. Each runs offline;
-    `add --target` and `prune --target` connect, and `$SST_TARGET` is never read.
+    `add --target` connects to look for a code only a connection finds, or for every warning,
+    and `prune --target` to judge an entry only a connection found there. `$SST_TARGET` is
+    never read.
     """
     inherited = dict(ctx.default_map or {})
     ctx.default_map = {name: dict(inherited) for name in _SUBCOMMANDS}
@@ -103,13 +110,16 @@ def add_command(
     """Baseline every current instance of CODE, or with --all-warnings every current warning.
 
     CODE is a registered code, in any case. The current diagnostics are those an offline
-    `sst validate` reports, narrowed by --select and --exclude; with --target, those the
-    connected `sst validate --target` reports there, and each entry added records that target.
-    Additive: an entry is never removed, and a diagnostic already recorded, or sharing its
-    fingerprint with another current one, is not added. A new file expires in --expires-in
-    days; an existing one keeps its date, which only `renew` moves. --all-warnings asks first
-    when there are warnings to add, on a terminal; off one (stdin and stderr must both be
-    terminals), or with --output json, it needs --yes.
+    `sst validate` reports, for --target when it is given, narrowed by --select and --exclude.
+    With --target, a CODE only a connection finds (its precheck is not `local`), or with
+    --all-warnings every warning, is looked for by the connected `sst validate --target`
+    instead, and each entry of such a code records the target; an entry of a code an offline
+    validate finds records none, and a `local` CODE never connects. Additive: an entry is never
+    removed, and a diagnostic already recorded, or sharing its fingerprint with another current
+    one, is not added. A new file expires in --expires-in days; an existing one keeps its date,
+    which only `renew` moves. --all-warnings asks first when there are warnings to add, on a
+    terminal; off one (stdin and stderr must both be terminals), or with --output json, it needs
+    --yes.
 
     Exit 0 when the file is written, even with nothing added; 1 when CODE is an error or
     non-demotable; 3 when CODE is missing, unregistered, or given with --all-warnings, or a
@@ -128,8 +138,9 @@ def add_command(
     path, current = _read(paths, options)
     today = _today()
     start = current or Baseline(_name(options), _date(today, expires_in), (), _now(), VERSION)
-    diagnostics, notes = _current(paths, manifest_path, selected, excluded, target_name)
-    chosen = chosen_for_baseline(diagnostics, wanted)
+    compiled, notes = _compiled(paths, manifest_path, selected, excluded, target_name)
+    connected = target_name if wanted is None or not found_offline(wanted) else None
+    chosen = chosen_for_baseline(_validated(paths, compiled, connected), wanted)
     if all_warnings:
         _confirm(options, len(chosen), assume_yes=assume_yes)
     written, added = with_entries(
@@ -156,10 +167,12 @@ def prune_command(
 ) -> CommandResult:
     """Remove the entries no current diagnostic matches; the only way an entry leaves the file.
 
-    The offline entries are judged by an offline validate. A connected entry is judged only by
-    `--target` naming its target, which runs the connected validate too; every other is kept.
-    With --select or --exclude, only the entries of the artifacts chosen, by artifact or source
-    file, are considered. An expired baseline is pruned all the same.
+    The project is compiled once, for --target when it is given. The offline entries are judged
+    by an offline validate of that compile, and so is an entry recording --target whose code an
+    offline validate finds, as an earlier SST recorded one. Any other entry recording --target is
+    judged by the connected validate, which runs only when there is one; an entry recording
+    another target is kept. With --select or --exclude, only the entries of the artifacts chosen,
+    by artifact or source file, are considered. An expired baseline is pruned all the same.
 
     Exit 0 when the file is written, even with nothing pruned; 1 when there is no baseline
     file; 5 when --target cannot be reached.
@@ -170,14 +183,15 @@ def prune_command(
     path, current = _read(paths, options)
     if current is None:
         return _absent(path)
-    in_scope, notes = _scope(paths, manifest_path, selected, excluded)
-    written = current
-    pruned: tuple[BaselineEntry, ...] = ()
-    for target in dict.fromkeys((None, target_name)):
-        diagnostics, _ = _current(paths, manifest_path, selected, excluded, target)
-        judged = _judged_by(in_scope, target)
-        written, dropped = without_stale(written, diagnostics, judged)
-        pruned = (*pruned, *dropped)
+    compiled, notes = _compiled(paths, manifest_path, selected, excluded, target_name)
+    in_scope = _in_scope(compiled, chosen=bool(selected or excluded))
+    offline = _judged_offline(in_scope, target_name)
+    written, pruned = without_stale(current, _validated(paths, compiled, None), offline)
+    if target_name is not None:
+        connected = _judged_connected(in_scope, target_name)
+        if any(connected(entry) for entry in written.entries):
+            written, dropped = without_stale(written, _validated(paths, compiled, target_name), connected)
+            pruned = (*pruned, *dropped)
     write_text(output_root(paths.project_dir, path.parent), path, baseline_text(written))
     data = _data(path, written, pruned=pruned)
     return CommandResult(diagnostics=notes, data=data, headline=f"pruned {plural(len(pruned), 'entry')} from {path}")
@@ -303,29 +317,32 @@ def _name(options: GlobalOptions) -> str:
     return (options.baseline or BASELINE_FILE).as_posix()
 
 
-def _current(
+def _compiled(
     paths: ProjectPaths,
     manifest_path: Path | None,
     selected: tuple[str, ...],
     excluded: tuple[str, ...],
-    target_name: str | None = None,
-) -> tuple[tuple[Diagnostic, ...], DiagnosticBag]:
-    """Return what `sst validate` of the chosen artifacts reports now, and what the selectors' report says.
+    target_name: str | None,
+) -> tuple[CompileResult, DiagnosticBag]:
+    """Compile the project for `target_name`, narrowed to the chosen artifacts, with the selectors' report.
 
-    Offline; or, with `target_name`, connected to that target as `sst validate --target` runs it.
     The selectors' report is not among what validate reports, so it is never baselined.
     """
     compiled = compiling.compile_result(paths, target_name, manifest_path)
-    notes = DiagnosticBag()
-    if selected or excluded:
-        graph = lineage_of(paths, compiled, manifest_path, target_name)
-        narrowed = compiling.selected_within(paths.project_dir, compiled, selected, excluded, graph=graph)
-        compiled, notes = narrowed.result, narrowed.report
+    if not (selected or excluded):
+        return compiled, DiagnosticBag()
+    graph = lineage_of(paths, compiled, manifest_path, target_name)
+    narrowed = compiling.selected_within(paths.project_dir, compiled, selected, excluded, graph=graph)
+    return narrowed.result, narrowed.report
+
+
+def _validated(paths: ProjectPaths, compiled: CompileResult, target_name: str | None) -> tuple[Diagnostic, ...]:
+    """Return what `sst validate` of `compiled` reports: offline, or connected to `target_name`."""
     if target_name is None:
         result = ValidateArtifacts(None, catalog=None, target="", clock=SystemClock()).run(
             compiled, strict=False, connected=False
         )
-        return tuple(result.diagnostics), notes
+        return tuple(result.diagnostics)
     profile, port = connect(paths, target_name)
     try:
         models = model_check(project_config(paths), Fanout(port))
@@ -339,26 +356,35 @@ def _current(
         ).run(compiled, strict=False, connected=True)
     finally:
         port.close()
-    return tuple(result.diagnostics), notes
+    return tuple(result.diagnostics)
 
 
-def _judged_by(in_scope: Callable[[BaselineEntry], bool], target: str | None) -> Callable[[BaselineEntry], bool]:
-    """Return which entries in scope a validate against `target`, or offline, may prune."""
-    return lambda entry: in_scope(entry) and entry.judged_by(target)
+def _judged_offline(in_scope: Callable[[BaselineEntry], bool], target: str | None) -> Callable[[BaselineEntry], bool]:
+    """Return which entries in scope the offline validate of a compile for `target` may prune.
+
+    The offline entries, and those recording `target` whose code an offline validate finds, as
+    an earlier SST recorded every entry `add --target` wrote.
+    """
+    return lambda entry: in_scope(entry) and (entry.judged_by(None) or _offline_code_on(entry, target))
 
 
-def _scope(
-    paths: ProjectPaths, manifest_path: Path | None, selected: tuple[str, ...], excluded: tuple[str, ...]
-) -> tuple[Callable[[BaselineEntry], bool], DiagnosticBag]:
-    """Return which entries `prune` considers, all or the chosen artifacts', and the selectors' report."""
-    if not (selected or excluded):
-        return (lambda entry: True), DiagnosticBag()
-    compiled = compiling.compile_result(paths, None, manifest_path)
-    graph = lineage_of(paths, compiled, manifest_path)
-    narrowed = compiling.selected_within(paths.project_dir, compiled, selected, excluded, graph=graph)
-    keys = {item.artifact_key for item in narrowed.result.compiled}
-    files = {path for item in narrowed.result.compiled for path in item.source_files}
-    return (lambda entry: entry.artifact in keys or entry.file in files), narrowed.report
+def _judged_connected(in_scope: Callable[[BaselineEntry], bool], target: str) -> Callable[[BaselineEntry], bool]:
+    """Return which entries in scope only the validate connected to `target` may prune."""
+    return lambda entry: in_scope(entry) and entry.judged_by(target) and not _offline_code_on(entry, target)
+
+
+def _offline_code_on(entry: BaselineEntry, target: str | None) -> bool:
+    """Whether `entry` records `target` and holds a code an offline validate finds."""
+    return entry.judged_by(target) and baselinable(entry.code) and found_offline(entry.code)
+
+
+def _in_scope(compiled: CompileResult, *, chosen: bool) -> Callable[[BaselineEntry], bool]:
+    """Return which entries `prune` considers: all, else the chosen artifacts', by key or source file."""
+    if not chosen:
+        return lambda entry: True
+    keys = {item.artifact_key for item in compiled.compiled}
+    files = {path for item in compiled.compiled for path in item.source_files}
+    return lambda entry: entry.artifact in keys or entry.file in files
 
 
 def _absent(path: Path) -> CommandResult:

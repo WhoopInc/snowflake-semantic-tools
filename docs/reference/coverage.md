@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 771
+- Codes: 772
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -172,6 +172,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-INT008`](error-codes.md#sst-int008) | INT | error | local | `snowflake_semantic_tools.domain.diagnostics.__init__` | `tests/codes/int/test_sst_int008.py` |
 | [`SST-INT009`](error-codes.md#sst-int009) | INT | error | local | `snowflake_semantic_tools.domain.diagnostics.baseline` | `tests/codes/int/test_sst_int009.py` |
 | [`SST-INT010`](error-codes.md#sst-int010) | INT | error | local | `snowflake_semantic_tools.adapters.errors`<br>`snowflake_semantic_tools.cli.runner` | `tests/codes/int/test_sst_int010.py` |
+| [`SST-INT011`](error-codes.md#sst-int011) | INT | warning | local | `snowflake_semantic_tools.domain.diagnostics.baseline` | `tests/codes/int/test_sst_int011.py` |
 | [`SST-INT900`](error-codes.md#sst-int900) | INT | error | local | `snowflake_semantic_tools.domain.diagnostics.__init__` | `tests/codes/int/test_sst_int900.py` |
 | [`SST-INT901`](error-codes.md#sst-int901) | INT | error | local | `snowflake_semantic_tools.domain.diagnostics.__init__` | `tests/codes/int/test_sst_int901.py` |
 | [`SST-INT902`](error-codes.md#sst-int902) | INT | error | local | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.compile.base` | `tests/codes/int/test_sst_int902.py` |

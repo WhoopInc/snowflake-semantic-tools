@@ -32,7 +32,9 @@ its shape and publishes it. Treat each of these like SQL you would run yourself:
   runs every suite that applies, the connected ones included, once `sst compile` has run;
 - `sst debug`, unless `--no-connect` is given;
 - `sst diff` whenever either side is a dbt target, which `--to` is by default;
-- `sst baseline add` and `sst baseline prune` with `--target`.
+- `sst baseline add --target` for a code only a connection finds, or with `--all-warnings`, and
+  `sst baseline prune --target` when an entry records that target and only a connection finds its
+  code; for any other code both stay offline.
 
 A pull request from a fork can carry any SQL in its YAML, so run only the offline commands on
 it -- `sst validate --no-snowflake-syntax-check` and `sst compile` -- and give that job no
