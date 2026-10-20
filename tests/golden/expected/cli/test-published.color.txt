@@ -8,3 +8,4 @@ $ sst --project-dir <project> --manifest <manifest> test --suite evals --target 
 [2m├── [0mcost  <n>s agent time · agent 155,448 in / 2,860 out · 8 LLM calls · judge 160 tokens
 [2m└── [0mall 4 questions passed  [2m(-v lists them)[0m
 --- stderr
+[32m[1m✓[0m [1meval gate passed: 1 eval, no regressions[0m · <n>s

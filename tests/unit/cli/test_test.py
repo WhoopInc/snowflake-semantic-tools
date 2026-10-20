@@ -611,3 +611,29 @@ def test_a_gate_that_needs_a_new_baseline_names_the_capture_as_its_next_step(
         assert json.loads(result.stdout)["next_steps"] == [step]
     else:
         assert f"next: {step}" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("data", "headline"),
+    [
+        ({"gate_verdict": "passed", "regression_count": 0}, "eval gate passed: 1 eval, no regressions"),
+        ({"gate_verdict": "regressed", "regression_count": 2}, "eval gate passed: 1 eval, 2 report-tier regressions"),
+        ({"gate_verdict": "captured", "captured_baselines": ["eval:jaffle_analytics_agent"]}, "captured 1 baseline"),
+    ],
+)
+def test_an_eval_run_that_passed_closes_with_the_gates_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, data: dict[str, object], headline: str
+) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    ran = EvalSuiteResult((EvalRunResult("eval:jaffle_analytics_agent", (), DiagnosticBag(), True),), DiagnosticBag())
+    evals = [{"eval_key": "eval:jaffle_analytics_agent", "attempts": []}]
+    passed = EvalGateOutcome(DiagnosticBag(), ran, True, {"suite": "evals", "evals": evals, **data})
+    monkeypatch.setattr("snowflake_semantic_tools.cli.commands.test.RunEvalGate.run", lambda *args, **kwargs: passed)
+
+    result = invoke_with_port(
+        monkeypatch, FakeSnowflake(state={}), ["test", *common(project), "--target", "dev", "--suite", "evals"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert f"✓ {headline} · " in result.stderr

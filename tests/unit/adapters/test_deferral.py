@@ -15,10 +15,11 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs, YamlProjectSource
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import common
+from tests.helpers.cli_projects import common, invoke_with_port
 from tests.helpers.projects import project_paths
 from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 from tests.helpers.seam_projects import FakeDbt, SmallProject, manifest, model_node
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 PROFILES = (
     "fixture:\n  target: dev\n  outputs:\n"
@@ -154,3 +155,21 @@ def test_no_defer_overrides_the_configured_target_and_an_undeclared_target_exits
     result = CliRunner().invoke(cli, ["compile", *common(project), "--defer-target", "qa", "--output", "json"])
     assert result.exit_code == 4
     assert [item["code"] for item in json.loads(result.output)["diagnostics"]] == ["SST-CFG010"]
+
+
+def test_test_resolves_the_deferral_as_compile_did(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = _defer_project(tmp_path)
+    assert _compiled(project, "--defer-target", "prod")[0] == 0
+
+    def stale(*flags: str) -> bool:
+        args = ["test", *common(project), "--suite", "smoke", *flags, "--output", "json"]
+        result = invoke_with_port(monkeypatch, FakeSnowflake(state={}), args)
+        assert result.exit_code != 3, result.output
+        return "SST-MAN009" in [item["code"] for item in json.loads(result.output)["diagnostics"]]
+
+    # The manifest compiled against prod is stale to a run that does not defer, and current to
+    # one that defers to prod by flag or by `$SST_DEFER_TARGET`, as compile reads them.
+    assert stale()
+    assert not stale("--defer-target", "prod")
+    monkeypatch.setenv("SST_DEFER_TARGET", "prod")
+    assert not stale()

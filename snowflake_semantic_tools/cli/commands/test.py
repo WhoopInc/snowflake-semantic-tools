@@ -50,6 +50,7 @@ from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import (
     break_stale_lock_option,
+    defer_target_option,
     fail_fast_option,
     selection_options,
     target_option,
@@ -114,6 +115,7 @@ def _refuse_invocation(
 @click.option("--suite", "suites", type=click.Choice(SUITES), multiple=True)
 @selection_options()
 @target_option()
+@defer_target_option()
 @threads_option()
 @fail_fast_option()
 @click.option("--capture-baseline", "capture_baseline_requested", is_flag=True)
@@ -524,7 +526,8 @@ def _eval_report(outcome: EvalGateOutcome) -> CommandResult:
     """Report an eval run, its diagnostics and then every attempt; exit 1 unless it passed.
 
     When a gate compared nothing for want of a usable baseline, the next step is the capture
-    that replaces it, since running the suite again cannot pass.
+    that replaces it, since running the suite again cannot pass. A run that passed closes with
+    what the gate decided, as `_eval_headline` says it.
     """
     suite = outcome.suite
     return CommandResult(
@@ -532,8 +535,28 @@ def _eval_report(outcome: EvalGateOutcome) -> CommandResult:
         outcome.diagnostics,
         dict(outcome.data),
         human=None if suite is None else lambda: print_eval_results(suite, _gate_marks(outcome.data)),
+        headline=_eval_headline(outcome.data),
         next_steps=(capture_baseline_step(outcome.recapture),) if outcome.recapture else None,
     )
+
+
+def _eval_headline(data: Mapping[str, object]) -> str | None:
+    """Say what the gate decided: `eval gate passed: 2 evals, no regressions`, or `captured 1 baseline`.
+
+    A report-tier regression does not fail the gate, so it is counted in the passing line. None
+    for a verdict that is no pass, which the failed verdict reports in its own words.
+    """
+    verdict = data.get("gate_verdict")
+    if verdict == "captured":
+        captured = data.get("captured_baselines")
+        return f"captured {plural(len(captured) if isinstance(captured, list) else 0, 'baseline')}"
+    if verdict not in ("passed", "regressed"):
+        return None
+    evals = data.get("evals")
+    regressions = data.get("regression_count")
+    count = regressions if isinstance(regressions, int) else 0
+    found = plural(count, "report-tier regression") if count else "no regressions"
+    return f"eval gate passed: {plural(len(evals) if isinstance(evals, list) else 0, 'eval')}, {found}"
 
 
 def _gate_marks(data: Mapping[str, object]) -> EvalMarks:

@@ -9,3 +9,4 @@ eval:jaffle_analytics_agent  COMPLETED  4/4 questions passed
 │         judge 160 tokens
 └── all 4 questions passed  (-v lists them)
 --- stderr
+✓ eval gate passed: 1 eval, no regressions · <n>s
