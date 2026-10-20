@@ -525,9 +525,10 @@ SPECS: tuple[ErrorSpec, ...] = (
             "another version or another version is the default"
         ),
         note=(
-            "The update sets the alias, the default version and a live version back on the "
-            "version holding the specification, without adding a version; an agent with no live "
-            "version whose newest version holds another specification gets a new version instead."
+            "The update sets the alias and a live version back on the version holding the "
+            "specification, and the default to 'LAST', which serves that version and follows each "
+            "one committed after it, without adding a version; an agent with no live version whose "
+            "newest version holds another specification gets a new version instead."
         ),
         precheck=Precheck.OBSERVE,
     ),

@@ -6760,7 +6760,7 @@ Raised when state records the agent unchanged, but it has no live version, or it
 
 Fix: apply to roll forward, or hold a rollback by not applying until it should end
 
-Note: The update sets the alias, the default version and a live version back on the version holding the specification, without adding a version; an agent with no live version whose newest version holds another specification gets a new version instead.
+Note: The update sets the alias and a live version back on the version holding the specification, and the default to 'LAST', which serves that version and follows each one committed after it, without adding a version; an agent with no live version whose newest version holds another specification gets a new version instead.
 
 ### SST-PLN103
 

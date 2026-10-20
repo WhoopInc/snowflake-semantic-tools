@@ -74,6 +74,7 @@ def test_permanent_agent_update_adds_exactly_one_version_and_a_live_copy_then_al
         "ALTER AGENT DB.S.AGENT ADD LIVE VERSION FROM LAST",
         'ALTER AGENT DB.S.AGENT\n  MODIFY VERSION "LAST" SET ALIAS = PROMOTED',
         "ALTER AGENT DB.S.AGENT\n  SET TAG DOMAIN = 'sales'",
+        "ALTER AGENT DB.S.AGENT SET DEFAULT_VERSION = 'LAST'",
     )
 
 
@@ -96,7 +97,8 @@ def test_permanent_agent_update_writes_a_live_version_and_commits_it_as_the_one_
         has_live_version=True,
     )
     update = value.for_action(Action.UPDATE, observed)
-    assert update.statements == value.update_live_statements
+    default = "ALTER AGENT DB.S.AGENT SET DEFAULT_VERSION = 'LAST'"
+    assert texts(update.statements) == (*texts(value.update_live_statements), default)
     # Committing the live version first would publish it as a version of its own, and ADD
     # VERSION beside it fails: the spec goes into it, escaped so its JSON reads back exactly.
     # COMMIT closes the live version, so a new one is opened from what was committed.
@@ -107,6 +109,7 @@ def test_permanent_agent_update_writes_a_live_version_and_commits_it_as_the_one_
         "ALTER AGENT DB.S.AGENT ADD LIVE VERSION FROM LAST",
         'ALTER AGENT DB.S.AGENT\n  MODIFY VERSION "LAST" SET ALIAS = PROMOTED',
         "ALTER AGENT DB.S.AGENT\n  SET TAG DOMAIN = 'sales'",
+        default,
     )
     assert not any("ADD VERSION" in text for text in texts(update.statements))
 

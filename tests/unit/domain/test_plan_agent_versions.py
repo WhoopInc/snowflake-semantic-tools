@@ -34,6 +34,7 @@ from tests.helpers.sql_values import statement, texts
 SPEC = '{\n  "models": {\n    "orchestration": "auto"\n  }\n}\n'
 SPEC_FINGERPRINT = spec_fingerprint(SPEC)
 RECORDED_MANIFEST = "a" * 64
+LAST = "ALTER AGENT DB.S.SALES SET DEFAULT_VERSION = 'LAST'"
 
 
 def agent(*, alias: str | None = "promoted", fingerprint: str = "1" * 64, temporary: bool = False) -> RenderedArtifact:
@@ -127,12 +128,14 @@ def test_a_property_only_change_sets_properties_and_adds_no_version() -> None:
     assert change.rendered is not None and texts(change.rendered.statements) == ("set comment", "set tag")
 
 
-def test_a_version_adding_update_moves_a_default_pinned_to_an_older_version() -> None:
+def test_a_version_adding_update_leaves_the_default_following_the_version_it_adds() -> None:
+    # SHOW VERSIONS marks which version is the default but not whether it was pinned by name, so
+    # a default pinned to the newest version would stay behind the one the update commits.
     before = agent()
     after = agent(fingerprint="2" * 64)
     applied = {after.key: entry(before, RECORDED_MANIFEST)}
     for has_live_version, program in ((True, ("modify live", "commit")), (False, ("add version",))):
-        for default, unpinned in (("VERSION$2", True), ("VERSION$3", False), (None, False)):
+        for default in ("VERSION$2", "VERSION$3", None):
             observed = live(
                 before,
                 recorded(before),
@@ -142,13 +145,10 @@ def test_a_version_adding_update_moves_a_default_pinned_to_an_older_version() ->
             )
             [change] = plan((after,), observed=(observed,), applied=applied).changes
             assert change.rendered is not None
-            moved = ("ALTER AGENT DB.S.SALES SET DEFAULT_VERSION = 'LAST'",) if unpinned else ()
-            assert texts(change.rendered.statements) == ("set comment", *program, *moved)
+            assert texts(change.rendered.statements) == ("set comment", *program, LAST)
     temporary = agent(temporary=True)
-    pinned = live(temporary, recorded(temporary), default_version="VERSION$2")
-    assert "ALTER AGENT DB.S.SALES SET DEFAULT_VERSION = 'LAST'" not in texts(
-        temporary.for_action(Action.UPDATE, pinned).statements
-    )
+    pinned = live(temporary, recorded(temporary), newest_spec="f" * 64, default_version="VERSION$2")
+    assert LAST not in texts(temporary.for_action(Action.UPDATE, pinned).statements)
 
 
 def test_an_agent_whose_newest_version_holds_another_specification_gets_a_version() -> None:
@@ -160,7 +160,7 @@ def test_an_agent_whose_newest_version_holds_another_specification_gets_a_versio
             (after,), observed=(live(before, recorded(before), newest_spec=newest_spec),), applied=applied
         ).changes
         assert change.rendered is not None
-        assert texts(change.rendered.statements) == ("set comment", "modify live", "commit")
+        assert texts(change.rendered.statements) == ("set comment", "modify live", "commit", LAST)
 
 
 def test_recovery_from_a_killed_publish_records_the_committed_version_without_another() -> None:
@@ -222,7 +222,7 @@ def test_an_alias_on_no_version_and_a_moved_default_are_both_pointed_back() -> N
     assert statements == (
         "set comment",
         "ALTER AGENT DB.S.SALES\n  MODIFY VERSION VERSION$3 SET ALIAS = PROMOTED",
-        "ALTER AGENT DB.S.SALES SET DEFAULT_VERSION = 'VERSION$3'",
+        LAST,
         "set tag",
     )
     assert messages == (
@@ -244,7 +244,7 @@ def test_an_agent_without_a_live_version_whose_newest_holds_another_spec_gets_a_
     artifact = agent()
     observed = live(artifact, recorded(artifact), has_live_version=False, newest_spec="f" * 64)
     statements, messages = drifted(observed)
-    assert statements == ("set comment", "add version")
+    assert statements == ("set comment", "add version", LAST)
     assert messages == ("agent:sales: it has no live version; apply points it back",)
 
 

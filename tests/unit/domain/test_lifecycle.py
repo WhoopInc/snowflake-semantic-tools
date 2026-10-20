@@ -195,23 +195,26 @@ def test_rendered_artifact_selects_create_live_update_and_safe_metadata_statemen
     )
     assert texts(agent.for_action(Action.CREATE, None).statements) == ("create",)
     live = agent.for_action(Action.UPDATE, observed)
+    last = "ALTER AGENT DB.SCH.A SET DEFAULT_VERSION = 'LAST'"
     assert texts(live.statements) == (
         "update live",
+        last,
         "ALTER AGENT DB.SCH.A MODIFY VERSION SAFE UNSET ALIAS",
         "ALTER AGENT DB.SCH.A UNSET TAG DB.S.STALE",
     )
     no_stale_tags = replace(observed, tags=("DB.S.KEEP",))
     assert texts(agent.for_action(Action.UPDATE, no_stale_tags).statements) == (
         "update live",
+        last,
         "ALTER AGENT DB.SCH.A MODIFY VERSION SAFE UNSET ALIAS",
     )
 
     quoted = replace(agent, desired_alias=None, desired_tags=())
     malformed = replace(observed, aliases=("1 bad",), tags=("DB..TAG",))
     removals = texts(quoted.for_action(Action.UPDATE, malformed).statements)
-    assert 'MODIFY VERSION "1 bad" UNSET ALIAS' in removals[1]
+    assert 'MODIFY VERSION "1 bad" UNSET ALIAS' in removals[2]
     # No identifier is empty, so a tag shown with an empty part is left alone rather than unset.
-    assert len(removals) == 2
+    assert len(removals) == 3
 
 
 def test_a_shown_alias_or_tag_that_is_a_reserved_word_is_unset_quoted() -> None:
@@ -237,6 +240,7 @@ def test_a_shown_alias_or_tag_that_is_a_reserved_word_is_unset_quoted() -> None:
     )
     assert texts(agent.for_action(Action.UPDATE, observed).statements) == (
         "update",
+        "ALTER AGENT DB.SCH.A SET DEFAULT_VERSION = 'LAST'",
         'ALTER AGENT DB.SCH.A MODIFY VERSION "SELECT" UNSET ALIAS',
         'ALTER AGENT DB.SCH.A UNSET TAG DB."TABLE"."ORDER"',
     )

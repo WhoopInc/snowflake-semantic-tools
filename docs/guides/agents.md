@@ -615,9 +615,9 @@ to `@<stage>/<agent>/<commit>/agent_spec.yaml` under `apply.agent_spec_stage`
    shows, and runs with, no instructions, tools, or skills.
 3. `ALTER AGENT ... MODIFY VERSION "LAST" SET ALIAS = <alias>`, when the agent
    has an alias, and `SET TAG` for its tags. The new version becomes the
-   default: when a default version was set by hand to an older version, apply
-   also runs `SET DEFAULT_VERSION = 'LAST'`, so the default follows the new
-   version (see [version drift](#version-drift)).
+   default: apply also runs `SET DEFAULT_VERSION = 'LAST'`, so a default set by
+   hand, even to the version that was newest, follows the new version and every
+   later one (see [version drift](#version-drift)).
 4. `MODIFY VERSION <alias> UNSET ALIAS` for every other alias the agent shows,
    so after apply the agent carries only the alias its settings resolve to:
    changing `alias: promoted` to `alias: candidate` moves the agent to
@@ -652,7 +652,9 @@ The plan reads where the agent's alias and default version point, and whether
 it has a live version. An agent whose definition is unchanged but whose alias
 or default version is on another version than the newest one holding its spec,
 or that has no live version, is an update with reason `version_drift`
-(`SST-PLN102`): apply points them back, without adding a version. An agent with
+(`SST-PLN102`): apply points them back, without adding a version, and sets the
+default to `'LAST'` rather than to that version by name, so the next version
+apply commits is served too. An agent with
 no live version whose newest version holds another spec gets a new version.
 This is how a [rollback](ci-cd.md#rollback) is rolled forward.
 

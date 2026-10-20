@@ -218,10 +218,12 @@ def test_observe_agent_versions_selects_update_program_and_unsets_stranded_alias
     observed = next(iter(observation.artifacts.values()))
     assert observed.has_live_version
     assert observed.aliases == ("CANDIDATE", "PROMOTED")
-    # The alias the agent file moved away from is unset; the one it declares is kept.
+    # The alias the agent file moved away from is unset; the one it declares is kept, and the
+    # default is left following the version the update commits.
     assert texts(artifact.for_action(Action.UPDATE, observed).statements) == (
         "ALTER AGENT MODIFY LIVE VERSION",
         "ALTER AGENT COMMIT",
+        """ALTER AGENT DB."SCHEMA".V SET DEFAULT_VERSION = 'LAST'""",
         'ALTER AGENT DB."SCHEMA".V MODIFY VERSION PROMOTED UNSET ALIAS',
     )
     # The default version, where each alias is, and what the newest version holds are read too.

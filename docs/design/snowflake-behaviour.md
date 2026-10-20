@@ -494,13 +494,22 @@ VERSION$1`, `FROM "VERSION$1"` and `FROM VERSION VERSION$1` are syntax errors
 (001003), so a live version can be reopened only from the newest committed
 version. `SET DEFAULT_VERSION` takes the version, or a shortcut, only as a
 string literal (`'VERSION$3'`, `'LAST'`): an identifier is a syntax error, and
-so is an unquoted `LAST`, although Snowflake's versioning guide shows one.
+so is an unquoted `LAST`, although Snowflake's versioning guide shows one. A
+default set to `'LAST'` follows every version committed afterwards: measured, an
+agent whose default was reset to `'LAST'` served each new version as its default
+without another statement, while one whose default was set to `'VERSION$3'`
+kept serving `VERSION$3` after `VERSION$4` was committed. `SHOW VERSIONS IN
+AGENT` marks only which version is the default (`is_default`), not which of the
+two was set, so a default pinned by name to the newest version reads the same as
+one that follows `LAST`.
 
 **Evidence**: `Enforced`. On create, SST keeps the live copy `CREATE AGENT`
 opens. On update, an agent with a live version gets the spec written into it
 and committed, instead of an `ADD VERSION`; one without gets an `ADD VERSION`.
 Either way the agent has no live version after that, so `ADD LIVE VERSION FROM
-LAST` opens one holding what was just committed.
+LAST` opens one holding what was just committed. Every version-adding update,
+and every repair of a moved default, sets the default to `'LAST'`, never to a
+version by name, so the default keeps following what SST commits.
 [test_agent_publish.py](../../tests/unit/app/test_agent_publish.py)
 (`test_permanent_agent_create_keeps_the_live_version_then_alias_and_tags`,
 `test_permanent_agent_update_adds_exactly_one_version_and_a_live_copy_then_alias_and_tags`,
