@@ -1,12 +1,22 @@
-"""Pure complete-spec renderer for Cortex Agents."""
+"""Pure complete-spec renderer for Cortex Agents.
+
+The sections a specification shares with a CoWork profile's -- instructions, tool entries and
+resources, skills, and the JSON payload -- render here, and `cowork_profile` renders through them.
+"""
 
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
-from snowflake_semantic_tools.domain.model.agent import BUILTIN_AGENT_TOOLS, AgentModel, AgentProfile, ResolvedAgentTool
+from snowflake_semantic_tools.domain.model.agent import (
+    BUILTIN_AGENT_TOOLS,
+    AgentModel,
+    AgentProfile,
+    AgentSkill,
+    ResolvedAgentTool,
+)
 from snowflake_semantic_tools.domain.render.invariants import dollar_quote_offset
 from snowflake_semantic_tools.domain.state import canonical_json
 
@@ -40,48 +50,85 @@ def render_agent_spec(model: AgentModel, tools: tuple[ResolvedAgentTool, ...]) -
         orchestration["capabilities"] = {"analytical_search": model.analytical_search}
     if orchestration:
         document["orchestration"] = orchestration
-    instructions: dict[str, object] = {}
-    if model.orchestration_instructions is not None:
-        instructions["orchestration"] = model.orchestration_instructions
-    if model.response_instructions is not None:
-        instructions["response"] = model.response_instructions
-    if model.sample_questions:
-        instructions["sample_questions"] = [{"question": value} for value in model.sample_questions]
+    instructions = render_instructions(
+        model.orchestration_instructions, model.response_instructions, model.sample_questions
+    )
     if instructions:
         document["instructions"] = instructions
     if tools:
-        document["tools"] = [_tool_entry(tool) for tool in tools]
-        resources = {
-            tool.name: dict(tool.resources) for tool in tools if tool.type not in BUILTIN_AGENT_TOOLS and tool.resources
-        }
+        document["tools"] = [render_tool_entry(tool) for tool in tools]
+        resources = render_tool_resources(tools)
         if resources:
             document["tool_resources"] = resources
     if model.skills:
-        document["skills"] = [
-            {
-                # Resolution names each owned entry; a STAGE source is kept as authored.
-                **({"name": skill.name} if skill.name else {}),
-                "source": {
-                    "type": skill.source_type,
-                    "path": skill.path,
-                    "version": skill.version,
-                },
-            }
-            for skill in model.skills
-        ]
+        document["skills"] = render_skills(model.skills)
     document.update(model.passthrough)
     return document
 
 
-def render_agent_json(model: AgentModel, tools: tuple[ResolvedAgentTool, ...]) -> str:
-    """Render the specification as the agent's JSON payload, indented by two and ending in a newline.
+def render_instructions(
+    orchestration: str | None, response: str | None, sample_questions: Sequence[str]
+) -> dict[str, object]:
+    """Render the `instructions` section: each instruction that is set, then any sample questions.
 
-    Keys keep `render_agent_spec`'s order rather than being sorted, and non-ASCII text is kept.
+    Empty when none of them is set, so the caller leaves the section out.
+    """
+    instructions: dict[str, object] = {}
+    if orchestration is not None:
+        instructions["orchestration"] = orchestration
+    if response is not None:
+        instructions["response"] = response
+    if sample_questions:
+        instructions["sample_questions"] = sample_question_entries(sample_questions)
+    return instructions
+
+
+def sample_question_entries(questions: Sequence[str]) -> list[dict[str, object]]:
+    """Render sample questions as a specification lists them: one `{"question": ...}` per question."""
+    return [{"question": value} for value in questions]
+
+
+def render_tool_resources(tools: Sequence[ResolvedAgentTool]) -> dict[str, object]:
+    """Render the `tool_resources` entries of `tools`, by tool name: none for a built-in, nor when empty."""
+    return {
+        tool.name: dict(tool.resources) for tool in tools if tool.type not in BUILTIN_AGENT_TOOLS and tool.resources
+    }
+
+
+def render_skills(skills: Sequence[AgentSkill]) -> list[dict[str, object]]:
+    """Render the `skills` section: each entry's source, under its name when it has one."""
+    return [
+        {
+            # Resolution names each owned entry; a STAGE source is kept as authored.
+            **({"name": skill.name} if skill.name else {}),
+            "source": {
+                "type": skill.source_type,
+                "path": skill.path,
+                "version": skill.version,
+            },
+        }
+        for skill in skills
+    ]
+
+
+def render_agent_json(model: AgentModel, tools: tuple[ResolvedAgentTool, ...]) -> str:
+    """Render the specification as the agent's JSON payload, as `render_spec_json` serializes it.
 
     Raises:
         TypeError: a value, such as one from `passthrough`, is not JSON-encodable.
     """
-    return json.dumps(render_agent_spec(model, tools), indent=2, ensure_ascii=False) + "\n"
+    return render_spec_json(render_agent_spec(model, tools))
+
+
+def render_spec_json(document: Mapping[str, object]) -> str:
+    """Serialize a rendered specification as an AGENT object's payload, indented by two, with a newline.
+
+    Keys keep the document's order rather than being sorted, and non-ASCII text is kept.
+
+    Raises:
+        TypeError: a value, such as one from `passthrough`, is not JSON-encodable.
+    """
+    return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
 
 
 def render_agent_profile(profile: AgentProfile) -> str:
@@ -155,7 +202,8 @@ def desired_agent_definition(model: AgentModel, spec: Mapping[str, object]) -> b
     )
 
 
-def _tool_entry(tool: ResolvedAgentTool) -> dict[str, object]:
+def render_tool_entry(tool: ResolvedAgentTool) -> dict[str, object]:
+    """Render one `tools` entry: its type, name, and description, its input schema, then its passthrough."""
     spec: dict[str, object] = {
         "type": tool.type,
         "name": tool.name,

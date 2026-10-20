@@ -1,4 +1,4 @@
-"""Immutable Snowflake CoWork profile authoring values, before the agents a profile names resolve.
+"""Immutable Snowflake CoWork profile values: as authored, and once the agents a profile names resolve.
 
 CoWork profiles are a Snowflake private preview (PrPr) feature. A profile is a Cortex Agent whose
 one router tool hands each question to one of the agents it lists; these values follow the
@@ -16,6 +16,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.agent import AgentProfile, AgentSkill
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.setting import Setting
 
 COWORK_PROFILES_DOC = "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles"
@@ -118,3 +119,62 @@ class CoworkProfileModel:
     def key(self) -> str:
         """The profile's artifact key: `cowork_profile:` and its casefolded name."""
         return artifact_key("cowork_profile", self.name.casefold())
+
+    @property
+    def profile(self) -> AgentProfile:
+        """The `display:` block under the name an agent gives its own: what `SET PROFILE` writes."""
+        return self.display
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedSubagent:
+    """One subagent of a CoWork profile once its `agent()` or `tool()` call resolved.
+
+    Attributes:
+        fqn: The agent the router hands a question to; its SQL form is both the subagent's
+            `name` and its `source.fqn`, since routing runs the agent `source.fqn` names.
+        display_name: The entry's own, else, for an agent this project publishes, the agent's
+            display name, else its name; empty when none applies.
+        description: The entry's own, else, for an agent this project publishes, the agent's
+            comment; empty when none applies.
+        sample_questions: The entry's own, else, for an agent this project publishes, the
+            agent's; empty when neither offers any.
+        external: The agent is one SST does not publish: an `agent` tool member's relation.
+        depends_on: The artifact key of the project agent it routes to, which publishes first;
+            None for an external agent.
+        member: The `agent` tool member an external subagent resolved through; None otherwise.
+    """
+
+    fqn: QualifiedName
+    display_name: str
+    description: str
+    sample_questions: tuple[str, ...] = ()
+    external: bool = False
+    depends_on: str | None = None
+    member: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedCoworkProfile:
+    """A CoWork profile whose subagents and skills resolved, ready to render.
+
+    Attributes:
+        model: The profile with its settings applied and its skills resolved, each pinned as an
+            agent's are.
+        subagents: In authored order; one that could not resolve is absent.
+        skill_dependencies: The artifact keys of this project's skills and plugins it pins,
+            first reference first, each once.
+    """
+
+    model: CoworkProfileModel
+    subagents: tuple[ResolvedSubagent, ...]
+    skill_dependencies: tuple[str, ...] = ()
+
+    @property
+    def depends_on(self) -> tuple[str, ...]:
+        """The artifact keys the profile publishes after: its subagents' agents, then its skills'.
+
+        Each key appears once, where it first occurs; an external subagent adds none.
+        """
+        agents = (subagent.depends_on for subagent in self.subagents if subagent.depends_on)
+        return tuple(dict.fromkeys((*agents, *self.skill_dependencies)))

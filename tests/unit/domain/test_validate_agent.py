@@ -13,6 +13,7 @@ from snowflake_semantic_tools.domain.validate.agent import (
     agent_rules,
     delegation_cycle,
     delegations,
+    published_agent_rules,
     spec_size,
     tool_name_clashes,
     unreferenced_extensions,
@@ -110,3 +111,29 @@ def test_unreferenced_extensions_skip_pinned_and_consumed_ones() -> None:
     published = (("skill:used", "V1"), ("skill:kept", "V1"), ("plugin:idle", "V2"))
     found = unreferenced_extensions((pinned,), published, frozenset(("skill:kept",)))
     assert [(item.code, item.subject) for item in found] == [("SST-VAL804", "plugin:idle")]
+
+
+def test_identities_name_the_kind_they_track_in_a_repeated_name() -> None:
+    identities = AgentIdentities("cowork profile")
+    assert identities.claim(agent("Everyone")) == ()
+    [repeated] = identities.claim(agent("EVERYONE"))
+    assert repeated.message == "cowork profile 'EVERYONE' is declared more than once"
+
+
+def test_the_rules_every_agent_object_shares_are_the_agent_rules_without_the_agent_own() -> None:
+    model = agent(
+        alias="live",
+        orchestration_model="claude",
+        tool_not_accessible="maybe",
+        profile=AgentProfile(color="#fff"),
+        deprecated=True,
+    )
+    assert codes(published_agent_rules(model, MODELS)) == ["SST-PRS025", "SST-VAL543", "SST-VAL548", "SST-VAL550"]
+    assert codes(agent_rules(model, MODELS, ())) == [
+        "SST-PRS025",
+        "SST-VAL543",
+        "SST-VAL545",
+        "SST-VAL548",
+        "SST-VAL550",
+    ]
+    assert published_agent_rules(agent(), MODELS, frozenset(("Icon",))) == []

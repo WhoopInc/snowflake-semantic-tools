@@ -2,18 +2,22 @@
 
 The agent compiler in `app/compile/agents` runs these in its fixed order as it resolves each
 agent; each check reads only the values it is given, so the order its diagnostics appear in
-is the compiler's.
+is the compiler's. The rules every published AGENT object shares -- its name, alias, tags,
+model, profile, and deprecation -- read a `PublishedAgent`, so a CoWork profile, which publishes
+as an AGENT too, is checked by the same code.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping, Sequence
+from typing import Protocol
 
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.agent import (
     RESERVED_AGENT_ALIASES,
     AgentModel,
+    AgentProfile,
     ResolvedAgent,
     ResolvedAgentTool,
 )
@@ -35,28 +39,75 @@ SPEC_WARNING_BYTES = 80_000
 PROFILE_LIMIT_BYTES = 1_000
 
 
+class PublishedAgent(Protocol):
+    """What the rules every published AGENT object shares read: an agent's, or a CoWork profile's."""
+
+    @property
+    def name(self) -> str:
+        """Return the name the object is keyed and staged by, as written."""
+        ...
+
+    @property
+    def key(self) -> str:
+        """Return the object's artifact key, which every diagnostic about it names as its subject."""
+        ...
+
+    @property
+    def origin(self) -> Origin:
+        """Return where the object is declared."""
+        ...
+
+    @property
+    def alias(self) -> str | None:
+        """Return the version alias the object sets, rendered for the target; None for none."""
+        ...
+
+    @property
+    def tags(self) -> tuple[tuple[str, str], ...]:
+        """Return the `(tag name, value)` pairs the object sets, in order."""
+        ...
+
+    @property
+    def orchestration_model(self) -> str:
+        """Return the orchestration model its settings resolve to; `auto` when none names one."""
+        ...
+
+    @property
+    def profile(self) -> AgentProfile:
+        """Return the display block `SET PROFILE` writes."""
+        ...
+
+    @property
+    def deprecated(self) -> bool:
+        """Return whether the object is retired from use."""
+        ...
+
+
 class AgentIdentities:
-    """The agent names and display names claimed so far; a later agent repeating one is reported.
+    """The names and display names claimed so far; a later object repeating one is reported.
 
     Attributes:
-        names: By casefolded name, the last agent to claim it; the delegation-cycle check walks these.
+        names: By casefolded name, the last object to claim it; the delegation-cycle check walks
+            an agent's.
     """
 
-    def __init__(self) -> None:
-        self.names: dict[str, AgentModel] = {}
-        self._display_names: dict[str, AgentModel] = {}
+    def __init__(self, kind: str = "agent") -> None:
+        """Track the names of one kind of AGENT object, which SST-VAL001 names as `kind`."""
+        self.names: dict[str, PublishedAgent] = {}
+        self._display_names: dict[str, PublishedAgent] = {}
+        self._kind = kind
 
-    def claim(self, model: AgentModel) -> tuple[Diagnostic, ...]:
-        """Claim the agent's name and display name, reporting each one an earlier agent claimed.
+    def claim(self, model: PublishedAgent) -> tuple[Diagnostic, ...]:
+        """Claim the object's name and display name, reporting each one an earlier object claimed.
 
         Diagnostics:
-            SST-VAL001: the agent's name repeats, ignoring case.
-            SST-VAL549: the agent's display name repeats, ignoring case.
+            SST-VAL001: the object's name repeats, ignoring case.
+            SST-VAL549: the object's display name repeats, ignoring case.
         """
         found: list[Diagnostic] = []
         folded = model.name.casefold()
         if folded in self.names:
-            found.append(D("SST-VAL001", type="agent", name=model.name, origin=model.origin))
+            found.append(D("SST-VAL001", type=self._kind, name=model.name, origin=model.origin))
         self.names[folded] = model
         display_name = model.profile.display_name
         if display_name:
@@ -114,8 +165,50 @@ def agent_rules(
         SST-VAL558: the profile renders more than `PROFILE_LIMIT_BYTES` of JSON.
         SST-VAL550: the agent is deprecated and an alias still points at a version of it.
     """
+    diagnostics = [*_naming_problems(model), *_model_problems(model, allowed_models)]
+    if model.tool_not_accessible not in (None, "accept", "reject", "legacy"):
+        diagnostics.append(
+            D("SST-VAL545", artifact=model.name, detail=f"is {model.tool_not_accessible!r}", subject=model.key)
+        )
+    if model.analytical_search and not any(tool.type == "cortex_search" for tool in tools):
+        diagnostics.append(D("SST-VAL546", artifact=model.name, subject=model.key))
+    diagnostics.extend(_display_problems(model, avatar_allowlist))
+    return diagnostics
+
+
+def published_agent_rules(
+    model: PublishedAgent, allowed_models: frozenset[str], avatar_allowlist: frozenset[str] | None = None
+) -> list[Diagnostic]:
+    """Check the rules every published AGENT object shares, in the order `agent_rules` checks them.
+
+    A CoWork profile is checked by these alone; an agent by `agent_rules`, which adds its own.
+
+    Args:
+        allowed_models: `snowflake.orchestration_models`.
+        avatar_allowlist: `snowflake.profile.avatar_allowlist`; None when it is not configured.
+
+    Diagnostics:
+        SST-PRS025: the alias is reserved: a version shortcut, or a Snowflake reserved word.
+        SST-PRS005: the name is written quoted or is not a segment a stage path can hold, the
+            alias is not a plain identifier, or a tag name is not an identifier or a qualified
+            name.
+        SST-VAL543: the orchestration model is not in `allowed_models`.
+        SST-VAL548: the avatar is outside the allowlist, or the color is neither a plain
+            colour name nor a `var(--token)`.
+        SST-VAL558: the profile renders more than `PROFILE_LIMIT_BYTES` of JSON.
+        SST-VAL550: the object is deprecated and an alias still points at a version of it.
+    """
+    return [
+        *_naming_problems(model),
+        *_model_problems(model, allowed_models),
+        *_display_problems(model, avatar_allowlist),
+    ]
+
+
+def _naming_problems(model: PublishedAgent) -> list[Diagnostic]:
+    """Report a name no stage path can hold, then an unusable alias, then each unusable tag name."""
     diagnostics: list[Diagnostic] = []
-    # The name keys the agent and names the folder its specification is staged in.
+    # The name keys the object and names the folder its specification is staged in.
     refused = quoted_name_problem(
         model.name, artifact=model.key, subject=model.key, origin=model.origin
     ) or stage_segment_problem(model.name, artifact=model.key, subject=model.key, origin=model.origin)
@@ -132,15 +225,18 @@ def agent_rules(
             problem = qualified_name_problem(name, artifact=model.key, subject=model.key, origin=model.origin)
         if problem is not None:
             diagnostics.append(problem)
-    if model.orchestration_model not in allowed_models:
-        diagnostics.append(D("SST-VAL543", artifact=model.name, found=model.orchestration_model, subject=model.key))
-    if model.tool_not_accessible not in (None, "accept", "reject", "legacy"):
-        diagnostics.append(
-            D("SST-VAL545", artifact=model.name, detail=f"is {model.tool_not_accessible!r}", subject=model.key)
-        )
-    if model.analytical_search and not any(tool.type == "cortex_search" for tool in tools):
-        diagnostics.append(D("SST-VAL546", artifact=model.name, subject=model.key))
-    diagnostics.extend(_profile_problems(model, avatar_allowlist))
+    return diagnostics
+
+
+def _model_problems(model: PublishedAgent, allowed_models: frozenset[str]) -> list[Diagnostic]:
+    if model.orchestration_model in allowed_models:
+        return []
+    return [D("SST-VAL543", artifact=model.name, found=model.orchestration_model, subject=model.key)]
+
+
+def _display_problems(model: PublishedAgent, avatar_allowlist: frozenset[str] | None) -> list[Diagnostic]:
+    """Report the profile's problems, then an alias still set on a deprecated object."""
+    diagnostics = _profile_problems(model, avatar_allowlist)
     if model.deprecated and model.alias:
         diagnostics.append(
             D(
@@ -177,7 +273,7 @@ def plain_alias(value: str) -> bool:
     return rendered == text.upper() and not reserved_alias(text)
 
 
-def _alias_problems(model: AgentModel, alias: str) -> tuple[Diagnostic, ...]:
+def _alias_problems(model: PublishedAgent, alias: str) -> tuple[Diagnostic, ...]:
     """Report an alias that is reserved, else one that is not a plain identifier.
 
     Diagnostics:
@@ -191,7 +287,7 @@ def _alias_problems(model: AgentModel, alias: str) -> tuple[Diagnostic, ...]:
     return ()
 
 
-def _profile_problems(model: AgentModel, avatar_allowlist: frozenset[str] | None) -> list[Diagnostic]:
+def _profile_problems(model: PublishedAgent, avatar_allowlist: frozenset[str] | None) -> list[Diagnostic]:
     """Report an avatar outside the allowlist, a color in neither known form, then an oversize profile."""
     found: list[Diagnostic] = []
     avatar, color = model.profile.avatar, model.profile.color
@@ -261,7 +357,7 @@ def delegations(resolved: ResolvedAgent) -> tuple[str, ...]:
     )
 
 
-def delegation_cycle(graph: Mapping[str, tuple[str, ...]], agents: Mapping[str, AgentModel]) -> tuple[str, ...]:
+def delegation_cycle(graph: Mapping[str, tuple[str, ...]], agents: Mapping[str, PublishedAgent]) -> tuple[str, ...]:
     """Return the first delegation cycle among this project's agents, or an empty tuple.
 
     A delegation target is matched to an agent by its casefolded name, whole or as the last

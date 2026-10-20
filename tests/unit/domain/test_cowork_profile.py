@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.cowork_profile import (
     COWORK_PROFILE_SCHEMA,
     COWORK_PROFILE_TOOLS,
@@ -11,11 +12,17 @@ from snowflake_semantic_tools.domain.model.cowork_profile import (
     CoworkProfileTool,
     CoworkSubagent,
 )
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
-from snowflake_semantic_tools.domain.validate.cowork_profile import cowork_profile_diagnostics
+from snowflake_semantic_tools.domain.validate.cowork_profile import (
+    cowork_profile_diagnostics,
+    schema_problems,
+    unlisted_profile,
+)
 from tests.helpers.registry_types import artifact, freeze
 
 ORIGIN = Origin("cowork_profiles/everyone/cowork_profile.yml", 1, 1)
+AGENT_ORIGIN = Origin("agents/sales/agent.yml", 1, 1)
 
 
 def _profile(*subagents: CoworkSubagent, tools: tuple[CoworkProfileTool, ...] = ()) -> CoworkProfileModel:
@@ -66,3 +73,33 @@ def test_only_web_search_and_code_execution_ride_beside_the_router() -> None:
 def test_agents_and_cowork_profiles_share_the_agent_object_type_and_nothing_else_is_shared() -> None:
     assert SEMANTIC_REGISTRY.shared_object_types() == frozenset({"AGENT"})
     assert freeze((artifact("semantic_view"), artifact("agent", 300))).shared_object_types() == frozenset()
+
+
+def test_a_profile_outside_the_profiles_schema_is_a_rehearsal_compared_as_snowflake_resolves_it() -> None:
+    listed = QualifiedName.parse("snowflake_intelligence.profiles.everyone")
+    assert unlisted_profile(_profile(), listed) == ()
+    [found] = unlisted_profile(_profile(), QualifiedName.parse('DEV."profiles".EVERYONE'))
+    assert (found.code, found.subject, found.origin) == ("SST-VAL878", "cowork_profile:everyone", ORIGIN)
+    assert found.message == (
+        "cowork profile 'Everyone' publishes to DEV.\"profiles\", where CoWork does not list profiles"
+    )
+
+
+def test_an_agent_in_the_profiles_schema_and_a_profile_beside_an_agent_are_reported() -> None:
+    sales, support = AgentModel("sales", AGENT_ORIGIN, ()), AgentModel("support", AGENT_ORIGIN, ())
+    agents = (
+        (sales, QualifiedName.parse("DB.SHARED.SALES")),
+        (support, QualifiedName.parse("SNOWFLAKE_INTELLIGENCE.PROFILES.SUPPORT")),
+        (AgentModel("later", AGENT_ORIGIN, ()), QualifiedName.parse("db.shared.LATER")),
+    )
+    profiles = (
+        (_profile(), QualifiedName.parse("db.shared.EVERYONE")),
+        (CoworkProfileModel("Apart", ORIGIN, ()), QualifiedName.parse("DB.APART.APART")),
+    )
+    found = schema_problems(agents, profiles)
+    assert [(item.code, item.subject) for item in found] == [
+        ("SST-VAL880", "agent:support"),
+        ("SST-VAL879", "cowork_profile:everyone"),
+    ]
+    assert found[1].message == "cowork profile 'Everyone' publishes to DB.SHARED, where agent 'sales' publishes too"
+    assert schema_problems(agents[:1], profiles[1:]) == ()
