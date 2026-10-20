@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 774
+- Codes: 781
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -382,7 +382,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-REF009`](error-codes.md#sst-ref009) | REF | error | local | `snowflake_semantic_tools.domain.resolve.calls`<br>`snowflake_semantic_tools.domain.resolve.template` | `tests/codes/ref/test_sst_ref009.py` |
 | [`SST-REF010`](error-codes.md#sst-ref010) | REF | error | local | `snowflake_semantic_tools.domain.model.tool` | `tests/codes/ref/test_sst_ref010.py` |
 | [`SST-REF011`](error-codes.md#sst-ref011) | REF | error | local | `snowflake_semantic_tools.app.compile.agents.resolve_tools` | `tests/codes/ref/test_sst_ref011.py` |
-| [`SST-REF012`](error-codes.md#sst-ref012) | REF | error | local | `snowflake_semantic_tools.app.compile.agents.resolve_tools` | `tests/codes/ref/test_sst_ref012.py` |
+| [`SST-REF012`](error-codes.md#sst-ref012) | REF | error | local | `snowflake_semantic_tools.app.compile.agents.resolve_tools`<br>`snowflake_semantic_tools.app.compile.cowork_profiles.subagents` | `tests/codes/ref/test_sst_ref012.py` |
 | [`SST-REF013`](error-codes.md#sst-ref013) | REF | error | local | `snowflake_semantic_tools.app.compile.agents.resolve_skills` | `tests/codes/ref/test_sst_ref013.py` |
 | [`SST-REF014`](error-codes.md#sst-ref014) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.fields` | `tests/codes/ref/test_sst_ref014.py` |
 | [`SST-REF015`](error-codes.md#sst-ref015) | REF | error | local | `snowflake_semantic_tools.domain.resolve.calls`<br>`snowflake_semantic_tools.domain.resolve.routine_body`<br>`snowflake_semantic_tools.domain.resolve.tool_column`<br>`snowflake_semantic_tools.domain.validate.config` | `tests/codes/ref/test_sst_ref015.py` |
@@ -785,6 +785,13 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL859`](error-codes.md#sst-val859) | VAL | error | local | `snowflake_semantic_tools.adapters.yaml.profiles` | `tests/codes/val/test_sst_val859.py` |
 | [`SST-VAL860`](error-codes.md#sst-val860) | VAL | error | local | `snowflake_semantic_tools.domain.validate.profile` | `tests/codes/val/test_sst_val860.py` |
 | [`SST-VAL861`](error-codes.md#sst-val861) | VAL | info | observe | `snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/val/test_sst_val861.py` |
+| [`SST-VAL870`](error-codes.md#sst-val870) | VAL | info | local | `snowflake_semantic_tools.app.compile.cowork_profiles.__init__` | `tests/codes/val/test_sst_val870.py` |
 | [`SST-VAL871`](error-codes.md#sst-val871) | VAL | error | local | `snowflake_semantic_tools.domain.validate.cowork_profile` | `tests/codes/val/test_sst_val871.py` |
-| [`SST-VAL873`](error-codes.md#sst-val873) | VAL | error | local | `snowflake_semantic_tools.domain.validate.cowork_profile` | `tests/codes/val/test_sst_val873.py` |
+| [`SST-VAL872`](error-codes.md#sst-val872) | VAL | error | local | `snowflake_semantic_tools.app.compile.cowork_profiles.subagents` | `tests/codes/val/test_sst_val872.py` |
+| [`SST-VAL873`](error-codes.md#sst-val873) | VAL | error | local | `snowflake_semantic_tools.app.compile.cowork_profiles.subagents`<br>`snowflake_semantic_tools.domain.validate.cowork_profile` | `tests/codes/val/test_sst_val873.py` |
+| [`SST-VAL874`](error-codes.md#sst-val874) | VAL | error | local | `snowflake_semantic_tools.app.compile.cowork_profiles.subagents` | `tests/codes/val/test_sst_val874.py` |
+| [`SST-VAL875`](error-codes.md#sst-val875) | VAL | error | local | `snowflake_semantic_tools.app.compile.cowork_profiles.subagents` | `tests/codes/val/test_sst_val875.py` |
 | [`SST-VAL876`](error-codes.md#sst-val876) | VAL | error | local | `snowflake_semantic_tools.domain.validate.cowork_profile` | `tests/codes/val/test_sst_val876.py` |
+| [`SST-VAL878`](error-codes.md#sst-val878) | VAL | info | local | `snowflake_semantic_tools.domain.validate.cowork_profile` | `tests/codes/val/test_sst_val878.py` |
+| [`SST-VAL879`](error-codes.md#sst-val879) | VAL | error | local | `snowflake_semantic_tools.domain.validate.cowork_profile` | `tests/codes/val/test_sst_val879.py` |
+| [`SST-VAL880`](error-codes.md#sst-val880) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.cowork_profile` | `tests/codes/val/test_sst_val880.py` |

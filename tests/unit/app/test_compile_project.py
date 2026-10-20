@@ -86,6 +86,7 @@ def test_a_dbt_project_is_read_in_a_fixed_order_from_its_configured_roots() -> N
         "dbt_catalog",
         "tool_catalog",
         "agents:ag",
+        "cowork_profiles:cowork_profiles",
         "git_sha",
         "eval_catalog",
     ]

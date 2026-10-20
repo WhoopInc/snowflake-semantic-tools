@@ -8,21 +8,47 @@ names no member loads every member: Snowflake refuses a plugin entry without a n
 resolves to one named entry per member.
 
 Its diagnostics are reported as each entry resolves against the `AgentCompileContext`, so
-they stay with resolution here rather than in `domain.validate`.
+they stay with resolution here rather than in `domain.validate`. A CoWork profile pins its
+`skills:` entries through the same resolution, as a `SkillOwner`.
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Protocol
 
 from snowflake_semantic_tools.app.compile.agents.context import AgentCompileContext, ExtensionPin
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
-from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.agent import AgentSkill
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 
 
+class SkillOwner(Protocol):
+    """What resolving skills reads of the agent, or CoWork profile, whose `skills:` they are."""
+
+    @property
+    def name(self) -> str:
+        """Return the owner's name, as written, which each diagnostic names as its artifact."""
+        ...
+
+    @property
+    def key(self) -> str:
+        """Return the owner's artifact key, which each diagnostic names as its subject."""
+        ...
+
+    @property
+    def origin(self) -> Origin:
+        """Return where the owner is declared."""
+        ...
+
+    @property
+    def skills(self) -> tuple[AgentSkill, ...]:
+        """Return the `skills:` entries as authored, in order."""
+        ...
+
+
 def resolve_skills(
-    model: AgentModel,
+    model: SkillOwner,
     context: AgentCompileContext,
 ) -> tuple[tuple[AgentSkill, ...], tuple[str, ...], tuple[Diagnostic, ...]]:
     """Pin owned extensions to their published alias; check consumed ones are pinned.
@@ -63,7 +89,7 @@ def resolve_skills(
 
 
 def _shadowed(
-    model: AgentModel, skill: AgentSkill, context: AgentCompileContext, contributors: dict[str, str]
+    model: SkillOwner, skill: AgentSkill, context: AgentCompileContext, contributors: dict[str, str]
 ) -> list[Diagnostic]:
     """Claim the member names one resolved entry contributes, reporting each an earlier entry claimed.
 
@@ -88,7 +114,7 @@ def _shadowed(
 
 
 def _resolve_skill(
-    model: AgentModel,
+    model: SkillOwner,
     skill: AgentSkill,
     context: AgentCompileContext,
     diagnostics: list[Diagnostic],
@@ -111,7 +137,7 @@ def _resolve_skill(
 
 
 def _pin_owned(
-    model: AgentModel,
+    model: SkillOwner,
     skill: AgentSkill,
     context: AgentCompileContext,
     diagnostics: list[Diagnostic],
@@ -139,7 +165,7 @@ def _pin_owned(
     return tuple(replace(skill, name=name, path=pin.target.sql, version=pin.alias) for name in names), pin.key
 
 
-def _unpublished_or_undeclared(model: AgentModel, skill: AgentSkill, context: AgentCompileContext) -> Diagnostic:
+def _unpublished_or_undeclared(model: SkillOwner, skill: AgentSkill, context: AgentCompileContext) -> Diagnostic:
     reason = context.unpublished.get(artifact_key(skill.ref, skill.path))
     if reason is not None:
         return D(
@@ -155,7 +181,7 @@ def _unpublished_or_undeclared(model: AgentModel, skill: AgentSkill, context: Ag
     return D(code, name=skill.path, subject=model.key, origin=model.origin)
 
 
-def _owned_entry_problem(model: AgentModel, skill: AgentSkill, pin: ExtensionPin) -> Diagnostic | None:
+def _owned_entry_problem(model: SkillOwner, skill: AgentSkill, pin: ExtensionPin) -> Diagnostic | None:
     """What keeps an owned entry from pinning: a version of its own, a name on a skill, or a wrong name."""
     if skill.version or skill.version_var:
         return D(
@@ -175,7 +201,7 @@ def _owned_entry_problem(model: AgentModel, skill: AgentSkill, pin: ExtensionPin
 
 
 def _pin_consumed(
-    model: AgentModel,
+    model: SkillOwner,
     skill: AgentSkill,
     context: AgentCompileContext,
     diagnostics: list[Diagnostic],

@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from types import MappingProxyType
 
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.config_schema import (
     Setting,
@@ -56,7 +56,21 @@ def settled_agent(
     def text(key: str) -> str | None:
         return target_text(setting_value(settings, key), target, None)
 
-    pairs, problems = _tag_pairs(model, setting_value(settings, "tags"), tags or DeclaredTags())
+    pairs, problems = tag_pairs(
+        setting_value(settings, "tags"),
+        tags or DeclaredTags(),
+        origin=model.origin,
+        key=model.key,
+        reference="agent.config.tags.name",
+    )
+    defaults: dict[str, object] = {
+        "database": target.database.folded,
+        "schema": target.schema.folded,
+        "warehouse": target.warehouse,
+        "orchestration_model": "auto",
+        "enabled": True,
+        "secure": False,
+    }
     settled = replace(
         model,
         orchestration_model=text("orchestration_model") or "auto",
@@ -67,7 +81,7 @@ def settled_agent(
         alias=text("alias"),
         secure=config_bool(setting_value(settings, "secure")) is True,
         tags=pairs,
-        settings=_reported(settings, target),
+        settings=reported_settings(settings, target, _RENDERED, defaults),
     )
     return settled, problems
 
@@ -91,30 +105,33 @@ def agent_environment(model: AgentModel, target: TargetIdentity) -> tuple[str | 
     return warehouse or target.warehouse, config_int(setting_value(model.settings, "query_timeout"))
 
 
-def _reported(settings: Mapping[str, Setting], target: TargetIdentity) -> Mapping[str, Setting]:
-    """The settings with the location and warehouse rendered, then each built-in default the agent took."""
-    rendered = {
+def reported_settings(
+    settings: Mapping[str, Setting], target: TargetIdentity, rendered: tuple[str, ...], defaults: Mapping[str, object]
+) -> Mapping[str, Setting]:
+    """Return the settings an item reports: each key of `rendered` rendered, then each default it took.
+
+    Args:
+        rendered: The keys whose `{{ target.* }}` templates are rendered, such as the location.
+        defaults: The built-in value of each key no step of the precedence chain set.
+    """
+    own = {
         key: Setting(key, target_text(settings[key].value, target, "") or "", settings[key].source)
-        for key in _RENDERED
+        for key in rendered
         if key in settings
     }
-    defaults: dict[str, object] = {
-        "database": target.database.folded,
-        "schema": target.schema.folded,
-        "warehouse": target.warehouse,
-        "orchestration_model": "auto",
-        "enabled": True,
-        "secure": False,
-    }
-    return MappingProxyType({item.key: item for item in with_defaults({**settings, **rendered}, defaults)})
+    return MappingProxyType({item.key: item for item in with_defaults({**settings, **own}, defaults)})
 
 
-def _tag_pairs(
-    model: AgentModel, value: object, tags: DeclaredTags
+def tag_pairs(
+    value: object, tags: DeclaredTags, *, origin: Origin, key: str, reference: str
 ) -> tuple[tuple[tuple[str, str], ...], tuple[Diagnostic, ...]]:
-    """Read the `tags` setting: each `{name, value}` entry as an object name and value, in order.
+    """Read a `tags` setting: each `{name, value}` entry as an object name and value, in order.
 
-    An entry without both is skipped; the settings checks report its shape.
+    An entry without both is skipped; the settings checks report its shape. Each diagnostic
+    names the item `key` declares at `origin`.
+
+    Args:
+        reference: The tag name field's entry in `REFERENCE_FIELDS`, for the item's kind.
 
     Diagnostics:
         Every code `tag_reference` lists, for a tag's `name:`.
@@ -129,11 +146,11 @@ def _tag_pairs(
         found = tag_reference(
             str(entry["name"]),
             tags,
-            model.origin,
-            reference="agent.config.tags.name",
+            origin,
+            reference=reference,
             field=field,
-            artifact=model.key,
-            subject=model.key,
+            artifact=key,
+            subject=key,
         )
         written = entry["value"]
         if isinstance(found, Diagnostic):
@@ -143,12 +160,12 @@ def _tag_pairs(
             problems.append(
                 D(
                     "SST-PRS003",
-                    artifact=model.key,
+                    artifact=key,
                     field=f"config.tags[{index}].value",
                     expected="a string",
                     found=type(written).__name__,
-                    origin=model.origin,
-                    subject=model.key,
+                    origin=origin,
+                    subject=key,
                 )
             )
         else:

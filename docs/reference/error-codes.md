@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 310 codes
+- [Validation (VAL)](#validation-val) -- 317 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
@@ -2348,7 +2348,7 @@ Fix: report this as a bug
 
 `<type> '<name>' is declared more than once`
 
-Raised when two semantic views, metrics, agents, tool members or custom eval metrics share a name, compared case-insensitively across all files.
+Raised when two semantic views, metrics, agents, CoWork profiles, tool members or custom eval metrics share a name, compared case-insensitively across all files.
 
 Fix: rename one of them
 
@@ -5602,6 +5602,18 @@ Raised when a prune finds that a skill or plugin state records, whose source is 
 
 Note: The apply drops nothing; it only removes the state entry, so a later extension of that name is never taken for SST's. An extension still in the catalog stays report-only (SST-PLN034), which names the `sst drop` that removes it.
 
+### SST-VAL870
+
+**CoWork profile relies on a Snowflake private preview** (info)
+
+`cowork profile '<artifact>' relies on CoWork profiles, a Snowflake private preview`
+
+Raised when a CoWork profile compiles; reported once per compiled profile.
+
+Fix: expect the profile contract to change before general availability, and recompile after each SST upgrade
+
+Note: Snowflake private preview: https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles . SST renders the profile to the preview's contract as measured, the agent_router tool and its subagent list included, and Snowflake may change that contract before general availability.
+
 ### SST-VAL871
 
 **CoWork profile names no subagents** (error)
@@ -5614,17 +5626,51 @@ Fix: name at least one agent under spec.subagents
 
 Note: Snowflake private preview. Snowflake accepts such a profile, but a profile with no subagent list fails every run with "agent_router tool 'router' is missing a corresponding entry in tool_resources", and an empty list routes to no agent; measured on a preview account.
 
+### SST-VAL872
+
+**CoWork profile subagent tool is not an agent** (error)
+
+`cowork profile '<artifact>': spec.subagents[<index>] tool('<name>') is a <found> member, not an agent`
+
+Raised when a CoWork profile's `spec.subagents` entry calls `tool()` on a declared tool member whose type is not agent.
+
+Fix: name an `agent` tool member with tool(), or an agent this project publishes with agent()
+
+Note: Snowflake private preview. The router hands a question to the agent a subagent's source.fqn names, so a subagent must be an agent.
+
 ### SST-VAL873
 
 **CoWork profile names a subagent twice** (error)
 
 `cowork profile '<artifact>': spec.subagents[<index>] names <function>('<name>') again`
 
-Raised when two `spec.subagents` entries of a CoWork profile reference the same function and name, ignoring case.
+Raised when two `spec.subagents` entries of a CoWork profile reference the same function and name, ignoring case, or resolve to the same agent.
 
 Fix: remove the repeated entry from spec.subagents
 
-Note: Entries are compared by the call each writes, `agent()` or `tool()`, and the name it gives; the later entry is reported.
+Note: Loading compares the call each entry writes, `agent()` or `tool()`, and the name it gives; compiling then compares the agents the entries resolve to, as Snowflake resolves the name. The later entry is reported.
+
+### SST-VAL874
+
+**CoWork profile subagent is not described** (error)
+
+`cowork profile '<artifact>': spec.subagents[<index>] <function>('<name>') has no <field>`
+
+Raised when a CoWork profile's subagent has no display name, or no description, after its defaults: an `agent()` subagent takes the agent's display name, else its name, and the agent's comment; a `tool()` subagent, which names an agent SST does not publish, takes none.
+
+Fix: write the subagent's display_name and description, or give the agent it names a comment
+
+Note: Snowflake private preview. A subagent entry without all of name, display_name, description, and source makes the profile drop its whole subagent list, with no error, and the router chooses between agents by their descriptions. https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+
+### SST-VAL875
+
+**CoWork profile routes to a deprecated agent** (error)
+
+`cowork profile '<artifact>': spec.subagents[<index>] agent('<name>') is deprecated`
+
+Raised when a CoWork profile's `agent()` subagent names a project agent marked `deprecated`.
+
+Fix: route to the agent that replaces it, or stop deprecating the agent
 
 ### SST-VAL876
 
@@ -5637,6 +5683,42 @@ Raised when a `spec.tools` entry of a CoWork profile has a type other than web_s
 Fix: keep only web_search or code_execution on the profile, and give the tool to an agent it routes to
 
 Note: Snowflake private preview. A profile routes data questions to its agents; analyst, search, and chart tools belong on an agent. SST renders the profile's agent_router tool itself, so `spec.tools` cannot declare one either. https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+
+### SST-VAL878
+
+**CoWork profile publishes where CoWork does not list it** (info)
+
+`cowork profile '<artifact>' publishes to <target>, where CoWork does not list profiles`
+
+Raised when a compiled CoWork profile's database and schema, compared as Snowflake resolves them, are not SNOWFLAKE_INTELLIGENCE.PROFILES.
+
+Fix: publish to SNOWFLAKE_INTELLIGENCE.PROFILES on the target CoWork users reach
+
+Note: Snowflake private preview. The profile routes when it is run directly, but CoWork lists only the agents in SNOWFLAKE_INTELLIGENCE.PROFILES as profiles, so elsewhere it is a rehearsal, such as one published by a dev target.
+
+### SST-VAL879
+
+**Agent and CoWork profile publish to one schema** (error)
+
+`cowork profile '<artifact>' publishes to <target>, where agent '<other>' publishes too`
+
+Raised when a project agent and a CoWork profile resolve to the same database and schema, compared as Snowflake resolves them; reported once per profile, naming the first such agent.
+
+Fix: publish CoWork profiles and agents to different schemas
+
+Note: Both kinds publish an AGENT object, and SST tells which kind owns an observed AGENT by the schema it is in, so in one schema each would be read as the other's.
+
+### SST-VAL880
+
+**Agent publishes where CoWork lists profiles** (warning)
+
+`agent '<artifact>' publishes to SNOWFLAKE_INTELLIGENCE.PROFILES, where CoWork lists every agent as a profile`
+
+Raised when a project agent's database and schema, compared as Snowflake resolves them, are SNOWFLAKE_INTELLIGENCE.PROFILES.
+
+Fix: publish the agent to another schema, and route to it from a CoWork profile
+
+Note: Snowflake private preview. CoWork treats every agent in that schema as a profile. https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
 
 ## dbt (DBT)
 

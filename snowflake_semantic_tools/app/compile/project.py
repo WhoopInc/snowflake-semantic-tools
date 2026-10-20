@@ -17,6 +17,7 @@ from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, Com
 from snowflake_semantic_tools.app.compile.agents.cross import cross_artifact_result
 from snowflake_semantic_tools.app.compile.agents.settled import agent_environment, settled_agent
 from snowflake_semantic_tools.app.compile.base import CompileResult
+from snowflake_semantic_tools.app.compile.cowork_profiles import compile_cowork_profiles, pinned_extensions
 from snowflake_semantic_tools.app.compile.evals import CompileEvals
 from snowflake_semantic_tools.app.compile.profiles import CompileProfiles, DesktopChannel
 from snowflake_semantic_tools.app.compile.skills import (
@@ -44,6 +45,7 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     target_text,
     with_defaults,
 )
+from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog
@@ -205,8 +207,9 @@ class CompileProject:
         1. Read `sst_config.yml` and the dbt target.
         2. Resolve the extensions agents consume, from `extensions:`.
         3. Compile skills and plugins, then Desktop profiles, each where its settings place it.
-        4. With a dbt project, compile the semantic views, the tools, the agents, and then the
-           evals; each reads what the compilers before it produced.
+        4. With a dbt project, compile the semantic views, the tools, the agents, the CoWork
+           profiles (a Snowflake private preview), and then the evals; each reads what the
+           compilers before it produced.
         5. Merge the results. The diagnostics of the configuration, the target, and
            `extensions:` come first, then each compiler's in the order it ran.
 
@@ -307,17 +310,19 @@ class CompileProject:
         consumed: Mapping[str, QualifiedName],
         unpublished: Mapping[str, str],
     ) -> tuple[CompileResult, ...]:
-        """Compile the semantic views, tools, agents, and evals of a dbt project, in that order.
+        """Compile the semantic views, tools, agents, CoWork profiles, and evals of a dbt project, in order.
 
-        Tools read the dbt relations, agents the views and tools that compiled, and evals the
-        tools each agent resolved. The agents' load diagnostics are reported once, by the agents.
-        The checks that span the four follow them, as a result that compiles nothing; then
-        what the configuration and the agents say about the tools.
+        Tools read the dbt relations, agents the views and tools that compiled, CoWork profiles
+        the agents and what they compiled against, and evals the tools each agent resolved. The
+        agents' and the profiles' load diagnostics are reported once, by their own compilers.
+        The checks that span the five follow them, as a result that compiles nothing; then
+        what the configuration, the agents, and the profiles say about the tools.
 
         Diagnostics:
             SST-REF015: a configuration value's `tool()` does not take exactly one name.
             SST-CFG017: a configuration value's `tool()` names no declared member.
-            SST-CFG018: a declared tool member is referenced by no agent and no configuration value.
+            SST-CFG018: a declared tool member is referenced by no agent, no CoWork profile, and
+                no configuration value.
         """
         semantic = CompileSemanticViews(self._inputs).run_result()
         # A view the project declares disabled is named as such, not as undeclared, by a tool.
@@ -329,18 +334,32 @@ class CompileProject:
         tool_catalog = self._inputs.tool_catalog()
         tools = _compile_tools(settings, tool_catalog, dbt)
         loaded, agent_diagnostics = self._inputs.agents(agents_dir=settings.directory("agents_dir", "agents"))
+        profiles, profile_diagnostics = self._inputs.cowork_profiles(
+            cowork_profiles_dir=settings.directory("cowork_profiles_dir", "cowork_profiles")
+        )
         # Loading resolves each agent's settings, `enabled` among them; the rest are applied here.
         tags = declared_tags(settings.tree.get("tags"), settings.target)
         settled = tuple(settled_agent(model, settings.target, tags) for model in loaded)
         agent_models = tuple(model for model, _ in settled)
         agent_diagnostics = DiagnosticBag((*agent_diagnostics, *(item for _, found in settled for item in found)))
         enabled = tuple(model for model in agent_models if model.enabled)
-        context = self._agent_context(settings, enabled, semantic, tool_catalog, consumed, publishing, unpublished)
+        context = self._agent_context(
+            settings, enabled, semantic, tool_catalog, consumed, publishing, unpublished, pinned_extensions(profiles)
+        )
         contexts: dict[str, AgentCompileContext] = {}
         for model in enabled:
             # The first of two agents with one name keeps it, as its published location does.
             contexts.setdefault(model.key, _agent_environment(settings, context, model))
         agents = CompileAgents(enabled, agent_diagnostics, context, contexts=contexts).run_result()
+        cowork = compile_cowork_profiles(
+            profiles,
+            profile_diagnostics,
+            enabled,
+            context,
+            target=settings.target,
+            tags=tags,
+            place=lambda models: _published_names(settings, models, "cowork_profiles"),
+        )
         resolved_tools = {
             item.resolved.model.name.casefold(): tuple(sorted(item.resolved.agent_facing_tool_names))
             for item in agents.compiled
@@ -348,9 +367,9 @@ class CompileProject:
         }
         eval_catalog = self._inputs.eval_catalog(enabled, agent_tool_names=resolved_tools)
         evals = CompileEvals(eval_catalog, agent_targets=dict(context.agents)).run_result()
-        compiled = (semantic, tools, agents, evals)
-        # Every agent counts as a consumer, enabled or not: disabling one does not orphan its tools.
-        # So does a configuration value's `tool()`.
+        compiled = (semantic, tools, agents, cowork, evals)
+        # Every agent and profile counts as a consumer, enabled or not: disabling one does not
+        # orphan its tools. So does a configuration value's `tool()`.
         calls = (
             *(tool.member_reference for model in agent_models for tool in model.tools if tool.member_reference),
             *(
@@ -359,6 +378,7 @@ class CompileProject:
                 for tool in model.tools
                 if tool.stage_path and (stage := stage_member(tool.stage_path))
             ),
+            *(item.name for model in profiles for item in model.subagents if item.reference == "tool"),
             *(stage for member in tool_catalog.members for path in member.imports if (stage := stage_member(path))),
             *config_tool_calls(settings.tree),
         )
@@ -382,12 +402,17 @@ class CompileProject:
         consumed: Mapping[str, QualifiedName],
         publishing: Publishing,
         unpublished: Mapping[str, str],
+        profile_pins: frozenset[str],
     ) -> AgentCompileContext:
         """Gather what compiling the agents resolves against, with the `agents:` block root's environment.
 
         Each agent's published name is in the location its settings resolve to; the first of
         two agents with one name keeps it. The commit is read last, once everything else
         resolved: it becomes `sha_version`.
+
+        Args:
+            profile_pins: The artifact keys of the skills and plugins a CoWork profile pins,
+                which have a consumer even when no agent references them.
         """
         defaults = settings.block("agents")
         raw_models = settings.block("snowflake").get("orchestration_models")
@@ -397,14 +422,10 @@ class CompileProject:
         skill_pins, plugin_pins, plugin_members = extension_pins(publishing.skills)
         semantic_targets = {item.name.casefold(): item.rendered_artifact.target for item in semantic.compiled}
         database, schema = settings.location("agents")
-        agent_targets: dict[str, QualifiedName] = {}
-        for model in enabled:
-            location = settings.place(model.settings, "agents", model.key)
-            agent_targets.setdefault(model.name.casefold(), QualifiedName.from_parts(*location, model.name))
         return AgentCompileContext(
             semantic_targets,
             tool_catalog,
-            agent_targets,
+            _published_names(settings, enabled, "agents"),
             consumed,
             _skill_variables(settings.tree, self._inputs.git_sha()),
             database,
@@ -414,7 +435,7 @@ class CompileProject:
             allowed_models=allowed_models,
             skills=skill_pins,
             plugins=plugin_pins,
-            consumed=plugin_members | publishing.desktop_consumed,
+            consumed=plugin_members | publishing.desktop_consumed | profile_pins,
             unpublished=MappingProxyType(dict(unpublished)),
             allow_unknown_keys=settings.block("snowflake").get("allow_unknown_keys") is not False,
             avatar_allowlist=_avatar_allowlist(settings.block("snowflake")),
@@ -445,6 +466,24 @@ def _agent_environment(settings: _Settings, context: AgentCompileContext, model:
     """Return the context an agent compiles against: the shared one, with its tools' execution environment."""
     warehouse, query_timeout = agent_environment(model, settings.target)
     return replace(context, warehouse=warehouse, query_timeout=query_timeout)
+
+
+def _published_names(
+    settings: _Settings, models: tuple[AgentModel, ...] | tuple[CoworkProfileModel, ...], block: str
+) -> dict[str, QualifiedName]:
+    """Return where each agent, or each CoWork profile, publishes, by casefolded name.
+
+    Each is in the location its `block` settings resolve to; the first of two with one name
+    keeps it.
+
+    Diagnostics:
+        SST-CFG008: a part of a location renders to no Snowflake identifier; the target's own is used.
+    """
+    targets: dict[str, QualifiedName] = {}
+    for model in models:
+        location = settings.place(model.settings, block, model.key)
+        targets.setdefault(model.name.casefold(), QualifiedName.from_parts(*location, model.name))
+    return targets
 
 
 def _extra_tool_types(snowflake: Mapping[str, object]) -> frozenset[str]:

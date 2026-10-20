@@ -1,6 +1,7 @@
 """Run the checks that span artifact types once the views, tools, agents, and evals have compiled.
 
-The checks are pure and live in `domain.validate.cross_artifact`; this module reads what each
+The checks are pure and live in `domain.validate.cross_artifact`, and for CoWork profiles (a
+Snowflake private preview) in `domain.validate.cowork_profile`; this module reads what each
 compiler produced and hands them the parts they compare.
 """
 
@@ -11,9 +12,11 @@ from collections.abc import Mapping
 from snowflake_semantic_tools.app.compile import CompiledView
 from snowflake_semantic_tools.app.compile.agents.compiled import CompiledAgent
 from snowflake_semantic_tools.app.compile.base import CompiledArtifact, CompileResult
+from snowflake_semantic_tools.app.compile.cowork_profiles.compiled import CompiledCoworkProfile
 from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog
+from snowflake_semantic_tools.domain.validate.cowork_profile import schema_problems
 from snowflake_semantic_tools.domain.validate.cross_artifact import (
     agent_eval_problems,
     blocking,
@@ -30,8 +33,9 @@ def cross_artifact_result(
 
     Reports, in order: the questions all three question sets share; each agent against its
     eval, then against the tools it reaches, in agent order; then each search service whose
-    source an artifact publishing no earlier creates. A tool member reached by several
-    agents is reported once.
+    source an artifact publishing no earlier creates; then each agent publishing where CoWork
+    lists profiles, and each CoWork profile sharing an agent's schema. A tool member reached by
+    several agents is reported once.
 
     Args:
         evals: The eval catalog the eval compiler read.
@@ -39,14 +43,20 @@ def cross_artifact_result(
 
     Diagnostics:
         Those of `domain.validate.cross_artifact`.
+        Those of `domain.validate.cowork_profile.schema_problems`.
     """
     compiled = tuple(item for result in results for item in result.compiled)
     agents = tuple(item for item in compiled if isinstance(item, CompiledAgent))
     tools = tuple(item for item in compiled if isinstance(item, CompiledTool))
+    profiles = tuple(item for item in compiled if isinstance(item, CompiledCoworkProfile))
     diagnostics = [
         *_shared_questions(compiled, agents, evals),
         *_agent_problems(agents, tools, evals),
         *_publish_order(compiled, tools, positions),
+        *schema_problems(
+            tuple((agent.resolved.model, agent.target) for agent in agents),
+            tuple((profile.resolved.model, profile.target) for profile in profiles),
+        ),
     ]
     unique: dict[tuple[str, str, str | None], Diagnostic] = {}
     for item in diagnostics:
