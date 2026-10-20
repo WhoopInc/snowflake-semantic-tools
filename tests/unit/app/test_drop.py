@@ -6,14 +6,16 @@ import json
 from dataclasses import replace
 from types import MappingProxyType
 
-from snowflake_semantic_tools.app.drop import DropObject, DropRequest, DropResult
+from snowflake_semantic_tools.app.drop import EXTENSION, DropObject, DropRequest, DropResult
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import APPLIED, AppliedEntry, State
 from snowflake_semantic_tools.domain.state.lock import LockClaim
 from tests.helpers.app_ports import InMemoryStateStore
+from tests.helpers.artifact_builders import empty_state
 from tests.helpers.clocks import FixedClock
+from tests.helpers.skill_inputs import compile_extensions, publish_extensions, skill, skill_catalog
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 VIEW = QualifiedName.parse("DB.S.ORDERS")
@@ -222,3 +224,40 @@ def test_a_drop_takes_over_an_expired_lock_only_when_asked_and_never_a_live_one(
     ]
     live = DropObject(locked_by(600), InMemoryStateStore(), FixedClock(), state_table=TABLE).run(breaking)
     assert (live.outcome, [item.code for item in live.diagnostics]) == ("refused", ["SST-APL011"])
+
+
+def test_an_extension_state_records_at_a_version_it_lists_is_dropped_and_forgotten() -> None:
+    both = compile_extensions(skill_catalog(skill(), skill("year-close")))
+    port = FakeSnowflake(existing=())
+    _, published = publish_extensions(port, both, empty_state())
+    entry = published.applied["skill:year-close"]
+    name = QualifiedName.parse(entry.qualified_name)
+    request = DropRequest(name, "skill", EXTENSION, "dev")
+
+    def drop(recorded: AppliedEntry | None) -> DropResult:
+        port.remote_state = {"skill:year-close": recorded} if recorded is not None else {}
+        return DropObject(port, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(request)
+
+    # An entry that records another version, or none, does not vouch for the extension.
+    for other in (replace(entry, component_fingerprints=(("version", "VERSION$99"),)), None):
+        refused = drop(other)
+        assert (refused.outcome, [item.code for item in refused.diagnostics]) == ("refused", ["SST-PLN024"])
+    assert name.sql in port.extensions
+    dropped = drop(entry)
+    assert (dropped.outcome, dropped.forgotten) == ("dropped", ("skill:year-close",))
+    assert name.sql not in port.extensions and port.remote_state == {}
+    # One already gone is forgotten all the same.
+    gone = drop(entry)
+    assert (gone.outcome, gone.forgotten) == ("absent", ("skill:year-close",))
+    assert [item.code for item in gone.diagnostics] == ["SST-PRT005"]
+
+
+def test_an_extension_drop_snowflake_refuses_keeps_its_entry() -> None:
+    port = FakeSnowflake(existing=())
+    _, published = publish_extensions(port, compile_extensions(skill_catalog(skill())), empty_state())
+    [(key, entry)] = published.applied.items()
+    port.remote_state = {key: entry}
+    port.refused = ("DROP CORTEX EXTENSION",)
+    request = DropRequest(QualifiedName.parse(entry.qualified_name), "skill", EXTENSION, "dev")
+    result = DropObject(port, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(request)
+    assert result.outcome == "rejected" and set(port.remote_state or {}) == {key}

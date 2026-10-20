@@ -723,18 +723,17 @@ def test_report_only_prunes_are_listed_but_are_not_changes(tmp_path: Path, monke
     assert not any("CORTEX EXTENSION" in statement for statement in executed)
     assert "DB.SCH.MONTH_CLOSE" in port.extensions
 
-    # Strict promotes the plan's own warning that the skill has no source, as it would validation's.
-    for extra, severity, exit_code in (([], "warning", 0), (["--strict"], "error", 1)):
+    # A report-only prune warns of nothing, so strict mode passes it as well.
+    for extra in ([], ["--strict"]):
         planned = invoke_with_port(
             monkeypatch, port, ["plan", "--project-dir", str(project), "--prune", "--output", "json", *extra]
         )
-        assert planned.exit_code == exit_code, planned.output
+        assert planned.exit_code == 0, planned.output
         payload = json.loads(planned.output)
         assert payload["data"]["report_only"] == ["skill:month-close"]
         assert [(item["action"], item["report_only"]) for item in payload["data"]["changes"]] == [("prune", True)]
         assert [(item["code"], item["severity"]) for item in payload["diagnostics"]] == [
             ("SST-PLN034", "info"),
-            ("SST-VAL805", severity),
             ("SST-MAN026", "info"),
             ("SST-PLN016", "info"),
         ]

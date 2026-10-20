@@ -183,9 +183,14 @@ def compile_extensions(catalog: SkillCatalog) -> dict[str, CompiledExtension]:
 
 
 def publish_extensions(
-    port: FakeSnowflake, compiled: dict[str, CompiledExtension], previous: State, *, include_prune: bool = False
+    port: FakeSnowflake,
+    compiled: dict[str, CompiledExtension],
+    previous: State,
+    *,
+    include_prune: bool = False,
+    allow_prune: bool = False,
 ) -> tuple[ChangeSet, State]:
-    """Plan and apply the compiled extensions; return the plan and the state apply left."""
+    """Plan and apply the compiled extensions, the prunes with `allow_prune`; return the plan and the state left."""
     releases = {key: item.release for key, item in compiled.items()}
     handlers = {kind: ExtensionLifecycleHandler(port, releases, kind) for kind in ("skill", "plugin")}
     rendered = {key: item.rendered_artifact for key, item in compiled.items()}
@@ -196,5 +201,5 @@ def publish_extensions(
     store = InMemoryStateStore(previous)
     ApplyArtifacts(
         port, store, FixedClock(), state_table=QualifiedName.parse("DB.S.SST_STATE"), lifecycle_handlers=handlers
-    ).run(changeset, previous, ApplyOptions())
+    ).run(changeset, previous, ApplyOptions(allow_prune=allow_prune))
     return changeset, store.state or previous

@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOutcome,
     Change,
+    ChangeReason,
     ChangeSet,
     ObservedArtifact,
     OutcomeStatus,
@@ -148,7 +149,10 @@ def _record_prune(
 ) -> None:
     """Record a prune: a report-only one keeps its entry, and an applied one retires it.
 
-    A prune that ran but did not apply leaves the entry as it was.
+    A prune that ran but did not apply leaves the entry as it was. A composite prune leaves a
+    deactivated tombstone, unless the object was already gone (NOT_PRESENT): then the entry is
+    forgotten, since nothing is left to reactivate and a tombstone would vouch for any later
+    object of that name as SST's.
     """
     if not change.prune_executable:
         # Nothing was removed, so the entry stays as it was and the next plan reports it again.
@@ -156,7 +160,11 @@ def _record_prune(
     if outcome.status is not OutcomeStatus.APPLIED:
         return
     retired = previous.applied.get(change.key)
-    if change.artifact_type in lifecycle_handlers and retired is not None:
+    if (
+        change.artifact_type in lifecycle_handlers
+        and retired is not None
+        and change.reason is not ChangeReason.NOT_PRESENT
+    ):
         # A composite prune deactivates rather than drops, so the
         # object is still SST's: keep a tombstone to reactivate it.
         applied[change.key] = replace(retired, outcome=DEACTIVATED, applied_at=stamp.applied_at, run_id=stamp.run_id)

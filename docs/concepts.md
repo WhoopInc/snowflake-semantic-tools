@@ -429,7 +429,9 @@ still reference an evaluation. A report-only prune never makes `--strict` fail.
 Tools are never pruned. `apply --prune` needs `--yes`, and records that the
 source is gone; until it has, `plan` exits 2, because that apply still changes
 the state table. The plan keeps listing report-only objects until they are
-removed by hand.
+removed: `sst drop <name> --type skill` (or `plugin`) drops an extension state
+records, and a skill or plugin that is gone from the catalog, however it went,
+is forgotten by the next `apply --prune` (`SST-VAL861`).
 
 `--partial` lets `compile`, `plan`, and `apply` go ahead with every artifact
 that has no errors and depends on nothing that does. An error on a tool

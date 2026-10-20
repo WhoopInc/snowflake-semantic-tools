@@ -368,7 +368,7 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     (
         "sst drop",
         "--type",
-    ): "Required. The registered type of the object, which picks the DROP: agent or semantic_view.",
+    ): "Required. The registered type of the object, which picks the DROP: agent, plugin, semantic_view, or skill.",
     (
         "sst drop",
         "--target",

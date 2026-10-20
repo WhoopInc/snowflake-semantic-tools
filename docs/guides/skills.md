@@ -256,10 +256,15 @@ version that exists. The plan blocks a skill instead of publishing it when:
 - the prefix holds a file the bundle no longer has, which the new version would
   publish (`SST-VAL824`).
 
-SST never grants, drops, un-certifies, or changes the discoverability of an
-extension; access to extensions is managed outside SST. With `--prune`, a skill
-whose folder was deleted is only reported (`SST-VAL805`): remove the extension
-by hand once nothing uses it.
+SST never grants, un-certifies, or changes the discoverability of an
+extension, and a prune never drops one; access to extensions is managed outside
+SST. With `--prune`, a skill whose folder was deleted is only reported
+(`SST-PLN034`), naming the command that removes it once nothing uses it:
+`sst drop <name> --type skill --target <target> --yes`, which drops the
+extension only while state records it at a version it still lists, and forgets
+it. The next `apply --prune` forgets one already gone, dropped by hand
+included (`SST-VAL861`), so a later extension of that name is never taken for
+SST's.
 
 ## Using a skill from an agent
 

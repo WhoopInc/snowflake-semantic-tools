@@ -38,6 +38,7 @@ from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import empty_state, target
 from tests.helpers.clocks import FixedClock
 from tests.helpers.docstring_rules import documented_codes
+from tests.helpers.skill_inputs import publish_extensions
 from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import statement, texts
 
@@ -485,6 +486,7 @@ def test_stale_plan_prune_report_and_resource_merge() -> None:
         "m",
         physical_resources=(("CORTEX EXTENSION", "DB.S.MONTH_CLOSE"),),
     )
+    port.extensions["DB.S.MONTH_CLOSE"] = _listed()
     prune = handler.report_prune("skill:gone", entry)
     assert (prune.action, prune.prune_executable, prune.order) == (Action.PRUNE, False, 250)
     assert ExtensionLifecycleHandler(port, releases, "plugin").report_prune("plugin:gone", entry).order == 260
@@ -499,10 +501,46 @@ def test_a_prune_report_raises_exactly_the_codes_its_docstring_lists() -> None:
         FakeSnowflake(existing=()), {key: item.release for key, item in compiled.items()}, "skill"
     )
     entry = AppliedEntry("f", "DB.S.MONTH_CLOSE", "now", "run", "applied", "f", "m")
-    change = handler.report_prune("skill:gone", entry)
-    codes = [diagnostic.code for diagnostic in change.diagnostics]
-    assert codes == ["SST-PLN034", "SST-VAL805"]
+    # The fake holds no extension, so this one is gone; one that cannot be read is kept.
+    gone = handler.report_prune("skill:gone", entry)
+    unread = ExtensionLifecycleHandler(_refusing_observe(), {}, "skill").report_prune("skill:gone", entry)
+    codes = [diagnostic.code for change in (unread, gone) for diagnostic in change.diagnostics]
+    assert codes == ["SST-PLN034", "SST-VAL861"]
     assert documented_codes(inspect.getdoc(ExtensionLifecycleHandler.report_prune) or "") == codes
+    assert "could not be read (denied)" in unread.diagnostics[0].message
+
+
+def _listed() -> dict[str, object]:
+    """An extension the catalog lists, with no version: enough for a prune to keep it."""
+    return {"type": "SKILL", "comment": None, "versions": [], "live": None}
+
+
+def _refusing_observe() -> FakeSnowflake:
+    port = FakeSnowflake(existing=())
+    port.fail("observe_extension", SnowflakePortError("denied"))
+    return port
+
+
+def test_apply_with_prune_forgets_a_gone_extension_and_fails_one_that_is_back() -> None:
+    both = compile_catalog(SkillCatalog((skill(), skill("year-close"))))
+    kept = {key: item for key, item in both.items() if key == "skill:month-close"}
+    port = FakeSnowflake(existing=())
+    _, published = publish_extensions(port, both, empty_state())
+    back = dict(port.extensions)
+    del port.extensions["DB.S.YEAR_CLOSE"]
+    planned, forgot = publish_extensions(port, kept, published, include_prune=True, allow_prune=True)
+    assert "skill:year-close" in published.applied and "skill:year-close" not in forgot.applied
+    # Nothing was dropped: the prune only forgot the entry.
+    assert not any("DROP" in statement for script in port.scripts for statement in script)
+    [prune] = [change for change in planned.changes if change.key == "skill:year-close"]
+    port.extensions.update(back)
+    handler = ExtensionLifecycleHandler(port, {key: item.release for key, item in kept.items()}, "skill")
+    outcome = handler.apply(prune, ApplyOptions(allow_prune=True))
+    assert (outcome.status, outcome.error.code if outcome.error else None) == (OutcomeStatus.FAILED, "SST-APL012")
+    # Without --prune the prune is skipped, and the entry stays.
+    assert handler.apply(prune, ApplyOptions()).status is OutcomeStatus.SKIPPED
+    port.fail("observe_extension", SnowflakePortError("denied"))
+    assert handler.apply(prune, ApplyOptions(allow_prune=True)).status is OutcomeStatus.FAILED
 
 
 def test_prunes_and_changes_without_an_artifact_are_skipped() -> None:
@@ -510,6 +548,7 @@ def test_prunes_and_changes_without_an_artifact_are_skipped() -> None:
     port = FakeSnowflake(existing=())
     handler = ExtensionLifecycleHandler(port, {key: item.release for key, item in compiled.items()}, "skill")
     artifact = compiled["skill:month-close"].rendered_artifact
+    port.extensions["DB.S.MONTH_CLOSE"] = _listed()
     prune = handler.report_prune(
         "skill:month-close", AppliedEntry("f", "DB.S.MONTH_CLOSE", "now", "run", "a", "f", "m")
     )

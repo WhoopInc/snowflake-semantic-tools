@@ -245,13 +245,17 @@ class CompositeHandler(CompositeLifecycleHandler, Generic[SubjectT, ObservedT, P
         Diagnostics:
             SST-PLN034: the resources SST keeps, and what to do before removing them.
         """
+        return self._report_only(artifact_key, state_entry, self._prune_detail)
+
+    def _report_only(self, artifact_key: str, state_entry: AppliedEntry, detail: str) -> Change:
+        """Return the prune of an artifact apply never removes, its SST-PLN034 saying `detail`."""
         resources = ", ".join(resource.qualified_name for resource in state_entry.applied_resources) or artifact_key
         diagnostic = D(
             "SST-PLN034",
             subject=artifact_key,
             artifact=artifact_key,
             value=resources,
-            detail=self._prune_detail,
+            detail=detail,
         )
         return Change(
             artifact_key,

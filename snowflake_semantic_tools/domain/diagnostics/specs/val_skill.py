@@ -70,16 +70,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
-        "SST-VAL805",
-        Severity.WARNING,
-        "Repo and catalog disagree",
-        "skill reconciliation: {value}",
-        "publish the missing sources, and reap the orphan objects",
-        condition=("a plan finds an extension SST published whose source is gone from the project; SST never drops it"),
-        note="Restore the source, or drop the object yourself once nothing pins it (SST-PLN034 says what is kept).",
-        precheck=Precheck.OBSERVE,
-    ),
-    spec(
         "SST-VAL806",
         Severity.WARNING,
         "Folder-to-schema split introduced",
@@ -541,5 +531,22 @@ SPECS: tuple[ErrorSpec, ...] = (
         "profile '{artifact}': plugin '{name}' is not a plugin under the plugins directory",
         "name a plugin folder that has a plugin.yml",
         condition="a profile names a plugin not under the plugins directory",
+    ),
+    spec(
+        "SST-VAL861",
+        Severity.INFO,
+        "Deleted extension forgotten",
+        "{artifact}: {value} is gone from the catalog, so apply --prune forgets its state entry",
+        None,
+        condition=(
+            "a prune finds that a skill or plugin state records, whose source is gone from the project, is "
+            "no longer in the catalog: `sst drop` or someone by hand dropped it"
+        ),
+        note=(
+            "The apply drops nothing; it only removes the state entry, so a later extension of that name "
+            "is never taken for SST's. An extension still in the catalog stays report-only (SST-PLN034), "
+            "which names the `sst drop` that removes it."
+        ),
+        precheck=Precheck.OBSERVE,
     ),
 )

@@ -29,7 +29,7 @@ from snowflake_semantic_tools.adapters.dbt.profiles import resolve_profile_name
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths, locate_project
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
-from snowflake_semantic_tools.app.drop import DropObject, DropRequest, DropResult
+from snowflake_semantic_tools.app.drop import EXTENSION, DropObject, DropRequest, DropResult
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
@@ -44,13 +44,17 @@ from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 _WILDCARDS = frozenset("*?%[")
 
 
+# The extension-backed types, whose object the registry leaves unnamed: their handler publishes it.
+_EXTENSION_TYPES = ("plugin", "skill")
+
+
 def droppable_types() -> Mapping[str, str]:
     """Return each registered type one DROP statement removes, with the object type it names."""
-    return {
-        name: artifact.object_type
-        for name, artifact in sorted(SEMANTIC_REGISTRY.artifacts.items())
-        if artifact.object_type
+    types = {
+        name: artifact.object_type for name, artifact in SEMANTIC_REGISTRY.artifacts.items() if artifact.object_type
     }
+    types.update(dict.fromkeys(_EXTENSION_TYPES, EXTENSION))
+    return dict(sorted(types.items()))
 
 
 def _refuse(objects: tuple[str, ...], artifact_type: str | None, target_name: str | None, assume_yes: bool) -> None:
@@ -108,7 +112,9 @@ def drop(
     never a pattern; --type picks the DROP statement; --target has no default and
     `$SST_TARGET` is not read; the profile is --profile, else `dbt_project.yml`'s `profile:`.
     --yes is required on every invocation, and there is no prompt. Only an object carrying
-    SST's ownership marker is dropped. Drop holds the target's run lock, as apply does, and
+    SST's ownership marker is dropped; a skill's or plugin's extension, which carries none, only
+    when state records it at a version it still lists, and one already gone is forgotten.
+    Drop holds the target's run lock, as apply does, and
     deletes the object's entries from the state table the configuration's `state:` block
     names, or, when there is no configuration that reads, the target's default `SST_STATE`.
     One audit line goes to stderr before the statement and one after; --quiet does not silence
@@ -125,8 +131,9 @@ def drop(
         SST-PRT110: the object is a pattern rather than one name; raised.
         SST-PRT108: the object is not a three-part name; raised.
         SST-PRT109: --yes was not given; raised.
-        SST-PRT005: the object does not exist.
-        SST-PLN024: the object carries no SST ownership marker.
+        SST-PRT005: the object does not exist; an extension state records is forgotten.
+        SST-PLN024: the object carries no SST ownership marker, or, for an extension, state
+            does not record it at a version it still lists.
         SST-APL001: Snowflake refused the DROP.
         SST-APL011: another run holds the lock, or took it before state was updated.
         SST-APL010: an expired lock was taken over, with --break-stale-lock.

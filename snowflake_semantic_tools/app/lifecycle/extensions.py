@@ -11,7 +11,7 @@ from the same content: the version and the prefix it was added from.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from hashlib import sha256
 from threading import Lock
 from types import MappingProxyType
@@ -95,10 +95,9 @@ class _Observed:
 class ExtensionLifecycleHandler(CompositeHandler[ExtensionRelease, _Observed, CatalogPublicationPort]):
     """One handler per extension-backed artifact type (`skill` or `plugin`).
 
-    Prune is report-only: SST never drops an extension or a version.
+    A prune never drops an extension or a version: it is report-only while the extension
+    exists, and forgets the state entry once it is gone; `sst drop` is what removes one.
     """
-
-    _prune_detail = "remove the extension by hand once nothing uses it"
 
     def __init__(
         self, port: CatalogPublicationPort, releases: Mapping[str, ExtensionRelease], artifact_type: str
@@ -150,24 +149,63 @@ class ExtensionLifecycleHandler(CompositeHandler[ExtensionRelease, _Observed, Ca
         return _Run(self._port, change, artifact, release, current, self._stage_lock).publish()
 
     def report_prune(self, artifact_key: str, state_entry: AppliedEntry) -> Change:
-        """Report an extension the project no longer has a source for, which SST never drops.
+        """Forget an extension that is gone from the catalog; report one that is still there.
+
+        Reads only whether the extension state records still exists. Once it is gone the prune
+        is executable, and applying it forgets the state entry, so a later extension of that
+        name is never taken for SST's. One still there, or one that cannot be read, is
+        report-only: the report names `sst drop`, which removes it.
 
         Diagnostics:
-            SST-PLN034: the resources SST keeps, and what to do before removing them.
-            SST-VAL805: the repository and the catalog disagree: the extension has no source.
+            SST-PLN034: the extension still exists, or could not be read; how to remove it.
+            SST-VAL861: the extension is gone; apply with --prune forgets its state entry.
         """
-        change = super().report_prune(artifact_key, state_entry)
-        orphan = D(
-            "SST-VAL805",
-            subject=artifact_key,
-            value=f"{state_entry.qualified_name or artifact_key} is published and {artifact_key} has no source",
+        name = _parsed(state_entry.qualified_name)
+        unread = ""
+        try:
+            gone = name is not None and self._port.observe_extension(name) is None
+        except SnowflakePortError as exc:
+            gone, unread = False, f"whether it still exists could not be read ({_first_line(exc)}); "
+        if name is None or not gone:
+            remedy = _drop_remedy(state_entry.qualified_name or artifact_key, self.artifact_type)
+            return self._report_only(artifact_key, state_entry, unread + remedy)
+        observation = CompositeObservation(
+            artifact_key,
+            resources=(PhysicalResource("CORTEX EXTENSION", name, False),),
+            details=(("extension", name.sql),),
         )
-        return replace(change, diagnostics=DiagnosticBag((*change.diagnostics, orphan)))
+        forgotten = D("SST-VAL861", subject=artifact_key, artifact=artifact_key, value=name.sql)
+        return Change(
+            artifact_key,
+            self.artifact_type,
+            Action.PRUNE,
+            ChangeReason.NOT_PRESENT,
+            None,
+            None,
+            (),
+            self._prune_order,
+            DiagnosticBag((forgotten,)),
+            composite_observation=observation,
+        )
 
     def _apply_prune(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
-        """Skip a prune, which is report-only, with the artifact's text if the change carries one."""
-        del options
-        return skipped(change, change.rendered.ddl if change.rendered is not None else "")
+        """Forget a gone extension under --prune while it is still gone; skip a report-only prune.
+
+        A skipped prune reports the artifact's text if the change carries one. The applied
+        prune runs nothing: state forgets the entry, as `apply.state` records a NOT_PRESENT
+        prune. An extension that is back since the plan fails it (SST-APL012).
+        """
+        observation = change.composite_observation
+        if not change.prune_executable or not options.allow_prune or observation is None:
+            return skipped(change, change.rendered.ddl if change.rendered is not None else "")
+        name = QualifiedName.parse(dict(observation.details)["extension"])
+        try:
+            present = self._port.observe_extension(name) is not None
+        except SnowflakePortError as exc:
+            return failed(change, f"observation of {name.sql} failed: {_first_line(exc)}")
+        if present:
+            return failed(change, f"{name.sql} changed since the plan", code="SST-APL012")
+        return ApplyOutcome(change.key, change.action, OutcomeStatus.APPLIED, 0, 0, "")
 
     def recover(self, change: Change) -> RecoveryProof:
         """Prove an unrecorded extension serves this release's bundle under its alias, from its bundle prefix.
@@ -628,10 +666,29 @@ def _moved_schema(entry: AppliedEntry, release: ExtensionRelease) -> bool:
 
 
 def _recorded_target(entry: AppliedEntry, release: ExtensionRelease) -> bool:
+    recorded = _parsed(entry.qualified_name)
+    return recorded is not None and recorded.folded == release.target.folded
+
+
+def _parsed(name: str) -> QualifiedName | None:
+    """The qualified name `name` spells; None when it spells none."""
     try:
-        return QualifiedName.parse(entry.qualified_name).folded == release.target.folded
+        return QualifiedName.parse(name)
     except ValueError:
-        return False
+        return None
+
+
+def _drop_remedy(name: str, artifact_type: str) -> str:
+    """How to remove an extension a prune keeps, as SST-PLN034's detail says it."""
+    return (
+        f"an agent elsewhere may pin one of its versions; once none does, `sst drop {name} --type {artifact_type} "
+        "--target <target> --yes` drops it and forgets it, and one dropped by hand is forgotten by the next "
+        "`sst apply --prune`"
+    )
+
+
+def _first_line(error: Exception) -> str:
+    return (str(error).splitlines() or [type(error).__name__])[0]
 
 
 def _aliased(versions: tuple[ExtensionVersion, ...], alias: str) -> ExtensionVersion | None:

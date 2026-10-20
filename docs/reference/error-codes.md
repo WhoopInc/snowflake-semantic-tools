@@ -32,7 +32,7 @@ cannot be downgraded by any setting.
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
 - [Internal (INT)](#internal-int) -- 13 codes
-- [Retired numbers](#retired-numbers) -- 70 numbers
+- [Retired numbers](#retired-numbers) -- 71 numbers
 
 ## Registry (REG)
 
@@ -5086,18 +5086,6 @@ Fix: reference it, or stop publishing it
 
 Note: A skill people use directly from the catalog has a consumer SST cannot see; baseline the warning, or demote it with `diagnostics.severity_overrides`.
 
-### SST-VAL805
-
-**Repo and catalog disagree** (warning)
-
-`skill reconciliation: <value>`
-
-Raised when a plan finds an extension SST published whose source is gone from the project; SST never drops it.
-
-Fix: publish the missing sources, and reap the orphan objects
-
-Note: Restore the source, or drop the object yourself once nothing pins it (SST-PLN034 says what is kept).
-
 ### SST-VAL806
 
 **Folder-to-schema split introduced** (warning)
@@ -5615,6 +5603,16 @@ Fix: frontmatter is optional; when present it is a YAML mapping of description, 
 Raised when a profile names a plugin not under the plugins directory.
 
 Fix: name a plugin folder that has a plugin.yml
+
+### SST-VAL861
+
+**Deleted extension forgotten** (info)
+
+`<artifact>: <value> is gone from the catalog, so apply --prune forgets its state entry`
+
+Raised when a prune finds that a skill or plugin state records, whose source is gone from the project, is no longer in the catalog: `sst drop` or someone by hand dropped it.
+
+Note: The apply drops nothing; it only removes the state entry, so a later extension of that name is never taken for SST's. An extension still in the catalog stays report-only (SST-PLN034), which names the `sst drop` that removes it.
 
 ## dbt (DBT)
 
@@ -8596,6 +8594,14 @@ Retired because evals evaluate agents only; the Cortex Analyst evaluation this g
 **Analyst evals cannot colocate with their ground truth** (retired in 1.0.0)
 
 Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL805
+
+**Repo and catalog disagree** (retired in 1.0.0)
+
+Retired because a prune reports an extension it keeps with SST-PLN034, which names the `sst drop` that removes it, and forgets one already gone (SST-VAL861); the warning only repeated it, and under strict refused every plan.
+
+Superseded by [`SST-PLN034`](#sst-pln034).
 
 ### SST-VAL817
 

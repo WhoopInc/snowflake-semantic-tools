@@ -481,6 +481,14 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         "no configuration key is required: a stage left unset leaves its skills, plugins, or profiles unpublished",
     ),
     (
+        "SST-VAL805",
+        "Repo and catalog disagree",
+        "SST-PLN034",
+        "a prune reports an extension it keeps with SST-PLN034, which names the `sst drop` that removes it, "
+        "and forgets one already gone (SST-VAL861); the warning only repeated it, and under strict refused "
+        "every plan",
+    ),
+    (
         "SST-VAL817",
         "No publication channel configured",
         None,

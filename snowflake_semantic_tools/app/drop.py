@@ -11,6 +11,10 @@ reads no project, so that is all it can know of what depends on the object.
 Only then does it run the one DROP statement, and record the removal in state the way apply
 records a prune: each entry naming the object is deleted from the state table in one write, and
 from the local cache when one exists.
+
+A skill's or plugin's extension carries no ownership marker, so state alone vouches for it: an
+entry of the type names it, and the version that entry records is one the extension still
+lists. An extension already gone is forgotten, as `sst apply --prune` forgets it.
 """
 
 from __future__ import annotations
@@ -38,6 +42,8 @@ from snowflake_semantic_tools.domain.state.lock import LockClaim, LockFence, Sta
 from snowflake_semantic_tools.domain.validate.agent_live import live_spec, names_object
 
 DROPPED, REJECTED, ABSENT, REFUSED = "dropped", "rejected", "absent", "refused"
+# The object type of a skill's or plugin's extension, which state alone vouches for.
+EXTENSION = "CORTEX EXTENSION"
 # The artifact type whose live specifications name the objects a drop may break.
 _AGENT = "agent"
 _DEFAULT_LOCK_POLICY = LockPolicy()
@@ -141,9 +147,11 @@ class DropObject:
             SST-APL011: another run holds the lock, or broke it before the dropped object's
                 state entries could be deleted; they are then left as they are.
             SST-APL010: the request breaks stale locks, and an expired one was taken over.
-            SST-PRT005: the named object does not exist.
+            SST-PRT005: the named object does not exist; an extension state records is
+                forgotten all the same.
             SST-PLN024: the object carries no SST ownership marker, or one naming a manifest
-                the target's state never applied while state does not record the object.
+                the target's state never applied while state does not record the object; an
+                extension state does not record at a version it still lists.
             SST-PLN017: an agent state records names the object; it is dropped all the same.
             SST-APL001: Snowflake refused the DROP; with the refusal under its SNO code.
         """
@@ -165,6 +173,8 @@ class DropObject:
         return replace(result, diagnostics=DiagnosticBag((*reported, *result.diagnostics)))
 
     def _run_locked(self, request: DropRequest, fence: LockFence) -> DropResult:
+        if request.object_type == EXTENSION:
+            return self._drop_extension(request, fence)
         name = request.qualified_name
         if not self._port.object_exists(request.object_type, name):
             detail = f"no {request.object_type} of that name"
@@ -174,6 +184,30 @@ class DropObject:
         entries = self._port.read_state(self._state_table, request.target_name) or {}
         manifest = self._port.read_state_manifest(self._state_table, request.target_name)
         if marker is None or not _trusted(marker, entries, manifest, request):
+            unowned = D("SST-PLN024", subject=request.artifact, artifact=request.artifact, value=name.sql)
+            return DropResult(REFUSED, DiagnosticBag((unowned,)))
+        dependents = self._dependents(request, entries)
+        executed = self._port.execute_script((request.drop_sql,))
+        if not executed.ok:
+            return DropResult(REJECTED, DiagnosticBag((*dependents, *_rejection(request, executed.error))))
+        forgotten = self._forget(request, fence, entries, manifest)
+        if forgotten is None:
+            broken = D("SST-APL011", value=BROKEN_BY_ANOTHER_RUN)
+            return DropResult(DROPPED, DiagnosticBag((*dependents, broken)))
+        return DropResult(DROPPED, DiagnosticBag(dependents), forgotten)
+
+    def _drop_extension(self, request: DropRequest, fence: LockFence) -> DropResult:
+        """Drop an extension state records at a version it still lists; forget one already gone."""
+        name = request.qualified_name
+        entries = self._port.read_state(self._state_table, request.target_name) or {}
+        manifest = self._port.read_state_manifest(self._state_table, request.target_name)
+        if self._port.observe_extension(name) is None:
+            absent = D("SST-PRT005", subject=request.artifact, value=name.sql, detail=f"no {EXTENSION} of that name")
+            forgotten = self._forget(request, fence, entries, manifest)
+            return DropResult(ABSENT, DiagnosticBag((absent,)), forgotten or ())
+        listed = {version.name for version in self._port.extension_versions(name)}
+        owned = [key for key in _recording(entries, request) if _recorded_version(entries[key]) in listed]
+        if not owned:
             unowned = D("SST-PLN024", subject=request.artifact, artifact=request.artifact, value=name.sql)
             return DropResult(REFUSED, DiagnosticBag((unowned,)))
         dependents = self._dependents(request, entries)
@@ -274,6 +308,11 @@ def _recording(entries: Mapping[str, AppliedEntry], request: DropRequest) -> tup
             if split_artifact_key(key)[0] == request.artifact_type and _folded(entry.qualified_name) == folded
         )
     )
+
+
+def _recorded_version(entry: AppliedEntry) -> str:
+    """Return the extension version an entry records it published; empty when it records none."""
+    return dict(entry.component_fingerprints).get("version", "")
 
 
 def _folded(name: str) -> object:

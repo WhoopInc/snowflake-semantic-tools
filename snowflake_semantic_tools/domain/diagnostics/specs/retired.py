@@ -80,6 +80,7 @@ RETIRED_CODES: Mapping[str, str] = MappingProxyType(
             "SST-VAL754",
             "SST-VAL756",
             "SST-VAL757",
+            "SST-VAL805",
             "SST-VAL817",
             "SST-VAL818",
             "SST-VAL819",
