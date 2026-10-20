@@ -40,6 +40,20 @@ def compiled(*, alias: str | None = "promoted") -> CompiledAgent:
     )
 
 
+def test_a_dirty_agent_names_its_commit_dirty_in_each_version_and_stages_under_the_sha() -> None:
+    value = for_publication(
+        compiled(), stage=QualifiedName.parse("DB.S.AGENT_SPECS"), git_sha="abc1234", dirty=True
+    ).rendered_artifact
+    dirty = f"git:abc1234-dirty sst-spec:{spec_fingerprint(PAYLOAD)}"
+    assert value.upload_path == "@DB.S.AGENT_SPECS/agent/abc1234/agent_spec.yaml"
+    for program in (value.statements, value.update_statements, value.update_live_statements):
+        labelled = [text for text in texts(program) if "git:" in text]
+        assert labelled
+        assert all(text.endswith(f"'{dirty}'") for text in labelled)
+    # Plan still reads the fingerprint back from the labelled comment.
+    assert held_spec_fingerprint(dirty, None) == spec_fingerprint(PAYLOAD)
+
+
 def test_permanent_agent_create_keeps_the_live_version_then_alias_and_tags() -> None:
     value = for_publication(
         compiled(),

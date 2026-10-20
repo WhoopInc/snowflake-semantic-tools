@@ -89,7 +89,9 @@ command reads it. Nothing else compares severities to decide whether a run block
 1. **Declared.** `D` builds the diagnostic at the registry's severity.
 2. **Overrides.** `diagnostics.severity_overrides` in `sst_config.yml` sets a code's severity for
    the project, and the diagnostic records the override.
-3. **Strict.** `--strict` or `validation.strict` promotes every warning to an error; the flag wins
+3. **Strict.** `--strict` or `validation.strict` promotes every warning to an error, except a code
+   registered `strict_exempt` (*never promoted* in the error reference), which reports a state a
+   person is expected to be in or one the planned apply repairs; the flag wins
    when both are set, and `SST-CFG034` reports the disagreement. Promotion follows the run's
    selection: a run restricted by `--select` or `--exclude` promotes no warning about an artifact it
    leaves out, since it plans and publishes none of them. A warning that names no artifact concerns

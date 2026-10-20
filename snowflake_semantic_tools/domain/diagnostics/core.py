@@ -69,6 +69,9 @@ class ErrorSpec:
         subsystem: The three letters after ``SST-``, which place the code in the error reference.
         phase: The subsystem in lowercase, reported as each diagnostic's phase.
         demotable: False for an error that no setting may downgrade ("always an error").
+        strict_exempt: A warning strict mode leaves a warning: it reports a state a person is
+            expected to be in, or one the apply being planned repairs, so promoting it would
+            block exactly the run that resolves it.
         internal_detail: Whether the JSON envelope also reports each of its diagnostics' `detail`
             value on its own, the same text the message shows; only INT and SNO codes may.
         deprecated_in: The release that deprecated the code; None while it is current.
@@ -87,6 +90,7 @@ class ErrorSpec:
     phase: str
     help_url: str
     demotable: bool = True
+    strict_exempt: bool = False
     internal_detail: bool = False
     deprecated_in: str | None = None
     superseded_by: str | None = None
@@ -153,6 +157,7 @@ def spec(
     suggestion: str | None,
     *,
     demotable: bool = True,
+    strict_exempt: bool = False,
     internal_detail: bool = False,
     deprecated_in: str | None = None,
     superseded_by: str | None = None,
@@ -164,8 +169,8 @@ def spec(
 
     Args:
         demotable: False for an error that no setting may downgrade.
-        internal_detail, deprecated_in, superseded_by, condition, note, precheck: As
-            `ErrorSpec` documents them; most conditions are `Precheck.LOCAL`.
+        strict_exempt, internal_detail, deprecated_in, superseded_by, condition, note, precheck:
+            As `ErrorSpec` documents them; most conditions are `Precheck.LOCAL`.
     """
     return ErrorSpec(
         code=code,
@@ -177,6 +182,7 @@ def spec(
         phase=code.split("-")[1][:3].casefold(),
         help_url=f"{ERROR_REFERENCE_URL}#{code.casefold()}",
         demotable=demotable,
+        strict_exempt=strict_exempt,
         internal_detail=internal_detail,
         deprecated_in=deprecated_in,
         superseded_by=superseded_by,

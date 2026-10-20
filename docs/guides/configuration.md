@@ -284,7 +284,8 @@ lower, and an info a warning, no higher. A code the error registry marks
 non-demotable cannot be lowered at all. An override that breaks these rules is
 an error (`SST-CFG033`), and one that names no registered code is a warning
 (`SST-CFG003`). `validation.strict` and `--strict` apply after the overrides:
-every warning then left, an overridden one included, becomes an error.
+every warning then left, an overridden one included, becomes an error, except a code
+the error reference marks *never promoted*.
 Whitespace findings (`SST-LOD012` for trailing whitespace and CRLF, `SST-VAL009`
 for tabs and the final newline) are info, so strict mode never promotes them and
 they never block a plan or an apply; `sst format --check` is their gate. The

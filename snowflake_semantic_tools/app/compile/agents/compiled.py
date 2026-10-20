@@ -51,6 +51,8 @@ class CompiledAgent(StandaloneArtifact):
         stage: The stage `stage_path` starts with; None until `for_publication` sets it.
         temporary: Publish as a TEMPORARY agent created from the inline specification,
             staging nothing.
+        dirty: The project had uncommitted changes, so each version committed is labelled
+            `git:<sha>-dirty`; the stage path still names the sha.
     """
 
     resolved: ResolvedAgent
@@ -60,6 +62,7 @@ class CompiledAgent(StandaloneArtifact):
     stage_path: str = ""
     temporary: bool = False
     stage: QualifiedName | None = None
+    dirty: bool = False
 
     @property
     def name(self) -> str:
@@ -118,6 +121,7 @@ class CompiledAgent(StandaloneArtifact):
             temporary=self.temporary,
             payload=self.payload,
             comment=comment,
+            dirty=self.dirty,
         )
         artifact = RenderedArtifact.create(
             key=self.artifact_key,
@@ -175,17 +179,20 @@ def for_publication(
     stage: QualifiedName,
     git_sha: str,
     temporary: bool = False,
+    dirty: bool = False,
 ) -> CompiledAgent:
     """Return the agent ready to publish: staged under `<stage>/<agent>/<git_sha>`, or temporary.
 
     Compile leaves an agent without a stage path, so it has no statements; plan and apply
-    call this first. A temporary agent keeps the stage path but stages nothing.
+    call this first. A temporary agent keeps the stage path but stages nothing. A `dirty`
+    agent's versions are labelled `git:<sha>-dirty`.
     """
     return replace(
         compiled,
         stage_path=f"{stage.sql}/{compiled.name}/{git_sha}",
         temporary=temporary,
         stage=stage,
+        dirty=dirty,
     )
 
 
@@ -208,6 +215,7 @@ def _agent_programs(
     temporary: bool,
     payload: str,
     comment: str | None,
+    dirty: bool = False,
 ) -> _Programs:
     """Return the statement programs that publish an agent.
 
@@ -239,6 +247,7 @@ def _agent_programs(
     Args:
         location: The stage directory and the git sha it is named for; None when unstaged.
         comment: The comment carrying the ownership marker; None publishes no metadata.
+        dirty: Label each committed version's commit `<sha>-dirty`, as `version_comment` does.
 
     Raises:
         ValueError: a temporary agent's specification holds `$$`, which would end the
@@ -264,7 +273,7 @@ def _agent_programs(
         unstaged = (*lead, *tail)
         return _Programs(unstaged, unstaged, unstaged)
     directory, git_sha = location
-    create, update, update_live = _version_programs(agent, directory, git_sha, payload, comment)
+    create, update, update_live = _version_programs(agent, directory, git_sha, payload, comment, dirty)
     metadata = (*_alias_statement(model, agent), *_tag_statements(model, agent))
     return _Programs(
         create=(*create, *metadata, *tail),
@@ -276,14 +285,15 @@ def _agent_programs(
 
 
 def _version_programs(
-    agent: Sql, directory: Sql, git_sha: str, payload: str, comment: str | None
+    agent: Sql, directory: Sql, git_sha: str, payload: str, comment: str | None, dirty: bool
 ) -> tuple[tuple[Sql, ...], tuple[Sql, ...], tuple[Sql, ...]]:
     """Return the statements of the create, update, and update-live programs that commit a version.
 
-    Each committed version's comment carries the git sha and the specification's fingerprint;
-    CREATE AGENT also sets the agent's marked `comment` when there is one.
+    Each committed version's comment carries the git sha, `-dirty` after it for a `dirty`
+    agent, and the specification's fingerprint; CREATE AGENT also sets the agent's marked
+    `comment` when there is one.
     """
-    version_comment_text = literal(version_comment(git_sha, payload))
+    version_comment_text = literal(version_comment(git_sha, payload, dirty=dirty))
     created = (
         sql("CREATE AGENT {agent}\n  FROM {directory}", agent=agent, directory=directory)
         if comment is None

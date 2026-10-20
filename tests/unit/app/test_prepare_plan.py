@@ -167,7 +167,29 @@ def test_run_plans_from_state_with_agents_staged_and_every_composite_type_handle
     assert agent_change.rendered is not None
     assert "@SPECS.SCH.AGENT_STAGE/helper/abc1234" in "\n".join(texts(agent_change.rendered.statements))
     assert ready.state.applied == {"semantic_view:gone": gone}
-    assert inputs.reads[-2:] == ["config", "git_sha"]
+    # Clean, so no version is labelled dirty.
+    assert "-dirty" not in "\n".join(texts(agent_change.rendered.statements))
+    assert inputs.reads[-3:] == ["config", "git_dirty", "git_sha"]
+
+
+def test_a_plan_from_uncommitted_files_labels_each_agent_version_dirty_and_warns() -> None:
+    tree: dict[str, object] = {"apply": {"agent_spec_stage": {"database": "SPECS", "stage": "AGENT_STAGE"}}}
+    inputs = InMemoryProjectInputs(tree=tree, uncommitted=("agents/helper/agent.yml",))
+    candidates, use_case, _ = select(compiled(tree=tree, agents=("helper",)), inputs=inputs)
+    store = InMemoryStateStore(State.empty(dev_target()))
+    assert isinstance(candidates, PlanCandidates)
+
+    ready = use_case.run(candidates, ScopeRecordingSnowflake(), store, target=dev_target(), state_table=STATE_TABLE)
+
+    assert isinstance(ready, PlanReady)
+    agent_change = next(change for change in ready.changeset.changes if change.artifact_type == "agent")
+    assert agent_change.rendered is not None
+    statements = "\n".join(texts(agent_change.rendered.statements))
+    # The stage path keeps the sha; the version names it dirty.
+    assert "@SPECS.SCH.AGENT_STAGE/helper/abc1234/" in statements
+    assert "'git:abc1234-dirty sst-spec:" in statements
+    [warning] = [item for item in ready.changeset.diagnostics if item.code == "SST-PLN042"]
+    assert "(agents/helper/agent.yml), so the 1 agent version(s)" in warning.message
 
 
 def test_a_strict_plan_is_not_refused_over_a_local_state_cache_the_table_overrides() -> None:

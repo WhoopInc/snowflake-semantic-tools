@@ -7,7 +7,7 @@ under a diagnostic points at its entry here. Codes are never reused.
 
 - **error** blocks the command.
 - **warning** does not block, and becomes an error under `--strict` or
-  `validation.strict: true`.
+  `validation.strict: true`, except a code marked *never promoted*.
 - **info** never blocks.
 
 Placeholders in a message are shown as `<name>`. Codes marked *always an error*
@@ -26,7 +26,7 @@ cannot be downgraded by any setting.
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
-- [Planning (PLN)](#planning-pln) -- 44 codes
+- [Planning (PLN)](#planning-pln) -- 45 codes
 - [Apply (APL)](#apply-apl) -- 41 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 12 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
@@ -6731,6 +6731,18 @@ Raised when reading the live definition of an object a planned update changes fa
 Fix: check that the role can DESCRIBE the object and read its versions or staged files, or plan with --no-diff to skip the read
 
 Note: The plan is otherwise unaffected: the update is planned as before, and reported as a changed definition without its members.
+
+### SST-PLN042
+
+**Agent versions published from uncommitted changes** (warning, never promoted)
+
+`` the project has uncommitted changes (<value>), so the <count> agent version(s) this plan commits name their commit as `git:<sha>-dirty` ``
+
+Raised when `git status` lists a changed or untracked path under the project, SST's build directory aside, and the plan creates an agent or adds a version to one.
+
+Fix: commit the changes and plan again, so each version names the commit that holds its specification
+
+Note: Each such version's comment reads `git:<sha>-dirty sst-spec:<fingerprint>`, since `<sha>` does not hold its specification; the stage path, an eval dataset's METADATA and state still record the sha. Strict mode leaves this a warning: someone editing a project has uncommitted files, and a CI checkout has none.
 
 ### SST-PLN100
 

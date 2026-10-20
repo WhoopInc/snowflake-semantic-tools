@@ -222,6 +222,15 @@ class ProjectInputs(SemanticViewSource, Protocol):
         """
         ...
 
+    def git_dirty(self) -> tuple[str, ...]:
+        """Return the project's uncommitted paths, changed or untracked, as git lists them.
+
+        Returns:
+            The paths, sorted, SST's build directory left out; none when the work tree is clean
+            or the project is not in a git work tree.
+        """
+        ...
+
     def validation_defaults(self) -> ValidationDefaults:
         """Return the `validation:` block, with each key the document omits at its default.
 

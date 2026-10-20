@@ -2,7 +2,8 @@
 
 Two names are looked up when they are needed rather than when this module is imported,
 so replacing either one changes what every command sees: the commit comes from this
-module's `git_sha`, and every connection is opened through `cli.main.SnowflakeConnector`.
+module's `git_sha` (and the uncommitted paths from its `git_dirty`), and every connection is
+opened through `cli.main.SnowflakeConnector`.
 A connection opened here is closed again if anything fails before it is handed back.
 """
 
@@ -56,13 +57,42 @@ def git_sha(project_dir: Path) -> str:
     return value if completed.returncode == 0 and value else UNKNOWN_GIT_SHA
 
 
+def git_dirty(project_dir: Path) -> tuple[str, ...]:
+    """Return the project's uncommitted paths, sorted; none when it is clean or git cannot say.
+
+    `git status` lists changed and untracked paths under the project, relative to the work
+    tree's root. SST's build directory is left out, since every compile writes it.
+    """
+    import subprocess
+
+    excluded = f":(exclude){target_dir(project_dir).relative_to(project_dir).as_posix()}"
+    completed = subprocess.run(
+        ["git", "-C", str(project_dir), "status", "--porcelain", "-z", "--", ".", excluded],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return ()
+    paths: set[str] = set()
+    entries = iter(completed.stdout.split("\0"))
+    for entry in entries:
+        if len(entry) > 3:
+            paths.add(entry[3:])
+            # A rename or copy is followed by the path it came from, which is not a change.
+            if entry[0] in "RC":
+                next(entries, None)
+    return tuple(sorted(paths))
+
+
 def project_inputs(
     files: ProjectPaths, target_name: str | None, manifest_path: Path | None, *, database: str | None = None
 ) -> YamlProjectInputs:
     """Bind the project's files as the inputs every use case reads.
 
-    The commit is asked for through this module's `git_sha`, looked up when a use case
-    needs it, so replacing `git_sha` here changes the commit every use case sees. Under a click
+    The commit is asked for through this module's `git_sha`, and the uncommitted paths
+    through its `git_dirty`, each looked up when a use case needs it, so replacing one here
+    changes what every use case sees. Under a click
     command, every input the command builds shares one load cache, so a file read twice in the
     run is parsed once. The cache notes the reads it served only under `--verbose`, and a stale
     `--manifest` is a warning only under the command's `--allow-stale-manifest`.
@@ -76,6 +106,7 @@ def project_inputs(
         target_name=target_name,
         manifest_path=manifest_path,
         git_sha=lambda: git_sha(files.project_dir),
+        git_dirty=lambda: git_dirty(files.project_dir),
         database=database,
         load_cache=context.meta.setdefault(LOAD_CACHE, LoadCache(note_hits=verbose_run()))
         if context is not None

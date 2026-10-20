@@ -54,6 +54,7 @@ class InMemoryProjectInputs:
     agent_diagnostics: DiagnosticBag = DiagnosticBag()
     evals: EvalCatalog = field(default_factory=lambda: EvalCatalog((), ()))
     revision: str = "abc1234"
+    uncommitted: tuple[str, ...] = ()
     validation: ValidationDefaults = field(default_factory=ValidationDefaults)
     sources: ManifestSources = EMPTY_SOURCES
     reads: list[str] = field(default_factory=list)
@@ -120,6 +121,10 @@ class InMemoryProjectInputs:
     def git_sha(self) -> str:
         self.reads.append("git_sha")
         return self.revision
+
+    def git_dirty(self) -> tuple[str, ...]:
+        self.reads.append("git_dirty")
+        return self.uncommitted
 
     def validation_defaults(self) -> ValidationDefaults:
         self.reads.append("validation_defaults")

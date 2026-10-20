@@ -235,7 +235,9 @@ change to state since the plan read it is `SST-APL012`. For `SST-APL011`, see
 
 ## A warning started failing the build
 
-`--strict` and `validation.strict: true` promote every warning to an error. Each
+`--strict` and `validation.strict: true` promote every warning to an error, except
+the few codes the [error reference](../reference/error-codes.md) marks *never promoted*,
+such as `SST-PLN042` for uncommitted files. Each
 is printed as `error[...] (promoted from warning)`, and the JSON envelope's
 `summary.promoted` counts them. A warning the baseline holds stays baselined and
 does not block. A run narrowed by `--select` or `--exclude` promotes no warning

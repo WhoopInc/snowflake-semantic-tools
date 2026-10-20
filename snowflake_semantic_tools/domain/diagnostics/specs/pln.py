@@ -492,6 +492,25 @@ SPECS: tuple[ErrorSpec, ...] = (
         precheck=Precheck.OBSERVE,
     ),
     spec(
+        "SST-PLN042",
+        Severity.WARNING,
+        "Agent versions published from uncommitted changes",
+        "the project has uncommitted changes ({value}), so the {count} agent version(s) this plan "
+        "commits name their commit as `git:<sha>-dirty`",
+        "commit the changes and plan again, so each version names the commit that holds its specification",
+        strict_exempt=True,
+        condition=(
+            "`git status` lists a changed or untracked path under the project, SST's build "
+            "directory aside, and the plan creates an agent or adds a version to one"
+        ),
+        note=(
+            "Each such version's comment reads `git:<sha>-dirty sst-spec:<fingerprint>`, since "
+            "`<sha>` does not hold its specification; the stage path, an eval dataset's METADATA "
+            "and state still record the sha. Strict mode leaves this a warning: someone editing "
+            "a project has uncommitted files, and a CI checkout has none."
+        ),
+    ),
+    spec(
         "SST-PLN100",
         Severity.ERROR,
         "Smoke query failed",

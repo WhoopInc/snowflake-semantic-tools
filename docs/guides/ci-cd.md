@@ -13,7 +13,8 @@ sst compile --target prod --emit-ddl target/ddl/
 sst plan --target prod --output json > plan.json || test $? -eq 2
 ```
 
-- `validate --strict` promotes every warning to an error. `--no-strict` fails
+- `validate --strict` promotes every warning to an error, except a code the error
+  reference marks *never promoted*. `--no-strict` fails
   on errors only; with neither flag, `validation.strict` in `sst_config.yml`
   decides. `validate` connects when `validation.snowflake_syntax_check` is true,
   to compile expressions against Snowflake; `--no-snowflake-syntax-check` keeps

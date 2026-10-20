@@ -343,7 +343,8 @@ class YamlProjectInputs(ProjectInputs):
 
     Implements `domain.ports.project.ProjectInputs`, whose methods document the contract.
     Without a dbt manifest path, the semantic views and tools run `dbt parse` first. The
-    commit comes from `git_sha`, which the CLI supplies, so the CLI decides how git is asked.
+    commit comes from `git_sha`, and the uncommitted paths from `git_dirty`, which the CLI
+    supplies, so the CLI decides how git is asked; without `git_dirty`, none are.
     `allow_stale_manifest` is passed to the source, as `YamlProjectSource` describes.
     """
 
@@ -354,6 +355,7 @@ class YamlProjectInputs(ProjectInputs):
         target_name: str | None,
         manifest_path: Path | None,
         git_sha: Callable[[], str],
+        git_dirty: Callable[[], tuple[str, ...]] = tuple,
         database: str | None = None,
         dbt_runner: DbtRunner = subprocess_runner,
         load_cache: LoadCache | None = None,
@@ -375,6 +377,7 @@ class YamlProjectInputs(ProjectInputs):
             allow_stale_manifest=allow_stale_manifest,
         )
         self._git_sha = git_sha
+        self._git_dirty = git_dirty
 
     def config(self) -> ProjectConfig:
         return resolved_config(self._files, self._target_name)
@@ -424,6 +427,9 @@ class YamlProjectInputs(ProjectInputs):
 
     def git_sha(self) -> str:
         return self._git_sha()
+
+    def git_dirty(self) -> tuple[str, ...]:
+        return self._git_dirty()
 
     def validation_defaults(self) -> ValidationDefaults:
         validation = config_block(self.config().tree.get("validation"))

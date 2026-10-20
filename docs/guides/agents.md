@@ -615,6 +615,12 @@ to `@<stage>/<agent>/<commit>/agent_spec.yaml` under `apply.agent_spec_stage`
    `ADD LIVE VERSION FROM LAST` opens a new live version holding the version
    just committed.
 
+   `<commit>` is the project's HEAD, or `<sha>-dirty` when `git status` lists an
+   uncommitted path under the project (SST's `sst_target/` aside), since HEAD does not
+   then hold the spec; plan warns about it (`SST-PLN042`). The stage folder, an eval
+   dataset's METADATA and the state table keep the plain sha. Commit before applying
+   to a shared target, so each version names the commit that holds it.
+
    Apply leaves every agent with a live version because Snowsight's agent page
    shows the live version (as DRAFT), and a request that names no version is
    served it while the agent has one committed version. Without one, the agent

@@ -403,7 +403,8 @@ class PreparePlan:
             state, state_diagnostics = read_state(state_store, port, state_table=state_table, target=target)
         apply_config = config_block(self._inputs.config().tree.get("apply"))
         handlers = _lifecycle_handlers(port, candidates.full, apply_config)
-        rendered = self._publication(result, manifest, apply_config, target, temporary=temporary)
+        uncommitted = self._inputs.git_dirty()
+        rendered = self._publication(result, manifest, apply_config, target, temporary, bool(uncommitted))
         fetched_at = self._clock.now_iso()
         started = self._clock.monotonic_ms()
         planner = PlanArtifacts(
@@ -432,9 +433,7 @@ class PreparePlan:
         recorded = RecordedObservation(target, reading.observation, state, reading.preflight)
         leading = (*state_diagnostics, *((stale,) if stale else ()))
         trailing = (*channel_divergence(port, result), *unread)
-        ready = _ready(
-            candidates, result, manifest, state, changeset, handlers, held, leading=leading, trailing=trailing
-        )
+        ready = _ready(candidates, result, manifest, state, changeset, handlers, held, leading, trailing, uncommitted)
         return replace(ready, recorded=None if reading.failures.has_errors else recorded)
 
     def _diffed(
@@ -491,13 +490,14 @@ class PreparePlan:
         held = _Held(self._policy(candidates), promoted)
         target, state = recorded.target, recorded.state
         apply_config = config_block(self._inputs.config().tree.get("apply"))
-        rendered = self._publication(result, manifest, apply_config, target, temporary=temporary)
+        uncommitted = self._inputs.git_dirty()
+        rendered = self._publication(result, manifest, apply_config, target, temporary, bool(uncommitted))
         reading = TargetReading(recorded.observation, recorded.preflight)
         composites = unrecorded_composites(rendered)
         changeset = _decided(candidates, rendered, reading, manifest, state, target, {}, composites)
         cached = CachedObservation(recorded.fetched_at, seconds_between(recorded.fetched_at, self._clock.now_iso()))
         age = D("SST-PLN016", value=f"planned from the observation recorded at {cached.fetched_at}, {cached.age} old")
-        ready = _ready(candidates, result, manifest, state, changeset, {}, held, leading=(age,), trailing=())
+        ready = _ready(candidates, result, manifest, state, changeset, {}, held, (age,), (), uncommitted)
         return replace(ready, cached=cached)
 
     def _policy(self, candidates: PlanCandidates) -> SeverityPolicy:
@@ -538,8 +538,8 @@ class PreparePlan:
         manifest: Manifest,
         apply_config: Mapping[str, object],
         target: TargetIdentity,
-        *,
         temporary: bool = False,
+        dirty: bool = False,
     ) -> dict[str, RenderedArtifact]:
         """Render each selected artifact as apply publishes it, by key, agents staged for publication.
 
@@ -547,7 +547,8 @@ class PreparePlan:
         schema unless the block names others, beneath a folder for the project's commit; each
         eval's dataset version records that commit. The agent's upload names the stage, so the
         preflight checks it and apply creates it when it is absent. Each carries its members'
-        fingerprints, which apply records in state.
+        fingerprints, which apply records in state. With `dirty`, each agent version names its
+        commit `<sha>-dirty`.
         """
         stage_config = config_block(apply_config.get("agent_spec_stage"))
         database = target.database.folded
@@ -560,7 +561,7 @@ class PreparePlan:
         git_sha = self._inputs.git_sha()
         compiled = tuple(
             (
-                for_publication(item, stage=stage, git_sha=git_sha, temporary=temporary)
+                for_publication(item, stage=stage, git_sha=git_sha, temporary=temporary, dirty=dirty)
                 if isinstance(item, CompiledAgent)
                 # A dataset version records the commit in its METADATA.
                 else replace(item, git_sha=git_sha)
@@ -620,9 +621,9 @@ def _ready(
     changeset: ChangeSet,
     handlers: Mapping[str, CompositeLifecycleHandler],
     held: _Held,
-    *,
     leading: tuple[Diagnostic, ...],
     trailing: tuple[Diagnostic, ...],
+    uncommitted: tuple[str, ...],
 ) -> PlanReady:
     """Return the ready plan: what selecting reported and `leading` first, the plan's notices last.
 
@@ -638,7 +639,7 @@ def _ready(
         moved, moved_promoted = apply_policy(DiagnosticBag(left_out), held.policy)
         result = replace(result, diagnostics=DiagnosticBag((*result.diagnostics, *moved)))
     first = (*candidates.notices, *leading)
-    last = (*trailing, *change_summary(changeset), *plan_notices(changeset))
+    last = (*trailing, *change_summary(changeset), *plan_notices(changeset, uncommitted))
     reported, promoted = apply_policy(DiagnosticBag((*first, *changeset.diagnostics, *last)), held.policy)
     changeset = replace(changeset, diagnostics=reported)
     total = held.promoted + moved_promoted + promoted

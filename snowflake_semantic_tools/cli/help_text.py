@@ -98,7 +98,8 @@ _OPTION_HELP: Mapping[str, str] = {
     "--database": "Read from this database instead of the target's; never where an artifact is published.",
     "--no-detailed-exitcode": "Exit 0 instead of 2 when there are differences.",
     "--strict": (
-        "Promote every warning to an error; `--no-strict` promotes none. Else `$SST_STRICT`, else "
+        "Promote every warning to an error, except those marked never promoted; `--no-strict` "
+        "promotes none. Else `$SST_STRICT`, else "
         "`validation.strict`, off when unset. A warning about an artifact the selection leaves out stays one."
     ),
     "--snowflake-syntax-check": (

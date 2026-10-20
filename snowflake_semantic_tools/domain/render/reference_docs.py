@@ -270,7 +270,7 @@ def render_error_codes(
         "",
         "- **error** blocks the command.",
         "- **warning** does not block, and becomes an error under `--strict` or",
-        "  `validation.strict: true`.",
+        "  `validation.strict: true`, except a code marked *never promoted*.",
         "- **info** never blocks.",
         "",
         "Placeholders in a message are shown as `<name>`. Codes marked *always an error*",
@@ -316,7 +316,7 @@ def _retired_entry(tombstone: Tombstone, release: str | None) -> list[str]:
 
 def _error_entry(spec: ErrorSpec) -> list[str]:
     severity = spec.severity.name.lower()
-    qualifier = ", always an error" if spec.always_error else ""
+    qualifier = ", always an error" if spec.always_error else ", never promoted" if spec.strict_exempt else ""
     entry = [
         "",
         f"### {spec.code}",

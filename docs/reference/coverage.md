@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 765
+- Codes: 766
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -275,6 +275,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-PLN039`](error-codes.md#sst-pln039) | PLN | warning | observe | `snowflake_semantic_tools.domain.plan.classify` | `tests/codes/pln/test_sst_pln039.py` |
 | [`SST-PLN040`](error-codes.md#sst-pln040) | PLN | warning | observe | `snowflake_semantic_tools.app.observe` | `tests/codes/pln/test_sst_pln040.py` |
 | [`SST-PLN041`](error-codes.md#sst-pln041) | PLN | info | observe | `snowflake_semantic_tools.app.plan_diff`<br>`snowflake_semantic_tools.cli.commands.plan` | `tests/codes/pln/test_sst_pln041.py` |
+| [`SST-PLN042`](error-codes.md#sst-pln042) | PLN | warning | local | `snowflake_semantic_tools.domain.plan.summary` | `tests/codes/pln/test_sst_pln042.py` |
 | [`SST-PLN100`](error-codes.md#sst-pln100) | PLN | error | observe | `snowflake_semantic_tools.app.smoke` | `tests/codes/pln/test_sst_pln100.py` |
 | [`SST-PLN101`](error-codes.md#sst-pln101) | PLN | info | local | `snowflake_semantic_tools.app.smoke` | `tests/codes/pln/test_sst_pln101.py` |
 | [`SST-PLN102`](error-codes.md#sst-pln102) | PLN | warning | observe | `snowflake_semantic_tools.domain.plan.classify` | `tests/codes/pln/test_sst_pln102.py` |
