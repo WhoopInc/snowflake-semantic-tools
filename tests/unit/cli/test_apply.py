@@ -256,6 +256,40 @@ def test_apply_reuses_saved_plan_selection_without_repeated_selectors(
     assert len(port.scripts) == 1
 
 
+def test_a_saved_plan_and_its_apply_agree_on_overwrite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = project_copy(tmp_path)
+    paths = {}
+    for flags in ((), ("--overwrite",)):
+        planned = invoke_with_port(
+            monkeypatch,
+            FakeSnowflake(state={}),
+            [
+                "plan",
+                *common(project),
+                "--target",
+                "dev",
+                *flags,
+                "--plan-out",
+                str(tmp_path / f"plan{len(flags)}.json"),
+                "--output",
+                "json",
+            ],
+        )
+        assert planned.exit_code == 2, planned.output
+        paths[bool(flags)] = json.loads(planned.output)["data"]["plan_path"]
+    assert json.loads(Path(paths[True]).read_text(encoding="utf-8"))["selection"]["overwrite"] is True
+    assert "overwrite" not in json.loads(Path(paths[False]).read_text(encoding="utf-8"))["selection"]
+    # Overwriting a hand edit is always explicit, in both directions.
+    for saved, flags, said in (
+        (True, (), "apply it with --overwrite"),
+        (False, ("--overwrite",), "--overwrite conflicts with a saved plan made without it"),
+    ):
+        refused = CliRunner().invoke(
+            cli, ["apply", *common(project), "--target", "dev", "--plan", paths[saved], *flags, "--yes"]
+        )
+        assert refused.exit_code == 3 and said in refused.output, refused.output
+
+
 def test_apply_refuses_stale_saved_plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = project_copy(tmp_path)
     port = FakeSnowflake(state={})

@@ -20,13 +20,15 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     RenderedArtifact,
     StatementPlan,
     commented_spec_fingerprint,
+    drift_properties,
     held_spec_fingerprint,
+    live_digest,
     spec_fingerprint,
     version_comment,
     version_drift,
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
-from snowflake_semantic_tools.domain.state import PARTIAL_WRITE
+from snowflake_semantic_tools.domain.state import PARTIAL_WRITE, AppliedEntry
 from tests.helpers.diagnostic_filters import coded
 from tests.helpers.plan_codes import entry, manifest_of, plan
 from tests.helpers.sql_values import statement, texts
@@ -309,3 +311,62 @@ def test_an_agent_update_says_whether_it_commits_a_new_version() -> None:
     temporary = agent(temporary=True)
     assert temporary.for_action(Action.UPDATE, live(temporary, marker, newest_spec="f" * 64)).adds_version is None
     assert before.for_action(Action.CREATE, None).adds_version is None
+
+
+def _hand_committed(**observed: object) -> tuple[RenderedArtifact, ObservedArtifact, AppliedEntry]:
+    """The unchanged agent, its newest version committed by hand with another specification."""
+    artifact = agent()
+    hand = "f" * 64
+    applied = replace(
+        entry(artifact, RECORDED_MANIFEST),
+        live_digest=live_digest(drift_properties("AGENT", {}, newest_spec=SPEC_FINGERPRINT)),
+    )
+    found = replace(
+        live(artifact, recorded(artifact), newest_spec=hand, has_live_version=False, **observed),  # type: ignore[arg-type]
+        live_digest=live_digest(drift_properties("AGENT", {}, newest_spec=hand)),
+    )
+    return artifact, found, applied
+
+
+def test_a_hand_committed_specification_names_its_version_and_what_serves_it() -> None:
+    for observed, said in (
+        ({"default_version": "VERSION$3"}, "VERSION$3, committed outside SST, is the default and holds alias PROMOTED"),
+        ({"alias_versions": ()}, "VERSION$3, committed outside SST, is the newest version"),
+    ):
+        artifact, found, applied = _hand_committed(**observed)
+        planned = plan((artifact,), observed=(found,), applied={artifact.key: applied})
+        [diagnostic] = coded(planned.diagnostics, "SST-PLN014")
+        assert diagnostic.message == (
+            f"agent:sales was changed out of band (its specification changed; its marker did not; {said}); "
+            "apply refuses it"
+        )
+    # With no committed version listed there is none to name.
+    artifact, found, applied = _hand_committed(newest_version=None)
+    [diagnostic] = coded(
+        plan((artifact,), observed=(found,), applied={artifact.key: applied}).diagnostics, "SST-PLN014"
+    )
+    assert "committed outside SST" not in diagnostic.message
+
+
+def test_overwrite_adds_a_version_over_a_hand_committed_one_and_follows_it() -> None:
+    artifact, found, applied = _hand_committed()
+    planned = plan((artifact,), observed=(found,), applied={artifact.key: applied}, overwrite=True)
+    [change] = planned.changes
+    assert (change.action, change.reason) == (Action.UPDATE, ChangeReason.OVERWRITE)
+    assert change.rendered is not None and change.rendered.adds_version is True
+    assert texts(change.rendered.statements) == ("set comment", "add version", LAST)
+    [warning] = coded(planned.diagnostics, "SST-PLN043")
+    assert "VERSION$3, committed outside SST, holds alias PROMOTED" in warning.message
+
+
+def test_overwrite_of_an_edited_comment_restores_the_marker_without_a_version() -> None:
+    artifact = agent()
+    edited = replace(live(artifact, recorded(artifact)), marker=None, comment="edited by hand")
+    planned = plan(
+        (artifact,), observed=(edited,), applied={artifact.key: entry(artifact, RECORDED_MANIFEST)}, overwrite=True
+    )
+    [change] = planned.changes
+    assert (change.action, change.reason) == (Action.UPDATE, ChangeReason.OVERWRITE)
+    assert change.rendered is not None and change.rendered.adds_version is False
+    assert texts(change.rendered.statements)[0] == "set comment"
+    assert not any(text in ("add version", "modify live", "commit") for text in texts(change.rendered.statements))

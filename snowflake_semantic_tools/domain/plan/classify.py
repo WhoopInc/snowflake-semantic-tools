@@ -9,7 +9,8 @@
 5. no state entry records the object, which blocks it as unmanaged (SST-PLN024);
 6. the first row of `_STATE_RULES` whose condition holds, comparing the object -- its marker,
    and the digest of the properties the marker does not prove -- with the entry apply
-   recorded for it; an object no row matches is unchanged.
+   recorded for it; an object no row matches is unchanged. With `overwrite`, a row that would
+   block the object as changed out of band (SST-PLN014) updates it instead (SST-PLN043).
 
 Each artifact is decided by its own entry alone. The fingerprint digests everything its
 rendered form carries, resolved dependencies included, and the entry and the live marker
@@ -73,6 +74,7 @@ def classify(
     recorded: AppliedEntry | None,
     validation: DiagnosticBag,
     composite: CompositePlan | None,
+    overwrite: bool = False,
 ) -> Decision:
     """Decide one rendered artifact's change, and the diagnostics the decision reports.
 
@@ -85,6 +87,7 @@ def classify(
         validation: What validation reported for the artifact; an error blocks it.
         composite: What the artifact's composite lifecycle handler planned; None for an
             artifact the generic lifecycle plans.
+        overwrite: `--overwrite`: update an object changed out of band rather than block it.
 
     Raises:
         KeyError: the registry has no entry for the artifact's type.
@@ -100,6 +103,7 @@ def classify(
         SST-PLN025: state records the artifact at another target.
         SST-PLN039: an update replaces a semantic view that carries tags the project does not
             declare, which the replace removes.
+        SST-PLN043: with `overwrite`, the update replaces an object changed out of band.
         SST-PLN102: an otherwise unchanged agent's versions drifted from what SST published.
         SST-VAL320: the recorded or rendered fingerprint is not a canonical digest, so the
             comparison would not be of normalised definitions.
@@ -115,7 +119,7 @@ def classify(
         diagnostic = D("SST-PLN002", artifact=key, value=observed.qualified_name.sql, found=observed.object_type)
         blocked = _change(artifact, observed, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, registry, (diagnostic,))
         return Decision(blocked, (diagnostic,))
-    return _compare(key, artifact, observed, recorded, registry)
+    return _compare(key, artifact, observed, recorded, registry, overwrite)
 
 
 def _invalid(
@@ -164,12 +168,13 @@ def _compare(
     observed: ObservedArtifact,
     recorded: AppliedEntry | None,
     registry: Registry,
+    overwrite: bool,
 ) -> Decision:
     """Decide an artifact whose name holds an object of its type, by what state recorded there."""
     reported: list[Diagnostic] = []
     if observed.raw_name != artifact.target.name.folded and not artifact.target.name.quoted:
         reported.append(D("SST-PLN023", artifact=key, value=artifact.target.name.value, found=observed.raw_name))
-    action, reason, blocking = _state_verdict(key, artifact, observed, recorded)
+    action, reason, blocking = _state_verdict(key, artifact, observed, recorded, overwrite)
     change = _change(artifact, observed, action, reason, registry, blocking)
     reported.extend(blocking)
     if (
@@ -293,12 +298,35 @@ def _target_moved(evidence: _Evidence) -> Diagnostic:
 
 
 def _out_of_band(evidence: _Evidence) -> Diagnostic:
-    return D("SST-PLN014", artifact=evidence.key, detail="its ownership marker is not the one state records")
+    return D("SST-PLN014", artifact=evidence.key, detail=_marker_change(evidence))
+
+
+def _marker_change(evidence: _Evidence) -> str:
+    """Say which of `_changed_out_of_band`'s conditions holds, in its order."""
+    observed, recorded = evidence.observed, evidence.recorded
+    if QualifiedName.parse(recorded.qualified_name).folded != observed.qualified_name.folded:
+        return f"state records it as {recorded.qualified_name}, not {observed.qualified_name.sql}"
+    if observed.marker is None:
+        return "its comment was changed and no longer carries SST's ownership marker"
+    return "its ownership marker names another publish than the one state records"
 
 
 def _drifted(evidence: _Evidence) -> Diagnostic:
     changed = drifted_properties(evidence.recorded.live_digest, evidence.observed.live_digest)
-    return D("SST-PLN014", artifact=evidence.key, detail=f"its {', '.join(changed)} changed; its marker did not")
+    detail = f"its {', '.join(changed)} changed; its marker did not"
+    return D("SST-PLN014", artifact=evidence.key, detail=detail + _hand_version(evidence, changed))
+
+
+def _hand_version(evidence: _Evidence, changed: tuple[str, ...]) -> str:
+    """Name the version an agent's changed specification was committed as, and what serves it."""
+    observed = evidence.observed
+    newest = observed.newest_version
+    if "specification" not in changed or newest is None:
+        return ""
+    held = [f"holds alias {alias.upper()}" for alias, version in observed.alias_versions if version == newest]
+    if observed.default_version == newest:
+        held.insert(0, "is the default")
+    return f"; {newest}, committed outside SST, {' and '.join(held) or 'is the newest version'}"
 
 
 # The first row that holds decides, and an object no row matches is unchanged. The blocking
@@ -317,6 +345,8 @@ _STATE_RULES: tuple[_StateRule, ...] = (
     _StateRule(_written_partly, Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS),
     _StateRule(_versions_drifted, Action.UPDATE, ChangeReason.VERSION_DRIFT),
 )
+# The reports of the rows that block an object as changed out of band, which `--overwrite` updates.
+_OVERWRITTEN = (_out_of_band, _drifted)
 
 
 def _state_verdict(
@@ -324,19 +354,31 @@ def _state_verdict(
     artifact: RenderedArtifact,
     observed: ObservedArtifact,
     recorded: AppliedEntry | None,
+    overwrite: bool = False,
 ) -> tuple[Action, ChangeReason, tuple[Diagnostic, ...]]:
     """Decide an object of the artifact's type by the entry apply recorded for it.
 
+    With `overwrite`, an object a row would block as changed out of band is updated instead,
+    and the warning names what the update replaces.
+
     Returns:
-        The action, its reason, and the diagnostic that blocks it; empty when nothing blocks.
+        The action, its reason, and the diagnostic that blocks it, or that `overwrite` turned
+        into an update; empty when there is neither.
     """
     if recorded is None:
         unmanaged = D("SST-PLN024", artifact=key, value=observed.qualified_name.sql)
         return Action.BLOCKED, ChangeReason.UNMANAGED_OBJECT, (unmanaged,)
     evidence = _Evidence(key, artifact, observed, recorded)
     for rule in _STATE_RULES:
-        if rule.holds(evidence):
-            return rule.action, rule.reason, () if rule.report is None else (rule.report(evidence),)
+        if not rule.holds(evidence):
+            continue
+        if rule.report is None:
+            return rule.action, rule.reason, ()
+        found = rule.report(evidence)
+        if overwrite and rule.report in _OVERWRITTEN:
+            replaced = D("SST-PLN043", subject=key, artifact=key, detail=str(found.context["detail"]))
+            return Action.UPDATE, ChangeReason.OVERWRITE, (replaced,)
+        return rule.action, rule.reason, (found,)
     return Action.NOOP, ChangeReason.UNCHANGED, ()
 
 

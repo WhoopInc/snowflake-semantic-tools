@@ -342,8 +342,21 @@ what was recorded plans as no change.
   unmanaged (`SST-PLN024`), as it would any object SST did not publish. Drop it
   by hand (`DROP <type> <name>`, with a role that may), then apply again.
 - **An object it updated that someone then changed again** blocks as changed
-  out of band (`SST-PLN014`): restore the definition SST wrote, or drop it by
-  hand.
+  out of band (`SST-PLN014`): restore the definition SST wrote, or publish the
+  planned one over it with `sst apply --select <artifact> --overwrite`.
+
+## `SST-PLN014`: an object was changed out of band
+
+The message says what changed: the comment that carries SST's ownership marker,
+a marker naming another publish, the name, or a property SST published, such as
+an agent's specification, with the version that holds the hand edit. To keep
+the edit, put it in the project and apply. To discard it, run
+`sst plan --select <artifact> --overwrite`, review the update (`SST-PLN043`
+names what it replaces), then `sst apply --select <artifact> --overwrite`. An
+agent keeps its versions: a hand-committed version stays, and SST's
+specification is committed after it, with the alias and default on it. Plan
+exits 1 while anything is blocked, and its verdict counts them:
+`plan failed (1 blocked)`.
 
 ## `sst apply` or `sst baseline add` refuses with `SST-PRT109`
 

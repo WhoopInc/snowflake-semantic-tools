@@ -28,7 +28,8 @@ def test_sst_pln014_fires() -> None:
     [diagnostic] = coded(planned.diagnostics, "SST-PLN014")
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == (
-        "semantic_view:sales was changed out of band (its ownership marker is not the one state records); "
+        "semantic_view:sales was changed out of band (its comment was changed and no longer carries SST's "
+        "ownership marker); "
         "apply refuses it"
     )
     assert planned.changes[0].action is Action.BLOCKED

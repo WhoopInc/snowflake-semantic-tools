@@ -447,6 +447,7 @@ def plan_changes(
     full: bool = True,
     prune_types: frozenset[str] | None = None,
     prune_keys: frozenset[str] | None = None,
+    overwrite: bool = False,
 ) -> ChangeSet:
     """Decide the change set from a reading of the target, reading nothing more.
 
@@ -461,6 +462,7 @@ def plan_changes(
         lifecycle_handlers: The composite artifact types' handlers, by type, which report the
             composite prunes; None reports none.
         composite_plans: Each composite artifact's plan, by key.
+        overwrite: `--overwrite`: update each object changed out of band instead of blocking it.
     """
     changeset: ChangeSet = build_changeset(
         rendered,
@@ -476,6 +478,7 @@ def plan_changes(
         prune_keys=prune_keys,
         composite_plans=dict(composite_plans or {}),
         preflight=reading.preflight,
+        overwrite=overwrite,
     )
     if include_prune:
         prunes = _composite_prunes(lifecycle_handlers or {}, rendered, state, changeset, prune_types, prune_keys)

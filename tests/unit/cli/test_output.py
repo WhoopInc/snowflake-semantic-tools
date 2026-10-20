@@ -199,6 +199,22 @@ def test_one_baselined_promoted_warning_is_counted_apart_and_counts_are_pluralis
     resolve_invocation(project_dir=tmp_path, config_file=None, target=None, baselined=frozenset())
 
 
+def test_a_failure_says_what_it_stopped_on_before_its_counts(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    resolve_invocation(project_dir=tmp_path, config_file=None, target=None, baselined=frozenset())
+    use_render_policy(RenderPolicy(terminal=Terminal(unicode=False)))
+    warning = D("SST-CFG018", subject="tool:other", name="other")
+    for exit_code, failure, said in (
+        (1, "2 blocked", "x plan failed (2 blocked): 0 errors, 1 warning"),
+        (1, None, "x plan failed: 0 errors, 1 warning"),
+        (130, "2 blocked", "x plan interrupted: 0 errors, 1 warning"),
+    ):
+        capsys.readouterr()
+        print_verdict("plan", exit_code, DiagnosticBag((warning,)), failure=failure)
+        assert re.sub(r" - \d+\.\ds$", "", capsys.readouterr().err.splitlines()[0]) == said
+
+
 def test_the_envelope_counts_a_baselined_diagnostic_under_baselined_and_under_no_severity(tmp_path: Path) -> None:
     promoted = _promoted_warning()
     resolve_invocation(project_dir=tmp_path, config_file=None, target=None, baselined=frozenset())

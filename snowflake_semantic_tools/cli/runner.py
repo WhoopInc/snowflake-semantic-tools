@@ -132,6 +132,8 @@ class CommandResult:
             a run with no diagnostics and no headline prints no verdict at all.
         next_steps: What to do next, first step first, which the verdict suggests and the JSON
             envelope lists; None takes the defaults for the command and its exit code.
+        failure: What a failed run's verdict says it stopped on, after `failed`, such as
+            `2 blocked`; None says nothing more.
     """
 
     exit_code: int = OK
@@ -144,6 +146,7 @@ class CommandResult:
     rows: list[dict[str, object]] | None = None
     headline: str | Callable[[], str | None] | None = None
     next_steps: tuple[str, ...] | None = None
+    failure: str | None = None
 
 
 def command_body(
@@ -452,6 +455,7 @@ def _report(command: str, options: GlobalOptions, result: CommandResult) -> None
             result.exit_code,
             result.diagnostics,
             headline=headline,
+            failure=result.failure,
             next_step=steps[0] if steps else None,
             counts=result.show_diagnostics and bool(result.diagnostics),
             hidden=result.show_diagnostics,

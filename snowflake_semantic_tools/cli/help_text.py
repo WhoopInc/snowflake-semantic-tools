@@ -110,6 +110,11 @@ _OPTION_HELP: Mapping[str, str] = {
         "Also act on managed artifacts whose source was deleted, as far as each type "
         "allows: drop, deactivate, or report."
     ),
+    "--overwrite": (
+        "Publish the planned definition over each selected object changed out of band (SST-PLN014) "
+        "instead of blocking it; an agent keeps its versions and gains one. A saved plan made with it "
+        "is applied with it."
+    ),
     "--partial": (
         "Go ahead with every artifact that has no errors and depends on nothing that does; "
         "still exits 1 while errors remain. Cannot be combined with `--prune`."

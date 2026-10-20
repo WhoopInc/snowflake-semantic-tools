@@ -22,6 +22,7 @@ from snowflake_semantic_tools.cli.options import (
     defer_target_option,
     no_detailed_exitcode_option,
     no_validate_option,
+    overwrite_option,
     partial_option,
     prune_option,
     selection_options,
@@ -42,7 +43,7 @@ from snowflake_semantic_tools.cli.plan_output import (
     write_plan_diff,
     write_plan_sql,
 )
-from snowflake_semantic_tools.cli.render.report import plan_headline
+from snowflake_semantic_tools.cli.render.report import blocked_count, plan_headline
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, run_baseline
 from snowflake_semantic_tools.cli.settings import drift_check_setting, strict_disagreement, threads_setting
 from snowflake_semantic_tools.cli.wiring.plan import (
@@ -106,6 +107,7 @@ def _refuse_invocation(
 @defer_target_option()
 @prune_option()
 @partial_option()
+@overwrite_option()
 @click.option("--plan-out", type=click.Path(dir_okay=False, path_type=Path))
 @click.option("--no-plan-out", is_flag=True)
 @click.option("--grants/--no-grants", default=True)
@@ -130,6 +132,7 @@ def plan(
     state_dir: Path | None,
     prune: bool,
     partial: bool,
+    overwrite: bool,
     plan_out: Path | None,
     no_plan_out: bool,
     grants: bool,
@@ -181,6 +184,7 @@ def plan(
         validate=not no_validate,
         use_cached_state=use_cached_state,
         baseline=run_baseline(options),
+        overwrite=overwrite,
     )
     ready, close = _planned(request)
     if isinstance(ready, PlanRefused):
@@ -252,6 +256,7 @@ def _save_plan(
             excluded=request.excluded,
             include_prune=request.prune,
             partial=request.partial,
+            overwrite=request.overwrite,
         )
         destination = outputs.plan_out or target_dir(request.project_dir) / "plan.json"
         if not outputs.no_plan_out:
@@ -321,6 +326,7 @@ def _plan_report(
             human=lambda: print_changed_names(changeset),
             promoted=ready.promoted,
             headline=plan_headline(changeset),
+            failure=blocked_count(changeset),
         )
 
     def human() -> None:
@@ -329,7 +335,13 @@ def _plan_report(
         print_plan(changeset, full=full, more=f"all of it in {written.diff}", unchecked=ready.cached is not None)
 
     return CommandResult(
-        exit_code, shown, data, human=human, promoted=ready.promoted, headline=plan_headline(changeset)
+        exit_code,
+        shown,
+        data,
+        human=human,
+        promoted=ready.promoted,
+        headline=plan_headline(changeset),
+        failure=blocked_count(changeset),
     )
 
 

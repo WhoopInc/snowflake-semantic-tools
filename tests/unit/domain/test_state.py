@@ -350,6 +350,12 @@ def test_saved_plan_is_content_addressed_and_target_guarded() -> None:
     partial = SavedPlan.from_changeset(changeset, partial=True)
     assert partial.partial and partial.as_dict()["selection"]["partial"] is True  # type: ignore[index]
     assert partial.plan_id != saved.plan_id
+    # So is `overwrite`, which apply must then be given too; it reads back as written.
+    assert "overwrite" not in saved.as_dict()["selection"]  # type: ignore[operator]
+    overwrite = SavedPlan.from_changeset(changeset, overwrite=True)
+    assert overwrite.overwrite and overwrite.as_dict()["selection"]["overwrite"] is True  # type: ignore[index]
+    assert overwrite.plan_id != saved.plan_id
+    assert SavedPlan.from_dict(overwrite.as_dict()) == overwrite
 
 
 def _saved_plan_document() -> dict[str, Any]:

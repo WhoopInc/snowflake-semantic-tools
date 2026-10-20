@@ -554,6 +554,7 @@ sst plan [OPTIONS]
 | `--no-defer` | flag |  | Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say. |
 | `--prune` | flag |  | Also act on managed artifacts whose source was deleted, as far as each type allows: drop, deactivate, or report. |
 | `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
+| `--overwrite` | flag |  | Publish the planned definition over each selected object changed out of band (SST-PLN014) instead of blocking it; an agent keeps its versions and gains one. A saved plan made with it is applied with it. |
 | `--plan-out` | FILE |  | Write the saved plan here instead of `sst_target/plan.json`. |
 | `--no-plan-out` | flag |  | Do not write a saved plan. |
 | `--grants / --no-grants` | flag |  | Read the grants on each object an update replaces, one `SHOW GRANTS` each, to report what a replace would drop (SST-PLN013), and the tags on each semantic view it replaces, to report those the replace removes (SST-PLN039). On by default; `--no-grants` skips the reads. |
@@ -622,6 +623,7 @@ sst apply [OPTIONS]
 | `--plan` | FILE |  | Apply this saved plan. It must still match the compiled project. |
 | `--prune` | flag |  | Also act on managed artifacts whose source was deleted, as far as each type allows: drop, deactivate, or report. |
 | `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
+| `--overwrite` | flag |  | Publish the planned definition over each selected object changed out of band (SST-PLN014) instead of blocking it; an agent keeps its versions and gains one. A saved plan made with it is applied with it. |
 | `--yes / -y` | flag |  | Apply without asking for confirmation. |
 | `--fail-fast / --no-fail-fast` | flag |  | Stop at the first failure instead of continuing. Defaults to `apply.fail_fast`. |
 | `--threads` | INTEGER RANGE |  | Sessions to plan and apply on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`. Planning defaults to 4; applying to `skills.+threads`, else 4. |

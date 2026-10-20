@@ -45,6 +45,7 @@ _REASONS = {
     ChangeReason.TARGET_MOVED: "state records another target",
     ChangeReason.UNRECORDED_PUBLISH: "published but not recorded",
     ChangeReason.VERSION_DRIFT: "its alias or live version drifted",
+    ChangeReason.OVERWRITE: "changed out of band; overwritten",
 }
 _STATUS_STYLE = {
     OutcomeStatus.APPLIED: ("ok", "success"),
@@ -179,6 +180,12 @@ def plan_headline(changeset: ChangeSet) -> str:
     if report_only:
         tail.append(f"{report_only} report-only")
     return f"plan: {', '.join(parts)}; {', '.join(tail)}"
+
+
+def blocked_count(changeset: ChangeSet) -> str | None:
+    """Say how many changes the plan blocked, for its failed verdict: `2 blocked`; None for none."""
+    blocked = sum(change.action is Action.BLOCKED for change in changeset.changes)
+    return f"{blocked} blocked" if blocked else None
 
 
 def outcome_lines(outcomes: Sequence[ApplyOutcome], style: Style) -> list[str]:

@@ -54,6 +54,7 @@ def build_changeset(
     prune_keys: frozenset[str] | None = None,
     composite_plans: Mapping[str, CompositePlan] | None = None,
     preflight: Preflight | None = None,
+    overwrite: bool = False,
 ) -> ChangeSet:
     """Decide one change per rendered artifact and order the changes into the plan apply runs.
 
@@ -66,6 +67,7 @@ def build_changeset(
         prune_keys: The keys prune considers; None considers every key.
         composite_plans: What each composite lifecycle handler planned, by artifact key.
         preflight: What plan read about the target before deciding; None skips the check.
+        overwrite: Update each object changed out of band instead of blocking it, as `classify` does.
 
     Returns:
         The changes in dependency order and the plan id hashed from them; when no order can
@@ -78,7 +80,7 @@ def build_changeset(
         Each phase's own codes, in phase order: see `classify`, `plan_prunes`,
         `block_unpublished_dependencies`, `check_preflight`, `block_unsafe`, and `order_changes`.
     """
-    changes, classified = _classify_all(rendered, observation, state, registry, blocked, composite_plans)
+    changes, classified = _classify_all(rendered, observation, state, registry, blocked, composite_plans, overwrite)
     pruned, skipped = (
         plan_prunes(rendered, observation, state, registry, prune_types, prune_keys) if include_prune else ((), ())
     )
@@ -100,6 +102,7 @@ def _classify_all(
     registry: Registry,
     blocked: Mapping[str, DiagnosticBag] | None,
     composite_plans: Mapping[str, CompositePlan] | None,
+    overwrite: bool = False,
 ) -> tuple[tuple[Change, ...], tuple[Diagnostic, ...]]:
     """Classify every rendered artifact in DDL order, collecting the changes and what they reported."""
     validation: Mapping[str, DiagnosticBag] = blocked or MappingProxyType({})
@@ -115,6 +118,7 @@ def _classify_all(
             recorded=state.applied.get(key),
             validation=validation.get(key, DiagnosticBag()),
             composite=handled.get(key),
+            overwrite=overwrite,
         )
         changes.append(decision.change)
         diagnostics.extend(decision.diagnostics)

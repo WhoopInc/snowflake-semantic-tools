@@ -609,6 +609,7 @@ def print_verdict(
     diagnostics: DiagnosticBag,
     *,
     headline: str | None = None,
+    failure: str | None = None,
     next_step: str | None = None,
     counts: bool = True,
     hidden: bool = True,
@@ -621,6 +622,7 @@ def print_verdict(
     is printed under `--quiet`. The line is checked for credentials as every report is.
 
     Args:
+        failure: What a failure stopped on, said after `failed`: `plan failed (2 blocked)`.
         counts: False leaves the error and warning counts out, for a command that reports none;
             they are left out of a failure that counted neither, too.
         hidden: False leaves out what the render hid, for a command that shows no diagnostics.
@@ -631,7 +633,8 @@ def print_verdict(
     summary = summary_counts(diagnostics)
     outcome = "ok" if exit_code == OK else "changes" if exit_code == CHANGES else "fail"
     if outcome == "fail":
-        title = f"{command} {'interrupted' if exit_code == INTERRUPTED else 'failed'}"
+        title = f"{command} interrupted" if exit_code == INTERRUPTED else f"{command} failed"
+        title += f" ({failure})" if failure and exit_code != INTERRUPTED else ""
     else:
         title = headline or (f"{command} passed" if outcome == "ok" else f"{command}: differences found")
     verdict = Verdict(

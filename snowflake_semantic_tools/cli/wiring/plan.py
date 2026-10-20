@@ -68,6 +68,8 @@ class PlanRequest:
         use_cached_state: `plan --use-cached-state`: plan from the observation recorded in
             `state_dir` instead of reading the target.
         baseline: The run's baseline; a validation error it holds does not refuse the plan.
+        overwrite: `--overwrite`: update each selected object changed out of band (SST-PLN014)
+            instead of blocking it.
     """
 
     paths: ProjectPaths
@@ -86,6 +88,7 @@ class PlanRequest:
     validate: bool = True
     use_cached_state: bool = False
     baseline: Baseline | None = None
+    overwrite: bool = False
 
     @property
     def project_dir(self) -> Path:
@@ -149,7 +152,16 @@ def plan_scope(request: PlanRequest) -> PlanScope:
         if prune_keys is None:
             raise SstUsageError("--prune with --exclude requires --select so the prune scope is explicit")
         prune_keys = frozenset(prune_keys - excluded_keys)
-    return PlanScope(request.selected, prune_types, prune_keys, excluded_types, excluded_keys, request.prune, impact)
+    return PlanScope(
+        request.selected,
+        prune_types,
+        prune_keys,
+        excluded_types,
+        excluded_keys,
+        request.prune,
+        impact,
+        request.overwrite,
+    )
 
 
 def _named(request: PlanRequest) -> tuple[str, ...]:

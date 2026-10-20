@@ -82,6 +82,8 @@ class PlanScope:
         excluded_types, excluded_keys: What `--exclude` leaves out; None leaves nothing out.
         impact: Whether `state:modified` narrows the plan to what changed since the previous
             manifest.
+        overwrite: `--overwrite`: update each covered object changed out of band (SST-PLN014)
+            instead of blocking it.
     """
 
     selected: tuple[str, ...]
@@ -91,6 +93,7 @@ class PlanScope:
     excluded_keys: frozenset[str] | None
     include_prune: bool
     impact: bool = False
+    overwrite: bool = False
 
     def covers(self, item: CompiledArtifact) -> bool:
         """Report whether the plan covers an artifact: selected by type or key, and not excluded."""
@@ -602,6 +605,7 @@ def _decided(
         full=candidates.covers_all,
         prune_types=scope.prune_types,
         prune_keys=scope.prune_keys,
+        overwrite=scope.overwrite,
     )
 
 

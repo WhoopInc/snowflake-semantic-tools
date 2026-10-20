@@ -26,7 +26,7 @@ cannot be downgraded by any setting.
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
-- [Planning (PLN)](#planning-pln) -- 45 codes
+- [Planning (PLN)](#planning-pln) -- 46 codes
 - [Apply (APL)](#apply-apl) -- 41 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 12 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
@@ -6464,7 +6464,7 @@ Note: An update that keeps the grants -- by COPY GRANTS, by granting them again,
 
 Raised when state records the artifact, but the live object's ownership marker is absent, or names another manifest or fingerprint than state records, or the object is under another name; or the marker is as recorded, but a property SST published that the marker does not prove differs from what apply read back after writing it: an agent's newest committed specification, a search service's target lag or warehouse, a routine's SECURE, a procedure's EXECUTE AS or body, or a semantic view's definition. The detail names each property that changed.
 
-Fix: review the live object, then restore the one SST wrote or remove it before applying
+Fix: review the live object, then plan and apply it with `--select {artifact} --overwrite` to publish the planned definition over the edit (an agent keeps its versions and gains one), or restore the one SST wrote
 
 Note: The change is blocked, so `apply` refuses the plan (SST-APL003) until the live object is again the one SST wrote, although this code is a warning. An entry recorded before SST read these properties is not compared until the next apply records them; `plan.drift_check: basic` compares only what SHOW lists.
 
@@ -6743,6 +6743,18 @@ Raised when `git status` lists a changed or untracked path under the project, SS
 Fix: commit the changes and plan again, so each version names the commit that holds its specification
 
 Note: Each such version's comment reads `git:<sha>-dirty sst-spec:<fingerprint>`, since `<sha>` does not hold its specification; the stage path, an eval dataset's METADATA and state still record the sha. Strict mode leaves this a warning: someone editing a project has uncommitted files, and a CI checkout has none.
+
+### SST-PLN043
+
+**Overwriting an object changed out of band** (warning, never promoted)
+
+`<artifact> was changed out of band (<detail>); --overwrite publishes the planned definition over it`
+
+Raised when plan or apply runs with `--overwrite`, and SST-PLN014 would block the artifact.
+
+Fix: drop --overwrite to keep the edit, which then blocks the artifact (SST-PLN014)
+
+Note: The artifact is updated instead of blocked. An agent whose newest committed version still holds SST's specification only gets its marked comment, alias and default back; one whose specification was committed by hand gains a version holding SST's, which its alias and default then follow. Every earlier version is kept. Strict mode leaves this a warning, since the flag asked for it.
 
 ### SST-PLN100
 

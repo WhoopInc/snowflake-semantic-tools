@@ -172,7 +172,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Live definition differs from the last recorded state",
         "{artifact} was changed out of band ({detail}); apply refuses it",
-        "review the live object, then restore the one SST wrote or remove it before applying",
+        "review the live object, then plan and apply it with `--select {artifact} --overwrite` to "
+        "publish the planned definition over the edit (an agent keeps its versions and gains one), "
+        "or restore the one SST wrote",
         condition=(
             "state records the artifact, but the live object's ownership marker is absent, or "
             "names another manifest or fingerprint than state records, or the object is under "
@@ -509,6 +511,23 @@ SPECS: tuple[ErrorSpec, ...] = (
             "and state still record the sha. Strict mode leaves this a warning: someone editing "
             "a project has uncommitted files, and a CI checkout has none."
         ),
+    ),
+    spec(
+        "SST-PLN043",
+        Severity.WARNING,
+        "Overwriting an object changed out of band",
+        "{artifact} was changed out of band ({detail}); --overwrite publishes the planned definition over it",
+        "drop --overwrite to keep the edit, which then blocks the artifact (SST-PLN014)",
+        strict_exempt=True,
+        condition="plan or apply runs with `--overwrite`, and SST-PLN014 would block the artifact",
+        note=(
+            "The artifact is updated instead of blocked. An agent whose newest committed version "
+            "still holds SST's specification only gets its marked comment, alias and default "
+            "back; one whose specification was committed by hand gains a version holding SST's, "
+            "which its alias and default then follow. Every earlier version is kept. Strict mode "
+            "leaves this a warning, since the flag asked for it."
+        ),
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-PLN100",

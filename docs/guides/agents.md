@@ -660,6 +660,14 @@ plan and apply finish it rather than refusing it as changed out of band
 (`SST-PLN014`). An apply that was killed after the new version was committed
 is finished the same way, without committing another version.
 
+An agent changed outside SST -- its comment edited, or a version committed from
+Snowsight -- is blocked by `SST-PLN014`, which names the hand-committed version
+and whether it is the default or holds the alias. `--overwrite` on plan and
+apply publishes SST's definition over it without dropping anything: an edited
+comment gets the marker back with no new version, and a hand-committed
+specification is followed by a version holding SST's, which the alias and the
+default (`'LAST'`) then serve.
+
 ### Version drift
 
 The plan reads where the agent's alias and default version point, and whether

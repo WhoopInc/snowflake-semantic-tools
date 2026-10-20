@@ -34,6 +34,7 @@ from snowflake_semantic_tools.cli.options import (
     defer_target_option,
     fail_fast_pair,
     no_validate_option,
+    overwrite_option,
     partial_option,
     prune_option,
     selection_options,
@@ -113,6 +114,7 @@ def _refuse_invocation(
 @click.option("--plan", "plan_path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @prune_option()
 @partial_option()
+@overwrite_option()
 @click.option("--yes", "-y", "confirmed", is_flag=True)
 @fail_fast_pair()
 @threads_option()
@@ -132,6 +134,7 @@ def apply(
     plan_path: Path | None,
     prune: bool,
     partial: bool,
+    overwrite: bool,
     confirmed: bool,
     fail_fast: bool | None,
     threads: int | None,
@@ -194,6 +197,7 @@ def apply(
         observe_options=ObserveOptions(drift_check=drift_check_setting(paths), diff=not confirmed),
         validate=not no_validate,
         baseline=run_baseline(options),
+        overwrite=overwrite,
     )
     saved = _saved_plan(plan_path, request)
     planned = request.following(saved)
@@ -235,7 +239,8 @@ def _saved_plan(plan_path: Path | None, request: PlanRequest) -> SavedPlan | Non
 
     Raises:
         ProjectError: no saved plan is at the path, or it cannot be read (SST-PRT009).
-        SstUsageError: `--select`, `--exclude`, `--prune`, or `--partial` disagrees with the saved plan.
+        SstUsageError: `--select`, `--exclude`, `--prune`, `--partial`, or `--overwrite` disagrees
+            with the saved plan.
 
     Diagnostics:
         SST-PRT009: no saved plan is at the path, or the one there cannot be read; raised.
@@ -258,6 +263,11 @@ def _saved_plan(plan_path: Path | None, request: PlanRequest) -> SavedPlan | Non
         raise SstUsageError("the saved plan is partial; apply it with --partial")
     if request.partial and not saved.partial:
         raise SstUsageError("--partial conflicts with a saved plan that is not partial")
+    # So is overwriting a hand edit.
+    if saved.overwrite and not request.overwrite:
+        raise SstUsageError("the saved plan overwrites changes made out of band; apply it with --overwrite")
+    if request.overwrite and not saved.overwrite:
+        raise SstUsageError("--overwrite conflicts with a saved plan made without it")
     return saved
 
 
@@ -289,6 +299,7 @@ def _confirmed_options(
         excluded=request.excluded,
         include_prune=request.prune,
         partial=request.partial,
+        overwrite=request.overwrite,
     )
     notes = DiagnosticBag()
     if saved is not None:

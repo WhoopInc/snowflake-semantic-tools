@@ -179,8 +179,8 @@ class SavedPlan:
         observation_at: When the plan observed Snowflake, as the observation recorded it.
         observation_fingerprint: The hash of each change's observed marker, target, and
             composite metadata; apply refuses the plan when a fresh plan's differs.
-        selected, excluded, include_prune, partial: The selection the plan was made with, which
-            apply repeats; `partial` is written only when set.
+        selected, excluded, include_prune, partial, overwrite: The selection the plan was made
+            with, which apply repeats; `partial` and `overwrite` are written only when set.
         schemas: The schemas apply creates first, as `DATABASE.SCHEMA`; written only when there
             are any, so a plan that creates none reads and hashes as it did before.
     """
@@ -197,6 +197,7 @@ class SavedPlan:
     include_prune: bool = False
     partial: bool = False
     schemas: tuple[str, ...] = ()
+    overwrite: bool = False
 
     @classmethod
     def from_changeset(
@@ -207,6 +208,7 @@ class SavedPlan:
         excluded: tuple[str, ...] = (),
         include_prune: bool = False,
         partial: bool = False,
+        overwrite: bool = False,
     ) -> SavedPlan:
         """Save a changeset: fingerprint what it observed, then hash the whole document into the id."""
         changes = tuple(SavedChange.from_change(change) for change in changeset.changes)
@@ -229,7 +231,7 @@ class SavedPlan:
             "observation_at": changeset.observation_at,
             "observation_fingerprint": observation_fingerprint,
             "changes": [change.as_dict() for change in changes],
-            "selection": _selection(selected, excluded, include_prune, partial),
+            "selection": _selection(selected, excluded, include_prune, partial, overwrite),
             **({"schemas": list(schemas)} if schemas else {}),
         }
         return cls(
@@ -245,6 +247,7 @@ class SavedPlan:
             include_prune,
             partial,
             schemas,
+            overwrite,
         )
 
     def as_dict(self) -> dict[str, object]:
@@ -257,7 +260,7 @@ class SavedPlan:
             "observation_at": self.observation_at,
             "observation_fingerprint": self.observation_fingerprint,
             "changes": [change.as_dict() for change in self.changes],
-            "selection": _selection(self.selected, self.excluded, self.include_prune, self.partial),
+            "selection": _selection(self.selected, self.excluded, self.include_prune, self.partial, self.overwrite),
             **({"schemas": list(self.schemas)} if self.schemas else {}),
         }
 
@@ -335,6 +338,7 @@ class SavedPlan:
             include_prune=bool(raw_selection.get("include_prune", False)),
             partial=bool(raw_selection.get("partial", False)),
             schemas=tuple(str(item) for item in value.get("schemas", [])),
+            overwrite=bool(raw_selection.get("overwrite", False)),
         )
         expected_body = dict(value)
         expected_body.pop("plan_id", None)
@@ -345,12 +349,14 @@ class SavedPlan:
 
 
 def _selection(
-    selected: tuple[str, ...], excluded: tuple[str, ...], include_prune: bool, partial: bool
+    selected: tuple[str, ...], excluded: tuple[str, ...], include_prune: bool, partial: bool, overwrite: bool
 ) -> dict[str, object]:
-    # `partial` appears only when set, so a plan that is not partial keeps its id.
+    # `partial` and `overwrite` appear only when set, so a plan made without them keeps its id.
     value: dict[str, object] = {"selected": list(selected), "excluded": list(excluded), "include_prune": include_prune}
     if partial:
         value["partial"] = True
+    if overwrite:
+        value["overwrite"] = True
     return value
 
 

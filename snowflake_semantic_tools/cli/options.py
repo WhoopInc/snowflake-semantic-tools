@@ -77,6 +77,11 @@ def partial_option() -> Decorator:
     return click.option("--partial", is_flag=True)
 
 
+def overwrite_option() -> Decorator:
+    """The `--overwrite` flag."""
+    return click.option("--overwrite", is_flag=True)
+
+
 def validation_options() -> Decorator:
     """`--strict/--no-strict` (else `$SST_STRICT`) and the syntax-check pair; None when unset."""
     from snowflake_semantic_tools.cli.globals import STRICT_BOOL

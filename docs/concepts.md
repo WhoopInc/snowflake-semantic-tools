@@ -472,8 +472,14 @@ flowchart TD
 Drawn from: [classify.py](../snowflake_semantic_tools/domain/plan/classify.py), [action.py](../snowflake_semantic_tools/domain/model/lifecycle/action.py).
 
 An object edited outside SST so that its marker no longer matches what state
-recorded is never overwritten: the plan blocks it, with the warning `SST-PLN014`, until
-the object SST wrote is restored or the object is removed. An object whose
+recorded is never overwritten unasked: the plan blocks it, with the warning
+`SST-PLN014`, until the object SST wrote is restored, the object is removed, or a
+plan and apply given `--overwrite` publish the planned definition over the edit
+(`SST-PLN043`). The flag acts only on what the run selects and only on what
+`SST-PLN014` would block; a saved plan made with it must be applied with it. An
+agent overwritten keeps every version: one whose comment alone was edited gets
+its marked comment back, and one whose specification was committed by hand gains
+a version holding SST's, which its alias and default then follow. An object whose
 marker names the very definition being planned is updated instead: an apply
 published it and was stopped before it recorded it, so publishing it again
 records it.
@@ -484,7 +490,9 @@ comment it lives in: every `ALTER` that does not set the comment, and a
 verified, apply reads back the properties SST published that the marker does
 not prove, and records a digest of them in state; every plan reads them again
 and blocks an object whose marker is as recorded but whose properties are not
-(`SST-PLN014`, naming what changed):
+(`SST-PLN014`, naming what changed, and for an agent the version holding the hand
+edit and whether it is the default or carries the alias; `--overwrite` updates it
+as above):
 
 | Object | What plan compares | Read with |
 |---|---|---|

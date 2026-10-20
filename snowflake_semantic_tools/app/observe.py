@@ -268,7 +268,8 @@ def observe_replaced_tags(
 
     A replace keeps only the tags its WITH TAG names, so they matter only for a view the plan
     updates: one whose decision, from the observation and the entry state recorded for it, is an
-    update. Every other object keeps the tags it was observed with, None for unread. A failed
+    update, or would be under `--overwrite`, so the observation is the same with the flag or
+    without it. Every other object keeps the tags it was observed with, None for unread. A failed
     read leaves the view's tags unread and the plan goes on.
 
     Args:
@@ -306,9 +307,16 @@ def _decided_update(
     recorded: AppliedEntry | None,
     registry: Registry,
 ) -> bool:
-    """Say whether the plan decides an update of the observed object, before validation blocks it."""
+    """Say whether the plan updates the object, overwriting it or not, before validation blocks it."""
     decision = classify(
-        key, artifact, registry, observed=observed, recorded=recorded, validation=DiagnosticBag(), composite=None
+        key,
+        artifact,
+        registry,
+        observed=observed,
+        recorded=recorded,
+        validation=DiagnosticBag(),
+        composite=None,
+        overwrite=True,
     )
     return decision.change.action is Action.UPDATE
 

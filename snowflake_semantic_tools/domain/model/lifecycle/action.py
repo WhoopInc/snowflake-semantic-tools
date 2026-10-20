@@ -42,6 +42,9 @@ class ChangeReason(Enum):
     VERSION_DRIFT updates an agent that is otherwise unchanged whose alias or default version
     no longer points at the version holding its specification, or that has no live version,
     so apply points them back.
+    OVERWRITE updates, under `--overwrite`, an object changed out of band that would otherwise
+    be blocked: apply publishes the planned definition over the edit, and an agent keeps its
+    versions and gains one, or only gets its marker back when its newest already holds it.
     """
 
     NOT_PRESENT = "not_present"
@@ -56,3 +59,4 @@ class ChangeReason(Enum):
     TARGET_MOVED = "target_moved"
     UNRECORDED_PUBLISH = "unrecorded_publish"
     VERSION_DRIFT = "version_drift"
+    OVERWRITE = "overwrite"
