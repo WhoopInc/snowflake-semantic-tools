@@ -381,6 +381,8 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst state recover", "--yes"): "Record without asking for confirmation; required off a terminal.",
     ("sst state convert", "--yes"): "Convert without asking for confirmation; required off a terminal.",
     ("sst state convert", "--to"): "Required. The kind of table to rebuild the state and lock tables as.",
+    ("sst state unlock", "--run"): "Required. The run id whose lock to release, as SST-APL011 names the holder.",
+    ("sst state unlock", "--yes"): "Required on every invocation: it is the confirmation, and there is no prompt.",
     ("sst explain", "--aliases"): "Also list the SST 0.3 codes that resolve to the code, and what each became.",
     ("sst format", "--check"): "Write nothing; exit 2 when a file would change.",
     ("sst format", "--dry-run"): "Write nothing; print each file's change as a diff.",

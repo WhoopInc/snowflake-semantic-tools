@@ -2,7 +2,9 @@
 
 `RunLease.acquire` takes the local lock first, which is cheap and guards this machine, then
 the remote lock, which guards the target against every machine; refusing either releases the
-other. The remote claim returns the run's `LockFence`, which every extension, release, and
+other. A run on this machine whose process is gone holds both until they expire, so the lease
+first releases its two locks, the remote one only while that run on this host holds it. The
+remote claim returns the run's `LockFence`, which every extension, release, and
 state write presents. While held, a heartbeat thread extends the remote lock so a long apply
 never expires under its own run; it runs on a session of its own when one is given, so it
 never queues behind the run's statements.
@@ -168,14 +170,16 @@ class RunLease:
             SST-APL011: another run holds either lock, or the remote lock expired and
                 `break_stale` was not given; for the local lock, in the store's own words.
             SST-APL010: an expired lock was taken over; once, though both locks were, in the
-                remote lock's words, which name the run, its role and host, and the expiry.
+                remote lock's words, which name the run, its role and host, and the expiry. Or
+                the locks of a run on this host whose process is gone were released.
         """
         run_id = self._claim.run_id
         self._holder = None
+        gone = self._release_gone()
         locked, holder, broke_local = self._store.acquire_lock(run_id, break_stale=break_stale)
         if not locked:
             self._holder = holder
-            return False, (D("SST-APL011", value=self._store.describe_lock(holder)),)
+            return False, (*gone, D("SST-APL011", value=self._store.describe_lock(holder)))
         local_break = (D("SST-APL010", value=holder or "expired run"),) if broke_local else ()
         try:
             remote = self._port.acquire_run_lock(
@@ -188,13 +192,31 @@ class RunLease:
             self._store.release_lock(run_id)
             self._holder = remote.holder.run_id if remote.holder is not None else None
             value = remote.holder.describe() if remote.holder is not None else "another run"
-            return False, (*local_break, D("SST-APL011", value=value))
+            return False, (*gone, *local_break, D("SST-APL011", value=value))
         reported = local_break
         if remote.broke_stale and remote.holder is not None:
             reported = (D("SST-APL010", value=remote.holder.describe()),)
         self._fence = remote.fence
         self._start_heartbeat(remote.fence)
-        return True, reported
+        return True, (*gone, *reported)
+
+    def _release_gone(self) -> tuple[Diagnostic, ...]:
+        """Release the locks of a run on this host whose process is gone; SST-APL010 when there was one.
+
+        The remote lock is released only while that run holds it and its row names this host,
+        so a lock another machine took is never touched. A claim that names no host releases
+        only the local lock.
+        """
+        gone = self._store.gone_holder()
+        if gone is None:
+            return ()
+        self._store.release_lock(gone)
+        host = self._claim.host
+        released = (
+            self._port.force_release_run_lock(self._state_table, self._target_name, gone, host=host) if host else None
+        )
+        where = released.describe() if released is not None else f"run {gone}"
+        return (D("SST-APL010", value=f"{where}, whose process on this host is gone"),)
 
     def verify(self, port: StatePort | None = None) -> bool:
         """Read the lock row again, on `port` or the lease's own, and report whether the run holds it.

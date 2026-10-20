@@ -34,9 +34,10 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst docs`](#sst-docs) | Write the generated reference pages under docs/reference/. |
 | [`sst clean`](#sst-clean) | Remove local SST build artifacts only; never touch Snowflake. |
 | [`sst drop`](#sst-drop) | Break-glass: drop exactly one object SST owns from one target, and forget it in state. |
-| [`sst state`](#sst-state) | Repair a target's state table: recover entries it lost, or convert it between table kinds. |
+| [`sst state`](#sst-state) | Repair a target's state table: recover entries it lost, convert its kind, or release a lock. |
 | [`sst state convert`](#sst-state-convert) | Rebuild the state and lock tables as hybrid or standard tables, keeping the old ones. |
 | [`sst state recover`](#sst-state-recover) | Record what state lost, from ownership markers and content digests on the target's live objects. |
+| [`sst state unlock`](#sst-state-unlock) | Release the target's run lock held by a run that will never end, live or expired. |
 | [`sst agent-kit`](#sst-agent-kit) | Install SST's skills for a coding agent into this project, and keep them current. |
 | [`sst agent-kit install`](#sst-agent-kit-install) | Install the kit's skills for each --agent, writing only files that are not there. |
 | [`sst agent-kit remove`](#sst-agent-kit-remove) | Remove the kit's skills, or those --only names, from each --agent, else every agent installed. |
@@ -839,12 +840,12 @@ sst drop [OPTIONS] <DB>.<SCHEMA>.<NAME>
 
 ## sst state
 
-Repair a target's state table: recover entries it lost, or convert it between table kinds.
+Repair a target's state table: recover entries it lost, convert its kind, or release a lock.
 
 State records what apply published to each target, in the state table `state:` names. These
 commands write that table and its lock table, and never a published object.
 
-Subcommands: [`sst state convert`](#sst-state-convert), [`sst state recover`](#sst-state-recover).
+Subcommands: [`sst state convert`](#sst-state-convert), [`sst state recover`](#sst-state-recover), [`sst state unlock`](#sst-state-unlock).
 
 ## sst state convert
 
@@ -910,6 +911,32 @@ sst state recover [OPTIONS]
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
 | `--yes / -y` | flag |  | Record without asking for confirmation; required off a terminal. |
 | `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
+
+## sst state unlock
+
+Release the target's run lock held by a run that will never end, live or expired.
+
+Releases the lock row only while the named run holds it, in one lock transaction, so a lock
+another run took meanwhile is kept; the local lock file is released too when it names the
+run. A run on this machine whose process is gone needs none of this: the next apply
+releases its locks itself (SST-APL010). There is no prompt: --yes is the confirmation.
+
+Exit 0 when the lock was released; 1 when the run does not hold it; 3 without --yes.
+
+Diagnostics:
+    SST-PRT109: --yes was not given; raised.
+    SST-APL040: the run's lock was released.
+    SST-APL041: the run does not hold the lock, so nothing in Snowflake was released.
+
+```text
+sst state unlock [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--run` | TEXT, required |  | Required. The run id whose lock to release, as SST-APL011 names the holder. |
+| `--yes / -y` | flag |  | Required on every invocation: it is the confirmation, and there is no prompt. |
 
 ## sst agent-kit
 

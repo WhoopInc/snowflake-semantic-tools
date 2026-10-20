@@ -261,3 +261,18 @@ def test_only_a_failed_create_of_a_hybrid_table_is_named() -> None:
     assert refusal((create,), 0, kind="standard") is None
     assert refusal((create,), 1) is None
     assert lock_table.create_refusal((create,), ExecResult(True, ("q0",)), lock, "hybrid") is None
+
+
+def test_a_forced_release_frees_the_named_runs_row_and_keeps_its_generation() -> None:
+    tables = HybridTables()
+    connector = HybridTablesConnector(tables)
+    assert connector.force_release_run_lock(STATE_TABLE, "dev", "run-a") is None
+    claim(tables, "run-a", ttl=10)
+    tables.now = 20.0
+    assert connector.force_release_run_lock(STATE_TABLE, "dev", "run-b") is None
+    assert connector.force_release_run_lock(STATE_TABLE, "dev", "run-a", host="elsewhere") is None
+    assert tables.statements[-1][1] == "ROLLBACK"
+    released = connector.force_release_run_lock(STATE_TABLE, "dev", "run-a", host="laptop")
+    assert released is not None and (released.run_id, released.expired) == ("run-a", True)
+    assert (tables.rows["dev"].run_id, tables.rows["dev"].generation) == ("", 1)
+    assert fence_of(claim(tables, "run-b")) == LockFence("run-b", 2)

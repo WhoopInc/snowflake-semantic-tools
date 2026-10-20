@@ -83,6 +83,18 @@ class InMemoryRunLocks:
             if _fenced(self.rows.get(key), fence):
                 del self.rows[key]
 
+    def force_release_run_lock(
+        self, state_table: QualifiedName, target_name: str, run_id: str, *, host: str | None = None
+    ) -> RunLock | None:
+        key = (state_table.sql, target_name)
+        with self._guard:
+            current = self._read(key)
+            if current is None or current.run_id != run_id or (host is not None and current.host != host):
+                return None
+            self.releases.append(run_id)
+            del self.rows[key]
+            return current
+
     def verify_run_lock(self, state_table: QualifiedName, target_name: str, fence: LockFence) -> bool:
         with self._guard:
             self.verifications.append(fence.run_id)

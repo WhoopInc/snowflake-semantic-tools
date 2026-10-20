@@ -73,6 +73,7 @@ skills, and CoCo Desktop profiles, then publishes them. This kit was installed b
 | `sst drop` | writes Snowflake | Break-glass: drops one object SST owns. Only when asked. |
 | `sst state recover` | writes Snowflake | Records lost state entries from ownership markers; writes no object. Only when asked. |
 | `sst state convert` | writes Snowflake | Rebuilds the state and lock tables as hybrid or standard tables. Only when asked. |
+| `sst state unlock` | writes Snowflake | Releases the run lock of one named run that will never end. Only when asked, once the user confirmed that run is gone. |
 
 ## The loop
 

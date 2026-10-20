@@ -5,6 +5,8 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import os
+import socket
 from collections.abc import Callable, Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -198,9 +200,11 @@ def state_file(target_dir: Path, target_name: str) -> Path:
 class StateFileStore(JsonStore[State]):
     """One target's local state file, which caches the state table, and the apply lock beside it.
 
-    The lock is the sibling file `<state file>.lock`, created exclusively and holding the run id
-    and the time it was taken; it goes stale `LOCK_TTL_SECONDS` (30 minutes) after that time, by
-    the `now` clock, which is UTC by default. Removing it, to release or to take over a stale
+    The lock is the sibling file `<state file>.lock`, created exclusively and holding the run id,
+    the time it was taken, and the host and process id that took it; it goes stale
+    `LOCK_TTL_SECONDS` (30 minutes) after that time, by the `now` clock, which is UTC by default.
+    `process` names this machine and process, and `alive` says whether a process id is running.
+    Removing it, to release or to take over a stale
     one, first takes that claim's break token, `<lock>.<digest>.break`, so no run ever removes
     a claim it did not judge. `config_path` is only reported back, never read.
     """
@@ -215,11 +219,15 @@ class StateFileStore(JsonStore[State]):
         config_path: str = CONFIG_FILE,
         now: Callable[[], datetime] | None = None,
         root: Path | None = None,
+        process: tuple[str, int] | None = None,
+        alive: Callable[[int], bool] | None = None,
     ) -> None:
         super().__init__(path, State.from_dict, root=root)
         self._config_path = config_path
         self._lock_path = path.with_suffix(path.suffix + ".lock")
         self._now = now or (lambda: datetime.now(UTC))
+        self._process = process or (socket.gethostname(), os.getpid())
+        self._alive = alive or process_alive
 
     @property
     def config_path(self) -> str:
@@ -267,7 +275,8 @@ class StateFileStore(JsonStore[State]):
             OSError: The lock file cannot be created, written, or removed.
         """
         now = self._now()
-        payload = canonical_json({"run_id": run_id, "created_at": now.isoformat()})
+        host, pid = self._process
+        payload = canonical_json({"run_id": run_id, "created_at": now.isoformat(), "host": host, "pid": pid})
         if self._create_lock(payload):
             return True, None, False
         instance = self._lock_bytes()
@@ -364,6 +373,49 @@ class StateFileStore(JsonStore[State]):
         with self._removing(instance) as removable:
             if removable:
                 remove_within(self.root, self._lock_path)
+
+    def gone_holder(self) -> str | None:
+        """Return the lock file's run when this host took it and its process is no longer running."""
+        instance = self._lock_bytes()
+        if instance is None:
+            return None
+        holder = _lock_claim(instance)[0]
+        host, pid = _lock_process(instance)
+        if holder is None or host != self._process[0] or pid is None or pid == self._process[1]:
+            return None
+        return None if self._alive(pid) else holder
+
+
+def process_alive(pid: int) -> bool:
+    """Report whether a process id is running on this machine; any doubt, or Windows, reads as running.
+
+    Signal 0 checks the process without signalling it. On Windows `os.kill` would end the
+    process instead, so it is never asked there.
+    """
+    if os.name == "nt":
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def _lock_process(instance: bytes) -> tuple[str | None, int | None]:
+    """Return the host and process id a lock file's bytes record; None for each it does not."""
+    if len(instance) > _LOCK_READ_BYTES:
+        return None, None
+    try:
+        value = parse_json(instance)
+    except ValueError:
+        return None, None
+    host = value.get("host") if isinstance(value, dict) else None
+    pid = value.get("pid") if isinstance(value, dict) else None
+    return (host if isinstance(host, str) else None), (
+        pid if isinstance(pid, int) and not isinstance(pid, bool) else None
+    )
 
 
 def _lock_status(instance: bytes, now: datetime, ttl_seconds: int) -> tuple[str | None, bool]:

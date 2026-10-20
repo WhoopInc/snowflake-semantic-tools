@@ -301,15 +301,18 @@ expired.
 
 - **Another run is live.** The message names it, with its role, host, and expiry.
   Wait for it to finish.
-- **A run was killed and left its lock.** Once the lock has expired, rerun with
-  `--break-stale-lock`. The run takes the lock over and warns `SST-APL010` naming
-  the run it replaced. Without the flag an expired lock is still refused, and
-  with it a lock that has not expired is refused all the same, so after a crash
-  wait out the 30 minutes. Check first that the named run really is gone: a
-  broken lock means it did not exit cleanly.
-
-There is no command that clears a live lock: a lock is only ever released by its
-own run, or taken over once it has expired.
+- **A run on this machine was killed and left its lock.** Just apply again: the
+  local lock file records the host and process that took it, so a run that finds
+  that process gone releases both of its locks first and warns `SST-APL010`. The
+  lock row in Snowflake is released only while it names that run and this host.
+- **A run elsewhere was killed, or its machine went away.** Once the lock has
+  expired, rerun with `--break-stale-lock`; the run takes it over and warns
+  `SST-APL010` naming the run it replaced. Without the flag an expired lock is
+  still refused, and with it a lock that has not expired is refused all the same.
+  To clear it at once, check the named run really is gone, then release it:
+  `sst state unlock --target <target> --run <run id> --yes` (`SST-APL040`). It
+  releases only that run's lock, so a lock another run took meanwhile is kept
+  (`SST-APL041`).
 
 ## An apply was interrupted or killed
 
@@ -324,7 +327,8 @@ what was recorded plans as no change.
 
 `SIGKILL`, or a machine that went away, cannot be handled:
 
-- **The lock stays held** until it expires; see
+- **The lock stays held** until it expires, the next apply on the same machine
+  releases it, or `sst state unlock` does; see
   [the previous entry](#another-run-holds-the-lock-sst-apl011).
 - **An object it updated but did not record** still carries SST's ownership
   marker for the definition being planned. `plan` updates it, with reason

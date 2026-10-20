@@ -72,7 +72,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.sql import Sql, sql
-from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, LockFence, RunLock
+from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, LockFence, RunLock, lock_table_for
 
 
 def _read_sql(table: Sql) -> Sql:
@@ -226,6 +226,41 @@ class RunLockMethods(LockTableMethods, StatePort):
             return
         with self._lock_transaction(table) as transaction:
             transaction.run(_release_sql(table), (target_name, fence.run_id, fence.generation))
+
+    def force_release_run_lock(
+        self, state_table: QualifiedName, target_name: str, run_id: str, *, host: str | None = None
+    ) -> RunLock | None:
+        lock_table = lock_table_for(state_table)
+        if self.kind_of(lock_table) is None:
+            return None
+        self.check_table_kind(lock_table)
+        table = lock_table_sql(state_table)
+        if self._hybrid:
+            with self._row_transaction(table, target_name) as (transaction, row):
+                expired = row is not None and bool(transaction.rows(expired_sql(table), (target_name,))[0][0])
+                current = None if row is None else _held(row, expired=expired)
+                if row is None or not _releases(current, run_id, host):
+                    transaction.rollback()
+                    return None
+                transaction.run(_free_sql(table), (target_name, run_id, generation(row[5])))
+            return current
+        with self._lock_transaction(table) as transaction:
+            current = next(
+                (lock for lock in _lock_rows(transaction, table, target_name) if lock.run_id == run_id), None
+            )
+            issued = [
+                generation(row[1]) for row in transaction.rows(fence_sql(table), (target_name,)) if row[0] == run_id
+            ]
+            if not _releases(current, run_id, host) or not issued:
+                transaction.rollback()
+                return None
+            transaction.run(_release_sql(table), (target_name, run_id, issued[0]))
+        return current
+
+
+def _releases(lock: RunLock | None, run_id: str, host: str | None) -> bool:
+    """Whether a forced release may free `lock`: `run_id` holds it, on `host` when one is named."""
+    return lock is not None and lock.run_id == run_id and (host is None or lock.host == host)
 
 
 def _held(row: tuple[object, ...], *, expired: bool) -> RunLock | None:

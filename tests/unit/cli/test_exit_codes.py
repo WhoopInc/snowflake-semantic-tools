@@ -486,6 +486,7 @@ _INVOCATIONS = {
     "explain": ("SST-VAL009",),
     "drop": DROP,
     "convert": ("--to", "hybrid"),
+    "unlock": ("--run", "run-1", "--yes"),
     "ask": ("agent", "q"),
     "lineage": ("model:orders",),
 }

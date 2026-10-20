@@ -157,7 +157,11 @@ with the first; `sst test --suite evals` and `sst drop` take the same lock. A
 running apply extends its lock every five minutes, and the lock expires 30
 minutes after its last extension. If a run died and left its lock behind,
 `--break-stale-lock` takes it over once it has expired, reporting `SST-APL010`;
-a lock that has not expired is refused all the same.
+a lock that has not expired is refused all the same. A run killed on the same
+machine needs neither: the next run there finds its process gone and releases
+its locks first (`SST-APL010`). Once you know a run elsewhere is gone,
+`sst state unlock --target <target> --run <run id> --yes` releases its lock at
+once (`SST-APL040`).
 
 ## Known warnings: the baseline
 
@@ -319,7 +323,9 @@ jobs:
   `apply` also holds a lock in the target's state table while it runs, so an apply started
   anywhere else -- another workflow, a laptop -- stops with `SST-APL011` rather than interleave.
   If a killed run left its lock behind, it expires 30 minutes after the run last extended it,
-  and from then on `--break-stale-lock` takes it over.
+  and from then on `--break-stale-lock` takes it over; `sst state unlock --run <run id> --yes`
+  releases it at once. A hosted runner is a fresh machine each time, so the lock of a run it
+  lost is never released by the next one on its own.
 - **Pin what runs.** Keep SST at an exact version and each action at a commit SHA, and let a
   dependency bot propose updates.
 - **Prune is a separate decision.** The template never passes `--prune`; add it only once the

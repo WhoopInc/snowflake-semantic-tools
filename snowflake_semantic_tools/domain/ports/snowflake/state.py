@@ -17,7 +17,7 @@ from typing import Protocol
 
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, LockFence, StateWrite
+from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, LockFence, RunLock, StateWrite
 
 
 class StatePort(Protocol):
@@ -147,5 +147,25 @@ class StatePort(Protocol):
 
         Raises:
             SnowflakePortError: the release failed; the lock then expires on its own.
+        """
+        ...
+
+    def force_release_run_lock(
+        self, state_table: QualifiedName, target_name: str, run_id: str, *, host: str | None = None
+    ) -> RunLock | None:
+        """Release the target's lock while `run_id` holds it, live or expired, for a run that will never end.
+
+        The row is read and released in one lock transaction, so a lock another run took in the
+        meantime is never released. A lock table that does not exist holds no lock.
+
+        Args:
+            host: Release it only when the lock row records this host; None releases it from anywhere.
+
+        Returns:
+            The lock released; None when `run_id` did not hold it, on `host` when one is given.
+
+        Raises:
+            SnowflakePortError: the lock table is of the other kind (SST-APL031), or could not be
+                read or written.
         """
         ...

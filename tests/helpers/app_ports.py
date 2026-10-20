@@ -15,6 +15,8 @@ class InMemoryStateStore:
         self.locked = False
         self.holder: str | None = None
         self.stale = False
+        # The holder ran on this machine and its process has ended.
+        self.gone = False
         self.writes: list[State] = []
 
     @property
@@ -50,3 +52,6 @@ class InMemoryStateStore:
         if self.holder == run_id:
             self.locked = False
             self.holder = None
+
+    def gone_holder(self) -> str | None:
+        return self.holder if self.locked and self.gone else None

@@ -137,7 +137,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "confirm no other run is live; a broken lock means the previous run did not exit cleanly",
         condition=(
             "`--break-stale-lock` was given and the target's run lock, in Snowflake or in the local "
-            "cache, had expired, so this run took it over"
+            "cache, had expired, so this run took it over; or, with no flag, the lock was a run's on "
+            "this host whose process is gone, as the local lock file records it, so this run "
+            "released both of its locks first"
         ),
         note=(
             "The lock in Snowflake expires 30 minutes after its run last extended it, and a live "
@@ -153,7 +155,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Lock held by a live run",
         "{value} holds the apply lock",
-        "wait for the other run to end; once its lock has expired, re-run with --break-stale-lock",
+        "wait for the other run to end; once its lock has expired, re-run with --break-stale-lock, or, "
+        "when that run will never end, release it with `sst state unlock --run <run id> --yes`",
         condition=(
             "another run (`apply`, `drop`, or the eval suite of `sst test`) holds the target's run "
             "lock, in Snowflake or in the local cache; or the lock expired and "
@@ -510,6 +513,27 @@ SPECS: tuple[ErrorSpec, ...] = (
             "fingerprint or name than the project compiles to now"
         ),
         precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL040",
+        Severity.WARNING,
+        "Run lock released by hand",
+        "released the run lock held by {value}",
+        "check the run is gone: one still going stops at its next statement and writes no state",
+        condition="`sst state unlock --run <run id> --yes` found that run holding the target's lock, and released it",
+        note=(
+            "The run's lock row is released in one lock transaction, so a lock another run took meanwhile is "
+            "kept; the local lock file is released too when it names the run."
+        ),
+    ),
+    spec(
+        "SST-APL041",
+        Severity.ERROR,
+        "Run does not hold the lock",
+        "run {value} does not hold the run lock of target {target}, so nothing was released",
+        "name the run SST-APL011 reports as holding the lock; `sst state unlock` releases only that run's",
+        condition="`sst state unlock --run <run id>` named a run that does not hold the target's lock in Snowflake",
+        note="A lock file beside the local state cache that names the run is released all the same.",
     ),
     spec(
         "SST-APL042",

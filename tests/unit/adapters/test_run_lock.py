@@ -320,3 +320,18 @@ def test_a_lock_table_ddl_refused_keeps_snowflakes_number_so_it_is_classified_by
     with pytest.raises(SnowflakePortError) as raised:
         FakeDriverConnector(driver).acquire_run_lock(STATE_TABLE, "dev", LockClaim("run-a"), break_stale=False)
     assert (raised.value.errno, raised.value.sqlstate) == (3001, "42501")
+
+
+def test_a_forced_release_frees_only_the_named_runs_lock_and_only_on_the_named_host() -> None:
+    tables = LockTables()
+    connector = LockTablesConnector(tables)
+    claim(tables, "run-a")
+    assert connector.force_release_run_lock(STATE_TABLE, "dev", "run-b") is None
+    assert connector.force_release_run_lock(STATE_TABLE, "dev", "run-a", host="elsewhere") is None
+    assert [row.run_id for row in tables.rows] == ["run-a"]
+    assert tables.executed()[-1] == "ROLLBACK"
+    released = connector.force_release_run_lock(STATE_TABLE, "dev", "run-a", host="laptop")
+    assert released is not None and (released.run_id, released.expired) == ("run-a", False)
+    assert tables.rows == []
+    # Generations keep rising, as after any release.
+    assert claim(tables, "run-b").fence == LockFence("run-b", 2)

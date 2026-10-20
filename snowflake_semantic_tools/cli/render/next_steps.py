@@ -12,7 +12,16 @@ from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, CONNECTION,
 # Commands that change Snowflake, the state table, or the baseline: an agent is never told to
 # run one again, only that it is the user's to run.
 RISKY = frozenset(
-    ("apply", "drop", "baseline add", "baseline prune", "baseline renew", "state recover", "state convert")
+    (
+        "apply",
+        "drop",
+        "baseline add",
+        "baseline prune",
+        "baseline renew",
+        "state recover",
+        "state convert",
+        "state unlock",
+    )
 )
 
 

@@ -74,3 +74,11 @@ class StateStore(Protocol):
         Idempotent: releasing a lock that is absent or held by another run does nothing.
         """
         ...
+
+    def gone_holder(self) -> str | None:
+        """Return the run holding the lock when it ran on this machine and its process has ended.
+
+        Such a run can never extend or release its locks. A lock that records no process, one
+        taken on another machine, or one whose process id is running again, is never gone.
+        """
+        ...

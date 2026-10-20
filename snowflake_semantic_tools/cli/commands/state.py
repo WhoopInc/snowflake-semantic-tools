@@ -1,4 +1,4 @@
-"""`sst state`: repair a target's state table: recover lost entries, or convert its kind.
+"""`sst state`: repair a target's state table: recover lost entries, convert its kind, or unlock it.
 
 `sst state recover` plans the target as `sst plan` does, then records, under the run lock and
 without writing any object, each object state does not record that its ownership marker, or
@@ -6,7 +6,8 @@ for a composite artifact its content, proves holds the compiled definition (`app
 `sst state convert` rebuilds the state and
 lock tables as hybrid or standard tables, keeping the old ones as backups
 (`adapters/snowflake/connector/convert.py`). Both ask before they write, and off a terminal
-refuse without `--yes`.
+refuse without `--yes`. `sst state unlock` releases the run lock of one named run that will
+never end, and always needs `--yes`.
 """
 
 from __future__ import annotations
@@ -24,23 +25,24 @@ from snowflake_semantic_tools.app.recover import RecoverResult, RecoverState
 from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
+from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import break_stale_lock_option, target_option
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, run_baseline
 from snowflake_semantic_tools.cli.settings import drift_check_setting, threads_setting
 from snowflake_semantic_tools.cli.wiring.plan import PlanRequest, plan_runtime
-from snowflake_semantic_tools.cli.wiring.project import connect, git_sha
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
+from snowflake_semantic_tools.cli.wiring.project import connect, git_sha, state_store
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.lifecycle import RECORDED
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from snowflake_semantic_tools.domain.state.lock import TABLE_KINDS
+from snowflake_semantic_tools.domain.state.lock import TABLE_KINDS, lock_table_for
 
-_SUBCOMMANDS = ("recover", "convert")
+_SUBCOMMANDS = ("recover", "convert", "unlock")
 
 
 @click.group(name="state")
 @click.pass_context
 def state(ctx: click.Context) -> None:
-    """Repair a target's state table: recover entries it lost, or convert it between table kinds.
+    """Repair a target's state table: recover entries it lost, convert its kind, or release a lock.
 
     State records what apply published to each target, in the state table `state:` names. These
     commands write that table and its lock table, and never a published object.
@@ -217,3 +219,52 @@ def convert(
             click.echo(f"set state.+table_kind: {to_kind}, or every run refuses the converted tables (SST-APL031)")
 
     return CommandResult(OK, DiagnosticBag(), data, human=report)
+
+
+@state.command(cls=SstCommand, name="unlock")
+@target_option()
+@click.option("--run", "run_id", required=True)
+@click.option("--yes", "-y", "assume_yes", is_flag=True)
+@command_body("state unlock")
+def unlock(
+    paths: ProjectPaths,
+    target_name: str | None,
+    run_id: str,
+    assume_yes: bool,
+    options: GlobalOptions,
+) -> CommandResult:
+    """Release the target's run lock held by a run that will never end, live or expired.
+
+    Releases the lock row only while the named run holds it, in one lock transaction, so a lock
+    another run took meanwhile is kept; the local lock file is released too when it names the
+    run. A run on this machine whose process is gone needs none of this: the next apply
+    releases its locks itself (SST-APL010). There is no prompt: --yes is the confirmation.
+
+    Exit 0 when the lock was released; 1 when the run does not hold it; 3 without --yes.
+
+    Diagnostics:
+        SST-PRT109: --yes was not given; raised.
+        SST-APL040: the run's lock was released.
+        SST-APL041: the run does not hold the lock, so nothing in Snowflake was released.
+    """
+    del options
+    if not assume_yes:
+        refusal = D("SST-PRT109", subject="cli", command="sst state unlock")
+        raise SstUsageError(refusal.message, diagnostic=refusal)
+    profile, port = connect(paths, target_name)
+    try:
+        released = port.force_release_run_lock(profile.state_table, profile.target_name, run_id)
+    finally:
+        port.close()
+    state_store(paths, profile.target_name).release_lock(run_id)
+    data = {
+        "target": profile.target_name,
+        "lock_table": lock_table_for(profile.state_table).sql,
+        "run_id": run_id,
+        "released": released is not None,
+    }
+    if released is None:
+        refused = D("SST-APL041", value=run_id, target=profile.target_name)
+        return CommandResult(ERROR, DiagnosticBag((refused,)), data)
+    found = D("SST-APL040", value=released.describe())
+    return CommandResult(OK, DiagnosticBag((found,)), data, headline=f"released the run lock of run {run_id}")

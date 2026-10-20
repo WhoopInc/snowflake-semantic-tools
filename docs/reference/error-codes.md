@@ -27,7 +27,7 @@ cannot be downgraded by any setting.
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 46 codes
-- [Apply (APL)](#apply-apl) -- 42 codes
+- [Apply (APL)](#apply-apl) -- 44 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 12 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
@@ -6926,7 +6926,7 @@ Fix: confirm COPY GRANTS was emitted
 
 `broke a stale lock held by <value>`
 
-Raised when `--break-stale-lock` was given and the target's run lock, in Snowflake or in the local cache, had expired, so this run took it over.
+Raised when `--break-stale-lock` was given and the target's run lock, in Snowflake or in the local cache, had expired, so this run took it over; or, with no flag, the lock was a run's on this host whose process is gone, as the local lock file records it, so this run released both of its locks first.
 
 Fix: confirm no other run is live; a broken lock means the previous run did not exit cleanly
 
@@ -6940,7 +6940,7 @@ Note: The lock in Snowflake expires 30 minutes after its run last extended it, a
 
 Raised when another run (`apply`, `drop`, or the eval suite of `sst test`) holds the target's run lock, in Snowflake or in the local cache; or the lock expired and `--break-stale-lock` was not given; or this run lost its lock while it ran.
 
-Fix: wait for the other run to end; once its lock has expired, re-run with --break-stale-lock
+Fix: wait for the other run to end; once its lock has expired, re-run with --break-stale-lock, or, when that run will never end, release it with `sst state unlock --run <run id> --yes`
 
 Note: The message names the holder: its run id and, for the lock in Snowflake, the role and host it runs as and when its lock expires; for the local lock, the lock file, that it locks this checkout only, and when it goes stale. A live lock is never broken: wait for that run to end. Only once its lock has expired does `--break-stale-lock` take it over (SST-APL010). A run reads its lock again before each change and each write statement, so a run that lost its lock starts no further statement and writes no state.
 
@@ -7221,6 +7221,30 @@ Raised when with `apply.create_schemas` on, apply ran `CREATE SCHEMA IF NOT EXIS
 Fix: create the schema, or have its database's owner let the role create schemas, then apply again
 
 Note: Set `apply.create_schemas: false` to have plan report an absent schema as SST-PLN010 instead.
+
+### SST-APL040
+
+**Run lock released by hand** (warning)
+
+`released the run lock held by <value>`
+
+Raised when `sst state unlock --run <run id> --yes` found that run holding the target's lock, and released it.
+
+Fix: check the run is gone: one still going stops at its next statement and writes no state
+
+Note: The run's lock row is released in one lock transaction, so a lock another run took meanwhile is kept; the local lock file is released too when it names the run.
+
+### SST-APL041
+
+**Run does not hold the lock** (error)
+
+`run <value> does not hold the run lock of target <target>, so nothing was released`
+
+Raised when `sst state unlock --run <run id>` named a run that does not hold the target's lock in Snowflake.
+
+Fix: name the run SST-APL011 reports as holding the lock; `sst state unlock` releases only that run's
+
+Note: A lock file beside the local state cache that names the run is released all the same.
 
 ### SST-APL042
 

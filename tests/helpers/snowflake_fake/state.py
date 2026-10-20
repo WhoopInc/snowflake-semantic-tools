@@ -15,7 +15,7 @@ from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, LockFence, StateWrite
+from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, LockFence, RunLock, StateWrite
 from tests.helpers.snowflake_fake.world import SnowflakeWorld
 
 
@@ -92,6 +92,12 @@ class FakeState(SnowflakeWorld):
     def release_run_lock(self, state_table: QualifiedName, target_name: str, fence: LockFence) -> None:
         self._check("release_run_lock")
         self.run_locks.release_run_lock(state_table, target_name, fence)
+
+    def force_release_run_lock(
+        self, state_table: QualifiedName, target_name: str, run_id: str, *, host: str | None = None
+    ) -> RunLock | None:
+        self._check("force_release_run_lock")
+        return self.run_locks.force_release_run_lock(state_table, target_name, run_id, host=host)
 
     def halt(self, reason: str) -> None:
         self.halted = reason

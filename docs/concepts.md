@@ -255,7 +255,15 @@ clock. A lock left behind by a run that was killed expires 30 minutes after it
 was last extended; `--break-stale-lock` takes over an expired lock
 (`SST-APL010`), and never a live one. A run also keeps a lock file beside its
 local state cache, which guards that checkout only; when another run's lock file
-refuses a run, `SST-APL011` names the file and when it goes stale.
+refuses a run, `SST-APL011` names the file and when it goes stale. The lock file
+records the host and process id that took it, so a run that finds it was taken
+on this host by a process that is no longer running releases both of that run's
+locks before it claims its own (`SST-APL010`), with no flag: the row in
+Snowflake only while it still names that run and this host. A process id
+running again reads as alive, and the run then waits as for any live lock.
+`sst state unlock --run <run id> --yes` releases a named run's lock by hand,
+live or expired, in one lock transaction, so a lock another run took meanwhile
+is kept (`SST-APL040`, `SST-APL041`).
 
 A run that may only read and write SST's tables can use them: the lock, state,
 and eval tables are created, or given a column an older release lacked, only

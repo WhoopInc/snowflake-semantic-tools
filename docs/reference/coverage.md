@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 769
+- Codes: 771
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -51,6 +51,8 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-APL037`](error-codes.md#sst-apl037) | APL | error | runtime | `snowflake_semantic_tools.app.publication` | `tests/codes/apl/test_sst_apl037.py` |
 | [`SST-APL038`](error-codes.md#sst-apl038) | APL | error | runtime | `snowflake_semantic_tools.app.publication` | `tests/codes/apl/test_sst_apl038.py` |
 | [`SST-APL039`](error-codes.md#sst-apl039) | APL | error | runtime | `snowflake_semantic_tools.app.apply.run` | `tests/codes/apl/test_sst_apl039.py` |
+| [`SST-APL040`](error-codes.md#sst-apl040) | APL | warning | local | `snowflake_semantic_tools.cli.commands.state` | `tests/codes/apl/test_sst_apl040.py` |
+| [`SST-APL041`](error-codes.md#sst-apl041) | APL | error | local | `snowflake_semantic_tools.cli.commands.state` | `tests/codes/apl/test_sst_apl041.py` |
 | [`SST-APL042`](error-codes.md#sst-apl042) | APL | warning | local | `snowflake_semantic_tools.app.apply.run` | `tests/codes/apl/test_sst_apl042.py` |
 | [`SST-APL100`](error-codes.md#sst-apl100) | APL | error | runtime | `snowflake_semantic_tools.app.smoke` | `tests/codes/apl/test_sst_apl100.py` |
 | [`SST-APL103`](error-codes.md#sst-apl103) | APL | error | runtime | `snowflake_semantic_tools.app.apply.recovery` | `tests/codes/apl/test_sst_apl103.py` |
@@ -364,7 +366,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-PRT106`](error-codes.md#sst-prt106) | PRT | error | local | `snowflake_semantic_tools.cli.runner` | `tests/codes/prt/test_sst_prt106.py` |
 | [`SST-PRT107`](error-codes.md#sst-prt107) | PRT | info | runtime | `snowflake_semantic_tools.cli.commands.apply`<br>`snowflake_semantic_tools.cli.output` | `tests/codes/prt/test_sst_prt107.py` |
 | [`SST-PRT108`](error-codes.md#sst-prt108) | PRT | error | local | `snowflake_semantic_tools.cli.commands.drop` | `tests/codes/prt/test_sst_prt108.py` |
-| [`SST-PRT109`](error-codes.md#sst-prt109) | PRT | error | local | `snowflake_semantic_tools.cli.commands.apply`<br>`snowflake_semantic_tools.cli.commands.baseline`<br>`snowflake_semantic_tools.cli.commands.drop`<br>`snowflake_semantic_tools.cli.confirm` | `tests/codes/prt/test_sst_prt109.py` |
+| [`SST-PRT109`](error-codes.md#sst-prt109) | PRT | error | local | `snowflake_semantic_tools.cli.commands.apply`<br>`snowflake_semantic_tools.cli.commands.baseline`<br>`snowflake_semantic_tools.cli.commands.drop`<br>`snowflake_semantic_tools.cli.commands.state`<br>`snowflake_semantic_tools.cli.confirm` | `tests/codes/prt/test_sst_prt109.py` |
 | [`SST-PRT110`](error-codes.md#sst-prt110) | PRT | error | local | `snowflake_semantic_tools.cli.commands.drop`<br>`snowflake_semantic_tools.cli.runner` | `tests/codes/prt/test_sst_prt110.py` |
 | [`SST-PRT111`](error-codes.md#sst-prt111) | PRT | error | local | `snowflake_semantic_tools.cli.commands.compile` | `tests/codes/prt/test_sst_prt111.py` |
 | [`SST-PRT112`](error-codes.md#sst-prt112) | PRT | error | local | `snowflake_semantic_tools.cli.commands.lineage` | `tests/codes/prt/test_sst_prt112.py` |
