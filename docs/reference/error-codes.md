@@ -4958,7 +4958,7 @@ Raised when the eval gate finds the baseline was captured for another dataset, e
 
 Fix: capture a new baseline for the current dataset, agent version and metrics
 
-Note: The message names each part that differs. The run's agent version is part of the identity, so a new agent version needs a new baseline: `sst test --suite evals --select <eval> --capture-baseline --reason "<why>"`. An edited custom metric is SST-VAL745 instead.
+Note: The message names each part that differs. The run's agent version is part of the identity: it matches the version the baseline was captured on, or any version whose comment carries the same `sst-spec:` fingerprint. Any other version needs a new baseline: `sst test --suite evals --select <eval> --capture-baseline --reason "<why>"`. An edited custom metric is SST-VAL745 instead.
 
 ### SST-VAL760
 

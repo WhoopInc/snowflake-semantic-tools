@@ -39,6 +39,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 )
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import Action
+from snowflake_semantic_tools.domain.model.lifecycle.version import commented_spec_fingerprint
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.project import UNKNOWN_GIT_SHA
 from snowflake_semantic_tools.domain.ports.snowflake.errors import (
@@ -129,27 +130,37 @@ class _StartedRuns:
 
 @dataclass(frozen=True, slots=True)
 class ResolvedAgent:
-    """The committed agent version an eval runs against.
+    """The committed agent version an eval runs against, and the specification it holds.
 
     Attributes:
         version: The concrete `VERSION$<n>` the eval's selector resolved to.
+        spec_fingerprint: The `sst-spec:` fingerprint the version's comment carries; None when it
+            carries none, as a version committed outside SST does, or the comment was not read.
     """
 
     version: str
+    spec_fingerprint: str | None = None
 
 
 def resolve_agent(port: CatalogPublicationPort, compiled: CompiledEval, defaults: EvalDefaults) -> ResolvedAgent:
-    """Resolve the committed agent version every attempt of an eval runs against.
+    """Resolve the committed agent version every attempt of an eval runs against, and its fingerprint.
 
     The selector is the eval's `agent_version` setting, else the project's, as validation reads
-    it. Never writes.
+    it. The fingerprint is read from the version's comment, as SHOW VERSIONS IN AGENT lists it;
+    a listing that fails leaves it None, so the version is then compared by name alone. Never
+    writes.
 
     Raises:
         AgentVersionNotFound: the selector names no committed version.
         SnowflakePortError: the selector could not be resolved.
     """
     selector = compiled.resolved.options.agent_version or defaults.agent_version or ""
-    return ResolvedAgent(port.resolve_agent_version(compiled.agent_target, selector))
+    version = port.resolve_agent_version(compiled.agent_target, selector)
+    try:
+        listed = port.observe_agent_versions(compiled.agent_target).named(version)
+    except SnowflakePortError:
+        return ResolvedAgent(version)
+    return ResolvedAgent(version, commented_spec_fingerprint(listed.comment) if listed is not None else None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,7 +169,7 @@ class _RunSetup:
 
     Attributes:
         timestamp: The run names' `ts` token.
-        agent: The concrete version the agent's selector resolved to.
+        agent: The concrete version the agent's selector resolved to, and its fingerprint.
         required_completed: The completed attempts the eval needs: a baseline capture's
             `baseline_runs`, else 1. No attempt starts once that many completed and were read.
         attempt_limit: The attempts allowed in all: `required_completed` plus the retries.
@@ -460,6 +471,7 @@ class RunEvalSuite:
             terminal_status,
             status_details=status_details,
             agent_version=setup.agent.version,
+            agent_spec_fingerprint=setup.agent.spec_fingerprint,
         )
         try:
             rows, cost = read_results(self._port, compiled, run_name, timeout_seconds=poll.read_timeout_seconds())

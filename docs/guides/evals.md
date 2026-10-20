@@ -614,8 +614,9 @@ Credits are not attributed.
 A baseline records, for each question and metric, whether the metric passed in
 each of `baseline_runs` completed runs of the published agent. It keeps only
 metadata -- pass flags, each metric's threshold and gating, the tier, and the
-identities of the dataset, the run configuration, the agent version and the
-metrics -- never a question, an answer or a score. Baselines are stored in
+identities of the dataset, the run configuration, the agent version (and the
+`sst-spec:` fingerprint its comment carries) and the metrics -- never a
+question, an answer or a score. Baselines are stored in
 Snowflake, per target, in a table beside SST's state table named after it with
 the suffix `_EVALS`. (They are not the diagnostic baseline file,
 `.sst/baseline.json`.)
@@ -660,11 +661,18 @@ baseline is captured, when:
 - anything else the baseline recorded differs -- the questions, the rendered
   run configuration (metrics and their versions, agent selector, dataset name,
   label), a threshold or gate flag, the tier, the set of question and metric
-  pairs, or the concrete agent version the run resolved: `SST-VAL759`
-  (`baseline_incompatible`). Publishing a new agent version therefore needs a
-  new baseline. A change to only the agent's comment, profile, tags, alias, or
-  `secure` adds no version ([agents guide](agents.md#publishing)), so the
-  baseline stays valid;
+  pairs, or the agent version the run resolved: `SST-VAL759`
+  (`baseline_incompatible`). The agent version matches when it is the
+  `VERSION$<n>` the baseline was captured on, or when its comment carries the
+  same `sst-spec:` fingerprint the baseline recorded from that version's
+  ([agents guide](agents.md#publishing)): a revert or restore commits a new
+  version holding a specification already gated, and the baseline still
+  applies. Publishing a version with another specification needs a new
+  baseline, and so does one without an `sst-spec:` comment, such as a version
+  committed outside SST; a baseline captured before SST recorded the
+  fingerprint matches only its own version. A change to only the agent's
+  comment, profile, tags, alias, or `secure` adds no version, so the baseline
+  stays valid;
 - the baseline holds fewer runs than `baseline_runs` now asks: `SST-VAL734`
   (`baseline_incomplete`);
 - it has expired: `SST-VAL761` (`baseline_expired`);

@@ -47,7 +47,8 @@ def capture_baseline(
     `required_attempts` completed attempts whose results were read are captured, in attempt
     order, else the eval's `baseline_runs`, else one; the baseline expires `BASELINE_TTL_DAYS`
     after its capture. An attempt that failed, was partial or was not read is never captured:
-    the run reported it, and the retry that completed in its place counts instead.
+    the run reported it, and the retry that completed in its place counts instead. The agent
+    version's specification fingerprint is recorded when every captured attempt read the same.
 
     Raises:
         ValueError: the reason is blank; too few attempts completed and were read; the
@@ -84,6 +85,7 @@ def capture_baseline(
         reason=reason.strip(),
         tier=_resolved_tier(compiled, default_tier),
         gate_policy=_gate_policy(compiled),
+        agent_spec_fingerprint=_attempt_spec_fingerprint(selected),
     )
 
 
@@ -322,10 +324,26 @@ def _incompatibility(
 
 
 def _agent_change(baseline: EvalBaselineRecord, agent: ResolvedAgent) -> tuple[str, ...]:
-    """Name the agent version the run uses when the baseline was captured on another one."""
+    """Name the agent version the run uses when it is not the one the baseline was captured on.
+
+    The version matches when it is the one recorded, or when it and the baseline both carry an
+    `sst-spec:` fingerprint and the two are equal: a revert commits a new version holding the
+    same specification. A version without a fingerprint, or a baseline recorded without one,
+    matches only by name.
+    """
     if baseline.agent_version == agent.version:
         return ()
-    return (f"it was captured on {baseline.agent_version or 'no recorded version'}, and this run uses {agent.version}",)
+    recorded, current = baseline.agent_spec_fingerprint, agent.spec_fingerprint
+    if recorded is not None and recorded == current:
+        return ()
+    if recorded is None:
+        held = ""
+    elif current is None:
+        held = ", which carries no sst-spec fingerprint"
+    else:
+        held = ", whose specification differs"
+    captured_on = baseline.agent_version or "no recorded version"
+    return (f"it was captured on {captured_on}, and this run uses {agent.version}{held}",)
 
 
 def _identity(compiled: CompiledEval, default_tier: str | None) -> tuple[object, ...]:
@@ -427,7 +445,7 @@ def _attempt_agent_version(attempts: tuple[EvalRunAttempt, ...], run: str) -> st
 
 
 def _result_agent(result: EvalRunResult) -> ResolvedAgent:
-    """Return the one agent version the run's completed attempts ran against.
+    """Return the one agent version the run's completed attempts ran against, and its fingerprint.
 
     Raises:
         ValueError: no attempt completed and was read, or those that did name no one version.
@@ -435,7 +453,13 @@ def _result_agent(result: EvalRunResult) -> ResolvedAgent:
     completed = _completed_attempts(result)
     if not completed:
         raise ValueError("has no retrievable completed attempt")
-    return ResolvedAgent(_attempt_agent_version(completed, "current"))
+    return ResolvedAgent(_attempt_agent_version(completed, "current"), _attempt_spec_fingerprint(completed))
+
+
+def _attempt_spec_fingerprint(attempts: tuple[EvalRunAttempt, ...]) -> str | None:
+    """Return the specification fingerprint every attempt read; None when they read none or differ."""
+    fingerprints = {attempt.agent_spec_fingerprint for attempt in attempts}
+    return next(iter(fingerprints)) if len(fingerprints) == 1 else None
 
 
 def _metric_versions(compiled: CompiledEval) -> tuple[tuple[str, str], ...]:

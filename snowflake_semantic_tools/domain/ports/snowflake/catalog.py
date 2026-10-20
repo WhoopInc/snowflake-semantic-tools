@@ -110,6 +110,13 @@ class AgentVersions:
         """Return each alias a committed version carries, with that version, as `(alias, version)`."""
         return tuple((version.alias, version.name) for version in self.versions if version.name and version.alias)
 
+    def named(self, name: str) -> AgentVersion | None:
+        """Return the committed version of this system name, compared casefolded; None when none is."""
+        return next(
+            (version for version in self.versions if version.name and version.name.casefold() == name.casefold()),
+            None,
+        )
+
 
 def _number(name: str | None) -> re.Match[str] | None:
     """Match a system version name, `VERSION$<n>`; None for the live version or any other name."""

@@ -73,6 +73,17 @@ def test_eval_state_payloads_round_trip_without_raw_eval_data() -> None:
     assert "trace" not in document
 
 
+def test_a_baselines_spec_fingerprint_round_trips_and_an_older_payload_reads_none() -> None:
+    fingerprinted = replace(baseline(), agent_spec_fingerprint="a" * 64)
+    payload = _baseline_payload(fingerprinted)
+
+    assert payload["agent_spec_fingerprint"] == "a" * 64
+    assert _baseline_from_payload(json.dumps(payload)) == fingerprinted
+    # A baseline stored before the fingerprint was recorded has no such key.
+    older = {key: item for key, item in _baseline_payload(baseline()).items() if key != "agent_spec_fingerprint"}
+    assert _baseline_from_payload(older).agent_spec_fingerprint is None
+
+
 def test_in_memory_eval_state_store_is_target_scoped() -> None:
     store = InMemoryEvalStateStore()
     store.write_baselines("dev", (baseline(),))

@@ -694,3 +694,64 @@ def test_naive_capture_timestamp_is_normalized_to_utc() -> None:
 
     assert baseline.captured_at == "2026-09-01T00:00:00Z"
     assert baseline.expires_at == "2026-10-01T00:00:00Z"
+
+
+SPEC = "e" * 64
+PASSING_VALUES = (("q", "answer_correctness", True), ("q", "grounding", True))
+
+
+def on_version(name: str, version: str, spec: str | None) -> EvalRunAttempt:
+    return replace(attempt(name, PASSING_VALUES), agent_version=version, agent_spec_fingerprint=spec)
+
+
+def test_a_baseline_records_the_spec_fingerprint_only_when_every_attempt_read_the_same() -> None:
+    compiled = compiled_eval()
+
+    def captured(*attempts: EvalRunAttempt) -> EvalBaselineRecord:
+        return capture_baseline(compiled, run_result(*attempts), reason="initial", captured_at="2026-09-01T00:00:00Z")
+
+    same = captured(on_version("b1", "VERSION$1", SPEC), on_version("b2", "VERSION$1", SPEC))
+    mixed = captured(on_version("b1", "VERSION$1", SPEC), on_version("b2", "VERSION$1", None))
+
+    assert (same.agent_spec_fingerprint, mixed.agent_spec_fingerprint) == (SPEC, None)
+
+
+def test_a_baseline_stays_valid_for_another_version_with_the_same_spec_fingerprint() -> None:
+    compiled = compiled_eval()
+    baseline = capture_baseline(
+        compiled,
+        run_result(on_version("b1", "VERSION$1", SPEC), on_version("b2", "VERSION$1", SPEC)),
+        reason="initial",
+        captured_at="2026-09-01T00:00:00Z",
+    )
+    # A restore committed VERSION$3 holding VERSION$1's specification.
+    restored = run_result(on_version("c1", "VERSION$3", SPEC), on_version("c2", "VERSION$3", SPEC))
+
+    verdict, diagnostics = evaluate_gate(compiled, restored, baseline, now="2026-09-10T00:00:00Z")
+
+    assert verdict.passed and verdict.reason is None and diagnostics == ()
+    assert gate_refusal(compiled, baseline, ResolvedAgent("VERSION$3", SPEC), now="2026-09-10T00:00:00Z") is None
+
+
+@pytest.mark.parametrize(
+    ("recorded", "current", "suffix"),
+    (
+        (SPEC, "d" * 64, ", whose specification differs"),
+        (SPEC, None, ", which carries no sst-spec fingerprint"),
+        # A baseline stored before fingerprints were recorded matches its own version only.
+        (None, SPEC, ""),
+    ),
+)
+def test_a_version_that_does_not_share_the_baselines_fingerprint_is_incompatible(
+    recorded: str | None, current: str | None, suffix: str
+) -> None:
+    compiled = compiled_eval()
+    baseline = replace(two_run_baseline(compiled), agent_spec_fingerprint=recorded)
+
+    refused = gate_refusal(compiled, baseline, ResolvedAgent("VERSION$3", current), now="2026-09-10T00:00:00Z")
+
+    assert refused is not None and refused[0].reason == "baseline_incompatible"
+    assert refused[1][0].message == (
+        f"eval 'eval:sales_agent' baseline is incompatible: it was captured on VERSION$1, and this run uses "
+        f"VERSION$3{suffix}"
+    )

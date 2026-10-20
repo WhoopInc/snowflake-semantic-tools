@@ -36,6 +36,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
@@ -196,6 +197,39 @@ def test_an_eval_its_baseline_cannot_gate_is_refused_before_any_run_starts() -> 
     assert port.scripts == [] and port.queries == [] and port.uploads == []
     assert (outcome.data["gate_verdict"], outcome.data["gate_reasons"]) == ("no_signal", ["baseline_incompatible"])
     assert outcome.data["attempt_count"] == 0 and outcome.recapture == ("eval:sales_agent",)
+
+
+def commented(port: EvalSnowflake, version: str, spec: str) -> EvalSnowflake:
+    """Make `version` the sales agent's committed version, its comment carrying `spec`."""
+    port.agent_versions[("DB.S.SALES_AGENT", "committed")] = version
+    port.agent_version_rows["DB.S.SALES_AGENT"] = (
+        AgentVersion(version, "LAST", comment=f"git:abc1234 sst-spec:{spec}"),
+    )
+    return port
+
+
+def test_a_restored_agent_version_holding_the_baselines_spec_is_gated_on_it() -> None:
+    result = gated_eval()
+    store = InMemoryEvalStateStore()
+    capture = EvalGateRequest(capture_baseline=True, reason="initial")
+    gate(
+        commented(EvalSnowflake(completed_attempt()), "VERSION$1", "a" * 64),
+        request=capture,
+        store=store,
+        result=result,
+    )
+    assert store.baselines[("verify", "eval:sales_agent")].agent_spec_fingerprint == "a" * 64
+
+    restored, _, _, _ = gate(
+        commented(EvalSnowflake(completed_attempt()), "VERSION$3", "a" * 64), store=store, result=result
+    )
+    changed, _, _, _ = gate(commented(EvalSnowflake([]), "VERSION$4", "b" * 64), store=store, result=result)
+
+    assert isinstance(restored, EvalGateOutcome) and restored.passed and restored.data["gate_verdict"] == "passed"
+    assert isinstance(changed, EvalGateOutcome) and not changed.passed
+    assert changed.diagnostics[0].message.endswith(
+        "it was captured on VERSION$1, and this run uses VERSION$4, whose specification differs"
+    )
 
 
 def test_a_refused_eval_leaves_the_others_to_run_and_fails_the_suite() -> None:

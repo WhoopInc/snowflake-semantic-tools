@@ -119,8 +119,13 @@ def gated_eval(resolved: ResolvedEval | None = None) -> CompiledEval:
     )
 
 
-def attempt(name: str, *values: tuple[str, str, bool], agent_version: str = "VERSION$1") -> EvalRunAttempt:
-    """One completed attempt, from `(question, metric, passed)` flags."""
+def attempt(
+    name: str,
+    *values: tuple[str, str, bool],
+    agent_version: str = "VERSION$1",
+    agent_spec_fingerprint: str | None = None,
+) -> EvalRunAttempt:
+    """One completed attempt, from `(question, metric, passed)` flags, on `agent_version`."""
     rows: dict[str, list[EvalMetricResult]] = {}
     for question, metric, passed in values:
         rows.setdefault(question, []).append(EvalMetricResult(question, metric, 1.0 if passed else 0.0, passed))
@@ -130,6 +135,7 @@ def attempt(name: str, *values: tuple[str, str, bool], agent_version: str = "VER
         "COMPLETED",
         tuple(EvalResultRow(question, "", tuple(metrics)) for question, metrics in sorted(rows.items())),
         agent_version=agent_version,
+        agent_spec_fingerprint=agent_spec_fingerprint,
     )
 
 

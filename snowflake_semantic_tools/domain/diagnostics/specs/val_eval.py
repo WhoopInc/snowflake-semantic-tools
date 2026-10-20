@@ -615,8 +615,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         note=(
             "The message names each part that differs. The run's agent version is part of the "
-            "identity, so a new agent version needs a new baseline: `sst test --suite evals --select "
-            '<eval> --capture-baseline --reason "<why>"`. An edited custom metric is SST-VAL745 instead.'
+            "identity: it matches the version the baseline was captured on, or any version whose "
+            "comment carries the same `sst-spec:` fingerprint. Any other version needs a new "
+            'baseline: `sst test --suite evals --select <eval> --capture-baseline --reason "<why>"`. '
+            "An edited custom metric is SST-VAL745 instead."
         ),
         precheck=Precheck.RUNTIME,
     ),

@@ -646,7 +646,10 @@ When it does, an update adds no version: a change to only the agent's
 `comment`, `profile`, tags, `alias`, or `secure` runs `SET COMMENT`, points the
 alias at that version (`MODIFY VERSION <version> SET ALIAS`), opens a live
 version from it if there is none, and sets the tags, profile, and `SECURE`. An
-eval baseline taken against that version stays valid. A version committed
+eval baseline taken against that version stays valid. The eval gate reads the
+fingerprint too: a baseline stays valid for any later version whose comment
+carries the fingerprint it was captured on, as one a revert or restore commits
+does ([evals guide](evals.md#when-a-baseline-stops-matching)). A version committed
 before SST wrote the fingerprint is recognised by its specification, when the
 role may read it; a secure agent's version the role cannot read gets a new
 version, as before.

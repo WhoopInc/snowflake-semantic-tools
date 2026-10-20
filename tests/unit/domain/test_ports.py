@@ -81,6 +81,13 @@ def test_agent_versions_name_the_newest_committed_the_default_and_where_each_ali
     assert versions.alias_versions == (("PROMOTED", "VERSION$10"), ("OTHER", "CUSTOM"))
 
 
+def test_agent_versions_find_a_committed_version_by_its_name() -> None:
+    commented = AgentVersion("VERSION$3", None, comment="git:abc sst-spec:x")
+    versions = AgentVersions((AgentVersion(None, "CANDIDATE"), commented))
+    # The live version has no system name, so no name finds it.
+    assert (versions.named("version$3"), versions.named("VERSION$4"), versions.named("")) == (commented, None, None)
+
+
 def test_execution_and_stage_port_methods_are_declarations_only() -> None:
     source = object()
     assert ExecutionPort.query(source, "x") is None  # type: ignore[arg-type]

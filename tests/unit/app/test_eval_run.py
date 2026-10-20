@@ -29,9 +29,11 @@ from snowflake_semantic_tools.app.evals.retrieve import (
 from snowflake_semantic_tools.app.evals.run import (
     EvalRunResult,
     EvalSuiteResult,
+    ResolvedAgent,
     RunEvalSuite,
     _compact_timestamp,
     _StartedRuns,
+    resolve_agent,
     suite_concurrency,
     validate_eval_publication,
 )
@@ -52,6 +54,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError, SnowflakeTransientError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import Sql
@@ -612,6 +615,44 @@ def test_a_config_without_an_agent_version_runs_the_project_agent_version() -> N
 
     assert result.success, [item.code for item in result.diagnostics]
     assert result.evals[0].attempts[0].agent_version == "VERSION$7"
+
+
+SPEC = "f" * 64
+
+
+def test_each_attempt_carries_the_spec_fingerprint_its_versions_comment_holds() -> None:
+    port = EvalSnowflake([status_result("COMPLETED"), result_rows()])
+    port.agent_version_rows["DB.S.SALES_AGENT"] = (
+        AgentVersion(None, None),
+        AgentVersion("VERSION$1", "LAST", comment=f"git:abc1234 sst-spec:{SPEC}"),
+    )
+
+    result = run_once(port)
+
+    [attempt] = result.evals[0].attempts
+    assert (attempt.agent_version, attempt.agent_spec_fingerprint) == ("VERSION$1", SPEC)
+
+
+@pytest.mark.parametrize(
+    ("rows", "refused"),
+    (
+        ((AgentVersion("VERSION$1", "LAST", comment="committed by hand"),), False),
+        ((AgentVersion("VERSION$2", "LAST", comment=f"git:abc1234 sst-spec:{SPEC}"),), False),
+        ((AgentVersion("VERSION$1", "LAST", comment=f"git:abc1234 sst-spec:{SPEC}"),), True),
+    ),
+)
+def test_a_version_without_a_readable_fingerprint_resolves_to_none(
+    rows: tuple[AgentVersion, ...], refused: bool
+) -> None:
+    port = EvalSnowflake([])
+    port.agent_version_rows["DB.S.SALES_AGENT"] = rows
+    if refused:
+        port.refuse("observe_agent_versions")
+
+    agent = resolve_agent(port, compiled_eval_of(), EvalDefaults())
+
+    # No sst-spec comment, a version SHOW does not list, or a listing that failed.
+    assert agent == ResolvedAgent("VERSION$1")
 
 
 def test_the_deadline_counts_from_just_before_start_so_a_slow_start_uses_it_up() -> None:

@@ -95,6 +95,8 @@ class EvalRunAttempt:
         rows: The results, read only from a completed attempt; `()` otherwise.
         retrieval_error: Why starting, polling or reading the attempt failed; None when nothing did.
         agent_version: The concrete version the run resolved the agent to; None when unknown.
+        agent_spec_fingerprint: The `sst-spec:` fingerprint that version's comment carries; None
+            when it carries none, as for a version committed outside SST, or it was not read.
         wall_ms: How long the attempt took from its first question to its last answer; None
             when not measured.
     """
@@ -108,6 +110,7 @@ class EvalRunAttempt:
     status_details: tuple[str, ...] = ()
     agent_version: str | None = None
     wall_ms: int | None = None
+    agent_spec_fingerprint: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +140,10 @@ class EvalBaselineRecord:
         expires_at: From this timestamp on, the baseline no longer gates a run.
         reason: Why it was captured; never empty.
         gate_policy: `(metric, gated)` pairs, sorted.
+        agent_spec_fingerprint: The `sst-spec:` fingerprint of that version's specification, from
+            its comment, when every captured attempt read the same one; None otherwise, and for
+            a baseline stored before fingerprints were recorded. A later run on any version
+            carrying the same fingerprint matches it; without one, only `agent_version` does.
     """
 
     eval_key: str
@@ -151,6 +158,7 @@ class EvalBaselineRecord:
     reason: str
     tier: str = "report"
     gate_policy: tuple[tuple[str, bool], ...] = ()
+    agent_spec_fingerprint: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

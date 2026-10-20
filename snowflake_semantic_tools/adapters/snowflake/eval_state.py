@@ -155,6 +155,7 @@ def _baseline_payload(value: EvalBaselineRecord) -> dict[str, object]:
         "reason": value.reason,
         "tier": value.tier,
         "gate_policy": dict(value.gate_policy),
+        "agent_spec_fingerprint": value.agent_spec_fingerprint,
     }
 
 
@@ -162,6 +163,8 @@ def _baseline_from_payload(value: object) -> EvalBaselineRecord:
     """Decode a stored baseline payload, given as a mapping or as its JSON text.
 
     A missing field reads as empty: `""`, no metrics or run names, and `report` for the tier.
+    A missing `agent_spec_fingerprint`, as a baseline stored before it was recorded lacks, reads
+    as None, so that baseline matches only its own agent version.
     Metric versions and the gate policy are sorted by name, so the record does not depend on
     the order the payload holds them in; a `score_range` bound of null stays None.
 
@@ -193,6 +196,7 @@ def _baseline_from_payload(value: object) -> EvalBaselineRecord:
         reason=str(payload.get("reason") or ""),
         tier=str(payload.get("tier") or "report"),
         gate_policy=tuple(sorted((str(key), bool(item)) for key, item in gate_policy.items())),
+        agent_spec_fingerprint=str(fingerprint) if (fingerprint := payload.get("agent_spec_fingerprint")) else None,
     )
 
 
