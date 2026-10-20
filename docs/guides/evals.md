@@ -322,8 +322,8 @@ sst test --suite evals --target dev
 ```
 
 The first `sst test` captures a baseline; every later one runs the evals and
-gates them on it. A gate run with no baseline fails (`SST-VAL758`), after its
-runs have completed.
+gates them on it. A gate run with no baseline fails (`SST-VAL758`) before any of
+its runs starts.
 
 ### Before any run starts
 
@@ -350,7 +350,19 @@ runs have completed.
    it never lists the primary role's own grants, which can be many. A privilege
    only a secondary role holds is `SST-VAL727`; one no role in the session holds
    is `SST-VAL728`. Either stops the suite before any run starts (exit 1).
-5. Each eval's agent version is resolved (`SST-VAL720` when it does not
+5. **Baselines.** Unless the run captures, each eval's agent version is
+   resolved and its stored baseline read, and an eval the baseline cannot gate
+   is refused before it starts: no baseline (`SST-VAL758`), one captured for
+   another agent version, dataset, config, metrics or tier (`SST-VAL745`,
+   `SST-VAL759`), one with too few runs (`SST-VAL734`), or one that has expired
+   (`SST-VAL761`) -- the checks [When a baseline stops matching](#when-a-baseline-stops-matching)
+   lists. Every attempt runs on the version resolved here, and the run lock
+   keeps an apply from committing another meanwhile, so the refusal is exact.
+   The other evals still run, and the suite then fails (exit 1); with
+   `--fail-fast`, a refusal starts no eval at all. The run's next step names
+   the capture that replaces the baseline. An eval whose agent version does not
+   resolve is not checked here; the step below reports it.
+6. Each eval's agent version is resolved (`SST-VAL720` when it does not
    exist), and its staged run configuration is read back and uploaded again
    unless it matches what was applied. A config stage with another file
    format is `SST-VAL729`.
@@ -660,6 +672,15 @@ baseline is captured, when:
   `SST-SNO001` (`current_no_signal`).
 
 The reason is listed in `gate_reasons`, and `gate_verdict` is `no_signal`.
+`SST-VAL759` names each part that differs, such as `it was captured on
+VERSION$2, and this run uses VERSION$3` or `metric 'answer_correctness' changed
+its threshold`. Every reason but the question and metric pairs and
+`current_no_signal` is known before the run starts, so an eval refused for one
+of them starts no run ([Before any run starts](#before-any-run-starts)); the
+checks are made again once the run's attempts are in. For `baseline_absent`,
+`baseline_incompatible`, `baseline_incomplete` and `baseline_expired`, running
+the suite again cannot pass, so the run's next step is the capture,
+`sst test --suite evals --select <eval> --capture-baseline --reason "<why>"`.
 
 ### Expiry
 
@@ -683,7 +704,10 @@ when interrupted.
 ### How the gate reaches its verdict
 
 The gate checks one eval's run in this order, and the first check that fails
-gives the reason, which fails the run whatever its tier:
+gives the reason, which fails the run whatever its tier. Each check down to the
+expiry is first made before the run starts, against the agent version the eval
+resolves to, and an eval that fails one starts no run; its gate is recorded
+with no runs:
 
 ```mermaid
 flowchart TD

@@ -594,9 +594,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Eval baseline is absent",
         "eval '{artifact}' has no captured baseline",
         "capture a baseline explicitly with a reason",
-        condition="the eval gate finds no baseline stored for the eval on this target; the gate has no signal",
+        condition=(
+            "the eval gate finds no baseline stored for the eval on this target, before the eval's "
+            "run starts; the eval starts no run, and the gate has no signal"
+        ),
         note='Capture one: `sst test --suite evals --capture-baseline --reason "<why>"`.',
-        precheck=Precheck.RUNTIME,
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL759",
@@ -606,13 +609,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         "capture a new baseline for the current dataset, agent version and metrics",
         condition=(
             "the eval gate finds the baseline was captured for another dataset, eval config, agent "
-            "version, metric versions, thresholds, gating or tier, or the run scored another set of "
-            "question/metric pairs; the gate has no signal"
+            "version, metric versions, thresholds, gating or tier, which it checks before the eval's "
+            "run starts and again after it, or the run scored another set of question/metric pairs; "
+            "the gate has no signal"
         ),
         note=(
-            "The run's agent version is part of the identity, so a new agent version needs a new "
-            'baseline: `sst test --suite evals --capture-baseline --reason "<why>"`. An edited custom '
-            "metric is SST-VAL745 instead."
+            "The message names each part that differs. The run's agent version is part of the "
+            "identity, so a new agent version needs a new baseline: `sst test --suite evals --select "
+            '<eval> --capture-baseline --reason "<why>"`. An edited custom metric is SST-VAL745 instead.'
         ),
         precheck=Precheck.RUNTIME,
     ),
@@ -634,9 +638,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         "eval '{artifact}' baseline expired on {date}",
         "capture a replacement baseline with a reason",
         demotable=False,
-        condition=("the eval gate finds the baseline is 30 or more days old; the gate has no signal"),
+        condition=(
+            "the eval gate finds the baseline is 30 or more days old, before the eval's run starts or "
+            "once it ends; the gate has no signal"
+        ),
         note='Capture a replacement: `sst test --suite evals --capture-baseline --reason "<why>"`.',
-        precheck=Precheck.RUNTIME,
+        precheck=Precheck.OBSERVE,
     ),
     spec(
         "SST-VAL762",

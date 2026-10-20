@@ -11,6 +11,8 @@ from types import MappingProxyType
 import pytest
 
 from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.compile.evals import CompileEvals
+from snowflake_semantic_tools.app.evals.gate import capture_baseline
 from snowflake_semantic_tools.app.evals.options import EvalRunOptions
 from snowflake_semantic_tools.app.evals.projection import empty_eval_suite_json
 from snowflake_semantic_tools.app.evals.run import EvalRunsInterrupted
@@ -33,7 +35,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     eval_status_is_provisional,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
-from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
+from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
@@ -44,9 +46,11 @@ from tests.helpers.clocks import FixedClock, PollClock
 from tests.helpers.eval_builders import (
     STATUS_COLUMNS,
     EvalSnowflake,
+    attempt,
     compile_eval,
     resolved_eval,
     result_rows,
+    run_result,
     status_result,
 )
 from tests.helpers.eval_inputs import settled
@@ -144,14 +148,127 @@ def test_an_unpublished_eval_stops_before_any_run_and_releases_the_lock(monkeypa
     assert not lock.locked and port.scripts == []
 
 
-def test_a_gate_without_a_baseline_has_no_signal_and_records_the_gate() -> None:
-    outcome, store, lock, inputs = gate(EvalSnowflake(completed_attempt()))
+def test_a_gate_without_a_baseline_is_refused_before_it_runs_and_records_the_gate() -> None:
+    port = EvalSnowflake([])
+
+    outcome, store, lock, inputs = gate(port)
 
     assert isinstance(outcome, EvalGateOutcome) and not outcome.passed
     assert [item.code for item in outcome.diagnostics] == ["SST-VAL758"]
     assert (outcome.data["gate_verdict"], outcome.data["gate_reasons"]) == ("no_signal", ["baseline_absent"])
-    assert ("verify", "eval:sales_agent") in store.gates and not lock.locked
-    assert inputs.reads == ["config", "eval_catalog", "git_sha"]
+    assert outcome.recapture == ("eval:sales_agent",)
+    # Nothing was started, so the gate records no runs, and no commit names a run.
+    assert port.scripts == [] and port.queries == []
+    assert store.gates[("verify", "eval:sales_agent")].run_names == () and not lock.locked
+    assert inputs.reads == ["config", "eval_catalog"]
+
+
+def two_evals(*, blocking: bool = False) -> CompileResult:
+    """The sales eval and the same eval of an ops agent beside it, `ops_agent` first."""
+    sales = resolved_eval()
+    ops = replace(sales, agent=replace(sales.agent, name="ops_agent"))
+    if blocking:
+        sales, ops = (settled(item, eval_tier="blocking") for item in (sales, ops))
+    catalog = EvalCatalog((sales, ops), sales.custom_metrics, diagnostics=DiagnosticBag())
+    targets = {
+        "sales_agent": QualifiedName.parse("DB.S.SALES_AGENT"),
+        "ops_agent": QualifiedName.parse("DB.S.OPS_AGENT"),
+    }
+    return CompileEvals(catalog, agent_targets=targets).run_result()
+
+
+def test_an_eval_its_baseline_cannot_gate_is_refused_before_any_run_starts() -> None:
+    result = gated_eval()
+    store = captured_store(result)
+    port = EvalSnowflake([])
+    # An apply committed a new version since the baseline was captured.
+    port.agent_versions[("DB.S.SALES_AGENT", "committed")] = "VERSION$2"
+
+    outcome, _, _, _ = gate(port, store=store, result=result)
+
+    assert isinstance(outcome, EvalGateOutcome) and not outcome.passed
+    [refused] = outcome.diagnostics
+    assert refused.code == "SST-VAL759"
+    assert refused.message == (
+        "eval 'eval:sales_agent' baseline is incompatible: it was captured on VERSION$1, and this run uses VERSION$2"
+    )
+    # No evaluation run was started, staged or polled for it.
+    assert port.scripts == [] and port.queries == [] and port.uploads == []
+    assert (outcome.data["gate_verdict"], outcome.data["gate_reasons"]) == ("no_signal", ["baseline_incompatible"])
+    assert outcome.data["attempt_count"] == 0 and outcome.recapture == ("eval:sales_agent",)
+
+
+def test_a_refused_eval_leaves_the_others_to_run_and_fails_the_suite() -> None:
+    result = two_evals(blocking=True)
+    store = InMemoryEvalStateStore()
+    sales = next(item for item in compiled_evals(result) if item.name == "sales_agent")
+    baseline = captured_store(compile_eval(sales.resolved)).baselines[("verify", "eval:sales_agent")]
+    store.baselines[("verify", "eval:sales_agent")] = baseline
+    port = EvalSnowflake(completed_attempt())
+    port.agent_versions[("DB.S.OPS_AGENT", "committed")] = "VERSION$1"
+
+    outcome, _, _, _ = gate(port, store=store, result=result)
+
+    assert isinstance(outcome, EvalGateOutcome) and not outcome.passed
+    assert [item.code for item in outcome.diagnostics] == ["SST-VAL758"]
+    assert outcome.diagnostics[0].message == "eval 'eval:ops_agent' has no captured baseline"
+    started = [statement for _, statement in port.scripts]
+    assert len(started) == 1 and "EVAL_SALES_AGENT_" in started[0]
+    evals = outcome.data["evals"]
+    assert isinstance(evals, list)
+    assert [(item["eval_key"], len(item["attempts"])) for item in evals] == [
+        ("eval:ops_agent", 0),
+        ("eval:sales_agent", 1),
+    ]
+    assert outcome.data["gate_reasons"] == ["baseline_absent"] and outcome.recapture == ("eval:ops_agent",)
+    gates = store.gates
+    assert gates[("verify", "eval:ops_agent")].unresolved and gates[("verify", "eval:ops_agent")].run_names == ()
+    assert not gates[("verify", "eval:sales_agent")].unresolved
+
+
+def test_with_fail_fast_a_refusal_starts_no_eval_at_all() -> None:
+    port = EvalSnowflake([])
+    port.agent_versions[("DB.S.OPS_AGENT", "committed")] = "VERSION$1"
+
+    outcome, store, _, _ = gate(port, request=EvalGateRequest(fail_fast=True), result=two_evals())
+
+    assert isinstance(outcome, EvalGateOutcome) and not outcome.passed
+    assert [item.code for item in outcome.diagnostics] == ["SST-VAL758", "SST-VAL758"]
+    assert port.scripts == [] and port.queries == []
+    assert outcome.recapture == ("eval:ops_agent", "eval:sales_agent")
+
+
+def test_an_eval_fail_fast_never_reached_is_not_gated() -> None:
+    result = two_evals()
+    store = InMemoryEvalStateStore()
+    for item in compiled_evals(result):
+        values = (("q", "answer_correctness", True), ("q", "grounding", True))
+        record = capture_baseline(
+            item, run_result(attempt("base", *values)), reason="initial", captured_at="2026-01-01T00:00:00Z"
+        )
+        store.baselines[("verify", item.artifact_key)] = record
+    port = EvalSnowflake([])
+    port.agent_versions[("DB.S.OPS_AGENT", "committed")] = "VERSION$1"
+    port.execute_results.append(ExecResult(False, error=ExecutionError("cannot start")))
+
+    outcome, _, _, _ = gate(port, request=EvalGateRequest(fail_fast=True), result=result, store=store)
+
+    # The ops eval, first, could not start, so the suite stopped before the sales eval.
+    assert isinstance(outcome, EvalGateOutcome) and not outcome.passed
+    assert [item.code for item in outcome.diagnostics] == ["SST-APL023", "SST-SNO001"]
+    assert set(store.gates) == {("verify", "eval:ops_agent")} and outcome.recapture == ()
+
+
+def test_an_eval_whose_agent_version_does_not_resolve_is_gated_after_its_setup() -> None:
+    port = EvalSnowflake([])
+    del port.agent_versions[("DB.S.SALES_AGENT", "committed")]
+
+    outcome, _, _, _ = gate(port)
+
+    # Setup says why the eval cannot run; the gate, judged after it, finds no baseline.
+    assert isinstance(outcome, EvalGateOutcome)
+    assert [item.code for item in outcome.diagnostics] == ["SST-VAL720", "SST-VAL758"]
+    assert outcome.data["gate_reasons"] == ["baseline_absent"]
 
 
 def gated_eval(tier: str | None = None) -> CompileResult:
@@ -366,7 +483,7 @@ def test_the_eval_config_stage_comes_from_the_apply_block() -> None:
     inputs = InMemoryProjectInputs(revision="abcdef0", tree={"apply": {"eval_config_stage": {"stage": "MY_CONFIGS"}}})
     port = EvalSnowflake(completed_attempt())
 
-    gate(port, inputs=inputs)
+    gate(port, inputs=inputs, store=captured_store(compile_eval()))
 
     assert [path.split("/")[0] for path, _ in port.uploads] == ["@DB.S.MY_CONFIGS"]
 
@@ -407,7 +524,7 @@ def test_an_interrupted_run_names_the_runs_it_started_and_releases_both_locks() 
     lock = InMemoryStateStore()
 
     with pytest.raises(EvalRunsInterrupted) as raised:
-        gate(port, state_store=lock)
+        gate(port, state_store=lock, store=captured_store(compile_eval()))
 
     assert raised.value.run_names == ("EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z",)
     assert not lock.locked and port.run_locks.rows == {}
@@ -419,7 +536,7 @@ def test_sigterm_interrupts_the_run_as_ctrl_c_does_so_both_locks_are_released() 
     before = signal.getsignal(signal.SIGTERM)
 
     with pytest.raises(EvalRunsInterrupted), terminated_as_interrupt():
-        gate(port, state_store=lock)
+        gate(port, state_store=lock, store=captured_store(compile_eval()))
 
     assert not lock.locked and port.run_locks.rows == {}
     assert signal.getsignal(signal.SIGTERM) == before

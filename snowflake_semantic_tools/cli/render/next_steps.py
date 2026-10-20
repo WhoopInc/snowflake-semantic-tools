@@ -64,3 +64,16 @@ def _again(command: str, agent: bool) -> str:
     if agent and command in RISKY:
         return f"tell the user: `sst {command}` changes what SST manages, so it runs again only when they ask"
     return f"run `sst {command}` again"
+
+
+def capture_baseline_step(eval_keys: tuple[str, ...]) -> str:
+    """Name the capture that replaces the baselines a gate could not compare with, as the user's to run.
+
+    Running the suite again can never compare against those baselines; a capture writes the
+    ones every later gate compares with, so it is run only once the change is intended.
+    """
+    selected = " ".join(f"--select {key}" for key in eval_keys)
+    return (
+        f'once the change is intended, `sst test --suite evals {selected} --capture-baseline --reason "<why>"` '
+        "captures new baselines; it writes what later gates compare with, so run it only when you mean to"
+    )

@@ -59,6 +59,7 @@ from snowflake_semantic_tools.cli.output import print_progress
 from snowflake_semantic_tools.cli.plan_output import print_eval_results
 from snowflake_semantic_tools.cli.render.diagnostics import plural
 from snowflake_semantic_tools.cli.render.evals import EvalMarks
+from snowflake_semantic_tools.cli.render.next_steps import capture_baseline_step
 from snowflake_semantic_tools.cli.render.progress import active_display
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import threads_setting
@@ -518,13 +519,18 @@ def _eval_state_table(state_table: QualifiedName) -> QualifiedName:
 
 
 def _eval_report(outcome: EvalGateOutcome) -> CommandResult:
-    """Report an eval run, its diagnostics and then every attempt; exit 1 unless it passed."""
+    """Report an eval run, its diagnostics and then every attempt; exit 1 unless it passed.
+
+    When a gate compared nothing for want of a usable baseline, the next step is the capture
+    that replaces it, since running the suite again cannot pass.
+    """
     suite = outcome.suite
     return CommandResult(
         OK if outcome.passed else ERROR,
         outcome.diagnostics,
         dict(outcome.data),
         human=None if suite is None else lambda: print_eval_results(suite, _gate_marks(outcome.data)),
+        next_steps=(capture_baseline_step(outcome.recapture),) if outcome.recapture else None,
     )
 
 

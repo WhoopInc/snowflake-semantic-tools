@@ -11,7 +11,7 @@ import re
 from datetime import UTC, datetime, timedelta
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.evals.run import EvalRunResult
+from snowflake_semantic_tools.app.evals.run import EvalRunResult, ResolvedAgent
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_COMPLETED,
@@ -133,7 +133,7 @@ def evaluate_gate(
         SST-VAL758: the eval has no baseline.
         SST-VAL745: a custom metric the baseline's runs scored was edited in place since.
         SST-VAL759: the baseline was captured for another payload, agent version, dataset,
-            metric set or question/metric vector.
+            metric set or question/metric vector; the message names each part that differs.
         SST-VAL734: the baseline holds fewer runs than `baseline_runs` now requires.
         SST-VAL760: the baseline expires within `BASELINE_WARNING_DAYS`.
         SST-VAL761: the baseline has expired.
@@ -143,12 +143,14 @@ def evaluate_gate(
     """
     tier = _resolved_tier(compiled, default_tier)
     if baseline is None:
-        diagnostic = D("SST-VAL758", artifact=compiled.artifact_key)
-        return EvalGateVerdict(tier, (), False, "baseline_absent"), DiagnosticBag((diagnostic,))
-    unusable = _unusable_baseline(compiled, result, baseline, now, default_tier, default_baseline_runs)
+        return _no_signal(tier, _absent(compiled))
+    try:
+        agent = _result_agent(result)
+    except ValueError as exc:
+        return _no_signal(tier, ("current_no_signal", D("SST-SNO001", detail=f"eval '{compiled.artifact_key}' {exc}")))
+    unusable = _unusable_baseline(compiled, baseline, agent, now, default_tier, default_baseline_runs)
     if unusable is not None:
-        reason, diagnostic = unusable
-        return EvalGateVerdict(tier, (), False, reason), DiagnosticBag((diagnostic,))
+        return _no_signal(tier, unusable)
     warnings = _expiry_warning(compiled, baseline, now)
     baseline_vectors = {(item.question_key, item.metric_name): item.passed_attempts for item in baseline.metrics}
     current_vectors = _attempt_vectors(_completed_attempts(result))
@@ -161,6 +163,41 @@ def evaluate_gate(
     metrics = ", ".join(sorted({item.metric_name for item in regressions}))
     regressed = D("SST-VAL763", artifact=compiled.artifact_key, count=len(regressions), detail=metrics)
     return EvalGateVerdict(tier, regressions, False, None), DiagnosticBag((*warnings, regressed))
+
+
+def gate_refusal(
+    compiled: CompiledEval,
+    baseline: EvalBaselineRecord | None,
+    agent: ResolvedAgent,
+    *,
+    now: str,
+    default_tier: str | None = None,
+    default_baseline_runs: int | None = None,
+) -> tuple[EvalGateVerdict, DiagnosticBag] | None:
+    """Say why the gate could not judge a run against `agent`, before it starts; None when it could.
+
+    Every attempt of a run uses the version the eval's selector resolved to, so each check
+    `evaluate_gate` makes before it reads the attempts is decided here, in the same order and
+    with the same verdict. One that passes here is checked again once the run's attempts are in.
+
+    Raises:
+        ValueError: the tier is invalid, or a timestamp does not parse.
+
+    Diagnostics:
+        SST-VAL758: the eval has no baseline.
+        SST-VAL745: a custom metric the baseline's runs scored was edited in place since.
+        SST-VAL759: the baseline was captured for another payload, agent version, dataset or
+            metric set; the message names each part that differs.
+        SST-VAL734: the baseline holds fewer runs than `baseline_runs` now requires.
+        SST-VAL761: the baseline has expired.
+    """
+    tier = _resolved_tier(compiled, default_tier)
+    found = (
+        _absent(compiled)
+        if baseline is None
+        else _unusable_baseline(compiled, baseline, agent, now, default_tier, default_baseline_runs)
+    )
+    return None if found is None else _no_signal(tier, found)
 
 
 def persist_gate(
@@ -189,28 +226,34 @@ def persist_gate(
     return state
 
 
+def _no_signal(tier: str, found: tuple[str, Diagnostic]) -> tuple[EvalGateVerdict, DiagnosticBag]:
+    """Return the verdict of a gate that compared nothing, for `found`'s reason, and its diagnostic."""
+    reason, diagnostic = found
+    return EvalGateVerdict(tier, (), False, reason), DiagnosticBag((diagnostic,))
+
+
+def _absent(compiled: CompiledEval) -> tuple[str, Diagnostic]:
+    return "baseline_absent", D("SST-VAL758", artifact=compiled.artifact_key)
+
+
 def _unusable_baseline(
     compiled: CompiledEval,
-    result: EvalRunResult,
     baseline: EvalBaselineRecord,
+    agent: ResolvedAgent,
     now: str,
     default_tier: str | None,
     default_baseline_runs: int | None,
 ) -> tuple[str, Diagnostic] | None:
-    """Say why a baseline cannot judge the run, as a verdict reason and its diagnostic; None when it can.
+    """Say why a baseline cannot judge a run against `agent`, as a verdict reason and its diagnostic.
 
-    Checked in order: the run's agent version, an in-place metric edit, the baseline's
-    compatibility, its run count, then its expiry.
+    None when it can. Checked in order: an in-place metric edit, the baseline's compatibility,
+    its run count, then its expiry.
     """
-    try:
-        current_agent_version = _result_agent_version(result)
-    except ValueError as exc:
-        return "current_no_signal", D("SST-SNO001", detail=f"eval '{compiled.artifact_key}' {exc}")
     edited = _edited_metric(compiled, baseline)
     if edited is not None:
         diagnostic = D("SST-VAL745", artifact=edited, value=baseline.run_names[-1], subject=f"eval_metric:{edited}")
         return "baseline_incompatible", diagnostic
-    incompatibility = _incompatibility(compiled, baseline, default_tier, current_agent_version)
+    incompatibility = _incompatibility(compiled, baseline, default_tier, agent)
     if incompatibility is not None:
         return "baseline_incompatible", D("SST-VAL759", artifact=compiled.artifact_key, detail=incompatibility)
     required = _baseline_runs(compiled, default_baseline_runs)
@@ -263,42 +306,109 @@ def _incompatibility(
     compiled: CompiledEval,
     baseline: EvalBaselineRecord,
     default_tier: str | None,
-    current_agent_version: str,
+    agent: ResolvedAgent,
 ) -> str | None:
-    """Say why a baseline cannot judge the current eval; None when it can.
+    """Name, joined by `; `, each part of the eval that differs from what its baseline recorded.
 
-    The baseline must record what the eval compiles to now: its key, dataset and config
-    fingerprints, metric versions, each metric's score range and gating, tier and gate policy,
-    and the agent version the current run resolved.
+    None when nothing does. The baseline must record the agent version the run resolves, and
+    what the eval compiles to now: its key, dataset and config fingerprints, metric versions,
+    each metric's score range and gating, tier and gate policy. Whether those match is decided
+    on the whole identity; the parts only say which differ.
     """
-    current = (
+    changes = list(_agent_change(baseline, agent))
+    if _identity(compiled, default_tier) != _recorded_identity(compiled, baseline):
+        changes.extend(_identity_changes(compiled, baseline, default_tier) or ("the metric identity changed",))
+    return "; ".join(changes) or None
+
+
+def _agent_change(baseline: EvalBaselineRecord, agent: ResolvedAgent) -> tuple[str, ...]:
+    """Name the agent version the run uses when the baseline was captured on another one."""
+    if baseline.agent_version == agent.version:
+        return ()
+    return (f"it was captured on {baseline.agent_version or 'no recorded version'}, and this run uses {agent.version}",)
+
+
+def _identity(compiled: CompiledEval, default_tier: str | None) -> tuple[object, ...]:
+    """Return what a baseline of the eval as it compiles now records, besides the agent version."""
+    return (
         compiled.artifact_key,
         compiled.rendered.dataset_fingerprint,
         compiled.rendered.config_fingerprint,
-        current_agent_version,
         _metric_versions(compiled),
         _metric_policy(compiled),
         _resolved_tier(compiled, default_tier),
         _gate_policy(compiled),
     )
-    recorded = (
+
+
+def _recorded_identity(compiled: CompiledEval, baseline: EvalBaselineRecord) -> tuple[object, ...]:
+    """Return what `baseline` recorded, in `_identity`'s order; a metric's gating is the eval's now."""
+    policy = {
+        (item.metric_name, item.score_range, _is_gated_metric(compiled, item.metric_name)) for item in baseline.metrics
+    }
+    return (
         baseline.eval_key,
         baseline.dataset_fingerprint,
         baseline.config_fingerprint,
-        baseline.agent_version,
         baseline.metric_versions,
-        tuple(
-            sorted(
-                {
-                    (item.metric_name, item.score_range, _is_gated_metric(compiled, item.metric_name))
-                    for item in baseline.metrics
-                }
-            )
-        ),
+        tuple(sorted(policy)),
         baseline.tier,
         baseline.gate_policy,
     )
-    return None if current == recorded else "eval payload, agent version, dataset or metric identity changed"
+
+
+def _identity_changes(
+    compiled: CompiledEval, baseline: EvalBaselineRecord, default_tier: str | None
+) -> tuple[str, ...]:
+    """Name each part of the eval's identity but the agent version that its baseline records otherwise."""
+    tier = _resolved_tier(compiled, default_tier)
+    parts = (
+        (baseline.eval_key != compiled.artifact_key, f"it was captured for '{baseline.eval_key}'"),
+        (baseline.dataset_fingerprint != compiled.rendered.dataset_fingerprint, "the dataset changed"),
+        (baseline.config_fingerprint != compiled.rendered.config_fingerprint, "the eval config changed"),
+    )
+    return (
+        *(change for differs, change in parts if differs),
+        *_metric_changes(compiled, baseline),
+        *((f"the tier changed from {baseline.tier} to {tier}",) if baseline.tier != tier else ()),
+    )
+
+
+def _metric_changes(compiled: CompiledEval, baseline: EvalBaselineRecord) -> tuple[str, ...]:
+    """Name, by metric name, each metric added, removed, or whose version, threshold or gating moved."""
+    versions = (dict(baseline.metric_versions), dict(_metric_versions(compiled)))
+    gates = (dict(baseline.gate_policy), dict(_gate_policy(compiled)))
+    recorded_ranges: dict[str, set[tuple[float | None, float | None] | None]] = {}
+    for item in baseline.metrics:
+        recorded_ranges.setdefault(item.metric_name, set()).add(item.score_range)
+    ranges = (recorded_ranges, {name: {score_range} for name, score_range, _ in _metric_policy(compiled)})
+    recorded = {*versions[0], *gates[0], *ranges[0]}
+    current = {*versions[1], *gates[1], *ranges[1]}
+    changes: list[str] = []
+    for name in sorted(recorded | current):
+        if name not in recorded:
+            changes.append(f"metric '{name}' was added")
+        elif name not in current:
+            changes.append(f"metric '{name}' was removed")
+        else:
+            old_version, new_version = (side.get(name) for side in versions)
+            if old_version != new_version:
+                changes.append(_version_change(name, old_version, new_version))
+            old_ranges = ranges[0].get(name)
+            if old_ranges is None:
+                changes.append(f"metric '{name}' scored no question in the baseline's runs")
+            elif old_ranges != ranges[1].get(name):
+                changes.append(f"metric '{name}' changed its threshold")
+            if gates[0].get(name) != gates[1].get(name):
+                changes.append(f"metric '{name}' changed its gating")
+    return tuple(changes)
+
+
+def _version_change(name: str, recorded: str | None, current: str | None) -> str:
+    """Name a metric's version change; a custom metric's version is its judge and definition."""
+    if any((version or "").startswith("custom:") for version in (recorded, current)):
+        return f"metric '{name}' changed its judge or definition"
+    return f"metric '{name}' moved from version {recorded or 'none'} to {current or 'none'}"
 
 
 def _baseline_runs(compiled: CompiledEval, default: int | None = None) -> int:
@@ -316,11 +426,16 @@ def _attempt_agent_version(attempts: tuple[EvalRunAttempt, ...], run: str) -> st
     return version
 
 
-def _result_agent_version(result: EvalRunResult) -> str:
+def _result_agent(result: EvalRunResult) -> ResolvedAgent:
+    """Return the one agent version the run's completed attempts ran against.
+
+    Raises:
+        ValueError: no attempt completed and was read, or those that did name no one version.
+    """
     completed = _completed_attempts(result)
     if not completed:
         raise ValueError("has no retrievable completed attempt")
-    return _attempt_agent_version(completed, "current")
+    return ResolvedAgent(_attempt_agent_version(completed, "current"))
 
 
 def _metric_versions(compiled: CompiledEval) -> tuple[tuple[str, str], ...]:

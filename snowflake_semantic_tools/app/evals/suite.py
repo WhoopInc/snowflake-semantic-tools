@@ -2,9 +2,10 @@
 
 `RunEvalGate` is the evals test suite's use case: it holds the target's run lease -- the
 local lock and the remote one `sst apply` takes -- for the run, refuses to start unless
-every eval is published exactly as the compiled manifest renders it, runs the evals as
-`RunEvalSuite` does, and then either captures each eval's baseline or gates each eval on the
-one stored. It reaches Snowflake, the locks, and the baseline store only through ports.
+every eval is published exactly as the compiled manifest renders it, refuses before it starts
+each eval whose stored baseline cannot gate it, runs the others as `RunEvalSuite` does, and
+then either captures each eval's baseline or gates each eval on the one stored. It reaches
+Snowflake, the locks, and the baseline store only through ports.
 """
 
 from __future__ import annotations
@@ -17,14 +18,22 @@ from typing import Protocol
 from snowflake_semantic_tools.app.apply.lock import LockPolicy, RunLease
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, persist_gate, recorded_judges
+from snowflake_semantic_tools.app.evals.gate import (
+    capture_baseline,
+    evaluate_gate,
+    gate_refusal,
+    persist_gate,
+    recorded_judges,
+)
 from snowflake_semantic_tools.app.evals.options import EvalRunOptions
 from snowflake_semantic_tools.app.evals.privileges import EvalRolePort, eval_role_diagnostics
 from snowflake_semantic_tools.app.evals.progress import EvalProgress, no_progress
 from snowflake_semantic_tools.app.evals.projection import empty_eval_suite_json, eval_suite_json
 from snowflake_semantic_tools.app.evals.run import (
+    EvalRunResult,
     EvalSuiteResult,
     RunEvalSuite,
+    resolve_agent,
     validate_eval_publication,
 )
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
@@ -43,6 +52,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName, Targ
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.eval_state import EvalStateStore
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.execution import SessionPool
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.ports.state import StateStore
@@ -51,6 +61,8 @@ from snowflake_semantic_tools.domain.state.lock import LockClaim
 
 # The prefix of an eval run's lock id, so a refused run can tell an eval holder from an apply.
 EVAL_RUN_PREFIX = "eval-"
+# The gate reasons only a new baseline clears: running the suite again can never compare.
+RECAPTURE_REASONS = frozenset(("baseline_absent", "baseline_incompatible", "baseline_incomplete", "baseline_expired"))
 _DEFAULT_LOCK_POLICY = LockPolicy()
 
 
@@ -84,15 +96,43 @@ class EvalGateOutcome:
     Attributes:
         diagnostics: What reading state and the publication check reported, then the suite's,
             then each gate's, in eval order.
-        suite: The suite result; None when the publication check refused to start any eval.
+        suite: The suite result, every eval in eval order, one its gate refused before any run
+            started with no attempts; None when the publication check refused to start any eval.
         passed: Whether every eval was accepted and nothing reported an error.
         data: The run as JSON: the suite's projection, and the gate's verdict and regressions.
+        recapture: The keys of the evals, in eval order, whose gate compared nothing for a
+            reason only a new baseline clears (`RECAPTURE_REASONS`).
     """
 
     diagnostics: DiagnosticBag
     suite: EvalSuiteResult | None
     passed: bool
     data: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
+    recapture: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _Precheck:
+    """What the gate decided about each eval before any run started.
+
+    Attributes:
+        baselines: The baseline stored for each eval it checked, None for none, by eval key; an
+            eval whose agent version did not resolve was not checked.
+        refused: The no-signal verdict, and its diagnostics, of each eval the gate refused.
+    """
+
+    baselines: Mapping[str, EvalBaselineRecord | None] = field(default_factory=dict)
+    refused: Mapping[str, tuple[EvalGateVerdict, DiagnosticBag]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class _Gated:
+    """What gating, or capturing, every eval of a run gave, in eval order."""
+
+    verdicts: list[EvalGateVerdict] = field(default_factory=list)
+    captured: list[EvalBaselineRecord] = field(default_factory=list)
+    diagnostics: list[Diagnostic] = field(default_factory=list)
+    recapture: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,9 +205,11 @@ class RunEvalGate:
         2. Take the target's run lease; refuse when another operation holds either lock.
         3. Read authoritative state, check every eval is published as `manifest` renders it, and
            that the primary role alone holds what a run needs in each agent's schema.
-        4. Unless that check reported an error, run the suite, then capture each eval's
-           baseline or evaluate and record its gate.
-        5. Release the lease.
+        4. Unless that check reported an error and unless capturing, refuse each eval whose
+           stored baseline cannot gate a run against the agent version it resolves to.
+        5. Run the other evals, then capture each one's baseline, or evaluate and record each
+           gate, a refused one's verdict included.
+        6. Release the lease.
 
         Args:
             manifest: The manifest the evals were compiled into, which `sst compile` wrote.
@@ -183,7 +225,8 @@ class RunEvalGate:
                 a semantic view an eval's agent uses; one per eval and view.
             SST-VAL727, SST-VAL728: the primary role lacks a privilege a run needs in an eval's
                 agent schema; as `eval_role_diagnostics` reports, and no eval starts.
-            Those of `read_state`, `validate_eval_publication`, the suite, and each gate.
+            Those of `read_state`, `validate_eval_publication`, `gate_refusal` for each eval
+                refused before it starts, the suite, and each gate.
         """
         tree = self._inputs.config().tree
         defaults = self._inputs.eval_catalog().defaults
@@ -229,29 +272,78 @@ class RunEvalGate:
         request: EvalGateRequest,
         target_name: str,
     ) -> EvalGateOutcome:
-        """Run the suite, trusting each staged config whose digest state recorded, then gate it."""
+        """Refuse each eval its baseline cannot gate, run the others, then gate every one.
+
+        Each staged config whose digest state recorded is trusted. A refused eval starts no run,
+        and the others still run; with `fail_fast`, a refusal starts none at all, since the run
+        already fails.
+        """
+        checked = _Precheck() if request.capture_baseline else self._precheck(evals, defaults, target_name)
+        runnable = tuple(item for item in evals if item.artifact_key not in checked.refused)
+        if request.fail_fast and checked.refused:
+            runnable = ()
         config_digests = {
             item.artifact_key: digest
-            for item in evals
+            for item in runnable
             if (entry := state.applied.get(item.artifact_key)) is not None
             if (digest := dict(entry.component_fingerprints).get("config_stage_md5")) is not None
         }
-        suite = RunEvalSuite(self._port, self._clock, lifecycle_config, self._sessions, self._progress).run(
-            evals,
-            defaults=defaults,
-            options=EvalRunOptions(self._inputs.git_sha()),
-            fail_fast=request.fail_fast,
-            config_digests=config_digests,
-            baseline_capture=request.capture_baseline,
-            threads=request.threads,
+        ran = (
+            RunEvalSuite(self._port, self._clock, lifecycle_config, self._sessions, self._progress).run(
+                runnable,
+                defaults=defaults,
+                options=EvalRunOptions(self._inputs.git_sha()),
+                fail_fast=request.fail_fast,
+                config_digests=config_digests,
+                baseline_capture=request.capture_baseline,
+                threads=request.threads,
+            )
+            if runnable
+            else EvalSuiteResult((), DiagnosticBag())
         )
-        verdicts, captured, gate_diagnostics = self._gate(evals, suite, defaults, request, target_name)
-        diagnostics = DiagnosticBag((*preflight, *suite.diagnostics, *gate_diagnostics))
+        suite = _with_refused(evals, ran, checked)
+        gated = self._gate(evals, suite, defaults, request, target_name, checked)
+        diagnostics = DiagnosticBag((*preflight, *suite.diagnostics, *gated.diagnostics))
         # A report-tier regression adds no diagnostic: it reaches the caller through the
         # verdict in `data` and the gate state recorded for it. A blocking one is SST-VAL763,
         # an error, so the run fails.
         passed = suite.success and not diagnostics.has_errors
-        return EvalGateOutcome(diagnostics, suite, passed, _gate_data(suite, verdicts, captured, request))
+        data = _gate_data(suite, gated.verdicts, gated.captured, request)
+        return EvalGateOutcome(diagnostics, suite, passed, data, tuple(gated.recapture))
+
+    def _precheck(self, evals: tuple[CompiledEval, ...], defaults: EvalDefaults, target_name: str) -> _Precheck:
+        """Read each eval's baseline and refuse, before any run starts, each eval it cannot gate.
+
+        Every attempt runs on the version the eval's selector resolves to now, and the run lease
+        keeps an apply from committing another until the run ends, so the refusal is exact. An
+        eval whose version does not resolve is not checked: its setup reports why, and its gate
+        is evaluated after the run as before.
+
+        Raises:
+            SnowflakePortError: a stored baseline could not be read.
+
+        Diagnostics:
+            Those of `gate_refusal`, for each eval refused.
+        """
+        baselines: dict[str, EvalBaselineRecord | None] = {}
+        refused: dict[str, tuple[EvalGateVerdict, DiagnosticBag]] = {}
+        for item in evals:
+            try:
+                agent = resolve_agent(self._port, item, defaults)
+            except SnowflakePortError:
+                continue
+            stored = baselines[item.artifact_key] = self._eval_store.read_baseline(target_name, item.artifact_key)
+            refusal = gate_refusal(
+                item,
+                stored,
+                agent,
+                now=self._clock.now_iso(),
+                default_tier=defaults.eval_tier,
+                default_baseline_runs=defaults.baseline_runs,
+            )
+            if refusal is not None:
+                refused[item.artifact_key] = refusal
+        return _Precheck(baselines, refused)
 
     def _gate(
         self,
@@ -260,27 +352,34 @@ class RunEvalGate:
         defaults: EvalDefaults,
         request: EvalGateRequest,
         target_name: str,
-    ) -> tuple[list[EvalGateVerdict], list[EvalBaselineRecord], list[Diagnostic]]:
+        checked: _Precheck,
+    ) -> _Gated:
         """Capture each eval's baseline, or evaluate its gate and record the verdict, in eval order.
 
         Captured baselines are written together once every eval has one, so a capture that
         fails part way writes none. A capture some eval of which completed fewer attempts
         than its baseline needs captures nothing: each attempt has reported its own outcome.
+        An eval refused before it ran keeps the verdict it was refused with, and that gate is
+        recorded with no runs, so a blocking one stays unresolved; an eval the run did not
+        reach, as `--fail-fast` leaves one, is not gated.
 
         Diagnostics:
             SST-VAL734: under a capture, an eval completed and read fewer attempts than its
                 `baseline_runs` setting, else the root's, requires; once per such eval.
         """
-        verdicts: list[EvalGateVerdict] = []
-        captured: list[EvalBaselineRecord] = []
-        diagnostics: list[Diagnostic] = []
+        gated = _Gated()
         if request.capture_baseline:
             short = _short_captures(evals, suite, defaults)
             if short:
-                return verdicts, captured, list(short)
-        for item, item_result in zip(evals, suite.evals, strict=False):
+                gated.diagnostics.extend(short)
+                return gated
+        results = {result.eval_key: result for result in suite.evals}
+        for item in evals:
+            item_result = results.get(item.artifact_key)
+            if item_result is None:
+                continue
             if request.capture_baseline:
-                captured.append(
+                gated.captured.append(
                     capture_baseline(
                         item,
                         item_result,
@@ -290,23 +389,47 @@ class RunEvalGate:
                         required_attempts=_required_attempts(item, defaults),
                     )
                 )
-                diagnostics.extend(recorded_judges(item))
+                gated.diagnostics.extend(recorded_judges(item))
                 continue
-            stored = self._eval_store.read_baseline(target_name, item.artifact_key)
-            verdict, item_diagnostics = evaluate_gate(
+            refused = checked.refused.get(item.artifact_key)
+            verdict, item_diagnostics = refused or evaluate_gate(
                 item,
                 item_result,
-                stored,
+                self._baseline(checked, target_name, item.artifact_key),
                 now=self._clock.now_iso(),
                 default_tier=defaults.eval_tier,
                 default_baseline_runs=defaults.baseline_runs,
             )
-            diagnostics.extend(item_diagnostics)
+            gated.diagnostics.extend(item_diagnostics)
             persist_gate(self._eval_store, target_name, item, item_result, verdict, evaluated_at=self._clock.now_iso())
-            verdicts.append(verdict)
+            gated.verdicts.append(verdict)
+            if verdict.reason in RECAPTURE_REASONS:
+                gated.recapture.append(item.artifact_key)
         if request.capture_baseline:
-            self._eval_store.write_baselines(target_name, tuple(captured))
-        return verdicts, captured, diagnostics
+            self._eval_store.write_baselines(target_name, tuple(gated.captured))
+        return gated
+
+    def _baseline(self, checked: _Precheck, target_name: str, eval_key: str) -> EvalBaselineRecord | None:
+        """Return the eval's stored baseline: the one the pre-check read, else read now."""
+        if eval_key in checked.baselines:
+            return checked.baselines[eval_key]
+        return self._eval_store.read_baseline(target_name, eval_key)
+
+
+def _with_refused(evals: tuple[CompiledEval, ...], ran: EvalSuiteResult, checked: _Precheck) -> EvalSuiteResult:
+    """Return the suite's results with each refused eval in its place, as one that made no attempt.
+
+    The results stay in eval order; an eval neither refused nor run, as `--fail-fast` leaves
+    one, is left out.
+    """
+    results = {result.eval_key: result for result in ran.evals}
+    merged = (
+        EvalRunResult(item.artifact_key, (), DiagnosticBag())
+        if item.artifact_key in checked.refused
+        else results.get(item.artifact_key)
+        for item in evals
+    )
+    return EvalSuiteResult(tuple(result for result in merged if result is not None), ran.diagnostics)
 
 
 def _required_attempts(item: CompiledEval, defaults: EvalDefaults) -> int | None:

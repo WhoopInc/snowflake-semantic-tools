@@ -1,6 +1,6 @@
 """SST-VAL759: eval baseline is incompatible.
 
-The current run resolved another agent version than the baseline captured.
+The current run resolved another agent version than the baseline captured, and the message says so.
 """
 
 from __future__ import annotations
@@ -17,9 +17,9 @@ def test_sst_val759_fires() -> None:
     verdict, diagnostics = evaluate_gate(gated_eval(), current, baseline(), now="2026-09-02T00:00:00Z")
     diagnostic = only(diagnostics, "SST-VAL759")
     assert diagnostic.severity is Severity.ERROR
+    # The message names what differs: here only the agent version.
     assert diagnostic.message == (
-        "eval 'eval:sales_agent' baseline is incompatible: eval payload, agent version, dataset or metric "
-        "identity changed"
+        "eval 'eval:sales_agent' baseline is incompatible: it was captured on VERSION$1, and this run uses VERSION$2"
     )
     assert verdict.reason == "baseline_incompatible"
 

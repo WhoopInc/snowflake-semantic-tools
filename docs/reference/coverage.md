@@ -722,10 +722,10 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL747`](error-codes.md#sst-val747) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_metric` | `tests/codes/val/test_sst_val747.py` |
 | [`SST-VAL748`](error-codes.md#sst-val748) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.eval_metric` | `tests/codes/val/test_sst_val748.py` |
 | [`SST-VAL755`](error-codes.md#sst-val755) | VAL | warning | observe | `snowflake_semantic_tools.app.evals.suite` | `tests/codes/val/test_sst_val755.py` |
-| [`SST-VAL758`](error-codes.md#sst-val758) | VAL | error | runtime | `snowflake_semantic_tools.app.evals.gate` | `tests/codes/val/test_sst_val758.py` |
+| [`SST-VAL758`](error-codes.md#sst-val758) | VAL | error | observe | `snowflake_semantic_tools.app.evals.gate` | `tests/codes/val/test_sst_val758.py` |
 | [`SST-VAL759`](error-codes.md#sst-val759) | VAL | error | runtime | `snowflake_semantic_tools.app.evals.gate` | `tests/codes/val/test_sst_val759.py` |
 | [`SST-VAL760`](error-codes.md#sst-val760) | VAL | warning | runtime | `snowflake_semantic_tools.app.evals.gate` | `tests/codes/val/test_sst_val760.py` |
-| [`SST-VAL761`](error-codes.md#sst-val761) | VAL | error | runtime | `snowflake_semantic_tools.app.evals.gate` | `tests/codes/val/test_sst_val761.py` |
+| [`SST-VAL761`](error-codes.md#sst-val761) | VAL | error | observe | `snowflake_semantic_tools.app.evals.gate` | `tests/codes/val/test_sst_val761.py` |
 | [`SST-VAL762`](error-codes.md#sst-val762) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_config` | `tests/codes/val/test_sst_val762.py` |
 | [`SST-VAL763`](error-codes.md#sst-val763) | VAL | error | runtime | `snowflake_semantic_tools.app.evals.gate` | `tests/codes/val/test_sst_val763.py` |
 | [`SST-VAL764`](error-codes.md#sst-val764) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_config` | `tests/codes/val/test_sst_val764.py` |

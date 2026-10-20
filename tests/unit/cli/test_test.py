@@ -14,12 +14,13 @@ from click.testing import CliRunner
 from snowflake_semantic_tools.adapters.fs.local import StateFileStore
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.run import EvalRunResult, EvalSuiteResult
+from snowflake_semantic_tools.app.evals.suite import EvalGateOutcome
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.runner import CommandResult
 from snowflake_semantic_tools.cli.wiring.compile import compile_result as _compile_result
 from snowflake_semantic_tools.cli.wiring.manifest import build_manifest as _build_manifest
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
     EvalBaselineRecord,
     EvalCostSummary,
@@ -577,3 +578,33 @@ def test_smoke_on_a_target_nothing_was_applied_to_says_the_probes_were_skipped(
     assert "ran smoke probes" not in result.output
     assert "error[SST-APL037]: nothing the smoke suite tests is published on this target" in result.output
     assert "run `sst plan`, then `sst apply`" in result.output
+
+
+@pytest.mark.parametrize("output", ["json", "table"])
+def test_a_gate_that_needs_a_new_baseline_names_the_capture_as_its_next_step(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, output: str
+) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    refused = EvalGateOutcome(
+        DiagnosticBag((D("SST-VAL758", artifact="eval:jaffle_analytics_agent"),)),
+        EvalSuiteResult((EvalRunResult("eval:jaffle_analytics_agent", (), DiagnosticBag()),), DiagnosticBag()),
+        False,
+        {"suite": "evals", "gate_verdict": "no_signal", "gate_reasons": ["baseline_absent"]},
+        ("eval:jaffle_analytics_agent",),
+    )
+    monkeypatch.setattr("snowflake_semantic_tools.cli.commands.test.RunEvalGate.run", lambda *args, **kwargs: refused)
+    args = ["test", *common(project), "--target", "dev", "--suite", "evals", "--output", output]
+
+    result = invoke_with_port(monkeypatch, FakeSnowflake(state={}), args)
+
+    assert result.exit_code == 1
+    step = (
+        "once the change is intended, `sst test --suite evals --select eval:jaffle_analytics_agent "
+        '--capture-baseline --reason "<why>"` captures new baselines; it writes what later gates compare '
+        "with, so run it only when you mean to"
+    )
+    if output == "json":
+        assert json.loads(result.stdout)["next_steps"] == [step]
+    else:
+        assert f"next: {step}" in result.stderr

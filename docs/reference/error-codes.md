@@ -4942,7 +4942,7 @@ Note: Snowflake does not coordinate the two, so SST serialises them through the 
 
 `eval '<artifact>' has no captured baseline`
 
-Raised when the eval gate finds no baseline stored for the eval on this target; the gate has no signal.
+Raised when the eval gate finds no baseline stored for the eval on this target, before the eval's run starts; the eval starts no run, and the gate has no signal.
 
 Fix: capture a baseline explicitly with a reason
 
@@ -4954,11 +4954,11 @@ Note: Capture one: `sst test --suite evals --capture-baseline --reason "<why>"`.
 
 `eval '<artifact>' baseline is incompatible: <detail>`
 
-Raised when the eval gate finds the baseline was captured for another dataset, eval config, agent version, metric versions, thresholds, gating or tier, or the run scored another set of question/metric pairs; the gate has no signal.
+Raised when the eval gate finds the baseline was captured for another dataset, eval config, agent version, metric versions, thresholds, gating or tier, which it checks before the eval's run starts and again after it, or the run scored another set of question/metric pairs; the gate has no signal.
 
 Fix: capture a new baseline for the current dataset, agent version and metrics
 
-Note: The run's agent version is part of the identity, so a new agent version needs a new baseline: `sst test --suite evals --capture-baseline --reason "<why>"`. An edited custom metric is SST-VAL745 instead.
+Note: The message names each part that differs. The run's agent version is part of the identity, so a new agent version needs a new baseline: `sst test --suite evals --select <eval> --capture-baseline --reason "<why>"`. An edited custom metric is SST-VAL745 instead.
 
 ### SST-VAL760
 
@@ -4976,7 +4976,7 @@ Fix: capture a replacement baseline before it expires
 
 `eval '<artifact>' baseline expired on <date>`
 
-Raised when the eval gate finds the baseline is 30 or more days old; the gate has no signal.
+Raised when the eval gate finds the baseline is 30 or more days old, before the eval's run starts or once it ends; the gate has no signal.
 
 Fix: capture a replacement baseline with a reason
 

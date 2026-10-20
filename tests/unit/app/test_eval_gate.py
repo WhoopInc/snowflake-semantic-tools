@@ -5,8 +5,15 @@ from dataclasses import replace
 import pytest
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, persist_gate
-from snowflake_semantic_tools.domain.model.eval import EvalMetricResult, EvalResultRow, EvalRunAttempt, ThresholdRange
+from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, gate_refusal, persist_gate
+from snowflake_semantic_tools.app.evals.run import ResolvedAgent
+from snowflake_semantic_tools.domain.model.eval import (
+    EvalBaselineRecord,
+    EvalMetricResult,
+    EvalResultRow,
+    EvalRunAttempt,
+    ThresholdRange,
+)
 from tests.helpers.eval_builders import compiled_eval_of, run_result
 from tests.helpers.eval_inputs import settled
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
@@ -379,6 +386,111 @@ def test_changed_resolved_agent_version_invalidates_baseline() -> None:
 
     assert verdict.reason == "baseline_incompatible"
     assert diagnostics[0].code == "SST-VAL759"
+    assert diagnostics[0].message == (
+        "eval 'eval:sales_agent' baseline is incompatible: it was captured on VERSION$1, and this run uses VERSION$2"
+    )
+
+
+def two_run_baseline(compiled: CompiledEval) -> EvalBaselineRecord:
+    values = (("q", "answer_correctness", True), ("q", "grounding", True))
+    return capture_baseline(
+        compiled,
+        run_result(attempt("base-1", values), attempt("base-2", values)),
+        reason="initial",
+        captured_at="2026-09-01T00:00:00Z",
+    )
+
+
+def test_a_gate_refusal_is_decided_from_the_resolved_agent_before_any_run() -> None:
+    compiled = compiled_eval()
+    baseline = two_run_baseline(compiled)
+    now = "2026-09-10T00:00:00Z"
+
+    assert gate_refusal(compiled, baseline, ResolvedAgent("VERSION$1"), now=now) is None
+    absent = gate_refusal(compiled, None, ResolvedAgent("VERSION$1"), now=now)
+    moved = gate_refusal(compiled, baseline, ResolvedAgent("VERSION$3"), now=now)
+    expired = gate_refusal(compiled, baseline, ResolvedAgent("VERSION$1"), now="2026-10-01T00:00:00Z")
+
+    assert absent is not None and moved is not None and expired is not None
+    assert [(verdict.reason, verdict.passed, [item.code for item in found]) for verdict, found in (absent, moved)] == [
+        ("baseline_absent", False, ["SST-VAL758"]),
+        ("baseline_incompatible", False, ["SST-VAL759"]),
+    ]
+    assert moved[1][0].message.endswith(": it was captured on VERSION$1, and this run uses VERSION$3")
+    assert (expired[0].reason, expired[1][0].code) == ("baseline_expired", "SST-VAL761")
+    # A run that would pass the refusal is gated the same way once its attempts are in.
+    assert evaluate_gate(compiled, run_result(attempt("cur", ())), None, now=now)[0] == absent[0]
+
+
+def test_an_incompatible_baseline_names_each_part_that_differs() -> None:
+    compiled = compiled_eval()
+    baseline = two_run_baseline(compiled)
+    metric = compiled.resolved.config.system_metrics[0]
+    changed_metric = replace(metric, version="v4", gate=False, threshold=ThresholdRange(min=0.5))
+    changed = replace(
+        compiled,
+        rendered=replace(compiled.rendered, dataset_fingerprint="d" * 64, config_fingerprint="c" * 64),
+        resolved=settled(
+            replace(compiled.resolved, config=replace(compiled.resolved.config, system_metrics=(changed_metric,))),
+            eval_tier="report",
+        ),
+    )
+
+    _, diagnostics = evaluate_gate(changed, run_result(attempt("cur", ())), baseline, now="2026-09-10T00:00:00Z")
+
+    assert diagnostics[0].message == (
+        "eval 'eval:sales_agent' baseline is incompatible: the dataset changed; the eval config changed; "
+        "metric 'answer_correctness' moved from version v3 to v4; metric 'answer_correctness' changed its "
+        "threshold; metric 'answer_correctness' changed its gating; the tier changed from blocking to report"
+    )
+
+
+def test_an_incompatible_baseline_names_metrics_added_removed_edited_and_unscored() -> None:
+    compiled = compiled_eval()
+    baseline = two_run_baseline(compiled)
+    renamed = replace(
+        baseline,
+        eval_key="eval:other",
+        metric_versions=(*baseline.metric_versions, ("faithfulness", "v3")),
+        gate_policy=tuple((name, gated) for name, gated in baseline.gate_policy if name != "grounding"),
+        metrics=tuple(item for item in baseline.metrics if item.metric_name != "grounding"),
+    )
+    # A baseline captured before custom metrics were digested records `custom:<model>`, which
+    # SST-VAL745 cannot compare, so it is SST-VAL759.
+    edited = replace(
+        renamed,
+        metric_versions=tuple(sorted({**dict(renamed.metric_versions), "grounding": "custom:old-judge"}.items())),
+    )
+    agent = ResolvedAgent("VERSION$1")
+
+    refused = gate_refusal(compiled, edited, agent, now="2026-09-10T00:00:00Z")
+
+    assert refused is not None
+    assert refused[1][0].message == (
+        "eval 'eval:sales_agent' baseline is incompatible: it was captured for 'eval:other'; "
+        "metric 'faithfulness' was removed; metric 'grounding' changed its judge or definition; "
+        "metric 'grounding' scored no question in the baseline's runs; metric 'grounding' changed its gating"
+    )
+    only_new = replace(baseline, metric_versions=(), gate_policy=(), metrics=())
+    added = gate_refusal(compiled, only_new, agent, now="2026-09-10T00:00:00Z")
+    assert added is not None
+    assert added[1][0].message.endswith(": metric 'answer_correctness' was added; metric 'grounding' was added")
+
+
+def test_an_identity_no_part_names_is_still_incompatible() -> None:
+    compiled = compiled_eval()
+    baseline = two_run_baseline(compiled)
+    # The store keeps metric versions by name, so a pair recorded twice can only be built here.
+    doubled = replace(baseline, metric_versions=(*baseline.metric_versions, baseline.metric_versions[0]))
+
+    refused = gate_refusal(compiled, doubled, ResolvedAgent("VERSION$1"), now="2026-09-10T00:00:00Z")
+
+    assert refused is not None
+    assert refused[1][0].message.endswith("baseline is incompatible: the metric identity changed")
+    unrecorded = replace(baseline, agent_version="")
+    refused = gate_refusal(compiled, unrecorded, ResolvedAgent("VERSION$1"), now="2026-09-10T00:00:00Z")
+    assert refused is not None
+    assert refused[1][0].message.endswith(": it was captured on no recorded version, and this run uses VERSION$1")
 
 
 def test_multi_question_baseline_policy_is_compared_once_per_metric() -> None:

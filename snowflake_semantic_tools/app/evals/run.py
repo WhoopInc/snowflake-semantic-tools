@@ -128,12 +128,37 @@ class _StartedRuns:
 
 
 @dataclass(frozen=True, slots=True)
+class ResolvedAgent:
+    """The committed agent version an eval runs against.
+
+    Attributes:
+        version: The concrete `VERSION$<n>` the eval's selector resolved to.
+    """
+
+    version: str
+
+
+def resolve_agent(port: CatalogPublicationPort, compiled: CompiledEval, defaults: EvalDefaults) -> ResolvedAgent:
+    """Resolve the committed agent version every attempt of an eval runs against.
+
+    The selector is the eval's `agent_version` setting, else the project's, as validation reads
+    it. Never writes.
+
+    Raises:
+        AgentVersionNotFound: the selector names no committed version.
+        SnowflakePortError: the selector could not be resolved.
+    """
+    selector = compiled.resolved.options.agent_version or defaults.agent_version or ""
+    return ResolvedAgent(port.resolve_agent_version(compiled.agent_target, selector))
+
+
+@dataclass(frozen=True, slots=True)
 class _RunSetup:
     """What every attempt of one eval shares, resolved before the first one starts.
 
     Attributes:
         timestamp: The run names' `ts` token.
-        agent_version: The concrete version the agent's selector resolved to.
+        agent: The concrete version the agent's selector resolved to.
         required_completed: The completed attempts the eval needs: a baseline capture's
             `baseline_runs`, else 1. No attempt starts once that many completed and were read.
         attempt_limit: The attempts allowed in all: `required_completed` plus the retries.
@@ -142,7 +167,7 @@ class _RunSetup:
 
     run: EvalRunConfig
     timestamp: str
-    agent_version: str
+    agent: ResolvedAgent
     required_completed: int
     attempt_limit: int
     config_path: str
@@ -359,10 +384,10 @@ class RunEvalSuite:
         timestamp = context.options.timestamp or _compact_timestamp()
         options = compiled.resolved.options
         retry_count = options.retry if options.retry is not None else context.defaults.retry or 0
-        selector = options.agent_version or context.defaults.agent_version or ""
         try:
-            agent_version = self._port.resolve_agent_version(compiled.agent_target, selector)
+            agent = resolve_agent(self._port, compiled, context.defaults)
         except AgentVersionNotFound:
+            selector = options.agent_version or context.defaults.agent_version or ""
             return D("SST-VAL720", artifact=compiled.name, value=selector, subject=compiled.artifact_key)
         except SnowflakePortError as exc:
             return D("SST-APL023", artifact=compiled.artifact_key, detail=str(exc))
@@ -380,9 +405,7 @@ class RunEvalSuite:
             )
         except SnowflakePortError as exc:
             return D("SST-APL023", artifact=compiled.artifact_key, detail=str(exc))
-        return _RunSetup(
-            run, timestamp, agent_version, required_completed, required_completed + retry_count, config_path
-        )
+        return _RunSetup(run, timestamp, agent, required_completed, required_completed + retry_count, config_path)
 
     def _attempt(
         self,
@@ -436,7 +459,7 @@ class RunEvalSuite:
             attempt_number,
             terminal_status,
             status_details=status_details,
-            agent_version=setup.agent_version,
+            agent_version=setup.agent.version,
         )
         try:
             rows, cost = read_results(self._port, compiled, run_name, timeout_seconds=poll.read_timeout_seconds())
