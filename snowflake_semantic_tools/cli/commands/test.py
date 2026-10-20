@@ -140,9 +140,9 @@ def test_command(
     Both suites test what `sst apply` published, so they apply once `sst compile` has written
     the manifest: the smoke suite when a semantic view compiles, the eval suite when an eval
     does. `--select` and `--exclude` narrow every suite to those artifacts. Exit 1 when the
-    project does not compile or a suite fails; 4 when, with no --suite, no suite applies, or a
-    suite finds the compiled manifest missing or stale or the target's run lock held; and 5
-    when a suite cannot reach Snowflake. Unless one --suite is given, the worst exit wins and
+    project does not compile, a suite fails, or another run holds the target's run lock; 4
+    when, with no --suite, no suite applies, or a suite finds the compiled manifest missing
+    or stale; and 5 when a suite cannot reach Snowflake. Unless one --suite is given, the worst exit wins and
     the summary counts the suites that passed, failed, and were skipped: not named, not
     applying, or not reached once --fail-fast stopped. The eval suite holds the target's run
     lock while it runs, and `--break-stale-lock` takes it over only from a run that has
@@ -329,9 +329,11 @@ def _run_evals(
     the runs go on, each attempt's start, status changes and end, every status read retried,
     and a line naming the runs still in flight at most once a minute, go to stderr.
 
+    Another operation holding the target's lock refuses the run with exit 1, as it refuses
+    `sst apply`, carrying what taking the lock reported and the reason under `data.error`.
+
     Raises:
-        ProjectError: the selection compiles no eval, the compiled manifest is stale, or another
-            operation holds the target's lock; it carries what taking the lock reported.
+        ProjectError: the selection compiles no eval, or the compiled manifest is stale.
     """
     full, result = results
     evals = _selected_evals(result, selected)
@@ -358,7 +360,7 @@ def _run_evals(
         ).run(evals, manifest, request, target=profile.identity, state_table=profile.state_table)
     port.close()
     if isinstance(outcome, EvalGateRefused):
-        raise ProjectError(outcome.reason, diagnostics=tuple(outcome.diagnostics))
+        return CommandResult(ERROR, outcome.diagnostics, {"suite": "evals", "error": outcome.reason})
     return _eval_report(outcome)
 
 

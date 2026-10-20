@@ -700,9 +700,9 @@ Run the smoke and eval suites: those --suite names, else every one that applies.
 Both suites test what `sst apply` published, so they apply once `sst compile` has written
 the manifest: the smoke suite when a semantic view compiles, the eval suite when an eval
 does. `--select` and `--exclude` narrow every suite to those artifacts. Exit 1 when the
-project does not compile or a suite fails; 4 when, with no --suite, no suite applies, or a
-suite finds the compiled manifest missing or stale or the target's run lock held; and 5
-when a suite cannot reach Snowflake. Unless one --suite is given, the worst exit wins and
+project does not compile, a suite fails, or another run holds the target's run lock; 4
+when, with no --suite, no suite applies, or a suite finds the compiled manifest missing
+or stale; and 5 when a suite cannot reach Snowflake. Unless one --suite is given, the worst exit wins and
 the summary counts the suites that passed, failed, and were skipped: not named, not
 applying, or not reached once --fail-fast stopped. The eval suite holds the target's run
 lock while it runs, and `--break-stale-lock` takes it over only from a run that has

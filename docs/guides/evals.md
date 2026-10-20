@@ -331,10 +331,10 @@ its runs starts.
    stale or other-target manifest stops the suite (exit 4).
 2. The suite takes the target's run lock, the one `sst apply` takes, and holds
    it until it ends, so no apply on any machine regenerates what the evals run
-   against. A lock another run holds stops the suite (`SST-APL011`, exit 4),
-   with `SST-VAL755` naming each semantic view an eval's agent uses when the
-   holder is an apply. `--break-stale-lock` takes over a lock whose run has
-   expired (`SST-APL010`), never a live one.
+   against. A lock another run holds stops the suite before any eval starts
+   (`SST-APL011`, exit 1, as it stops `sst apply`), naming the run that holds
+   it; `data.error` says the same. `--break-stale-lock` takes over a lock whose
+   run has expired (`SST-APL010`), never a live one.
 3. Every eval it would run must be applied exactly as this manifest renders it,
    so a result always describes the published agent. An eval never applied on
    the target is `SST-APL036` (`SST-APL037` once, when no eval is), one applied
@@ -703,9 +703,9 @@ does: `blocking` fails the run with `SST-VAL763` (exit 1); `report` lists it in
 `regressions` with `gate_verdict: regressed`, and the run passes.
 
 The eval suite exits 0 when every eval passed and its gate compared cleanly; 1
-when an attempt failed without a retry passing, the preflight refused, the gate
-could not compare, a blocking eval regressed, or a capture fell short; 3 for an
-invalid command line; 4 when the manifest is stale, another run holds the lock,
+when another run holds the lock, an attempt failed without a retry passing, the
+preflight refused, the gate could not compare, a blocking eval regressed, or a
+capture fell short; 3 for an invalid command line; 4 when the manifest is stale
 or no eval matches the selection; 5 when Snowflake cannot be reached; and 130
 when interrupted.
 

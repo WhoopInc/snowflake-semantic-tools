@@ -59,7 +59,7 @@ from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.state import Manifest, State
 from snowflake_semantic_tools.domain.state.lock import LockClaim
 
-# The prefix of an eval run's lock id, so a refused run can tell an eval holder from an apply.
+# The prefix of an eval run's lock id, so SST-APL011 names an eval run holding the lock as one.
 EVAL_RUN_PREFIX = "eval-"
 # The gate reasons only a new baseline clears: running the suite again can never compare.
 RECAPTURE_REASONS = frozenset(("baseline_absent", "baseline_incompatible", "baseline_incomplete", "baseline_expired"))
@@ -140,8 +140,7 @@ class EvalGateRefused:
     """The run did not start: another operation holds the target's lock.
 
     Attributes:
-        diagnostics: What taking the lease reported, then each view an apply holding it may
-            be regenerating under an eval's agent.
+        diagnostics: What taking the lease reported.
     """
 
     reason: str
@@ -221,8 +220,6 @@ class RunEvalGate:
         Diagnostics:
             SST-APL011: another run holds the target's lock, so no eval starts.
             SST-APL010: the request breaks stale locks, and an expired one was taken over.
-            SST-VAL755: the run holding the lock is not an eval run, so it may be regenerating
-                a semantic view an eval's agent uses; one per eval and view.
             SST-VAL727, SST-VAL728: the primary role lacks a privilege a run needs in an eval's
                 agent schema; as `eval_role_diagnostics` reports, and no eval starts.
             Those of `read_state`, `validate_eval_publication`, `gate_refusal` for each eval
@@ -244,11 +241,11 @@ class RunEvalGate:
         )
         locked, lock_diagnostics = lease.acquire(break_stale=request.break_stale_lock)
         if not locked:
-            holder = lease.holder
-            overlaps = () if holder is not None and holder.startswith(EVAL_RUN_PREFIX) else view_overlaps(evals)
+            # No eval started, so nothing overlapped what the holder changes; the lock row
+            # cannot say what that is.
+            holder = lease.holder or "another operation"
             return EvalGateRefused(
-                f"cannot run evals while {holder or 'another operation'} holds the target lock",
-                DiagnosticBag((*lock_diagnostics, *overlaps)),
+                f"cannot run evals while {holder} holds the target lock", DiagnosticBag(lock_diagnostics)
             )
         try:
             state, state_diagnostics = read_state(self._state_store, self._port, state_table=state_table, target=target)
@@ -461,24 +458,6 @@ def _short_captures(
                 D("SST-VAL734", artifact=item.name, count=completed, expected=required, subject=item.artifact_key)
             )
     return tuple(found)
-
-
-def view_overlaps(evals: tuple[CompiledEval, ...]) -> tuple[Diagnostic, ...]:
-    """Warn, per eval, of each semantic view its agent's tools query, which a running apply may regenerate.
-
-    Snowflake does not coordinate an eval run with a regenerate of a view its agent reads, so
-    the scores would grade a definition that changed under them.
-
-    Diagnostics:
-        SST-VAL755: the eval's agent uses the view; once per view, in tool order.
-    """
-    return tuple(
-        D("SST-VAL755", subject=item.artifact_key, artifact=item.name, value=view)
-        for item in evals
-        for view in dict.fromkeys(
-            tool.semantic_view for tool in item.resolved.agent.tools if tool.semantic_view is not None
-        )
-    )
 
 
 def _gate_data(

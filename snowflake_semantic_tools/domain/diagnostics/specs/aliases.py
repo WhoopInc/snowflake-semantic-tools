@@ -463,6 +463,13 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         "evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST",
     ),
     (
+        "SST-VAL755",
+        "Agent eval run overlaps a semantic view regenerate",
+        "SST-APL011",
+        "an eval run refused for the lock starts nothing, so it overlaps nothing, and the lock "
+        "cannot say which views the run holding it regenerates: SST-APL011 alone reports the refusal",
+    ),
+    (
         "SST-VAL756",
         "Analyst eval run overlaps a regenerate of the same view",
         None,

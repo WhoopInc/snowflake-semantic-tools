@@ -25,7 +25,8 @@ from snowflake_semantic_tools.app.evals.suite import (
 )
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.cli.signals import terminated_as_interrupt
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin, Severity
+from snowflake_semantic_tools.domain.model.agent import AgentTool
 from snowflake_semantic_tools.domain.model.eval import (
     EvalCatalog,
     EvalDefaults,
@@ -112,6 +113,20 @@ def test_the_run_is_refused_while_another_operation_holds_the_target_lock() -> N
     refused, _, _, _ = gate(EvalSnowflake([]), state_store=unnamed)
     assert isinstance(refused, EvalGateRefused)
     assert refused.reason == "cannot run evals while another operation holds the target lock"
+
+
+def test_an_apply_holding_the_lock_is_reported_alone_whatever_views_the_agent_uses() -> None:
+    value = resolved_eval()
+    origin = Origin("agents/sales/agent.yml", 1)
+    tools = (AgentTool("cortex_analyst_text_to_sql", origin, semantic_view="orders"),)
+    port = EvalSnowflake([])
+    port.run_locks.acquire_run_lock(STATE_TABLE, "verify", LockClaim("apply-run"), break_stale=False)
+
+    refused, _, _, _ = gate(port, result=compile_eval(replace(value, agent=replace(value.agent, tools=tools))))
+
+    # No eval started, so it overlapped nothing, and the lock cannot say what the apply changes.
+    assert isinstance(refused, EvalGateRefused)
+    assert [item.code for item in refused.diagnostics] == ["SST-APL011"] and port.queries == []
 
 
 def test_the_run_takes_the_remote_lock_an_apply_takes_and_releases_it() -> None:

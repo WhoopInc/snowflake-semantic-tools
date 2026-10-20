@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 308 codes
+- [Validation (VAL)](#validation-val) -- 307 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
@@ -32,7 +32,7 @@ cannot be downgraded by any setting.
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
 - [Internal (INT)](#internal-int) -- 13 codes
-- [Retired numbers](#retired-numbers) -- 71 numbers
+- [Retired numbers](#retired-numbers) -- 72 numbers
 
 ## Registry (REG)
 
@@ -4924,18 +4924,6 @@ Raised when a custom metric whose description or prompt says 'invariant' declare
 
 Fix: narrow the scale
 
-### SST-VAL755
-
-**Agent eval run overlaps a semantic view regenerate** (warning)
-
-`eval config for '<artifact>': the run overlaps a regenerate of view '<value>', which the agent uses`
-
-Raised when an eval run is refused because an operation other than an eval run, such as an apply that may regenerate the view, holds the target's lock, and the eval's agent queries the view; one per eval and view.
-
-Fix: serialise the run against the publish, or move one of the two
-
-Note: Snowflake does not coordinate the two, so SST serialises them through the target lock. Run the evals again once the operation holding the lock finishes.
-
 ### SST-VAL758
 
 **Eval baseline is absent** (error)
@@ -8582,6 +8570,14 @@ Retired because evals evaluate agents only; the Cortex Analyst evaluation this g
 **A verified query was removed since the last run** (retired in 1.0.0)
 
 Retired because evals evaluate agents only; the Cortex Analyst evaluation this guarded is not part of SST.
+
+### SST-VAL755
+
+**Agent eval run overlaps a semantic view regenerate** (retired in 1.0.0)
+
+Retired because an eval run refused for the lock starts nothing, so it overlaps nothing, and the lock cannot say which views the run holding it regenerates: SST-APL011 alone reports the refusal.
+
+Superseded by [`SST-APL011`](#sst-apl011).
 
 ### SST-VAL756
 

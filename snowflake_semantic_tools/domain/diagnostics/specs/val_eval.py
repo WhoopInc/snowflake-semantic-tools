@@ -572,23 +572,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
-        "SST-VAL755",
-        Severity.WARNING,
-        "Agent eval run overlaps a semantic view regenerate",
-        "eval config for '{artifact}': the run overlaps a regenerate of view '{value}', which the agent uses",
-        "serialise the run against the publish, or move one of the two",
-        condition=(
-            "an eval run is refused because an operation other than an eval run, such as an apply that "
-            "may regenerate the view, holds the target's lock, and the eval's agent queries the view; "
-            "one per eval and view"
-        ),
-        note=(
-            "Snowflake does not coordinate the two, so SST serialises them through the target lock. "
-            "Run the evals again once the operation holding the lock finishes."
-        ),
-        precheck=Precheck.OBSERVE,
-    ),
-    spec(
         "SST-VAL758",
         Severity.ERROR,
         "Eval baseline is absent",

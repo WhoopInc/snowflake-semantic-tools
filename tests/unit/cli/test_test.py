@@ -506,7 +506,10 @@ def test_the_eval_suite_closes_its_connection_when_it_fails_before_running(
     evals = ["test", *common(project), "--target", "dev", "--suite", "evals", "--output", "json"]
     StateFileStore(project / "sst_target" / "state.dev.json").acquire_lock("apply-run", break_stale=False)
     locked, closes = invoke_counting_closes(monkeypatch, FakeSnowflake(state={}), evals)
-    assert locked.exit_code == 4 and "apply-run holds the target lock" in json.loads(locked.output)["data"]["error"]
+    # Refused by the lock, the suite exits 1 as `sst apply` does, and names the holder.
+    envelope = json.loads(locked.output)
+    assert locked.exit_code == 1 and "apply-run holds the target lock" in envelope["data"]["error"]
+    assert [item["code"] for item in envelope["diagnostics"]] == ["SST-APL011"]
     assert closes == ["closed"]
 
     def unwritable(self: StateFileStore, run_id: str, *, break_stale: bool) -> tuple[bool, str | None, bool]:
