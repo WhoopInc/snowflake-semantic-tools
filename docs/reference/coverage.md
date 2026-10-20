@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 767
+- Codes: 769
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -51,6 +51,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-APL037`](error-codes.md#sst-apl037) | APL | error | runtime | `snowflake_semantic_tools.app.publication` | `tests/codes/apl/test_sst_apl037.py` |
 | [`SST-APL038`](error-codes.md#sst-apl038) | APL | error | runtime | `snowflake_semantic_tools.app.publication` | `tests/codes/apl/test_sst_apl038.py` |
 | [`SST-APL039`](error-codes.md#sst-apl039) | APL | error | runtime | `snowflake_semantic_tools.app.apply.run` | `tests/codes/apl/test_sst_apl039.py` |
+| [`SST-APL042`](error-codes.md#sst-apl042) | APL | warning | local | `snowflake_semantic_tools.app.apply.run` | `tests/codes/apl/test_sst_apl042.py` |
 | [`SST-APL100`](error-codes.md#sst-apl100) | APL | error | runtime | `snowflake_semantic_tools.app.smoke` | `tests/codes/apl/test_sst_apl100.py` |
 | [`SST-APL103`](error-codes.md#sst-apl103) | APL | error | runtime | `snowflake_semantic_tools.app.apply.recovery` | `tests/codes/apl/test_sst_apl103.py` |
 | [`SST-APL105`](error-codes.md#sst-apl105) | APL | info | local | `snowflake_semantic_tools.app.apply.temporary` | `tests/codes/apl/test_sst_apl105.py` |
@@ -427,6 +428,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-REG022`](error-codes.md#sst-reg022) | REG | error | local | `snowflake_semantic_tools.domain.model.registry` | `tests/codes/reg/test_sst_reg022.py` |
 | [`SST-REG023`](error-codes.md#sst-reg023) | REG | error | local | `snowflake_semantic_tools.domain.model.registry` | `tests/codes/reg/test_sst_reg023.py` |
 | [`SST-REG024`](error-codes.md#sst-reg024) | REG | error | local | `snowflake_semantic_tools.domain.resolve.ref_fields` | `tests/codes/reg/test_sst_reg024.py` |
+| [`SST-REG025`](error-codes.md#sst-reg025) | REG | error | local | `snowflake_semantic_tools.domain.diagnostics.integrity` | `tests/codes/reg/test_sst_reg025.py` |
 | [`SST-REG900`](error-codes.md#sst-reg900) | REG | error | local | `snowflake_semantic_tools.domain.model.registry` | `tests/codes/reg/test_sst_reg900.py` |
 | [`SST-RND001`](error-codes.md#sst-rnd001) | RND | error | local | `snowflake_semantic_tools.domain.render.semantic_view` | `tests/codes/rnd/test_sst_rnd001.py` |
 | [`SST-RND002`](error-codes.md#sst-rnd002) | RND | error | local | `snowflake_semantic_tools.domain.render.semantic_view` | `tests/codes/rnd/test_sst_rnd002.py` |

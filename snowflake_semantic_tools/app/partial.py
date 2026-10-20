@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics.baseline import stable_fingerprint
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.lifecycle import ChangeSet
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
@@ -143,12 +144,15 @@ def partial_changeset(changeset: ChangeSet) -> tuple[ChangeSet, tuple[Diagnostic
         return changeset, ()
     keys = {change.key for change in blocked}
     owned = [item for change in blocked for item in change.diagnostics]
+    # By fingerprint: strict promotion copies a diagnostic, so the plan's is not the change's.
+    carried = {stable_fingerprint(item) for item in owned}
 
     def left_out(item: Diagnostic) -> bool:
-        return item.subject in keys or item in owned
+        return item.subject in keys or stable_fingerprint(item) in carried
 
     moved = [item for item in changeset.diagnostics if left_out(item)]
-    moved.extend(item for item in owned if item not in moved)
+    reported = {stable_fingerprint(item) for item in moved}
+    moved.extend(item for item in owned if stable_fingerprint(item) not in reported)
     kept = DiagnosticBag(tuple(item for item in changeset.diagnostics if not left_out(item)))
     remaining = tuple(change for change in changeset.changes if change.key not in keys)
     notices = tuple(D("SST-PLN032", subject=change.key, artifact=change.key) for change in blocked)

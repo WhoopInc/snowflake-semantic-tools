@@ -66,7 +66,8 @@ def check_error_specs(specs: tuple[ErrorSpec, ...]) -> Mapping[str, ErrorSpec]:
             repeats; SST-REG017, it is retired; SST-REG014, it is a 900-band code that is not an
             error, or not a non-demotable one in INT or REG; SST-REG016, its template names a
             placeholder outside `PLACEHOLDERS`; SST-REG018, it is deprecated with no successor;
-            SST-REG019, it declares internal detail outside INT and SNO.
+            SST-REG019, it declares internal detail outside INT and SNO; SST-REG025, it is
+            `strict_exempt` but not a warning.
     """
     registry: dict[str, ErrorSpec] = {}
     for entry in specs:
@@ -106,6 +107,8 @@ def _check_policy(entry: ErrorSpec) -> None:
         raise registry_fault("SST-REG018", code=entry.code, version=entry.deprecated_in)
     if entry.internal_detail and area not in INTERNAL_DETAIL_AREAS:
         raise registry_fault("SST-REG019", code=entry.code, area=area)
+    if entry.strict_exempt and entry.severity is not Severity.WARNING:
+        raise registry_fault("SST-REG025", code=entry.code, severity=entry.severity.name)
 
 
 def severity_comparisons(module: str, source: str) -> tuple[RegistryIntegrityError, ...]:

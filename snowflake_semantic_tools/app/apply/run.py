@@ -33,6 +33,7 @@ from snowflake_semantic_tools.app.baseline import blocking
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.app.state import table_state
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics.baseline import stable_fingerprint
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
@@ -128,9 +129,9 @@ class ApplyArtifacts:
 
         The run goes through these phases in order:
 
-        1. Refusal, before the lock: a plan with an error diagnostic is refused with it, and so
-           is a plan with blocked changes unless the policy is CONTINUE, and a `--temporary`
-           run against a production-like target.
+        1. Refusal, before the lock: a plan with an error diagnostic is refused with it, as is a
+           `--temporary` run against a production-like target, and a plan with blocked changes
+           the run does not skip (`_skips_blocked`); a run that skips them does not succeed.
         2. Lock: the local lock, then the target's lock in Snowflake; either held by another
            run refuses the run, and an expired one is taken over only when
            `options.break_stale_lock` allows it. A heartbeat extends the remote lock while
@@ -169,7 +170,8 @@ class ApplyArtifacts:
 
         Diagnostics:
             SST-APL002: a change was skipped because a change it depends on failed or was skipped.
-            SST-APL003: the plan has a blocked change and the policy is not CONTINUE.
+            SST-APL003: the plan has a blocked change the run does not skip.
+            SST-APL042: a blocked change was skipped; one per change.
             SST-APL008: an object's grants could not be verified.
             SST-APL010: the run took over an expired lock.
             SST-APL011: another run holds the lock, or broke it while this run held it.
@@ -282,8 +284,10 @@ class ApplyArtifacts:
         """Run the phases that need the lock: preflight, waves, accounting, then persist.
 
         The waves share one `UploadStages`, so each stage the run uploads to is created at most once.
-        An eval of an agent the run publishes as temporary is skipped, writing nothing.
+        An eval of an agent the run publishes as temporary is skipped, writing nothing, and so is
+        each blocked change, which `_blocked_skips` reports.
         """
+        reported = (*reported, *_blocked_skips(changeset, options))
         with self._phases.phase("publish"):
             outcomes = self._preflight_relations(changeset.changes, options.parallelism)
         wave_diagnostics: tuple[Diagnostic, ...] = ()
@@ -516,21 +520,64 @@ def _refusal(changeset: ChangeSet, options: ApplyOptions) -> tuple[Diagnostic, .
 
     An error the run's baseline holds refuses nothing, as `ApplyOptions.held` says.
 
+    When the run skips the blocked changes, an error strict mode promoted from a warning about
+    one refuses nothing either, since that change does not run.
+
     Diagnostics:
-        SST-APL003: a blocked change, unless the policy is CONTINUE; one per blocked change.
+        SST-APL003: a blocked change the run does not skip; one per blocked change.
         SST-APL013: a temporary artifact against a production-like target; one per artifact.
     """
-    if blocking(changeset.diagnostics, options.held):
+    skips = _skips_blocked(changeset, options)
+    if blocking(changeset.diagnostics, options.held | (_about_blocked(changeset) if skips else frozenset())):
         return tuple(changeset.diagnostics)
     refused_temporary = temporary_refusal(changeset, options)
     if refused_temporary:
         return (*changeset.diagnostics, *refused_temporary)
-    if changeset.blocked and options.on_failure is not FailurePolicy.CONTINUE:
+    if changeset.blocked and not skips:
         return (
             *changeset.diagnostics,
             *(D("SST-APL003", artifact=change.key, count=len(change.diagnostics) or 1) for change in changeset.blocked),
         )
     return None
+
+
+def _skips_blocked(changeset: ChangeSet, options: ApplyOptions) -> bool:
+    """Say whether the run skips the plan's blocked changes and applies the rest, rather than refusing.
+
+    CONTINUE always does, and STOP_ALL never. STOP_DEPENDENTS does when no blocked change carries
+    an error of its own, one strict mode did not promote, such as a validation error.
+    """
+    if options.on_failure is not FailurePolicy.STOP_DEPENDENTS:
+        return options.on_failure is FailurePolicy.CONTINUE
+    carried = (item for change in changeset.blocked for item in change.diagnostics)
+    return not any(item.blocks and item.promoted_from is None for item in carried)
+
+
+def _about_blocked(changeset: ChangeSet) -> frozenset[str]:
+    """Return the fingerprints of the promoted warnings about the plan's blocked changes.
+
+    A diagnostic is about a change when the change carries it or it names the change as its
+    subject; it is matched by its stable fingerprint, since strict promotion copies it.
+    """
+    keys = {change.key for change in changeset.blocked}
+    carried = {stable_fingerprint(item) for change in changeset.blocked for item in change.diagnostics}
+    return frozenset(
+        fingerprint
+        for item in changeset.diagnostics
+        if item.promoted_from is not None
+        and ((fingerprint := stable_fingerprint(item)) in carried or item.subject in keys)
+    )
+
+
+def _blocked_skips(changeset: ChangeSet, options: ApplyOptions) -> tuple[Diagnostic, ...]:
+    """Report each blocked change the run skips, in plan order; none when it skips none.
+
+    Diagnostics:
+        SST-APL042: a blocked change is skipped while the rest of the plan applies.
+    """
+    if not _skips_blocked(changeset, options):
+        return ()
+    return tuple(D("SST-APL042", subject=change.key, artifact=change.key) for change in changeset.blocked)
 
 
 def _unaccounted(changeset: ChangeSet, outcomes: tuple[ApplyOutcome, ...]) -> tuple[Diagnostic, ...]:

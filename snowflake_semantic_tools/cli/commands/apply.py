@@ -47,7 +47,7 @@ from snowflake_semantic_tools.cli.options import (
 from snowflake_semantic_tools.cli.output import announce_interrupt, render_policy
 from snowflake_semantic_tools.cli.plan_output import outcome_json, print_plan, write_plan_sql
 from snowflake_semantic_tools.cli.render.progress import active_display
-from snowflake_semantic_tools.cli.render.report import apply_headline, outcome_lines
+from snowflake_semantic_tools.cli.render.report import apply_headline, blocked_count, outcome_lines
 from snowflake_semantic_tools.cli.render.style import Style
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, run_baseline
 from snowflake_semantic_tools.cli.settings import (
@@ -392,6 +392,7 @@ def _apply_plan(
         human=lambda: _print_outcomes(apply_result.outcomes),
         promoted=ready.promoted,
         headline=apply_headline(apply_result.outcomes),
+        failure=blocked_count(ready.changeset),
     )
 
 

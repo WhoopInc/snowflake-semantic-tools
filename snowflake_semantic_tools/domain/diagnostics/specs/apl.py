@@ -46,8 +46,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact} is BLOCKED by {count} errors",
         "fix the errors, then re-apply",
         condition=(
-            "the plan holds a blocked change, one carrying unresolved errors; apply then runs "
-            "nothing, refusing the whole plan before it takes the lock"
+            "the plan holds a blocked change, and `apply.fail_fast` is true (or `--fail-fast` is "
+            "given) or the change carries an error of its own, such as a validation error; apply "
+            "then runs nothing, refusing the whole plan before it takes the lock. Otherwise the "
+            "blocked change is skipped (SST-APL042)"
         ),
     ),
     spec(
@@ -508,6 +510,24 @@ SPECS: tuple[ErrorSpec, ...] = (
             "fingerprint or name than the project compiles to now"
         ),
         precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL042",
+        Severity.WARNING,
+        "Blocked change skipped",
+        "{artifact} was skipped: the plan blocked it, so apply goes on with the rest and exits 1",
+        "resolve what blocked it, as the plan's diagnostic for it says, then apply again; "
+        "`--fail-fast` refuses the whole plan instead",
+        condition=(
+            "`apply.fail_fast` is false, the default, and the plan holds a blocked change carrying "
+            "no error of its own: an object changed out of band (SST-PLN014), or a change that "
+            "depends on a blocked one"
+        ),
+        note=(
+            "Every change the blocked one blocked is skipped with it; the rest of the plan applies "
+            "and state records it. Under strict mode a warning about the blocked change, promoted "
+            "to an error, refuses nothing, since the change does not run."
+        ),
     ),
     spec(
         "SST-APL039",

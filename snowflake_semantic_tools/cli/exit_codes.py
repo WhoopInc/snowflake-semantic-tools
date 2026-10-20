@@ -17,7 +17,11 @@ EXIT_CODE_DOCS: tuple[tuple[int, str, str], ...] = (
         "Success. For `sst plan`, nothing to change: every live object carries the marker state "
         "records, and the properties plan compares are as apply read them back.",
     ),
-    (ERROR, "ERROR", "Errors were reported, or an apply, a test suite, or a check failed."),
+    (
+        ERROR,
+        "ERROR",
+        "Errors were reported, an apply, a test suite, or a check failed, or an apply skipped a blocked change.",
+    ),
     (
         CHANGES,
         "CHANGES",

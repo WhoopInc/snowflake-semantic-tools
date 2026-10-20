@@ -134,7 +134,10 @@ _OPTION_HELP: Mapping[str, str] = {
     "--semantic": "Read the semantic models from this directory instead of `project.semantic_models_dir`.",
 }
 _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
-    ("sst apply", "--fail-fast"): "Stop at the first failure instead of continuing. Defaults to `apply.fail_fast`.",
+    ("sst apply", "--fail-fast"): (
+        "Stop at the first failure instead of continuing, and refuse a plan with a blocked change instead of "
+        "skipping it. Defaults to `apply.fail_fast`."
+    ),
     ("sst apply", "--threads"): (
         "Sessions to plan and apply on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`. "
         "Planning defaults to 4; applying to `skills.+threads`, else 4."

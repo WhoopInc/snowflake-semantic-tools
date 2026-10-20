@@ -226,6 +226,15 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=("the set of member types in `MemberIndex` is not the set named by `semantic_view.member_types`"),
     ),
     spec(
+        "SST-REG025",
+        Severity.ERROR,
+        "strict_exempt declared on a code that is not a warning",
+        "'{code}' declares strict_exempt but its severity is {severity}",
+        "drop strict_exempt: strict mode promotes only warnings, so it means nothing on an error or an info",
+        demotable=False,
+        condition="a code whose severity is not WARNING sets `strict_exempt`",
+    ),
+    spec(
         "SST-REG024",
         Severity.ERROR,
         "A `ref_field` policy is undeclared, or a declared policy is neither bound nor explained",

@@ -203,6 +203,7 @@ ERROR_FAULTS = [
     ("placeholder", spec("SST-ABC001", Severity.ERROR, "T", "{nope}", None), "SST-REG016"),
     ("deprecated", spec("SST-ABC001", Severity.ERROR, "T", "{value}", None, deprecated_in="1.1.0"), "SST-REG018"),
     ("internal detail", spec("SST-ABC001", Severity.ERROR, "T", "{value}", None, internal_detail=True), "SST-REG019"),
+    ("strict exempt error", spec("SST-ABC001", Severity.ERROR, "T", "{value}", None, strict_exempt=True), "SST-REG025"),
 ]
 
 

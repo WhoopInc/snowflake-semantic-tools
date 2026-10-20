@@ -20,7 +20,8 @@ class FailurePolicy(Enum):
     """What apply does after a change fails.
 
     STOP_ALL skips everything not yet run, STOP_DEPENDENTS skips only the changes that depend
-    on the failure, and CONTINUE runs the rest; only CONTINUE applies a plan with blocked changes.
+    on the failure, and CONTINUE runs the rest. STOP_ALL refuses a plan with blocked changes;
+    the others skip those changes and apply the rest.
     """
 
     STOP_ALL = "stop_all"
@@ -177,9 +178,12 @@ class ApplyResult:
 
     @property
     def success(self) -> bool:
-        """Report whether the run was not interrupted and had no error diagnostic and no failed outcome."""
+        """Report whether the run ended uninterrupted, with no error, failure, or blocked change skipped."""
         return (
             not self.interrupted
             and not self.diagnostics.has_errors
-            and all(outcome.status is not OutcomeStatus.FAILED for outcome in self.outcomes)
+            and all(
+                outcome.status is not OutcomeStatus.FAILED and outcome.action is not Action.BLOCKED
+                for outcome in self.outcomes
+            )
         )

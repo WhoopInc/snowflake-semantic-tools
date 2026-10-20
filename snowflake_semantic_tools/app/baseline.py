@@ -44,7 +44,7 @@ def gate_baseline(
     """Match `diagnostics` against `baseline` as of the clock's today, and say what that decides.
 
     The notices about the baseline itself join the run after its policy promoted the rest, so a
-    strict run promotes them here: strict mode exempts no warning, the expiry notice included.
+    strict run promotes them here: none is exempt from strict mode, the expiry notice included.
     They name the baseline file, no artifact, so every selection reaches them.
 
     Args:

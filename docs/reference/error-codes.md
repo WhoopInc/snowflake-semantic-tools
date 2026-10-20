@@ -15,7 +15,7 @@ cannot be downgraded by any setting.
 
 ## Contents
 
-- [Registry (REG)](#registry-reg) -- 23 codes
+- [Registry (REG)](#registry-reg) -- 24 codes
 - [Configuration (CFG)](#configuration-cfg) -- 47 codes
 - [Discovery (DIS)](#discovery-dis) -- 14 codes
 - [Parsing (PRS)](#parsing-prs) -- 59 codes
@@ -27,7 +27,7 @@ cannot be downgraded by any setting.
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 46 codes
-- [Apply (APL)](#apply-apl) -- 41 codes
+- [Apply (APL)](#apply-apl) -- 42 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 12 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
@@ -255,6 +255,16 @@ Fix: index every declared member type
 Raised when a policy named by `ref_field(...)` is not declared, or a declared policy is bound to no field and carries no stated reason, or is both bound and explained as unbound.
 
 Fix: declare the policy, bind it to a field, or state why it is unbound
+
+### SST-REG025
+
+**strict_exempt declared on a code that is not a warning** (error, always an error)
+
+`'<code>' declares strict_exempt but its severity is <severity>`
+
+Raised when a code whose severity is not WARNING sets `strict_exempt`.
+
+Fix: drop strict_exempt: strict mode promotes only warnings, so it means nothing on an error or an info
 
 ### SST-REG900
 
@@ -6466,7 +6476,7 @@ Raised when state records the artifact, but the live object's ownership marker i
 
 Fix: review the live object, then plan and apply it with `--select {artifact} --overwrite` to publish the planned definition over the edit (an agent keeps its versions and gains one), or restore the one SST wrote
 
-Note: The change is blocked, so `apply` refuses the plan (SST-APL003) until the live object is again the one SST wrote, although this code is a warning. An entry recorded before SST read these properties is not compared until the next apply records them; `plan.drift_check: basic` compares only what SHOW lists.
+Note: The change is blocked, although this code is a warning: `apply` skips it and the changes that depend on it, applies the rest and exits 1 (SST-APL042), or with `--fail-fast` refuses the whole plan (SST-APL003), until the live object is again the one SST wrote or `--overwrite` publishes over it. An entry recorded before SST read these properties is not compared until the next apply records them; `plan.drift_check: basic` compares only what SHOW lists.
 
 ### SST-PLN015
 
@@ -6776,7 +6786,7 @@ Raised when under `sst test --suite smoke --fail-fast`, an artifact whose probes
 
 ### SST-PLN102
 
-**Agent versions drifted from what SST published** (warning)
+**Agent versions drifted from what SST published** (warning, never promoted)
 
 `<artifact>: <detail>; apply points it back`
 
@@ -6784,7 +6794,7 @@ Raised when state records the agent unchanged, but it has no live version, or it
 
 Fix: apply to roll forward, or hold a rollback by not applying until it should end
 
-Note: The update sets the alias and a live version back on the version holding the specification, and the default to 'LAST', which serves that version and follows each one committed after it, without adding a version; an agent with no live version whose newest version holds another specification gets a new version instead.
+Note: The update sets the alias and a live version back on the version holding the specification, and the default to 'LAST', which serves that version and follows each one committed after it, without adding a version; an agent with no live version whose newest version holds another specification gets a new version instead. Strict mode leaves this a warning, since the apply it plans is the repair.
 
 ### SST-PLN103
 
@@ -6840,7 +6850,7 @@ Note: The message names the change that failed, even when the dependency between
 
 `<artifact> is BLOCKED by <count> errors`
 
-Raised when the plan holds a blocked change, one carrying unresolved errors; apply then runs nothing, refusing the whole plan before it takes the lock.
+Raised when the plan holds a blocked change, and `apply.fail_fast` is true (or `--fail-fast` is given) or the change carries an error of its own, such as a validation error; apply then runs nothing, refusing the whole plan before it takes the lock. Otherwise the blocked change is skipped (SST-APL042).
 
 Fix: fix the errors, then re-apply
 
@@ -7211,6 +7221,18 @@ Raised when with `apply.create_schemas` on, apply ran `CREATE SCHEMA IF NOT EXIS
 Fix: create the schema, or have its database's owner let the role create schemas, then apply again
 
 Note: Set `apply.create_schemas: false` to have plan report an absent schema as SST-PLN010 instead.
+
+### SST-APL042
+
+**Blocked change skipped** (warning)
+
+`<artifact> was skipped: the plan blocked it, so apply goes on with the rest and exits 1`
+
+Raised when `apply.fail_fast` is false, the default, and the plan holds a blocked change carrying no error of its own: an object changed out of band (SST-PLN014), or a change that depends on a blocked one.
+
+Fix: resolve what blocked it, as the plan's diagnostic for it says, then apply again; `--fail-fast` refuses the whole plan instead
+
+Note: Every change the blocked one blocked is skipped with it; the rest of the plan applies and state records it. Under strict mode a warning about the blocked change, promoted to an error, refuses nothing, since the change does not run.
 
 ### SST-APL100
 

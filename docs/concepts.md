@@ -542,6 +542,16 @@ check: a write that pins a version the plan leaves out is blocked with
 blocked or an error is reported, 2 when apply would write or still has state to
 record, and 0 otherwise; `--no-detailed-exitcode` turns 2 into 0.
 
+`apply` skips a blocked change and every change it blocked, applies the rest,
+records it in state, and exits 1 (`SST-APL042`), so one hand-edited object does
+not hold back the repairs and publishes around it. A blocked change that
+carries an error of its own, such as a validation error or an object SST does
+not manage (`SST-PLN024`), still refuses the whole plan (`SST-APL003`), and so
+does any blocked change under `--fail-fast` or `apply.fail_fast: true`. Under
+strict mode a warning about a skipped change, promoted to an error, refuses
+nothing, since that change does not run. `SST-PLN102`, version drift, is never
+promoted: the apply it plans is the repair.
+
 Drawn from: [changeset.py](../snowflake_semantic_tools/domain/plan/changeset.py), [plan_output.py](../snowflake_semantic_tools/cli/plan_output.py).
 
 ## Diagnostics

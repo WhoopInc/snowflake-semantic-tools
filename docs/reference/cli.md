@@ -75,7 +75,7 @@ These go before the command name.
 | Code | Name | Meaning |
 |---:|---|---|
 | 0 | `OK` | Success. For `sst plan`, nothing to change: every live object carries the marker state records, and the properties plan compares are as apply read them back. |
-| 1 | `ERROR` | Errors were reported, or an apply, a test suite, or a check failed. |
+| 1 | `ERROR` | Errors were reported, an apply, a test suite, or a check failed, or an apply skipped a blocked change. |
 | 2 | `CHANGES` | Declared and actual state differ: `sst plan` found changes, `sst diff` found the two states differ, or `enrich --check`, `format --check`, `docs --check`, `migrate refs`, or `migrate split` found something to rewrite. |
 | 3 | `USAGE` | The command line is invalid. |
 | 4 | `CONFIG` | The project, its configuration, or a saved plan cannot be used. |
@@ -625,7 +625,7 @@ sst apply [OPTIONS]
 | `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
 | `--overwrite` | flag |  | Publish the planned definition over each selected object changed out of band (SST-PLN014) instead of blocking it; an agent keeps its versions and gains one. A saved plan made with it is applied with it. |
 | `--yes / -y` | flag |  | Apply without asking for confirmation. |
-| `--fail-fast / --no-fail-fast` | flag |  | Stop at the first failure instead of continuing. Defaults to `apply.fail_fast`. |
+| `--fail-fast / --no-fail-fast` | flag |  | Stop at the first failure instead of continuing, and refuse a plan with a blocked change instead of skipping it. Defaults to `apply.fail_fast`. |
 | `--threads` | INTEGER RANGE |  | Sessions to plan and apply on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`. Planning defaults to 4; applying to `skills.+threads`, else 4. |
 | `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 | `--temporary` | flag |  | Publish agents as temporary agents, dropped when the apply's session ends, and skip their evals; views, tools and skills still publish permanently. Refused for a production-like target. |

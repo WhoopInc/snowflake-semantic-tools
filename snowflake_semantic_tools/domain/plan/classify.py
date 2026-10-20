@@ -189,7 +189,7 @@ def _compare(
     if change.action is Action.UPDATE and (removed := _removed_tags(artifact, observed)):
         reported.append(D("SST-PLN039", artifact=key, value=observed.qualified_name.sql, found=", ".join(removed)))
     if change.reason is ChangeReason.VERSION_DRIFT:
-        reported.append(D("SST-PLN102", artifact=key, detail="; ".join(version_drift(artifact, observed))))
+        reported.append(D("SST-PLN102", subject=key, artifact=key, detail="; ".join(version_drift(artifact, observed))))
     return Decision(change, tuple(reported))
 
 
@@ -298,7 +298,7 @@ def _target_moved(evidence: _Evidence) -> Diagnostic:
 
 
 def _out_of_band(evidence: _Evidence) -> Diagnostic:
-    return D("SST-PLN014", artifact=evidence.key, detail=_marker_change(evidence))
+    return D("SST-PLN014", subject=evidence.key, artifact=evidence.key, detail=_marker_change(evidence))
 
 
 def _marker_change(evidence: _Evidence) -> str:
@@ -314,7 +314,9 @@ def _marker_change(evidence: _Evidence) -> str:
 def _drifted(evidence: _Evidence) -> Diagnostic:
     changed = drifted_properties(evidence.recorded.live_digest, evidence.observed.live_digest)
     detail = f"its {', '.join(changed)} changed; its marker did not"
-    return D("SST-PLN014", artifact=evidence.key, detail=detail + _hand_version(evidence, changed))
+    return D(
+        "SST-PLN014", subject=evidence.key, artifact=evidence.key, detail=detail + _hand_version(evidence, changed)
+    )
 
 
 def _hand_version(evidence: _Evidence, changed: tuple[str, ...]) -> str:

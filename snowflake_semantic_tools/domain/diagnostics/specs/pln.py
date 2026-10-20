@@ -185,8 +185,10 @@ SPECS: tuple[ErrorSpec, ...] = (
             "view's definition. The detail names each property that changed"
         ),
         note=(
-            "The change is blocked, so `apply` refuses the plan (SST-APL003) until the live object "
-            "is again the one SST wrote, although this code is a warning. An entry recorded "
+            "The change is blocked, although this code is a warning: `apply` skips it and the "
+            "changes that depend on it, applies the rest and exits 1 (SST-APL042), or with "
+            "`--fail-fast` refuses the whole plan (SST-APL003), until the live object is again the "
+            "one SST wrote or `--overwrite` publishes over it. An entry recorded "
             "before SST read these properties is not compared until the next apply records "
             "them; `plan.drift_check: basic` compares only what SHOW lists."
         ),
@@ -557,6 +559,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Agent versions drifted from what SST published",
         "{artifact}: {detail}; apply points it back",
         "apply to roll forward, or hold a rollback by not applying until it should end",
+        strict_exempt=True,
         condition=(
             "state records the agent unchanged, but it has no live version, or its newest "
             "committed version holds the planned specification and the agent's alias is on "
@@ -566,7 +569,8 @@ SPECS: tuple[ErrorSpec, ...] = (
             "The update sets the alias and a live version back on the version holding the "
             "specification, and the default to 'LAST', which serves that version and follows each "
             "one committed after it, without adding a version; an agent with no live version whose "
-            "newest version holds another specification gets a new version instead."
+            "newest version holds another specification gets a new version instead. Strict mode "
+            "leaves this a warning, since the apply it plans is the repair."
         ),
         precheck=Precheck.OBSERVE,
     ),

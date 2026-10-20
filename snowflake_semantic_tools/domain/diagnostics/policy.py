@@ -16,7 +16,9 @@ the user asked to see the code, so a cascade of it reports at the override and, 
 is no longer a cascade. An override that keeps or lowers a code's severity leaves its cascades at
 info, since it asks for no more noise than the cascade already makes.
 
-Strict promotion is uniform over rules -- no code is exempt -- and follows the run's selection:
+Strict promotion is uniform over rules -- only a code registered `strict_exempt`, which reports
+a state a person is expected to be in or one the planned apply repairs, stays a warning -- and
+follows the run's selection:
 a run `--select` or `--exclude` restricts promotes no warning about an artifact it leaves out,
 as it plans and publishes none of them. A warning that names no artifact concerns the whole
 project and is promoted whatever the selection.

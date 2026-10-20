@@ -165,7 +165,9 @@ resolve is reported once more, as a cascade of the first of them (`SST-MEM107`),
 for members that attach nowhere skips poisoned members and the metrics built on them. Planning does the same for artifacts: a change with its
 own validation errors is `BLOCKED` with reason `validation_errors`, every change that depends on a
 blocked one is `BLOCKED` with reason `dependency_blocked`, all the way down the dependency graph,
-and `apply` refuses a plan that holds a blocked change (`SST-APL003`).
+and `apply` refuses a plan that holds a change blocked by an error of its own (`SST-APL003`); one
+blocked only by a warning, such as an object changed out of band, is skipped with its dependents
+while the rest applies (`SST-APL042`), unless `--fail-fast` asks for the refusal.
 
 When a diagnostic is reported because of another, it names that code in `caused_by`, and its cause
 must be in the same run (`SST-INT008` otherwise). A caused diagnostic downgraded to info is a
