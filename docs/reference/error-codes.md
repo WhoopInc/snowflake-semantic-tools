@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 307 codes
+- [Validation (VAL)](#validation-val) -- 310 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
@@ -5032,7 +5032,7 @@ Note: Measured on a live account: Snowflake refuses to create a table, a dataset
 
 `'<artifact>': <detail>`
 
-Raised when a skill, plugin or profile folder is misnamed or its manifest is wrong: a skill or plugin name is not kebab-case or would publish as an extension name that does not start with a letter; a profile name is not lowercase letters, digits, '-' or '_', or is 'shared'; a plugin or profile folder has no manifest, or both the .yml and .yaml spellings; an agent folder holds both agent.yml and agent.yaml; or the SKILL.md frontmatter or manifest `name` is not the folder's name.
+Raised when a skill, plugin or profile folder is misnamed or its manifest is wrong: a skill or plugin name is not kebab-case or would publish as an extension name that does not start with a letter; a profile name is not lowercase letters, digits, '-' or '_', or is 'shared'; a plugin or profile folder has no manifest, or both the .yml and .yaml spellings; an agent folder holds both agent.yml and agent.yaml, or a CoWork profile folder both cowork_profile.yml and cowork_profile.yaml; or the SKILL.md frontmatter or manifest `name` is not the folder's name.
 
 Fix: rename the folder, keep one manifest spelling, or fix the manifest or SKILL.md name the message names
 
@@ -5601,6 +5601,42 @@ Fix: name a plugin folder that has a plugin.yml
 Raised when a prune finds that a skill or plugin state records, whose source is gone from the project, is no longer in the catalog: `sst drop` or someone by hand dropped it.
 
 Note: The apply drops nothing; it only removes the state entry, so a later extension of that name is never taken for SST's. An extension still in the catalog stays report-only (SST-PLN034), which names the `sst drop` that removes it.
+
+### SST-VAL871
+
+**CoWork profile names no subagents** (error)
+
+`cowork profile '<artifact>': spec.subagents names no agent`
+
+Raised when an enabled CoWork profile's `spec.subagents` is missing or empty, or none of its entries can be read.
+
+Fix: name at least one agent under spec.subagents
+
+Note: Snowflake private preview. Snowflake accepts such a profile, but a profile with no subagent list fails every run with "agent_router tool 'router' is missing a corresponding entry in tool_resources", and an empty list routes to no agent; measured on a preview account.
+
+### SST-VAL873
+
+**CoWork profile names a subagent twice** (error)
+
+`cowork profile '<artifact>': spec.subagents[<index>] names <function>('<name>') again`
+
+Raised when two `spec.subagents` entries of a CoWork profile reference the same function and name, ignoring case.
+
+Fix: remove the repeated entry from spec.subagents
+
+Note: Entries are compared by the call each writes, `agent()` or `tool()`, and the name it gives; the later entry is reported.
+
+### SST-VAL876
+
+**CoWork profile tool is not one a profile carries** (error)
+
+`cowork profile '<artifact>': spec.tools[<index>] has type '<type>', not web_search or code_execution`
+
+Raised when a `spec.tools` entry of a CoWork profile has a type other than web_search or code_execution.
+
+Fix: keep only web_search or code_execution on the profile, and give the tool to an agent it routes to
+
+Note: Snowflake private preview. A profile routes data questions to its agents; analyst, search, and chart tools belong on an agent. SST renders the profile's agent_router tool itself, so `spec.tools` cannot declare one either. https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
 
 ## dbt (DBT)
 

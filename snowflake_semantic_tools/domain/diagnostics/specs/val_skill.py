@@ -1,4 +1,4 @@
-"""Validation codes 8xx (VAL): skills, plugins, and CoCo Desktop profiles.
+"""Validation codes 801-869 (VAL): skills, plugins, and CoCo Desktop profiles.
 
 Skill and plugin bundles, their publication channels and stages, and CoCo Desktop
 profiles with the hooks, MCP configs, and commands they name.
@@ -22,7 +22,8 @@ SPECS: tuple[ErrorSpec, ...] = (
             "name is not kebab-case or would publish as an extension name that does not start with a "
             "letter; a profile name is not lowercase letters, digits, '-' or '_', or is 'shared'; a "
             "plugin or profile folder has no manifest, or both the .yml and .yaml spellings; an agent "
-            "folder holds both agent.yml and agent.yaml; or the SKILL.md frontmatter or manifest "
+            "folder holds both agent.yml and agent.yaml, or a CoWork profile folder both "
+            "cowork_profile.yml and cowork_profile.yaml; or the SKILL.md frontmatter or manifest "
             "`name` is not the folder's name"
         ),
         note=(

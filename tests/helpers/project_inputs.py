@@ -9,6 +9,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.config_schema import resolve_settings
+from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog
 from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetIdentity
@@ -52,6 +53,8 @@ class InMemoryProjectInputs:
     tools: ToolCatalog = field(default_factory=lambda: ToolCatalog((), "dev", frozenset(("dev",))))
     agent_models: tuple[AgentModel, ...] = ()
     agent_diagnostics: DiagnosticBag = DiagnosticBag()
+    cowork_profile_models: tuple[CoworkProfileModel, ...] = ()
+    cowork_profile_diagnostics: DiagnosticBag = DiagnosticBag()
     evals: EvalCatalog = field(default_factory=lambda: EvalCatalog((), ()))
     revision: str = "abc1234"
     uncommitted: tuple[str, ...] = ()
@@ -108,6 +111,25 @@ class InMemoryProjectInputs:
             for model in self.agent_models
         )
         return resolved, self.agent_diagnostics
+
+    def cowork_profiles(self, *, cowork_profiles_dir: str) -> tuple[tuple[CoworkProfileModel, ...], DiagnosticBag]:
+        """Return the CoWork profiles with their settings resolved as loading resolves them.
+
+        As `agents` does, each profile's own `settings` stand for its `config:`, and the tree's
+        `cowork_profiles:` block and the routes over its folder fill the rest.
+        """
+        self.reads.append(f"cowork_profiles:{cowork_profiles_dir}")
+        block = self.tree.get("cowork_profiles")
+        resolved = tuple(
+            replace(
+                model,
+                settings=resolve_settings(
+                    block, model.folder, {key: item.value for key, item in model.settings.items()}
+                ),
+            )
+            for model in self.cowork_profile_models
+        )
+        return resolved, self.cowork_profile_diagnostics
 
     def eval_catalog(
         self,

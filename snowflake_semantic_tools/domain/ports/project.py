@@ -16,6 +16,7 @@ from typing import Any, Protocol
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
+from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtNode
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
@@ -191,6 +192,21 @@ class ProjectInputs(SemanticViewSource, Protocol):
 
         Raises:
             ProjectError: an agent file cannot be read.
+        """
+        ...
+
+    def cowork_profiles(self, *, cowork_profiles_dir: str) -> tuple[tuple[CoworkProfileModel, ...], DiagnosticBag]:
+        """Return every CoWork profile under `cowork_profiles_dir`, enabled or not, with what loading reported.
+
+        CoWork profiles are a Snowflake private preview. Each profile's settings and `enabled`
+        are already resolved against the `cowork_profiles:` folder routes, as an agent's are
+        against `agents:`, and each records the folders its file sits in. What loading reports
+        includes each folder route that names no folder (SST-CFG041), and the checks each
+        enabled profile passes on its own (`cowork_profile_diagnostics`). A directory that does
+        not exist holds no profiles.
+
+        Raises:
+            ProjectError: a profile file cannot be read.
         """
         ...
 

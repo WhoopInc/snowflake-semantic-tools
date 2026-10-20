@@ -33,6 +33,7 @@ from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.config import read_config_document
+from snowflake_semantic_tools.adapters.yaml.cowork_profiles import load_cowork_profiles
 from snowflake_semantic_tools.adapters.yaml.discover import directory_refused, discover_yaml
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache, load_documents
 from snowflake_semantic_tools.adapters.yaml.evals import load_eval_catalog, parse_eval_defaults
@@ -51,6 +52,7 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     configured_dir,
     dbt_settings,
 )
+from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog
 from snowflake_semantic_tools.domain.model.identifier import Identifier
@@ -419,6 +421,11 @@ class YamlProjectInputs(ProjectInputs):
     def agents(self, *, agents_dir: str) -> tuple[tuple[AgentModel, ...], DiagnosticBag]:
         return load_agents(self._project_dir, agents_dir=agents_dir, config=self.config().tree)
 
+    def cowork_profiles(self, *, cowork_profiles_dir: str) -> tuple[tuple[CoworkProfileModel, ...], DiagnosticBag]:
+        return load_cowork_profiles(
+            self._project_dir, cowork_profiles_dir=cowork_profiles_dir, config=self.config().tree
+        )
+
     def eval_catalog(
         self,
         agents: tuple[AgentModel, ...] | None = None,
@@ -529,7 +536,7 @@ def _file_checksums(
     """Checksum every input file the manifest records, by project-relative path.
 
     With a dbt project, each semantic model document discovery finds; then every file under the
-    tools, agents, and eval metric roots; then under the skill, plugin, profile, hook, MCP
+    tools, agents, CoWork profiles, and eval metric roots; then under the skill, plugin, profile, hook, MCP
     server, and command roots. Those bundled roots skip what publication skips: hidden entries
     and caches.
 
@@ -548,6 +555,7 @@ def _file_checksums(
     directories = [
         configured_dir(config, "tools_dir", "tools"),
         configured_dir(config, "agents_dir", "agents"),
+        configured_dir(config, "cowork_profiles_dir", "cowork_profiles"),
         configured_dir(config, "eval_metrics_dir", "eval_metrics"),
     ]
     # Any skill, plugin, or profile may publish from its own `config:`, so every root they are
