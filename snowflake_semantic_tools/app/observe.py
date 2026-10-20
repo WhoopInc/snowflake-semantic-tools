@@ -91,6 +91,7 @@ def observe(
     readers: Fanout[CatalogPort] | None = None,
     options: ObserveOptions = DEFAULT_OBSERVE_OPTIONS,
     absent_schemas: frozenset[tuple[str, str]] = frozenset(),
+    kind_targets: Mapping[str, tuple[QualifiedName, ...]] | None = None,
 ) -> tuple[SnowflakeObservation, DiagnosticBag]:
     """Observe every object of the requested artifact types in the targets' schemas, by artifact key.
 
@@ -110,6 +111,10 @@ def observe(
         options: Which per-object reads to make, as `ObserveOptions` says.
         absent_schemas: The folded `(database, schema)` of target schemas found not to exist,
             which hold nothing and are not listed: a plan that creates them reads them so.
+        kind_targets: The objects each artifact type renders or state records, by type name.
+            An object type more than one kind publishes (AGENT, for agents and CoWork
+            profiles) is listed only in the schemas of its own kind's objects there, so one
+            object is never observed under two keys; None lists it in every target schema.
 
     Diagnostics:
         SST-PLN001: listing an object type in a schema, or reading an object's grants, failed.
@@ -122,12 +127,13 @@ def observe(
     diagnostics: list[Diagnostic] = []
     scopes = tuple(dict.fromkeys(SchemaScope.from_qualified_name(target) for target in targets))
     desired = {artifact.target.folded: artifact for artifact in (desired_artifacts or {}).values()}
+    shared = registry.shared_object_types() if kind_targets is not None else frozenset()
     units: list[_Unit] = [
         (artifact_type, object_type, scope)
         for artifact_type in sorted(registry.artifacts.values(), key=lambda item: item.ddl_position)
         if artifact_types is None or artifact_type.name in artifact_types
         for object_type in _active_object_types(artifact_type, observed_object_types)
-        for scope in scopes
+        for scope in _kind_scopes(scopes, artifact_type.name, object_type, shared, kind_targets)
         if (scope.database.folded, scope.schema.folded) not in absent_schemas
     ]
     readers = readers or Fanout(port)
@@ -151,6 +157,20 @@ def observe(
             diagnostics.extend(row_diagnostics)
             found[artifact.key] = artifact
     return SnowflakeObservation(MappingProxyType(found), fetched_at), DiagnosticBag(diagnostics)
+
+
+def _kind_scopes(
+    scopes: tuple[SchemaScope, ...],
+    kind: str,
+    object_type: str,
+    shared: frozenset[str],
+    kind_targets: Mapping[str, tuple[QualifiedName, ...]] | None,
+) -> tuple[SchemaScope, ...]:
+    """Return the schemas to list `object_type` in for `kind`: its own, when kinds share the type."""
+    if kind_targets is None or object_type not in shared:
+        return scopes
+    own = {SchemaScope.from_qualified_name(target) for target in kind_targets.get(kind, ())}
+    return tuple(scope for scope in scopes if scope in own)
 
 
 def _active_object_types(

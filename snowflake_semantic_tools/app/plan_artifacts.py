@@ -12,8 +12,9 @@ once, and both treat every object in them as absent.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
+from types import MappingProxyType
 from typing import Protocol, cast
 
 from snowflake_semantic_tools.app.fanout import Fanout
@@ -149,6 +150,7 @@ class PlanArtifacts:
         prune_types: frozenset[str] | None = None,
         prune_keys: frozenset[str] | None = None,
         observation_targets: tuple[QualifiedName, ...] | None = None,
+        kind_targets: Mapping[str, tuple[QualifiedName, ...]] | None = None,
     ) -> ChangeSet:
         """Compute the change set for the rendered artifacts from what Snowflake shows now.
 
@@ -163,6 +165,8 @@ class PlanArtifacts:
                 does not narrow.
             observation_targets: The objects whose schemas are observed; None observes the
                 schemas of the rendered artifacts.
+            kind_targets: The objects of each artifact type, as `targets_by_kind` returns
+                them; None takes them from the rendered artifacts and state.
 
         Diagnostics:
             SST-PLN001: observing Snowflake, or a preflight read, failed.
@@ -177,6 +181,7 @@ class PlanArtifacts:
             include_prune=include_prune,
             prune_types=prune_types,
             observation_targets=observation_targets,
+            kind_targets=kind_targets,
         )
         return plan_changes(
             rendered,
@@ -209,6 +214,7 @@ class PlanArtifacts:
         state_tables: tuple[QualifiedName, ...] = (),
         state_table_kind: str = STANDARD_TABLES,
         create_schemas: bool = False,
+        kind_targets: Mapping[str, tuple[QualifiedName, ...]] | None = None,
     ) -> tuple[dict[str, CompositePlan], TargetReading]:
         """Plan the composite artifacts, then read the target as `read` does, each a phase of `phases`.
 
@@ -240,6 +246,7 @@ class PlanArtifacts:
                 state_table_kind=state_table_kind,
                 create_schemas=create_schemas,
                 absent_schemas=absent,
+                kind_targets=kind_targets,
             )
         return composite_plans, reading
 
@@ -303,6 +310,7 @@ class PlanArtifacts:
         state_table_kind: str = STANDARD_TABLES,
         create_schemas: bool = False,
         absent_schemas: frozenset[tuple[str, str]] | None = None,
+        kind_targets: Mapping[str, tuple[QualifiedName, ...]] | None = None,
     ) -> TargetReading:
         """Read the target for a plan: observe it, then preflight it when given a preflight port.
 
@@ -317,6 +325,8 @@ class PlanArtifacts:
         Args:
             absent_schemas: The schemas apply will create, as `absent_schemas` found them for
                 the composite plans; None finds them here, with `create_schemas`.
+            kind_targets: The objects of each artifact type, as `targets_by_kind` returns
+                them; None takes them from the rendered artifacts and state.
 
         Diagnostics:
             SST-PLN001: observing Snowflake, or a preflight read, failed.
@@ -340,6 +350,7 @@ class PlanArtifacts:
                 if create_schemas
                 else frozenset()
             ),
+            kind_targets=kind_targets if kind_targets is not None else targets_by_kind(rendered.values(), state),
         )
         if self._observe_options.grants:
             observation, unread = observe_replaced_tags(
@@ -554,3 +565,19 @@ def _with_observation_failures(changeset: ChangeSet, diagnostics: DiagnosticBag)
     if not diagnostics:
         return changeset
     return replace(changeset, diagnostics=DiagnosticBag((*diagnostics, *changeset.diagnostics)))
+
+
+def targets_by_kind(rendered: Iterable[RenderedArtifact], state: State) -> Mapping[str, tuple[QualifiedName, ...]]:
+    """Return the objects of each artifact type: each rendered target, then each state records.
+
+    State's objects count too, so an object whose source was deleted is still observed under
+    the kind that published it. An entry whose key names no kind is left out.
+    """
+    found: dict[str, dict[QualifiedName, None]] = {}
+    for artifact in rendered:
+        found.setdefault(artifact.artifact_type, {})[artifact.target] = None
+    for key, entry in state.applied.items():
+        kind, separator, _ = key.partition(":")
+        if separator and entry.qualified_name:
+            found.setdefault(kind, {})[QualifiedName.parse(entry.qualified_name)] = None
+    return MappingProxyType({kind: tuple(targets) for kind, targets in found.items()})

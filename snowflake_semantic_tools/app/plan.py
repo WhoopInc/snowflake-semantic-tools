@@ -33,6 +33,7 @@ from snowflake_semantic_tools.app.plan_artifacts import (
     PlanReadPort,
     TargetReading,
     plan_changes,
+    targets_by_kind,
     unrecorded_composites,
 )
 from snowflake_semantic_tools.app.plan_diff import compiled_fingerprints, diff_updates, from_state
@@ -423,6 +424,7 @@ class PreparePlan:
             include_prune=candidates.scope.include_prune,
             prune_types=candidates.scope.prune_types,
             observation_targets=_observation_targets(candidates.full, state),
+            kind_targets=targets_by_kind(candidates.full.rendered, state),
             state_tables=(state_table, lock_table_for(state_table)),
             state_table_kind=state_table_kind,
             create_schemas=config_bool(apply_config.get("create_schemas")) is not False,

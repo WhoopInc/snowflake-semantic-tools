@@ -8,6 +8,7 @@ same one. Each raises `RegistryIntegrityError` carrying an SST-REG code.
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -169,6 +170,20 @@ class Registry:
 
     artifacts: Mapping[str, ArtifactType]
     members: Mapping[str, MemberType]
+
+    def shared_object_types(self) -> frozenset[str]:
+        """Return the object types more than one artifact type publishes, such as AGENT.
+
+        Observation lists such a type in each kind's own schemas only, so an object is keyed
+        by the one kind that published it.
+        """
+        claims = Counter(
+            object_type
+            for artifact in self.artifacts.values()
+            for object_type in {*artifact.object_types, artifact.object_type}
+            if object_type
+        )
+        return frozenset(object_type for object_type, count in claims.items() if count > 1)
 
 
 # Fields every registration fills, because the generated references and discovery read them.
