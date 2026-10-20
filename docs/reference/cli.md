@@ -651,10 +651,12 @@ update: `local` as it compiles for the target it is compared with, a target as i
 hold it, on up to --threads sessions; --full shows each member's diff whole, and --diff-out
 writes them all as a unified diff. Comparing two targets, each one's physical names are first
 replaced by what they stand for -- an artifact's object by its key, a dbt model's relation by
-`ref('<model>')` -- and an artifact whose members then agree is not a difference, so two
-targets that publish the same project to different databases agree. A saved plan, an
-artifact whose definition cannot be read, and every artifact under --no-diff are compared by
-fingerprint alone. --select and --exclude keep the differences of the artifacts they choose.
+`ref('<model>')`, the relation being the deferred target's when `defer.target`, resolved for
+that target, names one -- and an artifact whose members then agree is not a difference, so two
+targets that publish the same project to different databases agree. A stage tool compares its
+comment. A saved plan, an artifact whose definition cannot be read, and every artifact under
+--no-diff are compared by fingerprint alone. --select and --exclude keep the differences of
+the artifacts they choose.
 Diff only reads: it validates nothing, writes no plan, and works on a project that does not
 validate; only a target connects.
 

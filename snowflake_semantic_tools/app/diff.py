@@ -7,7 +7,8 @@ A composite artifact has no single object to observe, so the state table's entry
 
 `compiled_definitions` and `live_definitions` are the same states member by member, as plan
 compares an update: what a compile renders, and what a target holds of each artifact its state
-records. `name_map` labels a target's physical names, so two targets compare by what they publish.
+records. Diff also compares a stage tool, by its comment, which plan leaves to its fingerprint.
+`name_map` labels a target's physical names, so two targets compare by what they publish.
 """
 
 from __future__ import annotations
@@ -16,18 +17,21 @@ from collections.abc import Iterator, Mapping
 from types import MappingProxyType
 from typing import Protocol
 
-from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
+from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.lifecycle.evals import config_folder
-from snowflake_semantic_tools.app.plan_diff import COMPARISONS, LiveObject
+from snowflake_semantic_tools.app.plan_diff import COMPARISONS, Comparison, LiveObject
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY, Registry
+from snowflake_semantic_tools.domain.model.tool import ToolKind
+from snowflake_semantic_tools.domain.plan.definitions.tool import desired_stage, live_stage
 from snowflake_semantic_tools.domain.plan.diff import ArtifactState
 from snowflake_semantic_tools.domain.plan.member_diff import Definition, NameMap, normalize
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
@@ -37,6 +41,35 @@ from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.state import DEACTIVATED, Manifest, SavedPlan
 
 ArtifactStates = Mapping[str, ArtifactState]
+
+
+def _stage(compiled: CompiledArtifact) -> CompiledTool | None:
+    if isinstance(compiled, CompiledTool) and compiled.member.type == ToolKind.STAGE.value:
+        return compiled
+    return None
+
+
+def _desired_tool(compiled: CompiledArtifact) -> Definition | None:
+    """A tool as SST renders it; a stage by its comment, which is all it sets."""
+    stage = _stage(compiled)
+    return desired_stage(stage.member) if stage is not None else COMPARISONS["tool"].desired(compiled)
+
+
+def _live_tool(port: SnowflakePort, compiled: CompiledArtifact, live: LiveObject) -> Definition:
+    """A tool as Snowflake shows it; a stage by the comment SHOW STAGES lists, its marker's column."""
+    stage = _stage(compiled)
+    if stage is None:
+        return COMPARISONS["tool"].live(port, compiled, live)
+    shown = port.show_row("STAGE", live.name)
+    if shown is None:
+        raise SnowflakePortError(f"no stage {live.name.sql} to show")
+    return live_stage(stage.member.name, shown)
+
+
+# Plan's comparisons, and a stage tool's. Plan leaves a stage to its fingerprint, which within one
+# target only the comment moves; across two targets the fingerprint embeds each one's names, so a
+# stage compared by fingerprint would differ between any two.
+_COMPARED: Mapping[str, Comparison] = MappingProxyType({**COMPARISONS, "tool": Comparison(_desired_tool, _live_tool)})
 
 
 class LiveStatePort(CatalogPort, StatePort, Protocol):
@@ -102,7 +135,7 @@ def compiled_definitions(result: CompileResult, names: NameMap) -> dict[str, Def
     """Return what each compiled artifact renders, member by member, its names labelled by `names`."""
     definitions: dict[str, Definition] = {}
     for item in result.compiled:
-        comparison = COMPARISONS.get(item.artifact_type)
+        comparison = _COMPARED.get(item.artifact_type)
         desired = comparison.desired(item) if comparison is not None else None
         if desired is not None:
             definitions[item.artifact_key] = normalize(desired, names)
@@ -132,12 +165,12 @@ def live_definitions(
     keys = tuple(
         key
         for key, entry in sorted(entries.items())
-        if entry.outcome != DEACTIVATED and key in compiled and split_artifact_key(key)[0] in COMPARISONS
+        if entry.outcome != DEACTIVATED and key in compiled and split_artifact_key(key)[0] in _COMPARED
     )
 
     def read(port: LiveMembersPort, key: str) -> Definition | str | None:
         item, entry = compiled[key], entries[key]
-        comparison = COMPARISONS[item.artifact_type]
+        comparison = _COMPARED[item.artifact_type]
         if comparison.desired(item) is None:
             return None
         rendered = item.rendered_artifact

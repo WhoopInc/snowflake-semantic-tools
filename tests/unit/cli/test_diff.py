@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -9,13 +10,19 @@ import pytest
 from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore
+from snowflake_semantic_tools.adapters.locations import locate_project
+from snowflake_semantic_tools.app.compile import CompiledView
+from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.cli.main import cli
+from snowflake_semantic_tools.cli.wiring.compile import compile_result
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
+from snowflake_semantic_tools.domain.plan.definitions.tool import search_query
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from tests.helpers.artifact_builders import applied_entry
 from tests.helpers.cli_projects import common, compile_project, invoke_with_port
-from tests.helpers.reference_project import project_copy
+from tests.helpers.described_objects import described_routine, described_search, described_view
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 TABLE = QualifiedName.from_parts("DB", "S", "SST_STATE")
@@ -89,6 +96,59 @@ def test_two_targets_agree_with_no_local_state(tmp_path: Path, monkeypatch: pyte
     result = _diff(monkeypatch, port, project, "--from", "dev", "--to", "prod")
     assert result.exit_code == 0, result.output
     assert "dev and prod agree" in result.output
+
+
+def _held(project: Path, target: str, *, defer_to: str | None) -> FakeSnowflake:
+    """A target holding each view, search service and routine `project` compiles for it, deferred to `defer_to`."""
+    paths = dataclasses.replace(locate_project(project), defer_target=defer_to, defer_disabled=defer_to is None)
+    state: dict[str, AppliedEntry] = {}
+    port = FakeSnowflake(state=state)
+    for item in compile_result(paths, target, DBT_MANIFEST).compiled:
+        rendered = item.rendered_artifact
+        name = rendered.target.sql
+        if isinstance(item, CompiledView):
+            port.view_descriptions[name] = described_view(item.view)
+        elif isinstance(item, CompiledTool) and rendered.object_type == "CORTEX SEARCH SERVICE":
+            port.descriptions[f"CORTEX SEARCH SERVICE {name}"] = described_search(
+                item.member, search_query(rendered.ddl)
+            )
+        elif isinstance(item, CompiledTool) and rendered.object_type in ("PROCEDURE", "FUNCTION"):
+            types = ", ".join(parameter.type for parameter in item.member.signature)
+            port.routine_descriptions[f"{rendered.object_type} {name}({types})"] = described_routine(item.member)
+        else:
+            continue
+        state[item.artifact_key] = applied_entry(name, rendered.fingerprint)
+        port.markers[name] = OwnershipMarker("a" * 64, rendered.fingerprint)
+    port.remote_state = state
+    port.close = lambda: None  # type: ignore[attr-defined]
+    return port
+
+
+def test_a_target_deferring_to_the_other_agrees_with_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = project_copy(tmp_path)
+    deferred = project / "sst_target" / "defer" / "prod" / "manifest.json"
+    deferred.parent.mkdir(parents=True)
+    deferred.write_text(
+        DBT_MANIFEST.read_text(encoding="utf-8").replace("SST_REF_DEV", "SST_REF_PROD"), encoding="utf-8"
+    )
+    config = project / "sst_config.yml"
+    defer = "\ndefer:\n  target: \"{{ 'prod' if target.name == 'dev' else '' }}\"\n"
+    config.write_text(config.read_text(encoding="utf-8") + defer, encoding="utf-8")
+    # dev's objects read prod's relations, as `sst apply --target dev` publishes them. --manifest
+    # gives both compiles one dbt manifest, so prod's own relations are the ones it holds.
+    ports = {
+        "SST_REF_PROD": _held(project, "prod", defer_to=None),
+        "SST_REF_DEV": _held(project, "dev", defer_to="prod"),
+    }
+    monkeypatch.setattr(
+        "snowflake_semantic_tools.cli.main.SnowflakeConnector", lambda params: ports[str(params["database"]).upper()]
+    )
+    # The run resolves its configuration for prod, where dev's deferral renders empty.
+    args = ["diff", *common(project), "--target", "prod", "--from", "prod", "--to", "dev", "--output", "json"]
+    result = CliRunner().invoke(cli, args)
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["data"]["differences"] == []
+    assert any(key.startswith("tool:") for key in ports["SST_REF_DEV"].remote_state or {})
 
 
 def test_local_against_a_saved_plan_and_unreadable_states(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

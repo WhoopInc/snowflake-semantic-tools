@@ -174,13 +174,14 @@ class YamlProjectSource:
     def deferred(self, catalog: DbtCatalog) -> DbtCatalog:
         """Return `catalog` with its relations resolved to the deferred target's; itself without a deferral.
 
-        The deferred target's manifest is read once per source, and produced first with
-        `defer.auto_compile` when dbt may be run.
+        The deferral is the one the configuration names for this source's target, which `sst diff`
+        compiles each side for. The deferred target's manifest is read once per source, and
+        produced first with `defer.auto_compile` when dbt may be run.
 
         Raises:
             ProjectError: as `dbt_catalog` raises.
         """
-        deferral = resolve_deferral(self._files)
+        deferral = resolve_deferral(self._files, self._target_name)
         if deferral is None:
             return catalog
         if self._deferred is None:

@@ -1,8 +1,9 @@
-"""A tool's two definitions: what SST renders for a procedure, function or search service, and what DESCRIBE shows.
+"""A tool's two definitions: what SST renders for a routine, search service or stage, and what Snowflake shows.
 
 The DESCRIBE shapes are those a live account returned: a routine's `property`/`value` rows, its
 signature as `(NAME TYPE)` and its lists as `['a', 'b']`; a search service's one row, its columns
-comma-separated and upper-cased, its comment as the description was written.
+comma-separated and upper-cased, its comment as the description was written. A stage's is the row
+SHOW STAGES lists, whose `comment` the ownership marker is read from.
 """
 
 from __future__ import annotations
@@ -14,8 +15,10 @@ from snowflake_semantic_tools.domain.model.tool import ToolColumn, ToolMember, T
 from snowflake_semantic_tools.domain.plan.definitions.tool import (
     desired_routine,
     desired_search,
+    desired_stage,
     live_routine,
     live_search,
+    live_stage,
     search_query,
 )
 from snowflake_semantic_tools.domain.plan.member_diff import diff_definitions
@@ -157,3 +160,15 @@ def test_a_search_service_compares_only_the_settings_the_project_sets() -> None:
     empty = live_search("MENU_SEARCH", {})
     assert dict(empty.members[0].properties)["columns"] == ()
     assert dict(desired_search(_member(), "").members[0].properties)["columns"] == ()
+
+
+def test_a_stage_compares_its_comment_without_the_marker_and_nothing_else() -> None:
+    stage = _member(name="Exports", type="stage", description="Weekly\n  exports.")
+    shown = {"name": "EXPORTS", "database_name": "DB_A", "comment": f"Weekly exports. {_MARKER}", "owner": "R"}
+    assert diff_definitions(live_stage("EXPORTS", shown), desired_stage(stage)) == ()
+    [member] = desired_stage(stage).members
+    assert (member.kind, member.name, member.properties) == ("stage", "exports", (("comment", "Weekly exports."),))
+    # A stage SHOW lists without a comment, and one with no description, both read as uncommented.
+    assert diff_definitions(live_stage("EXPORTS", {}), desired_stage(replace(stage, description=None))) == ()
+    [diff] = diff_definitions(live_stage("EXPORTS", {"comment": _MARKER}), desired_stage(stage))
+    assert [(item.name, item.before, item.after) for item in diff.properties] == [("comment", "", "Weekly exports.")]

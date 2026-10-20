@@ -1,11 +1,12 @@
-"""A tool's definition: what SST renders for a routine or search service, and what DESCRIBE shows.
+"""A tool's definition: what SST renders for a routine, search service or stage, and what is live.
 
 Each is one member, named by the tool. A routine compares its signature, return type, language,
 handler settings, `EXECUTE AS`, comment and body; a search service its columns, settings, query and
-comment. A comment compares with each run of whitespace collapsed, as SST renders it, and without
-its ownership marker. What DESCRIBE has not been seen to report -- a routine's external access
-integrations and secrets -- is left out of both sides, as is a setting the project leaves to
-Snowflake's default, which DESCRIBE reports all the same.
+comment; a stage its comment, the one thing SST sets on it besides its name. A comment compares
+with each run of whitespace collapsed, as SST renders it, and without its ownership marker. What
+DESCRIBE has not been seen to report -- a routine's external access integrations and secrets -- is
+left out of both sides, as is a setting the project leaves to Snowflake's default, which DESCRIBE
+reports all the same.
 """
 
 from __future__ import annotations
@@ -102,6 +103,17 @@ def live_search(name: str, described: Mapping[str, str]) -> Definition:
 def search_query(statement: str) -> str:
     """Return the query a rendered `CREATE CORTEX SEARCH SERVICE` statement ends with, after `AS`."""
     return statement.rpartition("\n  AS ")[2].strip()
+
+
+def desired_stage(member: ToolMember) -> Definition:
+    """Return the definition SST renders for a stage member: its comment."""
+    return Definition((Member("stage", member.name.casefold(), (("comment", _one_line(member.description or "")),)),))
+
+
+def live_stage(name: str, shown: Mapping[str, str]) -> Definition:
+    """Return the definition the row SHOW STAGES lists for a stage shows: its comment."""
+    comment = _one_line(unmarked_comment(shown.get("comment")))
+    return Definition((Member("stage", name.casefold(), (("comment", comment),)),))
 
 
 def _column(name: str) -> str:

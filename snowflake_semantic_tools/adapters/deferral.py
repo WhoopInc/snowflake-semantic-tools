@@ -46,8 +46,12 @@ class Deferral:
         return self.state_dir / "manifest.json"
 
 
-def resolve_deferral(files: ProjectPaths) -> Deferral | None:
-    """Return the run's deferral, or None when it defers to no target.
+def resolve_deferral(files: ProjectPaths, target_name: str | None = None) -> Deferral | None:
+    """Return the deferral of a compile for `target_name`, else the run's; None when there is none.
+
+    `defer.target` is read from the configuration as it resolves for that target, so a
+    conditional such as `"{{ 'prod' if target.name == 'dev' else '' }}"` defers dev's compile
+    whichever target the run itself names.
 
     Raises:
         ProjectError: the target is not declared in `profiles.yml` (SST-CFG010), or the profile
@@ -58,7 +62,7 @@ def resolve_deferral(files: ProjectPaths) -> Deferral | None:
     """
     if files.defer_disabled:
         return None
-    config = resolved_config(files)
+    config = resolved_config(files, target_name)
     defer = config_block(config.tree.get("defer"))
     configured = defer.get("target")
     target = files.defer_target or (configured if isinstance(configured, str) and configured else None)

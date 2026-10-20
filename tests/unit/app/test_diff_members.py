@@ -12,6 +12,7 @@ from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.tool import ToolMember, ToolOwnership, ToolParameter
+from snowflake_semantic_tools.domain.plan.diff import ArtifactState, compare_states, member_differences
 from snowflake_semantic_tools.domain.plan.member_diff import diff_definitions
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.render.tool import render_tool
@@ -54,14 +55,39 @@ def _port() -> FakeSnowflake:
     return port
 
 
-def test_a_held_routine_reads_as_compiled_with_its_comment_from_show_and_a_stage_is_not_read() -> None:
+def test_a_held_routine_and_stage_read_as_compiled_with_their_comments_from_show() -> None:
     port = _port()
     marker = f"[sst:{'a' * 64}:{'b' * 64}]"
     port.show_rows["PROCEDURE DB.TOOLS.ORDER_STATUS"] = {"description": f"Returns a status. {marker}"}
+    port.show_rows["STAGE DB.TOOLS.EXPORTS"] = {"name": "EXPORTS", "comment": f"Exports. {marker}"}
     definitions, unread = live_definitions(Fanout(port), _TABLE, "dev", _RESULT, names={}, eval_stage="EVAL_CONFIGS")
-    assert (set(definitions), unread) == ({_PROCEDURE.artifact_key}, {})
+    assert (set(definitions), unread) == ({_PROCEDURE.artifact_key, _STAGE.artifact_key}, {})
     desired = compiled_definitions(_RESULT, {})
     assert diff_definitions(definitions[_PROCEDURE.artifact_key], desired[_PROCEDURE.artifact_key]) == ()
+    assert diff_definitions(definitions[_STAGE.artifact_key], desired[_STAGE.artifact_key]) == ()
+
+
+def test_a_stage_on_two_targets_differs_by_its_comment_not_its_fingerprint() -> None:
+    def held(comment: str) -> FakeSnowflake:
+        port = _port()
+        port.show_rows["STAGE DB.TOOLS.EXPORTS"] = {"comment": comment}
+        return port
+
+    def differences(before: FakeSnowflake, after: FakeSnowflake) -> list[tuple[str, int]]:
+        # Each target's fingerprint embeds its own name, so the two always differ.
+        states = [{_STAGE.artifact_key: ArtifactState(fingerprint)} for fingerprint in ("1" * 64, "2" * 64)]
+        sides = [
+            live_definitions(Fanout(port), _TABLE, "dev", CompileResult((_STAGE,)), names={}, eval_stage="E")[0]
+            for port in (before, after)
+        ]
+        found = member_differences(compare_states(*states), *sides, across_targets=True)
+        return [(item.key, len(item.member_diff or ())) for item in found]
+
+    assert differences(held("Exports. [sst:" + "a" * 64 + ":" + "1" * 64 + "]"), held("Exports.")) == []
+    assert differences(held("Exports."), held("Weekly exports.")) == [(_STAGE.artifact_key, 1)]
+    # A stage SHOW does not list is unread, with why, and compared by fingerprint alone.
+    _, unread = live_definitions(Fanout(_port()), _TABLE, "dev", _RESULT, names={}, eval_stage="E")
+    assert unread == {_STAGE.artifact_key: "no stage DB.TOOLS.EXPORTS to show"}
 
 
 def test_a_routine_show_lists_no_comment_for_reads_as_uncommented_and_a_refused_read_says_why() -> None:
@@ -73,7 +99,7 @@ def test_a_routine_show_lists_no_comment_for_reads_as_uncommented_and_a_refused_
     assert [(prop.name, prop.before) for prop in diff.properties] == [("comment", "")]
     port.fail("describe_routine", SnowflakePortError("denied"))
     definitions, unread = live_definitions(Fanout(port), _TABLE, "dev", _RESULT, names={}, eval_stage="EVAL_CONFIGS")
-    assert (definitions, unread) == ({}, {_PROCEDURE.artifact_key: "denied"})
+    assert (definitions, unread[_PROCEDURE.artifact_key]) == ({}, "denied")
 
 
 def test_each_name_a_target_publishes_is_labelled_and_one_two_artifacts_claim_is_not() -> None:

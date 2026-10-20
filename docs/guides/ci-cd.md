@@ -77,7 +77,9 @@ Before promoting, `sst diff --from dev --to prod` compares the two targets the
 same way. Each target's physical names are first replaced by what they stand
 for, so two targets that publish the same project to different databases
 agree; only a real difference, such as one target's metric edited by hand or a
-warehouse configured per target, is listed.
+warehouse configured per target, is listed. A target whose `defer.target`, as
+the configuration resolves for it, names another reads that target's dbt
+relations, and is compared with them.
 
 ### What a change reaches
 

@@ -83,6 +83,19 @@ def test_the_catalog_and_the_manifest_digest_read_the_deferred_relations(tmp_pat
     assert digest(paths) != digest(undeferred)
 
 
+def test_a_source_defers_as_the_configuration_resolves_for_its_own_target(tmp_path: Path) -> None:
+    # `sst diff --from prod --to dev` under `--target prod` compiles dev too: dev must defer as dev.
+    manifest_path = _small(tmp_path, "defer:\n  target: \"{{ 'prod' if target.name == 'dev' else '' }}\"\n")
+    _deferred_manifest(tmp_path / "sst_target" / "defer" / "prod" / "manifest.json")
+    paths = dataclasses.replace(project_paths(tmp_path), target_name="prod")
+    assert resolve_deferral(paths) is None
+    assert resolve_deferral(paths, "dev") == Deferral("prod", tmp_path / "sst_target" / "defer" / "prod", produce=False)
+    dev = YamlProjectSource(paths, target_name="dev", manifest_path=manifest_path, invoke_dbt=False)
+    assert [model.relation_name for model in dev.dbt_catalog().models] == ["PROD_DB.SCH.PRODUCTS"]
+    prod = YamlProjectSource(paths, target_name="prod", manifest_path=manifest_path, invoke_dbt=False)
+    assert [model.relation_name for model in prod.dbt_catalog().models] == ["DB.SCH.PRODUCTS"]
+
+
 def test_auto_compile_runs_dbt_for_the_deferred_target_into_its_state_path(tmp_path: Path) -> None:
     manifest_path = _small(tmp_path, "defer:\n  target: prod\n  state_path: prod_state\n  auto_compile: true\n")
     state = tmp_path / "prod_state"
