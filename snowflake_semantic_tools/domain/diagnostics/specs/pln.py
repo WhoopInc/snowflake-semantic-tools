@@ -171,7 +171,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-PLN014",
         Severity.WARNING,
         "Live definition differs from the last recorded state",
-        "{artifact} was changed out of band ({detail}); apply refuses it",
+        "{artifact} was changed out of band ({detail}); apply leaves it as it is",
         "review the live object, then plan and apply it with `--select {artifact} --overwrite` to "
         "publish the planned definition over the edit (an agent keeps its versions and gains one), "
         "or restore the one SST wrote",

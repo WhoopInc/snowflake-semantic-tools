@@ -6458,7 +6458,7 @@ Note: An update that keeps the grants -- by COPY GRANTS, by granting them again,
 
 **Live definition differs from the last recorded state** (warning)
 
-`<artifact> was changed out of band (<detail>); apply refuses it`
+`<artifact> was changed out of band (<detail>); apply leaves it as it is`
 
 Raised when state records the artifact, but the live object's ownership marker is absent, or names another manifest or fingerprint than state records, or the object is under another name; or the marker is as recorded, but a property SST published that the marker does not prove differs from what apply read back after writing it: an agent's newest committed specification, a search service's target lag or warehouse, a routine's SECURE, a procedure's EXECUTE AS or body, or a semantic view's definition. The detail names each property that changed.
 

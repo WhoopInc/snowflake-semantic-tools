@@ -338,7 +338,7 @@ def test_a_hand_committed_specification_names_its_version_and_what_serves_it() -
         [diagnostic] = coded(planned.diagnostics, "SST-PLN014")
         assert diagnostic.message == (
             f"agent:sales was changed out of band (its specification changed; its marker did not; {said}); "
-            "apply refuses it"
+            "apply leaves it as it is"
         )
     # With no committed version listed there is none to name.
     artifact, found, applied = _hand_committed(newest_version=None)

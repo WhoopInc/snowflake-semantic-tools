@@ -30,7 +30,7 @@ def test_sst_pln014_fires() -> None:
     assert diagnostic.message == (
         "semantic_view:sales was changed out of band (its comment was changed and no longer carries SST's "
         "ownership marker); "
-        "apply refuses it"
+        "apply leaves it as it is"
     )
     assert planned.changes[0].action is Action.BLOCKED
 
@@ -94,7 +94,8 @@ def test_sst_pln014_fires_for_a_property_edited_under_an_unchanged_marker(object
     _, planned = _planned(object_type, _digest(object_type, before), _digest(object_type, after))
     [diagnostic] = coded(planned.diagnostics, "SST-PLN014")
     assert diagnostic.message == (
-        f"semantic_view:thing was changed out of band (its {changed} changed; its marker did not); apply refuses it"
+        f"semantic_view:thing was changed out of band (its {changed} changed; its marker did not); "
+        "apply leaves it as it is"
     )
     assert planned.changes[0].action is Action.BLOCKED
 
