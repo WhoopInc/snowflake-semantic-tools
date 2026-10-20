@@ -6,6 +6,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.compile.skills import CompileSkills
 from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.app.diff import _agent_references, compiled_definitions, live_definitions, name_map
 from snowflake_semantic_tools.app.fanout import Fanout
@@ -16,9 +17,11 @@ from snowflake_semantic_tools.domain.plan.diff import ArtifactState, compare_sta
 from snowflake_semantic_tools.domain.plan.member_diff import diff_definitions
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.render.tool import render_tool
-from tests.helpers.artifact_builders import applied_entry
+from tests.helpers.artifact_builders import applied_entry, empty_state, target
 from tests.helpers.described_objects import described_routine
+from tests.helpers.skill_inputs import CATALOG_CHANNEL, compile_extensions, publish_extensions, skill, skill_catalog
 from tests.helpers.snowflake_fake import FakeSnowflake
+from tests.helpers.sql_values import statement
 
 _TABLE = QualifiedName.parse("DB.S.SST_STATE")
 _ORIGIN = Origin("tools/t.yml", 1, 1)
@@ -132,3 +135,23 @@ def test_an_agent_labels_the_outside_objects_its_tools_and_skills_name_and_nothi
         dbt_relations=(("orders", ""),),
     )
     assert dict(name_map(CompileResult((unresolved,)))) == {("DB", "S", "V"): "semantic_view:v"}
+
+
+def test_a_skill_reads_as_the_version_state_records_not_the_one_the_catalog_serves() -> None:
+    first = compile_extensions(skill_catalog(skill()))
+    second = compile_extensions(skill_catalog(skill(files={"reference/steps.md": "Steps, revised.\n"})))
+    port = FakeSnowflake(existing=())
+    _, published = publish_extensions(port, first, empty_state())
+    _, changed = publish_extensions(port, second, published)
+    publish_extensions(port, first, changed)
+    # The catalog serves the reverted-away VERSION$2; state records the revert, VERSION$1.
+    assert port.execute_script(
+        (statement("ALTER CORTEX EXTENSION DB.S.MONTH_CLOSE SET DEFAULT_VERSION = VERSION$2"),)
+    ).ok
+    result = CompileSkills(skill_catalog(skill()), CATALOG_CHANNEL).run_result()
+    definitions, unread = live_definitions(
+        Fanout(port), _TABLE, target().name, result, names={}, eval_stage="EVAL_CONFIGS"
+    )
+    assert unread == {}
+    desired = compiled_definitions(result, {})
+    assert diff_definitions(definitions["skill:month-close"], desired["skill:month-close"]) == ()

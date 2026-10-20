@@ -75,6 +75,39 @@ def test_reads_with_nothing_to_compare_say_so() -> None:
         live_profile(port, profile)
 
 
+def _published(name: str, alias: str, path: str, *, default: bool = False) -> dict[str, object]:
+    """One committed version as the fake keeps it, holding one file staged at `@S/<path>`."""
+    location = f"snow://cortex_extension/DB.S.SKILL/versions/{name.lower()}/"
+    return {
+        "name": name,
+        "alias": alias,
+        "location": location,
+        "files": [path],
+        "sources": {path: f"@S/{path}"},
+        "is_default": default,
+        "certification": None,
+    }
+
+
+def _recorded(alias: str) -> AppliedEntry:
+    return AppliedEntry("f", _NAME.sql, "now", "run", "applied", "f", "m", component_fingerprints=(("alias", alias),))
+
+
+def test_an_extension_is_read_at_the_alias_state_records_else_at_the_version_served() -> None:
+    port = FakeSnowflake()
+    versions = [_published("VERSION$1", "A1", "one.md"), _published("VERSION$2", "A2", "two.md", default=True)]
+    port.extensions[_NAME.sql] = {"type": "SKILL", "comment": "c", "versions": versions, "live": None}
+    port.staged_file_contents.update({"@S/one.md": b"1", "@S/two.md": b"2"})
+
+    def files(recorded: AppliedEntry | None) -> list[str]:
+        return [member.name for member in live_extension(port, _NAME, recorded).members if member.kind == "file"]
+
+    assert files(_recorded("a1")) == ["one.md"]
+    # Nothing recorded, or an alias no version carries: the version the catalog serves.
+    assert files(None) == ["two.md"]
+    assert files(_recorded("GONE")) == ["two.md"]
+
+
 def _entry(*, config: str | None = "c0ffee", table: bool = True) -> AppliedEntry:
     return AppliedEntry(
         "f",

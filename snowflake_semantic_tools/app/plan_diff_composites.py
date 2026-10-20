@@ -1,8 +1,9 @@
 """Read what a published skill, plugin, profile or eval holds, and build what SST renders for one.
 
 Each artifact type has a desired builder, from what compiled, and a live read, from a session:
-- a skill or plugin: the files of the version the catalog serves -- the effective one, else the
-  default -- and the extension's comment;
+- a skill or plugin: the files of the version state records SST published, by its alias, else
+  of the version the catalog serves -- the effective one, else the default -- and the
+  extension's comment;
 - a profile: its registry row and the files of each tree the row points into;
 - an eval: the config file and the questions of what state records it last published.
 
@@ -41,13 +42,22 @@ def desired_extension(compiled: CompiledArtifact) -> Definition:
     return extension_definition({entry.path: entry.content for entry in release.bundle.entries}, release.comment)
 
 
-def live_extension(port: SnowflakePort, name: QualifiedName) -> Definition:
-    """The files of the version the catalog serves of the extension `name`, and its comment."""
+def live_extension(port: SnowflakePort, name: QualifiedName, recorded: AppliedEntry | None = None) -> Definition:
+    """The files of the version of the extension `name` state records, else of the one served.
+
+    The definition holds the extension's comment too. The recorded version is the one carrying
+    the alias `recorded` names: what SST last published there, which agents pin. The catalog
+    may serve another, such as a certified one, so the served version is read only when state
+    records no alias, or one no version carries.
+    """
     extension = port.observe_extension(name)
-    served = served_extension(extension, port.extension_versions(name))
-    if extension is None or served is None:
+    versions = port.extension_versions(name)
+    alias = dict(recorded.component_fingerprints).get("alias", "").casefold() if recorded is not None else ""
+    chosen = next((item for item in versions if alias and (item.alias or "").casefold() == alias), None)
+    version = chosen or served_extension(extension, versions)
+    if extension is None or version is None:
         raise SnowflakePortError(f"{name.sql} serves no version to compare")
-    location = served.location if served.location.endswith("/") else f"{served.location}/"
+    location = version.location if version.location.endswith("/") else f"{version.location}/"
     files = {path: _read(port, f"{location}{path}") for path in port.list_location(location)}
     return extension_definition(files, extension.comment)
 

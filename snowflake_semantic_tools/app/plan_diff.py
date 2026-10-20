@@ -66,7 +66,8 @@ class LiveObject:
         alias: An agent's desired version alias, which picks the version it serves.
         comment: The comment SHOW lists on it, which a routine's DESCRIBE does not report.
         routine_signature: A procedure's or function's argument types, as observed.
-        recorded: What state records of the artifact, from which an eval's earlier publish is read.
+        recorded: What state records of the artifact, from which an eval's earlier publish is read,
+            and the version of a skill or plugin.
         config_folder: Where an eval's configs are staged: `@<stage>/<agent segment>`.
     """
 
@@ -160,8 +161,12 @@ COMPARISONS: Mapping[str, Comparison] = {
     ),
     "agent": Comparison(_desired_agent, _live_agent),
     "tool": Comparison(_desired_tool, _live_tool),
-    "skill": Comparison(desired_extension, lambda port, _compiled, live: live_extension(port, live.name)),
-    "plugin": Comparison(desired_extension, lambda port, _compiled, live: live_extension(port, live.name)),
+    "skill": Comparison(
+        desired_extension, lambda port, _compiled, live: live_extension(port, live.name, live.recorded)
+    ),
+    "plugin": Comparison(
+        desired_extension, lambda port, _compiled, live: live_extension(port, live.name, live.recorded)
+    ),
     "profile": Comparison(desired_profile, lambda port, compiled, _live: live_profile(port, compiled)),
     "eval": Comparison(desired_eval, lambda port, _compiled, live: live_eval(port, live.config_folder, live.recorded)),
 }
