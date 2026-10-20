@@ -229,3 +229,31 @@ def test_apply_records_member_fingerprints_and_an_unchanged_entry_without_them_g
         fingerprints,
     )
     assert applied["tool:q"].member_fingerprints == ()
+
+
+def test_an_applied_agent_records_the_committed_version_it_serves() -> None:
+    from snowflake_semantic_tools.app.apply.one import ChangeApplier
+    from snowflake_semantic_tools.domain.model.lifecycle import ApplyOutcome, OutcomeStatus
+    from tests.helpers.clocks import FixedClock
+
+    port = FakeSnowflake()
+    name = QualifiedName.parse("DB.SCHEMA.SALES")
+    port.agent_version_rows[name.sql] = (
+        AgentVersion(None, None),
+        AgentVersion("VERSION$1", None, False),
+        AgentVersion("VERSION$2", "PROMOTED", True),
+    )
+    applier = ChangeApplier(port, FixedClock(), {})
+    applied = ApplyOutcome(f"agent:{name.name.folded.casefold()}", Action.UPDATE, OutcomeStatus.APPLIED, 1, 5, "")
+    agent = replace(_artifact("AGENT", name), desired_alias="promoted")
+    recorded = applier._with_digest(applied, agent)
+    assert dict(recorded.component_fingerprints) == {"version": "VERSION$2"}
+    # A temporary agent, any other object, a failed change, and a read Snowflake refuses record no version.
+    for artifact in (_artifact("AGENT", name, temporary=True), _artifact("PROCEDURE", PROCEDURE)):
+        assert applier._with_digest(applied, artifact).component_fingerprints == ()
+    failed = replace(applied, status=OutcomeStatus.FAILED)
+    assert applier._with_digest(failed, agent) == failed
+    port.agent_version_rows[name.sql] = ()
+    assert applier._with_digest(applied, agent).component_fingerprints == ()
+    port.refuse("observe_agent_versions")
+    assert applier._with_digest(applied, agent).component_fingerprints == ()

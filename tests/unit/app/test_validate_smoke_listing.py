@@ -200,6 +200,16 @@ def test_listing_projects_pending_and_applied_artifacts() -> None:
     assert list_artifacts(manifest, replace(state, applied=MappingProxyType({pending[0].key: changed})))[0].status == (
         "pending"
     )
+    # The version listed is an extension's alias, else what state records as `version`: the
+    # committed version an agent serves, or a profile row's VERSION.
+    for components, version in (
+        ((("alias", "SST_0123456789AB"), ("version", "VERSION$2")), "SST_0123456789AB"),
+        ((("version", "VERSION$4"),), "VERSION$4"),
+        ((), None),
+    ):
+        versioned = replace(entry, component_fingerprints=components)
+        listed = list_artifacts(manifest, replace(state, applied=MappingProxyType({pending[0].key: versioned})))
+        assert listed[0].version == version
 
 
 class _NonViewArtifact:

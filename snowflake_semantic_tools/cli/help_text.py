@@ -150,8 +150,9 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst clean", "--dry-run"): "List what would be removed; remove nothing.",
     ("sst docs", "--output-dir"): "Write the pages here instead of `docs/reference`.",
     ("sst list", "--long"): (
-        "Also print each artifact's applied fingerprint and published version; `json`, `yaml` and `csv` "
-        "also carry its source files."
+        "Also print each artifact's applied fingerprint and published version (a skill's or plugin's "
+        "alias, the committed version an agent serves, a profile row's VERSION, as the last apply "
+        "recorded it); `json`, `yaml` and `csv` also carry its source files."
     ),
     ("sst apply", "--plan"): "Apply this saved plan. It must still match the compiled project.",
     ("sst apply", "--yes"): "Apply without asking for confirmation.",

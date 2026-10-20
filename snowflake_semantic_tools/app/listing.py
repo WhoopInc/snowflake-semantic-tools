@@ -29,8 +29,8 @@ class ArtifactSummary:
         applied_fingerprint: The fingerprint state recorded; None when it records nothing for the key.
         status: `deactivated` once a prune retired it, `failed` when a publish wrote and did not
             complete, `applied` when state records this fingerprint, else `pending`.
-        version: The published version state records for an extension-backed artifact; None
-            when it records none.
+        version: The published version state records: a skill's or plugin's alias, the committed
+            version an agent serves, a profile row's VERSION; None when it records none.
     """
 
     key: str
@@ -55,11 +55,18 @@ def list_artifacts(manifest: Manifest, state: State | None = None) -> tuple[Arti
             entry.fingerprint,
             state_entries[key].fingerprint if key in state_entries else None,
             _status(state_entries.get(key), entry.fingerprint),
-            # The published version of an extension-backed artifact, when state records one.
-            dict(state_entries[key].component_fingerprints).get("alias") if key in state_entries else None,
+            _version(state_entries.get(key)),
         )
         for key, entry in sorted(manifest.artifacts.items())
     )
+
+
+def _version(recorded: AppliedEntry | None) -> str | None:
+    """The version state records as published: an extension's alias, else its `version` component."""
+    if recorded is None:
+        return None
+    components = dict(recorded.component_fingerprints)
+    return components.get("alias") or components.get("version")
 
 
 def _status(recorded: AppliedEntry | None, fingerprint: str) -> str:

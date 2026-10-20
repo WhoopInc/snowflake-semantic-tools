@@ -23,6 +23,7 @@ from snowflake_semantic_tools.app.apply.stages import UploadStages
 from snowflake_semantic_tools.app.drift import written_digest
 from snowflake_semantic_tools.app.grant_sql import grant_statement
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
+from snowflake_semantic_tools.app.prior import served_version
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
@@ -204,7 +205,11 @@ class ChangeApplier:
         return self._with_digest(verified, rendered)
 
     def _with_digest(self, outcome: ApplyOutcome, rendered: RenderedArtifact) -> ApplyOutcome:
-        """Read back the digest of what a verified write left, which state records for plan."""
+        """Read back the digest of what a verified write left, which state records for plan.
+
+        A permanent agent also records, as its `version` component, the committed version it
+        now serves, which `sst list --long` shows.
+        """
         if outcome.status is not OutcomeStatus.APPLIED:
             return outcome
         try:
@@ -213,7 +218,19 @@ class ChangeApplier:
             # The write is verified; a digest that cannot be read is unknown, never drift, and
             # the next apply reads it again.
             digest = None
-        return replace(outcome, live_digest=digest)
+        return replace(outcome, live_digest=digest, component_fingerprints=self._served(outcome, rendered))
+
+    def _served(self, outcome: ApplyOutcome, rendered: RenderedArtifact) -> tuple[tuple[str, str], ...]:
+        """The outcome's components, with the version a permanent agent serves; unchanged when unread."""
+        if " ".join(rendered.object_type.upper().split()) != "AGENT" or rendered.temporary:
+            return outcome.component_fingerprints
+        try:
+            served = served_version(self._port.observe_agent_versions(rendered.target).versions, rendered.desired_alias)
+        except SnowflakePortError:
+            return outcome.component_fingerprints
+        if served is None or served.name is None:
+            return outcome.component_fingerprints
+        return (*outcome.component_fingerprints, ("version", served.name))
 
     def _grants_to_keep(self, change: Change, rendered: RenderedArtifact) -> tuple[GrantRow, ...] | None:
         """Return the explicit grants an update must keep; None when it has none to check.

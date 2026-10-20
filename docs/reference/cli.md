@@ -478,7 +478,7 @@ sst list [OPTIONS] [TYPE]
 | `--database` | TEXT |  | Read from this database instead of the target's; never where an artifact is published. |
 | `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. dbt's graph operators add lineage: `model:orders+` is every artifact `orders` feeds, `+agent:a` all an agent reads, and `2+x` or `x+1` bound the steps; dbt nodes (`model:`, `seed:`, `source:`), members such as `metric:<name>` and `tool_ref:<name>` work inside them. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
-| `--long` | flag |  | Also print each artifact's applied fingerprint and published version; `json`, `yaml` and `csv` also carry its source files. |
+| `--long` | flag |  | Also print each artifact's applied fingerprint and published version (a skill's or plugin's alias, the committed version an agent serves, a profile row's VERSION, as the last apply recorded it); `json`, `yaml` and `csv` also carry its source files. |
 | `--wide` | flag |  | For a member type, also show the columns each member reads and its expression. |
 | `--no-manifest` | flag |  | Compile the project's files in memory instead of reading the compiled manifest. |
 | `--dbt` | DIRECTORY |  | With `--no-manifest`, read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`. |
