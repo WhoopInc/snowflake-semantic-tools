@@ -35,7 +35,12 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, Change
 from snowflake_semantic_tools.domain.model.tool import ToolKind
-from snowflake_semantic_tools.domain.plan.definitions.agent import spec_definition
+from snowflake_semantic_tools.domain.plan.definitions.agent import (
+    PROPERTIES_KEY,
+    agent_properties,
+    spec_definition,
+    with_properties,
+)
 from snowflake_semantic_tools.domain.plan.definitions.semantic_view import desired_view, live_view
 from snowflake_semantic_tools.domain.plan.definitions.tool import (
     desired_routine,
@@ -48,6 +53,7 @@ from snowflake_semantic_tools.domain.plan.member_diff import Definition, diff_de
 from snowflake_semantic_tools.domain.plan.member_fingerprints import changed_members, member_fingerprints
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.render.agent import render_agent_profile
 from snowflake_semantic_tools.domain.state import AppliedEntry
 
 
@@ -84,14 +90,43 @@ class Comparison:
 
 
 def _live_agent(port: SnowflakePort, compiled: CompiledArtifact, live: LiveObject) -> Definition:
-    """The specification the version the agent serves holds."""
-    served = served_version(port.observe_agent_versions(live.name).versions, live.alias)
+    """The served version's specification, with the agent's properties as SHOW AGENTS lists them.
+
+    A property SHOW AGENTS does not list, such as `is_secure` on a role that cannot see it, is
+    left out, so it is not compared.
+    """
+    versions = port.observe_agent_versions(live.name)
+    served = served_version(versions.versions, live.alias)
     if served is None or served.specification is None:
         raise SnowflakePortError("the role may not read the specification of the version the agent serves")
     try:
-        return spec_definition(served.specification)
+        specification = spec_definition(served.specification)
     except ValueError as exc:
         raise SnowflakePortError(f"the specification the agent serves is not a JSON object: {exc}") from exc
+    row = port.show_row("AGENT", live.name) or {}
+    secure = row.get("is_secure")
+    shown = agent_properties(
+        comment=row.get("comment"),
+        profile=row.get("profile"),
+        aliases=versions.aliases,
+        secure=secure.strip().casefold() in ("true", "y", "yes") if secure is not None else None,
+    )
+    return with_properties(specification, shown)
+
+
+def _desired_agent(compiled: CompiledArtifact) -> Definition:
+    """The specification SST renders, with the agent's comment, profile, alias and SECURE as it sets them."""
+    agent = compiled_as(compiled, CompiledAgent)
+    model = agent.resolved.model
+    return with_properties(
+        spec_definition(agent.payload),
+        agent_properties(
+            comment=model.comment or "",
+            profile=render_agent_profile(model.profile),
+            aliases=(model.alias,) if model.alias else (),
+            secure=model.secure is True,
+        ),
+    )
 
 
 def _desired_tool(compiled: CompiledArtifact) -> Definition | None:
@@ -123,7 +158,7 @@ COMPARISONS: Mapping[str, Comparison] = {
         lambda compiled: desired_view(compiled_as(compiled, CompiledView).view),
         lambda port, _compiled, live: live_view(port.describe_semantic_view(live.name)),
     ),
-    "agent": Comparison(lambda compiled: spec_definition(compiled_as(compiled, CompiledAgent).payload), _live_agent),
+    "agent": Comparison(_desired_agent, _live_agent),
     "tool": Comparison(_desired_tool, _live_tool),
     "skill": Comparison(desired_extension, lambda port, _compiled, live: live_extension(port, live.name)),
     "plugin": Comparison(desired_extension, lambda port, _compiled, live: live_extension(port, live.name)),
@@ -196,10 +231,14 @@ def from_state(changes: Sequence[Change], recorded: Mapping[str, AppliedEntry]) 
     """Name the members each update plan did not compare changes, from the fingerprints state records.
 
     An update with a member diff keeps it. One whose recorded entry, or whose render, holds no
-    member fingerprints, such as an entry an earlier SST wrote, names none.
+    member fingerprints, such as an entry an earlier SST wrote, names none. An agent's properties
+    member is named only when its entry records one: an earlier SST recorded none, and naming it
+    then would say the properties changed when nothing did.
     """
     return tuple(
-        replace(change, changed_members=changed_members(entry.member_fingerprints, change.rendered.member_fingerprints))
+        replace(
+            change, changed_members=_recorded_changes(entry.member_fingerprints, change.rendered.member_fingerprints)
+        )
         if change.action is Action.UPDATE
         and change.member_diff is None
         and change.rendered is not None
@@ -209,6 +248,13 @@ def from_state(changes: Sequence[Change], recorded: Mapping[str, AppliedEntry]) 
         else change
         for change in changes
     )
+
+
+def _recorded_changes(before: Sequence[tuple[str, str]], after: Sequence[tuple[str, str]]) -> tuple[str, ...]:
+    """The members whose recorded fingerprints differ, an agent's properties only when both record them."""
+    if any(key == PROPERTIES_KEY for key, _ in before):
+        return changed_members(before, after)
+    return changed_members(before, tuple(pair for pair in after if pair[0] != PROPERTIES_KEY))
 
 
 def live_object(change: Change, recorded: AppliedEntry | None) -> LiveObject:

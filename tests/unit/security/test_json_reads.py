@@ -63,6 +63,9 @@ EXEMPT: dict[tuple[str, str], str] = {
     ("domain/plan/definitions/agent.py", "spec_definition"): (
         "an agent specification SST rendered, or the version an agent serves returned"
     ),
+    ("domain/plan/definitions/agent.py", "_profile"): (
+        "an agent profile SST rendered, or the profile column SHOW AGENTS returned"
+    ),
     ("domain/plan/definitions/composite.py", "_json"): (
         "a profile registry column or eval ground truth, as SST rendered it or a VARIANT returned it"
     ),

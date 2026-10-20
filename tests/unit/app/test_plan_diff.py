@@ -13,6 +13,7 @@ from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.plan_diff import compiled_fingerprints, diff_updates, from_state
 from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
+from snowflake_semantic_tools.domain.model.agent import AgentProfile
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, Change, ChangeReason
 from snowflake_semantic_tools.domain.model.semantic_view import Column, ColumnKind, Metric, SemanticView, Table
@@ -179,9 +180,17 @@ def test_a_stage_tool_is_not_compared_and_a_missing_search_service_is_unavailabl
     ]
 
 
-def test_an_agent_serving_a_specification_that_is_not_json_is_unavailable() -> None:
+def _agent(payload: str, **model: object) -> CompiledAgent:
+    """A compiled agent holding only what its comparison reads: its payload and its properties."""
     agent = CompiledAgent.__new__(CompiledAgent)
-    object.__setattr__(agent, "payload", '{"models": {}}')
+    object.__setattr__(agent, "payload", payload)
+    properties = {"comment": None, "profile": AgentProfile(), "alias": None, "secure": None, **model}
+    object.__setattr__(agent, "resolved", SimpleNamespace(model=SimpleNamespace(**properties)))
+    return agent
+
+
+def test_an_agent_serving_a_specification_that_is_not_json_is_unavailable() -> None:
+    agent = _agent('{"models": {}}')
     rendered = rendered_view("analyst")
     port = FakeSnowflake()
     port.agent_version_rows[rendered.target.sql] = (AgentVersion("VERSION$1", None, True, specification="[1]"),)
@@ -192,8 +201,7 @@ def test_an_agent_serving_a_specification_that_is_not_json_is_unavailable() -> N
 
 
 def test_an_agent_is_compared_with_the_version_it_serves_and_one_serving_none_is_unavailable() -> None:
-    agent = CompiledAgent.__new__(CompiledAgent)
-    object.__setattr__(agent, "payload", '{"instructions": {"response": "Brief."}}')
+    agent = _agent('{"instructions": {"response": "Brief."}}')
     rendered = rendered_view("analyst")
     port = FakeSnowflake()
     served = AgentVersion("VERSION$2", None, True, specification='{"instructions": {"response": "Long."}}')
@@ -206,6 +214,61 @@ def test_an_agent_is_compared_with_the_version_it_serves_and_one_serving_none_is
     port.agent_version_rows[rendered.target.sql] = ()
     [unread], [note] = diff_updates((change,), {"agent:analyst": agent}, Fanout(port))
     assert (unread.member_diff, "may not read the specification" in note.message) == (None, True)
+
+
+def test_an_agent_compares_its_comment_profile_alias_and_secure_as_show_lists_them() -> None:
+    agent = _agent(
+        "{}",
+        comment="Never answers questions about one customer.",
+        profile=AgentProfile(display_name="Concierge", color="purple"),
+        alias="stable",
+        secure=False,
+    )
+    rendered = rendered_view("analyst")
+    port = FakeSnowflake()
+    port.agent_version_rows[rendered.target.sql] = (AgentVersion("VERSION$1", "RELEASED", True, specification="{}"),)
+    port.show_rows[f"AGENT {rendered.target.sql}"] = {
+        "comment": f"Does not answer questions about one customer. [sst:{'a' * 64}:{'b' * 64}]",
+        "profile": '{"color":"teal","display_name":"Concierge"}',
+        "is_secure": "false",
+    }
+    change = replace(_change(), key="agent:analyst", artifact_type="agent", rendered=rendered)
+    [compared], _ = diff_updates((change,), {"agent:analyst": agent}, Fanout(port))
+    assert compared.member_diff == (
+        MemberDiff(
+            "agent",
+            "properties",
+            CHANGED,
+            (
+                PropertyDiff(
+                    "comment",
+                    "Does not answer questions about one customer.",
+                    "Never answers questions about one customer.",
+                ),
+                PropertyDiff(
+                    "profile",
+                    '{"color": "teal", "display_name": "Concierge"}',
+                    '{"color": "purple", "display_name": "Concierge"}',
+                ),
+                PropertyDiff("alias", "RELEASED", "STABLE"),
+            ),
+        ),
+    )
+    # The same properties, and SECURE as SHOW spells it, are no difference; one SHOW does not list
+    # is not compared.
+    port.show_rows[f"AGENT {rendered.target.sql}"] = {
+        "comment": "Never answers questions about one customer.",
+        "profile": '{"display_name":"Concierge","color":"purple"}',
+        "is_secure": "N",
+    }
+    port.agent_version_rows[rendered.target.sql] = (AgentVersion("VERSION$1", "STABLE", True, specification="{}"),)
+    [same], _ = diff_updates((change,), {"agent:analyst": agent}, Fanout(port))
+    assert same.member_diff == ()
+    secure = _agent("{}", secure=True)
+    del port.show_rows[f"AGENT {rendered.target.sql}"]
+    [unread], _ = diff_updates((change,), {"agent:analyst": secure}, Fanout(port))
+    assert [(item.kind, item.name) for item in unread.member_diff or ()] == [("agent", "properties")]
+    assert [prop.name for item in unread.member_diff or () for prop in item.properties] == ["alias"]
 
 
 def test_a_compiled_artifact_is_fingerprinted_member_by_member_when_its_type_is_compared() -> None:
@@ -232,3 +295,19 @@ def test_an_update_not_compared_names_the_members_state_s_fingerprints_say_chang
     assert from_state((compared, noop), recorded) == (compared, noop)
     assert from_state((change,), unrecorded) == (change,)
     assert from_state((replace(change, rendered=rendered_view("sales")),), recorded)[0].changed_members is None
+
+
+def test_an_agent_s_properties_are_named_from_state_only_when_its_entry_recorded_them() -> None:
+    # An entry an earlier SST wrote records no properties member, so its absence there is not a
+    # change; once both record it, a differing fingerprint names it.
+    spec = ("instruction:response", "1" * 64)
+    change = replace(
+        _change(),
+        key="agent:analyst",
+        artifact_type="agent",
+        rendered=replace(rendered_view("analyst"), member_fingerprints=(("agent:properties", "2" * 64), spec)),
+    )
+    older = {change.key: replace(entry(change.rendered, "m"), member_fingerprints=(spec,))}  # type: ignore[arg-type]
+    assert from_state((change,), older)[0].changed_members == ()
+    recorded = {change.key: replace(older[change.key], member_fingerprints=(("agent:properties", "3" * 64), spec))}
+    assert from_state((change,), recorded)[0].changed_members == ("agent:properties",)

@@ -122,3 +122,26 @@ def test_an_agent_document_names_the_members_state_names_for_an_update_not_read(
     [sales, menu] = [line for line in out.splitlines() if line.startswith("~ ")]
     assert sales.endswith("changes=" + ",".join(f"metric:orders.m{n}~" for n in range(6)) + ",1_more")
     assert menu.endswith("changes=definition")
+
+
+def test_an_agent_update_says_whether_it_commits_a_new_version_and_names_a_moved_alias_once() -> None:
+    from dataclasses import replace
+
+    from snowflake_semantic_tools.cli.plan_output import change_json
+    from snowflake_semantic_tools.cli.render.report import _plan_row
+    from snowflake_semantic_tools.domain.model.lifecycle import Action, OwnershipMarker
+    from tests.helpers.artifact_builders import change, observed, rendered
+
+    artifact = replace(rendered("AGENT"), artifact_type="agent", object_type="AGENT", desired_alias="stable")
+    live = replace(observed(artifact, ownership=OwnershipMarker("b" * 64, "c" * 64)), aliases=("RELEASED",))
+    alias = MemberDiff("agent", "properties", CHANGED, (PropertyDiff("alias", "RELEASED", "STABLE"),))
+    for adds_version, note in ((True, "new version"), (False, "no new version")):
+        update = replace(
+            change(replace(artifact, adds_version=adds_version), Action.UPDATE, live=live), member_diff=(alias,)
+        )
+        row = _plan_row(update, "m" * 64)
+        assert row[-1] == f"agent properties; {note}"
+        assert change_json(update, "m" * 64)["adds_version"] is adds_version
+    view = change(rendered(), Action.UPDATE, live=observed(rendered()))
+    assert "version" not in _plan_row(view, "m" * 64)[-1]
+    assert change_json(view, "m" * 64)["adds_version"] is None

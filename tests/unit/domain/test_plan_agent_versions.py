@@ -296,3 +296,16 @@ def test_a_renamed_alias_replaces_the_old_one_on_its_version_without_unsetting_i
         "set tag",
         "ALTER AGENT DB.S.SALES MODIFY VERSION RELEASED UNSET ALIAS",
     )
+
+
+def test_an_agent_update_says_whether_it_commits_a_new_version() -> None:
+    before = agent()
+    marker = recorded(before)
+    properties_only = before.for_action(Action.UPDATE, live(before, marker))
+    assert properties_only.adds_version is False
+    for has_live_version in (True, False):
+        observed = live(before, marker, newest_spec="f" * 64, has_live_version=has_live_version)
+        assert before.for_action(Action.UPDATE, observed).adds_version is True
+    temporary = agent(temporary=True)
+    assert temporary.for_action(Action.UPDATE, live(temporary, marker, newest_spec="f" * 64)).adds_version is None
+    assert before.for_action(Action.CREATE, None).adds_version is None

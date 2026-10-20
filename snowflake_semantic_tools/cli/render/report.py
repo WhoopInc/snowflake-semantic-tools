@@ -216,7 +216,8 @@ def _plan_row(change: Change, manifest_id: str) -> list[str]:
     """Return one change's cells: its mark and action, key, target, and what a person should know of it.
 
     The note says the reason when the action alone does not, the properties an update changes,
-    that a prune is only reported, and the alias an agent's version moves to.
+    whether an agent's update commits a new version, that a prune is only reported, and the
+    alias an agent's version moves to.
     """
     marker, action, _ = _ACTION_STYLE[change.action]
     if change.rendered is not None:
@@ -229,6 +230,8 @@ def _plan_row(change: Change, manifest_id: str) -> list[str]:
         if names:
             more = len(names) - _MAX_LISTED_PROPERTIES
             notes.append(", ".join(names[:_MAX_LISTED_PROPERTIES]) + (f" and {more} more" if more > 0 else ""))
+    if change.action is Action.UPDATE and change.rendered is not None and change.rendered.adds_version is not None:
+        notes.append("new version" if change.rendered.adds_version else "no new version")
     if change.action is Action.PRUNE and not change.prune_executable:
         notes.append("report only: SST never removes these")
     alias = dict(change.rendered.component_fingerprints).get("alias") if change.rendered is not None else None
@@ -247,8 +250,15 @@ def _changed_labels(change: Change, manifest_id: str) -> list[str]:
     if change.member_diff is None or "definition" not in labels:
         return labels
     members = list(summary(change.member_diff)) or ["definition (no member-level difference)"]
+    if any(_shows_alias(item) for item in change.member_diff):
+        labels = [label for label in labels if label != "version alias"]
     at = labels.index("definition")
     return [*labels[:at], *members, *labels[at + 1 :]]
+
+
+def _shows_alias(item: MemberDiff) -> bool:
+    """Whether a member diff is an agent's properties with its alias, which `version alias` repeats."""
+    return (item.kind, item.name) == ("agent", "properties") and any(prop.name == "alias" for prop in item.properties)
 
 
 def property_labels(names: Sequence[str]) -> list[str]:

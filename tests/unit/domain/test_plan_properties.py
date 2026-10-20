@@ -48,6 +48,17 @@ def test_an_agent_names_the_aliases_and_tags_an_update_sets() -> None:
     )
 
 
+def test_an_alias_shown_upper_cased_is_the_one_declared_in_lower_case() -> None:
+    # Snowflake stores an unquoted alias upper-cased, so `released` declared is `RELEASED` shown.
+    artifact = replace(rendered(), desired_alias="released")
+    live = replace(observed(artifact, ownership=marker(artifact)), aliases=("RELEASED",))
+    assert changed_properties(change(artifact, Action.UPDATE, live=live), MANIFEST) == ()
+    renamed = replace(artifact, desired_alias="stable")
+    assert changed_properties(change(renamed, Action.UPDATE, live=live), MANIFEST) == (
+        PropertyChange("aliases", "RELEASED", "stable"),
+    )
+
+
 def test_tags_that_were_not_read_are_not_compared() -> None:
     # Under --no-grants, or when the read fails, a tagged view's tags are unread, not empty;
     # reporting `tags: - -> X` would claim the update adds tags it may already carry.

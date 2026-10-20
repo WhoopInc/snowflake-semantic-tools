@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from snowflake_semantic_tools.domain.plan.definitions.agent import spec_definition
+from snowflake_semantic_tools.domain.plan.definitions.agent import agent_properties, spec_definition, with_properties
 from snowflake_semantic_tools.domain.plan.member_diff import ADDED, CHANGED, diff_definitions
 
 _SPEC = {
@@ -87,3 +87,31 @@ def test_a_shape_the_spec_does_not_expect_is_still_compared() -> None:
 def test_a_specification_that_is_not_an_object_is_refused() -> None:
     with pytest.raises(ValueError, match="is a JSON object"):
         spec_definition("[]")
+
+
+def test_an_agent_s_properties_compare_as_it_is_stored_and_an_unread_one_is_left_out() -> None:
+    member = agent_properties(
+        comment=f"Answers sales questions. [sst:{'a' * 64}:{'b' * 64}]",
+        profile='{"display_name":"Sales","color":"teal"}',
+        aliases=("released", "Candidate"),
+        secure=True,
+    )
+    assert member.key == ("agent", "properties")
+    assert member.properties == (
+        ("comment", "Answers sales questions."),
+        ("profile", '{"color": "teal", "display_name": "Sales"}'),
+        ("alias", "CANDIDATE, RELEASED"),
+        ("secure", "true"),
+    )
+    # No profile shows as `{}`, as SST renders one with nothing set; text that is not JSON stays
+    # as it is; and a property passed as None was not read, so it is not stated.
+    assert agent_properties(profile="", secure=False).properties == (("profile", "{}"), ("secure", "false"))
+    assert agent_properties(profile="not json").properties == (("profile", "not json"),)
+    assert agent_properties().properties == ()
+
+
+def test_the_properties_member_follows_the_specification_s_members() -> None:
+    specification = spec_definition('{"instructions": {"response": "Brief."}}')
+    with_both = with_properties(specification, agent_properties(aliases=()))
+    assert [member.key for member in with_both.members] == [("instruction", "response"), ("agent", "properties")]
+    assert with_both.kinds == specification.kinds

@@ -590,6 +590,12 @@ summary counts an agent's updates as `update`. Under an update it shows what
 changes in the specification, member by member, against the version the agent
 serves (the one carrying its alias, else the default, else the last): each
 instruction, the sample questions, each tool with its resources, and each skill.
+The agent's own properties, which no version holds, are one more member,
+`agent properties`: its comment (without the ownership marker), its profile,
+its version alias, and `secure`, each as `SHOW AGENTS` and `SHOW VERSIONS`
+list them; one the role cannot see is not compared. Each update also says
+whether it commits a `new version` or `no new version` (a change to properties
+alone), and `--output json` carries the same as `adds_version`.
 Apply uploads the rendered spec
 to `@<stage>/<agent>/<commit>/agent_spec.yaml` under `apply.agent_spec_stage`
 (default stage `AGENT_SPECS`, in the target's database and schema), then:

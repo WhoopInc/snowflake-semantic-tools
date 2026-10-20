@@ -195,6 +195,9 @@ class RenderedArtifact:
             definition, as `member_fingerprints` hashes them, keyed `<kind>:<name>`; empty for an
             artifact plan does not compare. Not in the fingerprint: state records them, so a later
             plan can name which members an update changes without reading the object.
+        adds_version: Whether the program `for_action` chose commits a new version of a
+            permanent agent: False for one that only sets its properties; None for anything
+            else, and before `for_action` chose.
     """
 
     key: ArtifactKey
@@ -229,6 +232,7 @@ class RenderedArtifact:
     generic_apply_safe: bool = True
     version_metadata: str | None = None
     member_fingerprints: tuple[tuple[str, str], ...] = ()
+    adds_version: bool | None = None
 
     @classmethod
     def create(
@@ -338,7 +342,8 @@ class RenderedArtifact:
         there are any; else `update_statements` when there are any; either of those also leaves
         the default following the new version. It then unsets the aliases and tags the observed
         agent carries but this artifact does not desire, except an alias on the version the
-        properties program just set the desired alias on, which that replaced. Any other
+        properties program just set the desired alias on, which that replaced. A permanent
+        agent's UPDATE also says whether it commits a new version, in `adds_version`. Any other
         action, or an UPDATE with no program, returns this artifact unchanged.
         """
         if action is Action.CREATE and self.create_statements:
@@ -346,6 +351,7 @@ class RenderedArtifact:
         if action is Action.UPDATE:
             carrier = _spec_carrier(self, observed)
             replaced: str | None = None
+            adds_version = True
             if observed is not None and carrier is not None and self.update_properties_statements:
                 lead, rest = (
                     self.update_properties_statements[: self.properties_lead],
@@ -353,13 +359,19 @@ class RenderedArtifact:
                 )
                 statements = (*lead, *_pointing(self, observed, carrier), *rest)
                 replaced = carrier if _moves_alias(self, observed, carrier) else None
+                adds_version = False
             elif observed is not None and observed.has_live_version and self.update_live_statements:
                 statements = (*self.update_live_statements, *_unpinned_default(self, observed))
             elif self.update_statements:
                 statements = (*self.update_statements, *_unpinned_default(self, observed))
             else:
                 return self
-            return replace(self, statements=(*statements, *_metadata_removals(self, observed, replaced)))
+            versioned = self.object_type == "AGENT" and not self.temporary
+            return replace(
+                self,
+                statements=(*statements, *_metadata_removals(self, observed, replaced)),
+                adds_version=adds_version if versioned else None,
+            )
         return self
 
 

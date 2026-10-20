@@ -5,13 +5,61 @@ settings, each instruction, its sample questions, each tool with its resources, 
 A value that is not text is compared as JSON with its keys sorted, so two specifications that differ
 only in key order or spacing agree. Any other top-level key is one member of its own, so nothing the
 specification holds goes uncompared.
+
+The agent's own properties, which no version holds, are one more member, `agent properties`: its
+comment without the ownership marker, its profile, its version alias, and whether it is SECURE.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 
+from snowflake_semantic_tools.domain.model.lifecycle.marker import unmarked_comment
 from snowflake_semantic_tools.domain.plan.member_diff import Definition, Member, Value, unique
+
+# The member holding the agent's properties, keyed as `member_fingerprints` keys it.
+PROPERTIES_KIND = "agent"
+PROPERTIES_NAME = "properties"
+PROPERTIES_KEY = f"{PROPERTIES_KIND}:{PROPERTIES_NAME}"
+
+
+def agent_properties(
+    *,
+    comment: str | None = None,
+    profile: str | None = None,
+    aliases: Sequence[str] | None = None,
+    secure: bool | None = None,
+) -> Member:
+    """Return the agent's properties as one member; each argument None was not read, and is left out.
+
+    The comment is compared without any ownership marker; the profile as JSON with its keys
+    sorted, text that is not JSON as it is; the aliases upper-cased, sorted and comma-joined, as
+    an unquoted alias is stored; SECURE as `true` or `false`.
+    """
+    properties: list[tuple[str, Value]] = []
+    if comment is not None:
+        properties.append(("comment", unmarked_comment(comment)))
+    if profile is not None:
+        properties.append(("profile", _profile(profile)))
+    if aliases is not None:
+        properties.append(("alias", ", ".join(sorted(alias.upper() for alias in aliases))))
+    if secure is not None:
+        properties.append(("secure", "true" if secure else "false"))
+    return Member(PROPERTIES_KIND, PROPERTIES_NAME, tuple(properties))
+
+
+def with_properties(definition: Definition, properties: Member) -> Definition:
+    """Return `definition` with the agent's properties member after its specification's members."""
+    return Definition(unique((*definition.members, properties)), definition.kinds)
+
+
+def _profile(profile: str) -> str:
+    try:
+        parsed = json.loads(profile) if profile.strip() else {}
+    except ValueError:
+        return profile
+    return _text(parsed)
 
 
 def spec_definition(spec: str) -> Definition:

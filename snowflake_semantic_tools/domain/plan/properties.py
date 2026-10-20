@@ -29,7 +29,8 @@ def changed_properties(change: Change, manifest_id: str) -> tuple[PropertyChange
     `target` when the object's shown name differs from the declared one; `fingerprint` and
     `manifest_id` when its marker records others than the artifact renders and the plan's
     manifest, `manifest_id`, a missing marker reading as empty; `aliases` when an agent shows
-    others than it declares, an update unsetting every alias but the declared one; and `tags`
+    others than it declares, compared casefolded as an unquoted alias is stored upper-cased, an
+    update unsetting every alias but the declared one; and `tags`
     when an agent or a semantic view shows others, which the update unsets or the replace drops.
     Tags that were not read are not compared, so an unread object never seems to gain them.
     """
@@ -42,8 +43,13 @@ def changed_properties(change: Change, manifest_id: str) -> tuple[PropertyChange
         ("target", observed.qualified_name.sql, rendered.target.sql),
         ("fingerprint", marker.fingerprint if marker else "", rendered.fingerprint),
         ("manifest_id", marker.manifest_id if marker else "", manifest_id),
-        ("aliases", ", ".join(sorted(observed.aliases)), ", ".join(aliases)),
+        ("aliases", ", ".join(sorted(observed.aliases, key=str.casefold)), ", ".join(aliases)),
     ]
     if observed.tags is not None:
         pairs.append(("tags", ", ".join(sorted(observed.tags)), ", ".join(sorted(rendered.desired_tags))))
-    return tuple(PropertyChange(name, before, after) for name, before, after in pairs if before != after)
+    return tuple(PropertyChange(name, before, after) for name, before, after in pairs if _differs(name, before, after))
+
+
+def _differs(name: str, before: str, after: str) -> bool:
+    """Whether a property's two values differ: an agent's aliases casefolded, anything else exactly."""
+    return before.casefold() != after.casefold() if name == "aliases" else before != after
