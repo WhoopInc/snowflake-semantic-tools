@@ -1878,4 +1878,4 @@ dbt = []
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.12"
-content-hash = "dbdc68034a22009bfc982bcccde2ce5f9447bffc9483b1aa7d3282061a5798b7"
+content-hash = "c871eeceb578bf6a368f6ef1641eb977116e7f809e4077ca6369fa686af7769b"
