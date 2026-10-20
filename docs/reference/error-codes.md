@@ -5428,9 +5428,11 @@ Fix: name a member as {{ skill('&lt;member&gt;') }}, or remove the name to load 
 
 `<artifact>: the catalog will serve <found> of <target>, not <value>, because <detail>`
 
-Raised when the catalog will serve a different version than the one published (certification ordering).
+Raised when another version of the extension is certified and outranks the one the release publishes, so the catalog serves it whatever the default version is.
 
 Fix: agents pin their version and are unaffected; to serve this version in the catalog, set `+certified: true` and un-certify any later certified version in Snowsight
+
+Note: Without such a version, apply makes the published version the extension's default, so a revert or a default moved by hand is an update in the plan, not this warning.
 
 ### SST-VAL843
 

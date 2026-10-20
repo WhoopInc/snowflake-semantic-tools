@@ -2,7 +2,8 @@
 
 The version alias is the bundle digest, so a version is never rewritten: apply
 uploads the bundle under `@<stage>/<name>/<ALIAS>/`, verifies it byte for byte,
-and adds the version from that prefix only when the alias is absent. It never
+and adds the version from that prefix only when the alias is absent. It then makes
+that version the default, unless a certified version outranks it. It never
 drops, grants, un-certifies, or changes discoverability. Lost state is recovered
 from the same content: the version and the prefix it was added from.
 """
@@ -25,6 +26,12 @@ from snowflake_semantic_tools.app.lifecycle.composite import (
     failed,
     read_back,
     skipped,
+)
+from snowflake_semantic_tools.app.lifecycle.extension_versions import (
+    certified,
+    certified_instead,
+    default_elsewhere,
+    served_warning,
 )
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
@@ -55,7 +62,6 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.sql import Sql, ident, literal, qname, sql
 from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, AppliedEntry
 
-CERTIFIED = "CERTIFIED"
 # The TYPEs a CORTEX EXTENSION is created with; an extension without one cannot be a skill.
 EXTENSION_TYPES = frozenset(("SKILL", "PLUGIN"))
 
@@ -70,8 +76,10 @@ class _Observed:
     versions: tuple[ExtensionVersion, ...] = ()
 
     def details(self) -> tuple[tuple[str, str], ...]:
+        """Return what apply compares with the plan's observation: names and digests, `""` for absent."""
         extension = self.extension
         version = self.version
+        default = next((item.name for item in self.versions if item.is_default), "")
         return (
             ("stage_type", self.stage_type or ""),
             ("staged", _digest(self.staged)),
@@ -80,6 +88,7 @@ class _Observed:
             ("version", version.name if version else ""),
             ("version_files", _digest(self.version_files)),
             ("certification", (version.certification_status or "") if version else ""),
+            ("default", default),
         )
 
 
@@ -111,10 +120,7 @@ class ExtensionLifecycleHandler(CompositeHandler[ExtensionRelease, _Observed, Ca
         versions: tuple[ExtensionVersion, ...] = ()
         if extension is not None:
             versions = self._port.extension_versions(release.target)
-            version = next(
-                (item for item in versions if (item.alias or "").casefold() == release.alias.casefold()),
-                None,
-            )
+            version = _aliased(versions, release.alias)
             if version is not None:
                 version_files = self._port.list_location(version.location)
         return _Observed(stage_type, tuple(sorted(staged)), extension, version, tuple(sorted(version_files)), versions)
@@ -130,7 +136,8 @@ class ExtensionLifecycleHandler(CompositeHandler[ExtensionRelease, _Observed, Ca
         refusal = _refusal(artifact.key, state_entry, release, observed, observation)
         if refusal is not None:
             return refusal
-        warnings = _served_warning(artifact.key, observed, release)
+        served = certified_instead(observed.extension, observed.versions, observed.version, certifies=release.certified)
+        warnings = served_warning(artifact.key, release.target.sql, release.alias, served)
         action, reason = _action(artifact, state_entry, release, observed)
         return CompositePlan(action, reason, observation, warnings)
 
@@ -217,9 +224,9 @@ class _Run(PublicationRun[CatalogPublicationPort]):
 
     The steps run in order: ensure the bundle stage, upload the bundle and read it back,
     create the extension from the bundle, add the version unless the create made it, then
-    verify the version, align the comment, and certify it. When the version the plan observed
-    already exists, the bundle is neither uploaded nor read back from its stage prefix: the
-    version's own files are what `_check_version` verifies.
+    verify the version, align the comment, make it the default, and certify it. When the version
+    the plan observed already exists, the bundle is neither uploaded nor read back from its
+    stage prefix: the version's own files are what `_check_version` verifies.
     """
 
     def __init__(
@@ -373,10 +380,11 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         return failure
 
     def _check_version(self) -> ApplyOutcome:
-        """Require the aliased version to hold the bundle, align the comment, then certify if asked."""
+        """Require the aliased version to hold the bundle, align the comment and the default, then certify."""
         release = self._release
         target = release.target.sql
-        version = self._version()
+        versions = self._port.extension_versions(release.target)
+        version = _aliased(versions, release.alias)
         if version is None:
             return self.fail(f"alias {release.alias} is absent from {target} after ADD VERSION", "SST-APL016")
         # Snowflake publishes no CORTEX EXTENSION reference; the server adds an empty version from a
@@ -390,10 +398,10 @@ class _Run(PublicationRun[CatalogPublicationPort]):
                 f"{version.name} of {target} differs from the bundle ({_difference(published, release.paths)})",
                 "SST-APL016",
             )
-        failure = self._align_comment()
+        failure = self._align_comment() or self._point_default(versions, version)
         if failure is not None:
             return failure
-        if release.certified and not _certified(self._current.extension, version):
+        if release.certified and not certified(self._current.extension, version):
             return self._certify()
         self._certification_done = True
         return self._published(version)
@@ -409,6 +417,34 @@ class _Run(PublicationRun[CatalogPublicationPort]):
                 target=qname(release.target),
                 comment=literal(release.comment),
             )
+        )
+
+    def _point_default(self, versions: tuple[ExtensionVersion, ...], version: ExtensionVersion) -> ApplyOutcome | None:
+        """Make the release's version the default unless a certified version outranks it, then read it back.
+
+        MEASURED: SET DEFAULT_VERSION takes a version's system name and refuses its alias, and a
+        default set so stays put when a version is added (docs/design/snowflake-behaviour.md).
+        A default that does not read back fails the change (SST-APL016).
+        """
+        release = self._release
+        if not default_elsewhere(self._current.extension, versions, version, certifies=release.certified):
+            return None
+        failure = self._execute(
+            sql(
+                "ALTER CORTEX EXTENSION {target} SET DEFAULT_VERSION = {version}",
+                target=qname(release.target),
+                version=literal(version.name),
+            )
+        )
+        if failure is not None:
+            return failure
+        named = version.name.upper()
+        if any(
+            item.name.upper() == named and item.is_default for item in self._port.extension_versions(release.target)
+        ):
+            return None
+        return self.fail(
+            f"{version.name} of {release.target.sql} is not the default after SET DEFAULT_VERSION", "SST-APL016"
         )
 
     def _certify(self) -> ApplyOutcome:
@@ -446,7 +482,7 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         if failure is not None:
             return failure
         version = self._version()
-        if version is None or not _certified(self._port.observe_extension(release.target), version):
+        if version is None or not certified(self._port.observe_extension(release.target), version):
             found = version.certification_status if version is not None else "absent"
             return self.fail(
                 f"{release.alias} of {target} reports certification {found or 'unset'} after tagging",
@@ -464,9 +500,7 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         )
 
     def _version(self) -> ExtensionVersion | None:
-        alias = self._release.alias.casefold()
-        versions = self._port.extension_versions(self._release.target)
-        return next((item for item in versions if (item.alias or "").casefold() == alias), None)
+        return _aliased(self._port.extension_versions(self._release.target), self._release.alias)
 
     def _execute(self, statement: Sql, *, code: str = "SST-APL001") -> ApplyOutcome | None:
         result = self._run_statement(statement)
@@ -561,45 +595,27 @@ def _action(
     release: ExtensionRelease,
     observed: _Observed,
 ) -> tuple[Action, ChangeReason]:
-    """Decide what an unblocked release needs: the extension, its version, comment, or certification."""
+    """Decide what an unblocked release needs: extension, version, comment, default, or certification."""
     extension = observed.extension
     version = observed.version
     comment_drift = extension is not None and (extension.comment or "") != release.comment
-    uncertified = release.certified and (version is None or not _certified(extension, version))
+    uncertified = release.certified and (version is None or not certified(extension, version))
     if extension is None:
         return Action.CREATE, ChangeReason.NOT_PRESENT
     if version is None or comment_drift or uncertified:
         return Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS
+    if default_elsewhere(extension, observed.versions, version, certifies=release.certified):
+        # A revert, or a default moved by hand: nothing is published, but the version
+        # becomes the default again and state records which one the project declares.
+        return Action.UPDATE, ChangeReason.DEFAULT_VERSION_DIFFERS
     if state_entry is not None and (
         state_entry.fingerprint != artifact.fingerprint or state_entry.outcome == FAILED_AFTER_WRITE
     ):
-        # A revert to a version that already exists, or a publish that failed
-        # after writing it: nothing is published, but the run re-verifies the
+        # A revert the default already serves or a certified version outranks, or a publish
+        # that failed after writing it: nothing is published, but the run re-verifies the
         # version and state records which one the project now declares.
         return Action.UPDATE, ChangeReason.STATE_MANIFEST_MISMATCH
     return Action.NOOP, ChangeReason.UNCHANGED
-
-
-# A plan-time check against what the catalog serves, observed through the Snowflake port,
-# so it stays with the planner rather than in `domain.validate`.
-def _served_warning(key: str, observed: _Observed, release: ExtensionRelease) -> DiagnosticBag:
-    """Warn when the catalog will serve another version than this release's (SST-VAL841)."""
-    served = _served_instead(observed, release)
-    if served is None:
-        return DiagnosticBag()
-    return DiagnosticBag(
-        (
-            D(
-                "SST-VAL841",
-                subject=key,
-                artifact=key,
-                value=release.alias,
-                target=release.target.sql,
-                found=served[0],
-                detail=served[1],
-            ),
-        )
-    )
 
 
 def _moved_schema(entry: AppliedEntry, release: ExtensionRelease) -> bool:
@@ -618,55 +634,10 @@ def _recorded_target(entry: AppliedEntry, release: ExtensionRelease) -> bool:
         return False
 
 
-def _certified(extension: ExtensionObservation | None, version: ExtensionVersion) -> bool:
-    """Whether a version is certified, by its own status or as the extension's latest certified version.
-
-    Either signal counts: some versions tagged by the extensions pipeline report an empty
-    per-version status while the extension names them its latest certified one. The
-    extension may name that version by its system name or by its alias, so both identify it;
-    matching the name alone would read an alias as uncertified and re-tag on every run.
-    """
-    if (version.certification_status or "").upper() == CERTIFIED:
-        return True
-    latest = extension.latest_certified_version if extension is not None else None
-    return latest is not None and latest.upper() in _version_identity(version)
-
-
-def _version_identity(version: ExtensionVersion) -> frozenset[str]:
-    """Every name a version answers to, uppercased: its system name and, when it has one, its alias."""
-    return frozenset(name.upper() for name in (version.name, version.alias) if name)
-
-
-def _served_instead(observed: _Observed, release: ExtensionRelease) -> tuple[str, str] | None:
-    """The version the catalog will serve instead of this release's, and why.
-
-    The catalog serves the latest certified version when any is certified, and the
-    default otherwise; ADD VERSION makes the new version the default. Agents pin
-    their version, so only catalog users are affected.
-    """
-    extension = observed.extension
-    if extension is None:
-        return None
-    certified = {item.name.upper() for item in observed.versions if _certified(extension, item)}
-    ours = observed.version.name.upper() if observed.version is not None else None
-    if release.certified:
-        if ours is None:
-            return None
-        certified.add(ours)
-    if certified:
-        latest = max(certified, key=_version_number)
-        if latest == ours:
-            return None
-        return latest, "it is the latest certified version"
-    default = next((item.name.upper() for item in observed.versions if item.is_default), None)
-    if ours is None or default is None or default == ours:
-        return None
-    return default, "it is the default version"
-
-
-def _version_number(name: str) -> int:
-    number = name.upper().removeprefix("VERSION$")
-    return int(number) if number.isdigit() else -1
+def _aliased(versions: tuple[ExtensionVersion, ...], alias: str) -> ExtensionVersion | None:
+    """The version carrying an alias, compared casefolded; None when none does."""
+    folded = alias.casefold()
+    return next((item for item in versions if (item.alias or "").casefold() == folded), None)
 
 
 def _stale(planned: tuple[tuple[str, str], ...], current: tuple[tuple[str, str], ...]) -> bool:

@@ -692,7 +692,7 @@ must put `FROM` and `VERSION` before `TYPE`. The name given to `ADD VERSION`
 becomes the version's alias. The version itself is `VERSION$<n>`, and its files
 list only under `versions/version$<n>/`: the alias path lists nothing.
 
-**Evidence**: `Enforced`. `test_first_publish_then_noop_then_revert_is_a_state_only_update`
+**Evidence**: `Enforced`. `test_first_publish_then_noop_then_revert_points_the_default_back`
 in [test_extension_lifecycle.py](../../tests/unit/app/test_extension_lifecycle.py)
 pins the exact `CREATE`. `test_list_location_returns_paths_relative_to_a_prefix_or_version`
 in [test_snowflake_connector.py](../../tests/unit/adapters/test_snowflake_connector.py)
@@ -721,6 +721,37 @@ built from empty:
 **SST depends on it at**: `_create_extension` in
 [extensions.py](../../snowflake_semantic_tools/app/lifecycle/extensions.py);
 step 3 of publishing in [the skills guide](../guides/skills.md#publishing).
+
+### A default version is named by its system name, and stays where it is set
+
+**Docs say**: nothing (see above).
+
+**Server does**: measured on a live account, `ALTER CORTEX EXTENSION ... SET
+DEFAULT_VERSION = <v>` accepts a version's system name unquoted (`VERSION$2`),
+double-quoted (`"VERSION$2"`) or as a string literal (`'VERSION$2'`), and `LAST`
+quoted or not. A version's alias is refused: `099103 (22023): Invalid default`.
+`UNSET DEFAULT_VERSION` works, and the default then follows the newest version.
+A default set by name stays where it is when `ADD VERSION` adds a version.
+`SHOW VERSIONS IN CORTEX EXTENSION` marks each version's `is_default`, and
+`SHOW CORTEX EXTENSIONS` reports the `effective_version` the catalog serves and
+the `latest_certified_version`.
+
+**Evidence**: `Enforced`. After every publish SST sets the default to the
+version holding the declared alias, by its system name as a string literal,
+unless a certified version outranks it, and reads the default back. The
+offline fake refuses an alias and keeps a default set by name where it is, as
+the server does:
+`test_first_publish_then_noop_then_revert_points_the_default_back` in
+[test_extension_lifecycle.py](../../tests/unit/app/test_extension_lifecycle.py);
+`test_every_publish_after_a_pinned_default_becomes_the_default` and
+`test_the_fake_takes_a_default_as_snowflake_does` in
+[test_extension_default.py](../../tests/unit/app/test_extension_default.py).
+
+**SST depends on it at**: `_point_default` in
+[extensions.py](../../snowflake_semantic_tools/app/lifecycle/extensions.py);
+`default_elsewhere` in
+[extension_versions.py](../../snowflake_semantic_tools/app/lifecycle/extension_versions.py);
+step 5 of publishing in [the skills guide](../guides/skills.md#publishing).
 
 ### ADD VERSION from a path that holds nothing succeeds
 

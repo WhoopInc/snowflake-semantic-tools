@@ -9,12 +9,12 @@ from dataclasses import replace
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
+from snowflake_semantic_tools.app.lifecycle.extension_versions import version_number
 from snowflake_semantic_tools.app.lifecycle.extensions import (
     ExtensionLifecycleHandler,
     _difference,
     _recorded_target,
     _stale,
-    _version_number,
 )
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
@@ -140,7 +140,7 @@ def test_catalog_channel_absent_or_invalid_prefix_compiles_nothing() -> None:
     ]
 
 
-def test_first_publish_then_noop_then_revert_is_a_state_only_update() -> None:
+def test_first_publish_then_noop_then_revert_points_the_default_back() -> None:
     port = FakeSnowflake(existing=())
     compiled = compile_catalog(SkillCatalog((skill(),)))
     changeset, result, after = publish(port, compiled, empty_state())
@@ -177,14 +177,21 @@ def test_first_publish_then_noop_then_revert_is_a_state_only_update() -> None:
 
     changeset, result, reverted = publish(port, compiled, after_change)
     assert [(change.action, change.reason) for change in changeset.changes] == [
-        (Action.UPDATE, ChangeReason.STATE_MANIFEST_MISMATCH)
+        (Action.UPDATE, ChangeReason.DEFAULT_VERSION_DIFFERS)
     ]
     assert result.success
     assert len(port.extension_versions(QualifiedName.parse("DB.S.MONTH_CLOSE"))) == 2
+    # The revert publishes nothing: the version holding its alias becomes the default again,
+    # named by its system name, which is all SET DEFAULT_VERSION accepts.
+    assert port.scripts[-1] == ("ALTER CORTEX EXTENSION DB.S.MONTH_CLOSE SET DEFAULT_VERSION = 'VERSION$1'",)
+    assert observation(port, QualifiedName.parse("DB.S.MONTH_CLOSE")).effective_version == "VERSION$1"
     assert (
         reverted.applied["skill:month-close"].fingerprint == compiled["skill:month-close"].rendered_artifact.fingerprint
     )
-    assert [item.code for item in changeset.diagnostics] == ["SST-VAL841"]
+    assert dict(reverted.applied["skill:month-close"].component_fingerprints)["version"] == "VERSION$1"
+    assert [item.code for item in changeset.diagnostics] == []
+    changeset, _, _ = publish(port, compiled, reverted)
+    assert [change.action for change in changeset.changes] == [Action.NOOP]
 
 
 def test_resume_after_partial_upload_uploads_only_missing_files() -> None:
@@ -337,12 +344,15 @@ def test_the_catalog_keeps_serving_a_certified_version_over_an_uncertified_one()
     assert result.success and served_warnings(changeset) == []
     assert observation(port, target).effective_version == "VERSION$2"
 
-    # Reverting to the older version cannot outrank the later certified one.
+    # Reverting to the older version cannot outrank the later certified one, so the default
+    # is left where it is: the catalog would not serve it anyway.
+    sent = len(port.scripts)
     changeset, _, _ = publish(port, first, after_change)
     assert served_warnings(changeset) == [
         f"skill:month-close: the catalog will serve VERSION$2 of DB.S.MONTH_CLOSE, not "
         f"{first['skill:month-close'].release.alias}, because it is the latest certified version"
     ]
+    assert not any("DEFAULT_VERSION" in item for script in port.scripts[sent:] for item in script)
 
 
 class LaggingCertification(FakeSnowflake):
@@ -391,15 +401,16 @@ def test_served_version_prediction_edges() -> None:
     _, _, after = publish(port, compiled, empty_state())
     changed = compile_catalog(SkillCatalog((skill(body="Read reference/steps.md twice.\n"),)))
     _, _, after_change = publish(port, changed, after)
-    # Nothing is certified, so a revert is served only if it is the default.
+    # Nothing is certified, so a revert is served once apply makes it the default again.
     changeset, _, reverted = publish(port, compiled, after_change)
-    assert [message.split(", because ")[-1] for message in served_warnings(changeset)] == ["it is the default version"]
+    assert served_warnings(changeset) == []
+    assert observation(port, QualifiedName.parse("DB.S.MONTH_CLOSE")).effective_version == "VERSION$1"
     # A certified revert with no later certified version becomes the one served.
     certified = compile_catalog(SkillCatalog((skill(),)), replace(CHANNEL, certified=True))
     changeset, result, _ = publish(port, certified, reverted)
     assert result.success and served_warnings(changeset) == []
     assert observation(port, QualifiedName.parse("DB.S.MONTH_CLOSE")).effective_version == "VERSION$1"
-    assert _version_number("VERSION$12") == 12 and _version_number("LIVE") == -1
+    assert version_number("VERSION$12") == 12 and version_number("LIVE") == -1
 
 
 def test_plugin_falls_back_to_a_live_version_built_from_empty() -> None:

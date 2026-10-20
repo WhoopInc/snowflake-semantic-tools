@@ -51,6 +51,12 @@ config:
   skill's: the manifest's own `config:` (the keys without their `+`), then the
   closest folder route under `plugins:`, then the block root. A member skill is
   bundled into the plugin whether or not it publishes alone.
+- As for a skill, every apply makes the version holding the plugin's declared
+  alias the extension's default unless a certified version outranks it
+  (`SST-VAL841`), so a revert, or a default moved by hand, is an update that
+  moves the default back, and a plugin version published through a live
+  version is the default too. See the
+  [skills guide](skills.md#versions).
 - An agent references it with `{{ plugin('sales-toolkit') }}` and no
   `version:` (`SST-VAL838`). An entry without `name:` loads every member: SST
   renders it as one entry per member, since Snowflake refuses a plugin entry

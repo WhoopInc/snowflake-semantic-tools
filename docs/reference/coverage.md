@@ -767,7 +767,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL838`](error-codes.md#sst-val838) | VAL | error | local | `snowflake_semantic_tools.app.compile.agents.resolve_skills` | `tests/codes/val/test_sst_val838.py` |
 | [`SST-VAL839`](error-codes.md#sst-val839) | VAL | error | local | `snowflake_semantic_tools.app.compile.agents.resolve_skills` | `tests/codes/val/test_sst_val839.py` |
 | [`SST-VAL840`](error-codes.md#sst-val840) | VAL | error | local | `snowflake_semantic_tools.app.compile.agents.resolve_skills` | `tests/codes/val/test_sst_val840.py` |
-| [`SST-VAL841`](error-codes.md#sst-val841) | VAL | warning | observe | `snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/val/test_sst_val841.py` |
+| [`SST-VAL841`](error-codes.md#sst-val841) | VAL | warning | observe | `snowflake_semantic_tools.app.lifecycle.extension_versions` | `tests/codes/val/test_sst_val841.py` |
 | [`SST-VAL843`](error-codes.md#sst-val843) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.targets` | `tests/codes/val/test_sst_val843.py` |
 | [`SST-VAL844`](error-codes.md#sst-val844) | VAL | error | local | `snowflake_semantic_tools.domain.validate.profile` | `tests/codes/val/test_sst_val844.py` |
 | [`SST-VAL845`](error-codes.md#sst-val845) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.profile` | `tests/codes/val/test_sst_val845.py` |

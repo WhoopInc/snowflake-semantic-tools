@@ -151,9 +151,13 @@ letters, digits, and underscores (`SST-CFG008`).
 
 - Unchanged content keeps its alias, so an unchanged skill publishes nothing.
 - Reverting a change returns to an alias that already exists, so the revert
-  publishes nothing either: the plan shows an update that re-verifies the
-  version and records it in state. The plan warns if the catalog will serve a
-  different version (`SST-VAL841`).
+  publishes nothing either: the plan shows an update that makes that version the
+  extension's default again, and state records it.
+- After every apply the extension's default version is the one holding the
+  declared alias, so the catalog serves what the project declares. A default
+  moved by hand is an update in the next plan, which moves it back. Only a
+  certified version outranks the default: the plan warns when one will be
+  served instead (`SST-VAL841`), and leaves the default alone.
 - The commit that published each version is recorded in SST's state, not in
   the version name.
 
@@ -202,8 +206,8 @@ the rest of `SKILL.md`, so a `config:` there is part of the bundle's content.
 - Certification decides what the catalog serves. Once any version of an
   extension is certified, catalog users receive the latest certified version
   instead of the default, so a version published without `+certified: true`
-  stays behind a certified one; the plan says so (`SST-VAL841`). Agents pin their
-  version and are unaffected.
+  stays behind a certified one; the plan says so (`SST-VAL841`), and apply
+  leaves the default where it is. Agents pin their version and are unaffected.
 - `+certified: true` on an extension that state records in another schema
   blocks the plan (`SST-VAL807`): moving it would change the name every pinned
   reference uses.
@@ -237,8 +241,10 @@ For each skill, `sst apply`:
    Snowflake can neither drop nor name, and which the catalog would serve;
 4. adds a version named by the alias from that prefix, unless it already exists;
 5. checks that the version holds exactly the bundle's files, sets the comment
-   again if the description changed, and certifies the version when
-   `+certified: true` asks for it.
+   again if the description changed, makes the version the extension's default
+   unless a certified version outranks it -- by its system name, `VERSION$<n>`,
+   since Snowflake refuses an alias there, then reads the default back -- and
+   certifies the version when `+certified: true` asks for it.
 
 A prefix is never reused for different content, so an upload cannot change a
 version that exists. The plan blocks a skill instead of publishing it when:

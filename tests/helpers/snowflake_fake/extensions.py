@@ -1,8 +1,14 @@
 """Cortex extensions as the fake keeps them, and the statements that change them.
 
 An extension is a dict: `type`, `comment`, `versions` (each a dict of `name`, `alias`,
-`location`, `files`, `sources`, `is_default`, `certification`), and `live`, the open live version
-or None. A version's `sources` maps each file to the staged path holding its bytes.
+`location`, `files`, `sources`, `is_default`, `certification`), `live`, the open live version
+or None, and `default_pinned`, absent or False until SET DEFAULT_VERSION names a version. A
+version's `sources` maps each file to the staged path holding its bytes.
+
+MEASURED on a live account: SET DEFAULT_VERSION takes a version's system name, bare, quoted or
+as a string literal, or LAST; an alias is refused (099103, `Invalid default`). A default set
+this way stays where it is when a version is added; UNSET DEFAULT_VERSION makes the newest
+version the default again, and later versions with it.
 """
 
 from __future__ import annotations
@@ -52,15 +58,22 @@ def quoted_arguments(statement: str) -> tuple[str, ...]:
 def apply_extension_statement(
     extensions: dict[str, dict[str, object]], stage_files: Sequence[str], normalized: str, original: str
 ) -> None:
-    """Apply one CREATE or ALTER CORTEX EXTENSION statement that succeeded.
+    """Apply one CREATE, ALTER or DROP CORTEX EXTENSION statement that succeeded.
 
     Raises:
-        SnowflakePortError: the statement alters an extension that does not exist, or commits
-            a live version it has not opened.
+        SnowflakePortError: the statement alters or drops an extension that does not exist,
+            commits a live version it has not opened, or sets a default that is no version's
+            system name.
     """
     tokens = normalized.split()
     upper = [token.upper() for token in tokens]
     quoted = tuple(value.replace("\\\\", "\\") for value in quoted_arguments(original))
+    if upper[0] == "DROP":
+        if_exists = upper[3:5] == ["IF", "EXISTS"]
+        name = tokens[5] if if_exists else tokens[3]
+        if extensions.pop(name, None) is None and not if_exists:
+            raise SnowflakePortError(f"Cortex extension {name} does not exist")
+        return
     if upper[0] == "CREATE":
         name = tokens[6]
         if name not in extensions:
@@ -125,11 +138,35 @@ def _alter(
         extension["live"] = None
     elif clause.startswith("SET COMMENT"):
         extension["comment"] = quoted[0]
+    elif clause.startswith("SET DEFAULT_VERSION"):
+        _set_default(extension, " ".join(tokens[4:]).split("=", 1)[1].strip().strip("'\""))
+    elif clause == "UNSET DEFAULT_VERSION":
+        _follow_newest(extension)
     elif clause.startswith("VERSION ") and "SET TAG" in clause:
         label = tokens[5].casefold()
         for version in versions(extension):
             if label in (str(version["alias"]).casefold(), str(version["name"]).casefold()):
                 version["certification"] = quoted[0]
+
+
+def _set_default(extension: dict[str, object], name: str) -> None:
+    """Pin the default on the version with this system name; LAST follows the newest instead."""
+    if name.upper() == "LAST":
+        _follow_newest(extension)
+        return
+    listed = versions(extension)
+    if not any(str(version["name"]).casefold() == name.casefold() for version in listed):
+        raise SnowflakePortError("099103 (22023): Invalid default")
+    for version in listed:
+        version["is_default"] = str(version["name"]).casefold() == name.casefold()
+    extension["default_pinned"] = True
+
+
+def _follow_newest(extension: dict[str, object]) -> None:
+    listed = versions(extension)
+    for version in listed:
+        version["is_default"] = version is listed[-1]
+    extension["default_pinned"] = False
 
 
 def _sources(stage_files: Sequence[str], source: str) -> dict[str, str]:
@@ -157,8 +194,10 @@ def _add_version(
     if any(str(version["alias"]).casefold() == alias.casefold() for version in listed):
         raise SnowflakePortError(f"version alias {alias} already exists in {name}")
     system = f"VERSION${len(listed) + 1}"
-    for version in listed:
-        version["is_default"] = False
+    pinned = extension.get("default_pinned") is True
+    if not pinned:
+        for version in listed:
+            version["is_default"] = False
     listed.append(
         {
             "name": system,
@@ -166,7 +205,7 @@ def _add_version(
             "location": f"snow://cortex_extension/{name}/versions/{system.lower()}/",
             "files": list(contents),
             "sources": dict(sources),
-            "is_default": True,
+            "is_default": not pinned,
             "certification": None,
         }
     )

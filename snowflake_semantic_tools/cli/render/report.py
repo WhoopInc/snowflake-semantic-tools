@@ -46,6 +46,7 @@ _REASONS = {
     ChangeReason.UNRECORDED_PUBLISH: "published but not recorded",
     ChangeReason.VERSION_DRIFT: "its alias or live version drifted",
     ChangeReason.OVERWRITE: "changed out of band; overwritten",
+    ChangeReason.DEFAULT_VERSION_DIFFERS: "another version is the default",
 }
 _STATUS_STYLE = {
     OutcomeStatus.APPLIED: ("ok", "success"),

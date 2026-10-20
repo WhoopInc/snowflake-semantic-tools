@@ -573,7 +573,9 @@ ARTIFACT_REGISTRY = build_registry(
                 "One `SKILL.md` folder, flattened and published as a version of a skill-type Cortex "
                 "Extension wherever its `+bundle_stage` resolves. The version alias is its "
                 "`+version_prefix` and 12 hex characters of the bundle digest, so a version is never "
-                "rewritten: a change adds a new one, and `--prune` only reports one whose folder was deleted."
+                "rewritten: a change adds a new one, every apply makes the declared one the default "
+                "unless a certified version outranks it, and `--prune` only reports one whose folder "
+                "was deleted."
             ),
             authored_in="a `SKILL.md` folder in `project.skills_dir`",
             publishes="CORTEX EXTENSION (TYPE = 'SKILL') and its bundle stage",

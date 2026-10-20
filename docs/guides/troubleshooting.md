@@ -557,7 +557,8 @@ still stops the run, and `--partial` cannot be combined with `--prune`.
 ## The catalog still offers an older skill version
 
 **`SST-VAL841`**: once any version of an extension is certified, the catalog
-serves the latest certified version rather than the newest one. Publish with
+serves the latest certified version rather than the default, which apply
+otherwise points at the version the project declares. Publish with
 `certified` resolving to true for the skill -- `skills.+certified: true`, a
 folder route, or the skill's own `config: {certified: true}` -- or certify the
 new version; a later certified version

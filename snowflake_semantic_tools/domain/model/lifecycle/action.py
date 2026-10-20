@@ -45,6 +45,8 @@ class ChangeReason(Enum):
     OVERWRITE updates, under `--overwrite`, an object changed out of band that would otherwise
     be blocked: apply publishes the planned definition over the edit, and an agent keeps its
     versions and gains one, or only gets its marker back when its newest already holds it.
+    DEFAULT_VERSION_DIFFERS updates a skill or plugin whose version is published but is not the
+    extension's default, while no certified version outranks it, so apply makes it the default.
     """
 
     NOT_PRESENT = "not_present"
@@ -60,3 +62,4 @@ class ChangeReason(Enum):
     UNRECORDED_PUBLISH = "unrecorded_publish"
     VERSION_DRIFT = "version_drift"
     OVERWRITE = "overwrite"
+    DEFAULT_VERSION_DIFFERS = "default_version_differs"

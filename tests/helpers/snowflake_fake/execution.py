@@ -10,7 +10,7 @@ holds a `refused` fragment; otherwise each statement takes effect in order:
   type); CREATE TABLE makes the table exist; INSERT INTO counts its rows.
 - ALTER DATASET ... ADD VERSION appends the version; SYSTEM$CREATE_EVALUATION_DATASET makes
   the dataset exist, owned by the session's role.
-- CREATE and ALTER CORTEX EXTENSION change the extension (`extensions.py`).
+- CREATE, ALTER and DROP CORTEX EXTENSION change the extension (`extensions.py`).
 
 A statement that cannot take effect fails the script there, as Snowflake reports it.
 
@@ -143,7 +143,7 @@ class FakeExecution(SnowflakeWorld):
             if "SNOWFLAKE_SSE" in upper:
                 self.stage_types[name] = "INTERNAL NO CSE"
             self._exists(name)
-        elif upper.startswith(("CREATE CORTEX EXTENSION", "ALTER CORTEX EXTENSION")):
+        elif upper.startswith(("CREATE CORTEX EXTENSION", "ALTER CORTEX EXTENSION", "DROP CORTEX EXTENSION")):
             with self.stage_guard:
                 staged = tuple(self.stage_files)
             apply_extension_statement(self.extensions, staged, normalized, statement)
