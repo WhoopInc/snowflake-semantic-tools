@@ -32,14 +32,28 @@ def test_registry_has_m4_artifacts_and_all_seven_semantic_member_types() -> None
         "plugin",
         "profile",
         "agent",
+        "cowork_profile",
         "eval",
     )
-    assert [value.ddl_position for value in SEMANTIC_REGISTRY.artifacts.values()] == [100, 200, 250, 260, 270, 300, 400]
+    assert [value.ddl_position for value in SEMANTIC_REGISTRY.artifacts.values()] == [
+        100,
+        200,
+        250,
+        260,
+        270,
+        300,
+        350,
+        400,
+    ]
     assert SEMANTIC_REGISTRY.artifacts["profile"].ref_function is None
     assert SEMANTIC_REGISTRY.artifacts["tool"].dependency_types == ("semantic_view",)
     assert SEMANTIC_REGISTRY.artifacts["agent"].dependency_types == ("semantic_view", "tool", "skill", "plugin")
-    assert SEMANTIC_REGISTRY.artifacts["agent"].pins_versions_of == ("skill", "plugin")
-    assert all(not value.pins_versions_of for name, value in SEMANTIC_REGISTRY.artifacts.items() if name != "agent")
+    pinning = ("agent", "cowork_profile")
+    for name in pinning:
+        assert SEMANTIC_REGISTRY.artifacts[name].pins_versions_of == ("skill", "plugin")
+    assert all(not value.pins_versions_of for name, value in SEMANTIC_REGISTRY.artifacts.items() if name not in pinning)
+    assert SEMANTIC_REGISTRY.artifacts["cowork_profile"].dependency_types == ("agent", "tool", "skill", "plugin")
+    assert SEMANTIC_REGISTRY.artifacts["cowork_profile"].ref_function is None
     for name in ("skill", "plugin"):
         assert SEMANTIC_REGISTRY.artifacts[name].lifecycle is ArtifactLifecycle.COMPOSITE
         assert SEMANTIC_REGISTRY.artifacts[name].ref_function == name

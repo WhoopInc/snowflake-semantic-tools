@@ -163,6 +163,12 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     ),
     _key("project.plugins_dir", _S, "Plugin manifests, each grouping skills into one extension.", default="plugins"),
     _key("project.profiles_dir", _S, "CoCo Desktop profiles plus the shared prompt and rules.", default="profiles"),
+    _key(
+        "project.cowork_profiles_dir",
+        _S,
+        "Snowflake CoWork profiles (Snowflake private preview), each routing questions to agents.",
+        default="cowork_profiles",
+    ),
     _key("project.hooks_dir", _S, "Hook definitions and their scripts, referenced by profiles.", default="hooks"),
     _key("project.mcp_servers_dir", _S, "MCP server configs, referenced by profiles.", default="mcp-servers"),
     _key(
@@ -479,6 +485,46 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _removed("agents.+meta", "put metadata on the agent itself"),
     _removed("agents.+create_mode", "agents are created once and versioned"),
     _key("agents.<route>", _BLOCK, "Folder route: overrides for agents under that directory."),
+    _key(
+        "cowork_profiles",
+        _BLOCK,
+        "Defaults for Snowflake CoWork profiles (Snowflake private preview; "
+        "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles), overridable "
+        "per folder and by a profile's own `config:`.",
+        children=ChildPolicy.ROUTES,
+    ),
+    _key(
+        "cowork_profiles.+database",
+        _ID,
+        "Database for CoWork profiles; CoWork lists only the profiles in SNOWFLAKE_INTELLIGENCE.PROFILES.",
+        default="the target database",
+    ),
+    _key(
+        "cowork_profiles.+schema",
+        _ID,
+        "Schema for CoWork profiles; CoWork lists only the profiles in SNOWFLAKE_INTELLIGENCE.PROFILES.",
+        default="the target schema",
+    ),
+    _key(
+        "cowork_profiles.+orchestration_model",
+        _S,
+        "Orchestration model the profile routes questions with; must be in `snowflake.orchestration_models` "
+        "(SST-CFG025). `auto` lets Snowflake choose.",
+        default="auto",
+    ),
+    _key("cowork_profiles.+alias", _S, "Version alias assigned after publication."),
+    _key(
+        "cowork_profiles.+enabled",
+        _B,
+        "Whether CoWork profiles are compiled; false leaves them out of the project.",
+        default="true",
+    ),
+    _key(
+        "cowork_profiles.+tags",
+        _L,
+        "Tags, as `name` and `value` entries, set with ALTER AGENT ... SET TAG; a closer setting replaces the list.",
+    ),
+    _key("cowork_profiles.<route>", _BLOCK, "Folder route: overrides for CoWork profiles under that directory."),
     _key(
         "evals",
         _BLOCK,

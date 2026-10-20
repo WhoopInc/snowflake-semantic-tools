@@ -126,7 +126,8 @@ def test_concurrent_observation_is_the_serial_one_whatever_order_reads_finish_in
     serial = _observed(port, 1, arguments)
     assert port.most_running == 1
     artifacts, diagnostics, _ = serial
-    assert len(artifacts) == 16  # type: ignore[arg-type]  # a tuple of items
+    # With no kind targets, each of the four agents is listed under both kinds that publish AGENT.
+    assert len(artifacts) == 20  # type: ignore[arg-type]  # a tuple of items
     # The grants read of a view listed first, then the listing of a type observed after views.
     [grants, listing] = [item.message for item in diagnostics]  # type: ignore[attr-defined]  # Diagnostics
     assert "grants on DB.SCHEMA.V3" in grants

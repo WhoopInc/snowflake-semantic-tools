@@ -15,6 +15,7 @@ another artifact with `{{ <function>('<name>') }}`.
 | [`plugin`](#plugin) | 260 | `plugin.yml` in `project.plugins_dir` | CORTEX EXTENSION (TYPE = 'PLUGIN') and its bundle stage | `plugin()` |
 | [`profile`](#profile) | 270 | `profile.yml` in `project.profiles_dir` | profile stage trees and one profile registry row | none |
 | [`agent`](#agent) | 300 | `agent.yml` in `project.agents_dir` | AGENT | `agent()` |
+| [`cowork_profile`](#cowork_profile) | 350 | `cowork_profile.yml` in `project.cowork_profiles_dir` | AGENT with an agent_router tool | none |
 | [`eval`](#eval) | 400 | the dataset and config files an agent's `evals:` names, by convention in `evals/` | TABLE, DATASET, and a staged run configuration | none |
 
 ## semantic_view
@@ -79,6 +80,18 @@ A Cortex Agent whose specification SST renders and pins to exactly what it uses.
 - Grants: never touched: the object is not replaced
 - `--prune`: drops it once its source is deleted
 - Applied after: `semantic_view`, `tool`, `skill`, `plugin`
+- Pins the published version of: `skill`, `plugin` -- so a change to it plans only together with them
+
+## cowork_profile
+
+A Snowflake CoWork profile (Snowflake private preview): an AGENT that routes each question to one of the agents it names. SST renders its agent_router tool and subagent list; it publishes and versions like an agent. Prod targets publish it to SNOWFLAKE_INTELLIGENCE.PROFILES, where CoWork lists it.
+
+- Position: 350
+- Lifecycle: one Snowflake object
+- On update: altered or re-versioned in place
+- Grants: never touched: the object is not replaced
+- `--prune`: drops it once its source is deleted
+- Applied after: `agent`, `tool`, `skill`, `plugin`
 - Pins the published version of: `skill`, `plugin` -- so a change to it plans only together with them
 
 ## eval

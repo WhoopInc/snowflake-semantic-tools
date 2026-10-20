@@ -108,6 +108,14 @@ REFERENCE_FIELDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "agent.config.tags.name": ("tag",),
         "agent.evals.dataset": ("eval_dataset",),
         "agent.evals.config": ("eval_config",),
+        # A CoWork profile's fields, a Snowflake private preview: its subagents name an agent this
+        # project publishes, or an `agent` tool member for one it does not.
+        "cowork_profile.spec.instructions": ("file",),
+        "cowork_profile.spec.subagents.agent": ("agent", "tool"),
+        "cowork_profile.spec.skills.source.path": ("skill", "plugin", "extension"),
+        "cowork_profile.spec.skills.name": ("skill",),
+        "cowork_profile.spec.skills.source.version": ("var",),
+        "cowork_profile.config.tags.name": ("tag",),
         "eval_config.metrics.custom": ("eval_metric",),
         "tool.on": ("ref",),
         "tool.columns": ("ref",),

@@ -190,7 +190,16 @@ _SAMPLES: dict[KeyKind, tuple[object, object, object, object]] = {
 
 
 def test_the_chain_is_checked_for_every_routed_type_and_every_kind_of_key() -> None:
-    assert ROUTED_BLOCKS == ("semantic_views", "tools", "skills", "plugins", "profiles", "agents", "evals")
+    assert ROUTED_BLOCKS == (
+        "semantic_views",
+        "tools",
+        "skills",
+        "plugins",
+        "profiles",
+        "agents",
+        "cowork_profiles",
+        "evals",
+    )
     kinds = {spec.kind for block in ROUTED_BLOCKS for spec in block_settings(block).values()}
     assert kinds <= set(_SAMPLES)
     assert all(block_settings(block) for block in ROUTED_BLOCKS)

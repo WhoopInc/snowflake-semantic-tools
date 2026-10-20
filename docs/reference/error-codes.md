@@ -466,7 +466,7 @@ Fix: raise max_staleness to at least 120
 
 `<kind> '<found>' is absent from <key>`
 
-Raised when `agents.+orchestration_model`, or a folder route's, names a model `snowflake.orchestration_models` does not list; unset, that list holds only `auto`.
+Raised when `agents.+orchestration_model` or `cowork_profiles.+orchestration_model`, or a folder route's, names a model `snowflake.orchestration_models` does not list; unset, that list holds only `auto`.
 
 Fix: add it to {key}, or use an allowed value
 

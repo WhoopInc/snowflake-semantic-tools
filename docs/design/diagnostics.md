@@ -23,7 +23,8 @@ reports its area, in lowercase, as its `phase`, and the error reference has one 
 registry, configuration, discovery, parsing, loading, references, membership, validation, dbt,
 rendering, manifest and state, planning, apply, Snowflake, external systems, and internal.
 
-`VAL` is the largest area, so its hundreds digit is a band, and each band is its own module:
+`VAL` is the largest area, so its hundreds digit is a band, and each band is its own module, but
+for `VAL8xx`, which two modules share by range:
 
 | Band | Checks | Module |
 |---|---|---|
@@ -35,7 +36,8 @@ rendering, manifest and state, planning, apply, Snowflake, external systems, and
 | `VAL5xx` | agents | `val_agent` |
 | `VAL6xx` | tools | `val_tool` |
 | `VAL7xx` | evals | `val_eval` |
-| `VAL8xx` | skills, plugins, and profiles | `val_skill` |
+| `VAL8xx`, 801-869 | skills, plugins, and CoCo Desktop profiles | `val_skill` |
+| `VAL8xx`, 870-889 | Snowflake CoWork profiles, a Snowflake private preview | `val_cowork_profile` |
 
 An artifact or member type's `validation_rules` names the bands that check it, and `RULE_SETS` maps
 each name to its band.

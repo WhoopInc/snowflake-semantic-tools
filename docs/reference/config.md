@@ -29,6 +29,7 @@ Where each artifact type lives on disk.
 | `project.skills_dir` | string | `skills` | `SKILL.md` folders, published as Cortex Extensions and inside Desktop profiles. |
 | `project.plugins_dir` | string | `plugins` | Plugin manifests, each grouping skills into one extension. |
 | `project.profiles_dir` | string | `profiles` | CoCo Desktop profiles plus the shared prompt and rules. |
+| `project.cowork_profiles_dir` | string | `cowork_profiles` | Snowflake CoWork profiles (Snowflake private preview), each routing questions to agents. |
 | `project.hooks_dir` | string | `hooks` | Hook definitions and their scripts, referenced by profiles. |
 | `project.mcp_servers_dir` | string | `mcp-servers` | MCP server configs, referenced by profiles. |
 | `project.commands_dir` | string | `commands` | Desktop slash commands (`*.md`, nested folders allowed), referenced by profiles. |
@@ -183,6 +184,20 @@ Defaults for Cortex Agents, overridable per folder and by an agent's own `config
 | `agents.+scratch_schema` | two-part name | the agent's own schema | `DATABASE.SCHEMA` where `sst ask` and `sst test --suite evals --unpublished` make their scratch copies and temporary agents, and connected validate its model probes (SST-VAL551), for a role that cannot create them in the agent's own schema, or an agent in a personal database, which cannot hold a semantic view. Nothing publishes there. |
 | `agents.+tags` | list |  | Tags, as `name` and `value` entries, set with ALTER AGENT ... SET TAG; a closer setting replaces the list. |
 | `agents.<route>` | block |  | Folder route: overrides for agents under that directory. |
+
+## cowork_profiles
+
+Defaults for Snowflake CoWork profiles (Snowflake private preview; https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles), overridable per folder and by a profile's own `config:`.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `cowork_profiles.+database` | identifier | the target database | Database for CoWork profiles; CoWork lists only the profiles in SNOWFLAKE_INTELLIGENCE.PROFILES. |
+| `cowork_profiles.+schema` | identifier | the target schema | Schema for CoWork profiles; CoWork lists only the profiles in SNOWFLAKE_INTELLIGENCE.PROFILES. |
+| `cowork_profiles.+orchestration_model` | string | `auto` | Orchestration model the profile routes questions with; must be in `snowflake.orchestration_models` (SST-CFG025). `auto` lets Snowflake choose. |
+| `cowork_profiles.+alias` | string |  | Version alias assigned after publication. |
+| `cowork_profiles.+enabled` | boolean | `true` | Whether CoWork profiles are compiled; false leaves them out of the project. |
+| `cowork_profiles.+tags` | list |  | Tags, as `name` and `value` entries, set with ALTER AGENT ... SET TAG; a closer setting replaces the list. |
+| `cowork_profiles.<route>` | block |  | Folder route: overrides for CoWork profiles under that directory. |
 
 ## evals
 

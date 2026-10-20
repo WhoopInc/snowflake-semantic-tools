@@ -16,7 +16,7 @@ ROUTED = tuple(name for name, artifact in ARTIFACT_REGISTRY.artifacts.items() if
 
 
 def test_every_artifact_type_routes_by_folder() -> None:
-    assert ROUTED == ("semantic_view", "tool", "skill", "plugin", "profile", "agent", "eval")
+    assert ROUTED == ("semantic_view", "tool", "skill", "plugin", "profile", "agent", "cowork_profile", "eval")
 
 
 @pytest.mark.parametrize("name", ROUTED)

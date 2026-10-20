@@ -190,7 +190,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{kind} '{found}' is absent from {key}",
         "add it to {key}, or use an allowed value",
         condition=(
-            "`agents.+orchestration_model`, or a folder route's, names a model "
+            "`agents.+orchestration_model` or `cowork_profiles.+orchestration_model`, or a folder "
+            "route's, names a model "
             "`snowflake.orchestration_models` does not list; unset, that list holds only `auto`"
         ),
     ),

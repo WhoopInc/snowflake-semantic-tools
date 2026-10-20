@@ -65,6 +65,8 @@ Positions = Mapping[tuple[str | int, ...], tuple[int, int]]
 _SEVERITIES: Mapping[str, Severity] = MappingProxyType(
     {"error": Severity.ERROR, "warning": Severity.WARNING, "info": Severity.INFO}
 )
+# The routed blocks whose `+orchestration_model` names a model from `snowflake.orchestration_models`.
+_MODEL_BLOCKS = ("agents", "cowork_profiles")
 
 
 def validate_config(
@@ -97,8 +99,8 @@ def validate_config(
         SST-CFG054: a `+` key is written with no value.
         SST-CFG055: a folder route sets a `+` key only the block root may set.
         SST-CFG200: a deprecated key is set; it is checked as the key it is read as.
-        SST-CFG025: `agents.+orchestration_model`, or a folder route's, is not in
-            `snowflake.orchestration_models`.
+        SST-CFG025: `agents.+orchestration_model` or `cowork_profiles.+orchestration_model`, or a
+            folder route's, is not in `snowflake.orchestration_models`.
         SST-CFG033: a severity override demotes a non-demotable code, an error below warning, or
             promotes an info code to error.
         SST-CFG057: an entry of `governance.sensitive_tags` names no tag.
@@ -209,7 +211,7 @@ def severity_overrides(tree: Mapping[Any, object]) -> dict[str, Severity]:
 
 
 def _allowlist_problems(tree: Mapping[Any, object], positions: _Located) -> list[Diagnostic]:
-    """Report each `agents:` default orchestration model, routed or not, that the allowlist omits."""
+    """Report each `agents:` or `cowork_profiles:` default orchestration model the allowlist omits."""
     snowflake = tree.get("snowflake")
     allowed = snowflake.get("orchestration_models") if isinstance(snowflake, Mapping) else None
     names = [str(item) for item in allowed] if isinstance(allowed, list) else ["auto"]
@@ -222,7 +224,8 @@ def _allowlist_problems(tree: Mapping[Any, object], positions: _Located) -> list
             found=model,
             key="snowflake.orchestration_models",
         )
-        for path, block in _route_blocks(tree.get("agents"), ("agents",))
+        for root in _MODEL_BLOCKS
+        for path, block in _route_blocks(tree.get(root), (root,))
         if isinstance(model := block.get("+orchestration_model"), str) and model not in names
     ]
 

@@ -95,6 +95,23 @@ and a toolset that writes neither key is `SST-VAL521`. An eval file names no
 agent: the `evals/` folder it sits in says whose it is, and an `agent:` key is
 an error (`SST-PRS126`).
 
+### CoWork profiles
+
+CoWork profiles are a Snowflake private preview, and so are these fields.
+
+| Field | Function | A name that resolves to nothing |
+|---|---|---|
+| `cowork_profile.spec.instructions` (`orchestration`, `response`) | `file`, when the text lives in its own file | see [Files](#files) |
+| `cowork_profile.spec.subagents.agent` | `agent`, or `tool` for an `agent` tool member | checked when the profile compiles |
+| `cowork_profile.spec.skills.source.path` | `skill`, `plugin`, `extension` | checked when the profile compiles |
+| `cowork_profile.spec.skills.name` | `skill`, naming a member of the plugin `source.path` names | checked when the profile compiles |
+| `cowork_profile.spec.skills.source.version` | `var`, when the version is not written literally | checked when the profile compiles |
+| `cowork_profile.config.tags.name` | `tag` | checked when the profile compiles |
+
+A subagent names an agent this project publishes with `{{ agent('<name>') }}`,
+or an `agent` tool member, for an agent published elsewhere, with
+`{{ tool('<name>') }}`.
+
 ### Tools
 
 | Field | Function | A name that resolves to nothing |

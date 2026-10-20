@@ -29,11 +29,13 @@ Render = Callable[[Mapping[str, Any]], tuple[dict[str, Any], DiagnosticBag]]
 DBT_ONLY_KEYS = (
     "semantic_views",
     "agents",
+    "cowork_profiles",
     "tools",
     "evals",
     "enrichment",
     "project.semantic_models_dir",
     "project.agents_dir",
+    "project.cowork_profiles_dir",
     "project.tools_dir",
     "project.eval_metrics_dir",
 )
@@ -43,6 +45,7 @@ DBT_ONLY_KEYS = (
 PROJECT_DIR_KEYS = (
     "semantic_models_dir",
     "agents_dir",
+    "cowork_profiles_dir",
     "eval_metrics_dir",
     "tools_dir",
     "skills_dir",

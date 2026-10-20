@@ -181,7 +181,11 @@ def test_a_configured_state_table_is_honoured_and_a_broken_config_ignored(
         (["A.B.C", "D.E.F"], "SST-PRT100", "sst drop removes exactly one object; 2 given"),
         (["B.C"], "SST-PRT108", "sst drop requires a fully-qualified name; 'B.C' is not one"),
         (["A.B.ORDERS_*"], "SST-PRT110", "sst drop takes no selector; 'A.B.ORDERS_*' is not accepted"),
-        (["A.B.C"], "SST-PRT100", "sst drop requires --type; no --type; one of agent, plugin, semantic_view, skill"),
+        (
+            ["A.B.C"],
+            "SST-PRT100",
+            "sst drop requires --type; no --type; one of agent, cowork_profile, plugin, semantic_view, skill",
+        ),
         (["A.B.C", "--type", "tool"], "SST-PRT100", "sst drop requires --type; --type 'tool' is not a droppable type"),
         (["A.B.C", "--type", "agent"], "SST-PRT100", "sst drop requires --target; it has no default"),
         (["A.B.C", "--type", "agent", "-t", "dev"], "SST-PRT109", "sst drop requires --yes"),
