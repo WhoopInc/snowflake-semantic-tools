@@ -270,3 +270,29 @@ def test_an_alias_no_identifier_spells_and_a_version_no_identifier_spells_are_no
     assert texts(update.statements) == ("set comment", "set tag")
     unnamed = artifact.for_action(Action.UPDATE, live(artifact, marker, newest_version="", has_live_version=False))
     assert texts(unnamed.statements) == ("set comment", "set tag")
+
+
+def test_a_renamed_alias_replaces_the_old_one_on_its_version_without_unsetting_it() -> None:
+    # A version carries one alias, so setting the new one on the version that held the old one
+    # removes the old one: an UNSET naming it then fails, as no version carries it any more.
+    artifact = agent()
+    marker = recorded(artifact)
+    same = replace(live(artifact, marker, alias_versions=(("RELEASED", "VERSION$3"),)), aliases=("RELEASED",))
+    statements, _ = drifted(same)
+    assert statements == (
+        "set comment",
+        "ALTER AGENT DB.S.SALES\n  MODIFY VERSION VERSION$3 SET ALIAS = PROMOTED",
+        "set tag",
+    )
+    # An old alias another version carries is still there to unset.
+    other = replace(
+        live(artifact, marker, alias_versions=(("RELEASED", "VERSION$2"),)),
+        aliases=("RELEASED",),
+    )
+    statements, _ = drifted(other)
+    assert statements == (
+        "set comment",
+        "ALTER AGENT DB.S.SALES\n  MODIFY VERSION VERSION$3 SET ALIAS = PROMOTED",
+        "set tag",
+        "ALTER AGENT DB.S.SALES MODIFY VERSION RELEASED UNSET ALIAS",
+    )

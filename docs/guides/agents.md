@@ -622,8 +622,10 @@ to `@<stage>/<agent>/<commit>/agent_spec.yaml` under `apply.agent_spec_stage`
    so after apply the agent carries only the alias its settings resolve to:
    changing `alias: promoted` to `alias: candidate` moves the agent to
    `CANDIDATE` and leaves no `PROMOTED`, and an agent whose `alias` resolves to
-   none, under `config:` or `agents:`, has none. `plan --full`
-   shows the `aliases` that change.
+   none, under `config:` or `agents:`, has none. A version carries one alias,
+   so when only the alias name changes, the new alias set on the version that
+   carried the old one replaces it there, and no `UNSET` is run for it.
+   `plan --full` shows the `aliases` that change.
 5. `SET PROFILE` and `SET SECURE`.
 
 `<fingerprint>` is the SHA-256 of the specification alone, so a plan can tell

@@ -335,28 +335,31 @@ class RenderedArtifact:
         already holds the desired specification and there are any, with the statements that
         point the alias and the default version at it, and open a live version from it, where
         missing; else `update_live_statements` when the observed object has a live version and
-        there are any; else `update_statements` when there are any; either of those also moves a
-        default pinned to an older version onto the new one. It then unsets the aliases
-        and tags the observed agent carries but this artifact does not desire. Any other
+        there are any; else `update_statements` when there are any; either of those also leaves
+        the default following the new version. It then unsets the aliases and tags the observed
+        agent carries but this artifact does not desire, except an alias on the version the
+        properties program just set the desired alias on, which that replaced. Any other
         action, or an UPDATE with no program, returns this artifact unchanged.
         """
         if action is Action.CREATE and self.create_statements:
             return replace(self, statements=self.create_statements)
         if action is Action.UPDATE:
             carrier = _spec_carrier(self, observed)
+            replaced: str | None = None
             if observed is not None and carrier is not None and self.update_properties_statements:
                 lead, rest = (
                     self.update_properties_statements[: self.properties_lead],
                     self.update_properties_statements[self.properties_lead :],
                 )
                 statements = (*lead, *_pointing(self, observed, carrier), *rest)
+                replaced = carrier if _moves_alias(self, observed, carrier) else None
             elif observed is not None and observed.has_live_version and self.update_live_statements:
                 statements = (*self.update_live_statements, *_unpinned_default(self, observed))
             elif self.update_statements:
                 statements = (*self.update_statements, *_unpinned_default(self, observed))
             else:
                 return self
-            return replace(self, statements=(*statements, *_metadata_removals(self, observed)))
+            return replace(self, statements=(*statements, *_metadata_removals(self, observed, replaced)))
         return self
 
 
@@ -446,8 +449,7 @@ def _pointing(artifact: RenderedArtifact, observed: ObservedArtifact, carrier: s
     agent = qname(artifact.target)
     statements: list[Sql] = []
     alias = _plain_identifier(artifact.desired_alias)
-    holder = _alias_holder(observed, artifact.desired_alias) if artifact.desired_alias else None
-    if alias is not None and (holder is None or holder.casefold() != carrier.casefold()):
+    if alias is not None and _moves_alias(artifact, observed, carrier):
         statements.append(
             sql(
                 "ALTER AGENT {agent}\n  MODIFY VERSION {version} SET ALIAS = {alias}",
@@ -464,13 +466,26 @@ def _pointing(artifact: RenderedArtifact, observed: ObservedArtifact, carrier: s
     return tuple(statements)
 
 
+def _moves_alias(artifact: RenderedArtifact, observed: ObservedArtifact, carrier: str) -> bool:
+    """Report whether the desired alias is set on `carrier`, which no version or another one carries."""
+    alias = artifact.desired_alias
+    if alias is None or _plain_identifier(alias) is None:
+        return False
+    holder = _alias_holder(observed, alias)
+    return holder is None or holder.casefold() != carrier.casefold()
+
+
 def _metadata_removals(
     artifact: RenderedArtifact,
     observed: ObservedArtifact | None,
+    replaced: str | None = None,
 ) -> tuple[Sql, ...]:
     """Unset each alias and tag the observed agent carries that the artifact does not desire.
 
-    Both compare casefolded. Only an observed agent has any; for anything else this is empty.
+    Both compare casefolded. An alias on `replaced`, the version the update just set the desired
+    alias on, is left alone: a version carries one alias, so setting another removed it, and an
+    UNSET naming it would find no version. Only an observed agent has any; for anything else
+    this is empty.
     """
     if observed is None or artifact.object_type != "AGENT":
         return ()
@@ -480,6 +495,9 @@ def _metadata_removals(
     for alias in observed.aliases:
         name = _safe_identifier(alias)
         if alias.casefold() == desired_alias or name is None:
+            continue
+        holder = _alias_holder(observed, alias)
+        if replaced is not None and holder is not None and holder.casefold() == replaced.casefold():
             continue
         statements.append(sql("ALTER AGENT {agent} MODIFY VERSION {alias} UNSET ALIAS", agent=agent, alias=name))
     desired_tags = {value.casefold() for value in artifact.desired_tags}
