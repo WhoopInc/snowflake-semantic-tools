@@ -196,6 +196,7 @@ Defaults for Snowflake CoWork profiles (Snowflake private preview; https://docs.
 | `cowork_profiles.+orchestration_model` | string | `auto` | Orchestration model the profile routes questions with; must be in `snowflake.orchestration_models` (SST-CFG025). `auto` lets Snowflake choose. |
 | `cowork_profiles.+alias` | string |  | Version alias assigned after publication. |
 | `cowork_profiles.+enabled` | boolean | `true` | Whether CoWork profiles are compiled; false leaves them out of the project. |
+| `cowork_profiles.+attach` | boolean | `true` | Attach each profile published to SNOWFLAKE_INTELLIGENCE.PROFILES to the account's CoWork object, and again when it was detached by hand; false leaves it unattached, and never detaches one (Snowflake private preview; https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles). |
 | `cowork_profiles.+tags` | list |  | Tags, as `name` and `value` entries, set with ALTER AGENT ... SET TAG; a closer setting replaces the list. |
 | `cowork_profiles.<route>` | block |  | Folder route: overrides for CoWork profiles under that directory. |
 

@@ -520,6 +520,15 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         default="true",
     ),
     _key(
+        "cowork_profiles.+attach",
+        _B,
+        "Attach each profile published to SNOWFLAKE_INTELLIGENCE.PROFILES to the account's CoWork object, "
+        "and again when it was detached by hand; false leaves it unattached, and never detaches one "
+        "(Snowflake private preview; "
+        "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles).",
+        default="true",
+    ),
+    _key(
         "cowork_profiles.+tags",
         _L,
         "Tags, as `name` and `value` entries, set with ALTER AGENT ... SET TAG; a closer setting replaces the list.",

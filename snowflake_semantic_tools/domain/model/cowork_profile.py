@@ -29,6 +29,15 @@ ROUTER_NAME = "router"
 COWORK_PROFILE_SCHEMA = ("SNOWFLAKE_INTELLIGENCE", "PROFILES")
 
 
+def listed_by_cowork(target: QualifiedName) -> bool:
+    """Report whether CoWork lists a profile published at `target`: in SNOWFLAKE_INTELLIGENCE.PROFILES.
+
+    The database and schema are compared as Snowflake resolves them; a profile anywhere else is a
+    rehearsal of one.
+    """
+    return (target.database.folded, target.schema.folded) == COWORK_PROFILE_SCHEMA
+
+
 @dataclass(frozen=True, slots=True)
 class CoworkSubagent:
     """One `spec.subagents:` entry of a CoWork profile: an agent it may route a question to.
@@ -71,8 +80,8 @@ class CoworkProfileModel:
 
     Loading resolves the profile's `settings` -- its own `config:`, then the `cowork_profiles:`
     folder routes over its file, then the block root -- and its `enabled` from them. The fields
-    a setting gives (the orchestration model, alias, and tags) hold their defaults until compile
-    sets them.
+    a setting gives (the orchestration model, alias, tags, and `attach`) hold their defaults until
+    compile sets them.
 
     Attributes:
         source_files: The `cowork_profile.yml` and each instruction file it reads, relative to
@@ -92,6 +101,9 @@ class CoworkProfileModel:
             directory; the `cowork_profiles:` folder routes along it apply to the profile.
         settings: Each `cowork_profiles:` setting the profile resolved, by key without its `+`,
             with where its value came from.
+        attach: Attach the profile to the account's CoWork object once it is published where
+            CoWork lists profiles; False leaves it unattached, and never detaches one. Snowflake
+            private preview (PrPr).
     """
 
     name: str
@@ -114,6 +126,7 @@ class CoworkProfileModel:
     deprecated: bool = False
     folder: tuple[str, ...] = ()
     settings: Mapping[str, Setting] = field(default_factory=lambda: MappingProxyType({}))
+    attach: bool = True
 
     @property
     def key(self) -> str:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 from types import MappingProxyType
 from typing import Any
@@ -202,6 +203,26 @@ def test_publishing_writes_the_marked_comment_first_and_expects_it_back() -> Non
     assert published.fingerprint == compiled.definition_fingerprint
     assert "COMMENT = 'Everyone." in str(published.create_statements[0])
     assert str(published.update_statements[0]).startswith(f"ALTER AGENT {compiled.target.sql} SET COMMENT")
+
+
+def _attachment(tree: Mapping[str, object]) -> tuple[bool, bool, object, str]:
+    """Compile and publish the profile under `tree`: whether it wants attaching, compiled and
+    published, its `attach` setting, and its fingerprint."""
+    [compiled] = compiled_profiles(compile_profiles(cowork_profile(), agents=(described_agent(),), tree=tree))
+    published = for_cowork_publication(compiled, stage=STAGE, git_sha="abc1234").rendered_for_publish("0" * 64)
+    attach = {item.key: item.value for item in compiled.settings}["attach"]
+    return compiled.rendered_artifact.wants_attachment, published.wants_attachment, attach, published.fingerprint
+
+
+def test_a_listed_profile_wants_attaching_unless_attach_is_off_and_a_rehearsal_never_does() -> None:
+    # Snowflake private preview (PrPr): CoWork profiles. Attaching is no part of the definition,
+    # so turning it off leaves the fingerprint as it was.
+    listed = {"cowork_profiles": {"+database": "SNOWFLAKE_INTELLIGENCE", "+schema": "PROFILES"}}
+    opted_out = {"cowork_profiles": {"+database": "SNOWFLAKE_INTELLIGENCE", "+schema": "PROFILES", "+attach": False}}
+    wants, published, attach, fingerprint = _attachment(listed)
+    assert (wants, published, attach) == (True, True, True)
+    assert _attachment(opted_out) == (False, False, False, fingerprint)
+    assert _attachment({"cowork_profiles": {"+schema": "PROFILES_DEV"}})[:3] == (False, False, True)
 
 
 def test_an_agent_the_project_does_not_publish_enabled_keeps_the_profile_back() -> None:

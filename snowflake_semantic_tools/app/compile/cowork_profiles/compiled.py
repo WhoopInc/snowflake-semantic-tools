@@ -7,7 +7,9 @@ https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profi
 
 A profile is an AGENT object, so it publishes through the agent's own programs
 (`staged_agent`); it is not a `CompiledAgent`, so nothing that reads agents reads profiles. Its
-versions are staged under a folder of their own, so a profile can never share an agent's.
+versions are staged under a folder of their own, so a profile can never share an agent's. A
+profile published where CoWork lists profiles, with `attach` on, also wants attaching to the
+account's CoWork object, which plan adds once it has read that object (`domain.plan.attach`).
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from snowflake_semantic_tools.app.compile.staged_agent import (
     render_agent_object,
     staged_path,
 )
-from snowflake_semantic_tools.domain.model.cowork_profile import ResolvedCoworkProfile
+from snowflake_semantic_tools.domain.model.cowork_profile import ResolvedCoworkProfile, listed_by_cowork
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     OwnershipMarker,
@@ -94,7 +96,7 @@ class CompiledCoworkProfile(StandaloneArtifact):
 
     @property
     def rendered_artifact(self) -> RenderedArtifact:
-        return render_agent_object(self._staged, None)
+        return self._attached(render_agent_object(self._staged, None))
 
     def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:
         """Render every statement program with the display block, the marked comment, and SECURE.
@@ -104,7 +106,19 @@ class CompiledCoworkProfile(StandaloneArtifact):
         """
         marker = OwnershipMarker(manifest_id, self.definition_fingerprint)
         rendered = render_agent_object(self._staged, marked_comment(self.resolved.model.comment, marker.text))
-        return replace(rendered, expected_marker=marker)
+        return self._attached(replace(rendered, expected_marker=marker))
+
+    @property
+    def wants_attachment(self) -> bool:
+        """Whether plan attaches the profile to the CoWork object: `attach` is on, and CoWork lists it.
+
+        A rehearsal, published anywhere but SNOWFLAKE_INTELLIGENCE.PROFILES, is never attached.
+        """
+        # Snowflake private preview (PrPr): CoWork profiles
+        return self.resolved.model.attach and listed_by_cowork(self.target)
+
+    def _attached(self, rendered: RenderedArtifact) -> RenderedArtifact:
+        return replace(rendered, wants_attachment=self.wants_attachment)
 
     @property
     def _staged(self) -> StagedAgentObject:

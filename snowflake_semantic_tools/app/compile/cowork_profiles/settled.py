@@ -27,11 +27,12 @@ _RENDERED = ("database", "schema")
 def settled_cowork_profile(
     model: CoworkProfileModel, target: TargetIdentity, tags: DeclaredTags | None = None
 ) -> tuple[CoworkProfileModel, tuple[Diagnostic, ...]]:
-    """Return the profile with its orchestration model, alias, and tags set from its resolved settings.
+    """Return the profile with its orchestration model, alias, tags, and `attach` set from its settings.
 
     Text values have their `{{ target.* }}` templates rendered. An absent orchestration model is
-    `auto`; an absent alias leaves none. Each tag's `name:` is one `{{ tag('<name>') }}` call,
-    resolved against `tags`; a tag whose name does not resolve is left out. The profile's
+    `auto`; an absent alias leaves none; `attach` is true unless a setting says false. Each
+    tag's `name:` is one `{{ tag('<name>') }}` call, resolved against `tags`; a tag whose name
+    does not resolve is left out. The profile's
     `settings` become what it reports: its location rendered, and each built-in default it took.
 
     Args:
@@ -57,12 +58,15 @@ def settled_cowork_profile(
         "schema": target.schema.folded,
         "orchestration_model": "auto",
         "enabled": True,
+        # Snowflake private preview (PrPr): CoWork profiles
+        "attach": True,
     }
     settled = replace(
         model,
         orchestration_model=target_text(setting_value(settings, "orchestration_model"), target, None) or "auto",
         alias=target_text(setting_value(settings, "alias"), target, None),
         tags=pairs,
+        attach=setting_value(settings, "attach") is not False,
         settings=reported_settings(settings, target, _RENDERED, defaults),
     )
     return settled, problems

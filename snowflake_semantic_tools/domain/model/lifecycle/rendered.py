@@ -198,6 +198,12 @@ class RenderedArtifact:
         adds_version: Whether the program `for_action` chose commits a new version of a
             permanent agent: False for one that only sets its properties; None for anything
             else, and before `for_action` chose.
+        wants_attachment: The AGENT is a CoWork profile, published where CoWork lists profiles
+            with `attach` on, so plan attaches it to the account's CoWork object; False for
+            anything else, a rehearsal of a profile included. Snowflake private preview (PrPr).
+            Not in the fingerprint: attaching is no part of the definition.
+        attaches_to: The CoWork object the last of `statements` attaches the AGENT to, as SHOW
+            SNOWFLAKE INTELLIGENCES names it; set by plan, and None when nothing attaches it.
     """
 
     key: ArtifactKey
@@ -233,6 +239,8 @@ class RenderedArtifact:
     version_metadata: str | None = None
     member_fingerprints: tuple[tuple[str, str], ...] = ()
     adds_version: bool | None = None
+    wants_attachment: bool = False
+    attaches_to: str | None = None
 
     @classmethod
     def create(

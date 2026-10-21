@@ -19,6 +19,7 @@ from snowflake_semantic_tools.domain.model.cowork_profile import (
     COWORK_PROFILE_SCHEMA,
     COWORK_PROFILE_TOOLS,
     CoworkProfileModel,
+    listed_by_cowork,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 
@@ -67,7 +68,7 @@ def unlisted_profile(model: CoworkProfileModel, target: QualifiedName) -> tuple[
     Diagnostics:
         SST-VAL878: the profile's database and schema are not SNOWFLAKE_INTELLIGENCE.PROFILES.
     """
-    if _schema(target) == COWORK_PROFILE_SCHEMA:
+    if listed_by_cowork(target):
         return ()
     schema = f"{target.database.sql}.{target.schema.sql}"
     return (D("SST-VAL878", origin=model.origin, subject=model.key, artifact=model.name, target=schema),)
