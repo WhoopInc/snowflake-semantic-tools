@@ -131,7 +131,7 @@ def _desired_agent(compiled: CompiledArtifact) -> Definition:
 
 
 def _desired_cowork_profile(compiled: CompiledArtifact) -> Definition:
-    """The specification SST renders, with the profile's comment, display block and alias, and SECURE false."""
+    """The specification SST renders, with the profile's comment, display, alias, and SECURE false."""
     profile = compiled_as(compiled, CompiledCoworkProfile)
     model = profile.resolved.model
     # A profile sets no SECURE of its own, so it publishes `SECURE = FALSE`.
@@ -284,7 +284,7 @@ def from_state(changes: Sequence[Change], recorded: Mapping[str, AppliedEntry]) 
 
 
 def _recorded_changes(before: Sequence[tuple[str, str]], after: Sequence[tuple[str, str]]) -> tuple[str, ...]:
-    """The members whose recorded fingerprints differ, an AGENT object's properties only when both record them."""
+    """The members whose recorded fingerprints differ, properties only when both sides record them."""
     if any(key in PROPERTIES_KEYS for key, _ in before):
         return changed_members(before, after)
     return changed_members(before, tuple(pair for pair in after if pair[0] not in PROPERTIES_KEYS))

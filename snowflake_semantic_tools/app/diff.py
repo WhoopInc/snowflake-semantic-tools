@@ -258,7 +258,7 @@ def _agent_references(agent: CompiledAgent) -> Iterator[tuple[QualifiedName, str
 
 
 def _profile_references(profile: CompiledCoworkProfile) -> Iterator[tuple[QualifiedName, str]]:
-    """Each agent another team owns that a CoWork profile routes to, by its tool member, then its skills' paths.
+    """Each partner agent a CoWork profile routes to, by its tool member, then each of its skills' paths.
 
     An agent this project publishes is labelled by its own key already, as every compiled target is.
     """

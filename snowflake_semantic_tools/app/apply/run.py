@@ -179,8 +179,7 @@ class ApplyArtifacts:
             SST-APL013: a temporary artifact would publish to a production-like target.
             SST-APL014: a temporary artifact now shadows the permanent object of its name.
             SST-APL015: a temporary artifact's alias was ignored.
-            SST-APL105: an eval of an agent published as temporary was skipped.
-            SST-APL106: a CoWork profile was skipped, since a temporary run publishes none.
+            SST-APL105, SST-APL106: an eval of a temporary agent, or a CoWork profile, was skipped.
             SST-APL103: Snowflake ended a session the run used, after it took its lock.
             SST-APL039: an absent schema the plan creates first could not be created; nothing ran.
             SST-APL900: the outcomes do not account for every planned change.
@@ -213,11 +212,8 @@ class ApplyArtifacts:
             try:
                 with self._phases.phase("lock"):
                     locked, lock_diagnostics = lease.acquire(break_stale=options.break_stale_lock)
-                reported = (
-                    *changeset.diagnostics,
-                    *temporary_notes(changeset, temporary=options.temporary),
-                    *lock_diagnostics,
-                )
+                notes = temporary_notes(changeset, temporary=options.temporary)
+                reported = (*changeset.diagnostics, *notes, *lock_diagnostics)
                 if not locked:
                     return self._refused(reported, run_id, started)
                 changed = self._state_changed(changeset, previous)

@@ -16,7 +16,9 @@ from snowflake_semantic_tools.domain.model.cowork_profile import (
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.render.cowork_profile import (
+    cowork_profile_render_checks,
     desired_cowork_profile_definition,
+    profile_tools,
     render_cowork_profile_json,
     render_cowork_profile_spec,
 )
@@ -141,3 +143,22 @@ def test_a_resolved_profile_depends_on_its_agents_then_its_skills_each_once() ->
 def test_a_profile_reads_its_display_block_as_the_profile_an_agent_object_carries() -> None:
     display = AgentProfile("Everyone")
     assert _profile(display=display).profile is display
+
+
+def test_a_profile_spec_is_checked_as_an_agent_s_with_its_router_among_its_tools() -> None:
+    # The router always renders, so a profile never has no tools; a `$$` is reported at its offset.
+    quiet = ResolvedCoworkProfile(_profile(), (SALES,))
+    assert cowork_profile_render_checks(quiet, render_cowork_profile_json(quiet)) == ()
+    priced = ResolvedCoworkProfile(_profile(response_instructions="Costs are $$ in USD."), (SALES,))
+    payload = render_cowork_profile_json(priced)
+    [diagnostic] = cowork_profile_render_checks(priced, payload)
+    assert (diagnostic.code, diagnostic.subject) == ("SST-RND011", "cowork_profile:everyone")
+    assert diagnostic.message == f"agent 'everyone': spec contains '$$' at {payload.index('$$')}"
+
+
+def test_a_profile_tool_is_a_built_in_named_after_its_type_unless_named() -> None:
+    tools = (CoworkProfileTool("web_search", None, ORIGIN), CoworkProfileTool("code_execution", "run", ORIGIN))
+    assert [(tool.type, tool.name) for tool in profile_tools(_profile(tools=tools))] == [
+        ("web_search", "web_search"),
+        ("code_execution", "run"),
+    ]
