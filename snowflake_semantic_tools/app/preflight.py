@@ -20,8 +20,11 @@ needs the privilege on the state schema, so only then is it checked. The kind of
 exists is read quietly: one that cannot be read is not known to be the wrong kind, and apply
 checks it again before it takes the lock.
 
+The CoWork object's grants are read too, once, when a CoWork profile a plan may attach to it is
+not attached yet (a Snowflake private preview): attaching needs MODIFY or OWNERSHIP on it.
+
 The reads run in phases -- databases, schemas, the role, relations, upload stages, state tables, privileges,
-privileges on upload stages, occupied names, locks, references, the warehouse -- and the reads
+privileges on upload stages and the CoWork object, occupied names, locks, references, the warehouse -- and the reads
 of one phase are independent, so a `Fanout` may run them on sessions of their own. Their
 answers and refusals are taken in the order the phase lists them, which is the order they
 would run one at a time.
@@ -38,7 +41,14 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, detail_of, session_failure
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import SSE_STAGE_TYPE, RenderedArtifact, SnowflakeObservation
-from snowflake_semantic_tools.domain.plan.preflight import CREATE_STAGE, CREATE_TABLE, STAGE_PRIVILEGES, Preflight
+from snowflake_semantic_tools.domain.plan.attach import AttachmentReading
+from snowflake_semantic_tools.domain.plan.preflight import (
+    COWORK_PRIVILEGES,
+    CREATE_STAGE,
+    CREATE_TABLE,
+    STAGE_PRIVILEGES,
+    Preflight,
+)
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightPort
 from snowflake_semantic_tools.domain.state import State
@@ -163,6 +173,7 @@ def read_preflight(
     state_tables: tuple[QualifiedName, ...] = (),
     state_table_kind: str = STANDARD_TABLES,
     create_schemas: bool = False,
+    attachment: AttachmentReading | None = None,
 ) -> tuple[Preflight, tuple[Diagnostic, ...]]:
     """Read the target's containers, relations, stages, privileges, locks, references, and warehouse.
 
@@ -180,6 +191,8 @@ def read_preflight(
         create_schemas: `apply.create_schemas`: an absent schema in a database that exists is
             one apply creates, so the schemas of absent state tables are read too, and their
             CREATE TABLE is not asked for, as the role that creates a schema owns it.
+        attachment: What plan read of the account's CoWork object; its grants are read when a
+            rendered CoWork profile wants attaching and is not attached. None reads them never.
 
     Returns:
         What the reads found, and the failed reads.
@@ -235,6 +248,7 @@ def read_preflight(
         ),
         create_schemas=create_schemas,
         missing_state_schemas=state_schemas,
+        missing_cowork_privileges=MappingProxyType(_missing_cowork_privileges(reader, rendered, attachment)),
     )
     return preflight, tuple(reader.failures)
 
@@ -455,6 +469,28 @@ def _missing_stage_privileges(
         lambda item: f"grants on stage {item.sql}",
     )
     return {stage.folded: missing for stage, missing in zip(usable, lacking, strict=True) if missing}
+
+
+def _missing_cowork_privileges(
+    reader: _Reader, rendered: Mapping[str, RenderedArtifact], attachment: AttachmentReading | None
+) -> dict[str, tuple[str, ...]]:
+    """Return what the session lacks of MODIFY on the CoWork object, when a profile may attach to it.
+
+    Snowflake private preview (PrPr): CoWork profiles. Only a profile that wants attaching and is
+    not attached may be attached, so a plan whose profiles are all attached reads nothing. A read
+    Snowflake refuses is SST-PLN001, and lacks nothing, so it never blocks a write on its own.
+    """
+    if attachment is None or attachment.cowork_object is None:
+        return {}
+    cowork_object, attached = attachment.cowork_object, attachment.attached
+    if not any(item.wants_attachment and item.target.folded not in attached for item in rendered.values()):
+        return {}
+    [lacking] = reader.read_each(
+        (cowork_object,),
+        lambda port, name: port.missing_cowork_privileges(name, COWORK_PRIVILEGES),
+        lambda name: f"grants on the CoWork object {name}",
+    )
+    return {cowork_object: lacking} if lacking else {}
 
 
 def _occupied(

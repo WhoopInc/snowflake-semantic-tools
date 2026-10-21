@@ -18,6 +18,10 @@ CREATE STAGE on its schema; an existing stage must be an internal server-side en
 (SST-PLN026), on which the role holds READ and WRITE. Each failure blocks the write (SST-PLN008
 for a privilege), so apply never fails part-way on a stage it cannot create or use.
 
+A write that attaches a CoWork profile to the account's CoWork object (a Snowflake private
+preview) needs MODIFY or OWNERSHIP on that object, held by any role in the session: without it,
+the write is blocked (SST-PLN106), so apply never publishes a profile it cannot attach.
+
 The state and lock tables are checked once for the plan: when it writes, CREATE TABLE on the
 schema of an absent one (SST-PLN008); and always, the kind of one that exists, which must be
 the kind `state.+table_kind` names (SST-APL031, which apply would report on taking the lock,
@@ -47,6 +51,9 @@ CREATE_STAGE = "CREATE STAGE"
 CREATE_TABLE = "CREATE TABLE"
 # The privileges on an existing upload stage that staging a file and reading it back need.
 STAGE_PRIVILEGES = ("READ", "WRITE")
+# Snowflake private preview (PrPr): CoWork profiles. The privilege on the CoWork object that
+# attaching a profile needs, which OWNERSHIP of the object also gives.
+COWORK_PRIVILEGES = ("MODIFY",)
 
 
 def _scope_key(scope: SchemaScope) -> _Scope:
@@ -93,6 +100,9 @@ class Preflight:
             that exists, so a missing one is no SST-PLN010.
         missing_state_schemas: The folded scopes of the state and lock tables' schemas that do
             not exist, read only with `create_schemas` on.
+        missing_cowork_privileges: By the CoWork object's name, as SHOW SNOWFLAKE INTELLIGENCES
+            lists it, what no role in the session holds of `COWORK_PRIVILEGES` on it; read only
+            when a CoWork profile may be attached (Snowflake private preview).
     """
 
     target_name: str
@@ -116,6 +126,7 @@ class Preflight:
     state_table_kinds: tuple[tuple[QualifiedName, str], ...] = ()
     create_schemas: bool = False
     missing_state_schemas: frozenset[_Scope] = frozenset()
+    missing_cowork_privileges: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
 
 
 def required_privilege(change: Change) -> str | None:
@@ -155,6 +166,8 @@ def check_preflight(
         SST-PLN019: another session holds a lock on a change's object.
         SST-PLN026: a write's upload stage exists but is not an internal SSE stage.
         SST-PLN035: apply creates a write's absent upload stage; once per stage.
+        SST-PLN106: no role in the session holds MODIFY or OWNERSHIP on the CoWork object a
+            write attaches a CoWork profile to.
     """
     checked: list[Change] = []
     scoped: dict[_Scope, Diagnostic] = {}
@@ -198,6 +211,9 @@ def _change_findings(
     stage = change.rendered.upload_stage
     if not blocking and stage is not None:
         blocking.extend(_stage_blocking(change.key, stage, preflight, scoped))
+    cowork_object = change.rendered.attaches_to
+    if not blocking and cowork_object is not None and preflight.missing_cowork_privileges.get(cowork_object):
+        blocking.append(D("SST-PLN106", subject=change.key, artifact=change.key, value=cowork_object))
     warnings: list[Diagnostic] = []
     if not blocking and stage is not None and stage.folded in preflight.absent_stages - announced:
         announced.add(stage.folded)

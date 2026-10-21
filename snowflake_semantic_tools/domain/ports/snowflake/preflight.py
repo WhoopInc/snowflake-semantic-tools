@@ -125,6 +125,20 @@ class PreflightPort(Protocol):
         """
         ...
 
+    # Snowflake private preview (PrPr): CoWork profiles
+    def missing_cowork_privileges(self, cowork_object: str, privileges: tuple[str, ...]) -> tuple[str, ...]:
+        """Return, in the given order, the privileges on the CoWork object no role in the session holds.
+
+        `cowork_object` is named as SHOW SNOWFLAKE INTELLIGENCES lists it. A role holds a privilege
+        on it when SHOW GRANTS ON SNOWFLAKE INTELLIGENCE lists the privilege, or OWNERSHIP, granted
+        to it, directly or to a role it inherits; a secondary role's count. Only account roles
+        hold privileges on an account-level object. Never writes.
+
+        Raises:
+            SnowflakePortError: the object's grants could not be read.
+        """
+        ...
+
     def has_secondary_roles(self) -> bool:
         """Report whether the session has any secondary role active, as CURRENT_SECONDARY_ROLES() says.
 

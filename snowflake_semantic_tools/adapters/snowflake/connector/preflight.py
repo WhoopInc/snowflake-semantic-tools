@@ -11,6 +11,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector.catalog import Catalo
 from snowflake_semantic_tools.adapters.snowflake.connector.grant_walk import (
     Grantee,
     account_holders,
+    account_object_holders,
     grantees_of,
     held_by,
     schema_holders,
@@ -20,7 +21,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector.session import _varia
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import ROLE_HIERARCHY_DEPTH, PreflightPort, RoleWalk
-from snowflake_semantic_tools.domain.sql import Sql, ident, literal, qname, sql
+from snowflake_semantic_tools.domain.sql import ident, literal, qname, sql
 from snowflake_semantic_tools.domain.sql import scope as scope_sql
 
 
@@ -56,14 +57,21 @@ class PreflightMethods(CatalogMethods, PreflightPort):
         return any(str(row.get("name") or "") == warehouse.folded for row in rows)
 
     def missing_privileges(self, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
-        return self._lacking(sql("SHOW GRANTS ON SCHEMA {scope}", scope=scope_sql(scope)), scope, privileges)
+        grants = self._dict_rows(sql("SHOW GRANTS ON SCHEMA {scope}", scope=scope_sql(scope)))
+        return self._lacking(schema_holders(grants, scope, privileges), privileges)
 
     def missing_stage_privileges(self, stage: QualifiedName, privileges: tuple[str, ...]) -> tuple[str, ...]:
-        grants = sql("SHOW GRANTS ON STAGE {stage}", stage=qname(stage))
-        return self._lacking(grants, SchemaScope.from_qualified_name(stage), privileges)
+        grants = self._dict_rows(sql("SHOW GRANTS ON STAGE {stage}", stage=qname(stage)))
+        return self._lacking(schema_holders(grants, SchemaScope.from_qualified_name(stage), privileges), privileges)
 
-    def _lacking(self, grants: Sql, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
-        """Return the privileges no role in the session holds, by the grants `grants` lists.
+    # Snowflake private preview (PrPr): CoWork profiles
+    def missing_cowork_privileges(self, cowork_object: str, privileges: tuple[str, ...]) -> tuple[str, ...]:
+        name = ident(Identifier.shown(cowork_object))
+        grants = self._dict_rows(sql("SHOW GRANTS ON SNOWFLAKE INTELLIGENCE {name}", name=name))
+        return self._lacking(account_object_holders(grants, privileges), privileges)
+
+    def _lacking(self, holders: dict[Grantee, frozenset[str]], privileges: tuple[str, ...]) -> tuple[str, ...]:
+        """Return the privileges no role in the session holds, given what each grantee of `holders` holds.
 
         A role holds a privilege when a grant to it names the privilege or OWNERSHIP, or when
         it is granted a database role that does, directly or through other database roles.
@@ -71,7 +79,6 @@ class PreflightMethods(CatalogMethods, PreflightPort):
         for the privileges none of those holds in the session, so a database role that cannot
         be read matters only when a direct holder does not already answer.
         """
-        holders = schema_holders(self._dict_rows(grants), scope, privileges)
         in_session: dict[str, bool] = {}
         direct = {grantee: held for grantee, held in holders.items() if grantee.is_account_role}
         missing = self._unheld(direct, privileges, in_session)

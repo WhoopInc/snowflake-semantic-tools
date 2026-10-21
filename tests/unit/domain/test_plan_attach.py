@@ -18,6 +18,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan import build_changeset
 from snowflake_semantic_tools.domain.plan.attach import AttachmentReading, attach_changes, attach_statement
+from snowflake_semantic_tools.domain.plan.preflight import Preflight
 from snowflake_semantic_tools.domain.plan.properties import PropertyChange, changed_properties
 from snowflake_semantic_tools.domain.state.saved_plan import SavedPlan
 from tests.helpers.cowork_attach import COWORK, MANIFEST, live, planned, profile, reading
@@ -142,3 +143,34 @@ def test_a_saved_re_attachment_applies_only_while_the_profile_is_still_detached(
     mismatch = read_back.check_applicable(SavedPlan.from_changeset(_planned(reading(profile()))), source="plan.json")
     assert mismatch is not None and mismatch.diagnostic.code == "SST-APL012"
     assert mismatch.diagnostic.context["value"] == "the ordered changes or their statement hashes"
+
+
+def test_a_change_that_attaches_is_blocked_when_no_role_in_the_session_may_attach() -> None:
+    lacking = Preflight("dev", "DEPLOYER", missing_cowork_privileges=MappingProxyType({COWORK: ("MODIFY",)}))
+    artifact = profile()
+    created = build_changeset(
+        {artifact.key: artifact},
+        SnowflakeObservation(MappingProxyType({}), "now"),
+        manifest_of(artifact),
+        state_of(manifest_of(artifact)),
+        SEMANTIC_REGISTRY,
+        target(),
+        preflight=lacking,
+        attachment=reading(),
+    )
+    [blocked] = created.changes
+    assert (blocked.action, [item.code for item in blocked.diagnostics]) == (Action.BLOCKED, ["SST-PLN106"])
+    # Without a reading nothing is attached, and what the session lacks elsewhere blocks nothing.
+    granted = Preflight("dev", "DEPLOYER", missing_cowork_privileges=MappingProxyType({"ELSEWHERE": ("MODIFY",)}))
+    for preflight in (lacking, granted):
+        [change] = build_changeset(
+            {artifact.key: artifact},
+            SnowflakeObservation(MappingProxyType({}), "now"),
+            manifest_of(artifact),
+            state_of(manifest_of(artifact)),
+            SEMANTIC_REGISTRY,
+            target(),
+            preflight=preflight,
+            attachment=None if preflight is lacking else reading(),
+        ).changes
+        assert change.action is Action.CREATE

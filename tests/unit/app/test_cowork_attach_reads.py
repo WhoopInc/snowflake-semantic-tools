@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from types import MappingProxyType
+
 from snowflake_semantic_tools.app.manifest import manifest_for
 from snowflake_semantic_tools.app.observe import read_attachments
 from snowflake_semantic_tools.app.plan import PlanCandidates, PlanReady, PlanScope, PreparePlan
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
+from snowflake_semantic_tools.app.preflight import read_preflight
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import Action, SnowflakeObservation
 from snowflake_semantic_tools.domain.plan.attach import AttachmentReading
 from snowflake_semantic_tools.domain.state import State
 from tests.helpers.app_ports import InMemoryStateStore
@@ -15,11 +19,16 @@ from tests.helpers.clocks import FixedClock
 from tests.helpers.cowork_attach import COWORK, profile, reading
 from tests.helpers.cowork_profiles import LISTED as LISTED_TREE
 from tests.helpers.cowork_profiles import compile_profiles, cowork_profile, described_agent
+from tests.helpers.plan_codes import manifest_of
 from tests.helpers.project_inputs import EMPTY_SOURCES, InMemoryProjectInputs, dev_target
 from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import texts
 
 LISTED = "SNOWFLAKE_INTELLIGENCE.PROFILES.EVERYONE"
+
+
+def empty_observation() -> SnowflakeObservation:
+    return SnowflakeObservation(MappingProxyType({}), "now")
 
 
 def _account(*attached: str) -> FakeSnowflake:
@@ -103,3 +112,53 @@ def test_a_plan_records_the_reading_and_a_plan_from_the_record_attaches_as_the_l
         assert texts(change.rendered.statements)[-1] == (
             f"ALTER SNOWFLAKE INTELLIGENCE {COWORK} ADD AGENT SNOWFLAKE_INTELLIGENCE.PROFILES.EVERYONE"
         )
+
+
+def test_preflight_reads_the_cowork_grants_once_and_only_while_a_profile_is_unattached() -> None:
+    listed, other = profile(), profile("analysts")
+    rendered = {listed.key: listed, other.key: other}
+    port = _account(LISTED)
+    port.preflight.cowork_lacking[COWORK] = ("MODIFY",)
+    lacking, refused = read_preflight(
+        port,
+        rendered,
+        empty_observation(),
+        State.empty(target()),
+        target(),
+        include_prune=False,
+        attachment=reading(listed),
+    )
+    assert (lacking.missing_cowork_privileges, refused) == ({COWORK: ("MODIFY",)}, ())
+    # Every profile attached, an account without CoWork, or no reading: nothing is read.
+    port.refuse("missing_cowork_privileges")
+    for attachment in (reading(listed, other), AttachmentReading(None), None):
+        quiet, failures = read_preflight(
+            port,
+            rendered,
+            empty_observation(),
+            State.empty(target()),
+            target(),
+            include_prune=False,
+            attachment=attachment,
+        )
+        assert (quiet.missing_cowork_privileges, failures) == ({}, ())
+    # A refused read lacks nothing, so it never blocks a write by itself.
+    unread, failures = read_preflight(
+        port, rendered, empty_observation(), State.empty(target()), target(), include_prune=False, attachment=reading()
+    )
+    assert unread.missing_cowork_privileges == {}
+    assert [item.message for item in failures] == [
+        f"observation of grants on the CoWork object {COWORK} failed: missing_cowork_privileges refused"
+    ]
+
+
+def test_a_plan_blocks_the_attaching_create_a_session_without_modify_cannot_run() -> None:
+    listed = profile()
+    port = _account()
+    port.preflight.cowork_lacking[COWORK] = ("MODIFY",)
+    changeset = PlanArtifacts(port, preflight=port).run(
+        {listed.key: listed}, manifest_of(listed), State.empty(target()), target(), fetched_at="now"
+    )
+    [change] = changeset.changes
+    assert change.action is Action.BLOCKED
+    assert "SST-PLN106" in [item.code for item in changeset.diagnostics]

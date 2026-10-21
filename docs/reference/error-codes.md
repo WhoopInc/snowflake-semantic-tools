@@ -26,7 +26,7 @@ cannot be downgraded by any setting.
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
-- [Planning (PLN)](#planning-pln) -- 48 codes
+- [Planning (PLN)](#planning-pln) -- 49 codes
 - [Apply (APL)](#apply-apl) -- 45 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 12 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
@@ -6937,6 +6937,18 @@ Raised when a CoWork profile published to SNOWFLAKE_INTELLIGENCE.PROFILES with `
 Fix: create the account's CoWork object, then plan again; or set `cowork_profiles.+attach: false`
 
 Note: Snowflake private preview. The profile is still published, and a later plan attaches it once the account has a CoWork object (SST-PLN104).
+
+### SST-PLN106
+
+**No role in the session may attach a profile to CoWork** (error)
+
+`<artifact>: no role in the session holds MODIFY or OWNERSHIP on the CoWork object <value>`
+
+Raised when a planned change attaches a CoWork profile, and SHOW GRANTS ON SNOWFLAKE INTELLIGENCE names no role in the session holding MODIFY or OWNERSHIP on it.
+
+Fix: grant MODIFY on the CoWork object to the deploying role, or set `cowork_profiles.+attach: false`
+
+Note: Snowflake private preview. A secondary role in the session counts. The change is blocked, so apply never publishes a profile it cannot attach; USAGE on the profile is granted outside SST.
 
 ### SST-PLN900
 

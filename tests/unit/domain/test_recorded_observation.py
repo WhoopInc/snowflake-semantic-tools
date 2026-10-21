@@ -69,6 +69,7 @@ def _preflight() -> Preflight:
         state_table_kinds=((QualifiedName.parse("DB.S.SST_STATE"), "standard"),),
         create_schemas=True,
         missing_state_schemas=frozenset({("DB", "STATE")}),
+        missing_cowork_privileges=MappingProxyType({"SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT": ("MODIFY",)}),
     )
 
 
@@ -110,6 +111,7 @@ def test_a_record_written_before_the_stage_facts_reads_as_holding_none() -> None
         "absent_state_tables",
         "state_table_kind",
         "state_table_kinds",
+        "missing_cowork_privileges",
     )
     for field in fields:
         del preflight[field]
@@ -117,6 +119,7 @@ def test_a_record_written_before_the_stage_facts_reads_as_holding_none() -> None
     assert read is not None
     assert (read.stage_types, read.absent_stages, read.missing_stage_privileges) == ({}, frozenset(), {})
     assert read.secondary_privileges == {} and read.unreached_privileges == {}
+    assert read.missing_cowork_privileges == {}
     # A record that read no kinds holds no table of the wrong one.
     assert (read.absent_state_tables, read.state_table_kind, read.state_table_kinds) == ((), "standard", ())
 

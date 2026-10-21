@@ -119,6 +119,30 @@ def test_a_stage_privilege_held_through_a_database_role_counts_for_the_session()
     assert [params for statement, params in connector.sent if statement.startswith("SELECT IS_ROLE")] == [("R",)]
 
 
+def test_attaching_to_cowork_needs_modify_or_ownership_held_by_an_account_role_in_the_session() -> None:
+    # Snowflake private preview (PrPr): CoWork profiles. USAGE does not attach, and a database
+    # role holds nothing on the account-level CoWork object.
+    grants: tuple[dict[str, object], ...] = (
+        {"privilege": "USAGE", "granted_to": "ROLE", "grantee_name": "PUBLIC"},
+        {"privilege": "MODIFY", "granted_to": "ROLE", "grantee_name": "PUBLISHER"},
+        {"privilege": "OWNERSHIP", "granted_to": "ROLE", "grantee_name": "ACCOUNTADMIN"},
+        {"privilege": "MODIFY", "granted_to": "DATABASE_ROLE", "grantee_name": "DB.WRITER"},
+    )
+    outside = ScriptedConnector(
+        {"SHOW GRANTS ON SNOWFLAKE INTELLIGENCE": grants},
+        {"SELECT IS_ROLE_IN_SESSION": QueryResult(("IN",), ((False,),))},
+    )
+    assert outside.missing_cowork_privileges("SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT", ("MODIFY",)) == ("MODIFY",)
+    assert outside.sent[0] == ("SHOW GRANTS ON SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT", None)
+    asked = [params for statement, params in outside.sent if statement.startswith("SELECT IS_ROLE")]
+    assert asked == [("ACCOUNTADMIN",), ("PUBLISHER",)]
+    inside = ScriptedConnector(
+        {"SHOW GRANTS ON SNOWFLAKE INTELLIGENCE": grants[2:3]},
+        {"SELECT IS_ROLE_IN_SESSION": QueryResult(("IN",), ((True,),))},
+    )
+    assert inside.missing_cowork_privileges("SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT", ("MODIFY",)) == ()
+
+
 def test_locked_objects_are_those_held_in_the_schema() -> None:
     locks: tuple[dict[str, object], ...] = (
         {"resource": "DB.SCH.SALES", "status": "HOLDING"},

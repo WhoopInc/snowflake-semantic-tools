@@ -626,6 +626,23 @@ SPECS: tuple[ErrorSpec, ...] = (
         precheck=Precheck.OBSERVE,
     ),
     spec(
+        "SST-PLN106",
+        Severity.ERROR,
+        "No role in the session may attach a profile to CoWork",
+        "{artifact}: no role in the session holds MODIFY or OWNERSHIP on the CoWork object {value}",
+        "grant MODIFY on the CoWork object to the deploying role, or set `cowork_profiles.+attach: false`",
+        condition=(
+            "a planned change attaches a CoWork profile, and SHOW GRANTS ON SNOWFLAKE INTELLIGENCE "
+            "names no role in the session holding MODIFY or OWNERSHIP on it"
+        ),
+        note=(
+            "Snowflake private preview. A secondary role in the session counts. The change is blocked, "
+            "so apply never publishes a profile it cannot attach; USAGE on the profile is granted "
+            "outside SST."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
         "SST-PLN900",
         Severity.ERROR,
         "Change order is not a valid topological order",

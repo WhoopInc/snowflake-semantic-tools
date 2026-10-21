@@ -249,6 +249,9 @@ def _preflight_to_json(preflight: Preflight) -> dict[str, object]:
         "state_table_kinds": [[table.sql, kind] for table, kind in preflight.state_table_kinds],
         "create_schemas": preflight.create_schemas,
         "missing_state_schemas": [list(scope) for scope in sorted(preflight.missing_state_schemas)],
+        "missing_cowork_privileges": [
+            [name, list(privileges)] for name, privileges in sorted(preflight.missing_cowork_privileges.items())
+        ],
     }
 
 
@@ -257,7 +260,8 @@ def _preflight_from_json(value: Mapping[str, Any]) -> Preflight:
 
     The later facts are the stage facts, the privileges only a secondary role holds, those
     the walk up from the primary role stopped short of, the absent state tables, the
-    state tables' kinds, and `create_schemas` with the state tables' missing schemas; a record
+    state tables' kinds, `create_schemas` with the state tables' missing schemas, and what the
+    session lacks on the CoWork object; a record
     without the kinds read none, so nothing is of the wrong kind, and one without
     `create_schemas` was made with it off.
     """
@@ -277,6 +281,10 @@ def _preflight_from_json(value: Mapping[str, Any]) -> Preflight:
     for entry in _list(value.get("stage_types", []), "stage_types"):
         database, schema, name, found = _list(entry, "stage type")
         stage_types[(str(database), str(schema), str(name))] = str(found)
+    cowork_privileges: dict[str, tuple[str, ...]] = {}
+    for entry in _list(value.get("missing_cowork_privileges", []), "missing_cowork_privileges"):
+        name, lacking = _list(entry, "missing cowork privilege")
+        cowork_privileges[str(name)] = _texts(lacking)
     stage_privileges: dict[_Name, tuple[str, ...]] = {}
     for entry in _list(value.get("missing_stage_privileges", []), "missing_stage_privileges"):
         database, schema, name, lacking = _list(entry, "missing stage privilege")
@@ -310,6 +318,7 @@ def _preflight_from_json(value: Mapping[str, Any]) -> Preflight:
         missing_state_schemas=frozenset(
             _pair(scope) for scope in _list(value.get("missing_state_schemas", []), "missing_state_schemas")
         ),
+        missing_cowork_privileges=MappingProxyType(cowork_privileges),
     )
 
 

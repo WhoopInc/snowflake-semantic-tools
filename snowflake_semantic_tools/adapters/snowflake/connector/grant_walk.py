@@ -78,6 +78,27 @@ def schema_holders(
     return {grantee: frozenset(held) for grantee, held in holders.items()}
 
 
+def account_object_holders(
+    rows: Iterable[Mapping[str, object]], privileges: tuple[str, ...]
+) -> dict[Grantee, frozenset[str]]:
+    """Map each account role SHOW GRANTS ON an account-level object names to the privileges it holds.
+
+    As `schema_holders` reads a schema's rows, ownership holds every requested privilege. A grant
+    to anything but an account role is left out: from the docs, not measured, a database role is
+    granted privileges only on objects in its own database, so none holds one on an account-level
+    object such as the CoWork object.
+    """
+    wanted = {privilege.upper() for privilege in privileges}
+    holders: dict[Grantee, set[str]] = {}
+    for row in rows:
+        privilege = str(row.get("privilege") or "").upper()
+        held = wanted if privilege == OWNERSHIP else wanted & {privilege}
+        name = str(row.get("grantee_name") or "")
+        if held and name and str(row.get("granted_to") or "").upper() == _ROLE:
+            holders.setdefault(Grantee.role(Identifier.shown(name)), set()).update(held)
+    return {grantee: frozenset(held) for grantee, held in holders.items()}
+
+
 def grantees_of(grantee: Grantee, rows: Iterable[Mapping[str, object]]) -> tuple[Grantee, ...]:
     """The roles SHOW GRANTS OF lists `grantee` as granted to, users left out.
 

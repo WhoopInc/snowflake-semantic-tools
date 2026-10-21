@@ -40,6 +40,11 @@ class FakePreflight(SnowflakeWorld):
         lacking = self.preflight.stage_lacking.get(stage.sql, ())
         return tuple(privilege for privilege in privileges if privilege in lacking)
 
+    def missing_cowork_privileges(self, cowork_object: str, privileges: tuple[str, ...]) -> tuple[str, ...]:
+        self._check("missing_cowork_privileges")
+        lacking = self.preflight.cowork_lacking.get(cowork_object, ())
+        return tuple(privilege for privilege in privileges if privilege in lacking)
+
     def has_secondary_roles(self) -> bool:
         self._check("has_secondary_roles")
         return self.preflight.secondary_roles

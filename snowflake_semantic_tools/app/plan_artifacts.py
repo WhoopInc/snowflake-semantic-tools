@@ -385,6 +385,7 @@ class PlanArtifacts:
             state_tables=state_tables,
             state_table_kind=state_table_kind,
             create_schemas=create_schemas,
+            attachment=attachment,
         )
         return TargetReading(observation, preflight, DiagnosticBag((*failures, *refused)), attachment)
 
