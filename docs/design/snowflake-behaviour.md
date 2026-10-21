@@ -790,18 +790,39 @@ measured, so `apply --temporary` leaves profiles out (SST-APL106).
 ### Attaching, DEFAULT_AGENT, and dropping
 
 **Docs say**: attach a profile with `ALTER SNOWFLAKE INTELLIGENCE ... ADD
-AGENT`; setting `DEFAULT_AGENT` to an agent that names its own subagents fails.
+AGENT`, which needs MODIFY on the CoWork object or its ownership; setting
+`DEFAULT_AGENT` to an agent that names its own subagents fails.
 
-**Server does**: attaching an agent already attached fails ("already
-present"), and detaching one that is not fails ("was not found"); dropping an
-attached agent detaches it. `DEFAULT_AGENT` must have an `agent_router` tool
-("is not a routing agent") and must not be attached; a detached profile that
-names its own subagents is accepted as the default.
+**Server does**: `SHOW SNOWFLAKE INTELLIGENCES` lists the account's one CoWork
+object, `SHOW AGENTS IN SNOWFLAKE INTELLIGENCE <object>` lists what is attached
+with `database_name`, `schema_name` and `name`, and `SHOW GRANTS ON SNOWFLAKE
+INTELLIGENCE <object>` lists its OWNERSHIP and USAGE grants. Attaching an agent
+already attached fails ("already present"), and detaching one that is not fails
+("was not found"); dropping an attached agent detaches it. The object's owner
+attaches; MODIFY alone is not measured. `DEFAULT_AGENT` must have an
+`agent_router` tool ("is not a routing agent") and must not be attached; a
+detached profile that names its own subagents is accepted as the default.
 
-**Evidence**: `Observed`. SST never attaches a profile or sets the default.
+**Evidence**: `Enforced` for SST's side of attaching:
+`test_an_update_ends_with_the_attachment_only_when_the_profile_is_not_attached`
+and `test_an_unchanged_profile_that_was_detached_is_updated_to_attach_it_alone`
+in [test_plan_attach.py](../../tests/unit/domain/test_plan_attach.py) pin that
+an ADD is planned only for a profile the listing does not show, and
+`test_dropping_a_profile_detaches_it_so_a_prune_needs_no_statement_of_its_own`
+in [test_cowork_attach_apply.py](../../tests/unit/app/test_cowork_attach_apply.py)
+that a drop needs no detach; the three reads are pinned in
+[test_snowflake_cowork_attach.py](../../tests/unit/adapters/test_snowflake_cowork_attach.py)
+and [test_snowflake_preflight.py](../../tests/unit/adapters/test_snowflake_preflight.py).
+`DEFAULT_AGENT` is `Observed` only: SST never sets it.
 
-**SST depends on it at**: nothing; [the CoWork profiles guide](../guides/cowork-profiles.md#what-sst-does-not-do)
-leaves both to CoWork Admin.
+**SST depends on it at**: `attach_changes` in
+[attach.py](../../snowflake_semantic_tools/domain/plan/attach.py);
+`read_attachments` in [observe.py](../../snowflake_semantic_tools/app/observe.py);
+`cowork_object`, `attached_agents` and `missing_cowork_privileges` in
+[catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py)
+and [preflight.py](../../snowflake_semantic_tools/adapters/snowflake/connector/preflight.py).
+[The CoWork profiles guide](../guides/cowork-profiles.md#attaching-to-cowork)
+leaves `DEFAULT_AGENT` and detaching to CoWork Admin.
 
 ## Cortex extensions and stages
 

@@ -150,7 +150,8 @@ cowork_profiles:
 CoWork lists only the profiles in `SNOWFLAKE_INTELLIGENCE.PROFILES`, a schema
 the account has once, so publish there from one target. Every other target
 publishes a rehearsal: an AGENT that routes the same way when it is run
-directly, which CoWork does not list. SST-VAL878 notes each one.
+directly, which CoWork does not list and SST never attaches. SST-VAL878 notes
+each one.
 
 A profile and an agent never share a schema (SST-VAL879): both are AGENT
 objects, and a plan tells them apart by the schema it reads each in. An agent
@@ -177,16 +178,71 @@ agents.
 Dropping an agent a recorded profile routes to warns SST-PLN017, naming the
 profile.
 
+## Attaching to CoWork
+
+> **Snowflake private preview.** Attaching follows
+> [About profiles in Snowflake CoWork](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles)
+> and
+> [Set up profile routing in Snowflake CoWork](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing).
+
+CoWork offers a profile only once it is attached to the account's CoWork object,
+the one `SHOW SNOWFLAKE INTELLIGENCES` lists. An account has one, so SST finds
+it rather than reading its name from the configuration. `sst apply` attaches
+each profile it publishes to `SNOWFLAKE_INTELLIGENCE.PROFILES`:
+
+- Creating a profile ends with
+  `ALTER SNOWFLAKE INTELLIGENCE <object> ADD AGENT <profile>`.
+- An update attaches a profile that is not attached, in the same program.
+- A profile that is otherwise unchanged but was detached by hand plans an update
+  that runs only that statement, commits no version, and warns SST-PLN104.
+  Strict mode leaves it a warning, since the apply it plans is the repair.
+  `sst plan` shows it as
+
+  ```text
+  ~ update  cowork_profile:everyone  SNOWFLAKE_INTELLIGENCE.PROFILES.EVERYONE  not attached to CoWork; CoWork attachment; no new version
+  ```
+
+  and `--full` adds `attached: no → SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT`; plan
+  JSON names the object in `attaches_to` and as the `attached` property.
+- A rehearsal, published anywhere else, is never attached, and planning one reads
+  nothing of the CoWork object.
+
+A plan with a profile to attach reads `SHOW SNOWFLAKE INTELLIGENCES` and then
+`SHOW AGENTS IN SNOWFLAKE INTELLIGENCE <object>`, once for the whole run. A read
+Snowflake refuses is SST-PLN001, and the profile then plans as though it were
+not attached to anything. An account without a CoWork object publishes the
+profile unattached, with the warning SST-PLN105; a later plan attaches it once
+the object exists.
+
+Attaching needs MODIFY on the CoWork object, or its ownership, held by any role
+in the session, a secondary role included. While a profile is still to be
+attached, preflight reads `SHOW GRANTS ON SNOWFLAKE INTELLIGENCE <object>`, and a
+change that would attach without the privilege is blocked (SST-PLN106) before
+apply publishes anything.
+
+`+attach: false`, on the block, a folder route, or a profile's `config:`, leaves
+a profile unattached:
+
+```yaml
+cowork_profiles:
+  +attach: false
+```
+
+Turning it off never detaches a profile that is already attached. Attaching is
+not part of a profile's definition, so changing `+attach` never plans an update
+of the profile by itself. Dropping a profile detaches it, so `sst drop` and
+prune run no statement for the attachment.
+
 ## What SST does not do
 
-- **Attach a profile to the CoWork object.** A profile is selectable only once
-  `ALTER SNOWFLAKE INTELLIGENCE <name> ADD AGENT <profile>` attaches it. The
-  account has one CoWork object, and its attachments are shared, so this stays
-  with CoWork Admin or your account automation.
+- **Detach a profile**, or change any other attachment of the CoWork object.
+  The account's attachments are shared; turning `+attach` off leaves an attached
+  profile attached, for CoWork Admin to detach.
 - **Set `DEFAULT_AGENT`**, or migrate an account from a Main Agent.
 - **Grant access.** Users need USAGE on the `SNOWFLAKE_INTELLIGENCE` database,
   the `PROFILES` schema, and the profile itself; manage those grants where your
-  other grants are managed.
+  other grants are managed. Attaching needs no grant on the profile, only the
+  deploying role's MODIFY on the CoWork object.
 - **Ask or evaluate a profile.** `sst ask` and evals run agents only.
 - **Route to another profile.** A subagent is always an agent.
 
