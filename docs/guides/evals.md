@@ -861,3 +861,209 @@ sst test --suite evals --target dev_jdoe
   SST does not check this before apply.
 - `--defer-target prod` resolves the dbt models the views read to production's
   relations, so the developer's views query production data.
+
+## Evaluating CoWork profiles
+
+> **Snowflake private preview.** CoWork profiles are a Snowflake private
+> preview (PrPr) feature. See Snowflake's
+> [About profiles in Snowflake CoWork](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles)
+> and
+> [Set up profile routing in Snowflake CoWork](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing).
+> What follows was measured on a preview account and may change before
+> general availability.
+
+A [CoWork profile](cowork-profiles.md) answers nothing itself: its router hands
+each question to one of its subagents, or declines it. Its own failures are
+routing failures: the wrong agent, a route where it should decline, or a
+decline where it should route. A profile's eval is scored on those, with
+`routing_accuracy`, a metric SST computes itself from the run's trace, beside
+the Snowflake metrics and custom judges that still read the answer.
+
+### Layout
+
+```text
+cowork_profiles/
+  gtm/
+    cowork_profile.yml
+    evals/
+      dataset.yml
+      config.yml
+```
+
+```yaml
+# cowork_profiles/gtm/cowork_profile.yml
+evals:
+  dataset: "{{ eval_dataset('gtm_routing') }}"
+  config: "{{ eval_config('gtm_ci') }}"
+```
+
+The `evals:` block and the `evals/` folder beside `cowork_profile.yml` are read
+as an agent's are, under [the same rules](#layout). A profile's eval is keyed
+`eval:cowork_profile:<profile>`, so it never shares a key, or a baseline, with
+an agent of the same name; `--select` and `--exclude` take that key. Its eval
+objects publish into the profile's schema, and [folder
+routes](#settings-and-folder-routes) may name a profile's folder.
+
+### The dataset
+
+```yaml
+# cowork_profiles/gtm/evals/dataset.yml
+name: gtm_routing
+questions:
+  - question: Which campaigns had the best return on spend?
+    ground_truth:
+      ground_truth_subagents: ["{{ agent('guest_experience_analyst') }}"]
+      ground_truth_output: The reply ranks campaigns by return on spend.
+  - question: Which suppliers deliver late most often?
+    ground_truth:
+      ground_truth_subagents: []        # the profile should decline
+      ground_truth_output: The reply declines and points to the Jaffle profile.
+```
+
+`ground_truth_subagents` lists the subagents a question may be routed to, any
+one of them, each written as the profile's `spec.subagents` entry writes it:
+`{{ agent('<name>') }}` for an agent the project publishes, `{{ tool('<name>')
+}}` for one a tool member names. An empty list expects the profile to decline.
+Compile renders each entry as the qualified name the profile's router gives that
+agent on the target, so dev and prod each score against their own agents, and
+the rendered names are in `GROUND_TRUTH`, where a custom judge's
+`{{ ground_truth }}` reads them.
+
+| Code | When |
+|---|---|
+| `SST-VAL881` | An entry names no subagent of the profile; the message lists them. |
+| `SST-VAL883` | A row sets `ground_truth_invocations`: no metric that reads it sees a router's calls. |
+| `SST-VAL884` | No row sets `ground_truth_subagents` (warning). |
+| `SST-VAL885` | No row expects a decline (info). |
+| `SST-VAL768` | An agent's dataset sets `ground_truth_subagents`. |
+
+The [dataset rules](#the-dataset) for agents apply unchanged: relative dates,
+the row floor, duplicate names.
+
+### The run configuration
+
+```yaml
+# cowork_profiles/gtm/evals/config.yml
+name: gtm_ci
+config:
+  agent_version: committed
+dataset:
+  name_template: EVAL_{{ agent | upper }}_{{ sha7 }}
+  source_table_template: EVAL_SRC_{{ agent | upper }}_{{ sha7 }}
+metrics:
+  routing:
+    - name: routing_accuracy
+      gate: true
+      threshold: {min: 0.9}
+  system:
+    - name: answer_correctness
+      version: v3
+      gate: false
+  custom:
+    - "{{ eval_metric('states_its_scope') }}"
+run:
+  name_template: EVAL_{{ agent | upper }}_{{ sha7 }}_{{ variant }}_{{ ts }}
+```
+
+`metrics.routing` takes one metric, `routing_accuracy`, with `gate` and
+`threshold` as a system metric takes them (`SST-VAL733`, `SST-VAL735`). Its
+score lies in [0, 1], so a bound outside it is `SST-VAL769`; on an agent's eval
+the block is `SST-VAL767`. It is never written into the config Snowflake runs.
+For one question, with E the subagents it accepts and A the router's routes, one
+per routing call:
+
+- E empty: 1 when A is empty, else 0.
+- Otherwise: 0 when A is empty, else the routes in A that are in E over all the
+  routes in A.
+
+Names compare as Snowflake resolves them. A question with no
+`ground_truth_subagents` has no score and fails, as does one the run left
+untraced (below). The score uses no judge, so the same routes always score the
+same, and it is fit to gate.
+
+Which of Snowflake's metrics work on a profile:
+
+| Metric | On a profile's eval |
+|---|---|
+| `answer_correctness`, `logical_consistency` | Score as for an agent. |
+| a custom judge | Scores as for an agent; `{{ ground_truth }}` holds the rendered subagents. |
+| `tool_selection_accuracy`, `tool_execution_accuracy` | Blind: neither sees a router call, so every record reports no tool invoked, and a row that expects a decline scores 1.0 whatever the router did. The profile's config naming either, in `metrics.system` or its own `config.metrics`, is `SST-VAL882`. One inherited from `evals.+metrics` or a folder route is left out, with `SST-VAL887` (info). |
+
+Snowflake is sent only its own metrics and the custom judges, so a profile's
+config needs at least one of them beside `routing_accuracy`: one with none is
+`SST-PRS101`, and one left with none once the inherited tool metrics are left
+out is `SST-VAL888`.
+
+### How routing is scored
+
+Once a run completes and its results are read, SST reads the run's spans from
+`SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS` in one query: each record's root span,
+and one span per routing call, whose
+`snow.ai.observability.agent.tool.agent_router.subagent_name` attribute names
+the subagent chosen. Records are matched to questions by the record id
+`GET_AI_EVALUATION_DATA` reports. The query is filtered by the run's name and
+the profile both: a run's spans outlive `EXECUTE_AI_EVALUATION('DELETE')`, and
+each attempt's run name carries its timestamp, so no read mixes in another
+run's records.
+
+A record with a root span and no routing span was declined. A record with no
+root span has not been traced yet, so it is not read as a decline: the spans
+are read up to six times in all, the poll interval apart, and never past the
+attempt's deadline. A question still untraced fails `routing_accuracy` with
+no score (`SST-SNO035`, a warning). Whether spans can lag a run's terminal
+status is not measured. A read that fails in transit is tried again the same
+way; one Snowflake refuses, or one SST cannot read, fails the attempt
+(`SST-SNO034`), as results that cannot be read do, and the attempt is
+[retried](#attempts-retries-and-concurrency) as any such attempt is.
+
+[Reading results](#reading-results) shows each question's subagents under
+`routing_accuracy`, as it shows tools under tool selection:
+
+```text
+    └── ✗ 2  Which suppliers deliver late most often?
+        ├── answer_correctness  1.00
+        └── routing_accuracy    0.00  needs at least 0.9
+            ├── expected  none (a decline)
+            └── routed    JAFFLE_CX_DEV.AGENTS.GUEST_EXPERIENCE_ANALYST
+```
+
+`routed none` is a decline, and `routed not known` a question the run left
+untraced. With `--output json` each of the profile's questions also carries
+`expected_subagents` and `routed_subagents`; an agent's questions carry
+neither.
+
+A baseline records `routing_accuracy` at the version of its rule,
+`sst:routing_accuracy:v1`, with its threshold and gating. The config Snowflake
+runs does not carry them, so changing either leaves the eval's config
+fingerprint alone, and the baseline still stops matching
+(`SST-VAL759`, naming the metric).
+
+### Where a profile's eval runs
+
+A profile's eval runs only where its profile is a rehearsal: on a target that
+publishes the profile to `SNOWFLAKE_INTELLIGENCE.PROFILES`, the eval does not
+compile (`SST-VAL886`, a warning), so nothing of it is planned there. CoWork
+lists every agent in that schema as a profile, and eval tables, datasets and
+stages there are not measured. The rehearsal routes the same way, so evaluate it
+on a target that publishes the profile elsewhere, such as dev.
+
+`sst test --suite evals --unpublished` refuses a profile's eval before it
+connects (`SST-ASK013`): an unpublished run would need a temporary router agent,
+which is not measured. `sst ask` does not run profiles.
+
+### Privileges
+
+Reading the spans needs a role that can read
+`SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS`. They were read as ACCOUNTADMIN when
+measured; what a narrower role needs, and whether the router attributes are
+redacted without `READ UNREDACTED AI OBSERVABILITY EVENTS TABLE`, is not
+measured. A refused read is `SST-SNO034`.
+
+| Code | Severity | When |
+|---|---|---|
+| `SST-VAL887` | info | An inherited `metrics` setting's tool metric is left out of a profile's eval. |
+| `SST-VAL888` | error | A profile's config has no Snowflake or custom metric once those are left out. |
+| `SST-SNO034` | error | A profile run's spans could not be read. |
+| `SST-SNO035` | warning | Some questions of a profile run have no trace after the last read. |
+
+Drawn from: [routes.py](../../snowflake_semantic_tools/app/evals/routes.py), [routing.py](../../snowflake_semantic_tools/domain/evaluate/routing.py), [eval_subject.py](../../snowflake_semantic_tools/domain/validate/eval_subject.py), [gate.py](../../snowflake_semantic_tools/app/evals/gate.py).

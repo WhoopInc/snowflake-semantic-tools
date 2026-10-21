@@ -824,6 +824,110 @@ and [preflight.py](../../snowflake_semantic_tools/adapters/snowflake/connector/p
 [The CoWork profiles guide](../guides/cowork-profiles.md#attaching-to-cowork)
 leaves `DEFAULT_AGENT` and detaching to CoWork Admin.
 
+The four entries below were measured by running `EXECUTE_AI_EVALUATION` on a
+dev rehearsal of a profile, and reading `GET_AI_EVALUATION_DATA`,
+`GET_AI_RECORD_TRACE` and `SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS` for the run.
+
+### An evaluation runs on a profile
+
+**Docs say**: Cortex Agent evaluations take a Cortex Agent; the profile guides
+say nothing of evaluating a profile.
+
+**Server does**: `EXECUTE_AI_EVALUATION` accepts a profile as a `CORTEX AGENT`,
+passes through the usual statuses to a terminal one, and scores every metric on
+every record. `GET_AI_EVALUATION_DATA` returns the usual columns.
+`answer_correctness`, `logical_consistency` and custom judges score the
+profile's answers as an agent's; a ground-truth key Snowflake does not know is
+passed to custom judges in `{{ground_truth}}`.
+
+**Evidence**: `Enforced` for SST's side:
+`test_a_profile_run_merges_its_routing_into_each_question` in
+[test_eval_routes.py](../../tests/unit/app/test_eval_routes.py) runs a
+profile's eval through the agent's start, status and results reads, and
+[test_sst_val886.py](../../tests/codes/val/test_sst_val886.py) pins that it
+compiles only for a rehearsal.
+
+**SST depends on it at**: `RunEvalSuite._attempt` in
+[run.py](../../snowflake_semantic_tools/app/evals/run.py);
+`cowork_listed_placement` in
+[eval_subject.py](../../snowflake_semantic_tools/domain/validate/eval_subject.py);
+[Evaluating CoWork profiles](../guides/evals.md#evaluating-cowork-profiles).
+
+### Tool selection and tool execution accuracy do not see router calls
+
+**Docs say**: tool selection and tool execution accuracy compare the tools an
+agent invoked with the ones its ground truth expects.
+
+**Server does**: on a profile, both report no tool invoked on every record,
+whether the ground truth names the router, the subagent's qualified name, or a
+tool of the subagent; the subagent's own calls are not in the profile's trace
+either. With an empty expectation both score 1.0 whatever the router did, so
+neither catches even a wrong decline.
+
+**Evidence**: `Enforced`. A profile's config that names either is SST-VAL882,
+and one that inherits either from `evals.+metrics` runs without it
+(SST-VAL887): [test_sst_val882.py](../../tests/codes/val/test_sst_val882.py),
+[test_sst_val887.py](../../tests/codes/val/test_sst_val887.py), and
+`test_a_profile_eval_inheriting_the_root_metrics_runs_without_the_blind_ones`
+in [test_yaml_profile_evals.py](../../tests/unit/adapters/test_yaml_profile_evals.py).
+
+**SST depends on it at**: `ROUTER_BLIND_METRICS` in
+[model.py](../../snowflake_semantic_tools/domain/model/eval/model.py);
+`_profile_config` in
+[eval_subject.py](../../snowflake_semantic_tools/domain/validate/eval_subject.py);
+`_with_system_defaults` in
+[catalog.py](../../snowflake_semantic_tools/adapters/yaml/evals/catalog.py).
+
+### Router spans name the subagent chosen, and a decline leaves none
+
+**Docs say**: nothing. The span attributes are undocumented.
+
+**Server does**: each record of a profile's run has one span in
+`SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS` whose `ai.observability.span_type` is
+`record_root`, and each routing call adds a span whose
+`snow.ai.observability.agent.tool.agent_router.subagent_name` holds the chosen
+subagent's qualified name, uppercase and unquoted. A declined question has the
+root span alone. `ai.observability.record_id` equals `GET_AI_EVALUATION_DATA`'s
+`RECORD_ID`, and `snow.ai.observability.run.name`, `.database.name`,
+`.schema.name` and `.object.name` name the run and the profile, as uppercase
+identifiers. One query filtered on those returns every root and route of the
+run. Whether a span can land after the run's terminal status, and what a role
+other than ACCOUNTADMIN reads of the table, is not measured.
+
+**Evidence**: `Enforced` for SST's side:
+`test_one_query_reads_the_runs_roots_and_routes_for_the_profile` in
+[test_eval_routes.py](../../tests/unit/app/test_eval_routes.py) pins the query
+and how its rows are read, and
+`test_an_untraced_record_is_read_again_the_poll_interval_apart_until_it_is_traced`
+and `test_a_record_still_untraced_after_the_last_read_fails_closed_with_a_warning`
+pin that a record with no root span is never read as a decline.
+
+**SST depends on it at**: `_ROUTES_QUERY`, `read_routes` and `score_routing` in
+[routes.py](../../snowflake_semantic_tools/app/evals/routes.py);
+`routing_score` in
+[routing.py](../../snowflake_semantic_tools/domain/evaluate/routing.py).
+
+### A run's spans survive its DELETE
+
+**Docs say**: `EXECUTE_AI_EVALUATION('DELETE', ...)` deletes a run.
+
+**Server does**: the run's spans stay in `SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS`
+after the run is deleted, so a later run given the same name would read the
+earlier run's records with its own.
+
+**Evidence**: `Enforced` for SST's side: the span query filters on the run's
+name and the profile both, as
+`test_one_query_reads_the_runs_roots_and_routes_for_the_profile` in
+[test_eval_routes.py](../../tests/unit/app/test_eval_routes.py) pins, and each
+attempt's run name carries its timestamp and attempt number, as
+`test_eval_runner_polls_retrieves_scores_and_costs` and
+`test_eval_runner_reports_every_retry_and_partial_status` in
+[test_eval_run.py](../../tests/unit/app/test_eval_run.py) pin.
+
+**SST depends on it at**: `_ROUTES_QUERY` in
+[routes.py](../../snowflake_semantic_tools/app/evals/routes.py); `_run_name` in
+[run.py](../../snowflake_semantic_tools/app/evals/run.py).
+
 ## Cortex extensions and stages
 
 ### The extension grammar is undocumented

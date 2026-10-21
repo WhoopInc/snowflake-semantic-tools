@@ -234,6 +234,14 @@ not part of a profile's definition, so changing `+attach` never plans an update
 of the profile by itself. Dropping a profile detaches it, so `sst drop` and
 prune run no statement for the attachment.
 
+## Evals
+
+A profile takes an `evals:` block as an agent does, read from the `evals/`
+folder beside `cowork_profile.yml`. Its dataset names the subagents each
+question should be routed to, `[]` for one it should decline, and its config
+gates on `routing_accuracy`, which SST scores from the run's router spans. See
+[Evaluating CoWork profiles](evals.md#evaluating-cowork-profiles).
+
 ## What SST does not do
 
 - **Detach a profile**, or change any other attachment of the CoWork object.
@@ -244,7 +252,8 @@ prune run no statement for the attachment.
   the `PROFILES` schema, and the profile itself; manage those grants where your
   other grants are managed. Attaching needs no grant on the profile, only the
   deploying role's MODIFY on the CoWork object.
-- **Ask or evaluate a profile.** `sst ask` and evals run agents only.
+- **Ask a profile.** `sst ask` runs agents only, and an unpublished eval run
+  refuses a profile's eval (`SST-ASK013`).
 - **Route to another profile.** A subagent is always an agent.
 
 Where the preview's server differs from its guides, and the code that depends
