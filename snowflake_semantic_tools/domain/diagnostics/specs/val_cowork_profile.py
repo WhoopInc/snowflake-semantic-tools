@@ -130,7 +130,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         note=(
             "Snowflake private preview. The profile routes when it is run directly, but CoWork lists only "
             "the agents in SNOWFLAKE_INTELLIGENCE.PROFILES as profiles, so elsewhere it is a rehearsal, "
-            "such as one published by a dev target."
+            "such as one published by a dev target, and is never attached to CoWork."
         ),
     ),
     spec(

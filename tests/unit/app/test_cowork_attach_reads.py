@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+from snowflake_semantic_tools.app.manifest import manifest_for
 from snowflake_semantic_tools.app.observe import read_attachments
+from snowflake_semantic_tools.app.plan import PlanCandidates, PlanReady, PlanScope, PreparePlan
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.plan.attach import AttachmentReading
 from snowflake_semantic_tools.domain.state import State
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import target
+from tests.helpers.clocks import FixedClock
 from tests.helpers.cowork_attach import COWORK, profile, reading
+from tests.helpers.cowork_profiles import LISTED as LISTED_TREE
+from tests.helpers.cowork_profiles import compile_profiles, cowork_profile, described_agent
+from tests.helpers.project_inputs import EMPTY_SOURCES, InMemoryProjectInputs, dev_target
 from tests.helpers.snowflake_fake import FakeSnowflake
+from tests.helpers.sql_values import texts
 
 LISTED = "SNOWFLAKE_INTELLIGENCE.PROFILES.EVERYONE"
 
@@ -59,3 +68,38 @@ def test_the_plan_reading_carries_the_attachment_with_and_without_preflight() ->
     port.refuse("cowork_object")
     refused = PlanArtifacts(port).read({listed.key: listed}, State.empty(target()), target(), fetched_at="now")
     assert refused.attachment is None and [item.code for item in refused.failures] == ["SST-PLN001"]
+
+
+def test_a_plan_records_the_reading_and_a_plan_from_the_record_attaches_as_the_live_one_did() -> None:
+    # Compiled where CoWork lists profiles, so the profile wants attaching.
+    result = compile_profiles(cowork_profile(), agents=(described_agent(),))
+    use_case = PreparePlan(InMemoryProjectInputs(tree=dict(LISTED_TREE)), FixedClock())
+    candidates = use_case.select(
+        result,
+        manifest_for(result, EMPTY_SOURCES),
+        PlanScope((), None, None, None, None, False),
+        partial=False,
+        strict=None,
+        connected=False,
+        project="p",
+    )
+    assert isinstance(candidates, PlanCandidates)
+    port = _account()
+    live = use_case.run(
+        candidates,
+        port,
+        InMemoryStateStore(State.empty(dev_target())),
+        target=dev_target(),
+        state_table=QualifiedName.parse("DB.SCH.SST_STATE"),
+    )
+    assert isinstance(live, PlanReady) and live.recorded is not None
+    assert live.recorded.attachment == AttachmentReading(COWORK)
+    cached = use_case.run_recorded(candidates, live.recorded)
+    assert isinstance(cached, PlanReady)
+    for ready in (live, cached):
+        profiles = [change for change in ready.changeset.changes if change.artifact_type == "cowork_profile"]
+        [change] = profiles
+        assert change.rendered is not None and change.rendered.attaches_to == COWORK
+        assert texts(change.rendered.statements)[-1] == (
+            f"ALTER SNOWFLAKE INTELLIGENCE {COWORK} ADD AGENT SNOWFLAKE_INTELLIGENCE.PROFILES.EVERYONE"
+        )

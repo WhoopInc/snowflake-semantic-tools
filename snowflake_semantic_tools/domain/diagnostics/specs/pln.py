@@ -591,6 +591,41 @@ SPECS: tuple[ErrorSpec, ...] = (
         precheck=Precheck.OBSERVE,
     ),
     spec(
+        "SST-PLN104",
+        Severity.WARNING,
+        "CoWork profile was detached from CoWork",
+        "{artifact}: not attached to the CoWork object {value}; apply attaches it again",
+        "apply to attach it again, or set `cowork_profiles.+attach: false` to leave it detached",
+        strict_exempt=True,
+        condition=(
+            "state records a CoWork profile published to SNOWFLAKE_INTELLIGENCE.PROFILES unchanged, "
+            "`+attach` is on, and SHOW AGENTS IN SNOWFLAKE INTELLIGENCE does not list it"
+        ),
+        note=(
+            "Snowflake private preview. The update runs only ALTER SNOWFLAKE INTELLIGENCE ... ADD AGENT, "
+            "committing no version. Attaching is not part of the profile's definition, so a profile "
+            "detached by hand is attached again rather than blocked as changed out of band (SST-PLN014). "
+            "Strict mode leaves this a warning, since the apply it plans is the repair."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN105",
+        Severity.WARNING,
+        "The account has no CoWork object to attach a profile to",
+        "{artifact}: the account has no CoWork object, so the profile publishes unattached",
+        "create the account's CoWork object, then plan again; or set `cowork_profiles.+attach: false`",
+        condition=(
+            "a CoWork profile published to SNOWFLAKE_INTELLIGENCE.PROFILES with `+attach` on is "
+            "planned, and SHOW SNOWFLAKE INTELLIGENCES lists nothing"
+        ),
+        note=(
+            "Snowflake private preview. The profile is still published, and a later plan attaches it "
+            "once the account has a CoWork object (SST-PLN104)."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
         "SST-PLN900",
         Severity.ERROR,
         "Change order is not a valid topological order",

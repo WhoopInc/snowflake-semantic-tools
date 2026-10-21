@@ -18,6 +18,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan import build_changeset
+from snowflake_semantic_tools.domain.plan.attach import AttachmentReading
 from snowflake_semantic_tools.domain.plan.preflight import Preflight
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, Manifest, State
 from tests.helpers.manifests import build_minimal_manifest
@@ -111,6 +112,7 @@ def plan(
     manifest: Manifest | None = None,
     prune_types: frozenset[str] | None = None,
     overwrite: bool = False,
+    attachment: AttachmentReading | None = None,
 ) -> ChangeSet:
     """Plan `rendered` against `observed` and the state `applied` records, in the domain."""
     planned = manifest or manifest_of(*rendered)
@@ -125,6 +127,7 @@ def plan(
         preflight=preflight,
         prune_types=prune_types,
         overwrite=overwrite,
+        attachment=attachment,
     )
 
 

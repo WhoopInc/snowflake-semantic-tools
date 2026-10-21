@@ -48,6 +48,7 @@ _REASONS = {
     ChangeReason.VERSION_DRIFT: "its alias or live version drifted",
     ChangeReason.OVERWRITE: "changed out of band; overwritten",
     ChangeReason.DEFAULT_VERSION_DIFFERS: "another version is the default",
+    ChangeReason.DETACHED: "not attached to CoWork",
 }
 _STATUS_STYLE = {
     OutcomeStatus.APPLIED: ("ok", "success"),
@@ -63,6 +64,7 @@ _PROPERTY_LABELS = {
     "manifest_id": "ownership marker",
     "aliases": "version alias",
     "tags": "tags",
+    "attached": "CoWork attachment",
 }
 # How much of an update's member diff a plan prints without `--full`: lines per property, lines
 # per change, and characters per line. The diff file holds all of it.

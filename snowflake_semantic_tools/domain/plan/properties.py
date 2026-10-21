@@ -2,7 +2,8 @@
 
 An update is planned from what the object shows and what the artifact renders, so each
 property compares the two: the object's name, its ownership marker's fingerprint and
-manifest, an agent's version aliases, and the tags of an agent or a semantic view. A create
+manifest, an agent's version aliases, and the tags of an agent or a semantic view; and whether
+a CoWork profile is attached to CoWork, which plan read apart from the object. A create
 writes every property and a prune removes the object, so neither names one; nor does an
 unchanged or blocked artifact.
 """
@@ -33,6 +34,8 @@ def changed_properties(change: Change, manifest_id: str) -> tuple[PropertyChange
     update unsetting every alias but the declared one; and `tags`
     when an agent or a semantic view shows others, which the update unsets or the replace drops.
     Tags that were not read are not compared, so an unread object never seems to gain them.
+    `attached` goes from `no` to the CoWork object an update attaches a CoWork profile to
+    (Snowflake private preview).
     """
     rendered, observed = change.rendered, change.observed
     if change.action is not Action.UPDATE or rendered is None or observed is None:
@@ -47,6 +50,9 @@ def changed_properties(change: Change, manifest_id: str) -> tuple[PropertyChange
     ]
     if observed.tags is not None:
         pairs.append(("tags", ", ".join(sorted(observed.tags)), ", ".join(sorted(rendered.desired_tags))))
+    if rendered.attaches_to is not None:
+        # Snowflake private preview (PrPr): CoWork profiles
+        pairs.append(("attached", "no", rendered.attaches_to))
     return tuple(PropertyChange(name, before, after) for name, before, after in pairs if _differs(name, before, after))
 
 

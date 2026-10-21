@@ -26,7 +26,7 @@ cannot be downgraded by any setting.
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
-- [Planning (PLN)](#planning-pln) -- 46 codes
+- [Planning (PLN)](#planning-pln) -- 48 codes
 - [Apply (APL)](#apply-apl) -- 45 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 12 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
@@ -5694,7 +5694,7 @@ Raised when a compiled CoWork profile's database and schema, compared as Snowfla
 
 Fix: publish to SNOWFLAKE_INTELLIGENCE.PROFILES on the target CoWork users reach
 
-Note: Snowflake private preview. The profile routes when it is run directly, but CoWork lists only the agents in SNOWFLAKE_INTELLIGENCE.PROFILES as profiles, so elsewhere it is a rehearsal, such as one published by a dev target.
+Note: Snowflake private preview. The profile routes when it is run directly, but CoWork lists only the agents in SNOWFLAKE_INTELLIGENCE.PROFILES as profiles, so elsewhere it is a rehearsal, such as one published by a dev target, and is never attached to CoWork.
 
 ### SST-VAL879
 
@@ -6913,6 +6913,30 @@ Raised when `plan.drift_check` is `full`, and the DESCRIBE of a procedure or the
 Fix: grant the role what the read needs (USAGE on a procedure for DESCRIBE, OWNERSHIP or REFERENCES for GET_DDL), or set `plan.drift_check: basic` to compare only what SHOW lists
 
 Note: The object's other properties, those SHOW lists, are still compared with what apply recorded (SST-PLN014).
+
+### SST-PLN104
+
+**CoWork profile was detached from CoWork** (warning, never promoted)
+
+`<artifact>: not attached to the CoWork object <value>; apply attaches it again`
+
+Raised when state records a CoWork profile published to SNOWFLAKE_INTELLIGENCE.PROFILES unchanged, `+attach` is on, and SHOW AGENTS IN SNOWFLAKE INTELLIGENCE does not list it.
+
+Fix: apply to attach it again, or set `cowork_profiles.+attach: false` to leave it detached
+
+Note: Snowflake private preview. The update runs only ALTER SNOWFLAKE INTELLIGENCE ... ADD AGENT, committing no version. Attaching is not part of the profile's definition, so a profile detached by hand is attached again rather than blocked as changed out of band (SST-PLN014). Strict mode leaves this a warning, since the apply it plans is the repair.
+
+### SST-PLN105
+
+**The account has no CoWork object to attach a profile to** (warning)
+
+`<artifact>: the account has no CoWork object, so the profile publishes unattached`
+
+Raised when a CoWork profile published to SNOWFLAKE_INTELLIGENCE.PROFILES with `+attach` on is planned, and SHOW SNOWFLAKE INTELLIGENCES lists nothing.
+
+Fix: create the account's CoWork object, then plan again; or set `cowork_profiles.+attach: false`
+
+Note: Snowflake private preview. The profile is still published, and a later plan attaches it once the account has a CoWork object (SST-PLN104).
 
 ### SST-PLN900
 

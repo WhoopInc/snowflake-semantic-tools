@@ -168,6 +168,9 @@ def test_plan_live_observation_saved_plan_and_detailed_exitcode(
 ) -> None:
     project = project_copy(tmp_path)
     port = FakeSnowflake(state={})
+    # The reference profile is a rehearsal (a Snowflake private preview), so the CoWork object is
+    # never read: a read would fail the plan.
+    port.refuse("cowork_object", "attached_agents")
     result = invoke_with_port(
         monkeypatch,
         port,
@@ -204,6 +207,10 @@ def test_plan_live_observation_saved_plan_and_detailed_exitcode(
             "SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANALYTICS_AGENT_DCE1F8A",
         ),
     ]
+    # Published to SST_REF_DEV.PROFILES, it is never attached, so every golden is unchanged.
+    assert {item["artifact_key"]: item["attaches_to"] for item in payload["data"]["changes"]}[
+        "cowork_profile:jaffle_concierge"
+    ] is None
     assert Path(payload["data"]["plan_path"]).is_file()
     assert Path(payload["data"]["sql_path"]).is_dir()
 

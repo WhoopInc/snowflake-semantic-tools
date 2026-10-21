@@ -47,6 +47,8 @@ class ChangeReason(Enum):
     versions and gains one, or only gets its marker back when its newest already holds it.
     DEFAULT_VERSION_DIFFERS updates a skill or plugin whose version is published but is not the
     extension's default, while no certified version outranks it, so apply makes it the default.
+    DETACHED updates a CoWork profile that is otherwise unchanged but no longer attached to the
+    account's CoWork object, so apply only attaches it again (Snowflake private preview).
     """
 
     NOT_PRESENT = "not_present"
@@ -63,3 +65,4 @@ class ChangeReason(Enum):
     VERSION_DRIFT = "version_drift"
     OVERWRITE = "overwrite"
     DEFAULT_VERSION_DIFFERS = "default_version_differs"
+    DETACHED = "detached"

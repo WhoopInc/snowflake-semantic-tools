@@ -57,7 +57,8 @@ def change_json(change: Change, manifest_id: str, *, unread: frozenset[str] = fr
 
     A prune `sst` will not execute is marked `report_only`. `adds_version` is true for an update
     that commits a new version of an agent, false for one that only sets its properties, and
-    null for any other change. `properties` names what an update
+    null for any other change. `attaches_to` names the CoWork object a CoWork profile's change
+    attaches it to, else null (Snowflake private preview). `properties` names what an update
     changes on the object, publishing under `manifest_id`, and `prior_definition` is the
     object's definition when `--capture-prior` read it, else null. `diff_status` is `compared`
     for an update compared member by member, its members in `diff`; `unavailable` for one in
@@ -76,6 +77,7 @@ def change_json(change: Change, manifest_id: str, *, unread: frozenset[str] = fr
         "target": (rendered.target.sql if rendered is not None else observed.qualified_name.sql if observed else None),
         "fingerprint": rendered.fingerprint if rendered is not None else None,
         "adds_version": rendered.adds_version if rendered is not None else None,
+        "attaches_to": rendered.attaches_to if rendered is not None else None,
         "previous_marker": (observed.marker.text if observed is not None and observed.marker is not None else None),
         "depends_on": list(change.depends_on),
         "order": change.order,

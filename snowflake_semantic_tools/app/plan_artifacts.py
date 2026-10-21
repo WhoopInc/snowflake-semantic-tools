@@ -479,7 +479,8 @@ def plan_changes(
 
     Steps, in order:
 
-    1. The change set, from the reading's observation and preflight, the manifest and state.
+    1. The change set, from the reading's observation, preflight and CoWork attachment, the
+       manifest and state: each CoWork profile not attached yet is attached (`attach_changes`).
     2. Composite prunes, when pruning: a composite artifact state records, that nothing
        rendered or planned names, is reported by its handler as a prune.
     3. The reading's failures, ahead of every other diagnostic.
@@ -505,6 +506,7 @@ def plan_changes(
         composite_plans=dict(composite_plans or {}),
         preflight=reading.preflight,
         overwrite=overwrite,
+        attachment=reading.attachment,
     )
     if include_prune:
         prunes = _composite_prunes(lifecycle_handlers or {}, rendered, state, changeset, prune_types, prune_keys)

@@ -4,14 +4,16 @@
 decided:
 
 1. `classify` decides each rendered artifact, in DDL order;
-2. `plan_prunes` adds the orphans SST may drop, when prune is asked for;
-3. `block_unpublished_dependencies` blocks a write whose dependency would not be published
+2. `attach_changes` attaches each CoWork profile not attached yet, when plan read the account's
+   CoWork object -- before preflight, so the privilege attaching needs is checked;
+3. `plan_prunes` adds the orphans SST may drop, when prune is asked for;
+4. `block_unpublished_dependencies` blocks a write whose dependency would not be published
    before it;
-4. `check_preflight` blocks the writes the preflight read shows Snowflake would refuse, when
+5. `check_preflight` blocks the writes the preflight read shows Snowflake would refuse, when
    plan read one;
-5. `block_unsafe` blocks a write that pins an unplanned version, and everything that depends on a
+6. `block_unsafe` blocks a write that pins an unplanned version, and everything that depends on a
    blocked change -- after prune and preflight, so every change it checks against is decided;
-6. `order_changes` orders the changes, whose decisions hash into the plan id.
+7. `order_changes` orders the changes, whose decisions hash into the plan id.
 
 The plan's diagnostics follow the same order.
 """
@@ -32,6 +34,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     SnowflakeObservation,
 )
 from snowflake_semantic_tools.domain.model.registry import Registry
+from snowflake_semantic_tools.domain.plan.attach import AttachmentReading, attach_changes
 from snowflake_semantic_tools.domain.plan.classify import classify
 from snowflake_semantic_tools.domain.plan.order import order_changes, render_order
 from snowflake_semantic_tools.domain.plan.preflight import Preflight, check_preflight, schemas_to_create
@@ -55,6 +58,7 @@ def build_changeset(
     composite_plans: Mapping[str, CompositePlan] | None = None,
     preflight: Preflight | None = None,
     overwrite: bool = False,
+    attachment: AttachmentReading | None = None,
 ) -> ChangeSet:
     """Decide one change per rendered artifact and order the changes into the plan apply runs.
 
@@ -68,6 +72,7 @@ def build_changeset(
         composite_plans: What each composite lifecycle handler planned, by artifact key.
         preflight: What plan read about the target before deciding; None skips the check.
         overwrite: Update each object changed out of band instead of blocking it, as `classify` does.
+        attachment: What plan read of the account's CoWork object; None attaches nothing.
 
     Returns:
         The changes in dependency order and the plan id hashed from them; when no order can
@@ -77,10 +82,13 @@ def build_changeset(
         KeyError: the registry has no entry for a rendered artifact's type.
 
     Diagnostics:
-        Each phase's own codes, in phase order: see `classify`, `plan_prunes`,
+        Each phase's own codes, in phase order: see `classify`, `attach_changes`, `plan_prunes`,
         `block_unpublished_dependencies`, `check_preflight`, `block_unsafe`, and `order_changes`.
     """
-    changes, classified = _classify_all(rendered, observation, state, registry, blocked, composite_plans, overwrite)
+    classified_changes, classified = _classify_all(
+        rendered, observation, state, registry, blocked, composite_plans, overwrite
+    )
+    changes, attaching = attach_changes(classified_changes, attachment)
     pruned, skipped = (
         plan_prunes(rendered, observation, state, registry, prune_types, prune_keys) if include_prune else ((), ())
     )
@@ -90,7 +98,7 @@ def build_changeset(
     candidates = (*ordered_safely, *pruned)
     decided, preflighted = check_preflight(candidates, preflight) if preflight else (candidates, ())
     safe, unpinned = block_unsafe(decided, registry)
-    diagnostics = (*classified, *skipped, *unordered, *preflighted, *unpinned)
+    diagnostics = (*classified, *attaching, *skipped, *unordered, *preflighted, *unpinned)
     schemas = schemas_to_create(safe, preflight) if preflight else ()
     return _ordered(safe, diagnostics, manifest, target, observation, full, schemas)
 
