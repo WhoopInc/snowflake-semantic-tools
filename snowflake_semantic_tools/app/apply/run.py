@@ -27,7 +27,7 @@ from snowflake_semantic_tools.app.apply.one import ChangeApplier
 from snowflake_semantic_tools.app.apply.recovery import Reconnect, Reconnection, connection_lost
 from snowflake_semantic_tools.app.apply.stages import UploadStages
 from snowflake_semantic_tools.app.apply.state import EntryStamp, _applied_after, _run_outcome
-from snowflake_semantic_tools.app.apply.temporary import temporary_evals, temporary_notes, temporary_refusal
+from snowflake_semantic_tools.app.apply.temporary import temporary_notes, temporary_refusal, temporary_skips
 from snowflake_semantic_tools.app.apply.waves import _WaveRun, lost_lock
 from snowflake_semantic_tools.app.baseline import blocking
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
@@ -180,6 +180,7 @@ class ApplyArtifacts:
             SST-APL014: a temporary artifact now shadows the permanent object of its name.
             SST-APL015: a temporary artifact's alias was ignored.
             SST-APL105: an eval of an agent published as temporary was skipped.
+            SST-APL106: a CoWork profile was skipped, since a temporary run publishes none.
             SST-APL103: Snowflake ended a session the run used, after it took its lock.
             SST-APL039: an absent schema the plan creates first could not be created; nothing ran.
             SST-APL900: the outcomes do not account for every planned change.
@@ -212,7 +213,11 @@ class ApplyArtifacts:
             try:
                 with self._phases.phase("lock"):
                     locked, lock_diagnostics = lease.acquire(break_stale=options.break_stale_lock)
-                reported = (*changeset.diagnostics, *temporary_notes(changeset), *lock_diagnostics)
+                reported = (
+                    *changeset.diagnostics,
+                    *temporary_notes(changeset, temporary=options.temporary),
+                    *lock_diagnostics,
+                )
                 if not locked:
                     return self._refused(reported, run_id, started)
                 changed = self._state_changed(changeset, previous)
@@ -285,7 +290,8 @@ class ApplyArtifacts:
 
         The waves share one `UploadStages`, so each stage the run uploads to is created at most once.
         An eval of an agent the run publishes as temporary is skipped, writing nothing, and so is
-        each blocked change, which `_blocked_skips` reports.
+        a CoWork profile in a temporary run, and each blocked change, which `_blocked_skips`
+        reports.
         """
         reported = (*reported, *_blocked_skips(changeset, options))
         with self._phases.phase("publish"):
@@ -296,7 +302,7 @@ class ApplyArtifacts:
         def lost() -> str | None:
             return lease.lost_reason if lease.lost else None
 
-        skipped = temporary_evals(changeset)
+        skipped = temporary_skips(changeset, temporary=options.temporary)
 
         def apply_one(change: Change, options: ApplyOptions) -> ApplyOutcome:
             self._progress.unit_started("publish", change.key, change.action.value)

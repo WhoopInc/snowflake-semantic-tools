@@ -132,3 +132,24 @@ def agent_and_eval(*, temporary: bool) -> tuple[Change, Change]:
         Change(agent.key, "agent", Action.CREATE, ChangeReason.NOT_PRESENT, agent, None, (), 60),
         Change(evaluation.key, "eval", Action.CREATE, ChangeReason.NOT_PRESENT, evaluation, None, (agent.key,), 70),
     )
+
+
+def agent_and_cowork_profile(*, temporary: bool) -> tuple[Change, Change]:
+    """Creates of the agent `agent:sales`, temporary or not, and of `cowork_profile:everyone`, routing to it.
+
+    CoWork profiles are a Snowflake private preview; the profile is never temporary itself.
+    """
+    agent, _ = agent_and_eval(temporary=temporary)
+    profile = RenderedArtifact.create(
+        key="cowork_profile:everyone",
+        artifact_type="cowork_profile",
+        target=QualifiedName.from_parts("snowflake_intelligence", "profiles", "everyone"),
+        ddl='{"models": {"orchestration": "auto"}}',
+        shape=PublishShape("AGENT", render_dialect="json", grant_preservation=GrantPreservation.NONE),
+        statements=StatementPlan(default=(statement("CREATE AGENT SNOWFLAKE_INTELLIGENCE.PROFILES.EVERYONE"),)),
+        depends_on=(agent.key,),
+    )
+    return (
+        agent,
+        Change(profile.key, "cowork_profile", Action.CREATE, ChangeReason.NOT_PRESENT, profile, None, (agent.key,), 65),
+    )

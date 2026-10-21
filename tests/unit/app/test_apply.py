@@ -43,6 +43,7 @@ from snowflake_semantic_tools.domain.state import (
 )
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import (
+    agent_and_cowork_profile,
     agent_and_eval,
     change,
     changeset,
@@ -1165,6 +1166,29 @@ def test_a_temporary_run_publishes_and_records_no_eval_of_a_temporary_agent() ->
     use_case, _, _, _ = runner(port)
     permanent = use_case.run(changeset(*agent_and_eval(temporary=False)), state())
     assert [outcome.status for outcome in permanent.outcomes] == [OutcomeStatus.APPLIED, OutcomeStatus.APPLIED]
+
+
+def test_a_temporary_run_publishes_and_records_no_cowork_profile() -> None:
+    # A temporary profile is unmeasured, and a permanent one would route to session-scoped agents.
+    port = FakeSnowflake()
+    use_case, _, store, _ = runner(port)
+    result = use_case.run(changeset(*agent_and_cowork_profile(temporary=True)), state(), ApplyOptions(temporary=True))
+    assert result.success
+    assert {outcome.key: outcome.status for outcome in result.outcomes} == {
+        "agent:sales": OutcomeStatus.APPLIED,
+        "cowork_profile:everyone": OutcomeStatus.SKIPPED,
+    }
+    assert port.scripts == [("CREATE AGENT DB.SCHEMA.SALES",)]
+    assert [item.code for item in result.diagnostics if item.code == "SST-APL106"] == ["SST-APL106"]
+    written = store.state
+    assert written is None or "cowork_profile:everyone" not in written.applied
+
+    # A permanent run publishes the profile after its agent, and reports no skip.
+    port = FakeSnowflake()
+    use_case, _, _, _ = runner(port)
+    permanent = use_case.run(changeset(*agent_and_cowork_profile(temporary=False)), state())
+    assert [outcome.status for outcome in permanent.outcomes] == [OutcomeStatus.APPLIED, OutcomeStatus.APPLIED]
+    assert "SST-APL106" not in [item.code for item in permanent.diagnostics]
 
 
 def test_a_set_profile_refused_after_the_create_reports_snowflakes_error_and_a_partial_write() -> None:

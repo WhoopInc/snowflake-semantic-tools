@@ -27,7 +27,7 @@ cannot be downgraded by any setting.
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 46 codes
-- [Apply (APL)](#apply-apl) -- 44 codes
+- [Apply (APL)](#apply-apl) -- 45 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 12 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
@@ -7399,6 +7399,18 @@ Raised when `apply --temporary` publishes an eval's agent as a temporary agent, 
 Fix: apply without --temporary to publish the eval with its agent
 
 Note: Only agents are temporary: the views, tools and skills the same run publishes are permanent.
+
+### SST-APL106
+
+**CoWork profile left out of a temporary run** (info)
+
+`<artifact>: skipped, because --temporary publishes no CoWork profile`
+
+Raised when `apply --temporary` would publish a CoWork profile, a Snowflake private preview feature: a temporary profile has not been measured on Snowflake, and a permanent one would route to agents that end with the run's session, so the profile is neither published nor recorded.
+
+Fix: apply without --temporary to publish the profile
+
+Note: The agents the profile routes to still publish, as temporary agents.
 
 ### SST-APL900
 

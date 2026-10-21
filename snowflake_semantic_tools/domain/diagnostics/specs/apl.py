@@ -609,6 +609,19 @@ SPECS: tuple[ErrorSpec, ...] = (
         note="Only agents are temporary: the views, tools and skills the same run publishes are permanent.",
     ),
     spec(
+        "SST-APL106",
+        Severity.INFO,
+        "CoWork profile left out of a temporary run",
+        "{artifact}: skipped, because --temporary publishes no CoWork profile",
+        "apply without --temporary to publish the profile",
+        condition=(
+            "`apply --temporary` would publish a CoWork profile, a Snowflake private preview feature: a "
+            "temporary profile has not been measured on Snowflake, and a permanent one would route to agents "
+            "that end with the run's session, so the profile is neither published nor recorded"
+        ),
+        note="The agents the profile routes to still publish, as temporary agents.",
+    ),
+    spec(
         "SST-APL900",
         Severity.ERROR,
         "Outcome count does not match change count",

@@ -17,6 +17,7 @@ from snowflake_semantic_tools.domain.state import AppliedEntry, State
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.clocks import FixedClock
 from tests.helpers.compile_builders import compiled, with_diagnostics
+from tests.helpers.cowork_profiles import LISTED, compile_profiles, cowork_profile, described_agent
 from tests.helpers.project_inputs import EMPTY_SOURCES, InMemoryProjectInputs, dev_target
 from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import texts
@@ -190,6 +191,34 @@ def test_a_plan_from_uncommitted_files_labels_each_agent_version_dirty_and_warns
     assert "'git:abc1234-dirty sst-spec:" in statements
     [warning] = [item for item in ready.changeset.diagnostics if item.code == "SST-PLN042"]
     assert "(agents/helper/agent.yml), so the 1 agent version(s)" in warning.message
+
+
+def test_a_cowork_profile_is_staged_under_its_own_folder_and_never_made_temporary() -> None:
+    # CoWork profiles are a Snowflake private preview; a profile publishes as a staged AGENT.
+    stage = {"agent_spec_stage": {"database": "SPECS", "stage": "AGENT_STAGE"}}
+    tree: dict[str, object] = {**LISTED, "apply": stage}
+    result = compile_profiles(cowork_profile(), agents=(described_agent(),), tree=tree)
+    candidates, use_case, _ = select(result, inputs=InMemoryProjectInputs(tree=tree))
+    assert isinstance(candidates, PlanCandidates)
+    for temporary in (False, True):
+        store = InMemoryStateStore(State.empty(dev_target()))
+        ready = use_case.run(
+            candidates,
+            ScopeRecordingSnowflake(),
+            store,
+            target=dev_target(),
+            state_table=STATE_TABLE,
+            temporary=temporary,
+        )
+        assert isinstance(ready, PlanReady)
+        changes = {change.artifact_type: change for change in ready.changeset.changes}
+        rendered = changes["cowork_profile"].rendered
+        assert rendered is not None and not rendered.temporary
+        assert "FROM @SPECS.SCH.AGENT_STAGE/cowork-profiles/everyone/abc1234/" in "\n".join(texts(rendered.statements))
+        assert rendered.upload_path == "@SPECS.SCH.AGENT_STAGE/cowork-profiles/everyone/abc1234/agent_spec.yaml"
+        assert rendered.upload_stage == QualifiedName.parse("SPECS.SCH.AGENT_STAGE")
+        agent = changes["agent"].rendered
+        assert agent is not None and agent.temporary is temporary
 
 
 def test_a_strict_plan_is_not_refused_over_a_local_state_cache_the_table_overrides() -> None:

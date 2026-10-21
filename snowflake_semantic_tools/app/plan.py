@@ -16,6 +16,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.app.baseline import blocking, held_by_baseline
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent, for_publication
+from snowflake_semantic_tools.app.compile.cowork_profiles import CompiledCoworkProfile, for_cowork_publication
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
@@ -549,11 +550,12 @@ class PreparePlan:
         """Render each selected artifact as apply publishes it, by key, agents staged for publication.
 
         Each agent is staged under `apply.agent_spec_stage`, in the target's database and
-        schema unless the block names others, beneath a folder for the project's commit; each
-        eval's dataset version records that commit. The agent's upload names the stage, so the
-        preflight checks it and apply creates it when it is absent. Each carries its members'
-        fingerprints, which apply records in state. With `dirty`, each agent version names its
-        commit `<sha>-dirty`.
+        schema unless the block names others, beneath a folder for the project's commit, and
+        each CoWork profile under its own folder of that stage; each eval's dataset version
+        records that commit. The upload names the stage, so the preflight checks it and apply
+        creates it when it is absent. Each carries its members' fingerprints, which apply
+        records in state. With `dirty`, each version names its commit `<sha>-dirty`. A profile
+        is never temporary: `apply --temporary` leaves it out (`temporary_profiles`).
         """
         stage_config = config_block(apply_config.get("agent_spec_stage"))
         database = target.database.folded
@@ -568,6 +570,9 @@ class PreparePlan:
             (
                 for_publication(item, stage=stage, git_sha=git_sha, temporary=temporary, dirty=dirty)
                 if isinstance(item, CompiledAgent)
+                # Snowflake private preview (PrPr): CoWork profiles
+                else for_cowork_publication(item, stage=stage, git_sha=git_sha, dirty=dirty)
+                if isinstance(item, CompiledCoworkProfile)
                 # A dataset version records the commit in its METADATA.
                 else replace(item, git_sha=git_sha)
                 if isinstance(item, CompiledEval)
