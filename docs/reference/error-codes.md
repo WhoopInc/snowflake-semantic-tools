@@ -29,7 +29,7 @@ cannot be downgraded by any setting.
 - [Planning (PLN)](#planning-pln) -- 49 codes
 - [Apply (APL)](#apply-apl) -- 45 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 13 codes
-- [Snowflake (SNO)](#snowflake-sno) -- 28 codes
+- [Snowflake (SNO)](#snowflake-sno) -- 30 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
 - [Internal (INT)](#internal-int) -- 13 codes
 - [Retired numbers](#retired-numbers) -- 72 numbers
@@ -8017,6 +8017,30 @@ Note: AI_COMPLETE refuses an embedding model, a retired model and a misspelt nam
 Raised when the synonym model answered enrich's test completion, but SHOW CORTEX BASE MODELS lists it as INTERNAL, past end-of-life, legacy or in preview, or does not list it.
 
 Fix: move enrichment.synonym_model to a GA model before this one stops answering
+
+### SST-SNO034
+
+**CoWork profile run's router spans cannot be read** (error)
+
+`eval '<artifact>': the router spans of run '<value>' could not be read: <detail>`
+
+Raised when a CoWork profile's eval run completed and its results were read, but the read of its router spans from SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS failed, failed in transit on every try, or returned rows SST cannot read; the attempt is not accepted, as an unread result is not.
+
+Fix: run the eval with a role that can read SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS (it may need READ UNREDACTED AI OBSERVABILITY EVENTS TABLE)
+
+Note: Snowflake private preview: CoWork profiles. SST scores routing_accuracy from these spans. They were measured read as ACCOUNTADMIN; what a narrower role needs, and whether the router attributes are redacted without READ UNREDACTED AI OBSERVABILITY EVENTS TABLE, is not measured. https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
+
+### SST-SNO035
+
+**CoWork profile run left questions untraced** (warning)
+
+`eval '<artifact>': run '<value>' traced no route for <count> question(s) after <detail>; each fails routing_accuracy`
+
+Raised when a question of a CoWork profile's eval run has a result, but the run's router spans hold no root span for its record, after SST read them again within the attempt's deadline.
+
+Fix: run the eval again; if questions stay untraced, check what the role reads of the events table
+
+Note: Snowflake private preview: CoWork profiles. A record with a root span and no routing span was declined; one with no root span has not been traced yet, so it is not read as a decline. Whether spans can land after a run's terminal status is not measured.
 
 ## External systems (PRT)
 

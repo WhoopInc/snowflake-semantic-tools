@@ -308,6 +308,11 @@ class EvalConfig:
     config: object = None
     routing_metrics: tuple[EvalRoutingMetric, ...] = ()
 
+    def routing_metric(self, name: str) -> EvalRoutingMetric | None:
+        """Return the first routing metric whose name matches casefolded, or None."""
+        folded = name.casefold()
+        return next((metric for metric in self.routing_metrics if (metric.name or "").casefold() == folded), None)
+
 
 @dataclass(frozen=True, slots=True)
 class EvalScoreRanges:

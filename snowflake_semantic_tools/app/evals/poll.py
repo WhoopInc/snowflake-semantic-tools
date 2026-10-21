@@ -154,6 +154,13 @@ class StatusPoll:
         timeout_ms = min(self._options.read_timeout_ms, remaining) if remaining > 0 else self._options.read_timeout_ms
         return max(1, -(-timeout_ms // 1000))
 
+    def remaining_ms(self) -> int:
+        """The milliseconds left of the attempt's deadline; 0 or less once it has passed.
+
+        A read that follows polling, such as a CoWork profile's router spans, waits within it.
+        """
+        return self._remaining()
+
     def _settle_shown(self, status: str) -> int | None:
         """The settle window a provisional status is reported with; None for any other, or none."""
         settle_ms = self._options.partial_settle_ms

@@ -236,6 +236,7 @@ class _ResultCollector:
                     expected_tools=expected_tools(truth),
                     called_tools=self._called.get(group_key),
                     cost=sum_costs(tuple(self._costs[request] for request in sorted(self._requests[group_key]))),
+                    record_id=group_key[0],
                 )
             )
         return tuple(sorted(rows, key=lambda row: row.index or 0))
@@ -293,7 +294,10 @@ def _text(value: object) -> str | None:
 
 
 def _expected_metrics(compiled: CompiledEval) -> dict[str, str]:
-    """Map each metric the eval scores, by casefolded name, to the METRIC_TYPE its rows carry."""
+    """Map each metric Snowflake scores, by casefolded name, to the METRIC_TYPE its rows carry.
+
+    A CoWork profile's routing metrics are left out: SST scores them from the run's spans.
+    """
     expected = {
         str(metric.name).casefold(): "system"
         for metric in compiled.resolved.config.system_metrics
@@ -471,10 +475,14 @@ def _status_failed(raw_status: object) -> bool:
 
 
 def _metric_threshold(compiled: CompiledEval, metric_name: str) -> ThresholdRange | None:
-    """Return a metric's pass band, by casefolded name: a system metric's, else a custom default."""
+    """Return a metric's pass band by casefolded name: a system or routing metric's, else a default."""
     for metric in compiled.resolved.config.system_metrics:
         if (metric.name or "").casefold() == metric_name.casefold():
             return metric.threshold
+    # Snowflake private preview (PrPr): CoWork profiles.
+    routing = compiled.resolved.config.routing_metric(metric_name)
+    if routing is not None:
+        return routing.threshold
     for custom in compiled.resolved.custom_metrics:
         if custom.name.casefold() == metric_name.casefold():
             return custom.threshold_default

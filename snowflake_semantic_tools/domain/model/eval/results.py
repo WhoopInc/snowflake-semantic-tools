@@ -71,6 +71,13 @@ class EvalResultRow:
         called_tools: The calls of the agent's own tools the reply made, in call order, by name;
             None when not known.
         cost: The question's own time and tokens; None when not read.
+        record_id: The run's record id for the question, as Snowflake reports it; None when not
+            read, as for an unpublished run.
+        expected_subagents: For a CoWork profile's eval (a Snowflake private preview), the
+            qualified names of the subagents the question's ground truth accepts; `()` expects
+            a decline, and None states no expectation, as for every agent's eval.
+        routed_subagents: The subagents the profile's router chose, by qualified name, sorted;
+            `()` when it chose none; None when not read, as for every agent's eval.
     """
 
     question_key: str
@@ -82,6 +89,9 @@ class EvalResultRow:
     expected_tools: tuple[str, ...] | None = None
     called_tools: tuple[str, ...] | None = None
     cost: EvalCostSummary | None = None
+    record_id: str | None = None
+    expected_subagents: tuple[str, ...] | None = None
+    routed_subagents: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)

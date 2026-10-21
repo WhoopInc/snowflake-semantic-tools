@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.run import EvalRunResult, ResolvedAgent
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.evaluate.routing import routing_metric_version
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_COMPLETED,
     CustomEvalMetric,
@@ -463,11 +464,18 @@ def _attempt_spec_fingerprint(attempts: tuple[EvalRunAttempt, ...]) -> str | Non
 
 
 def _metric_versions(compiled: CompiledEval) -> tuple[tuple[str, str], ...]:
+    """List each metric's `(name, version)`, sorted: Snowflake's, the routing rule's, or a judge's."""
     values = [
         (metric.name or "", metric.version or "")
         for metric in compiled.resolved.config.system_metrics
         if metric.name is not None
     ]
+    # Snowflake private preview (PrPr): CoWork profiles. SST scores routing by a versioned rule.
+    values.extend(
+        (metric.name, routing_metric_version(metric.name))
+        for metric in compiled.resolved.config.routing_metrics
+        if metric.name is not None
+    )
     values.extend(
         (metric.name, _custom_version(metric)) for metric in compiled.resolved.custom_metrics if metric.enabled
     )
@@ -489,8 +497,9 @@ def _edited_metric(compiled: CompiledEval, baseline: EvalBaselineRecord) -> str 
     for name, recorded in baseline.metric_versions:
         version = current.get(name)
         # A baseline captured before metrics were digested records `custom:<model>`, with no
-        # definition to compare; SST-VAL759 reports that it differs.
-        if version is not None and recorded.count(":") == 2 and recorded != version:
+        # definition to compare; SST-VAL759 reports that it differs. A routing metric's
+        # `sst:<name>:<rule>` is no custom metric's, and a change to it is SST-VAL759 too.
+        if version is not None and recorded.startswith("custom:") and recorded.count(":") == 2 and recorded != version:
             return name
     return None
 
@@ -499,6 +508,7 @@ def _metric_policy(
     compiled: CompiledEval,
 ) -> tuple[tuple[str, tuple[float | None, float | None] | None, bool], ...]:
     names = [metric.name or "" for metric in compiled.resolved.config.system_metrics]
+    names.extend(metric.name or "" for metric in compiled.resolved.config.routing_metrics)
     names.extend(metric.name for metric in compiled.resolved.custom_metrics if metric.enabled)
     return tuple(sorted((name, _score_range(compiled, name), _is_gated_metric(compiled, name)) for name in names))
 
@@ -517,7 +527,8 @@ def _resolved_tier(compiled: CompiledEval, default_tier: str | None) -> str:
 def _score_range(compiled: CompiledEval, metric_name: str) -> tuple[float | None, float | None] | None:
     """Return a metric's threshold as `(min, max)`, by casefolded name; None when it has none.
 
-    A system metric's threshold wins over a custom metric's default of the same name.
+    A system metric's threshold wins over a routing metric's, and that over a custom metric's
+    default of the same name.
     """
     system = next(
         (
@@ -527,8 +538,12 @@ def _score_range(compiled: CompiledEval, metric_name: str) -> tuple[float | None
         ),
         None,
     )
-    threshold = system.threshold if system is not None else None
-    if system is None:
+    routing = compiled.resolved.config.routing_metric(metric_name)
+    if system is not None:
+        threshold = system.threshold
+    elif routing is not None:
+        threshold = routing.threshold
+    else:
         custom = next(
             (metric for metric in compiled.resolved.custom_metrics if metric.name.casefold() == metric_name.casefold()),
             None,
@@ -538,6 +553,7 @@ def _score_range(compiled: CompiledEval, metric_name: str) -> tuple[float | None
 
 
 def _is_gated_metric(compiled: CompiledEval, metric_name: str) -> bool:
+    """Report whether a metric gates, by casefolded name: its system or routing `gate`, else a default."""
     system = next(
         (
             metric
@@ -548,6 +564,9 @@ def _is_gated_metric(compiled: CompiledEval, metric_name: str) -> bool:
     )
     if system is not None:
         return bool(system.gate)
+    routing = compiled.resolved.config.routing_metric(metric_name)
+    if routing is not None:
+        return bool(routing.gate)
     custom = next(
         (metric for metric in compiled.resolved.custom_metrics if metric.name.casefold() == metric_name.casefold()),
         None,

@@ -4,7 +4,9 @@
 `compile_eval` compiles it against `DB.S.SALES_AGENT`. `EvalSnowflake` is the Snowflake fake
 with every query scripted: it fails a test on any query it was not given an answer for.
 `gated_eval`, `attempt` and `run_result` build what the gate judges: a blocking eval with two
-baseline runs, one completed attempt's pass flags, and a run of attempts.
+baseline runs, one completed attempt's pass flags, and a run of attempts. `profile_eval_of`,
+`profile_status`, `profile_results` and `spans` do the same for a run of the CoWork profile
+`concierge` (a Snowflake private preview), whose router spans `spans` scripts.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from typing import Any
 
 from snowflake_semantic_tools.app.compile.base import CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval, CompileEvals
+from snowflake_semantic_tools.app.evals.retrieve import compiled_questions
 from snowflake_semantic_tools.app.evals.run import EvalRunResult
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel
@@ -40,7 +43,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName, Sche
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult, RenderedArtifact
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
-from tests.helpers.eval_inputs import settings_of, settled
+from tests.helpers.eval_inputs import concierge_eval, settings_of, settled
 from tests.helpers.snowflake_fake import FakeSnowflake, Sent
 
 ORIGIN = Origin("agent.yml", 1, 1)
@@ -213,8 +216,10 @@ class EvalSnowflake(FakeSnowflake):
         super().__init__(query_results=tuple(results), **world)
         self.answer_unscripted = False
         self.cancel_results: list[Exception | None] = []
-        # The agent `compile_eval` targets has one committed version.
+        # The agent `compile_eval` targets has one committed version, as has the CoWork profile
+        # `compile_profile_eval` targets by default.
         self.agent_versions.setdefault(("DB.S.SALES_AGENT", "committed"), "VERSION$1")
+        self.agent_versions.setdefault((REHEARSAL.sql, "committed"), "VERSION$1")
 
     def query_in_context(
         self, scope: SchemaScope, sql: Sql, params: object = None, *, timeout_seconds: int | None = None
@@ -234,8 +239,10 @@ class EvalSnowflake(FakeSnowflake):
         return QueryResult()
 
 
-def status_result(status: str, run_name: str = "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z") -> QueryResult:
-    return QueryResult(STATUS_COLUMNS, ((run_name, "SALES_AGENT", "CORTEX AGENT", status, []),))
+def status_result(
+    status: str, run_name: str = "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z", agent: str = "SALES_AGENT"
+) -> QueryResult:
+    return QueryResult(STATUS_COLUMNS, ((run_name, agent, "CORTEX AGENT", status, []),))
 
 
 def result_row(
@@ -299,3 +306,45 @@ def result_rows() -> QueryResult:
     custom[10] = 4.0
     custom[11] = "custom"
     return QueryResult(RESULT_COLUMNS, (system, tuple(custom)))
+
+
+# A run of the CoWork profile `concierge` (a Snowflake private preview), as `profile_eval_of`
+# compiles it and `EvalRunOptions("abcdef0", timestamp="20260928T010203Z")` names its first
+# attempt; `profile_status`, `profile_results` and `spans` answer its reads.
+PROFILE_RUN = "EVAL_CONCIERGE_abcdef0_ci_20260928T010203Z"
+ROUTE_COLUMNS = ("RECORD_ID", "SPAN_TYPE", "SUBAGENT")
+
+
+def profile_eval_of(resolved: ResolvedEval | None = None) -> CompiledEval:
+    """Compile one CoWork profile's eval, `concierge_eval()` unless given, at `REHEARSAL`."""
+    compiled = compile_profile_eval(resolved or concierge_eval()).compiled[0]
+    assert isinstance(compiled, CompiledEval)
+    return compiled
+
+
+def profile_status(status: str, run_name: str = PROFILE_RUN) -> QueryResult:
+    return status_result(status, run_name, "CONCIERGE")
+
+
+def profile_results(compiled: CompiledEval, score: float = 1.0) -> QueryResult:
+    """One `answer_correctness` result per question of the compiled profile eval, record `r<n>`."""
+    rows = tuple(
+        result_row(
+            score=score,
+            record_id=f"r{index}",
+            request_id=f"q{index}",
+            input_query=query,
+            ground_truth=dict(truth),
+        ).rows[0]
+        for index, (_, query, truth) in enumerate(compiled_questions(compiled), start=1)
+    )
+    return QueryResult(RESULT_COLUMNS, rows)
+
+
+def spans(*records: tuple[str, ...]) -> QueryResult:
+    """The router span rows of a run: per record `(record_id, *subagents)`, its root, then each route."""
+    rows: list[tuple[object, ...]] = []
+    for record_id, *routed in records:
+        rows.append((record_id, "record_root", None))
+        rows.extend((record_id, None, subagent) for subagent in routed)
+    return QueryResult(ROUTE_COLUMNS, tuple(rows))

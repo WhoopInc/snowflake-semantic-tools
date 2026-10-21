@@ -21,6 +21,7 @@ from snowflake_semantic_tools.app.evals.options import EvalRunOptions
 from snowflake_semantic_tools.app.evals.poll import StatusPoll
 from snowflake_semantic_tools.app.evals.progress import EvalProgress, RunWatch, no_progress, short_reason
 from snowflake_semantic_tools.app.evals.retrieve import read_results
+from snowflake_semantic_tools.app.evals.routes import score_routing
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.lifecycle.evals import (
     EvalLifecycleConfig,
@@ -443,6 +444,8 @@ class RunEvalSuite:
             SST-APL024: the run ended partially completed, in a status the config does not
                 accept.
             SST-SNO001: the run completed but its results could not be read or did not match.
+            SST-SNO034: a CoWork profile's run completed, but its router spans could not be read.
+            SST-SNO035: some questions of a CoWork profile's run have no trace in its spans.
         """
         run_name = _run_name(compiled, setup, context.options, attempt_number)
         context.watch.started(run_name, attempt_number, setup.attempt_limit, compiled.artifact_key)
@@ -478,7 +481,21 @@ class RunEvalSuite:
         except (SnowflakePortError, ValueError) as exc:
             failure = D("SST-SNO001", detail=f"eval '{compiled.artifact_key}' retrieval failed: {exc}")
             return replace(completed, retrieval_error=str(exc)), (*diagnostics, failure)
-        return replace(completed, rows=rows, cost=cost), diagnostics
+        # Snowflake private preview (PrPr): CoWork profiles. SST scores the router's choices.
+        if not (compiled.resolved.subject.is_profile and compiled.resolved.config.routing_metrics):
+            return replace(completed, rows=rows, cost=cost), diagnostics
+        try:
+            routed = score_routing(self._port, self._clock, context.options, poll, compiled, run_name, rows)
+        except (SnowflakePortError, ValueError) as exc:
+            failure = D(
+                "SST-SNO034",
+                artifact=compiled.artifact_key,
+                value=run_name,
+                detail=str(exc),
+                subject=compiled.artifact_key,
+            )
+            return replace(completed, retrieval_error=str(exc)), (*diagnostics, failure)
+        return replace(completed, rows=routed.rows, cost=cost), (*diagnostics, *routed.diagnostics)
 
     def _stage_format_problem(self, compiled: CompiledEval) -> Diagnostic | None:
         """SST-VAL729 when the existing config stage declares a file format EXECUTE_AI_EVALUATION cannot read."""

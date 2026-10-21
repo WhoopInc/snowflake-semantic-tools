@@ -321,4 +321,47 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         precheck=Precheck.RUNTIME,
     ),
+    spec(
+        "SST-SNO034",
+        Severity.ERROR,
+        "CoWork profile run's router spans cannot be read",
+        "eval '{artifact}': the router spans of run '{value}' could not be read: {detail}",
+        (
+            "run the eval with a role that can read SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS (it may need "
+            "READ UNREDACTED AI OBSERVABILITY EVENTS TABLE)"
+        ),
+        condition=(
+            "a CoWork profile's eval run completed and its results were read, but the read of its router "
+            "spans from SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS failed, failed in transit on every try, "
+            "or returned rows SST cannot read; the attempt is not accepted, as an unread result is not"
+        ),
+        note=(
+            "Snowflake private preview: CoWork profiles. SST scores routing_accuracy from these spans. "
+            "They were measured read as ACCOUNTADMIN; what a narrower role needs, and whether the "
+            "router attributes are redacted without READ UNREDACTED AI OBSERVABILITY EVENTS TABLE, "
+            "is not measured. "
+            "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO035",
+        Severity.WARNING,
+        "CoWork profile run left questions untraced",
+        (
+            "eval '{artifact}': run '{value}' traced no route for {count} question(s) after {detail}; "
+            "each fails routing_accuracy"
+        ),
+        "run the eval again; if questions stay untraced, check what the role reads of the events table",
+        condition=(
+            "a question of a CoWork profile's eval run has a result, but the run's router spans hold no "
+            "root span for its record, after SST read them again within the attempt's deadline"
+        ),
+        note=(
+            "Snowflake private preview: CoWork profiles. A record with a root span and no routing span "
+            "was declined; one with no root span has not been traced yet, so it is not read as a "
+            "decline. Whether spans can land after a run's terminal status is not measured."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
 )
