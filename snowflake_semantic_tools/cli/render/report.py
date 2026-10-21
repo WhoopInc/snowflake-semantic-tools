@@ -14,6 +14,7 @@ from snowflake_semantic_tools.cli.render.style import Style
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOutcome, Change, ChangeSet
 from snowflake_semantic_tools.domain.model.lifecycle.action import ChangeReason
 from snowflake_semantic_tools.domain.model.lifecycle.apply import OutcomeStatus
+from snowflake_semantic_tools.domain.plan.definitions.agent import is_properties
 from snowflake_semantic_tools.domain.plan.member_diff import (
     ADDED,
     REMOVED,
@@ -265,8 +266,8 @@ def _changed_labels(change: Change, manifest_id: str) -> list[str]:
 
 
 def _shows_alias(item: MemberDiff) -> bool:
-    """Whether a member diff is an agent's properties with its alias, which `version alias` repeats."""
-    return (item.kind, item.name) == ("agent", "properties") and any(prop.name == "alias" for prop in item.properties)
+    """Whether a member diff is an AGENT object's properties with its alias, which `version alias` repeats."""
+    return is_properties(item.kind, item.name) and any(prop.name == "alias" for prop in item.properties)
 
 
 def property_labels(names: Sequence[str]) -> list[str]:

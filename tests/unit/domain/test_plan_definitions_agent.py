@@ -6,7 +6,14 @@ import json
 
 import pytest
 
-from snowflake_semantic_tools.domain.plan.definitions.agent import agent_properties, spec_definition, with_properties
+from snowflake_semantic_tools.domain.plan.definitions.agent import (
+    COWORK_PROPERTIES_KIND,
+    PROPERTIES_KEYS,
+    agent_properties,
+    is_properties,
+    spec_definition,
+    with_properties,
+)
 from snowflake_semantic_tools.domain.plan.member_diff import ADDED, CHANGED, diff_definitions
 
 _SPEC = {
@@ -108,6 +115,15 @@ def test_an_agent_s_properties_compare_as_it_is_stored_and_an_unread_one_is_left
     assert agent_properties(profile="", secure=False).properties == (("profile", "{}"), ("secure", "false"))
     assert agent_properties(profile="not json").properties == (("profile", "not json"),)
     assert agent_properties().properties == ()
+
+
+def test_a_cowork_profile_s_properties_are_keyed_by_its_own_kind() -> None:
+    # CoWork profiles are a Snowflake private preview AGENT; their state never compares with an agent's.
+    member = agent_properties(secure=False, kind=COWORK_PROPERTIES_KIND)
+    assert member.key == ("cowork_profile", "properties")
+    assert {"agent:properties", "cowork_profile:properties"} == PROPERTIES_KEYS
+    assert is_properties("cowork_profile", "properties") and is_properties("agent", "properties")
+    assert not is_properties("setting", "properties") and not is_properties("agent", "router")
 
 
 def test_the_properties_member_follows_the_specification_s_members() -> None:

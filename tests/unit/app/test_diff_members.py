@@ -18,6 +18,7 @@ from snowflake_semantic_tools.domain.plan.member_diff import diff_definitions
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.render.tool import render_tool
 from tests.helpers.artifact_builders import applied_entry, empty_state, target
+from tests.helpers.cowork_profiles import agent_member, compile_profiles, cowork_profile, described_agent, subagent
 from tests.helpers.described_objects import described_routine
 from tests.helpers.skill_inputs import CATALOG_CHANNEL, compile_extensions, publish_extensions, skill, skill_catalog
 from tests.helpers.snowflake_fake import FakeSnowflake
@@ -135,6 +136,19 @@ def test_an_agent_labels_the_outside_objects_its_tools_and_skills_name_and_nothi
         dbt_relations=(("orders", ""),),
     )
     assert dict(name_map(CompileResult((unresolved,)))) == {("DB", "S", "V"): "semantic_view:v"}
+
+
+def test_a_cowork_profile_labels_the_partner_agent_it_routes_to_by_its_tool_member() -> None:
+    # CoWork profiles are a Snowflake private preview. The project agent it routes to is labelled
+    # by its own key, as every compiled target is; another team's agent by the tool member naming it.
+    partner = subagent("partner", "tool", line=8, display_name="Partner", description="Partner deals.")
+    result = compile_profiles(
+        cowork_profile("everyone", subagent(), partner), agents=(described_agent(),), members=(agent_member(),)
+    )
+    names = name_map(result)
+    assert names[("OTHER", "SCH", "PARTNER")] == "tool:partner"
+    assert names[("DB", "SCH", "SALES")] == "agent:sales"
+    assert names[("SNOWFLAKE_INTELLIGENCE", "PROFILES", "EVERYONE")] == "cowork_profile:everyone"
 
 
 def test_a_skill_reads_as_the_version_state_records_not_the_one_the_catalog_serves() -> None:

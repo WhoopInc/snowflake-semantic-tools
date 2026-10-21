@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from types import MappingProxyType
 
 import pytest
 
@@ -18,6 +19,7 @@ from snowflake_semantic_tools.domain.lineage.graph import (
     parse_graph_selector,
 )
 from snowflake_semantic_tools.domain.model.dbt import DbtNode
+from snowflake_semantic_tools.domain.state import ArtifactEntry
 from tests.helpers.lineage import lineage_manifest
 
 
@@ -129,6 +131,34 @@ def test_each_edge_records_how_its_reader_uses_what_it_reads() -> None:
     # No phrase is recorded for a profile reading an agent, and none for a pair with no edge.
     assert graph.kind("agent:helper", "profile:p") == "depends"
     assert graph.kind("model:orders", "agent:helper") == "depends"
+    assert set(graph.kinds.values()) <= set(EDGE_KINDS)
+
+
+_PROFILE = "cowork_profile:everyone"
+
+
+def test_a_cowork_profile_calls_the_agents_it_routes_to_and_loads_its_skills() -> None:
+    # CoWork profiles are a Snowflake private preview; another team's agent arrives as a tool_ref:.
+    document = lineage_manifest()
+    profile = ArtifactEntry(
+        "cowork_profile",
+        "everyone",
+        "f" * 64,
+        (),
+        (),
+        ("agent:helper", "skill:notes"),
+        "SNOWFLAKE_INTELLIGENCE.PROFILES.EVERYONE",
+        1,
+        "AGENT",
+        references=("tool_ref:partner",),
+    )
+    skill = ArtifactEntry("skill", "notes", "f" * 64, (), (), (), "DB.S.NOTES", 1, "CORTEX EXTENSION")
+    artifacts = MappingProxyType({**document.artifacts, _PROFILE: profile, "skill:notes": skill})
+    graph = manifest_lineage(dataclasses.replace(document, artifacts=artifacts))
+    assert graph.parents[_PROFILE] == ("agent:helper", "skill:notes", "tool_ref:partner")
+    assert graph.kind("agent:helper", _PROFILE) == "calls"
+    assert graph.kind("tool_ref:partner", _PROFILE) == "calls"
+    assert graph.kind("skill:notes", _PROFILE) == "loads"
     assert set(graph.kinds.values()) <= set(EDGE_KINDS)
 
 

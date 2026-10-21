@@ -145,3 +145,20 @@ def test_an_agent_update_says_whether_it_commits_a_new_version_and_names_a_moved
     view = change(rendered(), Action.UPDATE, live=observed(rendered()))
     assert "version" not in _plan_row(view, "m" * 64)[-1]
     assert change_json(view, "m" * 64)["adds_version"] is None
+
+
+def test_a_cowork_profile_update_names_a_moved_alias_once_as_an_agent_does() -> None:
+    from dataclasses import replace
+
+    from snowflake_semantic_tools.cli.render.report import _plan_row
+    from snowflake_semantic_tools.domain.model.lifecycle import Action, OwnershipMarker
+    from tests.helpers.artifact_builders import change, observed, rendered
+
+    # CoWork profiles are a Snowflake private preview; a profile's properties are its own kind's.
+    artifact = replace(
+        rendered("EVERYONE"), artifact_type="cowork_profile", object_type="AGENT", desired_alias="stable"
+    )
+    live = replace(observed(artifact, ownership=OwnershipMarker("b" * 64, "c" * 64)), aliases=("RELEASED",))
+    alias = MemberDiff("cowork_profile", "properties", CHANGED, (PropertyDiff("alias", "RELEASED", "STABLE"),))
+    update = replace(change(replace(artifact, adds_version=True), Action.UPDATE, live=live), member_diff=(alias,))
+    assert _plan_row(update, "m" * 64)[-1] == "cowork_profile properties; new version"

@@ -196,6 +196,31 @@ def test_an_agent_state_records_that_names_the_object_is_warned_of_and_the_drop_
     assert port.scripts == [("DROP SEMANTIC VIEW DB.S.ORDERS",)]
 
 
+def test_dropping_an_agent_a_recorded_cowork_profile_routes_to_is_warned_of() -> None:
+    # CoWork profiles are a Snowflake private preview; a profile names each agent it routes to
+    # as its router's subagent `source.fqn`.
+    sales = QualifiedName.parse("DB.S.SALES")
+    profile = "SNOWFLAKE_INTELLIGENCE.PROFILES.EVERYONE"
+    port = FakeSnowflake(
+        existing=(sales.sql,),
+        markers={sales.sql: OwnershipMarker("a" * 64, "b" * 64)},
+        state={"agent:sales": _entry(sales.sql), "cowork_profile:everyone": _entry(profile)},
+    )
+    routes = {"subagents": [{"name": sales.sql, "source": {"type": "DATA_AGENT", "fqn": sales.sql}}]}
+    spec = {"tools": [{"tool_spec": {"type": "agent_router", "name": "router"}}], "tool_resources": {"router": routes}}
+    port.descriptions = {f"AGENT {profile}": {"agent_spec": json.dumps(spec)}}
+    request = DropRequest(sales, "agent", "AGENT", "dev")
+    result = DropObject(port, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(request)
+    assert result.outcome == "dropped"
+    assert [(item.code, item.message) for item in result.diagnostics] == [
+        (
+            "SST-PLN017",
+            f"DB.S.SALES (named by cowork profile {profile}) is referenced outside this project",
+        )
+    ]
+    assert result.forgotten == ("agent:sales",)
+
+
 def test_the_warning_is_kept_when_the_drop_is_rejected_or_its_lock_was_broken() -> None:
     rejected = _port(**{"agent:analyst": _entry(AGENT.sql)})
     rejected.descriptions = {f"AGENT {AGENT.sql}": _agent_spec(VIEW.sql)}

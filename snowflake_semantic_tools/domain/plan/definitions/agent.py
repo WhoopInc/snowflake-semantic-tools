@@ -7,7 +7,9 @@ only in key order or spacing agree. Any other top-level key is one member of its
 specification holds goes uncompared.
 
 The agent's own properties, which no version holds, are one more member, `agent properties`: its
-comment without the ownership marker, its profile, its version alias, and whether it is SECURE.
+comment without the ownership marker, its profile, its version alias, and whether it is SECURE. A
+CoWork profile, a Snowflake private preview AGENT, keys the same member `cowork_profile properties`,
+so a profile's state never compares with an agent's.
 """
 
 from __future__ import annotations
@@ -18,10 +20,15 @@ from collections.abc import Sequence
 from snowflake_semantic_tools.domain.model.lifecycle.marker import unmarked_comment
 from snowflake_semantic_tools.domain.plan.member_diff import Definition, Member, Value, unique
 
-# The member holding the agent's properties, keyed as `member_fingerprints` keys it.
+# The member holding an agent's properties, keyed as `member_fingerprints` keys it.
 PROPERTIES_KIND = "agent"
 PROPERTIES_NAME = "properties"
 PROPERTIES_KEY = f"{PROPERTIES_KIND}:{PROPERTIES_NAME}"
+# Snowflake private preview (PrPr): CoWork profiles
+COWORK_PROPERTIES_KIND = "cowork_profile"
+# Each AGENT object kind's properties member, by its kind: an agent's and a CoWork profile's.
+PROPERTIES_KINDS = (PROPERTIES_KIND, COWORK_PROPERTIES_KIND)
+PROPERTIES_KEYS = frozenset(f"{kind}:{PROPERTIES_NAME}" for kind in PROPERTIES_KINDS)
 
 
 def agent_properties(
@@ -30,12 +37,17 @@ def agent_properties(
     profile: str | None = None,
     aliases: Sequence[str] | None = None,
     secure: bool | None = None,
+    kind: str = PROPERTIES_KIND,
 ) -> Member:
     """Return the agent's properties as one member; each argument None was not read, and is left out.
 
     The comment is compared without any ownership marker; the profile as JSON with its keys
     sorted, text that is not JSON as it is; the aliases upper-cased, sorted and comma-joined, as
     an unquoted alias is stored; SECURE as `true` or `false`.
+
+    Args:
+        kind: The AGENT object's artifact type, which the member is keyed by: one of
+            `PROPERTIES_KINDS`.
     """
     properties: list[tuple[str, Value]] = []
     if comment is not None:
@@ -46,7 +58,12 @@ def agent_properties(
         properties.append(("alias", ", ".join(sorted(alias.upper() for alias in aliases))))
     if secure is not None:
         properties.append(("secure", "true" if secure else "false"))
-    return Member(PROPERTIES_KIND, PROPERTIES_NAME, tuple(properties))
+    return Member(kind, PROPERTIES_NAME, tuple(properties))
+
+
+def is_properties(kind: str, name: str) -> bool:
+    """Report whether a member is an AGENT object's properties: an agent's, or a CoWork profile's."""
+    return kind in PROPERTIES_KINDS and name == PROPERTIES_NAME
 
 
 def with_properties(definition: Definition, properties: Member) -> Definition:

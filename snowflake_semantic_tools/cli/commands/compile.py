@@ -2,8 +2,8 @@
 
 The canonical manifest, `sst_target/manifest.json`, always holds everything that compiled,
 even with `--select`, which narrows only what is reported and emitted. `--emit-ddl` writes
-every rendered payload and `--emit-agent-spec` every agent's rendered specification, one
-file per artifact; both are offline, because rendering is a pure function.
+every rendered payload and `--emit-agent-spec` every agent's and CoWork profile's rendered
+specification, one file per artifact; both are offline, because rendering is a pure function.
 """
 
 from __future__ import annotations
@@ -40,6 +40,14 @@ from snowflake_semantic_tools.domain.lineage.graph import manifest_lineage
 from snowflake_semantic_tools.domain.state import Manifest
 
 _DIRECTORY = click.Path(file_okay=False, path_type=Path)
+# The artifact types `--emit-agent-spec` writes: each publishes an AGENT from its specification.
+_SPEC_TYPES = frozenset(
+    (
+        "agent",
+        # Snowflake private preview (PrPr): CoWork profiles
+        "cowork_profile",
+    )
+)
 
 
 @click.command(cls=SstCommand)
@@ -69,10 +77,10 @@ def compile(
     The manifest, `sst_target/manifest.json`, always holds everything that compiled; --select
     narrows only what is reported and emitted. --emit-ddl writes each rendered payload, one
     file per artifact under a folder named for its type, as `tool/<name>.sql`; and
-    --emit-agent-spec each agent's specification, one file per agent. With --partial, a
-    compile with errors still writes the manifest of the artifacts no error touches, and exits
-    1. Nothing connects: --target, --defer-target, and --database only decide what names
-    resolve to.
+    --emit-agent-spec each agent's specification, one file per agent, and each CoWork
+    profile's under `cowork_profile/`. With --partial, a compile with errors still writes the
+    manifest of the artifacts no error touches, and exits 1. Nothing connects: --target,
+    --defer-target, and --database only decide what names resolve to.
 
     Exit 0 when everything compiled; 1 when an error stopped the compile, the manifest could
     not be written, --partial left an artifact out, or two emitted files would collide; 4 when
@@ -144,8 +152,10 @@ def _payload_files(result: CompileResult, *, agents_only: bool) -> tuple[dict[st
     """Name and render each file `--emit-ddl`, or with `agents_only` `--emit-agent-spec`, writes.
 
     A name is unique only within its type, so `--emit-ddl` puts each payload in a folder named
-    for its type; `--emit-agent-spec` writes agents only, as each one's JSON specification, side
-    by side. A file is named by `file_name`, so no artifact name can place it outside its folder.
+    for its type; `--emit-agent-spec` writes each agent's JSON specification side by side, and
+    each CoWork profile's in a folder named for its type, as `--emit-ddl` does, so a profile
+    named for an agent never takes its file. A file is named by `file_name`, so no artifact
+    name can place it outside its folder.
 
     Returns:
         Each file's path below the folder, POSIX, and its content; and one SST-PRT111 for each
@@ -158,11 +168,12 @@ def _payload_files(result: CompileResult, *, agents_only: bool) -> tuple[dict[st
     owners: dict[str, str] = {}
     clashes: list[Diagnostic] = []
     for item in result.compiled:
-        if agents_only and item.artifact_type != "agent":
+        if agents_only and item.artifact_type not in _SPEC_TYPES:
             continue
         suffix = artifact_suffix(item.rendered_artifact.render_dialect)
         name = f"{file_name(item.name.casefold())}{suffix}"
-        relative = name if agents_only else f"{file_name(item.artifact_type)}/{name}"
+        side_by_side = agents_only and item.artifact_type == "agent"
+        relative = name if side_by_side else f"{file_name(item.artifact_type)}/{name}"
         if relative in owners:
             clashes.append(
                 D("SST-PRT111", subject=item.artifact_key, path=relative, a=owners[relative], b=item.artifact_key)

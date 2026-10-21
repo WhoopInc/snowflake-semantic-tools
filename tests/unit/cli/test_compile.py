@@ -8,8 +8,10 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from snowflake_semantic_tools.cli.commands.compile import _payload_files
 from snowflake_semantic_tools.cli.main import cli
 from tests.helpers.cli_projects import common, profile_with_commands_and_plugin, skills_only_project
+from tests.helpers.cowork_profiles import compile_profiles, cowork_profile, described_agent
 from tests.helpers.reference_project import DBT_MANIFEST, break_menu_view, project_copy
 
 
@@ -164,6 +166,16 @@ def test_compile_emits_each_agent_specification_and_nothing_else(tmp_path: Path)
     database = CliRunner().invoke(cli, ["compile", *common(project), "--database", "ELSEWHERE", "--output", "json"])
     targets = {item["artifact_key"]: item["target"] for item in json.loads(database.output)["data"]["artifacts"]}
     assert targets["semantic_view:jaffle_minimal"].startswith("ELSEWHERE.")
+
+
+def test_a_cowork_profile_s_specification_is_emitted_in_its_type_s_folder_beside_the_agents() -> None:
+    # CoWork profiles are a Snowflake private preview; one named for an agent never takes its file.
+    result = compile_profiles(cowork_profile("sales"), agents=(described_agent(),))
+    files, clashes = _payload_files(result, agents_only=True)
+    assert (sorted(files), clashes) == (["cowork_profile/sales.json", "sales.json"], ())
+    assert json.loads(files["cowork_profile/sales.json"])["tools"][0]["tool_spec"]["type"] == "agent_router"
+    ddl, _ = _payload_files(result, agents_only=False)
+    assert sorted(ddl) == ["agent/sales.json", "cowork_profile/sales.json"]
 
 
 def test_compile_selection_keeps_the_canonical_manifest_full(tmp_path: Path) -> None:

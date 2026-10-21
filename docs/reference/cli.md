@@ -271,10 +271,10 @@ Compile every artifact and write the canonical manifest, offline.
 The manifest, `sst_target/manifest.json`, always holds everything that compiled; --select
 narrows only what is reported and emitted. --emit-ddl writes each rendered payload, one
 file per artifact under a folder named for its type, as `tool/<name>.sql`; and
---emit-agent-spec each agent's specification, one file per agent. With --partial, a
-compile with errors still writes the manifest of the artifacts no error touches, and exits
-1. Nothing connects: --target, --defer-target, and --database only decide what names
-resolve to.
+--emit-agent-spec each agent's specification, one file per agent, and each CoWork
+profile's under `cowork_profile/`. With --partial, a compile with errors still writes the
+manifest of the artifacts no error touches, and exits 1. Nothing connects: --target,
+--defer-target, and --database only decide what names resolve to.
 
 Exit 0 when everything compiled; 1 when an error stopped the compile, the manifest could
 not be written, --partial left an artifact out, or two emitted files would collide; 4 when
@@ -299,7 +299,7 @@ sst compile [OPTIONS]
 | `--dbt` | DIRECTORY |  | Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`. |
 | `--semantic` | DIRECTORY |  | Read the semantic models from this directory instead of `project.semantic_models_dir`. |
 | `--emit-ddl` | DIRECTORY |  | Write each artifact's rendered payload into this directory, one folder per type, offline. |
-| `--emit-agent-spec` | DIRECTORY |  | Write each agent's rendered specification into this directory. |
+| `--emit-agent-spec` | DIRECTORY |  | Write each agent's rendered specification into this directory, and each CoWork profile's under `cowork_profile/`. |
 | `--select` | TEXT |  | Report and emit only these artifacts; the manifest still holds everything. |
 | `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
 

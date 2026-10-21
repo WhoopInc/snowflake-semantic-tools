@@ -19,6 +19,7 @@ from typing import Protocol
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
+from snowflake_semantic_tools.app.compile.cowork_profiles import CompiledCoworkProfile
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
 from snowflake_semantic_tools.app.compile.tools import CompiledTool
@@ -26,6 +27,7 @@ from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.lifecycle.evals import config_folder
 from snowflake_semantic_tools.app.plan_diff import COMPARISONS, Comparison, LiveObject
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.model.agent import AgentSkill
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action
@@ -203,9 +205,10 @@ def name_map(result: CompileResult) -> NameMap:
 
     An artifact's object is labelled by its key, `semantic_view:sales`, and each other object it
     spans by its key and type, `eval:a:table`; a stage by `stage:<name>`; a dbt model's relation by
-    `ref('<model>')`. An object outside the project an agent's tool or skill names, which each
-    target may name differently, is labelled by the tool or skill, `tool:lookup`, unless one of
-    those names it already. A name two labels claim is left out, so it stays physical.
+    `ref('<model>')`. An object outside the project an agent's tool or skill names, or an agent
+    another team owns that a CoWork profile routes to, which each target may name differently,
+    is labelled by the tool or skill, `tool:lookup`, unless one of those names it already. A
+    name two labels claim is left out, so it stays physical.
     """
     claims: dict[tuple[str, str, str], set[str]] = {}
 
@@ -229,10 +232,17 @@ def name_map(result: CompileResult) -> NameMap:
             claim(item.release.stage, f"stage:{item.release.stage.artifact_name}")
     referenced: dict[tuple[str, str, str], set[str]] = {}
     for item in result.compiled:
-        if isinstance(item, CompiledAgent):
-            for name, label in _agent_references(item):
-                if name.folded not in claims:
-                    referenced.setdefault(name.folded, set()).add(label)
+        references = (
+            _agent_references(item)
+            if isinstance(item, CompiledAgent)
+            # Snowflake private preview (PrPr): CoWork profiles
+            else _profile_references(item)
+            if isinstance(item, CompiledCoworkProfile)
+            else iter(())
+        )
+        for name, label in references:
+            if name.folded not in claims:
+                referenced.setdefault(name.folded, set()).add(label)
     claims |= referenced
     return MappingProxyType({name: next(iter(labels)) for name, labels in claims.items() if len(labels) == 1})
 
@@ -244,7 +254,24 @@ def _agent_references(agent: CompiledAgent) -> Iterator[tuple[QualifiedName, str
             name = _qualified(value)
             if name is not None:
                 yield name, f"tool:{tool.member or tool.name}"
-    for skill in agent.resolved.model.skills:
+    yield from _skill_references(agent.resolved.model.skills)
+
+
+def _profile_references(profile: CompiledCoworkProfile) -> Iterator[tuple[QualifiedName, str]]:
+    """Each agent another team owns that a CoWork profile routes to, by its tool member, then its skills' paths.
+
+    An agent this project publishes is labelled by its own key already, as every compiled target is.
+    """
+    for subagent in profile.resolved.subagents:
+        # Only an external subagent resolved through a tool member.
+        if subagent.member is not None:
+            yield subagent.fqn, f"tool:{subagent.member}"
+    yield from _skill_references(profile.resolved.model.skills)
+
+
+def _skill_references(skills: tuple[AgentSkill, ...]) -> Iterator[tuple[QualifiedName, str]]:
+    """Each three-part name the skills' paths hold, labelled by the extension it names."""
+    for skill in skills:
         name = _qualified(skill.path)
         if name is not None:
             yield name, f"extension:{skill.name or name.artifact_name}"

@@ -19,6 +19,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompiledView
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
+from snowflake_semantic_tools.app.compile.cowork_profiles import CompiledCoworkProfile
 from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.plan_diff_composites import (
@@ -32,11 +33,14 @@ from snowflake_semantic_tools.app.plan_diff_composites import (
 )
 from snowflake_semantic_tools.app.prior import served_version
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.model.agent import AgentProfile
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, Change
 from snowflake_semantic_tools.domain.model.tool import ToolKind
 from snowflake_semantic_tools.domain.plan.definitions.agent import (
-    PROPERTIES_KEY,
+    COWORK_PROPERTIES_KIND,
+    PROPERTIES_KEYS,
+    PROPERTIES_KIND,
     agent_properties,
     spec_definition,
     with_properties,
@@ -94,7 +98,8 @@ def _live_agent(port: SnowflakePort, compiled: CompiledArtifact, live: LiveObjec
     """The served version's specification, with the agent's properties as SHOW AGENTS lists them.
 
     A property SHOW AGENTS does not list, such as `is_secure` on a role that cannot see it, is
-    left out, so it is not compared.
+    left out, so it is not compared. A CoWork profile is an AGENT too, read the same way, its
+    properties keyed by its own type.
     """
     versions = port.observe_agent_versions(live.name)
     served = served_version(versions.versions, live.alias)
@@ -111,6 +116,7 @@ def _live_agent(port: SnowflakePort, compiled: CompiledArtifact, live: LiveObjec
         profile=row.get("profile"),
         aliases=versions.aliases,
         secure=secure.strip().casefold() in ("true", "y", "yes") if secure is not None else None,
+        kind=compiled.artifact_type,
     )
     return with_properties(specification, shown)
 
@@ -119,13 +125,33 @@ def _desired_agent(compiled: CompiledArtifact) -> Definition:
     """The specification SST renders, with the agent's comment, profile, alias and SECURE as it sets them."""
     agent = compiled_as(compiled, CompiledAgent)
     model = agent.resolved.model
+    return _desired_agent_object(
+        agent.payload, model.comment, model.profile, model.alias, model.secure is True, PROPERTIES_KIND
+    )
+
+
+def _desired_cowork_profile(compiled: CompiledArtifact) -> Definition:
+    """The specification SST renders, with the profile's comment, display block and alias, and SECURE false."""
+    profile = compiled_as(compiled, CompiledCoworkProfile)
+    model = profile.resolved.model
+    # A profile sets no SECURE of its own, so it publishes `SECURE = FALSE`.
+    return _desired_agent_object(
+        profile.payload, model.comment, model.display, model.alias, False, COWORK_PROPERTIES_KIND
+    )
+
+
+def _desired_agent_object(
+    payload: str, comment: str | None, profile: AgentProfile, alias: str | None, secure: bool, kind: str
+) -> Definition:
+    """An AGENT object's rendered specification with its properties, keyed by its `kind`."""
     return with_properties(
-        spec_definition(agent.payload),
+        spec_definition(payload),
         agent_properties(
-            comment=model.comment or "",
-            profile=render_agent_profile(model.profile),
-            aliases=(model.alias,) if model.alias else (),
-            secure=model.secure is True,
+            comment=comment or "",
+            profile=render_agent_profile(profile),
+            aliases=(alias,) if alias else (),
+            secure=secure,
+            kind=kind,
         ),
     )
 
@@ -160,6 +186,8 @@ COMPARISONS: Mapping[str, Comparison] = {
         lambda port, _compiled, live: live_view(port.describe_semantic_view(live.name)),
     ),
     "agent": Comparison(_desired_agent, _live_agent),
+    # Snowflake private preview (PrPr): CoWork profiles
+    "cowork_profile": Comparison(_desired_cowork_profile, _live_agent),
     "tool": Comparison(_desired_tool, _live_tool),
     "skill": Comparison(
         desired_extension, lambda port, _compiled, live: live_extension(port, live.name, live.recorded)
@@ -236,9 +264,9 @@ def from_state(changes: Sequence[Change], recorded: Mapping[str, AppliedEntry]) 
     """Name the members each update plan did not compare changes, from the fingerprints state records.
 
     An update with a member diff keeps it. One whose recorded entry, or whose render, holds no
-    member fingerprints, such as an entry an earlier SST wrote, names none. An agent's properties
-    member is named only when its entry records one: an earlier SST recorded none, and naming it
-    then would say the properties changed when nothing did.
+    member fingerprints, such as an entry an earlier SST wrote, names none. An agent's or a CoWork
+    profile's properties member is named only when its entry records one: an earlier SST recorded
+    none, and naming it then would say the properties changed when nothing did.
     """
     return tuple(
         replace(
@@ -256,10 +284,10 @@ def from_state(changes: Sequence[Change], recorded: Mapping[str, AppliedEntry]) 
 
 
 def _recorded_changes(before: Sequence[tuple[str, str]], after: Sequence[tuple[str, str]]) -> tuple[str, ...]:
-    """The members whose recorded fingerprints differ, an agent's properties only when both record them."""
-    if any(key == PROPERTIES_KEY for key, _ in before):
+    """The members whose recorded fingerprints differ, an AGENT object's properties only when both record them."""
+    if any(key in PROPERTIES_KEYS for key, _ in before):
         return changed_members(before, after)
-    return changed_members(before, tuple(pair for pair in after if pair[0] != PROPERTIES_KEY))
+    return changed_members(before, tuple(pair for pair in after if pair[0] not in PROPERTIES_KEYS))
 
 
 def live_object(change: Change, recorded: AppliedEntry | None) -> LiveObject:

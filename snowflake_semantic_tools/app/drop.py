@@ -6,8 +6,8 @@ It then refuses an object that does not exist, one whose comment carries no SST 
 marker, and one whose marker names a manifest the target's state never applied and that state
 does not record: drop removes what SST published to this target, never an object someone else
 -- another project sharing the schema included -- owns under the same name. It warns of each
-agent state records whose live specification names the object, since the drop breaks it; it
-reads no project, so that is all it can know of what depends on the object.
+agent, and each CoWork profile, state records whose live specification names the object, since
+the drop breaks it; it reads no project, so that is all it can know of what depends on the object.
 Only then does it run the one DROP statement, and record the removal in state the way apply
 records a prune: each entry naming the object is deleted from the state table in one write, and
 from the local cache when one exists.
@@ -44,8 +44,15 @@ from snowflake_semantic_tools.domain.validate.agent_live import live_spec, names
 DROPPED, REJECTED, ABSENT, REFUSED = "dropped", "rejected", "absent", "refused"
 # The object type of a skill's or plugin's extension, which state alone vouches for.
 EXTENSION = "CORTEX EXTENSION"
-# The artifact type whose live specifications name the objects a drop may break.
-_AGENT = "agent"
+# The artifact types whose live specifications name the objects a drop may break, each with how
+# the warning names one: an agent, and a CoWork profile, which names each agent it routes to.
+_AGENT_OBJECTS: Mapping[str, str] = MappingProxyType(
+    {
+        "agent": "agent",
+        # Snowflake private preview (PrPr): CoWork profiles
+        "cowork_profile": "cowork profile",
+    }
+)
 _DEFAULT_LOCK_POLICY = LockPolicy()
 
 
@@ -152,7 +159,8 @@ class DropObject:
             SST-PLN024: the object carries no SST ownership marker, or one naming a manifest
                 the target's state never applied while state does not record the object; an
                 extension state does not record at a version it still lists.
-            SST-PLN017: an agent state records names the object; it is dropped all the same.
+            SST-PLN017: an agent or CoWork profile state records names the object; it is dropped
+                all the same.
             SST-APL001: Snowflake refused the DROP; with the refusal under its SNO code.
         """
         lease = RunLease(
@@ -221,24 +229,25 @@ class DropObject:
         return DropResult(DROPPED, DiagnosticBag(dependents), forgotten)
 
     def _dependents(self, request: DropRequest, entries: Mapping[str, AppliedEntry]) -> tuple[Diagnostic, ...]:
-        """Warn of each agent state records in the target whose live specification names the object.
+        """Warn of each agent or CoWork profile state records whose live specification names the object.
 
-        The agents are those apply recorded, read from Snowflake rather than from a project, which
-        drop never reads. An agent whose DESCRIBE fails, or is gone, proves nothing and is passed
-        over. A warning does not stop the drop: `--yes` is the command's one confirmation.
+        They are those apply recorded, read from Snowflake rather than from a project, which drop
+        never reads; a profile names each agent it routes to, so dropping one of them warns too.
+        One whose DESCRIBE fails, or is gone, proves nothing and is passed over. A warning does
+        not stop the drop: `--yes` is the command's one confirmation.
 
         Diagnostics:
-            SST-PLN017: an agent apply published names the object about to be dropped.
+            SST-PLN017: an agent or CoWork profile apply published names the object about to be dropped.
         """
         found: list[Diagnostic] = []
-        for agent in _recorded_agents(entries, request.qualified_name):
+        for kind, agent in _recorded_agents(entries, request.qualified_name):
             try:
                 properties = self._port.describe_properties("AGENT", agent)
             except SnowflakePortError:
                 continue
             spec = live_spec(properties.get("agent_spec", "")) if properties is not None else None
             if spec is not None and names_object(spec, request.qualified_name):
-                value = f"{request.qualified_name.sql} (named by agent {agent.sql})"
+                value = f"{request.qualified_name.sql} (named by {kind} {agent.sql})"
                 found.append(D("SST-PLN017", subject=request.artifact, value=value))
         return tuple(found)
 
@@ -273,13 +282,19 @@ class DropObject:
         return keys
 
 
-def _recorded_agents(entries: Mapping[str, AppliedEntry], dropped: QualifiedName) -> tuple[QualifiedName, ...]:
-    """Return the agents state records, other than the dropped object, once each, in name order."""
-    agents: dict[tuple[str, str, str], QualifiedName] = {}
+def _recorded_agents(
+    entries: Mapping[str, AppliedEntry], dropped: QualifiedName
+) -> tuple[tuple[str, QualifiedName], ...]:
+    """Return the agents and CoWork profiles state records, other than the dropped object, once each.
+
+    Each comes with how the warning names its kind, in name order.
+    """
+    agents: dict[tuple[str, str, str], tuple[str, QualifiedName]] = {}
     for key, entry in entries.items():
         name = _parsed(entry.qualified_name)
-        if split_artifact_key(key)[0] == _AGENT and name is not None and name.folded != dropped.folded:
-            agents.setdefault(name.folded, name)
+        kind = _AGENT_OBJECTS.get(split_artifact_key(key)[0])
+        if kind is not None and name is not None and name.folded != dropped.folded:
+            agents.setdefault(name.folded, (kind, name))
     return tuple(agents[folded] for folded in sorted(agents))
 
 

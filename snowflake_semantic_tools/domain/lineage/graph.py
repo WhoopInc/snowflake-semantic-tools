@@ -10,13 +10,14 @@ An edge runs from what is read to what reads it: a model to the models built fro
 and exposures, its columns, the members whose tables it holds and the artifacts that read it; a
 column to the members that read it; a member to the members that use it and the views it
 attaches to; and an artifact to the artifacts that depend on it or name it, an agent naming the
-tool members it calls.
+tool members it calls and a CoWork profile the agents it routes to.
 
 Each edge records how the reader uses what it reads, as one of `EDGE_KINDS`: a model is built
 from the nodes it selects from, a test tests and an exposure exposes its models, a member or an
 artifact reads a model's table, a member uses another and attaches to its view, an agent loads
-a skill and calls a view, a tool or another agent as a tool, an eval tests its agent, a plugin
-bundles a skill and a profile includes a plugin or a skill; anything else depends on it.
+a skill and calls a view, a tool or another agent as a tool, a CoWork profile's router calls
+each agent it routes to, an eval tests its agent, a plugin bundles a skill and a profile
+includes a plugin or a skill; anything else depends on it.
 
 Where a walk ends at someone else's work, the node says so in its `marker`: a source is a raw
 source, a model of another dbt package that reads nothing here is defined in another project, a
@@ -78,6 +79,12 @@ _ARTIFACT_EDGES: Mapping[tuple[str, str], str] = MappingProxyType(
         ("agent", "agent"): "calls",
         (TOOL_REF, "agent"): "calls",
         ("agent", "eval"): "tests",
+        # Snowflake private preview (PrPr): CoWork profiles. A profile's router tool calls each
+        # agent it routes to, another team's through its `tool_ref:`, and it loads skills as an
+        # agent does.
+        ("agent", "cowork_profile"): "calls",
+        (TOOL_REF, "cowork_profile"): "calls",
+        ("skill", "cowork_profile"): "loads",
         ("skill", "plugin"): "bundles",
         ("plugin", "profile"): "includes",
         ("skill", "profile"): "includes",

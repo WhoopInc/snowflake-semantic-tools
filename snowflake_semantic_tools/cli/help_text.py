@@ -151,7 +151,10 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "run at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1."
     ),
     ("sst compile", "--database"): "Resolve refs against this database instead of the target's.",
-    ("sst compile", "--emit-agent-spec"): "Write each agent's rendered specification into this directory.",
+    ("sst compile", "--emit-agent-spec"): (
+        "Write each agent's rendered specification into this directory, and each CoWork profile's "
+        "under `cowork_profile/`."
+    ),
     ("sst debug", "--no-connect"): "Report everything but the connection, offline.",
     ("sst debug", "--snowflake-signatures"): "Report how often Snowflake refusals went unrecognised, from the run log.",
     ("sst init", "--skip-prompts"): "Accept every default without prompting.",

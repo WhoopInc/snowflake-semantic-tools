@@ -15,7 +15,7 @@ only what a model change reaches.
 | A dbt source table | `source:<source>.<table>` | nothing; it is where the walk ends |
 | A dbt test or exposure | `test:<name>`, `exposure:<name>` | the nodes it tests or names; a test is a leaf |
 | A view member | `metric:<name>`, `filter:`, `relationship:`, `verified_query:`, `custom_instruction:`; `dimension:<table>.<name>`, `fact:<table>.<name>` | the models its `{{ ref() }}` and `{{ source() }}` calls name, and the members it uses, such as a metric another metric builds on |
-| An artifact | `semantic_view:<name>`, `tool:<name>`, `agent:<name>`, `eval:<name>`, ... | its members, the artifacts it uses (an agent's views, tools and skills; an eval's agent), and a routine body's `ref()` and `source()` calls |
+| An artifact | `semantic_view:<name>`, `tool:<name>`, `agent:<name>`, `eval:<name>`, ... | its members, the artifacts it uses (an agent's views, tools and skills; a CoWork profile's agents and skills; an eval's agent), and a routine body's `ref()` and `source()` calls |
 | A tool another team owns | `tool_ref:<name>` | nothing SST can see |
 | A column a member reads | `column:<table>.<column>`, its table a model's name or a source's `<source>.<table>` | its model or source; the members that read it read it |
 
@@ -81,8 +81,8 @@ member's `TABLES` and `USES`, and with `--wide` its `COLUMNS` and expression;
 | a member, a routine or a view reads its table | `reads it` | `read by it` |
 | a member builds on another member | `uses it` | `used by it` |
 | a view holds a member | `holds it` | `attaches to it` |
-| an agent loads a skill | `loads it` | `loaded by it` |
-| an agent calls a view, tool or agent as a tool | `calls it as a tool` | `a tool it calls` |
+| an agent or a CoWork profile loads a skill | `loads it` | `loaded by it` |
+| an agent calls a view, tool or agent as a tool; a CoWork profile's router calls each agent it routes to | `calls it as a tool` | `a tool it calls` |
 | a plugin bundles a skill | `bundles it` | `bundled by it` |
 | a profile includes a plugin or skill | `includes it` | `included by it` |
 | anything else | `depends on it` | `needed by it` |
@@ -100,7 +100,7 @@ ending silently:
 |---|---|
 | `(raw source)` | a dbt source: the data is loaded, not built, here |
 | `(defined in another project; upstream continues there)` | a model of another dbt package that reads nothing in this one |
-| `(owned by another team)` | a `tool_ref:` member an agent calls that SST never publishes |
+| `(owned by another team)` | a `tool_ref:` member an agent or a CoWork profile calls that SST never publishes |
 | `(reads: unknown; body names no ref())` | a procedure or function whose body names its tables literally, so SST cannot see what it reads |
 
 ### What changed since another run
