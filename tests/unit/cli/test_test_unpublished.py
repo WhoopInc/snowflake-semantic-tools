@@ -16,7 +16,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.agent_run import AgentReply
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.cli_projects import common, invoke_with_port
 from tests.helpers.projects import project_paths
-from tests.helpers.reference_project import DBT_MANIFEST, project_copy
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy, with_profile_eval
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
@@ -147,3 +147,27 @@ def test_an_unpublished_run_refuses_a_baseline_capture_and_the_smoke_suite_alone
 def test_a_selection_without_an_eval_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     result = _unpublished(monkeypatch, project_copy(tmp_path), FakeSnowflake(state={}), "--select", "type:tool")
     assert result.exit_code == 4
+
+
+def test_a_cowork_profile_eval_is_refused_before_anything_connects(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = with_profile_eval(project_copy(tmp_path))
+    port = FakeSnowflake(state={})
+    result = _unpublished(monkeypatch, project, port, "--output", "json")
+    assert result.exit_code == 1, result.output
+    refused = [item for item in json.loads(result.output)["diagnostics"] if item["code"] == "SST-ASK013"]
+    assert [item["artifact"] for item in refused] == [{"type": "eval", "name": "cowork_profile:jaffle_concierge"}]
+    assert (port.inline_runs, port.scripts) == ([], [])
+
+
+def test_leaving_the_profile_eval_out_runs_the_agent_evals_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = with_profile_eval(project_copy(tmp_path / "evaluated"))
+    port = FakeSnowflake(state={})
+    port.agent_replies = _right_tools(project_copy(tmp_path / "plain"))  # type: ignore[assignment]
+    exclude = ("--exclude", "eval:cowork_profile:jaffle_concierge", "--output", "json")
+    result = _unpublished(monkeypatch, project, port, *exclude)
+    assert result.exit_code == 0, result.output
+    assert [item["eval_key"] for item in json.loads(result.output)["data"]["evals"]] == ["eval:jaffle_analytics_agent"]

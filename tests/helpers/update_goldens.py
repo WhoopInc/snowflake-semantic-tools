@@ -6,6 +6,8 @@ diff and commit it. The reference project compiles from the vendored dbt manifes
 rewritten; a DDL golden keeps its `--` provenance header. A second copy, with
 `fixtures/scoped_views/semantic_views.yml` added at `semantic_models/semantic_views/scoped/`,
 rewrites the DDL goldens of the views only it declares, which `tests/unit/test_golden_ddl.py`
+compares. A third, whose CoWork profile has the eval in `fixtures/cowork_profile_eval/`
+(`with_profile_eval`), rewrites the goldens of that eval, which `tests/unit/test_golden_evals.py`
 compares. Refused when `$CI` is set to anything but empty, `0`, `false` or `no`: a pipeline that
 rewrites its own expectations asserts nothing. The enrich goldens are not written here;
 `tests/golden/README.md` says how to change them.
@@ -21,7 +23,7 @@ import tempfile
 from pathlib import Path
 
 from tests.helpers.goldens import DBT_MANIFEST, REPO_ROOT, GoldenFileStore, UpdateGoldens, compile_twice
-from tests.helpers.reference_project import project_copy
+from tests.helpers.reference_project import project_copy, with_profile_eval
 
 _NOT_CI = frozenset({"", "0", "false", "no"})
 SCOPED_VIEWS = REPO_ROOT / "tests" / "fixtures" / "scoped_views" / "semantic_views.yml"
@@ -39,19 +41,27 @@ def main() -> int:
         folder.mkdir(parents=True)
         shutil.copy(SCOPED_VIEWS, folder / "semantic_views.yml")
         scoped = compile_twice(scoped_project, DBT_MANIFEST)
-        for result in (compiled.result, scoped.result):
+        profile_eval = compile_twice(
+            with_profile_eval(project_copy(Path(root) / "profile_eval", offline=False)), DBT_MANIFEST
+        )
+        for result in (compiled.result, scoped.result, profile_eval.result):
             if not result.success:
                 for item in result.diagnostics:
                     print(f"{item.code}: {item.message}", file=sys.stderr)
                 return 1
         plain = {(item.artifact_type, item.name) for item in compiled.result.compiled}
         added = tuple(item for item in scoped.result.compiled if (item.artifact_type, item.name) not in plain)
+        evaluated = tuple(item for item in profile_eval.result.compiled if (item.artifact_type, item.name) not in plain)
         store = GoldenFileStore()
         written = UpdateGoldens(store, compiled.git_sha).run(compiled.result)
         written += UpdateGoldens(store, scoped.git_sha).run(dataclasses.replace(scoped.result, compiled=added))
+        written += UpdateGoldens(store, profile_eval.git_sha).run(
+            dataclasses.replace(profile_eval.result, compiled=evaluated)
+        )
     for name in written:
         print(f"wrote {name}")
-    print(f"{len(written)} golden file(s) written for {len(compiled.result.compiled) + len(added)} artifact(s)")
+    count = len(compiled.result.compiled) + len(added) + len(evaluated)
+    print(f"{len(written)} golden file(s) written for {count} artifact(s)")
     return 0
 
 

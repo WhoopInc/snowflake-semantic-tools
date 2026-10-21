@@ -1,0 +1,11 @@
+
+# Appended to cowork_profiles/jaffle_concierge/cowork_profile.yml, with ./evals/
+# copied beside it, by the tests that evaluate the reference project's CoWork
+# profile (a Snowflake private preview). Kept out of the reference project
+# itself, so the project's other goldens do not change.
+#
+# Read as an agent's `evals:` block is: the names resolve among the files in
+# the profile's evals/ folder.
+evals:
+  dataset: "{{ eval_dataset('jaffle_concierge_routing') }}"
+  config: "{{ eval_config('jaffle_concierge_ci') }}"

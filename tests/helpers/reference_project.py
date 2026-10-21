@@ -25,6 +25,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"
 DBT_MANIFEST = REPO_ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
 PRE_SPLIT = REPO_ROOT / "tests" / "fixtures" / "pre_split_reference"
+# The eval of the reference project's CoWork profile, a Snowflake private preview: an `evals:`
+# block to append to the profile's file, and the `evals/` folder to copy beside it.
+PROFILE_EVAL = REPO_ROOT / "tests" / "fixtures" / "cowork_profile_eval"
+PROFILE = "cowork_profiles/jaffle_concierge/cowork_profile.yml"
 
 CONFIG = "sst_config.yml"
 VIEWS = "semantic_models/semantic_views/semantic_views.yml"
@@ -127,6 +131,19 @@ def added(root: Path, relative: str, text: str) -> Path:
     """A project copy with one more file, `relative`, holding `text`."""
     project = project_copy(root)
     (project / relative).write_text(text, encoding="utf-8")
+    return project
+
+
+def with_profile_eval(project: Path) -> Path:
+    """Give a project copy's CoWork profile, jaffle_concierge, the eval in `PROFILE_EVAL`.
+
+    Snowflake private preview (PrPr): CoWork profiles. The copy is changed in place and
+    returned.
+    """
+    path = project / PROFILE
+    block = (PROFILE_EVAL / "evals_block.yml").read_text(encoding="utf-8")
+    path.write_text(path.read_text(encoding="utf-8") + block, encoding="utf-8")
+    shutil.copytree(PROFILE_EVAL / "evals", path.parent / "evals")
     return project
 
 
