@@ -18,7 +18,8 @@ def test_sst_val886_fires() -> None:
     listed = QualifiedName.parse("snowflake_intelligence.profiles.concierge")
     result = compile_profile_eval(concierge_eval(), listed)
     diagnostic = only(result.diagnostics, "SST-VAL886")
-    assert diagnostic.severity is Severity.WARNING
+    # An info, so strict mode, which a plan of the CoWork target runs in, never promotes it.
+    assert diagnostic.severity is Severity.INFO
     assert diagnostic.message == (
         "eval 'concierge' is not compiled: its cowork profile publishes to SNOWFLAKE_INTELLIGENCE.PROFILES, "
         "where CoWork lists it"

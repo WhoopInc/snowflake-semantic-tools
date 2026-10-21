@@ -810,6 +810,6 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL883`](error-codes.md#sst-val883) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_subject` | `tests/codes/val/test_sst_val883.py` |
 | [`SST-VAL884`](error-codes.md#sst-val884) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.eval_subject` | `tests/codes/val/test_sst_val884.py` |
 | [`SST-VAL885`](error-codes.md#sst-val885) | VAL | info | local | `snowflake_semantic_tools.domain.validate.eval_subject` | `tests/codes/val/test_sst_val885.py` |
-| [`SST-VAL886`](error-codes.md#sst-val886) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.eval_subject` | `tests/codes/val/test_sst_val886.py` |
+| [`SST-VAL886`](error-codes.md#sst-val886) | VAL | info | local | `snowflake_semantic_tools.domain.validate.eval_subject` | `tests/codes/val/test_sst_val886.py` |
 | [`SST-VAL887`](error-codes.md#sst-val887) | VAL | info | local | `snowflake_semantic_tools.domain.validate.eval_subject` | `tests/codes/val/test_sst_val887.py` |
 | [`SST-VAL888`](error-codes.md#sst-val888) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_config` | `tests/codes/val/test_sst_val888.py` |

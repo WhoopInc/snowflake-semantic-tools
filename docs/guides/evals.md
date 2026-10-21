@@ -1042,7 +1042,7 @@ fingerprint alone, and the baseline still stops matching
 
 A profile's eval runs only where its profile is a rehearsal: on a target that
 publishes the profile to `SNOWFLAKE_INTELLIGENCE.PROFILES`, the eval does not
-compile (`SST-VAL886`, a warning), so nothing of it is planned there. CoWork
+compile (`SST-VAL886`, an info that strict mode leaves alone), so nothing of it is planned there. CoWork
 lists every agent in that schema as a profile, and eval tables, datasets and
 stages there are not measured. The rehearsal routes the same way, so evaluate it
 on a target that publishes the profile elsewhere, such as dev.

@@ -5818,7 +5818,7 @@ Note: Snowflake private preview. A profile that routes a question it should decl
 
 ### SST-VAL886
 
-**CoWork profile eval left out where CoWork lists the profile** (warning)
+**CoWork profile eval left out where CoWork lists the profile** (info)
 
 `eval '<artifact>' is not compiled: its cowork profile publishes to <target>, where CoWork lists it`
 
@@ -5826,7 +5826,7 @@ Raised when a CoWork profile's eval, on a target that publishes the profile to S
 
 Fix: evaluate the profile's rehearsal on a target that publishes it elsewhere; it routes the same way
 
-Note: Snowflake private preview. An eval's source table, dataset and config stage publish in its subject's schema, and eval tables, datasets and stages in CoWork's schema are unmeasured.
+Note: Snowflake private preview. An eval's source table, dataset and config stage publish in its subject's schema, and eval tables, datasets and stages in CoWork's schema are unmeasured. An info, as SST-VAL878 is: leaving the eval out is what a target that publishes to CoWork should do, so strict mode never blocks a plan on it.
 
 ### SST-VAL887
 

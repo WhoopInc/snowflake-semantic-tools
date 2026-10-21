@@ -238,7 +238,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     ),
     spec(
         "SST-VAL886",
-        Severity.WARNING,
+        Severity.INFO,
         "CoWork profile eval left out where CoWork lists the profile",
         "eval '{artifact}' is not compiled: its cowork profile publishes to {target}, where CoWork lists it",
         "evaluate the profile's rehearsal on a target that publishes it elsewhere; it routes the same way",
@@ -249,7 +249,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         note=(
             "Snowflake private preview. An eval's source table, dataset and config stage publish in "
             "its subject's schema, and eval tables, datasets and stages in CoWork's schema are "
-            "unmeasured."
+            "unmeasured. An info, as SST-VAL878 is: leaving the eval out is what a target that "
+            "publishes to CoWork should do, so strict mode never blocks a plan on it."
         ),
     ),
     spec(
