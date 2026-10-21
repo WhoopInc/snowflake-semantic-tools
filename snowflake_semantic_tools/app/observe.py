@@ -10,7 +10,8 @@ object listed; both are merged in the order they would run one at a time, each l
 followed by the reads of what it lists.
 
 `observe_replaced_tags` then reads the tags of each semantic view the plan will replace, which
-only deciding the plan from what `observe` found can tell.
+only deciding the plan from what `observe` found can tell. `read_attachments` reads the account's
+CoWork object and what is attached to it, once, when a CoWork profile wants attaching.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.registry import ArtifactType, Registry
 from snowflake_semantic_tools.domain.plan import classify
+from snowflake_semantic_tools.domain.plan.attach import AttachmentReading
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersions, CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry
@@ -347,3 +349,33 @@ def _read_tags(port: CatalogPort, observed: ObservedArtifact) -> tuple[str, ...]
         return port.tag_references(observed.object_type, observed.qualified_name)
     except SnowflakePortError as exc:
         return D("SST-PLN040", value=observed.qualified_name.sql, detail=str(exc))
+
+
+def read_attachments(
+    port: CatalogPort, rendered: Mapping[str, RenderedArtifact]
+) -> tuple[AttachmentReading | None, DiagnosticBag]:
+    """Read the account's CoWork object and the agents attached to it, when a profile wants attaching.
+
+    Snowflake private preview (PrPr): CoWork profiles, as these pages describe them:
+    https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
+    https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+
+    Two reads at most, once for the whole plan: SHOW SNOWFLAKE INTELLIGENCES, then SHOW AGENTS IN
+    the object it lists. A plan whose rendered artifacts want no attaching, such as one of
+    rehearsals alone, reads nothing.
+
+    Returns:
+        The reading, and the read that failed; the reading is None when nothing wants attaching,
+        or when a read failed, so each profile keeps its unattached plan.
+
+    Diagnostics:
+        SST-PLN001: reading the CoWork object, or what is attached to it, failed.
+    """
+    if not any(artifact.wants_attachment for artifact in rendered.values()):
+        return None, DiagnosticBag()
+    try:
+        cowork_object = port.cowork_object()
+        attached = port.attached_agents(cowork_object) if cowork_object is not None else ()
+    except SnowflakePortError as exc:
+        return None, DiagnosticBag((D("SST-PLN001", value="the CoWork object", detail=str(exc)),))
+    return AttachmentReading(cowork_object, frozenset(name.folded for name in attached)), DiagnosticBag()

@@ -18,7 +18,13 @@ from types import MappingProxyType
 from typing import Protocol, cast
 
 from snowflake_semantic_tools.app.fanout import Fanout
-from snowflake_semantic_tools.app.observe import DEFAULT_OBSERVE_OPTIONS, ObserveOptions, observe, observe_replaced_tags
+from snowflake_semantic_tools.app.observe import (
+    DEFAULT_OBSERVE_OPTIONS,
+    ObserveOptions,
+    observe,
+    observe_replaced_tags,
+    read_attachments,
+)
 from snowflake_semantic_tools.app.preflight import read_preflight
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
@@ -35,6 +41,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY, ArtifactLifecycle, Registry
 from snowflake_semantic_tools.domain.plan import build_changeset
+from snowflake_semantic_tools.domain.plan.attach import AttachmentReading
 from snowflake_semantic_tools.domain.plan.preflight import Preflight
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
@@ -99,11 +106,15 @@ class TargetReading:
         preflight: The preflight facts; None when no preflight reads were made.
         failures: The reads Snowflake refused, as SST-PLN001, the tags of a replaced view it
             refused, as SST-PLN040, and the advisory reads the role may not make, as SST-VAL020.
+        attachment: The account's CoWork object and what is attached to it, as
+            `read_attachments` read them; None when nothing wants attaching or the read failed.
+            Snowflake private preview (PrPr).
     """
 
     observation: SnowflakeObservation
     preflight: Preflight | None = None
     failures: DiagnosticBag = DiagnosticBag()
+    attachment: AttachmentReading | None = None
 
 
 class PlanArtifacts:
@@ -169,7 +180,7 @@ class PlanArtifacts:
                 them; None takes them from the rendered artifacts and state.
 
         Diagnostics:
-            SST-PLN001: observing Snowflake, or a preflight read, failed.
+            SST-PLN001: observing Snowflake, reading the CoWork object, or a preflight read, failed.
             SST-PLN040: reading the tags on a semantic view the plan will replace failed.
         """
         composite_plans, reading = self.read_target(
@@ -223,7 +234,7 @@ class PlanArtifacts:
         so what is published there plans as a create.
 
         Diagnostics:
-            SST-PLN001: observing Snowflake, or a preflight read, failed.
+            SST-PLN001: observing Snowflake, reading the CoWork object, or a preflight read, failed.
             SST-PLN040: reading the tags on a semantic view the plan will replace failed.
         """
         with phases.phase("composites"):
@@ -318,9 +329,10 @@ class PlanArtifacts:
         pruning, every type a prune may remove, in the schemas of `observation_targets`, else of
         the rendered artifacts. Unless the options turn grants off, it then holds the tags of
         each semantic view the plan will replace, as `observe_replaced_tags` reads them. The
-        preflight read is `read_preflight`'s, `state_tables` among what it checks, each that
-        exists expected to be a `state_table_kind` table, and with `create_schemas` each absent
-        schema one apply creates.
+        account's CoWork object is read next, as `read_attachments` reads it. The preflight read
+        is `read_preflight`'s, `state_tables` among what it checks, each that exists expected to
+        be a `state_table_kind` table, and with `create_schemas` each absent schema one apply
+        creates.
 
         Args:
             absent_schemas: The schemas apply will create, as `absent_schemas` found them for
@@ -329,7 +341,7 @@ class PlanArtifacts:
                 them; None takes them from the rendered artifacts and state.
 
         Diagnostics:
-            SST-PLN001: observing Snowflake, or a preflight read, failed.
+            SST-PLN001: observing Snowflake, reading the CoWork object, or a preflight read, failed.
             SST-PLN040: reading the tags on a semantic view the plan will replace failed.
         """
         targets = observation_targets or tuple(artifact.target for artifact in rendered.values())
@@ -357,8 +369,11 @@ class PlanArtifacts:
                 self._port, observation, rendered, state.applied, self._registry, readers=self._readers
             )
             failures = DiagnosticBag((*failures, *unread))
+        # Snowflake private preview (PrPr): CoWork profiles
+        attachment, unattached = read_attachments(self._port, rendered)
+        failures = DiagnosticBag((*failures, *unattached))
         if self._preflight is None:
-            return TargetReading(observation, None, failures)
+            return TargetReading(observation, None, failures, attachment)
         preflight, refused = read_preflight(
             self._preflight,
             rendered,
@@ -371,7 +386,7 @@ class PlanArtifacts:
             state_table_kind=state_table_kind,
             create_schemas=create_schemas,
         )
-        return TargetReading(observation, preflight, DiagnosticBag((*failures, *refused)))
+        return TargetReading(observation, preflight, DiagnosticBag((*failures, *refused)), attachment)
 
     def absent_schemas(
         self,

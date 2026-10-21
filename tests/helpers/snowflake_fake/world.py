@@ -51,6 +51,8 @@ class PreflightAnswers:
     lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # What no role in the session holds on a stage, by the stage's `QualifiedName.sql`.
     stage_lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # What no role in the session holds on a CoWork object, by its name (Snowflake private preview).
+    cowork_lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # What the session's primary role lacks by itself and through its hierarchy, by schema, on
     # top of `lacking`: what no role in the session holds, the primary role lacks too.
     role_lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
@@ -171,6 +173,11 @@ class SnowflakeWorld:
         # DESCRIBE SEMANTIC VIEW rows by the view's qualified name.
         self.view_descriptions: dict[str, tuple[DescribedMember, ...]] = {}
         self.object_parameters: dict[tuple[str, str, str], str] = {}
+        # Snowflake private preview (PrPr): CoWork profiles. The account's CoWork objects, as SHOW
+        # SNOWFLAKE INTELLIGENCES lists them (none by default), and the agents attached to each, by
+        # the object's name, as `QualifiedName.sql`; ADD AGENT attaches one and DROP AGENT detaches it.
+        self.intelligences: list[str] = []
+        self.intelligence_agents: dict[str, list[str]] = {}
         self.preflight = PreflightAnswers()
         self.halted: str | None = None
         self.log: list[Sent] = []

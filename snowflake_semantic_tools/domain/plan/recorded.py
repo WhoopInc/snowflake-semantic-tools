@@ -1,9 +1,10 @@
 """What a plan read of one target, recorded so a later plan can plan from it instead.
 
 `sst plan` reads three things of its target before it decides: every object it observes,
-the preflight facts about the target, and the state it plans against. A `RecordedObservation`
-holds all three, and `sst plan --use-cached-state` plans from it without reading the target
-again, so the plan it produces says what the target held when the record was taken.
+the preflight facts about the target, and the state it plans against, with the account's CoWork
+object when a CoWork profile wants attaching to it. A `RecordedObservation` holds them all, and
+`sst plan --use-cached-state` plans from it without reading the target again, so the plan it
+produces says what the target held when the record was taken.
 `RecordedObservation.from_dict` reads back what `as_dict` wrote.
 """
 
@@ -21,6 +22,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     OwnershipMarker,
     SnowflakeObservation,
 )
+from snowflake_semantic_tools.domain.plan.attach import AttachmentReading
 from snowflake_semantic_tools.domain.plan.preflight import Preflight
 from snowflake_semantic_tools.domain.state import State, StoredDocumentError
 from snowflake_semantic_tools.domain.state.lock import STANDARD_TABLES
@@ -43,6 +45,9 @@ class RecordedObservation:
         declared_account: The profile's `account` as written when the record was taken, which
             a target resolved without a connection can be compared with; `target` holds the
             locator the session reported instead.
+        attachment: The account's CoWork object and what is attached to it; None when the plan
+            read neither, as one with no profile to attach does, and for a record taken before
+            the reading was recorded. Snowflake private preview (PrPr).
     """
 
     target: TargetIdentity
@@ -50,6 +55,7 @@ class RecordedObservation:
     state: State
     preflight: Preflight | None = None
     declared_account: str = ""
+    attachment: AttachmentReading | None = None
 
     @property
     def fetched_at(self) -> str:
@@ -75,7 +81,11 @@ class RecordedObservation:
         return None
 
     def as_dict(self) -> dict[str, object]:
-        """Return the record as the document stores it, which `from_dict` reads back."""
+        """Return the record as the document stores it, which `from_dict` reads back.
+
+        The attachment reading is written only when there is one, so a record without it reads
+        as one taken before it was recorded.
+        """
         return {
             "schema_version": RECORDED_OBSERVATION_SCHEMA_VERSION,
             "target": self.target.as_dict(),
@@ -84,6 +94,7 @@ class RecordedObservation:
             "artifacts": [_artifact_to_json(item) for _, item in sorted(self.observation.artifacts.items())],
             "preflight": _preflight_to_json(self.preflight) if self.preflight is not None else None,
             "state": self.state.as_dict(),
+            **({"attachment": _attachment_to_json(self.attachment)} if self.attachment is not None else {}),
         }
 
     @classmethod
@@ -105,6 +116,7 @@ class RecordedObservation:
             )
         artifacts = [_artifact_from_json(item) for item in _list(value.get("artifacts"), "artifacts")]
         raw_preflight = value.get("preflight")
+        raw_attachment = value.get("attachment")
         return cls(
             target=TargetIdentity.from_dict(value.get("target")),
             observation=SnowflakeObservation(
@@ -113,7 +125,19 @@ class RecordedObservation:
             state=State.from_dict(value.get("state")),
             preflight=_preflight_from_json(_object(raw_preflight, "preflight")) if raw_preflight is not None else None,
             declared_account=str(value.get("declared_account") or ""),
+            attachment=(
+                _attachment_from_json(_object(raw_attachment, "attachment")) if raw_attachment is not None else None
+            ),
         )
+
+
+def _attachment_to_json(reading: AttachmentReading) -> dict[str, object]:
+    return {"cowork_object": reading.cowork_object, "attached": [list(name) for name in sorted(reading.attached)]}
+
+
+def _attachment_from_json(value: Mapping[str, Any]) -> AttachmentReading:
+    attached = frozenset(_triple(name) for name in _list(value.get("attached", []), "attached"))
+    return AttachmentReading(_text(value.get("cowork_object")), attached)
 
 
 def _artifact_to_json(item: ObservedArtifact) -> dict[str, object]:

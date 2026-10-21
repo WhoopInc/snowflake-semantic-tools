@@ -15,6 +15,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     OwnershipMarker,
     SnowflakeObservation,
 )
+from snowflake_semantic_tools.domain.plan.attach import AttachmentReading
 from snowflake_semantic_tools.domain.plan.preflight import Preflight
 from snowflake_semantic_tools.domain.plan.recorded import RECORDED_OBSERVATION_SCHEMA_VERSION, RecordedObservation
 from snowflake_semantic_tools.domain.state import State, StoredDocumentError
@@ -153,6 +154,8 @@ def test_a_document_that_is_not_a_record_of_this_schema_is_refused(document: obj
         ("artifacts", {}, "observation artifacts must be a list"),
         ("artifacts", ["not an artifact"], "observation artifact must be an object"),
         ("preflight", [], "observation preflight must be an object"),
+        ("attachment", [], "observation attachment must be an object"),
+        ("attachment", {"attached": {}}, "observation attached must be a list"),
     ],
 )
 def test_a_malformed_record_is_refused(field: str, value: object, message: str) -> None:
@@ -174,3 +177,31 @@ def test_a_record_written_before_agent_version_facts_reads_with_none() -> None:
         None,
         (),
     )
+
+
+@pytest.mark.parametrize(
+    "attachment",
+    [
+        AttachmentReading(
+            "SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT", frozenset({("SNOWFLAKE_INTELLIGENCE", "PROFILES", "A")})
+        ),
+        AttachmentReading(None),
+    ],
+)
+def test_the_cowork_attachment_reading_reads_back_as_written(attachment: AttachmentReading) -> None:
+    # Snowflake private preview (PrPr): CoWork profiles. An account without a CoWork object
+    # records that it has none, which differs from a plan that read nothing.
+    recorded = replace(_recorded(preflight=None), attachment=attachment)
+    assert _round_trip(recorded) == recorded
+    assert recorded.as_dict()["attachment"] == {
+        "cowork_object": attachment.cowork_object,
+        "attached": [list(name) for name in sorted(attachment.attached)],
+    }
+
+
+def test_a_record_without_the_attachment_reading_writes_none_and_reads_back_without_one() -> None:
+    document = _recorded(preflight=None).as_dict()
+    assert "attachment" not in document
+    assert RecordedObservation.from_dict(document).attachment is None
+    document["attachment"] = {"cowork_object": "SI"}
+    assert RecordedObservation.from_dict(document).attachment == AttachmentReading("SI")

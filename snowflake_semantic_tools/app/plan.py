@@ -436,7 +436,7 @@ class PreparePlan:
         stale = stale_observation(target, self._clock.monotonic_ms() - started)
         # A reading with a refused read is incomplete, so no later plan may reuse it. An advisory
         # read the role may not make (SST-VAL020) is as complete as the role can ever read it.
-        recorded = RecordedObservation(target, reading.observation, state, reading.preflight)
+        recorded = RecordedObservation(target, reading.observation, state, reading.preflight, "", reading.attachment)
         leading = (*state_diagnostics, *((stale,) if stale else ()))
         trailing = (*channel_divergence(port, result), *unread)
         ready = _ready(candidates, result, manifest, state, changeset, handlers, held, leading, trailing, uncommitted)
@@ -498,7 +498,7 @@ class PreparePlan:
         apply_config = config_block(self._inputs.config().tree.get("apply"))
         uncommitted = self._inputs.git_dirty()
         rendered = self._publication(result, manifest, apply_config, target, temporary, bool(uncommitted))
-        reading = TargetReading(recorded.observation, recorded.preflight)
+        reading = TargetReading(recorded.observation, recorded.preflight, attachment=recorded.attachment)
         composites = unrecorded_composites(rendered)
         changeset = _decided(candidates, rendered, reading, manifest, state, target, {}, composites)
         cached = CachedObservation(recorded.fetched_at, seconds_between(recorded.fetched_at, self._clock.now_iso()))

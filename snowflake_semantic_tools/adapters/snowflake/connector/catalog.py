@@ -263,6 +263,23 @@ class CatalogMethods(Session, CatalogPort):
         match = next((row for row in rows if str(row.get("key") or "").upper() == parameter.upper()), None)
         return _text(match.get("value")) if match is not None else None
 
+    # Snowflake private preview (PrPr): CoWork profiles
+    def cowork_object(self) -> str | None:
+        rows = self._dict_rows(sql("SHOW SNOWFLAKE INTELLIGENCES"))
+        return next((name for row in rows if (name := _optional_text(row.get("name")))), None)
+
+    # Snowflake private preview (PrPr): CoWork profiles
+    def attached_agents(self, cowork_object: str) -> tuple[QualifiedName, ...]:
+        rows = self._dict_rows(
+            sql("SHOW AGENTS IN SNOWFLAKE INTELLIGENCE {name}", name=ident(Identifier.shown(cowork_object)))
+        )
+        parts = ((row.get("database_name"), row.get("schema_name"), row.get("name")) for row in rows)
+        return tuple(
+            QualifiedName(Identifier.shown(str(database)), Identifier.shown(str(schema)), Identifier.shown(str(name)))
+            for database, schema, name in parts
+            if database and schema and name
+        )
+
     def object_exists(self, object_type: str, qualified_name: QualifiedName) -> bool:
         normalized_input = " ".join(object_type.upper().split())
         if normalized_input == "DATASET":

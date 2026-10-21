@@ -418,6 +418,33 @@ class CatalogPort(Protocol):
         """
         ...
 
+    # Snowflake private preview (PrPr): CoWork profiles
+    def cowork_object(self) -> str | None:
+        """Return the name of the account's CoWork object, as SHOW SNOWFLAKE INTELLIGENCES lists it.
+
+        An account holds at most one; were more listed, the first is returned. Never writes.
+
+        Returns:
+            The name; None when the account has no CoWork object.
+
+        Raises:
+            SnowflakePortError: the SHOW failed.
+        """
+        ...
+
+    # Snowflake private preview (PrPr): CoWork profiles
+    def attached_agents(self, cowork_object: str) -> tuple[QualifiedName, ...]:
+        """Return the agents SHOW AGENTS IN SNOWFLAKE INTELLIGENCE lists as attached to a CoWork object.
+
+        `cowork_object` is a name `cowork_object` returned. Each agent is named by the row's
+        `database_name`, `schema_name` and `name`, as SHOW prints them; a row missing one is left
+        out. Never writes.
+
+        Raises:
+            SnowflakePortError: the SHOW failed, as for an object that does not exist.
+        """
+        ...
+
     def current_account_locator(self) -> str:
         """Return the locator of the account the session is connected to.
 

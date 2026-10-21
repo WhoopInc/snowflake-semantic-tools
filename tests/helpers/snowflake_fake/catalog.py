@@ -249,3 +249,13 @@ class FakeCatalog(SnowflakeWorld):
     def object_parameter(self, object_type: str, name: str, parameter: str) -> str | None:
         self._check("object_parameter")
         return self.object_parameters.get((object_type.upper(), name.upper(), parameter.upper()))
+
+    def cowork_object(self) -> str | None:
+        self._check("cowork_object")
+        return self.intelligences[0] if self.intelligences else None
+
+    def attached_agents(self, cowork_object: str) -> tuple[QualifiedName, ...]:
+        self._check("attached_agents")
+        if cowork_object not in self.intelligences:
+            raise SnowflakePortError(f"SQL compilation error: Snowflake Intelligence '{cowork_object}' does not exist.")
+        return tuple(QualifiedName.parse(name) for name in self.intelligence_agents.get(cowork_object, []))

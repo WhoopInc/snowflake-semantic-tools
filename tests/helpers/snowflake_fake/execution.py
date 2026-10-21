@@ -11,6 +11,9 @@ holds a `refused` fragment; otherwise each statement takes effect in order:
 - ALTER DATASET ... ADD VERSION appends the version; SYSTEM$CREATE_EVALUATION_DATASET makes
   the dataset exist, owned by the session's role.
 - CREATE, ALTER and DROP CORTEX EXTENSION change the extension (`extensions.py`).
+- ALTER SNOWFLAKE INTELLIGENCE ... ADD AGENT attaches the agent to the CoWork object, and fails
+  for one already attached, as measured; DROP AGENT detaches the agent from every one (Snowflake
+  private preview).
 
 A statement that cannot take effect fails the script there, as Snowflake reports it.
 
@@ -25,7 +28,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 
-from snowflake_semantic_tools.domain.model.identifier import SchemaScope
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
@@ -147,6 +150,13 @@ class FakeExecution(SnowflakeWorld):
             with self.stage_guard:
                 staged = tuple(self.stage_files)
             apply_extension_statement(self.extensions, staged, normalized, statement)
+        elif upper.startswith("ALTER SNOWFLAKE INTELLIGENCE ") and " ADD AGENT " in upper:
+            self._attach(normalized.split()[3], normalized.split()[6])
+        elif upper.startswith("DROP AGENT "):
+            name = QualifiedName.parse(normalized.split()[-1]).sql
+            for attached in self.intelligence_agents.values():
+                if name in attached:
+                    attached.remove(name)
         elif upper.startswith("CREATE TABLE "):
             self._exists(normalized.split()[2])
         elif upper.startswith("INSERT INTO "):
@@ -165,6 +175,18 @@ class FakeExecution(SnowflakeWorld):
                 self.existing.add(quoted[2])
                 # The role that creates a dataset owns it.
                 self.dataset_owners.setdefault(quoted[2], self.role)
+
+    def _attach(self, cowork_object: str, agent: str) -> None:
+        """Attach `agent` to the CoWork object `cowork_object` names, as ADD AGENT does."""
+        name = QualifiedName.parse(agent).sql
+        shown = Identifier.parse(cowork_object).value
+        if shown not in self.intelligences:
+            raise SnowflakePortError(f"Snowflake Intelligence '{shown}' does not exist or not authorized.")
+        attached = self.intelligence_agents.setdefault(shown, [])
+        if name in attached:
+            # MEASURED: a second ADD of an attached agent fails.
+            raise SnowflakePortError(f"Agent '{name}' is already present in Snowflake Intelligence '{shown}'.")
+        attached.append(name)
 
     def _exists(self, name: str) -> None:
         if self.existing is not None:
