@@ -17,6 +17,7 @@ from snowflake_semantic_tools.domain.model.agent import (
     AgentSkill,
     ResolvedAgentTool,
 )
+from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel
 from snowflake_semantic_tools.domain.render.invariants import dollar_quote_offset
 from snowflake_semantic_tools.domain.state import canonical_json
 
@@ -147,9 +148,12 @@ def render_agent_profile(profile: AgentProfile) -> str:
 
 
 def agent_render_checks(
-    model: AgentModel, tools: tuple[ResolvedAgentTool, ...], payload: str
+    model: AgentModel | CoworkProfileModel, tools: tuple[ResolvedAgentTool, ...], payload: str
 ) -> tuple[Diagnostic, ...]:
     """Report what the rendered spec `payload` holds that publication will not check or survive.
+
+    A CoWork profile's spec is checked here too, with its router among `tools`
+    (`cowork_profile_render_checks`).
 
     Diagnostics:
         SST-RND010: the spec renders with no tools.

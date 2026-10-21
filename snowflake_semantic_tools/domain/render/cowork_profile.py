@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.agent import ResolvedAgentTool
 from snowflake_semantic_tools.domain.model.cowork_profile import (
     ROUTER_NAME,
@@ -22,6 +23,7 @@ from snowflake_semantic_tools.domain.model.cowork_profile import (
     ResolvedSubagent,
 )
 from snowflake_semantic_tools.domain.render.agent import (
+    agent_render_checks,
     render_instructions,
     render_skills,
     render_spec_json,
@@ -34,6 +36,8 @@ from snowflake_semantic_tools.domain.state import canonical_json
 # The tool type that makes an agent a profile, and the source type of each agent it routes to.
 ROUTER_TYPE = "agent_router"
 SUBAGENT_SOURCE = "DATA_AGENT"
+# The router every profile renders first, as the checks an agent's tools get read it.
+_ROUTER_TOOL = ResolvedAgentTool(ROUTER_TYPE, ROUTER_NAME, "")
 
 
 def render_cowork_profile_spec(resolved: ResolvedCoworkProfile) -> dict[str, object]:
@@ -60,8 +64,7 @@ def render_cowork_profile_spec(resolved: ResolvedCoworkProfile) -> dict[str, obj
     )
     if instructions:
         document["instructions"] = instructions
-    # A profile tool is a built-in, named after its type unless named, as an agent's built-in is.
-    tools = tuple(ResolvedAgentTool(tool.type, tool.name or tool.type, "") for tool in model.tools)
+    tools = profile_tools(model)
     document["tools"] = [
         {"tool_spec": {"type": ROUTER_TYPE, "name": ROUTER_NAME}},
         *(render_tool_entry(tool) for tool in tools),
@@ -83,6 +86,23 @@ def render_cowork_profile_json(resolved: ResolvedCoworkProfile) -> str:
         TypeError: a value, such as one from `passthrough`, is not JSON-encodable.
     """
     return render_spec_json(render_cowork_profile_spec(resolved))
+
+
+def profile_tools(model: CoworkProfileModel) -> tuple[ResolvedAgentTool, ...]:
+    """Return the profile's own tools, each a built-in named after its type unless named, as an agent's is."""
+    return tuple(ResolvedAgentTool(tool.type, tool.name or tool.type, "") for tool in model.tools)
+
+
+def cowork_profile_render_checks(resolved: ResolvedCoworkProfile, payload: str) -> tuple[Diagnostic, ...]:
+    """Report what the rendered spec `payload` holds that publication will not check or survive.
+
+    The spec is checked as an agent's is, its router first among its tools, so a profile is
+    never reported for having no tools.
+
+    Diagnostics:
+        Every code `agent_render_checks` lists.
+    """
+    return agent_render_checks(resolved.model, (_ROUTER_TOOL, *profile_tools(resolved.model)), payload)
 
 
 def desired_cowork_profile_definition(model: CoworkProfileModel, spec: Mapping[str, object]) -> bytes:

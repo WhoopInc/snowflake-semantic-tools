@@ -82,10 +82,10 @@ def test_analytical_search_is_satisfied_by_a_cortex_search_tool() -> None:
 
 
 def test_spec_size_errors_at_the_limit_and_warns_near_it() -> None:
-    resolved = ResolvedAgent(agent(), ())
-    assert codes(spec_size(resolved, "x" * SPEC_LIMIT_BYTES)) == ["SST-VAL511"]
-    assert codes(spec_size(resolved, "x" * SPEC_WARNING_BYTES)) == ["SST-VAL512"]
-    assert spec_size(resolved, "x") == ()
+    model = agent()
+    assert codes(spec_size(model, "x" * SPEC_LIMIT_BYTES)) == ["SST-VAL511"]
+    assert codes(spec_size(model, "x" * SPEC_WARNING_BYTES)) == ["SST-VAL512"]
+    assert spec_size(model, "x") == ()
 
 
 def test_delegations_list_each_agent_toolset_target_casefolded() -> None:

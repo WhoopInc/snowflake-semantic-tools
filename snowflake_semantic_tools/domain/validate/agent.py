@@ -335,8 +335,10 @@ def token_budget(agent: AgentModel) -> tuple[Diagnostic, ...]:
     return (D("SST-VAL547", artifact=agent.name, subject=agent.key),)
 
 
-def spec_size(resolved: ResolvedAgent, payload: str) -> tuple[Diagnostic, ...]:
+def spec_size(model: PublishedAgent, payload: str) -> tuple[Diagnostic, ...]:
     """Report a rendered spec at or over `SPEC_LIMIT_BYTES`, else one at or over `SPEC_WARNING_BYTES`.
+
+    An agent's spec and a CoWork profile's are held to the same limits: both publish an AGENT.
 
     Diagnostics:
         SST-VAL511: the rendered spec is over the 100,000-byte limit.
@@ -344,9 +346,9 @@ def spec_size(resolved: ResolvedAgent, payload: str) -> tuple[Diagnostic, ...]:
     """
     size = len(payload.encode("utf-8"))
     if size >= SPEC_LIMIT_BYTES:
-        return (D("SST-VAL511", artifact=resolved.model.name, size=size, subject=resolved.model.key),)
+        return (D("SST-VAL511", artifact=model.name, size=size, subject=model.key),)
     if size >= SPEC_WARNING_BYTES:
-        return (D("SST-VAL512", artifact=resolved.model.name, size=size, subject=resolved.model.key),)
+        return (D("SST-VAL512", artifact=model.name, size=size, subject=model.key),)
     return ()
 
 

@@ -34,12 +34,13 @@ from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel, ResolvedCoworkProfile
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.render.cowork_profile import (
+    cowork_profile_render_checks,
     desired_cowork_profile_definition,
     render_cowork_profile_json,
     render_cowork_profile_spec,
 )
 from snowflake_semantic_tools.domain.resolve.tags import DeclaredTags
-from snowflake_semantic_tools.domain.validate.agent import AgentIdentities, published_agent_rules
+from snowflake_semantic_tools.domain.validate.agent import AgentIdentities, published_agent_rules, spec_size
 from snowflake_semantic_tools.domain.validate.cowork_profile import unlisted_profile
 from snowflake_semantic_tools.domain.validate.shared import unmodelled_key_diagnostics
 
@@ -126,8 +127,10 @@ class CompileCoworkProfiles:
 
         Each profile reports, in order: its name and display-name clashes, what
         `resolve_subagents` reports, the rules every published AGENT object shares, what
-        `resolve_skills` reports, and the spec keys SST does not model. Each that compiles then
-        reports that it relies on the preview, and whether CoWork lists it where it publishes.
+        `resolve_skills` reports, the spec keys SST does not model, then its rendered spec's
+        size and what `cowork_profile_render_checks` reports, as an agent's are. Each that
+        compiles then reports that it relies on the preview, and whether CoWork lists it where
+        it publishes.
 
         Diagnostics:
             SST-VAL001: a profile name repeats, ignoring case.
@@ -139,6 +142,9 @@ class CompileCoworkProfiles:
             SST-VAL014, SST-VAL013: the spec renders `spec.passthrough` keys SST does not model,
                 with a warning when `snowflake.allow_unknown_keys` is true and an error per key
                 otherwise.
+            SST-VAL511: a rendered spec is over the 100,000-byte limit.
+            SST-VAL512: a rendered spec is over 80% of that limit.
+            Every code `cowork_profile_render_checks` lists, such as SST-RND011 for a `$$`.
             SST-VAL870: a profile compiled, relying on CoWork profiles, a Snowflake private preview.
             SST-VAL878: a compiled profile publishes outside SNOWFLAKE_INTELLIGENCE.PROFILES.
         """
@@ -158,7 +164,7 @@ class CompileCoworkProfiles:
         return CompileResult(tuple(compiled), DiagnosticBag(diagnostics))
 
     def _resolve(self, model: CoworkProfileModel) -> tuple[ResolvedCoworkProfile, str, tuple[Diagnostic, ...]]:
-        """Resolve the profile's subagents and skills, check it whole, then render its payload."""
+        """Resolve the profile's subagents and skills, check it whole, then render and check its payload."""
         context = self._context.agent
         subagents, subagent_problems = resolve_subagents(model, self._context)
         rules = published_agent_rules(model, context.allowed_models, context.avatar_allowlist)
@@ -172,7 +178,8 @@ class CompileCoworkProfiles:
         )
         resolved = ResolvedCoworkProfile(replace(model, skills=skills), subagents, dependencies)
         payload = render_cowork_profile_json(resolved)
-        return resolved, payload, (*subagent_problems, *rules, *skill_problems, *unmodelled)
+        rendered = (*spec_size(model, payload), *cowork_profile_render_checks(resolved, payload))
+        return resolved, payload, (*subagent_problems, *rules, *skill_problems, *unmodelled, *rendered)
 
     def _compile(self, resolved: ResolvedCoworkProfile, payload: str) -> CompiledCoworkProfile:
         spec = render_cowork_profile_spec(resolved)

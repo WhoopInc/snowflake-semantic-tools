@@ -170,7 +170,7 @@ class CompileAgents:
                 *unmodelled,
                 *((incomplete,) if incomplete is not None else ()),
                 *resource_keys(resolved.model, document),
-                *spec_size(resolved, payload),
+                *spec_size(resolved.model, payload),
                 *checks,
             ),
         )
