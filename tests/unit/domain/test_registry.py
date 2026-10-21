@@ -57,7 +57,7 @@ def test_registry_has_m4_artifacts_and_all_seven_semantic_member_types() -> None
     for name in ("skill", "plugin"):
         assert SEMANTIC_REGISTRY.artifacts[name].lifecycle is ArtifactLifecycle.COMPOSITE
         assert SEMANTIC_REGISTRY.artifacts[name].ref_function == name
-    assert SEMANTIC_REGISTRY.artifacts["eval"].dependency_types == ("agent",)
+    assert SEMANTIC_REGISTRY.artifacts["eval"].dependency_types == ("agent", "cowork_profile")
     assert SEMANTIC_REGISTRY.artifacts["eval"].lifecycle is ArtifactLifecycle.COMPOSITE
     assert tuple(SEMANTIC_REGISTRY.members) == (
         "relationship",

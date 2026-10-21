@@ -10,6 +10,7 @@ https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profi
 
 from __future__ import annotations
 
+import posixpath
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -25,7 +26,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
 )
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
-from snowflake_semantic_tools.domain.model.agent import AgentSkill
+from snowflake_semantic_tools.domain.model.agent import AgentEvalFiles, AgentSkill
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosition
 from snowflake_semantic_tools.domain.parse.fields import unknown_field
@@ -400,3 +401,57 @@ def reference_call(
 def call_name(call: TemplateCall | None) -> str | None:
     """Return the one name a reference call gives; None for no call."""
     return call.args[0] if call is not None else None
+
+
+def parse_eval_files(
+    source_file: str, value: object, diagnostics: list[Diagnostic], *, kind: str
+) -> AgentEvalFiles | None:
+    """Read an `evals:` block: the dataset and the config it publishes, each by name.
+
+    An agent's and a CoWork profile's are read alike. `dataset:` is one
+    `{{ eval_dataset('<name>') }}` call and `config:` one `{{ eval_config('<name>') }}` call;
+    the names resolve among the files in the `evals/` folder beside the file, which is not
+    read here.
+
+    Args:
+        kind: The file's kind, `agent` or `cowork_profile`, whose `REFERENCE_FIELDS` entries
+            name the functions each field takes.
+
+    Returns:
+        None when the file declares no `evals:`; otherwise both names, each None when it is
+        absent or not that one call, with the `evals/` folder.
+
+    Diagnostics:
+        SST-PRS003: when `evals:` is not a mapping.
+        SST-PRS002: when `dataset` or `config` is absent.
+        Every code `required_call` lists, for a value that is not one `eval_dataset()` or
+            `eval_config()` call.
+    """
+    if value is None:
+        return None
+    origin = Origin(source_file)
+    folder = posixpath.join(posixpath.dirname(source_file), "evals")
+    if not isinstance(value, dict):
+        diagnostics.append(
+            D(
+                "SST-PRS003",
+                artifact=source_file,
+                field="evals",
+                expected="mapping",
+                found=type(value).__name__,
+                origin=origin,
+            )
+        )
+        return AgentEvalFiles(origin, folder=folder)
+    names: dict[str, str | None] = {}
+    for field in ("dataset", "config"):
+        raw = value.get(field)
+        names[field] = None
+        if raw is None:
+            diagnostics.append(D("SST-PRS002", artifact=source_file, field=f"evals.{field}", origin=origin))
+            continue
+        call = reference_call(
+            raw, f"{kind}.evals.{field}", diagnostics, origin, field=f"evals.{field}", artifact=source_file
+        )
+        names[field] = call_name(call)
+    return AgentEvalFiles(origin, names["dataset"], names["config"], folder)

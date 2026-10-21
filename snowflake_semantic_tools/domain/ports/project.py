@@ -214,16 +214,19 @@ class ProjectInputs(SemanticViewSource, Protocol):
         self,
         agents: tuple[AgentModel, ...] | None = None,
         agent_tool_names: dict[str, tuple[str, ...]] | None = None,
+        cowork_profiles: tuple[CoworkProfileModel, ...] | None = None,
     ) -> EvalCatalog:
-        """Return the evals of `agents`, with the `evals:` defaults and the custom metrics they use.
+        """Return the evals of `agents` and `cowork_profiles`, with the `evals:` defaults and metrics.
 
         The diagnostics of loading `agents` stay with the agents; only agents read here, when
-        `agents` is None, bring theirs.
+        `agents` is None, bring theirs, and likewise the profiles.
 
         Args:
             agents: The agents whose evals to load; None loads every agent again.
             agent_tool_names: Each agent's tool names, by casefolded agent name, which an
                 eval's expected tools must be among.
+            cowork_profiles: The CoWork profiles whose evals to load; None loads every enabled
+                profile again. Snowflake private preview (PrPr).
 
         Raises:
             ProjectError: an eval or metric file cannot be read.

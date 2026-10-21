@@ -26,7 +26,12 @@ from snowflake_semantic_tools.app.ask_scratch import ScratchPort, ScratchSession
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.evals.inline import InlineEvalOutcome, InlineEvalSetup, RunInlineEvals
+from snowflake_semantic_tools.app.evals.inline import (
+    InlineEvalOutcome,
+    InlineEvalSetup,
+    RunInlineEvals,
+    unpublished_refusals,
+)
 from snowflake_semantic_tools.app.evals.progress import (
     AttemptEnded,
     AttemptStarted,
@@ -406,9 +411,17 @@ def _run_unpublished_evals(
     Raises:
         ProjectError: the selection compiles no eval, or an agent's scratch schema renders
             unusable; it carries the diagnostic.
+
+    Diagnostics:
+        SST-ASK013: the selection holds a CoWork profile's eval; nothing runs, and nothing
+            connects.
     """
     full, result = results
     evals = _selected_evals(result, selected)
+    # Snowflake private preview (PrPr): CoWork profiles. A profile's eval runs published only.
+    refused = unpublished_refusals(evals)
+    if refused:
+        return CommandResult(ERROR, DiagnosticBag(refused), {"suite": "evals"})
     agents = {agent.artifact_key: agent for agent in compiled_agents(full)}
     defaults = inputs.eval_catalog().defaults
     profile, port = connect(paths, target_name)
@@ -421,7 +434,7 @@ def _run_unpublished_evals(
         notes: list[Diagnostic] = []
         try:
             for item in evals:
-                agent = agents[item.resolved.agent.key]
+                agent = agents[item.resolved.evaluated.key]
                 scope = agent_scope(agent, profile.identity)
                 if isinstance(scope, Diagnostic):
                     raise ProjectError(scope.message, diagnostics=(scope,))

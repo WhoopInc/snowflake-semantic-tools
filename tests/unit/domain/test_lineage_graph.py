@@ -153,9 +153,14 @@ def test_a_cowork_profile_calls_the_agents_it_routes_to_and_loads_its_skills() -
         references=("tool_ref:partner",),
     )
     skill = ArtifactEntry("skill", "notes", "f" * 64, (), (), (), "DB.S.NOTES", 1, "CORTEX EXTENSION")
-    artifacts = MappingProxyType({**document.artifacts, _PROFILE: profile, "skill:notes": skill})
+    # A profile's eval tests the profile, as an agent's eval tests its agent.
+    evaluation = ArtifactEntry("eval", "cowork_profile:everyone", "f" * 64, (), (), (_PROFILE,), "DB.S.EVAL", 1, "")
+    artifacts = MappingProxyType(
+        {**document.artifacts, _PROFILE: profile, "skill:notes": skill, "eval:cowork_profile:everyone": evaluation}
+    )
     graph = manifest_lineage(dataclasses.replace(document, artifacts=artifacts))
     assert graph.parents[_PROFILE] == ("agent:helper", "skill:notes", "tool_ref:partner")
+    assert graph.kind(_PROFILE, "eval:cowork_profile:everyone") == "tests"
     assert graph.kind("agent:helper", _PROFILE) == "calls"
     assert graph.kind("tool_ref:partner", _PROFILE) == "calls"
     assert graph.kind("skill:notes", _PROFILE) == "loads"

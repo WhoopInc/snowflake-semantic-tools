@@ -3,7 +3,11 @@
 An eval's cases are its dataset's questions, and a case's expectations are the keys of its
 ground truth. The renderer expresses `EXPECTATION_KINDS`; any other key passes through as row
 metadata, except one in Snowflake's `ground_truth_` vocabulary, which is an expectation the
-renderer cannot express (`eval_render_checks`).
+renderer cannot express (`eval_render_checks`). A CoWork profile's eval, a Snowflake private
+preview (PrPr), renders the subagents a row expects as the qualified names the profile's
+router gives them on the target, which custom judges read through `{{ground_truth}}`:
+https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
+https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
 """
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.eval import (
@@ -27,7 +32,10 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.sql import Sql, join, literal, qname, sql
 
 # The ground-truth expectations the renderer writes into a dataset row.
-EXPECTATION_KINDS = frozenset({"ground_truth_invocations", "ground_truth_output", "required_filters"})
+EXPECTATION_KINDS = frozenset(
+    {"ground_truth_invocations", "ground_truth_output", "required_filters", "ground_truth_subagents"}
+)
+_NO_SUBAGENTS: Mapping[str, QualifiedName] = MappingProxyType({})
 _EXPECTATION_PREFIX = "ground_truth_"
 # An expected tool input that is a query, which a judge can only compare as text.
 _SQL_TEXT = re.compile(r"\s*(SELECT|WITH)\b", re.IGNORECASE)
@@ -90,11 +98,19 @@ class RenderedEval:
         return source_table_script(self.source_table_statements)
 
 
-def render_dataset_payload(dataset: EvalDataset) -> str:
-    """Return the canonical question payload; coordinates never enter this identity."""
+def render_dataset_payload(dataset: EvalDataset, subagents: Mapping[str, QualifiedName] = _NO_SUBAGENTS) -> str:
+    """Return the canonical question payload; coordinates never enter this identity.
+
+    Args:
+        subagents: A CoWork profile's subagents on the target, by `subagent_reference`; each
+            row's `ground_truth_subagents` renders as their qualified names, in its order.
+
+    Raises:
+        KeyError: a row expects a subagent `subagents` does not hold.
+    """
     rows = [
         {
-            "ground_truth": _ground_truth_value(question.ground_truth),
+            "ground_truth": _ground_truth_value(question.ground_truth, subagents),
             "input_query": question.question or "",
         }
         for question in dataset.questions
@@ -316,7 +332,14 @@ def render_eval_config(
     return _emit_yaml({"evaluation": evaluation, "metrics": metrics})
 
 
-def _ground_truth_value(value: EvalGroundTruth | None) -> dict[str, object]:
+def _ground_truth_value(value: EvalGroundTruth | None, subagents: Mapping[str, QualifiedName]) -> dict[str, object]:
+    """Render a row's ground truth: each expectation it states, then the keys SST passes through.
+
+    An expected subagent renders as its qualified name in `subagents`.
+
+    Raises:
+        KeyError: an expected subagent is not in `subagents`.
+    """
     if value is None:
         return {}
     result: dict[str, object] = {}
@@ -337,6 +360,8 @@ def _ground_truth_value(value: EvalGroundTruth | None) -> dict[str, object]:
         result["ground_truth_output"] = value.output
     if value.required_filters:
         result["required_filters"] = list(value.required_filters)
+    if value.subagents is not None:
+        result["ground_truth_subagents"] = [subagents[expected.reference].sql for expected in value.subagents]
     result.update(dict(value.extra))
     return result
 

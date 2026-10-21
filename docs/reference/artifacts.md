@@ -16,7 +16,7 @@ another artifact with `{{ <function>('<name>') }}`.
 | [`profile`](#profile) | 270 | `profile.yml` in `project.profiles_dir` | profile stage trees and one profile registry row | none |
 | [`agent`](#agent) | 300 | `agent.yml` in `project.agents_dir` | AGENT | `agent()` |
 | [`cowork_profile`](#cowork_profile) | 350 | `cowork_profile.yml` in `project.cowork_profiles_dir` | AGENT with an agent_router tool | none |
-| [`eval`](#eval) | 400 | the dataset and config files an agent's `evals:` names, by convention in `evals/` | TABLE, DATASET, and a staged run configuration | none |
+| [`eval`](#eval) | 400 | the dataset and config files an agent's or CoWork profile's `evals:` names, by convention in `evals/` | TABLE, DATASET, and a staged run configuration | none |
 
 ## semantic_view
 
@@ -96,14 +96,14 @@ A Snowflake CoWork profile (Snowflake private preview): an AGENT that routes eac
 
 ## eval
 
-One agent's evaluation, published into the agent's schema: a source table and dataset of its questions, named by default for their digest, and its staged run configuration. A changed question set publishes a new table and dataset and keeps the old ones; with `dataset.mint: never`, only the configuration publishes, against a dataset that must already exist.
+One agent's, or CoWork profile's, evaluation, published into its schema: a source table and dataset of its questions, named by default for their digest, and its staged run configuration. A changed question set publishes a new table and dataset and keeps the old ones; with `dataset.mint: never`, only the configuration publishes, against a dataset that must already exist.
 
 - Position: 400
 - Lifecycle: composite -- several objects, reconciled together
 - On update: altered or re-versioned in place
 - Grants: never touched: the object is not replaced
 - `--prune`: never drops it
-- Applied after: `agent`
+- Applied after: `agent`, `cowork_profile`
 
 ## Semantic view members
 

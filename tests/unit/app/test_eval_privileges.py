@@ -13,7 +13,9 @@ from tests.helpers.reference_project import FIXTURE
 
 def _two_evals_in_one_schema() -> tuple[CompiledEval, ...]:
     first = compiled_eval_of()
-    return first, replace(first, resolved=replace(first.resolved, agent=replace(first.resolved.agent, name="ops")))
+    return first, replace(
+        first, resolved=replace(first.resolved, evaluated=replace(first.resolved.evaluated, name="ops"))
+    )
 
 
 def test_each_schema_is_read_once_and_each_eval_in_it_is_reported() -> None:

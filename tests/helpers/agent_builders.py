@@ -197,7 +197,7 @@ def evaluation(model: AgentModel, *questions: str, tier: str | None = "blocking"
     rows = tuple(EvalQuestion(ORIGIN, question, None) for question in questions)
     evaluation = replace(
         base,
-        agent=model,
+        evaluated=model,
         dataset=replace(base.dataset, questions=rows),
         config=replace(base.config, run=EvalRunConfig()),
     )

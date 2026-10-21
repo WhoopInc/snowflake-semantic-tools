@@ -302,15 +302,18 @@ class YamlProjectSource:
         self,
         agents: tuple[AgentModel, ...] | None = None,
         agent_tool_names: dict[str, tuple[str, ...]] | None = None,
+        cowork_profiles: tuple[CoworkProfileModel, ...] | None = None,
     ) -> EvalCatalog:
-        """Load the evals of `agents`, reading every agent again when `agents` is None.
+        """Load the evals of `agents` and `cowork_profiles`, reading each kind again when None.
 
-        The agents and the custom metrics come from `project.agents_dir` and
-        `project.eval_metrics_dir`, each eval's settings from `evals:` and its folder routes,
-        whose folders are checked under `project.agents_dir`, and the judge models a custom
-        metric may name from `snowflake.orchestration_models`. Agents read here bring their own
-        diagnostics, ahead of the eval diagnostics, and raise what `load_agents` raises; agents
-        passed in do not, since whoever loaded them reports theirs.
+        The agents, the CoWork profiles and the custom metrics come from `project.agents_dir`,
+        `project.cowork_profiles_dir` and `project.eval_metrics_dir`, each eval's settings from
+        `evals:` and its folder routes, whose folders are checked under `project.agents_dir`
+        and `project.cowork_profiles_dir`, and the judge models a custom metric may name from
+        `snowflake.orchestration_models`. Agents and profiles read here bring their own
+        diagnostics, ahead of the eval diagnostics, and raise what their loaders raise; those
+        passed in do not, since whoever loaded them reports theirs. Only an enabled profile read
+        here has its evals loaded. CoWork profiles are a Snowflake private preview (PrPr).
 
         Args:
             agent_tool_names: Each agent's tool names, by casefolded agent name.
@@ -324,8 +327,16 @@ class YamlProjectSource:
         agent_diagnostics = DiagnosticBag()
         if agents is None:
             agents, agent_diagnostics = load_agents(self._project_dir, agents_dir=agents_dir, config=config)
+        profile_diagnostics = DiagnosticBag()
+        if cowork_profiles is None:
+            profiles_dir = configured_dir(config, "cowork_profiles_dir", "cowork_profiles")
+            loaded, profile_diagnostics = load_cowork_profiles(
+                self._project_dir, cowork_profiles_dir=profiles_dir, config=config
+            )
+            cowork_profiles = tuple(profile for profile in loaded if profile.enabled)
         defaults, default_diagnostics = parse_eval_defaults(config.get("evals"), file=self._files.config_name)
-        routes = routed_diagnostics(config, self._project_dir, "eval")
+        # Snowflake private preview (PrPr): CoWork profiles. An eval's route may name a profile's folder.
+        routes = routed_diagnostics(config, self._project_dir, "eval", also_under=("cowork_profile",))
         snowflake = config.get("snowflake")
         raw_models = snowflake.get("orchestration_models") if isinstance(snowflake, dict) else None
         allowed_models = strings(raw_models)
@@ -335,9 +346,12 @@ class YamlProjectSource:
             eval_metrics_dir=metrics_dir,
             defaults=defaults,
             block=config.get("evals"),
-            initial_diagnostics=DiagnosticBag((*agent_diagnostics, *routes, *default_diagnostics)),
+            initial_diagnostics=DiagnosticBag(
+                (*agent_diagnostics, *profile_diagnostics, *routes, *default_diagnostics)
+            ),
             agent_tool_names=agent_tool_names,
             allowed_models=allowed_models,
+            cowork_profiles=cowork_profiles,
         )
 
 
@@ -430,8 +444,9 @@ class YamlProjectInputs(ProjectInputs):
         self,
         agents: tuple[AgentModel, ...] | None = None,
         agent_tool_names: dict[str, tuple[str, ...]] | None = None,
+        cowork_profiles: tuple[CoworkProfileModel, ...] | None = None,
     ) -> EvalCatalog:
-        return self._source.load_evals(agents, agent_tool_names)
+        return self._source.load_evals(agents, agent_tool_names, cowork_profiles)
 
     def git_sha(self) -> str:
         return self._git_sha()

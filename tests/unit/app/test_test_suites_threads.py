@@ -194,7 +194,7 @@ def _evals() -> tuple[CompiledEval, ...]:
     return tuple(
         replace(
             base,
-            resolved=replace(base.resolved, agent=replace(base.resolved.agent, name=agent)),
+            resolved=replace(base.resolved, evaluated=replace(base.resolved.evaluated, name=agent)),
             agent_target=QualifiedName.parse(f"DB.S.{agent.upper()}"),
         )
         for agent in OUTCOMES

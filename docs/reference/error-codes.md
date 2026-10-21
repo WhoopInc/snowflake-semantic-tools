@@ -22,13 +22,13 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 317 codes
+- [Validation (VAL)](#validation-val) -- 326 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 49 codes
 - [Apply (APL)](#apply-apl) -- 45 codes
-- [Unpublished runs (ASK)](#unpublished-runs-ask) -- 12 codes
+- [Unpublished runs (ASK)](#unpublished-runs-ask) -- 13 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 28 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
 - [Internal (INT)](#internal-int) -- 13 codes
@@ -4766,7 +4766,7 @@ Note: A skipped tool is never invoked, so the eval looks healthier than the agen
 
 `eval config for '<artifact>': metric '<name>' threshold has <detail>`
 
-Raised when a gated system metric's threshold has no bound or min &gt; max, so the gate cannot fire; or a threshold is set on a metric that does not gate (a system metric without `gate: true`, or a custom metric's `threshold_default` without `gate_default: true`).
+Raised when a gated system or routing metric's threshold has no bound or min &gt; max, so the gate cannot fire; or a threshold is set on a metric that does not gate (a system or routing metric without `gate: true`, or a custom metric's `threshold_default` without `gate_default: true`).
 
 Fix: declare min, max, or both, with min &lt;= max
 
@@ -4790,7 +4790,7 @@ Note: Capture a new baseline: `sst test --suite evals --capture-baseline --reaso
 
 `eval config for '<artifact>': metric '<name>' has a threshold and no baseline`
 
-Raised when a system metric sets a threshold while the eval's `baseline_runs` setting is unset or zero; one per such metric.
+Raised when a system or routing metric sets a threshold while the eval's `baseline_runs` setting is unset or zero; one per such metric, for a config with a `run:` block.
 
 Fix: measure first, then set the threshold
 
@@ -5025,6 +5025,42 @@ Raised when an eval's agent resolves to a database whose name starts with `USER$
 Fix: route the agent to a schema of an ordinary database, or try its evals with `sst test --suite evals --unpublished`, which creates none of them
 
 Note: Measured on a live account: Snowflake refuses to create a table, a dataset or a stage in a personal database (error 060119), while an agent may live there. `sst ask` and unpublished eval runs create only temporary agents, so they work for an agent in `USER$<user>.PUBLIC`.
+
+### SST-VAL767
+
+**Routing metric on an agent's eval** (error)
+
+`eval config for '<artifact>': routing metric '<name>' scores a CoWork profile's router, and an agent has none`
+
+Raised when the config of an agent's eval lists a metric under `metrics.routing`.
+
+Fix: remove it from metrics.routing; only a CoWork profile's eval is scored on routing
+
+Note: Snowflake private preview: CoWork profiles.
+
+### SST-VAL768
+
+**Expected subagents in an agent's eval dataset** (error)
+
+`dataset '<artifact>': row <index> sets ground_truth_subagents, which only a CoWork profile's eval scores`
+
+Raised when a row of an agent's eval dataset sets `ground_truth.ground_truth_subagents`.
+
+Fix: remove it; an agent's row names the tools it should call in ground_truth_invocations
+
+Note: Snowflake private preview: CoWork profiles.
+
+### SST-VAL769
+
+**Routing threshold is outside the score range** (error)
+
+`eval config for '<artifact>': routing metric '<name>' threshold <key> <found> is outside [0, 1]`
+
+Raised when a `metrics.routing` entry's `threshold.min` or `threshold.max` is below 0 or above 1, so the gate either always or never fires; one per such bound.
+
+Fix: set each bound between 0 and 1
+
+Note: Snowflake private preview: CoWork profiles. A routing score lies in [0, 1].
 
 ### SST-VAL801
 
@@ -5719,6 +5755,78 @@ Raised when a project agent's database and schema, compared as Snowflake resolve
 Fix: publish the agent to another schema, and route to it from a CoWork profile
 
 Note: Snowflake private preview. CoWork treats every agent in that schema as a profile. https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
+
+### SST-VAL881
+
+**Expected subagent is not one of the profile's** (error)
+
+`dataset '<artifact>': row <index> expects <function>('<name>'), not a subagent of cowork profile '<value>'`
+
+Raised when a `ground_truth_subagents` entry of a CoWork profile eval's row calls `agent()` or `tool()` with a name, ignoring case, that no entry of the profile's `spec.subagents` calls that function with.
+
+Fix: name one of the profile's subagents: {detail}
+
+Note: Snowflake private preview. The router can only choose one of the profile's subagents, so an expectation naming any other agent can never be met.
+
+### SST-VAL882
+
+**Tool metric cannot see a CoWork profile's routing** (error)
+
+`eval config for '<artifact>': metric '<name>' does not see the router's calls of a CoWork profile`
+
+Raised when the config of a CoWork profile's eval enables `tool_selection_accuracy` or `tool_execution_accuracy`.
+
+Fix: remove it, and score the router with routing_accuracy under metrics.routing
+
+Note: Snowflake private preview, measured on a preview account: neither metric sees a router call, so every record reports that no tool was invoked, and a row that expects the profile to decline scores 1.0 whatever the router did.
+
+### SST-VAL883
+
+**Expected tool calls in a CoWork profile's eval dataset** (error)
+
+`dataset '<artifact>': row <index> sets ground_truth_invocations, which no metric scores on cowork profile '<value>'`
+
+Raised when a row of a CoWork profile eval's dataset sets `ground_truth.ground_truth_invocations`.
+
+Fix: name the subagents the row should route to in ground_truth_subagents, [] to decline
+
+Note: Snowflake private preview, measured on a preview account: the tool metrics that read expected tool calls see neither the router's calls nor the subagents' own.
+
+### SST-VAL884
+
+**CoWork profile eval expects no route** (warning)
+
+`dataset '<artifact>': no row sets ground_truth_subagents, so routing_accuracy scores nothing on cowork profile '<value>'`
+
+Raised when no row of a CoWork profile eval's dataset sets `ground_truth.ground_truth_subagents`.
+
+Fix: give each row the subagents it should route to in ground_truth_subagents, [] for one to decline
+
+Note: Snowflake private preview. A profile's own failures are routing failures.
+
+### SST-VAL885
+
+**CoWork profile eval expects no decline** (info)
+
+`dataset '<artifact>': no row expects cowork profile '<value>' to decline a question`
+
+Raised when some rows of a CoWork profile eval's dataset set `ground_truth_subagents`, and none sets it to an empty list.
+
+Fix: add a row whose ground_truth_subagents is [], for a question none of its subagents covers
+
+Note: Snowflake private preview. A profile that routes a question it should decline is a failure only a decline row catches.
+
+### SST-VAL886
+
+**CoWork profile eval left out where CoWork lists the profile** (warning)
+
+`eval '<artifact>' is not compiled: its cowork profile publishes to <target>, where CoWork lists it`
+
+Raised when a CoWork profile's eval, on a target that publishes the profile to SNOWFLAKE_INTELLIGENCE.PROFILES; the eval does not compile, so no eval object is planned there.
+
+Fix: evaluate the profile's rehearsal on a target that publishes it elsewhere; it routes the same way
+
+Note: Snowflake private preview. An eval's source table, dataset and config stage publish in its subject's schema, and eval tables, datasets and stages in CoWork's schema are unmeasured.
 
 ## dbt (DBT)
 
@@ -7593,6 +7701,18 @@ Raised when `sst ask --transcript` could not replace its transcript file in `sst
 Fix: make `sst_target/ask/` writable, or ask without `--transcript`
 
 Note: Reported once; the conversation goes on, and each later turn tries the write again.
+
+### SST-ASK013
+
+**Unpublished run refuses a CoWork profile eval** (error)
+
+`eval '<artifact>' cannot run unpublished: it evaluates a CoWork profile`
+
+Raised when `sst test --suite evals --unpublished` selects the eval of a CoWork profile; nothing runs.
+
+Fix: run it published with `sst test --suite evals`, or leave it out with `--exclude {selector}`
+
+Note: Snowflake private preview: CoWork profiles. An unpublished run would need a temporary profile, which has not been measured on Snowflake (see SST-APL106).
 
 ## Snowflake (SNO)
 

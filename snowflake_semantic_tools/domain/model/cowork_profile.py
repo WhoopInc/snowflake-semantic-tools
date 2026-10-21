@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import Origin
-from snowflake_semantic_tools.domain.model.agent import AgentProfile, AgentSkill
+from snowflake_semantic_tools.domain.model.agent import AgentEvalFiles, AgentProfile, AgentSkill
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.setting import Setting
@@ -104,6 +104,8 @@ class CoworkProfileModel:
         attach: Attach the profile to the account's CoWork object once it is published where
             CoWork lists profiles; False leaves it unattached, and never detaches one. Snowflake
             private preview (PrPr).
+        evals: The eval dataset and config the profile's `evals:` block names, read as an
+            agent's; None when it declares none.
     """
 
     name: str
@@ -127,6 +129,7 @@ class CoworkProfileModel:
     folder: tuple[str, ...] = ()
     settings: Mapping[str, Setting] = field(default_factory=lambda: MappingProxyType({}))
     attach: bool = True
+    evals: AgentEvalFiles | None = None
 
     @property
     def key(self) -> str:

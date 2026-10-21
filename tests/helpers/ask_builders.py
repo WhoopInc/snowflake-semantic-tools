@@ -84,5 +84,5 @@ def inline_setup(
 ) -> InlineEvalSetup:
     """An eval with its agent, `sales_agent`, whose temporary agents go in `DB.AGENTS`."""
     compiled = compiled_eval_of(resolved)
-    agent = compiled_agent(compiled.resolved.agent.name, payload=SALES_SPEC, orchestration_model=orchestration_model)
+    agent = compiled_agent(compiled.resolved.name, payload=SALES_SPEC, orchestration_model=orchestration_model)
     return InlineEvalSetup(compiled, agent, SchemaScope.from_qualified_name(agent.target))

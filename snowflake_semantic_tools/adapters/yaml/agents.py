@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import posixpath
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
@@ -14,6 +13,7 @@ from snowflake_semantic_tools.adapters.yaml.agent_fields import (
     config_origins,
     folder_files,
     instruction,
+    parse_eval_files,
     parse_skill,
     published_text,
     read_document,
@@ -30,7 +30,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
 )
 from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
-from snowflake_semantic_tools.domain.model.agent import AgentEvalFiles, AgentModel, AgentProfile, AgentTool
+from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentProfile, AgentTool
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosition
 from snowflake_semantic_tools.domain.model.config_schema import resolve_settings, setting_value
@@ -272,7 +272,7 @@ def _parse_agent(
     diagnostics.extend(
         passthrough_diagnostics(f"{name}.spec", passthrough, AGENT_SPEC_KEYS, subject=subject, origin=origin)
     )
-    eval_files = _parse_eval_files(relative, tree.get("evals"), diagnostics)
+    eval_files = parse_eval_files(relative, tree.get("evals"), diagnostics, kind="agent")
     diagnostics.extend(unknown_block_keys(relative, tree, lines, subject, _AGENT_KEYS, _moved))
     origin_of = config_origins(relative, lines)
     diagnostics.extend(item_config_diagnostics("agents", tree.get("config"), subject=subject, origin_of=origin_of))
@@ -299,53 +299,6 @@ def _parse_agent(
         ),
         tuple(diagnostics),
     )
-
-
-def _parse_eval_files(source_file: str, value: object, diagnostics: list[Diagnostic]) -> AgentEvalFiles | None:
-    """Read an agent's `evals:` block: the dataset and the config it publishes, each by name.
-
-    `dataset:` is one `{{ eval_dataset('<name>') }}` call and `config:` one
-    `{{ eval_config('<name>') }}` call; the names resolve among the files in the agent's
-    `evals/` folder, which is not read here.
-
-    Returns:
-        None when the agent declares no `evals:`; otherwise both names, each None when it is
-        absent or not that one call, with the agent's `evals/` folder.
-
-    Diagnostics:
-        SST-PRS003: when `evals:` is not a mapping.
-        SST-PRS002: when `dataset` or `config` is absent.
-        Every code `required_call` lists, for a value that is not one `eval_dataset()` or
-            `eval_config()` call.
-    """
-    if value is None:
-        return None
-    origin = Origin(source_file)
-    folder = posixpath.join(posixpath.dirname(source_file), "evals")
-    if not isinstance(value, dict):
-        diagnostics.append(
-            D(
-                "SST-PRS003",
-                artifact=source_file,
-                field="evals",
-                expected="mapping",
-                found=type(value).__name__,
-                origin=origin,
-            )
-        )
-        return AgentEvalFiles(origin, folder=folder)
-    names: dict[str, str | None] = {}
-    for field in ("dataset", "config"):
-        raw = value.get(field)
-        names[field] = None
-        if raw is None:
-            diagnostics.append(D("SST-PRS002", artifact=source_file, field=f"evals.{field}", origin=origin))
-            continue
-        call = reference_call(
-            raw, f"agent.evals.{field}", diagnostics, origin, field=f"evals.{field}", artifact=source_file
-        )
-        names[field] = call_name(call)
-    return AgentEvalFiles(origin, names["dataset"], names["config"], folder)
 
 
 def _parse_tools(

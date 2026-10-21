@@ -5,7 +5,12 @@ one question that expects the Analyst tool; a gated `tool_selection_accuracy`; a
 the custom metric `grounding`, which validates clean; and the settings `SETTINGS`, as its
 config's own `config:` would set them. `settled` gives an eval more settings. `validate`
 checks a catalog the way compile does, with that agent's tool names and the judge model
-allowed. `only` returns the single diagnostic a test expects, failing on none or several.
+model allowed. `only` returns the single diagnostic a test expects, failing on none or several.
+
+`concierge_eval` is a CoWork profile's eval (a Snowflake private preview): the profile
+`concierge` routes to `agent('sales')` and `tool('partner_agent')`, and its dataset has one row
+routed to sales and one decline, scored by a gated `routing_accuracy` and an ungated
+`answer_correctness`. `routed` builds one of its rows.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentTool
+from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel, CoworkSubagent
 from snowflake_semantic_tools.domain.model.eval import (
     CustomEvalMetric,
     EvalCatalog,
@@ -26,8 +32,10 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalGroundTruth,
     EvalInvocation,
     EvalQuestion,
+    EvalRoutingMetric,
     EvalRunConfig,
     EvalScoreRanges,
+    EvalSubagentRef,
     EvalSystemMetric,
     ResolvedEval,
     ThresholdRange,
@@ -148,6 +156,60 @@ def sales_eval(
         eval_config or config(),
         (judge(),) if metrics is None else metrics,
         settings_of(settings),
+    )
+
+
+PROFILE_FILE = "cowork_profiles/concierge/cowork_profile.yml"
+PROFILE_DATASET_FILE = "cowork_profiles/concierge/evals/dataset.yml"
+PROFILE_CONFIG_FILE = "cowork_profiles/concierge/evals/config.yml"
+
+
+def concierge_profile(**changes: object) -> CoworkProfileModel:
+    origin = Origin(PROFILE_FILE)
+    profile = CoworkProfileModel(
+        "concierge",
+        origin,
+        (PROFILE_FILE,),
+        sample_questions=("Who sold the most?",),
+        subagents=(CoworkSubagent("agent", "sales", origin), CoworkSubagent("tool", "partner_agent", origin)),
+    )
+    return replace(profile, **changes)  # type: ignore[arg-type]
+
+
+def routed(text: str, *expected: str, **truth: object) -> EvalQuestion:
+    """A profile's row expecting the subagents `expected`, each `<function>:<name>`; none is a decline."""
+    origin = Origin(PROFILE_DATASET_FILE, 4)
+    refs = tuple(EvalSubagentRef(Origin(PROFILE_DATASET_FILE, 7), *item.split(":", 1)) for item in expected)
+    values: dict[str, object] = {"output": "State which agent answered.", "subagents": refs}
+    values.update(truth)
+    return EvalQuestion(origin, text, EvalGroundTruth(Origin(PROFILE_DATASET_FILE, 6), **values))  # type: ignore[arg-type]
+
+
+def routing_metric(**changes: object) -> EvalRoutingMetric:
+    value = EvalRoutingMetric(Origin(PROFILE_CONFIG_FILE, 12), "routing_accuracy", True, ThresholdRange(min=0.9))
+    return replace(value, **changes)  # type: ignore[arg-type]
+
+
+def concierge_eval(
+    *questions: EvalQuestion,
+    profile: CoworkProfileModel | None = None,
+    **config_changes: object,
+) -> ResolvedEval:
+    rows = questions or (routed("Which region sold the most?", "agent:sales"), routed("Which supplier is late?"))
+    values: dict[str, object] = {
+        "origin": Origin(PROFILE_CONFIG_FILE),
+        "source_file": PROFILE_CONFIG_FILE,
+        "system_metrics": (system_metric("answer_correctness", gate=False, threshold=None),),
+        "custom_metric_names": (),
+        "routing_metrics": (routing_metric(),),
+    }
+    values.update(config_changes)
+    return ResolvedEval(
+        profile or concierge_profile(),
+        EvalDataset(Origin(PROFILE_DATASET_FILE), PROFILE_DATASET_FILE, None, rows),
+        config(**values),
+        (),
+        settings_of(SETTINGS),
     )
 
 

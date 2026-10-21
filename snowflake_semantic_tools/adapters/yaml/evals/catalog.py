@@ -1,17 +1,21 @@
-"""Load every agent's eval files, and the custom metrics they reference, into one catalog.
+"""Load every agent's and CoWork profile's eval files, and the custom metrics they reference.
 
 An agent's `evals:` block names its dataset and its config with `eval_dataset()` and
 `eval_config()`, by the `name:` each file declares. Every file in the agent's `evals/` folder
 is read and checked -- one with `questions:` is a dataset, any other a config -- and only the
-pair the agent names is published, so older versions can stay beside it.
+pair the agent names is published, so older versions can stay beside it. A CoWork profile's
+`evals:` block is read the same way, from the `evals/` folder beside its `cowork_profile.yml`;
+CoWork profiles are a Snowflake private preview (PrPr) feature:
+https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
+https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
 
-The custom metrics load first, then each agent's eval files in agent order; the static
-validator runs last, over the whole catalog, so its diagnostics follow every parse diagnostic.
-Each file the agent does not name is then checked alone, paired with the one it names of the
-other kind, and only what is found in that file is kept.
+The custom metrics load first, then each agent's eval files in agent order, then each
+profile's; the static validator runs last, over the whole catalog, so its diagnostics follow
+every parse diagnostic. Each file the subject does not name is then checked alone, paired with
+the one it names of the other kind, and only what is found in that file is kept.
 
 Each eval resolves its `evals:` settings -- its config's own `config:`, then the folder routes
-over its agent's folder, then the block root -- and the ones that stand in for an unset value
+over its subject's folder, then the block root -- and the ones that stand in for an unset value
 are filled in before validation, so the validator, the renderer and the gate all read the same
 value: `judge_model` for a custom metric's absent `model`, `metrics` for a config's absent
 `metrics.system`, and `metric_version` for a system metric's absent `version`.
@@ -33,14 +37,15 @@ from snowflake_semantic_tools.adapters.yaml.fields import refused
 from snowflake_semantic_tools.adapters.yaml.parse import read_yaml_file
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.config_schema import resolve_settings
+from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel
 from snowflake_semantic_tools.domain.model.eval import (
     CustomEvalMetric,
     EvalCatalog,
     EvalConfig,
     EvalDataset,
     EvalDefaults,
+    EvalSubject,
     EvalSystemMetric,
     ResolvedEval,
     eval_defaults,
@@ -67,10 +72,12 @@ def load_eval_catalog(
     initial_diagnostics: DiagnosticBag = DiagnosticBag(),
     agent_tool_names: Mapping[str, tuple[str, ...]] | None = None,
     allowed_models: tuple[str, ...] = (),
+    cowork_profiles: tuple[CoworkProfileModel, ...] = (),
 ) -> EvalCatalog:
-    """Load the evals of `agents` from the files their `evals:` blocks name, then validate them.
+    """Load the evals of `agents` and `cowork_profiles` from the files their `evals:` blocks name.
 
-    An agent whose named dataset or config is missing, unreadable or ambiguous is left out. A custom metric reference
+    The catalog is then validated. A subject whose named dataset or config is missing,
+    unreadable or ambiguous is left out. A custom metric reference
     that names no loaded metric is reported and dropped, and the eval kept; names match
     casefolded, and of two metrics sharing one, the later file's wins. A custom metric with no
     `model` takes its eval's `judge_model` setting, and in the catalog's own list the root's;
@@ -86,6 +93,8 @@ def load_eval_catalog(
             alone.
         initial_diagnostics: Diagnostics to place ahead of the loader's own, such as those of
             loading the agents and the defaults.
+        cowork_profiles: The CoWork profiles whose evals load after the agents'. Snowflake
+            private preview (PrPr).
 
     Returns:
         The catalog; its diagnostics are `initial_diagnostics`, the parse diagnostics in load
@@ -95,7 +104,7 @@ def load_eval_catalog(
         SST-PRT009: an eval file, or the agent's `evals/` folder, is a symbolic link; it is
             not read.
         SST-REF048: `eval_dataset()` or `eval_config()` names no file of that kind in the
-            agent's `evals/` folder.
+            subject's `evals/` folder.
         SST-VAL765: two dataset files, or two config files, in one folder share a name.
         SST-LOD018: an eval file or a metric file cannot be read.
         SST-LOD006: an eval file or a metric file is not UTF-8.
@@ -123,8 +132,9 @@ def load_eval_catalog(
     metric_index = {metric.name.casefold(): metric for metric in authored}
     evals: list[ResolvedEval] = []
     candidates: list[_Candidate] = []
-    for agent in agents:
-        resolved, unpublished = _load_eval(project_dir, agent, metric_index, (block, defaults), diagnostics)
+    subjects = (*(EvalSubject(agent) for agent in agents), *(EvalSubject(profile) for profile in cowork_profiles))
+    for subject in subjects:
+        resolved, unpublished = _load_eval(project_dir, subject, metric_index, (block, defaults), diagnostics)
         if resolved is not None:
             evals.append(resolved)
         candidates.extend(unpublished)
@@ -152,37 +162,37 @@ def _judged(metrics: tuple[CustomEvalMetric, ...], judge_model: str | None) -> t
 
 def _load_eval(
     project_dir: Path,
-    agent: AgentModel,
+    subject: EvalSubject,
     metric_index: Mapping[str, CustomEvalMetric],
     root: _Root,
     diagnostics: list[Diagnostic],
 ) -> tuple[ResolvedEval | None, tuple[_Candidate, ...]]:
-    """Read every eval file in one agent's `evals/` folder; return its published eval and the rest.
+    """Read every eval file in one subject's `evals/` folder; return its published eval and the rest.
 
-    Each config's settings resolve over the `evals:` block along the agent's folder, below its own
-    `config:`, as `_settled` does.
+    Each config's settings resolve over the `evals:` block along the subject's folder, below its
+    own `config:`, as `_settled` does.
 
     Returns:
-        The eval of the dataset and config the agent names, None when it has no `evals:` or
+        The eval of the dataset and config the subject names, None when it has no `evals:` or
         either does not resolve; and each other file, paired for checking with the file of the
-        other kind the agent names, when that one resolved.
+        other kind the subject names, when that one resolved.
     """
-    files = agent.evals
+    files = subject.evals
     if files is None:
         return None, ()
-    subject = artifact_key("eval", agent.name.casefold())
+    key = subject.eval_key
     datasets, configs = _folder_files(project_dir, files.folder, diagnostics)
     dataset_index = _index(
-        datasets, [(item.name, item.source_file) for item in datasets], "dataset", files.folder, subject, diagnostics
+        datasets, [(item.name, item.source_file) for item in datasets], "dataset", files.folder, key, diagnostics
     )
     config_index = _index(
-        configs, [(item.name, item.source_file) for item, _ in configs], "config", files.folder, subject, diagnostics
+        configs, [(item.name, item.source_file) for item, _ in configs], "config", files.folder, key, diagnostics
     )
-    dataset = _named(dataset_index, files.dataset, "eval_dataset", agent, diagnostics)
-    loaded = _named(config_index, files.config, "eval_config", agent, diagnostics)
+    dataset = _named(dataset_index, files.dataset, "eval_dataset", subject, diagnostics)
+    loaded = _named(config_index, files.config, "eval_config", subject, diagnostics)
     candidates: list[_Candidate] = []
     if loaded is not None:
-        bare = _settled(agent, loaded, root)
+        bare = _settled(subject, loaded, root)
         candidates.extend(
             (replace(bare, dataset=other), other.source_file) for other in datasets if other is not dataset
         )
@@ -190,28 +200,28 @@ def _load_eval(
         for other in configs:
             if other is loaded:
                 continue
-            candidate = _settled(agent, other, root, dataset)
-            metrics = _resolve_metrics(agent, candidate, metric_index, root, diagnostics)
+            candidate = _settled(subject, other, root, dataset)
+            metrics = _resolve_metrics(candidate, metric_index, root, diagnostics)
             candidates.append((replace(candidate, custom_metrics=metrics), candidate.config.source_file))
     if dataset is None or loaded is None:
         return None, tuple(candidates)
-    resolved = _settled(agent, loaded, root, dataset)
-    return replace(resolved, custom_metrics=_resolve_metrics(agent, resolved, metric_index, root, diagnostics)), tuple(
+    resolved = _settled(subject, loaded, root, dataset)
+    return replace(resolved, custom_metrics=_resolve_metrics(resolved, metric_index, root, diagnostics)), tuple(
         candidates
     )
 
 
-def _settled(agent: AgentModel, loaded: _Loaded, root: _Root, dataset: EvalDataset | None = None) -> ResolvedEval:
-    """Pair a config with the agent and a dataset, resolve its settings, and fill its system metrics.
+def _settled(subject: EvalSubject, loaded: _Loaded, root: _Root, dataset: EvalDataset | None = None) -> ResolvedEval:
+    """Pair a config with the subject and a dataset, resolve its settings, and fill its system metrics.
 
     Without a dataset, the pair is the config's alone, until the caller gives it one; it names no
     custom metric until the caller resolves them.
     """
     config, source = loaded
-    settings = resolve_settings(root[0], agent.folder, config.config)
+    settings = resolve_settings(root[0], subject.folder, config.config)
     filled = _with_system_defaults(config, source, _options(eval_defaults(settings), root))
     placeholder = dataset or EvalDataset(config.origin, config.source_file, None, ())
-    return ResolvedEval(agent, placeholder, filled, (), settings)
+    return ResolvedEval(subject.model, placeholder, filled, (), settings)
 
 
 def _folder_files(
@@ -284,27 +294,28 @@ def _index(
 
 
 def _named(
-    index: Mapping[str, _T], name: str | None, function: str, agent: AgentModel, diagnostics: list[Diagnostic]
+    index: Mapping[str, _T], name: str | None, function: str, subject: EvalSubject, diagnostics: list[Diagnostic]
 ) -> _T | None:
-    """Return the file `function('<name>')` names; None when the agent named none or no file has it.
+    """Return the file `function('<name>')` names; None when the subject named none or no file has it.
 
     Diagnostics:
-        SST-REF048: no file of the function's kind in the agent's `evals/` folder has the name.
+        SST-REF048: no file of the function's kind in the subject's `evals/` folder has the name.
     """
-    if name is None or agent.evals is None:
+    files = subject.evals
+    if name is None or files is None:
         return None
     found = index.get(name.casefold())
     if found is None:
         diagnostics.append(
             D(
                 "SST-REF048",
-                artifact=agent.origin.file,
+                artifact=subject.origin.file,
                 function=function,
                 name=name,
                 kind=function.removeprefix("eval_"),
-                path=agent.evals.folder,
-                origin=agent.evals.origin,
-                subject=artifact_key("eval", agent.name.casefold()),
+                path=files.folder,
+                origin=files.origin,
+                subject=subject.eval_key,
             )
         )
     return found
@@ -338,7 +349,6 @@ def _options(resolved: EvalDefaults, root: _Root) -> EvalDefaults:
 
 
 def _resolve_metrics(
-    agent: AgentModel,
     resolved: ResolvedEval,
     metric_index: Mapping[str, CustomEvalMetric],
     root: _Root,
@@ -361,7 +371,7 @@ def _resolve_metrics(
                     "SST-REF026",
                     name=name,
                     origin=config.origin,
-                    subject=artifact_key("eval", agent.name.casefold()),
+                    subject=resolved.key,
                 )
             )
         else:

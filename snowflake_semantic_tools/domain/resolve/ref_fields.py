@@ -116,7 +116,11 @@ REFERENCE_FIELDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "cowork_profile.spec.skills.name": ("skill",),
         "cowork_profile.spec.skills.source.version": ("var",),
         "cowork_profile.config.tags.name": ("tag",),
+        "cowork_profile.evals.dataset": ("eval_dataset",),
+        "cowork_profile.evals.config": ("eval_config",),
         "eval_config.metrics.custom": ("eval_metric",),
+        # The subagents a CoWork profile eval's row expects, named as the profile names them.
+        "eval_dataset.ground_truth_subagents": ("agent", "tool"),
         "tool.on": ("ref",),
         "tool.columns": ("ref",),
         "tool.body": ("file",),

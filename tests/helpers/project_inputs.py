@@ -38,7 +38,8 @@ class InMemoryProjectInputs:
     """Holds what `YamlProjectInputs` would read from disk, and records every read in order.
 
     Each entry of `reads` names the method, and the directories it was asked for where it
-    takes any; `eval_requests` holds the arguments of each `eval_catalog` call.
+    takes any; `eval_requests` holds the agents and tool names of each `eval_catalog` call,
+    and `profile_eval_requests` its CoWork profiles.
     """
 
     tree: Mapping[str, object] = field(default_factory=dict)
@@ -62,6 +63,7 @@ class InMemoryProjectInputs:
     sources: ManifestSources = EMPTY_SOURCES
     reads: list[str] = field(default_factory=list)
     eval_requests: list[tuple[object, ...]] = field(default_factory=list)
+    profile_eval_requests: list[object] = field(default_factory=list)
 
     def config(self) -> ProjectConfig:
         self.reads.append("config")
@@ -135,9 +137,11 @@ class InMemoryProjectInputs:
         self,
         agents: tuple[AgentModel, ...] | None = None,
         agent_tool_names: dict[str, tuple[str, ...]] | None = None,
+        cowork_profiles: tuple[CoworkProfileModel, ...] | None = None,
     ) -> EvalCatalog:
         self.reads.append("eval_catalog")
         self.eval_requests.append((agents, agent_tool_names))
+        self.profile_eval_requests.append(cowork_profiles)
         return self.evals
 
     def git_sha(self) -> str:

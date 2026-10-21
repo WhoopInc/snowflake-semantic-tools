@@ -43,7 +43,7 @@ from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import changeset, target
 from tests.helpers.clocks import FixedClock
 from tests.helpers.compile_builders import compiled_as
-from tests.helpers.eval_builders import GIT_SHA, compile_eval, resolved_eval, seed_dataset_version
+from tests.helpers.eval_builders import GIT_SHA, compile_eval, eval_agent, resolved_eval, seed_dataset_version
 from tests.helpers.snowflake_fake import FakeSnowflake, Sent
 from tests.helpers.snowflake_fake.world import SYSTEM_DATASET_VERSION
 from tests.helpers.sql_values import statement, texts
@@ -391,7 +391,7 @@ def two_evals_in_one_schema() -> tuple[Manifest, dict[str, RenderedArtifact]]:
     first = resolved_eval()
     second = replace(
         first,
-        agent=replace(first.agent, name="ops_agent"),
+        evaluated=replace(eval_agent(first), name="ops_agent"),
         dataset=first.dataset,
         config=first.config,
     )

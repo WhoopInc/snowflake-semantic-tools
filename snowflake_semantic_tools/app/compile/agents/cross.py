@@ -80,7 +80,8 @@ def _agent_problems(
     agents: tuple[CompiledAgent, ...], tools: tuple[CompiledTool, ...], evals: EvalCatalog
 ) -> list[Diagnostic]:
     """Check each agent against its eval, then against the defined tool members it reaches."""
-    evaluations = {evaluation.agent.name.casefold(): evaluation for evaluation in evals.evals}
+    # A CoWork profile's eval checks no agent, even one sharing the profile's name.
+    evaluations = {evaluation.name.casefold(): evaluation for evaluation in evals.evals if evaluation.agent is not None}
     members = {item.artifact_key: item.member for item in tools}
     found: list[Diagnostic] = []
     for agent in agents:

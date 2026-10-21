@@ -13,14 +13,18 @@ many at once as the suite's concurrency allows. Then each enabled metric is scor
   service scores them.
 
 Only exact metrics gate, on their thresholds alone. Nothing is published, staged, read from or
-written to the eval state table, and no baseline is read, captured or compared.
+written to the eval state table, and no baseline is read, captured or compared. A CoWork
+profile's eval, a Snowflake private preview (PrPr), never runs unpublished
+(`unpublished_refusals`): it would need a temporary profile, which is unmeasured.
+https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
+https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
 """
 
 from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -74,6 +78,29 @@ _EXACT, _JUDGED = "exact", "judged"
 # the agent's model calls, which its usage omits (measured on a live account).
 _NEVER_COUNTED = ("completion_tokens", "llm_call_count", "prompt_tokens", "total_tokens")
 _AGENT_TOKENS = ("total_input_tokens", "total_output_tokens")
+
+
+def unpublished_refusals(evals: Iterable[CompiledEval]) -> tuple[Diagnostic, ...]:
+    """Refuse each CoWork profile's eval among `evals`: none runs unpublished.
+
+    An unpublished run asks each question of a temporary agent; a temporary CoWork profile has
+    not been measured on Snowflake (as `apply --temporary` publishes none, SST-APL106), so a
+    profile's eval runs published only. Snowflake private preview (PrPr): CoWork profiles.
+
+    Diagnostics:
+        SST-ASK013: once per CoWork profile eval, in the order given.
+    """
+    return tuple(
+        D(
+            "SST-ASK013",
+            artifact=item.name,
+            selector=item.artifact_key,
+            origin=item.resolved.config.origin,
+            subject=item.artifact_key,
+        )
+        for item in evals
+        if item.resolved.subject.is_profile
+    )
 
 
 class InlineEvalPort(AgentRunPort, CortexPort, Protocol):

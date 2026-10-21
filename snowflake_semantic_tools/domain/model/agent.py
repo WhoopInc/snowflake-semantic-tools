@@ -105,14 +105,14 @@ class AgentSkill:
 
 @dataclass(frozen=True, slots=True)
 class AgentEvalFiles:
-    """An agent's `evals:` block: the eval dataset and config it publishes, by name.
+    """An agent's `evals:` block, or a CoWork profile's: the eval dataset and config, by name.
 
     Attributes:
         dataset: The name `{{ eval_dataset('<name>') }}` gives; None when the value is missing
             or not that one call, which loading reports.
         config: The name `{{ eval_config('<name>') }}` gives; None as for `dataset`.
-        folder: The agent's `evals/` folder, relative to the project root, which holds every
-            dataset and config the names resolve against.
+        folder: The agent's, or profile's, `evals/` folder, relative to the project root,
+            which holds every dataset and config the names resolve against.
     """
 
     origin: Origin

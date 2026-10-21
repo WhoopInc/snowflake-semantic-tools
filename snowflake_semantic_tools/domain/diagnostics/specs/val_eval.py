@@ -393,9 +393,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "eval config for '{artifact}': metric '{name}' threshold has {detail}",
         "declare min, max, or both, with min <= max",
         condition=(
-            "a gated system metric's threshold has no bound or min > max, so the gate cannot fire; or "
-            "a threshold is set on a metric that does not gate (a system metric without `gate: true`, "
-            "or a custom metric's `threshold_default` without `gate_default: true`)"
+            "a gated system or routing metric's threshold has no bound or min > max, so the gate cannot "
+            "fire; or a threshold is set on a metric that does not gate (a system or routing metric "
+            "without `gate: true`, or a custom metric's `threshold_default` without "
+            "`gate_default: true`)"
         ),
         note="For a threshold on an ungated metric, gate the metric or remove the threshold.",
     ),
@@ -421,8 +422,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "eval config for '{artifact}': metric '{name}' has a threshold and no baseline",
         "measure first, then set the threshold",
         condition=(
-            "a system metric sets a threshold while the eval's `baseline_runs` setting is unset or zero; "
-            "one per such metric"
+            "a system or routing metric sets a threshold while the eval's `baseline_runs` setting is "
+            "unset or zero; one per such metric, for a config with a `run:` block"
         ),
         note="A threshold set before any baseline is measured is a guess wearing the costume of a measurement.",
     ),
@@ -697,5 +698,37 @@ SPECS: tuple[ErrorSpec, ...] = (
             "unpublished eval runs create only temporary agents, so they work for an agent in "
             "`USER$<user>.PUBLIC`."
         ),
+    ),
+    # Snowflake private preview (PrPr): CoWork profiles. A routing metric and the subagents a
+    # row expects score a profile's router, so an agent's eval may write neither.
+    spec(
+        "SST-VAL767",
+        Severity.ERROR,
+        "Routing metric on an agent's eval",
+        "eval config for '{artifact}': routing metric '{name}' scores a CoWork profile's router, and an agent has none",
+        "remove it from metrics.routing; only a CoWork profile's eval is scored on routing",
+        condition="the config of an agent's eval lists a metric under `metrics.routing`",
+        note="Snowflake private preview: CoWork profiles.",
+    ),
+    spec(
+        "SST-VAL768",
+        Severity.ERROR,
+        "Expected subagents in an agent's eval dataset",
+        "dataset '{artifact}': row {index} sets ground_truth_subagents, which only a CoWork profile's eval scores",
+        "remove it; an agent's row names the tools it should call in ground_truth_invocations",
+        condition="a row of an agent's eval dataset sets `ground_truth.ground_truth_subagents`",
+        note="Snowflake private preview: CoWork profiles.",
+    ),
+    spec(
+        "SST-VAL769",
+        Severity.ERROR,
+        "Routing threshold is outside the score range",
+        "eval config for '{artifact}': routing metric '{name}' threshold {key} {found} is outside [0, 1]",
+        "set each bound between 0 and 1",
+        condition=(
+            "a `metrics.routing` entry's `threshold.min` or `threshold.max` is below 0 or above 1, so "
+            "the gate either always or never fires; one per such bound"
+        ),
+        note="Snowflake private preview: CoWork profiles. A routing score lies in [0, 1].",
     ),
 )

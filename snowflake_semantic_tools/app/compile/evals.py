@@ -1,13 +1,22 @@
-"""Compile resolved evaluation authoring into deterministic composite artifacts."""
+"""Compile resolved evaluation authoring into deterministic composite artifacts.
+
+An eval compiles into the schema of what it evaluates: an agent, or a CoWork profile. CoWork
+profiles are a Snowflake private preview (PrPr) feature; a profile's eval follows the preview's
+contract, as these pages describe it:
+https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
+https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+"""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from hashlib import sha256
+from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, compile_checked
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
-from snowflake_semantic_tools.domain.model.eval import EVAL_MINT_NEVER, EvalCatalog, ResolvedEval
+from snowflake_semantic_tools.domain.model.eval import EVAL_MINT_NEVER, EvalCatalog, ResolvedEval, SubjectTarget
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositeFacts,
@@ -30,6 +39,7 @@ from snowflake_semantic_tools.domain.render.eval import (
 )
 from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
 from snowflake_semantic_tools.domain.validate.eval import eval_placement
+from snowflake_semantic_tools.domain.validate.eval_subject import cowork_listed_placement
 
 # The component fingerprint prefix that names one custom metric an eval renders.
 METRIC_COMPONENT_PREFIX = "metric:"
@@ -37,13 +47,14 @@ METRIC_COMPONENT_PREFIX = "metric:"
 
 @dataclass(frozen=True, slots=True)
 class CompiledEval(StandaloneArtifact):
-    """One agent's evaluation: a dataset over a source table, and the config that runs it.
+    """One agent's or CoWork profile's evaluation: a dataset over a source table, and its config.
 
-    The eval publishes into its agent's schema. Its fingerprint combines the dataset's and
+    The eval publishes into its subject's schema. Its fingerprint combines the dataset's and
     the config's, so a change to either is a change.
 
     Attributes:
         resolved: The eval, with the settings it resolved.
+        agent_target: The AGENT object the eval runs against: the agent, or the profile.
         source_table: The table the dataset payload is loaded into.
         dataset_target: The dataset created over `source_table`; the artifact publishes here.
         git_sha: The commit the dataset version's METADATA records; plan sets it for
@@ -164,35 +175,55 @@ class CompiledEval(StandaloneArtifact):
 
 
 class CompileEvals:
-    """Compile each eval into its agent's schema.
+    """Compile each eval into its subject's schema.
 
     `agent_targets` maps each enabled agent's casefolded name to the name it publishes
-    under; an eval whose agent is not in it reports SST-INT902.
+    under; an agent's eval whose agent is not in it reports SST-INT902. `profile_targets` maps
+    each compiled CoWork profile's casefolded name to where it publishes, with the subagents
+    its router names there; a profile's eval whose profile did not compile is left out, since
+    the profile's own diagnostics say why. Snowflake private preview (PrPr): CoWork profiles.
     """
 
-    def __init__(self, catalog: EvalCatalog, *, agent_targets: dict[str, QualifiedName]) -> None:
+    def __init__(
+        self,
+        catalog: EvalCatalog,
+        *,
+        agent_targets: Mapping[str, QualifiedName],
+        profile_targets: Mapping[str, SubjectTarget] = MappingProxyType({}),
+    ) -> None:
         self._catalog = catalog
         self._agent_targets = agent_targets
+        self._profile_targets = profile_targets
 
     def run_result(self) -> CompileResult:
         """Compile the evals in key order, skipping each one an error already names.
 
         The diagnostics are the catalog's, then each eval's placement, then each eval's render
-        checks or SST-INT902. An eval a placement or render check refuses is left out.
+        checks or SST-INT902. An eval a placement or render check refuses is left out, and so
+        is a CoWork profile's eval on a target that publishes the profile where CoWork lists it.
 
         Diagnostics:
-            SST-VAL704: an eval names a schema other than its agent's; it does not compile.
+            SST-VAL704: an eval names a schema other than its subject's; it does not compile.
+            SST-VAL886: a CoWork profile's eval, on a target that publishes the profile to
+                SNOWFLAKE_INTELLIGENCE.PROFILES; it does not compile.
             SST-RND020, SST-RND021, SST-RND022: as `eval_render_checks` reports them.
-            SST-INT902: rendering an eval raised KeyError, TypeError or ValueError, such as one
-                whose agent has no target.
+            SST-INT902: rendering an eval raised KeyError, TypeError or ValueError, such as an
+                agent's eval whose agent has no target.
         """
-        evals = sorted(self._catalog.evals, key=lambda item: item.key)
-        placement = tuple(
-            diagnostic
-            for resolved in evals
-            if (target := self._agent_targets.get(resolved.agent.name.casefold())) is not None
-            for diagnostic in eval_placement(resolved, target)
-        )
+        evals: list[ResolvedEval] = []
+        placement: list[Diagnostic] = []
+        for resolved in sorted(self._catalog.evals, key=lambda item: item.key):
+            target = self._target(resolved)
+            if target is None:
+                # An agent's eval renders, and reports SST-INT902; a profile's is left out.
+                if not resolved.subject.is_profile:
+                    evals.append(resolved)
+                continue
+            listed = cowork_listed_placement(resolved, target.target)
+            placement.extend(listed)
+            if not listed:
+                evals.append(resolved)
+                placement.extend(eval_placement(resolved, target.target))
         return compile_checked(
             evals,
             key=lambda resolved: resolved.key,
@@ -201,20 +232,31 @@ class CompileEvals:
             origin=lambda resolved: resolved.config.origin,
         )
 
+    def _target(self, resolved: ResolvedEval) -> SubjectTarget | None:
+        """Return where the eval's subject publishes, looked up by its kind and name; None when unknown."""
+        name = resolved.subject.name.casefold()
+        if resolved.subject.is_profile:
+            return self._profile_targets.get(name)
+        agent_target = self._agent_targets.get(name)
+        return SubjectTarget(agent_target) if agent_target is not None else None
+
     def _compile(self, resolved: ResolvedEval) -> tuple[CompiledEval | None, tuple[Diagnostic, ...]]:
         found = eval_render_checks(resolved)
         if any(item.blocks for item in found):
             return None, found
-        agent_target = self._agent_targets[resolved.agent.name.casefold()]
-        return _render(resolved, agent_target, self._catalog.defaults.agent_version), found
+        target = self._target(resolved)
+        if target is None:
+            raise KeyError(f"{resolved.key} has no target")
+        return _render(resolved, target, self._catalog.defaults.agent_version), found
 
 
-def _render(resolved: ResolvedEval, agent_target: QualifiedName, root_version: str | None) -> CompiledEval:
-    """Render one eval's dataset and config into `agent_target`'s schema.
+def _render(resolved: ResolvedEval, subject_target: SubjectTarget, root_version: str | None) -> CompiledEval:
+    """Render one eval's dataset and config into the schema of `subject_target`.
 
     The dataset and source table names come from the config's templates, filled with the
-    agent name and the first seven characters of the dataset payload's digest, so a new
-    dataset publishes under a new name.
+    subject's name and the first seven characters of the dataset payload's digest, so a new
+    dataset publishes under a new name. A CoWork profile's expected subagents render as the
+    qualified names its router gives them on this target.
 
     The agent version is the eval's `agent_version` setting, else `root_version`, the block
     root's.
@@ -222,11 +264,13 @@ def _render(resolved: ResolvedEval, agent_target: QualifiedName, root_version: s
     Raises:
         ValueError: the config has no dataset name or source table template, or neither names
             an agent version.
+        KeyError: an expected subagent is not one of the profile's on this target.
     """
+    agent_target = subject_target.target
     dataset_config = resolved.config.dataset
     if dataset_config is None or dataset_config.name_template is None or dataset_config.source_table_template is None:
         raise ValueError("eval dataset requires name_template and source_table_template")
-    payload = render_dataset_payload(resolved.dataset)
+    payload = render_dataset_payload(resolved.dataset, subject_target.subagents)
     dataset_fingerprint = sha256(payload.encode("utf-8")).hexdigest()
     sha7 = dataset_fingerprint[:7]
     dataset_name = render_eval_name_template(dataset_config.name_template, agent=resolved.name, sha7=sha7)

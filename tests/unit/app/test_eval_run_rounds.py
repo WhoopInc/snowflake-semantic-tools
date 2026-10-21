@@ -129,7 +129,7 @@ def _evals(
     return tuple(
         replace(
             base,
-            resolved=replace(resolved, agent=replace(resolved.agent, name=agent)),
+            resolved=replace(resolved, evaluated=replace(resolved.evaluated, name=agent)),
             agent_target=QualifiedName.parse(f"DB.S.{agent.upper()}"),
         )
         for agent in agents

@@ -1,9 +1,9 @@
 """Validate an eval catalog statically, without consulting Snowflake or persisted state.
 
 The result lists what the catalog already carries, then every custom metric's diagnostics
-in catalog order, then each eval's: agent agreement, keys the eval files may not set, the
-dataset, then the config. Evals are checked in catalog order because their dataset and
-run names are claimed in maps they share.
+in catalog order, then each eval's: keys the eval files may not set, the dataset, the config,
+then the routing fields its subject's kind allows (`eval_subject`). Evals are checked in
+catalog order because their dataset and run names are claimed in maps they share.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from snowflake_semantic_tools.domain.resolve.eval_name import probe_name
 from snowflake_semantic_tools.domain.validate.eval_config import validate_eval_config
 from snowflake_semantic_tools.domain.validate.eval_dataset import validate_eval_dataset
 from snowflake_semantic_tools.domain.validate.eval_metric import validate_custom_metric
+from snowflake_semantic_tools.domain.validate.eval_subject import subject_rules
 
 
 def validate_eval_catalog(
@@ -40,7 +41,8 @@ def validate_eval_catalog(
     Args:
         agent_tool_names: Each agent's exact tool names, keyed by agent name, compared
             casefolded. None skips every tool check; an agent absent from the mapping, one
-            that did not compile, skips its own.
+            that did not compile, skips its own. A CoWork profile's eval has no tool check:
+            its rows expect subagents, not tool calls.
         allowed_models: The judge models a custom metric may name, compared casefolded;
             empty allows any explicit model.
 
@@ -91,6 +93,7 @@ def validate_eval_catalog(
         SST-VAL731: an eval's concurrency setting exceeds the `evals.+concurrency` root.
         SST-VAL735: a threshold is set with no baseline runs.
         SST-VAL732: the agent has tool types an eval run skips (info).
+        Every code `subject_rules` lists.
     """
 
     diagnostics: list[Diagnostic] = list(catalog.diagnostics)
@@ -105,17 +108,18 @@ def validate_eval_catalog(
         # An agent that did not compile has no projection. Its own diagnostics say why;
         # checking the dataset against an empty tool set would only repeat that failure as
         # one "absent tool" per expected invocation.
-        agent_tools = tool_names.get(resolved.agent.name.casefold())
+        agent_tools = None if resolved.subject.is_profile else tool_names.get(resolved.name.casefold())
         diagnostics.extend(_validate_eval(resolved, catalog.defaults, agent_tools, dataset_names, run_names))
     return DiagnosticBag(tuple(diagnostics))
 
 
 def eval_placement(resolved: ResolvedEval, agent_target: QualifiedName) -> tuple[Diagnostic, ...]:
-    """Report each eval object template that qualifies itself into another schema than its agent's.
+    """Report each eval object template that qualifies itself into another schema than its subject's.
 
-    An eval's dataset and source table live in its agent's schema, so that a scratch agent's
-    evals land in scratch. A template that renders a bare name is placed there; one that
-    renders `<schema>.<name>` or `<database>.<schema>.<name>` must name that same schema.
+    An eval's dataset and source table live in the schema of the agent, or CoWork profile, it
+    evaluates, so that a scratch agent's evals land in scratch. A template that renders a bare
+    name is placed there; one that renders `<schema>.<name>` or `<database>.<schema>.<name>`
+    must name that same schema.
 
     Diagnostics:
         SST-VAL704: a dataset or source table template names another database or schema.
@@ -126,7 +130,7 @@ def eval_placement(resolved: ResolvedEval, agent_target: QualifiedName) -> tuple
     expected = (agent_target.database.sql, agent_target.schema.sql)
     diagnostics: list[Diagnostic] = []
     for template in (dataset.name_template, dataset.source_table_template):
-        rendered = probe_name(template, resolved.agent.name) if template is not None else None
+        rendered = probe_name(template, resolved.name) if template is not None else None
         parts = rendered.split(".") if rendered is not None else []
         if len(parts) not in (2, 3):
             continue
@@ -137,7 +141,7 @@ def eval_placement(resolved: ResolvedEval, agent_target: QualifiedName) -> tuple
                     "SST-VAL704",
                     artifact=rendered,
                     found=".".join(found),
-                    value=resolved.agent.name,
+                    value=resolved.name,
                     expected=".".join(expected),
                     origin=resolved.config.origin,
                     subject=resolved.key,
@@ -192,6 +196,7 @@ def _validate_eval(
         *_forbidden_keys(resolved),
         *validate_eval_dataset(resolved, defaults, tool_names, dataset_names),
         *validate_eval_config(resolved, defaults, run_names),
+        *subject_rules(resolved),
     )
 
 

@@ -1,9 +1,13 @@
-"""Parse an agent's eval config file, and the `evals:` block of `sst_config.yml`.
+"""Parse an agent's or CoWork profile's eval config file, and the `evals:` block of `sst_config.yml`.
 
 A config's own settings are its `config:` block, keyed as the `evals:` `+` keys without their
-`+`; the catalog loader resolves them over the folder routes of the config's agent and the
+`+`; the catalog loader resolves them over the folder routes of the config's subject and the
 block root, and fills in what stands in for an unset value -- `metrics`, `metric_version` and
-`judge_model` -- before validation.
+`judge_model` -- before validation. `metrics.routing` lists the metrics SST scores a CoWork
+profile's router by, which are never rendered into the config Snowflake runs; CoWork profiles
+are a Snowflake private preview (PrPr) feature:
+https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
+https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
 """
 
 from __future__ import annotations
@@ -27,11 +31,13 @@ from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE, res
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_KNOWN_TERMINAL_STATUSES,
     EVAL_MINT_POLICIES,
+    ROUTING_EVAL_METRICS,
     SYSTEM_EVAL_METRICS,
     EvalColumnMapping,
     EvalConfig,
     EvalDatasetConfig,
     EvalDefaults,
+    EvalRoutingMetric,
     EvalRunConfig,
     EvalSystemMetric,
     eval_defaults,
@@ -143,19 +149,20 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
     resolves them. `database`, `schema` and `enabled` are recorded as the location keys the
     file sets, for the validator to refuse, and the `config:` block as written, for the caller
     to resolve. The file names no agent: its folder says which it belongs to. Fields are read,
-    and reported, in this order: `agent`, then `name`, `config`, `dataset`, `metrics`, `run`,
-    `sweep`; then the settings written outside `config:`.
+    and reported, in this order: `agent`, then `name`, `config`, `dataset`, `metrics` (system,
+    custom, then routing), `run`, `sweep`; then the settings written outside `config:`.
 
     Diagnostics:
         SST-PRS126: the file writes `agent:`.
-        SST-PRS002: `name` or `metrics` is absent.
+        SST-PRS002: `name` or `metrics` is absent, or a `metrics.routing` entry has no `name`.
         SST-PRS003: a field has the wrong type, such as a `run:` block that is not a mapping.
-        SST-PRS013: a `run.accept_statuses` entry, or a `config.metrics` name, is not an
-            accepted value.
+        SST-PRS013: a `run.accept_statuses` entry, a `config.metrics` name, or a
+            `metrics.routing` name is not an accepted value.
         SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
             reports the `config:` block.
         SST-PRS126: the file writes `agent_version`, or a `run:` setting, outside `config:`.
-        SST-PRS018: an entry of `metrics.system` or `metrics.custom` has the wrong type.
+        SST-PRS018: an entry of `metrics.system`, `metrics.custom` or `metrics.routing` has the
+            wrong type.
         SST-PRS019: a boolean field, such as a system metric's `gate`, is not a boolean.
         Every code `required_call` lists, for a `metrics.custom` entry that is not one
             `eval_metric()` reference.
@@ -172,6 +179,7 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
     metrics = tree.get("metrics")
     system_metrics: tuple[EvalSystemMetric, ...] = ()
     custom_metric_names: tuple[str, ...] = ()
+    routing_metrics: tuple[EvalRoutingMetric, ...] = ()
     if not isinstance(metrics, dict):
         if metrics is None:
             diagnostics.append(D("SST-PRS002", artifact=source_file, field="metrics", origin=origin))
@@ -189,6 +197,7 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
     else:
         system_metrics = _parse_system_metrics(source_file, parsed, metrics.get("system"), diagnostics)
         custom_metric_names = _parse_custom_refs(source_file, parsed, metrics.get("custom"), diagnostics)
+        routing_metrics = _parse_routing_metrics(source_file, parsed, metrics.get("routing"), diagnostics)
     run = _parse_run(source_file, parsed, tree.get("run"), diagnostics)
     _reject_sweep(source_file, parsed, tree.get("sweep"), diagnostics)
     diagnostics.extend(_moved_settings(source_file, parsed))
@@ -202,6 +211,7 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
         tuple(key for key in ("database", "schema", "enabled") if key in tree),
         name,
         item_config,
+        routing_metrics,
     )
 
 
@@ -367,6 +377,77 @@ def _parse_system_metrics(
                 optional_string_field(
                     item, "judge_model", source_file, parsed, diagnostics, ("metrics", "system", index)
                 ),
+            )
+        )
+    return tuple(metrics)
+
+
+def _parse_routing_metrics(
+    source_file: str,
+    parsed: ParsedYaml,
+    value: object,
+    diagnostics: list[Diagnostic],
+) -> tuple[EvalRoutingMetric, ...]:
+    """Parse `metrics.routing`, the metrics SST scores a CoWork profile's router by.
+
+    Each entry is a mapping of `name`, `gate` and `threshold`, read as a system metric's are;
+    one that is not a mapping is skipped, and one with no name or an unknown name is reported
+    and kept. Snowflake private preview (PrPr): CoWork profiles.
+
+    Diagnostics:
+        SST-PRS003: the block is not a list, reported without a position, or an entry's field
+            has the wrong type.
+        SST-PRS018: an entry is not a mapping.
+        SST-PRS002: an entry has no `name`.
+        SST-PRS013: an entry's name is not `routing_accuracy`.
+        SST-PRS019: an entry's `gate` is not a boolean.
+    """
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        diagnostics.append(
+            D("SST-PRS003", artifact=source_file, field="metrics.routing", expected="list", found=type(value).__name__)
+        )
+        return ()
+    metrics: list[EvalRoutingMetric] = []
+    for index, item in enumerate(value):
+        path = ("metrics", "routing", index)
+        origin = origin_at(parsed, path, source_file)
+        if not isinstance(item, dict):
+            diagnostics.append(
+                D(
+                    "SST-PRS018",
+                    artifact=source_file,
+                    field="metrics.routing",
+                    index=index,
+                    expected="mapping",
+                    found=type(item).__name__,
+                    origin=origin,
+                )
+            )
+            continue
+        name = optional_string_field(item, "name", source_file, parsed, diagnostics, path)
+        field = f"metrics.routing[{index}]"
+        if name is None:
+            diagnostics.append(D("SST-PRS002", artifact=source_file, field=f"{field}.name", origin=origin))
+        elif name not in ROUTING_EVAL_METRICS:
+            expected = ", ".join(sorted(ROUTING_EVAL_METRICS))
+            diagnostics.append(
+                D(
+                    "SST-PRS013",
+                    artifact=source_file,
+                    field=f"{field}.name",
+                    found=name,
+                    expected=expected,
+                    origin=origin,
+                )
+            )
+        metrics.append(
+            EvalRoutingMetric(
+                origin,
+                name,
+                optional_bool_field(item, "gate", source_file, origin, diagnostics),
+                parse_threshold(source_file, f"{field}.threshold", item.get("threshold"), origin, diagnostics),
             )
         )
     return tuple(metrics)

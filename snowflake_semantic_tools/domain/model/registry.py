@@ -578,16 +578,20 @@ ARTIFACT_REGISTRY = build_registry(
             prunable=False,
             replaces_on_update=False,
             grant_preservation=GrantPreservation.NONE,
-            dependency_types=("agent",),
+            # Snowflake private preview (PrPr): CoWork profiles. A profile's eval depends on the
+            # profile, and its folder routes name a folder under `project.cowork_profiles_dir`.
+            dependency_types=("agent", "cowork_profile"),
             lifecycle=ArtifactLifecycle.COMPOSITE,
             summary=(
-                "One agent's evaluation, published into the agent's schema: a source table and dataset "
-                "of its questions, named by default for their digest, and its staged run configuration. "
-                "A changed question set publishes a new table and dataset and keeps the old ones; with "
-                "`dataset.mint: never`, only the configuration publishes, against a dataset that must "
-                "already exist."
+                "One agent's, or CoWork profile's, evaluation, published into its schema: a source table "
+                "and dataset of its questions, named by default for their digest, and its staged run "
+                "configuration. A changed question set publishes a new table and dataset and keeps the "
+                "old ones; with `dataset.mint: never`, only the configuration publishes, against a "
+                "dataset that must already exist."
             ),
-            authored_in="the dataset and config files an agent's `evals:` names, by convention in `evals/`",
+            authored_in=(
+                "the dataset and config files an agent's or CoWork profile's `evals:` names, by convention in `evals/`"
+            ),
             publishes="TABLE, DATASET, and a staged run configuration",
             validation_rules=("shared", "eval"),
             dir_key="agents_dir",

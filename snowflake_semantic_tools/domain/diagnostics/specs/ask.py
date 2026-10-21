@@ -160,4 +160,16 @@ SPECS: tuple[ErrorSpec, ...] = (
         note="Reported once; the conversation goes on, and each later turn tries the write again.",
         precheck=Precheck.RUNTIME,
     ),
+    spec(
+        "SST-ASK013",
+        Severity.ERROR,
+        "Unpublished run refuses a CoWork profile eval",
+        "eval '{artifact}' cannot run unpublished: it evaluates a CoWork profile",
+        "run it published with `sst test --suite evals`, or leave it out with `--exclude {selector}`",
+        condition=("`sst test --suite evals --unpublished` selects the eval of a CoWork profile; nothing runs"),
+        note=(
+            "Snowflake private preview: CoWork profiles. An unpublished run would need a temporary "
+            "profile, which has not been measured on Snowflake (see SST-APL106)."
+        ),
+    ),
 )

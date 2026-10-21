@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from types import MappingProxyType
 from typing import Any
 
 from snowflake_semantic_tools.app.compile.base import CompileResult
@@ -33,6 +34,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalScoreRanges,
     EvalSystemMetric,
     ResolvedEval,
+    SubjectTarget,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult, RenderedArtifact
@@ -42,6 +44,13 @@ from tests.helpers.eval_inputs import settings_of, settled
 from tests.helpers.snowflake_fake import FakeSnowflake, Sent
 
 ORIGIN = Origin("agent.yml", 1, 1)
+
+
+def eval_agent(resolved: ResolvedEval) -> AgentModel:
+    """The agent an agent's eval evaluates; fails the test for a CoWork profile's eval."""
+    agent = resolved.agent
+    assert agent is not None, f"{resolved.key} evaluates no agent"
+    return agent
 
 
 def resolved_eval() -> ResolvedEval:
@@ -90,6 +99,31 @@ def compile_eval(resolved: ResolvedEval | None = None, *, git_sha: str = GIT_SHA
     ).run_result()
     stamped = tuple(
         replace(item, git_sha=git_sha) if isinstance(item, CompiledEval) else item for item in result.compiled
+    )
+    return replace(result, compiled=stamped)
+
+
+# Where `compile_profile_eval` publishes the CoWork profile `concierge` (a Snowflake private
+# preview) by default: a rehearsal schema, with its two subagents' qualified names there.
+REHEARSAL = QualifiedName.parse("DB.PROFILES.CONCIERGE")
+CONCIERGE_SUBAGENTS = MappingProxyType(
+    {
+        "agent:sales": QualifiedName.parse("DB.AGENTS.SALES"),
+        "tool:partner_agent": QualifiedName.parse("PARTNER.AGENTS.DELIVERY"),
+    }
+)
+
+
+def compile_profile_eval(resolved: ResolvedEval, target: QualifiedName = REHEARSAL) -> CompileResult:
+    """Compile one CoWork profile's eval, its profile published at `target`, stamped as `compile_eval`."""
+    catalog = EvalCatalog((resolved,), resolved.custom_metrics, diagnostics=DiagnosticBag())
+    result = CompileEvals(
+        catalog,
+        agent_targets={},
+        profile_targets={resolved.name.casefold(): SubjectTarget(target, CONCIERGE_SUBAGENTS)},
+    ).run_result()
+    stamped = tuple(
+        replace(item, git_sha=GIT_SHA) if isinstance(item, CompiledEval) else item for item in result.compiled
     )
     return replace(result, compiled=stamped)
 

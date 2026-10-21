@@ -1,9 +1,10 @@
 """Cortex Agent evaluations: authoring values and results.
 
-`model` holds the authoring values and the eval contract's constants, and `results` the
-run, baseline and gate records. Name templates resolve in `domain.resolve.eval_name`, and
-the static validator is `domain.validate.eval`. This module re-exports the public names, so
-importers never reach into the submodules.
+`model` holds the authoring values and the eval contract's constants, `subject` what an eval
+evaluates (an agent, or a CoWork profile), and `results` the run, baseline and gate records.
+Name templates resolve in `domain.resolve.eval_name`, and the static validator is
+`domain.validate.eval`. This module re-exports the public names, so importers never reach into
+the submodules.
 """
 
 from __future__ import annotations
@@ -20,6 +21,9 @@ from snowflake_semantic_tools.domain.model.eval.model import (
     EVAL_PARTIAL_STATUSES,
     EVAL_PASS_STATUSES,
     EVAL_RETRY_MIN,
+    ROUTER_BLIND_METRICS,
+    ROUTING_ACCURACY,
+    ROUTING_EVAL_METRICS,
     SUPPORTED_JUDGE_PLACEHOLDERS,
     SYSTEM_EVAL_METRIC_VERSION,
     SYSTEM_EVAL_METRICS,
@@ -33,8 +37,10 @@ from snowflake_semantic_tools.domain.model.eval.model import (
     EvalGroundTruth,
     EvalInvocation,
     EvalQuestion,
+    EvalRoutingMetric,
     EvalRunConfig,
     EvalScoreRanges,
+    EvalSubagentRef,
     EvalSystemMetric,
     ResolvedEval,
     ThresholdRange,
@@ -53,6 +59,14 @@ from snowflake_semantic_tools.domain.model.eval.results import (
     EvalResultRow,
     EvalRunAttempt,
 )
+from snowflake_semantic_tools.domain.model.eval.subject import (
+    EVAL_SUBJECT_AGENT,
+    EVAL_SUBJECT_COWORK_PROFILE,
+    EvalSubject,
+    SubjectTarget,
+    profile_subject_target,
+    subagent_reference,
+)
 
 __all__ = [
     "CustomEvalMetric",
@@ -67,6 +81,8 @@ __all__ = [
     "EVAL_RETRY_MIN",
     "EVAL_IN_PROGRESS_STATUSES",
     "EVAL_KNOWN_TERMINAL_STATUSES",
+    "EVAL_SUBJECT_AGENT",
+    "EVAL_SUBJECT_COWORK_PROFILE",
     "EvalBaselineMetric",
     "EvalBaselineRecord",
     "EvalCatalog",
@@ -85,15 +101,24 @@ __all__ = [
     "EvalRegression",
     "EvalResultRow",
     "EvalRunAttempt",
+    "EvalRoutingMetric",
     "EvalRunConfig",
     "EvalScoreRanges",
+    "EvalSubagentRef",
+    "EvalSubject",
     "EvalSystemMetric",
+    "ROUTER_BLIND_METRICS",
+    "ROUTING_ACCURACY",
+    "ROUTING_EVAL_METRICS",
     "ResolvedEval",
     "SUPPORTED_JUDGE_PLACEHOLDERS",
+    "SubjectTarget",
     "SYSTEM_EVAL_METRICS",
     "SYSTEM_EVAL_METRIC_VERSION",
     "ThresholdRange",
     "eval_defaults",
     "eval_status_is_provisional",
     "eval_status_is_terminal",
+    "profile_subject_target",
+    "subagent_reference",
 ]

@@ -50,6 +50,7 @@ from tests.helpers.eval_builders import (
     EvalSnowflake,
     attempt,
     compile_eval,
+    eval_agent,
     resolved_eval,
     result_rows,
     run_result,
@@ -122,7 +123,9 @@ def test_an_apply_holding_the_lock_is_reported_alone_whatever_views_the_agent_us
     port = EvalSnowflake([])
     port.run_locks.acquire_run_lock(STATE_TABLE, "verify", LockClaim("apply-run"), break_stale=False)
 
-    refused, _, _, _ = gate(port, result=compile_eval(replace(value, agent=replace(value.agent, tools=tools))))
+    refused, _, _, _ = gate(
+        port, result=compile_eval(replace(value, evaluated=replace(eval_agent(value), tools=tools)))
+    )
 
     # No eval started, so it overlapped nothing, and the lock cannot say what the apply changes.
     assert isinstance(refused, EvalGateRefused)
@@ -182,7 +185,7 @@ def test_a_gate_without_a_baseline_is_refused_before_it_runs_and_records_the_gat
 def two_evals(*, blocking: bool = False) -> CompileResult:
     """The sales eval and the same eval of an ops agent beside it, `ops_agent` first."""
     sales = resolved_eval()
-    ops = replace(sales, agent=replace(sales.agent, name="ops_agent"))
+    ops = replace(sales, evaluated=replace(sales.evaluated, name="ops_agent"))
     if blocking:
         sales, ops = (settled(item, eval_tier="blocking") for item in (sales, ops))
     catalog = EvalCatalog((sales, ops), sales.custom_metrics, diagnostics=DiagnosticBag())

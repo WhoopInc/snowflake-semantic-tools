@@ -1,11 +1,11 @@
 """Eval authoring values: datasets, run configs, custom judges, and the catalog that joins them.
 
-The YAML adapter parses each agent's eval files into these frozen values, and
-`ResolvedEval` joins one agent to its dataset, its config and the custom metrics that
-config names. `EvalCatalog` holds every eval with the project's `evals:` defaults. The
-constants are the eval contract: the system metrics and the one version accepted for
-them, the run statuses, and the placeholders a judge prompt may use. Nothing here reads
-a file or calls Snowflake.
+The YAML adapter parses each agent's, and each CoWork profile's, eval files into these frozen
+values, and `ResolvedEval` joins what it evaluates (`subject.EvalSubject`) to its dataset, its
+config and the custom metrics that config names. `EvalCatalog` holds every eval with the
+project's `evals:` defaults. The constants are the eval contract: the system metrics and the
+one version accepted for them, the run statuses, and the placeholders a judge prompt may use.
+Nothing here reads a file or calls Snowflake.
 """
 
 from __future__ import annotations
@@ -18,13 +18,20 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel
+from snowflake_semantic_tools.domain.model.eval.subject import EvalSubject, subagent_reference
 from snowflake_semantic_tools.domain.model.setting import Setting
 
 SYSTEM_EVAL_METRICS = frozenset(
     ("tool_selection_accuracy", "tool_execution_accuracy", "answer_correctness", "logical_consistency")
 )
 SYSTEM_EVAL_METRIC_VERSION = "v3"
+# Snowflake private preview (PrPr): CoWork profiles. The metric SST computes itself from a
+# profile's router spans, never sent to Snowflake: which subagent the router chose.
+ROUTING_ACCURACY = "routing_accuracy"
+ROUTING_EVAL_METRICS = frozenset((ROUTING_ACCURACY,))
+# The system metrics that cannot see a CoWork profile's router calls, so score nothing on one.
+ROUTER_BLIND_METRICS = frozenset(("tool_selection_accuracy", "tool_execution_accuracy"))
 # The run status Snowflake reports for an evaluation that finished every question.
 EVAL_COMPLETED = "COMPLETED"
 EVAL_PASS_STATUSES = frozenset((EVAL_COMPLETED,))
@@ -103,6 +110,27 @@ class EvalInvocation:
 
 
 @dataclass(frozen=True, slots=True)
+class EvalSubagentRef:
+    """One expected subagent in a row's `ground_truth_subagents`: one `agent()` or `tool()` call.
+
+    Snowflake private preview (PrPr): CoWork profiles.
+
+    Attributes:
+        function: The template function the entry calls, `agent` or `tool`.
+        name: The name that call gives, as written.
+    """
+
+    origin: Origin
+    function: str
+    name: str
+
+    @property
+    def reference(self) -> str:
+        """The call as `<function>:<casefolded name>`, as a profile's subagents are compared."""
+        return subagent_reference(self.function, self.name)
+
+
+@dataclass(frozen=True, slots=True)
 class EvalGroundTruth:
     """What one dataset row expects of the agent.
 
@@ -110,6 +138,8 @@ class EvalGroundTruth:
         invocations: None when `ground_truth_invocations` is absent; `()` when it is an
             empty list, which is still an expectation: that no tool is called.
         output: `ground_truth_output`, the rubric a reply is judged against.
+        subagents: None when `ground_truth_subagents` is absent; `()` when it is an empty list,
+            which is still an expectation: that a CoWork profile declines the question.
         immutable: Declared together with `immutable_reason`, and both are required when
             `output` contains a number in digits.
         extra: Keys the parser does not model, passed through into the rendered dataset.
@@ -122,12 +152,17 @@ class EvalGroundTruth:
     immutable: bool | None = None
     immutable_reason: str | None = None
     extra: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
+    subagents: tuple[EvalSubagentRef, ...] | None = None
 
     @property
     def has_expectation(self) -> bool:
         """Report whether the row states anything a run can be scored against."""
         return (
-            self.invocations is not None or self.output is not None or bool(self.required_filters) or bool(self.extra)
+            self.invocations is not None
+            or self.output is not None
+            or bool(self.required_filters)
+            or bool(self.extra)
+            or self.subagents is not None
         )
 
 
@@ -208,6 +243,25 @@ class EvalSystemMetric:
 
 
 @dataclass(frozen=True, slots=True)
+class EvalRoutingMetric:
+    """One metric SST scores a CoWork profile's routing by, from a config's `metrics.routing`.
+
+    Snowflake private preview (PrPr): CoWork profiles. It is never rendered into the config
+    Snowflake runs; SST computes it from the run's router spans.
+
+    Attributes:
+        name: None when omitted; the parser reports a name other than `routing_accuracy`.
+        gate: Whether the metric gates the eval; None reads as ungated, as a system metric's.
+        threshold: The pass band, within [0, 1]; None when unset.
+    """
+
+    origin: Origin
+    name: str | None
+    gate: bool | None = None
+    threshold: ThresholdRange | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class EvalRunConfig:
     """How an eval runs, from the config's `run:` block.
 
@@ -239,6 +293,8 @@ class EvalConfig:
             rendered.
         config: The file's `config:` block as parsed, whose keys are the `evals:` settings
             written without their `+`; None when it writes none.
+        routing_metrics: `metrics.routing`, the metrics SST scores a CoWork profile's routing
+            by; never rendered into the config Snowflake runs. Snowflake private preview (PrPr).
     """
 
     origin: Origin
@@ -250,6 +306,7 @@ class EvalConfig:
     forbidden_keys: tuple[str, ...] = ()
     name: str | None = None
     config: object = None
+    routing_metrics: tuple[EvalRoutingMetric, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -331,18 +388,19 @@ class EvalDefaults:
 
 @dataclass(frozen=True, slots=True)
 class ResolvedEval:
-    """One agent's eval: the agent, its dataset and config, and the custom metrics that resolved.
+    """One eval: what it evaluates, its dataset and config, and the custom metrics that resolved.
 
     A metric the config names but the catalog lacks is absent from `custom_metrics`; the
     loader reports it, and validation reports it again against the config.
 
     Attributes:
+        evaluated: The agent, or the CoWork profile, the eval evaluates; `subject` reads it.
         settings: Each `evals:` setting the eval resolved -- its config's `config:`, then the
-            folder routes over its agent's folder, then the block root -- by key without its
+            folder routes over its subject's folder, then the block root -- by key without its
             `+`, with where its value came from.
     """
 
-    agent: AgentModel
+    evaluated: AgentModel | CoworkProfileModel
     dataset: EvalDataset
     config: EvalConfig
     custom_metrics: tuple[CustomEvalMetric, ...]
@@ -354,14 +412,24 @@ class ResolvedEval:
         return eval_defaults(self.settings)
 
     @property
+    def subject(self) -> EvalSubject:
+        """What the eval evaluates, read the same way for an agent or a CoWork profile."""
+        return EvalSubject(self.evaluated)
+
+    @property
+    def agent(self) -> AgentModel | None:
+        """The agent the eval evaluates; None for a CoWork profile's eval."""
+        return self.evaluated if isinstance(self.evaluated, AgentModel) else None
+
+    @property
     def name(self) -> str:
-        """Name the eval after its agent."""
-        return self.agent.name
+        """Name the eval after its subject."""
+        return self.evaluated.name
 
     @property
     def key(self) -> str:
-        """Return the eval's artifact key, from the casefolded agent name."""
-        return artifact_key("eval", self.agent.name.casefold())
+        """Return the eval's artifact key, as `EvalSubject.eval_key` builds it."""
+        return self.subject.eval_key
 
     @property
     def source_files(self) -> tuple[str, ...]:
@@ -378,8 +446,8 @@ class ResolvedEval:
 
     @property
     def depends_on(self) -> tuple[str, ...]:
-        """Return the artifact keys the eval depends on: its agent's alone."""
-        return (self.agent.key,)
+        """Return the artifact keys the eval depends on: its subject's alone."""
+        return (self.evaluated.key,)
 
 
 def eval_defaults(settings: Mapping[str, Setting]) -> EvalDefaults:

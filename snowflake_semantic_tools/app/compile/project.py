@@ -17,7 +17,11 @@ from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, Com
 from snowflake_semantic_tools.app.compile.agents.cross import cross_artifact_result
 from snowflake_semantic_tools.app.compile.agents.settled import agent_environment, settled_agent
 from snowflake_semantic_tools.app.compile.base import CompileResult
-from snowflake_semantic_tools.app.compile.cowork_profiles import compile_cowork_profiles, pinned_extensions
+from snowflake_semantic_tools.app.compile.cowork_profiles import (
+    CompiledCoworkProfile,
+    compile_cowork_profiles,
+    pinned_extensions,
+)
 from snowflake_semantic_tools.app.compile.evals import CompileEvals
 from snowflake_semantic_tools.app.compile.profiles import CompileProfiles, DesktopChannel
 from snowflake_semantic_tools.app.compile.skills import (
@@ -47,6 +51,7 @@ from snowflake_semantic_tools.domain.model.config_schema import (
 )
 from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
+from snowflake_semantic_tools.domain.model.eval import EvalCatalog, profile_subject_target
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
@@ -360,13 +365,7 @@ class CompileProject:
             tags=tags,
             place=lambda models: _published_names(settings, models, "cowork_profiles"),
         )
-        resolved_tools = {
-            item.resolved.model.name.casefold(): tuple(sorted(item.resolved.agent_facing_tool_names))
-            for item in agents.compiled
-            if isinstance(item, CompiledAgent)
-        }
-        eval_catalog = self._inputs.eval_catalog(enabled, agent_tool_names=resolved_tools)
-        evals = CompileEvals(eval_catalog, agent_targets=dict(context.agents)).run_result()
+        eval_catalog, evals = self._evals(enabled, profiles, agents, cowork, context)
         compiled = (semantic, tools, agents, cowork, evals)
         # Every agent and profile counts as a consumer, enabled or not: disabling one does not
         # orphan its tools. So does a configuration value's `tool()`.
@@ -392,6 +391,38 @@ class CompileProject:
             ),
         )
         return (*compiled, cross_artifact_result(compiled, eval_catalog, POSITIONS), tool_config)
+
+    def _evals(
+        self,
+        enabled: tuple[AgentModel, ...],
+        profiles: tuple[CoworkProfileModel, ...],
+        agents: CompileResult,
+        cowork: CompileResult,
+        context: AgentCompileContext,
+    ) -> tuple[EvalCatalog, CompileResult]:
+        """Load the evals of the enabled agents and CoWork profiles, then compile them.
+
+        An agent's eval checks its expected tools against the tools the agent resolved. A
+        profile's eval, a Snowflake private preview (PrPr), compiles against the profile as it
+        compiled, with the subagents its router names on this target.
+        """
+        resolved_tools = {
+            item.resolved.model.name.casefold(): tuple(sorted(item.resolved.agent_facing_tool_names))
+            for item in agents.compiled
+            if isinstance(item, CompiledAgent)
+        }
+        catalog = self._inputs.eval_catalog(
+            enabled,
+            agent_tool_names=resolved_tools,
+            cowork_profiles=tuple(model for model in profiles if model.enabled),
+        )
+        profile_targets = {
+            item.resolved.model.name.casefold(): profile_subject_target(item.target, item.resolved)
+            for item in cowork.compiled
+            if isinstance(item, CompiledCoworkProfile)
+        }
+        evals = CompileEvals(catalog, agent_targets=dict(context.agents), profile_targets=profile_targets)
+        return catalog, evals.run_result()
 
     def _agent_context(
         self,

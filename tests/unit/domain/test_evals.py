@@ -196,8 +196,10 @@ def _codes(
 
 def test_valid_eval_uses_exact_compiler_tool_projection_and_v3_pins() -> None:
     value = _resolved_eval()
+    agent = value.agent
+    assert agent is not None
     projection = ResolvedAgent(
-        value.agent,
+        agent,
         (
             ResolvedAgentTool("cortex_analyst_text_to_sql", "SALES_VIEW", "Sales"),
             ResolvedAgentTool("web_search", "web_search", "Search"),
@@ -290,7 +292,7 @@ def test_dataset_name_template_bounds_and_collisions_are_checked_when_renderable
         first.config.custom_metric_names,
         first.config.run,
     )
-    first = ResolvedEval(first.agent, first.dataset, first_config, first.custom_metrics, first.settings)
+    first = ResolvedEval(first.evaluated, first.dataset, first_config, first.custom_metrics, first.settings)
     codes = _codes(EvalCatalog((first, second), first.custom_metrics), allowed_models=("claude-sonnet-4-6",))
     assert {"SST-VAL701", "SST-VAL702", "SST-PRS002"}.issubset(codes)
     # An over-long dataset name is VAL702 alone, never PRS010 as well.
@@ -299,7 +301,9 @@ def test_dataset_name_template_bounds_and_collisions_are_checked_when_renderable
     assert first_config.dataset is not None
     long_source = replace(first_config, dataset=replace(first_config.dataset, source_table_template="SRC_" + "X" * 130))
     source_codes = _codes(
-        EvalCatalog((ResolvedEval(first.agent, first.dataset, long_source, first.custom_metrics, first.settings),), ()),
+        EvalCatalog(
+            (ResolvedEval(first.evaluated, first.dataset, long_source, first.custom_metrics, first.settings),), ()
+        ),
         allowed_models=("claude-sonnet-4-6",),
     )
     assert "SST-PRS010" in source_codes
@@ -315,7 +319,7 @@ def test_rendered_run_names_must_be_unique_per_agent() -> None:
         first.config.custom_metric_names,
         first.config.run,
     )
-    second = ResolvedEval(first.agent, first.dataset, second_config, first.custom_metrics, first.settings)
+    second = ResolvedEval(first.evaluated, first.dataset, second_config, first.custom_metrics, first.settings)
     codes = _codes(EvalCatalog((first, second), first.custom_metrics), allowed_models=("claude-sonnet-4-6",))
     assert "SST-VAL717" in codes
 
@@ -462,9 +466,9 @@ def test_eval_validation_covers_omitted_configs_templates_invocations_and_defaul
     resolved = ResolvedEval(
         AgentModel(
             "sales",
-            value.agent.origin,
-            value.agent.source_files,
-            tools=(AgentTool("mcp", value.agent.origin), AgentTool("agent_toolset", value.agent.origin)),
+            value.evaluated.origin,
+            value.evaluated.source_files,
+            tools=(AgentTool("mcp", value.evaluated.origin), AgentTool("agent_toolset", value.evaluated.origin)),
         ),
         dataset,
         config,
@@ -487,15 +491,15 @@ def test_eval_validation_covers_omitted_configs_templates_invocations_and_defaul
         run=EvalRunConfig("{{ unknown }}"),
     )
     no_concurrency = {**pinned, **_settings({"concurrency": 0})}
-    codes = _codes(EvalCatalog((ResolvedEval(resolved.agent, dataset, run_config, (), no_concurrency),), ()))
+    codes = _codes(EvalCatalog((ResolvedEval(resolved.evaluated, dataset, run_config, (), no_concurrency),), ()))
     assert {"SST-VAL733", "SST-PRS016", "SST-VAL732"}.issubset(codes)
 
     forbidden = replace(config, forbidden_keys=("database",))
-    codes = _codes(EvalCatalog((ResolvedEval(resolved.agent, dataset, forbidden, (), pinned),), ()))
+    codes = _codes(EvalCatalog((ResolvedEval(resolved.evaluated, dataset, forbidden, (), pinned),), ()))
     assert "SST-VAL703" in codes
 
     missing_source_template = replace(config, dataset=EvalDatasetConfig("auto", "{{ agent }}", None))
-    codes = _codes(EvalCatalog((ResolvedEval(resolved.agent, dataset, missing_source_template, (), pinned),), ()))
+    codes = _codes(EvalCatalog((ResolvedEval(resolved.evaluated, dataset, missing_source_template, (), pinned),), ()))
     assert "SST-PRS101" in codes
 
     concrete_run = replace(
@@ -504,14 +508,14 @@ def test_eval_validation_covers_omitted_configs_templates_invocations_and_defaul
         run=EvalRunConfig("RUN_{{ sha7 }}"),
     )
     one = {**pinned, **_settings({"concurrency": 1})}
-    codes = _codes(EvalCatalog((ResolvedEval(resolved.agent, dataset, concrete_run, (), one),), ()))
+    codes = _codes(EvalCatalog((ResolvedEval(resolved.evaluated, dataset, concrete_run, (), one),), ()))
     assert "SST-PRS016" not in codes
 
     nameless_run = replace(
         concrete_run,
         run=EvalRunConfig(None),
     )
-    codes = _codes(EvalCatalog((ResolvedEval(resolved.agent, dataset, nameless_run, (), one),), ()))
+    codes = _codes(EvalCatalog((ResolvedEval(resolved.evaluated, dataset, nameless_run, (), one),), ()))
     assert "SST-VAL717" not in codes
 
 

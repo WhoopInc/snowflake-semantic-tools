@@ -241,7 +241,7 @@ def test_fail_fast_stops_after_the_first_eval_that_fails() -> None:
     port.agent_replies = {"Question": AgentReply(error="no")}
     first = inline_setup()
     resolved = first.compiled.resolved
-    renamed = replace(resolved, agent=replace(resolved.agent, name="ops_agent"))
+    renamed = replace(resolved, evaluated=replace(resolved.evaluated, name="ops_agent"))
     second = replace(first, compiled=replace(first.compiled, resolved=renamed))
     outcome = RunInlineEvals(port).run((first, second), fail_fast=True)
     assert [result.eval_key for result in outcome.suite.evals] == ["eval:sales_agent"]

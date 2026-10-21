@@ -19,6 +19,7 @@ from snowflake_semantic_tools.domain.model.eval.model import (
     SYSTEM_EVAL_METRIC_VERSION,
     SYSTEM_EVAL_METRICS,
     EvalDefaults,
+    EvalRoutingMetric,
     EvalRunConfig,
     EvalSystemMetric,
     ResolvedEval,
@@ -44,8 +45,9 @@ def validate_eval_config(
     Args:
         defaults: The `evals:` block root's settings: what an eval that resolved none of its own
             reads, and whose `concurrency` bounds the eval's.
-        run_names: Rendered run names claimed so far, keyed by the casefolded agent and run
-            name, each mapped to the eval that claimed it; this eval's is added when free.
+        run_names: Rendered run names claimed so far, keyed by the eval's key and the
+            casefolded run name, each mapped to the eval that claimed it; this eval's is added
+            when free.
 
     Diagnostics:
         SST-VAL719: the resolved agent_version is not committed, alias:<name> or VERSION$<n>.
@@ -63,13 +65,14 @@ def validate_eval_config(
         SST-VAL724: a system metric sets judge_model.
         SST-VAL725: tool_selection_accuracy uses no LLM judge (info).
         SST-VAL726: logical_consistency is gated.
-        SST-VAL733: a gated system metric has no usable threshold, or an ungated one has one.
+        SST-VAL733: a gated system or routing metric has no usable threshold, or an ungated one
+            has one.
         SST-PRS016: the resolved retry, concurrency or baseline_runs is below its minimum.
         SST-VAL731: the concurrency a folder route or the config sets exceeds the root's.
         SST-VAL718: the rendered run name does not include the commit SHA.
         SST-VAL717: another eval of the same agent already claimed the rendered run name.
-        SST-VAL735: a system metric has a threshold and the resolved baseline_runs is not positive;
-            reported per such metric.
+        SST-VAL735: a system or routing metric has a threshold and the resolved baseline_runs
+            is not positive; reported per such metric.
         SST-VAL732: the agent has tools an eval run skips, one per tool type (info).
     """
     return (
@@ -82,6 +85,11 @@ def validate_eval_config(
             diagnostic
             for metric in resolved.config.system_metrics
             for diagnostic in _system_metric(resolved, defaults, metric)
+        ),
+        *(
+            diagnostic
+            for metric in resolved.config.routing_metrics
+            for diagnostic in _gated_threshold(resolved, metric)
         ),
         *_limits(resolved, defaults),
         *_run(resolved, run_names),
@@ -125,7 +133,7 @@ def _source_table_name(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
     # one over-long name is never reported twice.
     dataset = resolved.config.dataset
     template = dataset.source_table_template if dataset is not None else None
-    name = probe_name(template, resolved.agent.name) if template is not None else None
+    name = probe_name(template, resolved.name) if template is not None else None
     if name is not None and (not name or len(name) > NAME_LIMIT):
         return (
             D(
@@ -181,6 +189,13 @@ def _system_metric(resolved: ResolvedEval, defaults: EvalDefaults, metric: EvalS
         emit("SST-VAL725", name=name, detail="uses no LLM judge")
     if name == "logical_consistency" and metric.gate:
         emit("SST-VAL726")
+    return (*emit.diagnostics, *_gated_threshold(resolved, metric))
+
+
+def _gated_threshold(resolved: ResolvedEval, metric: EvalSystemMetric | EvalRoutingMetric) -> tuple[Diagnostic, ...]:
+    """Check that a gated metric has a usable threshold and an ungated one none, as SST-VAL733 says."""
+    emit = Emitter(subject=resolved.key, origin=metric.origin, artifact=resolved.name)
+    name = metric.name or ""
     if metric.gate:
         if not _usable_threshold(metric.threshold):
             emit("SST-VAL733", name=name, detail="no bound" if metric.threshold is None else "inverted bounds")
@@ -207,13 +222,13 @@ def _run_name(
 ) -> tuple[Diagnostic, ...]:
     if run.name_template is None:
         return ()
-    run_name = probe_name(run.name_template, resolved.agent.name, run.variant)
+    run_name = probe_name(run.name_template, resolved.name, run.variant)
     if run_name is None:
         return ()
     emit = _emitter(resolved)
     if PROBE_SHA7 not in run_name:
         emit("SST-VAL718", value=run_name)
-    run_key = (resolved.agent.name.casefold(), run_name.casefold())
+    run_key = (resolved.key, run_name.casefold())
     if run_key in run_names:
         emit("SST-VAL717", value=run_name)
     else:
@@ -263,10 +278,14 @@ def _threshold_baseline(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
     baseline_runs = resolved.options.baseline_runs
     if (baseline_runs or 0) > 0:
         return ()
+    metrics: tuple[EvalSystemMetric | EvalRoutingMetric, ...] = (
+        *(metric for metric in resolved.config.system_metrics if metric.name in SYSTEM_EVAL_METRICS),
+        *resolved.config.routing_metrics,
+    )
     return tuple(
         D("SST-VAL735", artifact=resolved.name, name=metric.name, origin=metric.origin, subject=resolved.key)
-        for metric in resolved.config.system_metrics
-        if metric.name in SYSTEM_EVAL_METRICS and metric.threshold is not None
+        for metric in metrics
+        if metric.threshold is not None
     )
 
 
@@ -286,7 +305,8 @@ def _accept_statuses(resolved: ResolvedEval, run: EvalRunConfig) -> tuple[Diagno
 
 def _skipped_tool_types(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
     emit = _emitter(resolved)
-    for tool_type in sorted({tool.type for tool in resolved.agent.tools if tool.type in _SKIPPED_TOOL_TYPES}):
+    tools = agent.tools if (agent := resolved.agent) is not None else ()
+    for tool_type in sorted({tool.type for tool in tools if tool.type in _SKIPPED_TOOL_TYPES}):
         emit("SST-VAL732", value=tool_type)
     return emit.diagnostics
 

@@ -23,6 +23,7 @@ from snowflake_semantic_tools.adapters.yaml.agent_fields import (
     folder_files,
     instruction,
     label,
+    parse_eval_files,
     parse_skill,
     published_text,
     read_document,
@@ -51,7 +52,7 @@ _KIND = "cowork_profile"
 # index. `meta` and `spec.passthrough` are free-form.
 _PROFILE_KEYS: Mapping[NodePath, frozenset[str]] = MappingProxyType(
     {
-        (): frozenset(("name", "comment", "display", "spec", "config", "deprecated", "meta")),
+        (): frozenset(("name", "comment", "display", "spec", "config", "deprecated", "meta", "evals")),
         ("display",): frozenset(("display_name", "avatar", "color")),
         ("spec",): frozenset(("instructions", "subagents", "tools", "skills", "passthrough")),
         ("spec", "instructions"): frozenset(("orchestration", "response", "sample_questions")),
@@ -61,6 +62,7 @@ _PROFILE_KEYS: Mapping[NodePath, frozenset[str]] = MappingProxyType(
         ("spec", "skills", "*", "source"): frozenset(("type", "path", "version")),
         # `config:`'s own keys are the `cowork_profiles:` settings, which `item_config_diagnostics` checks.
         ("config", "tags", "*"): frozenset(("name", "value")),
+        ("evals",): frozenset(("dataset", "config")),
     }
 )
 
@@ -152,6 +154,7 @@ def _parse_profile(
         Every code `required_call` lists, for a reference field, or an instruction holding a
             template, that is not one call of the function it takes.
         Every code `read_sidecar` lists, for an instruction's sidecar.
+        Every code `parse_eval_files` lists, for the `evals:` block.
     """
     origin = Origin(relative, 1, 1)
     name = tree.get("name")
@@ -202,6 +205,7 @@ def _parse_profile(
         meta=MappingProxyType(read.mapped(tree.get("meta"), "meta")),
         passthrough=MappingProxyType(passthrough),
         deprecated=bool(tree.get("deprecated", False)),
+        evals=parse_eval_files(relative, tree.get("evals"), diagnostics, kind=_KIND),
     )
     diagnostics.extend(unknown_block_keys(relative, tree, lines, subject, _PROFILE_KEYS))
     diagnostics.extend(

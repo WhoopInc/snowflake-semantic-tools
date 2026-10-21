@@ -57,7 +57,7 @@ def validate_eval_dataset(
 
     Diagnostics:
         SST-VAL705: a row has no question, or nothing to score against.
-        SST-VAL707: a question repeats one of the agent's sample questions exactly.
+        SST-VAL707: a question repeats one of the subject's own sample questions exactly.
         SST-PRS015: `immutable` and `immutable_reason` are not declared together, or an
             expected output with a number lacks them.
         SST-VAL708: an expected invocation names a tool the agent does not have.
@@ -99,7 +99,7 @@ def _row_completeness(resolved: ResolvedEval, index: int, row: EvalQuestion) -> 
     ground_truth = row.ground_truth
     if not row.question or ground_truth is None or not ground_truth.has_expectation:
         emit("SST-VAL705", detail="no question" if not row.question else "no expected field")
-    if row.question in resolved.agent.sample_questions:
+    if row.question in resolved.subject.sample_questions:
         emit("SST-VAL707")
     return emit.diagnostics
 
@@ -141,7 +141,7 @@ def _expected_tools(
         if name is None:
             continue
         if name not in tool_names:
-            emit("SST-VAL708", name=name, value=resolved.agent.name, origin=invocation.origin)
+            emit("SST-VAL708", name=name, value=resolved.name, origin=invocation.origin)
         if has_web_search and "web" in name.casefold() and name != "web_search":
             emit("SST-VAL709", name=name, origin=invocation.origin)
     return emit.diagnostics
@@ -231,7 +231,7 @@ def _dataset_name(resolved: ResolvedEval, dataset_names: dict[str, str]) -> tupl
     emit = Emitter(subject=resolved.key, origin=resolved.config.origin)
     if not has_agent_token(config.name_template):
         emit("SST-PRS002", artifact=resolved.config.source_file, field="dataset.name_template agent token")
-    rendered = probe_name(config.name_template, resolved.agent.name)
+    rendered = probe_name(config.name_template, resolved.name)
     if rendered is None:
         return emit.diagnostics
     folded = rendered.casefold()

@@ -107,6 +107,9 @@ CoWork profiles are a Snowflake private preview, and so are these fields.
 | `cowork_profile.spec.skills.name` | `skill`, naming a member of the plugin `source.path` names | checked when the profile compiles |
 | `cowork_profile.spec.skills.source.version` | `var`, when the version is not written literally | checked when the profile compiles |
 | `cowork_profile.config.tags.name` | `tag` | checked when the profile compiles |
+| `cowork_profile.evals.dataset` | `eval_dataset` | `SST-REF048` |
+| `cowork_profile.evals.config` | `eval_config` | `SST-REF048` |
+| `eval_dataset.ground_truth_subagents` | `agent`, or `tool` for an `agent` tool member, each one of the profile's subagents | `SST-VAL881` |
 
 A subagent names an agent this project publishes with `{{ agent('<name>') }}`,
 or an `agent` tool member, for an agent published elsewhere, with
