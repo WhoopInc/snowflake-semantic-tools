@@ -52,5 +52,5 @@ warning[SST-CFG018]: tool member 'partner_invoice_stage' is referenced by nothin
    = sst explain SST-CFG018
 
 ✗ validate failed: 1 error, 7 warnings · <n>s
-  hidden: 53 info (--show-info), 1 cascade (--show-cascade)
+  hidden: 55 info (--show-info), 1 cascade (--show-cascade)
   next: fix the error, then run `sst validate` again

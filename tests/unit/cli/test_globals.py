@@ -26,7 +26,7 @@ def test_a_global_option_after_the_command_wins_over_one_before_it(tmp_path: Pat
     result = CliRunner().invoke(cli, ["-o", "table", "validate", *common(project), "-o", "json"])
     assert json.loads(result.output)["command"] == "validate"
     before = CliRunner().invoke(cli, ["--project-dir", str(project), "--manifest", str(common(project)[3]), "validate"])
-    assert before.exit_code == 0 and "validated 15 artifacts" in before.output
+    assert before.exit_code == 0 and "validated 16 artifacts" in before.output
 
 
 def _leaf_commands(group: click.Group, path: tuple[str, ...] = ()) -> list[tuple[tuple[str, ...], click.Command]]:
@@ -189,7 +189,7 @@ def test_strict_promoted_warnings_the_baseline_holds_are_counted_apart_not_as_er
     human = CliRunner().invoke(cli, ["validate", *common(project), "--strict"])
     assert human.exit_code == 0, human.output
     # Baselined findings are counted apart from every severity, never as warnings.
-    assert "✓ validated 15 artifacts · 0 errors, 1 warning · 6 baselined · " in human.output
+    assert "✓ validated 16 artifacts · 0 errors, 1 warning · 6 baselined · " in human.output
 
 
 _PROMOTED = frozenset({"SST-CFG018", "SST-RND010", "SST-RND013", "SST-VAL528"})

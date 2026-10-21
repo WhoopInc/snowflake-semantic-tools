@@ -62,6 +62,9 @@ project:
   # registry rows, and hooks, MCP configs and commands are what profiles name.
   plugins_dir: plugins
   profiles_dir: profiles
+  # Snowflake CoWork profiles (a Snowflake private preview), each routing a
+  # question to one of this project's agents.
+  cowork_profiles_dir: cowork_profiles
   hooks_dir: hooks
   mcp_servers_dir: mcp-servers
   commands_dir: commands
@@ -191,6 +194,16 @@ agents:
   # folder is missing). An agent's own setting still wins over any route.
   ops:
     +schema: OPS
+
+cowork_profiles:
+  # Snowflake CoWork profiles, a Snowflake private preview. CoWork lists only the
+  # profiles in SNOWFLAKE_INTELLIGENCE.PROFILES (SST-VAL878 notes any other
+  # schema); this rehearsal schema keeps them apart from the agents' schemas
+  # (one schema for both is SST-VAL879).
+  +database: "{{ target.database }}"
+  +schema: PROFILES
+  +orchestration_model: auto
+  +enabled: true
 
 evals:
   # No +database or +schema: eval objects live in their agent's schema, and

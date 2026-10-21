@@ -2,9 +2,10 @@
 
 The files under `expected/` are owned by this repo: each is what SST renders for the
 reference fixture under its `dev` target, one directory per artifact type -- `ddl/`
-(semantic views), `tool/`, `agent/`, `eval/`, `skill/`, `plugin/`, `profile/` -- plus
-`enrich/`. Regenerate one only when a change to the engine or the fixture is meant to
-change it, and review the diff like code.
+(semantic views), `tool/`, `agent/`, `cowork_profile/` (a Snowflake CoWork profile, a
+Snowflake private preview), `eval/`, `skill/`, `plugin/`, `profile/` -- plus `enrich/`.
+Regenerate one only when a change to the engine or the fixture is meant to change it, and
+review the diff like code.
 
 Two of the DDL goldens, `jaffle_product_costs.sql` and `jaffle_customer_orders.sql`,
 render from `tests/fixtures/scoped_views/semantic_views.yml` placed in a copy of the

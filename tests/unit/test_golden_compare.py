@@ -14,6 +14,7 @@ from snowflake_semantic_tools.domain.model.profile import DesktopProfile, Profil
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.skill import SkillCatalog
 from tests.helpers.compile_builders import CHANNELS, agent, plugin, skill, view
+from tests.helpers.cowork_profiles import compile_profiles, compiled_profiles, cowork_profile, described_agent
 from tests.helpers.eval_builders import resolved_eval
 from tests.helpers.golden_store import InMemoryGoldenStore
 from tests.helpers.goldens import CompareGoldens, GoldenPath, UpdateGoldens, golden_payloads
@@ -62,6 +63,17 @@ def test_each_artifact_type_routes_to_its_own_golden() -> None:
         GoldenPath("eval", ("sales_source.sql",)),
     }
     assert sum(1 for item in result.compiled) == 6
+
+
+def test_a_cowork_profile_routes_to_its_own_golden() -> None:
+    # CoWork profiles are a Snowflake private preview; a profile's spec is pinned as an agent's is.
+    [profile] = compiled_profiles(compile_profiles(cowork_profile(), agents=(described_agent(),)))
+    [payload] = golden_payloads(profile, InMemoryGoldenStore())
+    assert (payload.golden, payload.content, payload.ddl) == (
+        GoldenPath("cowork_profile", ("everyone.json",)),
+        profile.rendered_artifact.content,
+        False,
+    )
 
 
 def test_committed_goldens_pass_and_a_missing_one_is_named() -> None:

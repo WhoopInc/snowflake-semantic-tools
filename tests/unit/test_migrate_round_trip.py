@@ -2,8 +2,9 @@
 
 The pre-split copy writes members as lists, tools in groups, settings outside `config:`, bare
 references, and the old `skills:` blocks. Migrating it, in either order, must leave a project
-that validates with no errors and renders every view, the defined tool, and every agent exactly
-as the goldens hold them; running either command again finds nothing left to do.
+that validates with no errors and renders every view, the defined tool, every agent, and the
+CoWork profile exactly as the goldens hold them; running either command again finds nothing
+left to do.
 """
 
 from __future__ import annotations
@@ -74,3 +75,6 @@ def test_the_pre_split_reference_project_migrates_to_the_goldens(tmp_path: Path,
         assert without_header(tool) == without_header((GOLDENS / "tool" / f"{name}.sql").read_text(encoding="utf-8"))
     for agent in AGENTS:
         assert (specs / f"{agent}.json").read_bytes() == (GOLDENS / "agent" / f"{agent}.json").read_bytes()
+    # A CoWork profile (a Snowflake private preview) is emitted in its type's folder.
+    profile = Path("cowork_profile") / "jaffle_concierge.json"
+    assert (specs / profile).read_bytes() == (GOLDENS / profile).read_bytes()

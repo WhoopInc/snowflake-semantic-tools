@@ -6,6 +6,7 @@ tool:order_status
 │   └── model:orders
 └── read by
     └── agent:jaffle_analytics_agent
+        ├── cowork_profile:jaffle_concierge
         └── eval:jaffle_analytics_agent
 --- stderr
-✓ traced 4 nodes from tool:order_status · <n>s
+✓ traced 5 nodes from tool:order_status · <n>s

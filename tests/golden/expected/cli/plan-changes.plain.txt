@@ -1,26 +1,27 @@
 $ sst --project-dir <project> --manifest <manifest> plan --target dev --no-plan-out
 --- exit 2
 --- stdout
-  + create  semantic_view:jaffle_menu     SST_REF_DEV.CORE.JAFFLE_MENU
-  + create  semantic_view:jaffle_minimal  SST_REF_DEV.JAFFLE.JAFFLE_MINIMAL
-  + create  semantic_view:jaffle_sales    SST_REF_DEV.JAFFLE.JAFFLE_SALES
-  + create  tool:menu_docs_search         SST_REF_DEV...MENU_DOCS_SEARCH
-  + create  tool:order_status             SST_REF_DEV.JAFFLE.ORDER_STATUS
-  + create  skill:jaffle-catalogue        SST_REF_DEV...JAFFLE_CATALOGUE      alias SST_3536453E8CA3
-  + create  skill:jaffle-operations       SST_REF_DEV...JAFFLE_OPERATIONS     alias SST_E2A6961AA1F2
-  + create  skill:jaffle-semantics        SST_REF_DEV...JAFFLE_SEMANTICS      alias SST_333AC3865137
-  + create  plugin:jaffle-toolkit         SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT   alias SST_6ED18EEFFC65
-  + create  profile:jaffle-analyst        SST_REF_DEV...PROFILE_REGISTRY
-  + create  profile:jaffle-operator       SST_REF_DEV...PROFILE_REGISTRY
-  + create  agent:jaffle_delivery_agent   ...JAFFLE_DELIVERY_AGENT
-  + create  agent:jaffle_minimal_agent    SST_REF_DEV...JAFFLE_MINIMAL_AGENT
-  + create  agent:jaffle_analytics_agent  ...JAFFLE_ANALYTICS_AGENT
-  + create  eval:jaffle_analytics_agent   SST_REF_DEV.JAFFLE.EVAL_JAFFLE_...
+  + create  semantic_view:jaffle_menu        SST_REF_DEV.CORE.JAFFLE_MENU
+  + create  semantic_view:jaffle_minimal     SST_REF_DEV...JAFFLE_MINIMAL
+  + create  semantic_view:jaffle_sales       SST_REF_DEV.JAFFLE.JAFFLE_SALES
+  + create  tool:menu_docs_search            SST_REF_DEV...MENU_DOCS_SEARCH
+  + create  tool:order_status                SST_REF_DEV.JAFFLE.ORDER_STATUS
+  + create  skill:jaffle-catalogue           SST_REF_DEV...JAFFLE_CATALOGUE   alias SST_3536453E8CA3
+  + create  skill:jaffle-operations          SST_REF_DEV...JAFFLE_OPERATIONS  alias SST_E2A6961AA1F2
+  + create  skill:jaffle-semantics           SST_REF_DEV...JAFFLE_SEMANTICS   alias SST_333AC3865137
+  + create  plugin:jaffle-toolkit            SST_REF_DEV...JAFFLE_TOOLKIT     alias SST_6ED18EEFFC65
+  + create  profile:jaffle-analyst           SST_REF_DEV...PROFILE_REGISTRY
+  + create  profile:jaffle-operator          SST_REF_DEV...PROFILE_REGISTRY
+  + create  agent:jaffle_delivery_agent      ...JAFFLE_DELIVERY_AGENT
+  + create  agent:jaffle_minimal_agent       ...JAFFLE_MINIMAL_AGENT
+  + create  agent:jaffle_analytics_agent     ...JAFFLE_ANALYTICS_AGENT
+  + create  cowork_profile:jaffle_concierge  SST_REF_DEV...JAFFLE_CONCIERGE
+  + create  eval:jaffle_analytics_agent      SST_REF_DEV.JAFFLE.EVAL_JAFF...
 --- stderr
 warning[SST-VAL714]: dataset 'eval:jaffle_analytics_agent': METADATA has no git SHA
   = help: write the SHA into METADATA
   = sst explain SST-VAL714
 
-~ plan: 15 to create, 0 to update, 0 to prune; 0 unchanged · 0 errors, 1 warning · <n>s
+~ plan: 16 to create, 0 to update, 0 to prune; 0 unchanged · 0 errors, 1 warning · <n>s
   hidden: 3 info (--show-info)
   next: review the plan; `sst apply` makes these changes in Snowflake, so run it only when you mean to

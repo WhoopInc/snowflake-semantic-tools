@@ -95,14 +95,17 @@ def test_a_tree_has_connectors_headings_and_with_wide_aligned_names_and_edges(tm
     compile_project(project)
     narrow = _lineage(project, "tool:order_status", output="table").splitlines()
     assert narrow[:3] == ["tool:order_status", "├── reads", "│   └── model:orders"]
-    assert narrow[3:6] == [
+    assert narrow[3:7] == [
         "└── read by",
         "    └── agent:jaffle_analytics_agent",
+        "        ├── cowork_profile:jaffle_concierge",
         "        └── eval:jaffle_analytics_agent",
     ]
     wide = _lineage(project, "tool:order_status", "--wide", output="table").splitlines()
     assert wide[2].split() == ["│", "└──", "model:orders", "SST_REF_DEV.JAFFLE.ORDERS", "read", "by", "it"]
-    assert wide[4].endswith("calls it as a tool") and wide[5].endswith("tests it")
+    # The CoWork profile, a Snowflake private preview, calls the agent through its router.
+    assert [line.endswith("calls it as a tool") for line in wide[4:6]] == [True, True]
+    assert wide[6].endswith("tests it")
     columns = {line.index("SST_REF_DEV") for line in wide if "SST_REF_DEV" in line}
     assert len(columns) == 1
     # A trace from a dimension is column lineage, so it is wide without the flag.

@@ -95,6 +95,7 @@ def test_compile_writes_deterministic_manifest(tmp_path: Path) -> None:
         "agent:jaffle_analytics_agent",
         "agent:jaffle_delivery_agent",
         "agent:jaffle_minimal_agent",
+        "cowork_profile:jaffle_concierge",
         "eval:jaffle_analytics_agent",
         "plugin:jaffle-toolkit",
         "profile:jaffle-analyst",
@@ -127,7 +128,7 @@ def test_compile_json_emits_artifact_fingerprints(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     envelope = json.loads(result.output)
-    assert len(envelope["data"]["artifacts"]) == 15
+    assert len(envelope["data"]["artifacts"]) == 16
     assert all(len(artifact["fingerprint"]) == 64 for artifact in envelope["data"]["artifacts"])
 
 
@@ -158,11 +159,14 @@ def test_compile_emits_each_agent_specification_and_nothing_else(tmp_path: Path)
     result = CliRunner().invoke(cli, ["compile", *common(project), "--emit-agent-spec", str(specs)])
     assert result.exit_code == 0, result.output
     assert sorted(path.name for path in specs.iterdir()) == [
+        "cowork_profile",
         "jaffle_analytics_agent.json",
         "jaffle_delivery_agent.json",
         "jaffle_minimal_agent.json",
     ]
-    assert f"wrote 3 files to {specs}" in result.output
+    # The CoWork profile's specification, in its type's folder as --emit-ddl names one.
+    assert [path.name for path in (specs / "cowork_profile").iterdir()] == ["jaffle_concierge.json"]
+    assert f"wrote 4 files to {specs}" in result.output
     database = CliRunner().invoke(cli, ["compile", *common(project), "--database", "ELSEWHERE", "--output", "json"])
     targets = {item["artifact_key"]: item["target"] for item in json.loads(database.output)["data"]["artifacts"]}
     assert targets["semantic_view:jaffle_minimal"].startswith("ELSEWHERE.")
@@ -194,7 +198,7 @@ def test_compile_selection_keeps_the_canonical_manifest_full(tmp_path: Path) -> 
     )
     assert result.exit_code == 0, result.output
     canonical = json.loads((project / "sst_target" / "manifest.json").read_text(encoding="utf-8"))
-    assert len(canonical["artifacts"]) == 15
+    assert len(canonical["artifacts"]) == 16
 
 
 @pytest.mark.parametrize(

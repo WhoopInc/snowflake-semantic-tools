@@ -66,6 +66,9 @@ project:
   # registry rows, and hooks, MCP configs and commands are what profiles name.
   plugins_dir: plugins
   profiles_dir: profiles
+  # Snowflake CoWork profiles (a Snowflake private preview), each routing a
+  # question to one of this project's agents.
+  cowork_profiles_dir: cowork_profiles
   hooks_dir: hooks
   mcp_servers_dir: mcp-servers
   commands_dir: commands
@@ -207,6 +210,18 @@ agents:
   ops:
     +schema: OPS
 
+cowork_profiles:
+  # Snowflake CoWork profiles, a Snowflake private preview; each publishes an
+  # AGENT after the agents it routes to, staged under
+  # <apply.agent_spec_stage>/cowork-profiles/<name>/. CoWork lists only the
+  # profiles in SNOWFLAKE_INTELLIGENCE.PROFILES (SST-VAL878 notes any other
+  # schema); this rehearsal schema keeps each target's profiles in its own
+  # database, apart from the agents' schemas (one schema for both is SST-VAL879).
+  +database: "{{ target.database }}"
+  +schema: PROFILES
+  +orchestration_model: auto
+  +enabled: true
+
 evals:
   # No +database or +schema: eval objects live in their agent's schema, and
   # setting either is SST-CFG015. `+enabled` is removed (SST-CFG043). Every
@@ -303,11 +318,12 @@ extensions:
   partner-glossary: {}
 
 apply:
-  # `agent_spec_stage` takes a location. `eval_config_stage` takes only a stage
-  # name, because eval configs are staged in each agent's own schema. Publish
-  # order is fixed by artifact type (semantic views, tools, skills, plugins,
-  # profiles, agents, evals), not configured. `deploy:` is a deprecated name
-  # for this block: an error (SST-CFG200), still read as `apply:`.
+  # `agent_spec_stage` takes a location, and stages CoWork profiles' specs too.
+  # `eval_config_stage` takes only a stage name, because eval configs are staged
+  # in each agent's own schema. Publish order is fixed by artifact type
+  # (semantic views, tools, skills, plugins, profiles, agents, CoWork profiles,
+  # evals), not configured. `deploy:` is a deprecated name for this block: an
+  # error (SST-CFG200), still read as `apply:`.
   agent_spec_stage:
     database: "{{ target.database }}"
     schema: JAFFLE

@@ -1,0 +1,64 @@
+{
+  "models": {
+    "orchestration": "claude-sonnet-4-6"
+  },
+  "instructions": {
+    "orchestration": "Hand each question to exactly one agent.\n\nA question about how many customers or orders there are, what they spent,\nor which location or menu item leads goes to the analytics agent.\n\nA question about where one order is, or when it will arrive, goes to the\ndelivery agent.\n\nSearch the web only for a question about the outside world, such as a\npublic holiday that explains a slow day, and never for jaffle data.",
+    "response": "Say which agent answered, and pass its answer on unchanged."
+  },
+  "tools": [
+    {
+      "tool_spec": {
+        "type": "agent_router",
+        "name": "router"
+      }
+    },
+    {
+      "tool_spec": {
+        "type": "web_search",
+        "name": "web_search",
+        "description": ""
+      }
+    }
+  ],
+  "tool_resources": {
+    "router": {
+      "subagents": [
+        {
+          "name": "SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT",
+          "display_name": "Jaffle Analytics",
+          "description": "Covers order populations: how many customers and orders exist, how they\ndistribute across lifecycle status and location, monthly recurring revenue totals\nand averages, and order event volume over a calendar spine.\n\nDoes not cover anything about an individual customer, and does not cover the menu\ncatalogue beyond plan descriptions.",
+          "source": {
+            "type": "DATA_AGENT",
+            "fqn": "SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT",
+            "sample_questions": [
+              {
+                "question": "How many orders are open across all locations?"
+              },
+              {
+                "question": "Which location contributes the most monthly recurring revenue?"
+              },
+              {
+                "question": "Which menu item has the most ingredients?"
+              }
+            ]
+          }
+        },
+        {
+          "name": "SST_REF_DEV.JAFFLE.JAFFLE_DELIVERY_AGENT",
+          "display_name": "Jaffle Delivery",
+          "description": "Where one jaffle order is and when it will arrive, from the partner's\ndelivery tools. Knows nothing about what was ordered or what it cost.",
+          "source": {
+            "type": "DATA_AGENT",
+            "fqn": "SST_REF_DEV.JAFFLE.JAFFLE_DELIVERY_AGENT",
+            "sample_questions": [
+              {
+                "question": "Where is my jaffle order?"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

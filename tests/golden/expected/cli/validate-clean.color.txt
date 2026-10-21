@@ -34,5 +34,5 @@ $ sst --project-dir <project> --manifest <manifest> validate --no-snowflake-synt
    [34m[1m=[0m [36mhelp:[0m reference it from an agent, or delete it
    [34m[1m=[0m [2msst explain SST-CFG018[0m
 
-[32m[1m✓[0m [1mvalidated 15 artifacts[0m · 0 errors, 6 warnings · <n>s
-[2m  hidden: 53 info (--show-info)[0m
+[32m[1m✓[0m [1mvalidated 16 artifacts[0m · 0 errors, 6 warnings · <n>s
+[2m  hidden: 55 info (--show-info)[0m

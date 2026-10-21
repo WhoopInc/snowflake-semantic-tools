@@ -2,12 +2,13 @@
 
 `FakeSnowflake` publishes the composite artifacts itself -- extensions, stages and their files,
 the profile registry, eval datasets -- but no statement leaves an object SHOW lists. On
-`PublishingSnowflake`, a script that succeeds and names a compiled semantic view, tool or agent
-leaves that object listed under its compiled name with the marker apply writes, and each eval's
-source table counts its questions, so the next plan reads every artifact as unchanged.
+`PublishingSnowflake`, a script that succeeds and names a compiled semantic view, tool, agent or
+CoWork profile leaves that object listed under its compiled name with the marker apply writes,
+and each eval's source table counts its questions, so the next plan reads every artifact as
+unchanged.
 
-`published` makes such a target and has its views, search services and, when asked, agents
-DESCRIBE as published, so a plan compares updates member by member.
+`published` makes such a target and has its views, search services and, when asked, agents and
+CoWork profiles DESCRIBE as published, so a plan compares updates member by member.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from click.testing import CliRunner
 from snowflake_semantic_tools.adapters.locations import locate_project
 from snowflake_semantic_tools.app.compile import CompiledView
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
+from snowflake_semantic_tools.app.compile.cowork_profiles import CompiledCoworkProfile
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.cli.main import cli
@@ -35,8 +37,9 @@ from tests.helpers.described_objects import described_routine, described_search,
 from tests.helpers.reference_project import DBT_MANIFEST
 from tests.helpers.snowflake_fake import FakeSnowflake, Sent
 
-# The artifact types apply marks with the object they publish, which SHOW then lists.
-MARKED_TYPES = frozenset(("semantic_view", "tool", "agent"))
+# The artifact types apply marks with the object they publish, which SHOW then lists. A CoWork
+# profile, a Snowflake private preview, is an AGENT marked as an agent is.
+MARKED_TYPES = frozenset(("semantic_view", "tool", "agent", "cowork_profile"))
 _ROW_COUNT = "SELECT COUNT(*) AS ROW_COUNT FROM "
 _ROWS = "SELECT INPUT_QUERY, GROUND_TRUTH FROM "
 
@@ -126,19 +129,20 @@ def publishing_port(project: Path, target: str = "dev") -> PublishingSnowflake:
 
 
 def describe_published(port: PublishingSnowflake, project: Path, target: str, *, agents: bool = False) -> None:
-    """Make each view, search service and routine `target` compiles DESCRIBE as published, and each agent with `agents`.
+    """Make each view, search service and routine `target` compiles DESCRIBE as published, and each AGENT with `agents`.
 
     Each view's GET_DDL returns its render, so a plan's drift check reads it.
 
-    With `agents`, each agent serves one version, the default, holding the specification published;
-    the fake then reads each agent's versions as drifted, so a plan updates every agent.
+    With `agents`, each agent and CoWork profile serves one version, the default, holding the
+    specification published; the fake then reads each one's versions as drifted, so a plan
+    updates every one of them.
     """
     for item in compile_result(locate_project(project), target, DBT_MANIFEST).compiled:
         name = item.rendered_artifact.target.sql
         if isinstance(item, CompiledView):
             port.view_descriptions[name] = described_view(item.view)
             port.definitions[name] = item.rendered_artifact.ddl
-        elif isinstance(item, CompiledAgent) and agents:
+        elif isinstance(item, (CompiledAgent, CompiledCoworkProfile)) and agents:
             alias = item.rendered_artifact.desired_alias
             port.agent_version_rows[name] = (AgentVersion("VERSION$1", alias, True, specification=item.payload),)
         elif isinstance(item, CompiledTool) and item.member.type == "cortex_search_service":

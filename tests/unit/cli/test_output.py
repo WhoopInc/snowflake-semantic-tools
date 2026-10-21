@@ -84,7 +84,7 @@ def test_validate_json_emits_one_v2_envelope(tmp_path: Path) -> None:
     assert envelope["summary"] == {
         "error": 0,
         "warning": 7,
-        "info": 53,
+        "info": 55,
         "promoted": 0,
         "suppressed_cascade": 0,
         "baselined": 0,
@@ -247,7 +247,7 @@ def test_human_output_and_usage_branches(tmp_path: Path, monkeypatch: pytest.Mon
     assert debugged.exit_code == 0 and "state table:" in debugged.output
     assert "checked " in debugged.output and "sst_config.yaml" in debugged.output
     compiled = CliRunner().invoke(cli, ["compile", *common(project)])
-    assert compiled.exit_code == 0 and "compiled 15 artifacts" in compiled.output
+    assert compiled.exit_code == 0 and "compiled 16 artifacts" in compiled.output
 
     conflict = CliRunner().invoke(
         cli,
@@ -259,7 +259,7 @@ def test_human_output_and_usage_branches(tmp_path: Path, monkeypatch: pytest.Mon
 
     port = FakeSnowflake(state={})
     planned = invoke_with_port(monkeypatch, port, ["plan", *common(project), "--target", "dev"])
-    assert planned.exit_code == 2 and "plan: 15 to create, 0 to update, 0 to prune" in planned.output
+    assert planned.exit_code == 2 and "plan: 16 to create, 0 to update, 0 to prune" in planned.output
     cleaned = CliRunner().invoke(cli, ["clean", "--project-dir", str(project)])
     assert cleaned.exit_code == 0 and "removed" in cleaned.output
     nothing = CliRunner().invoke(cli, ["clean", "--project-dir", str(project)])

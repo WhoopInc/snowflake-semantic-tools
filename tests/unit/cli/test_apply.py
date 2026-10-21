@@ -84,7 +84,7 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     planned_payload = json.loads(planned.output)
     plan_path = planned_payload["data"]["plan_path"]
     saved_plan = json.loads(Path(plan_path).read_text(encoding="utf-8"))
-    assert len(saved_plan["changes"]) == 15
+    assert len(saved_plan["changes"]) == 16
     assert {item["artifact_type"] for item in saved_plan["changes"]} == {
         "semantic_view",
         "tool",
@@ -92,6 +92,7 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
         "plugin",
         "profile",
         "agent",
+        "cowork_profile",
         "eval",
     }
     assert {
@@ -112,7 +113,8 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     def execute_with_markers(statements: Sequence[Sql]) -> ExecResult:
         result = original_execute(statements)
         for planned_change in planned_payload["data"]["changes"]:
-            if planned_change["artifact_type"] in {"tool", "agent"}:
+            # A CoWork profile (a Snowflake private preview) is an AGENT, marked as an agent is.
+            if planned_change["artifact_type"] in {"tool", "agent", "cowork_profile"}:
                 apply_port.markers[planned_change["target"]] = OwnershipMarker(
                     planned_payload["data"]["manifest_id"],
                     planned_change["fingerprint"],
@@ -135,10 +137,11 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     assert {"lock", "publish", "state_write"} <= set(payload["invocation"]["timings"]["phases"])
     # Seven more than M4: the bundle stage, one CREATE carrying the first version for each
     # of three skills and the plugin, and the profile stage; the eval dataset's own version;
-    # and the agent spec stage, created once for every agent that stages there. One more
-    # certifies the version of jaffle-catalogue, the skill whose own config: sets certified, and
-    # one more creates the order_status procedure.
-    assert len(apply_port.scripts) == 21
+    # and the agent spec stage, created once for every agent and CoWork profile that stages
+    # there. One more certifies the version of jaffle-catalogue, the skill whose own config:
+    # sets certified, one more creates the order_status procedure, and one more the CoWork
+    # profile, whose CREATE AGENT carries its marker as each agent's does.
+    assert len(apply_port.scripts) == 22
     first_lines = [statements[0].split("\n", 1)[0] for statements in apply_port.scripts]
     assert sum("CERTIFICATION_STATUS" in line and "JAFFLE_CATALOGUE" in line for line in first_lines) == 1
     assert sum("CERTIFICATION_STATUS" in line for line in first_lines) == 1
@@ -146,7 +149,7 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     assert not any(line.startswith("ALTER CORTEX EXTENSION") and " ADD VERSION " in line for line in first_lines)
     assert sum("SKILL_BUNDLES " in line and line.startswith("CREATE STAGE") for line in first_lines) == 1
     assert sum("AGENT_SPECS_SSE " in line and line.startswith("CREATE STAGE") for line in first_lines) == 1
-    assert sum("[sst:" in statement for statements in apply_port.scripts for statement in statements) == 8
+    assert sum("[sst:" in statement for statements in apply_port.scripts for statement in statements) == 9
 
 
 def test_partial_runs_publish_what_is_healthy_and_still_exit_one(

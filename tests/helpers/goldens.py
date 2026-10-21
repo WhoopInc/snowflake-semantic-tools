@@ -331,6 +331,16 @@ def golden_payloads(item: CompiledArtifact, store: GoldenStore) -> tuple[GoldenP
         return (
             GoldenPayload(GoldenPath("agent", (f"{name}.json",)), rendered.content, f"compiled/{name}.json", False),
         )
+    # A CoWork profile (a Snowflake private preview) pins its specification, as an agent does.
+    if artifact_type == "cowork_profile":
+        return (
+            GoldenPayload(
+                GoldenPath("cowork_profile", (f"{name}.json",)),
+                rendered.content,
+                f"compiled/cowork_profile/{name}.json",
+                False,
+            ),
+        )
     raise ValueError(f"no golden route for artifact type {artifact_type!r}")
 
 

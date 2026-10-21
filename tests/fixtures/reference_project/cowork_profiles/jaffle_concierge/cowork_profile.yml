@@ -1,0 +1,80 @@
+---
+# =============================================================================
+# cowork_profiles/jaffle_concierge/cowork_profile.yml -- reference project
+# =============================================================================
+# A Snowflake CoWork profile, a Snowflake private preview:
+# https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
+# https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+#
+# A profile is an AGENT whose one router tool hands each question to one of the
+# agents it lists. It publishes after them, staged and versioned as an agent is,
+# into the schema `cowork_profiles:` in sst_config.yml places it in: here a
+# rehearsal schema, apart from the agents' JAFFLE and OPS schemas (an agent and
+# a profile in one schema is SST-VAL879). CoWork lists only the profiles in
+# SNOWFLAKE_INTELLIGENCE.PROFILES, so SST-VAL878 notes on every run that it will
+# not list this one, and SST-VAL870 that it relies on the preview.
+#
+#   jaffle_concierge --+--> jaffle_analytics_agent
+#                      +--> jaffle_delivery_agent
+#
+# Read this file beside
+# tests/golden/expected/cowork_profile/jaffle_concierge.json: the renderer adds
+# the `agent_router` tool, and lists each subagent under its `tool_resources`
+# by the agent's qualified name.
+# =============================================================================
+
+name: jaffle_concierge
+
+# Published as the AGENT COMMENT, after SST's ownership marker.
+comment: |-
+  Routes each jaffle question to the agent that holds its answer: order
+  populations and revenue to the analytics agent, delivery status to the
+  delivery agent.
+
+# Published with ALTER AGENT ... SET PROFILE, as an agent's `profile:` block is.
+display:
+  display_name: Jaffle Concierge
+  color: orange
+
+# The profile's own settings, each a `cowork_profiles:` `+` key without its `+`.
+config:
+  # Must be in snowflake.orchestration_models (SST-VAL543).
+  orchestration_model: claude-sonnet-4-6
+  enabled: true
+
+spec:
+  instructions:
+    orchestration: |-
+      Hand each question to exactly one agent.
+
+      A question about how many customers or orders there are, what they spent,
+      or which location or menu item leads goes to the analytics agent.
+
+      A question about where one order is, or when it will arrive, goes to the
+      delivery agent.
+
+      Search the web only for a question about the outside world, such as a
+      public holiday that explains a slow day, and never for jaffle data.
+    response: |-
+      Say which agent answered, and pass its answer on unchanged.
+
+  # Each `agent:` is one agent() call, for an agent this project publishes,
+  # or one tool() call, for an `agent` tool member another team owns. An entry
+  # leaves its agent's display name, comment, and sample questions to apply
+  # where it writes none of its own.
+  subagents:
+    - agent: "{{ agent('jaffle_analytics_agent') }}"
+    - agent: "{{ agent('jaffle_delivery_agent') }}"
+      # Overrides the agent's comment, which speaks to the agent itself.
+      description: |-
+        Where one jaffle order is and when it will arrive, from the partner's
+        delivery tools. Knows nothing about what was ordered or what it cost.
+      sample_questions:
+        - question: Where is my jaffle order?
+
+  # Besides its router, a profile carries web_search or code_execution only.
+  tools:
+    - type: web_search
+
+meta:
+  owner: analytics-platform

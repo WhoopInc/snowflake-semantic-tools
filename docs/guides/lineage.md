@@ -47,21 +47,23 @@ tool:order_status
 │   └── model:orders
 └── read by
     └── agent:jaffle_analytics_agent
+        ├── cowork_profile:jaffle_concierge
         └── eval:jaffle_analytics_agent
-✓ traced 4 nodes from tool:order_status
+✓ traced 5 nodes from tool:order_status
 ```
 
 `--wide` adds two aligned columns: the Snowflake object each node is, and how it
 uses the node above it. A name too long for the terminal is cut short with `…`:
 
 ```text
-skill:jaffle-semantics                   SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS
+skill:jaffle-semantics                       SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS
 └── read by
-    ├── agent:jaffle_analytics_agent     SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT  loads it
-    │   └── eval:jaffle_analytics_agent  SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANALYTICS…  tests it
-    ├── plugin:jaffle-toolkit            SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT          bundles it
-    │   └── profile:jaffle-operator      SST_REF_DEV.JAFFLE.PROFILE_REGISTRY        includes it
-    └── profile:jaffle-analyst           SST_REF_DEV.JAFFLE.PROFILE_REGISTRY        includes it
+    ├── agent:jaffle_analytics_agent         SST_REF_DEV.JAFFLE.JAFFLE_ANALYTIC…  loads it
+    │   ├── cowork_profile:jaffle_concierge  SST_REF_DEV.PROFILES.JAFFLE_CONCIE…  calls it as a tool
+    │   └── eval:jaffle_analytics_agent      SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANA…  tests it
+    ├── plugin:jaffle-toolkit                SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT    bundles it
+    │   └── profile:jaffle-operator          SST_REF_DEV.JAFFLE.PROFILE_REGISTRY  includes it
+    └── profile:jaffle-analyst               SST_REF_DEV.JAFFLE.PROFILE_REGISTRY  includes it
 ```
 
 A trace from a `column:`, `dimension:` or `fact:` node traces a column, so it

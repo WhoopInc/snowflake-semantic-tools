@@ -177,7 +177,8 @@ def test_plan_live_observation_saved_plan_and_detailed_exitcode(
     payload = json.loads(result.output)
     assert payload["status"] == "changes"
     # Every artifact, in publish order -- views, tools, skills, plugins, profiles, agents (a
-    # delegate before the agent that calls it), evals -- and where the folder routes send it.
+    # delegate before the agent that calls it), CoWork profiles, evals -- and where the folder
+    # routes send it.
     assert [
         (item["artifact_key"], item["action"], item["reason"], item["target"]) for item in payload["data"]["changes"]
     ] == [
@@ -195,6 +196,7 @@ def test_plan_live_observation_saved_plan_and_detailed_exitcode(
         ("agent:jaffle_delivery_agent", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_DELIVERY_AGENT"),
         ("agent:jaffle_minimal_agent", "create", "not_present", "SST_REF_DEV.OPS.JAFFLE_MINIMAL_AGENT"),
         ("agent:jaffle_analytics_agent", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT"),
+        ("cowork_profile:jaffle_concierge", "create", "not_present", "SST_REF_DEV.PROFILES.JAFFLE_CONCIERGE"),
         (
             "eval:jaffle_analytics_agent",
             "create",
@@ -364,14 +366,16 @@ def test_one_edit_plans_only_what_its_render_reaches(
     actions = {item["artifact_key"]: (item["action"], item["reason"]) for item in payload["data"]["changes"]}
     assert {key for key, (action, _) in actions.items() if action != "noop"} == updated
     assert {actions[key] for key in updated} == {("update", "fingerprint_differs")}
-    assert len(actions) == 15
+    assert len(actions) == 16
 
 
 def test_capture_prior_reads_every_published_kind_without_failing_the_plan(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The reference project publishes views, a search service, a procedure, agents, skills, a
-    # plugin, a profile, and an eval; a plan capturing their priors must still exit as it would without.
+    # The reference project publishes views, a search service, a procedure, agents, a CoWork profile,
+    # skills, a plugin, a profile, and an eval; a plan capturing their priors must still exit as it would
+    # without. A CoWork profile (a Snowflake private preview) is an AGENT, its prior read as an agent's.
+    agent_objects = ("agent:", "cowork_profile:")
     project = project_copy(tmp_path)
     first = invoke_with_port(
         monkeypatch,
@@ -392,7 +396,7 @@ def test_capture_prior_reads_every_published_kind_without_failing_the_plan(
         if key.startswith("semantic_view:"):
             # A view's GET_DDL text in the restorable form, which the capture keeps as it is.
             port.definitions[target] = f"create or replace semantic view {target}\n  COPY GRANTS"
-        if key.startswith("agent:"):
+        if key.startswith(agent_objects):
             port.agent_version_rows[target] = (
                 AgentVersion(None, None, specification="{}"),
                 AgentVersion("VERSION$2", None, is_default=True, specification='{"models":{"orchestration":"auto"}}'),
@@ -407,8 +411,8 @@ def test_capture_prior_reads_every_published_kind_without_failing_the_plan(
     result = json.loads(planned.output)
     assert not [item for item in result["diagnostics"] if item["severity"] in ("error", "warning")]
     priors = {item["artifact_key"]: item["prior_definition"] for item in result["data"]["changes"]}
-    agents = [key for key in priors if key.startswith("agent:")]
-    assert agents
+    agents = [key for key in priors if key.startswith(agent_objects)]
+    assert "cowork_profile:jaffle_concierge" in agents
     for key in agents:
         prior = priors[key]
         assert prior.startswith(f"-- agent {targets[key]} serves VERSION$2 (the default).\n")
@@ -417,7 +421,7 @@ def test_capture_prior_reads_every_published_kind_without_failing_the_plan(
     for key, prior in priors.items():
         if key.startswith(("semantic_view:", "tool:")):
             assert prior == port.definitions[addressed[key]]
-        elif not key.startswith("agent:"):
+        elif not key.startswith(agent_objects):
             # A skill, plugin, profile, or eval publishes content-addressed resources.
             assert prior is None, key
     # Nothing is updated, so `--full` prints no definition that an update would replace.
@@ -506,6 +510,7 @@ def test_type_exclusion_removes_semantic_views_from_plan_and_prune_scope(
         "plugin",
         "profile",
         "agent",
+        "cowork_profile",
         "eval",
     }
     assert {item["params"]["blocker"] for item in payload["diagnostics"] if item["code"] == "SST-PLN038"} == {
