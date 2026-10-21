@@ -1,8 +1,9 @@
 # Snowflake Semantic Tools
 
 SST builds Snowflake semantic views, Cortex Agents, their tools and evaluations,
-Cortex Extension skills and plugins, and CoCo Desktop profiles from files in a
-dbt project, and publishes them with a reviewed plan.
+Cortex Extension skills and plugins, CoCo Desktop profiles, and Snowflake
+CoWork profiles (a Snowflake private preview) from files in a dbt project, and
+publishes them with a reviewed plan.
 
 ## Start here
 
@@ -24,6 +25,7 @@ dbt project, and publishes them with a reviewed plan.
 | [Evals](guides/evals.md) | question sets, run configuration, custom judges, running, and baselines |
 | [Skills](guides/skills.md) | `SKILL.md` folders, bundled files, flattening, limits, and versions |
 | [Plugins and profiles](guides/plugins-and-profiles.md) | plugins, CoCo Desktop profiles, commands, hooks, and MCP configs |
+| [CoWork profiles](guides/cowork-profiles.md) | Snowflake CoWork profiles, a [Snowflake private preview](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles): the agents a profile routes to, where it publishes, and what SST leaves to CoWork Admin |
 | [Configuration](guides/configuration.md) | `sst_config.yml`, targets, folder routes, an item's `config:` and the precedence chain, projects without dbt, and authentication |
 | [References](guides/references.md) | every field that names a file or a member, the template call it takes, `file()`, stage paths, and the fields left literal |
 | [Lineage](guides/lineage.md) | `sst lineage`: what a dbt node, member, or artifact reads and what reads it, what changed since another run, and selecting by graph operators |
@@ -69,7 +71,7 @@ For maintainers, and anyone weighing SST: how the engine is built and why.
 
 `tests/fixtures/reference_project/` in this repository is a complete project
 that uses every artifact type: three semantic views, tools, three agents, an
-eval, three skills, a plugin, and two Desktop profiles. The test suite validates
+eval, three skills, a plugin, two Desktop profiles, and a CoWork profile. The test suite validates
 and compiles it on every change. Run it offline with the dbt manifest committed
 beside it:
 

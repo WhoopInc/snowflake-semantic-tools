@@ -5,6 +5,10 @@ resolves against the project, and publishes as a new agent version. This guide
 covers the agent file, the tools it calls, how it pins the skills it uses, and
 how it is published.
 
+To route a group's questions across several agents in Snowflake CoWork, publish
+a [CoWork profile](cowork-profiles.md) that names them; profiles are a
+[Snowflake private preview](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles).
+
 ## Layout
 
 ```text

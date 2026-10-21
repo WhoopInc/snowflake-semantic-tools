@@ -462,8 +462,8 @@ and `test_permanent_agent_update_adds_exactly_one_version_then_alias_and_tags` i
 exact statements. `CREATE OR REPLACE TEMPORARY AGENT`, for `--temporary`, is a
 different object and is not affected.
 
-**SST depends on it at**: `_agent_programs` in
-[compiled.py](../../snowflake_semantic_tools/app/compile/agents/compiled.py); the
+**SST depends on it at**: `agent_programs` in
+[staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py); the
 agent case in [prior.py](../../snowflake_semantic_tools/app/prior.py), which
 captures a version rather than `GET_DDL`; the restore advice in
 [the CI/CD guide](../guides/ci-cd.md#recording-what-an-update-replaces).
@@ -518,8 +518,8 @@ and
 `test_agent_versions_report_the_live_row_and_every_shown_alias` in
 [test_snowflake_connector.py](../../tests/unit/adapters/test_snowflake_connector.py).
 
-**SST depends on it at**: `_agent_programs`
-in [compiled.py](../../snowflake_semantic_tools/app/compile/agents/compiled.py);
+**SST depends on it at**: `agent_programs`
+in [staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py);
 `observe_agent_versions` in
 [catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py);
 `AgentVersions.has_live_version` in
@@ -545,8 +545,8 @@ shortcut or a reserved word as an alias (SST-PRS025) rather than quote it.
 [test_agent_alias_names.py](../../tests/unit/security/test_agent_alias_names.py),
 [test_sst_prs025.py](../../tests/codes/prs/test_sst_prs025.py).
 
-**SST depends on it at**: `_agent_programs` and `_alias` in
-[compiled.py](../../snowflake_semantic_tools/app/compile/agents/compiled.py);
+**SST depends on it at**: `agent_programs` and `_alias` in
+[staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py);
 `RESERVED_AGENT_ALIASES` in
 [model/agent.py](../../snowflake_semantic_tools/domain/model/agent.py);
 `reserved_alias` in
@@ -567,8 +567,9 @@ in [test_agent_publish.py](../../tests/unit/app/test_agent_publish.py) asserts
 the upload path, and the agent goldens are JSON
 ([test_golden_agents.py](../../tests/unit/test_golden_agents.py)).
 
-**SST depends on it at**: the `Upload` in `CompiledAgent.rendered_artifact` in
-[compiled.py](../../snowflake_semantic_tools/app/compile/agents/compiled.py).
+**SST depends on it at**: the `Upload` in `render_agent_object` in
+[staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py), which
+agents and CoWork profiles share.
 
 ### A profile over 1,000 bytes is refused, and only once the agent exists
 
@@ -678,6 +679,129 @@ account in October 2026.
 [validate_models.py](../../snowflake_semantic_tools/app/validate_models.py);
 [cortex_models.py](../../snowflake_semantic_tools/adapters/snowflake/connector/cortex_models.py);
 [the configuration reference](../reference/config.md).
+
+## CoWork profiles (private preview)
+
+CoWork profiles are a Snowflake private preview (PrPr), documented in
+[About profiles in Snowflake CoWork](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles) and
+[Set up profile routing in Snowflake CoWork](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing). Each entry below was
+measured on 2026-10-20 on an account enrolled in the preview, routing through
+`SNOWFLAKE.CORTEX.DATA_AGENT_RUN` and reading the `agent_router` tool use it
+returns. A preview may change before general availability, so re-check these
+first when profiles misbehave.
+
+### An incomplete subagent entry still routes
+
+**Docs say**: every `subagents` entry needs `name`, `display_name`,
+`description`, and `source`; an entry with only a `name`, or one with no
+`source`, makes the profile drop its whole list and answer that it has no agent
+to route to.
+
+**Server does**: an entry with only `name`, one with no `description`, and one
+with no `source` each route to the named agent and answer. CoWork Admin itself
+writes name-only entries. Nothing checks that the name exists: a profile naming
+a dropped agent is created, and fails only when a question reaches it, with an
+authorization error and no warning.
+
+**Evidence**: `Enforced`. SST renders all four fields for every entry, as the
+guide asks, and resolves each agent at compile time (SST-REF012, SST-VAL872).
+`test_a_bare_profile_renders_its_model_router_and_subagents_only` in
+[test_render_cowork_profile.py](../../tests/unit/domain/test_render_cowork_profile.py) pins the entry.
+
+**SST depends on it at**: `render_cowork_profile_spec` in
+[cowork_profile.py](../../snowflake_semantic_tools/domain/render/cowork_profile.py);
+`resolve_subagents` in
+[subagents.py](../../snowflake_semantic_tools/app/compile/cowork_profiles/subagents.py).
+
+### A profile with no subagent list fails every run
+
+**Docs say**: a profile whose specification has no `tool_resources` routes over
+every agent attached to the CoWork object; the guide's own `CREATE AGENT`
+example has none. An empty `subagents` list is not the same.
+
+**Server does**: `CREATE AGENT` accepts the profile, and every run of it fails
+with `agent_router tool 'router' is missing a corresponding entry in
+tool_resources` (code 399518), also with a data agent attached. A
+`tool_resources` key that is not the router tool's name fails the same way. An
+empty list routes to no agent: the profile answers that no data is connected.
+
+**Evidence**: `Enforced`. A profile with no subagents is SST-VAL871, and SST
+always writes the router's resources under the router's own name.
+[test_sst_val871.py](../../tests/codes/val/test_sst_val871.py).
+
+**SST depends on it at**: `cowork_profile_diagnostics` in
+[cowork_profile.py](../../snowflake_semantic_tools/domain/validate/cowork_profile.py);
+`ROUTER_NAME` in
+[cowork_profile.py](../../snowflake_semantic_tools/domain/model/cowork_profile.py).
+
+### Routing follows `source.fqn`, not `name`
+
+**Docs say**: set `name` and `source.fqn` to the same qualified name.
+
+**Server does**: when they differ, the question runs on the agent `source.fqn`
+names, and the router's tool use reports `name` as the subagent it chose. The
+`display_name` the router reports is the subagent's own profile display name,
+not the entry's.
+
+**Evidence**: `Enforced`. SST writes the agent's qualified name to both.
+`test_a_subagent_takes_its_agents_display_name_comment_and_sample_questions`
+in [test_cowork_profile_compile.py](../../tests/unit/app/test_cowork_profile_compile.py).
+
+**SST depends on it at**: `render_cowork_profile_spec` in
+[cowork_profile.py](../../snowflake_semantic_tools/domain/render/cowork_profile.py).
+
+### A router agent works outside SNOWFLAKE_INTELLIGENCE.PROFILES
+
+**Docs say**: an agent in `SNOWFLAKE_INTELLIGENCE.PROFILES` is a profile, and an
+agent anywhere else is a regular agent.
+
+**Server does**: an agent with an `agent_router` tool in any schema is created,
+routes when run, and can be attached to the CoWork object. Only CoWork's own
+listing reads the schema.
+
+**Evidence**: `Observed`. Probe: create the same router agent in a scratch
+schema, run it with `DATA_AGENT_RUN`, and attach it with `ALTER SNOWFLAKE
+INTELLIGENCE ... ADD AGENT`; then detach and drop it.
+
+**SST depends on it at**: SST-VAL878 and SST-VAL880 in
+[cowork_profile.py](../../snowflake_semantic_tools/domain/validate/cowork_profile.py),
+and the rehearsal targets in [the CoWork profiles guide](../guides/cowork-profiles.md#where-it-publishes).
+
+### A profile takes the staged agent lifecycle
+
+**Docs say**: the guides create a profile only with an inline
+`CREATE AGENT ... FROM SPECIFICATION $$...$$`.
+
+**Server does**: a profile in `SNOWFLAKE_INTELLIGENCE.PROFILES` takes every
+statement SST publishes an agent with: `CREATE AGENT ... FROM @<stage>/<dir>/`
+from a server-side encrypted stage, `MODIFY VERSION VERSION$1 SET COMMENT`,
+`ADD VERSION FROM`, `ADD LIVE VERSION FROM LAST`, `MODIFY LIVE VERSION SET
+SPECIFICATION`, `COMMIT`, and `SET PROFILE`, and each version routes. A `$$`
+in a staged specification survives; in an inline one it is a syntax error.
+
+**Evidence**: `Enforced` for SST's side:
+`test_publication_stages_the_spec_under_the_cowork_profiles_folder_with_the_agent_programs`
+in [test_cowork_profile_compile.py](../../tests/unit/app/test_cowork_profile_compile.py) pins the statements. Whether a TEMPORARY router agent works is not
+measured, so `apply --temporary` leaves profiles out (SST-APL106).
+
+**SST depends on it at**: `agent_programs` and `render_agent_object` in
+[staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py).
+
+### Attaching, DEFAULT_AGENT, and dropping
+
+**Docs say**: attach a profile with `ALTER SNOWFLAKE INTELLIGENCE ... ADD
+AGENT`; setting `DEFAULT_AGENT` to an agent that names its own subagents fails.
+
+**Server does**: attaching an agent already attached fails ("already
+present"), and detaching one that is not fails ("was not found"); dropping an
+attached agent detaches it. `DEFAULT_AGENT` must have an `agent_router` tool
+("is not a routing agent") and must not be attached; a detached profile that
+names its own subagents is accepted as the default.
+
+**Evidence**: `Observed`. SST never attaches a profile or sets the default.
+
+**SST depends on it at**: nothing; [the CoWork profiles guide](../guides/cowork-profiles.md#what-sst-does-not-do)
+leaves both to CoWork Admin.
 
 ## Cortex extensions and stages
 

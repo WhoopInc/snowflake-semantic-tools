@@ -5,7 +5,7 @@ each other, and what each command does with them.
 
 ## Artifacts
 
-An **artifact** is one thing SST publishes and tracks. There are seven types:
+An **artifact** is one thing SST publishes and tracks. There are eight types:
 
 | Type | Authored as | Publishes |
 |---|---|---|
@@ -15,6 +15,7 @@ An **artifact** is one thing SST publishes and tracks. There are seven types:
 | `plugin` | `plugin.yml` | a version of a plugin-type Cortex Extension |
 | `profile` | `profile.yml` | a CoCo Desktop profile: stage trees and one registry row |
 | `agent` | `agent.yml` | a Cortex Agent |
+| `cowork_profile` | `cowork_profile.yml` | a Snowflake CoWork profile: an AGENT with an `agent_router` tool ([Snowflake private preview](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles)) |
 | `eval` | the dataset and config files an agent's `evals:` names | an evaluation table, dataset, and run configuration |
 
 Every command works on the same set, in the same order: an artifact is always
@@ -33,6 +34,10 @@ flowchart LR
     agent --> tool
     agent -.->|pins the version of| skill["skill (250)"]
     agent -.->|pins the version of| plugin["plugin (260)"]
+    cowork_profile["cowork_profile (350)"] --> agent
+    cowork_profile --> tool
+    cowork_profile -.->|pins the version of| skill
+    cowork_profile -.->|pins the version of| plugin
     evals["eval (400)"] --> agent
     profile["profile (270)"]
 ```

@@ -5,6 +5,9 @@ AGENT from a staged specification, a committed version per change, a live versio
 then the alias, tags, profile, and SECURE. This module owns those programs and the rendered
 artifact that carries them; each kind supplies its key, specification, and metadata. It never
 decides what a specification holds.
+
+CoWork profiles are a Snowflake private preview (PrPr):
+https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
 """
 
 from __future__ import annotations
