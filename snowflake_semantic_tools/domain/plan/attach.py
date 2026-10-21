@@ -61,8 +61,9 @@ def attach_changes(
 
     - a create ends with `attach_statement`, since a new object is never attached;
     - an update ends with it when the profile is not attached;
-    - an unchanged profile that is not attached becomes an update that runs only it, for
-      `ChangeReason.DETACHED`, committing no version and staging nothing;
+    - an unchanged profile that is not attached becomes an update that writes its marked
+      comment, then attaches it, for `ChangeReason.DETACHED`, committing no version and
+      staging nothing;
     - with no CoWork object in the account, nothing is attached.
 
     Each change that attaches names the CoWork object in `attaches_to`. Any other change, a
@@ -101,10 +102,13 @@ def _attached(change: Change, reading: AttachmentReading) -> tuple[Change, tuple
     if change.action is not Action.NOOP:
         attaching = replace(rendered, statements=(*rendered.statements, statement), attaches_to=cowork_object)
         return replace(change, rendered=attaching), ()
-    # Only the attachment changed: nothing is staged, and no version is committed.
+    # Only the attachment changed: nothing is staged, and no version is committed. The update's
+    # lead still runs first: it writes the comment with this plan's ownership marker, which apply
+    # reads back, so a profile last published under another manifest is not refused.
+    lead = rendered.update_properties_statements[: rendered.properties_lead]
     only = replace(
         rendered,
-        statements=(statement,),
+        statements=(*lead, statement),
         attaches_to=cowork_object,
         adds_version=False,
         upload_path=None,

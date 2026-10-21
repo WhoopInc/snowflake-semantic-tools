@@ -69,7 +69,7 @@ def test_an_unchanged_profile_that_was_detached_is_updated_to_attach_it_alone() 
     rendered = decided.rendered
     assert rendered is not None
     assert (decided.action, decided.reason, codes) == (Action.UPDATE, ChangeReason.DETACHED, ("SST-PLN104",))
-    assert texts(rendered.statements) == (ADD,)
+    assert texts(rendered.statements) == ("set comment", ADD)
     assert (rendered.attaches_to, rendered.adds_version, rendered.fingerprint) == (COWORK, False, artifact.fingerprint)
     assert (rendered.upload_path, rendered.upload_content, rendered.upload_stage) == (None, None, None)
     assert _decided(unchanged, reading(artifact)) == (unchanged, ())
@@ -136,7 +136,7 @@ def test_a_saved_re_attachment_applies_only_while_the_profile_is_still_detached(
     saved = SavedPlan.from_changeset(_planned(reading()))
     [change] = saved.changes
     assert (change.action, change.reason) == ("update", "detached")
-    assert change.statement_hashes == (sha256(ADD.encode("utf-8")).hexdigest(),)
+    assert change.statement_hashes == tuple(sha256(text.encode("utf-8")).hexdigest() for text in ("set comment", ADD))
     read_back = SavedPlan.from_dict(json.loads(json.dumps(saved.as_dict())))
     assert read_back.check_applicable(SavedPlan.from_changeset(_planned(reading())), source="plan.json") is None
     # Attached again by hand since: the fresh plan attaches nothing, so the saved one is refused.

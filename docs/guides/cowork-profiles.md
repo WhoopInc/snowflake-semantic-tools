@@ -194,7 +194,8 @@ each profile it publishes to `SNOWFLAKE_INTELLIGENCE.PROFILES`:
   `ALTER SNOWFLAKE INTELLIGENCE <object> ADD AGENT <profile>`.
 - An update attaches a profile that is not attached, in the same program.
 - A profile that is otherwise unchanged but was detached by hand plans an update
-  that runs only that statement, commits no version, and warns SST-PLN104.
+  that rewrites the profile's comment, carrying SST's ownership marker, then runs that
+  statement. It commits no version, stages nothing, and warns SST-PLN104.
   Strict mode leaves it a warning, since the apply it plans is the repair.
   `sst plan` shows it as
 

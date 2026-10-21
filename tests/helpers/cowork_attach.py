@@ -45,6 +45,8 @@ def profile(name: str = "everyone", *, schema: str = "PROFILES", wants: bool = T
             create=(statement("create agent"), statement("commit version")),
             update=(statement("add version"),),
             update_properties=(statement("set comment"),),
+            # Published, a profile's properties program leads with its marked comment.
+            properties_lead=1,
         ),
         metadata=DesiredMetadata(spec_fingerprint=spec_fingerprint(SPEC)),
     )

@@ -21,7 +21,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ShowRow,
 )
 from snowflake_semantic_tools.domain.sql import Sql
-from snowflake_semantic_tools.domain.state import State
+from snowflake_semantic_tools.domain.state import Manifest, State
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import rendered, target
 from tests.helpers.clocks import FixedClock
@@ -34,22 +34,27 @@ ADD = f"ALTER SNOWFLAKE INTELLIGENCE {COWORK} ADD AGENT SNOWFLAKE_INTELLIGENCE.P
 
 
 class _Publishing(FakeSnowflake):
-    """The fake account, on which a created profile is then listed with the marker apply wrote."""
+    """The fake account, on which a profile is listed with the marker apply last wrote.
+
+    CREATE AGENT and the comment an update leads with both leave the marker of the manifest
+    being applied, `manifest_id`, as Snowflake keeps the comment SST writes.
+    """
 
     def __init__(self, artifact: RenderedArtifact, manifest_id: str) -> None:
         super().__init__()
         self._artifact = artifact
-        self._marker = OwnershipMarker(manifest_id, artifact.fingerprint)
+        self.manifest_id = manifest_id
         self.intelligences = [COWORK]
 
     def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
         result = super().execute_script(statements)
-        if result.ok and texts(statements)[0] == "create agent":
+        if result.ok and texts(statements)[0] in ("create agent", "set comment"):
             name = self._artifact.target
+            marker = OwnershipMarker(self.manifest_id, self._artifact.fingerprint)
             listed = ShowRow(name.name.folded, "SNOWFLAKE_INTELLIGENCE", "PROFILES", "TEST_ROLE", "now")
-            self.show(replace(listed, comment=self._marker.text, object_type="AGENT"))
+            self.show(replace(listed, comment=marker.text, object_type="AGENT"))
             self.object_types[name.sql] = "AGENT"
-            self.markers[name.sql] = self._marker
+            self.markers[name.sql] = marker
         return result
 
 
@@ -66,10 +71,11 @@ def _state(store: InMemoryStateStore) -> State:
     return store.state
 
 
-def _plan(artifact: RenderedArtifact, port: FakeSnowflake, store: InMemoryStateStore) -> ChangeSet:
-    return PlanArtifacts(port).run(
-        {artifact.key: artifact}, manifest_of(artifact), _state(store), target(), fetched_at="now"
-    )
+def _plan(
+    artifact: RenderedArtifact, port: FakeSnowflake, store: InMemoryStateStore, manifest: Manifest | None = None
+) -> ChangeSet:
+    compiled = manifest or manifest_of(artifact)
+    return PlanArtifacts(port).run({artifact.key: artifact}, compiled, _state(store), target(), fetched_at="now")
 
 
 def _apply(changeset: ChangeSet, port: FakeSnowflake, store: InMemoryStateStore) -> None:
@@ -94,15 +100,22 @@ def test_a_profile_detached_by_hand_is_attached_again_and_then_left_alone() -> N
     artifact, port, store = _cycle()
     _apply(_plan(artifact, port, store), port, store)
     port.intelligence_agents[COWORK].clear()
-    detached = _plan(artifact, port, store)
+    # Planned from a later compile, as in an account: the manifest id differs from the one the
+    # profile's marker carries, so apply reads back the marker this plan writes.
+    recompiled = replace(manifest_of(artifact), manifest_id="0" * 64)
+    port.manifest_id = recompiled.manifest_id
+    detached = _plan(artifact, port, store, recompiled)
     [change] = detached.changes
     assert (change.action, change.reason) == (Action.UPDATE, ChangeReason.DETACHED)
     assert [item.code for item in detached.diagnostics] == ["SST-PLN104"]
     uploads = len(port.uploads)
     _apply(detached, port, store)
-    # Only the attachment runs: nothing is staged again, and no version is committed.
-    assert port.scripts[-1] == (ADD,) and len(port.uploads) == uploads
-    [again] = _plan(artifact, port, store).changes
+    # Only the marked comment and the attachment run: nothing is staged again, no version is
+    # committed.
+    assert port.scripts[-1] == ("set comment", ADD) and len(port.uploads) == uploads
+    marker = port.markers[artifact.target.sql]
+    assert marker is not None and marker.manifest_id == recompiled.manifest_id
+    [again] = _plan(artifact, port, store, recompiled).changes
     assert again.action is Action.NOOP
 
 

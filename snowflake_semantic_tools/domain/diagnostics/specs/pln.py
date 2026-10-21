@@ -602,8 +602,10 @@ SPECS: tuple[ErrorSpec, ...] = (
             "`+attach` is on, and SHOW AGENTS IN SNOWFLAKE INTELLIGENCE does not list it"
         ),
         note=(
-            "Snowflake private preview. The update runs only ALTER SNOWFLAKE INTELLIGENCE ... ADD AGENT, "
-            "committing no version. Attaching is not part of the profile's definition, so a profile "
+            "Snowflake private preview. The update rewrites the profile's comment with SST's "
+            "ownership marker, which apply reads back, then runs ALTER SNOWFLAKE INTELLIGENCE ... "
+            "ADD AGENT, committing no version. Attaching is not part of the profile's definition, "
+            "so a profile "
             "detached by hand is attached again rather than blocked as changed out of band (SST-PLN014). "
             "Strict mode leaves this a warning, since the apply it plans is the repair."
         ),
