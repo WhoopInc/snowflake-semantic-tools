@@ -4,7 +4,8 @@ An attempt's line names its eval and status, and how many questions passed. Unde
 published attempt's run, each metric's pass count, average and threshold, what the attempt
 cost, and the questions:
 those that fell short, or every one under `-v`, each with its score per metric, the tools it
-was expected to call and called, and why a judge scored it as it did. `-v` adds each
+was expected to call and called, the subagents a CoWork profile's question accepts and its
+router chose, and why a judge scored it as it did. `-v` adds each
 question's time and tokens and the agent's answer. A reason or an answer is cut to two lines.
 
 Every count names whose it is: the agent's time and tokens, and the judge's tokens; a count
@@ -24,7 +25,13 @@ import click
 from snowflake_semantic_tools.cli.render.style import Style
 from snowflake_semantic_tools.cli.render.tree import TreeNode, connectors, tree_lines
 from snowflake_semantic_tools.domain.evaluate.scores import average_text, score_text, threshold_phrase
-from snowflake_semantic_tools.domain.model.eval import EvalCostSummary, EvalMetricResult, EvalResultRow, EvalRunAttempt
+from snowflake_semantic_tools.domain.model.eval import (
+    ROUTING_ACCURACY,
+    EvalCostSummary,
+    EvalMetricResult,
+    EvalResultRow,
+    EvalRunAttempt,
+)
 
 TOOL_METRIC = "tool_selection_accuracy"
 # The run name an unpublished attempt reports, as `app.evals.inline` names it.
@@ -237,9 +244,16 @@ def _metric_node(row: EvalResultRow, metric: EvalMetricResult, width: int, layou
     children: list[TreeNode] = []
     explain = failed or layout.verbose
     tools_known = metric.metric_name == TOOL_METRIC and row.called_tools is not None
+    # Snowflake private preview (PrPr): CoWork profiles.
+    routes_known = metric.metric_name == ROUTING_ACCURACY and (
+        row.expected_subagents is not None or row.routed_subagents is not None
+    )
     if explain and tools_known:
         children.append(TreeNode("expected  " + _tool_list(row.expected_tools)))
         children.append(TreeNode("called    " + _tool_list(row.called_tools)))
+    elif explain and routes_known:
+        children.append(TreeNode("expected  " + _subagent_list(row.expected_subagents, "none (a decline)")))
+        children.append(TreeNode("routed    " + _subagent_list(row.routed_subagents, "none")))
     elif explain and metric.explanation:
         children.append(_labelled("reason", "reason", metric.explanation, layout, depth + 1))
     return TreeNode("  ".join(parts).rstrip(), children=tuple(children))
@@ -330,6 +344,13 @@ def _tool_list(tools: tuple[str, ...] | None) -> str:
     if tools is None:
         return "no expectation"
     return ", ".join(tools) if tools else "none"
+
+
+def _subagent_list(subagents: tuple[str, ...] | None, empty: str) -> str:
+    """Name a profile question's subagents; `empty` for none, and `not known` when unread."""
+    if subagents is None:
+        return "not known"
+    return ", ".join(subagents) if subagents else empty
 
 
 def _indented(nodes: Sequence[TreeNode], depth: int) -> list[str]:

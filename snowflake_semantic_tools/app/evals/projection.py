@@ -2,7 +2,8 @@
 
 Each attempt keeps its run, status and cost, each metric's pass count and average, and every
 question: what the agent answered and called, each metric's score, threshold and explanation,
-and its own cost. The projection judges nothing; the gate fills in its verdict.
+and its own cost. A CoWork profile's question also keeps the subagents it accepts and the ones
+its router chose. The projection judges nothing; the gate fills in its verdict.
 """
 
 from __future__ import annotations
@@ -98,6 +99,7 @@ def _question_json(row: EvalResultRow, lenient: frozenset[str]) -> dict[str, obj
         "error": row.error,
         "expected_tools": None if row.expected_tools is None else list(row.expected_tools),
         "called_tools": None if row.called_tools is None else list(row.called_tools),
+        **_subagents_json(row),
         "metrics": [
             {
                 "metric_name": metric.metric_name,
@@ -111,6 +113,20 @@ def _question_json(row: EvalResultRow, lenient: frozenset[str]) -> dict[str, obj
             for metric in row.metrics
         ],
         "cost": None if row.cost is None else _cost_json(row.cost),
+    }
+
+
+def _subagents_json(row: EvalResultRow) -> dict[str, object]:
+    """Project the subagents a CoWork profile's question accepts and was routed to; none for an agent's.
+
+    Snowflake private preview (PrPr): CoWork profiles. A row that knows neither, as every row
+    of an agent's eval, projects no key, so an agent's JSON is unchanged.
+    """
+    if row.expected_subagents is None and row.routed_subagents is None:
+        return {}
+    return {
+        "expected_subagents": None if row.expected_subagents is None else list(row.expected_subagents),
+        "routed_subagents": None if row.routed_subagents is None else list(row.routed_subagents),
     }
 
 

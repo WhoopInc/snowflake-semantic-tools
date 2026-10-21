@@ -178,3 +178,51 @@ def test_the_tree_continues_a_rows_text_under_it_and_down_to_its_children(unicod
     else:
         assert lines == ["|-- a", "|   | more", "|   `-- b", "`-- c", "    more"]
     assert tree_prefixes([(1, False), (2, True), (1, True)], ASCII_TREE, "> ") == ["> |-- ", "> |   `-- ", "> `-- "]
+
+
+def _routed_row(
+    index: int, score: float | None, expected: tuple[str, ...] | None, routed: tuple[str, ...] | None
+) -> EvalResultRow:
+    """A CoWork profile's question (a Snowflake private preview), scored on its routing."""
+    key = f"q{index}"
+    metrics = (
+        EvalMetricResult(key, "answer_correctness", 1.0, True),
+        EvalMetricResult(key, "routing_accuracy", score, score == 1.0, "why", ThresholdRange(0.9)),
+    )
+    return EvalResultRow(
+        key, f"Question {index}?", metrics, index=index, expected_subagents=expected, routed_subagents=routed
+    )
+
+
+def test_a_profile_question_shows_the_subagents_it_accepts_and_the_router_chose() -> None:
+    sales, partner = "DB.AGENTS.SALES", "PARTNER.AGENTS.DELIVERY"
+    rows = (
+        _routed_row(1, 1.0, (sales,), (sales,)),
+        _routed_row(2, 0.0, (), (partner,)),
+        _routed_row(3, 0.0, (sales, partner), ()),
+        _routed_row(4, None, (sales,), None),
+    )
+    lines = _lines(_attempt(*rows))
+    assert lines[5:] == [
+        "└── 3 of 4 questions fell short  (-v lists every question)",
+        "    ├── ✗ 2  Question 2?",
+        "    │   ├── answer_correctness  1.00",
+        "    │   └── routing_accuracy    0.00  needs at least 0.9",
+        "    │       ├── expected  none (a decline)",
+        "    │       └── routed    PARTNER.AGENTS.DELIVERY",
+        "    ├── ✗ 3  Question 3?",
+        "    │   ├── answer_correctness  1.00",
+        "    │   └── routing_accuracy    0.00  needs at least 0.9",
+        "    │       ├── expected  DB.AGENTS.SALES, PARTNER.AGENTS.DELIVERY",
+        "    │       └── routed    none",
+        "    └── ✗ 4  Question 4?",
+        "        ├── answer_correctness  1.00",
+        "        └── routing_accuracy    no score  needs at least 0.9",
+        "            ├── expected  DB.AGENTS.SALES",
+        "            └── routed    not known",
+    ]
+
+
+def test_a_profile_question_with_no_subagents_read_shows_its_reason() -> None:
+    lines = _lines(_attempt(_routed_row(1, None, None, None)))
+    assert lines[-2:] == ["        └── routing_accuracy    no score  needs at least 0.9", "            └── reason  why"]

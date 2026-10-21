@@ -15,6 +15,7 @@ from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.options import EvalRunOptions
 from snowflake_semantic_tools.app.evals.poll import StatusPoll
 from snowflake_semantic_tools.app.evals.progress import RunWatch, no_progress
+from snowflake_semantic_tools.app.evals.projection import _question_json, eval_suite_json
 from snowflake_semantic_tools.app.evals.retrieve import compiled_questions
 from snowflake_semantic_tools.app.evals.routes import ROUTE_READS, RoutingScored, read_routes, score_routing
 from snowflake_semantic_tools.app.evals.run import RunEvalSuite
@@ -249,3 +250,36 @@ def test_a_profile_eval_with_no_routing_metric_reads_no_spans() -> None:
 
     assert result.success and not port.query_results
     assert all(row.routed_subagents is None for row in result.evals[0].attempts[0].rows)
+
+
+def test_the_json_shows_a_profile_questions_subagents_and_an_agents_none() -> None:
+    compiled = profile_eval_of()
+    port = EvalSnowflake([profile_status("COMPLETED"), profile_results(compiled), spans(("r1", PARTNER), ("r2",))])
+    result = RunEvalSuite(port, FixedClock()).run((compiled,), options=OPTIONS)
+
+    attempt = eval_suite_json(result)["evals"][0]["attempts"][0]  # type: ignore[index]
+    first = attempt["questions"][0]
+    assert {
+        key: first[key] for key in ("expected_tools", "called_tools", "expected_subagents", "routed_subagents")
+    } == {
+        "expected_tools": None,
+        "called_tools": None,
+        "expected_subagents": [SALES],
+        "routed_subagents": [PARTNER],
+    }
+    assert first["metrics"][1] == {
+        "metric_name": "routing_accuracy",
+        "score": 0.0,
+        "passed": False,
+        "threshold": {"min": 0.9, "max": None},
+        "explanation": f"expected {SALES}; the router chose {PARTNER}",
+    }
+    assert first["passed"] is False and attempt["questions"][1]["passed"] is True
+    assert attempt["metric_summaries"][1] == {
+        "metric_name": "routing_accuracy",
+        "record_count": 2,
+        "passed_count": 1,
+        "average_score": 0.5,
+    }
+    agent_row = EvalResultRow("q", "Question", ())
+    assert "expected_subagents" not in _question_json(agent_row, frozenset())
