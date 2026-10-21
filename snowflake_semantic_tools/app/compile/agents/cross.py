@@ -19,6 +19,7 @@ from snowflake_semantic_tools.domain.model.eval import EvalCatalog
 from snowflake_semantic_tools.domain.validate.cowork_profile import schema_problems
 from snowflake_semantic_tools.domain.validate.cross_artifact import (
     agent_eval_problems,
+    auto_model_problems,
     blocking,
     publish_order,
     reachable_tool_problems,
@@ -31,11 +32,12 @@ def cross_artifact_result(
 ) -> CompileResult:
     """Check the compiled artifacts of `results` against one another, compiling nothing.
 
-    Reports, in order: the questions all three question sets share; each agent against its
-    eval, then against the tools it reaches, in agent order; then each search service whose
-    source an artifact publishing no earlier creates; then each agent publishing where CoWork
-    lists profiles, and each CoWork profile sharing an agent's schema. A tool member reached by
-    several agents is reported once.
+    Reports, in order: the questions all three question sets share; each agent's orchestration
+    model, then the agent against its eval, then against the tools it reaches, in agent order;
+    then each CoWork profile's orchestration model, in profile order; then each search service
+    whose source an artifact publishing no earlier creates; then each agent publishing where
+    CoWork lists profiles, and each CoWork profile sharing an agent's schema. A tool member
+    reached by several agents is reported once.
 
     Args:
         evals: The eval catalog the eval compiler read.
@@ -52,6 +54,7 @@ def cross_artifact_result(
     diagnostics = [
         *_shared_questions(compiled, agents, evals),
         *_agent_problems(agents, tools, evals),
+        *_profile_problems(profiles),
         *_publish_order(compiled, tools, positions),
         *schema_problems(
             tuple((agent.resolved.model, agent.target) for agent in agents),
@@ -79,7 +82,7 @@ def _shared_questions(
 def _agent_problems(
     agents: tuple[CompiledAgent, ...], tools: tuple[CompiledTool, ...], evals: EvalCatalog
 ) -> list[Diagnostic]:
-    """Check each agent against its eval, then against the defined tool members it reaches."""
+    """Check each agent's model and its eval, then the defined tool members it reaches."""
     # A CoWork profile's eval checks no agent, even one sharing the profile's name.
     evaluations = {evaluation.name.casefold(): evaluation for evaluation in evals.evals if evaluation.agent is not None}
     members = {item.artifact_key: item.member for item in tools}
@@ -87,11 +90,17 @@ def _agent_problems(
     for agent in agents:
         model = agent.resolved.model
         evaluation = evaluations.get(model.name.casefold())
-        if evaluation is not None:
-            found.extend(agent_eval_problems(model, evaluation, evals.defaults))
         gated = evaluation is not None and blocking(evaluation, evals.defaults)
+        found.extend(auto_model_problems(model, gated))
+        if evaluation is not None:
+            found.extend(agent_eval_problems(model, evaluation))
         found.extend(reachable_tool_problems(model, agent.resolved.depends_on, members, gated))
     return found
+
+
+def _profile_problems(profiles: tuple[CompiledCoworkProfile, ...]) -> list[Diagnostic]:
+    """Check each CoWork profile's orchestration model."""
+    return [found for profile in profiles for found in auto_model_problems(profile.resolved.model, False)]
 
 
 def _publish_order(

@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 328 codes
+- [Validation (VAL)](#validation-val) -- 329 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
@@ -3994,13 +3994,13 @@ Fix: add it to the config allowlist, or use an allowed model
 
 **Orchestration model is auto while a blocking eval exists** (error)
 
-`agent '<artifact>': orchestration_model is auto and a blocking eval is configured`
+`<type> '<artifact>': orchestration_model is auto and a blocking eval is configured`
 
 Raised when an agent's orchestration model is `auto` and its eval's `eval_tier` setting, its config's `config:`, else a folder route, else `evals.+eval_tier`, is blocking.
 
-Fix: pin the model explicitly
+Fix: pin the model with `{block}.+orchestration_model` or the {type}'s `config:`
 
-Note: With `auto`, a score change cannot be told from a change of model.
+Note: With `auto`, a score change cannot be told from a change of model. `+allow_auto_model` does not silence it; SST-VAL560 is not reported beside it.
 
 ### SST-VAL545
 
@@ -4167,6 +4167,18 @@ Raised when an agent's `spec.tools` entry has `type: mcp`.
 Fix: remove the tool and attach the server under spec.passthrough.mcp_servers
 
 Note: CREATE AGENT accepts the tool, then every run of the agent fails with 'Tool type mcp is not valid'. Snowflake attaches an MCP server with the spec's top-level `mcp_servers:` key, which `spec.passthrough` renders: `mcp_servers: [{server_spec: {name: <server>}}]`.
+
+### SST-VAL560
+
+**Orchestration model is left on auto** (warning, never promoted)
+
+`<type> '<artifact>': orchestration model is auto, so Snowflake chooses the model and may change it`
+
+Raised when an agent's or CoWork profile's orchestration model resolves to `auto`, written so or left unset, its `allow_auto_model` setting is not true, and SST-VAL544 does not refuse it.
+
+Fix: pin a model `snowflake.orchestration_models` lists with `{block}.+orchestration_model: claude-sonnet-4-6` or the {type}'s `config:`; set `{block}.+allow_auto_model: true` to keep auto deliberately
+
+Note: Snowflake may move an agent on `auto` to another model with no change to the project, so a change in its eval scores or its answers cannot be told from a change the project made. Where a blocking eval scores it, SST-VAL544 reports it instead, as an error. Strict mode leaves this at the project's severity: whether `auto` is acceptable is the project's policy, which `diagnostics.severity_overrides` sets to info, warning or error, or per target, as `SST-VAL560: "{{ 'error' if target.name == 'prod' else 'warning' }}"`.
 
 ### SST-VAL603
 

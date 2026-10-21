@@ -11,6 +11,7 @@ from snowflake_semantic_tools.domain.diagnostics import (
     DiagnosticBag,
     Origin,
     Severity,
+    _suggested,
     override_refusal,
     resolve_severities,
 )
@@ -49,9 +50,11 @@ def test_a_stable_fingerprint_ignores_the_line_and_keys_on_the_artifact_and_cont
 
 
 def test_no_baselinable_code_hashes_where_its_finding_sits() -> None:
-    # A code's template may print its line or column; a baseline must not key on either.
+    # A code's template may print its line or column; a baseline must not key on either. Its
+    # suggestion may name a placeholder the template does not, which `D` requires too.
     for code in sorted(code for code in ERROR_REGISTRY if baselinable(code)):
-        context: dict[str, Any] = dict.fromkeys(_placeholders(ERROR_REGISTRY[code].template), "x")
+        entry = ERROR_REGISTRY[code]
+        context: dict[str, Any] = dict.fromkeys(_placeholders(entry.template) | _suggested(entry.suggestion), "x")
         here = D(code, **{**context, **dict.fromkeys(POSITION_KEYS, 3)})
         moved = D(code, **{**context, **dict.fromkeys(POSITION_KEYS, 9)})
         assert here.code == code and stable_fingerprint(here) == stable_fingerprint(moved), code

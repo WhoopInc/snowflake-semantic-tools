@@ -80,14 +80,16 @@ class CoworkProfileModel:
 
     Loading resolves the profile's `settings` -- its own `config:`, then the `cowork_profiles:`
     folder routes over its file, then the block root -- and its `enabled` from them. The fields
-    a setting gives (the orchestration model, alias, tags, and `attach`) hold their defaults until
-    compile sets them.
+    a setting gives (the orchestration model, `allow_auto_model`, alias, tags, and `attach`) hold
+    their defaults until compile sets them.
 
     Attributes:
         source_files: The `cowork_profile.yml` and each instruction file it reads, relative to
             the project root, in the order they were read.
         display: The `display:` block, read as an agent's `profile:` block is.
         orchestration_model: "auto" when no setting names one.
+        allow_auto_model: The profile keeps `auto` deliberately, so SST-VAL560 does not warn;
+            False unless a setting says true.
         orchestration_instructions: The instruction text, or the content of the file its
             `{{ file('<path>') }}` names; None when unset or the file cannot be used.
         response_instructions: As `orchestration_instructions`, for the response instructions.
@@ -114,6 +116,7 @@ class CoworkProfileModel:
     comment: str | None = None
     display: AgentProfile = AgentProfile()
     orchestration_model: str = "auto"
+    allow_auto_model: bool = False
     orchestration_instructions: str | None = None
     response_instructions: str | None = None
     sample_questions: tuple[str, ...] = ()

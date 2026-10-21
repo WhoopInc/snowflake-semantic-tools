@@ -448,8 +448,14 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "agents.+orchestration_model",
         _S,
         "Orchestration model; must be in `snowflake.orchestration_models` (SST-CFG025 here, SST-VAL543 for the "
-        "value an agent resolves). `auto` lets Snowflake choose.",
+        "value an agent resolves). `auto` lets Snowflake choose, and SST-VAL560 warns.",
         default="auto",
+    ),
+    _key(
+        "agents.+allow_auto_model",
+        _B,
+        "Keep an agent's orchestration model on `auto` deliberately: true silences SST-VAL560 for it, not SST-VAL544.",
+        default="false",
     ),
     # A budget or timeout below 1 publishes, and Snowflake runs the agent as if none were set
     # (measured: 0 and negative values are stored verbatim and ignored), so each is refused.
@@ -509,8 +515,14 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "cowork_profiles.+orchestration_model",
         _S,
         "Orchestration model the profile routes questions with; must be in `snowflake.orchestration_models` "
-        "(SST-CFG025). `auto` lets Snowflake choose.",
+        "(SST-CFG025). `auto` lets Snowflake choose, and SST-VAL560 warns.",
         default="auto",
+    ),
+    _key(
+        "cowork_profiles.+allow_auto_model",
+        _B,
+        "Keep a profile's orchestration model on `auto` deliberately: true silences SST-VAL560 for it, not SST-VAL544.",
+        default="false",
     ),
     _key("cowork_profiles.+alias", _S, "Version alias assigned after publication."),
     _key(
