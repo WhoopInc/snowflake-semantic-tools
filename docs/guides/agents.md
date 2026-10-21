@@ -143,7 +143,8 @@ agent's settings with where each came from.
 |---|---|
 | `database`, `schema` | Where the agent publishes. Unset, the target's. |
 | `warehouse`, `query_timeout` | The execution environment of every Analyst, search, and generic tool of the agent that sets none; `query_timeout` is at least 1. With no `warehouse`, they run on the target's warehouse. |
-| `orchestration_model` | Rendered as `models.orchestration`. It must be in `snowflake.orchestration_models` (`SST-VAL543`), which defaults to `[auto]` alone, so a project that names a model lists it there. The connected check runs each model in that list in a throwaway agent, so a model agents refuse fails validation (`SST-VAL551`) rather than an agent's first question. Unset, `auto`. |
+| `orchestration_model` | Rendered as `models.orchestration`. It must be in `snowflake.orchestration_models` (`SST-VAL543`), which defaults to `[auto]` alone, so a project that names a model lists it there. The connected check runs each model in that list in a throwaway agent, so a model agents refuse fails validation (`SST-VAL551`) rather than an agent's first question. Unset, `auto`, which warns: see [Pinning the orchestration model](#pinning-the-orchestration-model). |
+| `allow_auto_model` | `true` keeps `auto` deliberately, so `SST-VAL560` does not warn about this agent. Unset, false. |
 | `budget_seconds`, `budget_tokens` | Rendered as `orchestration.budget`; each at least 1. Tokens spent inside tools are not counted, so the token budget is not a spend ceiling: an agent that sets `config.budget_tokens` itself is warned (`SST-VAL547`) unless a comment on that line, or just above it, says `orchestration`. A budget an agent inherits from `agents:` is not warned. |
 | `tool_not_accessible` | Rendered as `orchestration.tool_not_accessible`: `accept`, `reject`, or `legacy` (`SST-VAL545`). |
 | `analytical_search` | Rendered as `orchestration.capabilities.analytical_search`; `true` needs a `cortex_search` tool (`SST-VAL546`). |
@@ -155,6 +156,54 @@ agent's settings with where each came from.
 The keys an earlier draft read elsewhere -- `alias`, `secure`, `enabled` and
 `tags` at the top level, and `spec.models` and `spec.orchestration` -- are an
 error that names their `config:` key (`SST-PRS126`).
+
+### Pinning the orchestration model
+
+With `auto`, Snowflake chooses the model an agent runs on, and may change it
+with no change to the project: a CoWork profile left on `auto` was measured
+running `claude-opus-4-8`. A change of model then looks, in an eval's scores or
+in the agent's answers, like a change the project made. So pin the model: list
+it in `snowflake.orchestration_models` and name it for every agent, or in one
+agent's `config:`.
+
+```yaml
+snowflake:
+  orchestration_models: [auto, claude-sonnet-4-6]
+
+agents:
+  +orchestration_model: claude-sonnet-4-6
+```
+
+Each agent and [CoWork profile](cowork-profiles.md) whose model resolves to
+`auto`, written so or left unset, is warned once (`SST-VAL560`). It is a
+warning because `auto` works: whether it is acceptable is the project's
+policy. Set that policy with `diagnostics.severity_overrides`, to `info`,
+`warning` or `error`, or per target:
+
+```yaml
+diagnostics:
+  severity_overrides:
+    SST-VAL560: "{{ 'error' if target.name == 'prod' else 'warning' }}"
+```
+
+Strict mode (`--strict` or `validation.strict`) never promotes `SST-VAL560`, so
+it reports at the severity the project sets.
+
+To keep `auto` for one agent, or for the agents under one folder, set
+`allow_auto_model`, which silences `SST-VAL560` for those agents only:
+
+```yaml
+agents:
+  experiments:             # agents/experiments/
+    +allow_auto_model: true
+```
+
+or `allow_auto_model: true` in an agent's `config:`.
+
+An agent whose eval is blocking may not stay on `auto` at all: that is
+`SST-VAL544`, an error `allow_auto_model` does not silence, since a gated score
+change could not be told from a change of model. It is reported in place of
+`SST-VAL560`, and applies to a CoWork profile's eval as well.
 
 ## Tools
 
