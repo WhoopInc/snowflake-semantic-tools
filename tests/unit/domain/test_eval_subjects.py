@@ -27,6 +27,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     profile_subject_target,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.setting import ROOT_SOURCE, ROUTE_PREFIX
 from snowflake_semantic_tools.domain.render.eval import render_dataset_payload
 from snowflake_semantic_tools.domain.validate.eval_subject import cowork_listed_placement, subject_rules
 from tests.helpers.diagnostic_filters import codes
@@ -190,3 +191,27 @@ def test_a_profile_eval_validates_without_tool_checks_and_gates_its_routing_metr
 def test_a_routing_threshold_with_no_baseline_runs_is_reported() -> None:
     resolved = settled(concierge_eval(), baseline_runs=None)
     assert "SST-VAL735" in codes(validate(resolved))
+
+
+@pytest.mark.parametrize(
+    ("source", "written"),
+    [
+        (ROOT_SOURCE, "evals.+metrics"),
+        (f"{ROUTE_PREFIX}gtm/emea", "evals.gtm.emea.+metrics"),
+        (None, "evals.+metrics"),
+    ],
+    ids=["root", "route", "unresolved"],
+)
+def test_an_inherited_blind_metric_is_noted_where_its_setting_was_written(source: str | None, written: str) -> None:
+    blind = (system_metric("tool_execution_accuracy", gate=False, threshold=None),)
+    resolved = concierge_eval(inherited_blind_metrics=blind)
+    if source is not None:
+        resolved = settled(resolved, source, metrics=["tool_execution_accuracy"])
+    [noted] = [item for item in subject_rules(resolved) if item.code == "SST-VAL887"]
+    assert noted.context["field"] == written
+
+
+def test_a_profile_eval_left_no_metric_by_the_blind_ones_says_so_instead_of_prs101() -> None:
+    blind = (system_metric("tool_selection_accuracy", gate=False, threshold=None),)
+    found = codes(validate(concierge_eval(system_metrics=(), inherited_blind_metrics=blind)))
+    assert "SST-VAL888" in found and "SST-PRS101" not in found

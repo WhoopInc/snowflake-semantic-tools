@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 326 codes
+- [Validation (VAL)](#validation-val) -- 328 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
@@ -5827,6 +5827,30 @@ Raised when a CoWork profile's eval, on a target that publishes the profile to S
 Fix: evaluate the profile's rehearsal on a target that publishes it elsewhere; it routes the same way
 
 Note: Snowflake private preview. An eval's source table, dataset and config stage publish in its subject's schema, and eval tables, datasets and stages in CoWork's schema are unmeasured.
+
+### SST-VAL887
+
+**Inherited tool metric left out of a CoWork profile's eval** (info)
+
+`eval config for '<artifact>': metric '<name>', which <field> enables, is left out: it does not see the router's calls of a CoWork profile`
+
+Raised when the config of a CoWork profile's eval has no `metrics.system`, and the `metrics` setting it inherits from a folder route or the `evals:` block root lists `tool_selection_accuracy` or `tool_execution_accuracy`; the metric is left out of the config Snowflake runs.
+
+Fix: nothing to do; write metrics.system in the profile's eval config to choose its system metrics
+
+Note: Snowflake private preview, measured on a preview account: neither metric sees a router call. A profile's config that names either one itself, in `metrics.system` or its own `config.metrics`, is SST-VAL882 instead. Score the router with `routing_accuracy` under `metrics.routing`.
+
+### SST-VAL888
+
+**CoWork profile eval leaves Snowflake no metric** (error)
+
+`eval config for '<artifact>': with <detail> left out, Snowflake has no metric to score`
+
+Raised when the config of a CoWork profile's eval names no custom metric and no `metrics.system`, and every metric its inherited `metrics` setting lists is blind to the router (SST-VAL887).
+
+Fix: add answer_correctness or logical_consistency under metrics.system, or a custom metric
+
+Note: Snowflake private preview. The config Snowflake runs would list no metric, since `routing_accuracy` is SST's own and never sent to Snowflake; SST refuses it, as it refuses a config with no metric at all (SST-PRS101).
 
 ## dbt (DBT)
 

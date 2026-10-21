@@ -23,6 +23,7 @@ from snowflake_semantic_tools.domain.model.eval.model import (
 )
 from snowflake_semantic_tools.domain.model.eval.subject import subagent_reference
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.setting import ROUTE_PREFIX
 from snowflake_semantic_tools.domain.validate.shared import Emitter
 
 # The bounds every routing metric's score lies within.
@@ -37,6 +38,7 @@ def subject_rules(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
         SST-VAL768: an agent's eval dataset row sets `ground_truth_subagents`.
         SST-VAL881: a profile's row expects a call that is not one of the profile's subagents.
         SST-VAL882: a profile's eval config enables tool selection or tool execution accuracy.
+        SST-VAL887: a profile's eval config inherits one of those two, which is left out (info).
         SST-VAL883: a profile's eval dataset row sets `ground_truth_invocations`.
         SST-VAL884: no row of a profile's eval dataset sets `ground_truth_subagents`.
         SST-VAL885: no row of a profile's eval dataset expects the profile to decline (info).
@@ -98,15 +100,35 @@ def _agent_routing(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
 
 
 def _profile_config(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
-    """Refuse the system metrics blind to a router, then check each routing metric's bounds."""
+    """Refuse the system metrics blind to a router, note those left out, then check routing bounds."""
     found: list[Diagnostic] = [
         D("SST-VAL882", artifact=resolved.name, name=metric.name, origin=metric.origin, subject=resolved.key)
         for metric in resolved.config.system_metrics
         if metric.name in ROUTER_BLIND_METRICS
     ]
+    inherited = resolved.settings.get("metrics")
+    written = _written_at(inherited.source) if inherited is not None else "evals.+metrics"
+    found.extend(
+        D(
+            "SST-VAL887",
+            artifact=resolved.name,
+            name=metric.name,
+            field=written,
+            origin=metric.origin,
+            subject=resolved.key,
+        )
+        for metric in resolved.config.inherited_blind_metrics
+    )
     for metric in resolved.config.routing_metrics:
         found.extend(_routing_bounds(resolved, metric))
     return tuple(found)
+
+
+def _written_at(source: str) -> str:
+    """Name where an inherited setting was written: the block root's `+metrics`, or a route's."""
+    if source.startswith(ROUTE_PREFIX):
+        return f"evals.{source.removeprefix(ROUTE_PREFIX).replace('/', '.')}.+metrics"
+    return "evals.+metrics"
 
 
 def _routing_bounds(resolved: ResolvedEval, metric: EvalRoutingMetric) -> tuple[Diagnostic, ...]:

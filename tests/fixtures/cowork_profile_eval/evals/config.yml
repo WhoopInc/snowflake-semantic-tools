@@ -5,8 +5,9 @@
 #
 # `metrics.routing` is scored by SST from the run's router spans, and never
 # rendered into the YAML Snowflake runs. `metrics.system` is written out, so
-# the root's `+metrics` (which lists tool_selection_accuracy, blind to a
-# router: SST-VAL882) does not stand in for it.
+# the profile chooses its own Snowflake metrics; without it, the root's
+# `+metrics` would stand in less tool_selection_accuracy, which is blind to a
+# router (SST-VAL887).
 
 name: jaffle_concierge_ci
 

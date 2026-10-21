@@ -18,7 +18,9 @@ Each eval resolves its `evals:` settings -- its config's own `config:`, then the
 over its subject's folder, then the block root -- and the ones that stand in for an unset value
 are filled in before validation, so the validator, the renderer and the gate all read the same
 value: `judge_model` for a custom metric's absent `model`, `metrics` for a config's absent
-`metrics.system`, and `metric_version` for a system metric's absent `version`.
+`metrics.system`, and `metric_version` for a system metric's absent `version`. A CoWork
+profile's config that inherits `metrics` from a folder route or the root takes it without the
+tool metrics blind to a router; validation notes each one left out.
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.config_schema import resolve_settings
 from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel
 from snowflake_semantic_tools.domain.model.eval import (
+    ROUTER_BLIND_METRICS,
     CustomEvalMetric,
     EvalCatalog,
     EvalConfig,
@@ -50,6 +53,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     ResolvedEval,
     eval_defaults,
 )
+from snowflake_semantic_tools.domain.model.setting import CONFIG_SOURCE
 from snowflake_semantic_tools.domain.validate.eval import validate_eval_catalog
 
 # An eval file the agent does not publish, paired for checking, and the file whose findings count.
@@ -219,7 +223,11 @@ def _settled(subject: EvalSubject, loaded: _Loaded, root: _Root, dataset: EvalDa
     """
     config, source = loaded
     settings = resolve_settings(root[0], subject.folder, config.config)
-    filled = _with_system_defaults(config, source, _options(eval_defaults(settings), root))
+    written = settings.get("metrics")
+    # Snowflake private preview (PrPr): CoWork profiles. Only a `metrics` setting the profile's
+    # own config writes is the profile's choice; one it inherits drops the router-blind metrics.
+    drop_blind = subject.is_profile and (written is None or written.source != CONFIG_SOURCE)
+    filled = _with_system_defaults(config, source, _options(eval_defaults(settings), root), drop_blind)
     placeholder = dataset or EvalDataset(config.origin, config.source_file, None, ())
     return ResolvedEval(subject.model, placeholder, filled, (), settings)
 
@@ -321,24 +329,36 @@ def _named(
     return found
 
 
-def _with_system_defaults(config: EvalConfig, loaded: tuple[str, ParsedYaml], defaults: EvalDefaults) -> EvalConfig:
+def _with_system_defaults(
+    config: EvalConfig, loaded: tuple[str, ParsedYaml], defaults: EvalDefaults, drop_blind: bool = False
+) -> EvalConfig:
     """Fill a config's system metrics from its `metrics` setting, and their versions from `metric_version`.
 
     The metrics the setting lists stand in only when the `metrics:` block is a mapping with no
     `system` key: an explicit `system: []` enables none. Each is ungated, with no threshold,
     and placed at the `metrics:` block. Only a version the metric does not set is filled.
+
+    Args:
+        drop_blind: Leave out the metrics blind to a CoWork profile's router that the setting
+            lists, keeping them in `inherited_blind_metrics`, for a profile's config that
+            inherits the setting. Snowflake private preview (PrPr).
     """
     source_file, parsed = loaded
     block = parsed.tree.get("metrics")
     system = config.system_metrics
+    dropped: tuple[EvalSystemMetric, ...] = ()
     if isinstance(block, dict) and "system" not in block:
         origin = origin_at(parsed, ("metrics",), source_file)
         system = tuple(EvalSystemMetric(origin, name) for name in defaults.metrics)
+        if drop_blind:
+            dropped = tuple(metric for metric in system if metric.name in ROUTER_BLIND_METRICS)
+            system = tuple(metric for metric in system if metric.name not in ROUTER_BLIND_METRICS)
     return replace(
         config,
         system_metrics=tuple(
             replace(metric, version=defaults.metric_version) if metric.version is None else metric for metric in system
         ),
+        inherited_blind_metrics=dropped,
     )
 
 

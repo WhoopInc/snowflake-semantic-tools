@@ -13,7 +13,8 @@ from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
 from snowflake_semantic_tools.adapters.yaml.cowork_profiles import load_cowork_profiles
 from snowflake_semantic_tools.adapters.yaml.evals import load_eval_catalog
 from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
-from snowflake_semantic_tools.domain.model.eval import EvalCatalog
+from snowflake_semantic_tools.domain.diagnostics import Severity
+from snowflake_semantic_tools.domain.model.eval import EvalCatalog, EvalDefaults
 from tests.helpers.eval_projects import write
 from tests.helpers.projects import project_paths
 from tests.helpers.reference_project import DBT_MANIFEST, project_copy, with_profile_eval
@@ -197,3 +198,58 @@ def test_the_project_source_loads_the_profiles_it_is_not_given(tmp_path: Path) -
     keys = [item.key for item in source.load_evals().evals]
     assert keys == ["eval:jaffle_analytics_agent", "eval:cowork_profile:jaffle_concierge"]
     assert [item.key for item in source.load_evals(cowork_profiles=()).evals] == ["eval:jaffle_analytics_agent"]
+
+
+_INHERITING = CONFIG.replace("  system:\n    - name: answer_correctness\n      version: v3\n", "")
+
+
+def _inheriting_catalog(tmp_path: Path, block: object, config: str = _INHERITING) -> EvalCatalog:
+    """Load the profile eval with no `metrics.system`, under the `evals:` block given."""
+    _profile_project(tmp_path, config=config)
+    profiles, diagnostics = load_cowork_profiles(tmp_path)
+    defaults = EvalDefaults(metrics=("tool_selection_accuracy", "answer_correctness"), metric_version="v3")
+    return load_eval_catalog(
+        tmp_path, (), defaults=defaults, block=block, initial_diagnostics=diagnostics, cowork_profiles=profiles
+    )
+
+
+def test_a_profile_eval_inheriting_the_root_metrics_runs_without_the_blind_ones(tmp_path: Path) -> None:
+    block = {"+metrics": ["tool_selection_accuracy", "answer_correctness"]}
+    catalog = _inheriting_catalog(tmp_path, block)
+
+    [value] = catalog.evals
+    assert [metric.name for metric in value.config.system_metrics] == ["answer_correctness"]
+    assert [metric.name for metric in value.config.inherited_blind_metrics] == ["tool_selection_accuracy"]
+    found = [(item.code, item.severity) for item in catalog.diagnostics if item.code.startswith("SST-VAL88")]
+    assert found == [("SST-VAL887", Severity.INFO)]
+
+
+def test_a_route_inherited_metric_is_named_where_the_route_writes_it(tmp_path: Path) -> None:
+    block = {"concierge": {"+metrics": ["tool_execution_accuracy", "answer_correctness"]}}
+    catalog = _inheriting_catalog(tmp_path, block)
+
+    [noted] = [item for item in catalog.diagnostics if item.code == "SST-VAL887"]
+    assert noted.context["name"] == "tool_execution_accuracy"
+    assert noted.context["field"] == "evals.concierge.+metrics"
+
+
+def test_a_profile_eval_left_no_metric_by_the_blind_ones_is_refused(tmp_path: Path) -> None:
+    catalog = _inheriting_catalog(tmp_path, {"+metrics": ["tool_selection_accuracy"]})
+
+    codes = [item.code for item in catalog.diagnostics]
+    assert "SST-VAL888" in codes and "SST-PRS101" not in codes
+    [value] = catalog.evals
+    assert value.config.system_metrics == ()
+
+
+def test_a_profile_config_that_lists_a_blind_metric_itself_is_refused(tmp_path: Path) -> None:
+    config = _INHERITING.replace(
+        "  agent_version: committed\n", "  agent_version: committed\n  metrics: [tool_selection_accuracy]\n"
+    )
+    catalog = _inheriting_catalog(tmp_path, {"+metrics": ["answer_correctness"]}, config)
+
+    [value] = catalog.evals
+    assert [metric.name for metric in value.config.system_metrics] == ["tool_selection_accuracy"]
+    assert value.config.inherited_blind_metrics == ()
+    codes = [item.code for item in catalog.diagnostics]
+    assert "SST-VAL882" in codes and "SST-VAL887" not in codes

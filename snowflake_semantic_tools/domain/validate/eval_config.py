@@ -56,6 +56,8 @@ def validate_eval_config(
         SST-VAL762: dataset.name_template or dataset.source_table_template is not set.
         SST-PRS010: the rendered source table name is empty or longer than 128 characters.
         SST-PRS101: the config enables no system metric and names no custom metric.
+        SST-VAL888: a CoWork profile's config would enable a system metric only through an
+            inherited `metrics` setting whose metrics are all blind to its router.
         SST-VAL722: a system metric has no version, here or in its `metric_version` setting.
         SST-PRS013: a system metric's effective version is not v3, or run.accept_statuses
             lists a status other than COMPLETED.
@@ -149,9 +151,16 @@ def _source_table_name(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
 
 
 def _declares_metrics(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
+    """Refuse a config that leaves Snowflake no metric to score, saying why when filling emptied it."""
     emit = _emitter(resolved)
     config = resolved.config
-    if not config.system_metrics and not config.custom_metric_names:
+    if config.system_metrics or config.custom_metric_names:
+        return ()
+    if config.inherited_blind_metrics:
+        # Snowflake private preview (PrPr): CoWork profiles. The metrics inherited were all blind.
+        names = " and ".join(str(metric.name) for metric in config.inherited_blind_metrics)
+        emit("SST-VAL888", detail=names)
+    else:
         emit("SST-PRS101", artifact=config.source_file, field="metrics")
     return emit.diagnostics
 

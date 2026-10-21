@@ -252,4 +252,41 @@ SPECS: tuple[ErrorSpec, ...] = (
             "unmeasured."
         ),
     ),
+    spec(
+        "SST-VAL887",
+        Severity.INFO,
+        "Inherited tool metric left out of a CoWork profile's eval",
+        (
+            "eval config for '{artifact}': metric '{name}', which {field} enables, is left out: it does not "
+            "see the router's calls of a CoWork profile"
+        ),
+        "nothing to do; write metrics.system in the profile's eval config to choose its system metrics",
+        condition=(
+            "the config of a CoWork profile's eval has no `metrics.system`, and the `metrics` setting it "
+            "inherits from a folder route or the `evals:` block root lists `tool_selection_accuracy` or "
+            "`tool_execution_accuracy`; the metric is left out of the config Snowflake runs"
+        ),
+        note=(
+            "Snowflake private preview, measured on a preview account: neither metric sees a router "
+            "call. A profile's config that names either one itself, in `metrics.system` or its own "
+            "`config.metrics`, is SST-VAL882 instead. Score the router with `routing_accuracy` under "
+            "`metrics.routing`."
+        ),
+    ),
+    spec(
+        "SST-VAL888",
+        Severity.ERROR,
+        "CoWork profile eval leaves Snowflake no metric",
+        "eval config for '{artifact}': with {detail} left out, Snowflake has no metric to score",
+        "add answer_correctness or logical_consistency under metrics.system, or a custom metric",
+        condition=(
+            "the config of a CoWork profile's eval names no custom metric and no `metrics.system`, and "
+            "every metric its inherited `metrics` setting lists is blind to the router (SST-VAL887)"
+        ),
+        note=(
+            "Snowflake private preview. The config Snowflake runs would list no metric, since "
+            "`routing_accuracy` is SST's own and never sent to Snowflake; SST refuses it, as it refuses "
+            "a config with no metric at all (SST-PRS101)."
+        ),
+    ),
 )

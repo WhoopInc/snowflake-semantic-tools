@@ -80,6 +80,8 @@ def validate_eval_catalog(
         SST-VAL762: a dataset template is not set.
         SST-PRS010: the rendered source table name is empty or longer than 128 characters.
         SST-PRS101: the config declares no metric.
+        SST-VAL888: a CoWork profile's config declares no metric once the inherited tool metrics
+            blind to its router are left out.
         SST-VAL722: a system metric's version is not pinned.
         SST-PRS013: a system metric version other than v3, or an accepted status other than
             COMPLETED.

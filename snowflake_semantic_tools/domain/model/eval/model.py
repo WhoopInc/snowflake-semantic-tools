@@ -295,6 +295,10 @@ class EvalConfig:
             written without their `+`; None when it writes none.
         routing_metrics: `metrics.routing`, the metrics SST scores a CoWork profile's routing
             by; never rendered into the config Snowflake runs. Snowflake private preview (PrPr).
+        inherited_blind_metrics: For a CoWork profile's eval, the system metrics its `metrics`
+            setting would have enabled from a folder route or the block root, left out because
+            they never see a router call; `system_metrics` holds the rest. Snowflake private
+            preview (PrPr).
     """
 
     origin: Origin
@@ -307,6 +311,7 @@ class EvalConfig:
     name: str | None = None
     config: object = None
     routing_metrics: tuple[EvalRoutingMetric, ...] = ()
+    inherited_blind_metrics: tuple[EvalSystemMetric, ...] = ()
 
     def routing_metric(self, name: str) -> EvalRoutingMetric | None:
         """Return the first routing metric whose name matches casefolded, or None."""
