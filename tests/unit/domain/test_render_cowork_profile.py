@@ -43,7 +43,7 @@ SALES_ENTRY = {
     "source": {
         "type": "DATA_AGENT",
         "fqn": "DB.AGENTS.SALES",
-        "sample_questions": [{"question": "What closed last week?"}],
+        "sample_questions": ["What closed last week?"],
     },
 }
 

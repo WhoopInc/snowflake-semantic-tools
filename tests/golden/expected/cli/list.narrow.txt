@@ -5,7 +5,7 @@ ARTIFACT                         STATUS   TARGET                    FINGERPRINT
 agent:jaffle_analytics_agent     pending  SST_REF_DEV.JAFFLE.JA...  f8105d1926e8
 agent:jaffle_delivery_agent      pending  ...JAFFLE_DELIVERY_AGENT  587ccbb3cf86
 agent:jaffle_minimal_agent       pending  ...JAFFLE_MINIMAL_AGENT   506d43050765
-cowork_profile:jaffle_concierge  pending  ...JAFFLE_CONCIERGE       ba4a3c93fe57
+cowork_profile:jaffle_concierge  pending  ...JAFFLE_CONCIERGE       d7a39e579d5b
 eval:jaffle_analytics_agent      pending  SST_REF_DEV.JAFFLE.EV...  4343526c2cbf
 plugin:jaffle-toolkit            pending  ...JAFFLE_TOOLKIT         2d87d777ba51
 profile:jaffle-analyst           pending  ...PROFILE_REGISTRY       f68a9b13df0e

@@ -3,7 +3,7 @@ $ sst --project-dir <project> --manifest <manifest> list --select model:orders+
 --- stdout
 ARTIFACT                         STATUS   TARGET                                        FINGERPRINT
 agent:jaffle_analytics_agent     pending  SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT     f8105d1926e8
-cowork_profile:jaffle_concierge  pending  SST_REF_DEV.PROFILES.JAFFLE_CONCIERGE         ba4a3c93fe57
+cowork_profile:jaffle_concierge  pending  SST_REF_DEV.PROFILES.JAFFLE_CONCIERGE         d7a39e579d5b
 eval:jaffle_analytics_agent      pending  ...EVAL_JAFFLE_ANALYTICS_AGENT_DCE1F8A        4343526c2cbf
 semantic_view:jaffle_menu        pending  SST_REF_DEV.CORE.JAFFLE_MENU                  9ad856b7531a
 semantic_view:jaffle_sales       pending  SST_REF_DEV.JAFFLE.JAFFLE_SALES               d8507645d121

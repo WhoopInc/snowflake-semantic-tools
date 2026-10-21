@@ -29,7 +29,6 @@ from snowflake_semantic_tools.domain.render.agent import (
     render_spec_json,
     render_tool_entry,
     render_tool_resources,
-    sample_question_entries,
 )
 from snowflake_semantic_tools.domain.state import canonical_json
 
@@ -135,7 +134,10 @@ def desired_cowork_profile_definition(model: CoworkProfileModel, spec: Mapping[s
 
 
 def _subagent_entry(subagent: ResolvedSubagent) -> dict[str, object]:
-    # An entry missing any of these four makes the profile drop its whole subagent list.
+    # The routing guide asks for all four fields, though the server routes without them
+    # (docs/design/snowflake-behaviour.md). The router reads `source.sample_questions` as a
+    # list of strings and refuses every run on question objects, unlike an agent's
+    # instructions, so these stay plain text.
     fqn = subagent.fqn.sql
     return {
         "name": fqn,
@@ -144,6 +146,6 @@ def _subagent_entry(subagent: ResolvedSubagent) -> dict[str, object]:
         "source": {
             "type": SUBAGENT_SOURCE,
             "fqn": fqn,
-            "sample_questions": sample_question_entries(subagent.sample_questions),
+            "sample_questions": list(subagent.sample_questions),
         },
     }

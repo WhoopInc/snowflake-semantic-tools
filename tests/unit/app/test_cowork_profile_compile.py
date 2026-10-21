@@ -53,7 +53,7 @@ def test_a_subagent_takes_its_agents_display_name_comment_and_sample_questions()
             "source": {
                 "type": "DATA_AGENT",
                 "fqn": "DB.SCH.SALES",
-                "sample_questions": [{"question": "What closed last week?"}],
+                "sample_questions": ["What closed last week?"],
             },
         }
     ]

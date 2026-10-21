@@ -685,7 +685,7 @@ account in October 2026.
 CoWork profiles are a Snowflake private preview (PrPr), documented in
 [About profiles in Snowflake CoWork](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles) and
 [Set up profile routing in Snowflake CoWork](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing). Each entry below was
-measured on 2026-10-20 on an account enrolled in the preview, routing through
+measured on an account enrolled in the preview, routing through
 `SNOWFLAKE.CORTEX.DATA_AGENT_RUN` and reading the `agent_router` tool use it
 returns. A preview may change before general availability, so re-check these
 first when profiles misbehave.

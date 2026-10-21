@@ -32,15 +32,9 @@
             "type": "DATA_AGENT",
             "fqn": "SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT",
             "sample_questions": [
-              {
-                "question": "How many orders are open across all locations?"
-              },
-              {
-                "question": "Which location contributes the most monthly recurring revenue?"
-              },
-              {
-                "question": "Which menu item has the most ingredients?"
-              }
+              "How many orders are open across all locations?",
+              "Which location contributes the most monthly recurring revenue?",
+              "Which menu item has the most ingredients?"
             ]
           }
         },
@@ -52,9 +46,7 @@
             "type": "DATA_AGENT",
             "fqn": "SST_REF_DEV.JAFFLE.JAFFLE_DELIVERY_AGENT",
             "sample_questions": [
-              {
-                "question": "Where is my jaffle order?"
-              }
+              "Where is my jaffle order?"
             ]
           }
         }
