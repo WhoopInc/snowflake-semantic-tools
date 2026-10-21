@@ -3996,7 +3996,7 @@ Fix: add it to the config allowlist, or use an allowed model
 
 `<type> '<artifact>': orchestration_model is auto and a blocking eval is configured`
 
-Raised when an agent's orchestration model is `auto` and its eval's `eval_tier` setting, its config's `config:`, else a folder route, else `evals.+eval_tier`, is blocking.
+Raised when an agent's or CoWork profile's orchestration model is `auto` and its eval's `eval_tier` setting, its config's `config:`, else a folder route, else `evals.+eval_tier`, is blocking.
 
 Fix: pin the model with `{block}.+orchestration_model` or the {type}'s `config:`
 

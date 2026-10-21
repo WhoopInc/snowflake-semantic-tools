@@ -54,7 +54,7 @@ def cross_artifact_result(
     diagnostics = [
         *_shared_questions(compiled, agents, evals),
         *_agent_problems(agents, tools, evals),
-        *_profile_problems(profiles),
+        *_profile_problems(profiles, evals),
         *_publish_order(compiled, tools, positions),
         *schema_problems(
             tuple((agent.resolved.model, agent.target) for agent in agents),
@@ -98,9 +98,16 @@ def _agent_problems(
     return found
 
 
-def _profile_problems(profiles: tuple[CompiledCoworkProfile, ...]) -> list[Diagnostic]:
-    """Check each CoWork profile's orchestration model."""
-    return [found for profile in profiles for found in auto_model_problems(profile.resolved.model, False)]
+def _profile_problems(profiles: tuple[CompiledCoworkProfile, ...], evals: EvalCatalog) -> list[Diagnostic]:
+    """Check each CoWork profile's orchestration model against whether a blocking eval scores it."""
+    # Keyed by the subject's artifact key, so an agent's eval never gates a profile of its name.
+    evaluations = {evaluation.subject.key: evaluation for evaluation in evals.evals if evaluation.agent is None}
+    found: list[Diagnostic] = []
+    for profile in profiles:
+        model = profile.resolved.model
+        evaluation = evaluations.get(model.key)
+        found.extend(auto_model_problems(model, evaluation is not None and blocking(evaluation, evals.defaults)))
+    return found
 
 
 def _publish_order(

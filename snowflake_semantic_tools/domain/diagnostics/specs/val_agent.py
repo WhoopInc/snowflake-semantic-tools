@@ -435,8 +435,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{type} '{artifact}': orchestration_model is auto and a blocking eval is configured",
         "pin the model with `{block}.+orchestration_model` or the {type}'s `config:`",
         condition=(
-            "an agent's orchestration model is `auto` and its eval's `eval_tier` setting, its config's "
-            "`config:`, else a folder route, else `evals.+eval_tier`, is blocking"
+            "an agent's or CoWork profile's orchestration model is `auto` and its eval's `eval_tier` "
+            "setting, its config's `config:`, else a folder route, else `evals.+eval_tier`, is blocking"
         ),
         note=(
             "With `auto`, a score change cannot be told from a change of model. `+allow_auto_model` "
