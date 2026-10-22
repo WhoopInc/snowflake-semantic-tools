@@ -662,8 +662,8 @@ to `@<stage>/<agent>/<commit>/agent_spec.yaml` under `apply.agent_spec_stage`
    the same spec, which apply keeps.
 2. When the agent exists, `SET COMMENT` writes the marked comment first, then
    `ALTER AGENT ... ADD VERSION FROM` that folder, commented
-   `git:<commit> sst-spec:<fingerprint>`. An agent with a live version, which is every agent
-   SST has published since this release, has the spec written into its live
+   `git:<commit> sst-spec:<fingerprint>`. An agent with a live version, as
+   every agent SST publishes now has, has the spec written into its live
    version instead (`MODIFY LIVE VERSION SET SPECIFICATION`), which is then
    committed with that comment, so an update always adds exactly one version.
    A draft edited outside SST is replaced, not kept. Then
@@ -736,14 +736,19 @@ default, pinned to it by name, then serve.
 
 An agent in Snowflake has committed versions (`VERSION$1`, `VERSION$2`, ...),
 which never change once committed, at most one editable live version (Snowsight
-calls it DRAFT), aliases such as `RELEASED` that each point at one committed
-version, and a default. SST keeps three commands apart, the way git keeps the
-working tree, a branch and a release tag apart:
+calls it DRAFT), aliases that each point at one committed version, and a
+default. The **release** is the version `sst apply` last published: the default,
+pinned to it by name, and the version carrying the agent's `alias` when it sets
+one. `RELEASED` below is such an alias, as a project might name it; SST does not
+create one unless `alias:` says so.
+
+SST keeps three commands apart, the way git keeps the working tree, a branch and
+a release tag apart:
 
 | Command | Like git's | What it touches in Snowflake |
 |---|---|---|
 | `sst ask`, `sst test --suite evals --unpublished` | the working tree | A temporary copy built from the project as it is on disk, unapplied edits included. Nothing published, no version. |
-| `sst test --compare-models` | commits on a side branch | Extra committed versions of the published agent, one per candidate model, aliased `EVAL_<MODEL>`. Never the default, `RELEASED`, or what any caller is served ([comparing models](evals.md#comparing-orchestration-models)). |
+| `sst test --compare-models` | commits on a side branch | Extra committed versions of the published agent: a hold copy of the release, one per candidate model (aliased `EVAL_<MODEL>`), and a restore copy the live version is reopened from. Never the default, the alias, or what any caller is served ([comparing models](evals.md#comparing-orchestration-models)). |
 | `sst plan` / `sst apply` | tagging a release | Commits a version when the spec changed, then moves the alias and the default to it. |
 
 **`sst apply` is the only command that moves the default or the alias.**
@@ -770,8 +775,10 @@ where apply put it. `DESCRIBE AGENT` shows which: `default_version_name` reads
 ```mermaid
 flowchart LR
     A["sst apply"] -->|commits, pins| R["VERSION$4<br/>RELEASED, default"]
-    C["sst test --compare-models"] -->|commits| E1["VERSION$6<br/>EVAL_CLAUDE_OPUS_4_8"]
+    C["sst test --compare-models"] -->|commits| H["VERSION$5<br/>hold"]
+    C -->|commits| E1["VERSION$6<br/>EVAL_CLAUDE_OPUS_4_8"]
     C -->|commits| E2["VERSION$7<br/>EVAL_CLAUDE_HAIKU_4_5"]
+    C -->|commits, reopens live from| RS["VERSION$8<br/>restore"]
     L["live version<br/>released spec"] -.->|unversioned callers| U((users))
     R -.->|CoWork, !DEFAULT| U
 ```
@@ -792,9 +799,17 @@ or that has no live version, is an update with reason `version_drift`
 default to that version by name. An agent with no live version whose newest
 version holds another spec gets a new version. An agent whose default serves
 that version only by following `LAST`, as one published before SST pinned
-defaults does, is updated once to pin it, without adding a version
+defaults does, is updated once to pin it, reason `default_unpinned`, without adding a version
 (`SST-PLN107`, an info). This is how a [rollback](ci-cd.md#rollback) is rolled
 forward.
+
+Versions a [model comparison](evals.md#comparing-orchestration-models) commits,
+each commented `sst-eval-model:` (a candidate, or the `hold` and `restore`
+copies), are left out: plan never takes one for the release, never reports one
+or its `EVAL_` alias as drift, and never unsets that alias. A comparison killed
+before its restore leaves the agent with no live version; that missing live
+version is the drift plan reports, and since `LAST` is then a candidate, apply
+commits a new release rather than opening the live version from it.
 
 SST creates the stage when it is absent, as it does the skill bundle, profile,
 and eval config stages: before the first upload to it, apply runs

@@ -1,6 +1,6 @@
 # Model comparison report: `compare.json`, schema `sst.compare/1`
 
-`sst test --suite evals --compare-models` writes one `compare.json` per run, beside `report.html`,
+`sst test --compare-models` writes one `compare.json` per run, beside `report.html`,
 and prints the same object with `--output json`. Every key below is always present; a value
 that is not known is `null` unless the key says otherwise. Numbers are JSON numbers, never
 strings. Times are ISO 8601 with offset. Lists are in display order.
@@ -70,7 +70,7 @@ strings. Times are ISO 8601 with offset. Lists are in display order.
         "kind": "winner",
         "model": "claude-opus-4-8",
         "summary": "claude-opus-4-8 beats the pinned claude-sonnet-4-6 on answer_correctness (0.94 vs 0.88) outside the spread, at 1.8x the credits per question.",
-        "pin_suggestion": "agents.+orchestration_model: claude-opus-4-8",
+        "pin_suggestion": "# agent.yml of agent 'jaffle_analyst'\nconfig:\n  orchestration_model: claude-opus-4-8",
         "excluded": [{"model": "claude-haiku-4-5-preview", "reason": "preview"}]
       },
       "notes": [
@@ -101,7 +101,9 @@ strings. Times are ISO 8601 with offset. Lists are in display order.
   `no_clear_winner` (the leader's range overlaps the pinned model's, or either completed fewer
   than 2 runs, so a lead cannot be told from run-to-run noise),
   `incomplete` (the pinned model or every candidate failed).
-- `verdict.pin_suggestion`: the config line to review when `kind` is `winner`, else null.
+- `verdict.pin_suggestion`: when `kind` is `winner`, the YAML that pins the winner for this
+  subject alone: a comment naming the subject's file, then its `config:` block, lines joined
+  by `\n`; else null.
 
 ## Scores
 
