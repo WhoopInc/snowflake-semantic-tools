@@ -1,4 +1,4 @@
-"""Decide whether a comparison may start on an eval's agent or CoWork profile: is it published as compiled?
+"""Decide whether a comparison may start on a subject: is it published exactly as compiled?
 
 A comparison commits versions beside the release and restores the live version from the
 released specification, so it must start from exactly what `sst apply` left: the plan of the

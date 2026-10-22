@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 332 codes
+- [Validation (VAL)](#validation-val) -- 336 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
@@ -5107,6 +5107,50 @@ Raised when `snowflake.orchestration_models` is set, and a candidate model of an
 Fix: add the model to snowflake.orchestration_models, or compare only models it lists
 
 Note: A comparison commits a version of the published agent or CoWork profile on each candidate, so it is held to the list an agent's own model is (SST-VAL543).
+
+### SST-VAL773
+
+**Comparison cost not landed yet** (info)
+
+`eval '<artifact>': the usage of <count> model(s)' runs has not landed in Snowflake's usage views yet, so their cost is pending`
+
+Raised when a comparison read its cost before every agent request, judge call, or SQL credit its runs made had a row in ACCOUNT_USAGE.
+
+Fix: run `sst test --refresh-cost {path}` in about an hour to fill it in
+
+Note: Snowflake documents CORTEX_AGENT_USAGE_HISTORY as lagging up to an hour, and its SQL credits up to eight; the report marks each value it could not read yet `pending`.
+
+### SST-VAL774
+
+**Comparison cost unavailable** (info)
+
+`eval '<artifact>': the cost of <count> model(s)' runs is unavailable: <reason>`
+
+Raised when reading CORTEX_AGENT_USAGE_HISTORY, the evaluation's eval spans, or CORTEX_REST_API_USAGE_HISTORY was refused, or nothing named the requests to read.
+
+Fix: read the cost with a role that may read SNOWFLAKE.ACCOUNT_USAGE and the AI observability events, as `sst test --refresh-cost {path}`; the scores stand without it
+
+### SST-VAL775
+
+**Comparison candidate is not generally available** (info)
+
+`eval '<artifact>': candidate '<model>' is <kind>, so the verdict reports it but never names it`
+
+Raised when SHOW CORTEX BASE MODELS lists a candidate model as in preview (PUPR or PRPR), INTERNAL, LEGACY or past end-of-life.
+
+Fix: compare generally available models to choose one to pin
+
+### SST-VAL776
+
+**CoWork profile cost is its router's** (info)
+
+`eval '<artifact>': the CoWork profile's cost is its router's requests alone; the subagent runs they routed to are not attributed`
+
+Raised when a comparison read the cost of a CoWork profile's eval.
+
+Fix: compare models on each subagent's own eval for what the subagents cost
+
+Note: Snowflake private preview: CoWork profiles. CORTEX_AGENT_USAGE_HISTORY records the router's request for each question; each subagent call it makes is a request of its own, which nothing in the run names.
 
 ### SST-VAL801
 

@@ -78,6 +78,8 @@ class EvalResultRow:
             a decline, and None states no expectation, as for every agent's eval.
         routed_subagents: The subagents the profile's router chose, by qualified name, sorted;
             `()` when it chose none; None when not read, as for every agent's eval.
+        request_ids: The agent requests that answered the question, as the run's results name
+            them, sorted; `()` when not read, as for an unpublished run.
     """
 
     question_key: str
@@ -92,6 +94,7 @@ class EvalResultRow:
     record_id: str | None = None
     expected_subagents: tuple[str, ...] | None = None
     routed_subagents: tuple[str, ...] | None = None
+    request_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

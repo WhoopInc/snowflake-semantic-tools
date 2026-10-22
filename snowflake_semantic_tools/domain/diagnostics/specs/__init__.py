@@ -3,7 +3,7 @@
 Each module exports `SPECS`, its codes sorted by code, and `TITLE`, the title in
 `SUBSYSTEMS` of the prefix it is named for. A module is the prefix in lowercase (`int_`
 for INT, so it does not shadow the builtin), except VAL, which is split by hundreds, and the
-8xx band by range:
+7xx and 8xx bands by range:
 
 - `val_shared`: 0xx, names, descriptions, and connected validation
 - `val_metric`: 1xx, metrics
@@ -12,7 +12,8 @@ for INT, so it does not shadow the builtin), except VAL, which is split by hundr
 - `val_filter`: 4xx, filters, custom instructions, and verified queries
 - `val_agent`: 5xx, agents
 - `val_tool`: 6xx, tools
-- `val_eval`: 7xx, evals
+- `val_eval`: 700-769, evals
+- `val_compare`: 770-789, comparing orchestration models on an eval
 - `val_skill`: 801-869, skills, plugins, and CoCo Desktop profiles
 - `val_cowork_profile`: 870-889, Snowflake CoWork profiles, a Snowflake private preview
 

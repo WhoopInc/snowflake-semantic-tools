@@ -24,7 +24,7 @@ registry, configuration, discovery, parsing, loading, references, membership, va
 rendering, manifest and state, planning, apply, Snowflake, external systems, and internal.
 
 `VAL` is the largest area, so its hundreds digit is a band, and each band is its own module, but
-for `VAL8xx`, which two modules share by range:
+for `VAL7xx` and `VAL8xx`, which two modules each share by range:
 
 | Band | Checks | Module |
 |---|---|---|
@@ -35,7 +35,8 @@ for `VAL8xx`, which two modules share by range:
 | `VAL4xx` | filters, custom instructions, verified queries, and compiled SQL | `val_filter` |
 | `VAL5xx` | agents | `val_agent` |
 | `VAL6xx` | tools | `val_tool` |
-| `VAL7xx` | evals | `val_eval` |
+| `VAL7xx`, 700-769 | evals | `val_eval` |
+| `VAL7xx`, 770-789 | comparing orchestration models on an eval's published subject | `val_compare` |
 | `VAL8xx`, 801-869 | skills, plugins, and CoCo Desktop profiles | `val_skill` |
 | `VAL8xx`, 870-889 | Snowflake CoWork profiles, a Snowflake private preview | `val_cowork_profile` |
 
