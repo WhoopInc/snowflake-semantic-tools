@@ -408,6 +408,11 @@ def decide(kind: str, models: Sequence[ModelReport], metrics: Sequence[MetricSpe
     leading = best.metric(metric.name) if best is not None else None
     if best is None or leading is None or not _above(leading.mean, held.mean):
         summary = f"No candidate beats the pinned {pinned.model} on {metric.name} ({_score(held.mean)})."
+        # A candidate that ties the headline and still ranks above the pinned model is ahead on
+        # what ranks after it -- another metric, its price, or its latency -- which a reviewer
+        # weighing a cheaper model needs, though it is no winner to pin.
+        if best is not None and leading is not None and leading.mean == held.mean and best.rank < pinned.rank:
+            summary += f" {best.model} ties it {_price(best, pinned)} and ranks above it on what follows."
         return Verdict("pinned_holds", None, summary, None, excluded)
     versus = f"on {metric.name} ({_score(leading.mean)} vs {_score(held.mean)})"
     if not _above(leading.min, held.max):

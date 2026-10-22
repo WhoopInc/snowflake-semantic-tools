@@ -89,6 +89,28 @@ def test_no_candidate_beating_the_pinned_model_is_pinned_holds() -> None:
     assert result.verdict.summary == "No candidate beats the pinned pinned on answer_correctness (1.00)."
 
 
+def test_a_cheaper_candidate_that_ties_the_pinned_model_is_named_but_never_pinned() -> None:
+    result = compared(
+        model("pinned", PINNED, run("p1", 1.0)),
+        model("haiku", CANDIDATE, run("h1", 1.0)),
+        costs={"pinned": credits(0.1), "haiku": credits(0.04)},
+    )
+    assert result.verdict.kind == "pinned_holds" and result.verdict.pin_suggestion is None
+    assert result.verdict.summary == (
+        "No candidate beats the pinned pinned on answer_correctness (1.00)."
+        " haiku ties it at 0.4x the credits per question and ranks above it on what follows."
+    )
+
+
+def test_a_candidate_that_ties_the_pinned_model_but_ranks_below_it_is_not_named() -> None:
+    result = compared(
+        model("pinned", PINNED, run("p1", 1.0)),
+        model("haiku", CANDIDATE, run("h1", 1.0)),
+        costs={"pinned": credits(0.04), "haiku": credits(0.1)},
+    )
+    assert result.verdict.summary == "No candidate beats the pinned pinned on answer_correctness (1.00)."
+
+
 def test_a_preview_candidate_never_wins_and_is_listed_as_excluded() -> None:
     result = compared(
         model("pinned", PINNED, run("p1", 0.0)),
