@@ -101,11 +101,13 @@ class ObservedArtifact:
         tags: The tags the object shows: an agent's update unsets those not desired, and a
             semantic view's replace removes them. Read only for a semantic view plan will
             replace; None when not read, which is not the same as none set.
-        newest_version: The agent's newest committed version, such as `VERSION$3`; None when
-            it lists none.
-        newest_spec: The fingerprint of the specification the newest committed version holds,
-            as `held_spec_fingerprint` reads it; None when it cannot be told.
+        newest_version: The agent's newest committed version that is not an eval-model version,
+            such as `VERSION$3`: the newest SST released; None when it lists none.
+        newest_spec: The fingerprint of the specification `newest_version` holds, as
+            `held_spec_fingerprint` reads it; None when it cannot be told.
         default_version: The committed version SHOW marks the default; None when none is.
+        last_is_eval_model: The agent's newest committed version of all, the one `FROM LAST`
+            names, is an eval-model version, as a comparison that stopped part way leaves it.
         alias_versions: Each alias a committed version carries, with that version, as
             `(alias, version)`.
         live_digest: The digest of the properties the marker does not prove, as `live_digest`
@@ -131,6 +133,7 @@ class ObservedArtifact:
     default_version: str | None = None
     alias_versions: tuple[tuple[str, str], ...] = ()
     live_digest: str | None = None
+    last_is_eval_model: bool = False
 
     @property
     def explicit_grants(self) -> tuple[GrantRow, ...]:

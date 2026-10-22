@@ -12,10 +12,11 @@ from snowflake_semantic_tools.app.prior import (
     prior_definition,
     restorable_routine,
     restorable_semantic_view,
+    served_version,
 )
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, RenderedArtifact, ShowRow
+from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, RenderedArtifact, ShowRow, eval_model_comment
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion, AgentVersions
 from tests.helpers.artifact_builders import rendered
@@ -204,6 +205,25 @@ def test_an_unaliased_agent_serves_its_default_else_its_last_committed_version()
     # A version not named VERSION$<n> sorts first, so a numbered one is still preferred.
     odd = agent_prior(AGENT, (AgentVersion("VERSION$1", None), AgentVersion("CUSTOM", None)), None)
     assert odd is not None and "serves VERSION$1 (the last committed)" in odd
+
+
+def test_an_agent_serves_its_release_never_an_eval_model_version() -> None:
+    # An eval-model version is never what SST published: not as the newest, nor where a hand
+    # edit made it the default or gave it the alias.
+    candidate = eval_model_comment("abc1234", SPEC, "claude-opus-4-8", "r1")
+    versions = (
+        AgentVersion("VERSION$1", "PROD", specification=SPEC),
+        AgentVersion("VERSION$2", "EVAL_CLAUDE_OPUS_4_8", is_default=True, comment=candidate),
+        AgentVersion("VERSION$3", None, comment=candidate),
+    )
+    served = served_version(versions, "eval_claude_opus_4_8")
+    assert served is not None and served.name == "VERSION$1"
+    # With no release, the live version is what is served, else nothing.
+    assert served_version(versions[1:], None) is None
+    assert served_version((*versions[1:], AgentVersion(None, None)), None) == AgentVersion(None, None)
+    prior = agent_prior(AGENT, versions, None)
+    assert prior is not None
+    assert prior.startswith("-- agent DB.S.SALES_AGENT serves VERSION$1 (alias PROD, the last committed).\n")
 
 
 def test_an_agent_with_only_a_live_version_or_a_hidden_specification_is_still_described() -> None:

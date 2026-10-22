@@ -370,3 +370,52 @@ def test_overwrite_of_an_edited_comment_restores_the_marker_without_a_version() 
     assert change.rendered is not None and change.rendered.adds_version is False
     assert texts(change.rendered.statements)[0] == "set comment"
     assert not any(text in ("add version", "modify live", "commit") for text in texts(change.rendered.statements))
+
+
+def test_an_agent_with_no_live_version_and_an_eval_model_version_last_commits_a_new_release() -> None:
+    # Interrupted comparison: ADD LIVE VERSION FROM LAST would open the live version on the
+    # candidate's specification and serve it, so the update commits the release again instead.
+    artifact = agent()
+    observed = replace(live(artifact, recorded(artifact), has_live_version=False), last_is_eval_model=True)
+    statements, messages = drifted(observed)
+    assert statements == ("set comment", "add version", LAST)
+    assert messages == ("agent:sales: it has no live version; apply points it back",)
+    update = artifact.for_action(Action.UPDATE, observed)
+    assert update.adds_version is True
+    # With a live version, nothing opens one FROM LAST, so the properties program is safe.
+    beside_live = replace(live(artifact, recorded(artifact)), last_is_eval_model=True)
+    assert artifact.for_action(Action.UPDATE, beside_live).adds_version is False
+
+
+def test_a_default_on_an_eval_model_version_is_drift_pointed_back_to_the_release() -> None:
+    artifact = agent()
+    observed = replace(live(artifact, recorded(artifact), default_version="VERSION$5"), last_is_eval_model=True)
+    statements, messages = drifted(observed)
+    assert statements == ("set comment", LAST, "set tag")
+    assert messages == ("agent:sales: the default version is VERSION$5, not VERSION$3; apply points it back",)
+
+
+def test_eval_model_aliases_are_never_drift_and_never_unset() -> None:
+    artifact = agent()
+    marker = recorded(artifact)
+    observed = replace(
+        live(
+            artifact,
+            marker,
+            default_version="VERSION$3",
+            alias_versions=(("PROMOTED", "VERSION$3"), ("EVAL_CLAUDE_OPUS_4_8", "VERSION$5"), ("OLD", "VERSION$1")),
+        ),
+        aliases=("PROMOTED", "EVAL_CLAUDE_OPUS_4_8", "eval_gpt_5", "OLD"),
+        last_is_eval_model=True,
+    )
+    assert version_drift(artifact, observed) == ()
+    [change] = plan(
+        (artifact,), observed=(observed,), applied={artifact.key: entry(artifact, RECORDED_MANIFEST)}
+    ).changes
+    assert (change.action, change.reason) == (Action.NOOP, ChangeReason.UNCHANGED)
+    update = agent(fingerprint="2" * 64).for_action(Action.UPDATE, observed)
+    assert texts(update.statements) == (
+        "set comment",
+        "set tag",
+        "ALTER AGENT DB.S.SALES MODIFY VERSION OLD UNSET ALIAS",
+    )

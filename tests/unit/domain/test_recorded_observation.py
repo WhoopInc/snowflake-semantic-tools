@@ -43,6 +43,7 @@ def _artifact(key: str, *, full: bool) -> ObservedArtifact:
         newest_spec="c" * 64 if full else None,
         default_version="VERSION$1" if full else None,
         alias_versions=(("PROMOTED", "VERSION$2"),) if full else (),
+        last_is_eval_model=full,
     )
 
 
@@ -171,7 +172,13 @@ def test_a_malformed_record_is_refused(field: str, value: object, message: str) 
 def test_a_record_written_before_agent_version_facts_reads_with_none() -> None:
     document = _recorded(preflight=None).as_dict()
     for artifact in document["artifacts"]:  # type: ignore[attr-defined]
-        for key in ("newest_version", "newest_spec", "default_version", "alias_versions"):
+        for key in (
+            "newest_version",
+            "newest_spec",
+            "default_version",
+            "alias_versions",
+            "last_is_eval_model",
+        ):
             del artifact[key]
     observed = RecordedObservation.from_dict(json.loads(json.dumps(document))).observation.artifacts["semantic_view:a"]
     assert (observed.newest_version, observed.newest_spec, observed.default_version, observed.alias_versions) == (
@@ -180,6 +187,7 @@ def test_a_record_written_before_agent_version_facts_reads_with_none() -> None:
         None,
         (),
     )
+    assert observed.last_is_eval_model is False
 
 
 @pytest.mark.parametrize(

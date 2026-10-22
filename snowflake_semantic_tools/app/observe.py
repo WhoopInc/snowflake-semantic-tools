@@ -253,6 +253,7 @@ def _observe_row(
         default_version=versions.default_name,
         alias_versions=versions.alias_versions,
         live_digest=digest,
+        last_is_eval_model=versions.last_is_eval_model,
     )
     return artifact, (*diagnostics, *definition_diagnostics, *digest_diagnostics)
 

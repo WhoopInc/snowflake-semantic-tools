@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
-from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow
+from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow, is_eval_model_comment
 
 _VERSION_NAME = re.compile(r"VERSION\$(\d+)", re.IGNORECASE)
 
@@ -73,10 +73,18 @@ class AgentVersion:
     comment: str | None = None
     specification: str | None = None
 
+    @property
+    def is_eval_model(self) -> bool:
+        """Report whether an eval-model comparison committed the version, as its comment says."""
+        return is_eval_model_comment(self.comment)
+
 
 @dataclass(frozen=True, slots=True)
 class AgentVersions:
     """An agent's versions, the live one included, as `SHOW VERSIONS IN AGENT` lists them.
+
+    An eval-model version (`AgentVersion.is_eval_model`) is listed with the rest, but is never
+    SST's release: `newest` passes over it, and `last` does not.
 
     Attributes:
         versions: Every row SHOW prints, in its order.
@@ -96,9 +104,22 @@ class AgentVersions:
 
     @property
     def newest(self) -> AgentVersion | None:
-        """Return the newest committed version, the highest `VERSION$<n>`; None when none is committed."""
-        numbered = [(int(match.group(1)), version) for version in self.versions if (match := _number(version.name))]
-        return max(numbered, key=lambda item: item[0])[1] if numbered else None
+        """Return SST's newest release: the highest `VERSION$<n>` that is not an eval-model version.
+
+        None when no such version is committed.
+        """
+        return _highest(version for version in self.versions if not version.is_eval_model)
+
+    @property
+    def last(self) -> AgentVersion | None:
+        """Return the newest committed version of all, the one `LAST` names; None when none is committed."""
+        return _highest(self.versions)
+
+    @property
+    def last_is_eval_model(self) -> bool:
+        """Report whether the version `LAST` names is an eval-model version."""
+        last = self.last
+        return last is not None and last.is_eval_model
 
     @property
     def default_name(self) -> str | None:
@@ -121,6 +142,12 @@ class AgentVersions:
 def _number(name: str | None) -> re.Match[str] | None:
     """Match a system version name, `VERSION$<n>`; None for the live version or any other name."""
     return _VERSION_NAME.fullmatch(name or "")
+
+
+def _highest(versions: Iterable[AgentVersion]) -> AgentVersion | None:
+    """Return the committed version of the highest number; None when none is committed."""
+    numbered = [(int(match.group(1)), version) for version in versions if (match := _number(version.name))]
+    return max(numbered, key=lambda item: item[0])[1] if numbered else None
 
 
 class CatalogPort(Protocol):

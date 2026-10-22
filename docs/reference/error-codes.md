@@ -7032,7 +7032,7 @@ Raised when state records the agent unchanged, but it has no live version, or it
 
 Fix: apply to roll forward, or hold a rollback by not applying until it should end
 
-Note: The update sets the alias and a live version back on the version holding the specification, and the default to 'LAST', which serves that version and follows each one committed after it, without adding a version; an agent with no live version whose newest version holds another specification gets a new version instead. Strict mode leaves this a warning, since the apply it plans is the repair.
+Note: The update sets the alias and a live version back on the version holding the specification, and the default to 'LAST', which serves that version and follows each one committed after it, without adding a version; an agent with no live version whose newest version holds another specification, or whose newest committed version is an eval-model version, gets a new version instead. Strict mode leaves this a warning, since the apply it plans is the repair.
 
 ### SST-PLN103
 

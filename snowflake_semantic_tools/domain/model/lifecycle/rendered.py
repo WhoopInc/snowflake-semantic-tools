@@ -6,7 +6,8 @@ Snowflake receives, `StatementPlan` for the statements each action runs, `Upload
 file staged first, `DesiredMetadata` for the alias, tags and specification an agent keeps, and
 `CompositeFacts` for an artifact a lifecycle handler publishes. Once plan has chosen an
 action, `RenderedArtifact.for_action` picks the statements apply runs, and `version_drift` says
-how an agent's versions no longer point where SST published them.
+how an agent's versions no longer point where SST published them. A version an eval-model
+comparison committed is never SST's release, and its `EVAL_` alias is left alone.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from snowflake_semantic_tools.domain.model.identifier import Identifier, Qualifi
 from snowflake_semantic_tools.domain.model.lifecycle.action import Action
 from snowflake_semantic_tools.domain.model.lifecycle.marker import OwnershipMarker
 from snowflake_semantic_tools.domain.model.lifecycle.observation import ArtifactKey, ObservedArtifact
+from snowflake_semantic_tools.domain.model.lifecycle.version import is_eval_alias
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.sql import Sql, canonical, ident, join, qname, sql
 
@@ -343,14 +345,17 @@ class RenderedArtifact:
         """Return the artifact with `statements` set to what the action runs.
 
         A CREATE runs `create_statements` when there are any. An UPDATE runs
-        `update_properties_statements` when the observed agent's newest committed version
-        already holds the desired specification and there are any, with the statements that
-        point the alias and the default version at it, and open a live version from it, where
-        missing; else `update_live_statements` when the observed object has a live version and
-        there are any; else `update_statements` when there are any; either of those also leaves
-        the default following the new version. It then unsets the aliases and tags the observed
-        agent carries but this artifact does not desire, except an alias on the version the
-        properties program just set the desired alias on, which that replaced. A permanent
+        `update_properties_statements` when the observed agent's newest release already holds
+        the desired specification and there are any, with the statements that point the alias
+        and the default version at it, and open a live version from it, where missing; else
+        `update_live_statements` when the observed object has a live version and there are any;
+        else `update_statements` when there are any; either of those also leaves the default
+        following the new version. An agent with no live version whose newest committed version
+        is an eval-model version never takes the properties program: the live version it would
+        open `FROM LAST` would serve that version's candidate specification, so it commits a new
+        release instead. It then unsets the aliases and tags the observed agent carries but this
+        artifact does not desire, except an alias on the version the properties program just set
+        the desired alias on, which that replaced, and an eval-model version's. A permanent
         agent's UPDATE also says whether it commits a new version, in `adds_version`. Any other
         action, or an UPDATE with no program, returns this artifact unchanged.
         """
@@ -360,7 +365,12 @@ class RenderedArtifact:
             carrier = _spec_carrier(self, observed)
             replaced: str | None = None
             adds_version = True
-            if observed is not None and carrier is not None and self.update_properties_statements:
+            if (
+                observed is not None
+                and carrier is not None
+                and self.update_properties_statements
+                and (observed.has_live_version or not observed.last_is_eval_model)
+            ):
                 lead, rest = (
                     self.update_properties_statements[: self.properties_lead],
                     self.update_properties_statements[self.properties_lead :],
@@ -407,11 +417,13 @@ def _default_to_last(artifact: RenderedArtifact) -> Sql:
 def version_drift(artifact: RenderedArtifact, observed: ObservedArtifact) -> tuple[str, ...]:
     """Describe how an agent's versions no longer serve what SST published; empty when they do.
 
-    Only a permanent agent whose desired specification is known, and that lists a committed
-    version, is checked: it must have a live version and, when its newest committed version
-    holds the desired specification, carry the desired alias there and have no other version
-    marked the default. A newest version holding another specification, or one that cannot be
-    read, is not drift by itself: whatever changed it is not told apart here.
+    Only a permanent agent whose desired specification is known, and that lists a release, is
+    checked: it must have a live version and, when its newest release holds the desired
+    specification, carry the desired alias there and have no other version marked the default,
+    an eval-model version included. A newest release holding another specification, or one that
+    cannot be read, is not drift by itself: whatever changed it is not told apart here. An
+    eval-model version and its `EVAL_` alias are never drift: a comparison commits them beside
+    the release, which keeps its alias and default.
 
     Returns:
         One phrase per finding, in that order, such as `alias PROMOTED is on VERSION$9, not
@@ -441,7 +453,7 @@ def version_drift(artifact: RenderedArtifact, observed: ObservedArtifact) -> tup
 
 
 def _spec_carrier(artifact: RenderedArtifact, observed: ObservedArtifact | None) -> str | None:
-    """Name the observed agent's newest committed version when it holds the desired specification."""
+    """Name the observed agent's newest release when it holds the desired specification."""
     if observed is None or artifact.spec_fingerprint is None or observed.newest_spec != artifact.spec_fingerprint:
         return None
     return observed.newest_version
@@ -504,8 +516,9 @@ def _metadata_removals(
 
     Both compare casefolded. An alias on `replaced`, the version the update just set the desired
     alias on, is left alone: a version carries one alias, so setting another removed it, and an
-    UNSET naming it would find no version. Only an observed agent has any; for anything else
-    this is empty.
+    UNSET naming it would find no version. An alias starting `EVAL_` is an eval-model version's,
+    which a comparison evaluates by, so it is left alone too. Only an observed agent has any;
+    for anything else this is empty.
     """
     if observed is None or artifact.object_type != "AGENT":
         return ()
@@ -514,7 +527,7 @@ def _metadata_removals(
     desired_alias = artifact.desired_alias.casefold() if artifact.desired_alias else None
     for alias in observed.aliases:
         name = _safe_identifier(alias)
-        if alias.casefold() == desired_alias or name is None:
+        if alias.casefold() == desired_alias or name is None or is_eval_alias(alias):
             continue
         holder = _alias_holder(observed, alias)
         if replaced is not None and holder is not None and holder.casefold() == replaced.casefold():

@@ -161,6 +161,7 @@ def _artifact_to_json(item: ObservedArtifact) -> dict[str, object]:
         "default_version": item.default_version,
         "alias_versions": [list(pair) for pair in item.alias_versions],
         "live_digest": item.live_digest,
+        "last_is_eval_model": item.last_is_eval_model,
     }
 
 
@@ -190,6 +191,7 @@ def _artifact_from_json(value: object) -> ObservedArtifact:
         default_version=_text(item.get("default_version")),
         alias_versions=tuple(_pair(pair) for pair in _list(item.get("alias_versions", []), "alias_versions")),
         live_digest=_text(item.get("live_digest")),
+        last_is_eval_model=bool(item.get("last_is_eval_model", False)),
     )
 
 

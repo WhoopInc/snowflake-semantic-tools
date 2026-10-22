@@ -281,13 +281,14 @@ def _unnormalised(text: str, reason: str) -> str:
 def agent_prior(agent: QualifiedName, versions: tuple[AgentVersion, ...], alias: str | None) -> str | None:
     """Describe the version an agent serves now, and how to point callers back at it after apply.
 
-    The served version is the one carrying `alias`, the alias apply moves, else the default
-    version, else the last committed one, else the live version. The text names it, gives the
+    The served version is the release `served_version` names: the one carrying `alias`, the
+    alias apply moves, else the default version, else the last committed release, else the
+    live version; an eval-model version is never named. The text names it, gives the
     ALTER AGENT statements that restore the alias and the default version as they are now,
     then the version's specification as indented JSON, as SST renders one. None when the
     agent lists no version.
     """
-    named = tuple(version for version in versions if version.name is not None)
+    named = _releases(versions)
     aliased = _aliased(named, alias)
     default = next((version for version in named if version.is_default), None)
     last = max(named, key=_version_number, default=None)
@@ -351,14 +352,22 @@ def _restore_default(agent: QualifiedName, version: AgentVersion) -> str:
 
 
 def served_version(versions: tuple[AgentVersion, ...], alias: str | None) -> AgentVersion | None:
-    """Return the version an agent serves: the one carrying `alias`, else the default, else the last.
+    """Return the release an agent serves: the one carrying `alias`, else the default, else the last.
 
-    The live version when there is no committed one; None when the agent lists no version.
+    Only releases count: an eval-model version is never what SST published, even where a hand
+    edit made it the default. The live version when there is no committed release; None when
+    the agent lists no version.
     """
-    named = tuple(version for version in versions if version.name is not None)
+    named = _releases(versions)
     default = next((version for version in named if version.is_default), None)
     last = max(named, key=_version_number, default=None)
-    return _aliased(named, alias) or default or last or next(iter(versions), None)
+    live = next((version for version in versions if version.name is None), None)
+    return _aliased(named, alias) or default or last or live
+
+
+def _releases(versions: tuple[AgentVersion, ...]) -> tuple[AgentVersion, ...]:
+    """Return the committed versions SST released: every one but an eval-model version, in order."""
+    return tuple(version for version in versions if version.name is not None and not version.is_eval_model)
 
 
 def _aliased(named: tuple[AgentVersion, ...], alias: str | None) -> AgentVersion | None:

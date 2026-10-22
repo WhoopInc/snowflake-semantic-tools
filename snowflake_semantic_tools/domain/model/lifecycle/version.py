@@ -7,6 +7,13 @@ SHOW VERSIONS IN AGENT to tell whether the newest committed version already hold
 specification being planned, so a change to only the agent's comment, profile, tags, alias or
 `secure` moves no version. A version committed before SST wrote the fingerprint is recognised
 by its specification instead, when the role may read it.
+
+An eval-model comparison commits versions of a published agent too, to evaluate an
+orchestration model on: a hold copy of the released specification, one version per candidate
+model, and a restore copy. Each carries `sst-eval-model:<label>` and `run:<run id>` after the
+usual tokens, and each candidate an alias starting `EVAL_`. None of them is a release: plan
+never takes one for the newest version SST published, never unsets an `EVAL_` alias, and a
+project may not declare an alias with that prefix.
 """
 
 from __future__ import annotations
@@ -20,6 +27,13 @@ SPEC_TOKEN = "sst-spec:"
 # What follows the sha of a version published while the project had uncommitted changes.
 DIRTY_SUFFIX = "-dirty"
 _SPEC = re.compile(r"(?:^|\s)sst-spec:([0-9a-f]{64})(?=\s|$)", re.IGNORECASE)
+# What precedes the label of a version an eval-model comparison commits: a model, `hold` or `restore`.
+EVAL_MODEL_TOKEN = "sst-eval-model:"
+# What every alias an eval-model comparison sets starts with, compared casefolded; no project
+# alias may start with it.
+EVAL_ALIAS_PREFIX = "EVAL_"
+_EVAL_MODEL = re.compile(r"(?:^|\s)sst-eval-model:\S+(?=\s|$)", re.IGNORECASE)
+_NOT_ALIAS_CHARACTER = re.compile(r"[^A-Z0-9]")
 
 
 def spec_fingerprint(specification: str) -> str:
@@ -63,3 +77,42 @@ def held_spec_fingerprint(comment: str | None, specification: str | None) -> str
     if commented is not None:
         return commented
     return spec_fingerprint(specification) if specification is not None else None
+
+
+def eval_model_comment(git_sha: str, specification: str, label: str, run_id: str, *, dirty: bool = False) -> str:
+    """Return the comment an eval-model version carries: `version_comment`'s, then its label and run.
+
+    Reads `git:<sha> sst-spec:<fingerprint> sst-eval-model:<label> run:<run id>`.
+
+    Args:
+        label: The orchestration model the version evaluates, or `hold` or `restore` for the
+            copies of the released specification a comparison commits around the candidates.
+        run_id: The comparison that committed the version.
+
+    Raises:
+        ValueError: `label` or `run_id` is empty or holds whitespace, so the comment would not
+            read back as one token each.
+    """
+    for value in (label, run_id):
+        if not value or any(character.isspace() for character in value):
+            raise ValueError(f"an eval-model version's label and run id are single tokens, not {value!r}")
+    return f"{version_comment(git_sha, specification, dirty=dirty)} {EVAL_MODEL_TOKEN}{label} run:{run_id}"
+
+
+def is_eval_model_comment(comment: str | None) -> bool:
+    """Report whether a version's comment marks it an eval-model version, its token compared casefolded."""
+    return _EVAL_MODEL.search(comment or "") is not None
+
+
+def eval_model_alias(model: str) -> str:
+    """Return the alias an eval-model comparison sets on a model's version, such as `EVAL_CLAUDE_OPUS_4_8`.
+
+    The model is upper-cased and every character but an ASCII letter or digit becomes `_`, so
+    the alias is a plain identifier whatever the model is called.
+    """
+    return EVAL_ALIAS_PREFIX + _NOT_ALIAS_CHARACTER.sub("_", model.upper())
+
+
+def is_eval_alias(alias: str) -> bool:
+    """Report whether an alias starts with the prefix eval-model versions reserve, compared casefolded."""
+    return alias.strip().casefold().startswith(EVAL_ALIAS_PREFIX.casefold())
