@@ -155,7 +155,10 @@ pipeline: it is required with `--output json` or `--prune`, and without it
 
 `apply` holds a run lock in the target's state table while it runs, so a second
 apply against the same target stops with `SST-APL011` instead of interleaving
-with the first; `sst test --suite evals` and `sst drop` take the same lock. A
+with the first; `sst test --suite evals` and `sst drop` take the same lock. An
+apply whose plan has nothing to write takes no lock and opens no session beyond
+the one it planned on, so a merge that changes nothing published finishes as
+soon as it is planned. A
 running apply extends its lock every five minutes, and the lock expires 30
 minutes after its last extension. If a run died and left its lock behind,
 `--break-stale-lock` takes it over once it has expired, reporting `SST-APL010`;

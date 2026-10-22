@@ -270,6 +270,13 @@ running again reads as alive, and the run then waits as for any live lock.
 live or expired, in one lock transaction, so a lock another run took meanwhile
 is kept (`SST-APL040`, `SST-APL041`).
 
+An `apply` whose plan writes nothing -- every change unchanged or blocked, no
+report-only prune, no schema to create -- takes no lock: it finishes once
+planned, reports each change as skipped and the plan's diagnostics as a locked
+run would, and writes no state, so it never waits on another run or makes one
+wait. It therefore does not read state again under a lock, and answers from the
+same reading `sst plan` does.
+
 A run that may only read and write SST's tables can use them: the lock, state,
 and eval tables are created, or given a column an older release lacked, only
 when they need it. `plan` reports a missing CREATE TABLE privilege on the state
