@@ -142,7 +142,7 @@ def test_the_json_report_lists_models_files_and_components(monkeypatch: pytest.M
 def test_verbose_is_the_global_flag_declared_once(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        helped = CliRunner().invoke(cli, ["enrich", "--help"])
+        helped = CliRunner().invoke(cli, ["enrich", "--help", "--full"])
     assert helped.exit_code == 0, helped.output
     assert helped.output.count("-v, --verbose") == 1
     for flag in ("-v", "--verbose"):

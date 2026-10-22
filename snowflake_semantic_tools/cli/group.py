@@ -19,7 +19,14 @@ import click
 
 from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, INTERRUPTED, OK, USAGE
-from snowflake_semantic_tools.cli.globals import MIGRATION_GUIDE, REMOVED_COMMANDS, forwarded, group_global_options
+from snowflake_semantic_tools.cli.globals import (
+    GLOBAL_NAMES,
+    MIGRATION_GUIDE,
+    REMOVED_COMMANDS,
+    forwarded,
+    group_global_options,
+)
+from snowflake_semantic_tools.cli.help_form import ConciseHelp
 from snowflake_semantic_tools.cli.output import (
     aborted_line,
     emit_agent,
@@ -130,8 +137,12 @@ COMMAND_ORDER = (
 )
 
 
-class SstGroup(click.Group):
+class SstGroup(ConciseHelp, click.Group):
     """The root command group, which owns how a run starts, fails to parse, and is interrupted."""
+
+    def is_global(self, param: click.Parameter) -> bool:
+        """Whether `param` is a global option, folded into one line in the summary."""
+        return param.name in GLOBAL_NAMES
 
     def list_commands(self, ctx: click.Context) -> list[str]:
         """Return the commands in workflow order, then any `COMMAND_ORDER` does not name, by name."""

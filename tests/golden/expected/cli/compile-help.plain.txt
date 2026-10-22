@@ -5,121 +5,21 @@ Usage: sst compile [OPTIONS]
 
   Compile every artifact and write the canonical manifest, offline.
 
-  The manifest, `sst_target/manifest.json`, always holds everything that
-  compiled; --select narrows only what is reported and emitted. --emit-ddl
-  writes each rendered payload, one file per artifact under a folder named for
-  its type, as `tool/<name>.sql`; and --emit-agent-spec each agent's
-  specification, one file per agent, and each CoWork profile's under
-  `cowork_profile/`. With --partial, a compile with errors still writes the
-  manifest of the artifacts no error touches, and exits 1. Nothing connects:
-  --target, --defer-target, and --database only decide what names resolve to.
-
-  Exit 0 when everything compiled; 1 when an error stopped the compile, the
-  manifest could not be written, --partial left an artifact out, or two emitted
-  files would collide; 4 when --select matches nothing.
-
-  Diagnostics:
-      SST-MAN008: the compile failed, so no manifest was written.
-      SST-MAN007: the canonical manifest could not be written.
-      SST-PLN033: --partial cannot trace an error to the artifacts it would leave out.
-      SST-PRT111: two artifacts of one type would write the same emitted file; nothing is emitted.
-
 Options:
-  -t, --target TEXT            Target from `profiles.yml`, else `$SST_TARGET`;
-                               defaults to the profile's own default target.
-  --defer-target TEXT          The `profiles.yml` target whose relations dbt
-                               objects resolve to, while publishing to
-                               `--target`; else `$SST_DEFER_TARGET`, else
-                               `defer.target`.
-  --no-defer                   Defer to no target, whatever `--defer-target`,
-                               `$SST_DEFER_TARGET` or `defer.target` say.
-  --database TEXT              Resolve refs against this database instead of the
-                               target's.
-  --dbt DIRECTORY              Read the dbt models from this directory instead
-                               of `dbt_project.yml`'s `model-paths`.
-  --semantic DIRECTORY         Read the semantic models from this directory
-                               instead of `project.semantic_models_dir`.
-  --emit-ddl DIRECTORY         Write each artifact's rendered payload into this
-                               directory, one folder per type, offline.
-  --emit-agent-spec DIRECTORY  Write each agent's rendered specification into
-                               this directory, and each CoWork profile's under
-                               `cowork_profile/`.
-  --select TEXT                Report and emit only these artifacts; the
-                               manifest still holds everything.
-  --partial                    Go ahead with every artifact that has no errors
-                               and depends on nothing that does; still exits 1
-                               while errors remain. Cannot be combined with
-                               `--prune`.
+  -t, --target TEXT            Target from `profiles.yml`, else...
+  --defer-target TEXT          The `profiles.yml` target whose relations...
+  --no-defer                   Defer to no target, whatever...
+  --database TEXT              Resolve refs against this database instead...
+  --dbt DIRECTORY              Read the dbt models from this directory...
+  --semantic DIRECTORY         Read the semantic models from this directory...
+  --emit-ddl DIRECTORY         Write each artifact's rendered payload into...
+  --emit-agent-spec DIRECTORY  Write each agent's rendered specification...
+  --select TEXT                Report and emit only these artifacts; the...
+  --partial                    Go ahead with every artifact that has no...
   -h, --help                   Show this message and exit.
 
 Global options:
-  -o, --output [table|plain|agent|json|yaml|csv]
-                                  `table` (default), `plain` (`table` without
-                                  colour), `agent` (short fixed-grammar text for
-                                  coding agents), or `json`, else `$SST_OUTPUT`;
-                                  `list` also takes `yaml` and `csv`. With
-                                  neither set, a run whose stdout is not a
-                                  terminal defaults to `agent` when a coding
-                                  agent's variable is set (`SST_AGENT`,
-                                  `CLAUDECODE`, `COCO_AGENT`, `CURSOR_AGENT`,
-                                  `CODEX_SANDBOX`, `GEMINI_CLI`; `0` or empty is
-                                  unset) and says so. A format the command does
-                                  not take is refused (SST-PRT106).
-  -v, --verbose                   Add each diagnostic's phase and fingerprint,
-                                  and report each file the run's parse cache
-                                  served (SST-LOD201). Cannot be combined with
-                                  `--quiet`.
-  -q, --quiet                     Show error diagnostics only, with no counts
-                                  line or progress lines; the report still
-                                  prints.
-  --log-level [debug|info|warn|error]
-                                  Threshold for log records on stderr, else
-                                  `$SST_LOG_LEVEL`, else `warn`. The libraries
-                                  SST runs, such as the Snowflake connector, log
-                                  each request at `info`, so `info` shows those.
-                                  Independent of `--verbose`.
-  --no-color                      No ANSI colour, else `$SST_NO_COLOR`; a non-
-                                  empty `$NO_COLOR` does the same. Wins over
-                                  `--color`.
-  --color [auto|always|never]     When to colour `table` output: `auto` (the
-                                  default) on a terminal, `always` even through
-                                  a pipe, as a CI log viewer renders it, or
-                                  `never`; else `$SST_COLOR`. Under `auto`, a
-                                  non-empty `$FORCE_COLOR` or `$CLICOLOR_FORCE`
-                                  turns colour on and `$NO_COLOR` off. No other
-                                  format is ever coloured.
-  --project-dir DIRECTORY         Project root, else `$SST_PROJECT_DIR`, else
-                                  the current directory: where `sst_config.yml`
-                                  and `dbt_project.yml` are.
-  --config PATH                   Read this configuration file, else
-                                  `$SST_CONFIG`, instead of discovering one in
-                                  the project.
-  --profiles-dir DIRECTORY        Look for `profiles.yml` here first, else in
-                                  `$SST_PROFILES_DIR`; then in
-                                  `$DBT_PROFILES_DIR`, the project root, and
-                                  `~/.dbt`. The first that has one wins.
-  --manifest FILE                 Read this dbt `manifest.json` instead of
-                                  running `dbt parse`.
-  --allow-unsupported-manifest-schema
-                                  Read a dbt manifest of an unsupported schema
-                                  version, for this run only.
-  --allow-stale-manifest          Accept a manifest SST did not write
-                                  (`--manifest`, or `dbt.invoke: false`) that is
-                                  older than the files it describes, for this
-                                  run only.
-  --baseline FILE                 Read this baseline file of known warnings,
-                                  which must exist, instead of the project's
-                                  `.sst/baseline.json`, read when it exists.
-  --no-baseline                   Ignore the baseline for this run: every
-                                  diagnostic is shown and blocks as declared.
-  --show-baselined                Show baselined diagnostics instead of counting
-                                  them.
-  --show-info                     Show info diagnostics instead of counting
-                                  them; a cascade needs `--show-cascade`.
-  --show-cascade                  Show cascade diagnostics, follow-ons
-                                  downgraded to info, instead of counting them.
-                                  An override promoting a cascade's code reports
-                                  it at that severity, as no longer a cascade.
-  --show-all-occurrences          Show every occurrence of a code, not the first
-                                  three of four or more.
+  --output, --verbose, --quiet, --log-level and 14 more; see --help --full.
+
+Full reference: sst compile --help --full, or docs/reference/cli.md#sst-compile
 --- stderr
