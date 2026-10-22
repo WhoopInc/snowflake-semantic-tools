@@ -48,7 +48,7 @@ def test_reference_eval_matches_exact_source_sql_and_repeat_yaml_goldens() -> No
     assert rendered.source_table_sql == (EXPECTED / "jaffle_analytics_source.sql").read_text(encoding="utf-8") + "\n"
     assert rendered.config_yaml == (EXPECTED / "jaffle_analytics_agent_repeat.yaml").read_text(encoding="utf-8")
     assert rendered.dataset_fingerprint == "dce1f8a88134aee78594fd507dd7679774bea07445fd2b68ab73975e80847b23"
-    assert rendered.config_fingerprint == "8ce8141990e1ba00084364615426716bce2f76e3d73b0ffe29d2029bc9002564"
+    assert rendered.config_fingerprint == "adbc4c2748dcf2899e0e542f04b73e38ca63532bd2887929a4fa873a87a51165"
 
 
 @pytest.fixture(scope="module")
@@ -75,4 +75,4 @@ def test_a_cowork_profile_eval_leaves_the_agent_eval_beside_it_unchanged(
 ) -> None:
     agent_eval = profile_evals["eval:jaffle_analytics_agent"].rendered
     assert agent_eval.dataset_fingerprint == "dce1f8a88134aee78594fd507dd7679774bea07445fd2b68ab73975e80847b23"
-    assert agent_eval.config_fingerprint == "8ce8141990e1ba00084364615426716bce2f76e3d73b0ffe29d2029bc9002564"
+    assert agent_eval.config_fingerprint == "adbc4c2748dcf2899e0e542f04b73e38ca63532bd2887929a4fa873a87a51165"

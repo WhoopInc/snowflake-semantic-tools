@@ -438,7 +438,9 @@ class CatalogMethods(Session, CatalogPort):
         aliases = _variant_value(columns.get("aliases"), {})
         if not isinstance(aliases, dict):
             raise _unexpected_describe(f"AGENT {qualified_name.sql}")
-        key = "LAST" if selector == "committed" else selector.removeprefix("alias:")
+        # `committed` is the default version: what `sst apply` released, never a version an
+        # eval-model comparison committed after it.
+        key = "DEFAULT" if selector == "committed" else selector.removeprefix("alias:")
         resolved = next((value for alias, value in aliases.items() if str(alias).casefold() == key.casefold()), None)
         if not isinstance(resolved, str) or not resolved.upper().startswith("VERSION$"):
             raise AgentVersionNotFound(

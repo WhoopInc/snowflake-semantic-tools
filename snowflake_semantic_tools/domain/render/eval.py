@@ -305,8 +305,8 @@ def render_eval_config(
     """Emit only Snowflake's closed evaluation and metrics schema; disabled custom metrics are left out.
 
     Args:
-        agent_version: The eval's resolved `agent_version` setting: `committed`, `alias:<name>`
-            or `VERSION$<n>`.
+        agent_version: The eval's resolved `agent_version` setting: `committed`, rendered as
+            the agent's `DEFAULT` version, `alias:<name>` or `VERSION$<n>`.
 
     Raises:
         ValueError: `agent_version` is None.
@@ -392,8 +392,10 @@ def _score_ranges_value(value: EvalScoreRanges) -> dict[str, object]:
 def _agent_version(value: str | None) -> str:
     if value is None:
         raise ValueError("eval config requires an immutable agent version")
+    # `committed` evaluates the default version, which only `sst apply` moves: LAST would be
+    # whatever version was committed most recently, an eval-model version included.
     if value == "committed":
-        return "LAST"
+        return "DEFAULT"
     if value.startswith("alias:"):
         return value.split(":", 1)[1]
     return value

@@ -164,7 +164,7 @@ run:
 | Key | Meaning |
 |---|---|
 | `config` | The eval's own settings: the `evals:` keys of `sst_config.yml` without their `+` (`SST-CFG053` for any other). Each wins over the [folder routes](#settings-and-folder-routes) over its agent's folder and the block root. `agent_version`, or a `run:` setting such as `run.retry`, written outside `config:` is an error naming its `config:` key (`SST-PRS126`). |
-| `config.agent_version` | `committed` (the agent's `LAST` version), `alias:<name>`, or `VERSION$<n>`. `LIVE`, or no version set anywhere, is refused (`SST-VAL719`): an eval must run against a version that cannot change under it. Each run resolves the selector to a concrete `VERSION$<n>`. |
+| `config.agent_version` | `committed` (the agent's default version, which only `sst apply` moves), `alias:<name>`, or `VERSION$<n>`. `LIVE`, or no version set anywhere, is refused (`SST-VAL719`): an eval must run against a version that cannot change under it. Each run resolves the selector to a concrete `VERSION$<n>`. |
 | `dataset.name_template`, `dataset.source_table_template` | Both required (`SST-VAL762`). They take `{{ agent }}` or `{{ agent \| upper }}`, which the dataset name must use (`SST-PRS002`), and `{{ sha7 }}`. Names are capped at 128 characters (`SST-VAL702`, `SST-PRS010`). |
 | `dataset.mint` | `auto` (default) or `never`; see above. |
 | `metrics.system` | Snowflake's metrics: `tool_selection_accuracy`, `tool_execution_accuracy`, `answer_correctness`, `logical_consistency`. Each takes `name`, `version`, `gate` and `threshold`. |

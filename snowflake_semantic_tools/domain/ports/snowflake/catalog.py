@@ -375,7 +375,7 @@ class CatalogPort(Protocol):
         """Resolve a version selector to the committed agent version it names, such as `VERSION$3`.
 
         A `VERSION$<n>` selector resolves to itself, uppercased, without a read; `committed`
-        names the version aliased LAST, and `alias:<name>` the version with that alias.
+        names the version aliased DEFAULT, and `alias:<name>` the version with that alias.
         Never writes.
 
         Raises:

@@ -4614,11 +4614,11 @@ Fix: include the SHA so a score is attributable to a commit
 
 `eval config for '<artifact>': agent_version is '<found>'`
 
-Raised when the eval's `agent_version` setting, its config's `config:`, else a folder route, else `evals.+agent_version`, is not `committed`, `alias:<name>` or `VERSION$<n>`; LIVE or an omitted version targets the default version.
+Raised when the eval's `agent_version` setting, its config's `config:`, else a folder route, else `evals.+agent_version`, is not `committed`, `alias:<name>` or `VERSION$<n>`; LIVE or an omitted version runs the live version, which an agent with one serves to every caller that names no version.
 
 Fix: use committed or alias:&lt;name&gt;
 
-Note: A pinned `VERSION$<n>` is also accepted. LIVE or no version would score whatever the default version is at run time: silent drift.
+Note: A pinned `VERSION$<n>` is also accepted. LIVE or no version would score whatever the agent serves at run time: silent drift.
 
 ### SST-VAL720
 
@@ -4626,7 +4626,7 @@ Note: A pinned `VERSION$<n>` is also accepted. LIVE or no version would score wh
 
 `eval config for '<artifact>': version '<value>' does not exist or is dropped`
 
-Raised when an eval run finds its `agent_version` does not resolve on the live agent: `committed` names its LAST alias, `alias:<name>` that alias, and neither points at a version.
+Raised when an eval run finds its `agent_version` does not resolve on the live agent: `committed` names its DEFAULT alias, `alias:<name>` that alias, and neither points at a version.
 
 Fix: pin an existing version
 

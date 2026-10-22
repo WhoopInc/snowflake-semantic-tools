@@ -2,7 +2,7 @@ evaluation:
   agent_params:
     agent_name: "SST_REF_DEV.PROFILES.JAFFLE_CONCIERGE"
     agent_type: "CORTEX AGENT"
-    agent_version: "LAST"
+    agent_version: "DEFAULT"
   run_params:
     label: "concierge-routing-ci"
   source_metadata:

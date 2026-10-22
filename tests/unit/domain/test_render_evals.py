@@ -147,7 +147,7 @@ def test_repeat_run_yaml_has_closed_schema_and_inlines_custom_metric() -> None:
     )
     top_level = tuple(line[:-1] for line in rendered.splitlines() if line and not line.startswith(" "))
     assert top_level == ("evaluation", "metrics")
-    assert 'agent_version: "LAST"' in rendered
+    assert 'agent_version: "DEFAULT"' in rendered
     assert 'version: "v3"' in rendered
     assert 'model: "claude-sonnet-4-6"' in rendered
     assert 'name: "grounding"' in rendered

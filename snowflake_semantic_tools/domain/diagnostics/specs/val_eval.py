@@ -212,11 +212,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "the eval's `agent_version` setting, its config's `config:`, else a folder route, else "
             "`evals.+agent_version`, is not `committed`, "
-            "`alias:<name>` or `VERSION$<n>`; LIVE or an omitted version targets the default version"
+            "`alias:<name>` or `VERSION$<n>`; LIVE or an omitted version runs the live version, "
+            "which an agent with one serves to every caller that names no version"
         ),
         note=(
             "A pinned `VERSION$<n>` is also accepted. LIVE or no version would score whatever the "
-            "default version is at run time: silent drift."
+            "agent serves at run time: silent drift."
         ),
     ),
     spec(
@@ -227,7 +228,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "pin an existing version",
         condition=(
             "an eval run finds its `agent_version` does not resolve on the live agent: `committed` "
-            "names its LAST alias, `alias:<name>` that alias, and neither points at a version"
+            "names its DEFAULT alias, `alias:<name>` that alias, and neither points at a version"
         ),
         precheck=Precheck.OBSERVE,
     ),

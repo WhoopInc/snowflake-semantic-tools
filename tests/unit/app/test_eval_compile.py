@@ -70,7 +70,7 @@ def test_compile_eval_applies_inherited_agent_version() -> None:
     ).run_result()
 
     assert not result.diagnostics.has_errors
-    assert 'agent_version: "LAST"' in compiled_as(result, CompiledEval).rendered.config_yaml
+    assert 'agent_version: "DEFAULT"' in compiled_as(result, CompiledEval).rendered.config_yaml
 
 
 def test_rendered_for_publish_emits_source_table_and_dataset_statements() -> None:

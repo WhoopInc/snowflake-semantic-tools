@@ -817,9 +817,11 @@ def _described_agent(aliases: object) -> dict[str, object]:
 
 def test_an_agent_version_selector_resolves_through_describe_agent_s_aliases_column() -> None:
     name = QualifiedName.parse("DB.S.SALES_AGENT")
+    # `committed` is the default version, which a later commit, such as an eval-model
+    # version's, does not move; LAST is that later commit.
     aliases = '{"DEFAULT":"VERSION$1","FIRST":"VERSION$1","LAST":"VERSION$2","PROMOTED":"VERSION$1"}'
     connector = StubSnowflakeConnector({"DESCRIBE AGENT": (_described_agent(aliases),)})
-    assert connector.resolve_agent_version(name, "committed") == "VERSION$2"
+    assert connector.resolve_agent_version(name, "committed") == "VERSION$1"
     assert connector.resolve_agent_version(name, "alias:promoted") == "VERSION$1"
     assert connector.resolve_agent_version(name, "version$7") == "VERSION$7"
     with pytest.raises(AgentVersionNotFound):
