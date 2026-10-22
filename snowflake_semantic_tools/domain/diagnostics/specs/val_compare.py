@@ -40,6 +40,17 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
+        "SST-VAL772",
+        Severity.ERROR,
+        "Comparison has no candidate model",
+        "eval '{artifact}' names no candidate model to compare with its pinned one",
+        "list the models in `evals.+candidate_models`, or give them as `--compare-models <model>,<model>`",
+        condition=(
+            "`sst test --compare-models` was given no list, and the eval's `candidate_models` setting, "
+            "from its config, a folder route, or the `evals:` root, names none"
+        ),
+    ),
+    spec(
         "SST-VAL773",
         Severity.INFO,
         "Comparison cost not landed yet",

@@ -237,6 +237,7 @@ class _ResultCollector:
                     called_tools=self._called.get(group_key),
                     cost=sum_costs(tuple(self._costs[request] for request in sorted(self._requests[group_key]))),
                     record_id=group_key[0],
+                    request_ids=tuple(sorted(self._requests[group_key])),
                 )
             )
         return tuple(sorted(rows, key=lambda row: row.index or 0))

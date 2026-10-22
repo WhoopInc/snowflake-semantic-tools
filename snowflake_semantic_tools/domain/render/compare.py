@@ -55,6 +55,17 @@ def model_slug(model: str) -> str:
     return eval_model_alias(model).removeprefix(EVAL_ALIAS_PREFIX).lower()
 
 
+def compare_run_name(subject: str, run_id: str, model: str, number: int) -> str:
+    """Name one evaluation run of a comparison: subject, run id, model and run number, uppercased.
+
+    Example:
+        `compare_run_name("jaffle_analyst", "c7f2a19e", "claude-sonnet-4-6", 1)` gives
+        `JAFFLE_ANALYST_CMP_C7F2A19E_CLAUDE_SONNET_4_6_1`.
+    """
+    plain = eval_model_alias(subject).removeprefix(EVAL_ALIAS_PREFIX)
+    return f"{plain}_CMP_{run_id.upper()}_{model_slug(model).upper()}_{number}"
+
+
 def version_directory(folder: str, run_id: str, slug: str) -> str:
     """Return the directory below the stage one comparison version is staged in, ending in `/`."""
     return f"{folder}/eval/{run_id}/{slug}/"

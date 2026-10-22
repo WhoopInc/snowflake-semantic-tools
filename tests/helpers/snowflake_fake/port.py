@@ -11,6 +11,7 @@ from tests.helpers.snowflake_fake.preflight import FakePreflight
 from tests.helpers.snowflake_fake.profile_registry import FakeProfileRegistry
 from tests.helpers.snowflake_fake.stage import FakeStage
 from tests.helpers.snowflake_fake.state import FakeState
+from tests.helpers.snowflake_fake.usage import FakeUsage
 
 
 class FakeSnowflake(
@@ -22,8 +23,9 @@ class FakeSnowflake(
     FakePreflight,
     FakeCortexModels,
     FakeAgentStream,
+    FakeUsage,
 ):
-    """`SnowflakePort` and `PreflightPort` in memory, each role over the same account.
+    """`SnowflakePort`, `PreflightPort` and the usage reads in memory, each role over the same account.
 
     A test stages what the account holds through the constructor and the attributes
     `SnowflakeWorld` documents, scripts answers and failures, runs the use case, and reads the

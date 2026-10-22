@@ -20,6 +20,7 @@ from snowflake_semantic_tools.app.compile.cowork_profiles import CompiledCoworkP
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
+from snowflake_semantic_tools.app.compile.staged_agent import agent_spec_stage
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.lifecycle.channels import channel_divergence
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
@@ -45,7 +46,7 @@ from snowflake_semantic_tools.app.validate_models import ModelCheck, model_check
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
 from snowflake_semantic_tools.domain.diagnostics.policy import SeverityPolicy, apply_overrides, apply_policy
-from snowflake_semantic_tools.domain.model.config_schema import config_block, config_bool, target_text
+from snowflake_semantic_tools.domain.model.config_schema import config_block, config_bool
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import ChangeSet, CompositePlan, RenderedArtifact
@@ -557,14 +558,7 @@ class PreparePlan:
         records in state. With `dirty`, each version names its commit `<sha>-dirty`. A profile
         is never temporary: `apply --temporary` leaves it out (`temporary_profiles`).
         """
-        stage_config = config_block(apply_config.get("agent_spec_stage"))
-        database = target.database.folded
-        schema = target.schema.folded
-        stage = QualifiedName.from_parts(
-            target_text(stage_config.get("database"), target, database) or database,
-            target_text(stage_config.get("schema"), target, schema) or schema,
-            str(stage_config.get("stage") or "AGENT_SPECS"),
-        )
+        stage = agent_spec_stage(apply_config, target)
         git_sha = self._inputs.git_sha()
         compiled = tuple(
             (

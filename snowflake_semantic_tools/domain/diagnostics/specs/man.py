@@ -168,6 +168,18 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="the dbt manifest `--manifest` names changed its models while the project compiled",
     ),
     spec(
+        "SST-MAN032",
+        Severity.ERROR,
+        "Comparison report cannot be refreshed",
+        "{path} cannot have its cost refreshed: {detail}",
+        "pass a compare.json that `sst test --suite evals --compare-models` wrote, as it wrote it; "
+        "compare again for a new one",
+        condition=(
+            "`sst test --refresh-cost` was given a file that is not there, is not JSON, or is not an "
+            "`sst.compare/1` report with every key it writes"
+        ),
+    ),
+    spec(
         "SST-MAN201",
         Severity.INFO,
         "Older manifest schema migrated in memory",

@@ -8,6 +8,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import eval_model_comment, eval_model_run
 from snowflake_semantic_tools.domain.render.compare import (
     add_version_statement,
+    compare_run_name,
     hold_statement,
     model_slug,
     open_live_statement,
@@ -34,6 +35,12 @@ def test_a_candidate_specification_changes_the_orchestration_model_alone() -> No
 def test_a_specification_that_is_not_an_agents_is_refused(payload: str) -> None:
     with pytest.raises(ValueError, match="JSON object"):
         with_orchestration_model(payload, "gpt-5")
+
+
+def test_each_run_is_named_by_its_subject_comparison_model_and_number() -> None:
+    assert compare_run_name("jaffle_analyst", "c7f2a19e", "claude-sonnet-4-6", 2) == (
+        "JAFFLE_ANALYST_CMP_C7F2A19E_CLAUDE_SONNET_4_6_2"
+    )
 
 
 def test_each_version_is_staged_under_the_runs_directory_by_its_slug() -> None:

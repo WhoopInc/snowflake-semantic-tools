@@ -22,10 +22,10 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 336 codes
+- [Validation (VAL)](#validation-val) -- 337 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
-- [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
+- [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
 - [Planning (PLN)](#planning-pln) -- 50 codes
 - [Apply (APL)](#apply-apl) -- 49 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 13 codes
@@ -5108,6 +5108,16 @@ Fix: add the model to snowflake.orchestration_models, or compare only models it 
 
 Note: A comparison commits a version of the published agent or CoWork profile on each candidate, so it is held to the list an agent's own model is (SST-VAL543).
 
+### SST-VAL772
+
+**Comparison has no candidate model** (error)
+
+`eval '<artifact>' names no candidate model to compare with its pinned one`
+
+Raised when `sst test --compare-models` was given no list, and the eval's `candidate_models` setting, from its config, a folder route, or the `evals:` root, names none.
+
+Fix: list the models in `evals.+candidate_models`, or give them as `--compare-models <model>,<model>`
+
 ### SST-VAL773
 
 **Comparison cost not landed yet** (info)
@@ -6623,6 +6633,16 @@ Fix: no action; the observation was refreshed
 Raised when the dbt manifest `--manifest` names changed its models while the project compiled.
 
 Fix: re-run; a concurrent dbt compile is in progress
+
+### SST-MAN032
+
+**Comparison report cannot be refreshed** (error)
+
+`<path> cannot have its cost refreshed: <detail>`
+
+Raised when `sst test --refresh-cost` was given a file that is not there, is not JSON, or is not an `sst.compare/1` report with every key it writes.
+
+Fix: pass a compare.json that `sst test --suite evals --compare-models` wrote, as it wrote it; compare again for a new one
 
 ### SST-MAN201
 

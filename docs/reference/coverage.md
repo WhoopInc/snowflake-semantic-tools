@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 812
+- Codes: 814
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -224,6 +224,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-MAN027`](error-codes.md#sst-man027) | MAN | info | local | `snowflake_semantic_tools.app.state` | `tests/codes/man/test_sst_man027.py` |
 | [`SST-MAN030`](error-codes.md#sst-man030) | MAN | warning | local | `snowflake_semantic_tools.app.apply.observation` | `tests/codes/man/test_sst_man030.py` |
 | [`SST-MAN031`](error-codes.md#sst-man031) | MAN | error | local | `snowflake_semantic_tools.app.manifest` | `tests/codes/man/test_sst_man031.py` |
+| [`SST-MAN032`](error-codes.md#sst-man032) | MAN | error | local | `snowflake_semantic_tools.app.evals.compare_refresh` | `tests/codes/man/test_sst_man032.py` |
 | [`SST-MAN201`](error-codes.md#sst-man201) | MAN | info | local | `snowflake_semantic_tools.app.manifest` | `tests/codes/man/test_sst_man201.py` |
 | [`SST-MAN202`](error-codes.md#sst-man202) | MAN | warning | local | `snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man202.py` |
 | [`SST-MAN203`](error-codes.md#sst-man203) | MAN | error | local | `snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man203.py` |
@@ -749,6 +750,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL769`](error-codes.md#sst-val769) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_subject` | `tests/codes/val/test_sst_val769.py` |
 | [`SST-VAL770`](error-codes.md#sst-val770) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_config` | `tests/codes/val/test_sst_val770.py` |
 | [`SST-VAL771`](error-codes.md#sst-val771) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_config` | `tests/codes/val/test_sst_val771.py` |
+| [`SST-VAL772`](error-codes.md#sst-val772) | VAL | error | local | `snowflake_semantic_tools.app.evals.compare` | `tests/codes/val/test_sst_val772.py` |
 | [`SST-VAL773`](error-codes.md#sst-val773) | VAL | info | runtime | `snowflake_semantic_tools.domain.evaluate.compare_notices` | `tests/codes/val/test_sst_val773.py` |
 | [`SST-VAL774`](error-codes.md#sst-val774) | VAL | info | runtime | `snowflake_semantic_tools.domain.evaluate.compare_notices` | `tests/codes/val/test_sst_val774.py` |
 | [`SST-VAL775`](error-codes.md#sst-val775) | VAL | info | observe | `snowflake_semantic_tools.domain.evaluate.compare_notices` | `tests/codes/val/test_sst_val775.py` |

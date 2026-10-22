@@ -1295,6 +1295,60 @@ privilege held only through a secondary role, and SST-VAL728 one held by no role
 [privileges.py](../../snowflake_semantic_tools/app/evals/privileges.py);
 [the security guide](../guides/security.md).
 
+### An evaluation runs the version its config names, on that version's model
+
+**Docs say**: an evaluation config's `agent_params.agent_version` names the
+version to evaluate. The config has no field for the orchestration model.
+
+**Server does**: a run whose `agent_version` is an alias, such as
+`EVAL_CLAUDE_OPUS_4_8`, evaluates the version carrying it, orchestrated by the
+model that version's specification names. Its spans in
+`SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS` record
+`snow.ai.observability.object.version.name`, `.version.alias`, and
+`agent.planning.model`, and each row of `GET_AI_EVALUATION_DATA` carries the
+REQUEST_ID of the agent request that answered its question.
+
+**Evidence**: `Enforced`. A comparison runs each candidate on a copy of the
+eval whose config differs only in `agent_version`, the candidate's alias, and
+the pinned model on the release by name; the results keep each question's
+request ids, which its cost is read by.
+`test_an_agents_comparison_commits_runs_every_model_and_reports_the_winner` in
+[test_eval_compare.py](../../tests/unit/app/test_eval_compare.py).
+
+**SST depends on it at**: `compared_eval` in
+[compare_runs.py](../../snowflake_semantic_tools/app/evals/compare_runs.py);
+`_ResultCollector.rows` in
+[retrieve.py](../../snowflake_semantic_tools/app/evals/retrieve.py).
+
+### An agent request's credits and a judge's tokens land in the usage views, late
+
+**Docs say**: `SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY` has one row
+per agent request, with TOKEN_CREDITS and a METADATA object, and lags up to an
+hour; METADATA's `sql_query_credits` up to eight hours.
+`CORTEX_REST_API_USAGE_HISTORY` lists REST requests with their TOKENS.
+
+**Server does**: an evaluation's agent rows join its results on REQUEST_ID, and
+METADATA reads `interaction_interface` `eval` with the version's name and
+alias; `sql_query_credits` is often null. A CoWork profile's run has a row for
+the router's request alone: the subagent requests it makes are not tied to the
+run. A judge's calls are named by each `eval` span's
+`ai.observability.eval.inference_request_ids`, one VARCHAR of comma-separated
+ids, which join `CORTEX_REST_API_USAGE_HISTORY.REQUEST_ID`; that view has
+tokens and no credits column, so a judge's cost is reported in tokens. A role
+without access to ACCOUNT_USAGE or the events table is refused the read.
+
+**Evidence**: `Enforced`. The comparison reads both views once each, binding
+every id as one JSON array; a request with no row yet is `pending`, a null SQL
+credit younger than eight hours is `pending`, a refused read is `unavailable`
+(SST-VAL773, SST-VAL774), and a profile's cost is labelled its router's
+(SST-VAL776). [test_usage_port.py](../../tests/contract/test_usage_port.py),
+[test_eval_compare_cost.py](../../tests/unit/app/test_eval_compare_cost.py),
+[test_sst_val776.py](../../tests/codes/val/test_sst_val776.py).
+
+**SST depends on it at**:
+[connector/usage.py](../../snowflake_semantic_tools/adapters/snowflake/connector/usage.py);
+[compare_cost.py](../../snowflake_semantic_tools/app/evals/compare_cost.py).
+
 ## Search services and grants
 
 ### A search service stays ACTIVE after its source is rebuilt

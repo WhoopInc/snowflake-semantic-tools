@@ -12,11 +12,12 @@ https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profil
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 
 from snowflake_semantic_tools.domain.model.agent import AgentProfile
-from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
+from snowflake_semantic_tools.domain.model.config_schema import config_block, target_text
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import (
     DesiredMetadata,
     ProbeKind,
@@ -96,6 +97,22 @@ class StagedAgentObject:
             return None
         git_sha = self.stage_path.rsplit("/", 1)[-1]
         return stage_path(self.stage, f"{self.folder}/{git_sha}/"), git_sha
+
+
+def agent_spec_stage(apply_config: Mapping[str, object], target: TargetIdentity) -> QualifiedName:
+    """Return the stage every AGENT object's specification is staged on: `apply.agent_spec_stage`.
+
+    It is `AGENT_SPECS` unless the block names another, in the target's database and schema
+    unless it names others, each a `{{ target.* }}` template or a name.
+    """
+    stage_config = config_block(apply_config.get("agent_spec_stage"))
+    database = target.database.folded
+    schema = target.schema.folded
+    return QualifiedName.from_parts(
+        target_text(stage_config.get("database"), target, database) or database,
+        target_text(stage_config.get("schema"), target, schema) or schema,
+        str(stage_config.get("stage") or "AGENT_SPECS"),
+    )
 
 
 def staged_path(stage: QualifiedName, folder: str, git_sha: str) -> str:
