@@ -10,8 +10,10 @@ per-run mean, and its pass count from the run nearest the mean. Models rank by t
 means in metric order, then their ungated ones, higher first, then credits per question and p95
 latency, lower first; a value that is not known sorts last, and models whose keys are equal share
 a rank. A candidate wins only when it beats the pinned model on the first gated metric (else the
-first metric) with its lowest run above the pinned model's highest, and it is generally
-available: a preview, internal or deprecated model is excluded from the verdict.
+first metric) with its lowest run above the pinned model's highest, each of the two completed
+at least `MIN_WINNER_RUNS` runs -- one run has no spread, so a lead on one cannot be told from
+run-to-run noise -- and it is generally available: a preview, internal or deprecated model is
+excluded from the verdict.
 """
 
 from __future__ import annotations
@@ -28,6 +30,8 @@ CANDIDATE = "candidate"
 KNOWN = "known"
 PENDING = "pending"
 UNAVAILABLE = "unavailable"
+# The fewest runs the pinned model and a candidate must each complete for the candidate to win.
+MIN_WINNER_RUNS = 2
 # The lifecycles a verdict never names a winner from.
 EXCLUDED_LIFECYCLES = frozenset({"preview", "internal", "deprecated"})
 _LIFECYCLE = {"GA": "ga", "PUPR": "preview", "PRPR": "preview", "INTERNAL": "internal"}
@@ -415,6 +419,13 @@ def decide(kind: str, models: Sequence[ModelReport], metrics: Sequence[MetricSpe
             summary += f" {best.model} ties it {_price(best, pinned)} and ranks above it on what follows."
         return Verdict("pinned_holds", None, summary, None, excluded)
     versus = f"on {metric.name} ({_score(leading.mean)} vs {_score(held.mean)})"
+    if not _repeated(pinned) or not _repeated(best):
+        runs = min(len(pinned.run_names), len(best.run_names))
+        summary = (
+            f"{best.model} leads the pinned {pinned.model} {versus} on {_count(runs, 'completed run')} each "
+            f"at most, too few to tell a lead from run-to-run noise; compare with --compare-runs {MIN_WINNER_RUNS} or more."
+        )
+        return Verdict("no_clear_winner", None, summary, None, excluded)
     if not _above(leading.min, held.max):
         summary = (
             f"{best.model} leads the pinned {pinned.model} {versus}, but their runs overlap; "
@@ -506,6 +517,15 @@ def _key(model: ModelReport, metrics: Sequence[MetricSpec]) -> tuple[tuple[int, 
         (0, price) if price is not None else (1, 0.0),
         (0, latency) if latency is not None else (1, 0.0),
     )
+
+
+def _repeated(model: ModelReport) -> bool:
+    """Report whether a model completed enough runs for its spread to mean anything."""
+    return model.status == "completed" and len(model.run_names) >= MIN_WINNER_RUNS
+
+
+def _count(count: int, noun: str) -> str:
+    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
 def _above(value: float | None, other: float | None) -> bool:

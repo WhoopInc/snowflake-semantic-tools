@@ -61,8 +61,8 @@ def test_a_candidate_outside_the_pinned_spread_wins_at_its_relative_price() -> N
 
 def test_a_profiles_winner_is_pinned_under_cowork_profiles_and_its_price_may_be_unknown() -> None:
     result = compared(
-        model("pinned", PINNED, run("p1", 0.0, 0.0)),
-        model("opus", CANDIDATE, run("o1", 1.0, 1.0)),
+        model("pinned", PINNED, run("p1", 0.0, 0.0), run("p2", 0.0, 0.0)),
+        model("opus", CANDIDATE, run("o1", 1.0, 1.0), run("o2", 1.0, 1.0)),
         kind="cowork_profile",
         costs={"opus": credits(None, PENDING)},
     )
@@ -70,7 +70,10 @@ def test_a_profiles_winner_is_pinned_under_cowork_profiles_and_its_price_may_be_
     assert result.verdict.summary.endswith("its credits per question pending.")
     assert result.notes == ("Held fixed.", PENDING_NOTE)
     assert cost_states(result) == {PENDING: ("opus",), UNAVAILABLE: ("pinned",)}
-    unread = compared(model("pinned", PINNED, run("p1", 0.0)), model("opus", CANDIDATE, run("o1", 1.0)))
+    unread = compared(
+        model("pinned", PINNED, run("p1", 0.0), run("p2", 0.0)),
+        model("opus", CANDIDATE, run("o1", 1.0), run("o2", 1.0)),
+    )
     assert unread.verdict.summary.endswith("its credits per question unavailable.")
 
 
@@ -111,11 +114,25 @@ def test_a_candidate_that_ties_the_pinned_model_but_ranks_below_it_is_not_named(
     assert result.verdict.summary == "No candidate beats the pinned pinned on answer_correctness (1.00)."
 
 
+def test_a_lead_on_one_run_or_a_partial_run_is_no_clear_winner() -> None:
+    once = compared(model("pinned", PINNED, run("p1", 0.0)), model("opus", CANDIDATE, run("o1", 1.0)))
+    assert once.verdict.kind == "no_clear_winner" and once.verdict.pin_suggestion is None
+    assert once.verdict.summary == (
+        "opus leads the pinned pinned on answer_correctness (1.00 vs 0.00) on 1 completed run each at most,"
+        " too few to tell a lead from run-to-run noise; compare with --compare-runs 2 or more."
+    )
+    partial = compared(
+        model("pinned", PINNED, run("p1", 0.0), run("p2", 0.0)),
+        model("opus", CANDIDATE, run("o1", 1.0), run("o2", 1.0), runs=3),
+    )
+    assert partial.verdict.kind == "no_clear_winner" and "2 completed runs each" in partial.verdict.summary
+
+
 def test_a_preview_candidate_never_wins_and_is_listed_as_excluded() -> None:
     result = compared(
-        model("pinned", PINNED, run("p1", 0.0)),
-        model("preview", CANDIDATE, run("x1", 1.0), lifecycle="preview"),
-        model("haiku", CANDIDATE, run("h1", 0.5)),
+        model("pinned", PINNED, run("p1", 0.0), run("p2", 0.0)),
+        model("preview", CANDIDATE, run("x1", 1.0), run("x2", 1.0), lifecycle="preview"),
+        model("haiku", CANDIDATE, run("h1", 0.5), run("h2", 0.5)),
     )
     assert result.verdict.kind == "winner" and result.verdict.model == "haiku"
     assert result.verdict.excluded == (("preview", "preview"),)

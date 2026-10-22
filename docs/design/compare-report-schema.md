@@ -96,8 +96,10 @@ strings. Times are ISO 8601 with offset. Lists are in display order.
 - `questions[].changes[<model>]`: against the pinned model, `fixes` (pinned failed, candidate
   passed), `breaks` (pinned passed, candidate failed), or absent when unchanged. The pinned model
   never appears in `changes`.
-- `verdict.kind`: `winner` (a candidate beats the pinned model outside the spread),
-  `pinned_holds` (no candidate beats it), `no_clear_winner` (leaders' ranges overlap),
+- `verdict.kind`: `winner` (a candidate beats the pinned model outside the spread, each of
+  the two having completed at least 2 runs), `pinned_holds` (no candidate beats it),
+  `no_clear_winner` (the leader's range overlaps the pinned model's, or either completed fewer
+  than 2 runs, so a lead cannot be told from run-to-run noise),
   `incomplete` (the pinned model or every candidate failed).
 - `verdict.pin_suggestion`: the config line to review when `kind` is `winner`, else null.
 
