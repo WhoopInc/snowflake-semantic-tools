@@ -26,6 +26,7 @@ from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
+from snowflake_semantic_tools.cli.help_form import SstSubGroup
 from snowflake_semantic_tools.cli.options import break_stale_lock_option, target_option
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, run_baseline
 from snowflake_semantic_tools.cli.settings import drift_check_setting, threads_setting
@@ -39,7 +40,7 @@ from snowflake_semantic_tools.domain.state.lock import TABLE_KINDS, lock_table_f
 _SUBCOMMANDS = ("recover", "convert", "unlock")
 
 
-@click.group(name="state")
+@click.group(cls=SstSubGroup, name="state")
 @click.pass_context
 def state(ctx: click.Context) -> None:
     """Repair a target's state table: recover entries it lost, convert its kind, or release a lock.

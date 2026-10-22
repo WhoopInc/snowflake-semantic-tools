@@ -43,7 +43,7 @@ def test_every_command_lists_the_global_options_in_its_own_help() -> None:
     # Consumers check what a command accepts by reading `sst <command> --help`.
     for path, command in _leaf_commands(cli):
         assert isinstance(command, SstCommand), path
-        shown = CliRunner().invoke(cli, [*path, "--help"])
+        shown = CliRunner().invoke(cli, [*path, "--help", "--full"])
         assert shown.exit_code == 0, path
         own, _, global_section = shown.output.partition("\nGlobal options:\n")
         own = own.partition("\nOptions:\n")[2]

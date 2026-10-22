@@ -22,6 +22,7 @@ from snowflake_semantic_tools.app.migrate_refs import MigrateRefs, MigrationRepo
 from snowflake_semantic_tools.app.migrate_split import MigrateSplit, SplitFiles, SplitReport
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
 from snowflake_semantic_tools.cli.globals import SstCommand
+from snowflake_semantic_tools.cli.help_form import SstSubGroup
 from snowflake_semantic_tools.cli.runner import CommandResult, WriteFailure, command_body
 from snowflake_semantic_tools.cli.settings import project_config, semantic_models_dir
 from snowflake_semantic_tools.domain.model.config_schema import configured_dir
@@ -29,7 +30,7 @@ from snowflake_semantic_tools.domain.model.config_schema import configured_dir
 _MARKDOWN = frozenset((".md",))
 
 
-@click.group()
+@click.group(cls=SstSubGroup)
 @click.pass_context
 def migrate(ctx: click.Context) -> None:
     """Rewrite an earlier project into the 1.0 dialect: `split` its lists, then rewrite its `refs`.

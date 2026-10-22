@@ -34,6 +34,7 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, ERROR, OK
 from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
+from snowflake_semantic_tools.cli.help_form import SstSubGroup
 from snowflake_semantic_tools.cli.options import Decorator
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, WriteFailure, command_body
 from snowflake_semantic_tools.cli.settings import project_config
@@ -74,7 +75,7 @@ def _only_option() -> Decorator:
     return click.option("--only", "only", multiple=True, metavar="SKILL")
 
 
-@click.group(name="agent-kit")
+@click.group(cls=SstSubGroup, name="agent-kit")
 @click.pass_context
 def agent_kit(ctx: click.Context) -> None:
     """Install SST's skills for a coding agent into this project, and keep them current.

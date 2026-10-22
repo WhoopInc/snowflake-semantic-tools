@@ -22,6 +22,7 @@ from typing import Any
 
 import click
 
+from snowflake_semantic_tools.cli.help_form import ConciseHelp
 from snowflake_semantic_tools.cli.options import Decorator, stacked
 from snowflake_semantic_tools.cli.render.terminal import COLOR_CHOICES
 
@@ -203,7 +204,7 @@ def group_global_options() -> Decorator:
 def command_global_options() -> Decorator:
     """Declare every global option on one command, so it is accepted after the command too.
 
-    Each is a `GlobalOption`: a command's `--help` lists them under their own heading, as
+    Each is a `GlobalOption`: a command's `--help --full` lists them under their own heading, as
     `SstCommand` renders it, so `sst <command> --help` names every option the command accepts.
     """
     return stacked(
@@ -216,8 +217,15 @@ class GlobalOption(click.Option):
     """A global option as one command declares it: parsed by the command, listed apart in its help."""
 
 
-class SstCommand(click.Command):
-    """An `sst` command, whose help lists its own options, then the global ones under their own heading."""
+class SstCommand(ConciseHelp, click.Command):
+    """An `sst` command, whose help lists its own options, then the global ones under their own heading.
+
+    `--help` prints a summary of it, and `--help --full` the whole of it (`ConciseHelp`).
+    """
+
+    def is_global(self, param: click.Parameter) -> bool:
+        """Whether `param` is a global option, folded into one line in the summary."""
+        return isinstance(param, GlobalOption)
 
     def format_help_text(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         """Write the command's help, keeping its `Diagnostics:` list one code per line.

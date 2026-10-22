@@ -231,6 +231,7 @@ CASES = (
     ),
     Case("usage-error", _clean, ("validate", "--bogus")),
     Case("compile-help", _clean, ("compile", "--help"), variants=("plain",)),
+    Case("compile-help-full", _clean, ("compile", "--help", "--full"), variants=("plain",)),
     Case("plan-changes", _compiled, (*_OFFLINE, "plan", "--target", "dev", "--no-plan-out"), snowflake=True),
     Case("agent-validate-errors", _broken, ("-o", "agent", *_OFFLINE, "validate"), variants=("plain",)),
     Case("plan-updates", _compiled, (*_OFFLINE, "plan", "--target", "dev", "--no-plan-out"), connect=_one_update),

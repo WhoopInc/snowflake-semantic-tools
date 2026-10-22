@@ -35,6 +35,7 @@ from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
 from snowflake_semantic_tools.cli.exit_codes import ERROR
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
+from snowflake_semantic_tools.cli.help_form import SstSubGroup
 from snowflake_semantic_tools.cli.options import Decorator, selection_options
 from snowflake_semantic_tools.cli.render.diagnostics import plural
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, project_path, write_text
@@ -69,7 +70,7 @@ def _connected_target() -> Decorator:
     return click.option("--target", "-t", "target_name")
 
 
-@click.group()
+@click.group(cls=SstSubGroup)
 @click.pass_context
 def baseline(ctx: click.Context) -> None:
     """Write and maintain the baseline file of known, not yet fixed, diagnostics.
