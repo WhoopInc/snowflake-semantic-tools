@@ -9,8 +9,6 @@ such a `compare.json` back, reads its runs' usage again, and rewrites the report
 
 from __future__ import annotations
 
-import importlib
-import json
 import socket
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -23,8 +21,8 @@ from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.json_files import JsonFileError, read_json_file
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
-from snowflake_semantic_tools.adapters.paths import write_within
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
+from snowflake_semantic_tools.adapters.report.compare_html import write_compare_report
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
@@ -54,7 +52,6 @@ from snowflake_semantic_tools.domain.evaluate.compare_json import CompareReport,
 from snowflake_semantic_tools.domain.model.config_schema import config_block
 
 # The renderer of the page beside compare.json, imported only when it is installed.
-_HTML_RENDERER = "snowflake_semantic_tools.adapters.report.compare_html"
 _REPORT_LIMIT = 64 * 1024 * 1024
 
 
@@ -178,26 +175,8 @@ def refresh_comparison(paths: ProjectPaths, target_name: str | None, path: Path)
 
 
 def compare_report_writer() -> CompareReportWriter:
-    """Return the writer of a comparison's report: compare.json, with the HTML page where it renders.
-
-    Until `adapters/report/compare_html.py` is installed, only compare.json is written; this
-    guard goes once it is.
-    """
-    try:
-        module = importlib.import_module(_HTML_RENDERER)
-    except ModuleNotFoundError:
-        return JsonReportWriter()
-    return RenderedReportWriter(module.write_compare_report)
-
-
-class JsonReportWriter:
-    """Write the report object alone, as `compare.json`."""
-
-    def write(self, directory: Path, report: Mapping[str, object]) -> Path:
-        """Write `compare.json` alone, indented, keys in the report's order; return its path."""
-        path = directory / COMPARE_JSON
-        write_within(directory, path, _json(report))
-        return path
+    """Return the writer of a comparison's report: compare.json and the HTML page rendered from it."""
+    return RenderedReportWriter(write_compare_report)
 
 
 class RenderedReportWriter:
@@ -266,10 +245,6 @@ def _shown(paths: ProjectPaths, path: Path) -> str:
         return path.resolve().relative_to(paths.project_dir.resolve()).as_posix()
     except ValueError:
         return path.as_posix()
-
-
-def _json(report: Mapping[str, object]) -> str:
-    return json.dumps(report, indent=2, ensure_ascii=False) + "\n"
 
 
 def _count(count: int, noun: str) -> str:

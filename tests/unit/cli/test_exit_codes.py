@@ -17,7 +17,6 @@ import click
 import pytest
 from click.testing import CliRunner, Result
 
-from snowflake_semantic_tools.cli.compare import JsonReportWriter
 from snowflake_semantic_tools.cli.exit_codes import EXIT_CODE_DOCS, INTERRUPTED
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.wiring.project import target_dir
@@ -33,7 +32,7 @@ from tests.helpers.cli_projects import (
     on_a_terminal,
     skills_only_project,
 )
-from tests.helpers.compare_reports import jaffle_outcome
+from tests.helpers.compare_reports import JsonReportWriter, jaffle_outcome
 from tests.helpers.enrich_ports import ScriptedEnrich
 from tests.helpers.reference_project import REPO_ROOT, break_menu_view, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake

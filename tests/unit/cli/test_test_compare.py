@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
-import types
 from dataclasses import replace
 from pathlib import Path
 
@@ -13,7 +11,6 @@ from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.app.evals.compare import CompareOutcome
 from snowflake_semantic_tools.cli.compare import (
-    JsonReportWriter,
     RenderedReportWriter,
     compare_report_writer,
     given_models,
@@ -24,7 +21,8 @@ from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.evaluate.compare_json import report_json
 from snowflake_semantic_tools.domain.ports.snowflake.usage import AgentUsage
 from tests.helpers.cli_projects import common, compile_project, invoke_with_port
-from tests.helpers.compare_reports import jaffle_outcome
+from tests.helpers.compare_reports import JsonReportWriter, jaffle_outcome
+from tests.helpers.compare_samples import sample_compare_report
 from tests.helpers.reference_project import project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
@@ -176,31 +174,12 @@ def test_refreshing_a_file_sst_did_not_write_is_refused_with_exit_four(
     assert json.loads(result.stdout)["diagnostics"][0]["code"] == "SST-MAN032"
 
 
-def test_the_writer_renders_the_page_once_its_renderer_is_installed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    written: list[Path] = []
-
-    def write_compare_report(directory: Path, report: object) -> Path:
-        written.append(directory)
-        return directory / "report.html"
-
-    renderer = types.ModuleType("snowflake_semantic_tools.adapters.report.compare_html")
-    renderer.write_compare_report = write_compare_report  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "snowflake_semantic_tools.adapters.report.compare_html", renderer)
+def test_the_writer_writes_the_page_and_compare_json(tmp_path: Path) -> None:
     writer = compare_report_writer()
     assert isinstance(writer, RenderedReportWriter)
-    assert writer.write(tmp_path, {}) == tmp_path / "report.html" and written == [tmp_path]
-
-
-def test_without_its_renderer_the_writer_writes_compare_json_alone(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setitem(sys.modules, "snowflake_semantic_tools.adapters.report.compare_html", None)
-    writer = compare_report_writer()
-    assert isinstance(writer, JsonReportWriter)
-    assert writer.write(tmp_path / "out", {"schema": "sst.compare/1"}) == tmp_path / "out" / "compare.json"
-    assert json.loads((tmp_path / "out" / "compare.json").read_text(encoding="utf-8")) == {"schema": "sst.compare/1"}
+    page = writer.write(tmp_path / "out", sample_compare_report())
+    assert page == tmp_path / "out" / "report.html" and page.read_text(encoding="utf-8").startswith("<!doctype html>")
+    assert json.loads((tmp_path / "out" / "compare.json").read_text(encoding="utf-8")) == sample_compare_report()
 
 
 def test_a_report_goes_under_sst_target_compare_unless_a_directory_is_given(

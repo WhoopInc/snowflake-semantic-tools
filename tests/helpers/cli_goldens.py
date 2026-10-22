@@ -27,7 +27,6 @@ from snowflake_semantic_tools.app.compile import CompiledView
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.retrieve import compiled_questions
 from snowflake_semantic_tools.app.evals.run import EvalRunResult, EvalSuiteResult
-from snowflake_semantic_tools.cli.compare import JsonReportWriter
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.render.terminal import Terminal
 from snowflake_semantic_tools.cli.wiring.compile import compile_result
@@ -43,7 +42,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 )
 from snowflake_semantic_tools.domain.ports.snowflake.agent_run import AgentReply, ToolUse
 from tests.helpers.cli_projects import common, compile_project
-from tests.helpers.compare_reports import jaffle_outcome
+from tests.helpers.compare_reports import JsonReportWriter, jaffle_outcome
 from tests.helpers.described_objects import described_view
 from tests.helpers.published_target import published
 from tests.helpers.reference_project import DBT_MANIFEST, project_copy

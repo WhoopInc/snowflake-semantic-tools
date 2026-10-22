@@ -8,9 +8,13 @@ a whole comparison of the reference project's agent, as the command line reports
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from dataclasses import replace
+from pathlib import Path
 
 from snowflake_semantic_tools.app.evals.compare import CompareOutcome
+from snowflake_semantic_tools.app.evals.compare_writer import COMPARE_JSON
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.evaluate.compare import (
     KNOWN,
@@ -150,3 +154,14 @@ def jaffle_outcome() -> CompareOutcome:
     report = CompareReport("2026-10-22T14:03:11Z", "2026-10-22T14:03:11Z", "dev", "c7f2a19e", "703f69a", (evaluation,))
     notices = comparison_notices(evaluation, path="sst_target/compare/run/compare.json")
     return CompareOutcome(DiagnosticBag(notices), report, True)
+
+
+class JsonReportWriter:
+    """Write a comparison's report as `compare.json` alone, so a CLI golden prints no page path."""
+
+    def write(self, directory: Path, report: Mapping[str, object]) -> Path:
+        """Write `compare.json`, indented, keys in the report's order; return its path."""
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / COMPARE_JSON
+        path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        return path
