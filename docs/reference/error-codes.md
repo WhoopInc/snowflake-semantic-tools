@@ -4168,7 +4168,7 @@ Fix: remove the tool and attach the server under spec.passthrough.mcp_servers
 
 Note: CREATE AGENT accepts the tool, then every run of the agent fails with 'Tool type mcp is not valid'. Snowflake attaches an MCP server with the spec's top-level `mcp_servers:` key, which `spec.passthrough` renders: `mcp_servers: [{server_spec: {name: <server>}}]`.
 
-### SST-VAL560
+### SST-VAL561
 
 **Alias uses the prefix reserved for eval-model versions** (error)
 

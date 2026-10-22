@@ -721,7 +721,7 @@ unquoted, so it is matched without regard to case wherever it is named later.
 `LIVE`, `FIRST`, `LAST`, `DEFAULT`, and every SQL reserved word, such as
 `select` or `current`, are refused (`SST-PRS025`): SST never double-quotes an
 alias to rescue it, because quoting would make it case-sensitive. An alias
-starting `EVAL_` is refused too (`SST-VAL560`): the prefix is reserved for
+starting `EVAL_` is refused too (`SST-VAL561`): the prefix is reserved for
 eval-model versions. An alias
 written quoted, or one that is a valid identifier only once quoted, such as
 `pro-moted`, is refused too (`SST-PRS005`). A reserved word in a tag name is

@@ -635,7 +635,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
-        "SST-VAL560",
+        "SST-VAL561",
         Severity.ERROR,
         "Alias uses the prefix reserved for eval-model versions",
         "{artifact}: alias '{value}' starts with EVAL_, which SST reserves for eval-model versions",

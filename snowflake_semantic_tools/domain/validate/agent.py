@@ -155,7 +155,7 @@ def agent_rules(
     Diagnostics:
         SST-PRS025: the agent's alias is reserved: a version shortcut, or a Snowflake reserved
             word.
-        SST-VAL560: the agent's alias starts with `EVAL_`, which eval-model versions reserve.
+        SST-VAL561: the agent's alias starts with `EVAL_`, which eval-model versions reserve.
         SST-PRS005: the agent's name is written quoted or is not a segment a stage path can
             hold, its alias is not a plain identifier, or a tag name is not an identifier or a
             qualified name.
@@ -191,7 +191,7 @@ def published_agent_rules(
 
     Diagnostics:
         SST-PRS025: the alias is reserved: a version shortcut, or a Snowflake reserved word.
-        SST-VAL560: the alias starts with `EVAL_`, which eval-model versions reserve.
+        SST-VAL561: the alias starts with `EVAL_`, which eval-model versions reserve.
         SST-PRS005: the name is written quoted or is not a segment a stage path can hold, the
             alias is not a plain identifier, or a tag name is not an identifier or a qualified
             name.
@@ -281,13 +281,13 @@ def _alias_problems(model: PublishedAgent, alias: str) -> tuple[Diagnostic, ...]
 
     Diagnostics:
         SST-PRS025: the alias is a version shortcut or a Snowflake reserved word.
-        SST-VAL560: the alias starts with `EVAL_`, which eval-model versions reserve.
+        SST-VAL561: the alias starts with `EVAL_`, which eval-model versions reserve.
         SST-PRS005: the alias is not a plain identifier.
     """
     if reserved_alias(alias):
         return (D("SST-PRS025", artifact=model.name, value=alias, subject=model.key),)
     if is_eval_alias(alias):
-        return (D("SST-VAL560", artifact=model.name, value=alias, subject=model.key),)
+        return (D("SST-VAL561", artifact=model.name, value=alias, subject=model.key),)
     if not plain_alias(alias):
         return (D("SST-PRS005", artifact=model.key, value=alias, subject=model.key, origin=model.origin),)
     return ()
