@@ -76,7 +76,9 @@ def _eval_lines(evaluation: EvalComparison, style: Style) -> list[str]:
             lines.append(f"    {question.id}  {moves}  {question.text}")
     lines.append("  " + style("verdict", "dim") + "  " + evaluation.verdict.summary)
     if evaluation.verdict.pin_suggestion:
-        lines.append("  " + style("pin", "dim") + "      " + style(evaluation.verdict.pin_suggestion, "strong"))
+        first, *rest = evaluation.verdict.pin_suggestion.split("\n")
+        lines.append("  " + style("pin", "dim") + "      " + style(first, "dim"))
+        lines.extend("           " + style(line, "strong") for line in rest)
     lines.extend("  " + style("note", "dim") + "     " + note for note in evaluation.notes)
     return lines
 

@@ -163,7 +163,7 @@ def agent_eval() -> dict[str, Any]:
             "model": OPUS,
             "summary": f"{OPUS} beats the pinned {SONNET} on answer_correctness (0.94 vs 0.88) outside the "
             "spread, at 1.8x the credits per question.",
-            "pin_suggestion": f"agents.+orchestration_model: {OPUS}",
+            "pin_suggestion": f"# agent.yml of agent 'jaffle_analyst'\nconfig:\n  orchestration_model: {OPUS}",
             "excluded": [{"model": HAIKU, "reason": "preview"}],
         },
         "notes": [

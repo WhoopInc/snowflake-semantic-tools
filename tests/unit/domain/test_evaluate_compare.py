@@ -47,7 +47,7 @@ def test_a_candidate_outside_the_pinned_spread_wins_at_its_relative_price() -> N
         "opus beats the pinned pinned on answer_correctness (0.95 vs 0.50) outside the spread, "
         "at 2.0x the credits per question."
     )
-    assert result.verdict.pin_suggestion == "agents.+orchestration_model: opus"
+    assert result.verdict.pin_suggestion == "# agent.yml of agent 'sales'\nconfig:\n  orchestration_model: opus"
     opus = result.models[1]
     summary = opus.metric(CORRECT.name)
     assert summary is not None and (summary.mean, summary.min, summary.max) == (0.95, 0.9, 1.0)
@@ -66,7 +66,9 @@ def test_a_profiles_winner_is_pinned_under_cowork_profiles_and_its_price_may_be_
         kind="cowork_profile",
         costs={"opus": credits(None, PENDING)},
     )
-    assert result.verdict.pin_suggestion == "cowork_profiles.+orchestration_model: opus"
+    assert result.verdict.pin_suggestion == (
+        "# cowork_profile.yml of CoWork profile 'sales'\nconfig:\n  orchestration_model: opus"
+    )
     assert result.verdict.summary.endswith("its credits per question pending.")
     assert result.notes == ("Held fixed.", PENDING_NOTE)
     assert cost_states(result) == {PENDING: ("opus",), UNAVAILABLE: ("pinned",)}
@@ -270,7 +272,7 @@ def test_finalizing_again_keeps_one_cost_note_and_drops_it_once_nothing_is_pendi
     assert again.notes.count(PENDING_NOTE) == 1
     settled = finalize(replace(again, models=tuple(replace(item, cost=credits(1.0)) for item in again.models)))
     assert PENDING_NOTE not in settled.notes
-    assert decide("agent", settled.models, METRICS) == settled.verdict
+    assert decide("agent", settled.models, METRICS, subject="sales") == settled.verdict
 
 
 def test_a_models_lifecycle_reads_its_show_status() -> None:

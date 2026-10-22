@@ -387,12 +387,17 @@ def finalize(evaluation: EvalComparison, *, extra_notes: tuple[str, ...] = ()) -
     notes = tuple(note for note in (*evaluation.notes, *extra_notes) if note != PENDING_NOTE)
     if any(amount.state == PENDING for model in models for amount in _amounts(model.cost)):
         notes = (*notes, PENDING_NOTE)
-    verdict = decide(evaluation.kind, models, evaluation.metrics)
+    verdict = decide(evaluation.kind, models, evaluation.metrics, subject=evaluation.subject.name)
     return replace(evaluation, models=models, verdict=verdict, notes=notes)
 
 
-def decide(kind: str, models: Sequence[ModelReport], metrics: Sequence[MetricSpec]) -> Verdict:
-    """Decide the verdict as the module docstring says, from ranked models, the pinned one among them."""
+def decide(kind: str, models: Sequence[ModelReport], metrics: Sequence[MetricSpec], *, subject: str) -> Verdict:
+    """Decide the verdict as the module docstring says, from ranked models, the pinned one among them.
+
+    A winner's pin suggestion is the `config:` block of the subject's own file, never a project-wide
+    key: the comparison measured this subject alone, and `agents.+orchestration_model` would move
+    every agent with it.
+    """
     excluded = tuple(
         (model.model, model.lifecycle)
         for model in models
@@ -433,8 +438,15 @@ def decide(kind: str, models: Sequence[ModelReport], metrics: Sequence[MetricSpe
         )
         return Verdict("no_clear_winner", None, summary, None, excluded)
     summary = f"{best.model} beats the pinned {pinned.model} {versus} outside the spread, {_price(best, pinned)}."
-    block = "agents" if kind == "agent" else "cowork_profiles"
-    return Verdict("winner", best.model, summary, f"{block}.+orchestration_model: {best.model}", excluded)
+    return Verdict("winner", best.model, summary, pin_suggestion(kind, subject, best.model), excluded)
+
+
+def pin_suggestion(kind: str, subject: str, model: str) -> str:
+    """Return the YAML that pins `model` for one subject, under a comment naming the file it goes in."""
+    where = (
+        f"agent.yml of agent '{subject}'" if kind == "agent" else f"cowork_profile.yml of CoWork profile '{subject}'"
+    )
+    return f"# {where}\nconfig:\n  orchestration_model: {model}"
 
 
 def _summary(scored: Sequence[EvalRunAttempt], metric: MetricSpec) -> MetricSummary:

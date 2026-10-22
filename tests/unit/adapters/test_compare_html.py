@@ -139,7 +139,7 @@ def test_the_winner_ribbon_is_on_the_verdict_model_only() -> None:
 
 def test_the_verdict_shows_the_pin_suggestion_and_the_excluded_models() -> None:
     verdict = _with("data-section", _render(sample_compare_report()), "verdict")
-    assert f"agents.+orchestration_model: {OPUS}" in verdict[0].content
+    assert f"orchestration_model: {OPUS}" in verdict[0].content and "agent.yml of agent" in verdict[0].content
     assert "sst apply" in verdict[0].content
     assert f"{HAIKU} — preview" in verdict[0].content
     assert "sst apply" not in verdict[1].content

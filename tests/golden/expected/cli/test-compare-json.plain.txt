@@ -347,7 +347,7 @@ $ sst -o json --project-dir <project> --manifest <manifest> test --compare-model
         ],
         "kind": "winner",
         "model": "claude-opus-4-8",
-        "pin_suggestion": "agents.+orchestration_model: claude-opus-4-8",
+        "pin_suggestion": "# agent.yml of agent 'jaffle_analytics_agent'\nconfig:\n  orchestration_model: claude-opus-4-8",
         "summary": "claude-opus-4-8 beats the pinned claude-sonnet-4-6 on answer_correctness (1.00 vs 0.62) outside the spread, its credits per question pending."
       }
     }
