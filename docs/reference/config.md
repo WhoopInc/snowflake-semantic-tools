@@ -172,7 +172,8 @@ Defaults for Cortex Agents, overridable per folder and by an agent's own `config
 | `agents.+database` | identifier | the target database | Database for agents. |
 | `agents.+schema` | identifier | the target schema | Schema for agents. |
 | `agents.+warehouse` | string | the target warehouse | Warehouse an agent's Analyst, search, and generic tools run on when they name none. |
-| `agents.+orchestration_model` | string | `auto` | Orchestration model; must be in `snowflake.orchestration_models` (SST-CFG025 here, SST-VAL543 for the value an agent resolves). `auto` lets Snowflake choose. |
+| `agents.+orchestration_model` | string | `auto` | Orchestration model; must be in `snowflake.orchestration_models` (SST-CFG025 here, SST-VAL543 for the value an agent resolves). `auto` lets Snowflake choose, and SST-VAL560 warns. |
+| `agents.+allow_auto_model` | boolean | `false` | Keep an agent's orchestration model on `auto` deliberately: true silences SST-VAL560 for it, not SST-VAL544. |
 | `agents.+query_timeout` | integer, at least 1 |  | Query timeout, in seconds, of an agent's tools that set none. |
 | `agents.+budget_seconds` | integer, at least 1 |  | Orchestration time budget, in seconds. |
 | `agents.+budget_tokens` | integer, at least 1 |  | Orchestration token budget. |
@@ -193,7 +194,8 @@ Defaults for Snowflake CoWork profiles (Snowflake private preview; https://docs.
 |---|---|---|---|
 | `cowork_profiles.+database` | identifier | the target database | Database for CoWork profiles; CoWork lists only the profiles in SNOWFLAKE_INTELLIGENCE.PROFILES. |
 | `cowork_profiles.+schema` | identifier | the target schema | Schema for CoWork profiles; CoWork lists only the profiles in SNOWFLAKE_INTELLIGENCE.PROFILES. |
-| `cowork_profiles.+orchestration_model` | string | `auto` | Orchestration model the profile routes questions with; must be in `snowflake.orchestration_models` (SST-CFG025). `auto` lets Snowflake choose. |
+| `cowork_profiles.+orchestration_model` | string | `auto` | Orchestration model the profile routes questions with; must be in `snowflake.orchestration_models` (SST-CFG025). `auto` lets Snowflake choose, and SST-VAL560 warns. |
+| `cowork_profiles.+allow_auto_model` | boolean | `false` | Keep a profile's orchestration model on `auto` deliberately: true silences SST-VAL560 for it, not SST-VAL544. |
 | `cowork_profiles.+alias` | string |  | Version alias assigned after publication. |
 | `cowork_profiles.+enabled` | boolean | `true` | Whether CoWork profiles are compiled; false leaves them out of the project. |
 | `cowork_profiles.+attach` | boolean | `true` | Attach each profile published to SNOWFLAKE_INTELLIGENCE.PROFILES to the account's CoWork object, and again when it was detached by hand; false leaves it unattached, and never detaches one (Snowflake private preview; https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles). |

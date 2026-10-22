@@ -35,7 +35,8 @@ def settled_agent(
     """Return the agent with each field a setting gives set from its resolved settings.
 
     Text values have their `{{ target.* }}` templates rendered. An absent orchestration model
-    is `auto` and an absent `secure` false; any other absent setting leaves its field unset.
+    is `auto` and an absent `secure` or `allow_auto_model` false; any other absent setting leaves
+    its field unset.
     Each tag's `name:` is one `{{ tag('<name>') }}` call, resolved against `tags`; a tag whose
     name does not resolve is left out. The agent's `settings` become what it reports: the
     location and warehouse rendered, and each built-in default it took recorded as such.
@@ -74,6 +75,7 @@ def settled_agent(
     settled = replace(
         model,
         orchestration_model=text("orchestration_model") or "auto",
+        allow_auto_model=config_bool(setting_value(settings, "allow_auto_model")) is True,
         budget_seconds=config_int(setting_value(settings, "budget_seconds")),
         budget_tokens=config_int(setting_value(settings, "budget_tokens")),
         tool_not_accessible=text("tool_not_accessible"),

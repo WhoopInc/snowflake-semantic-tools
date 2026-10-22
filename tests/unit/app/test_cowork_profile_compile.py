@@ -60,7 +60,8 @@ def test_a_subagent_takes_its_agents_display_name_comment_and_sample_questions()
     ]
     assert profile.resolved.depends_on == ("agent:sales",)
     assert profile.target.sql == "SNOWFLAKE_INTELLIGENCE.PROFILES.EVERYONE"
-    assert [item.code for item in result.diagnostics] == ["SST-VAL870"]
+    # The agent and the profile are both left on `auto`.
+    assert [item.code for item in result.diagnostics] == ["SST-VAL870", "SST-VAL560", "SST-VAL560"]
 
 
 def test_an_agent_with_no_display_name_is_shown_by_its_name() -> None:
@@ -151,7 +152,8 @@ def test_an_unlisted_model_and_an_unusable_tag_are_reported_as_an_agents_are() -
             }
         )
     )
-    assert codes(profile, agents=(described_agent(),)) == ["SST-REF028", "SST-VAL543"]
+    # The profile is refused, so only the agent, on `auto`, is warned about its model.
+    assert codes(profile, agents=(described_agent(),)) == ["SST-REF028", "SST-VAL543", "SST-VAL560"]
 
 
 def test_the_rendered_artifact_is_an_agent_object_of_its_own_kind() -> None:
@@ -304,15 +306,23 @@ def test_every_compiled_profile_is_noted_as_preview_and_one_outside_the_profiles
     assert [(item.code, item.subject) for item in result.diagnostics] == [
         ("SST-VAL870", "cowork_profile:everyone"),
         ("SST-VAL878", "cowork_profile:everyone"),
+        ("SST-VAL560", "agent:sales"),
+        ("SST-VAL560", "cowork_profile:everyone"),
     ]
 
 
 def test_a_profile_and_an_agent_in_one_schema_and_an_agent_where_cowork_lists_profiles() -> None:
     beside = compile_profiles(cowork_profile(), agents=(described_agent(),), tree={})
-    assert [item.code for item in beside.diagnostics] == ["SST-VAL870", "SST-VAL878", "SST-VAL879"]
+    assert [item.code for item in beside.diagnostics] == [
+        "SST-VAL870",
+        "SST-VAL878",
+        "SST-VAL560",
+        "SST-VAL560",
+        "SST-VAL879",
+    ]
     tree = {**LISTED, "agents": {"+database": "SNOWFLAKE_INTELLIGENCE", "+schema": "PROFILES"}}
     inside = compile_profiles(agents=(described_agent(),), tree=tree)
-    assert [item.code for item in inside.diagnostics] == ["SST-VAL880"]
+    assert [item.code for item in inside.diagnostics] == ["SST-VAL560", "SST-VAL880"]
 
 
 def test_profiles_repeating_a_name_or_display_name_are_reported_and_a_disabled_one_is_left_out() -> None:

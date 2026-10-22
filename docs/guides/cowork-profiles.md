@@ -60,7 +60,8 @@ display:
   color: orange
 
 config:
-  orchestration_model: auto
+  # Listed in snowflake.orchestration_models; `auto` warns (SST-VAL560).
+  orchestration_model: claude-sonnet-4-6
 
 spec:
   instructions:
@@ -93,6 +94,30 @@ meta:
 | `spec.skills` | Skills, pinned as an agent pins them. |
 | `spec.passthrough` | Keys copied into the specification unread, such as `mcp_servers` or `mcp_config`. It cannot set `tools` or `tool_resources` (SST-PRS023). |
 | `config` | The profile's own `cowork_profiles:` settings, without their `+`. |
+
+### Orchestration model
+
+The router chooses a subagent with the profile's orchestration model, so pin it
+as an agent's is ([Pinning the orchestration model](agents.md#pinning-the-orchestration-model)):
+`cowork_profiles.+orchestration_model`, a folder route, or the profile's
+`config:`, naming a model `snowflake.orchestration_models` lists. A profile
+left on `auto`, written so or left unset, is warned (`SST-VAL560`): Snowflake
+then chooses the model and may change it, and a profile on `auto` was measured
+routing with `claude-opus-4-8`. The warning's severity is the project's to set
+with `diagnostics.severity_overrides`, as `info`, `warning` or `error`, or per
+target, and strict mode never promotes it:
+
+```yaml
+diagnostics:
+  severity_overrides:
+    SST-VAL560: "{{ 'error' if target.name == 'prod' else 'warning' }}"
+```
+
+`cowork_profiles.+allow_auto_model: true`, on the block, a folder route, or a
+profile's `config:` as `allow_auto_model: true`, keeps `auto` deliberately and
+silences `SST-VAL560` for those profiles only. A profile whose
+[eval](#evals) is blocking may not stay on `auto`: that is `SST-VAL544`, an
+error `allow_auto_model` does not silence, reported in place of `SST-VAL560`.
 
 ## Subagents
 
@@ -240,7 +265,8 @@ A profile takes an `evals:` block as an agent does, read from the `evals/`
 folder beside `cowork_profile.yml`. Its dataset names the subagents each
 question should be routed to, `[]` for one it should decline, and its config
 gates on `routing_accuracy`, which SST scores from the run's router spans. See
-[Evaluating CoWork profiles](evals.md#evaluating-cowork-profiles).
+[Evaluating CoWork profiles](evals.md#evaluating-cowork-profiles). A blocking
+eval of a profile on `auto` is `SST-VAL544`, as for an agent.
 
 ## What SST does not do
 

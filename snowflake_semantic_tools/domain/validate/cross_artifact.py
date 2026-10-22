@@ -1,7 +1,7 @@
 """Check what spans artifact types: shared questions, and agents against their evals and tools.
 
-Each check reads values the compilers already produced -- verified queries, agents, evals,
-and compiled tools -- so `CompileProject` runs them once every compiler has.
+Each check reads values the compilers already produced -- verified queries, agents, CoWork
+profiles, evals, and compiled tools -- so `CompileProject` runs them once every compiler has.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel
 from snowflake_semantic_tools.domain.model.eval import EvalDefaults, ResolvedEval
 from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember, vocabulary_key
 from snowflake_semantic_tools.domain.validate.relative_date import relative_date
@@ -36,17 +37,35 @@ def blocking(evaluation: ResolvedEval, defaults: EvalDefaults) -> bool:
     return (tier or "report").casefold() == "blocking"
 
 
-def agent_eval_problems(agent: AgentModel, evaluation: ResolvedEval, defaults: EvalDefaults) -> list[Diagnostic]:
-    """Check one agent, its defaults inherited, against the eval written for it.
+def auto_model_problems(model: AgentModel | CoworkProfileModel, gated: bool) -> list[Diagnostic]:
+    """Report an agent or CoWork profile, its settings applied, whose orchestration model is `auto`.
+
+    One diagnostic at most: a gated subject is refused, whatever `allow_auto_model` says, and
+    any other is warned unless `allow_auto_model` keeps `auto` deliberately.
+
+    Args:
+        gated: Whether a blocking eval scores the subject.
 
     Diagnostics:
-        SST-VAL544: the eval blocks and the orchestration model is `auto`, so a score change
+        SST-VAL544: the model is `auto` and a blocking eval scores it, so a score change
             cannot be told from a model change.
+        SST-VAL560: the model is `auto`, no blocking eval scores it, and `allow_auto_model` is
+            not true.
+    """
+    if model.orchestration_model.casefold() != "auto" or (model.allow_auto_model and not gated):
+        return []
+    kind, block = ("agent", "agents") if isinstance(model, AgentModel) else ("cowork profile", "cowork_profiles")
+    code = "SST-VAL544" if gated else "SST-VAL560"
+    return [D(code, type=kind, artifact=model.name, block=block, subject=model.key, origin=model.origin)]
+
+
+def agent_eval_problems(agent: AgentModel, evaluation: ResolvedEval) -> list[Diagnostic]:
+    """Check one agent's sample questions against the eval written for it.
+
+    Diagnostics:
         SST-VAL537: a sample question is relative-dated and word for word an eval question.
     """
     found: list[Diagnostic] = []
-    if blocking(evaluation, defaults) and agent.orchestration_model.casefold() == "auto":
-        found.append(D("SST-VAL544", artifact=agent.name, subject=agent.key, origin=agent.origin))
     rows = {row.question.strip() for row in evaluation.dataset.questions if row.question}
     for question in agent.sample_questions:
         if question.strip() in rows and relative_date(question) is not None:

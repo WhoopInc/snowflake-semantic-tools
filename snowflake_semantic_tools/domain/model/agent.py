@@ -128,13 +128,15 @@ class AgentModel:
     Loading resolves the agent's `settings` -- its own `config:`, then the `agents:` folder
     routes over its file, then the block root -- and its `enabled` from them. Compile then sets
     the fields below that a setting gives, rendered for the target: the orchestration model,
-    budget, `tool_not_accessible`, `analytical_search`, alias, `secure`, and tags. Until it
-    does, each holds its default.
+    budget, `tool_not_accessible`, `analytical_search`, alias, `secure`, `allow_auto_model`, and
+    tags. Until it does, each holds its default.
 
     Attributes:
         source_files: The `agent.yml` and each instruction file it reads, relative to the
             project root, in the order they were read.
         orchestration_model: "auto" when no setting names one.
+        allow_auto_model: The agent keeps `auto` deliberately, so SST-VAL560 does not warn; False
+            unless a setting says true.
         secure: None until compile resolves it; then False when no setting says true.
         analytical_search: None when unset, which is not the same as False.
         orchestration_instructions: The instruction text, or the content of the file its
@@ -161,6 +163,7 @@ class AgentModel:
     secure: bool | None = None
     profile: AgentProfile = AgentProfile()
     orchestration_model: str = "auto"
+    allow_auto_model: bool = False
     budget_seconds: int | None = None
     budget_tokens: int | None = None
     tool_not_accessible: str | None = None
