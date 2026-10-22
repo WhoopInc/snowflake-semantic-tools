@@ -22,6 +22,7 @@ from snowflake_semantic_tools.domain.model.agent import (
     ResolvedAgentTool,
 )
 from snowflake_semantic_tools.domain.model.identifier import Identifier
+from snowflake_semantic_tools.domain.model.lifecycle import is_eval_alias
 from snowflake_semantic_tools.domain.model.setting import CONFIG_SOURCE
 from snowflake_semantic_tools.domain.parse.names import RESERVED_WORDS
 from snowflake_semantic_tools.domain.render.agent import render_agent_profile
@@ -154,6 +155,7 @@ def agent_rules(
     Diagnostics:
         SST-PRS025: the agent's alias is reserved: a version shortcut, or a Snowflake reserved
             word.
+        SST-VAL560: the agent's alias starts with `EVAL_`, which eval-model versions reserve.
         SST-PRS005: the agent's name is written quoted or is not a segment a stage path can
             hold, its alias is not a plain identifier, or a tag name is not an identifier or a
             qualified name.
@@ -189,6 +191,7 @@ def published_agent_rules(
 
     Diagnostics:
         SST-PRS025: the alias is reserved: a version shortcut, or a Snowflake reserved word.
+        SST-VAL560: the alias starts with `EVAL_`, which eval-model versions reserve.
         SST-PRS005: the name is written quoted or is not a segment a stage path can hold, the
             alias is not a plain identifier, or a tag name is not an identifier or a qualified
             name.
@@ -274,14 +277,17 @@ def plain_alias(value: str) -> bool:
 
 
 def _alias_problems(model: PublishedAgent, alias: str) -> tuple[Diagnostic, ...]:
-    """Report an alias that is reserved, else one that is not a plain identifier.
+    """Report an alias that is reserved, else one with the eval-model prefix, else one not plain.
 
     Diagnostics:
         SST-PRS025: the alias is a version shortcut or a Snowflake reserved word.
+        SST-VAL560: the alias starts with `EVAL_`, which eval-model versions reserve.
         SST-PRS005: the alias is not a plain identifier.
     """
     if reserved_alias(alias):
         return (D("SST-PRS025", artifact=model.name, value=alias, subject=model.key),)
+    if is_eval_alias(alias):
+        return (D("SST-VAL560", artifact=model.name, value=alias, subject=model.key),)
     if not plain_alias(alias):
         return (D("SST-PRS005", artifact=model.key, value=alias, subject=model.key, origin=model.origin),)
     return ()

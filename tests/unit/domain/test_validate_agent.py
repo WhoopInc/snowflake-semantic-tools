@@ -76,6 +76,14 @@ def test_an_alias_is_a_plain_identifier_and_a_one_part_tag_name_may_be_plain() -
     assert codes(agent_rules(model, MODELS, ())) == ["SST-PRS005", "SST-PRS005"]
 
 
+def test_an_alias_may_not_take_the_prefix_eval_model_versions_reserve() -> None:
+    # A comparison's EVAL_ aliases are never unset by plan, so a project one could not be told apart.
+    for alias in ("EVAL_PROD", "eval_candidate"):
+        assert codes(agent_rules(agent(alias=alias), MODELS, ())) == ["SST-VAL560"]
+        assert codes(published_agent_rules(agent(alias=alias), MODELS)) == ["SST-VAL560"]
+    assert codes(agent_rules(agent(alias="evaluated"), MODELS, ())) == []
+
+
 def test_analytical_search_is_satisfied_by_a_cortex_search_tool() -> None:
     model = agent(alias="bad name", analytical_search=True)
     assert codes(agent_rules(model, MODELS, (tool("s", "cortex_search"),))) == ["SST-PRS005"]

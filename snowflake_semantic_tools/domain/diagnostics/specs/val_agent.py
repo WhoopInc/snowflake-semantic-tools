@@ -634,4 +634,17 @@ SPECS: tuple[ErrorSpec, ...] = (
             "`mcp_servers: [{server_spec: {name: <server>}}]`."
         ),
     ),
+    spec(
+        "SST-VAL560",
+        Severity.ERROR,
+        "Alias uses the prefix reserved for eval-model versions",
+        "{artifact}: alias '{value}' starts with EVAL_, which SST reserves for eval-model versions",
+        "choose an alias that does not start with EVAL_",
+        condition="an agent's or CoWork profile's `alias` starts with `EVAL_`, ignoring case",
+        note=(
+            "A comparison of orchestration models commits a version of the published agent per "
+            "model and aliases it `EVAL_<MODEL>`; plan never unsets such an alias, so a project "
+            "alias with the prefix could not be told from one."
+        ),
+    ),
 )

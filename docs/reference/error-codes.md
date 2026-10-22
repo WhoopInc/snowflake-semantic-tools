@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 328 codes
+- [Validation (VAL)](#validation-val) -- 329 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
@@ -4167,6 +4167,18 @@ Raised when an agent's `spec.tools` entry has `type: mcp`.
 Fix: remove the tool and attach the server under spec.passthrough.mcp_servers
 
 Note: CREATE AGENT accepts the tool, then every run of the agent fails with 'Tool type mcp is not valid'. Snowflake attaches an MCP server with the spec's top-level `mcp_servers:` key, which `spec.passthrough` renders: `mcp_servers: [{server_spec: {name: <server>}}]`.
+
+### SST-VAL560
+
+**Alias uses the prefix reserved for eval-model versions** (error)
+
+`<artifact>: alias '<value>' starts with EVAL_, which SST reserves for eval-model versions`
+
+Raised when an agent's or CoWork profile's `alias` starts with `EVAL_`, ignoring case.
+
+Fix: choose an alias that does not start with EVAL_
+
+Note: A comparison of orchestration models commits a version of the published agent per model and aliases it `EVAL_<MODEL>`; plan never unsets such an alias, so a project alias with the prefix could not be told from one.
 
 ### SST-VAL603
 
