@@ -15,7 +15,7 @@ Installed with the package (`pip install snowflake-semantic-tools`).
 | pyyaml | >=6.0.2,<7.0 | MIT | ✅ Permissive |
 | ruamel-yaml | >=0.18.6,<0.19 | MIT | ✅ Permissive |
 | snowflake-connector-python (with `secure-local-storage`) | >=4.7.1,<5.0 | Apache 2.0 | ✅ Permissive |
-| certifi | >=2024.7.4 | MPL-2.0 | ⚠️ Weak copyleft, used unmodified |
+| certifi | >=2026.10.19 | MPL-2.0 | ⚠️ Weak copyleft, used unmodified |
 | cryptography | >=46.0.5 | Apache 2.0 or BSD-3-Clause | ✅ Permissive |
 | click | >=8.3.3,<9.0 | BSD-3-Clause | ✅ Permissive |
 | textual | >=8.2,<9.0 | MIT | ✅ Permissive |
@@ -25,7 +25,9 @@ The `secure-local-storage` extra adds keyring (MIT) to cache SSO tokens.
 SST imports certifi and cryptography directly -- certifi's CA bundle verifies the agent stream, and
 cryptography reads a key-pair profile's private key -- so both are declared, though the connector
 requires them too. certifi is MPL-2.0: a file-level copyleft whose conditions attach to certifi's
-own files, which SST neither modifies nor bundles.
+own files, which SST neither modifies nor bundles. Its floor is above the connector's on purpose:
+every certifi before 2026.10.19 trusts the emSign root behind the compromised eMudhra
+intermediates ([GHSA-6q48-6c7w-9gw2](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2)).
 
 Textual draws the `sst ask` conversation; its tree is listed below with the connector's.
 

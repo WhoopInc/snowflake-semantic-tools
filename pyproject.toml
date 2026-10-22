@@ -25,9 +25,11 @@ pyyaml = ">=6.0.2,<7.0"
 ruamel-yaml = ">=0.18.6,<0.19"
 snowflake-connector-python = {extras = ["secure-local-storage"], version = ">=4.7.1,<5.0"}
 # Imported directly, though the connector also requires both: certifi's CA bundle verifies the
-# agent stream, and cryptography reads a key-pair profile's private key. The floors are the
-# connector's own, so declaring them never narrows what it accepts.
-certifi = ">=2024.7.4"
+# agent stream, and cryptography reads a key-pair profile's private key. cryptography's floor is
+# the connector's own. certifi's is higher on purpose: every release before 2026.10.19 trusts the
+# emSign root behind the compromised eMudhra intermediates (GHSA-6q48-6c7w-9gw2), so an older
+# bundle would let a forged certificate intercept SST's TLS.
+certifi = ">=2026.10.19"
 cryptography = ">=46.0.5"
 click = ">=8.3.3,<9.0"
 # The full-screen `sst ask` conversation; imported only when one opens.
