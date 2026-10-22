@@ -946,6 +946,38 @@ def test_agent_versions_read_each_version_with_its_alias_default_and_specificati
     )
 
 
+def test_agent_versions_read_the_default_setting_from_one_describe_agent() -> None:
+    # MEASURED: `default_version_name` reads 'LAST' for a default never set or set to follow
+    # LAST, and the version's name when it was pinned.
+    name = QualifiedName.parse("DB.S.SALES_AGENT")
+    shown: dict[str, tuple[dict[str, object], ...]] = {
+        "SHOW VERSIONS IN AGENT": ({"name": "VERSION$1", "alias": None, "is_default": "true"},)
+    }
+    for setting, pinned in (("LAST", False), ("VERSION$1", True)):
+        described = {**_described_agent("{}"), "default_version_name": setting}
+        connector = StubSnowflakeConnector({**shown, "DESCRIBE AGENT": (described,)})
+        versions = connector.observe_agent_versions(name)
+        assert (versions.default_setting, versions.default_pinned) == (setting, pinned)
+    # Column names compare casefolded; a missing, empty, or ambiguous answer is unread.
+    upper: dict[str, object] = {"DEFAULT_VERSION_NAME": "VERSION$2"}
+    assert StubSnowflakeConnector({**shown, "DESCRIBE AGENT": (upper,)}).observe_agent_versions(
+        name
+    ).default_setting == ("VERSION$2")
+    unread: tuple[tuple[dict[str, object], ...], ...] = ((), ({"default_version_name": ""},), (upper, upper))
+    for rows in unread:
+        connector = StubSnowflakeConnector({**shown, "DESCRIBE AGENT": rows})
+        assert connector.observe_agent_versions(name).default_setting is None
+
+
+def test_a_describe_agent_that_fails_leaves_the_default_unread_and_the_versions_read() -> None:
+    session = FakeDriverSession(
+        rows={"SHOW VERSIONS IN AGENT": ({"name": "VERSION$1", "alias": None, "is_default": "true"},)},
+        failures={"DESCRIBE AGENT": ProgrammingError(msg="Insufficient privileges", errno=3001, sqlstate="42501")},
+    )
+    versions = FakeDriverConnector(session).observe_agent_versions(QualifiedName.parse("DB.S.SALES_AGENT"))
+    assert versions.default_setting is None and versions.default_name == "VERSION$1"
+
+
 def test_show_rows_keep_the_columns_a_drift_digest_reads() -> None:
     connector = StubSnowflakeConnector(
         {

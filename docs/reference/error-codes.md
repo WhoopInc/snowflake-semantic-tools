@@ -26,8 +26,8 @@ cannot be downgraded by any setting.
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
-- [Planning (PLN)](#planning-pln) -- 49 codes
-- [Apply (APL)](#apply-apl) -- 45 codes
+- [Planning (PLN)](#planning-pln) -- 50 codes
+- [Apply (APL)](#apply-apl) -- 46 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 13 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 30 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
@@ -7032,7 +7032,7 @@ Raised when state records the agent unchanged, but it has no live version, or it
 
 Fix: apply to roll forward, or hold a rollback by not applying until it should end
 
-Note: The update sets the alias and a live version back on the version holding the specification, and the default to 'LAST', which serves that version and follows each one committed after it, without adding a version; an agent with no live version whose newest version holds another specification, or whose newest committed version is an eval-model version, gets a new version instead. Strict mode leaves this a warning, since the apply it plans is the repair.
+Note: The update sets the alias and a live version back on the version holding the specification, and pins the default to that version by name, without adding a version; a default on an eval-model version is pointed back the same way. An agent with no live version whose newest version holds another specification, or whose newest committed version is an eval-model version, gets a new version instead. Strict mode leaves this a warning, since the apply it plans is the repair.
 
 ### SST-PLN103
 
@@ -7081,6 +7081,16 @@ Raised when a planned change attaches a CoWork profile, and SHOW GRANTS ON SNOWF
 Fix: grant MODIFY on the CoWork object to the deploying role, or set `cowork_profiles.+attach: false`
 
 Note: Snowflake private preview. A secondary role in the session counts. The change is blocked, so apply never publishes a profile it cannot attach; USAGE on the profile is granted outside SST.
+
+### SST-PLN107
+
+**Agent's default follows LAST** (info)
+
+`<artifact>: the default version follows LAST; apply pins it to <value> by name`
+
+Raised when state records a permanent agent unchanged, its default is on the version holding the planned specification, and DESCRIBE AGENT reads its `default_version_name` as `LAST`.
+
+Note: Once, for an agent published before SST pinned its default by name. The update sets DEFAULT_VERSION to that version's name and adds no version, so a version committed after it, such as an eval-model version, never becomes the default. A default that could not be read changes nothing.
 
 ### SST-PLN900
 
@@ -7579,6 +7589,18 @@ Raised when `apply --temporary` would publish a CoWork profile, a Snowflake priv
 Fix: apply without --temporary to publish the profile
 
 Note: The agents the profile routes to still publish, as temporary agents.
+
+### SST-APL107
+
+**Agent's default left following LAST** (warning, never promoted)
+
+``<artifact>: the default version could not be pinned by name (<detail>); it is left following LAST, and the next `sst plan` pins it``
+
+Raised when apply committed a new version of a permanent agent, then reading its versions back or setting DEFAULT_VERSION to the version it committed failed.
+
+Fix: run `sst plan`, then `sst apply`, to pin it before anything else commits a version of the agent
+
+Note: The write succeeded and state records it. Until the default is pinned, it serves the newest committed version, so a version committed later, such as an eval-model version, would become the default; the next plan reports the agent as SST-PLN107. Strict mode leaves this a warning, since the next apply is the repair.
 
 ### SST-APL900
 

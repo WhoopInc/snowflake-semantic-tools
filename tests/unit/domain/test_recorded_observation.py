@@ -44,6 +44,7 @@ def _artifact(key: str, *, full: bool) -> ObservedArtifact:
         default_version="VERSION$1" if full else None,
         alias_versions=(("PROMOTED", "VERSION$2"),) if full else (),
         last_is_eval_model=full,
+        default_pinned=True if full else None,
     )
 
 
@@ -178,6 +179,7 @@ def test_a_record_written_before_agent_version_facts_reads_with_none() -> None:
             "default_version",
             "alias_versions",
             "last_is_eval_model",
+            "default_pinned",
         ):
             del artifact[key]
     observed = RecordedObservation.from_dict(json.loads(json.dumps(document))).observation.artifacts["semantic_view:a"]
@@ -187,7 +189,15 @@ def test_a_record_written_before_agent_version_facts_reads_with_none() -> None:
         None,
         (),
     )
-    assert observed.last_is_eval_model is False
+    # A default whose setting was not recorded is unread, which plans no pin.
+    assert (observed.last_is_eval_model, observed.default_pinned) == (False, None)
+
+
+def test_a_default_read_as_following_last_reads_back_as_unpinned() -> None:
+    recorded = _recorded(preflight=None)
+    artifact = replace(recorded.observation.artifacts["semantic_view:a"], default_pinned=False)
+    observation = replace(recorded.observation, artifacts=MappingProxyType({artifact.key: artifact}))
+    assert _round_trip(replace(recorded, observation=observation)).observation.artifacts[artifact.key] == artifact
 
 
 @pytest.mark.parametrize(

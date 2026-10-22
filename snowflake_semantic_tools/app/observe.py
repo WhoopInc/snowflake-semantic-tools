@@ -254,6 +254,7 @@ def _observe_row(
         alias_versions=versions.alias_versions,
         live_digest=digest,
         last_is_eval_model=versions.last_is_eval_model,
+        default_pinned=versions.default_pinned,
     )
     return artifact, (*diagnostics, *definition_diagnostics, *digest_diagnostics)
 

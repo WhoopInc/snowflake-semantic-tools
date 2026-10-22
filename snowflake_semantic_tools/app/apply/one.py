@@ -38,6 +38,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     OutcomeStatus,
     RenderedArtifact,
     RetryPolicy,
+    pinned_default,
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
@@ -174,7 +175,8 @@ class ChangeApplier:
         The explicit grants an update keeps are read before anything runs, and the file the
         artifact publishes is staged before its statements, on a stage made to exist first
         when the artifact names it. Any of them failing fails the change with nothing of the
-        artifact written.
+        artifact written. A verified update that committed an agent version then pins the
+        agent's default to it, before the digest and the served version are read.
         """
         try:
             before = self._grants_to_keep(change, rendered)
@@ -202,7 +204,36 @@ class ChangeApplier:
             # checked. Reporting no write would drop it from state, and the next plan
             # would call an object SST created unmanaged.
             return replace(outcome, status=OutcomeStatus.FAILED, error=_exception_error(exc), write_succeeded=True)
-        return self._with_digest(verified, rendered)
+        return self._with_digest(self._pin_default(verified, rendered), rendered)
+
+    def _pin_default(self, outcome: ApplyOutcome, rendered: RenderedArtifact) -> ApplyOutcome:
+        """Pin a permanent agent's default by name to the version its applied update just committed.
+
+        The program left the default following `'LAST'`, which serves the new version; pinned by
+        name, it stays there when a version is committed later, as an eval-model comparison
+        commits them. The version committed is the newest release SHOW VERSIONS lists, since an
+        eval-model version is the only other kind committed. A read or a statement that fails
+        loses nothing: the write is applied, the default keeps following `LAST`, and the reason
+        is in `default_unpinned`, which the run reports.
+        """
+        if outcome.status is not OutcomeStatus.APPLIED or rendered.adds_version is not True:
+            return outcome
+        try:
+            newest = self._port.observe_agent_versions(rendered.target).newest
+        except SnowflakePortError as exc:
+            return replace(outcome, default_unpinned=f"reading its versions failed: {exc}")
+        name = newest.name if newest is not None else None
+        pin = pinned_default(rendered.target, name) if name else None
+        if pin is None:
+            return replace(outcome, default_unpinned="SHOW VERSIONS IN AGENT listed no version it committed")
+        try:
+            result = self._port.execute_script((pin,))
+        except SnowflakePortError as exc:
+            return replace(outcome, default_unpinned=f"pinning {name} failed: {exc}")
+        if not result.ok:
+            reason = result.error.message if result.error is not None else "unknown Snowflake failure"
+            return replace(outcome, default_unpinned=f"pinning {name} failed: {reason}")
+        return outcome
 
     def _with_digest(self, outcome: ApplyOutcome, rendered: RenderedArtifact) -> ApplyOutcome:
         """Read back the digest of what a verified write left, which state records for plan.

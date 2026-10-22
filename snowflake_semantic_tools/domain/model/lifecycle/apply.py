@@ -140,6 +140,9 @@ class ApplyOutcome:
             failed, so what is live is not what was rendered.
         live_digest: The digest of the written object's properties its marker does not prove,
             read back once the write was verified; None when it was not read.
+        default_unpinned: Why apply could not pin a permanent agent's default by name to the
+            version its update committed, leaving it following `LAST`; None when it pinned it,
+            or had nothing to pin. The write still succeeded.
     """
 
     key: ArtifactKey
@@ -155,6 +158,7 @@ class ApplyOutcome:
     physical_resources: tuple[tuple[str, str], ...] = ()
     partial_write: bool = False
     live_digest: str | None = None
+    default_unpinned: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

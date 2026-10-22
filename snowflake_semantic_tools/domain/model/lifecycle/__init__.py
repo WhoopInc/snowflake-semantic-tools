@@ -72,6 +72,8 @@ from snowflake_semantic_tools.domain.model.lifecycle.rendered import (
     SmokeProbe,
     StatementPlan,
     Upload,
+    pinned_default,
+    unpinned_default,
     version_drift,
 )
 from snowflake_semantic_tools.domain.model.lifecycle.version import (
@@ -154,7 +156,9 @@ __all__ = [
     "is_eval_model_comment",
     "live_digest",
     "marked_comment",
+    "pinned_default",
     "spec_fingerprint",
+    "unpinned_default",
     "version_comment",
     "version_drift",
 ]

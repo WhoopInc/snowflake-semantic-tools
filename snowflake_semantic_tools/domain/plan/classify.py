@@ -22,7 +22,8 @@ never change a decision: a declared name whose case differs from the live object
 (SST-PLN023), reported before the decision's own diagnostic; and an update whose statements
 would drop the object's explicit grants (SST-PLN013), then of a semantic view that carries
 tags the project does not declare (SST-PLN039), reported after it. An agent updated for version drift reports
-what drifted (SST-PLN102) after them.
+what drifted (SST-PLN102) after them, and one updated only to pin its default by name says so
+(SST-PLN107).
 
 An agent's ownership marker means "SST is writing this definition": publishing writes the
 marked comment before anything else, so an apply that stops part way leaves the marker state
@@ -45,6 +46,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ObservedArtifact,
     RenderedArtifact,
     drifted_properties,
+    unpinned_default,
     version_drift,
 )
 from snowflake_semantic_tools.domain.model.registry import Registry
@@ -105,6 +107,7 @@ def classify(
             declare, which the replace removes.
         SST-PLN043: with `overwrite`, the update replaces an object changed out of band.
         SST-PLN102: an otherwise unchanged agent's versions drifted from what SST published.
+        SST-PLN107: an otherwise unchanged agent's default follows LAST, which apply pins by name.
         SST-VAL320: the recorded or rendered fingerprint is not a canonical digest, so the
             comparison would not be of normalised definitions.
     """
@@ -190,6 +193,8 @@ def _compare(
         reported.append(D("SST-PLN039", artifact=key, value=observed.qualified_name.sql, found=", ".join(removed)))
     if change.reason is ChangeReason.VERSION_DRIFT:
         reported.append(D("SST-PLN102", subject=key, artifact=key, detail="; ".join(version_drift(artifact, observed))))
+    if change.reason is ChangeReason.DEFAULT_UNPINNED:
+        reported.append(D("SST-PLN107", subject=key, artifact=key, value=str(unpinned_default(artifact, observed))))
     return Decision(change, tuple(reported))
 
 
@@ -288,6 +293,10 @@ def _versions_drifted(evidence: _Evidence) -> bool:
     return bool(version_drift(evidence.artifact, evidence.observed))
 
 
+def _default_unpinned(evidence: _Evidence) -> bool:
+    return unpinned_default(evidence.artifact, evidence.observed) is not None
+
+
 def _target_moved(evidence: _Evidence) -> Diagnostic:
     return D(
         "SST-PLN025",
@@ -335,8 +344,9 @@ def _hand_version(evidence: _Evidence, changed: tuple[str, ...]) -> str:
 # rows come first, so an update never overwrites an object that moved or changed out of band;
 # the one update before them is of an object whose marker names the definition being planned.
 # A property that drifted under an unchanged marker blocks next, before any update would
-# replace the hand edit. Version drift comes last: it is checked only for an agent whose
-# definition and newest committed specification are both as SST left them.
+# replace the hand edit. Version drift comes next: it is checked only for an agent whose
+# definition and newest committed specification are both as SST left them. A default that
+# serves the release only by following LAST comes last, as the one thing left to set.
 _STATE_RULES: tuple[_StateRule, ...] = (
     _StateRule(_unnormalised, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _raw_comparison),
     _StateRule(_recorded_elsewhere, Action.BLOCKED, ChangeReason.TARGET_MOVED, _target_moved),
@@ -346,6 +356,7 @@ _STATE_RULES: tuple[_StateRule, ...] = (
     _StateRule(_fingerprint_differs, Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS),
     _StateRule(_written_partly, Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS),
     _StateRule(_versions_drifted, Action.UPDATE, ChangeReason.VERSION_DRIFT),
+    _StateRule(_default_unpinned, Action.UPDATE, ChangeReason.DEFAULT_UNPINNED),
 )
 # The reports of the rows that block an object as changed out of band, which `--overwrite` updates.
 _OVERWRITTEN = (_out_of_band, _drifted)

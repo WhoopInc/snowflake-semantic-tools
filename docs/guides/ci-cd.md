@@ -131,8 +131,8 @@ version point at the version it served before. The rollback holds until the
 next apply. The next `sst plan` sees that the alias or the default version is no
 longer on the newest version holding the project's spec, and plans the agent as
 an update with reason `version_drift` (`SST-PLN102`); applying it rolls forward,
-pointing them back at that version without adding one, with the default set to
-`'LAST'` so it follows the versions applied after it. To keep the rollback,
+pointing them back at that version without adding one, with the default pinned
+to it by name until the next apply commits a version. To keep the rollback,
 do not apply until it should end, or change the source back and apply that,
 which publishes the earlier spec as a new version.
 

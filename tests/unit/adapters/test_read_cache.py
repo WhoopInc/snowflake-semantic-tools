@@ -151,7 +151,11 @@ def test_a_repeated_show_describe_or_list_is_answered_once() -> None:
     for _ in range(3):
         connector.observe_agent_versions(QualifiedName.parse("DB.S.PLAIN"))
         connector.show_grants("AGENT", QualifiedName.parse("DB.S.PLAIN"))
-    assert session.statements == ["SHOW VERSIONS IN AGENT DB.S.PLAIN", "SHOW GRANTS ON AGENT DB.S.PLAIN"]
+    assert session.statements == [
+        "SHOW VERSIONS IN AGENT DB.S.PLAIN",
+        "DESCRIBE AGENT DB.S.PLAIN",
+        "SHOW GRANTS ON AGENT DB.S.PLAIN",
+    ]
 
 
 @pytest.mark.parametrize(

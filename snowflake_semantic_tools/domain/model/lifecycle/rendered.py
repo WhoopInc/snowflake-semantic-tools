@@ -5,13 +5,19 @@ caller sets besides arrives in small parameter objects: `PublishShape` for the o
 Snowflake receives, `StatementPlan` for the statements each action runs, `Upload` for a
 file staged first, `DesiredMetadata` for the alias, tags and specification an agent keeps, and
 `CompositeFacts` for an artifact a lifecycle handler publishes. Once plan has chosen an
-action, `RenderedArtifact.for_action` picks the statements apply runs, and `version_drift` says
-how an agent's versions no longer point where SST published them. A version an eval-model
-comparison committed is never SST's release, and its `EVAL_` alias is left alone.
+action, `RenderedArtifact.for_action` picks the statements apply runs, `version_drift` says
+how an agent's versions no longer point where SST published them, and `unpinned_default` names
+the release an agent's default follows only through `LAST`, which apply pins it to by name. A
+version an eval-model comparison committed is never SST's release, and its `EVAL_` alias is
+left alone.
+
+An agent's default is pinned by name so that only `sst apply` moves it: a default that follows
+`LAST` would serve a version an eval-model comparison commits the moment it is committed.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, replace
 from enum import Enum
 from hashlib import sha256
@@ -22,7 +28,10 @@ from snowflake_semantic_tools.domain.model.lifecycle.marker import OwnershipMark
 from snowflake_semantic_tools.domain.model.lifecycle.observation import ArtifactKey, ObservedArtifact
 from snowflake_semantic_tools.domain.model.lifecycle.version import is_eval_alias
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
-from snowflake_semantic_tools.domain.sql import Sql, canonical, ident, join, qname, sql
+from snowflake_semantic_tools.domain.sql import Sql, canonical, ident, join, literal, qname, sql
+
+# A committed version's system name, the only thing a default is pinned to.
+_SYSTEM_VERSION = re.compile(r"VERSION\$\d+", re.IGNORECASE)
 
 # The type Snowflake reports for an internal stage with server-side encryption only: the one
 # kind of stage SST creates, and the only kind it stages files on.
@@ -350,14 +359,15 @@ class RenderedArtifact:
         and the default version at it, and open a live version from it, where missing; else
         `update_live_statements` when the observed object has a live version and there are any;
         else `update_statements` when there are any; either of those also leaves the default
-        following the new version. An agent with no live version whose newest committed version
-        is an eval-model version never takes the properties program: the live version it would
-        open `FROM LAST` would serve that version's candidate specification, so it commits a new
-        release instead. It then unsets the aliases and tags the observed agent carries but this
-        artifact does not desire, except an alias on the version the properties program just set
-        the desired alias on, which that replaced, and an eval-model version's. A permanent
-        agent's UPDATE also says whether it commits a new version, in `adds_version`. Any other
-        action, or an UPDATE with no program, returns this artifact unchanged.
+        following the new version, which apply then pins by name. An agent with no live version
+        whose newest committed version is an eval-model version never takes the properties
+        program: the live version it would open `FROM LAST` would serve that version's
+        candidate specification, so it commits a new release instead. It then unsets the
+        aliases and tags the observed agent carries but this artifact does not desire, except
+        an alias on the version the properties program just set the desired alias on, which
+        that replaced, and an eval-model version's. A permanent agent's UPDATE also says
+        whether it commits a new version, in `adds_version`. Any other action, or an UPDATE
+        with no program, returns this artifact unchanged.
         """
         if action is Action.CREATE and self.create_statements:
             return replace(self, statements=self.create_statements)
@@ -394,24 +404,37 @@ class RenderedArtifact:
 
 
 def _unpinned_default(artifact: RenderedArtifact, observed: ObservedArtifact | None) -> tuple[Sql, ...]:
-    """Leave the default following the version an update adds, as `'LAST'`.
+    """Leave the default on the version an update adds, as `'LAST'`, for apply to pin by name.
 
     Snowflake keeps a default set by name where it is when a version is committed, so a
-    version-adding update would leave it serving the old one. SHOW VERSIONS marks which version
-    is the default but not whether it was set by name, so a default on the newest version may be
-    pinned there too; every version-adding update of a permanent agent therefore sets it to
-    `'LAST'`, which then follows each version committed after.
+    version-adding update would leave it serving the old one. The new version's name is known
+    only once Snowflake commits it, so the program ends with the default following `'LAST'`,
+    which serves the new version the moment the program ends; apply then reads the version it
+    committed and pins the default to it by name (docs/design/snowflake-behaviour.md).
     """
     if observed is None or artifact.object_type != "AGENT" or artifact.temporary:
         return ()
-    return (_default_to_last(artifact),)
-
-
-def _default_to_last(artifact: RenderedArtifact) -> Sql:
-    """Set the agent's default to its newest committed version, as a default that follows it."""
     # MEASURED: the shortcut is taken only as a string literal; unquoted, it is a syntax error. A
     # default set to it follows each version committed afterwards.
-    return sql("ALTER AGENT {agent} SET DEFAULT_VERSION = 'LAST'", agent=qname(artifact.target))
+    return (sql("ALTER AGENT {agent} SET DEFAULT_VERSION = 'LAST'", agent=qname(artifact.target)),)
+
+
+def pinned_default(target: QualifiedName, version: str) -> Sql | None:
+    """Pin an agent's default to one committed version by its system name, such as `VERSION$3`.
+
+    A default pinned by name stays on that version when later versions are committed, so only
+    the next statement like this one moves it.
+
+    Returns:
+        The statement; None for a name that is not a system version name, which DEFAULT_VERSION
+        would refuse (it takes no alias) or read as a shortcut.
+    """
+    if _SYSTEM_VERSION.fullmatch(version) is None:
+        return None
+    # MEASURED: DEFAULT_VERSION takes a system name as a string literal, and refuses an alias.
+    return sql(
+        "ALTER AGENT {agent} SET DEFAULT_VERSION = {version}", agent=qname(target), version=literal(version.upper())
+    )
 
 
 def version_drift(artifact: RenderedArtifact, observed: ObservedArtifact) -> tuple[str, ...]:
@@ -452,6 +475,29 @@ def version_drift(artifact: RenderedArtifact, observed: ObservedArtifact) -> tup
     return tuple(found)
 
 
+def unpinned_default(artifact: RenderedArtifact, observed: ObservedArtifact) -> str | None:
+    """Name the release a permanent agent's default serves only by following `LAST`, to pin it to.
+
+    The default must be on the newest release, which holds the desired specification, and be
+    read as set to a shortcut: an agent published before SST pinned defaults by name. A
+    setting that was not read is never taken for one, nor a release no system name names,
+    which `pinned_default` could not pin.
+
+    Returns:
+        The release; None when the default is pinned, unread, elsewhere, or the agent is not
+        one SST versions.
+    """
+    if artifact.object_type != "AGENT" or artifact.temporary or observed.default_pinned is not False:
+        return None
+    carrier = _spec_carrier(artifact, observed)
+    default = observed.default_version
+    if carrier is None or _SYSTEM_VERSION.fullmatch(carrier) is None:
+        return None
+    if default is not None and default.casefold() != carrier.casefold():
+        return None
+    return carrier
+
+
 def _spec_carrier(artifact: RenderedArtifact, observed: ObservedArtifact | None) -> str | None:
     """Name the observed agent's newest release when it holds the desired specification."""
     if observed is None or artifact.spec_fingerprint is None or observed.newest_spec != artifact.spec_fingerprint:
@@ -470,10 +516,13 @@ def _alias_holder(observed: ObservedArtifact, alias: str) -> str | None:
 def _pointing(artifact: RenderedArtifact, observed: ObservedArtifact, carrier: str) -> tuple[Sql, ...]:
     """Point the alias and default version at `carrier`, and open a live version from it, where missing.
 
-    `carrier` is the newest committed version, so the default is set to `'LAST'`, which serves it
-    now and follows each version committed after, and the live version opens `FROM LAST`:
-    Snowflake opens one from no named version (docs/design/snowflake-behaviour.md). A name no
-    identifier can spell is not one Snowflake showed or SST renders, so nothing is pointed at it.
+    `carrier` is the newest release. The default is pinned to it by name when SHOW marks
+    another version the default, or DESCRIBE read it following a shortcut such as `LAST`, which
+    would move it to the next version committed, an eval-model version included. The live
+    version opens `FROM LAST`, since Snowflake opens one from no named version
+    (docs/design/snowflake-behaviour.md); `for_action` takes this path for an agent without one
+    only when `LAST` is the release. A name no identifier can spell is not one Snowflake showed
+    or SST renders, so nothing is pointed at it.
     """
     version = _safe_identifier(carrier)
     if version is None:
@@ -491,8 +540,11 @@ def _pointing(artifact: RenderedArtifact, observed: ObservedArtifact, carrier: s
             )
         )
     default = observed.default_version
-    if default is not None and default.casefold() != carrier.casefold():
-        statements.append(_default_to_last(artifact))
+    pin = pinned_default(artifact.target, carrier)
+    if pin is not None and (
+        (default is not None and default.casefold() != carrier.casefold()) or observed.default_pinned is False
+    ):
+        statements.append(pin)
     if not observed.has_live_version:
         statements.append(sql("ALTER AGENT {agent} ADD LIVE VERSION FROM LAST", agent=agent))
     return tuple(statements)

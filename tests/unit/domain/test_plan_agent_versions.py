@@ -23,7 +23,9 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     drift_properties,
     held_spec_fingerprint,
     live_digest,
+    pinned_default,
     spec_fingerprint,
+    unpinned_default,
     version_comment,
     version_drift,
 )
@@ -37,6 +39,7 @@ SPEC = '{\n  "models": {\n    "orchestration": "auto"\n  }\n}\n'
 SPEC_FINGERPRINT = spec_fingerprint(SPEC)
 RECORDED_MANIFEST = "a" * 64
 LAST = "ALTER AGENT DB.S.SALES SET DEFAULT_VERSION = 'LAST'"
+PINNED = "ALTER AGENT DB.S.SALES SET DEFAULT_VERSION = 'VERSION$3'"
 
 
 def agent(*, alias: str | None = "promoted", fingerprint: str = "1" * 64, temporary: bool = False) -> RenderedArtifact:
@@ -224,7 +227,7 @@ def test_an_alias_on_no_version_and_a_moved_default_are_both_pointed_back() -> N
     assert statements == (
         "set comment",
         "ALTER AGENT DB.S.SALES\n  MODIFY VERSION VERSION$3 SET ALIAS = PROMOTED",
-        LAST,
+        PINNED,
         "set tag",
     )
     assert messages == (
@@ -372,6 +375,70 @@ def test_overwrite_of_an_edited_comment_restores_the_marker_without_a_version() 
     assert not any(text in ("add version", "modify live", "commit") for text in texts(change.rendered.statements))
 
 
+def test_a_properties_update_pins_a_default_that_follows_last_to_the_published_version() -> None:
+    # A default read as following LAST would serve the next version committed, an eval-model
+    # version included, so the properties program pins it to the version by name.
+    before = agent()
+    after = agent(fingerprint="2" * 64)
+    applied = {after.key: entry(before, RECORDED_MANIFEST)}
+    for pinned, default, expected in (
+        (False, "VERSION$3", ("set comment", PINNED, "set tag")),
+        (True, "VERSION$3", ("set comment", "set tag")),
+        (None, "VERSION$3", ("set comment", "set tag")),
+        (True, "VERSION$2", ("set comment", PINNED, "set tag")),
+    ):
+        observed = replace(live(before, recorded(before), default_version=default), default_pinned=pinned)
+        [change] = plan((after,), observed=(observed,), applied=applied).changes
+        assert change.rendered is not None and change.rendered.adds_version is False
+        assert texts(change.rendered.statements) == expected
+
+
+def test_a_default_only_a_system_name_can_pin_is_left_alone() -> None:
+    # DEFAULT_VERSION takes no alias, so a version shown under any other name is never pinned.
+    artifact = agent()
+    observed = replace(
+        live(artifact, recorded(artifact), newest_version="V3", alias_versions=(("PROMOTED", "V3"),)),
+        default_pinned=False,
+    )
+    assert texts(artifact.for_action(Action.UPDATE, observed).statements) == ("set comment", "set tag")
+    assert unpinned_default(artifact, observed) is None
+    assert pinned_default(artifact.target, "PROMOTED") is None
+    assert texts((pinned_default(artifact.target, "version$3"),)) == (PINNED,)  # type: ignore[arg-type]
+
+
+def test_an_unchanged_agent_whose_default_follows_last_is_pinned_once_without_a_version() -> None:
+    artifact = agent()
+    applied = {artifact.key: entry(artifact, RECORDED_MANIFEST)}
+    for default in ("VERSION$3", None):
+        observed = replace(live(artifact, recorded(artifact), default_version=default), default_pinned=False)
+        planned = plan((artifact,), observed=(observed,), applied=applied)
+        [change] = planned.changes
+        assert (change.action, change.reason) == (Action.UPDATE, ChangeReason.DEFAULT_UNPINNED)
+        assert change.rendered is not None and change.rendered.adds_version is False
+        assert texts(change.rendered.statements) == ("set comment", PINNED, "set tag")
+        assert [item.message for item in coded(planned.diagnostics, "SST-PLN107")] == [
+            "agent:sales: the default version follows LAST; apply pins it to VERSION$3 by name"
+        ]
+        assert coded(planned.diagnostics, "SST-PLN102") == []
+
+
+def test_a_pinned_unread_or_unpublished_default_plans_no_pin() -> None:
+    artifact = agent()
+    marker = recorded(artifact)
+    applied = {artifact.key: entry(artifact, RECORDED_MANIFEST)}
+    for pinned, newest_spec in ((True, SPEC_FINGERPRINT), (None, SPEC_FINGERPRINT), (False, "f" * 64)):
+        observed = replace(
+            live(artifact, marker, default_version="VERSION$3", newest_spec=newest_spec), default_pinned=pinned
+        )
+        [change] = plan((artifact,), observed=(observed,), applied=applied).changes
+        assert (change.action, change.reason) == (Action.NOOP, ChangeReason.UNCHANGED)
+        assert unpinned_default(artifact, observed) is None
+    elsewhere = replace(live(artifact, marker, default_version="VERSION$2"), default_pinned=False)
+    assert unpinned_default(artifact, elsewhere) is None
+    temporary = agent(temporary=True)
+    assert unpinned_default(temporary, replace(live(temporary, marker), default_pinned=False)) is None
+
+
 def test_an_agent_with_no_live_version_and_an_eval_model_version_last_commits_a_new_release() -> None:
     # Interrupted comparison: ADD LIVE VERSION FROM LAST would open the live version on the
     # candidate's specification and serve it, so the update commits the release again instead.
@@ -383,15 +450,17 @@ def test_an_agent_with_no_live_version_and_an_eval_model_version_last_commits_a_
     update = artifact.for_action(Action.UPDATE, observed)
     assert update.adds_version is True
     # With a live version, nothing opens one FROM LAST, so the properties program is safe.
-    beside_live = replace(live(artifact, recorded(artifact)), last_is_eval_model=True)
+    beside_live = replace(live(artifact, recorded(artifact)), last_is_eval_model=True, default_pinned=False)
     assert artifact.for_action(Action.UPDATE, beside_live).adds_version is False
 
 
 def test_a_default_on_an_eval_model_version_is_drift_pointed_back_to_the_release() -> None:
     artifact = agent()
-    observed = replace(live(artifact, recorded(artifact), default_version="VERSION$5"), last_is_eval_model=True)
+    observed = replace(
+        live(artifact, recorded(artifact), default_version="VERSION$5"), last_is_eval_model=True, default_pinned=True
+    )
     statements, messages = drifted(observed)
-    assert statements == ("set comment", LAST, "set tag")
+    assert statements == ("set comment", PINNED, "set tag")
     assert messages == ("agent:sales: the default version is VERSION$5, not VERSION$3; apply points it back",)
 
 
@@ -407,6 +476,7 @@ def test_eval_model_aliases_are_never_drift_and_never_unset() -> None:
         ),
         aliases=("PROMOTED", "EVAL_CLAUDE_OPUS_4_8", "eval_gpt_5", "OLD"),
         last_is_eval_model=True,
+        default_pinned=True,
     )
     assert version_drift(artifact, observed) == ()
     [change] = plan(

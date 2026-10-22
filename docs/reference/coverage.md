@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 799
+- Codes: 801
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -58,6 +58,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-APL103`](error-codes.md#sst-apl103) | APL | error | runtime | `snowflake_semantic_tools.app.apply.recovery` | `tests/codes/apl/test_sst_apl103.py` |
 | [`SST-APL105`](error-codes.md#sst-apl105) | APL | info | local | `snowflake_semantic_tools.app.apply.temporary` | `tests/codes/apl/test_sst_apl105.py` |
 | [`SST-APL106`](error-codes.md#sst-apl106) | APL | info | local | `snowflake_semantic_tools.app.apply.temporary` | `tests/codes/apl/test_sst_apl106.py` |
+| [`SST-APL107`](error-codes.md#sst-apl107) | APL | warning | runtime | `snowflake_semantic_tools.app.apply.waves` | `tests/codes/apl/test_sst_apl107.py` |
 | [`SST-APL900`](error-codes.md#sst-apl900) | APL | error | local | `snowflake_semantic_tools.app.apply.run` | `tests/codes/apl/test_sst_apl900.py` |
 | [`SST-ASK001`](error-codes.md#sst-ask001) | ASK | warning | observe | `snowflake_semantic_tools.app.ask` | `tests/codes/ask/test_sst_ask001.py` |
 | [`SST-ASK002`](error-codes.md#sst-ask002) | ASK | error | runtime | `snowflake_semantic_tools.app.ask_conversation`<br>`snowflake_semantic_tools.app.evals.inline` | `tests/codes/ask/test_sst_ask002.py` |
@@ -290,6 +291,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-PLN104`](error-codes.md#sst-pln104) | PLN | warning | observe | `snowflake_semantic_tools.domain.plan.attach` | `tests/codes/pln/test_sst_pln104.py` |
 | [`SST-PLN105`](error-codes.md#sst-pln105) | PLN | warning | observe | `snowflake_semantic_tools.domain.plan.attach` | `tests/codes/pln/test_sst_pln105.py` |
 | [`SST-PLN106`](error-codes.md#sst-pln106) | PLN | error | observe | `snowflake_semantic_tools.domain.plan.preflight` | `tests/codes/pln/test_sst_pln106.py` |
+| [`SST-PLN107`](error-codes.md#sst-pln107) | PLN | info | observe | `snowflake_semantic_tools.domain.plan.classify` | `tests/codes/pln/test_sst_pln107.py` |
 | [`SST-PLN900`](error-codes.md#sst-pln900) | PLN | error | local | `snowflake_semantic_tools.domain.plan.order` | `tests/codes/pln/test_sst_pln900.py` |
 | [`SST-PRS001`](error-codes.md#sst-prs001) | PRS | warning | local | `snowflake_semantic_tools.domain.parse.records` | `tests/codes/prs/test_sst_prs001.py` |
 | [`SST-PRS002`](error-codes.md#sst-prs002) | PRS | error | local | `snowflake_semantic_tools.adapters.yaml.agent_fields`<br>`snowflake_semantic_tools.adapters.yaml.agents`<br>`snowflake_semantic_tools.adapters.yaml.cowork_profiles`<br>`snowflake_semantic_tools.adapters.yaml.evals.config`<br>`snowflake_semantic_tools.adapters.yaml.evals.dataset`<br>`snowflake_semantic_tools.adapters.yaml.evals.metrics`<br>`snowflake_semantic_tools.adapters.yaml.evals.readers`<br>`snowflake_semantic_tools.adapters.yaml.semantic.file_reads`<br>`snowflake_semantic_tools.adapters.yaml.skills`<br>`snowflake_semantic_tools.adapters.yaml.tools`<br>`snowflake_semantic_tools.domain.validate.eval_dataset`<br>`snowflake_semantic_tools.domain.validate.semantic.shape`<br>`snowflake_semantic_tools.domain.validate.skill`<br>`snowflake_semantic_tools.domain.validate.tool` | `tests/codes/prs/test_sst_prs002.py` |

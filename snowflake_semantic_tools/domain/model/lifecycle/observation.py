@@ -108,6 +108,9 @@ class ObservedArtifact:
         default_version: The committed version SHOW marks the default; None when none is.
         last_is_eval_model: The agent's newest committed version of all, the one `FROM LAST`
             names, is an eval-model version, as a comparison that stopped part way leaves it.
+        default_pinned: The agent's default is set by a version's name, as DESCRIBE AGENT's
+            `default_version_name` reads it: True for a `VERSION$<n>`, False for a shortcut
+            such as `LAST` that follows later commits; None when it was not read.
         alias_versions: Each alias a committed version carries, with that version, as
             `(alias, version)`.
         live_digest: The digest of the properties the marker does not prove, as `live_digest`
@@ -134,6 +137,7 @@ class ObservedArtifact:
     alias_versions: tuple[tuple[str, str], ...] = ()
     live_digest: str | None = None
     last_is_eval_model: bool = False
+    default_pinned: bool | None = None
 
     @property
     def explicit_grants(self) -> tuple[GrantRow, ...]:

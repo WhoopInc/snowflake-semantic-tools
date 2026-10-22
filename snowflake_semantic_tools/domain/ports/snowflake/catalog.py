@@ -88,9 +88,14 @@ class AgentVersions:
 
     Attributes:
         versions: Every row SHOW prints, in its order.
+        default_setting: What the default is set to, as DESCRIBE AGENT's `default_version_name`
+            reads it: `LAST` for one that follows the newest committed version, as for an
+            agent whose default was never set, or a version's name such as `VERSION$3`; None
+            when it was not read.
     """
 
     versions: tuple[AgentVersion, ...] = ()
+    default_setting: str | None = None
 
     @property
     def has_live_version(self) -> bool:
@@ -120,6 +125,16 @@ class AgentVersions:
         """Report whether the version `LAST` names is an eval-model version."""
         last = self.last
         return last is not None and last.is_eval_model
+
+    @property
+    def default_pinned(self) -> bool | None:
+        """Report whether the default is set by a version's name; None when the setting was not read.
+
+        False for a shortcut such as `LAST`, which moves the default with every later commit.
+        """
+        if self.default_setting is None:
+            return None
+        return _number(self.default_setting.strip()) is not None
 
     @property
     def default_name(self) -> str | None:
@@ -363,6 +378,8 @@ class CatalogPort(Protocol):
 
         One read serves both an update, which needs the live version and the aliases, and
         `plan --capture-prior`, which needs the version the agent serves and its specification.
+        One DESCRIBE AGENT after it reads what the default is set to; a DESCRIBE that fails or
+        names no setting leaves `default_setting` None rather than failing the read.
 
         Never writes.
 

@@ -507,9 +507,11 @@ one that follows `LAST`.
 opens. On update, an agent with a live version gets the spec written into it
 and committed, instead of an `ADD VERSION`; one without gets an `ADD VERSION`.
 Either way the agent has no live version after that, so `ADD LIVE VERSION FROM
-LAST` opens one holding what was just committed. Every version-adding update,
-and every repair of a moved default, sets the default to `'LAST'`, never to a
-version by name, so the default keeps following what SST commits.
+LAST` opens one holding what was just committed. Every version-adding update's
+program ends with the default following `'LAST'`, which serves the version it
+committed, and apply then pins the default to that version by name; a repair of
+a moved default pins it by name to the version holding the spec (see
+[a default pinned by name stays where it is](#a-default-pinned-by-name-stays-where-it-is)).
 [test_agent_publish.py](../../tests/unit/app/test_agent_publish.py)
 (`test_permanent_agent_create_keeps_the_live_version_then_alias_and_tags`,
 `test_permanent_agent_update_adds_exactly_one_version_and_a_live_copy_then_alias_and_tags`,
@@ -525,6 +527,108 @@ in [staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py)
 `AgentVersions.has_live_version` in
 [ports/snowflake/catalog.py](../../snowflake_semantic_tools/domain/ports/snowflake/catalog.py);
 [the agents guide](../guides/agents.md#publishing).
+
+### An unversioned caller is served the live version, even past a pinned default
+
+**Docs say**: the default version is the version the agent uses when no version
+is specified in an API call, and `DATA_AGENT_RUN` without a `!<version>` suffix
+uses the `DEFAULT` version.
+
+**Server does**: while the agent has a live version, every caller that names no
+version is served the live version: `DATA_AGENT_RUN` without `!<version>`, the
+REST `:run` endpoint without a version, and a CoWork profile routing to the
+agent as a subagent. That holds even when the default is set explicitly to a
+version by name; only a caller that names one, such as `!DEFAULT` or an alias
+like `!RELEASED`, is served the default then. An agent with no live version
+serves its default to every unversioned caller and to a profile's routing.
+
+**Evidence**: `Enforced`. The live version is what users are served, so SST
+only ever opens it on the release: every update program opens it `FROM LAST`
+straight after committing the release, and the properties-only update, which
+also opens one `FROM LAST` for an agent without one, is never taken when the
+newest committed version is an eval-model version, since that would open the
+live version on a candidate's spec; such an agent gets a new release instead.
+An eval's `committed` selector is rendered as `DEFAULT`, never as the agent's
+unversioned name.
+`test_an_agent_with_no_live_version_and_an_eval_model_version_last_commits_a_new_release`
+in [test_plan_agent_versions.py](../../tests/unit/domain/test_plan_agent_versions.py);
+`test_repeat_run_yaml_has_closed_schema_and_inlines_custom_metric` in
+[test_render_evals.py](../../tests/unit/domain/test_render_evals.py).
+
+**SST depends on it at**: `RenderedArtifact.for_action` in
+[rendered.py](../../snowflake_semantic_tools/domain/model/lifecycle/rendered.py);
+`agent_programs` in
+[staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py);
+`_agent_version` in
+[render/eval.py](../../snowflake_semantic_tools/domain/render/eval.py).
+
+### A default pinned by name stays where it is
+
+**Docs say**: `SET DEFAULT_VERSION` takes a version, such as `'VERSION$3'`, or a
+shortcut such as `FIRST` or `LAST`; unless it is set, the default is the latest
+committed version. The docs say nothing about an alias, or about what a later
+commit does to a default set either way.
+
+**Server does**: `ALTER AGENT ... SET DEFAULT_VERSION = 'VERSION$<n>'` pins the
+default by name, and it stays on that version when later versions are
+committed. `SET DEFAULT_VERSION = 'LAST'` makes it follow the newest committed
+version, whatever commits it. `DEFAULT_VERSION` never accepts an alias. Pinning
+`'VERSION$1'` straight after `CREATE AGENT ... FROM @<stage>` works.
+
+**Evidence**: `Enforced`. Only `sst apply` moves the default, because SST pins it
+by name: the create program ends with `SET DEFAULT_VERSION = 'VERSION$1'`; a
+version-adding update ends with `'LAST'`, since its version is named only once
+Snowflake commits it, and apply then reads the version it committed and pins it
+(`SST-APL107` when it cannot); the properties-only update pins the version
+holding the spec, and an agent published before this, whose default follows
+`LAST`, is planned once to pin it (`SST-PLN107`). Nothing SST pins is an alias.
+`test_permanent_agent_create_keeps_the_live_version_then_alias_and_tags` in
+[test_agent_publish.py](../../tests/unit/app/test_agent_publish.py);
+[test_agent_default_pin.py](../../tests/unit/app/test_agent_default_pin.py);
+`test_a_properties_update_pins_a_default_that_follows_last_to_the_published_version`
+and `test_a_default_only_a_system_name_can_pin_is_left_alone` in
+[test_plan_agent_versions.py](../../tests/unit/domain/test_plan_agent_versions.py);
+[test_sst_pln107.py](../../tests/codes/pln/test_sst_pln107.py),
+[test_sst_apl107.py](../../tests/codes/apl/test_sst_apl107.py).
+
+**SST depends on it at**: `_version_programs` in
+[staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py);
+`pinned_default`, `unpinned_default` and `_pointing` in
+[rendered.py](../../snowflake_semantic_tools/domain/model/lifecycle/rendered.py);
+`ChangeApplier._pin_default` in
+[apply/one.py](../../snowflake_semantic_tools/app/apply/one.py);
+[the agents guide](../guides/agents.md#publishing).
+
+### DESCRIBE AGENT says whether the default is pinned
+
+**Docs say**: nothing about the columns `DESCRIBE AGENT` returns for a versioned
+agent.
+
+**Server does**: `DESCRIBE AGENT` answers one row. Its `default_version_name`
+reads `'LAST'` when the default follows `LAST`, which is also what an agent
+whose default was never set reads, and the version's name, such as
+`'VERSION$1'`, when the default was pinned by name. Its `aliases` is a JSON
+object from each alias and shortcut to the version it names, such as
+`{"DEFAULT":"VERSION$3","FIRST":"VERSION$1","LAST":"VERSION$3","RELEASED":"VERSION$3"}`,
+and `versions` a JSON array of the committed versions. `SHOW VERSIONS IN AGENT`
+marks the default with `is_default`, but cannot tell a pin from `LAST`.
+
+**Evidence**: `Enforced`. Plan reads the setting with one `DESCRIBE AGENT` after
+`SHOW VERSIONS`, its columns compared casefolded, and a read that fails leaves it
+unread, which plans nothing; `committed` resolves through the `DEFAULT` entry of
+`aliases`.
+`test_agent_versions_read_the_default_setting_from_one_describe_agent`,
+`test_a_describe_agent_that_fails_leaves_the_default_unread_and_the_versions_read`
+and `test_an_agent_version_selector_resolves_through_describe_agent_s_aliases_column`
+in [test_snowflake_connector.py](../../tests/unit/adapters/test_snowflake_connector.py);
+`test_the_default_reads_pinned_only_when_set_by_a_system_name` in
+[test_eval_model_versions.py](../../tests/unit/domain/test_eval_model_versions.py).
+
+**SST depends on it at**: `observe_agent_versions`, `_default_setting` and
+`resolve_agent_version` in
+[catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py);
+`AgentVersions.default_pinned` in
+[ports/snowflake/catalog.py](../../snowflake_semantic_tools/domain/ports/snowflake/catalog.py).
 
 ### LAST must be quoted, and an alias cannot be a reserved word
 

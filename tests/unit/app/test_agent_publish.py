@@ -63,10 +63,12 @@ def test_permanent_agent_create_keeps_the_live_version_then_alias_and_tags() -> 
     assert value.upload_path == "@DB.S.AGENT_SPECS/agent/abc1234/agent_spec.yaml"
     assert value.upload_content == value.ddl.encode("utf-8")
     # CREATE commits VERSION$1 and opens a live copy of it, which is kept: Snowsight shows the
-    # live version, and a request naming no version is served it.
+    # live version, and a request naming no version is served it. The default is pinned to
+    # VERSION$1 by name, so no version committed later moves it.
     assert texts(value.statements) == (
         "CREATE AGENT DB.S.AGENT\n  FROM @DB.S.AGENT_SPECS/agent/abc1234/",
         f"ALTER AGENT DB.S.AGENT MODIFY VERSION VERSION$1 SET COMMENT = '{VERSION_COMMENT}'",
+        "ALTER AGENT DB.S.AGENT SET DEFAULT_VERSION = 'VERSION$1'",
         'ALTER AGENT DB.S.AGENT\n  MODIFY VERSION "LAST" SET ALIAS = PROMOTED',
         "ALTER AGENT DB.S.AGENT\n  SET TAG DOMAIN = 'sales'",
     )

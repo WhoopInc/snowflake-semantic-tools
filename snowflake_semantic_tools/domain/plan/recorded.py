@@ -162,15 +162,21 @@ def _artifact_to_json(item: ObservedArtifact) -> dict[str, object]:
         "alias_versions": [list(pair) for pair in item.alias_versions],
         "live_digest": item.live_digest,
         "last_is_eval_model": item.last_is_eval_model,
+        "default_pinned": item.default_pinned,
     }
 
 
 def _artifact_from_json(value: object) -> ObservedArtifact:
-    """Read one observed object `_artifact_to_json` wrote; an older record has no agent or digest facts."""
+    """Read one observed object `_artifact_to_json` wrote; an older record has no agent or digest facts.
+
+    A record taken before the default's setting was read leaves it unread, None, which plans
+    nothing from it.
+    """
     item = _object(value, "artifact")
     marker = item.get("marker")
     grants = item.get("grants")
     tags = item.get("tags")
+    pinned = item.get("default_pinned")
     return ObservedArtifact(
         key=str(item["key"]),
         raw_name=str(item["raw_name"]),
@@ -192,6 +198,7 @@ def _artifact_from_json(value: object) -> ObservedArtifact:
         alias_versions=tuple(_pair(pair) for pair in _list(item.get("alias_versions", []), "alias_versions")),
         live_digest=_text(item.get("live_digest")),
         last_is_eval_model=bool(item.get("last_is_eval_model", False)),
+        default_pinned=bool(pinned) if pinned is not None else None,
     )
 
 

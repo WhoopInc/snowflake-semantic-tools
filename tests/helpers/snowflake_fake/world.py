@@ -150,6 +150,9 @@ class SnowflakeWorld:
         # What SHOW VERSIONS IN AGENT lists, by the agent's qualified name; none by default. A
         # row without a name is the live version, and its aliases are those SHOW shows.
         self.agent_version_rows: dict[str, tuple[AgentVersion, ...]] = {}
+        # What DESCRIBE AGENT's `default_version_name` reads, by the agent's qualified name, such
+        # as 'LAST' or 'VERSION$1'; an agent not named here reads as unread, None.
+        self.agent_default_settings: dict[str, str] = {}
         # The versions of each dataset, by qualified name; ADD VERSION appends to them.
         self.dataset_version_names: dict[str, list[str]] = {}
         # The METADATA of each dataset version, by (dataset, version); ADD VERSION records it.

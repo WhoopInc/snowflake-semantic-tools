@@ -567,11 +567,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         note=(
             "The update sets the alias and a live version back on the version holding the "
-            "specification, and the default to 'LAST', which serves that version and follows each "
-            "one committed after it, without adding a version; an agent with no live version whose "
-            "newest version holds another specification, or whose newest committed version is an "
-            "eval-model version, gets a new version instead. Strict mode leaves this a warning, "
-            "since the apply it plans is the repair."
+            "specification, and pins the default to that version by name, without adding a "
+            "version; a default on an eval-model version is pointed back the same way. An agent "
+            "with no live version whose newest version holds another specification, or whose "
+            "newest committed version is an eval-model version, gets a new version instead. "
+            "Strict mode leaves this a warning, since the apply it plans is the repair."
         ),
         precheck=Precheck.OBSERVE,
     ),
@@ -642,6 +642,24 @@ SPECS: tuple[ErrorSpec, ...] = (
             "Snowflake private preview. A secondary role in the session counts. The change is blocked, "
             "so apply never publishes a profile it cannot attach; USAGE on the profile is granted "
             "outside SST."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN107",
+        Severity.INFO,
+        "Agent's default follows LAST",
+        "{artifact}: the default version follows LAST; apply pins it to {value} by name",
+        None,
+        condition=(
+            "state records a permanent agent unchanged, its default is on the version holding the "
+            "planned specification, and DESCRIBE AGENT reads its `default_version_name` as `LAST`"
+        ),
+        note=(
+            "Once, for an agent published before SST pinned its default by name. The update sets "
+            "DEFAULT_VERSION to that version's name and adds no version, so a version committed "
+            "after it, such as an eval-model version, never becomes the default. A default that "
+            "could not be read changes nothing."
         ),
         precheck=Precheck.OBSERVE,
     ),

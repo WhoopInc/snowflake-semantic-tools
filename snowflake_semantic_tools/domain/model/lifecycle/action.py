@@ -49,6 +49,9 @@ class ChangeReason(Enum):
     extension's default, while no certified version outranks it, so apply makes it the default.
     DETACHED updates a CoWork profile that is otherwise unchanged but no longer attached to the
     account's CoWork object, so apply only attaches it again (Snowflake private preview).
+    DEFAULT_UNPINNED updates an agent that is otherwise unchanged, whose default serves the
+    version holding its specification only by following `LAST`, so apply pins it there by
+    name without adding a version: once, for an agent published before SST pinned defaults.
     """
 
     NOT_PRESENT = "not_present"
@@ -66,3 +69,4 @@ class ChangeReason(Enum):
     OVERWRITE = "overwrite"
     DEFAULT_VERSION_DIFFERS = "default_version_differs"
     DETACHED = "detached"
+    DEFAULT_UNPINNED = "default_unpinned"

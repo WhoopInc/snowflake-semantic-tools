@@ -195,7 +195,8 @@ def agent_programs(
     already holds a specification:
 
     - create: CREATE AGENT commits VERSION$1 and also opens a live version of the same
-      specification, which is kept. VERSION$1 takes the comment an added version carries.
+      specification, which is kept. VERSION$1 takes the comment an added version carries, and
+      the default is pinned to it by name, so no version committed later moves it.
     - update: ADD VERSION from the stage directory, then a live version from it.
     - update-live: an agent with a live version gets the specification written into it
       and committed, since ADD VERSION beside a live version fails and committing it first
@@ -256,7 +257,8 @@ def _version_programs(
 
     Each committed version's comment carries the git sha, `-dirty` after it for a `dirty`
     agent, and the specification's fingerprint; CREATE AGENT also sets the agent's marked
-    `comment` when there is one.
+    `comment` when there is one. The create program ends by pinning the default to VERSION$1
+    by name; an update's version is named only once Snowflake commits it, so apply pins that.
     """
     version_comment_text = literal(version_comment(git_sha, payload, dirty=dirty))
     created = (
@@ -276,6 +278,8 @@ def _version_programs(
             agent=agent,
             comment=version_comment_text,
         ),
+        # MEASURED: pinning VERSION$1 straight after CREATE AGENT ... FROM a stage works.
+        sql("ALTER AGENT {agent} SET DEFAULT_VERSION = 'VERSION$1'", agent=agent),
     )
     # MEASURED: the live version this opens holds LAST's specification, and DESCRIBE AGENT
     # then reports it as `agent_spec`.

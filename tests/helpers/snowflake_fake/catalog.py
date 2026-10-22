@@ -194,7 +194,10 @@ class FakeCatalog(SnowflakeWorld):
 
     def observe_agent_versions(self, qualified_name: QualifiedName) -> AgentVersions:
         self._check("observe_agent_versions")
-        return AgentVersions(self.agent_version_rows.get(qualified_name.sql, ()))
+        return AgentVersions(
+            self.agent_version_rows.get(qualified_name.sql, ()),
+            default_setting=self.agent_default_settings.get(qualified_name.sql),
+        )
 
     def resolve_agent_version(self, qualified_name: QualifiedName, selector: str) -> str:
         self._check("resolve_agent_version")

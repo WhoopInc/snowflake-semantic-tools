@@ -49,6 +49,7 @@ _REASONS = {
     ChangeReason.OVERWRITE: "changed out of band; overwritten",
     ChangeReason.DEFAULT_VERSION_DIFFERS: "another version is the default",
     ChangeReason.DETACHED: "not attached to CoWork",
+    ChangeReason.DEFAULT_UNPINNED: "its default follows LAST",
 }
 _STATUS_STYLE = {
     OutcomeStatus.APPLIED: ("ok", "success"),

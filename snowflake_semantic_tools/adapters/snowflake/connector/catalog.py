@@ -422,8 +422,28 @@ class CatalogMethods(Session, CatalogPort):
                     specification=_optional_text(row.get("agent_spec")),
                 )
                 for row in rows
-            )
+            ),
+            default_setting=self._default_setting(qualified_name),
         )
+
+    def _default_setting(self, qualified_name: QualifiedName) -> str | None:
+        """Read what an agent's default is set to from DESCRIBE AGENT; None when that read cannot tell.
+
+        SHOW VERSIONS marks the default version but not whether it was set by name, which only
+        DESCRIBE says. A DESCRIBE that fails leaves the setting unread, and the versions SHOW
+        listed still serve the plan.
+        """
+        try:
+            rows = self._dict_rows(sql("DESCRIBE AGENT {agent}", agent=qname(qualified_name)))
+        except SnowflakePortError:
+            return None
+        # MEASURED: DESCRIBE AGENT's one row holds `default_version_name`: 'LAST' for a default
+        # that follows the newest committed version, also when it was never set, or the name
+        # it was pinned to, such as 'VERSION$1'. Column names compare casefolded.
+        if len(rows) != 1:
+            return None
+        columns = {str(key).casefold(): value for key, value in rows[0].items()}
+        return _optional_text(columns.get("default_version_name"))
 
     def resolve_agent_version(self, qualified_name: QualifiedName, selector: str) -> str:
         if selector.upper().startswith("VERSION$"):

@@ -2,7 +2,8 @@
 
 A comparison commits a hold copy of the released specification, one version per candidate
 model, and a restore copy, each commented `sst-eval-model:<label>` and each candidate aliased
-`EVAL_<MODEL>`. None of them is SST's newest release.
+`EVAL_<MODEL>`. None of them is SST's newest release, and the default an agent reads from
+DESCRIBE AGENT says whether it is pinned by name.
 """
 
 from __future__ import annotations
@@ -51,8 +52,8 @@ def test_each_model_gets_a_plain_alias_under_the_reserved_prefix() -> None:
     assert not is_eval_alias("EVALUATED") and not is_eval_alias("PROMOTED")
 
 
-def _versions(*rows: tuple[str | None, str | None]) -> AgentVersions:
-    return AgentVersions(tuple(AgentVersion(name, None, comment=comment) for name, comment in rows))
+def _versions(*rows: tuple[str | None, str | None], default_setting: str | None = None) -> AgentVersions:
+    return AgentVersions(tuple(AgentVersion(name, None, comment=comment) for name, comment in rows), default_setting)
 
 
 def test_the_newest_release_passes_over_eval_model_versions_and_last_does_not() -> None:
@@ -67,3 +68,11 @@ def test_the_newest_release_passes_over_eval_model_versions_and_last_does_not() 
     only_candidates = _versions(("VERSION$1", candidate))
     assert only_candidates.newest is None and only_candidates.last is not None
     assert not _versions((None, None)).last_is_eval_model
+
+
+def test_the_default_reads_pinned_only_when_set_by_a_system_name() -> None:
+    assert _versions(default_setting="VERSION$1").default_pinned is True
+    assert _versions(default_setting=" version$12 ").default_pinned is True
+    for shortcut in ("LAST", "FIRST", "PROMOTED"):
+        assert _versions(default_setting=shortcut).default_pinned is False
+    assert _versions().default_pinned is None

@@ -607,7 +607,8 @@ to `@<stage>/<agent>/<commit>/agent_spec.yaml` under `apply.agent_spec_stage`
 1. When the agent is absent, `CREATE AGENT ... COMMENT = '<comment>' FROM` that
    folder: the comment carries SST's ownership marker from the first statement.
    Snowflake commits `VERSION$1`, which apply comments
-   `git:<commit> sst-spec:<fingerprint>`, and also opens a live version holding
+   `git:<commit> sst-spec:<fingerprint>` and pins the default to by name
+   (`SET DEFAULT_VERSION = 'VERSION$1'`), and also opens a live version holding
    the same spec, which apply keeps.
 2. When the agent exists, `SET COMMENT` writes the marked comment first, then
    `ALTER AGENT ... ADD VERSION FROM` that folder, commented
@@ -631,9 +632,13 @@ to `@<stage>/<agent>/<commit>/agent_spec.yaml` under `apply.agent_spec_stage`
    shows, and runs with, no instructions, tools, or skills.
 3. `ALTER AGENT ... MODIFY VERSION "LAST" SET ALIAS = <alias>`, when the agent
    has an alias, and `SET TAG` for its tags. The new version becomes the
-   default: apply also runs `SET DEFAULT_VERSION = 'LAST'`, so a default set by
-   hand, even to the version that was newest, follows the new version and every
-   later one (see [version drift](#version-drift)).
+   default: the program ends with `SET DEFAULT_VERSION = 'LAST'`, then apply
+   reads the version it committed and pins the default to it by name
+   (`SET DEFAULT_VERSION = 'VERSION$<n>'`), so a version committed later, by
+   hand or by anything else, does not become the default. Only `sst apply`
+   moves it (see [version drift](#version-drift)). When the pin fails, the write
+   still stands, the default is left following `LAST`, and apply warns
+   (`SST-APL107`); the next plan pins it.
 4. `MODIFY VERSION <alias> UNSET ALIAS` for every other alias the agent shows,
    so after apply the agent carries only the alias its settings resolve to:
    changing `alias: promoted` to `alias: candidate` moves the agent to
@@ -673,7 +678,7 @@ and whether it is the default or holds the alias. `--overwrite` on plan and
 apply publishes SST's definition over it without dropping anything: an edited
 comment gets the marker back with no new version, and a hand-committed
 specification is followed by a version holding SST's, which the alias and the
-default (`'LAST'`) then serve.
+default, pinned to it by name, then serve.
 
 ### Version drift
 
@@ -681,11 +686,13 @@ The plan reads where the agent's alias and default version point, and whether
 it has a live version. An agent whose definition is unchanged but whose alias
 or default version is on another version than the newest one holding its spec,
 or that has no live version, is an update with reason `version_drift`
-(`SST-PLN102`): apply points them back, without adding a version, and sets the
-default to `'LAST'` rather than to that version by name, so the next version
-apply commits is served too. An agent with
-no live version whose newest version holds another spec gets a new version.
-This is how a [rollback](ci-cd.md#rollback) is rolled forward.
+(`SST-PLN102`): apply points them back, without adding a version, pinning the
+default to that version by name. An agent with no live version whose newest
+version holds another spec gets a new version. An agent whose default serves
+that version only by following `LAST`, as one published before SST pinned
+defaults does, is updated once to pin it, without adding a version
+(`SST-PLN107`, an info). This is how a [rollback](ci-cd.md#rollback) is rolled
+forward.
 
 SST creates the stage when it is absent, as it does the skill bundle, profile,
 and eval config stages: before the first upload to it, apply runs

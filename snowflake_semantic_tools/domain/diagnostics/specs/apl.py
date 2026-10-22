@@ -622,6 +622,26 @@ SPECS: tuple[ErrorSpec, ...] = (
         note="The agents the profile routes to still publish, as temporary agents.",
     ),
     spec(
+        "SST-APL107",
+        Severity.WARNING,
+        "Agent's default left following LAST",
+        "{artifact}: the default version could not be pinned by name ({detail}); it is left "
+        "following LAST, and the next `sst plan` pins it",
+        "run `sst plan`, then `sst apply`, to pin it before anything else commits a version of the agent",
+        strict_exempt=True,
+        condition=(
+            "apply committed a new version of a permanent agent, then reading its versions back or "
+            "setting DEFAULT_VERSION to the version it committed failed"
+        ),
+        note=(
+            "The write succeeded and state records it. Until the default is pinned, it serves the "
+            "newest committed version, so a version committed later, such as an eval-model version, "
+            "would become the default; the next plan reports the agent as SST-PLN107. Strict mode "
+            "leaves this a warning, since the next apply is the repair."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
         "SST-APL900",
         Severity.ERROR,
         "Outcome count does not match change count",

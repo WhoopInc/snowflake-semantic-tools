@@ -59,7 +59,8 @@ class _WaveRun:
     record however the changes' durations interleave. An applied temporary artifact the
     plan saw a permanent object for reports SST-APL014; an outcome whose grants could not be
     verified reports SST-APL008 before its failure's diagnostic, once: a change that failed
-    because its grants could not be read reports it as that failure only. `lost` is checked, and the lock read again
+    because its grants could not be read reports it as that failure only. An applied agent
+    update whose default could not be pinned by name reports SST-APL107. `lost` is checked, and the lock read again
     through `verify`, before every change starts: once the lock is lost, no further change starts,
     and once the running ones ended every change without an outcome is skipped, in plan order,
     after one SST-APL011 naming the run `lost` says holds the lock. A lock `verify` cannot read
@@ -319,7 +320,11 @@ class _WaveRun:
         self._record([change for change, _ in ended], tuple(outcome for _, outcome in ended))
 
     def _record(self, runnable: list[Change], wave_outcomes: tuple[ApplyOutcome | None, ...]) -> None:
-        """Record the wave's outcomes with their diagnostics; a failure under STOP_ALL skips the rest."""
+        """Record the wave's outcomes with their diagnostics; a failure under STOP_ALL skips the rest.
+
+        Diagnostics:
+            SST-APL107: an applied agent update whose default apply could not pin by name.
+        """
         for change, outcome in zip(runnable, wave_outcomes, strict=False):
             if outcome is None:
                 continue
@@ -328,6 +333,8 @@ class _WaveRun:
                 self._diagnostics.append(D("SST-APL014", artifact=change.key))
             if outcome.grants is GrantCheck.UNREADABLE and not _reports_unreadable_grants(outcome):
                 self._diagnostics.append(D("SST-APL008", artifact=change.key))
+            if outcome.default_unpinned is not None:
+                self._diagnostics.append(D("SST-APL107", artifact=change.key, detail=outcome.default_unpinned))
             if outcome.status is OutcomeStatus.FAILED:
                 self._failed_or_skipped.add(change.key)
                 self._diagnostics.append(_outcome_diagnostic(change, outcome))
