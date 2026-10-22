@@ -1,0 +1,22 @@
+$ sst --project-dir <project> --manifest <manifest> test --compare-models claude-opus-4-8,openai-gpt-5,claude-haiku-4-5 --compare-report <project>/sst_target/compare/run --target dev
+--- exit 0
+--- stdout
+eval:jaffle_analytics_agent  2 questions x 2 runs  winner claude-opus-4-8
+  #  model              role       answer_correctness             logical_consistency  credits/q    p95   version
+  1  openai-gpt-5       candidate  1.00  [         o]  1.00-1.00  1.00                 0.1500       <n>s  VERSION$7 EVAL_OPENAI_GPT_5
+  2  claude-opus-4-8    candidate  1.00  [         o]  1.00-1.00  1.00                 pending      <n>s  VERSION$6 EVAL_CLAUDE_OPUS_4_8
+  3  claude-sonnet-4-6  pinned     0.62  [    |-o|  ]  0.50-0.75  1.00                 0.1050       <n>s  VERSION$4
+  4  claude-haiku-4-5   candidate  failed                         -                    unavailable  -     not committed
+     claude-haiku-4-5: ADD VERSION failed: Insufficient privileges
+  questions that differ
+    q2  claude-opus-4-8 fixes, openai-gpt-5 fixes  Which jaffles sold most in week 2?
+  verdict  claude-opus-4-8 beats the pinned claude-sonnet-4-6 on answer_correctness (1.00 vs 0.62) outside the spread, its credits per question pending.
+  pin      agents.+orchestration_model: claude-opus-4-8
+  note     Held fixed: dataset EVAL_JAFFLE_ANALYTICS_AGENT_1A2B3C4 SST_1A2B3C4D5E6F, metric versions, judge claude-sonnet-4-6, everything in the specification but models.orchestration.
+  note     Committed VERSION$5 (hold), VERSION$6 (EVAL_CLAUDE_OPUS_4_8), VERSION$7 (EVAL_OPENAI_GPT_5), VERSION$8 (restore); the default and the release's alias stayed on VERSION$4.
+  note     Usage views lag up to an hour; values marked pending fill in with --refresh-cost.
+report  sst_target/compare/run/compare.json
+--- stderr
+ok compared models on 1 eval: claude-opus-4-8 won - 0 errors, 0 warnings - <n>s
+  hidden: 3 info (--show-info)
+  next: run `sst test --refresh-cost sst_target/compare/run/compare.json` in about an hour for the cost still pending

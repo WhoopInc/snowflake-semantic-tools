@@ -275,6 +275,27 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "scored exactly and gates on its threshold; `answer_correctness` and custom metrics are judged "
         "approximately and never gate. Refused with `--capture-baseline`, or a `--suite` that does not name `evals`."
     ),
+    ("sst test", "--compare-models"): (
+        "Compare orchestration models on the selected evals' published agents and CoWork profiles: each "
+        "model in LIST, comma-separated, else each eval's `evals.+candidate_models`, runs on a version "
+        "committed for it, aliased `EVAL_<MODEL>`, beside the pinned model on the release; the default, "
+        "the release's alias and the live version end as they were. Runs the eval suite, gates nothing, "
+        "and writes `compare.json` and `report.html`. Refused with `--capture-baseline`, `--unpublished`, "
+        "or a `--suite` that does not name `evals`."
+    ),
+    ("sst test", "--compare-runs"): (
+        "Runs of each model a comparison makes, at least 1; else each eval's `evals.+compare_runs`, else 2. "
+        "Requires `--compare-models`."
+    ),
+    ("sst test", "--compare-report"): (
+        "Directory a comparison writes `compare.json` and `report.html` to; else "
+        "`sst_target/compare/<eval>_<UTC time>/`. Requires `--compare-models`."
+    ),
+    ("sst test", "--refresh-cost"): (
+        "Read the usage of the runs a comparison's `compare.json` names again, fill in the cost that was "
+        "pending, rank and decide again, and rewrite the report where it is. Runs nothing; refused with "
+        "`--compare-models`."
+    ),
     ("sst test", "--fail-fast"): (
         "Stop the smoke or eval suite at its first failing probe or eval, running them one at a time, and "
         "run no suite after one that fails."

@@ -27,6 +27,7 @@ from snowflake_semantic_tools.app.compile import CompiledView
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.retrieve import compiled_questions
 from snowflake_semantic_tools.app.evals.run import EvalRunResult, EvalSuiteResult
+from snowflake_semantic_tools.cli.compare import JsonReportWriter
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.render.terminal import Terminal
 from snowflake_semantic_tools.cli.wiring.compile import compile_result
@@ -42,6 +43,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 )
 from snowflake_semantic_tools.domain.ports.snowflake.agent_run import AgentReply, ToolUse
 from tests.helpers.cli_projects import common, compile_project
+from tests.helpers.compare_reports import jaffle_outcome
 from tests.helpers.described_objects import described_view
 from tests.helpers.published_target import published
 from tests.helpers.reference_project import DBT_MANIFEST, project_copy
@@ -68,6 +70,7 @@ class Case:
         snowflake: Runs with a fake Snowflake that holds nothing, so a plan creates everything.
         connect: Makes the fake Snowflake accounts the case runs against, once the project is
             prepared, and returns what each connection opens; None for `snowflake`'s empty one.
+        data_only: Pin the `--output json` envelope's `data` alone, indented, which holds no time.
     """
 
     name: str
@@ -76,6 +79,7 @@ class Case:
     variants: tuple[str, ...] = tuple(VARIANTS)
     snowflake: bool = False
     connect: Callable[[Path, pytest.MonkeyPatch], Callable[[dict[str, object]], FakeSnowflake]] | None = None
+    data_only: bool = False
 
 
 def _clean(root: Path) -> Path:
@@ -180,6 +184,25 @@ def _published_pass(project: Path, patch: pytest.MonkeyPatch) -> Callable[[dict[
     return lambda params: port
 
 
+def _compared(project: Path, patch: pytest.MonkeyPatch) -> Callable[[dict[str, object]], FakeSnowflake]:
+    """A comparison of the reference project's agent eval, its report written as compare.json alone."""
+    outcome = jaffle_outcome()
+    patch.setattr("snowflake_semantic_tools.app.evals.compare.RunEvalComparison.run", lambda *args, **kwargs: outcome)
+    patch.setattr("snowflake_semantic_tools.cli.compare.compare_report_writer", JsonReportWriter)
+    port = FakeSnowflake(state={})
+    port.close = lambda: None  # type: ignore[attr-defined]
+    return lambda params: port
+
+
+_COMPARED = (
+    "test",
+    "--compare-models",
+    "claude-opus-4-8,openai-gpt-5,claude-haiku-4-5",
+    "--compare-report",
+    "<project>/sst_target/compare/run",
+    "--target",
+    "dev",
+)
 _PROJECT = ("--project-dir", "<project>")
 _OFFLINE = (*_PROJECT, "--manifest", "<manifest>")
 CASES = (
@@ -235,6 +258,15 @@ CASES = (
     Case(
         "test-published", _compiled, (*_OFFLINE, "test", "--suite", "evals", "--target", "dev"), connect=_published_pass
     ),
+    Case("test-compare", _compiled, (*_OFFLINE, *_COMPARED), connect=_compared),
+    Case(
+        "test-compare-json",
+        _compiled,
+        ("-o", "json", *_OFFLINE, *_COMPARED),
+        variants=("plain",),
+        connect=_compared,
+        data_only=True,
+    ),
 )
 
 
@@ -242,7 +274,7 @@ def render_case(case: Case, variant: str, root: Path) -> str:
     """Run `case` on the `variant` terminal in a project under `root`; return the normalised transcript."""
     project = case.prepare(root)
     manifest = common(project)[3]
-    args = [project.as_posix() if arg == "<project>" else manifest if arg == "<manifest>" else arg for arg in case.args]
+    args = [manifest if arg == "<manifest>" else arg.replace("<project>", project.as_posix()) for arg in case.args]
     with pytest.MonkeyPatch.context() as patch:
         terminal = VARIANTS[variant]
         patch.setattr("snowflake_semantic_tools.cli.output.system_terminal", lambda **_: terminal)
@@ -256,6 +288,9 @@ def render_case(case: Case, variant: str, root: Path) -> str:
             patch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", opened)
         result = CliRunner().invoke(cli, args, color=terminal.color, prog_name="sst")
     head = f"$ sst {' '.join(case.args)}\n--- exit {result.exit_code}\n"
+    if case.data_only:
+        data = json.dumps(json.loads(result.stdout)["data"], indent=2, ensure_ascii=False)
+        return normalised(f"{head}--- data\n{data}\n", project)
     text = f"{head}--- stdout\n{result.stdout}--- stderr\n{result.stderr}"
     return normalised(text, project)
 

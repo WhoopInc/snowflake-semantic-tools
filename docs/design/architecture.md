@@ -637,6 +637,8 @@ These are the commands that connect, and what they do once connected:
 | `test --suite evals` | yes | the published agents | evaluation runs, the lock table, the eval table |
 | `drop` | yes | the object's marker, the state table | one `DROP`, the lock table, the state table |
 | `ask` | yes; besides SQL, the Cortex Agents REST API, on the same session's token and role | the state table; the agent's streamed run | scratch copies `<NAME>__SST_ASK_<id>` and an `sst_ask` thread, both removed when the session ends |
+| `test --suite evals --compare-models` | yes | the state table, each subject's versions, the published agents, the usage views | per subject a hold copy, a version per candidate aliased `EVAL_<MODEL>`, and a restore copy with its live version; their staged specifications, evaluation runs, the lock table; locally, the report |
+| `test --refresh-cost` | yes | the usage views | nothing in Snowflake; locally, the report it rereads |
 | `test --suite evals --unpublished` | yes | the state table, one temporary agent run per question, the judges | scratch copies and temporary agents, dropped when the run ends |
 
 Run without `--suite`, `sst test` runs each suite that applies once `sst compile`

@@ -481,7 +481,7 @@ def _per_question(model: ModelReport) -> ModelCost:
         state = agent.state if agent.state != KNOWN else UNAVAILABLE
         return replace(model.cost, credits_per_question=Amount(state, reason=agent.reason or "no request was answered"))
     total = (agent.value or 0.0) + (sql.value or 0.0 if sql.state == KNOWN else 0.0)
-    return replace(model.cost, credits_per_question=Amount(KNOWN, total / len(model.request_ids)))
+    return replace(model.cost, credits_per_question=Amount(KNOWN, round(total / len(model.request_ids), 6)))
 
 
 def _ranks(models: Sequence[ModelReport], metrics: Sequence[MetricSpec]) -> list[int]:

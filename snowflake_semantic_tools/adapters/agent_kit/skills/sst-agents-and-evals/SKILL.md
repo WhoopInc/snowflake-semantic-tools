@@ -171,6 +171,12 @@ evals:
   `sst test --suite evals --capture-baseline --reason "<why>"`.
 - The eval suite needs the agent applied exactly as compiled (`SST-APL012`), and the session's
   primary role to hold the task and stage privileges (`SST-VAL727`, `SST-VAL728`).
+- `sst test --suite evals --compare-models <model>,<model>` compares orchestration models on an
+  eval: it commits a version of the published agent per candidate, aliased `EVAL_<MODEL>`, runs
+  them beside the pinned model, and writes a report; it never moves the default or the released
+  alias, and costs credits like any eval run, so run it only when the user asks. Adopting a
+  winner is changing `+orchestration_model`, then `sst plan`. `--refresh-cost <compare.json>`
+  fills in cost still pending an hour later, running nothing.
 
 ## Checking a change
 

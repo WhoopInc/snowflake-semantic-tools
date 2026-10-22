@@ -95,12 +95,12 @@ def _agent(query: CostQuery, rows: Mapping[str, AgentUsage] | str, now: datetime
     found = [rows[item] for item in query.request_ids if item in rows]
     if len(found) < len(query.request_ids):
         return Amount(PENDING), Amount(PENDING)
-    credits = Amount(KNOWN, sum(row.token_credits for row in found))
+    credits = Amount(KNOWN, round(sum(row.token_credits for row in found), 6))
     starts = [moment for row in found if (moment := _moment(row.start_time)) is not None]
     settled = bool(starts) and now is not None and now - max(starts) >= SQL_CREDIT_LAG
     if not settled and any(row.sql_credits is None for row in found):
         return credits, Amount(PENDING)
-    return credits, Amount(KNOWN, sum(row.sql_credits or 0.0 for row in found))
+    return credits, Amount(KNOWN, round(sum(row.sql_credits or 0.0 for row in found), 6))
 
 
 def _judge(query: CostQuery, rows: Mapping[str, JudgeUsage] | str) -> Amount:

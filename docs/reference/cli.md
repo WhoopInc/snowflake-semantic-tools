@@ -716,6 +716,12 @@ apply` first, takes no lock, and reads and writes no baseline or eval state. Onl
 approximate and reported only. It exits 3 with `--capture-baseline`, or with a --suite
 that does not name evals.
 
+`--compare-models` runs the eval suite, alone unless --suite names smoke too, as a model
+comparison (`cli.compare`): it gates nothing and exits 1 only when a precheck refuses or a
+version could not be committed or restored. `--refresh-cost` rereads an earlier
+comparison's cost and runs nothing, exiting 4 for a file SST did not write. Both exit 3
+with `--capture-baseline`, `--unpublished`, or a --suite that does not name evals.
+
 ```text
 sst test [OPTIONS]
 ```
@@ -733,6 +739,10 @@ sst test [OPTIONS]
 | `--capture-baseline` | flag |  | Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires `--reason`, and a run of the eval suite: refused with a `--suite` that does not name `evals`, or no `--suite` when the eval suite does not apply. |
 | `--reason` | TEXT |  | Why the baseline is changing; stored with it. Requires `--capture-baseline`. |
 | `--unpublished` | flag |  | Run the eval suite against each agent as it compiles now, through temporary agents, publishing nothing: no `sst apply` first, no lock, no baseline, no eval state. `tool_selection_accuracy` is scored exactly and gates on its threshold; `answer_correctness` and custom metrics are judged approximately and never gate. Refused with `--capture-baseline`, or a `--suite` that does not name `evals`. |
+| `--compare-models` | TEXT |  | Compare orchestration models on the selected evals' published agents and CoWork profiles: each model in LIST, comma-separated, else each eval's `evals.+candidate_models`, runs on a version committed for it, aliased `EVAL_<MODEL>`, beside the pinned model on the release; the default, the release's alias and the live version end as they were. Runs the eval suite, gates nothing, and writes `compare.json` and `report.html`. Refused with `--capture-baseline`, `--unpublished`, or a `--suite` that does not name `evals`. |
+| `--compare-runs` | INTEGER RANGE |  | Runs of each model a comparison makes, at least 1; else each eval's `evals.+compare_runs`, else 2. Requires `--compare-models`. |
+| `--compare-report` | DIRECTORY |  | Directory a comparison writes `compare.json` and `report.html` to; else `sst_target/compare/<eval>_<UTC time>/`. Requires `--compare-models`. |
+| `--refresh-cost` | FILE |  | Read the usage of the runs a comparison's `compare.json` names again, fill in the cost that was pending, rank and decide again, and rewrite the report where it is. Runs nothing; refused with `--compare-models`. |
 | `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 
 ## sst explain

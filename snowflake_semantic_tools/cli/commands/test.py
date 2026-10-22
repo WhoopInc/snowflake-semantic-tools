@@ -50,6 +50,7 @@ from snowflake_semantic_tools.app.evals.suite import (
 )
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.smoke import SmokePublished
+from snowflake_semantic_tools.cli.compare import CompareFlags, refresh_comparison, run_comparison
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, ERROR, OK
 from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
@@ -93,15 +94,27 @@ _EXIT_RANK = {OK: 0, ERROR: 1, CONFIG: 2, CONNECTION: 3}
 
 
 def _refuse_invocation(
-    suites: tuple[str, ...], capture_baseline_requested: bool, reason: str | None, unpublished: bool
+    suites: tuple[str, ...],
+    capture_baseline_requested: bool,
+    reason: str | None,
+    unpublished: bool,
+    compare_models: str | None,
+    compare_runs: int | None,
+    compare_report: Path | None,
+    refresh_cost: Path | None,
 ) -> None:
     """Refuse `--capture-baseline` and `--reason` apart, or where the command line runs no eval suite.
 
     Raises:
         SstUsageError: `--capture-baseline` and `--reason` are not given together, or are given
             with a `--suite` that does not name `evals`; or `--unpublished` is given with
-            `--capture-baseline`, or with a `--suite` that does not name `evals`.
+            `--capture-baseline`, or with a `--suite` that does not name `evals`; or a
+            comparison flag is given as `_refuse_comparison` refuses it.
     """
+    _refuse_comparison(suites, capture_baseline_requested, unpublished, compare_models, refresh_cost)
+    if compare_models is None and (compare_runs is not None or compare_report is not None):
+        flag = "--compare-runs" if compare_runs is not None else "--compare-report"
+        raise SstUsageError(f"{flag} sets how --compare-models compares; add --compare-models")
     if unpublished and capture_baseline_requested:
         raise SstUsageError("--unpublished never captures a baseline: an unpublished run is not comparable")
     if unpublished and suites and "evals" not in suites:
@@ -116,6 +129,32 @@ def _refuse_invocation(
         raise SstUsageError("--capture-baseline captures an eval baseline; add --suite evals")
 
 
+def _refuse_comparison(
+    suites: tuple[str, ...],
+    capture_baseline_requested: bool,
+    unpublished: bool,
+    compare_models: str | None,
+    refresh_cost: Path | None,
+) -> None:
+    """Refuse a comparison, or a refresh of one, beside what it never does.
+
+    Raises:
+        SstUsageError: `--compare-models` or `--refresh-cost` is given with `--capture-baseline` or
+            `--unpublished`, or with a `--suite` that does not name `evals`; or both are given.
+    """
+    flag = "--compare-models" if compare_models is not None else "--refresh-cost" if refresh_cost else None
+    if flag is None:
+        return
+    if compare_models is not None and refresh_cost is not None:
+        raise SstUsageError("--refresh-cost rereads a comparison's cost and runs nothing; drop --compare-models")
+    if capture_baseline_requested:
+        raise SstUsageError(f"{flag} never captures a baseline: a comparison gates nothing")
+    if unpublished:
+        raise SstUsageError(f"{flag} compares published versions; drop --unpublished")
+    if suites and "evals" not in suites:
+        raise SstUsageError(f"{flag} runs the eval suite; add --suite evals")
+
+
 @click.command(cls=SstCommand, name="test")
 @click.option("--suite", "suites", type=click.Choice(SUITES), multiple=True)
 @selection_options()
@@ -126,6 +165,10 @@ def _refuse_invocation(
 @click.option("--capture-baseline", "capture_baseline_requested", is_flag=True)
 @click.option("--reason")
 @click.option("--unpublished", is_flag=True)
+@click.option("--compare-models", "compare_models", is_flag=False, flag_value="", default=None, metavar="[LIST]")
+@click.option("--compare-runs", type=click.IntRange(min=1))
+@click.option("--compare-report", type=click.Path(file_okay=False, path_type=Path))
+@click.option("--refresh-cost", type=click.Path(dir_okay=False, path_type=Path))
 @break_stale_lock_option()
 @command_body("test", refusals=_refuse_invocation)
 def test_command(
@@ -140,6 +183,10 @@ def test_command(
     capture_baseline_requested: bool,
     reason: str | None,
     unpublished: bool,
+    compare_models: str | None,
+    compare_runs: int | None,
+    compare_report: Path | None,
+    refresh_cost: Path | None,
     break_stale_lock: bool,
 ) -> CommandResult:
     """Run the smoke and eval suites: those --suite names, else every one that applies.
@@ -162,7 +209,15 @@ def test_command(
     `tool_selection_accuracy`, which it scores exactly, can fail it; the metrics it judges are
     approximate and reported only. It exits 3 with `--capture-baseline`, or with a --suite
     that does not name evals.
+
+    `--compare-models` runs the eval suite, alone unless --suite names smoke too, as a model
+    comparison (`cli.compare`): it gates nothing and exits 1 only when a precheck refuses or a
+    version could not be committed or restored. `--refresh-cost` rereads an earlier
+    comparison's cost and runs nothing, exiting 4 for a file SST did not write. Both exit 3
+    with `--capture-baseline`, `--unpublished`, or a --suite that does not name evals.
     """
+    if refresh_cost is not None:
+        return refresh_comparison(paths, target_name, refresh_cost)
     compiled = compiling.compile_result(paths, target_name, manifest_path)
     if not compiled.success:
         return CommandResult(ERROR, compiled.diagnostics)
@@ -181,10 +236,14 @@ def test_command(
             "--capture-baseline captures an eval baseline, and the eval suite does not apply: "
             "run sst compile first, or select an eval"
         )
-    chosen = suites or (("evals",) if unpublished else _applying(paths, result))
+    chosen = suites or (("evals",) if unpublished or compare_models is not None else _applying(paths, result))
     reports: list[tuple[str, CommandResult]] = []
     for name in dict.fromkeys(chosen):
-        if name == "evals" and unpublished:
+        if name == "evals" and compare_models is not None:
+            flags = CompareFlags(compare_models, compare_runs, compare_report, break_stale_lock)
+            evals = _selected_evals(result, selected)
+            report = run_comparison(paths, target_name, (compiled, result), inputs, evals, flags, _print_eval_progress)
+        elif name == "evals" and unpublished:
             report = _run_unpublished_evals(
                 paths, target_name, (compiled, result), inputs, selected, workers, fail_fast
             )
@@ -204,7 +263,8 @@ def test_command(
         reports.append((name, report))
         if fail_fast and report.exit_code:
             break
-    if len(suites) == 1:
+    # A comparison alone is reported as itself, its report the run's data.
+    if len(suites) == 1 or (compare_models is not None and len(reports) == 1):
         return _noted(reports[0][1], notes)
     # A suite --fail-fast stopped before is skipped, as one that does not apply is.
     ran = {name for name, _ in reports}

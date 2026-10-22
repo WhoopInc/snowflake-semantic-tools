@@ -17,6 +17,7 @@ import click
 import pytest
 from click.testing import CliRunner, Result
 
+from snowflake_semantic_tools.cli.compare import JsonReportWriter
 from snowflake_semantic_tools.cli.exit_codes import EXIT_CODE_DOCS, INTERRUPTED
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.wiring.project import target_dir
@@ -32,6 +33,7 @@ from tests.helpers.cli_projects import (
     on_a_terminal,
     skills_only_project,
 )
+from tests.helpers.compare_reports import jaffle_outcome
 from tests.helpers.enrich_ports import ScriptedEnrich
 from tests.helpers.reference_project import REPO_ROOT, break_menu_view, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
@@ -265,6 +267,15 @@ FLAG_SCENARIOS: dict[str, tuple[str, int, Scenario]] = {
         3,
         lambda tmp, _: _run("test", "--unpublished", "--capture-baseline", "--reason", "why"),
     ),
+    # A comparison exits 0 whatever it scored; it is refused beside a capture, and a refresh of a
+    # file SST did not write cannot use it.
+    "test-compare-models": ("test", 0, lambda tmp, mp: _test_compare(tmp, mp)),
+    "test-compare-models-capture": (
+        "test",
+        3,
+        lambda tmp, _: _run("test", "--compare-models", "--capture-baseline", "--reason", "why"),
+    ),
+    "test-refresh-cost-unusable": ("test", 4, lambda tmp, mp: _test_refresh_unusable(tmp, mp)),
     "enrich-not-production": ("enrich", 3, lambda tmp, _: _run("enrich", *common(project_copy(tmp)))),
     "enrich-allow-non-prod": ("enrich", 0, lambda tmp, mp: _enrich_allowed(tmp, mp)),
 }
@@ -310,6 +321,25 @@ def _test_unpublished(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
     """Run the eval suite unpublished on an uncompiled copy, every question answered with no tool."""
     args = ["test", *common(project_copy(tmp)), "--target", "dev", "--suite", "evals", "--unpublished"]
     return invoke_with_port(monkeypatch, FakeSnowflake(state={}), args)
+
+
+def _test_compare(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
+    """Compare two models on a compiled copy, the comparison's outcome canned."""
+    project = project_copy(tmp)
+    compile_project(project)
+    outcome = jaffle_outcome()
+    monkeypatch.setattr("snowflake_semantic_tools.app.evals.compare.RunEvalComparison.run", lambda *a, **k: outcome)
+    monkeypatch.setattr("snowflake_semantic_tools.cli.compare.compare_report_writer", JsonReportWriter)
+    args = ["test", *common(project), "--target", "dev", "--compare-models", "claude-opus-4-8,openai-gpt-5"]
+    return invoke_with_port(monkeypatch, FakeSnowflake(state={}), [*args, "--compare-report", str(project / "c")])
+
+
+def _test_refresh_unusable(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
+    project = project_copy(tmp)
+    (project / "c.json").write_text('{"schema": "sst.plan/1"}', encoding="utf-8")
+    return invoke_with_port(
+        monkeypatch, FakeSnowflake(state={}), ["test", *common(project), "--refresh-cost", str(project / "c.json")]
+    )
 
 
 def _debug_invalid(tmp: Path) -> Result:
