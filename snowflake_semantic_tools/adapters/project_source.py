@@ -32,6 +32,7 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths, sst_target
 from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
+from snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles import load_coco_desktop_profile_catalog
 from snowflake_semantic_tools.adapters.yaml.config import read_config_document
 from snowflake_semantic_tools.adapters.yaml.cowork_profiles import load_cowork_profiles
 from snowflake_semantic_tools.adapters.yaml.discover import directory_refused, discover_yaml
@@ -39,13 +40,13 @@ from snowflake_semantic_tools.adapters.yaml.documents import LoadCache, load_doc
 from snowflake_semantic_tools.adapters.yaml.evals import load_eval_catalog, parse_eval_defaults
 from snowflake_semantic_tools.adapters.yaml.fields import strings
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
-from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
 from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic import load_semantic_views_result, read_semantic_inputs
 from snowflake_semantic_tools.adapters.yaml.skills import _published, load_skill_catalog
 from snowflake_semantic_tools.adapters.yaml.tools import load_tool_catalog
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.agent import AgentModel
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import CocoDesktopProfileCatalog
 from snowflake_semantic_tools.domain.model.config_schema import (
     config_block,
     config_bool,
@@ -56,7 +57,6 @@ from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileMo
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog
 from snowflake_semantic_tools.domain.model.identifier import Identifier
-from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.skill import SkillCatalog
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog
@@ -414,12 +414,12 @@ class YamlProjectInputs(ProjectInputs):
             self._project_dir, skills_dir=skills_dir, plugins_dir=plugins_dir, config=self.config().tree
         )
 
-    def profile_catalog(
-        self, *, profiles_dir: str, hooks_dir: str, mcp_servers_dir: str, commands_dir: str
-    ) -> ProfileCatalog:
-        return load_profile_catalog(
+    def coco_desktop_profile_catalog(
+        self, *, coco_desktop_profiles_dir: str, hooks_dir: str, mcp_servers_dir: str, commands_dir: str
+    ) -> CocoDesktopProfileCatalog:
+        return load_coco_desktop_profile_catalog(
             self._project_dir,
-            profiles_dir=profiles_dir,
+            coco_desktop_profiles_dir=coco_desktop_profiles_dir,
             hooks_dir=hooks_dir,
             mcp_servers_dir=mcp_servers_dir,
             commands_dir=commands_dir,
@@ -578,7 +578,7 @@ def _file_checksums(
     bundled = (
         configured_dir(config, "skills_dir", "skills"),
         configured_dir(config, "plugins_dir", "plugins"),
-        configured_dir(config, "profiles_dir", "profiles"),
+        configured_dir(config, "coco_desktop_profiles_dir", "coco_desktop_profiles"),
         configured_dir(config, "hooks_dir", "hooks"),
         configured_dir(config, "mcp_servers_dir", "mcp-servers"),
         configured_dir(config, "commands_dir", "commands"),

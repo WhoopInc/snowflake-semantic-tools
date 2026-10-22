@@ -38,7 +38,7 @@ from tests.helpers.reference_project import project_copy
 from tests.helpers.seam_projects import FakeDbt
 
 # Every artifact type has a golden route, and the reference project declares each one.
-_TYPES = {"agent", "cowork_profile", "eval", "plugin", "profile", "semantic_view", "skill", "tool"}
+_TYPES = {"agent", "cowork_profile", "eval", "plugin", "coco_desktop_profile", "semantic_view", "skill", "tool"}
 
 
 @pytest.fixture(scope="module")

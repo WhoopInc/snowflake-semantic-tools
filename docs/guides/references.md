@@ -129,11 +129,11 @@ or an `agent` tool member, for an agent published elsewhere, with
 | Field | Function | A name that resolves to nothing |
 |---|---|---|
 | `plugin.skills` | `skill` | `SST-VAL835` |
-| `profile.skills` | `skill` | `SST-VAL844` |
-| `profile.plugins` | `plugin` | `SST-VAL860` |
-| `profile.commands` | `command` | `SST-VAL858` |
-| `profile.mcp_servers` | `mcp_server` | `SST-VAL847` |
-| `profile.hooks` | `hook` | `SST-VAL846` |
+| `coco_desktop_profile.skills` | `skill` | `SST-VAL844` |
+| `coco_desktop_profile.plugins` | `plugin` | `SST-VAL860` |
+| `coco_desktop_profile.commands` | `command` | `SST-VAL858` |
+| `coco_desktop_profile.mcp_servers` | `mcp_server` | `SST-VAL847` |
+| `coco_desktop_profile.hooks` | `hook` | `SST-VAL846` |
 | `hook.script` | `file` | see [Files](#files) |
 | `command.skill` (frontmatter) | `skill` | `SST-REF032` |
 

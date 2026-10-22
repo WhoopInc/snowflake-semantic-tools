@@ -4,28 +4,30 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
-from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
+from snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles import load_coco_desktop_profile_catalog
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import CocoDesktopProfileCatalog
 from tests.helpers.file_trees import write_tree
 
 
-def load(root: Path) -> ProfileCatalog:
-    return load_profile_catalog(root, profiles_dir="profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers")
+def load(root: Path) -> CocoDesktopProfileCatalog:
+    return load_coco_desktop_profile_catalog(
+        root, coco_desktop_profiles_dir="coco_desktop_profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers"
+    )
 
 
 def test_profiles_shared_hooks_and_mcp_configs_load(tmp_path: Path) -> None:
     write_tree(
         tmp_path,
         {
-            "profiles/analyst/profile.yml": (
+            "coco_desktop_profiles/analyst/coco_desktop_profile.yml": (
                 "name: analyst\ndescription: Analyst.\nowner_team: Data\nskills: [\"{{ skill('semantics') }}\"]\n"
                 "mcp_servers: [\"{{ mcp_server('dbt') }}\"]\nhooks: [\"{{ hook('guard') }}\"]\n"
             ),
-            "profiles/analyst/AGENTS.md": "Be careful.\n",
-            "profiles/shared/AGENTS.md": "Shared.\n",
-            "profiles/shared/rules/b.md": "B\n",
-            "profiles/shared/rules/a.md": "A\n",
-            "profiles/shared/profile.yaml": "skills: [\"{{ skill('common') }}\"]\n",
+            "coco_desktop_profiles/analyst/AGENTS.md": "Be careful.\n",
+            "coco_desktop_profiles/shared/AGENTS.md": "Shared.\n",
+            "coco_desktop_profiles/shared/rules/b.md": "B\n",
+            "coco_desktop_profiles/shared/rules/a.md": "A\n",
+            "coco_desktop_profiles/shared/coco_desktop_profile.yaml": "skills: [\"{{ skill('common') }}\"]\n",
             "hooks/guard/hook.yml": (
                 "name: guard\nevent: PreToolUse\ntype: command\ncommand: bash\nmatcher: snowflake_sql_execute\n"
                 "timeout: 30\ninteractive: false\ndescription: Blocks drops.\n"
@@ -47,12 +49,15 @@ def test_profiles_shared_hooks_and_mcp_configs_load(tmp_path: Path) -> None:
         ("guard",),
         "Be careful.\n",
     )
-    assert profile.source_files == ("profiles/analyst/profile.yml", "profiles/analyst/AGENTS.md")
+    assert profile.source_files == (
+        "coco_desktop_profiles/analyst/coco_desktop_profile.yml",
+        "coco_desktop_profiles/analyst/AGENTS.md",
+    )
     shared = catalog.shared
     assert (
         shared is not None and shared.skills == ("common",) and [name for name, _ in shared.rules] == ["a.md", "b.md"]
     )
-    assert shared.source_files[0] == "profiles/shared/profile.yaml"
+    assert shared.source_files[0] == "coco_desktop_profiles/shared/coco_desktop_profile.yaml"
     guard, multi = catalog.hooks
     assert (guard.event, guard.matcher, guard.timeout, guard.interactive, guard.script.path) == (
         "PreToolUse",
@@ -69,15 +74,15 @@ def test_pipeline_keys_and_malformed_inputs_are_diagnosed(tmp_path: Path) -> Non
     write_tree(
         tmp_path,
         {
-            "profiles/legacy/profile.yaml": (
+            "coco_desktop_profiles/legacy/coco_desktop_profile.yaml": (
                 "name: other\nactive: true\nallowed_roles: [ANALYST_ROLE]\ncolor: blue\ndescription: 3\nskills: nope\n"
             ),
-            "profiles/twice/profile.yml": "name: twice\n",
-            "profiles/twice/profile.yaml": "name: twice\n",
-            "profiles/none/README.md": "x",
-            "profiles/broken/profile.yml": "name: [unclosed\n",
-            "profiles/shared/profile.yml": "skills: [\"{{ skill('common') }}\"]\nextra: 1\n",
-            "profiles/shared/profile.yaml": "skills: []\n",
+            "coco_desktop_profiles/twice/coco_desktop_profile.yml": "name: twice\n",
+            "coco_desktop_profiles/twice/coco_desktop_profile.yaml": "name: twice\n",
+            "coco_desktop_profiles/none/README.md": "x",
+            "coco_desktop_profiles/broken/coco_desktop_profile.yml": "name: [unclosed\n",
+            "coco_desktop_profiles/shared/coco_desktop_profile.yml": "skills: [\"{{ skill('common') }}\"]\nextra: 1\n",
+            "coco_desktop_profiles/shared/coco_desktop_profile.yaml": "skills: []\n",
             "hooks/none/hook.yml": "event: PreToolUse\n",
             "hooks/prompt/hook.yml": "event: Stop\ntype: prompt\ncommand: x\n",
             "hooks/many/hook.yml": "event: Stop\ncommand: bash\n",
@@ -97,16 +102,16 @@ def test_pipeline_keys_and_malformed_inputs_are_diagnosed(tmp_path: Path) -> Non
         (item.subject, item.code, item.context.get("key") or item.context.get("field")) for item in catalog.diagnostics
     ]
     assert found == [
-        ("profile:broken", "SST-LOD001", None),
-        ("profile:legacy", "SST-VAL851", "active"),
-        ("profile:legacy", "SST-VAL851", "allowed_roles"),
-        ("profile:legacy", "SST-PRS004", "color"),
-        ("profile:legacy", "SST-VAL801", None),
-        ("profile:legacy", "SST-PRS003", "description"),
-        ("profile:legacy", "SST-PRS003", "skills"),
-        ("profile:none", "SST-VAL801", None),
-        ("profile:shared", "SST-VAL801", None),
-        ("profile:twice", "SST-VAL801", None),
+        ("coco_desktop_profile:broken", "SST-LOD001", None),
+        ("coco_desktop_profile:legacy", "SST-VAL851", "active"),
+        ("coco_desktop_profile:legacy", "SST-VAL851", "allowed_roles"),
+        ("coco_desktop_profile:legacy", "SST-PRS004", "color"),
+        ("coco_desktop_profile:legacy", "SST-VAL801", None),
+        ("coco_desktop_profile:legacy", "SST-PRS003", "description"),
+        ("coco_desktop_profile:legacy", "SST-PRS003", "skills"),
+        ("coco_desktop_profile:none", "SST-VAL801", None),
+        ("coco_desktop_profile:shared", "SST-VAL801", None),
+        ("coco_desktop_profile:twice", "SST-VAL801", None),
         ("hook:empty", "SST-PRS004", "bogus"),
         ("hook:empty", "SST-VAL852", None),
         ("hook:many", "SST-VAL852", None),
@@ -138,12 +143,14 @@ def test_commands_load_like_a_desktop_command_repository(tmp_path: Path) -> None
     write_tree(
         tmp_path,
         {
-            "profiles/analyst/profile.yml": (
+            "coco_desktop_profiles/analyst/coco_desktop_profile.yml": (
                 "name: analyst\n"
                 "commands: [\"{{ command('review') }}\", \"{{ command('sql/check') }}\"]\n"
                 "plugins: [\"{{ plugin('kit') }}\"]\n"
             ),
-            "profiles/shared/profile.yml": "skills: []\ncommands: [\"{{ command('daily') }}\"]\n",
+            "coco_desktop_profiles/shared/coco_desktop_profile.yml": (
+                "skills: []\ncommands: [\"{{ command('daily') }}\"]\n"
+            ),
             "commands/daily.md": "Summarise yesterday.\n",
             "commands/review.md": (
                 "---\ndescription: Review a PR.\nallowed-tools: [Read, Grep]\nhidden: false\n---\nGo.\n"
@@ -161,8 +168,12 @@ def test_commands_load_like_a_desktop_command_repository(tmp_path: Path) -> None
         },
     )
     (tmp_path / "commands" / "bad" / "binary.md").write_bytes(b"\xff\xfe")
-    catalog = load_profile_catalog(
-        tmp_path, profiles_dir="profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers", commands_dir="commands"
+    catalog = load_coco_desktop_profile_catalog(
+        tmp_path,
+        coco_desktop_profiles_dir="coco_desktop_profiles",
+        hooks_dir="hooks",
+        mcp_servers_dir="mcp-servers",
+        commands_dir="commands",
     )
     assert [command.name for command in catalog.commands] == [
         "bad/binary",
@@ -202,15 +213,25 @@ def test_commands_load_like_a_desktop_command_repository(tmp_path: Path) -> None
 
 
 def test_a_prompt_or_a_rule_that_is_not_utf8_is_reported_and_left_out(tmp_path: Path) -> None:
-    write_tree(tmp_path, {"profiles/analyst/profile.yml": "name: analyst\n", "profiles/shared/rules/a.md": "A\n"})
-    (tmp_path / "profiles/analyst/AGENTS.md").write_bytes(b"Be \xff careful.\n")
-    (tmp_path / "profiles/shared/rules/b.md").write_bytes(b"\xfeB\n")
+    write_tree(
+        tmp_path,
+        {
+            "coco_desktop_profiles/analyst/coco_desktop_profile.yml": "name: analyst\n",
+            "coco_desktop_profiles/shared/rules/a.md": "A\n",
+        },
+    )
+    (tmp_path / "coco_desktop_profiles/analyst/AGENTS.md").write_bytes(b"Be \xff careful.\n")
+    (tmp_path / "coco_desktop_profiles/shared/rules/b.md").write_bytes(b"\xfeB\n")
 
     catalog = load(tmp_path)
 
     assert [(item.code, item.subject, dict(item.context)) for item in catalog.diagnostics] == [
-        ("SST-LOD006", "profile:analyst", {"file": "profiles/analyst/AGENTS.md", "offset": 3}),
-        ("SST-LOD006", "profile:shared", {"file": "profiles/shared/rules/b.md", "offset": 0}),
+        (
+            "SST-LOD006",
+            "coco_desktop_profile:analyst",
+            {"file": "coco_desktop_profiles/analyst/AGENTS.md", "offset": 3},
+        ),
+        ("SST-LOD006", "coco_desktop_profile:shared", {"file": "coco_desktop_profiles/shared/rules/b.md", "offset": 0}),
     ]
     assert catalog.profiles[0].prompt is None
     assert catalog.shared is not None and [name for name, _ in catalog.shared.rules] == ["a.md"]
@@ -221,7 +242,7 @@ def test_nothing_reached_through_a_symbolic_link_is_read(tmp_path: Path) -> None
     outside = write_tree(
         tmp_path / "outside",
         {
-            "profile/profile.yml": "name: linked\n",
+            "profile/coco_desktop_profile.yml": "name: linked\n",
             "rule.md": "Outside.\n",
             "command.md": "Outside.\n",
             "run.sh": "#!/bin/sh\n",
@@ -232,29 +253,31 @@ def test_nothing_reached_through_a_symbolic_link_is_read(tmp_path: Path) -> None
     write_tree(
         project,
         {
-            "profiles/shared/AGENTS.md": "Shared.\n",
-            "profiles/shared/rules/kept.md": "Kept.\n",
+            "coco_desktop_profiles/shared/AGENTS.md": "Shared.\n",
+            "coco_desktop_profiles/shared/rules/kept.md": "Kept.\n",
             "commands/kept.md": "Kept.\n",
             "hooks/guard/hook.yml": "name: guard\nevent: PreToolUse\ncommand: bash\nscript: \"{{ file('run.sh') }}\"\n",
             "hooks/linked/run.sh": "#!/bin/sh\n",
             "mcp-servers/dbt/README.md": "x",
         },
     )
-    (project / "profiles/linked").symlink_to(outside / "profile")
-    (project / "profiles/shared/rules/outside.md").symlink_to(outside / "rule.md")
+    (project / "coco_desktop_profiles/linked").symlink_to(outside / "profile")
+    (project / "coco_desktop_profiles/shared/rules/outside.md").symlink_to(outside / "rule.md")
     (project / "commands/outside.md").symlink_to(outside / "command.md")
     (project / "hooks/guard/run.sh").symlink_to(outside / "run.sh")
     (project / "hooks/linked/hook.yml").symlink_to(outside / "hook.yml")
     (project / "mcp-servers/dbt/mcp.json").symlink_to(outside / "mcp.json")
-    catalog = load_profile_catalog(project, profiles_dir="profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers")
+    catalog = load_coco_desktop_profile_catalog(
+        project, coco_desktop_profiles_dir="coco_desktop_profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers"
+    )
     refused = sorted(item.context["path"] for item in catalog.diagnostics if item.code == "SST-PRT009")
     assert refused == [
+        "coco_desktop_profiles/linked",
+        "coco_desktop_profiles/shared/rules/outside.md",
         "commands/outside.md",
         "hooks/guard/run.sh",
         "hooks/linked/hook.yml",
         "mcp-servers/dbt/mcp.json",
-        "profiles/linked",
-        "profiles/shared/rules/outside.md",
     ]
     assert catalog.profiles == ()
     assert catalog.shared is not None and [name for name, _ in catalog.shared.rules] == ["kept.md"]
@@ -266,16 +289,24 @@ def test_a_profile_records_its_own_settings_and_its_route_is_checked(tmp_path: P
     write_tree(
         tmp_path,
         {
-            "profiles/analyst/profile.yml": (
+            "coco_desktop_profiles/analyst/coco_desktop_profile.yml": (
                 "name: analyst\ndescription: Analyst.\nconfig:\n  stage: TREES\n  registry_table: R\n"
             ),
-            "profiles/operator/profile.yml": "name: operator\ndescription: Operator.\nconfig:\n  bundle_stage: B\n",
-            "profiles/plain/profile.yml": "name: plain\ndescription: Plain.\nconfig: [stage]\n",
+            "coco_desktop_profiles/operator/coco_desktop_profile.yml": (
+                "name: operator\ndescription: Operator.\nconfig:\n  bundle_stage: B\n"
+            ),
+            "coco_desktop_profiles/plain/coco_desktop_profile.yml": (
+                "name: plain\ndescription: Plain.\nconfig: [stage]\n"
+            ),
         },
     )
-    config = {"profiles": {"analyst": {"+schema": "A"}, "gone": {}}}
-    catalog = load_profile_catalog(
-        tmp_path, profiles_dir="profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers", config=config
+    config = {"coco_desktop_profiles": {"analyst": {"+schema": "A"}, "gone": {}}}
+    catalog = load_coco_desktop_profile_catalog(
+        tmp_path,
+        coco_desktop_profiles_dir="coco_desktop_profiles",
+        hooks_dir="hooks",
+        mcp_servers_dir="mcp-servers",
+        config=config,
     )
     assert [(item.name, dict(item.config)) for item in catalog.profiles] == [
         ("analyst", {"stage": "TREES", "registry_table": "R"}),
@@ -284,6 +315,6 @@ def test_a_profile_records_its_own_settings_and_its_route_is_checked(tmp_path: P
     ]
     assert [(item.code, item.subject) for item in catalog.diagnostics] == [
         ("SST-CFG041", "config_route:gone"),
-        ("SST-CFG053", "profile:operator"),
-        ("SST-CFG004", "profile:plain"),
+        ("SST-CFG053", "coco_desktop_profile:operator"),
+        ("SST-CFG004", "coco_desktop_profile:plain"),
     ]

@@ -113,12 +113,12 @@ def test_each_upload_location_must_be_a_directory() -> None:
 
 def test_each_uploaded_tree_needs_a_pointer_in_the_registry_row() -> None:
     uploads = ("@DB.S.STAGE/a", "@DB.S.STAGE/b")
-    found = registry_pointer_diagnostics("profile:p", "p", uploads, ("@DB.S.STAGE/a/SKILL.md",))
+    found = registry_pointer_diagnostics("coco_desktop_profile:p", "p", uploads, ("@DB.S.STAGE/a/SKILL.md",))
     assert [(item.code, item.context["path"]) for item in found] == [("SST-VAL822", "@DB.S.STAGE/b")]
 
 
 def test_each_shipped_tree_prefix_must_be_hashed_into_the_version() -> None:
-    found = version_coverage_diagnostics("profile:p", "p", ("a1", "b2"), "a1:digest")
+    found = version_coverage_diagnostics("coco_desktop_profile:p", "p", ("a1", "b2"), "a1:digest")
     assert [(item.code, item.context["value"]) for item in found] == [("SST-VAL823", "b2")]
 
 
@@ -142,11 +142,11 @@ def test_every_channel_change_reports_exactly_one_outcome() -> None:
     changes = (
         ("skill:a", "skill"),
         ("plugin:b", "plugin"),
-        ("profile:c", "profile"),
+        ("coco_desktop_profile:c", "coco_desktop_profile"),
         ("semantic_view:v", "semantic_view"),
     )
     found = channel_outcome_diagnostics(changes, ("skill:a", "plugin:b", "plugin:b"))
     assert [(item.subject, item.context["detail"]) for item in found] == [
         ("plugin:b", "the catalog channel reported 2 outcomes"),
-        ("profile:c", "the stage channel reported no outcomes"),
+        ("coco_desktop_profile:c", "the stage channel reported no outcomes"),
     ]

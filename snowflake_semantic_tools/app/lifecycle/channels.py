@@ -11,15 +11,15 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 
 from snowflake_semantic_tools.app.compile import CompileResult
-from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
+from snowflake_semantic_tools.app.compile.coco_desktop_profiles import CompiledCocoDesktopProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension, ExtensionRelease
 from snowflake_semantic_tools.app.desktop_contract import desktop_view
-from snowflake_semantic_tools.app.lifecycle.profiles import ProfilePublicationPort
+from snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles import CocoDesktopProfilePublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
 
-def channel_divergence(port: ProfilePublicationPort, result: CompileResult) -> tuple[Diagnostic, ...]:
+def channel_divergence(port: CocoDesktopProfilePublicationPort, result: CompileResult) -> tuple[Diagnostic, ...]:
     """Warn, profile by profile, of each skill whose live catalog and stage files differ beyond flattening.
 
     The catalog side is the extension's default version; the stage side is the skill's folder
@@ -35,7 +35,7 @@ def channel_divergence(port: ProfilePublicationPort, result: CompileResult) -> t
         if isinstance(item, CompiledExtension) and item.release.extension_type == "SKILL"
     }
     found: dict[tuple[str, int], Diagnostic] = {}
-    for profile in (item for item in result.compiled if isinstance(item, CompiledProfile)):
+    for profile in (item for item in result.compiled if isinstance(item, CompiledCocoDesktopProfile)):
         try:
             served = _stage_skills(port, profile)
             for name, stage_files in sorted(served.items()):
@@ -56,7 +56,9 @@ def channel_divergence(port: ProfilePublicationPort, result: CompileResult) -> t
     return tuple(found.values())
 
 
-def _stage_skills(port: ProfilePublicationPort, profile: CompiledProfile) -> Mapping[str, frozenset[str]]:
+def _stage_skills(
+    port: CocoDesktopProfilePublicationPort, profile: CompiledCocoDesktopProfile
+) -> Mapping[str, frozenset[str]]:
     """Each skill folder in the trees the profile's live row points at, as its files' authored paths."""
     registry = profile.channel.registry
     row = port.read_profile_row(registry, profile.name) if port.table_columns(registry) is not None else None
@@ -78,7 +80,9 @@ def _skill_pointers(value: object) -> Iterator[str]:
             yield stage if stage.endswith("/") else f"{stage}/"
 
 
-def _catalog_files(port: ProfilePublicationPort, release: ExtensionRelease, name: str) -> frozenset[str] | None:
+def _catalog_files(
+    port: CocoDesktopProfilePublicationPort, release: ExtensionRelease, name: str
+) -> frozenset[str] | None:
     """The skill's files in the extension's default version, below `skills/<name>/`.
 
     Returns:

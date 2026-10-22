@@ -133,7 +133,7 @@ def test_a_registry_without_faults_freezes_through_every_check() -> None:
         artifact("skill", 250, dependency_types=("semantic_view",), **COMPOSITE),
         artifact("agent", 300, dependency_types=("tool", "skill"), pins_versions_of=("skill",)),
         artifact(
-            "profile",
+            "coco_desktop_profile",
             400,
             root_key=None,
             singular_root=None,
@@ -151,7 +151,7 @@ def test_a_registry_without_faults_freezes_through_every_check() -> None:
         ),
     )
     registry = freeze(diamond)
-    assert list(registry.artifacts) == ["semantic_view", "tool", "skill", "agent", "profile", "search"]
+    assert list(registry.artifacts) == ["semantic_view", "tool", "skill", "agent", "coco_desktop_profile", "search"]
     search = registry.artifacts["search"]
     assert search.grant_preservation_of("STAGE") is GrantPreservation.NONE
     assert search.grant_preservation_of("TABLE") is None

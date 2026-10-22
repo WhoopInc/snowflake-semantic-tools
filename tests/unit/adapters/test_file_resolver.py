@@ -14,11 +14,11 @@ from pathlib import Path
 import pytest
 
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
+from snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles import load_coco_desktop_profile_catalog
 from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
 from snowflake_semantic_tools.adapters.yaml.documents import load_documents
 from snowflake_semantic_tools.adapters.yaml.fields import read_sidecar, resolve_file
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
-from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
 from snowflake_semantic_tools.adapters.yaml.semantic.readers import load_verified_queries
 from snowflake_semantic_tools.adapters.yaml.tools import load_tool_catalog
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin
@@ -85,7 +85,9 @@ def _tool(project: Path, value: str) -> Read:
 
 def _hook(project: Path, value: str) -> Read:
     _write(project / "hooks/guard/hook.yml", f"event: PreToolUse\ncommand: bash\nscript: {value}\n")
-    catalog = load_profile_catalog(project, profiles_dir="profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers")
+    catalog = load_coco_desktop_profile_catalog(
+        project, coco_desktop_profiles_dir="coco_desktop_profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers"
+    )
     hook = catalog.hooks[0] if catalog.hooks else None
     content = hook.script.content.decode("utf-8") if hook is not None else None
     sources = (hook.script_file,) if hook is not None else ()

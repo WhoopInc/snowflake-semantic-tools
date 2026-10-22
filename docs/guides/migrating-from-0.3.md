@@ -119,7 +119,7 @@ In `sst_config.yml` it moves what left `skills:`:
 | Earlier | Now |
 |---|---|
 | `skills.catalog.+database`, `+schema`, `+bundle_stage` | the same keys on `skills:`, and a new `plugins:` block with them and the root's `+certified` and `+version_prefix`, when the project has plugins |
-| `skills.stage` | the top-level `profiles:` block |
+| `skills.stage` | the top-level `coco_desktop_profiles:` block |
 | `skills.extensions` | the top-level `extensions:` block |
 | `+flatten`, `+prune_deleted`, `+auto_compress`, `+layout`, `skills.catalog.+registry_table` | removed: their values were fixed |
 | a routed block's `+key: null` | removed: an absent key is unset, and `null` is `SST-CFG054` |

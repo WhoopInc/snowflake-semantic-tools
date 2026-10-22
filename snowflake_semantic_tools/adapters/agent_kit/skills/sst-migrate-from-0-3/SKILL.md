@@ -27,7 +27,7 @@ until it is migrated.
    It also moves tool group members to `tools/<group>/<name>.yml` (a group's `immutable`
    becomes a `tools.<group>.+immutable` route) and moves `skills.catalog`, `skills.stage`
    and `skills.extensions` in `sst_config.yml` to the `skills:` root and the `plugins:`,
-   `profiles:` and `extensions:` blocks. It never overwrites a file: one in the way leaves
+   `coco_desktop_profiles:` and `extensions:` blocks. It never overwrites a file: one in the way leaves
    that list whole and exits 1.
 3. Rewrite references, reviewing the report before writing (either command may run first):
 

@@ -92,7 +92,7 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
         "tool",
         "skill",
         "plugin",
-        "profile",
+        "coco_desktop_profile",
         "agent",
         "cowork_profile",
         "eval",
@@ -413,15 +413,17 @@ def test_skills_only_project_publishes_through_plan_and_apply(tmp_path: Path, mo
 def test_profiles_publish_then_deactivate_under_prune(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = skill_project(tmp_path / "skills")
     (project / "sst_config.yml").write_text(OFFLINE_VALIDATION + PROFILE_CONFIG, encoding="utf-8")
-    profile = project / "profiles" / "analyst"
+    profile = project / "coco_desktop_profiles" / "analyst"
     profile.mkdir(parents=True)
-    (profile / "profile.yml").write_text(
+    (profile / "coco_desktop_profile.yml").write_text(
         "name: analyst\ndescription: Analyst.\nowner_team: Data\nskills: [\"{{ skill('month-close') }}\"]\n",
         encoding="utf-8",
     )
     compiled = CliRunner().invoke(cli, ["compile", "--project-dir", str(project), "--output", "json"])
     assert compiled.exit_code == 0, compiled.output
-    assert [item["artifact_key"] for item in json.loads(compiled.output)["data"]["artifacts"]] == ["profile:analyst"]
+    assert [item["artifact_key"] for item in json.loads(compiled.output)["data"]["artifacts"]] == [
+        "coco_desktop_profile:analyst"
+    ]
     assert json.loads(compiled.output)["data"]["artifacts"][0]["target"] == "DB.SCH.PROFILE_REGISTRY"
 
     port = FakeSnowflake(existing=())
@@ -442,7 +444,7 @@ def test_profiles_publish_then_deactivate_under_prune(tmp_path: Path, monkeypatc
         monkeypatch, port, ["apply", "--project-dir", str(project), "--prune", "--yes", "--output", "json"]
     )
     assert pruned.exit_code == 0, pruned.output
-    assert json.loads(pruned.output)["data"]["pruned"] == ["profile:analyst"]
+    assert json.loads(pruned.output)["data"]["pruned"] == ["coco_desktop_profile:analyst"]
     assert port.desktop_profile_rows(QualifiedName.parse("DB.SCH.PROFILE_REGISTRY")) == ()
 
 

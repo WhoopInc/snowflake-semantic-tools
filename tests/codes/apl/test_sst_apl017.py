@@ -28,7 +28,7 @@ def test_sst_apl017_fires() -> None:
     [diagnostic] = [item for item in result.diagnostics if item.code == "SST-APL017"]
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
-        f"profile:analyst: the registry row 'analyst' was written, but the stage does not hold {MISSING}"
+        f"coco_desktop_profile:analyst: the registry row 'analyst' was written, but the stage does not hold {MISSING}"
     )
 
 

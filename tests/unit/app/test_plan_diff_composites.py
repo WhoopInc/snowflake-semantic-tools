@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
+from snowflake_semantic_tools.app.compile.coco_desktop_profiles import CompiledCocoDesktopProfile
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.plan_diff_composites import (
     desired_eval,
     desired_extension,
@@ -59,15 +59,15 @@ def test_reads_with_nothing_to_compare_say_so() -> None:
     port = FakeSnowflake()
     with pytest.raises(TypeError, match="CompiledExtension"):
         desired_extension(SimpleNamespace(artifact_key="skill:a"))
-    with pytest.raises(TypeError, match="CompiledProfile"):
-        live_profile(port, SimpleNamespace(artifact_key="profile:a"))
+    with pytest.raises(TypeError, match="CompiledCocoDesktopProfile"):
+        live_profile(port, SimpleNamespace(artifact_key="coco_desktop_profile:a"))
     with pytest.raises(TypeError, match="CompiledEval"):
         desired_eval(SimpleNamespace(artifact_key="eval:a"))
     port.extensions[_NAME.sql] = {"type": "SKILL", "comment": None, "versions": [], "live": None}
     with pytest.raises(SnowflakePortError, match="serves no version to compare"):
         live_extension(port, _NAME)
     profile = _stand_in(
-        CompiledProfile,
+        CompiledCocoDesktopProfile,
         release=SimpleNamespace(name="team", trees=(), row={}),
         channel=SimpleNamespace(registry=QualifiedName.parse("DB.S.REGISTRY")),
     )

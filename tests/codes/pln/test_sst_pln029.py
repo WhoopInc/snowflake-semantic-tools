@@ -13,7 +13,7 @@ def test_sst_pln029_fires() -> None:
     port.tables[REGISTRY.sql] = (("CONFIG_NAME", "VARCHAR"), ("VERSION", "NUMBER(38,0)"))
     [diagnostic] = plan_profiles(port, analyst_profile(), empty_state()).diagnostics
     assert (diagnostic.code, diagnostic.severity) == ("SST-PLN029", Severity.ERROR)
-    assert diagnostic.message.startswith("profile:analyst: DB.S.PROFILE_REGISTRY lacks")
+    assert diagnostic.message.startswith("coco_desktop_profile:analyst: DB.S.PROFILE_REGISTRY lacks")
 
 
 def test_sst_pln029_silent() -> None:

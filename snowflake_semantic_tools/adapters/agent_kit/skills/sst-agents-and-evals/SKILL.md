@@ -10,7 +10,7 @@ description: |-
 # Agents, tools, published skills, and evals
 
 Guides: @SST_DOCS@/guides/agents.md, @SST_DOCS@/guides/skills.md,
-@SST_DOCS@/guides/plugins-and-profiles.md, and @SST_DOCS@/guides/evals.md.
+@SST_DOCS@/guides/plugins-and-coco-desktop-profiles.md, and @SST_DOCS@/guides/evals.md.
 
 ## Two kinds of skill
 
@@ -111,7 +111,7 @@ tool:
 
 ## Plugins and profiles
 
-A plugin (`plugins/<name>/plugin.yml`) and a profile (`profiles/<name>/profile.yml`) list their
+A plugin (`plugins/<name>/plugin.yml`) and a profile (`coco_desktop_profiles/<name>/coco_desktop_profile.yml`) list their
 members as reference calls, one per entry, never bare names (`SST-REF050`):
 
 ```yaml
@@ -134,10 +134,10 @@ which SST publishes as the bare name Desktop reads. A hook's `script:` is
 one other file.
 
 A skill (in its `SKILL.md` frontmatter), a plugin, and a profile set their own settings under
-`config:`: the `skills:`, `plugins:`, or `profiles:` `+` keys of `sst_config.yml` without the `+`.
+`config:`: the `skills:`, `plugins:`, or `coco_desktop_profiles:` `+` keys of `sst_config.yml` without the `+`.
 A skill or plugin publishes as an extension only where `bundle_stage` resolves for it, and a
 profile only where `stage` does; `config: {certified: true}` certifies one skill alone. Folder
-routes under those blocks name folders below `skills_dir`, `plugins_dir`, and `profiles_dir`
+routes under those blocks name folders below `skills_dir`, `plugins_dir`, and `coco_desktop_profiles_dir`
 (`SST-CFG041` for one that names none). `skills.+threads` may be set only at the root
 (`SST-CFG055`).
 

@@ -9,7 +9,7 @@ import pytest
 from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.profile_projects import target_project
+from tests.helpers.coco_desktop_profile_projects import target_project
 from tests.helpers.projects import project_paths
 
 PASSWORD = "password: \"{{ env_var('SST_TEST_PASSWORD', '') }}\""

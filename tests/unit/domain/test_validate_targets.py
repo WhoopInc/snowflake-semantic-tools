@@ -12,8 +12,8 @@ def test_a_name_shared_across_types_is_reported_and_one_type_sharing_is_not() ->
     published = (
         ("semantic_view", "semantic_view:sales", shared),
         ("agent", "agent:sales", QualifiedName.parse("db.sch.sales")),
-        ("profile", "profile:a", registry),
-        ("profile", "profile:b", registry),
+        ("profile", "coco_desktop_profile:a", registry),
+        ("profile", "coco_desktop_profile:b", registry),
     )
     found = shared_targets(published)
     assert [(item.code, item.subject, item.context["a"]) for item in found] == [

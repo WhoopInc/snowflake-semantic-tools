@@ -16,16 +16,19 @@ from types import MappingProxyType
 from snowflake_semantic_tools.app.baseline import blocking, held_by_baseline
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent, for_publication
+from snowflake_semantic_tools.app.compile.coco_desktop_profiles import CompiledCocoDesktopProfile
 from snowflake_semantic_tools.app.compile.cowork_profiles import CompiledCoworkProfile, for_cowork_publication
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
 from snowflake_semantic_tools.app.compile.staged_agent import agent_spec_stage
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.lifecycle.channels import channel_divergence
+from snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles import (
+    CocoDesktopProfileLifecycleHandler,
+    CocoDesktopProfilePublicationPort,
+)
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
-from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler, ProfilePublicationPort
 from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest, target_mismatch
 from snowflake_semantic_tools.app.observation_age import duration, seconds_between
 from snowflake_semantic_tools.app.observe import DEFAULT_OBSERVE_OPTIONS, ObserveOptions
@@ -739,19 +742,19 @@ def stale_observation(target: TargetIdentity, elapsed_ms: int) -> Diagnostic | N
 
 
 def _lifecycle_handlers(
-    port: ProfilePublicationPort, full: CompileResult, apply_config: Mapping[str, object]
+    port: CocoDesktopProfilePublicationPort, full: CompileResult, apply_config: Mapping[str, object]
 ) -> dict[str, CompositeLifecycleHandler]:
     """Build each composite artifact type's handler over everything that compiled, by type."""
     eval_stage_config = config_block(apply_config.get("eval_config_stage"))
     releases = {item.artifact_key: item.release for item in full.compiled if isinstance(item, CompiledExtension)}
-    profiles = {item.artifact_key: item for item in full.compiled if isinstance(item, CompiledProfile)}
+    profiles = {item.artifact_key: item for item in full.compiled if isinstance(item, CompiledCocoDesktopProfile)}
     return {
         "eval": EvalLifecycleHandler(
             port, EvalLifecycleConfig(str(eval_stage_config.get("stage") or DEFAULT_EVAL_CONFIG_STAGE))
         ),
         "skill": ExtensionLifecycleHandler(port, releases, "skill"),
         "plugin": ExtensionLifecycleHandler(port, releases, "plugin"),
-        "profile": ProfileLifecycleHandler(port, profiles),
+        "coco_desktop_profile": CocoDesktopProfileLifecycleHandler(port, profiles),
     }
 
 

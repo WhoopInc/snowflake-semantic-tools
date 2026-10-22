@@ -16,7 +16,7 @@ from threading import Lock
 from types import MappingProxyType
 from typing import Protocol
 
-from snowflake_semantic_tools.app.compile.profiles import CompiledProfile, DesktopChannel
+from snowflake_semantic_tools.app.compile.coco_desktop_profiles import CompiledCocoDesktopProfile, DesktopChannel
 from snowflake_semantic_tools.app.desktop_contract import desktop_view, stage_pointers
 from snowflake_semantic_tools.app.lifecycle.composite import (
     CompositeHandler,
@@ -92,20 +92,24 @@ class _Observed:
     trees: Mapping[str, tuple[str, ...]]
 
 
-class ProfilePublicationPort(CatalogPublicationPort, ProfileRegistryPort, Protocol):
+class CocoDesktopProfilePublicationPort(CatalogPublicationPort, ProfileRegistryPort, Protocol):
     """The roles publishing a profile uses: a catalog publication port that also keeps the registry."""
 
 
-class ProfileLifecycleHandler(CompositeHandler[CompiledProfile, _Observed, ProfilePublicationPort]):
+class CocoDesktopProfileLifecycleHandler(
+    CompositeHandler[CompiledCocoDesktopProfile, _Observed, CocoDesktopProfilePublicationPort]
+):
     """Publish each Desktop profile's trees and registry row; a prune deactivates the row.
 
     Profiles publish and deactivate one at a time: every profile shares the registry
     and the shared tree.
     """
 
-    artifact_type = "profile"
+    artifact_type = "coco_desktop_profile"
 
-    def __init__(self, port: ProfilePublicationPort, releases: Mapping[str, CompiledProfile]) -> None:
+    def __init__(
+        self, port: CocoDesktopProfilePublicationPort, releases: Mapping[str, CompiledCocoDesktopProfile]
+    ) -> None:
         super().__init__(port)
         self._releases = MappingProxyType(dict(releases))
         self._lock = Lock()
@@ -134,10 +138,10 @@ class ProfileLifecycleHandler(CompositeHandler[CompiledProfile, _Observed, Profi
             prune_executable=True,
         )
 
-    def _subject(self, artifact: RenderedArtifact) -> CompiledProfile:
+    def _subject(self, artifact: RenderedArtifact) -> CompiledCocoDesktopProfile:
         return self._releases[artifact.key]
 
-    def _observe(self, compiled: CompiledProfile) -> _Observed:
+    def _observe(self, compiled: CompiledCocoDesktopProfile) -> _Observed:
         channel = compiled.channel
         stage_type = self._port.stage_type(channel.stage)
         columns = self._port.table_columns(channel.registry)
@@ -163,7 +167,7 @@ class ProfileLifecycleHandler(CompositeHandler[CompiledProfile, _Observed, Profi
         self,
         artifact: RenderedArtifact,
         state_entry: AppliedEntry | None,
-        compiled: CompiledProfile,
+        compiled: CompiledCocoDesktopProfile,
         observed: _Observed,
     ) -> CompositePlan:
         observation = self._observation(compiled, observed)
@@ -182,7 +186,7 @@ class ProfileLifecycleHandler(CompositeHandler[CompiledProfile, _Observed, Profi
             if planned is None or _stale(planned.details, self._observation(compiled, current).details):
                 registry = compiled.channel.registry.sql
                 return failed(change, f"{registry} row '{compiled.name}' changed since the plan", code="SST-APL012")
-            return _ProfileRun(self._port, change, artifact, compiled, current).publish()
+            return _CocoDesktopProfileRun(self._port, change, artifact, compiled, current).publish()
 
     def _apply_prune(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
         """Deactivate the row under --prune, only while it carries the VERSION state recorded."""
@@ -241,7 +245,7 @@ class ProfileLifecycleHandler(CompositeHandler[CompiledProfile, _Observed, Profi
         assert change.rendered is not None
         return RecoveryProof(RECORDED, change.rendered.component_fingerprints, _resources(channel), name)
 
-    def _observation(self, compiled: CompiledProfile, observed: _Observed) -> CompositeObservation:
+    def _observation(self, compiled: CompiledCocoDesktopProfile, observed: _Observed) -> CompositeObservation:
         return CompositeObservation(
             key=compiled.artifact_key,
             resources=(
@@ -259,15 +263,15 @@ class ProfileLifecycleHandler(CompositeHandler[CompiledProfile, _Observed, Profi
         )
 
 
-class _ProfileRun(PublicationRun[ProfilePublicationPort]):
+class _CocoDesktopProfileRun(PublicationRun[CocoDesktopProfilePublicationPort]):
     """One profile publication: registry, stage, and trees, then the guarded MERGE and its read-back."""
 
     def __init__(
         self,
-        port: ProfilePublicationPort,
+        port: CocoDesktopProfilePublicationPort,
         change: Change,
         artifact: RenderedArtifact,
-        compiled: CompiledProfile,
+        compiled: CompiledCocoDesktopProfile,
         current: _Observed,
     ) -> None:
         super().__init__(port, change, artifact)
@@ -410,7 +414,7 @@ class _ProfileRun(PublicationRun[ProfilePublicationPort]):
 def _refusal(
     key: str,
     state_entry: AppliedEntry | None,
-    compiled: CompiledProfile,
+    compiled: CompiledCocoDesktopProfile,
     observed: _Observed,
     observation: CompositeObservation,
 ) -> CompositePlan | None:
@@ -461,7 +465,7 @@ def _refusal(
 def _action(
     artifact: RenderedArtifact,
     state_entry: AppliedEntry | None,
-    compiled: CompiledProfile,
+    compiled: CompiledCocoDesktopProfile,
     observed: _Observed,
 ) -> tuple[Action, ChangeReason]:
     """Decide what an unblocked profile needs: its row, its trees, or only a state record."""

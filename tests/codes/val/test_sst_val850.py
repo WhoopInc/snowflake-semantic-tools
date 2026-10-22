@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.validate.profile import (
-    validate_profile_catalog,
+from snowflake_semantic_tools.domain.validate.coco_desktop_profile import (
+    validate_coco_desktop_profile_catalog,
 )
 from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.skill_inputs import (
@@ -24,7 +24,7 @@ TARGET = QualifiedName.parse("DB.S.KIT")
 
 def test_sst_val850_fires() -> None:
     diagnostic = only(
-        validate_profile_catalog(
+        validate_coco_desktop_profile_catalog(
             profile_catalog(mcp_configs=(mcp(servers={"dbt": {"env": {"API_KEY": "abc123"}}}),)), SKILLS
         ),
         "SST-VAL850",
@@ -36,7 +36,7 @@ def test_sst_val850_fires() -> None:
 
 def test_sst_val850_silent() -> None:
     assert "SST-VAL850" not in codes(
-        validate_profile_catalog(
+        validate_coco_desktop_profile_catalog(
             profile_catalog(mcp_configs=(mcp(servers={"dbt": {"env": {"API_KEY": "${DBT_KEY}"}}}),)), SKILLS
         )
     )

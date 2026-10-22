@@ -13,15 +13,19 @@ from tests.helpers.val_codes import load_profiles
 
 
 def test_sst_val851_fires(tmp_path: Path) -> None:
-    catalog = load_profiles(tmp_path, {"profiles/analyst/profile.yml": "name: analyst\nactive: true\n"})
+    catalog = load_profiles(
+        tmp_path, {"coco_desktop_profiles/analyst/coco_desktop_profile.yml": "name: analyst\nactive: true\n"}
+    )
     diagnostic = only(catalog.diagnostics, "SST-VAL851")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
         "profile 'analyst': 'active' is not accepted: delete the profile and apply with --prune to deactivate it"
     )
-    assert diagnostic.subject == "profile:analyst"
+    assert diagnostic.subject == "coco_desktop_profile:analyst"
 
 
 def test_sst_val851_silent(tmp_path: Path) -> None:
-    catalog = load_profiles(tmp_path, {"profiles/analyst/profile.yml": "name: analyst\ndescription: Analyst.\n"})
+    catalog = load_profiles(
+        tmp_path, {"coco_desktop_profiles/analyst/coco_desktop_profile.yml": "name: analyst\ndescription: Analyst.\n"}
+    )
     assert "SST-VAL851" not in codes(catalog.diagnostics)

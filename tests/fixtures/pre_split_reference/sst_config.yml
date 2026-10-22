@@ -61,7 +61,7 @@ project:
   # CoCo Desktop inputs: plugins group skills into one extension, profiles are
   # registry rows, and hooks, MCP configs and commands are what profiles name.
   plugins_dir: plugins
-  profiles_dir: profiles
+  coco_desktop_profiles_dir: coco_desktop_profiles
   # Snowflake CoWork profiles (a Snowflake private preview), each routing a
   # question to one of this project's agents.
   cowork_profiles_dir: cowork_profiles

@@ -21,9 +21,13 @@ from snowflake_semantic_tools.app.compile.skills import (
 )
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill, AgentTool
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import (
+    CocoDesktopProfile,
+    CocoDesktopProfileCatalog,
+    SharedCocoDesktopProfile,
+)
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog, SharedProfile
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.skill import Plugin, SkillCatalog
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember, ToolOwnership
@@ -59,7 +63,7 @@ def test_a_project_without_dbt_reads_only_its_configuration_and_skill_and_profil
         "config",
         "target",
         "skill_catalog:skills,plugins",
-        "profile_catalog:profiles,hooks,mcp-servers,commands",
+        "coco_desktop_profile_catalog:coco_desktop_profiles,hooks,mcp-servers,commands",
     ]
     assert result.compiled == ()
     assert [item.code for item in result.diagnostics] == ["SST-CFG003"]
@@ -81,7 +85,7 @@ def test_a_dbt_project_is_read_in_a_fixed_order_from_its_configured_roots() -> N
         "config",
         "target",
         "skill_catalog:sk,plugins",
-        "profile_catalog:profiles,hk,mcp-servers,cm",
+        "coco_desktop_profile_catalog:coco_desktop_profiles,hk,mcp-servers,cm",
         "load_project",
         "dbt_catalog",
         "tool_catalog",
@@ -93,13 +97,15 @@ def test_a_dbt_project_is_read_in_a_fixed_order_from_its_configured_roots() -> N
 
 
 def test_results_merge_in_ddl_order_after_the_configuration_and_target_diagnostics() -> None:
-    profile = DesktopProfile("analyst", "profiles/analyst", "P.", "Data", ("month-close",), (), (), None, Origin("p"))
+    profile = CocoDesktopProfile(
+        "analyst", "coco_desktop_profiles/analyst", "P.", "Data", ("month-close",), (), (), None, Origin("p")
+    )
     inputs = InMemoryProjectInputs(
         tree=dict(CHANNELS),
         config_diagnostics=DiagnosticBag((D("SST-CFG003", key="x", origin=Origin("sst_config.yml")),)),
         target_diagnostics=(D("SST-CFG048", target="dev", key="threads"),),
         skills=SkillCatalog((skill("month-close"),)),
-        profiles=ProfileCatalog((profile,)),
+        profiles=CocoDesktopProfileCatalog((profile,)),
         views=SemanticViewProject((view("SALES"),)),
         agent_models=(agent("helper", "month-close"),),
     )
@@ -109,7 +115,7 @@ def test_results_merge_in_ddl_order_after_the_configuration_and_target_diagnosti
     assert [item.artifact_key for item in result.compiled] == [
         "semantic_view:sales",
         "skill:month-close",
-        "profile:analyst",
+        "coco_desktop_profile:analyst",
         "agent:helper",
     ]
     assert [item.code for item in result.diagnostics[:2]] == ["SST-CFG003", "SST-CFG048"]
@@ -128,7 +134,7 @@ def test_declared_skills_that_cannot_publish_name_the_reason_to_the_agents_that_
 
     missing = "no +bundle_stage resolves for it"
     assert compile_with({}) == {"draft": missing, "broken": missing}
-    assert compile_with({"profiles": {"+stage": "P"}}) == {"draft": missing, "broken": "it has errors"}
+    assert compile_with({"coco_desktop_profiles": {"+stage": "P"}}) == {"draft": missing, "broken": "it has errors"}
     assert compile_with({"skills": {}}) == {"draft": missing, "broken": "it has errors"}
     assert compile_with({"skills": {"+bundle_stage": "B"}}) == {"broken": "it has errors"}
     bad_prefix = compile_with({"skills": {"+version_prefix": "1", "+bundle_stage": "B"}})
@@ -290,14 +296,14 @@ def test_each_tool_member_resolves_its_own_settings_over_its_folder_routes() -> 
 
 
 def test_profiles_carry_their_skills_and_plugins_so_agents_need_not_reference_them() -> None:
-    shared = SharedProfile(None, (), ("shared-skill",), Origin("shared"))
-    profile = DesktopProfile(
-        "analyst", "profiles/analyst", "P.", "Data", ("solo",), (), (), None, Origin("p"), plugins=("kit",)
+    shared = SharedCocoDesktopProfile(None, (), ("shared-skill",), Origin("shared"))
+    profile = CocoDesktopProfile(
+        "analyst", "coco_desktop_profiles/analyst", "P.", "Data", ("solo",), (), (), None, Origin("p"), plugins=("kit",)
     )
     inputs = InMemoryProjectInputs(
         tree=dict(CHANNELS),
         skills=SkillCatalog((skill("solo"), skill("shared-skill"), skill("lonely")), (plugin("kit", "solo"),)),
-        profiles=ProfileCatalog((profile,), shared),
+        profiles=CocoDesktopProfileCatalog((profile,), shared),
         agent_models=(agent("helper"),),
     )
 
@@ -308,10 +314,12 @@ def test_profiles_carry_their_skills_and_plugins_so_agents_need_not_reference_th
 
 
 def test_a_profiles_block_without_a_stage_compiles_no_profile() -> None:
-    profile = DesktopProfile("analyst", "profiles/analyst", "P.", "Data", (), (), (), None, Origin("p"))
+    profile = CocoDesktopProfile(
+        "analyst", "coco_desktop_profiles/analyst", "P.", "Data", (), (), (), None, Origin("p")
+    )
     inputs = InMemoryProjectInputs(
-        tree={"skills": {"+bundle_stage": "OTHER.SCHEMA.BUNDLES"}, "profiles": {"+registry_table": "R"}},
-        profiles=ProfileCatalog((profile,)),
+        tree={"skills": {"+bundle_stage": "OTHER.SCHEMA.BUNDLES"}, "coco_desktop_profiles": {"+registry_table": "R"}},
+        profiles=CocoDesktopProfileCatalog((profile,)),
         skills=SkillCatalog((skill("solo"),)),
         has_dbt_project=False,
     )

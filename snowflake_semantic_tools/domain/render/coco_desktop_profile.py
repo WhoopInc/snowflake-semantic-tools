@@ -15,23 +15,23 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
 
-from snowflake_semantic_tools.domain.model.profile.model import (
+from snowflake_semantic_tools.domain.model.coco_desktop_profile.model import (
     SHARED_PROFILE,
     TREE_HASH_CHARACTERS,
+    CocoDesktopProfile,
+    CocoDesktopProfileCatalog,
+    CocoDesktopProfileRelease,
     CommandFile,
-    DesktopProfile,
     HookDefinition,
     McpConfig,
-    ProfileCatalog,
-    ProfileRelease,
-    SharedProfile,
+    SharedCocoDesktopProfile,
     StageTree,
 )
 from snowflake_semantic_tools.domain.model.skill import BundleEntry, Plugin, Skill
 from snowflake_semantic_tools.domain.render.skill_bundle import build_plugin_bundle
 
 
-def assemble_prompt(shared: SharedProfile | None, profile: DesktopProfile) -> str | None:
+def assemble_prompt(shared: SharedCocoDesktopProfile | None, profile: CocoDesktopProfile) -> str | None:
     """Join shared `AGENTS.md`, then shared rules in name order, then the profile's own `AGENTS.md`.
 
     Blank parts are dropped and the rest stripped; None when nothing is left.
@@ -45,15 +45,15 @@ def assemble_prompt(shared: SharedProfile | None, profile: DesktopProfile) -> st
     return "\n\n".join(kept) + "\n" if kept else None
 
 
-def build_profile(
-    profile: DesktopProfile,
-    catalog: ProfileCatalog,
+def build_coco_desktop_profile(
+    profile: CocoDesktopProfile,
+    catalog: CocoDesktopProfileCatalog,
     skills: Mapping[str, Skill],
     *,
     stage: str,
     version_prefix: str,
     plugins: Mapping[str, Plugin] | None = None,
-) -> ProfileRelease:
+) -> CocoDesktopProfileRelease:
     """Render the nested trees and the registry row one profile publishes.
 
     A name the catalog does not define is left out here; validation reports it. A tree with
@@ -96,7 +96,7 @@ def build_profile(
     }
     row["VERSION"] = _version(row, version_prefix)
     sources = _source_files(profile, catalog.shared, chosen, skills, tuple(plugins[name] for name in included))
-    return ProfileRelease(profile.name, str(row["VERSION"]), tuple(trees.published), row, sources)
+    return CocoDesktopProfileRelease(profile.name, str(row["VERSION"]), tuple(trees.published), row, sources)
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,7 +119,7 @@ class _Selection:
     commands: Mapping[str, CommandFile]
 
     @classmethod
-    def of(cls, profile: DesktopProfile, catalog: ProfileCatalog) -> _Selection:
+    def of(cls, profile: CocoDesktopProfile, catalog: CocoDesktopProfileCatalog) -> _Selection:
         """Split `profile`'s skills and commands from the shared layer's, and resolve its hooks and configs."""
         shared = catalog.shared
         shared_skills = shared.skills if shared is not None else ()
@@ -159,7 +159,9 @@ def _repositories(trees: _Trees, *candidates: StageTree) -> list[dict[str, str]]
     return [{"snowflake_stage": trees.add(tree)} for tree in candidates if tree.entries]
 
 
-def _prompt_repository(trees: _Trees, shared: SharedProfile | None, profile: DesktopProfile) -> dict[str, str] | None:
+def _prompt_repository(
+    trees: _Trees, shared: SharedCocoDesktopProfile | None, profile: CocoDesktopProfile
+) -> dict[str, str] | None:
     """Publish the assembled prompt as `AGENTS.md` and point at it; None when there is no prompt."""
     prompt = assemble_prompt(shared, profile)
     if prompt is None:
@@ -218,7 +220,7 @@ def _hook_group(matcher: str | None, hooks: list[dict[str, object]]) -> dict[str
 
 
 def _plugin_repositories(
-    trees: _Trees, profile: DesktopProfile, plugins: Mapping[str, Plugin], skills: Mapping[str, Skill]
+    trees: _Trees, profile: CocoDesktopProfile, plugins: Mapping[str, Plugin], skills: Mapping[str, Skill]
 ) -> tuple[list[str], tuple[str, ...]]:
     """Publish the profile's plugins as one tree and point at each plugin's folder in it.
 
@@ -246,8 +248,8 @@ def _version(row: Mapping[str, object], prefix: str) -> str:
 
 
 def _source_files(
-    profile: DesktopProfile,
-    shared: SharedProfile | None,
+    profile: CocoDesktopProfile,
+    shared: SharedCocoDesktopProfile | None,
     chosen: _Selection,
     skills: Mapping[str, Skill],
     plugins: tuple[Plugin, ...],

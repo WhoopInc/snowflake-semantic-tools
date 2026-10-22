@@ -87,8 +87,8 @@ _ARTIFACT_EDGES: Mapping[tuple[str, str], str] = MappingProxyType(
         ("skill", "cowork_profile"): "loads",
         ("cowork_profile", "eval"): "tests",
         ("skill", "plugin"): "bundles",
-        ("plugin", "profile"): "includes",
-        ("skill", "profile"): "includes",
+        ("plugin", "coco_desktop_profile"): "includes",
+        ("skill", "coco_desktop_profile"): "includes",
     }
 )
 

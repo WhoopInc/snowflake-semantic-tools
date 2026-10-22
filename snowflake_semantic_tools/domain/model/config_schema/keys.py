@@ -147,6 +147,8 @@ _BLOCK = KeyKind.BLOCK
 # A location part a block's objects are created in; a stage or table may be written qualified.
 _ID = KeyKind.IDENTIFIER
 _OBJ = KeyKind.OBJECT_NAME
+# The CoCo Desktop profiles block, and the folder its profiles are read from by default.
+_DESKTOP = "coco_desktop_profiles"
 _SCH = KeyKind.SCHEMA_NAME
 
 CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
@@ -162,7 +164,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         default="skills",
     ),
     _key("project.plugins_dir", _S, "Plugin manifests, each grouping skills into one extension.", default="plugins"),
-    _key("project.profiles_dir", _S, "CoCo Desktop profiles plus the shared prompt and rules.", default="profiles"),
+    _key("project.coco_desktop_profiles_dir", _S, "CoCo Desktop profiles and their shared layer.", default=_DESKTOP),
+    _removed("project.profiles_dir", "renamed project.coco_desktop_profiles_dir"),
     _key(
         "project.cowork_profiles_dir",
         _S,
@@ -647,7 +650,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "set +bundle_stage, +database and +schema on skills: and plugins: themselves",
         code="SST-CFG042",
     ),
-    _removed("skills.stage", "profiles publish through the profiles: block", code="SST-CFG042"),
+    _removed("skills.stage", "Desktop profiles publish through coco_desktop_profiles:", code="SST-CFG042"),
     _removed("skills.extensions", "consumed extensions are the top-level extensions: block", code="SST-CFG042"),
     _key("skills.<route>", _BLOCK, "Folder route: overrides for the skills under that directory."),
     _key(
@@ -678,26 +681,27 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     ),
     _key("plugins.<route>", _BLOCK, "Folder route: overrides for the plugins under that directory."),
     _key(
-        "profiles",
+        "coco_desktop_profiles",
         _BLOCK,
         "Defaults for CoCo Desktop profiles, overridable per folder and by a profile's own `config:`. A "
         "profile publishes only when `+stage` resolves for it.",
         children=ChildPolicy.ROUTES,
     ),
-    _key("profiles.+database", _ID, "Database of the profile stage and registry.", default="the target database"),
-    _key("profiles.+schema", _ID, "Schema of the profile stage and registry.", default="the target schema"),
+    _key(f"{_DESKTOP}.+database", _ID, "Database of the profile stage and registry.", default="the target database"),
+    _key(f"{_DESKTOP}.+schema", _ID, "Schema of the profile stage and registry.", default="the target schema"),
     _key(
-        "profiles.+stage",
+        "coco_desktop_profiles.+stage",
         _OBJ,
         "Internal stage that holds profile trees; created when absent. Unset, the profile does not publish.",
     ),
     _key(
-        "profiles.+registry_table",
+        "coco_desktop_profiles.+registry_table",
         _OBJ,
         "Profile registry table. Desktop reads `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`.",
         default="PROFILE_REGISTRY",
     ),
-    _key("profiles.<route>", _BLOCK, "Folder route: overrides for the profile in that directory."),
+    _key("coco_desktop_profiles.<route>", _BLOCK, "Folder route: overrides for the profile in that directory."),
+    _removed("profiles", "renamed coco_desktop_profiles:"),
     _key(
         "extensions",
         _BLOCK,

@@ -27,7 +27,7 @@ OBJECT_TYPES = {
 }
 # Composite artifacts carry no COMMENT marker and are not SHOW-observed; the
 # recorded adapter keeps their state (versions, trees, registry rows) itself.
-COMPOSITE_TYPES = frozenset(("eval", "skill", "plugin", "profile"))
+COMPOSITE_TYPES = frozenset(("eval", "skill", "plugin", "coco_desktop_profile"))
 
 
 def invoke(runner: CliRunner, args: list[str], expected_exit: int) -> dict[str, object]:

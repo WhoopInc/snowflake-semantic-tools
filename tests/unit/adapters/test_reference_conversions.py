@@ -9,21 +9,21 @@ import pytest
 
 from snowflake_semantic_tools.adapters.project_source import _file_checksums
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
+from snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles import load_coco_desktop_profile_catalog
 from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
 from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml, load_documents
 from snowflake_semantic_tools.adapters.yaml.evals.config import parse_config
 from snowflake_semantic_tools.adapters.yaml.evals.dataset import parse_dataset
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
-from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _table_refs
 from snowflake_semantic_tools.app.compile.agents.settled import settled_agent
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.agent import AgentModel
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import CocoDesktopProfileCatalog
 from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetIdentity
-from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
-from snowflake_semantic_tools.domain.render.profile import render_command
+from snowflake_semantic_tools.domain.render.coco_desktop_profile import render_command
 from snowflake_semantic_tools.domain.resolve.tags import declared_tags
-from snowflake_semantic_tools.domain.validate.profile import validate_profile_catalog
+from snowflake_semantic_tools.domain.validate.coco_desktop_profile import validate_coco_desktop_profile_catalog
 from snowflake_semantic_tools.domain.validate.semantic.authored_keys import authored_key_diagnostics
 from tests.helpers.compile_builders import skill as built_skill
 from tests.helpers.projects import project_paths
@@ -137,10 +137,14 @@ def test_an_eval_file_names_no_agent(parse: Callable[[tuple[str, ParsedYaml], li
     assert [(item.context["field"], item.origin.line if item.origin else None) for item in refused] == [("agent", 1)]
 
 
-def _commands(tmp_path: Path, frontmatter: str) -> tuple[list[str], ProfileCatalog]:
+def _commands(tmp_path: Path, frontmatter: str) -> tuple[list[str], CocoDesktopProfileCatalog]:
     _write(tmp_path / "commands/sql/check.md", f"---\n{frontmatter}\n---\nCheck it.\n")
-    catalog = load_profile_catalog(
-        tmp_path, profiles_dir="profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers", commands_dir="commands"
+    catalog = load_coco_desktop_profile_catalog(
+        tmp_path,
+        coco_desktop_profiles_dir="coco_desktop_profiles",
+        hooks_dir="hooks",
+        mcp_servers_dir="mcp-servers",
+        commands_dir="commands",
     )
     return [item.code for item in catalog.diagnostics], catalog
 
@@ -151,8 +155,8 @@ def test_a_command_skill_is_one_skill_call_rendered_to_its_name_on_publish(tmp_p
     assert codes == [] and command.skill == "sql-author"
     assert render_command(command) == b"---\nskill: sql-author\n---\nCheck it.\n"
     known = {"sql-author": built_skill("sql-author")}
-    assert [item.code for item in validate_profile_catalog(catalog, known)] == []
-    assert [item.code for item in validate_profile_catalog(catalog, {})] == ["SST-REF032"]
+    assert [item.code for item in validate_coco_desktop_profile_catalog(catalog, known)] == []
+    assert [item.code for item in validate_coco_desktop_profile_catalog(catalog, {})] == ["SST-REF032"]
 
 
 @pytest.mark.parametrize(

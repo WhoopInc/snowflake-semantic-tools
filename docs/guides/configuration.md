@@ -153,7 +153,7 @@ a mistyped route cannot quietly route nothing.
 | `evals` | `agents_dir/` | its agent's folder |
 | `skills` | `skills_dir/` | the skill's own folder |
 | `plugins` | `plugins_dir/` | the plugin's own folder |
-| `profiles` | `profiles_dir/` | the profile's own folder |
+| `coco_desktop_profiles` | `coco_desktop_profiles_dir/` | the profile's own folder |
 
 ```yaml
 agents:
@@ -222,8 +222,8 @@ nothing sets takes the default.
   view, the `semantic_views:` keys; for a tool member, the `tools:` keys; for
   an agent, the `agents:` keys; for a
   skill, in its `SKILL.md` frontmatter, the `skills:` keys; for a plugin, in
-  `plugin.yml`, the `plugins:` keys; for a profile, in `profile.yml`, the
-  `profiles:` keys; and for an eval, in its config file, the `evals:` keys. Any
+  `plugin.yml`, the `plugins:` keys; for a profile, in `coco_desktop_profile.yml`, the
+  `coco_desktop_profiles:` keys; and for an eval, in its config file, the `evals:` keys. Any
   other key, or one written with its `+`, is an error (`SST-CFG053`). A value
   is checked by the same rules as the `+` key: its type (`SST-CFG004`), its
   choices or bounds (`SST-CFG008`), and a key's own code, such as
@@ -261,8 +261,8 @@ artifact's, so no artifact lists it.
 | `state` | Where the state table lives (default `SST_STATE` in the target's database and schema). |
 | `semantic_views`, `tools`, `agents` | Location and defaults for each type. |
 | `evals` | Defaults for evaluations; never a location, because evals publish into their agent's schema. |
-| `skills`, `plugins` | Where each skill and plugin publishes as a Cortex Extension, if `+bundle_stage` resolves for it; see [skills](skills.md) and [plugins and profiles](plugins-and-profiles.md). |
-| `profiles` | Where each CoCo Desktop profile publishes, if `+stage` resolves for it; see [plugins and profiles](plugins-and-profiles.md). |
+| `skills`, `plugins` | Where each skill and plugin publishes as a Cortex Extension, if `+bundle_stage` resolves for it; see [skills](skills.md) and [plugins and profiles](plugins-and-coco-desktop-profiles.md). |
+| `profiles` | Where each CoCo Desktop profile publishes, if `+stage` resolves for it; see [plugins and profiles](plugins-and-coco-desktop-profiles.md). |
 | `extensions` | Extensions this project consumes but does not publish, which `{{ extension() }}` names. |
 | `apply` | The stages apply uploads agent specs and eval configs through, and whether it stops at the first failure. |
 | `snowflake` | Allowlists, such as the orchestration models agents may name. |

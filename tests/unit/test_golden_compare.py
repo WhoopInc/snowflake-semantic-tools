@@ -9,8 +9,8 @@ import pytest
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.project import CompileProject
 from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import CocoDesktopProfile, CocoDesktopProfileCatalog
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog
-from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.skill import SkillCatalog
 from tests.helpers.compile_builders import CHANNELS, agent, plugin, skill, view
@@ -22,14 +22,23 @@ from tests.helpers.project_inputs import InMemoryProjectInputs
 
 
 def project() -> CompileResult:
-    profile = DesktopProfile(
-        "analyst", "profiles/analyst", "P.", "Data", ("solo",), (), (), "Be brief.\n", Origin("p"), plugins=("kit",)
+    profile = CocoDesktopProfile(
+        "analyst",
+        "coco_desktop_profiles/analyst",
+        "P.",
+        "Data",
+        ("solo",),
+        (),
+        (),
+        "Be brief.\n",
+        Origin("p"),
+        plugins=("kit",),
     )
     inputs = InMemoryProjectInputs(
         tree=dict(CHANNELS),
         views=SemanticViewProject((view("SALES"),)),
         skills=SkillCatalog((skill("solo"),), (plugin("kit", "solo"),)),
-        profiles=ProfileCatalog((profile,)),
+        profiles=CocoDesktopProfileCatalog((profile,)),
         agent_models=(agent("sales_agent"),),
         evals=EvalCatalog((resolved_eval(),), ()),
     )
@@ -57,7 +66,7 @@ def test_each_artifact_type_routes_to_its_own_golden() -> None:
         GoldenPath(None, ("sales.sql",)),
         GoldenPath("skill", ("solo.bundle.json",)),
         GoldenPath("plugin", ("kit.bundle.json",)),
-        GoldenPath("profile", ("analyst.profile.json",)),
+        GoldenPath("coco_desktop_profile", ("analyst.coco_desktop_profile.json",)),
         GoldenPath("agent", ("sales_agent.json",)),
         GoldenPath("eval", ("sales_agent_repeat.yaml",)),
         GoldenPath("eval", ("sales_source.sql",)),
@@ -114,7 +123,7 @@ def test_optional_goldens_are_compared_only_when_committed() -> None:
     store = committed(result)
     flattened = GoldenPath("skill", ("solo-flattened.md",))
     manifest = GoldenPath("plugin", ("kit.plugin.json",))
-    prompt = GoldenPath("profile", ("analyst", "AGENTS.md"))
+    prompt = GoldenPath("coco_desktop_profile", ("analyst", "AGENTS.md"))
     store.goldens.update({flattened: "stale\n", manifest: "stale\n", prompt: "stale\n"})
 
     failures = compare(store, result)
@@ -122,7 +131,7 @@ def test_optional_goldens_are_compared_only_when_committed() -> None:
     assert [failure.splitlines()[0] for failure in failures] == [
         "--- golden/skill/solo-flattened.md",
         "--- golden/plugin/kit.plugin.json",
-        "--- golden/profile/analyst/AGENTS.md",
+        "--- golden/coco_desktop_profile/analyst/AGENTS.md",
     ]
 
 

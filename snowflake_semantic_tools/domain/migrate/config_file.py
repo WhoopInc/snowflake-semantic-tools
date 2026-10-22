@@ -29,7 +29,7 @@ _FIXED = frozenset(("+flatten", "+prune_deleted", "+auto_compress", "+layout"))
 _CATALOG_REMOVED = _FIXED | {"+registry_table"}
 _PLUGIN_KEYS = ("+database", "+schema", "+bundle_stage")
 _PLUGIN_ROOT_KEYS = ("+certified", "+version_prefix")
-_ROUTED = ("semantic_views", "agents", "tools", "evals", "skills", "plugins", "profiles")
+_ROUTED = ("semantic_views", "agents", "tools", "evals", "skills", "plugins", "coco_desktop_profiles")
 
 
 def migrate_config(
@@ -73,7 +73,7 @@ def _skills(lines: Sequence[str], root: Node, skills: Entry, changes: Changes, *
             remaining.extend(moved)
             if has_plugins and root.entry("plugins") is None:
                 blocks.append(_plugins(lines, block, catalog))
-    for key, top in (("stage", "profiles"), ("extensions", "extensions")):
+    for key, top in (("stage", "coco_desktop_profiles"), ("extensions", "extensions")):
         entry = block.entry(key)
         if entry is None:
             continue

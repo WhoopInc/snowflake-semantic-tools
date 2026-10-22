@@ -21,16 +21,16 @@ from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill, AgentTool
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ChangeSet
-from snowflake_semantic_tools.domain.model.profile import (
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import (
+    CocoDesktopProfile,
+    CocoDesktopProfileCatalog,
     CommandFile,
-    DesktopProfile,
     HookDefinition,
     McpConfig,
-    ProfileCatalog,
-    SharedProfile,
+    SharedCocoDesktopProfile,
 )
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ChangeSet
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog
 from snowflake_semantic_tools.domain.state import State
@@ -84,24 +84,26 @@ def skill_catalog(*skills: Skill, plugins: tuple[Plugin, ...] = ()) -> SkillCata
     return SkillCatalog(skills or (skill(),), plugins)
 
 
-def profile(name: str = "analyst", **fields: object) -> DesktopProfile:
-    value = DesktopProfile(
+def profile(name: str = "analyst", **fields: object) -> CocoDesktopProfile:
+    value = CocoDesktopProfile(
         name,
-        f"profiles/{name}",
+        f"coco_desktop_profiles/{name}",
         "Analyst.",
         "Data",
         ("month-close",),
         (),
         (),
         None,
-        Origin(f"profiles/{name}/profile.yml", 1),
-        (f"profiles/{name}/profile.yml",),
+        Origin(f"coco_desktop_profiles/{name}/coco_desktop_profile.yml", 1),
+        (f"coco_desktop_profiles/{name}/coco_desktop_profile.yml",),
     )
     return replace(value, **fields)  # type: ignore[arg-type]
 
 
-def shared(**fields: object) -> SharedProfile:
-    value = SharedProfile("Shared rules.\n", (), (), Origin("profiles/shared/profile.yml", 1))
+def shared(**fields: object) -> SharedCocoDesktopProfile:
+    value = SharedCocoDesktopProfile(
+        "Shared rules.\n", (), (), Origin("coco_desktop_profiles/shared/coco_desktop_profile.yml", 1)
+    )
     return replace(value, **fields)  # type: ignore[arg-type]
 
 
@@ -126,8 +128,8 @@ def command(path: str = "sql/check", content: str = "Run the check.\n") -> Comma
     return CommandFile(path, content.encode("utf-8"), f"commands/{path}.md", Origin(f"commands/{path}.md", 1))
 
 
-def profile_catalog(*profiles: DesktopProfile, **fields: object) -> ProfileCatalog:
-    value = ProfileCatalog(profiles or (profile(),))
+def profile_catalog(*profiles: CocoDesktopProfile, **fields: object) -> CocoDesktopProfileCatalog:
+    value = CocoDesktopProfileCatalog(profiles or (profile(),))
     return replace(value, **fields)  # type: ignore[arg-type]
 
 

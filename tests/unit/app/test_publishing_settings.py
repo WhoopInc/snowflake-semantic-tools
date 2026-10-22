@@ -10,12 +10,12 @@ from __future__ import annotations
 from dataclasses import replace
 
 from snowflake_semantic_tools.app.compile import CompileResult
-from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
+from snowflake_semantic_tools.app.compile.coco_desktop_profiles import CompiledCocoDesktopProfile
 from snowflake_semantic_tools.app.compile.project import CompileProject
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
 from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import CocoDesktopProfile, CocoDesktopProfileCatalog
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
-from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog
 from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog
 from tests.helpers.compile_builders import plugin, skill
 from tests.helpers.project_inputs import InMemoryProjectInputs, dev_target
@@ -32,8 +32,10 @@ def _extensions(result: CompileResult) -> dict[str, CompiledExtension]:
     return {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledExtension)}
 
 
-def _profile(name: str, **config: object) -> DesktopProfile:
-    return DesktopProfile(name, f"profiles/{name}", "P.", "Data", (), (), (), None, Origin("p"), config=config)
+def _profile(name: str, **config: object) -> CocoDesktopProfile:
+    return CocoDesktopProfile(
+        name, f"coco_desktop_profiles/{name}", "P.", "Data", (), (), (), None, Origin("p"), config=config
+    )
 
 
 def test_one_skill_certifies_and_places_itself_while_the_others_take_the_root() -> None:
@@ -112,27 +114,27 @@ def test_a_plugin_publishes_from_its_own_block_whatever_its_members_do() -> None
 
 
 def test_each_profile_publishes_through_its_own_stage_and_each_registry_is_noted_once() -> None:
-    profiles = ProfileCatalog((_profile("analyst"), _profile("operator", schema="OPS"), _profile("x")))
-    tree: dict[str, object] = {"profiles": {"+stage": "TREES", "x": {"+registry_table": "OTHER"}}}
+    profiles = CocoDesktopProfileCatalog((_profile("analyst"), _profile("operator", schema="OPS"), _profile("x")))
+    tree: dict[str, object] = {"coco_desktop_profiles": {"+stage": "TREES", "x": {"+registry_table": "OTHER"}}}
     result = _compiled(tree, profiles=profiles)
 
-    compiled = {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledProfile)}
+    compiled = {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledCocoDesktopProfile)}
     assert {key: item.channel.stage.sql for key, item in compiled.items()} == {
-        "profile:analyst": "DB.SCH.TREES",
-        "profile:operator": "DB.OPS.TREES",
-        "profile:x": "DB.SCH.TREES",
+        "coco_desktop_profile:analyst": "DB.SCH.TREES",
+        "coco_desktop_profile:operator": "DB.OPS.TREES",
+        "coco_desktop_profile:x": "DB.SCH.TREES",
     }
-    assert compiled["profile:x"].channel.registry.sql == "DB.SCH.OTHER"
+    assert compiled["coco_desktop_profile:x"].channel.registry.sql == "DB.SCH.OTHER"
     notes = [item.context["value"] for item in result.diagnostics if item.code == "SST-VAL854"]
     assert notes == ["DB.SCH.PROFILE_REGISTRY", "DB.OPS.PROFILE_REGISTRY", "DB.SCH.OTHER"]
-    settings = {item.key: (item.value, item.source) for item in compiled["profile:x"].settings}
+    settings = {item.key: (item.value, item.source) for item in compiled["coco_desktop_profile:x"].settings}
     assert settings["registry_table"] == ("OTHER", "route:x")
 
 
 def test_a_profile_no_stage_reaches_is_checked_and_does_not_publish() -> None:
-    profiles = ProfileCatalog((_profile("analyst"), _profile("operator", stage="TREES")))
-    result = _compiled({"profiles": {"+registry_table": "R"}}, profiles=profiles)
-    assert [item.artifact_key for item in result.compiled] == ["profile:operator"]
+    profiles = CocoDesktopProfileCatalog((_profile("analyst"), _profile("operator", stage="TREES")))
+    result = _compiled({"coco_desktop_profiles": {"+registry_table": "R"}}, profiles=profiles)
+    assert [item.artifact_key for item in result.compiled] == ["coco_desktop_profile:operator"]
 
 
 def test_a_root_only_setting_is_resolved_but_never_reported_by_an_item() -> None:
@@ -180,15 +182,19 @@ def test_a_location_already_refused_where_it_was_written_is_not_reported_again()
 
 
 def test_a_profile_stage_or_registry_that_renders_to_no_name_is_refused() -> None:
-    profiles = ProfileCatalog((_profile("analyst"), _profile("operator", registry_table="{{ target.warehouse }}")))
-    tree: dict[str, object] = {"profiles": {"+stage": "TREES", "analyst": {"+stage": "{{ target.warehouse }}"}}}
+    profiles = CocoDesktopProfileCatalog(
+        (_profile("analyst"), _profile("operator", registry_table="{{ target.warehouse }}"))
+    )
+    tree: dict[str, object] = {
+        "coco_desktop_profiles": {"+stage": "TREES", "analyst": {"+stage": "{{ target.warehouse }}"}}
+    }
     result = _compiled(tree, profiles=profiles, identity=_unnamed_warehouse())
     refused = [(item.subject, item.context["key"]) for item in result.diagnostics if item.code == "SST-CFG008"]
     assert refused == [
-        ("config:profiles.analyst.+stage", "profiles.analyst.+stage"),
-        ("profile:operator", "config.registry_table"),
+        ("config:coco_desktop_profiles.analyst.+stage", "coco_desktop_profiles.analyst.+stage"),
+        ("coco_desktop_profile:operator", "config.registry_table"),
     ]
-    compiled = {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledProfile)}
+    compiled = {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledCocoDesktopProfile)}
     # The stage leaves analyst nowhere to publish; operator keeps the default registry.
-    assert list(compiled) == ["profile:operator"]
-    assert compiled["profile:operator"].channel.registry.sql == "DB.SCH.PROFILE_REGISTRY"
+    assert list(compiled) == ["coco_desktop_profile:operator"]
+    assert compiled["coco_desktop_profile:operator"].channel.registry.sql == "DB.SCH.PROFILE_REGISTRY"

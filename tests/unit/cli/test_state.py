@@ -83,7 +83,7 @@ def test_recover_after_lost_state_brings_every_artifact_back_so_the_next_plan_ch
     assert applied.exit_code == 0, applied.output
     published = dict(port.remote_state or {})
     kinds = {key.split(":", 1)[0] for key in published}
-    assert {"skill", "plugin", "profile", "eval", "agent", "semantic_view", "tool"} <= kinds
+    assert {"skill", "plugin", "coco_desktop_profile", "eval", "agent", "semantic_view", "tool"} <= kinds
     assert set(_plan(monkeypatch, port, project).values()) == {"noop"}
 
     port.remote_state, port.state_manifest = {}, None
@@ -98,7 +98,7 @@ def test_recover_after_lost_state_brings_every_artifact_back_so_the_next_plan_ch
     # A composite entry is the one apply recorded, its parts and resources included.
     recovered = port.remote_state or {}
     for key, entry in published.items():
-        if key.split(":", 1)[0] in ("skill", "plugin", "profile", "eval"):
+        if key.split(":", 1)[0] in ("skill", "plugin", "coco_desktop_profile", "eval"):
             again = recovered[key]
             assert (again.fingerprint, again.qualified_name, again.outcome) == (
                 entry.fingerprint,

@@ -16,8 +16,8 @@ from __future__ import annotations
 from typing import TypeVar
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact
+from snowflake_semantic_tools.app.compile.coco_desktop_profiles import CompiledCocoDesktopProfile
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
 from snowflake_semantic_tools.app.desktop_contract import desktop_view, stage_pointers
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
@@ -82,7 +82,7 @@ def served_extension(
 
 def desired_profile(compiled: CompiledArtifact) -> Definition:
     """The registry row and trees a profile releases."""
-    release = compiled_as(compiled, CompiledProfile).release
+    release = compiled_as(compiled, CompiledCocoDesktopProfile).release
     trees = {
         f"{tree.kind}/{tree.scope}/": {entry.path: entry.content for entry in tree.entries} for tree in release.trees
     }
@@ -91,7 +91,7 @@ def desired_profile(compiled: CompiledArtifact) -> Definition:
 
 def live_profile(port: SnowflakePort, compiled: CompiledArtifact) -> Definition:
     """The registry row the profile's channel holds for it, and the trees that row points into."""
-    profile = compiled_as(compiled, CompiledProfile)
+    profile = compiled_as(compiled, CompiledCocoDesktopProfile)
     row = port.read_profile_row(profile.channel.registry, profile.release.name)
     if row is None:
         raise SnowflakePortError(f"{profile.channel.registry.sql} holds no row for profile {profile.release.name}")

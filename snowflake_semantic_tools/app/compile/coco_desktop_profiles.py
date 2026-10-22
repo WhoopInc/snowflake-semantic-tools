@@ -11,6 +11,11 @@ from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneA
 from snowflake_semantic_tools.app.desktop_contract import desktop_view, stage_pointers
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import (
+    CocoDesktopProfile,
+    CocoDesktopProfileCatalog,
+    CocoDesktopProfileRelease,
+)
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositeFacts,
@@ -18,17 +23,16 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     RenderedArtifact,
     StatementPlan,
 )
-from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog, ProfileRelease
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, Plugin, Skill, SkillCatalog
-from snowflake_semantic_tools.domain.render.profile import build_profile, version_input
+from snowflake_semantic_tools.domain.render.coco_desktop_profile import build_coco_desktop_profile, version_input
 from snowflake_semantic_tools.domain.render.skill_bundle import build_plugin_bundle
 from snowflake_semantic_tools.domain.render.skill_flatten import flatten_skill
-from snowflake_semantic_tools.domain.validate.profile import (
+from snowflake_semantic_tools.domain.validate.coco_desktop_profile import (
     desktop_registry_diagnostics,
     unreached_skills,
-    validate_profile_catalog,
+    validate_coco_desktop_profile_catalog,
 )
 from snowflake_semantic_tools.domain.validate.publication import (
     put_target_diagnostics,
@@ -53,7 +57,7 @@ class DesktopChannel:
 
 
 @dataclass(frozen=True, slots=True)
-class CompiledProfile(StandaloneArtifact):
+class CompiledCocoDesktopProfile(StandaloneArtifact):
     """One profile's registry row and the stage trees it points at.
 
     Attributes:
@@ -62,7 +66,7 @@ class CompiledProfile(StandaloneArtifact):
             profile back when any of them has an error.
     """
 
-    release: ProfileRelease
+    release: CocoDesktopProfileRelease
     channel: DesktopChannel
     contained_keys: tuple[str, ...] = ()
 
@@ -76,7 +80,7 @@ class CompiledProfile(StandaloneArtifact):
 
     @property
     def artifact_type(self) -> str:
-        return "profile"
+        return "coco_desktop_profile"
 
     @property
     def source_files(self) -> tuple[str, ...]:
@@ -91,10 +95,12 @@ class CompiledProfile(StandaloneArtifact):
         prefixes = "\n".join(tree.prefix for tree in self.release.trees)
         return RenderedArtifact.create(
             key=self.artifact_key,
-            artifact_type="profile",
+            artifact_type="coco_desktop_profile",
             target=self.channel.registry,
             ddl=self.release.document(),
-            shape=PublishShape("", render_dialect="profile_json", grant_preservation=GrantPreservation.NONE),
+            shape=PublishShape(
+                "", render_dialect="coco_desktop_profile_json", grant_preservation=GrantPreservation.NONE
+            ),
             statements=StatementPlan(default=()),
             composite=CompositeFacts(
                 component_fingerprints=(
@@ -107,7 +113,7 @@ class CompiledProfile(StandaloneArtifact):
         )
 
 
-class CompileProfiles:
+class CompileCocoDesktopProfiles:
     """Compile one registry row per profile that has a channel.
 
     `channels` is where each profile publishes: one channel for every profile, or each one's own
@@ -117,7 +123,7 @@ class CompileProfiles:
 
     def __init__(
         self,
-        catalog: ProfileCatalog,
+        catalog: CocoDesktopProfileCatalog,
         skills: SkillCatalog,
         channels: DesktopChannel | Mapping[str, DesktopChannel] | None,
         *,
@@ -159,7 +165,7 @@ class CompileProfiles:
         """
         skills = {skill.name: skill for skill in self._skills.skills}
         plugins = {plugin.name: plugin for plugin in self._skills.plugins}
-        diagnostics: list[Diagnostic] = list(validate_profile_catalog(self._catalog, skills, plugins))
+        diagnostics: list[Diagnostic] = list(validate_coco_desktop_profile_catalog(self._catalog, skills, plugins))
         diagnostics.extend(unreached_skills(skills, self._catalog, published=self._published, plugins=plugins))
         blocked_plugins = set(self._blocked_plugins)
         flattened_blocked, flatten_diagnostics = self._flatten_plugins(skills, plugins)
@@ -170,7 +176,7 @@ class CompileProfiles:
         }
         for registry in dict.fromkeys(channel.registry for channel in channels.values()):
             diagnostics.extend(desktop_registry_diagnostics(registry))
-        compiled: list[CompiledProfile] = []
+        compiled: list[CompiledCocoDesktopProfile] = []
         for profile in self._catalog.profiles:
             channel = channels.get(profile.key)
             if channel is None:
@@ -217,7 +223,7 @@ class CompileProfiles:
                 blocked.add(name)
         return blocked, diagnostics
 
-    def _blocking_inputs(self, profile: DesktopProfile, blocked_plugins: set[str]) -> tuple[Diagnostic, ...]:
+    def _blocking_inputs(self, profile: CocoDesktopProfile, blocked_plugins: set[str]) -> tuple[Diagnostic, ...]:
         """Report each skill or plugin with errors the profile includes, once each, skills first."""
         causes = [
             *(("skill", name) for name in (*self._shared_skills(), *profile.skills) if name in self._blocked),
@@ -230,13 +236,13 @@ class CompileProfiles:
 
     def _compile(
         self,
-        profile: DesktopProfile,
+        profile: CocoDesktopProfile,
         skills: Mapping[str, Skill],
         plugins: Mapping[str, Plugin],
         channel: DesktopChannel,
-    ) -> CompiledProfile:
+    ) -> CompiledCocoDesktopProfile:
         """Build the profile's release on `channel`, recording every input it carries, each once."""
-        release = build_profile(
+        release = build_coco_desktop_profile(
             profile,
             self._catalog,
             skills,
@@ -247,14 +253,14 @@ class CompileProfiles:
         shared_skills = self._shared_skills()
         shared_commands = self._shared_commands()
         contained = (
-            "profile:shared",
+            "coco_desktop_profile:shared",
             *(artifact_key("skill", name) for name in (*shared_skills, *profile.skills)),
             *(artifact_key("plugin", name) for name in profile.plugins),
             *(artifact_key("command", name) for name in (*shared_commands, *profile.commands)),
             *(f"hook:{name}" for name in profile.hooks),
             *(f"mcp:{name}" for name in profile.mcp_servers),
         )
-        return CompiledProfile(release, channel, tuple(dict.fromkeys(contained)))
+        return CompiledCocoDesktopProfile(release, channel, tuple(dict.fromkeys(contained)))
 
     def _shared_skills(self) -> tuple[str, ...]:
         shared = self._catalog.shared
@@ -265,10 +271,10 @@ class CompileProfiles:
         return shared.commands if shared is not None else ()
 
 
-def release_checks(compiled: CompiledProfile) -> tuple[Diagnostic, ...]:
+def release_checks(compiled: CompiledCocoDesktopProfile) -> tuple[Diagnostic, ...]:
     """Report what the publication guards find in a profile's release before anything uploads.
 
-    `build_profile` names each tree by its digest below a separator, points the row at every
+    `build_coco_desktop_profile` names each tree by its digest below a separator, points the row at every
     tree, and digests the row into VERSION; these report a release that is not so.
 
     Diagnostics:
@@ -288,11 +294,11 @@ def release_checks(compiled: CompiledProfile) -> tuple[Diagnostic, ...]:
     )
 
 
-def _blocking_subjects(profile: DesktopProfile, shared_commands: tuple[str, ...]) -> set[str]:
+def _blocking_subjects(profile: CocoDesktopProfile, shared_commands: tuple[str, ...]) -> set[str]:
     """The subjects whose errors keep the profile back: itself, the shared profile, its other inputs."""
     return {
         profile.key,
-        "profile:shared",
+        "coco_desktop_profile:shared",
         *(f"mcp:{name}" for name in profile.mcp_servers),
         *(f"hook:{name}" for name in profile.hooks),
         *(artifact_key("command", name) for name in (*shared_commands, *profile.commands)),

@@ -41,7 +41,7 @@ def test_a_manifest_s_lineage_runs_from_dbt_through_members_to_artifacts() -> No
     assert graph.parents["metric:per_order"] == ("metric:revenue",)
     assert graph.parents["dimension:events.kind"] == ("source:raw.events",)
     assert graph.parents["agent:helper"] == ("semantic_view:sales", "tool:status", "tool_ref:partner")
-    assert graph.parents["profile:p"] == ("agent:helper",)
+    assert graph.parents["coco_desktop_profile:p"] == ("agent:helper",)
     assert graph.parents["snapshot:history"] == ("model:shared",)
 
 
@@ -72,7 +72,7 @@ def test_a_walk_goes_as_far_as_its_operators_say() -> None:
     }
     assert graph.reach(("model:orders", "nope"), upstream=True, depth=1) == {"model:orders": 0, "model:stg_orders": 1}
     downstream = graph.walk(("model:orders",), GraphSelector("model:orders", downstream=None))
-    assert {"metric:per_order", "agent:helper", "profile:p"} <= downstream
+    assert {"metric:per_order", "agent:helper", "coco_desktop_profile:p"} <= downstream
     assert "model:stg_orders" not in downstream
     both = graph.walk(("metric:revenue",), GraphSelector("metric:revenue", upstream=1, downstream=1))
     assert both == {"metric:revenue", "model:orders", "metric:per_order", "semantic_view:sales"}
@@ -129,7 +129,7 @@ def test_each_edge_records_how_its_reader_uses_what_it_reads() -> None:
     assert graph.kind("tool_ref:partner", "agent:helper") == "calls"
     assert graph.kind("semantic_view:sales", "agent:helper") == "calls"
     # No phrase is recorded for a profile reading an agent, and none for a pair with no edge.
-    assert graph.kind("agent:helper", "profile:p") == "depends"
+    assert graph.kind("agent:helper", "coco_desktop_profile:p") == "depends"
     assert graph.kind("model:orders", "agent:helper") == "depends"
     assert set(graph.kinds.values()) <= set(EDGE_KINDS)
 

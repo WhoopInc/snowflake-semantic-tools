@@ -1,6 +1,6 @@
 ---
 # A Desktop profile that lists a hook hooks/ does not hold.
 edits:
-  profiles/jaffle-analyst/profile.yml:
+  coco_desktop_profiles/jaffle-analyst/coco_desktop_profile.yml:
     - old: "  - \"{{ hook('sql-guard') }}\"\n"
       new: "  - \"{{ hook('sql-guard') }}\"\n  - \"{{ hook('audit-log') }}\"\n"

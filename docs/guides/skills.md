@@ -6,7 +6,7 @@ point at. SST validates the folder, publishes it as a skill-type Cortex
 Extension, and pins every agent that uses it to the published version.
 
 A skill can also ship to CoCo Desktop through a profile; see
-[plugins and profiles](plugins-and-profiles.md).
+[plugins and profiles](plugins-and-coco-desktop-profiles.md).
 
 These are skills SST publishes. The skills `sst agent-kit` installs into `.cortex/skills` or
 `.claude/skills` are a different thing: they teach the coding agent that edits the project,
@@ -217,7 +217,7 @@ the rest of `SKILL.md`, so a `config:` there is part of the bundle's content.
 - An unprefixed key of `skills:` is a folder route; one that names no folder
   under `skills_dir` is an error (`SST-CFG041`). `skills.catalog`,
   `skills.stage`, and `skills.extensions` moved to `skills:` itself,
-  `profiles:`, and `extensions:` (`SST-CFG042`). `+grant_read_to` and
+  `coco_desktop_profiles:`, and `extensions:` (`SST-CFG042`). `+grant_read_to` and
   `+enabled` were removed (`SST-CFG043`): SST issues no grants, and a skill
   with no `+bundle_stage` does not publish.
 - The top-level `extensions:` block names extensions this project consumes but

@@ -87,7 +87,7 @@ result on stdout.
   [enriching models](docs/guides/enrich.md),
   [agents](docs/guides/agents.md), [evals](docs/guides/evals.md),
   [skills](docs/guides/skills.md),
-  [plugins and profiles](docs/guides/plugins-and-profiles.md),
+  [plugins and profiles](docs/guides/plugins-and-coco-desktop-profiles.md),
   [configuration](docs/guides/configuration.md),
   [references](docs/guides/references.md), [lineage](docs/guides/lineage.md),
   [CI/CD](docs/guides/ci-cd.md),

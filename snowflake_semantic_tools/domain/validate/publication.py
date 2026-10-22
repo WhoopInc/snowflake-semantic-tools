@@ -33,7 +33,7 @@ _SENSITIVE = (
     ("a payment card number", re.compile(r"\b(?:\d[ -]?){12,18}\d\b")),
 )
 # The channel each multi-channel artifact type publishes through.
-_CHANNELS: Mapping[str, str] = {"skill": "catalog", "plugin": "catalog", "profile": "stage"}
+_CHANNELS: Mapping[str, str] = {"skill": "catalog", "plugin": "catalog", "coco_desktop_profile": "stage"}
 _GRANT = re.compile(r"\s*GRANT\s", re.IGNORECASE)
 _ROLE_TYPE = re.compile(r"\bTO\s+(?:DATABASE\s+)?ROLE\s", re.IGNORECASE)
 

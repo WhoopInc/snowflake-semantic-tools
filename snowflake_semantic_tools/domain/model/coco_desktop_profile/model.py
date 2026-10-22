@@ -1,8 +1,8 @@
 """CoCo Desktop profile records: what a profile names, and the release it compiles to.
 
-A profile is one folder under `profiles_dir`; `shared/` is the reserved layer every profile
+A profile is one folder under `coco_desktop_profiles_dir`; `shared/` is the reserved layer every profile
 carries. Hooks, MCP configs, and commands are defined once each and named by the profiles
-that use them. A `ProfileRelease` is the compiled form: content-addressed `StageTree`s plus
+that use them. A `CocoDesktopProfileRelease` is the compiled form: content-addressed `StageTree`s plus
 the one registry row whose pointers name them.
 """
 
@@ -20,8 +20,8 @@ from snowflake_semantic_tools.domain.model.skill import BundleEntry, SkillFile, 
 SHARED_PROFILE = "shared"
 DESKTOP_REGISTRY = "CORTEX_CODE.CONFIG.PROFILE_REGISTRY"
 TREE_HASH_CHARACTERS = 12
-# Keys the pipeline's profile.yml carried that SST refuses, with the reason.
-REJECTED_PROFILE_KEYS: Mapping[str, str] = {
+# Keys the pipeline's coco_desktop_profile.yml carried that SST refuses, with the reason.
+REJECTED_COCO_DESKTOP_PROFILE_KEYS: Mapping[str, str] = {
     "allowed_roles": "access is managed outside SST; Desktop never reads the column",
     "active": "delete the profile and apply with --prune to deactivate it",
     "env_vars": "environment variables change every user's local environment, so SST does not publish them",
@@ -108,7 +108,7 @@ class CommandFile:
 
 
 @dataclass(frozen=True, slots=True)
-class DesktopProfile:
+class CocoDesktopProfile:
     """One profile folder: the skills, plugins, commands, hooks, and MCP configs it names.
 
     Attributes:
@@ -136,13 +136,13 @@ class DesktopProfile:
 
     @property
     def key(self) -> str:
-        """Name the profile as an artifact key, `profile:<name>`."""
-        return artifact_key("profile", self.name)
+        """Name the profile as an artifact key, `coco_desktop_profile:<name>`."""
+        return artifact_key("coco_desktop_profile", self.name)
 
 
 @dataclass(frozen=True, slots=True)
-class SharedProfile:
-    """`profiles_dir/shared/`: the prompt, rules, skills, and commands every profile carries.
+class SharedCocoDesktopProfile:
+    """`coco_desktop_profiles_dir/shared/`: the prompt, rules, skills, and commands every profile carries.
 
     Attributes:
         rules: (file name, text) for each `rules/*.md`; the prompt joins them in name order.
@@ -157,7 +157,7 @@ class SharedProfile:
 
 
 @dataclass(frozen=True, slots=True)
-class ProfileCatalog:
+class CocoDesktopProfileCatalog:
     """Every profile of a project, the shared layer, and the definitions profiles name.
 
     Attributes:
@@ -166,8 +166,8 @@ class ProfileCatalog:
             profile naming it is not also told it is unknown.
     """
 
-    profiles: tuple[DesktopProfile, ...] = ()
-    shared: SharedProfile | None = None
+    profiles: tuple[CocoDesktopProfile, ...] = ()
+    shared: SharedCocoDesktopProfile | None = None
     hooks: tuple[HookDefinition, ...] = ()
     mcp_configs: tuple[McpConfig, ...] = ()
     diagnostics: DiagnosticBag = DiagnosticBag()
@@ -199,7 +199,7 @@ class StageTree:
 
 
 @dataclass(frozen=True, slots=True)
-class ProfileRelease:
+class CocoDesktopProfileRelease:
     """Everything one profile publishes: its trees and the registry row naming them.
 
     Attributes:
@@ -216,8 +216,8 @@ class ProfileRelease:
 
     @property
     def key(self) -> str:
-        """Name the profile as an artifact key, `profile:<name>`."""
-        return artifact_key("profile", self.name)
+        """Name the profile as an artifact key, `coco_desktop_profile:<name>`."""
+        return artifact_key("coco_desktop_profile", self.name)
 
     def document(self) -> str:
         """Canonical JSON of the row and the trees: the payload plan and goldens compare."""

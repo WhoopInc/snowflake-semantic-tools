@@ -247,6 +247,6 @@ queries, and reports any that fail.
 - [Configuration](guides/configuration.md): folder routes, an item's own `config:`,
   and the [precedence](guides/configuration.md#precedence) every setting resolves by.
 - [Agents](guides/agents.md), [evals](guides/evals.md), [skills](guides/skills.md),
-  and [plugins and profiles](guides/plugins-and-profiles.md).
+  and [plugins and profiles](guides/plugins-and-coco-desktop-profiles.md).
 - [CI/CD](guides/ci-cd.md): the same four commands in a pipeline.
 - Coming from SST 0.3: [Migrating from 0.3](guides/migrating-from-0.3.md).

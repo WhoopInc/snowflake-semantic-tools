@@ -5,27 +5,27 @@ from __future__ import annotations
 import json
 
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.profile import (
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import (
     DESKTOP_REGISTRY,
+    CocoDesktopProfile,
+    CocoDesktopProfileCatalog,
     CommandFile,
-    DesktopProfile,
     HookDefinition,
     McpConfig,
-    ProfileCatalog,
-    SharedProfile,
+    SharedCocoDesktopProfile,
     StageTree,
 )
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.skill import BundleEntry, Plugin, Skill, SkillFile
-from snowflake_semantic_tools.domain.render.profile import assemble_prompt, build_profile
+from snowflake_semantic_tools.domain.render.coco_desktop_profile import assemble_prompt, build_coco_desktop_profile
 from snowflake_semantic_tools.domain.render.skill_bundle import build_plugin_bundle
-from snowflake_semantic_tools.domain.validate.profile import (
+from snowflake_semantic_tools.domain.validate.coco_desktop_profile import (
     desktop_registry_diagnostics,
     unreached_skills,
-    validate_profile_catalog,
+    validate_coco_desktop_profile_catalog,
 )
 
-ORIGIN = Origin("profiles/analyst/profile.yml", 1)
+ORIGIN = Origin("coco_desktop_profiles/analyst/coco_desktop_profile.yml", 1)
 
 
 def skill(name: str) -> Skill:
@@ -36,10 +36,10 @@ def skill(name: str) -> Skill:
 SKILLS = {name: skill(name) for name in ("common", "semantics", "operations")}
 
 
-def profile(name: str = "analyst", **fields: object) -> DesktopProfile:
+def profile(name: str = "analyst", **fields: object) -> CocoDesktopProfile:
     values: dict[str, object] = {
         "name": name,
-        "directory": f"profiles/{name}",
+        "directory": f"coco_desktop_profiles/{name}",
         "description": "Analyst.",
         "owner_team": "Data",
         "skills": ("semantics",),
@@ -47,18 +47,18 @@ def profile(name: str = "analyst", **fields: object) -> DesktopProfile:
         "hooks": (),
         "prompt": None,
         "origin": ORIGIN,
-        "source_files": (f"profiles/{name}/profile.yml",),
+        "source_files": (f"coco_desktop_profiles/{name}/coco_desktop_profile.yml",),
     }
     values.update(fields)
-    return DesktopProfile(**values)  # type: ignore[arg-type]
+    return CocoDesktopProfile(**values)  # type: ignore[arg-type]
 
 
-SHARED = SharedProfile(
+SHARED = SharedCocoDesktopProfile(
     "Shared rules.\n",
     (("b.md", "Rule B."), ("a.md", "Rule A.")),
     ("common",),
-    Origin("profiles/shared/profile.yml", 1),
-    ("profiles/shared/AGENTS.md",),
+    Origin("coco_desktop_profiles/shared/coco_desktop_profile.yml", 1),
+    ("coco_desktop_profiles/shared/AGENTS.md",),
 )
 HOOK = HookDefinition(
     "sql-safety",
@@ -99,8 +99,8 @@ def test_prompt_assembles_shared_then_sorted_rules_then_profile() -> None:
 
 
 def test_build_profile_renders_trees_pointers_and_a_content_version() -> None:
-    catalog = ProfileCatalog((), SHARED, (HOOK, START, SECOND), (MCP,))
-    release = build_profile(
+    catalog = CocoDesktopProfileCatalog((), SHARED, (HOOK, START, SECOND), (MCP,))
+    release = build_coco_desktop_profile(
         profile(
             skills=("semantics", "common"), mcp_servers=("dbt",), hooks=("sql-safety", "warm", "audit"), prompt="P"
         ),
@@ -146,14 +146,14 @@ def test_build_profile_renders_trees_pointers_and_a_content_version() -> None:
     ]
     assert (row["PLUGINS"], row["COMMAND_REPOS"], row["ENV_VARS"], row["SETTINGS_OVERRIDES"]) == ([], [], {}, {})
     assert release.version == row["VERSION"] and release.version.startswith("SST_")
-    assert release.key == "profile:analyst"
+    assert release.key == "coco_desktop_profile:analyst"
     assert "mcp-servers/dbt/mcp.json" in release.source_files
     document = json.loads(release.document())
     assert document["row"]["CONFIG_NAME"] == "analyst" and len(document["trees"]) == 5
 
-    bare = build_profile(
+    bare = build_coco_desktop_profile(
         profile(skills=(), mcp_servers=("missing",)),
-        ProfileCatalog(),
+        CocoDesktopProfileCatalog(),
         SKILLS,
         stage="DB.S.PROFILES",
         version_prefix="SST_",
@@ -165,17 +165,17 @@ def test_build_profile_renders_trees_pointers_and_a_content_version() -> None:
         {},
         {},
     )
-    changed = build_profile(
+    changed = build_coco_desktop_profile(
         profile(skills=(), mcp_servers=("missing",)),
-        ProfileCatalog(),
+        CocoDesktopProfileCatalog(),
         SKILLS,
         stage="DB.S.PROFILES",
         version_prefix="SST_",
     )
     assert changed.version == bare.version
-    renamed = build_profile(
+    renamed = build_coco_desktop_profile(
         profile(skills=(), mcp_servers=("missing",), description="Other."),
-        ProfileCatalog(),
+        CocoDesktopProfileCatalog(),
         SKILLS,
         stage="DB.S.PROFILES",
         version_prefix="SST_",
@@ -192,7 +192,7 @@ def test_validation_covers_members_hooks_mcp_shape_and_credentials() -> None:
         {"svc": {"env": {"API_KEY": "abc123", "token_list": ["plain"], "SAFE": "x"}, "args": ["--password", "p"]}},
         Origin("l"),
     )
-    catalog = ProfileCatalog(
+    catalog = CocoDesktopProfileCatalog(
         (
             profile(
                 skills=("semantics", "common", "ghost"),
@@ -202,25 +202,30 @@ def test_validation_covers_members_hooks_mcp_shape_and_credentials() -> None:
             profile("shared"),
             profile("Bad Name"),
         ),
-        SharedProfile(None, (), ("common", "vanished"), Origin("profiles/shared/profile.yml")),
+        SharedCocoDesktopProfile(
+            None, (), ("common", "vanished"), Origin("coco_desktop_profiles/shared/coco_desktop_profile.yml")
+        ),
         (HOOK,),
         (MCP, placeholder, clash, leaky),
     )
-    found = [(item.code, item.subject, item.context.get("name")) for item in validate_profile_catalog(catalog, SKILLS)]
+    found = [
+        (item.code, item.subject, item.context.get("name"))
+        for item in validate_coco_desktop_profile_catalog(catalog, SKILLS)
+    ]
     assert found == [
-        ("SST-VAL844", "profile:shared", "vanished"),
-        ("SST-VAL845", "profile:analyst", "common"),
-        ("SST-VAL844", "profile:analyst", "ghost"),
-        ("SST-VAL846", "profile:analyst", "nope"),
-        ("SST-VAL848", "profile:analyst", "amplitude"),
-        ("SST-VAL849", "profile:analyst", "dbt"),
-        ("SST-VAL847", "profile:analyst", "missing"),
-        ("SST-VAL801", "profile:shared", None),
-        ("SST-VAL801", "profile:Bad Name", None),
+        ("SST-VAL844", "coco_desktop_profile:shared", "vanished"),
+        ("SST-VAL845", "coco_desktop_profile:analyst", "common"),
+        ("SST-VAL844", "coco_desktop_profile:analyst", "ghost"),
+        ("SST-VAL846", "coco_desktop_profile:analyst", "nope"),
+        ("SST-VAL848", "coco_desktop_profile:analyst", "amplitude"),
+        ("SST-VAL849", "coco_desktop_profile:analyst", "dbt"),
+        ("SST-VAL847", "coco_desktop_profile:analyst", "missing"),
+        ("SST-VAL801", "coco_desktop_profile:shared", None),
+        ("SST-VAL801", "coco_desktop_profile:Bad Name", None),
         ("SST-VAL850", "mcp:leaky", "svc"),
         ("SST-VAL850", "mcp:leaky", "svc"),
     ]
-    assert validate_profile_catalog(ProfileCatalog((profile(),)), SKILLS) == ()
+    assert validate_coco_desktop_profile_catalog(CocoDesktopProfileCatalog((profile(),)), SKILLS) == ()
 
 
 def test_hooks_and_mcp_configs_that_failed_to_load_are_not_reported_unknown() -> None:
@@ -236,15 +241,17 @@ def test_hooks_and_mcp_configs_that_failed_to_load_are_not_reported_unknown() ->
             D("SST-VAL853", origin=Origin("mcp-servers/docs"), subject="mcp:docs", artifact="docs", detail="bad"),
         )
     )
-    catalog = ProfileCatalog((profile(hooks=("guard",), mcp_servers=("docs",)),), None, (), (), loader_errors)
-    codes = [item.code for item in validate_profile_catalog(catalog, SKILLS)]
+    catalog = CocoDesktopProfileCatalog(
+        (profile(hooks=("guard",), mcp_servers=("docs",)),), None, (), (), loader_errors
+    )
+    codes = [item.code for item in validate_coco_desktop_profile_catalog(catalog, SKILLS)]
     assert codes == ["SST-VAL852", "SST-VAL853"]
 
 
 def test_hook_scripts_a_stage_rejects_fail_validation_on_the_hook() -> None:
     unsafe = HookDefinition("guard", "hooks/guard", "PreToolUse", "bash", SkillFile("check me.sh", b"x"), Origin("g"))
-    catalog = ProfileCatalog((profile(hooks=("guard",)),), None, (unsafe,), ())
-    found = [(item.code, item.subject) for item in validate_profile_catalog(catalog, SKILLS)]
+    catalog = CocoDesktopProfileCatalog((profile(hooks=("guard",)),), None, (unsafe,), ())
+    found = [(item.code, item.subject) for item in validate_coco_desktop_profile_catalog(catalog, SKILLS)]
     assert found == [("SST-VAL857", "hook:guard")]
 
 
@@ -256,9 +263,9 @@ KIT = Plugin("kit", "plugins/kit", "plugins/kit/plugin.yml", "Kit.", "Data", ("o
 
 
 def test_commands_and_plugins_publish_as_trees_named_by_the_row() -> None:
-    shared = SharedProfile(None, (), (), Origin("s"), commands=("daily",))
-    catalog = ProfileCatalog((), shared, commands=(command("daily.md"), command("sql/check.md")))
-    release = build_profile(
+    shared = SharedCocoDesktopProfile(None, (), (), Origin("s"), commands=("daily",))
+    catalog = CocoDesktopProfileCatalog((), shared, commands=(command("daily.md"), command("sql/check.md")))
+    release = build_coco_desktop_profile(
         profile(commands=("sql/check",), plugins=("kit",)),
         catalog,
         SKILLS,
@@ -281,19 +288,21 @@ def test_commands_and_plugins_publish_as_trees_named_by_the_row() -> None:
     assert release.row["PLUGINS"] == [f"@DB.S.PROFILES/{plugin_tree.prefix}kit/"]
     assert {"commands/daily.md", "commands/sql/check.md", "plugins/kit/plugin.yml"} <= set(release.source_files)
 
-    plain = build_profile(profile(), ProfileCatalog(), SKILLS, stage="DB.S.PROFILES", version_prefix="SST_")
+    plain = build_coco_desktop_profile(
+        profile(), CocoDesktopProfileCatalog(), SKILLS, stage="DB.S.PROFILES", version_prefix="SST_"
+    )
     assert (plain.row["PLUGINS"], plain.row["COMMAND_REPOS"]) == ([], [])
-    missing = build_profile(
-        profile(plugins=("ghost",)), ProfileCatalog(), SKILLS, stage="DB.S.PROFILES", version_prefix="SST_"
+    missing = build_coco_desktop_profile(
+        profile(plugins=("ghost",)), CocoDesktopProfileCatalog(), SKILLS, stage="DB.S.PROFILES", version_prefix="SST_"
     )
     assert missing.version == plain.version and missing.trees == plain.trees
 
 
 def test_command_and_plugin_references_are_validated() -> None:
-    shared = SharedProfile(None, (), (), Origin("s"), commands=("daily", "gone"))
+    shared = SharedCocoDesktopProfile(None, (), (), Origin("s"), commands=("daily", "gone"))
     unsafe = command("bad name.md")
     loader_error = D("SST-VAL859", origin=Origin("c"), subject="command:broken", artifact="broken", detail="x")
-    catalog = ProfileCatalog(
+    catalog = CocoDesktopProfileCatalog(
         (profile(commands=("daily", "nope", "broken", "own"), plugins=("kit", "ghost")),),
         shared,
         commands=(command("daily.md"), command("own.md"), unsafe),
@@ -301,29 +310,29 @@ def test_command_and_plugin_references_are_validated() -> None:
     )
     found = [
         (item.code, item.subject, item.context.get("name"))
-        for item in validate_profile_catalog(catalog, SKILLS, {"kit": KIT})
+        for item in validate_coco_desktop_profile_catalog(catalog, SKILLS, {"kit": KIT})
     ]
     assert found == [
         ("SST-VAL859", "command:broken", None),
-        ("SST-VAL858", "profile:shared", "gone"),
-        ("SST-VAL845", "profile:analyst", "daily"),
-        ("SST-VAL858", "profile:analyst", "nope"),
-        ("SST-VAL860", "profile:analyst", "ghost"),
+        ("SST-VAL858", "coco_desktop_profile:shared", "gone"),
+        ("SST-VAL845", "coco_desktop_profile:analyst", "daily"),
+        ("SST-VAL858", "coco_desktop_profile:analyst", "nope"),
+        ("SST-VAL860", "coco_desktop_profile:analyst", "ghost"),
         ("SST-VAL857", "command:bad name", None),
     ]
 
 
 def test_a_skill_reached_only_through_a_profile_plugin_is_reached() -> None:
-    catalog = ProfileCatalog((profile(skills=(), plugins=("kit",)),))
+    catalog = CocoDesktopProfileCatalog((profile(skills=(), plugins=("kit",)),))
     unreached = unreached_skills(SKILLS, catalog, published=frozenset(), plugins={"kit": KIT})
     assert [item.subject for item in unreached] == ["skill:common", "skill:semantics"]
 
 
 def test_unreached_skills_are_those_that_publish_as_no_extension() -> None:
-    catalog = ProfileCatalog((profile(),), SHARED)
+    catalog = CocoDesktopProfileCatalog((profile(),), SHARED)
     assert unreached_skills(SKILLS, catalog, published=frozenset(item.key for item in SKILLS.values())) == ()
     assert [item.subject for item in unreached_skills(SKILLS, catalog, published=frozenset())] == ["skill:operations"]
-    assert [item.subject for item in unreached_skills(SKILLS, ProfileCatalog(), published=frozenset())] == [
+    assert [item.subject for item in unreached_skills(SKILLS, CocoDesktopProfileCatalog(), published=frozenset())] == [
         "skill:common",
         "skill:operations",
         "skill:semantics",
@@ -357,25 +366,25 @@ def test_each_list_a_profile_names_is_checked_in_order_and_only_a_loader_error_e
         hooks=("broken", "warned", "ghost"),
         mcp_servers=("ghost", "broken"),
     )
-    catalog = ProfileCatalog((named,), None, (), (), loader_errors)
+    catalog = CocoDesktopProfileCatalog((named,), None, (), (), loader_errors)
     found = [
         (item.code, item.subject, item.context.get("name"))
-        for item in validate_profile_catalog(catalog, SKILLS, {"kit": KIT})
+        for item in validate_coco_desktop_profile_catalog(catalog, SKILLS, {"kit": KIT})
     ]
     assert found == [
         ("SST-VAL852", "hook:broken", None),
         ("SST-VAL853", "mcp:broken", None),
         ("SST-VAL859", "command:broken", None),
         ("SST-PRS004", "hook:warned", None),
-        ("SST-VAL844", "profile:analyst", "ghost"),
-        ("SST-VAL844", "profile:analyst", "lost"),
-        ("SST-VAL858", "profile:analyst", "ghost"),
-        ("SST-VAL860", "profile:analyst", "ghost"),
-        ("SST-VAL846", "profile:analyst", "warned"),
-        ("SST-VAL846", "profile:analyst", "ghost"),
-        ("SST-VAL847", "profile:analyst", "ghost"),
+        ("SST-VAL844", "coco_desktop_profile:analyst", "ghost"),
+        ("SST-VAL844", "coco_desktop_profile:analyst", "lost"),
+        ("SST-VAL858", "coco_desktop_profile:analyst", "ghost"),
+        ("SST-VAL860", "coco_desktop_profile:analyst", "ghost"),
+        ("SST-VAL846", "coco_desktop_profile:analyst", "warned"),
+        ("SST-VAL846", "coco_desktop_profile:analyst", "ghost"),
+        ("SST-VAL847", "coco_desktop_profile:analyst", "ghost"),
     ]
-    reported = validate_profile_catalog(catalog, SKILLS, {"kit": KIT})[4]
+    reported = validate_coco_desktop_profile_catalog(catalog, SKILLS, {"kit": KIT})[4]
     assert (reported.origin, list(reported.context.items())) == (ORIGIN, [("artifact", "analyst"), ("name", "ghost")])
 
 
@@ -384,12 +393,12 @@ def test_a_server_defined_again_is_reported_against_the_config_that_defined_it_l
         McpConfig(name, f"mcp-servers/{name}/mcp.json", {"dbt": {"command": name}}, Origin(name))
         for name in ("first", "second", "third")
     )
-    catalog = ProfileCatalog(
+    catalog = CocoDesktopProfileCatalog(
         (profile(mcp_servers=("first", "second", "third", "third")),), mcp_configs=(first, second, third)
     )
     found = [
         (item.code, item.context["a"], item.context["b"], item.origin)
-        for item in validate_profile_catalog(catalog, SKILLS)
+        for item in validate_coco_desktop_profile_catalog(catalog, SKILLS)
     ]
     # A config named twice clashes with itself.
     assert found == [
@@ -401,14 +410,14 @@ def test_a_server_defined_again_is_reported_against_the_config_that_defined_it_l
 
 def test_profile_names_follow_one_rule_that_reserves_shared() -> None:
     names = ("data_analyst", "x-y_z", "shared", "a__b", "Upper", "-a", "a-")
-    catalog = ProfileCatalog(tuple(profile(name) for name in names))
+    catalog = CocoDesktopProfileCatalog(tuple(profile(name) for name in names))
     found = [
         (item.subject, item.context["artifact"], item.context["detail"])
-        for item in validate_profile_catalog(catalog, SKILLS)
+        for item in validate_coco_desktop_profile_catalog(catalog, SKILLS)
     ]
     rule = "must be lowercase letters, digits, '-' or '_', and not 'shared'"
     assert found == [
-        (f"profile:{name}", f"profile:{name}", f"profile name '{name}' {rule}")
+        (f"coco_desktop_profile:{name}", f"coco_desktop_profile:{name}", f"profile name '{name}' {rule}")
         for name in ("shared", "a__b", "Upper", "-a", "a-")
     ]
 
@@ -425,9 +434,9 @@ def test_hooks_group_by_event_then_matcher_in_the_order_the_profile_first_names_
         hook("d", "PreToolUse", "sql"),
         hook("e", "PreToolUse", "other"),
     )
-    release = build_profile(
+    release = build_coco_desktop_profile(
         profile(skills=(), hooks=("c", "b", "a", "e", "d", "b", "ghost")),
-        ProfileCatalog(hooks=hooks),
+        CocoDesktopProfileCatalog(hooks=hooks),
         SKILLS,
         stage="DB.S.PROFILES",
         version_prefix="SST_",

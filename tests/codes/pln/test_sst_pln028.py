@@ -16,14 +16,17 @@ def _planned(recorded_version: str) -> list[Diagnostic]:
     owned = AppliedEntry(
         "f", REGISTRY.sql, "now", "run", "applied", "f", "m", component_fingerprints=(("version", recorded_version),)
     )
-    changeset = plan_profiles(port, analyst_profile(), empty_state({"profile:analyst": owned}))
+    changeset = plan_profiles(port, analyst_profile(), empty_state({"coco_desktop_profile:analyst": owned}))
     return [item for item in changeset.diagnostics if item.code == "SST-PLN028"]
 
 
 def test_sst_pln028_fires() -> None:
     [diagnostic] = _planned("SST_OLD")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "profile:analyst: registry row 'analyst' has VERSION 66.0, and SST last wrote SST_OLD"
+    assert (
+        diagnostic.message
+        == "coco_desktop_profile:analyst: registry row 'analyst' has VERSION 66.0, and SST last wrote SST_OLD"
+    )
 
 
 def test_sst_pln028_silent() -> None:

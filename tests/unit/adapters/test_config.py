@@ -70,7 +70,7 @@ def test_dbt_only_configuration_is_refused_without_dbt_project(tmp_path: Path) -
         {
             "sst_config.yml": (
                 "project:\n  target_profile: sst\n  agents_dir: agents\n"
-                "semantic_views:\n  +schema: X\nenrichment: {}\nprofiles:\n  +stage: S\n"
+                "semantic_views:\n  +schema: X\nenrichment: {}\ncoco_desktop_profiles:\n  +stage: S\n"
             )
         },
     )

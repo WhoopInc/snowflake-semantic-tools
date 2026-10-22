@@ -28,7 +28,7 @@ Where each artifact type lives on disk.
 | `project.tools_dir` | string | `tools` | Backing objects for agent tools. |
 | `project.skills_dir` | string | `skills` | `SKILL.md` folders, published as Cortex Extensions and inside Desktop profiles. |
 | `project.plugins_dir` | string | `plugins` | Plugin manifests, each grouping skills into one extension. |
-| `project.profiles_dir` | string | `profiles` | CoCo Desktop profiles plus the shared prompt and rules. |
+| `project.coco_desktop_profiles_dir` | string | `coco_desktop_profiles` | CoCo Desktop profiles and their shared layer. |
 | `project.cowork_profiles_dir` | string | `cowork_profiles` | Snowflake CoWork profiles (Snowflake private preview), each routing questions to agents. |
 | `project.hooks_dir` | string | `hooks` | Hook definitions and their scripts, referenced by profiles. |
 | `project.mcp_servers_dir` | string | `mcp-servers` | MCP server configs, referenced by profiles. |
@@ -249,17 +249,17 @@ Defaults for plugins, overridable per folder and by a plugin's own `config:`. A 
 | `plugins.+version_prefix` | string | `SST_` | Prefix of every plugin version alias; the rest is 12 hex characters of the bundle digest. |
 | `plugins.<route>` | block |  | Folder route: overrides for the plugins under that directory. |
 
-## profiles
+## coco_desktop_profiles
 
 Defaults for CoCo Desktop profiles, overridable per folder and by a profile's own `config:`. A profile publishes only when `+stage` resolves for it.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `profiles.+database` | identifier | the target database | Database of the profile stage and registry. |
-| `profiles.+schema` | identifier | the target schema | Schema of the profile stage and registry. |
-| `profiles.+stage` | identifier or three-part name |  | Internal stage that holds profile trees; created when absent. Unset, the profile does not publish. |
-| `profiles.+registry_table` | identifier or three-part name | `PROFILE_REGISTRY` | Profile registry table. Desktop reads `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`. |
-| `profiles.<route>` | block |  | Folder route: overrides for the profile in that directory. |
+| `coco_desktop_profiles.+database` | identifier | the target database | Database of the profile stage and registry. |
+| `coco_desktop_profiles.+schema` | identifier | the target schema | Schema of the profile stage and registry. |
+| `coco_desktop_profiles.+stage` | identifier or three-part name |  | Internal stage that holds profile trees; created when absent. Unset, the profile does not publish. |
+| `coco_desktop_profiles.+registry_table` | identifier or three-part name | `PROFILE_REGISTRY` | Profile registry table. Desktop reads `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`. |
+| `coco_desktop_profiles.<route>` | block |  | Folder route: overrides for the profile in that directory. |
 
 ## extensions
 
@@ -331,6 +331,7 @@ as though it still does.
 
 | Key | Why it was removed | Code |
 |---|---|---|
+| `project.profiles_dir` | renamed project.coco_desktop_profiles_dir | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.expression_rules` | the expression rules it disabled are no longer optional | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.multipath_check` | multi-path relationship analysis is always on | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.smoke_query` | smoke probes run only under sst test --suite smoke | [`SST-CFG043`](error-codes.md#sst-cfg043) |
@@ -350,5 +351,6 @@ as though it still does.
 | `skills.+grant_read_to` | access is managed outside SST; SST never issues grants | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `skills.+enabled` | a skill publishes only where +bundle_stage resolves for it | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `skills.catalog` | set +bundle_stage, +database and +schema on skills: and plugins: themselves | [`SST-CFG042`](error-codes.md#sst-cfg042) |
-| `skills.stage` | profiles publish through the profiles: block | [`SST-CFG042`](error-codes.md#sst-cfg042) |
+| `skills.stage` | Desktop profiles publish through coco_desktop_profiles: | [`SST-CFG042`](error-codes.md#sst-cfg042) |
 | `skills.extensions` | consumed extensions are the top-level extensions: block | [`SST-CFG042`](error-codes.md#sst-cfg042) |
+| `profiles` | renamed coco_desktop_profiles: | [`SST-CFG043`](error-codes.md#sst-cfg043) |

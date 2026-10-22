@@ -195,7 +195,7 @@ def test_the_chain_is_checked_for_every_routed_type_and_every_kind_of_key() -> N
         "tools",
         "skills",
         "plugins",
-        "profiles",
+        "coco_desktop_profiles",
         "agents",
         "cowork_profiles",
         "evals",

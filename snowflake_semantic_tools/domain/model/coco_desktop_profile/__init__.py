@@ -6,41 +6,41 @@ the digest of its own content, then one registry row whose pointers name those
 trees. Uploading a new tree never touches a tree a live row points at, so the row
 write is the atomic switch and the previous trees remain for rollback.
 
-`model` holds the records; `domain.render.profile` renders one profile's release and
-`domain.validate.profile` checks what profiles name. This module only re-exports `model`'s
+`model` holds the records; `domain.render.coco_desktop_profile` renders one profile's release and
+`domain.validate.coco_desktop_profile` checks what profiles name. This module only re-exports `model`'s
 public names.
 """
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.model.profile.model import (
+from snowflake_semantic_tools.domain.model.coco_desktop_profile.model import (
     COMMAND_FRONTMATTER_KEYS,
     DESKTOP_REGISTRY,
-    REJECTED_PROFILE_KEYS,
+    REJECTED_COCO_DESKTOP_PROFILE_KEYS,
     SHARED_PROFILE,
     TREE_HASH_CHARACTERS,
+    CocoDesktopProfile,
+    CocoDesktopProfileCatalog,
+    CocoDesktopProfileRelease,
     CommandFile,
-    DesktopProfile,
     HookDefinition,
     McpConfig,
-    ProfileCatalog,
-    ProfileRelease,
-    SharedProfile,
+    SharedCocoDesktopProfile,
     StageTree,
 )
 
 __all__ = [
     "COMMAND_FRONTMATTER_KEYS",
     "DESKTOP_REGISTRY",
-    "REJECTED_PROFILE_KEYS",
+    "REJECTED_COCO_DESKTOP_PROFILE_KEYS",
     "SHARED_PROFILE",
     "TREE_HASH_CHARACTERS",
     "CommandFile",
-    "DesktopProfile",
+    "CocoDesktopProfile",
     "HookDefinition",
     "McpConfig",
-    "ProfileCatalog",
-    "ProfileRelease",
-    "SharedProfile",
+    "CocoDesktopProfileCatalog",
+    "CocoDesktopProfileRelease",
+    "SharedCocoDesktopProfile",
     "StageTree",
 ]

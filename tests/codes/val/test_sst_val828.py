@@ -13,9 +13,9 @@ import pytest
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.skills import CompileSkills
+from snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles import CocoDesktopProfileLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.composite import skipped
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
-from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import Severity
@@ -32,24 +32,28 @@ from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def test_sst_val828_fires() -> None:
-    changes = (("skill:month-close", "skill"), ("profile:analyst", "profile"))
-    [missing, doubled] = channel_outcome_diagnostics(changes, ["profile:analyst", "profile:analyst"])
+    changes = (("skill:month-close", "skill"), ("coco_desktop_profile:analyst", "coco_desktop_profile"))
+    [missing, doubled] = channel_outcome_diagnostics(
+        changes, ["coco_desktop_profile:analyst", "coco_desktop_profile:analyst"]
+    )
     assert (missing.code, missing.severity, missing.subject) == ("SST-VAL828", Severity.ERROR, "skill:month-close")
     assert missing.message == "skill 'month-close': the catalog channel reported no outcomes"
     assert doubled.message == "skill 'analyst': the stage channel reported 2 outcomes"
 
 
 def test_sst_val828_fails_a_run_where_one_channel_reports_for_the_other(monkeypatch: pytest.MonkeyPatch) -> None:
-    def misfiled(handler: ProfileLifecycleHandler, change: Change, artifact: RenderedArtifact) -> ApplyOutcome:
+    def misfiled(
+        handler: CocoDesktopProfileLifecycleHandler, change: Change, artifact: RenderedArtifact
+    ) -> ApplyOutcome:
         return skipped(replace(change, key="skill:month-close"))
 
-    monkeypatch.setattr(ProfileLifecycleHandler, "_publish", misfiled)
+    monkeypatch.setattr(CocoDesktopProfileLifecycleHandler, "_publish", misfiled)
     port = FakeSnowflake(existing=())
     extension = compiled_skill()
     profile = compiled_profile(skill())
     handlers: dict[str, CompositeLifecycleHandler] = {
         "skill": ExtensionLifecycleHandler(port, {extension.artifact_key: extension.release}, "skill"),
-        "profile": ProfileLifecycleHandler(port, {profile.artifact_key: profile}),
+        "coco_desktop_profile": CocoDesktopProfileLifecycleHandler(port, {profile.artifact_key: profile}),
     }
     rendered = {item.artifact_key: item.rendered_artifact for item in (extension, profile)}
     manifest = build_manifest(CompileSkills(SkillCatalog(), None).run_result())

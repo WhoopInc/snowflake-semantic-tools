@@ -7,9 +7,9 @@ quiet.
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import DESKTOP_REGISTRY
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.profile import DESKTOP_REGISTRY
-from snowflake_semantic_tools.domain.validate.profile import (
+from snowflake_semantic_tools.domain.validate.coco_desktop_profile import (
     desktop_registry_diagnostics,
 )
 from tests.helpers.diagnostic_filters import codes, only

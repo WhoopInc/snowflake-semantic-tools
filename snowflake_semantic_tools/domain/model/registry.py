@@ -95,7 +95,7 @@ NON_ARTIFACT_FUNCTIONS = frozenset(
 # Artifact types nothing references, by design: an eval, a Desktop profile, and a CoWork profile
 # are leaves, so they need no template function. Named rather than inferred, so a type that
 # forgot one still fails.
-DELIBERATELY_UNREFERENCED = frozenset({"eval", "profile", "cowork_profile"})
+DELIBERATELY_UNREFERENCED = frozenset({"eval", "coco_desktop_profile", "cowork_profile"})
 
 
 class RegistryBuilder:
@@ -497,7 +497,7 @@ ARTIFACT_REGISTRY = build_registry(
             routed_block="plugins",
         ),
         ArtifactType(
-            name="profile",
+            name="coco_desktop_profile",
             root_key=None,
             singular_root=None,
             ddl_position=270,
@@ -513,11 +513,11 @@ ARTIFACT_REGISTRY = build_registry(
                 "behind one row of the profile registry table. `--prune` deactivates the row; nothing "
                 "is deleted."
             ),
-            authored_in="`profile.yml` in `project.profiles_dir`",
+            authored_in="`coco_desktop_profile.yml` in `project.coco_desktop_profiles_dir`",
             publishes="profile stage trees and one profile registry row",
             validation_rules=("shared", "skill"),
-            dir_key="profiles_dir",
-            routed_block="profiles",
+            dir_key="coco_desktop_profiles_dir",
+            routed_block="coco_desktop_profiles",
         ),
         ArtifactType(
             name="agent",

@@ -19,8 +19,8 @@ from typing import Protocol
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
+from snowflake_semantic_tools.app.compile.coco_desktop_profiles import CompiledCocoDesktopProfile
 from snowflake_semantic_tools.app.compile.cowork_profiles import CompiledCoworkProfile
-from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
 from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.app.fanout import Fanout
@@ -226,7 +226,7 @@ def name_map(result: CompileResult) -> NameMap:
         for model, relation in item.dbt_relations:
             if relation:
                 claim(QualifiedName.parse(relation), f"ref('{model}')")
-        if isinstance(item, CompiledProfile):
+        if isinstance(item, CompiledCocoDesktopProfile):
             claim(item.channel.stage, f"stage:{item.channel.stage.artifact_name}")
         if isinstance(item, CompiledExtension):
             claim(item.release.stage, f"stage:{item.release.stage.artifact_name}")

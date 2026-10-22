@@ -44,7 +44,7 @@ def test_skills_blocks_move_out_and_unset_keys_go() -> None:
         "\n# The skills catalog published plugins too; they keep its location.\n"
         "plugins:\n  +database: DB\n  +schema: S\n  +bundle_stage: SRC\n"
         '  +certified: false\n  +version_prefix: "SST_"\n'
-        "\nprofiles:\n  +database: DB\n  +stage: BUNDLES\n  +registry_table: REG\n"
+        "\ncoco_desktop_profiles:\n  +database: DB\n  +stage: BUNDLES\n  +registry_table: REG\n"
         "\n# Consumed extensions.\nextensions:\n  default_prefix: DB.PARTNER\n"
         "apply:\n  fail_fast: false\n"
     )
@@ -55,14 +55,14 @@ def test_a_skills_block_left_empty_is_replaced_by_the_blocks_it_held() -> None:
     text = "# Skills.\nskills:\n  stage:\n    +stage: B\nnext: 1\n"
     assert (
         applied(text, migrate_config(lines(text), outline(text), (), has_plugins=False))
-        == "profiles:\n  +stage: B\nnext: 1\n"
+        == "coco_desktop_profiles:\n  +stage: B\nnext: 1\n"
     )
 
 
 def test_moves_that_would_collide_are_reported() -> None:
     text = (
         "skills:\n  +database: X\n  catalog:\n    +database: DB\n  stage:\n    +stage: B\n"
-        "  extensions: {a: 1}\nprofiles:\n  +stage: C\n"
+        "  extensions: {a: 1}\ncoco_desktop_profiles:\n  +stage: C\n"
     )
     changes = migrate_config(lines(text), outline(text), (), has_plugins=True)
     assert sorted(item.text for item in changes.untouched) == ["skills.catalog", "skills.extensions", "skills.stage"]

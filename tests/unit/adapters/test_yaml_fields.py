@@ -21,7 +21,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
 )
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 
-ORIGIN = Origin("profiles/a/profile.yml", 1)
+ORIGIN = Origin("coco_desktop_profiles/a/coco_desktop_profile.yml", 1)
 
 
 @pytest.mark.parametrize(
@@ -129,13 +129,19 @@ def test_checked_strings_reports_anything_else_where_strings_would_stringify(val
 def test_checked_strings_names_the_expected_type_as_the_caller_words_it(expected: str) -> None:
     sink: list[Diagnostic] = [D("SST-LOD003", file="earlier.yml")]
     checked_strings(
-        "x", sink, field="skills", artifact="profile:a", origin=ORIGIN, subject="profile:a", expected=expected
+        "x",
+        sink,
+        field="skills",
+        artifact="coco_desktop_profile:a",
+        origin=ORIGIN,
+        subject="coco_desktop_profile:a",
+        expected=expected,
     )
     assert sink[1] == D(
         "SST-PRS003",
         origin=ORIGIN,
-        subject="profile:a",
-        artifact="profile:a",
+        subject="coco_desktop_profile:a",
+        artifact="coco_desktop_profile:a",
         field="skills",
         expected=expected,
         found="str",
@@ -236,6 +242,9 @@ def test_report_unknown_keys_keeps_a_key_yaml_did_not_type_as_a_string() -> None
 
 
 def test_project_relative_is_the_posix_path_under_the_project(tmp_path: Path) -> None:
-    assert project_relative(tmp_path, tmp_path / "profiles" / "a" / "profile.yml") == "profiles/a/profile.yml"
+    assert (
+        project_relative(tmp_path, tmp_path / "coco_desktop_profiles" / "a" / "coco_desktop_profile.yml")
+        == "coco_desktop_profiles/a/coco_desktop_profile.yml"
+    )
     with pytest.raises(ValueError):
         project_relative(tmp_path / "project", tmp_path / "elsewhere.yml")

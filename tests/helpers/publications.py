@@ -9,16 +9,24 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile import CompileResult
-from snowflake_semantic_tools.app.compile.profiles import CompiledProfile, CompileProfiles, DesktopChannel
+from snowflake_semantic_tools.app.compile.coco_desktop_profiles import (
+    CompileCocoDesktopProfiles,
+    CompiledCocoDesktopProfile,
+    DesktopChannel,
+)
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
+from snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles import CocoDesktopProfileLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
-from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import (
+    CocoDesktopProfile,
+    CocoDesktopProfileCatalog,
+    SharedCocoDesktopProfile,
+)
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ApplyResult, ChangeSet
-from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog, SharedProfile
 from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.state import State
@@ -80,42 +88,42 @@ def publish_skill(
     )
 
 
-def compiled_profile(*shipped: Skill) -> CompiledProfile:
+def compiled_profile(*shipped: Skill) -> CompiledCocoDesktopProfile:
     """Compile the `analyst` profile, shipping each skill given."""
-    profiles = ProfileCatalog(
+    profiles = CocoDesktopProfileCatalog(
         (
-            DesktopProfile(
+            CocoDesktopProfile(
                 name="analyst",
-                directory="profiles/analyst",
+                directory="coco_desktop_profiles/analyst",
                 description="Analyst.",
                 owner_team="Data",
                 skills=tuple(item.name for item in shipped),
                 mcp_servers=(),
                 hooks=(),
                 prompt="Be careful.\n",
-                origin=Origin("profiles/analyst/profile.yml", 1),
+                origin=Origin("coco_desktop_profiles/analyst/coco_desktop_profile.yml", 1),
             ),
         ),
-        SharedProfile("Shared.\n", (), (), Origin("profiles/shared/profile.yml")),
+        SharedCocoDesktopProfile("Shared.\n", (), (), Origin("coco_desktop_profiles/shared/coco_desktop_profile.yml")),
         (),
         (),
     )
-    result = CompileProfiles(
+    result = CompileCocoDesktopProfiles(
         profiles,
         SkillCatalog(shipped),
         DesktopChannel(PROFILE_STAGE, PROFILE_REGISTRY),
         catalog_published=frozenset(item.key for item in shipped),
     ).run_result()
     assert not result.diagnostics.has_errors, result.diagnostics
-    [compiled] = [item for item in result.compiled if isinstance(item, CompiledProfile)]
+    [compiled] = [item for item in result.compiled if isinstance(item, CompiledCocoDesktopProfile)]
     return compiled
 
 
-def publish_profile(port: FakeSnowflake, compiled: CompiledProfile) -> tuple[ChangeSet, ApplyResult, State]:
-    handler = ProfileLifecycleHandler(port, {compiled.artifact_key: compiled})
+def publish_profile(port: FakeSnowflake, compiled: CompiledCocoDesktopProfile) -> tuple[ChangeSet, ApplyResult, State]:
+    handler = CocoDesktopProfileLifecycleHandler(port, {compiled.artifact_key: compiled})
     return _run(
         port,
-        {"profile": handler},
+        {"coco_desktop_profile": handler},
         {compiled.artifact_key: compiled.rendered_artifact},
         empty_state(dict(port.remote_state or {})),
     )

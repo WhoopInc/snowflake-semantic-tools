@@ -24,9 +24,9 @@ def test_sst_cfg004_silent() -> None:
 
 
 def test_sst_cfg004_on_a_location_key_is_reported_and_the_key_dropped(tmp_path: Path) -> None:
-    tree, [diagnostic] = validated_config({"profiles": {"+registry_table": 5, "+stage": "S"}})
-    assert diagnostic.message == "config key 'profiles.+registry_table' expects object name, found int"
-    assert tree == {"profiles": {"+stage": "S"}}
+    tree, [diagnostic] = validated_config({"coco_desktop_profiles": {"+registry_table": 5, "+stage": "S"}})
+    assert diagnostic.message == "config key 'coco_desktop_profiles.+registry_table' expects object name, found int"
+    assert tree == {"coco_desktop_profiles": {"+stage": "S"}}
     edit = ("+registry_table: PROFILE_REGISTRY", "+registry_table: 5")
     code, diagnostics = validate_json(config_edited(tmp_path, edit))
     [found] = [item for item in diagnostics if item["code"] == "SST-CFG004"]

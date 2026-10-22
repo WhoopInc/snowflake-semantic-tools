@@ -9,13 +9,13 @@ from dataclasses import replace
 import pytest
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
+from snowflake_semantic_tools.app.compile.coco_desktop_profiles import CompiledCocoDesktopProfile
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension, CompileSkills
+from snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles import CocoDesktopProfileLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.composite import CompositeHandler
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
-from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.model.eval import EvalGroundTruth, EvalQuestion
@@ -223,7 +223,7 @@ def test_a_bundle_prefix_that_cannot_be_listed_raises_for_recover_to_report() ->
 # -- profiles -----------------------------------------------------------------------------------
 
 
-def _published_profile() -> tuple[FakeSnowflake, CompiledProfile, AppliedEntry]:
+def _published_profile() -> tuple[FakeSnowflake, CompiledCocoDesktopProfile, AppliedEntry]:
     port = FakeSnowflake()
     compiled = compiled_profile(skill())
     _, result, state = publish_profile(port, compiled)
@@ -231,12 +231,12 @@ def _published_profile() -> tuple[FakeSnowflake, CompiledProfile, AppliedEntry]:
     return port, compiled, state.applied[compiled.artifact_key]
 
 
-def _profile_proof(port: FakeSnowflake, compiled: CompiledProfile) -> RecoveryProof:
-    handler = ProfileLifecycleHandler(port, {compiled.artifact_key: compiled})
+def _profile_proof(port: FakeSnowflake, compiled: CompiledCocoDesktopProfile) -> RecoveryProof:
+    handler = CocoDesktopProfileLifecycleHandler(port, {compiled.artifact_key: compiled})
     return handler.recover(_planned(port, handler, compiled.rendered_artifact))
 
 
-def _row(port: FakeSnowflake, compiled: CompiledProfile) -> dict[str, object]:
+def _row(port: FakeSnowflake, compiled: CompiledCocoDesktopProfile) -> dict[str, object]:
     return port.profile_rows[PROFILE_REGISTRY.sql][compiled.name]
 
 
@@ -253,31 +253,31 @@ def test_an_inactive_row_whose_content_is_exact_is_recorded_for_the_next_apply_t
     assert _profile_proof(port, compiled).found == RECORDED
 
 
-def _edit_description(port: FakeSnowflake, compiled: CompiledProfile) -> None:
+def _edit_description(port: FakeSnowflake, compiled: CompiledCocoDesktopProfile) -> None:
     _row(port, compiled)["DESCRIPTION"] = "Edited by hand."
 
 
-def _older_version(port: FakeSnowflake, compiled: CompiledProfile) -> None:
+def _older_version(port: FakeSnowflake, compiled: CompiledCocoDesktopProfile) -> None:
     _row(port, compiled)["VERSION"] = "SST_000000000000"
 
 
-def _drop_column(port: FakeSnowflake, compiled: CompiledProfile) -> None:
+def _drop_column(port: FakeSnowflake, compiled: CompiledCocoDesktopProfile) -> None:
     port.tables[PROFILE_REGISTRY.sql] = tuple(item for item in port.tables[PROFILE_REGISTRY.sql] if item[0] != "HOOKS")
 
 
-def _drop_registry(port: FakeSnowflake, compiled: CompiledProfile) -> None:
+def _drop_registry(port: FakeSnowflake, compiled: CompiledCocoDesktopProfile) -> None:
     del port.tables[PROFILE_REGISTRY.sql]
 
 
-def _delete_row(port: FakeSnowflake, compiled: CompiledProfile) -> None:
+def _delete_row(port: FakeSnowflake, compiled: CompiledCocoDesktopProfile) -> None:
     del port.profile_rows[PROFILE_REGISTRY.sql][compiled.name]
 
 
-def _encrypt_stage(port: FakeSnowflake, compiled: CompiledProfile) -> None:
+def _encrypt_stage(port: FakeSnowflake, compiled: CompiledCocoDesktopProfile) -> None:
     port.stage_types[PROFILE_STAGE.sql] = "INTERNAL"
 
 
-def _drop_stage(port: FakeSnowflake, compiled: CompiledProfile) -> None:
+def _drop_stage(port: FakeSnowflake, compiled: CompiledCocoDesktopProfile) -> None:
     port.stage_types.pop(PROFILE_STAGE.sql, None)
     port.stage_formats.pop(PROFILE_STAGE.sql, None)
     port.existing = set()
@@ -305,7 +305,7 @@ def _drop_stage(port: FakeSnowflake, compiled: CompiledProfile) -> None:
     ],
 )
 def test_a_profile_row_that_is_not_exactly_the_release_is_not_recovered(
-    edit: Callable[[FakeSnowflake, CompiledProfile], None], found: str
+    edit: Callable[[FakeSnowflake, CompiledCocoDesktopProfile], None], found: str
 ) -> None:
     port, compiled, _ = _published_profile()
     edit(port, compiled)
@@ -315,7 +315,7 @@ def test_a_profile_row_that_is_not_exactly_the_release_is_not_recovered(
 
 def test_a_profile_name_more_than_one_row_carries_raises_for_recover_to_report() -> None:
     port, compiled, _ = _published_profile()
-    handler = ProfileLifecycleHandler(port, {compiled.artifact_key: compiled})
+    handler = CocoDesktopProfileLifecycleHandler(port, {compiled.artifact_key: compiled})
     planned = _planned(port, handler, compiled.rendered_artifact)
     port.fail("read_profile_row", SnowflakePortError("2 rows have CONFIG_NAME 'analyst'"))
     with pytest.raises(SnowflakePortError):

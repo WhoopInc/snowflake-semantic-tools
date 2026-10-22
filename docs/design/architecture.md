@@ -230,7 +230,7 @@ The diagram shows `CompileProject.run` from configuration to manifest.
 flowchart TD
     A["ProjectInputs.config and target"] --> B["consumed_extensions"]
     B --> C["CompileSkills"]
-    C --> D["CompileProfiles"]
+    C --> D["CompileCocoDesktopProfiles"]
     D --> E{"config.has_dbt_project"}
     E -->|yes| F["CompileSemanticViews"]
     F --> G["CompileTools"]
@@ -249,9 +249,9 @@ flowchart TD
 Drawn from: [app/compile/project.py](../../snowflake_semantic_tools/app/compile/project.py), [app/compile/\_\_init\_\_.py](../../snowflake_semantic_tools/app/compile/__init__.py), [app/compile/base.py](../../snowflake_semantic_tools/app/compile/base.py), [app/manifest.py](../../snowflake_semantic_tools/app/manifest.py).
 
 Skills, plugins, and profiles compile only when one of the `skills:`,
-`plugins:`, and `profiles:` blocks is written or an item places itself, and each
+`plugins:`, and `coco_desktop_profiles:` blocks is written or an item places itself, and each
 publishes only where its own settings resolve a stage; profiles compile when the
-`profiles:` block is written or a profile has a stage. Each later compiler reads
+`coco_desktop_profiles:` block is written or a profile has a stage. Each later compiler reads
 what the earlier ones produced: tools read the dbt relations, agents the views
 and tools that compiled, evals the tools each agent resolved. The checks that
 span all four run after them, as a result that compiles nothing, and then the
@@ -375,7 +375,7 @@ and is resolved where that thing is known:
 | `var()` | a project variable from `vars:` | `resolve_scalar` |
 | `tag()` | a tag from `tags:` | `resolve_scalar`, and `domain/resolve/tags.py` for an agent's tags |
 | `semantic_view()`, `tool('name')`, `agent()` | that artifact; a `tool()` that opens a stage path names the stage member | the agent loader, then `app/compile/agents/resolve_tools.py`; a stage path through `domain/resolve/stage_path.py` |
-| `skill()`, `plugin()` | a skill or plugin this project publishes | the agent loader, then `app/compile/agents/resolve_skills.py`; as a plugin or profile member, `member_names` in `adapters/yaml/fields.py`; as a command's `skill:`, `domain/validate/profile.py`, and `domain/render/profile.py` renders it to the skill's name |
+| `skill()`, `plugin()` | a skill or plugin this project publishes | the agent loader, then `app/compile/agents/resolve_skills.py`; as a plugin or profile member, `member_names` in `adapters/yaml/fields.py`; as a command's `skill:`, `domain/validate/coco_desktop_profile.py`, and `domain/render/coco_desktop_profile.py` renders it to the skill's name |
 | `command()`, `mcp_server()`, `hook()` | a command, MCP config or hook, as a profile member | `member_names`, in the profile loader |
 | `extension()` | an extension another project publishes, from the top-level `extensions:` block | the agent loader, then `app/compile/agents/resolve_skills.py` |
 | `file()` | a file, relative to the folder of the file that names it: an agent's instructions, a verified query's `sql:`, a tool member's `body:`, a hook's `script:` | `resolve_file` in `adapters/yaml/fields.py`, the one resolver every loader calls |

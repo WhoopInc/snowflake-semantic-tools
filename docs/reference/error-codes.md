@@ -5164,7 +5164,7 @@ Note: Snowflake private preview: CoWork profiles. CORTEX_AGENT_USAGE_HISTORY rec
 
 ### SST-VAL801
 
-**Skill, plugin, profile or agent folder is misnamed** (error)
+**Skill, plugin, profile (Desktop or CoWork) or agent folder is misnamed** (error)
 
 `'<artifact>': <detail>`
 
@@ -5354,7 +5354,7 @@ Fix: write the pointer as part of the same publish
 
 ### SST-VAL823
 
-**Profile content hash does not cover every shipped tree** (error)
+**Desktop profile content hash does not cover every shipped tree** (error)
 
 `skill '<artifact>': hash omits <value>`
 
@@ -5660,7 +5660,7 @@ Fix: write mcp.json as `{"mcpServers": {"<name>": {...}}}`
 
 ### SST-VAL854
 
-**Profile registry is not the one Desktop reads** (info)
+**Desktop profile registry is not the one Desktop reads** (info)
 
 `profiles publish to <value>; CoCo Desktop reads only <expected>`
 

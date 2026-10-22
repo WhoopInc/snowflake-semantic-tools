@@ -14,7 +14,8 @@ def test_sst_apl018_fires() -> None:
     [diagnostic] = [item for item in result.diagnostics if item.code == "SST-APL018"]
     assert diagnostic.severity is Severity.ERROR
     assert (
-        diagnostic.message == "profile:analyst: uploaded @DB.S.PROFILES, pointer write failed: recorded refusal: MERGE"
+        diagnostic.message
+        == "coco_desktop_profile:analyst: uploaded @DB.S.PROFILES, pointer write failed: recorded refusal: MERGE"
     )
     assert port.uploads
 

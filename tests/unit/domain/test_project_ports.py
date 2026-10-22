@@ -67,10 +67,8 @@ def test_project_port_methods_are_declarations_only() -> None:
     assert ProjectInputs.config(source) is None  # type: ignore[arg-type]
     assert ProjectInputs.target(source) is None  # type: ignore[arg-type]
     assert ProjectInputs.skill_catalog(source, skills_dir="s", plugins_dir="p") is None  # type: ignore[arg-type]
-    assert (
-        ProjectInputs.profile_catalog(source, profiles_dir="p", hooks_dir="h", mcp_servers_dir="m", commands_dir="c")  # type: ignore[arg-type]
-        is None
-    )
+    desktop = {"coco_desktop_profiles_dir": "p", "hooks_dir": "h", "mcp_servers_dir": "m", "commands_dir": "c"}
+    assert ProjectInputs.coco_desktop_profile_catalog(source, **desktop) is None  # type: ignore[arg-type]
     assert ProjectInputs.dbt_catalog(source) is None  # type: ignore[arg-type]
     assert ProjectInputs.tool_catalog(source) is None  # type: ignore[arg-type]
     assert ProjectInputs.agents(source, agents_dir="a") is None  # type: ignore[arg-type]

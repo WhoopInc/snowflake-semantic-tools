@@ -13,7 +13,7 @@ another artifact with `{{ <function>('<name>') }}`.
 | [`tool`](#tool) | 200 | a `tool:` file, or an entry of a `tools:` list, under `project.tools_dir` | CORTEX SEARCH SERVICE, PROCEDURE, FUNCTION, or STAGE | `tool()` |
 | [`skill`](#skill) | 250 | a `SKILL.md` folder in `project.skills_dir` | CORTEX EXTENSION (TYPE = 'SKILL') and its bundle stage | `skill()` |
 | [`plugin`](#plugin) | 260 | `plugin.yml` in `project.plugins_dir` | CORTEX EXTENSION (TYPE = 'PLUGIN') and its bundle stage | `plugin()` |
-| [`profile`](#profile) | 270 | `profile.yml` in `project.profiles_dir` | profile stage trees and one profile registry row | none |
+| [`coco_desktop_profile`](#coco_desktop_profile) | 270 | `coco_desktop_profile.yml` in `project.coco_desktop_profiles_dir` | profile stage trees and one profile registry row | none |
 | [`agent`](#agent) | 300 | `agent.yml` in `project.agents_dir` | AGENT | `agent()` |
 | [`cowork_profile`](#cowork_profile) | 350 | `cowork_profile.yml` in `project.cowork_profiles_dir` | AGENT with an agent_router tool | none |
 | [`eval`](#eval) | 400 | the dataset and config files an agent's or CoWork profile's `evals:` names, by convention in `evals/` | TABLE, DATASET, and a staged run configuration | none |
@@ -60,7 +60,7 @@ A named set of project skills, published together as a version of one plugin-typ
 - Grants: never touched: the object is not replaced
 - `--prune`: never drops it
 
-## profile
+## coco_desktop_profile
 
 A CoCo Desktop profile: content-addressed skill, prompt, MCP, and hook trees on a stage, behind one row of the profile registry table. `--prune` deactivates the row; nothing is deleted.
 

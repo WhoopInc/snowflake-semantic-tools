@@ -145,10 +145,10 @@ def configure_skills_as_published(port: FakeSnowflake, changes: list[dict[str, o
 def configure_profiles_as_published(port: FakeSnowflake, changes: list[dict[str, object]], project: Path) -> None:
     """Seed the recorded port with the registry rows and stage trees a previous apply published."""
     for item in changes:
-        if item["artifact_type"] != "profile":
+        if item["artifact_type"] != "coco_desktop_profile":
             continue
         name = str(item["artifact_key"]).split(":", 1)[1]
-        document = json.loads((project / "sst_target" / "sql" / f"profile__{name}.json").read_text())
+        document = json.loads((project / "sst_target" / "sql" / f"coco_desktop_profile__{name}.json").read_text())
         resources = item["physical_resources"]
         assert isinstance(resources, list)
         stage, registry = (
@@ -194,8 +194,8 @@ def test_plan_live_observation_saved_plan_and_detailed_exitcode(
         ("skill:jaffle-operations", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_OPERATIONS"),
         ("skill:jaffle-semantics", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS"),
         ("plugin:jaffle-toolkit", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT"),
-        ("profile:jaffle-analyst", "create", "not_present", "SST_REF_DEV.JAFFLE.PROFILE_REGISTRY"),
-        ("profile:jaffle-operator", "create", "not_present", "SST_REF_DEV.JAFFLE.PROFILE_REGISTRY"),
+        ("coco_desktop_profile:jaffle-analyst", "create", "not_present", "SST_REF_DEV.JAFFLE.PROFILE_REGISTRY"),
+        ("coco_desktop_profile:jaffle-operator", "create", "not_present", "SST_REF_DEV.JAFFLE.PROFILE_REGISTRY"),
         ("agent:jaffle_delivery_agent", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_DELIVERY_AGENT"),
         ("agent:jaffle_minimal_agent", "create", "not_present", "SST_REF_DEV.OPS.JAFFLE_MINIMAL_AGENT"),
         ("agent:jaffle_analytics_agent", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT"),
@@ -265,7 +265,7 @@ def published_target(project: Path, payload: dict[str, Any]) -> FakeSnowflake:
     objects: dict[tuple[str, str], list[ShowRow]] = {}
     shown = object_types(project)
     for item in payload["data"]["changes"]:
-        if item["artifact_type"] in ("eval", "skill", "plugin", "profile"):
+        if item["artifact_type"] in ("eval", "skill", "plugin", "coco_desktop_profile"):
             continue
         object_type = shown[item["artifact_key"]]
         parts = item["target"].split(".")
@@ -337,8 +337,8 @@ def test_plan_noop_uses_remote_state_not_a_prior_manifest(tmp_path: Path, monkey
             {
                 "skill:jaffle-semantics",
                 "plugin:jaffle-toolkit",
-                "profile:jaffle-analyst",
-                "profile:jaffle-operator",
+                "coco_desktop_profile:jaffle-analyst",
+                "coco_desktop_profile:jaffle-operator",
                 "agent:jaffle_analytics_agent",
             },
             id="one-skill-its-dependents-pin",
@@ -515,7 +515,7 @@ def test_type_exclusion_removes_semantic_views_from_plan_and_prune_scope(
         "tool",
         "skill",
         "plugin",
-        "profile",
+        "coco_desktop_profile",
         "agent",
         "cowork_profile",
         "eval",
@@ -784,7 +784,7 @@ def test_every_artifact_in_a_schema_apply_creates_plans_as_a_create(
     payload = json.loads(result.output)
     assert "SST-PLN001" not in [item["code"] for item in payload["diagnostics"]]
     actions = {change["artifact_key"]: change["action"] for change in payload["data"]["changes"]}
-    composites = [key for key in actions if key.split(":")[0] in ("skill", "plugin", "profile", "eval")]
+    composites = [key for key in actions if key.split(":")[0] in ("skill", "plugin", "coco_desktop_profile", "eval")]
     assert len(composites) == 7 and all(actions[key] == "create" for key in composites), actions
     assert "SST_REF_DEV.JAFFLE" in payload["data"]["schemas"]
     assert result.exit_code == 2

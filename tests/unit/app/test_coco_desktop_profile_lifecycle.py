@@ -7,13 +7,28 @@ from collections.abc import Mapping
 from dataclasses import replace
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
-from snowflake_semantic_tools.app.compile.profiles import CompiledProfile, CompileProfiles, DesktopChannel
+from snowflake_semantic_tools.app.compile.coco_desktop_profiles import (
+    CompileCocoDesktopProfiles,
+    CompiledCocoDesktopProfile,
+    DesktopChannel,
+)
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompileSkills
 from snowflake_semantic_tools.app.desktop_contract import desktop_view, is_pointer, stage_pointers
-from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler, _shape_problem, _stale
+from snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles import (
+    CocoDesktopProfileLifecycleHandler,
+    _shape_problem,
+    _stale,
+)
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin, Severity
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import (
+    CocoDesktopProfile,
+    CocoDesktopProfileCatalog,
+    HookDefinition,
+    McpConfig,
+    SharedCocoDesktopProfile,
+)
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
@@ -22,13 +37,6 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ChangeReason,
     ChangeSet,
     OutcomeStatus,
-)
-from snowflake_semantic_tools.domain.model.profile import (
-    DesktopProfile,
-    HookDefinition,
-    McpConfig,
-    ProfileCatalog,
-    SharedProfile,
 )
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -61,22 +69,27 @@ SKILLS = SkillCatalog((skill("common"), skill("semantics")))
 PUBLISHED = frozenset(item.key for item in SKILLS.skills)
 
 
-def catalog(**profile_fields: object) -> ProfileCatalog:
+def catalog(**profile_fields: object) -> CocoDesktopProfileCatalog:
     values: dict[str, object] = {
         "name": "analyst",
-        "directory": "profiles/analyst",
+        "directory": "coco_desktop_profiles/analyst",
         "description": "Analyst.",
         "owner_team": "Data",
         "skills": ("semantics",),
         "mcp_servers": ("dbt",),
         "hooks": ("guard",),
         "prompt": "Be careful.\n",
-        "origin": Origin("profiles/analyst/profile.yml", 1),
+        "origin": Origin("coco_desktop_profiles/analyst/coco_desktop_profile.yml", 1),
     }
     values.update(profile_fields)
-    return ProfileCatalog(
-        (DesktopProfile(**values),),  # type: ignore[arg-type]
-        SharedProfile("Shared.\n", (("a.md", "Rule."),), ("common",), Origin("profiles/shared/profile.yml")),
+    return CocoDesktopProfileCatalog(
+        (CocoDesktopProfile(**values),),  # type: ignore[arg-type]
+        SharedCocoDesktopProfile(
+            "Shared.\n",
+            (("a.md", "Rule."),),
+            ("common",),
+            Origin("coco_desktop_profiles/shared/coco_desktop_profile.yml"),
+        ),
         (
             HookDefinition(
                 "guard", "hooks/guard", "PreToolUse", "bash", SkillFile("guard.sh", b"#!/bin/sh\n"), Origin("h")
@@ -86,19 +99,19 @@ def catalog(**profile_fields: object) -> ProfileCatalog:
     )
 
 
-def compile_profiles(profiles: ProfileCatalog) -> dict[str, CompiledProfile]:
-    result = CompileProfiles(profiles, SKILLS, CHANNEL, catalog_published=PUBLISHED).run_result()
+def compile_profiles(profiles: CocoDesktopProfileCatalog) -> dict[str, CompiledCocoDesktopProfile]:
+    result = CompileCocoDesktopProfiles(profiles, SKILLS, CHANNEL, catalog_published=PUBLISHED).run_result()
     assert not result.diagnostics.has_errors, result.diagnostics
-    return {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledProfile)}
+    return {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledCocoDesktopProfile)}
 
 
 def publish(
-    port: FakeSnowflake, compiled: dict[str, CompiledProfile], previous: State, *, prune: bool = False
+    port: FakeSnowflake, compiled: dict[str, CompiledCocoDesktopProfile], previous: State, *, prune: bool = False
 ) -> tuple[ChangeSet, ApplyResult, State]:
-    handler = ProfileLifecycleHandler(port, compiled)
+    handler = CocoDesktopProfileLifecycleHandler(port, compiled)
     rendered = {key: item.rendered_artifact for key, item in compiled.items()}
     manifest = build_manifest(CompileSkills(SkillCatalog(), None).run_result())
-    changeset = PlanArtifacts(port, lifecycle_handlers={"profile": handler}).run(
+    changeset = PlanArtifacts(port, lifecycle_handlers={"coco_desktop_profile": handler}).run(
         rendered, manifest, previous, target(), fetched_at="now", include_prune=prune
     )
     store = InMemoryStateStore(previous)
@@ -107,17 +120,17 @@ def publish(
         store,
         FixedClock(),
         state_table=QualifiedName.parse("DB.S.SST_STATE"),
-        lifecycle_handlers={"profile": handler},
+        lifecycle_handlers={"coco_desktop_profile": handler},
     ).run(changeset, previous, ApplyOptions(allow_prune=prune))
     return changeset, result, store.state or previous
 
 
 def test_compile_reports_desktop_registry_and_blocks_on_broken_members() -> None:
     compiled = compile_profiles(catalog())
-    item = compiled["profile:analyst"]
+    item = compiled["coco_desktop_profile:analyst"]
     assert (item.name, item.artifact_type, item.member_keys, item.referenced_models, item.dbt_relations) == (
         "analyst",
-        "profile",
+        "coco_desktop_profile",
         (),
         (),
         (),
@@ -126,16 +139,21 @@ def test_compile_reports_desktop_registry_and_blocks_on_broken_members() -> None
     artifact = item.rendered_for_publish("a" * 64)
     assert artifact.target == REGISTRY and artifact.statements == ()
     assert dict(artifact.component_fingerprints)["version"] == item.release.version
-    notes = CompileProfiles(catalog(), SKILLS, CHANNEL, catalog_published=PUBLISHED).run_result().diagnostics
+    notes = CompileCocoDesktopProfiles(catalog(), SKILLS, CHANNEL, catalog_published=PUBLISHED).run_result().diagnostics
     assert [note.code for note in notes] == ["SST-VAL854"]
     desktop = replace(CHANNEL, registry=QualifiedName.parse("CORTEX_CODE.CONFIG.PROFILE_REGISTRY"))
-    assert CompileProfiles(catalog(), SKILLS, desktop, catalog_published=PUBLISHED).run_result().diagnostics == ()
-    blocked = CompileProfiles(
+    assert (
+        CompileCocoDesktopProfiles(catalog(), SKILLS, desktop, catalog_published=PUBLISHED).run_result().diagnostics
+        == ()
+    )
+    blocked = CompileCocoDesktopProfiles(
         catalog(), SKILLS, CHANNEL, catalog_published=PUBLISHED, blocked_skills=frozenset(("common",))
     )
     result = blocked.run_result()
     assert result.compiled == () and [note.code for note in result.diagnostics] == ["SST-VAL854", "SST-VAL855"]
-    assert CompileProfiles(catalog(), SKILLS, None, catalog_published=frozenset()).run_result().compiled == ()
+    assert (
+        CompileCocoDesktopProfiles(catalog(), SKILLS, None, catalog_published=frozenset()).run_result().compiled == ()
+    )
 
 
 def test_a_profile_whose_plugin_cannot_be_bundled_does_not_publish() -> None:
@@ -152,7 +170,7 @@ def test_a_profile_whose_plugin_cannot_be_bundled_does_not_publish() -> None:
     skills = SkillCatalog((*SKILLS.skills, dangling), (kit,))
     profiles = catalog(plugins=("kit",))
     # A plugin that does not publish as an extension is bundled by the profile compile itself.
-    alone = CompileProfiles(profiles, skills, CHANNEL, catalog_published=frozenset()).run_result()
+    alone = CompileCocoDesktopProfiles(profiles, skills, CHANNEL, catalog_published=frozenset()).run_result()
     # With it, the CLI passes the plugins the skill compile could not bundle.
     extensions = CompileSkills(skills, CatalogChannel("DB", "S", QualifiedName.parse("DB.S.BUNDLES"))).run_result()
     blocked = frozenset(
@@ -160,7 +178,7 @@ def test_a_profile_whose_plugin_cannot_be_bundled_does_not_publish() -> None:
         for item in extensions.diagnostics
         if item.severity is Severity.ERROR and str(item.subject).startswith("plugin:")
     )
-    shared = CompileProfiles(
+    shared = CompileCocoDesktopProfiles(
         profiles, skills, CHANNEL, catalog_published=frozenset((*PUBLISHED, "plugin:kit")), blocked_plugins=blocked
     ).run_result()
 
@@ -182,13 +200,13 @@ def test_first_publish_creates_registry_uploads_trees_and_reads_back_like_deskto
     assert result.success, result.outcomes
     assert port.table_columns(REGISTRY) is not None
     assert port.stage_types[STAGE.sql] == "INTERNAL NO CSE"
-    release = compiled["profile:analyst"].release
+    release = compiled["coco_desktop_profile:analyst"].release
     assert len(port.uploads) == sum(len(tree.entries) for tree in release.trees)
     rows = port.desktop_profile_rows(REGISTRY)
     view = desktop_view(rows[0])
     assert view["VERSION"] == release.version
     assert len(stage_pointers(view)) == 5
-    assert dict(after.applied["profile:analyst"].component_fingerprints)["version"] == release.version
+    assert dict(after.applied["coco_desktop_profile:analyst"].component_fingerprints)["version"] == release.version
 
     changeset, result, after = publish(port, compiled, after)
     assert [change.action for change in changeset.changes] == [Action.NOOP]
@@ -206,7 +224,7 @@ def test_first_publish_creates_registry_uploads_trees_and_reads_back_like_deskto
 
 def test_unmanaged_concurrent_wrong_shape_and_client_side_stage_block() -> None:
     compiled = compile_profiles(catalog())
-    version = compiled["profile:analyst"].release.version
+    version = compiled["coco_desktop_profile:analyst"].release.version
     port = FakeSnowflake(existing=())
     port.ensure_profile_registry(REGISTRY)
     port.merge_profile_row(REGISTRY, {"CONFIG_NAME": "analyst", "VERSION": "66.00000"}, expected_version=None)
@@ -217,7 +235,7 @@ def test_unmanaged_concurrent_wrong_shape_and_client_side_stage_block() -> None:
     owned = AppliedEntry(
         "f", REGISTRY.sql, "now", "run", "applied", "f", "m", component_fingerprints=(("version", "SST_OLD"),)
     )
-    changeset, _, _ = publish(port, compiled, empty_state({"profile:analyst": owned}))
+    changeset, _, _ = publish(port, compiled, empty_state({"coco_desktop_profile:analyst": owned}))
     assert [item.code for item in changeset.diagnostics] == ["SST-PLN028"]
 
     shape = FakeSnowflake(existing=())
@@ -289,9 +307,9 @@ def test_prune_deactivates_only_under_prune_and_only_the_recorded_version() -> N
     assert [(change.action, change.prune_executable) for change in changeset.changes] == [(Action.PRUNE, True)]
     assert result.success and port.desktop_profile_rows(REGISTRY) == ()
     # The row is still SST's, so state keeps a tombstone rather than forgetting it.
-    tombstone = pruned.applied["profile:analyst"]
+    tombstone = pruned.applied["coco_desktop_profile:analyst"]
     assert tombstone.outcome == DEACTIVATED
-    assert tombstone.component_fingerprints == after.applied["profile:analyst"].component_fingerprints
+    assert tombstone.component_fingerprints == after.applied["coco_desktop_profile:analyst"].component_fingerprints
     again, _, _ = publish(port, {}, pruned, prune=True)
     assert again.changes == ()
 
@@ -300,19 +318,19 @@ def test_prune_deactivates_only_under_prune_and_only_the_recorded_version() -> N
     assert [(change.action, change.reason) for change in restored_plan.changes] == [
         (Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS)
     ]
-    assert restored.success and restored_state.applied["profile:analyst"].outcome == "applied"
+    assert restored.success and restored_state.applied["coco_desktop_profile:analyst"].outcome == "applied"
     assert [row["CONFIG_NAME"] for row in port.desktop_profile_rows(REGISTRY)] == ["analyst"]
 
-    handler = ProfileLifecycleHandler(port, {})
-    entry = after.applied["profile:analyst"]
-    change = handler.report_prune("profile:analyst", entry)
+    handler = CocoDesktopProfileLifecycleHandler(port, {})
+    entry = after.applied["coco_desktop_profile:analyst"]
+    change = handler.report_prune("coco_desktop_profile:analyst", entry)
     assert handler.apply(change, ApplyOptions()).status is OutcomeStatus.SKIPPED
     port.deactivate_profile_row(
         REGISTRY, "analyst", expected_version=str(port.desktop_profile_rows(REGISTRY)[0]["VERSION"])
     )
     failed = handler.apply(change, ApplyOptions(allow_prune=True))
     assert failed.status is OutcomeStatus.FAILED and failed.error is not None and failed.error.code == "SST-APL012"
-    unversioned = handler.report_prune("profile:analyst", replace(entry, component_fingerprints=()))
+    unversioned = handler.report_prune("coco_desktop_profile:analyst", replace(entry, component_fingerprints=()))
     refused = handler.apply(unversioned, ApplyOptions(allow_prune=True))
     assert refused.status is OutcomeStatus.FAILED and refused.error is not None
     assert "refusing to deactivate" in refused.error.message
@@ -322,8 +340,8 @@ def test_prune_deactivates_only_under_prune_and_only_the_recorded_version() -> N
 def test_stale_plan_and_desktop_pointer_rules() -> None:
     port = FakeSnowflake(existing=())
     compiled = compile_profiles(catalog())
-    handler = ProfileLifecycleHandler(port, compiled)
-    artifact = compiled["profile:analyst"].rendered_artifact
+    handler = CocoDesktopProfileLifecycleHandler(port, compiled)
+    artifact = compiled["coco_desktop_profile:analyst"].rendered_artifact
     manifest = build_manifest(CompileSkills(SkillCatalog(), None).run_result())
     plan = handler.plan(artifact, None, manifest)
     port.ensure_profile_registry(REGISTRY)
@@ -408,19 +426,19 @@ class FlakyProfilePort(FakeSnowflake):
 def test_a_failed_update_leaves_state_on_the_version_the_row_still_carries() -> None:
     port = FlakyProfilePort()
     _, _, first = publish(port, compile_profiles(catalog()), empty_state())
-    old = dict(first.applied["profile:analyst"].component_fingerprints)["version"]
+    old = dict(first.applied["coco_desktop_profile:analyst"].component_fingerprints)["version"]
     edited = compile_profiles(catalog(prompt="Be very careful.\n"))
     port.fail_upload = "prompts/"
     _, failed, after = publish(port, edited, first)
     outcome = failed.outcomes[0]
     assert outcome.status is OutcomeStatus.FAILED and not outcome.write_succeeded
-    assert after.applied["profile:analyst"] == first.applied["profile:analyst"]
+    assert after.applied["coco_desktop_profile:analyst"] == first.applied["coco_desktop_profile:analyst"]
     assert port.desktop_profile_rows(REGISTRY)[0]["VERSION"] == old
     # Not a concurrent writer: the retry publishes the edit.
     retry, retried, _ = publish(port, edited, after)
     assert [change.diagnostics for change in retry.changes] == [DiagnosticBag()]
     assert retried.success
-    assert port.desktop_profile_rows(REGISTRY)[0]["VERSION"] == edited["profile:analyst"].release.version
+    assert port.desktop_profile_rows(REGISTRY)[0]["VERSION"] == edited["coco_desktop_profile:analyst"].release.version
 
 
 def test_a_failed_read_back_after_the_row_is_written_keeps_ownership() -> None:
@@ -431,14 +449,14 @@ def test_a_failed_read_back_after_the_row_is_written_keeps_ownership() -> None:
         _, failed, after = publish(port, compiled, empty_state())
         outcome = failed.outcomes[0]
         assert outcome.status is OutcomeStatus.FAILED and outcome.write_succeeded, inject
-        entry = after.applied["profile:analyst"]
+        entry = after.applied["coco_desktop_profile:analyst"]
         assert entry.outcome == FAILED_AFTER_WRITE
-        assert dict(entry.component_fingerprints)["version"] == compiled["profile:analyst"].release.version
+        assert dict(entry.component_fingerprints)["version"] == compiled["coco_desktop_profile:analyst"].release.version
         retry, retried, converged = publish(port, compiled, after)
         assert [(change.action, change.reason) for change in retry.changes] == [
             (Action.UPDATE, ChangeReason.STATE_MANIFEST_MISMATCH)
         ], inject
-        assert retried.success and converged.applied["profile:analyst"].outcome == "applied"
+        assert retried.success and converged.applied["coco_desktop_profile:analyst"].outcome == "applied"
 
 
 class DroppedConnection(FakeSnowflake):
@@ -472,7 +490,10 @@ def test_an_unknown_merge_outcome_is_recorded_only_when_no_row_existed() -> None
     port = DroppedConnection()
     port.fail_after_merge = True
     _, failed, after = publish(port, compiled, empty_state())
-    assert failed.outcomes[0].write_succeeded and after.applied["profile:analyst"].outcome == FAILED_AFTER_WRITE
+    assert (
+        failed.outcomes[0].write_succeeded
+        and after.applied["coco_desktop_profile:analyst"].outcome == FAILED_AFTER_WRITE
+    )
     retry, retried, current = publish(port, compiled, after)
     assert [change.action for change in retry.changes] == [Action.UPDATE] and retried.success
 
@@ -481,7 +502,7 @@ def test_an_unknown_merge_outcome_is_recorded_only_when_no_row_existed() -> None
     port.fail_after_merge = True
     _, failed, updated = publish(port, edited, current)
     assert not failed.outcomes[0].write_succeeded
-    assert updated.applied["profile:analyst"] == current.applied["profile:analyst"]
+    assert updated.applied["coco_desktop_profile:analyst"] == current.applied["coco_desktop_profile:analyst"]
 
 
 def test_deactivating_a_row_that_is_gone_retires_it() -> None:
@@ -490,7 +511,7 @@ def test_deactivating_a_row_that_is_gone_retires_it() -> None:
     _, _, after = publish(port, compiled, empty_state())
     port.profile_rows.clear()
     _, result, pruned = publish(port, {}, after, prune=True)
-    assert result.success and pruned.applied["profile:analyst"].outcome == DEACTIVATED
+    assert result.success and pruned.applied["coco_desktop_profile:analyst"].outcome == DEACTIVATED
 
 
 class NarrowRegistry(FakeSnowflake):
@@ -524,7 +545,7 @@ def test_a_registry_or_stage_that_cannot_be_created_fails_before_any_row_is_writ
 def test_every_tree_a_profile_uploads_is_one_its_registry_row_points_at() -> None:
     # Uploading a tree the row records no pointer to is a half-completed publish; the row is
     # built from the very trees it uploads, so each is reached by one of its pointers.
-    release = compile_profiles(catalog())["profile:analyst"].release
+    release = compile_profiles(catalog())["coco_desktop_profile:analyst"].release
     pointers = stage_pointers(desktop_view(release.row))
     assert len(release.trees) == 5
     for tree in release.trees:
@@ -532,7 +553,7 @@ def test_every_tree_a_profile_uploads_is_one_its_registry_row_points_at() -> Non
 
 
 def test_a_profile_version_covers_every_tree_it_ships_so_any_tree_change_is_a_new_version() -> None:
-    compiled = compile_profiles(catalog())["profile:analyst"].release
+    compiled = compile_profiles(catalog())["coco_desktop_profile:analyst"].release
     document = json.dumps(compiled.row)
     # Each tree is named by its own digest, and the row that VERSION digests names each tree.
     assert all(tree.prefix in document for tree in compiled.trees)
@@ -555,6 +576,8 @@ def test_a_profile_version_covers_every_tree_it_ships_so_any_tree_change_is_a_ne
             ),
         ),
     }
-    versions = {kind: compile_profiles(value)["profile:analyst"].release.version for kind, value in changed.items()}
+    versions = {
+        kind: compile_profiles(value)["coco_desktop_profile:analyst"].release.version for kind, value in changed.items()
+    }
     assert compiled.version not in versions.values()
     assert len(set(versions.values())) == len(versions)

@@ -131,7 +131,7 @@
       {"code": "SST-VAL835", "severity": "error", "count": 1},
       {"code": "SST-VAL855", "severity": "error", "count": 1}
     ],
-    "reaches": ["profiles/jaffle-operator/profile.yml"]
+    "reaches": ["coco_desktop_profiles/jaffle-operator/coco_desktop_profile.yml"]
   },
   "27-plugin-member-with-errors.tree.yml": {
     "into": ".",
@@ -140,23 +140,23 @@
       {"code": "SST-VAL836", "severity": "error", "count": 1},
       {"code": "SST-VAL855", "severity": "error", "count": 1}
     ],
-    "reaches": ["profiles/jaffle-operator/profile.yml"]
+    "reaches": ["coco_desktop_profiles/jaffle-operator/coco_desktop_profile.yml"]
   },
-  "28-profile-unknown-hook.tree.yml": {
+  "28-coco-desktop-profile-unknown-hook.tree.yml": {
     "into": ".",
     "adds": [{"code": "SST-VAL846", "severity": "error", "count": 1}]
   },
-  "29-profile-unknown-command.tree.yml": {
+  "29-coco-desktop-profile-unknown-command.tree.yml": {
     "into": ".",
     "adds": [{"code": "SST-VAL858", "severity": "error", "count": 1}]
   },
-  "30-profile-skill-with-errors.tree.yml": {
+  "30-coco-desktop-profile-skill-with-errors.tree.yml": {
     "into": ".",
     "adds": [
       {"code": "SST-VAL808", "severity": "error", "count": 1},
       {"code": "SST-VAL855", "severity": "error", "count": 2}
     ],
-    "reaches": ["profiles/jaffle-analyst/profile.yml", "profiles/jaffle-operator/profile.yml"]
+    "reaches": ["coco_desktop_profiles/jaffle-analyst/coco_desktop_profile.yml", "coco_desktop_profiles/jaffle-operator/coco_desktop_profile.yml"]
   },
   "31-literal-mcp-credential.tree.yml": {
     "into": ".",

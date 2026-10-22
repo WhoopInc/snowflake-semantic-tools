@@ -39,7 +39,7 @@ def compiled_as(result: CompileResult, kind: type[_Compiled], index: int = 0) ->
 CHANNELS: Mapping[str, object] = {
     "skills": {"+bundle_stage": "BUNDLES"},
     "plugins": {"+bundle_stage": "BUNDLES"},
-    "profiles": {"+stage": "PROFILES"},
+    "coco_desktop_profiles": {"+stage": "PROFILES"},
 }
 
 

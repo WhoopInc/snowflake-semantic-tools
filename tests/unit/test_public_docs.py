@@ -116,7 +116,7 @@ def test_the_mermaid_type_rule_bites() -> None:
 
 # Files published as content: their bytes are hashed into a bundle, so a golden
 # holds them as they are.
-PUBLISHED_CONTENT = ("skills/", "plugins/", "profiles/", "hooks/", "mcp-servers/", "commands/")
+PUBLISHED_CONTENT = ("skills/", "plugins/", "coco_desktop_profiles/", "hooks/", "mcp-servers/", "commands/")
 # Code, the reference fixture, and the goldens, beyond the published pages.
 SOURCES = tuple(
     path

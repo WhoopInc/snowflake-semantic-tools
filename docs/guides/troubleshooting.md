@@ -211,7 +211,7 @@ the bundle. Check the validation output for the file:
 
 - **`SST-VAL854`** is reported: the project publishes to a registry table other
   than the one Desktop reads. That is right for rehearsal; point
-  `profiles.+registry_table` at Desktop's table to publish for real.
+  `coco_desktop_profiles.+registry_table` at Desktop's table to publish for real.
 - The profile was deactivated by a `--prune` run after its folder was deleted.
 - A pointer in the row does not resolve. `apply` checks every pointer after the
   write and reports the one that failed.

@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from snowflake_semantic_tools.app.compile.profiles import release_checks
+from snowflake_semantic_tools.app.compile.coco_desktop_profiles import release_checks
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from snowflake_semantic_tools.domain.model.profile.model import StageTree
+from snowflake_semantic_tools.domain.model.coco_desktop_profile.model import StageTree
 from snowflake_semantic_tools.domain.validate.publication import put_target_diagnostics
 from tests.helpers.publications import compiled_profile, compiled_skill, skill
 
@@ -35,7 +35,7 @@ def test_sst_val820_fires_for_each_profile_tree_outside_a_directory(monkeypatch:
     monkeypatch.setattr(StageTree, "prefix", property(lambda tree: f"{tree.kind}/{tree.scope}/{tree.digest[:12]}"))
     found = release_checks(profile)
     assert [item.code for item in found] == ["SST-VAL820"] * len(profile.release.trees)
-    assert found[0].subject == "profile:analyst"
+    assert found[0].subject == "coco_desktop_profile:analyst"
 
 
 def test_sst_val820_silent() -> None:

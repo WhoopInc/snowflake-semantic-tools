@@ -237,14 +237,14 @@ def test_a_skill_edit_shows_as_the_file_it_changes_in_the_skill_its_plugin_and_p
     changed = {
         item["artifact_key"]: [(member["kind"], member["member"], member["op"]) for member in item["diff"]]
         for item in data["changes"]
-        if item["artifact_type"] in ("skill", "plugin", "profile")
+        if item["artifact_type"] in ("skill", "plugin", "coco_desktop_profile")
         if item["action"] == "update"
     }
     assert changed == {
         "skill:jaffle-semantics": [("file", "skills/jaffle-semantics/SKILL.md", "changed")],
         "plugin:jaffle-toolkit": [("file", "skills/jaffle-semantics/SKILL.md", "changed")],
-        "profile:jaffle-analyst": [("file", "skills/jaffle-analyst/jaffle-semantics/SKILL.md", "changed")],
-        "profile:jaffle-operator": [
+        "coco_desktop_profile:jaffle-analyst": [("file", "skills/jaffle-analyst/jaffle-semantics/SKILL.md", "changed")],
+        "coco_desktop_profile:jaffle-operator": [
             ("file", "plugins/jaffle-operator/jaffle-toolkit/skills/jaffle-semantics/SKILL.md", "changed")
         ],
     }

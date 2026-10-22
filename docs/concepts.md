@@ -13,7 +13,7 @@ An **artifact** is one thing SST publishes and tracks. There are eight types:
 | `tool` | a `tool:` file, or a `tools:` list entry, that writes no `relations:` | a Cortex Search service, procedure, function, or stage |
 | `skill` | a `SKILL.md` folder | a version of a skill-type Cortex Extension |
 | `plugin` | `plugin.yml` | a version of a plugin-type Cortex Extension |
-| `profile` | `profile.yml` | a CoCo Desktop profile: stage trees and one registry row |
+| `coco_desktop_profile` | `coco_desktop_profile.yml` | a CoCo Desktop profile: stage trees and one registry row |
 | `agent` | `agent.yml` | a Cortex Agent |
 | `cowork_profile` | `cowork_profile.yml` | a Snowflake CoWork profile: an AGENT with an `agent_router` tool ([Snowflake private preview](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles)) |
 | `eval` | the dataset and config files an agent's `evals:` names | an evaluation table, dataset, and run configuration |
@@ -167,7 +167,7 @@ semantic_views:
 
 Keys that start with `+` set a default for everything below them. In every
 artifact block -- `semantic_views:`, `tools:`, `agents:`, `evals:`, `skills:`,
-`plugins:` and `profiles:` -- an unprefixed key names a folder below that
+`plugins:` and `coco_desktop_profiles:` -- an unprefixed key names a folder below that
 type's directory (for views, below `semantic_views/` in the semantic models
 directory), and its `+` keys apply to what is in that folder (`SST-CFG041` when
 the folder does not exist). An artifact's own `config:` block overrides every
@@ -551,7 +551,7 @@ flowchart TD
     which -- tool --> kept["never pruned"]
 ```
 
-Drawn from: [prune.py](../snowflake_semantic_tools/domain/plan/prune.py), [composite.py](../snowflake_semantic_tools/app/lifecycle/composite.py), [profiles.py](../snowflake_semantic_tools/app/lifecycle/profiles.py).
+Drawn from: [prune.py](../snowflake_semantic_tools/domain/plan/prune.py), [composite.py](../snowflake_semantic_tools/app/lifecycle/composite.py), [coco_desktop_profiles.py](../snowflake_semantic_tools/app/lifecycle/coco_desktop_profiles.py).
 
 Then blocking spreads: a write whose dependency the project compiles, the plan
 leaves out, and Snowflake lacks is blocked (`SST-PLN038`), and so, last, is

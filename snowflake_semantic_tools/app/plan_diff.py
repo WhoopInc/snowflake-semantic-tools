@@ -195,7 +195,7 @@ COMPARISONS: Mapping[str, Comparison] = {
     "plugin": Comparison(
         desired_extension, lambda port, _compiled, live: live_extension(port, live.name, live.recorded)
     ),
-    "profile": Comparison(desired_profile, lambda port, compiled, _live: live_profile(port, compiled)),
+    "coco_desktop_profile": Comparison(desired_profile, lambda port, compiled, _live: live_profile(port, compiled)),
     "eval": Comparison(desired_eval, lambda port, _compiled, live: live_eval(port, live.config_folder, live.recorded)),
 }
 

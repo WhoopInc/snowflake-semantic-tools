@@ -160,7 +160,7 @@ def test_run_plans_from_state_with_agents_staged_and_every_composite_type_handle
     ready = use_case.run(candidates, port, store, target=dev_target(), state_table=STATE_TABLE)
 
     assert isinstance(ready, PlanReady)
-    assert set(ready.lifecycle_handlers) == {"eval", "skill", "plugin", "profile"}
+    assert set(ready.lifecycle_handlers) == {"eval", "skill", "plugin", "coco_desktop_profile"}
     assert ready.changeset.observation_at == "2026-01-01T00:00:01Z"
     assert ready.changeset.diagnostics[0].code == "SST-MAN027"
     assert "OTHER.SCHEMA" in port.scopes and "DB.SCH" in port.scopes

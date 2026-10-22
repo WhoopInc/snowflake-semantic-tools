@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.validate.profile import (
-    validate_profile_catalog,
+from snowflake_semantic_tools.domain.validate.coco_desktop_profile import (
+    validate_coco_desktop_profile_catalog,
 )
 from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.skill_inputs import (
@@ -26,16 +26,19 @@ TARGET = QualifiedName.parse("DB.S.KIT")
 
 def test_sst_val845_fires() -> None:
     diagnostic = only(
-        validate_profile_catalog(profile_catalog(shared=shared(skills=("month-close",))), SKILLS), "SST-VAL845"
+        validate_coco_desktop_profile_catalog(profile_catalog(shared=shared(skills=("month-close",))), SKILLS),
+        "SST-VAL845",
     )
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == (
         "profile 'analyst': skill 'month-close' already reaches every profile through shared/"
     )
-    assert diagnostic.subject == "profile:analyst"
+    assert diagnostic.subject == "coco_desktop_profile:analyst"
 
 
 def test_sst_val845_silent() -> None:
     assert "SST-VAL845" not in codes(
-        validate_profile_catalog(profile_catalog(profile(skills=()), shared=shared(skills=("month-close",))), SKILLS)
+        validate_coco_desktop_profile_catalog(
+            profile_catalog(profile(skills=()), shared=shared(skills=("month-close",))), SKILLS
+        )
     )

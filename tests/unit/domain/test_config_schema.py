@@ -53,7 +53,11 @@ def test_a_complete_current_configuration_is_clean() -> None:
             "finance": {"+schema": "FINANCE", "close": {"+certified": True}},
         },
         "plugins": {"+bundle_stage": "SKILL_BUNDLE_SRC", "kits": {"+version_prefix": "KIT_"}},
-        "profiles": {"+stage": "SKILL_BUNDLES", "+registry_table": "PROFILE_REGISTRY", "analyst": {"+schema": "A"}},
+        "coco_desktop_profiles": {
+            "+stage": "SKILL_BUNDLES",
+            "+registry_table": "PROFILE_REGISTRY",
+            "analyst": {"+schema": "A"},
+        },
         "extensions": {"default_prefix": "DB.EXT", "consumed": None},
         "apply": {"agent_spec_stage": {"stage": "AGENT_SPECS"}},
         "snowflake": {"orchestration_models": ["auto"]},
@@ -115,7 +119,9 @@ def test_routed_models_meet_the_allowlist_and_every_publishing_block_takes_route
     assert _codes({**tree, "snowflake": {"orchestration_models": ["auto", "claude-x"]}}) == []
     assert _codes({"evals": {"finance": {"+retry": 1}}}) == []
     assert _codes({"skills": {"finance": {"+bundle_stage": "S"}}}) == []
-    assert _codes({"profiles": {"analyst": {"+stage": 1}}}) == [("SST-CFG004", "config:profiles.analyst.+stage")]
+    assert _codes({"coco_desktop_profiles": {"analyst": {"+stage": 1}}}) == [
+        ("SST-CFG004", "config:coco_desktop_profiles.analyst.+stage")
+    ]
     # Root-only keys may be set only at the root of their block.
     assert _codes({"skills": {"finance": {"+threads": 2}}}) == [("SST-CFG055", "config:skills.finance.+threads")]
     assert _codes({"plugins": {"+threads": 2}}) == [("SST-CFG003", "config:plugins.+threads")]
@@ -152,9 +158,9 @@ def test_types_domains_and_bounds() -> None:
         ("SST-CFG008", "config:diagnostics.severity_overrides.SST-VAL003")
     ]
     # The keys every channel once had to fix are gone: their behaviour is the only one there is.
-    assert _codes({"profiles": {"+layout": "by_type", "+flatten": False}}) == [
-        ("SST-CFG003", "config:profiles.+layout"),
-        ("SST-CFG003", "config:profiles.+flatten"),
+    assert _codes({"coco_desktop_profiles": {"+layout": "by_type", "+flatten": False}}) == [
+        ("SST-CFG003", "config:coco_desktop_profiles.+layout"),
+        ("SST-CFG003", "config:coco_desktop_profiles.+flatten"),
     ]
     for threads in (0, 17):
         assert _codes({"skills": {"+threads": threads}}) == [("SST-CFG008", "config:skills.+threads")]
@@ -162,7 +168,7 @@ def test_types_domains_and_bounds() -> None:
 
 
 def test_no_key_is_required_and_an_extension_entry_takes_only_fqn() -> None:
-    assert _codes({"skills": {"+certified": True}, "profiles": {}}) == []
+    assert _codes({"skills": {"+certified": True}, "coco_desktop_profiles": {}}) == []
     assert _codes({"extensions": {"x": {"fqn": "A.B.C", "other": 1}}}) == [("SST-CFG003", "config:extensions.x.other")]
 
 
@@ -248,7 +254,7 @@ def test_key_summaries_describe_what_the_renderer_and_the_publishing_blocks_do()
     tags = CONFIG_KEYS["semantic_views.+tags"].summary
     assert "WITH TAG" in tags and "after the CREATE" not in tags
     # A profile publishes only where its stage resolves; `+threads` is set once, for the run.
-    profiles = CONFIG_KEYS["profiles"].summary
+    profiles = CONFIG_KEYS["coco_desktop_profiles"].summary
     assert "`+stage` resolves" in profiles
     assert CONFIG_KEYS["skills.+threads"].root_only and not CONFIG_KEYS["skills.+bundle_stage"].root_only
 

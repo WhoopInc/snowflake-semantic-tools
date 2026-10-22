@@ -28,8 +28,8 @@ from snowflake_semantic_tools.adapters.locations import locate_project
 from snowflake_semantic_tools.adapters.paths import write_within
 from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
+from snowflake_semantic_tools.app.compile.coco_desktop_profiles import CompiledCocoDesktopProfile
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
 from snowflake_semantic_tools.cli.wiring.compile import compile_result
 from snowflake_semantic_tools.cli.wiring.project import project_inputs
@@ -321,7 +321,7 @@ def golden_payloads(item: CompiledArtifact, store: GoldenStore) -> tuple[GoldenP
     if isinstance(item, CompiledExtension):
         return _extension_payloads(item, name, artifact_type, store)
     rendered = item.rendered_artifact
-    if isinstance(item, CompiledProfile):
+    if isinstance(item, CompiledCocoDesktopProfile):
         return _profile_payloads(item, name, rendered.content, store)
     if artifact_type == "semantic_view":
         return (GoldenPayload(GoldenPath(None, (f"{name}.sql",)), rendered.content, f"compiled/{name}.sql", True),)
@@ -367,25 +367,27 @@ def _extension_payloads(
     return tuple(payloads)
 
 
-def _profile_payloads(item: CompiledProfile, name: str, content: str, store: GoldenStore) -> tuple[GoldenPayload, ...]:
+def _profile_payloads(
+    item: CompiledCocoDesktopProfile, name: str, content: str, store: GoldenStore
+) -> tuple[GoldenPayload, ...]:
     """Route a profile's registry document, and each prompt and MCP file whose golden is committed."""
     payloads = [
         GoldenPayload(
-            GoldenPath("profile", (f"{name}.profile.json",)),
+            GoldenPath("coco_desktop_profile", (f"{name}.coco_desktop_profile.json",)),
             content,
-            f"compiled/profile/{name}.profile.json",
+            f"compiled/coco_desktop_profile/{name}.coco_desktop_profile.json",
             False,
         )
     ]
     for tree in item.release.trees:
         for tree_entry in tree.entries:
-            golden = GoldenPath("profile", (name, tree_entry.path))
+            golden = GoldenPath("coco_desktop_profile", (name, tree_entry.path))
             if tree.kind in ("prompts", "mcp") and store.exists(golden):
                 payloads.append(
                     GoldenPayload(
                         golden,
                         tree_entry.content.decode("utf-8"),
-                        f"compiled/profile/{name}/{tree_entry.path}",
+                        f"compiled/coco_desktop_profile/{name}/{tree_entry.path}",
                         False,
                     )
                 )

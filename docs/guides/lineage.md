@@ -62,8 +62,8 @@ skill:jaffle-semantics                       SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS
     │   ├── cowork_profile:jaffle_concierge  SST_REF_DEV.PROFILES.JAFFLE_CONCIE…  calls it as a tool
     │   └── eval:jaffle_analytics_agent      SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANA…  tests it
     ├── plugin:jaffle-toolkit                SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT    bundles it
-    │   └── profile:jaffle-operator          SST_REF_DEV.JAFFLE.PROFILE_REGISTRY  includes it
-    └── profile:jaffle-analyst               SST_REF_DEV.JAFFLE.PROFILE_REGISTRY  includes it
+    │   └── coco_desktop_profile:jaffle-operator          SST_REF_DEV.JAFFLE.PROFILE_REGISTRY  includes it
+    └── coco_desktop_profile:jaffle-analyst               SST_REF_DEV.JAFFLE.PROFILE_REGISTRY  includes it
 ```
 
 A trace from a `column:`, `dimension:` or `fact:` node traces a column, so it

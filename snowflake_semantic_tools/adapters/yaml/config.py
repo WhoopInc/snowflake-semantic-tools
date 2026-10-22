@@ -50,7 +50,7 @@ PROJECT_DIR_KEYS = (
     "tools_dir",
     "skills_dir",
     "plugins_dir",
-    "profiles_dir",
+    "coco_desktop_profiles_dir",
     "hooks_dir",
     "mcp_servers_dir",
     "commands_dir",

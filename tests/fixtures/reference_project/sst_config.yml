@@ -62,10 +62,10 @@ project:
   # Custom LLM-judge metrics. They create no Snowflake object: each is inlined
   # into the rendered eval config of the agents that use it.
   eval_metrics_dir: eval_metrics
-  # CoCo Desktop inputs: plugins group skills into one extension, profiles are
+  # CoCo Desktop inputs: plugins group skills into one extension, Desktop profiles are
   # registry rows, and hooks, MCP configs and commands are what profiles name.
   plugins_dir: plugins
-  profiles_dir: profiles
+  coco_desktop_profiles_dir: coco_desktop_profiles
   # Snowflake CoWork profiles (a Snowflake private preview), each routing a
   # question to one of this project's agents.
   cowork_profiles_dir: cowork_profiles
@@ -297,7 +297,7 @@ plugins:
   +bundle_stage: SKILL_BUNDLE_SRC
   +version_prefix: "SST_"
 
-profiles:
+coco_desktop_profiles:
   # A CoCo Desktop profile publishes wherever +stage resolves for it. Trees are
   # always uploaded uncompressed and nested as authored, under skills/,
   # prompts/, mcp/, hooks/, commands/ and plugins/.

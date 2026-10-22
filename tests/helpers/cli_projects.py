@@ -135,7 +135,7 @@ def skill_project(root: Path) -> Path:
 PROFILE_CONFIG = """
 project:
   target_profile: skills
-profiles:
+coco_desktop_profiles:
   +stage: PROFILES
 """
 
@@ -144,11 +144,11 @@ def profile_with_commands_and_plugin(root: Path) -> Path:
     project = skill_project(root)
     (project / "sst_config.yml").write_text(OFFLINE_VALIDATION + PROFILE_CONFIG, encoding="utf-8")
     files = {
-        "profiles/analyst/profile.yml": (
+        "coco_desktop_profiles/analyst/coco_desktop_profile.yml": (
             "name: analyst\ndescription: Analyst.\nowner_team: Data\nskills: [\"{{ skill('month-close') }}\"]\n"
             "commands: [\"{{ command('sql/check') }}\"]\nplugins: [\"{{ plugin('kit') }}\"]\n"
         ),
-        "profiles/shared/profile.yml": "commands: [\"{{ command('daily') }}\"]\n",
+        "coco_desktop_profiles/shared/coco_desktop_profile.yml": "commands: [\"{{ command('daily') }}\"]\n",
         "commands/daily.md": "Summarise yesterday.\n",
         "commands/sql/check.md": "---\ndescription: Check SQL.\n---\nCheck it.\n",
         "plugins/kit/plugin.yml": (

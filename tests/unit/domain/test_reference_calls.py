@@ -7,12 +7,12 @@ from types import MappingProxyType
 import pytest
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import CommandFile
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
-from snowflake_semantic_tools.domain.model.profile import CommandFile
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.parse.template import TemplateCall
-from snowflake_semantic_tools.domain.render.profile import render_command
+from snowflake_semantic_tools.domain.render.coco_desktop_profile import render_command
 from snowflake_semantic_tools.domain.resolve.calls import required_call
 from snowflake_semantic_tools.domain.resolve.membership import ViewMembers
 from snowflake_semantic_tools.domain.resolve.ref_fields import REFERENCE_FIELDS, reference_functions

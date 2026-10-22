@@ -117,7 +117,7 @@ sst test --suite smoke                      # queries what was published
   views under `semantic_views/`, and metrics, relationships, filters, verified queries, and
   custom instructions anywhere below it, usually one item per file under its singular root.
 - Column metadata: each dbt model's YAML, under `config.meta.sst`.
-- `agents/`, `tools/`, `skills/`, `plugins/`, `profiles/`: agents and what SST publishes for
+- `agents/`, `tools/`, `skills/`, `plugins/`, `coco_desktop_profiles/`: agents and what SST publishes for
   them. The `skills/` folder there is published to Snowflake. These kit skills are not, and
   must stay out of it.
 - `sst_target/`: build output. Never edit it, and never commit it.

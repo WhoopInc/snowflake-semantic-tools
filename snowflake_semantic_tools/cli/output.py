@@ -54,7 +54,7 @@ from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 _INVOCATION: dict[str, object] = {}
 # Credential values resolved this run; no envelope, report, or rendered diagnostic may carry one.
 _SECRETS: set[str] = set()
-_ARTIFACT_SUBJECTS = frozenset(SEMANTIC_REGISTRY.artifacts) | {"profile"}
+_ARTIFACT_SUBJECTS = frozenset(SEMANTIC_REGISTRY.artifacts) | {"coco_desktop_profile"}
 # Four or more diagnostics of one code collapse to the first few in the human render.
 _GROUP_AT = 4
 _GROUP_SHOWN = 3

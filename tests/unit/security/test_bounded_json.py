@@ -29,7 +29,7 @@ from snowflake_semantic_tools.adapters.fs.local import (
 )
 from snowflake_semantic_tools.adapters.json_files import JsonFileError, parse_json, read_json_file
 from snowflake_semantic_tools.adapters.locations import locate_project
-from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
+from snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles import load_coco_desktop_profile_catalog
 from snowflake_semantic_tools.cli.commands.debug import _manifest
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.run_log import RUN_LOG, signature_report
@@ -113,8 +113,12 @@ def test_a_crafted_mcp_config_is_refused_as_not_valid(tmp_path: Path, crafted: s
     path = tmp_path / "mcp-servers" / "dbt" / "mcp.json"
     path.parent.mkdir(parents=True)
     path.write_text(crafted, encoding="utf-8")
-    catalog = load_profile_catalog(
-        tmp_path, profiles_dir="profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers", commands_dir="commands"
+    catalog = load_coco_desktop_profile_catalog(
+        tmp_path,
+        coco_desktop_profiles_dir="coco_desktop_profiles",
+        hooks_dir="hooks",
+        mcp_servers_dir="mcp-servers",
+        commands_dir="commands",
     )
     [diagnostic] = [item for item in catalog.diagnostics if item.code == "SST-VAL853"]
     assert diagnostic.message.startswith("MCP config 'dbt': mcp.json cannot be used: ")

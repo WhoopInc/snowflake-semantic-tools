@@ -1,6 +1,6 @@
 """SST-VAL822: a profile uploads a tree its registry row has no pointer to.
 
-`build_profile` builds the row from the very trees it uploads, so every tree is reached by a
+`build_coco_desktop_profile` builds the row from the very trees it uploads, so every tree is reached by a
 pointer; compile checks the release before anything uploads, so a tree that would land on
 the stage with nothing recording it is reported and the profile does not compile.
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from snowflake_semantic_tools.app.compile.profiles import release_checks
+from snowflake_semantic_tools.app.compile.coco_desktop_profiles import release_checks
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.validate.publication import registry_pointer_diagnostics
 from tests.helpers.publications import PROFILE_STAGE, compiled_profile, skill
@@ -17,11 +17,11 @@ from tests.helpers.publications import PROFILE_STAGE, compiled_profile, skill
 
 def test_sst_val822_fires() -> None:
     upload = f"@{PROFILE_STAGE.sql}/skills/analyst/0123456789ab/"
-    [diagnostic] = registry_pointer_diagnostics("profile:analyst", "analyst", (upload,), ())
+    [diagnostic] = registry_pointer_diagnostics("coco_desktop_profile:analyst", "analyst", (upload,), ())
     assert (diagnostic.code, diagnostic.severity, diagnostic.subject) == (
         "SST-VAL822",
         Severity.ERROR,
-        "profile:analyst",
+        "coco_desktop_profile:analyst",
     )
     assert diagnostic.message == f"skill 'analyst': '{upload}' was uploaded with no PROFILE_REGISTRY pointer"
 

@@ -31,23 +31,23 @@ from snowflake_semantic_tools.adapters.yaml.skills import _published
 from snowflake_semantic_tools.adapters.yaml.text_checks import bom_refusal, read_authored_text
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.profile import (
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import (
     COMMAND_FRONTMATTER_KEYS,
-    REJECTED_PROFILE_KEYS,
+    REJECTED_COCO_DESKTOP_PROFILE_KEYS,
     SHARED_PROFILE,
+    CocoDesktopProfile,
+    CocoDesktopProfileCatalog,
     CommandFile,
-    DesktopProfile,
     HookDefinition,
     McpConfig,
-    ProfileCatalog,
-    SharedProfile,
+    SharedCocoDesktopProfile,
 )
 from snowflake_semantic_tools.domain.model.skill import SkillFile
 from snowflake_semantic_tools.domain.resolve.calls import required_call
 from snowflake_semantic_tools.domain.resolve.ref_fields import reference_functions
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 
-PROFILE_KEYS = frozenset(
+COCO_DESKTOP_PROFILE_KEYS = frozenset(
     ("name", "description", "owner_team", "skills", "mcp_servers", "hooks", "commands", "plugins", "config")
 )
 SHARED_KEYS = frozenset(("skills", "commands"))
@@ -55,21 +55,21 @@ HOOK_KEYS = frozenset(
     ("name", "event", "type", "command", "matcher", "timeout", "interactive", "description", "script")
 )
 HOOK_FILES = ("hook.yml", "hook.yaml")
-PROFILE_FILES = ("profile.yml", "profile.yaml")
+COCO_DESKTOP_PROFILE_FILES = ("coco_desktop_profile.yml", "coco_desktop_profile.yaml")
 
 
-def load_profile_catalog(
+def load_coco_desktop_profile_catalog(
     project_dir: Path,
     *,
-    profiles_dir: str,
+    coco_desktop_profiles_dir: str,
     hooks_dir: str,
     mcp_servers_dir: str,
     commands_dir: str = "commands",
     config: Mapping[str, Any] | None = None,
-) -> ProfileCatalog:
+) -> CocoDesktopProfileCatalog:
     """Read a project's Desktop profiles, the shared layer, and the hooks, MCP configs and commands.
 
-    Each published folder directly under `profiles_dir` is a profile, except `shared/`, the
+    Each published folder directly under `coco_desktop_profiles_dir` is a profile, except `shared/`, the
     layer every profile carries; each folder under `hooks_dir` or `mcp_servers_dir` is one hook
     or MCP config; and every `*.md` at any depth below `commands_dir` is a command. Folders and
     files are read in name order, hidden entries and caches are skipped, and a missing
@@ -78,14 +78,14 @@ def load_profile_catalog(
 
     Args:
         config: The run's resolved configuration, whose `profiles:` folder routes are checked
-            against the folders under `profiles_dir`; None checks no route. Each profile records
+            against the folders under `coco_desktop_profiles_dir`; None checks no route. Each profile records
             its own `config:`, which compile resolves over the routes.
 
     Raises:
         OSError: A manifest, script, prompt, rule or command file cannot be read.
 
     Diagnostics:
-        SST-CFG041: a `profiles:` folder route names no folder under `profiles_dir`.
+        SST-CFG041: a `profiles:` folder route names no folder under `coco_desktop_profiles_dir`.
         SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
             reports a profile manifest's `config:` block.
         SST-VAL801: when a profile folder holds no manifest or both spellings, or its manifest's
@@ -108,10 +108,12 @@ def load_profile_catalog(
         SST-PRT009: when a folder or file that would be read is a symbolic link, or lies in a
             linked folder; it is left out.
     """
-    diagnostics: list[Diagnostic] = list(routed_diagnostics(config, project_dir, "profile")) if config else []
-    profiles: list[DesktopProfile] = []
-    shared: SharedProfile | None = None
-    root = project_dir / profiles_dir
+    diagnostics: list[Diagnostic] = (
+        list(routed_diagnostics(config, project_dir, "coco_desktop_profile")) if config else []
+    )
+    profiles: list[CocoDesktopProfile] = []
+    shared: SharedCocoDesktopProfile | None = None
+    root = project_dir / coco_desktop_profiles_dir
     for folder in _folders(project_dir, root, diagnostics):
         if folder.name == SHARED_PROFILE:
             shared = _load_shared(project_dir, folder, diagnostics)
@@ -130,7 +132,9 @@ def load_profile_catalog(
         if (mcp := _load_mcp(project_dir, folder, diagnostics)) is not None
     ]
     commands = _load_commands(project_dir, project_dir / commands_dir, diagnostics)
-    return ProfileCatalog(tuple(profiles), shared, tuple(hooks), tuple(configs), DiagnosticBag(diagnostics), commands)
+    return CocoDesktopProfileCatalog(
+        tuple(profiles), shared, tuple(hooks), tuple(configs), DiagnosticBag(diagnostics), commands
+    )
 
 
 def _folders(project_dir: Path, root: Path, diagnostics: list[Diagnostic]) -> tuple[Path, ...]:
@@ -194,7 +198,7 @@ def _read_text(project_dir: Path, path: Path, subject: str, diagnostics: list[Di
     return text
 
 
-def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> DesktopProfile | None:
+def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> CocoDesktopProfile | None:
     """Read one profile folder; None when it has no single manifest or the manifest does not parse.
 
     The profile is named after its folder, whatever its manifest's `name` says. A problem in the
@@ -207,7 +211,7 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
         OSError: The manifest or `AGENTS.md` cannot be read.
 
     Diagnostics:
-        SST-VAL801: when the folder holds no `profile.yml` or both spellings, or the manifest's
+        SST-VAL801: when the folder holds no `coco_desktop_profile.yml` or both spellings, or the manifest's
             `name` is not the folder's.
         SST-VAL851: when an unread key is one SST refuses, which names the reason.
         SST-PRS004: when any other key is not one SST reads.
@@ -219,8 +223,8 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
         SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
             reports the manifest's `config:` block, each at its first line.
     """
-    subject = artifact_key("profile", folder.name)
-    manifest, problem = _manifest(folder, PROFILE_FILES)
+    subject = artifact_key("coco_desktop_profile", folder.name)
+    manifest, problem = _manifest(folder, COCO_DESKTOP_PROFILE_FILES)
     directory = project_relative(project_dir, folder)
     if manifest is None:
         diagnostics.append(
@@ -237,8 +241,8 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
     if tree is None:
         return None
     origin = Origin(project_relative(project_dir, manifest), 1)
-    for key in unknown_keys(tree, PROFILE_KEYS):
-        if key in REJECTED_PROFILE_KEYS:
+    for key in unknown_keys(tree, COCO_DESKTOP_PROFILE_KEYS):
+        if key in REJECTED_COCO_DESKTOP_PROFILE_KEYS:
             diagnostics.append(
                 D(
                     "SST-VAL851",
@@ -246,13 +250,15 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
                     subject=subject,
                     artifact=folder.name,
                     key=key,
-                    reason=REJECTED_PROFILE_KEYS[key],
+                    reason=REJECTED_COCO_DESKTOP_PROFILE_KEYS[key],
                 )
             )
         else:
             diagnostics.append(D("SST-PRS004", origin=origin, subject=subject, artifact=subject, field=key))
     diagnostics.extend(
-        item_config_diagnostics("profiles", tree.get("config"), subject=subject, origin_of=lambda key: origin)
+        item_config_diagnostics(
+            "coco_desktop_profiles", tree.get("config"), subject=subject, origin_of=lambda key: origin
+        )
     )
     declared = tree.get("name")
     if declared is not None and declared != folder.name:
@@ -271,26 +277,30 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
         sources.append(project_relative(project_dir, prompt_path))
     located = _located(subject, origin)
     item_config = tree.get("config")
-    return DesktopProfile(
+    return CocoDesktopProfile(
         name=folder.name,
         directory=directory,
         description=_text(tree.get("description"), "description", subject, origin, diagnostics),
         owner_team=_text(tree.get("owner_team"), "owner_team", subject, origin, diagnostics),
-        skills=member_names(tree.get("skills"), "profile.skills", diagnostics, field="skills", **located),
+        skills=member_names(tree.get("skills"), "coco_desktop_profile.skills", diagnostics, field="skills", **located),
         mcp_servers=member_names(
-            tree.get("mcp_servers"), "profile.mcp_servers", diagnostics, field="mcp_servers", **located
+            tree.get("mcp_servers"), "coco_desktop_profile.mcp_servers", diagnostics, field="mcp_servers", **located
         ),
-        hooks=member_names(tree.get("hooks"), "profile.hooks", diagnostics, field="hooks", **located),
+        hooks=member_names(tree.get("hooks"), "coco_desktop_profile.hooks", diagnostics, field="hooks", **located),
         prompt=_prompt(project_dir, prompt_path, subject, diagnostics),
         origin=origin,
         source_files=tuple(sources),
-        commands=member_names(tree.get("commands"), "profile.commands", diagnostics, field="commands", **located),
-        plugins=member_names(tree.get("plugins"), "profile.plugins", diagnostics, field="plugins", **located),
+        commands=member_names(
+            tree.get("commands"), "coco_desktop_profile.commands", diagnostics, field="commands", **located
+        ),
+        plugins=member_names(
+            tree.get("plugins"), "coco_desktop_profile.plugins", diagnostics, field="plugins", **located
+        ),
         config=MappingProxyType(dict(item_config)) if isinstance(item_config, Mapping) else MappingProxyType({}),
     )
 
 
-def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> SharedProfile:
+def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> SharedCocoDesktopProfile:
     """Read the `shared/` layer every profile carries: its prompt, rules, skills and commands.
 
     The manifest is optional: with none, both spellings, or one that does not parse, the layer
@@ -302,7 +312,7 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         OSError: A file of the layer cannot be read.
 
     Diagnostics:
-        SST-VAL801: when the folder holds both `profile.yml` and `profile.yaml`.
+        SST-VAL801: when the folder holds both `coco_desktop_profile.yml` and `coco_desktop_profile.yaml`.
         SST-PRS004: when the manifest holds a key other than `skills` and `commands`.
         SST-PRS003: when `skills` or `commands` is not a list of strings.
         Every code `member_names` lists, for an entry that is not one `skill()` or `command()`
@@ -310,12 +320,12 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         Every code `read_authored_text` lists, for an `AGENTS.md` or a rule it refuses; it is left
             out of the layer.
     """
-    subject = "profile:shared"
+    subject = "coco_desktop_profile:shared"
     origin = Origin(project_relative(project_dir, folder))
     sources: list[str] = []
     skills: tuple[str, ...] = ()
     commands: tuple[str, ...] = ()
-    manifest, problem = _manifest(folder, PROFILE_FILES)
+    manifest, problem = _manifest(folder, COCO_DESKTOP_PROFILE_FILES)
     if manifest is None and problem is not None and "both" in problem:
         diagnostics.append(
             D("SST-VAL801", origin=origin, subject=subject, artifact=subject, detail=f"shared folder {problem}")
@@ -326,8 +336,10 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         tree = _parse(project_dir, manifest, subject, diagnostics) or {}
         report_unknown_keys(tree, SHARED_KEYS, diagnostics, artifact=subject, origin=origin, subject=subject)
         located = _located(subject, origin)
-        skills = member_names(tree.get("skills"), "profile.skills", diagnostics, field="skills", **located)
-        commands = member_names(tree.get("commands"), "profile.commands", diagnostics, field="commands", **located)
+        skills = member_names(tree.get("skills"), "coco_desktop_profile.skills", diagnostics, field="skills", **located)
+        commands = member_names(
+            tree.get("commands"), "coco_desktop_profile.commands", diagnostics, field="commands", **located
+        )
     prompt_path = folder / "AGENTS.md"
     if prompt_path.is_file():
         sources.append(project_relative(project_dir, prompt_path))
@@ -339,7 +351,7 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         if (text := _read_text(project_dir, path, subject, diagnostics)) is not None
     )
     sources.extend(project_relative(project_dir, rules_dir / name) for name, _ in rules)
-    return SharedProfile(
+    return SharedCocoDesktopProfile(
         _prompt(project_dir, prompt_path, subject, diagnostics), rules, skills, origin, tuple(sources), commands
     )
 

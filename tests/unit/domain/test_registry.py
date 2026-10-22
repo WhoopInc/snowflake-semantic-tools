@@ -30,7 +30,7 @@ def test_registry_has_m4_artifacts_and_all_seven_semantic_member_types() -> None
         "tool",
         "skill",
         "plugin",
-        "profile",
+        "coco_desktop_profile",
         "agent",
         "cowork_profile",
         "eval",
@@ -45,7 +45,7 @@ def test_registry_has_m4_artifacts_and_all_seven_semantic_member_types() -> None
         350,
         400,
     ]
-    assert SEMANTIC_REGISTRY.artifacts["profile"].ref_function is None
+    assert SEMANTIC_REGISTRY.artifacts["coco_desktop_profile"].ref_function is None
     assert SEMANTIC_REGISTRY.artifacts["tool"].dependency_types == ("semantic_view",)
     assert SEMANTIC_REGISTRY.artifacts["agent"].dependency_types == ("semantic_view", "tool", "skill", "plugin")
     pinning = ("agent", "cowork_profile")
@@ -172,9 +172,12 @@ def test_every_type_names_registered_rule_sets_and_a_discovery_directory() -> No
 
 def test_registry_allows_types_without_root_keys_or_reference_functions() -> None:
     registry = freeze(
-        (artifact("semantic_view"), artifact("profile", 200, root_key=None, singular_root=None, ref_function=None))
+        (
+            artifact("semantic_view"),
+            artifact("coco_desktop_profile", 200, root_key=None, singular_root=None, ref_function=None),
+        )
     )
-    assert registry.artifacts["profile"].root_key is None
+    assert registry.artifacts["coco_desktop_profile"].root_key is None
 
 
 def test_a_builder_freezes_once_and_its_registry_is_read_only() -> None:

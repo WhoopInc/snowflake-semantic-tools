@@ -15,15 +15,15 @@ from dataclasses import dataclass
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.profile.model import (
+from snowflake_semantic_tools.domain.model.coco_desktop_profile.model import (
     DESKTOP_REGISTRY,
     SHARED_PROFILE,
-    DesktopProfile,
+    CocoDesktopProfile,
+    CocoDesktopProfileCatalog,
     McpConfig,
-    ProfileCatalog,
-    SharedProfile,
+    SharedCocoDesktopProfile,
 )
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill
 from snowflake_semantic_tools.domain.validate.shared import PROFILE_NAMES, Emitter
 from snowflake_semantic_tools.domain.validate.stage_path import ALLOWED_DESCRIPTION, unsafe_segment
@@ -65,8 +65,8 @@ class _Names:
     on_defined: Callable[[str], None] | None = None
 
 
-def validate_profile_catalog(
-    catalog: ProfileCatalog,
+def validate_coco_desktop_profile_catalog(
+    catalog: CocoDesktopProfileCatalog,
     skills: Mapping[str, Skill],
     plugins: Mapping[str, Plugin] | None = None,
 ) -> DiagnosticBag:
@@ -112,11 +112,13 @@ def validate_profile_catalog(
     return DiagnosticBag(diagnostics)
 
 
-def _shared_rules(shared: SharedProfile | None, known: _Known) -> tuple[Diagnostic, ...]:
+def _shared_rules(shared: SharedCocoDesktopProfile | None, known: _Known) -> tuple[Diagnostic, ...]:
     """Check what `shared/` names: its skills, then its commands."""
     if shared is None:
         return ()
-    emit = Emitter(subject=artifact_key("profile", SHARED_PROFILE), origin=shared.origin, artifact=SHARED_PROFILE)
+    emit = Emitter(
+        subject=artifact_key("coco_desktop_profile", SHARED_PROFILE), origin=shared.origin, artifact=SHARED_PROFILE
+    )
     _report_unknown(
         emit,
         (
@@ -128,7 +130,7 @@ def _shared_rules(shared: SharedProfile | None, known: _Known) -> tuple[Diagnost
     return emit.diagnostics
 
 
-def _profile_rules(profile: DesktopProfile, known: _Known) -> tuple[Diagnostic, ...]:
+def _profile_rules(profile: CocoDesktopProfile, known: _Known) -> tuple[Diagnostic, ...]:
     """Check one profile: its name, then its skills, commands, plugins, hooks, and MCP configs."""
     emit = Emitter(subject=profile.key, origin=profile.origin, artifact=profile.name)
     problem = PROFILE_NAMES.problem(profile.name)
@@ -233,7 +235,7 @@ def _literal_credentials(servers: Mapping[str, object]) -> tuple[tuple[str, str]
     return tuple(found)
 
 
-def _staged_path_rules(catalog: ProfileCatalog) -> list[Diagnostic]:
+def _staged_path_rules(catalog: CocoDesktopProfileCatalog) -> list[Diagnostic]:
     """Report each hook script, then each command file, whose path a stage would reject."""
     staged = (
         *((artifact_key("hook", hook.name), hook.origin, hook.tree_path) for hook in catalog.hooks),
@@ -256,7 +258,7 @@ def _staged_path_rules(catalog: ProfileCatalog) -> list[Diagnostic]:
 
 def unreached_skills(
     skills: Mapping[str, Skill],
-    catalog: ProfileCatalog,
+    catalog: CocoDesktopProfileCatalog,
     *,
     published: AbstractSet[str],
     plugins: Mapping[str, Plugin] | None = None,

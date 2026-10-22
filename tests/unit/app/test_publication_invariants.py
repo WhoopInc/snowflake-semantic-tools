@@ -14,10 +14,10 @@ import pytest
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
+from snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles import CocoDesktopProfileLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.composite import CompositeHandler
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
-from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import Origin
@@ -91,7 +91,7 @@ def test_each_channel_reports_its_own_outcome_and_one_failure_fails_the_deploy()
     port.refused = ("MERGE",)
     handlers: dict[str, CompositeLifecycleHandler] = {
         "skill": ExtensionLifecycleHandler(port, {extension.artifact_key: extension.release}, "skill"),
-        "profile": ProfileLifecycleHandler(port, {profile.artifact_key: profile}),
+        "coco_desktop_profile": CocoDesktopProfileLifecycleHandler(port, {profile.artifact_key: profile}),
     }
     rendered = {item.artifact_key: item.rendered_artifact for item in (extension, profile)}
     manifest = build_manifest(CompileSkills(SkillCatalog(), None).run_result())
@@ -106,7 +106,10 @@ def test_each_channel_reports_its_own_outcome_and_one_failure_fails_the_deploy()
         lifecycle_handlers=handlers,
     ).run(changeset, empty_state(), ApplyOptions())
     statuses = {outcome.key: outcome.status for outcome in result.outcomes}
-    assert statuses == {"skill:month-close": OutcomeStatus.APPLIED, "profile:analyst": OutcomeStatus.FAILED}
+    assert statuses == {
+        "skill:month-close": OutcomeStatus.APPLIED,
+        "coco_desktop_profile:analyst": OutcomeStatus.FAILED,
+    }
     assert not result.success
 
 
@@ -115,7 +118,7 @@ def test_every_composite_prune_sorts_at_its_type_registry_position() -> None:
     handlers: list[CompositeHandler[Any, Any, Any]] = [
         ExtensionLifecycleHandler(port, {}, "skill"),
         ExtensionLifecycleHandler(port, {}, "plugin"),
-        ProfileLifecycleHandler(port, {}),
+        CocoDesktopProfileLifecycleHandler(port, {}),
         EvalLifecycleHandler(port),
     ]
     composite = {

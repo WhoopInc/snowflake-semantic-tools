@@ -5,7 +5,7 @@ A profile carrying a skill that compile blocked cannot publish; one carrying hea
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.app.compile.profiles import CompileProfiles, DesktopChannel
+from snowflake_semantic_tools.app.compile.coco_desktop_profiles import CompileCocoDesktopProfiles, DesktopChannel
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from tests.helpers.diagnostic_filters import codes, only
@@ -15,7 +15,7 @@ CHANNEL = DesktopChannel(QualifiedName.parse("DB.S.PROFILES"), QualifiedName.par
 
 
 def test_sst_val855_fires() -> None:
-    result = CompileProfiles(
+    result = CompileCocoDesktopProfiles(
         profile_catalog(profile()),
         skill_catalog(),
         CHANNEL,
@@ -25,13 +25,13 @@ def test_sst_val855_fires() -> None:
     diagnostic = only(result.diagnostics, "SST-VAL855")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "profile 'analyst': skill 'month-close' has errors, so the profile cannot publish"
-    assert diagnostic.subject == "profile:analyst"
+    assert diagnostic.subject == "coco_desktop_profile:analyst"
     assert result.compiled == ()
 
 
 def test_sst_val855_silent() -> None:
-    result = CompileProfiles(
+    result = CompileCocoDesktopProfiles(
         profile_catalog(profile()), skill_catalog(), CHANNEL, catalog_published=frozenset()
     ).run_result()
     assert "SST-VAL855" not in codes(result.diagnostics)
-    assert [item.artifact_key for item in result.compiled] == ["profile:analyst"]
+    assert [item.artifact_key for item in result.compiled] == ["coco_desktop_profile:analyst"]

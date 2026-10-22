@@ -95,11 +95,11 @@ def test_compile_writes_deterministic_manifest(tmp_path: Path) -> None:
         "agent:jaffle_analytics_agent",
         "agent:jaffle_delivery_agent",
         "agent:jaffle_minimal_agent",
+        "coco_desktop_profile:jaffle-analyst",
+        "coco_desktop_profile:jaffle-operator",
         "cowork_profile:jaffle_concierge",
         "eval:jaffle_analytics_agent",
         "plugin:jaffle-toolkit",
-        "profile:jaffle-analyst",
-        "profile:jaffle-operator",
         "semantic_view:jaffle_menu",
         "semantic_view:jaffle_minimal",
         "semantic_view:jaffle_sales",
@@ -286,14 +286,17 @@ def test_project_without_dbt_or_target_profile_is_a_config_error(tmp_path: Path)
 
 
 def test_a_configured_directory_that_does_not_exist_is_an_error(tmp_path: Path) -> None:
-    config = "project:\n  target_profile: skills\n  profiles_dir: profilez\n  hooks_dir: hooks\n"
+    config = "project:\n  target_profile: skills\n  coco_desktop_profiles_dir: profilez\n  hooks_dir: hooks\n"
     project = skills_only_project(tmp_path / "skills", config)
     (project / "hooks").mkdir()
     result = CliRunner().invoke(cli, ["compile", "--project-dir", str(project), "--output", "json"])
     assert result.exit_code == 1
     diagnostics = json.loads(result.output)["diagnostics"]
     assert [item["code"] for item in diagnostics] == ["SST-CFG047", "SST-MAN008"]
-    assert diagnostics[0]["message"] == "project.profiles_dir is profilez, which is not a directory in the project"
+    assert (
+        diagnostics[0]["message"]
+        == "project.coco_desktop_profiles_dir is profilez, which is not a directory in the project"
+    )
 
     # A dbt-only directory in a project without dbt is reported once, as CFG046.
     dbt_only = skills_only_project(tmp_path / "other", "project:\n  target_profile: skills\n  agents_dir: nowhere\n")

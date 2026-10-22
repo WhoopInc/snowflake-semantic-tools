@@ -74,14 +74,14 @@ config:
 ## Profiles
 
 ```text
-profiles/
+coco_desktop_profiles/
   shared/                 # applies to every profile
     AGENTS.md
     rules/
       sql-style.md
-    profile.yml           # skills: and commands: only
+    coco_desktop_profile.yml           # skills: and commands: only
   sales-analyst/
-    profile.yml
+    coco_desktop_profile.yml
     AGENTS.md             # optional
 commands/
   daily-summary.md        # /daily-summary
@@ -97,7 +97,7 @@ mcp-servers/
 ```
 
 ```yaml
-# profiles/sales-analyst/profile.yml
+# coco_desktop_profiles/sales-analyst/coco_desktop_profile.yml
 name: sales-analyst
 description: "Sales analysts: order, revenue, and month-close questions."
 owner_team: Sales Analytics
@@ -114,9 +114,9 @@ hooks:
   - "{{ hook('sql-guard') }}"
 ```
 
-- Each folder directly under `project.profiles_dir` (default `profiles/`) is a
+- Each folder directly under `project.coco_desktop_profiles_dir` (default `coco_desktop_profiles/`) is a
   profile, named by its folder: lowercase letters, digits, `-`, or `_`, and not
-  `shared` (`SST-VAL801`). Its `config:` sets the profile's own `profiles:`
+  `shared` (`SST-VAL801`). Its `config:` sets the profile's own `coco_desktop_profiles:`
   settings, such as `stage`, without their `+`. The name is the registry row's `CONFIG_NAME`, and
   `name:`, when given, must match it (`SST-VAL801`). `description` and
   `owner_team` are optional and fill the row's columns of those names.
@@ -131,7 +131,7 @@ hooks:
   `SST-VAL847`, `SST-VAL846`), and a skill or plugin with errors stops the
   profile from publishing (`SST-VAL855`), as does a command, hook, or MCP config
   with errors of its own.
-- `profile.yaml` works too; having neither or both is an error (`SST-VAL801`).
+- `coco_desktop_profile.yaml` works too; having neither or both is an error (`SST-VAL801`).
   Any other unknown key is a warning (`SST-PRS004`).
 - `allowed_roles`, `active`, `env_vars`, and `settings_overrides` are refused
   (`SST-VAL851`). Desktop does not read `allowed_roles`, so access control does
@@ -147,9 +147,9 @@ hooks:
 
 ### The shared folder
 
-`profiles/shared/` is reserved. Its `AGENTS.md` and `rules/*.md` form the start
+`coco_desktop_profiles/shared/` is reserved. Its `AGENTS.md` and `rules/*.md` form the start
 of every profile's system prompt, and the skills and commands in its
-`profile.yml` are part of every profile. That `profile.yml` is optional and
+`coco_desktop_profile.yml` are part of every profile. That `coco_desktop_profile.yml` is optional and
 accepts only `skills:` and `commands:`. A profile that lists a shared skill or
 command again gets a warning (`SST-VAL845`).
 
@@ -243,17 +243,17 @@ name contains `token`, `secret`, `password`, `passwd`, `api_key`, or
 ## How a profile publishes
 
 ```yaml
-profiles:
+coco_desktop_profiles:
   +database: "{{ target.database }}"
   +schema: "{{ target.schema }}"
   +stage: PROFILE_BUNDLES
   +registry_table: CORTEX_CODE.CONFIG.PROFILE_REGISTRY
-  sales-analyst:           # profiles/sales-analyst/
+  sales-analyst:           # coco_desktop_profiles/sales-analyst/
     +schema: SALES
 ```
 
 - Each profile resolves these settings through the one
-  [precedence chain](configuration.md#precedence): its `profile.yml`'s
+  [precedence chain](configuration.md#precedence): its `coco_desktop_profile.yml`'s
   `config:`, then the route that names its folder, then the root. A profile
   publishes only where `+stage` resolves for it. Like `+registry_table`, an
   unqualified name is in the profile's database and schema, which default to
@@ -329,7 +329,7 @@ per channel:
 - a skill can do both, from the same folder, or only reach Desktop through a
   profile.
 
-With none of `skills:`, `plugins:`, and `profiles:` written and no item placing
+With none of `skills:`, `plugins:`, and `coco_desktop_profiles:` written and no item placing
 itself, nothing compiles. A skill that publishes as no extension and that no
 profile reaches -- directly, through `shared/`, or through a plugin a profile
 lists -- is published nowhere, which is a warning (`SST-VAL830`).

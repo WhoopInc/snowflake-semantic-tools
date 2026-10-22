@@ -14,7 +14,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL801",
         Severity.ERROR,
-        "Skill, plugin, profile or agent folder is misnamed",
+        "Skill, plugin, profile (Desktop or CoWork) or agent folder is misnamed",
         "'{artifact}': {detail}",
         "rename the folder, keep one manifest spelling, or fix the manifest or SKILL.md name the message names",
         condition=(
@@ -198,7 +198,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL823",
         Severity.ERROR,
-        "Profile content hash does not cover every shipped tree",
+        "Desktop profile content hash does not cover every shipped tree",
         "skill '{artifact}': hash omits {value}",
         "include every shipped tree in the hash",
         condition=(
@@ -476,7 +476,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL854",
         Severity.INFO,
-        "Profile registry is not the one Desktop reads",
+        "Desktop profile registry is not the one Desktop reads",
         "profiles publish to {value}; CoCo Desktop reads only {expected}",
         "point profiles.+registry_table at the Desktop registry to publish for real, or keep this for rehearsal",
         condition=(

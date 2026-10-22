@@ -69,20 +69,28 @@ class Container(Artifact):
 
 def test_an_error_in_something_an_artifact_carries_keeps_the_artifact_back() -> None:
     compiled = (
-        Container("profile:analyst", contained_keys=("profile:shared", "skill:a", "command:daily")),
-        Container("profile:operator", contained_keys=("profile:shared", "plugin:kit")),
+        Container(
+            "coco_desktop_profile:analyst", contained_keys=("coco_desktop_profile:shared", "skill:a", "command:daily")
+        ),
+        Container("coco_desktop_profile:operator", contained_keys=("coco_desktop_profile:shared", "plugin:kit")),
         Container("plugin:kit", contained_keys=("skill:b",)),
         Artifact("skill:b"),
     )
     command_error = D("SST-VAL859", subject="command:daily", artifact="daily", detail="bad")
     split = partial_split(CompileResult(compiled, DiagnosticBag((command_error,))))  # type: ignore[arg-type]
     assert split is not None
-    assert [item.artifact_key for item in split.healthy.compiled] == ["profile:operator", "plugin:kit", "skill:b"]
-    assert split.excluded == ("command:daily", "profile:analyst")
+    assert [item.artifact_key for item in split.healthy.compiled] == [
+        "coco_desktop_profile:operator",
+        "plugin:kit",
+        "skill:b",
+    ]
+    assert split.excluded == ("coco_desktop_profile:analyst", "command:daily")
 
     member_error = D("SST-VAL808", subject="skill:b", artifact="b", path="x.md")
     split = partial_split(CompileResult(compiled, DiagnosticBag((member_error,))))  # type: ignore[arg-type]
-    assert split is not None and [item.artifact_key for item in split.healthy.compiled] == ["profile:analyst"]
+    assert split is not None and [item.artifact_key for item in split.healthy.compiled] == [
+        "coco_desktop_profile:analyst"
+    ]
 
 
 def test_a_semantic_view_member_error_stops_the_split_and_says_why() -> None:
