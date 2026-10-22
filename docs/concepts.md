@@ -16,7 +16,7 @@ An **artifact** is one thing SST publishes and tracks. There are eight types:
 | `coco_desktop_profile` | `coco_desktop_profile.yml` | a CoCo Desktop profile: stage trees and one registry row |
 | `agent` | `agent.yml` | a Cortex Agent |
 | `cowork_profile` | `cowork_profile.yml` | a Snowflake CoWork profile: an AGENT with an `agent_router` tool ([Snowflake private preview](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles)) |
-| `eval` | the dataset and config files an agent's `evals:` names | an evaluation table, dataset, and run configuration |
+| `eval` | the dataset and config files an agent's or CoWork profile's `evals:` names | an evaluation table, dataset, and run configuration |
 
 Every command works on the same set, in the same order: an artifact is always
 published after the artifacts it depends on, so a view exists before the agent
@@ -39,7 +39,8 @@ flowchart LR
     cowork_profile -.->|pins the version of| skill
     cowork_profile -.->|pins the version of| plugin
     evals["eval (400)"] --> agent
-    profile["profile (270)"]
+    evals --> cowork_profile
+    coco_desktop_profile["coco_desktop_profile (270)"]
 ```
 
 Drawn from: [registry.py](../snowflake_semantic_tools/domain/model/registry.py).
@@ -59,7 +60,7 @@ Drawn from: [order.py](../snowflake_semantic_tools/domain/plan/order.py), [prune
 
 An artifact is identified by its **key**, `<type>:<name>`, such as
 `semantic_view:jaffle_sales` or `agent:jaffle_analytics_agent`; an eval takes
-its agent's name. The key never names a database or schema: the target being
+its agent's (or CoWork profile's) name. The key never names a database or schema: the target being
 built decides where the object lands, so the same key is a different object in
 each target.
 
@@ -166,8 +167,8 @@ semantic_views:
 ```
 
 Keys that start with `+` set a default for everything below them. In every
-artifact block -- `semantic_views:`, `tools:`, `agents:`, `evals:`, `skills:`,
-`plugins:` and `coco_desktop_profiles:` -- an unprefixed key names a folder below that
+artifact block -- `semantic_views:`, `tools:`, `agents:`, `cowork_profiles:`, `evals:`,
+`skills:`, `plugins:` and `coco_desktop_profiles:` -- an unprefixed key names a folder below that
 type's directory (for views, below `semantic_views/` in the semantic models
 directory), and its `+` keys apply to what is in that folder (`SST-CFG041` when
 the folder does not exist). An artifact's own `config:` block overrides every
@@ -433,8 +434,8 @@ service -- and verifies them afterwards. `plan` warns of the grants a replace
 would drop (`SST-PLN013`).
 
 `--prune` extends a plan to managed artifacts whose source was deleted. What
-happens depends on the type: semantic views and agents are dropped, and
-profiles are deactivated. Skills, plugins, and evals are **report-only**: the
+happens depends on the type: semantic views, agents, and CoWork profiles are
+dropped, and CoCo Desktop profiles are deactivated. Skills, plugins, and evals are **report-only**: the
 plan lists them (`SST-PLN034`, an info diagnostic), but they are never removed,
 because an agent elsewhere may still pin a version, or a run or baseline may
 still reference an evaluation. A report-only prune never makes `--strict` fail.
@@ -541,13 +542,13 @@ longer renders:
 ```mermaid
 flowchart TD
     gone["an artifact the project no longer renders"] --> which{"its type"}
-    which -->|"semantic_view or agent"| mark{"SST ownership marker?"}
+    which -->|"semantic_view, agent or cowork_profile"| mark{"SST ownership marker?"}
     mark -- no --> s3["skipped: SST-PLN003"]
     mark -- yes --> agree{"state recorded exactly this object?"}
     agree -- no --> s4["skipped: SST-PLN004"]
     agree -- yes --> drop["PRUNE: dropped"]
     which -->|"skill, plugin or eval"| report["PRUNE, report-only: SST-PLN034"]
-    which -- profile --> deactivate["PRUNE: its row deactivated"]
+    which -- coco_desktop_profile --> deactivate["PRUNE: its row deactivated"]
     which -- tool --> kept["never pruned"]
 ```
 

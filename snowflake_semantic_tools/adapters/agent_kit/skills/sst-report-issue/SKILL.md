@@ -58,7 +58,8 @@ connected command the user ran. Confirm it fails the same way before writing any
   `authentication` line of `sst debug --no-connect`.
 - The failing command, its exit code, and its `-o json` output. For an `SST-INT` or
   `SST-SNO` code, keep each diagnostic's `internal_detail`: it is what the maintainers need.
-- The diagnostics of the run, as `sst_target/run_log.jsonl` recorded them.
+- For an `SST-SNO` code, the matching `sst_target/run_log.jsonl` lines (one per Snowflake
+  refusal: the command and the code only).
 - For a Snowflake refusal, `sst debug --snowflake-signatures`.
 - Where in SST it happens: `sst explain <CODE>` lists, under `raised from:`, the package
   modules that raise a code. The installed source can be read, never edited, to cite the

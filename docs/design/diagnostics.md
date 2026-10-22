@@ -21,7 +21,7 @@ that applies to many artifact types is one code with the artifact in the diagnos
 "a name declared twice" is `SST-VAL001` for a view, a metric, or an agent alike. Each diagnostic
 reports its area, in lowercase, as its `phase`, and the error reference has one section per area:
 registry, configuration, discovery, parsing, loading, references, membership, validation, dbt,
-rendering, manifest and state, planning, apply, Snowflake, external systems, and internal.
+rendering, manifest and state, planning, apply, unpublished runs, Snowflake, external systems, and internal.
 
 `VAL` is the largest area, so its hundreds digit is a band, and each band is its own module, but
 for `VAL7xx` and `VAL8xx`, which two modules each share by range:

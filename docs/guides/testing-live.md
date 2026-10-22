@@ -145,7 +145,7 @@ poetry run pytest -m live tests/contract_live tests/integration tests/e2e
 ### What they write, and where
 
 Every live run creates its own schemas in `DATABASE`, named
-`SST_IT_<UTC timestamp>_<run>_<worker><label>` and commented
+`SST_IT_<UTC timestamp>_<run>_<worker>` and commented
 `sst test suite scratch schema, dropped by its run or by the sweep`, and drops them when the
 session ends. Everything the tests create -- tables, semantic views, SST's state table -- is
 inside those schemas, and the `sst` runs they start publish only there, because the generated

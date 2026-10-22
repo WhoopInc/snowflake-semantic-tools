@@ -154,7 +154,7 @@ takes only the functions listed, as many times as it needs:
 | The file a routine's `tool.body` names | one-argument `ref`, `source`, `var`; see [Routine bodies](#routine-bodies) |
 | `verified_query.sql`, written inline | `ref`, `metric`, `var` |
 | A custom instruction's text | `filter`, `relationship`, `verified_query` |
-| Any value in `sst_config.yml` | `{{ target.database }}`, `{{ target.schema }}`, `{{ target.warehouse }}`; a `tool()` there must name a declared member (`SST-CFG017`) |
+| Any value in `sst_config.yml` | `{{ target.database }}`, `{{ target.schema }}`, `{{ target.warehouse }}`; outside `vars:`, `{{ var() }}` and a target conditional (see [Configuration](configuration.md#locations-and-targets)); a `tool()` there must name a declared member (`SST-CFG017`) |
 
 ## Files
 

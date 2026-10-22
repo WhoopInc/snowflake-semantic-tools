@@ -56,7 +56,7 @@ Populate the template fields based on the user's input and context. Use the corr
 After user approval:
 ```bash
 gh issue create --repo WhoopInc/snowflake-semantic-tools \
-  --title "<prefix> <concise description>" \
+  --title "<prefix><concise description>" \
   --label "<label>" \
   --body "<filled-in template body>"
 ```

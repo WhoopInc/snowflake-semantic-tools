@@ -287,7 +287,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "generation.threads",
         _I,
-        "Sessions `plan`, `validate` and `test` work on at once, and changes `apply` applies at once, unless "
+        "Sessions `plan`, `validate`, `diff`, `state recover` and `test` work on at once, and changes "
+        "`apply` applies at once, unless "
         "`--threads` or `$SST_THREADS` says. Unset, applying takes `skills.+threads` first, and `test` takes 1.",
         default=str(DEFAULT_THREADS),
         minimum=1,

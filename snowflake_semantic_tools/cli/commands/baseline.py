@@ -119,7 +119,7 @@ def add_command(
     removed, and a diagnostic already recorded, or sharing its fingerprint with another current
     one, is not added. A new file expires in --expires-in days; an existing one keeps its date,
     which only `renew` moves. --all-warnings asks first when there are warnings to add, on a
-    terminal; off one (stdin and stderr must both be terminals), or with --output json, it needs
+    terminal; off one (stdin and stderr must both be terminals), or with --output json or agent, it needs
     --yes.
 
     Exit 0 when the file is written, even with nothing added; 1 when CODE is an error or
@@ -131,7 +131,7 @@ def add_command(
         SST-PRT100: no CODE and no --all-warnings, or CODE is not registered; raised. Also, at
             exit 1, CODE cannot be baselined.
         SST-PRT104: CODE and --all-warnings were both given; raised.
-        SST-PRT109: --all-warnings without --yes off a terminal, or with --output json; raised.
+        SST-PRT109: --all-warnings without --yes off a terminal, or with --output json or agent; raised.
     """
     wanted = _wanted_code(code, all_warnings)
     if wanted is not None and (refusal := baseline_refusal(wanted)) is not None:

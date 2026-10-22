@@ -32,7 +32,7 @@ We use GitHub issue templates to help structure your report. When you [create a 
 >
 > **Expected**: `{{ ref('orders') }}` in a view's `tables:` resolves; `dbt ls --select orders` lists the model.
 >
-> **Actual**: `error[SST-REF001]: {{ ref('orders') }} is not a model in the dbt manifest`, exit code 1.
+> **Actual**: `error[SST-REF001]: {{ ref('orders') }} is not a model, snapshot or seed in the dbt manifest`, exit code 1.
 >
 > **Steps to Reproduce**: 1. Add the view in `semantic_models/semantic_views/sales.yml`. 2. Run `sst validate --no-snowflake-syntax-check`.
 >
@@ -143,7 +143,7 @@ poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch --cov-repor
 poetry run mypy snowflake_semantic_tools tests   # strict = true in pyproject.toml
 poetry run ruff format --check snowflake_semantic_tools/ tests/
 poetry run ruff check snowflake_semantic_tools/ tests/
-poetry run lint-imports         # the eight ring-boundary contracts
+poetry run lint-imports         # the nine import contracts
 poetry run sst docs --check     # generated reference pages are current (exit 2 when not)
 poetry run bandit -r snowflake_semantic_tools -ll
 poetry run pip-audit --skip-editable --progress-spinner off   # needs to reach the vulnerability database
@@ -193,7 +193,9 @@ A semgrep false positive is silenced on its line with `# nosemgrep: <rule-id>` a
 saying why.
 
 `.pre-commit-config.yaml` runs a fast subset on each commit, from the project's own virtualenv
-(every hook is `language: system`, so the tools are the versions `poetry.lock` pins): ruff format
+(every local hook is `language: system`, so ruff, mypy, import-linter, sst, and pytest are the
+versions `poetry.lock` pins; the whitespace, end-of-file, YAML, and large-file hooks come from
+`pre-commit-hooks` v5.0.0): ruff format
 `--check` and ruff check on the staged files, mypy, `lint-imports`, `sst docs --check`, and
 `pytest -q -n auto tests/unit/domain tests/codes`, plus whitespace, end-of-file, YAML, and
 large-file checks. It is not the gate: run the whole list above before you open a pull request.
@@ -380,7 +382,7 @@ A pipeline branches on the exit code without reading the output, so each code ha
 | 3 | The command line is refused. |
 | 4 | The project, its configuration, or a saved plan cannot be used. |
 | 5 | Snowflake would not cooperate: a rejected credential (SST-PRT002), a failed or dropped connection (SST-PRT001), a refused privilege, or a missed deadline. |
-| 130 | The run was interrupted (Ctrl-C, SIGTERM, SIGHUP) or a confirmation was declined. |
+| 130 | The run was interrupted (Ctrl-C, SIGTERM, SIGHUP, end of input) or a confirmation was declined. |
 
 - **2 reports a difference; it is not a failure.** A command that asserts never returns it: `validate` and `test` exit 1 when an assertion fails, a failed smoke probe or eval included. `--no-detailed-exitcode` turns 2 into 0 on `plan`, `diff`, `enrich`, `format`, and `docs`.
 - **Usage errors exit 3, not click's default 2**, so 2 always means a difference. `cli/group.py` sets the exit code of click's usage errors to 3 and reports each as a diagnostic; a bad value read from an environment variable is a configuration error, exit 4, since the command line itself was fine.

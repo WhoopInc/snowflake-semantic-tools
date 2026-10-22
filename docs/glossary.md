@@ -51,8 +51,8 @@ where it is explained.
   compares with state to decide whether it changed. See
   [terms used in the code](concepts.md#terms-used-in-the-code).
 - **Folder route.** An unprefixed key under an artifact block of
-  `sst_config.yml` -- `semantic_views:`, `tools:`, `agents:`, `evals:`,
-  `skills:`, `plugins:`, or `coco_desktop_profiles:` -- that names a folder, whose `+` keys
+  `sst_config.yml` -- `semantic_views:`, `tools:`, `agents:`, `cowork_profiles:`,
+  `evals:`, `skills:`, `plugins:`, or `coco_desktop_profiles:` -- that names a folder, whose `+` keys
   apply to what is in it. See
   [folder routes](guides/configuration.md#folder-routes).
 - **Key.** An artifact's or member's identity, `<type>:<name>`, such as
@@ -100,8 +100,9 @@ where it is explained.
   [precedence](guides/configuration.md#precedence).
 - **Skill.** A `SKILL.md` folder SST publishes as a version of a skill-type
   Cortex Extension. See [skills](guides/skills.md).
-- **Smoke suite.** The part of `sst test` that checks deployed objects exist as
-  planned. See [`sst test`](reference/cli.md#sst-test).
+- **Smoke suite.** The part of `sst test` that proves SST owns each published
+  object, then queries each published view, its metrics, and its verified
+  queries. See [`sst test`](reference/cli.md#sst-test).
 - **State.** The table, `SST_STATE` by default, in which apply records what it
   published to a target. See [state and ownership](concepts.md#state-and-ownership).
 - **Strict.** `--strict` or `validation.strict: true`, which promotes every

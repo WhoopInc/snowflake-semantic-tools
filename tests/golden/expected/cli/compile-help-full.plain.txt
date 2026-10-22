@@ -48,8 +48,7 @@ Options:
                                manifest still holds everything.
   --partial                    Go ahead with every artifact that has no errors
                                and depends on nothing that does; still exits 1
-                               while errors remain. Cannot be combined with
-                               `--prune`.
+                               while errors remain.
   -h, --help                   Show this message and exit.
 
 Global options:
@@ -99,7 +98,7 @@ Global options:
                                   `$DBT_PROFILES_DIR`, the project root, and
                                   `~/.dbt`. The first that has one wins.
   --manifest FILE                 Read this dbt `manifest.json` instead of
-                                  running `dbt parse`.
+                                  running dbt (`dbt.command`).
   --allow-unsupported-manifest-schema
                                   Read a dbt manifest of an unsupported schema
                                   version, for this run only.

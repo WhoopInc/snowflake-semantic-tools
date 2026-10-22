@@ -222,7 +222,7 @@ the rest of `SKILL.md`, so a `config:` there is part of the bundle's content.
   with no `+bundle_stage` does not publish.
 - The top-level `extensions:` block names extensions this project consumes but
   does not publish; see the [agents guide](agents.md#skills).
-- `sst list skill --long` prints each skill's settings and where each came
+- `sst list skills --long` prints each skill's settings and where each came
   from.
 
 ## Publishing
@@ -260,7 +260,7 @@ SST never grants, un-certifies, or changes the discoverability of an
 extension, and a prune never drops one; access to extensions is managed outside
 SST. With `--prune`, a skill whose folder was deleted is only reported
 (`SST-PLN034`), naming the command that removes it once nothing uses it:
-`sst drop <name> --type skill --target <target> --yes`, which drops the
+`sst drop <DB>.<SCHEMA>.<EXTENSION> --type skill --target <target> --yes`, which drops the
 extension only while state records it at a version it still lists, and forgets
 it. The next `apply --prune` forgets one already gone, dropped by hand
 included (`SST-VAL861`), so a later extension of that name is never taken for

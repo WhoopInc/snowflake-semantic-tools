@@ -32,7 +32,7 @@ current forms.
 | `sst generate --dry-run` | `sst plan`, with `--sql-out <dir>` for the statements, or `sst compile --emit-ddl <dir>` for DDL offline |
 | `--only-modified` | `--select state:modified --state <dir>` on `plan` and `apply` |
 | `--skip-validation` | `--no-validate` on `plan` and `apply` |
-| `--defer-target`, `--no-defer` | unchanged, on `validate`, `compile`, `plan` and `apply`, with the `defer:` keys |
+| `--defer-target`, `--no-defer` | unchanged, on `validate`, `compile`, `list`, `lineage`, `plan`, `apply` and `test`, with the `defer:` keys |
 | `--db`, `--schema` (where views publish) | `+database` and `+schema` in `sst_config.yml` |
 | `--views` / `-v`, `--view` | `--select`; `-v` is now `--verbose` |
 | `--models` / `-m` | `--select`, with `--exclude` |
@@ -57,8 +57,9 @@ command that does not take them, and `--prune` on `sst drop`. The short options 
 to write instead, naming only flags the command takes. A command without
 `--schema` or `--database` points `-s` or `-d` at the `+schema` or `+database`
 key in `sst_config.yml`, which now chooses where artifacts publish. `sst plan` and `sst apply` read the manifest `sst compile` writes, and
-refuse without one (`SST-MAN001`). New in 1.0 are `sst migrate split`,
-`sst migrate refs`, `sst baseline`, `sst test`, `sst explain` and `sst docs`. The
+refuse without one (`SST-MAN001`). New in 1.0 are `sst plan`, `sst apply`,
+`sst migrate split`, `sst migrate refs`, `sst baseline`, `sst lineage`, `sst test`,
+`sst ask`, `sst explain`, `sst docs`, `sst state` and `sst agent-kit`. The
 [CLI reference](../reference/cli.md) lists every 1.0 command and flag.
 
 ## Where `profiles.yml` and `sst_config.yml` are found
@@ -234,6 +235,10 @@ After both commands, these are yours to review:
   with them.
 - **Comments.** A comment that described a list, a group or a moved key now sits
   above a member or a `config:` key; reword what no longer reads right.
+- **YAML anchors and merge keys in SST's own files.** SST 1.0 refuses an anchor
+  (`&name`), an alias (`*name`) and a merge key (`<<:`) in `sst_config.yml` and
+  the semantic-model YAML (`SST-LOD013`, `SST-LOD014`). Expand each into the
+  values it stands for.
 - **Everything reported on stderr**, and the 0.3 spellings below.
 
 ## Spellings that changed
@@ -282,9 +287,9 @@ snapshot counts.
   `validation.verbose` or `enrichment.generate_synonyms`, is an unknown key: a
   warning (`SST-CFG003`), and an error under `--strict`.
 - These keep their 0.3 meaning: `validation.exclude_dirs`, `validation.strict`,
-  `validation.snowflake_syntax_check`, `defer.target`, `defer.state_path`,
+  `defer.target`, `defer.state_path`,
   `defer.auto_compile`, `generation.threads` (how many Snowflake sessions
-  `plan`, `apply` and `test` work on at once, unless `--threads` or
+  `plan`, `validate`, `apply` and `test` work on at once, unless `--threads` or
   `SST_THREADS` says), `generation.view_timeout`, and the `enrichment:` limits
   and model.
 
@@ -307,9 +312,10 @@ was shipping silently:
 - **`validation.strict: true` is enforced.** In 0.3 the key had no effect on
   deploys. Turning it on promotes every accumulated warning at once, so read the
   warnings first.
-- **`validation.snowflake_syntax_check` defaults to `true`,** so `validate`
-  compiles expressions against Snowflake unless you pass
-  `--no-snowflake-syntax-check` or set the key to `false`.
+- **`validation.snowflake_syntax_check` must be written out** (`SST-CFG031`).
+  0.3 treated an unset key as `false`; 1.0 refuses to guess, so state it.
+  `sst init` writes `true`, under which `validate` compiles expressions against
+  Snowflake unless you pass `--no-snowflake-syntax-check`.
 - **A metric a view cannot hold is reported, not skipped.** 0.3 left out of a
   view, with only a debug log line, a metric whose expression names a table the
   view does not hold; 0.3.2 also left out a metric whose `using_relationships`

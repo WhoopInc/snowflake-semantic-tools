@@ -153,6 +153,7 @@ a mistyped route cannot quietly route nothing.
 | `evals` | `agents_dir/` | its agent's folder |
 | `skills` | `skills_dir/` | the skill's own folder |
 | `plugins` | `plugins_dir/` | the plugin's own folder |
+| `cowork_profiles` | `cowork_profiles_dir/` | the profile's own folder |
 | `coco_desktop_profiles` | `coco_desktop_profiles_dir/` | the profile's own folder |
 
 ```yaml
@@ -178,7 +179,7 @@ for the group, keeps its old `tools.<group>` keys as they were.
 ## Precedence
 
 Every setting of an artifact -- a semantic view, a tool member, an agent, a
-skill, a plugin, a profile, or an eval -- resolves through one chain, the same
+skill, a plugin, a CoCo Desktop profile, a CoWork profile, or an eval -- resolves through one chain, the same
 for every key and every type, closest first:
 
 1. the artifact's own `config:` block;
@@ -253,19 +254,23 @@ artifact's, so no artifact lists it.
 | `validation` | `strict` promotes warnings to errors; `snowflake_syntax_check` compiles expressions against Snowflake and runs each allowed orchestration model in a throwaway agent; `description_floor` and `instruction_budget` bound descriptions and instructions; `exclude_dirs` skips directories during discovery. |
 | `diagnostics` | `severity_overrides`: the severity a code reports at; see [below](#severity-overrides). |
 | `enrichment` | What `sst enrich` samples and asks Cortex for, and whether it may read row data at all. |
-| `generation` | How many Snowflake sessions `plan`, `apply`, and `test` use, and how long one statement may run. |
+| `generation` | How many Snowflake sessions `plan`, `validate`, `apply`, and `test` use, and how long one statement may run. |
 | `dbt` | Whether SST runs dbt, which command writes the manifest, and which manifest schema versions it reads. |
 | `defer` | The target whose relations dbt objects resolve to while publishing to `--target`. |
 | `vars` | Values `{{ var() }}` substitutes, in authored files and in this one, and in an agent's `extension()` version. |
 | `tags` | Tags `{{ tag() }}` resolves, by `fqn:` or by `default_prefix`; an entry with neither, or a dotted key without `fqn:`, is an error (`SST-CFG036`). |
 | `state` | Where the state table lives (default `SST_STATE` in the target's database and schema). |
+| `governance` | Which Snowflake column tags make a column sensitive, and whether `enrich` and connected `validate` read them; see [governance tags](enrich.md#governance-tags). |
 | `semantic_views`, `tools`, `agents` | Location and defaults for each type. |
+| `cowork_profiles` | Location and defaults for Snowflake CoWork profiles (a private preview); see [CoWork profiles](cowork-profiles.md). |
 | `evals` | Defaults for evaluations; never a location, because evals publish into their agent's schema. |
 | `skills`, `plugins` | Where each skill and plugin publishes as a Cortex Extension, if `+bundle_stage` resolves for it; see [skills](skills.md) and [plugins and profiles](plugins-and-coco-desktop-profiles.md). |
-| `profiles` | Where each CoCo Desktop profile publishes, if `+stage` resolves for it; see [plugins and profiles](plugins-and-coco-desktop-profiles.md). |
+| `coco_desktop_profiles` | Where each CoCo Desktop profile publishes, if `+stage` resolves for it; see [plugins and profiles](plugins-and-coco-desktop-profiles.md). |
 | `extensions` | Extensions this project consumes but does not publish, which `{{ extension() }}` names. |
 | `apply` | The stages apply uploads agent specs and eval configs through, and whether it stops at the first failure. |
 | `snowflake` | Allowlists, such as the orchestration models agents may name. |
+| `ask` | Whether `sst ask` keeps transcripts, and its color theme; see [asking an agent](ask.md). |
+| `plan` | `drift_check`: which live properties `plan` compares to find a hand edit (`SST-PLN014`). |
 
 ## Severity overrides
 
@@ -328,6 +333,8 @@ when it is set, it must match `dbt_project.yml`'s `profile:`.
 | `SST_OUTPUT` | `--output` |
 | `SST_LOG_LEVEL` | `--log-level` |
 | `SST_NO_COLOR` | `--no-color` |
+| `SST_COLOR` | `--color` |
+| `SST_ASK_THEME` | `sst ask --theme` |
 
 A flag on the command line wins over its variable, and the variable over the
 configuration key it stands for, such as `generation.threads` or

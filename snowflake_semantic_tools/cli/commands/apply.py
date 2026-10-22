@@ -149,7 +149,7 @@ def apply(
     """Apply a current reviewed plan; smoke probes never run here.
 
     Without --plan, apply plans afresh as `sst plan` does, prints the plan, and asks before it
-    writes; --yes skips the question, and is required with --prune, with --output json, and
+    writes; --yes skips the question, and is required with --prune, with --output json or agent, and
     whenever stdin or stderr is not a terminal, which apply refuses before it plans. The plan it
     asks about shows what each update changes, member by member, as `sst plan` does; with --yes
     nothing is shown, so those definitions are not read.
@@ -172,7 +172,7 @@ def apply(
     130 when the question is declined or the run is interrupted.
 
     Diagnostics:
-        SST-PRT109: --prune or --output json without --yes, or no terminal to ask on; raised.
+        SST-PRT109: --prune or --output json or agent without --yes, or no terminal to ask on; raised.
         SST-PRT107: the run was interrupted while its changes ran.
         SST-PRT104: --partial with --prune, or --no-validate with --snowflake-syntax-check; raised.
         SST-APL005: the saved plan was made for another target.

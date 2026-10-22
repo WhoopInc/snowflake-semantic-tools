@@ -191,9 +191,12 @@ warnings cannot be baselined. The file expires
 removes the entries nothing matches any more, and `--no-baseline` ignores the
 file for one run.
 
-## Template: a consumer project's deploy workflow
+## Example: a GitHub Actions deploy workflow
 
-> **A template for the repository that holds your dbt project.** It is not this repository's CI,
+> **An example, for a project whose CI is GitHub Actions.** SST needs no particular CI system:
+> any runner that can run the commands in [On every pull request](#on-every-pull-request) and
+> [On merge](#on-merge) works, and the notes after the workflow apply to every one of them. It is
+> not this repository's CI,
 > and nothing here runs it. The project that publishes to production owns its deploys: copy the
 > file to `.github/workflows/semantic-layer.yml` there and adjust the names.
 

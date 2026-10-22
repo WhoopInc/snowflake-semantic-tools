@@ -193,7 +193,7 @@ Drawn from: [plan preflight](../../snowflake_semantic_tools/domain/plan/prefligh
   name. Check the spelling against the folder name.
 - **`SST-VAL856`**: the skill exists but has no version to publish. The message
   names the cause: the skill has its own errors, or no `+bundle_stage` resolves
-  or incomplete.
+  for it.
 - **`SST-VAL838`**: the reference sets `version:`. Remove it; SST pins project
   skills itself.
 
@@ -278,8 +278,10 @@ and `plan` exits 0 from then on.
 
 - **`SST-CFG048`**: a field SST does not read, often a misspelled credential
   field such as `private_key_pth`.
-- **`SST-CFG049`**: a template other than `env_var()`, such as `| as_number`, or
-  a number or boolean that is not one.
+- **`SST-CFG049`**: a template other than `env_var()` (with or without dbt's
+  `as_number`, `as_bool`, `as_native` or `as_text` filter), such as
+  `{{ var() }}` or `{% if %}`, or a number or boolean field that holds something
+  else.
 - **`SST-CFG050`**: `oauth_client_id` and `oauth_client_secret` (use an access
   token in `token`), a key set both inline and as a file, or a key that cannot
   be read.

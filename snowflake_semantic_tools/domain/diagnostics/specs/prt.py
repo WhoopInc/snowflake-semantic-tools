@@ -238,10 +238,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Mandatory confirmation flag absent",
         "{command} requires --yes",
         "re-run with --yes; sst apply and sst baseline add --all-warnings ask instead only when stdin and "
-        "stderr are both terminals and the output is not JSON",
+        "stderr are both terminals and the output is not JSON or agent",
         condition=(
             "a command that needs confirmation runs without --yes: `sst drop`, `apply --prune`, "
-            "`--output json` with `apply` or `baseline add --all-warnings`, or either of those two "
+            "`sst state unlock`, `--output json` or `agent` with `apply` or `baseline add --all-warnings`, "
+            "`state convert` or `state recover` off a terminal, or either of those two "
             "when stdin or stderr is not a terminal, so no question could be seen and answered"
         ),
     ),

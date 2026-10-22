@@ -54,7 +54,7 @@ Read the diff carefully. Focus on:
 - `--output json` prints exactly one envelope on stdout; exit codes match `docs/reference/cli.md`
 
 **Architecture**
-- Rings: `cli` → (`app` | `adapters`) → `domain`, with `app` and `adapters` independent. `lint-imports` checks the eight contracts in `pyproject.toml` and catches crossing imports; also look for I/O or SDK use hidden behind a helper in `domain/` or `app/`
+- Rings: `cli` → (`app` | `adapters`) → `domain`, with `app` and `adapters` independent. `lint-imports` checks the nine contracts in `pyproject.toml` and catches crossing imports; also look for I/O or SDK use hidden behind a helper in `domain/` or `app/`
 - The package root gains nothing beside `__init__.py`, `_version.py`, and the four rings, and `__init__.py` exports nothing but `__version__`: there is no Python API
 - Where code belongs: commands and options in `cli/`; use cases in `app/`; YAML, dbt, Snowflake, and filesystem access in `adapters/`, behind a port in `domain/ports/`; rules, rendering, reference resolution, plan diffing, and state in `domain/`, by stage (`parse`, `resolve`, `validate`, `render`, `plan`, `state`), with `domain/model` holding data types only and a use case typed with the narrowest Snowflake port role it calls
 - Tests use real in-memory ports (`tests/helpers/app_ports.py`, `tests/helpers/snowflake_fake/`), not mocks, and nothing outside the `live` marker reaches the network

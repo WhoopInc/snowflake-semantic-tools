@@ -93,7 +93,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Selector matched nothing",
         "--select {selector} matched no artifact",
         "widen the selector, or check the artifact name",
-        condition="a `--select` value matches no artifact; `state:` selectors are not checked",
+        condition=(
+            "a `--select` value matches no artifact, or an `sst enrich` selector or PATH matches no "
+            "dbt model; `state:` selectors are not checked"
+        ),
     ),
     spec(
         "SST-DIS011",

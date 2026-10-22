@@ -53,13 +53,17 @@ because it needs no warehouse, so everything up to `sst compile` stays offline;
 
 Before dbt runs, `parse_project` refuses a `packages.yml` whose packages are not
 installed under `packages-install-path` (`SST-DBT026`). It then asks `dbt --version` which
-installation it is; that answer is cached in `sst/dbt_installation.json` under
-dbt's target path, keyed by the executable's path, its resolved file, that
+installation it is; that answer is cached in `sst_target/dbt_installation.json`, SST's own build
+directory beside dbt's target path, keyed by the executable's path, its resolved file, that
 file's size and modification time, and SST's version. Finally it runs:
 
 ```bash
-dbt parse --project-dir <project> --profiles-dir <dir> [--target <target>] [--target-path <dir>]
+dbt <parse|compile> [--write-json] --project-dir <project> --profiles-dir <dir> [--target <target>] [--target-path <dir>]
 ```
+
+`dbt.command` chooses `parse` or `compile`. `--write-json` is passed only to an
+installation SST identified as dbt Core or dbt v2, so a no-JSON setting cannot
+hide the manifest.
 
 The sequence shows those steps and the diagnostic each can stop with.
 

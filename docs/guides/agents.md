@@ -93,8 +93,11 @@ Under `spec:`:
 
 - `instructions`, `tools`, and `skills` are described below.
 - `passthrough` holds keys SST does not model; they are added to the rendered
-  spec last, unchecked, and reported (`SST-PRS024`). A key SST renders itself
-  is an error there (`SST-PRS023`).
+  spec last, unvalidated, and reported (`SST-PRS024`, and `SST-VAL014` once per
+  agent). With `snowflake.allow_unknown_keys: false`, each such key is an error
+  instead (`SST-VAL013`), as are a tool's `passthrough` and
+  `tool_spec_passthrough` keys. A key SST renders itself is an error there
+  (`SST-PRS023`).
 
 An agent with only a `name:` is valid. Its spec holds only what the `agents:`
 settings supply, and with no tools it is a warning (`SST-RND010`).

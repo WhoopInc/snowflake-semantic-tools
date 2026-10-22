@@ -158,7 +158,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "wait for the other run to end; once its lock has expired, re-run with --break-stale-lock, or, "
         "when that run will never end, release it with `sst state unlock --run <run id> --yes`",
         condition=(
-            "another run (`apply`, `drop`, or the eval suite of `sst test`) holds the target's run "
+            "another run (`apply`, `drop`, `state recover`, or the eval suite of `sst test`) holds the target's run "
             "lock, in Snowflake or in the local cache; or the lock expired and "
             "`--break-stale-lock` was not given; or this run lost its lock while it ran"
         ),

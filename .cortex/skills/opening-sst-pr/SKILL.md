@@ -84,7 +84,7 @@ After creation, confirm the title starts with a valid ticket reference:
 ```bash
 gh pr view <pr-number> --repo WhoopInc/snowflake-semantic-tools --json title --jq '.title'
 ```
-If it doesn't match, update it:
+If it doesn't match, show the user the corrected title and update it only after they approve:
 ```bash
 gh pr edit <pr-number> --repo WhoopInc/snowflake-semantic-tools --title "[SST-<issue#>] <description>"
 ```
@@ -102,6 +102,7 @@ gh pr edit <pr-number> --repo WhoopInc/snowflake-semantic-tools --title "[SST-<i
 
 - ✋ Step 4: Before committing and pushing (get user approval)
 - ✋ Step 5: Before creating the PR (confirm title, base branch, and body with user)
+- ✋ Step 6: Before editing the PR title (confirm the corrected title with user)
 
 ## Output
 

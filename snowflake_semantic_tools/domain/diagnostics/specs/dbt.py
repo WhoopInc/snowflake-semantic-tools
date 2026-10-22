@@ -175,7 +175,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "auto_compile requested under an installation that cannot compile a non-default target",
         "defer.auto_compile is true under {found}",
-        "use state_path instead",
+        "supply the manifest under `defer.state_path` instead",
         condition="`defer.auto_compile` is set while the installed dbt is the dbt Cloud CLI",
         note="The dbt Cloud CLI cannot compile a non-default target locally.",
     ),
@@ -235,10 +235,10 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-DBT028",
         Severity.ERROR,
-        "`dbt parse` exited non-zero",
-        "dbt parse exited {found}",
+        "dbt exited non-zero",
+        "dbt exited {found}",
         "read dbt's own output above; the failure is in the dbt project",
-        condition="the parse subprocess ran and reported failure",
+        condition="the dbt subprocess (`dbt.command`) ran and reported failure",
         precheck=Precheck.RUNTIME,
     ),
     spec(

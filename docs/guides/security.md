@@ -27,9 +27,12 @@ its shape and publishes it. Treat each of these like SQL you would run yourself:
 
 - `sst plan`, `sst apply`, `sst drop`, `sst state recover`, `sst state convert`, and `sst enrich`;
 - `sst validate`, unless `--no-snowflake-syntax-check` is given or
-  `validation.snowflake_syntax_check: false` is set (the default is `true`);
+  `validation.snowflake_syntax_check: false` is set (`sst init` writes `true`);
 - `sst test` with `--suite smoke` or `--suite evals`, and `sst test` with no `--suite`, which
   runs every suite that applies, the connected ones included, once `sst compile` has run;
+- `sst ask`, which also creates scratch copies of the edited views and tools and
+  runs the agent on them, with the target's role;
+- `sst state unlock`;
 - `sst debug`, unless `--no-connect` is given;
 - `sst diff` whenever either side is a dbt target, which `--to` is by default;
 - `sst baseline add --target` for a code only a connection finds, or with `--all-warnings`, and
@@ -38,7 +41,8 @@ its shape and publishes it. Treat each of these like SQL you would run yourself:
 
 A pull request from a fork can carry any SQL in its YAML, so run only the offline commands on
 it -- `sst validate --no-snowflake-syntax-check` and `sst compile` -- and give that job no
-Snowflake credentials. In GitHub Actions, trigger such jobs with
+Snowflake credentials. Whatever the CI system, a job that builds a fork's change
+must not receive the Snowflake secrets. In GitHub Actions, trigger such jobs with
 `pull_request`, which withholds repository secrets from forks, and never with
 `pull_request_target`, which runs with them.
 
@@ -227,7 +231,8 @@ before (see [state and ownership](../concepts.md#state-and-ownership)).
   [authentication](configuration.md#authentication)). Browser SSO needs someone at a browser,
   so it suits interactive use only (see
   [troubleshooting](troubleshooting.md#a-command-hangs-while-signing-in)).
-- **Pin what CI runs.** Install SST at an exact version, pin each action by commit SHA, and
+- **Pin what CI runs.** Install SST at an exact version, pin each third-party CI step (in
+  GitHub Actions, each action by commit SHA), and
   let a dependency bot propose updates.
 
 ## What people who use an agent need

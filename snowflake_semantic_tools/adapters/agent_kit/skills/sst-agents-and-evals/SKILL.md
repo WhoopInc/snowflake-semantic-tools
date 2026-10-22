@@ -2,7 +2,7 @@
 name: sst-agents-and-evals
 description: |-
   Use when writing or changing what SST publishes for Cortex Agents: `agent.yml` files,
-  instructions, tools, the skills and plugins an agent loads, CoCo Desktop profiles, and
+  instructions, tools, the skills and plugins an agent loads, CoWork profiles, CoCo Desktop profiles, and
   agent evals (datasets, run configuration, baselines, gates). Do NOT use for semantic views
   or their members (use sst-semantic-authoring), and do not confuse the project's published
   `skills/` folder with the coding-agent skills of this kit.
@@ -52,7 +52,7 @@ spec:
   is not rendered.
 - `config:` holds the agent's settings: the `agents:` `+` keys of `sst_config.yml` without the
   `+` (`orchestration_model`, `budget_seconds`, `budget_tokens`, `tool_not_accessible`,
-  `analytical_search`, `alias`, `secure`, `enabled`, `tags`, `warehouse`, `query_timeout`,
+  `allow_auto_model`, `analytical_search`, `alias`, `secure`, `enabled`, `tags`, `warehouse`, `query_timeout`,
   `database`, `schema`). It wins over every folder route and the block root; an absent key
   inherits, any other key is `SST-CFG053`, and a key with no value is `SST-CFG054`. Never
   write these at the top level or under `spec:` (`SST-PRS126`).
@@ -141,6 +141,14 @@ routes under those blocks name folders below `skills_dir`, `plugins_dir`, and `c
 (`SST-CFG041` for one that names none). `skills.+threads` may be set only at the root
 (`SST-CFG055`).
 
+## CoWork profiles
+
+A CoWork profile (a Snowflake private preview) is an agent that routes each question to one of
+the agents it lists as `subagents:`. Each is one folder under `project.cowork_profiles_dir`
+(`cowork_profiles` by default) holding `cowork_profile.yml`; the `cowork_profiles:` block places
+it, and it takes an `evals:` block as an agent does. Read @SST_DOCS@/guides/cowork-profiles.md
+before writing one.
+
 ## Evals
 
 An eval runs an agent against fixed questions and scores the answers. Its files live in the
@@ -169,7 +177,8 @@ evals:
   `.sst/baseline.json`. With none, the run fails (`SST-VAL758`). A new agent version, or a
   changed dataset or configuration, needs a new baseline (`SST-VAL759`), captured on purpose:
   `sst test --suite evals --capture-baseline --reason "<why>"`.
-- The eval suite needs the agent applied exactly as compiled (`SST-APL012`), and the session's
+- The eval suite needs the agent applied exactly as compiled: never published is `SST-APL036`,
+  published from an older compile `SST-APL038`, changed in Snowflake since `SST-APL012`; and the session's
   primary role to hold the task and stage privileges (`SST-VAL727`, `SST-VAL728`).
 - `sst test --suite evals --compare-models <model>,<model>` compares orchestration models on an
   eval: it commits a version of the published agent per candidate, aliased `EVAL_<MODEL>`, runs

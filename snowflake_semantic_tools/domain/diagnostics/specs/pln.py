@@ -124,9 +124,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Target schema does not exist",
         "schema {value} does not exist or is not authorised",
-        "create the schema, or correct the target",
+        "set `apply.create_schemas: true`, create the schema, or correct the target",
         condition=(
-            "the schema a planned write targets does not exist, or the role cannot see it; reported once per schema"
+            "the schema a planned write targets does not exist, or the role cannot see it, and "
+            "`apply.create_schemas` is false; reported once per schema"
         ),
         precheck=Precheck.OBSERVE,
     ),
@@ -295,7 +296,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Existing object is not managed by SST",
         "{artifact}: {value} exists without trusted SST ownership",
         "drop or rename the object by hand, or give the artifact another name; SST never takes over "
-        "an object state does not record",
+        "an object state does not record; if state was lost and the object carries SST's marker, "
+        "`sst state recover` records it",
         demotable=False,
         condition=(
             "an object holds the target name and state records no SST entry for it; `sst drop` "

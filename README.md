@@ -14,14 +14,16 @@ SST keeps a Snowflake semantic layer as code, next to the dbt models it
 describes, and publishes it the way infrastructure is published: validate
 offline, review a plan, apply exactly that plan.
 
-It publishes seven artifact types from one project:
+It publishes eight artifact types from one project:
 
 - **Semantic views**, assembled from dbt models plus metrics, relationships,
   filters, verified queries, and custom instructions written in YAML;
 - **tools** that agents call: Cortex Search services, procedures, functions, and
   stages, a routine's body naming its tables with `{{ ref() }}` as a view does;
 - **Cortex Agents**, with every tool, view, and skill they use resolved and pinned;
-- **evals** that score an agent against a fixed question set and gate a change
+- **CoWork profiles** (a Snowflake private preview): an agent that routes each
+  question to one of the agents it lists;
+- **evals** that score an agent or CoWork profile against a fixed question set and gate a change
   on the result;
 - **skills** and **plugins**, published as Cortex Extensions and versioned by
   their content;
@@ -73,8 +75,8 @@ semantic view end to end.
 | `sst docs` | Regenerate the reference pages from the engine's registries |
 | `sst clean` | Remove local build output |
 | `sst drop` | Break-glass: drop one object SST owns from one target |
-| `sst state recover` / `convert` | Repair state: record lost entries from ownership markers and content digests, or rebuild the state tables as hybrid or standard |
-| `sst agent-kit` | Install, upgrade, check, or remove skills that teach Cortex Code or Claude Code to work in an SST project |
+| `sst state recover` / `convert` / `unlock` | Repair state: record lost entries from ownership markers and content digests, rebuild the state tables as hybrid or standard, or release a named run's lock |
+| `sst agent-kit` | Install, upgrade, show the status of, or remove skills that teach Cortex Code or Claude Code to work in an SST project |
 
 Every command that reports results takes `--output json` for one machine-readable
 result on stdout.
@@ -85,7 +87,8 @@ result on stdout.
 - [Getting started](docs/getting-started.md) and [concepts](docs/concepts.md)
 - Guides: [semantic views](docs/guides/semantic-views.md),
   [enriching models](docs/guides/enrich.md),
-  [agents](docs/guides/agents.md), [evals](docs/guides/evals.md),
+  [agents](docs/guides/agents.md), [CoWork profiles](docs/guides/cowork-profiles.md),
+  [evals](docs/guides/evals.md), [asking an agent](docs/guides/ask.md),
   [skills](docs/guides/skills.md),
   [plugins and profiles](docs/guides/plugins-and-coco-desktop-profiles.md),
   [configuration](docs/guides/configuration.md),
@@ -117,7 +120,7 @@ git clone https://github.com/WhoopInc/snowflake-semantic-tools.git
 cd snowflake-semantic-tools
 
 poetry install
-poetry run pre-commit install   # optional: the CI gates on every commit
+poetry run pre-commit install   # optional: a fast subset of the gates on every commit
 
 poetry run sst --version
 poetry run pytest               # offline: no account and no dbt install needed

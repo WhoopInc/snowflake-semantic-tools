@@ -83,7 +83,7 @@ How the commands that reach Snowflake pace their work.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `generation.threads` | integer, 1 to 16 | `4` | Sessions `plan`, `validate` and `test` work on at once, and changes `apply` applies at once, unless `--threads` or `$SST_THREADS` says. Unset, applying takes `skills.+threads` first, and `test` takes 1. |
+| `generation.threads` | integer, 1 to 16 | `4` | Sessions `plan`, `validate`, `diff`, `state recover` and `test` work on at once, and changes `apply` applies at once, unless `--threads` or `$SST_THREADS` says. Unset, applying takes `skills.+threads` first, and `test` takes 1. |
 | `generation.view_timeout` | integer, at least 1 | `300` | Seconds one statement of a plan or apply session may run (`STATEMENT_TIMEOUT_IN_SECONDS`). |
 
 ## dbt

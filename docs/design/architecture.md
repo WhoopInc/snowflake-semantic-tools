@@ -235,7 +235,8 @@ flowchart TD
     E -->|yes| F["CompileSemanticViews"]
     F --> G["CompileTools"]
     G --> H["CompileAgents"]
-    H --> I["CompileEvals"]
+    H --> HC["compile_cowork_profiles"]
+    HC --> I["CompileEvals"]
     I --> J["cross_artifact_result"]
     J --> T["config_tool_references and unreferenced_tool_members"]
     T --> K["CompileArtifacts.merge"]
@@ -253,9 +254,10 @@ Skills, plugins, and profiles compile only when one of the `skills:`,
 publishes only where its own settings resolve a stage; profiles compile when the
 `coco_desktop_profiles:` block is written or a profile has a stage. Each later compiler reads
 what the earlier ones produced: tools read the dbt relations, agents the views
-and tools that compiled, evals the tools each agent resolved. The checks that
-span all four run after them, as a result that compiles nothing, and then the
-checks of what the configuration and the agents say about the tools.
+and tools that compiled, CoWork profiles the agents, evals the tools each agent
+resolved. The checks that span all five run after them, as a result that
+compiles nothing, and then the checks of what the configuration, the agents,
+and the profiles say about the tools.
 
 Every compiler returns a `CompileResult`: a tuple of `CompiledArtifact` values
 and a `DiagnosticBag`. A problem in what was authored is a diagnostic, never an
@@ -562,7 +564,7 @@ manifest twice and sees two digests reports `SST-MAN031`.
 
 ### Schema versions of SST's own files
 
-The manifest and the state document each carry a `schema_version` (5 for the
+The manifest and the state document each carry a `schema_version` (6 for the
 manifest, 2 for state). An older schema with a migration is migrated in memory,
 and reading it never rewrites the file: a
 manifest read that way records `migrated_from`, which is never written, hashed,
@@ -625,7 +627,7 @@ These are the commands that connect, and what they do once connected:
 
 | Command | Connects | Reads | Writes |
 |---|---|---|---|
-| `compile`, `format`, `list`, `explain`, `docs`, `clean`, `init`, `migrate refs`, `migrate split`, `baseline show`, `baseline renew` | never | | local files only |
+| `compile`, `format`, `list`, `explain`, `docs`, `clean`, `init`, `migrate refs`, `migrate split`, `baseline show`, `baseline renew`, `lineage`, `agent-kit` | never | | local files only |
 | `validate` | unless the syntax check is off (`--no-snowflake-syntax-check` or `validation.snowflake_syntax_check: false`) and there is no `--verify-schema` | `EXPLAIN` of each expression and query, verified-query row counts, what exists, `SHOW CORTEX BASE MODELS`; one run of a probe agent per allowed orchestration model | a TEMPORARY probe agent per model, dropped once it answers |
 | `baseline add --target`, `baseline prune --target` | for a code only a connection finds (`add --all-warnings` too), as `validate --target` | as `validate` | the local baseline file |
 | `debug` | unless `--no-connect` or `--snowflake-signatures` | the session's role and account | nothing |
@@ -636,6 +638,9 @@ These are the commands that connect, and what they do once connected:
 | `test --suite smoke` | yes | state, ownership markers, the probes' queries | nothing in Snowflake |
 | `test --suite evals` | yes | the published agents | evaluation runs, the lock table, the eval table |
 | `drop` | yes | the object's marker, the state table | one `DROP`, the lock table, the state table |
+| `state recover` | yes | as `plan` | the lock table; the state table, recording only what ownership markers or content prove |
+| `state convert` | yes | the state and lock tables | rebuilt state and lock tables, keeping the old ones as backups |
+| `state unlock` | yes | the lock table | releases one named run's lock |
 | `ask` | yes; besides SQL, the Cortex Agents REST API, on the same session's token and role | the state table; the agent's streamed run | scratch copies `<NAME>__SST_ASK_<id>` and an `sst_ask` thread, both removed when the session ends |
 | `test --suite evals --compare-models` | yes | the state table, each subject's versions, the published agents, the usage views | per subject a hold copy, a version per candidate aliased `EVAL_<MODEL>`, and a restore copy with its live version; their staged specifications, evaluation runs, the lock table; locally, the report |
 | `test --refresh-cost` | yes | the usage views | nothing in Snowflake; locally, the report it rereads |

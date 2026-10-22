@@ -31,7 +31,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Unknown config key",
         "unknown config key '{key}'",
-        "remove the key, or check it against sst docs config",
+        "remove the key, or check it against docs/reference/config.md (`sst docs --only config`)",
         condition=(
             "a config key is not declared where it is written, including a "
             "`diagnostics.severity_overrides` entry that names no registered code"
@@ -53,7 +53,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Multiple config files discoverable",
         "{count} candidate config files found; used {used}, shadowed {shadowed}",
-        "delete the shadowed files, or pass --project-dir",
+        "delete one of the two, or pass --config naming the one to use",
         condition=(
             "both `sst_config.yml` and `sst_config.yaml` exist at the project root and neither "
             "`--config` nor `$SST_CONFIG` names the file to use"
@@ -391,7 +391,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "profiles.yml value cannot be used",
         "target '{target}': '{key}' {problem}",
         "SST renders {{ env_var('NAME') }} and {{ env_var('NAME', 'default') }} anywhere in a value, and no "
-        "other template; write numbers and booleans without filters such as as_number",
+        "other template; dbt's as_number, as_bool, as_native and as_text filters are allowed after env_var()",
         condition=(
             "a profiles.yml value holds a template other than env_var(), or a whole-number/boolean "
             "field holds another value"

@@ -11,7 +11,7 @@ description: |-
 # Working in an SST project
 
 SST compiles a dbt project's semantic YAML into Snowflake semantic views, Cortex Agents,
-skills, and CoCo Desktop profiles, then publishes them. This kit was installed by SST
+CoWork profiles, skills, and CoCo Desktop profiles, then publishes them. This kit was installed by SST
 @SST_VERSION@; its documentation is at @SST_DOCS@.
 
 ## Ground rules
@@ -30,7 +30,7 @@ skills, and CoCo Desktop profiles, then publishes them. This kit was installed b
 4. **Facts come from the installed CLI, not from memory.** Run `sst <command> --help` for
    flags and `sst explain <CODE>` for any diagnostic. Both work offline and match the SST
    that is installed.
-5. **Read `-o agent`; parse `-o json`.** When `sst` runs in your shell with stdout piped, it
+5. **Read `-o agent`; parse `-o json`.** When a coding agent runs `sst` with stdout piped and no `--output` set, it
    prints the `agent` format on its own (its first line ends `output=agent(detected ...)`);
    `-o agent` (a global option, before the command name) asks for it anywhere. Its first line
    is the verdict (`sst <command>: <OUTCOME> exit=1 errors=2 ...`), then one `E`/`W` line per
@@ -117,7 +117,7 @@ sst test --suite smoke                      # queries what was published
   views under `semantic_views/`, and metrics, relationships, filters, verified queries, and
   custom instructions anywhere below it, usually one item per file under its singular root.
 - Column metadata: each dbt model's YAML, under `config.meta.sst`.
-- `agents/`, `tools/`, `skills/`, `plugins/`, `coco_desktop_profiles/`: agents and what SST publishes for
+- `agents/`, `cowork_profiles/`, `tools/`, `skills/`, `plugins/`, `coco_desktop_profiles/`: agents and what SST publishes for
   them. The `skills/` folder there is published to Snowflake. These kit skills are not, and
   must stay out of it.
 - `sst_target/`: build output. Never edit it, and never commit it.

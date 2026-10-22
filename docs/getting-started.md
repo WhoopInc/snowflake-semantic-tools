@@ -67,7 +67,8 @@ sst init
 sst debug --no-connect
 ```
 
-`sst init` writes an `sst_config.yml` that sets every policy key to its default,
+`sst init` writes an `sst_config.yml` that sets the validation, enrichment,
+governance, apply, and state keys to their defaults,
 and a `semantic_models/semantic_views/` directory. It never overwrites a file
 that exists; run interactively, it asks for the semantic models directory first
 (`--skip-prompts` takes the default). `sst debug` prints the configuration file,

@@ -162,7 +162,8 @@ uses it; `--force table-synonyms` replaces the ones it has.
 `PATH` arguments, relative to the project directory, select the models whose SQL or YAML file
 is under them; a `PATH` outside the project is refused. `--select` and `--exclude` take
 `model:<name>`, a bare name, or a glob such as `model:fct_*`, matched without case, and
-repeat: one model or glob per flag. A comma (`SST-PRT101`), a directory, or another kind of
+repeat: one model or glob per flag, and take dbt's graph operators, as in
+`+model:orders` for the models it is built from. A comma (`SST-PRT101`), a directory, or another kind of
 selector such as `source:` (`SST-PRT105`) is refused with exit `3`.
 
 Only the project's own models are enriched, never an installed package's. A name without a

@@ -29,7 +29,7 @@ Title: `[Bug]: <command> <what goes wrong, in one line>`
 - Operating System:
 
 ### Relevant Logs
-<The redacted `-o json` output and the matching `sst_target/run_log.jsonl` lines.>
+<The redacted `-o json` output, and for an SST-SNO code the matching `sst_target/run_log.jsonl` lines.>
 
 ### Additional Context
 <Where in SST it happens (module and function), workarounds tried, related issues.>

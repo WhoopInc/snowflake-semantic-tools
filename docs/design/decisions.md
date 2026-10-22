@@ -388,7 +388,7 @@ partial prune, under which an artifact left out for errors would look deleted.
 
 ### Removal is narrow, and depends on what it would break
 
-**Chosen.** `--prune` drops semantic views and agents and deactivates profiles.
+**Chosen.** `--prune` drops semantic views, agents, and CoWork profiles, and deactivates CoCo Desktop profiles.
 Skills, plugins, and evals are only reported (`SST-PLN034`), because an agent
 may pin a version and a run or baseline may reference an evaluation; tools are
 never pruned. `sst drop` removes one object SST owns from one target, under the
@@ -475,7 +475,7 @@ hundreds, one band per artifact or member family.
 agents, evals, and skills. A code is a contract users write into overrides,
 baselines, and CI scripts, and a new area changes its number.
 
-### Severity resolves in one order, and `--strict` has no exemptions
+### Severity resolves in one order, and `--strict` exempts only registered states
 
 **Chosen.** Declared severity, then the project's per-code override, then
 strict promotion. `--strict` promotes every warning about what the run
@@ -488,9 +488,12 @@ nothing (`SST-DIS010`, or `SST-DIS011` for `--exclude`) names no artifact, so it
 has no subject and is about the run itself: `--strict` promotes it, and a
 `--select` value that misses beside others that match fails a strict run.
 
-**Rejected.** Exempting rules from `--strict`, which is a second, silent
-severity policy; and turning a rule off while a backlog is fixed, which also
-hides every new instance of it.
+**Rejected.** Exempting rules from `--strict` by project setting, which is a
+second, silent severity policy. The only exemption is a warning the registry
+marks `strict_exempt` (*never promoted* in the error reference): a state a
+person is expected to be in, or one the planned apply repairs. Turning a rule
+off while a backlog is fixed is rejected too, because that also hides every new
+instance of it.
 
 ### Reports are complete
 
@@ -560,7 +563,7 @@ query sweep and couples publishing to warehouse load.
 
 ### Evals score agents, and gate on regressions
 
-**Chosen.** An eval belongs to one agent and runs in the agent's schema. A gated
+**Chosen.** An eval belongs to one agent or CoWork profile and runs in its schema. A gated
 metric fails the run when its results regress against a captured baseline. A
 baseline records the agent version, the dataset, and each metric's version and
 judge, so a run it was not captured for is not compared with it, and it
@@ -598,10 +601,11 @@ Drawn from: [syntax check key](../../snowflake_semantic_tools/domain/model/confi
 **Chosen.** The package exports only its version; behaviour is a command or an
 option, and exit codes, the JSON envelope, and diagnostic codes are the
 contract. At run time SST depends on PyYAML, ruamel.yaml, the Snowflake
-connector, and click; dbt is an optional extra.
+connector, click, Textual (for `sst ask`), and certifi and cryptography, which
+the connector also needs; dbt is an optional extra.
 
 **Rejected.** A Python API beside the CLI, which doubles the surface every
-change must keep compatible; and convenience libraries those four and the
+change must keep compatible; and convenience libraries those and the
 standard library already cover, each a licence, an audit, and an upgrade to
 carry.
 

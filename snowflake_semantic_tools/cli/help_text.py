@@ -30,7 +30,7 @@ _OPTION_HELP: Mapping[str, str] = {
         "project root, and `~/.dbt`. The first that has one wins."
     ),
     "--target": "Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target.",
-    "--manifest": "Read this dbt `manifest.json` instead of running `dbt parse`.",
+    "--manifest": "Read this dbt `manifest.json` instead of running dbt (`dbt.command`).",
     "--break-stale-lock": (
         "Take over the run lock only once the run holding it has expired (SST-APL010); a live lock "
         "is refused all the same (SST-APL011)."
@@ -104,7 +104,8 @@ _OPTION_HELP: Mapping[str, str] = {
     ),
     "--snowflake-syntax-check": (
         "Connects: compile expressions against Snowflake, and run each model `snowflake.orchestration_models` "
-        "allows in a throwaway agent. Defaults to `validation.snowflake_syntax_check`, on when unset."
+        "allows in a throwaway agent. Defaults to `validation.snowflake_syntax_check`. Unset, that is "
+        "SST-CFG031, and the check runs only with SST-CFG031 demoted."
     ),
     "--prune": (
         "Also act on managed artifacts whose source was deleted, as far as each type "
@@ -176,6 +177,10 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "sst compile",
         "--emit-ddl",
     ): "Write each artifact's rendered payload into this directory, one folder per type, offline.",
+    ("sst compile", "--partial"): (
+        "Go ahead with every artifact that has no errors and depends on nothing that does; "
+        "still exits 1 while errors remain."
+    ),
     ("sst compile", "--select"): "Report and emit only these artifacts; the manifest still holds everything.",
     ("sst docs", "--check"): "Write nothing; exit 2 when a committed reference page is out of date.",
     ("sst docs", "--only"): (
@@ -203,7 +208,7 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst enrich", "--no-detailed-exitcode"): "With `--check`, exit 0 when files would change, instead of 2.",
     ("sst enrich", "--fail-fast"): "Stop at the first model that fails, and write nothing.",
     ("sst plan", "--plan-out"): "Write the saved plan here instead of `sst_target/plan.json`.",
-    ("sst plan", "--no-plan-out"): "Do not write a saved plan.",
+    ("sst plan", "--no-plan-out"): "Do not write a saved plan. Refused with `--plan-out`.",
     ("sst plan", "--grants"): (
         "Read the grants on each object an update replaces, one `SHOW GRANTS` each, to report what a "
         "replace would drop (SST-PLN013), and the tags on each semantic view it replaces, to report "
@@ -385,14 +390,17 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ),
     ("sst diff", "--threads"): (
         "Read a target's definitions on up to this many sessions at once, 1 to 16; else `$SST_THREADS`, "
-        "else `generation.threads`."
+        "else `generation.threads`, else 4."
     ),
     ("sst diff", "--names-only"): "Print the name of each differing artifact, one per line, and nothing else.",
     ("sst diff", "--no-detailed-exitcode"): "Exit 0 when the states differ, instead of 2.",
     (
         "sst drop",
         "--type",
-    ): "Required. The registered type of the object, which picks the DROP: agent, plugin, semantic_view, or skill.",
+    ): (
+        "Required. The registered type of the object, which picks the DROP: agent, cowork_profile, plugin, "
+        "semantic_view, or skill."
+    ),
     (
         "sst drop",
         "--target",

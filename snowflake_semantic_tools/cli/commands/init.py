@@ -67,10 +67,10 @@ def config_template(semantic_models_dir: str) -> str:
 def init(paths: ProjectPaths, skip_prompts: bool, check_only: bool, options: GlobalOptions) -> CommandResult:
     """Scaffold SST into an existing dbt project without overwriting a file.
 
-    Writes `sst_config.yml`, with every policy key at its documented default, and creates the
-    `semantic_views` directory under the semantic models directory it names. On a terminal
-    (stdin and stderr both terminals) it asks for that directory, unless --skip-prompts or
-    --output json; off one it takes the default. A file or directory
+    Writes `sst_config.yml`, with the validation, enrichment, governance, apply and state keys at
+    their defaults, and creates the `semantic_views` directory under the semantic models directory
+    it names. On a terminal (stdin and stderr both terminals) it asks for that directory, unless
+    --skip-prompts or --output json or agent; off one it takes the default. A file or directory
     that exists is left as it is, and an existing configuration's `project.semantic_models_dir`
     is the directory used. With --check-only nothing is written, and the command exits
     1 unless the configuration file and the semantic views directory exist. Exit 4 when the

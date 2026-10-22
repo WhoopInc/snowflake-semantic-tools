@@ -221,7 +221,7 @@ message. So the server does enforce some window rules early. SST's note on
 SST-VAL123 says the server enforces none of the derived-metric restrictions.
 Only the window-function case has been probed to query time.
 
-**Evidence**: `Enforced`. The checks are SST-VAL102 to SST-VAL107, none of them
+**Evidence**: `Enforced`. The checks are SST-VAL102, SST-VAL103, and SST-VAL105 to SST-VAL107 (SST-VAL104 is retired), none of them
 demotable, and SST-VAL123 re-checks the compiled view.
 [test_sst_val102.py](../../tests/codes/val/test_sst_val102.py) and
 [test_sst_val123.py](../../tests/codes/val/test_sst_val123.py).
@@ -321,7 +321,7 @@ tags in one statement.
 
 **Evidence**: `Observed`. The clause-order test above pins that SST renders tags
 inline in the `CREATE`, and
-`test_key_summaries_describe_what_the_renderer_and_the_stage_channel_do` in
+`test_key_summaries_describe_what_the_renderer_and_the_publishing_blocks_do` in
 [test_config_schema.py](../../tests/unit/domain/test_config_schema.py) holds the
 `tags` key's summary to that. No test
 proves that the replace drops tags set outside it. The consequence for users is
@@ -456,8 +456,8 @@ reports success.
 
 **Evidence**: `Enforced`. SST never replaces a permanent agent: a new agent is
 `CREATE AGENT`, and an update adds a version.
-`test_permanent_agent_create_leaves_one_committed_version_then_alias_and_tags`
-and `test_permanent_agent_update_adds_exactly_one_version_then_alias_and_tags` in
+`test_permanent_agent_create_keeps_the_live_version_then_alias_and_tags`
+and `test_permanent_agent_update_adds_exactly_one_version_and_a_live_copy_then_alias_and_tags` in
 [test_agent_publish.py](../../tests/unit/app/test_agent_publish.py) pin the
 exact statements. `CREATE OR REPLACE TEMPORARY AGENT`, for `--temporary`, is a
 different object and is not affected.
@@ -700,7 +700,7 @@ directory without naming the file they read.
 **Server does**: it reads the spec from `agent_spec.yaml` in that directory. A
 JSON document in that file is accepted.
 
-**Evidence**: `Enforced`. `test_permanent_agent_create_leaves_one_committed_version_then_alias_and_tags`
+**Evidence**: `Enforced`. `test_permanent_agent_create_keeps_the_live_version_then_alias_and_tags`
 in [test_agent_publish.py](../../tests/unit/app/test_agent_publish.py) asserts
 the upload path, and the agent goldens are JSON
 ([test_golden_agents.py](../../tests/unit/test_golden_agents.py)).
@@ -1662,13 +1662,15 @@ configure an account and the scratch schemas they write to:
 - [tests/contract_live](../../tests/contract_live/test_connector_contract.py)
   holds the real connector to the port contract the offline fakes satisfy: the
   session's role, listing an empty schema, a table's columns, the failure
-  signatures, and the state table and run lock.
+  signatures, the state table and run lock, and the drift digest of a
+  procedure.
 - [tests/integration](../../tests/integration/test_apply_live.py) and
   [tests/e2e](../../tests/e2e/test_live_lifecycle.py) publish one small
   semantic view, with a comment and two metrics, and check that it answers a
   metric, that a second plan finds nothing to do, and that a replace keeps a
   `SELECT` grant.
 
-So the live suite confirms `COPY GRANTS` on a semantic view and that the
-renderer's simplest output is accepted. It exercises nothing else on this page.
+So the live suite confirms `COPY GRANTS` on a semantic view, that the
+renderer's simplest output is accepted, and that a procedure's drift digest is
+stable across reads. It exercises nothing else on this page.
 Every other entry is held offline or by the probes above.

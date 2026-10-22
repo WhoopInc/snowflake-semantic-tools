@@ -306,7 +306,7 @@ Fix: fix the YAML syntax at the reported position
 
 Raised when a config key is not declared where it is written, including a `diagnostics.severity_overrides` entry that names no registered code.
 
-Fix: remove the key, or check it against sst docs config
+Fix: remove the key, or check it against docs/reference/config.md (`sst docs --only config`)
 
 ### SST-CFG004
 
@@ -326,7 +326,7 @@ Fix: correct the value type
 
 Raised when both `sst_config.yml` and `sst_config.yaml` exist at the project root and neither `--config` nor `$SST_CONFIG` names the file to use.
 
-Fix: delete the shadowed files, or pass --project-dir
+Fix: delete one of the two, or pass --config naming the one to use
 
 ### SST-CFG007
 
@@ -668,7 +668,7 @@ Fix: check the spelling; SST passes only connection settings to Snowflake, so a 
 
 Raised when a profiles.yml value holds a template other than env_var(), or a whole-number/boolean field holds another value.
 
-Fix: SST renders {{ env_var('NAME') }} and {{ env_var('NAME', 'default') }} anywhere in a value, and no other template; write numbers and booleans without filters such as as_number
+Fix: SST renders {{ env_var('NAME') }} and {{ env_var('NAME', 'default') }} anywhere in a value, and no other template; dbt's as_number, as_bool, as_native and as_text filters are allowed after env_var()
 
 ### SST-CFG050
 
@@ -862,7 +862,7 @@ Fix: correct model-paths in dbt_project.yml
 
 `--select <selector> matched no artifact`
 
-Raised when a `--select` value matches no artifact; `state:` selectors are not checked.
+Raised when a `--select` value matches no artifact, or an `sst enrich` selector or PATH matches no dbt model; `state:` selectors are not checked.
 
 Fix: widen the selector, or check the artifact name
 
@@ -6146,7 +6146,7 @@ Fix: ignore this if a valid manifest exists; the manifest is the contract
 
 Raised when `defer.auto_compile` is set while the installed dbt is the dbt Cloud CLI.
 
-Fix: use state_path instead
+Fix: supply the manifest under `defer.state_path` instead
 
 Note: The dbt Cloud CLI cannot compile a non-default target locally.
 
@@ -6214,11 +6214,11 @@ Fix: install dbt, or pass --manifest to read a manifest that already exists
 
 ### SST-DBT028
 
-**`dbt parse` exited non-zero** (error)
+**dbt exited non-zero** (error)
 
-`dbt parse exited <found>`
+`dbt exited <found>`
 
-Raised when the parse subprocess ran and reported failure.
+Raised when the dbt subprocess (`dbt.command`) ran and reported failure.
 
 Fix: read dbt's own output above; the failure is in the dbt project
 
@@ -6778,9 +6778,9 @@ Note: Unless the name is free by then, apply refuses the create (SST-APL012).
 
 `schema <value> does not exist or is not authorised`
 
-Raised when the schema a planned write targets does not exist, or the role cannot see it; reported once per schema.
+Raised when the schema a planned write targets does not exist, or the role cannot see it, and `apply.create_schemas` is false; reported once per schema.
 
-Fix: create the schema, or correct the target
+Fix: set `apply.create_schemas: true`, create the schema, or correct the target
 
 ### SST-PLN011
 
@@ -6926,7 +6926,7 @@ Fix: normalise the declaration to the rendered case
 
 Raised when an object holds the target name and state records no SST entry for it; `sst drop` also reports it for an object with no trusted SST ownership marker.
 
-Fix: drop or rename the object by hand, or give the artifact another name; SST never takes over an object state does not record
+Fix: drop or rename the object by hand, or give the artifact another name; SST never takes over an object state does not record; if state was lost and the object carries SST's marker, `sst state recover` records it
 
 ### SST-PLN025
 
@@ -7332,7 +7332,7 @@ Note: The lock in Snowflake expires 30 minutes after its run last extended it, a
 
 `<value> holds the apply lock`
 
-Raised when another run (`apply`, `drop`, or the eval suite of `sst test`) holds the target's run lock, in Snowflake or in the local cache; or the lock expired and `--break-stale-lock` was not given; or this run lost its lock while it ran.
+Raised when another run (`apply`, `drop`, `state recover`, or the eval suite of `sst test`) holds the target's run lock, in Snowflake or in the local cache; or the lock expired and `--break-stale-lock` was not given; or this run lost its lock while it ran.
 
 Fix: wait for the other run to end; once its lock has expired, re-run with --break-stale-lock, or, when that run will never end, release it with `sst state unlock --run <run id> --yes`
 
@@ -7768,7 +7768,7 @@ Raised when a semantic view, tool, skill, plugin or agent the agent's specificat
 
 Fix: publish it first (`sst plan`, then `sst apply`) to try the two together
 
-Note: Reported where nothing stands in for your edit: under `sst ask --published`, and for an unpublished eval run. Otherwise `sst ask` runs the agent on a scratch copy of each such dependency, so your edit is what it calls.
+Note: Reported where nothing stands in for your edit: under `sst ask --published`. Otherwise `sst ask` and unpublished eval runs use a scratch copy of each such dependency, so your edit is what they call.
 
 ### SST-ASK002
 
@@ -7888,7 +7888,7 @@ Note: `--theme` and `$SST_ASK_THEME`, which win over the key, are usage errors i
 
 Raised when `sst ask --transcript` could not replace its transcript file in `sst_target/ask/`.
 
-Fix: make `sst_target/ask/` writable, or ask without `--transcript`
+Fix: make `sst_target/ask/` writable, or pass `--no-transcript`
 
 Note: Reported once; the conversation goes on, and each later turn tries the write again.
 
@@ -8464,9 +8464,9 @@ Fix: pass &lt;database&gt;.&lt;schema&gt;.&lt;object&gt;
 
 `<command> requires --yes`
 
-Raised when a command that needs confirmation runs without --yes: `sst drop`, `apply --prune`, `--output json` with `apply` or `baseline add --all-warnings`, or either of those two when stdin or stderr is not a terminal, so no question could be seen and answered.
+Raised when a command that needs confirmation runs without --yes: `sst drop`, `apply --prune`, `sst state unlock`, `--output json` or `agent` with `apply` or `baseline add --all-warnings`, `state convert` or `state recover` off a terminal, or either of those two when stdin or stderr is not a terminal, so no question could be seen and answered.
 
-Fix: re-run with --yes; sst apply and sst baseline add --all-warnings ask instead only when stdin and stderr are both terminals and the output is not JSON
+Fix: re-run with --yes; sst apply and sst baseline add --all-warnings ask instead only when stdin and stderr are both terminals and the output is not JSON or agent
 
 ### SST-PRT110
 

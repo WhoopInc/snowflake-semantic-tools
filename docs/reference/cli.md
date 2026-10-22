@@ -63,7 +63,7 @@ These go before the command name.
 | `--project-dir` | DIRECTORY |  | Project root, else `$SST_PROJECT_DIR`, else the current directory: where `sst_config.yml` and `dbt_project.yml` are. |
 | `--config` | PATH |  | Read this configuration file, else `$SST_CONFIG`, instead of discovering one in the project. |
 | `--profiles-dir` | DIRECTORY |  | Look for `profiles.yml` here first, else in `$SST_PROFILES_DIR`; then in `$DBT_PROFILES_DIR`, the project root, and `~/.dbt`. The first that has one wins. |
-| `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
+| `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running dbt (`dbt.command`). |
 | `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest of an unsupported schema version, for this run only. |
 | `--allow-stale-manifest` | flag |  | Accept a manifest SST did not write (`--manifest`, or `dbt.invoke: false`) that is older than the files it describes, for this run only. |
 | `--baseline` | FILE |  | Read this baseline file of known warnings, which must exist, instead of the project's `.sst/baseline.json`, read when it exists. |
@@ -89,10 +89,10 @@ These go before the command name.
 
 Scaffold SST into an existing dbt project without overwriting a file.
 
-Writes `sst_config.yml`, with every policy key at its documented default, and creates the
-`semantic_views` directory under the semantic models directory it names. On a terminal
-(stdin and stderr both terminals) it asks for that directory, unless --skip-prompts or
---output json; off one it takes the default. A file or directory
+Writes `sst_config.yml`, with the validation, enrichment, governance, apply and state keys at
+their defaults, and creates the `semantic_views` directory under the semantic models directory
+it names. On a terminal (stdin and stderr both terminals) it asks for that directory, unless
+--skip-prompts or --output json or agent; off one it takes the default. A file or directory
 that exists is left as it is, and an existing configuration's `project.semantic_models_dir`
 is the directory used. With --check-only nothing is written, and the command exits
 1 unless the configuration file and the semantic views directory exist. Exit 4 when the
@@ -175,7 +175,7 @@ Write each listed member to a file of its own, tool group members to their group
 
 Reads every YAML file under `project.semantic_models_dir` and `project.tools_dir`, and the
 configuration file, whose `skills.catalog`, `skills.stage` and `skills.extensions` move to
-the `skills:` root and the `plugins:`, `profiles:` and `extensions:` blocks. A file that
+the `skills:` root and the `plugins:`, `coco_desktop_profiles:` and `extensions:` blocks. A file that
 would overwrite one already there is left whole and named on stderr. Dry-run by default:
 exit 2 when a split is pending, 0 when there is none, and 1 when a file is left whole or a
 configuration key needs a hand edit. With --write the files are written, then the lists
@@ -303,7 +303,7 @@ sst compile [OPTIONS]
 | `--emit-ddl` | DIRECTORY |  | Write each artifact's rendered payload into this directory, one folder per type, offline. |
 | `--emit-agent-spec` | DIRECTORY |  | Write each agent's rendered specification into this directory, and each CoWork profile's under `cowork_profile/`. |
 | `--select` | TEXT |  | Report and emit only these artifacts; the manifest still holds everything. |
-| `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
+| `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. |
 
 ## sst validate
 
@@ -331,7 +331,7 @@ sst validate [OPTIONS]
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--database` | TEXT |  | Read from this database instead of the target's; never where an artifact is published. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error, except those marked never promoted; `--no-strict` promotes none. Else `$SST_STRICT`, else `validation.strict`, off when unset. A warning about an artifact the selection leaves out stays one. |
-| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Connects: compile expressions against Snowflake, and run each model `snowflake.orchestration_models` allows in a throwaway agent. Defaults to `validation.snowflake_syntax_check`, on when unset. |
+| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Connects: compile expressions against Snowflake, and run each model `snowflake.orchestration_models` allows in a throwaway agent. Defaults to `validation.snowflake_syntax_check`. Unset, that is SST-CFG031, and the check runs only with SST-CFG031 demoted. |
 | `--dbt` | DIRECTORY |  | Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`. |
 | `--semantic` | DIRECTORY |  | Read the semantic models from this directory instead of `project.semantic_models_dir`. |
 | `--verify-schema` | flag |  | Connects: confirm each column a semantic view reads exists in the warehouse. |
@@ -363,7 +363,7 @@ validate finds records none, and a `local` CODE never connects. Additive: an ent
 removed, and a diagnostic already recorded, or sharing its fingerprint with another current
 one, is not added. A new file expires in --expires-in days; an existing one keeps its date,
 which only `renew` moves. --all-warnings asks first when there are warnings to add, on a
-terminal; off one (stdin and stderr must both be terminals), or with --output json, it needs
+terminal; off one (stdin and stderr must both be terminals), or with --output json or agent, it needs
 --yes.
 
 Exit 0 when the file is written, even with nothing added; 1 when CODE is an error or
@@ -375,7 +375,7 @@ Diagnostics:
     SST-PRT100: no CODE and no --all-warnings, or CODE is not registered; raised. Also, at
         exit 1, CODE cannot be baselined.
     SST-PRT104: CODE and --all-warnings were both given; raised.
-    SST-PRT109: --all-warnings without --yes off a terminal, or with --output json; raised.
+    SST-PRT109: --all-warnings without --yes off a terminal, or with --output json or agent; raised.
 
 ```text
 sst baseline add [OPTIONS] [CODE]
@@ -566,7 +566,7 @@ sst plan [OPTIONS]
 | `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
 | `--overwrite` | flag |  | Publish the planned definition over each selected object changed out of band (SST-PLN014) instead of blocking it; an agent keeps its versions and gains one. A saved plan made with it is applied with it. |
 | `--plan-out` | FILE |  | Write the saved plan here instead of `sst_target/plan.json`. |
-| `--no-plan-out` | flag |  | Do not write a saved plan. |
+| `--no-plan-out` | flag |  | Do not write a saved plan. Refused with `--plan-out`. |
 | `--grants / --no-grants` | flag |  | Read the grants on each object an update replaces, one `SHOW GRANTS` each, to report what a replace would drop (SST-PLN013), and the tags on each semantic view it replaces, to report those the replace removes (SST-PLN039). On by default; `--no-grants` skips the reads. |
 | `--use-cached-state` | flag |  | Plan from the observation an earlier `sst plan` recorded in `--state` instead of reading the target, without connecting; the plan says what the target held then, and its age is reported. Requires `--state`; refused with `--snowflake-syntax-check` or `--capture-prior`; composite artifacts are blocked. |
 | `--capture-prior` | flag |  | Read the current definition of each live object a planned artifact names, so a review can see what an update replaces and restore it: `GET_DDL` for a semantic view, search service, procedure or function (needs REFERENCES or OWNERSHIP); for an agent, which an update never replaces, the version it serves, its specification, and the `ALTER AGENT` statements that point back at it. A stage, skill, plugin, profile or eval has none. Shown by `--full` and as `prior_definition` in JSON; a read that fails is a warning (SST-PLN037), not a failed plan. |
@@ -579,14 +579,14 @@ sst plan [OPTIONS]
 | `--names-only` | flag |  | Print the name of each changed artifact, one per line, and nothing else. |
 | `--no-detailed-exitcode` | flag |  | Exit 0 when changes are pending, instead of 2. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error, except those marked never promoted; `--no-strict` promotes none. Else `$SST_STRICT`, else `validation.strict`, off when unset. A warning about an artifact the selection leaves out stays one. |
-| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Connects: compile expressions against Snowflake, and run each model `snowflake.orchestration_models` allows in a throwaway agent. Defaults to `validation.snowflake_syntax_check`, on when unset. |
+| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Connects: compile expressions against Snowflake, and run each model `snowflake.orchestration_models` allows in a throwaway agent. Defaults to `validation.snowflake_syntax_check`. Unset, that is SST-CFG031, and the check runs only with SST-CFG031 demoted. |
 
 ## sst apply
 
 Apply a current reviewed plan; smoke probes never run here.
 
 Without --plan, apply plans afresh as `sst plan` does, prints the plan, and asks before it
-writes; --yes skips the question, and is required with --prune, with --output json, and
+writes; --yes skips the question, and is required with --prune, with --output json or agent, and
 whenever stdin or stderr is not a terminal, which apply refuses before it plans. The plan it
 asks about shows what each update changes, member by member, as `sst plan` does; with --yes
 nothing is shown, so those definitions are not read.
@@ -609,7 +609,7 @@ configuration, or the saved plan cannot be used; 5 when Snowflake cannot be reac
 130 when the question is declined or the run is interrupted.
 
 Diagnostics:
-    SST-PRT109: --prune or --output json without --yes, or no terminal to ask on; raised.
+    SST-PRT109: --prune or --output json or agent without --yes, or no terminal to ask on; raised.
     SST-PRT107: the run was interrupted while its changes ran.
     SST-PRT104: --partial with --prune, or --no-validate with --snowflake-syntax-check; raised.
     SST-APL005: the saved plan was made for another target.
@@ -643,7 +643,7 @@ sst apply [OPTIONS]
 | `--no-validate` | flag |  | Skip validation: no cycle check, connected check, agent reference lookup, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`. |
 | `--sql-out` | DIRECTORY |  | Write each create's and update's statements into this directory instead of `sst_target/sql`. A file an earlier run wrote there, named `<type>__<name>.sql`, `.json` or `.yaml`, for a change this run does not make is removed; any other file is left. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error, except those marked never promoted; `--no-strict` promotes none. Else `$SST_STRICT`, else `validation.strict`, off when unset. A warning about an artifact the selection leaves out stays one. |
-| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Connects: compile expressions against Snowflake, and run each model `snowflake.orchestration_models` allows in a throwaway agent. Defaults to `validation.snowflake_syntax_check`, on when unset. |
+| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Connects: compile expressions against Snowflake, and run each model `snowflake.orchestration_models` allows in a throwaway agent. Defaults to `validation.snowflake_syntax_check`. Unset, that is SST-CFG031, and the check runs only with SST-CFG031 demoted. |
 
 ## sst diff
 
@@ -693,7 +693,7 @@ sst diff [OPTIONS]
 | `--names-only` | flag |  | Print the name of each differing artifact, one per line, and nothing else. |
 | `--no-diff` | flag |  | Compare by fingerprint alone, as an artifact's recorded state says, reading no definition: two targets that publish to different databases then differ in every artifact. |
 | `--diff-out` | FILE |  | Write what differs in each modified artifact, member by member, as a unified diff here. Refused with `--no-diff`. |
-| `--threads` | INTEGER RANGE |  | Read a target's definitions on up to this many sessions at once, 1 to 16; else `$SST_THREADS`, else `generation.threads`. |
+| `--threads` | INTEGER RANGE |  | Read a target's definitions on up to this many sessions at once, 1 to 16; else `$SST_THREADS`, else `generation.threads`, else 4. |
 | `--no-detailed-exitcode` | flag |  | Exit 0 when the states differ, instead of 2. |
 
 ## sst test
@@ -859,7 +859,7 @@ sst drop [OPTIONS] <DB>.<SCHEMA>.<NAME>
 
 | Option | Value | Default | Description |
 |---|---|---|---|
-| `--type` | TEXT |  | Required. The registered type of the object, which picks the DROP: agent, plugin, semantic_view, or skill. |
+| `--type` | TEXT |  | Required. The registered type of the object, which picks the DROP: agent, cowork_profile, plugin, semantic_view, or skill. |
 | `--target / -t` | TEXT |  | Required. Target from `profiles.yml`; there is no default, and `$SST_TARGET` is not read. |
 | `--profile` | TEXT |  | Profile in `profiles.yml`; else `dbt_project.yml`'s `profile:`. Needed outside a project. |
 | `--yes / -y` | flag |  | Required on every invocation: it is the confirmation, and there is no prompt. |

@@ -24,9 +24,9 @@ SPECS: tuple[ErrorSpec, ...] = (
             "to a fingerprint the target's state does not record for it, or the state cannot be read"
         ),
         note=(
-            "Reported where nothing stands in for your edit: under `sst ask --published`, and for "
-            "an unpublished eval run. Otherwise `sst ask` runs the agent on a scratch copy of each "
-            "such dependency, so your edit is what it calls."
+            "Reported where nothing stands in for your edit: under `sst ask --published`. Otherwise "
+            "`sst ask` and unpublished eval runs use a scratch copy of each such dependency, so your "
+            "edit is what they call."
         ),
         precheck=Precheck.OBSERVE,
     ),
@@ -155,7 +155,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Transcript could not be written",
         "the transcript {value} could not be written: {detail}",
-        "make `sst_target/ask/` writable, or ask without `--transcript`",
+        "make `sst_target/ask/` writable, or pass `--no-transcript`",
         condition="`sst ask --transcript` could not replace its transcript file in `sst_target/ask/`",
         note="Reported once; the conversation goes on, and each later turn tries the write again.",
         precheck=Precheck.RUNTIME,

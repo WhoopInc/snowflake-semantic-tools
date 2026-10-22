@@ -103,7 +103,7 @@ def migrate_split_command(paths: ProjectPaths, write_files: bool) -> CommandResu
 
     Reads every YAML file under `project.semantic_models_dir` and `project.tools_dir`, and the
     configuration file, whose `skills.catalog`, `skills.stage` and `skills.extensions` move to
-    the `skills:` root and the `plugins:`, `profiles:` and `extensions:` blocks. A file that
+    the `skills:` root and the `plugins:`, `coco_desktop_profiles:` and `extensions:` blocks. A file that
     would overwrite one already there is left whole and named on stderr. Dry-run by default:
     exit 2 when a split is pending, 0 when there is none, and 1 when a file is left whole or a
     configuration key needs a hand edit. With --write the files are written, then the lists

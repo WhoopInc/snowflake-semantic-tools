@@ -23,8 +23,8 @@ Every problem SST reports is a diagnostic with a stable code, such as `SST-VAL40
 sst -o agent validate --no-snowflake-syntax-check
 ```
 
-prints a short text document, the format `sst` picks on its own when you run it with stdout
-piped:
+prints a short text document, the format `sst` picks on its own when a coding agent runs it with
+stdout piped:
 
 ```text
 sst validate: FAIL exit=1 errors=1 warnings=0 baselined=8 info_hidden=166 time=0.6s

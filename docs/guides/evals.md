@@ -169,7 +169,7 @@ run:
 | `dataset.mint` | `auto` (default) or `never`; see above. |
 | `metrics.system` | Snowflake's metrics: `tool_selection_accuracy`, `tool_execution_accuracy`, `answer_correctness`, `logical_consistency`. Each takes `name`, `version`, `gate` and `threshold`. |
 | `metrics.custom` | One `{{ eval_metric('<name>') }}` per custom judge (`SST-REF026` when none has that name). |
-| `run.name_template` | Takes `{{ agent }}`, `{{ sha7 }}` (the commit's first seven characters; outside a git work tree, the eval's fingerprint's), `{{ variant }}` and `{{ ts }}` (compact UTC, `YYYYMMDDTHHMMSSZ`). It must carry `{{ sha7 }}` (`SST-VAL718`) and be unique per agent (`SST-VAL717`). A retry appends `_R2`, `_R3`, and so on. |
+| `run.name_template` | Takes `{{ agent }}`, `{{ sha7 }}` (the commit's first seven characters; outside a git work tree, the eval's fingerprint's), `{{ variant }}` and `{{ ts }}` (compact UTC, `YYYYMMDDTHHMMSSZ`). It must carry `{{ sha7 }}` (`SST-VAL718`) and be unique per agent (`SST-VAL717`). Every attempt after the first -- a retry, or a baseline capture's further runs -- appends `_R2`, `_R3`, and so on. |
 | `run.variant` | Why the run happened; fills `{{ variant }}`. Default `ci`. |
 | `run.label`, `run.description` | Rendered into the run's `run_params`. |
 | `run.accept_statuses` | Only `COMPLETED` (`SST-PRS013` otherwise). A partial status is never a pass (`SST-VAL730`). |
@@ -208,9 +208,12 @@ it **passed** on a question: it passed when Snowflake scored it without an
 error and the score lies inside the threshold. A metric without a threshold
 passed whenever it was scored.
 
-`gate: true` makes the metric **gated**: its regressions against the baseline
-count. A gated metric needs a usable threshold, and an ungated one may not have
-one (`SST-VAL733`). Whether a regression fails the run is the eval's
+`gate: true` makes a system metric **gated**, and a custom metric's
+`gate_default: true` does the same: its regressions against the baseline count.
+A gated system or routing metric needs a usable threshold; an ungated metric may
+not have one, nor may a custom metric's `threshold_default` appear without
+`gate_default` (`SST-VAL733`). A gated custom metric with no `threshold_default`
+passes on every question it is scored, so it regresses only when scoring fails. Whether a regression fails the run is the eval's
 [tier](#tiers-and-exit-codes).
 
 ## Custom judges
@@ -298,7 +301,7 @@ evals:
 | `+candidate_models` | the orchestration models a [comparison](#comparing-orchestration-models) runs beside the pinned one; never `auto` (`SST-VAL770`), and each listed in `snowflake.orchestration_models` when that is set (`SST-VAL771`) |
 | `+compare_runs` | the runs of each model a comparison makes, else 2 |
 
-`sst list eval --long` prints each eval's settings and where each came from.
+`sst list evals --long` prints each eval's settings and where each came from.
 
 `apply.eval_config_stage.stage` names the stage, in each agent's schema, that
 holds the rendered run configurations (default `EVAL_CONFIGS`).

@@ -14,13 +14,14 @@ How to use SST is in the [concepts](../concepts.md) and the guides under
 - [Snowflake behaviour](snowflake-behaviour.md): what Snowflake does that the engine compensates for.
 - [dbt compatibility](dbt-compatibility.md): the seam between SST and dbt.
 - [Diagnostics](diagnostics.md): how problems are coded, ranked, and reported.
+- [Model comparison report](compare-report-schema.md): the `sst.compare/1` schema of `compare.json`.
 
 ## What SST is
 
 SST is a command-line compiler and publisher for a Snowflake semantic layer kept
 as code in a dbt project. From files beside the dbt models it builds semantic
-views, the tools agents call, Cortex Agents, their evaluations, skills, plugins,
-and CoCo Desktop profiles. It validates them offline, saves a reviewable plan of
+views, the tools agents call, Cortex Agents, Snowflake CoWork profiles (a
+private preview), their evaluations, skills, plugins, and CoCo Desktop profiles. It validates them offline, saves a reviewable plan of
 what would change in Snowflake, and applies exactly that plan.
 
 The command line is the interface. The package exports nothing but its version.
