@@ -6,6 +6,12 @@ unnoticed: Textual went undocumented, the dbt range kept an old floor, linkify-i
 dev group though Textual needs it at runtime, and certifi and cryptography were imported without
 being declared, present only because the connector happens to require them. Each check below has
 a companion test that proves it fails on exactly that kind of drift.
+
+The licence checks hold SST to Apache-2.0 distribution: every package a plain install reaches,
+transitively and on every platform, is listed with its licence, and that licence is permissive
+(certifi's MPL-2.0 is the one recorded exception). A re-lock that brings in a new package fails
+until its licence is recorded, and one whose metadata names a copyleft or proprietary licence
+fails outright.
 """
 
 from __future__ import annotations
@@ -16,14 +22,28 @@ import re
 import sys
 import tomllib
 from functools import cache
-from importlib.metadata import distribution, packages_distributions
+from importlib.metadata import PackageNotFoundError, distribution, packages_distributions
 from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = REPO_ROOT / "snowflake_semantic_tools"
 SECTIONS = {"runtime": "Runtime Dependencies", "optional": "Optional Dependencies", "dev": "Development Dependencies"}
+TRANSITIVE = "Transitive Runtime Dependencies"
 _NAME = re.compile(r"^[A-Za-z0-9._-]+")
+
+# The licences a runtime dependency may carry, as SPDX identifiers.
+PERMISSIVE = frozenset(
+    {"MIT", "MIT-0", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0", "PSF-2.0", "ISC", "0BSD", "Unlicense"}
+)
+# A weak copyleft accepted for one package each, used unmodified and never bundled.
+EXCEPTIONS = {"certifi": frozenset({"MPL-2.0"})}
+# Words in a distribution's licence metadata that rule it out of an Apache-2.0 distribution.
+_FORBIDDEN = re.compile(
+    r"\b(A?GPL|LGPL|GNU|SSPL|BUSL|Business Source|Elastic|Commons Clause|Proprietary|Commercial|"
+    r"Product Licensing Agreement)\b",
+    re.IGNORECASE,
+)
 
 
 def _norm(name: str) -> str:
@@ -103,13 +123,13 @@ def undeclared(imports: dict[str, set[str]], runtime: set[str]) -> dict[str, set
     return {module: owned for module in imports if not (owned := owners(module)) & runtime}
 
 
-def group_mismatches(poetry: dict[str, Any], lock: dict[str, Any]) -> dict[str, str]:
-    """Locked packages whose `main` group membership disagrees with the graph from pyproject's deps."""
+def _walk(poetry: dict[str, Any], lock: dict[str, Any], *, optional: bool) -> set[str]:
+    """Every locked package pyproject's deps reach, on every platform; the optional ones only if asked."""
     packages = {_norm(package["name"]): package for package in lock["package"]}
     stack: list[tuple[str, frozenset[str]]] = [
         (_norm(name), frozenset(spec.get("extras", ())) if isinstance(spec, dict) else frozenset())
         for name, spec in poetry["dependencies"].items()
-        if name != "python"
+        if name != "python" and (optional or not (isinstance(spec, dict) and spec.get("optional")))
     ]
     walked: dict[str, set[str]] = {}
     while stack:
@@ -130,6 +150,13 @@ def group_mismatches(poetry: dict[str, Any], lock: dict[str, Any]) -> dict[str, 
                     continue
                 sub = frozenset(spec.get("extras", ())) if isinstance(spec, dict) else frozenset()
                 stack.append((_norm(dependency), sub))
+    return set(walked)
+
+
+def group_mismatches(poetry: dict[str, Any], lock: dict[str, Any]) -> dict[str, str]:
+    """Locked packages whose `main` group membership disagrees with the graph from pyproject's deps."""
+    packages = {_norm(package["name"]): package for package in lock["package"]}
+    walked = _walk(poetry, lock, optional=True)
     mismatches: dict[str, str] = {}
     for name, package in packages.items():
         in_main = "main" in package.get("groups", ())
@@ -138,6 +165,66 @@ def group_mismatches(poetry: dict[str, Any], lock: dict[str, Any]) -> dict[str, 
         elif in_main and name not in walked:
             mismatches[name] = "locked in the main group but nothing at runtime requires it"
     return mismatches
+
+
+def spdx(cell: str) -> frozenset[str]:
+    """The SPDX identifiers a DEPENDENCIES.md licence cell names; `Apache 2.0` reads as `Apache-2.0`."""
+    text = re.sub(r"\bApache 2\.0\b", "Apache-2.0", cell)
+    return frozenset(part.strip() for part in re.split(r"\s+(?:or|OR|and|AND)\s+", text) if part.strip())
+
+
+def licence_table(text: str, heading: str, column: int) -> dict[str, str]:
+    """One DEPENDENCIES.md table: the package cell's first word to the cell at `column`."""
+    assert f"\n## {heading}\n" in text, heading
+    body = text.split(f"\n## {heading}\n", 1)[1].split("\n## ", 1)[0]
+    rows = [line.split("|")[1:-1] for line in body.splitlines() if line.startswith("|")][2:]
+    return {_norm(cells[0].split()[0]): cells[column].strip() for cells in rows}
+
+
+def runtime_licences(text: str) -> dict[str, str]:
+    """The licence DEPENDENCIES.md records for every runtime package, direct and transitive."""
+    return {**licence_table(text, SECTIONS["runtime"], 2), **licence_table(text, TRANSITIVE, 2)}
+
+
+def unrecorded(poetry: dict[str, Any], lock: dict[str, Any], text: str) -> dict[str, set[str]]:
+    """The transitive runtime packages the lock reaches and DEPENDENCIES.md does not list, and back."""
+    direct = set(declared(poetry)["runtime"])
+    reached = _walk(poetry, lock, optional=False) - direct
+    listed = set(licence_table(text, TRANSITIVE, 2))
+    found = {"missing": reached - listed, "stale": listed - reached}
+    return {kind: names for kind, names in found.items() if names}
+
+
+def disallowed(licences: dict[str, str]) -> dict[str, str]:
+    """The recorded licences that an Apache-2.0 distribution cannot carry, by package."""
+    return {
+        name: cell
+        for name, cell in licences.items()
+        if not spdx(cell) or not spdx(cell) <= PERMISSIVE | EXCEPTIONS.get(name, frozenset())
+    }
+
+
+def metadata_text(name: str) -> str | None:
+    """What an installed distribution says about its licence; None when it is not installed here."""
+    try:
+        meta = distribution(name).metadata
+    except PackageNotFoundError:
+        return None
+    classifiers = [c for c in meta.get_all("Classifier") or () if c.startswith("License ::")]
+    return "\n".join((meta.get("License-Expression") or "", meta.get("License") or "", *classifiers)).strip()
+
+
+def forbidden_metadata(names: set[str], read: Any = metadata_text) -> dict[str, str]:
+    """The installed packages whose own licence metadata names a copyleft or proprietary licence."""
+    found: dict[str, str] = {}
+    for name in sorted(names):
+        text = read(name)
+        if text is None:
+            continue
+        match = _FORBIDDEN.search(text)
+        if match and name not in EXCEPTIONS:
+            found[name] = match.group()
+    return found
 
 
 def test_the_license_tables_list_exactly_what_pyproject_declares() -> None:
@@ -170,6 +257,49 @@ def test_the_import_check_catches_a_dependency_present_only_transitively() -> No
 
 def test_the_lock_main_group_is_exactly_what_the_runtime_graph_reaches() -> None:
     assert group_mismatches(_toml("pyproject.toml")["tool"]["poetry"], _toml("poetry.lock")) == {}
+
+
+def test_every_transitive_runtime_package_has_a_recorded_licence() -> None:
+    text = (REPO_ROOT / "DEPENDENCIES.md").read_text(encoding="utf-8")
+    assert unrecorded(_toml("pyproject.toml")["tool"]["poetry"], _toml("poetry.lock"), text) == {}
+
+
+def test_the_transitive_check_catches_a_new_package_and_a_stale_row() -> None:
+    poetry = _toml("pyproject.toml")["tool"]["poetry"]
+    text = (REPO_ROOT / "DEPENDENCIES.md").read_text(encoding="utf-8")
+    row = next(line for line in text.splitlines() if line.startswith("| rich |"))
+    assert unrecorded(poetry, _toml("poetry.lock"), text.replace(row + "\n", "")) == {"missing": {"rich"}}
+    assert unrecorded(poetry, _toml("poetry.lock"), text.replace(row, row + "\n| leftpad | 1.0 | MIT |")) == {
+        "stale": {"leftpad"}
+    }
+
+
+def test_every_runtime_licence_is_permissive_or_a_recorded_exception() -> None:
+    licences = runtime_licences((REPO_ROOT / "DEPENDENCIES.md").read_text(encoding="utf-8"))
+    assert licences, "the tables were read"
+    assert disallowed(licences) == {}
+
+
+def test_the_licence_check_catches_copyleft_and_an_exception_on_the_wrong_package() -> None:
+    assert disallowed({"rich": "GPL-3.0-only", "pyyaml": "MIT"}) == {"rich": "GPL-3.0-only"}
+    assert disallowed({"rich": "MPL-2.0", "certifi": "MPL-2.0"}) == {"rich": "MPL-2.0"}
+    assert disallowed({"textual": "MIT or LGPL-2.1"}) == {"textual": "MIT or LGPL-2.1"}
+    assert disallowed({"dbt": ""}) == {"dbt": ""}
+
+
+def test_no_installed_runtime_package_declares_a_copyleft_or_proprietary_licence() -> None:
+    poetry = _toml("pyproject.toml")["tool"]["poetry"]
+    assert forbidden_metadata(_walk(poetry, _toml("poetry.lock"), optional=False)) == {}
+
+
+def test_the_metadata_check_catches_gpl_and_proprietary_dbt() -> None:
+    fake = {
+        "rich": "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+        "dbt": "dbt Product Licensing Agreement",
+        "pyyaml": "MIT",
+        "certifi": "MPL-2.0",
+    }
+    assert forbidden_metadata(set(fake) | {"absent"}, fake.get) == {"rich": "GNU", "dbt": "Product Licensing Agreement"}
 
 
 def test_the_lock_group_check_catches_a_runtime_package_left_in_dev_and_a_stale_main() -> None:

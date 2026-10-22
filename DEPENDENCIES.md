@@ -27,12 +27,60 @@ cryptography reads a key-pair profile's private key -- so both are declared, tho
 requires them too. certifi is MPL-2.0: a file-level copyleft whose conditions attach to certifi's
 own files, which SST neither modifies nor bundles.
 
-Textual draws the `sst ask` conversation. It brings rich, pygments, markdown-it-py with
-mdit-py-plugins, linkify-it-py and mdurl, platformdirs and typing-extensions: MIT, BSD-2-Clause and
-PSF-2.0.
+Textual draws the `sst ask` conversation; its tree is listed below with the connector's.
 
-The connector's own transitive dependencies are all permissive: MIT or MIT-0, BSD, Apache 2.0 and
-PSF-2.0.
+## Transitive Runtime Dependencies
+
+Every other package `pip install snowflake-semantic-tools` can install, on any platform, as
+`poetry.lock` resolves it. `tests/unit/test_dependencies.py` fails when a re-lock reaches a package
+this table does not list, when a listed licence is not permissive, and when an installed package's
+own metadata names a copyleft or proprietary licence.
+
+| Package | Pulled in by | License |
+|---------|--------------|---------|
+| asn1crypto | snowflake-connector-python | MIT |
+| backports-tarfile | jaraco-context (Python < 3.12) | MIT |
+| boto3 | snowflake-connector-python | Apache 2.0 |
+| botocore | snowflake-connector-python, boto3 | Apache 2.0 |
+| cffi | cryptography (CPython) | MIT-0 |
+| charset-normalizer | requests | MIT |
+| filelock | snowflake-connector-python | MIT |
+| idna | requests | BSD-3-Clause |
+| importlib-metadata | keyring (Python < 3.12) | Apache 2.0 |
+| jaraco-classes | keyring | MIT |
+| jaraco-context | keyring | MIT |
+| jaraco-functools | keyring | MIT |
+| jeepney | keyring (Linux) | MIT |
+| jmespath | boto3, botocore | MIT |
+| keyring | snowflake-connector-python (`secure-local-storage`) | MIT |
+| linkify-it-py | markdown-it-py (`linkify` extra, which textual asks for) | MIT |
+| markdown-it-py | textual, rich, mdit-py-plugins | MIT |
+| mdit-py-plugins | textual | MIT |
+| mdurl | markdown-it-py | MIT |
+| more-itertools | jaraco-classes, jaraco-functools | MIT |
+| packaging | snowflake-connector-python | Apache 2.0 or BSD-2-Clause |
+| platformdirs | textual, snowflake-connector-python | MIT |
+| pycparser | cffi | BSD-3-Clause |
+| pygments | textual, rich | BSD-2-Clause |
+| pyjwt | snowflake-connector-python | MIT |
+| pyopenssl | snowflake-connector-python | Apache 2.0 |
+| python-dateutil | botocore | Apache 2.0 and BSD-3-Clause |
+| pytz | snowflake-connector-python | MIT |
+| pywin32-ctypes | keyring (Windows) | BSD-3-Clause |
+| requests | snowflake-connector-python | Apache 2.0 |
+| rich | textual | MIT |
+| ruamel-yaml-clib | ruamel-yaml (CPython) | MIT |
+| s3transfer | boto3 | Apache 2.0 |
+| secretstorage | keyring (Linux) | BSD-3-Clause |
+| six | python-dateutil | MIT |
+| sortedcontainers | snowflake-connector-python | Apache 2.0 |
+| tomlkit | snowflake-connector-python | MIT |
+| typing-extensions | textual, snowflake-connector-python | PSF-2.0 |
+| urllib3 | requests, botocore | MIT |
+| zipp | importlib-metadata | MIT |
+
+python-dateutil is dual-licensed by file (BSD-3-Clause for its older code, Apache 2.0 for newer
+contributions); both are permissive.
 
 ## Optional Dependencies
 
@@ -42,9 +90,15 @@ PSF-2.0.
 
 The extra installs dbt Core and its own dependency tree, which is dbt's, not SST's: SST never
 imports dbt and only runs whichever `dbt` executable is on `PATH`. That tree is not all permissive.
-It includes, for example, text-unidecode (Artistic License or GPL-2.0-or-later) and metricflow,
-whose license depends on the release (`poetry.lock` pins it). Anyone redistributing an
+It includes, for example, text-unidecode (Artistic License or GPL-2.0-or-later). metricflow, once
+under the Business Source License, has been Apache 2.0 since dbt Labs relicensed it in October
+2025; the release `poetry.lock` pins (0.213.0) is Apache-2.0. Anyone redistributing an
 environment with the extra installed should review dbt Core's licenses themselves.
+
+SST never depends on proprietary dbt. dbt Core 1.x and dbt OSS 2.x (`pip install dbt-oss`) are
+Apache 2.0. The full dbt v2 distribution (`pip install dbt`) is under the dbt Product Licensing
+Agreement; a user may install and run it beside SST, which is their choice under that agreement,
+but SST neither requires nor installs it.
 
 ## Development Dependencies
 
