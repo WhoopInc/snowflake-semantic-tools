@@ -237,38 +237,46 @@ def test_command(
             "run sst compile first, or select an eval"
         )
     chosen = suites or (("evals",) if unpublished or compare_models is not None else _applying(paths, result))
+    comparing = (
+        None if compare_models is None else CompareFlags(compare_models, compare_runs, compare_report, break_stale_lock)
+    )
+    request = EvalGateRequest(
+        fail_fast, capture_baseline_requested, reason, threads=workers, break_stale_lock=break_stale_lock
+    )
     reports: list[tuple[str, CommandResult]] = []
     for name in dict.fromkeys(chosen):
-        if name == "evals" and compare_models is not None:
-            flags = CompareFlags(compare_models, compare_runs, compare_report, break_stale_lock)
-            evals = _selected_evals(result, selected)
-            report = run_comparison(paths, target_name, (compiled, result), inputs, evals, flags, _print_eval_progress)
-        elif name == "evals" and unpublished:
-            report = _run_unpublished_evals(
-                paths, target_name, (compiled, result), inputs, selected, workers, fail_fast
-            )
-        elif name == "evals":
-            report = _run_evals(
-                paths,
-                target_name,
-                (compiled, result),
-                inputs,
-                selected,
-                EvalGateRequest(
-                    fail_fast, capture_baseline_requested, reason, threads=workers, break_stale_lock=break_stale_lock
-                ),
-            )
-        else:
-            report = _run_smoke(paths, target_name, (compiled, result), inputs, fail_fast, workers)
+        report = _suite(name, paths, target_name, (compiled, result), inputs, selected, request, unpublished, comparing)
         reports.append((name, report))
         if fail_fast and report.exit_code:
             break
     # A comparison alone is reported as itself, its report the run's data.
-    if len(suites) == 1 or (compare_models is not None and len(reports) == 1):
+    if len(suites) == 1 or (comparing is not None and len(reports) == 1):
         return _noted(reports[0][1], notes)
     # A suite --fail-fast stopped before is skipped, as one that does not apply is.
     ran = {name for name, _ in reports}
     return _noted(_combined(reports, skipped=tuple(name for name in SUITES if name not in ran)), notes)
+
+
+def _suite(
+    name: str,
+    paths: ProjectPaths,
+    target_name: str | None,
+    results: tuple[CompileResult, CompileResult],
+    inputs: YamlProjectInputs,
+    selected: tuple[str, ...],
+    request: EvalGateRequest,
+    unpublished: bool,
+    comparing: CompareFlags | None,
+) -> CommandResult:
+    """Run one suite as the command line asks: smoke, or evals gated, unpublished, or compared."""
+    if name != "evals":
+        return _run_smoke(paths, target_name, results, inputs, request.fail_fast, request.threads)
+    if comparing is not None:
+        evals = _selected_evals(results[1], selected)
+        return run_comparison(paths, target_name, results, inputs, evals, comparing, _print_eval_progress)
+    if unpublished:
+        return _run_unpublished_evals(paths, target_name, results, inputs, selected, request.threads, request.fail_fast)
+    return _run_evals(paths, target_name, results, inputs, selected, request)
 
 
 def _noted(result: CommandResult, notes: DiagnosticBag) -> CommandResult:

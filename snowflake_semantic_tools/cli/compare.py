@@ -98,7 +98,7 @@ def run_comparison(
     flags: CompareFlags,
     progress: EvalProgress,
 ) -> CommandResult:
-    """Compare the candidates on each selected eval, then write and show the report; exit 1 on a lifecycle error.
+    """Compare the candidates on each selected eval, then write and show the report.
 
     `results` is the whole compile, which holds every eval's subject, and the selection. A
     comparison never fails on scores: only a refusal, or a version it could not commit or
@@ -194,6 +194,7 @@ class JsonReportWriter:
     """Write the report object alone, as `compare.json`."""
 
     def write(self, directory: Path, report: Mapping[str, object]) -> Path:
+        """Write `compare.json` alone, indented, keys in the report's order; return its path."""
         path = directory / COMPARE_JSON
         write_within(directory, path, _json(report))
         return path
@@ -206,6 +207,7 @@ class RenderedReportWriter:
         self._write = write
 
     def write(self, directory: Path, report: Mapping[str, object]) -> Path:
+        """Write the report as the renderer does; return the page it rendered."""
         return self._write(directory, report)
 
 

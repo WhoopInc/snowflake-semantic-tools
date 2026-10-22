@@ -1,4 +1,4 @@
-"""How `sst test --compare-models` shows a comparison: per eval, the ranked models, what differs, the verdict.
+"""How `sst test --compare-models` shows a comparison: ranked models, what differs, the verdict.
 
 Each eval's line names it, its questions and runs, and its verdict. Under it, one row per model in
 rank order, the pinned one marked: its rank, model, role, the headline metric's mean with a bar
@@ -41,7 +41,7 @@ _VERDICT_ROLES = {"winner": "success", "pinned_holds": "strong", "no_clear_winne
 
 
 def comparison_lines(report: CompareReport, style: Style, *, files: Sequence[str] = ()) -> list[str]:
-    """Return the comparison's lines: each eval's ranked models, differing questions and verdict, then its files.
+    """Return the comparison's lines: each eval's models, questions that differ and verdict, then files.
 
     Args:
         files: Where the report was written, each shown on the closing line.
