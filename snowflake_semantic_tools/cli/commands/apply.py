@@ -20,7 +20,7 @@ from snowflake_semantic_tools.adapters.fs.local import PlanFileStore
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
-from snowflake_semantic_tools.app.apply import ApplyArtifacts
+from snowflake_semantic_tools.app.apply import ApplyArtifacts, writes_nothing
 from snowflake_semantic_tools.app.apply.observation import stale_observation
 from snowflake_semantic_tools.app.baseline import held_by_baseline
 from snowflake_semantic_tools.app.observe import ObserveOptions
@@ -157,7 +157,8 @@ def apply(
     and --partial must agree with it, and it must have been made for this target, from the
     manifest the project compiles now, observing what Snowflake holds now. The statements are
     written to `sst_target/sql`, or --sql-out, before anything runs, and the changes run under
-    the target's run lock. A failed change skips the changes that depend on it; with
+    the target's run lock; a plan with nothing to write ends once planned, taking no lock
+    and asking nothing. A failed change skips the changes that depend on it; with
     --fail-fast, every change not yet run. `--fail-fast` and `--no-fail-fast` override
     `apply.fail_fast`, false by default, for this run. With --partial, the changes no error
     touches are applied, those left out are reported, and the run exits 1 while errors remain.
@@ -337,12 +338,17 @@ def _apply_plan(
     # Changes run on connections leased from the pool, never on `port`, which keeps the plan
     # reads, the run lock, and the state write; the heartbeat has a connection of its own.
     # Should Snowflake end `port`'s session mid-run, a fresh connection writes state and
-    # releases the lock.
+    # releases the lock. A plan that writes nothing takes no lock and runs no change, so it
+    # opens neither the pool nor the heartbeat's connection.
+    idle = writes_nothing(ready.changeset)
     try:
-        with (
-            ConnectorPool(options.parallelism, lambda: project.open_connector(params)) as pool,
-            contextlib.closing(project.open_connector(params)) as heartbeat,
-        ):
+        with contextlib.ExitStack() as opened:
+            pool = (
+                None
+                if idle
+                else opened.enter_context(ConnectorPool(options.parallelism, lambda: project.open_connector(params)))
+            )
+            heartbeat = None if idle else opened.enter_context(contextlib.closing(project.open_connector(params)))
             apply_result = ApplyArtifacts(
                 session.port,
                 session.state_store,

@@ -592,7 +592,8 @@ With --plan, the saved plan's selection and --prune are used: --select, --exclud
 and --partial must agree with it, and it must have been made for this target, from the
 manifest the project compiles now, observing what Snowflake holds now. The statements are
 written to `sst_target/sql`, or --sql-out, before anything runs, and the changes run under
-the target's run lock. A failed change skips the changes that depend on it; with
+the target's run lock; a plan with nothing to write ends once planned, taking no lock
+and asking nothing. A failed change skips the changes that depend on it; with
 --fail-fast, every change not yet run. `--fail-fast` and `--no-fail-fast` override
 `apply.fail_fast`, false by default, for this run. With --partial, the changes no error
 touches are applied, those left out are reported, and the run exits 1 while errors remain.

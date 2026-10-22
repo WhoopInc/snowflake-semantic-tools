@@ -58,6 +58,18 @@ class SlowSnowflake(FakeSnowflake):
                 self.running -= 1
 
 
+class RecordingSnowflake(FakeSnowflake):
+    """A fake that records the name of every port method called on it, in order."""
+
+    def __init__(self, **kwargs: object) -> None:
+        super().__init__(**kwargs)  # type: ignore[arg-type]
+        self.calls: list[str] = []
+
+    def _check(self, method: str) -> None:
+        self.calls.append(method)
+        super()._check(method)
+
+
 class ListPool:
     """A session pool over fixed ports, recording which change ran on which port; its halt halts them all."""
 

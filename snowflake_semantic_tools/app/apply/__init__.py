@@ -10,6 +10,6 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.app.apply.errors import classify_error
 from snowflake_semantic_tools.app.apply.one import preserves_grants
-from snowflake_semantic_tools.app.apply.run import ApplyArtifacts
+from snowflake_semantic_tools.app.apply.run import ApplyArtifacts, writes_nothing
 
-__all__ = ["ApplyArtifacts", "classify_error", "preserves_grants"]
+__all__ = ["ApplyArtifacts", "classify_error", "preserves_grants", "writes_nothing"]

@@ -10,7 +10,8 @@ Each change reads the lock again before it starts, and each write statement on a
 session before it runs, so a run whose lock another run broke while it was paused finds out
 before its next write rather than at its next heartbeat. An interrupt stops the waves, not the
 run: what finished is recorded before the lock is released. A session Snowflake ended mid-run
-is recovered from as `recovery` says.
+is recovered from as `recovery` says. A plan that writes nothing takes no lock at all: it
+ends once planned, as `writes_nothing` says.
 """
 
 from __future__ import annotations
@@ -129,9 +130,9 @@ class ApplyArtifacts:
 
         The run goes through these phases in order:
 
-        1. Refusal, before the lock: a plan with an error diagnostic is refused with it, as is a
-           `--temporary` run against a production-like target, and a plan with blocked changes
-           the run does not skip (`_skips_blocked`); a run that skips them does not succeed.
+        1. Refusal, before the lock: a plan with an error diagnostic, a `--temporary` run against a
+           production-like target, or blocked changes the run does not skip (`_skips_blocked`); a run
+           that skips them does not succeed. A plan that writes nothing ends unlocked (`_before_lock`).
         2. Lock: the local lock, then the target's lock in Snowflake; either held by another
            run refuses the run, and an expired one is taken over only when
            `options.break_stale_lock` allows it. A heartbeat extends the remote lock while
@@ -191,9 +192,9 @@ class ApplyArtifacts:
         """
         run_id = self._clock.new_run_id()
         started = self._clock.now_iso()
-        refusal = _refusal(changeset, options) or self._create_schemas(changeset)
-        if refusal is not None:
-            return self._refused(refusal, run_id, started)
+        ended = self._before_lock(changeset, options, run_id, started)
+        if ended is not None:
+            return ended
         lease = RunLease(
             self._state_store,
             self._port,
@@ -224,6 +225,56 @@ class ApplyArtifacts:
                 _release(lease, recovery)
         finally:
             recovery.close()
+
+    def _before_lock(
+        self, changeset: ChangeSet, options: ApplyOptions, run_id: str, started: str
+    ) -> ApplyResult | None:
+        """End the run before the lock: refused, or with nothing to write; None to go on and lock.
+
+        A refusal comes first, so a plan that writes nothing is still refused for an error.
+        The schemas are created only for a plan that goes on, as one that lists any does.
+        """
+        refusal = _refusal(changeset, options)
+        if refusal is None and writes_nothing(changeset):
+            return self._settle_unchanged(changeset, options, run_id, started)
+        refusal = refusal or self._create_schemas(changeset)
+        if refusal is not None:
+            return self._refused(refusal, run_id, started)
+        return None
+
+    def _settle_unchanged(self, changeset: ChangeSet, options: ApplyOptions, run_id: str, started: str) -> ApplyResult:
+        """End a run whose plan writes nothing, with the result the locked run would reach.
+
+        Every change is a NOOP or a BLOCKED one, which no route of `ChangeApplier` sends to
+        Snowflake, and the preflight has no relation to check, since only creates and updates
+        require any. So the waves run here on no session, with no lock, and report what they
+        report under it: each change skipped, any SST-APL002 the waves report, SST-APL015 for
+        a temporary artifact's ignored alias, and the blocked skips (SST-APL042), as
+        `_run_locked` does. `temporary_skips` names only creates and updates, so here it names
+        none. `_persist` writes no state for such a plan, so none is written.
+
+        What the locked run would add and this one cannot: SST-APL010 or SST-APL011 from the
+        lock, and SST-APL012 from reading state again under it. Neither changes what the run
+        writes, which is nothing; the answer is the one `sst plan` gives from the same read.
+        No progress is counted and no phase is timed, as no step after the plan runs.
+        """
+
+        def apply_one(change: Change, options: ApplyOptions) -> ApplyOutcome:
+            return ChangeApplier(self._port, self._clock, self._lifecycle_handlers).apply(change, options)
+
+        waves = _WaveRun(changeset, options, apply_one)
+        outcomes, wave_diagnostics = waves.run()
+        diagnostics = DiagnosticBag(
+            (
+                *changeset.diagnostics,
+                *temporary_notes(changeset, temporary=options.temporary),
+                *_blocked_skips(changeset, options),
+                *wave_diagnostics,
+                *_accounted(changeset, outcomes),
+            )
+        )
+        result = ApplyResult(outcomes, diagnostics, run_id, started, self._clock.now_iso(), False)
+        return replace(result, interrupted=waves.interrupted)
 
     def _create_schemas(self, changeset: ChangeSet) -> tuple[Diagnostic, ...] | None:
         """Create each absent schema the plan lists, in order; None, or the refusal with SST-APL039.
@@ -324,14 +375,7 @@ class ApplyArtifacts:
             self._progress.expect("publish", len(changeset.changes))
             with self._phases.phase("publish"):
                 outcomes, wave_diagnostics = waves.run()
-        accounted = (
-            *_unaccounted(changeset, outcomes),
-            *channel_outcome_diagnostics(
-                ((change.key, change.artifact_type) for change in changeset.changes),
-                [outcome.key for outcome in outcomes],
-            ),
-        )
-        diagnostics = DiagnosticBag((*reported, *wave_diagnostics, *accounted))
+        diagnostics = DiagnosticBag((*reported, *wave_diagnostics, *_accounted(changeset, outcomes)))
         assert lease.fence is not None
         with self._phases.phase("state_write"):
             result = self._persist(changeset, previous, outcomes, diagnostics, (run_id, started), lease.fence, recovery)
@@ -492,6 +536,17 @@ class ApplyArtifacts:
         )
 
 
+def writes_nothing(changeset: ChangeSet) -> bool:
+    """Say whether applying the plan would send Snowflake nothing, so the run need not lock.
+
+    True when the plan has no create, update or executable prune, no report-only prune, whose
+    run state records, and no schema to create first. Its changes are then all NOOP or
+    BLOCKED, and `_persist` would write no state. A `--temporary` run of such a plan publishes
+    nothing temporary either, so it is one too.
+    """
+    return not changeset.writes and not changeset.report_only and not changeset.schemas
+
+
 def _release(lease: RunLease, recovery: Reconnection) -> None:
     """Release the run's locks; once more on the fresh connection when Snowflake ended the run's session.
 
@@ -580,6 +635,22 @@ def _blocked_skips(changeset: ChangeSet, options: ApplyOptions) -> tuple[Diagnos
     if not _skips_blocked(changeset, options):
         return ()
     return tuple(D("SST-APL042", subject=change.key, artifact=change.key) for change in changeset.blocked)
+
+
+def _accounted(changeset: ChangeSet, outcomes: tuple[ApplyOutcome, ...]) -> tuple[Diagnostic, ...]:
+    """Report outcomes that do not account for the plan, in number or channel by channel.
+
+    Diagnostics:
+        SST-APL900: the outcomes do not account for every planned change.
+        SST-VAL828: a publication channel's change has no outcome or several.
+    """
+    return (
+        *_unaccounted(changeset, outcomes),
+        *channel_outcome_diagnostics(
+            ((change.key, change.artifact_type) for change in changeset.changes),
+            [outcome.key for outcome in outcomes],
+        ),
+    )
 
 
 def _unaccounted(changeset: ChangeSet, outcomes: tuple[ApplyOutcome, ...]) -> tuple[Diagnostic, ...]:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, OwnershipMarker
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import content_hash
+from tests.helpers.apply_sessions import RecordingSnowflake
 from tests.helpers.cli_projects import (
     OFFLINE_VALIDATION,
     PROFILE_CONFIG,
@@ -472,3 +474,134 @@ def test_profile_commands_and_plugins_publish_and_every_pointer_resolves(
     replanned = invoke_with_port(monkeypatch, port, ["plan", "--project-dir", str(project), "--output", "json"])
     assert replanned.exit_code == 0, replanned.output
     assert [item["action"] for item in json.loads(replanned.output)["data"]["changes"]] == ["noop"]
+
+
+# What a run sends Snowflake to take the run lock, hold it, and write state under it.
+_LOCKED_RUN = {"acquire_run_lock", "extend_run_lock", "verify_run_lock", "write_state", "release_run_lock"}
+
+
+def _applied_skill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, RecordingSnowflake]:
+    """A skills-only project, applied once, so planning it again changes nothing."""
+    project = skill_project(tmp_path / "skills")
+    port = RecordingSnowflake(existing=())
+    first = invoke_with_port(monkeypatch, port, ["apply", "--project-dir", str(project), "--yes", "--output", "json"])
+    assert first.exit_code == 0, first.output
+    return project, port
+
+
+def _counting_connects(monkeypatch: pytest.MonkeyPatch, port: FakeSnowflake) -> list[object]:
+    """Hand out `port` for every connection the command opens, recording each one."""
+    opened: list[object] = []
+
+    def connect(params: object) -> FakeSnowflake:
+        opened.append(params)
+        return port
+
+    monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", connect)
+    port.close = lambda: None  # type: ignore[attr-defined]
+    return opened
+
+
+def _apply_json(project: Path, *extra: str) -> tuple[int, dict[str, object]]:
+    applied = CliRunner().invoke(
+        cli, ["apply", "--project-dir", str(project), "--yes", "--output", "json", "--threads", "1", *extra]
+    )
+    return applied.exit_code, json.loads(applied.output)
+
+
+def test_an_apply_with_nothing_to_change_takes_no_lock_and_opens_no_other_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, port = _applied_skill(tmp_path, monkeypatch)
+    opened = _counting_connects(monkeypatch, port)
+    port.calls.clear()
+
+    exit_code, envelope = _apply_json(project)
+
+    assert exit_code == 0, envelope
+    data = envelope["data"]
+    assert isinstance(data, dict)
+    assert [item["status"] for item in data["outcomes"]] == ["skipped"]
+    assert (data["applied"], data["state_written"]) == ([], False)
+    # The command's own session only: no worker, no heartbeat; no lock taken, no state written.
+    assert len(opened) == 1
+    assert not _LOCKED_RUN & set(port.calls)
+    assert port.calls.count("read_state") == 1
+    assert {"lock", "publish", "state_write"}.isdisjoint(envelope["invocation"]["timings"]["phases"])  # type: ignore[index]
+
+
+def test_an_apply_with_nothing_to_change_reports_what_the_locked_run_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, port = _applied_skill(tmp_path, monkeypatch)
+    _counting_connects(monkeypatch, port)
+    quick_code, quick = _apply_json(project)
+    quick_human = CliRunner().invoke(cli, ["apply", "--project-dir", str(project), "--yes", "--threads", "1"])
+
+    # The run as it was: the lock taken, state read again under it, every change through the waves.
+    monkeypatch.setattr("snowflake_semantic_tools.cli.commands.apply.writes_nothing", lambda changeset: False)
+    monkeypatch.setattr("snowflake_semantic_tools.app.apply.run.writes_nothing", lambda changeset: False)
+    port.calls.clear()
+    locked_code, locked = _apply_json(project)
+    assert "acquire_run_lock" in port.calls
+    locked_human = CliRunner().invoke(cli, ["apply", "--project-dir", str(project), "--yes", "--threads", "1"])
+
+    def kept(envelope: dict[str, object]) -> dict[str, object]:
+        data = dict(envelope["data"])  # type: ignore[call-overload]
+        del data["run_id"]
+        return {**{key: value for key, value in envelope.items() if key != "invocation"}, "data": data}
+
+    assert quick_code == locked_code == 0
+    assert kept(quick) == kept(locked)
+    assert quick_human.exit_code == locked_human.exit_code == 0
+    assert "applied 0 changes; 1 unchanged" in quick_human.output
+    # The headline ends with how long the run took, which is all that may differ.
+    assert _untimed(quick_human.output) == _untimed(locked_human.output)
+
+
+def _untimed(output: str) -> str:
+    return re.sub(r" · [0-9.]+s$", "", output, flags=re.MULTILINE)
+
+
+def test_an_apply_with_nothing_to_change_asks_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project, port = _applied_skill(tmp_path, monkeypatch)
+    _counting_connects(monkeypatch, port)
+    on_a_terminal(monkeypatch)
+    port.calls.clear()
+
+    asked = CliRunner().invoke(cli, ["apply", "--project-dir", str(project), "--threads", "1"])
+
+    assert asked.exit_code == 0, asked.output
+    assert "Apply this plan?" not in asked.output
+    assert not _LOCKED_RUN & set(port.calls)
+
+
+def test_a_saved_plan_with_nothing_to_change_applies_without_the_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, port = _applied_skill(tmp_path, monkeypatch)
+    opened = _counting_connects(monkeypatch, port)
+    planned = CliRunner().invoke(cli, ["plan", "--project-dir", str(project), "--output", "json", "--threads", "1"])
+    assert planned.exit_code == 0, planned.output
+    plan_path = json.loads(planned.output)["data"]["plan_path"]
+    opened.clear()
+    port.calls.clear()
+
+    exit_code, envelope = _apply_json(project, "--plan", plan_path)
+
+    assert exit_code == 0, envelope
+    assert [item["status"] for item in envelope["data"]["outcomes"]] == ["skipped"]  # type: ignore[index]
+    assert len(opened) == 1 and not _LOCKED_RUN & set(port.calls)
+
+
+def test_an_apply_with_one_change_still_takes_the_lock_and_records_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = skill_project(tmp_path / "skills")
+    port = RecordingSnowflake(existing=())
+
+    applied = invoke_with_port(monkeypatch, port, ["apply", "--project-dir", str(project), "--yes", "--output", "json"])
+
+    assert applied.exit_code == 0, applied.output
+    assert json.loads(applied.output)["data"]["state_written"] is True
+    assert {"acquire_run_lock", "write_state", "release_run_lock"} <= set(port.calls)
