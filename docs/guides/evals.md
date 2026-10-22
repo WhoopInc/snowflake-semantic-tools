@@ -692,6 +692,14 @@ checks are made again once the run's attempts are in. For `baseline_absent`,
 the suite again cannot pass, so the run's next step is the capture,
 `sst test --suite evals --select <eval> --capture-baseline --reason "<why>"`.
 
+**After upgrading to an SST that evaluates `committed` on the default.**
+`agent_version: committed` used to render `LAST`, the newest committed version;
+it now renders `DEFAULT`, the version `sst apply` pinned, since a model
+comparison commits versions newer than the release. The rendered run
+configuration changes once, so each eval's config is republished on the next
+apply and its baseline stops matching (`SST-VAL759`): capture each again once,
+`sst test --suite evals --capture-baseline --reason "committed runs on the pinned default"`.
+
 ### Expiry
 
 A baseline expires 30 days after it is captured. In its last 7 days each gate
@@ -751,81 +759,186 @@ Drawn from: [gate.py](../../snowflake_semantic_tools/app/evals/gate.py), [suite.
 
 ## Comparing orchestration models
 
-`--compare-models` runs an eval's questions on its published agent or CoWork
-profile once per orchestration model, and reports which scored best and what
-each cost. It answers "should we move `+orchestration_model`?" with the eval
-the project already gates on.
+`--compare-models` answers "which model should this agent pin?" with the eval
+the project already gates on. It runs the eval's questions on the published
+agent or CoWork profile once per model, the pinned one and each candidate, and
+reports how each scored, what it cost, which questions it fixed or broke, and
+whether any candidate clearly beats the pinned model. Nothing it does changes
+what anyone is served: adopting a winner is an ordinary change and
+`sst apply`.
 
-```bash
-sst test --suite evals --compare-models claude-opus-4-8,openai-gpt-5 --target dev
-sst test --compare-models --select jaffle_analyst --compare-runs 3 --target dev
-sst test --refresh-cost sst_target/compare/jaffle_analyst_20261022T140311Z/compare.json --target dev
+### Setting it up
+
+Name the candidates beside the eval settings, or under a folder route, or in
+one eval's `config:`. Each must be in `snowflake.orchestration_models`, and
+`auto` is never a candidate (`SST-VAL770`, `SST-VAL771`):
+
+```yaml
+evals:
+  +candidate_models:
+    - claude-opus-4-8
+    - claude-haiku-4-5
+  +compare_runs: 2          # runs per model; the default
 ```
 
-With a list, those models are the candidates; with the flag alone, each eval's
-`+candidate_models`. An eval with none is refused (`SST-VAL772`), as is `auto`
-or a model `snowflake.orchestration_models` does not list. The pinned model,
-the one the project's `+orchestration_model` names, always runs too, and a
-candidate equal to it runs once, as pinned. `--compare-models` runs the eval
-suite, alone unless `--suite` names `smoke` too; it is refused with
-`--capture-baseline`, `--unpublished`, or a `--suite` that does not name `evals`.
+The subject must be published exactly as compiled, so plan and apply first.
 
-### What a comparison commits
+### Running a comparison
 
-Each candidate runs on a real committed version of the published subject, so
-Snowsight's Evaluations tab ties every run to a version. The comparison takes
-the run lock `sst apply` takes, then for each subject:
+```bash
+# every eval --select picks, against its +candidate_models
+sst test --compare-models --select eval:jaffle_analyst --target dev
 
-1. checks it is published exactly as compiled: its plan is NOOP, its live
-   version is open, its alias is on its release, and its default is pinned by
-   name to that release (`SST-APL108` otherwise; run `sst plan`, then
-   `sst apply`);
-2. commits the live version as a hold copy, so a caller that names no version
-   is served the default, the release;
+# candidates named on the command line instead, three runs each
+sst test --compare-models claude-opus-4-8,claude-haiku-4-5 --compare-runs 3 \
+  --select eval:cowork_profile:gtm --target dev
+
+# an hour later: read the cost that had not landed yet, and decide again
+sst test --refresh-cost sst_target/compare/jaffle_analyst_20261022T043148Z/compare.json --target dev
+```
+
+`--compare-models` runs the eval suite, alone unless `--suite` names `smoke`
+too. It is refused with `--capture-baseline`, `--unpublished`, or a `--suite`
+that does not name `evals`, and an eval with no candidate is `SST-VAL772`. The
+pinned model, the one `+orchestration_model` names, always runs too; a
+candidate equal to it runs once, as pinned. A CoWork profile is compared only
+where its eval runs: on a rehearsal target, never where CoWork lists it
+([Evaluating CoWork profiles](#evaluating-cowork-profiles)).
+
+A comparison of one eval with two candidates and two runs each takes about as
+long as one eval run: every run starts at once.
+
+### What a comparison changes in Snowflake
+
+Each candidate runs on a real committed version of the published agent, so
+Snowsight's Evaluations tab lists every run against its version. Under the run
+lock `sst apply` takes, for each subject the comparison:
+
+1. checks it is published exactly as compiled: its plan is NOOP, it has a live
+   version, its alias is on its release, and its default is pinned by name to
+   that release (`SST-APL108` otherwise: run `sst plan`, then `sst apply`);
+2. commits the live version as a *hold* copy of the release. With no live
+   version, a caller naming no version is served the default, the release
+   ([which version a caller gets](agents.md#versions-the-default-and-releases));
 3. for each candidate, stages the released specification with only
    `models.orchestration` changed, adds a version from it, and moves the alias
-   `EVAL_<MODEL>` onto it from wherever an earlier comparison left it;
-4. adds a restore copy of the released specification and opens the live
-   version from it, whatever happened before.
+   `EVAL_<MODEL>` (`EVAL_CLAUDE_OPUS_4_8`) onto it from wherever an earlier
+   comparison left it;
+4. adds a *restore* copy of the release and opens the live version from it.
+   This runs whatever happened before, and before any evaluation starts, so the
+   agent is without a live version for seconds.
 
-The default, the release's alias, and what an unversioned caller is served
-never change: only `sst apply` moves them, and adopting a winner is changing
-`+orchestration_model` and running `sst plan` and `sst apply`. The versions a
-comparison commits stay, each commented `sst-eval-model:<model>`, and plan
-never takes one for a release. A candidate that could not commit is reported
-failed (`SST-APL109`) and the rest still run; a restore that fails is
-`SST-APL110`, whose repair is `sst plan` then `sst apply`.
+The runs then name their version: the pinned model's by `VERSION$<n>`, each
+candidate's by its alias. What never changes:
+
+- the default and the release's alias, which only `sst apply` moves;
+- what a caller is served: the live version holds the released specification
+  before and after, and a candidate is never written into it;
+- the eval's baseline and recorded state.
+
+The versions a comparison commits stay, each commented
+`sst-eval-model:<model> run:<id>` (`hold` and `restore` for the copies). Plan
+never takes one for a release, never reports one as drift, and never unsets an
+`EVAL_` alias; an `+alias` of the project's own starting `EVAL_` is refused
+(`SST-VAL561`). Comparing again moves each `EVAL_` alias to the new run's
+version; the older version keeps its runs in Snowsight. A comparison of three
+models adds four versions; a version is cheap, and `SHOW VERSIONS IN AGENT`
+lists them all.
 
 ### Runs and cost
 
-Every model runs `--compare-runs`, else `+compare_runs`, else 2 times, all at
-once: the pinned model on its release by name, each candidate on its alias.
-Each run's config differs from the published one only in `agent_version`; the
-dataset version, metrics and judges are the published ones. Nothing is gated,
-and no baseline or eval state is written.
+Every model runs `--compare-runs`, else `+compare_runs`, else 2 times. Each
+run's config differs from the published one only in `agent_version`; the
+dataset version, metrics and judges are the published ones, so the models are
+compared on exactly what the gate measures. Nothing is gated.
 
-Cost is read from `SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY` (agent
-and SQL credits, by request) and the eval spans' judge requests in
-`CORTEX_REST_API_USAGE_HISTORY` (judge tokens; that view has no credits). The
-views lag up to an hour, so a value not landed yet is `pending`
-(`SST-VAL773`): `--refresh-cost <compare.json>` reads them again, ranks and
-decides again, and rewrites the report, running nothing. A role that may not
-read them reports cost `unavailable` (`SST-VAL774`), and the scores stand. A
-CoWork profile's cost is its router's alone (`SST-VAL776`).
+Cost comes from Snowflake's usage views:
 
-### The report
+| Figure | From |
+|---|---|
+| agent credits, per model | `SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY`, by each question's request |
+| SQL credits | the same rows' `METADATA:sql_query_credits` |
+| judge tokens | the eval spans' judge requests in `CORTEX_REST_API_USAGE_HISTORY`, which has tokens but no credits |
+| credits per question | agent credits, with SQL credits once known, per question answered |
+
+The views lag up to an hour (SQL credits up to eight), so a figure not landed
+yet is **pending** (`SST-VAL773`): `--refresh-cost <compare.json>` reads them
+again, ranks and decides again, and rewrites both files, running nothing. A
+role that may not read the views reports cost **unavailable** (`SST-VAL774`);
+the scores stand. A CoWork profile's cost is its router's alone: the subagent
+runs it routed to are not attributed (`SST-VAL776`), so compare each subagent
+on its own eval for what it costs.
+
+### Reading the report
+
+The terminal prints, per eval, the models ranked, the questions where a
+candidate fixes or breaks the pinned model's result, and the verdict:
+
+```text
+eval:jaffle_analyst  6 questions × 2 runs  winner claude-opus-4-8
+  #  model              role       tool_selection_accuracy        answer_correctness  credits/q  p95    version
+  1  claude-opus-4-8    candidate  1.00  [         ●]  1.00-1.00  1.00                0.1169     27.5s  VERSION$6 EVAL_CLAUDE_OPUS_4_8
+  2  claude-sonnet-4-6  pinned     0.92  [        ● ]  0.92-0.92  1.00                0.0526     36.7s  VERSION$4
+  3  claude-haiku-4-5   candidate  0.78  [      ├●┤ ]  0.72-0.83  0.86                0.0177     14.8s  VERSION$7 EVAL_CLAUDE_HAIKU_4_5
+  questions that differ
+    q3  claude-opus-4-8 fixes  Which jaffles on the menu have no meat in them?
+    q6  claude-haiku-4-5 breaks  What was revenue by product at each location in 2025?
+  verdict  claude-opus-4-8 beats the pinned claude-sonnet-4-6 on tool_selection_accuracy (1.00 vs 0.92) outside the spread, at 2.2x the credits per question.
+  pin      agents.+orchestration_model: claude-opus-4-8
+```
+
+`report.html` and `compare.json` are written to `--compare-report`, else
+`sst_target/compare/<eval>_<UTC time>/`. The HTML page is one self-contained
+file: no scripts, nothing fetched, so it opens offline and can be attached to a
+review. It shows the verdict, a scorecard per model, each metric's mean with
+the spread of its runs against the gate's threshold, quality against credits
+per question, a question-by-model grid (hover a cell for the judge's reason,
+and for a profile, the route), the cost breakdown, and what was held fixed.
+`compare.json` is the [`sst.compare/1`](../design/compare-report-schema.md)
+object; `--output json` prints the same object as its `data`.
 
 Models rank by their gated metric means in metric order, then the ungated
-ones, then credits per question and p95 latency. A candidate wins only when it
-beats the pinned model on the first gated metric with its lowest run above the
-pinned model's highest; leading inside the spread is `no_clear_winner`. A
-model SHOW CORTEX BASE MODELS lists as preview, internal or deprecated is
-reported but never named the winner (`SST-VAL775`). The terminal shows each
-eval's ranked models, the questions a candidate fixes or breaks, the verdict
-and the config line to review. `compare.json`, the
-[`sst.compare/1`](../design/compare-report-schema.md) object, and `report.html`
-are written to `--compare-report`, else `sst_target/compare/<eval>_<UTC time>/`;
-`--output json` prints the same object as its `data`.
+ones, then credits per question and p95 latency. The verdict is one of:
+
+| Verdict | When |
+|---|---|
+| `winner` | a candidate beats the pinned model on the first gated metric with its lowest run above the pinned model's highest, each having completed at least 2 runs |
+| `no_clear_winner` | a candidate leads, but the runs overlap or there are too few to tell a lead from noise: compare more runs |
+| `pinned_holds` | no candidate scores higher; a candidate that ties at a lower price is named in the summary |
+| `incomplete` | the pinned model or every candidate scored no run |
+
+A model `SHOW CORTEX BASE MODELS` lists as preview, internal or deprecated is
+reported but never named the winner (`SST-VAL775`).
+
+### Adopting a winner
+
+The verdict's `pin` line is the config change to review, never one SST makes:
+
+```yaml
+agents:
+  +orchestration_model: claude-opus-4-8     # or under the agent's own config:
+```
+
+Then `sst plan` shows the agent's new version, `sst apply` publishes it and
+moves the alias and default to it, and the model change needs a new baseline
+(`SST-VAL759`), as any specification change does.
+
+### When a comparison goes wrong
+
+| Code | What happened | What to do |
+|---|---|---|
+| `SST-APL108` | the subject is not published as compiled | `sst plan`, then `sst apply`, then compare again |
+| `SST-APL109` | a candidate's version could not be committed | the other candidates still ran; the detail is Snowflake's error |
+| `SST-APL110` | the live version could not be restored | callers naming no version are served the release meanwhile; `sst plan`, then `sst apply`, repairs it |
+| `SST-VAL773` | some cost has not landed yet | `sst test --refresh-cost <compare.json>` in about an hour |
+| `SST-VAL774` | the role may not read the usage views | the scores stand; read them with a role that may |
+| `SST-MAN032` | `--refresh-cost` cannot use the file | point it at a `compare.json` a comparison wrote |
+
+A comparison killed outright, before its restore ran, leaves the agent with no
+live version, so callers naming no version are served the release. The next
+`sst plan` shows the drift (`SST-PLN102`); `sst apply` commits a release of the
+same specification and opens the live version from it, and breaks the killed
+run's lock (`SST-APL010`).
 
 ## Trying a change before publishing
 

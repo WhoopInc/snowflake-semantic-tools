@@ -1349,6 +1349,32 @@ credit younger than eight hours is `pending`, a refused read is `unavailable`
 [connector/usage.py](../../snowflake_semantic_tools/adapters/snowflake/connector/usage.py);
 [compare_cost.py](../../snowflake_semantic_tools/app/evals/compare_cost.py).
 
+Measured 2026-10-22 on the sandbox: a comparison of `jaffle_analyst`'s eval
+reported agent credits per model (0.631405, 1.403313, 0.212347 over 12
+requests each) that equal `SUM(TOKEN_CREDITS)` of the view's rows grouped by
+METADATA `agent_version_alias` (RELEASED, EVAL_CLAUDE_OPUS_4_8,
+EVAL_CLAUDE_HAIKU_4_5) to the sixth decimal; the rows had landed within the
+four minutes the comparison took. Judge requests: 86 of 86 ids joined.
+
+### An agent on `auto` runs a model Snowflake chooses
+
+**Docs say**: `models.orchestration` is optional; without it, a model is
+selected automatically.
+
+**Server does**: a CoWork profile whose specification named `auto` routed with
+`claude-opus-4-8` (2026-10-21, `CREDITS_GRANULAR` of its evaluation's usage
+rows), while the project's agents pinned `claude-sonnet-4-6`. Which model
+`auto` resolves to is Snowflake's choice and is not reported before a run.
+
+**Evidence**: `Enforced` as a policy, not a check of the model: an agent or
+profile on `auto` is SST-VAL560 (a warning the project sets the severity of),
+and SST-VAL544 when a blocking eval scores it.
+[test_sst_val560.py](../../tests/codes/val/test_sst_val560.py),
+[test_sst_val544.py](../../tests/codes/val/test_sst_val544.py).
+
+**SST depends on it at**: `auto_model_problems` in
+[cross_artifact.py](../../snowflake_semantic_tools/domain/validate/cross_artifact.py).
+
 ## Search services and grants
 
 ### A search service stays ACTIVE after its source is rebuilt

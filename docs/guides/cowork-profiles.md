@@ -268,6 +268,14 @@ gates on `routing_accuracy`, which SST scores from the run's router spans. See
 [Evaluating CoWork profiles](evals.md#evaluating-cowork-profiles). A blocking
 eval of a profile on `auto` is `SST-VAL544`, as for an agent.
 
+To choose the router's model, compare candidates on the profile's eval on a
+rehearsal target:
+`sst test --compare-models --select eval:cowork_profile:<name> --target dev`
+([Comparing orchestration models](evals.md#comparing-orchestration-models)).
+The router routes with each candidate; the subagents it routes to run as they
+are published, so a comparison measures routing, and its cost is the router's
+alone.
+
 ## What SST does not do
 
 - **Detach a profile**, or change any other attachment of the CoWork object.

@@ -164,7 +164,8 @@ with no change to the project: a CoWork profile left on `auto` was measured
 running `claude-opus-4-8`. A change of model then looks, in an eval's scores or
 in the agent's answers, like a change the project made. So pin the model: list
 it in `snowflake.orchestration_models` and name it for every agent, or in one
-agent's `config:`.
+agent's `config:`. To choose which model, run the agent's evals on each candidate
+with [`sst test --compare-models`](evals.md#comparing-orchestration-models).
 
 ```yaml
 snowflake:
@@ -676,9 +677,11 @@ to `@<stage>/<agent>/<commit>/agent_spec.yaml` under `apply.agent_spec_stage`
    to a shared target, so each version names the commit that holds it.
 
    Apply leaves every agent with a live version because Snowsight's agent page
-   shows the live version (as DRAFT), and a request that names no version is
-   served it while the agent has one committed version. Without one, the agent
-   shows, and runs with, no instructions, tools, or skills.
+   shows the live version (as DRAFT), and while an agent has one, a request
+   that names no version is served it
+   ([which version a caller gets](#versions-the-default-and-releases)). The live
+   version apply leaves holds the released spec, so those callers get the
+   release.
 3. `ALTER AGENT ... MODIFY VERSION "LAST" SET ALIAS = <alias>`, when the agent
    has an alias, and `SET TAG` for its tags. The new version becomes the
    default: the program ends with `SET DEFAULT_VERSION = 'LAST'`, then apply
@@ -728,6 +731,56 @@ apply publishes SST's definition over it without dropping anything: an edited
 comment gets the marker back with no new version, and a hand-committed
 specification is followed by a version holding SST's, which the alias and the
 default, pinned to it by name, then serve.
+
+### Versions, the default, and releases
+
+An agent in Snowflake has committed versions (`VERSION$1`, `VERSION$2`, ...),
+which never change once committed, at most one editable live version (Snowsight
+calls it DRAFT), aliases such as `RELEASED` that each point at one committed
+version, and a default. SST keeps three commands apart, the way git keeps the
+working tree, a branch and a release tag apart:
+
+| Command | Like git's | What it touches in Snowflake |
+|---|---|---|
+| `sst ask`, `sst test --suite evals --unpublished` | the working tree | A temporary copy built from the project as it is on disk, unapplied edits included. Nothing published, no version. |
+| `sst test --compare-models` | commits on a side branch | Extra committed versions of the published agent, one per candidate model, aliased `EVAL_<MODEL>`. Never the default, `RELEASED`, or what any caller is served ([comparing models](evals.md#comparing-orchestration-models)). |
+| `sst plan` / `sst apply` | tagging a release | Commits a version when the spec changed, then moves the alias and the default to it. |
+
+**`sst apply` is the only command that moves the default or the alias.**
+
+Which version a caller gets, as measured on Snowflake:
+
+| Caller | Gets |
+|---|---|
+| A request naming a version or alias (`!RELEASED`, `!VERSION$4`, `!EVAL_CLAUDE_OPUS_4_8`, REST `/versions/{v}:run`) | that version |
+| `!DEFAULT`, and Snowflake CoWork | the default |
+| A request naming no version (`DATA_AGENT_RUN('db.s.agent', ...)`, REST `:run`), and a CoWork profile routing to the agent as a subagent | the **live version** while the agent has one; the default when it has none |
+
+Snowflake's docs say a request naming no version gets the default; while a live
+version exists, it gets the live version instead. That is why apply always
+leaves the live version holding the released spec, and why a comparison never
+writes a candidate into it.
+
+SST pins the default **by name** (`SET DEFAULT_VERSION = 'VERSION$4'`), never
+as `'LAST'`. A default following `LAST` would move to whatever version is
+committed next, a comparison's candidate included; one pinned by name stays
+where apply put it. `DESCRIBE AGENT` shows which: `default_version_name` reads
+`VERSION$4` when pinned, `LAST` when not.
+
+```mermaid
+flowchart LR
+    A["sst apply"] -->|commits, pins| R["VERSION$4<br/>RELEASED, default"]
+    C["sst test --compare-models"] -->|commits| E1["VERSION$6<br/>EVAL_CLAUDE_OPUS_4_8"]
+    C -->|commits| E2["VERSION$7<br/>EVAL_CLAUDE_HAIKU_4_5"]
+    L["live version<br/>released spec"] -.->|unversioned callers| U((users))
+    R -.->|CoWork, !DEFAULT| U
+```
+
+**Upgrading.** An agent published before SST pinned defaults follows `LAST`.
+The first plan after upgrading shows one update per agent, reason
+`default_unpinned` (`SST-PLN107`, an info), which pins the default to the
+version it already serves and adds no version. A strict plan does not fail on
+it.
 
 ### Version drift
 
