@@ -255,3 +255,9 @@ def test_a_specification_sst_did_not_render_commits_no_candidate() -> None:
     result = CompareLifecycle(port, run_id=RUN, git_sha=GIT_SHA, dirty=True).commit(broken, (OPUS,))
     assert result.failed[0][1].startswith("the released specification is not one SST rendered")
     assert "git:abc1234-dirty" in port.scripts[0][0]
+
+
+def test_a_subject_with_no_candidate_left_is_neither_held_nor_restored() -> None:
+    port = FakeSnowflake()
+    sent, result = commit(port)
+    assert sent == [] and result.restored and result.candidates == ()

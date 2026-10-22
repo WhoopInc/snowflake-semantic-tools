@@ -158,7 +158,8 @@ class CompareLifecycle:
         """Hold the subject, commit a version per model, then restore it, whatever happened between.
 
         Never raises for Snowflake: a failed step is a diagnostic. An interrupt during the
-        candidates still restores before it propagates.
+        candidates still restores before it propagates. With no model to commit, nothing is
+        held or restored, and nothing is sent.
 
         Diagnostics:
             SST-APL109: the hold, or one candidate's upload, ADD VERSION, version read or alias
@@ -166,6 +167,8 @@ class CompareLifecycle:
             SST-APL110: the restore's upload, ADD VERSION or ADD LIVE VERSION failed, so the
                 subject is left with no live version until `sst plan` and `sst apply` repair it.
         """
+        if not models:
+            return LifecycleResult(subject.key)
         progress = _Progress()
         try:
             self._hold(subject, progress)

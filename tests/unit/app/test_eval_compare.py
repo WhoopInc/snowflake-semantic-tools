@@ -374,3 +374,12 @@ def test_every_run_of_every_model_starts_at_once(monkeypatch: pytest.MonkeyPatch
     defaults = asked["defaults"]
     assert isinstance(defaults, EvalDefaults) and defaults.concurrency == 9
     assert asked.get("baseline_capture", False) is False and asked.get("fail_fast", False) is False
+
+
+def test_a_comparison_whose_only_candidate_is_the_pinned_model_commits_nothing() -> None:
+    item = agent_eval()
+    port, subjects = world(item)
+    outcome = compare(port, subjects, item, candidates=("claude-sonnet-4-6",), runs=1)
+    assert isinstance(outcome, CompareOutcome) and outcome.report is not None
+    assert sent(port) == [] and port.started == ["SALES_AGENT_CMP_C7F2A19E_CLAUDE_SONNET_4_6_1"]
+    assert outcome.report.evals[0].verdict.kind == "incomplete"
