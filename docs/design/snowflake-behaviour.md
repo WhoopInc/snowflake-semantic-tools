@@ -630,6 +630,40 @@ in [test_snowflake_connector.py](../../tests/unit/adapters/test_snowflake_connec
 `AgentVersions.default_pinned` in
 [ports/snowflake/catalog.py](../../snowflake_semantic_tools/domain/ports/snowflake/catalog.py).
 
+### A comparison's versions never reach a caller that names no version
+
+**Docs say**: `COMMIT` commits the live version, `ADD VERSION ... FROM` commits a
+version from a stage, `MODIFY VERSION ... SET ALIAS` names a version, and `ADD
+LIVE VERSION` opens a live version. They say nothing about which version an
+unversioned caller is served between these statements, nor whether an alias
+may name two versions.
+
+**Server does**: with the live version holding the released specification and
+the default pinned by name to the release, this sequence leaves an unversioned
+caller on the release throughout: `COMMIT` commits a copy of the live version
+and leaves no live version, so the caller is served the default; `ADD VERSION
+FROM @<stage>/<dir>/` then succeeds, as it does not beside a live version, once
+per candidate; `ADD LIVE VERSION FROM LAST` after an `ADD VERSION` of the
+released specification opens the live version on it again. `DEFAULT` and the
+release's alias never move. An alias names one version of an agent: `SET ALIAS`
+of an alias another version carries fails, so it is unset there first. An
+evaluation naming `!EVAL_<MODEL>` as its agent version runs that version, and
+Snowsight's Evaluations tab lists the run under it.
+
+**Evidence**: `Enforced`. `CompareLifecycle.commit` runs the hold, then each
+candidate's ADD VERSION, alias unset and alias set, then the restore in a
+`finally`, and sends no `SET DEFAULT_VERSION` and no statement naming the
+release's alias.
+`test_a_comparison_holds_commits_each_candidate_and_restores_leaving_the_release_alone`,
+`test_a_hold_that_failed_but_committed_is_still_restored` and
+`test_an_interrupt_mid_candidate_still_restores_before_it_propagates` in
+[test_eval_compare_lifecycle.py](../../tests/unit/app/test_eval_compare_lifecycle.py);
+[test_sst_apl110.py](../../tests/codes/apl/test_sst_apl110.py).
+
+**SST depends on it at**: `CompareLifecycle` in
+[compare_lifecycle.py](../../snowflake_semantic_tools/app/evals/compare_lifecycle.py);
+[render/compare.py](../../snowflake_semantic_tools/domain/render/compare.py).
+
 ### LAST must be quoted, and an alias cannot be a reserved word
 
 **Docs say**: `LIVE`, `FIRST`, `LAST` and `DEFAULT` are version shortcuts "in

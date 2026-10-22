@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 805
+- Codes: 808
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -59,6 +59,9 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-APL105`](error-codes.md#sst-apl105) | APL | info | local | `snowflake_semantic_tools.app.apply.temporary` | `tests/codes/apl/test_sst_apl105.py` |
 | [`SST-APL106`](error-codes.md#sst-apl106) | APL | info | local | `snowflake_semantic_tools.app.apply.temporary` | `tests/codes/apl/test_sst_apl106.py` |
 | [`SST-APL107`](error-codes.md#sst-apl107) | APL | warning | runtime | `snowflake_semantic_tools.app.apply.waves` | `tests/codes/apl/test_sst_apl107.py` |
+| [`SST-APL108`](error-codes.md#sst-apl108) | APL | error | observe | `snowflake_semantic_tools.app.evals.compare_precheck` | `tests/codes/apl/test_sst_apl108.py` |
+| [`SST-APL109`](error-codes.md#sst-apl109) | APL | error | runtime | `snowflake_semantic_tools.app.evals.compare_lifecycle` | `tests/codes/apl/test_sst_apl109.py` |
+| [`SST-APL110`](error-codes.md#sst-apl110) | APL | error | runtime | `snowflake_semantic_tools.app.evals.compare_lifecycle` | `tests/codes/apl/test_sst_apl110.py` |
 | [`SST-APL900`](error-codes.md#sst-apl900) | APL | error | local | `snowflake_semantic_tools.app.apply.run` | `tests/codes/apl/test_sst_apl900.py` |
 | [`SST-ASK001`](error-codes.md#sst-ask001) | ASK | warning | observe | `snowflake_semantic_tools.app.ask` | `tests/codes/ask/test_sst_ask001.py` |
 | [`SST-ASK002`](error-codes.md#sst-ask002) | ASK | error | runtime | `snowflake_semantic_tools.app.ask_conversation`<br>`snowflake_semantic_tools.app.evals.inline` | `tests/codes/ask/test_sst_ask002.py` |

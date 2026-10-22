@@ -27,7 +27,7 @@ cannot be downgraded by any setting.
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
 - [Planning (PLN)](#planning-pln) -- 50 codes
-- [Apply (APL)](#apply-apl) -- 46 codes
+- [Apply (APL)](#apply-apl) -- 49 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 13 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 30 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
@@ -7647,6 +7647,40 @@ Raised when apply committed a new version of a permanent agent, then reading its
 Fix: run `sst plan`, then `sst apply`, to pin it before anything else commits a version of the agent
 
 Note: The write succeeded and state records it. Until the default is pinned, it serves the newest committed version, so a version committed later, such as an eval-model version, would become the default; the next plan reports the agent as SST-PLN107. Strict mode leaves this a warning, since the next apply is the repair.
+
+### SST-APL108
+
+**Comparison subject not published as compiled** (error)
+
+`<artifact>: the model comparison needs it published exactly as compiled, and <detail>`
+
+Raised when before `sst test --compare-models` commits anything, an eval's agent or CoWork profile is one plan would change, has no live version, does not carry its alias on the version holding its specification, or has a default not pinned by name to that version.
+
+Fix: run `sst plan` to see what differs, then `sst apply`, and compare again
+
+Note: A comparison commits versions beside the release and restores the live version from the released specification, so it starts only when that specification is what is served: the live version, the default, and the alias all on the release.
+
+### SST-APL109
+
+**Comparison version not committed** (error)
+
+`<artifact>: the model comparison could not commit <value>: <detail>`
+
+Raised when committing the hold copy of the released specification, or one candidate's upload, ADD VERSION, version read, or EVAL_ alias move failed; a failed hold commits no candidate, and a failed candidate is left out of the comparison.
+
+Fix: check the role may ALTER the agent and write to its specification stage, then compare again; the released version, its alias and the default were not changed
+
+### SST-APL110
+
+**Live version not restored after a comparison** (error, always an error)
+
+`<artifact>: restoring the live version of <value> after the model comparison failed (<detail>); until it is restored a caller naming no version is served the default, the release`
+
+Raised when the comparison's restore -- staging the released specification, ADD VERSION from it, or ADD LIVE VERSION FROM LAST -- failed, so the agent or CoWork profile has no live version.
+
+Fix: run `sst plan`, then `sst apply`: the plan sees no live version, or an eval-model version newest, and commits the released specification again with a live version
+
+Note: Nothing a caller sees changed: with no live version Snowflake serves the default, which `sst apply` pinned to the release by name. Snowsight shows no live version until the repair, and the next comparison's precheck refuses (SST-APL108).
 
 ### SST-APL900
 

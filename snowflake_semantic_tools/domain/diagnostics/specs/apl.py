@@ -642,6 +642,58 @@ SPECS: tuple[ErrorSpec, ...] = (
         precheck=Precheck.RUNTIME,
     ),
     spec(
+        "SST-APL108",
+        Severity.ERROR,
+        "Comparison subject not published as compiled",
+        "{artifact}: the model comparison needs it published exactly as compiled, and {detail}",
+        "run `sst plan` to see what differs, then `sst apply`, and compare again",
+        condition=(
+            "before `sst test --compare-models` commits anything, an eval's agent or CoWork profile "
+            "is one plan would change, has no live version, does not carry its alias on the version "
+            "holding its specification, or has a default not pinned by name to that version"
+        ),
+        note=(
+            "A comparison commits versions beside the release and restores the live version from "
+            "the released specification, so it starts only when that specification is what is "
+            "served: the live version, the default, and the alias all on the release."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-APL109",
+        Severity.ERROR,
+        "Comparison version not committed",
+        "{artifact}: the model comparison could not commit {value}: {detail}",
+        "check the role may ALTER the agent and write to its specification stage, then compare again; "
+        "the released version, its alias and the default were not changed",
+        condition=(
+            "committing the hold copy of the released specification, or one candidate's upload, ADD "
+            "VERSION, version read, or EVAL_ alias move failed; a failed hold commits no candidate, "
+            "and a failed candidate is left out of the comparison"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL110",
+        Severity.ERROR,
+        "Live version not restored after a comparison",
+        "{artifact}: restoring the live version of {value} after the model comparison failed ({detail}); "
+        "until it is restored a caller naming no version is served the default, the release",
+        "run `sst plan`, then `sst apply`: the plan sees no live version, or an eval-model version "
+        "newest, and commits the released specification again with a live version",
+        demotable=False,
+        condition=(
+            "the comparison's restore -- staging the released specification, ADD VERSION from it, or "
+            "ADD LIVE VERSION FROM LAST -- failed, so the agent or CoWork profile has no live version"
+        ),
+        note=(
+            "Nothing a caller sees changed: with no live version Snowflake serves the default, which "
+            "`sst apply` pinned to the release by name. Snowsight shows no live version until the "
+            "repair, and the next comparison's precheck refuses (SST-APL108)."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
         "SST-APL900",
         Severity.ERROR,
         "Outcome count does not match change count",

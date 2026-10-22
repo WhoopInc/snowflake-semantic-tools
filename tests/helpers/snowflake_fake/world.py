@@ -153,6 +153,9 @@ class SnowflakeWorld:
         # What DESCRIBE AGENT's `default_version_name` reads, by the agent's qualified name, such
         # as 'LAST' or 'VERSION$1'; an agent not named here reads as unread, None.
         self.agent_default_settings: dict[str, str] = {}
+        # The agents, by qualified name, whose versions each ALTER AGENT changes (`agents.py`);
+        # every other agent's versions stay as the test staged them.
+        self.modelled_agents: set[str] = set()
         # The versions of each dataset, by qualified name; ADD VERSION appends to them.
         self.dataset_version_names: dict[str, list[str]] = {}
         # The METADATA of each dataset version, by (dataset, version); ADD VERSION records it.

@@ -53,6 +53,9 @@ EXEMPT: dict[tuple[str, str], str] = {
     ("domain/evaluate/judge.py", "judged_reason"): (
         "a judge's completion, which the connector decoded from its VARIANT column unless it was JSON text"
     ),
+    ("domain/render/compare.py", "with_orchestration_model"): (
+        "the agent specification SST rendered with json.dumps, as the compiled manifest holds it"
+    ),
     ("domain/render/eval.py", "render_source_table_statements"): (
         "the payload render_dataset_payload rendered with json.dumps"
     ),

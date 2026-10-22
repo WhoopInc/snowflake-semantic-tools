@@ -11,6 +11,7 @@ holds a `refused` fragment; otherwise each statement takes effect in order:
 - ALTER DATASET ... ADD VERSION appends the version; SYSTEM$CREATE_EVALUATION_DATASET makes
   the dataset exist, owned by the session's role.
 - CREATE, ALTER and DROP CORTEX EXTENSION change the extension (`extensions.py`).
+- ALTER AGENT changes the versions of an agent in `modelled_agents` (`agents.py`).
 - ALTER SNOWFLAKE INTELLIGENCE ... ADD AGENT attaches the agent to the CoWork object, and fails
   for one already attached, as measured; DROP AGENT detaches the agent from every one (Snowflake
   private preview).
@@ -32,6 +33,7 @@ from snowflake_semantic_tools.domain.model.identifier import Identifier, Qualifi
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
+from tests.helpers.snowflake_fake.agents import apply_agent_statement, modelled_agent
 from tests.helpers.snowflake_fake.extensions import apply_extension_statement, quoted_arguments
 from tests.helpers.snowflake_fake.world import Sent, SnowflakeWorld
 
@@ -152,6 +154,8 @@ class FakeExecution(SnowflakeWorld):
             apply_extension_statement(self.extensions, staged, normalized, statement)
         elif upper.startswith("ALTER SNOWFLAKE INTELLIGENCE ") and " ADD AGENT " in upper:
             self._attach(normalized.split()[3], normalized.split()[6])
+        elif (agent := modelled_agent(self, normalized)) is not None:
+            apply_agent_statement(self, agent, normalized)
         elif upper.startswith("DROP AGENT "):
             name = QualifiedName.parse(normalized.split()[-1]).sql
             for attached in self.intelligence_agents.values():

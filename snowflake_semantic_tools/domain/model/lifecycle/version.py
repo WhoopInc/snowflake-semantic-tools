@@ -33,6 +33,7 @@ EVAL_MODEL_TOKEN = "sst-eval-model:"
 # alias may start with it.
 EVAL_ALIAS_PREFIX = "EVAL_"
 _EVAL_MODEL = re.compile(r"(?:^|\s)sst-eval-model:\S+(?=\s|$)", re.IGNORECASE)
+_EVAL_MODEL_RUN = re.compile(r"(?:^|\s)sst-eval-model:(\S+)\s+run:(\S+)(?=\s|$)", re.IGNORECASE)
 _NOT_ALIAS_CHARACTER = re.compile(r"[^A-Z0-9]")
 
 
@@ -102,6 +103,17 @@ def eval_model_comment(git_sha: str, specification: str, label: str, run_id: str
 def is_eval_model_comment(comment: str | None) -> bool:
     """Report whether a version's comment marks it an eval-model version, its token compared casefolded."""
     return _EVAL_MODEL.search(comment or "") is not None
+
+
+def eval_model_run(comment: str | None) -> tuple[str, str] | None:
+    """Read the label and the run id an eval-model version's comment carries, as written.
+
+    Returns:
+        `(label, run id)`, such as `("claude-opus-4-8", "c7f2a19e")`; None for a comment
+        `eval_model_comment` did not write.
+    """
+    match = _EVAL_MODEL_RUN.search(comment or "")
+    return (match.group(1), match.group(2)) if match else None
 
 
 def eval_model_alias(model: str) -> str:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.model.eval import eval_defaults
-from snowflake_semantic_tools.domain.validate.eval_config import candidate_model_problems
+from snowflake_semantic_tools.domain.validate.eval_config import candidate_model_problems, eval_candidate_problems
 from tests.helpers.diagnostic_filters import codes
 from tests.helpers.eval_inputs import SETTINGS, sales_eval, settings_of, validate
 
@@ -39,3 +39,13 @@ def test_every_bad_candidate_is_reported_in_list_order() -> None:
     )
     assert [item.code for item in found] == ["SST-VAL771", "SST-VAL770"]
     assert found[1].message == "eval 'sales': --compare-models names `auto`, which is no model a comparison can run"
+
+
+def test_an_evals_candidates_are_checked_where_the_setting_was_written() -> None:
+    resolved = sales_eval(settings={**SETTINGS, "candidate_models": ["auto", "gpt-5"]})
+    found = eval_candidate_problems(resolved, frozenset({"claude-sonnet-4-6"}))
+    assert [(item.code, item.context["field"]) for item in found] == [
+        ("SST-VAL770", "config.candidate_models"),
+        ("SST-VAL771", "config.candidate_models"),
+    ]
+    assert eval_candidate_problems(sales_eval(), frozenset()) == ()
