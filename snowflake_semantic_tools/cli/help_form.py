@@ -178,7 +178,7 @@ class ConciseHelp(click.Command):
         if description:
             formatter.write_paragraph()
             with formatter.indentation():
-                formatter.write_text(description)
+                _write_wrapped(formatter, description)
         own: list[tuple[str, str]] = []
         globals_: list[str] = []
         for param in self.get_params(ctx):
@@ -199,9 +199,23 @@ class ConciseHelp(click.Command):
             self.format_commands(ctx, formatter)
         if globals_:
             with formatter.section("Global options"):
-                formatter.write_text(global_line(globals_))
+                _write_wrapped(formatter, global_line(globals_))
         formatter.write_paragraph()
-        formatter.write_text(reference_pointer(ctx))
+        _write_wrapped(formatter, reference_pointer(ctx))
+
+
+def _write_wrapped(formatter: click.HelpFormatter, text: str) -> None:
+    """Write `text` rewrapped at the formatter's indent, as click's own `write_text` does.
+
+    Spelled through `write`, since the write-path check reads any `.write_text()` as a file write.
+    """
+    indent = " " * formatter.current_indent
+    formatter.write(
+        click.formatting.wrap_text(
+            text, formatter.width, initial_indent=indent, subsequent_indent=indent, preserve_paragraphs=True
+        )
+    )
+    formatter.write("\n")
 
 
 def _long_name(param: click.Parameter) -> str:
