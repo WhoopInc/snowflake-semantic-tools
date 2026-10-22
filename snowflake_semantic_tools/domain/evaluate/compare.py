@@ -416,29 +416,54 @@ def decide(kind: str, models: Sequence[ModelReport], metrics: Sequence[MetricSpe
     best = eligible[0] if eligible else None
     leading = best.metric(metric.name) if best is not None else None
     if best is None or leading is None or not _above(leading.mean, held.mean):
-        summary = f"No candidate beats the pinned {pinned.model} on {metric.name} ({_score(held.mean)})."
-        # A candidate that ties the headline and still ranks above the pinned model is ahead on
-        # what ranks after it -- another metric, its price, or its latency -- which a reviewer
-        # weighing a cheaper model needs, though it is no winner to pin.
-        if best is not None and leading is not None and leading.mean == held.mean and best.rank < pinned.rank:
-            summary += f" {best.model} ties it {_price(best, pinned)} and ranks above it on what follows."
-        return Verdict("pinned_holds", None, summary, None, excluded)
-    versus = f"on {metric.name} ({_score(leading.mean)} vs {_score(held.mean)})"
+        return Verdict("pinned_holds", None, _held(pinned, best, leading, held, metric), None, excluded)
+    unclear = _unclear(pinned, best, leading, held, metric)
+    if unclear is not None:
+        return Verdict("no_clear_winner", None, unclear, None, excluded)
+    versus = _versus(metric, leading, held)
+    summary = f"{best.model} beats the pinned {pinned.model} {versus} outside the spread, {_price(best, pinned)}."
+    return Verdict("winner", best.model, summary, pin_suggestion(kind, subject, best.model), excluded)
+
+
+def _held(
+    pinned: ModelReport,
+    best: ModelReport | None,
+    leading: MetricSummary | None,
+    held: MetricSummary,
+    metric: MetricSpec,
+) -> str:
+    """Say no candidate beats the pinned model, naming a candidate that ties it and still ranks above it.
+
+    Such a candidate is ahead on what ranks after the headline -- another metric, its price, or
+    its latency -- which a reviewer weighing a cheaper model needs, though it is no winner to pin.
+    """
+    summary = f"No candidate beats the pinned {pinned.model} on {metric.name} ({_score(held.mean)})."
+    if best is not None and leading is not None and leading.mean == held.mean and best.rank < pinned.rank:
+        summary += f" {best.model} ties it {_price(best, pinned)} and ranks above it on what follows."
+    return summary
+
+
+def _unclear(
+    pinned: ModelReport, best: ModelReport, leading: MetricSummary, held: MetricSummary, metric: MetricSpec
+) -> str | None:
+    """Say why a candidate's lead names no winner, too few runs or overlapping ones; None if clear."""
+    versus = _versus(metric, leading, held)
     if not _repeated(pinned) or not _repeated(best):
-        runs = min(len(pinned.run_names), len(best.run_names))
-        summary = (
-            f"{best.model} leads the pinned {pinned.model} {versus} on {_count(runs, 'completed run')} each "
-            f"at most, too few to tell a lead from run-to-run noise; compare with --compare-runs {MIN_WINNER_RUNS} or more."
+        runs = _count(min(len(pinned.run_names), len(best.run_names)), "completed run")
+        return (
+            f"{best.model} leads the pinned {pinned.model} {versus} on {runs} each at most, too few to tell "
+            f"a lead from run-to-run noise; compare with --compare-runs {MIN_WINNER_RUNS} or more."
         )
-        return Verdict("no_clear_winner", None, summary, None, excluded)
     if not _above(leading.min, held.max):
-        summary = (
+        return (
             f"{best.model} leads the pinned {pinned.model} {versus}, but their runs overlap; "
             "compare more runs with --compare-runs."
         )
-        return Verdict("no_clear_winner", None, summary, None, excluded)
-    summary = f"{best.model} beats the pinned {pinned.model} {versus} outside the spread, {_price(best, pinned)}."
-    return Verdict("winner", best.model, summary, pin_suggestion(kind, subject, best.model), excluded)
+    return None
+
+
+def _versus(metric: MetricSpec, leading: MetricSummary, held: MetricSummary) -> str:
+    return f"on {metric.name} ({_score(leading.mean)} vs {_score(held.mean)})"
 
 
 def pin_suggestion(kind: str, subject: str, model: str) -> str:
