@@ -382,6 +382,9 @@ class EvalDefaults:
         concurrency: At the block root, how many runs a suite starts at once and the most an
             eval may ask; on an eval, what it asks.
         retention: The class recorded with each run, `audit` or `decision`.
+        candidate_models: The orchestration models a comparison runs beside the pinned one, in
+            the order the setting lists them, each once compared casefolded; `()` names none.
+        compare_runs: The runs of each model a comparison makes; None leaves the default.
     """
 
     eval_tier: str | None = None
@@ -394,6 +397,8 @@ class EvalDefaults:
     baseline_runs: int | None = None
     min_dataset_rows: int | None = None
     retention: str | None = None
+    candidate_models: tuple[str, ...] = ()
+    compare_runs: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -463,7 +468,8 @@ class ResolvedEval:
 def eval_defaults(settings: Mapping[str, Setting]) -> EvalDefaults:
     """Read resolved `evals:` settings into their values; one of the wrong type reads as unset.
 
-    `metrics` keeps only system metric names, each once, in the order the setting lists them.
+    `metrics` keeps only system metric names, each once, in the order the setting lists them;
+    `candidate_models` keeps every non-empty string, each once compared casefolded, in order.
     """
 
     def value(key: str) -> object:
@@ -480,6 +486,7 @@ def eval_defaults(settings: Mapping[str, Setting]) -> EvalDefaults:
 
     listed = value("metrics")
     names = listed if isinstance(listed, list) else []
+    candidates = value("candidate_models")
     return EvalDefaults(
         eval_tier=text("eval_tier"),
         metrics=tuple(dict.fromkeys(name for name in names if name in SYSTEM_EVAL_METRICS)),
@@ -491,7 +498,18 @@ def eval_defaults(settings: Mapping[str, Setting]) -> EvalDefaults:
         baseline_runs=number("baseline_runs"),
         min_dataset_rows=number("min_dataset_rows"),
         retention=text("retention"),
+        candidate_models=_first_each(candidates if isinstance(candidates, list) else []),
+        compare_runs=number("compare_runs"),
     )
+
+
+def _first_each(values: list[object]) -> tuple[str, ...]:
+    """Return each non-blank string of `values` the first time it appears, compared casefolded."""
+    found: dict[str, str] = {}
+    for item in values:
+        if isinstance(item, str) and item.strip():
+            found.setdefault(item.casefold(), item)
+    return tuple(found.values())
 
 
 @dataclass(frozen=True, slots=True)

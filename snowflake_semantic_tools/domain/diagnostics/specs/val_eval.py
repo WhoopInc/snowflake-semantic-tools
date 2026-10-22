@@ -732,4 +732,31 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         note="Snowflake private preview: CoWork profiles. A routing score lies in [0, 1].",
     ),
+    spec(
+        "SST-VAL770",
+        Severity.ERROR,
+        "Comparison candidate is auto",
+        "eval '{artifact}': {field} names `auto`, which is no model a comparison can run",
+        "name the orchestration models to compare, such as `claude-opus-4-8`; `auto` lets "
+        "Snowflake pick one per request, so a version on it compares nothing",
+        condition=(
+            "`evals.+candidate_models`, a folder route's, an eval's `config.candidate_models`, or "
+            "`sst test --compare-models`, names `auto`, compared casefolded"
+        ),
+    ),
+    spec(
+        "SST-VAL771",
+        Severity.ERROR,
+        "Comparison candidate is not an allowed orchestration model",
+        "eval '{artifact}': {field} names '{model}', which snowflake.orchestration_models does not list",
+        "add the model to snowflake.orchestration_models, or compare only models it lists",
+        condition=(
+            "`snowflake.orchestration_models` is set, and a candidate model of an eval's comparison "
+            "is not one of them, compared casefolded"
+        ),
+        note=(
+            "A comparison commits a version of the published agent or CoWork profile on each candidate, "
+            "so it is held to the list an agent's own model is (SST-VAL543)."
+        ),
+    ),
 )

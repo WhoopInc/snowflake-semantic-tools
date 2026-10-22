@@ -217,6 +217,8 @@ Defaults for agent evaluations, overridable per agent folder and by an eval conf
 | `evals.+concurrency` | integer |  | Eval runs a suite starts and polls at once. At the root it is also the most a folder route or an eval's `config:` may ask (SST-VAL731). |
 | `evals.+baseline_runs` | integer |  | Completed attempts a baseline needs; unset needs 1. |
 | `evals.+min_dataset_rows` | integer |  | Smallest accepted question set (SST-VAL710); unset checks none. |
+| `evals.+candidate_models` | list |  | Orchestration models `sst test --suite evals --compare-models` compares with the pinned one, each from `snowflake.orchestration_models` when that is set (SST-VAL771) and never `auto` (SST-VAL770); `--compare-models <list>` replaces it. |
+| `evals.+compare_runs` | integer, at least 1 | `2` | Runs of each model a comparison makes, at least 1; `--compare-runs` replaces it. |
 | `evals.+retention` | enum: `audit`, `decision` |  | Retention class recorded with each run; SST never deletes a run on the strength of it. |
 | `evals.<route>` | block |  | Folder route under `project.agents_dir`: overrides for the evals of the agents under that directory. |
 

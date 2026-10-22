@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 330 codes
+- [Validation (VAL)](#validation-val) -- 332 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 20 codes
@@ -5085,6 +5085,28 @@ Raised when a `metrics.routing` entry's `threshold.min` or `threshold.max` is be
 Fix: set each bound between 0 and 1
 
 Note: Snowflake private preview: CoWork profiles. A routing score lies in [0, 1].
+
+### SST-VAL770
+
+**Comparison candidate is auto** (error)
+
+``eval '<artifact>': <field> names `auto`, which is no model a comparison can run``
+
+Raised when `evals.+candidate_models`, a folder route's, an eval's `config.candidate_models`, or `sst test --compare-models`, names `auto`, compared casefolded.
+
+Fix: name the orchestration models to compare, such as `claude-opus-4-8`; `auto` lets Snowflake pick one per request, so a version on it compares nothing
+
+### SST-VAL771
+
+**Comparison candidate is not an allowed orchestration model** (error)
+
+`eval '<artifact>': <field> names '<model>', which snowflake.orchestration_models does not list`
+
+Raised when `snowflake.orchestration_models` is set, and a candidate model of an eval's comparison is not one of them, compared casefolded.
+
+Fix: add the model to snowflake.orchestration_models, or compare only models it lists
+
+Note: A comparison commits a version of the published agent or CoWork profile on each candidate, so it is held to the list an agent's own model is (SST-VAL543).
 
 ### SST-VAL801
 

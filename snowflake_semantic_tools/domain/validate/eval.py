@@ -21,7 +21,7 @@ from snowflake_semantic_tools.domain.model.eval.model import (
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.resolve.eval_name import probe_name
-from snowflake_semantic_tools.domain.validate.eval_config import validate_eval_config
+from snowflake_semantic_tools.domain.validate.eval_config import eval_candidate_problems, validate_eval_config
 from snowflake_semantic_tools.domain.validate.eval_dataset import validate_eval_dataset
 from snowflake_semantic_tools.domain.validate.eval_metric import validate_custom_metric
 from snowflake_semantic_tools.domain.validate.eval_subject import subject_rules
@@ -43,8 +43,9 @@ def validate_eval_catalog(
             casefolded. None skips every tool check; an agent absent from the mapping, one
             that did not compile, skips its own. A CoWork profile's eval has no tool check:
             its rows expect subagents, not tool calls.
-        allowed_models: The judge models a custom metric may name, compared casefolded;
-            empty allows any explicit model.
+        allowed_models: `snowflake.orchestration_models`: the judge models a custom metric may
+            name, and the candidate models a comparison may run, compared casefolded; empty
+            allows any explicit model.
 
     Diagnostics:
         SST-VAL001: two custom metrics share a name.
@@ -91,10 +92,12 @@ def validate_eval_catalog(
         SST-VAL726: logical_consistency is gated.
         SST-VAL718: the rendered run name does not include the commit SHA.
         SST-VAL717: two evals of one agent render the same run name.
-        SST-PRS016: retry, concurrency or baseline_runs is below its minimum.
+        SST-PRS016: retry, concurrency, baseline_runs or compare_runs is below its minimum.
         SST-VAL731: an eval's concurrency setting exceeds the `evals.+concurrency` root.
         SST-VAL735: a threshold is set with no baseline runs.
         SST-VAL732: the agent has tool types an eval run skips (info).
+        SST-VAL770: a candidate model of the eval's comparison is `auto`.
+        SST-VAL771: a candidate model is not in `snowflake.orchestration_models`.
         Every code `subject_rules` lists.
     """
 
@@ -112,6 +115,7 @@ def validate_eval_catalog(
         # one "absent tool" per expected invocation.
         agent_tools = None if resolved.subject.is_profile else tool_names.get(resolved.name.casefold())
         diagnostics.extend(_validate_eval(resolved, catalog.defaults, agent_tools, dataset_names, run_names))
+        diagnostics.extend(eval_candidate_problems(resolved, allowed))
     return DiagnosticBag(tuple(diagnostics))
 
 

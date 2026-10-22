@@ -577,6 +577,20 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("evals.+baseline_runs", _I, "Completed attempts a baseline needs; unset needs 1."),
     _key("evals.+min_dataset_rows", _I, "Smallest accepted question set (SST-VAL710); unset checks none."),
     _key(
+        "evals.+candidate_models",
+        _L,
+        "Orchestration models `sst test --suite evals --compare-models` compares with the pinned one, "
+        "each from `snowflake.orchestration_models` when that is set (SST-VAL771) and never `auto` (SST-VAL770); "
+        "`--compare-models <list>` replaces it.",
+    ),
+    _key(
+        "evals.+compare_runs",
+        _I,
+        "Runs of each model a comparison makes, at least 1; `--compare-runs` replaces it.",
+        default="2",
+        minimum=1,
+    ),
+    _key(
         "evals.+retention",
         KeyKind.ENUM,
         "Retention class recorded with each run; SST never deletes a run on the strength of it.",

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.eval.model import (
     EVAL_COMPLETED,
     EVAL_CONCURRENCY_MIN,
@@ -31,6 +31,10 @@ from snowflake_semantic_tools.domain.validate.shared import Emitter
 
 _PINNED_VERSION = re.compile(r"VERSION\$[1-9]\d*")
 _BASELINE_RUNS_MIN = 1
+# A comparison runs each model at least once.
+EVAL_COMPARE_RUNS_MIN = 1
+# The orchestration model Snowflake picks per request, which no comparison runs as a candidate.
+AUTO_MODEL = "auto"
 # Agent tool types an eval run skips rather than fails (SST-VAL732).
 _SKIPPED_TOOL_TYPES = ("agent_toolset",)
 
@@ -69,7 +73,8 @@ def validate_eval_config(
         SST-VAL726: logical_consistency is gated.
         SST-VAL733: a gated system or routing metric has no usable threshold, or an ungated one
             has one.
-        SST-PRS016: the resolved retry, concurrency or baseline_runs is below its minimum.
+        SST-PRS016: the resolved retry, concurrency, baseline_runs or compare_runs is below its
+            minimum.
         SST-VAL731: the concurrency a folder route or the config sets exceeds the root's.
         SST-VAL718: the rendered run name does not include the commit SHA.
         SST-VAL717: another eval of the same agent already claimed the rendered run name.
@@ -253,6 +258,7 @@ def _limits(resolved: ResolvedEval, defaults: EvalDefaults) -> tuple[Diagnostic,
         *_below_minimum(resolved, "concurrency", options.concurrency, EVAL_CONCURRENCY_MIN),
         *_concurrency_ceiling(resolved, defaults),
         *_below_minimum(resolved, "baseline_runs", options.baseline_runs, _BASELINE_RUNS_MIN),
+        *_below_minimum(resolved, "compare_runs", options.compare_runs, EVAL_COMPARE_RUNS_MIN),
     )
 
 
@@ -264,6 +270,53 @@ def _written(resolved: ResolvedEval, key: str) -> str:
     if source == ROOT_SOURCE:
         return f"evals.+{key}"
     return f"evals.{source.removeprefix(ROUTE_PREFIX).replace('/', '.')}.+{key}"
+
+
+def candidate_model_problems(
+    models: tuple[str, ...],
+    allowed: frozenset[str],
+    *,
+    artifact: str,
+    field: str,
+    subject: str,
+    origin: Origin | None = None,
+) -> tuple[Diagnostic, ...]:
+    """Report each orchestration model a comparison may not commit a candidate version for.
+
+    `auto` is no model: Snowflake picks one per request, so a version on it compares nothing,
+    and it is never a candidate. With `snowflake.orchestration_models` set, a candidate must be
+    one it lists, as an agent's own model must (SST-VAL543); `auto` is reported only as `auto`.
+
+    Args:
+        allowed: `snowflake.orchestration_models`, casefolded; empty when it is not set.
+        field: Where the list was written, such as `evals.+candidate_models` or `--compare-models`.
+
+    Diagnostics:
+        SST-VAL770: a candidate is `auto`.
+        SST-VAL771: a candidate is not in `snowflake.orchestration_models`.
+    """
+    emit = Emitter(subject=subject, origin=origin, artifact=artifact)
+    for model in models:
+        if model.strip().casefold() == AUTO_MODEL:
+            emit("SST-VAL770", field=field)
+        elif allowed and model.casefold() not in allowed:
+            emit("SST-VAL771", field=field, model=model)
+    return emit.diagnostics
+
+
+def eval_candidate_problems(resolved: ResolvedEval, allowed: frozenset[str]) -> tuple[Diagnostic, ...]:
+    """Check the candidate models an eval resolved, named where the setting was written.
+
+    Diagnostics:
+        Those of `candidate_model_problems`.
+    """
+    models = resolved.options.candidate_models
+    if not models:
+        return ()
+    field = _written(resolved, "candidate_models")
+    return candidate_model_problems(
+        models, allowed, artifact=resolved.name, field=field, subject=resolved.key, origin=resolved.config.origin
+    )
 
 
 def _below_minimum(resolved: ResolvedEval, key: str, value: int | None, minimum: int) -> tuple[Diagnostic, ...]:
