@@ -71,7 +71,7 @@ class _AnswerStream:
     once both reparse it, and the block then shows twice. One task drains what arrived, joined,
     awaiting each append before the next, so fragments that come faster than they draw are
     batched rather than raced. Textual's own `MarkdownStream` cancels its task on `stop()` and
-    appends the rest while the cancelled append may still run, which is the same race.
+    appends the rest while the canceled append may still run, which is the same race.
     """
 
     def __init__(self, widget: Markdown) -> None:
@@ -487,7 +487,7 @@ class AskApp(App[Summary]):
     def action_interrupt(self) -> None:
         """Cancel the turn in flight; with none, quit."""
         if self._busy and self._session is not None:
-            self._say("cancelling…")
+            self._say("canceling…")
             self.run_worker(self._session.conversation.cancel, thread=True, group="cancel")
         elif not self._busy:
             self.action_leave()

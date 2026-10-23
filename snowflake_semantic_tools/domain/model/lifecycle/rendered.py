@@ -410,7 +410,7 @@ def _unpinned_default(artifact: RenderedArtifact, observed: ObservedArtifact | N
     version-adding update would leave it serving the old one. The new version's name is known
     only once Snowflake commits it, so the program ends with the default following `'LAST'`,
     which serves the new version the moment the program ends; apply then reads the version it
-    committed and pins the default to it by name (docs/design/snowflake-behaviour.md).
+    committed and pins the default to it by name (docs/design/snowflake-behavior.md).
     """
     if observed is None or artifact.object_type != "AGENT" or artifact.temporary:
         return ()
@@ -520,7 +520,7 @@ def _pointing(artifact: RenderedArtifact, observed: ObservedArtifact, carrier: s
     another version the default, or DESCRIBE read it following a shortcut such as `LAST`, which
     would move it to the next version committed, an eval-model version included. The live
     version opens `FROM LAST`, since Snowflake opens one from no named version
-    (docs/design/snowflake-behaviour.md); `for_action` takes this path for an agent without one
+    (docs/design/snowflake-behavior.md); `for_action` takes this path for an agent without one
     only when `LAST` is the release. A name no identifier can spell is not one Snowflake showed
     or SST renders, so nothing is pointed at it.
     """

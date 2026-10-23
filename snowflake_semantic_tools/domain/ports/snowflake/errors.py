@@ -15,7 +15,7 @@ class SnowflakePortError(RuntimeError):
         sqlstate: The SQLSTATE of the driver failure behind the error; None when there is none.
         errno: The driver's error number for that failure; None when there is none.
         diagnostic: What the command reports for the failure; None when the adapter did not
-            recognise it.
+            recognize it.
     """
 
     def __init__(
@@ -29,7 +29,7 @@ class SnowflakePortError(RuntimeError):
         super().__init__(message)
         self.sqlstate = sqlstate
         self.errno = errno
-        # What the command reports, when the adapter recognised the failure.
+        # What the command reports, when the adapter recognized the failure.
         self.diagnostic = diagnostic
 
 
@@ -45,9 +45,9 @@ class SnowflakeTransientError(SnowflakePortError):
 
 
 class SnowflakeStatementTimedOut(SnowflakeTransientError):
-    """A statement that ran past its timeout, so the timeout cancelled it.
+    """A statement that ran past its timeout, so the timeout canceled it.
 
-    The caller's timeout or Snowflake's own cancelled it (SQLSTATE 57014), or it queued past
+    The caller's timeout or Snowflake's own canceled it (SQLSTATE 57014), or it queued past
     the warehouse's queue timeout. Most often Snowflake took the statement and is slow -- a
     busy warehouse -- rather than out of reach: a dropped connection fails as a plain
     `SnowflakeTransientError` instead.

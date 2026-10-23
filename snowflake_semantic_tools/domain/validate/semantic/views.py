@@ -324,7 +324,7 @@ def _expression_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnosti
 
     A bare word the view resolves is a column on one of its tables or a variable it declares; a
     metric's bare column of its own table is left to SST-VAL110. Any other word in a metric or a
-    labelled filter, which the view is created with, would fail the create: SST-VAL326. In a
+    labeled filter, which the view is created with, would fail the create: SST-VAL326. In a
     filter that renders as prose it fails nothing, and SST, which does not parse SQL, cannot be
     sure it is a name: SST-VAL221. An expression the SQL guard refuses is SST-VAL418's to report,
     so it is read only for the variables it uses.

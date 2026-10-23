@@ -111,13 +111,13 @@ def test_absent_unowned_rejected_and_locked_objects_are_not_dropped() -> None:
     assert locked.scripts == [] and absent.scripts == [] and unowned.scripts == []
 
 
-def test_a_refusal_with_no_driver_text_or_a_recognised_one_is_reported() -> None:
+def test_a_refusal_with_no_driver_text_or_a_recognized_one_is_reported() -> None:
     from snowflake_semantic_tools.app.drop import _rejection
     from snowflake_semantic_tools.domain.model.lifecycle import ExecutionError
 
     assert [item.code for item in _rejection(REQUEST, None)] == ["SST-APL001", "SST-SNO001"]
-    recognised = _rejection(REQUEST, ExecutionError("Insufficient privileges to operate on schema", "42501", 3001))
-    assert recognised[0].code == "SST-APL001" and recognised[-1].code.startswith("SST-SNO")
+    recognized = _rejection(REQUEST, ExecutionError("Insufficient privileges to operate on schema", "42501", 3001))
+    assert recognized[0].code == "SST-APL001" and recognized[-1].code.startswith("SST-SNO")
 
 
 AGENT = QualifiedName.parse("DB.S.ANALYST")

@@ -34,7 +34,7 @@ INERT_KEYS: Mapping[str, tuple[str, ...]] = MappingProxyType({"relationship": ("
 VISIBILITY: Mapping[str, str] = MappingProxyType({"public": "public_access", "private": "private_access"})
 
 
-def honoured(node: Mapping[str, Any], key: str, node_type: str) -> object:
+def honored(node: Mapping[str, Any], key: str, node_type: str) -> object:
     """Return `key`'s value, or its 0.3 spelling's when only that is written; None when neither is."""
     if key in node:
         return node[key]
@@ -46,12 +46,12 @@ def honoured(node: Mapping[str, Any], key: str, node_type: str) -> object:
 
 
 def deprecated_key_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, ...]:
-    """Report every honoured 0.3 spelling and every inert key, node by node in document order.
+    """Report every honored 0.3 spelling and every inert key, node by node in document order.
 
     Diagnostics:
-        SST-VAL012: a custom instruction writes a 0.3 key spelling, which is honoured.
-        SST-VAL122: a metric writes `visibility`, which is honoured as `access_modifier`.
-        SST-PRS020: a 0.3 spelling is written beside its 1.0 key, so it is not honoured.
+        SST-VAL012: a custom instruction writes a 0.3 key spelling, which is honored.
+        SST-VAL122: a metric writes `visibility`, which is honored as `access_modifier`.
+        SST-PRS020: a 0.3 spelling is written beside its 1.0 key, so it is not honored.
         SST-VAL211: a relationship declares `relationship_type` or `join_type`.
     """
     node_types = sorted({*DEPRECATED_KEYS, *INERT_KEYS})
@@ -75,7 +75,7 @@ def _nodes(document: AuthoredDocument, node_type: str) -> Iterator[tuple[int, Ma
 def _node_diagnostics(
     document: AuthoredDocument, node_type: str, index: int, node: Mapping[str, Any]
 ) -> Iterator[Diagnostic]:
-    """Report one node's honoured 0.3 spellings, then its inert keys, each in table order."""
+    """Report one node's honored 0.3 spellings, then its inert keys, each in table order."""
     name = str(node["name"])
     subject = artifact_key(node_type, name)
 

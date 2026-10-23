@@ -300,10 +300,10 @@ def _model(
 
     Every node must be a mapping; a model, snapshot or seed is read (`_TABLE_RESOURCES`), as
     each is a relation `ref()` resolves. One with no relation is returned as its name and its
-    materialisation, so the catalog can say why it has none.
+    materialization, so the catalog can say why it has none.
 
     Returns:
-        The model; `(name, materialisation)` for a model with no relation; the diagnostic of a
+        The model; `(name, materialization)` for a model with no relation; the diagnostic of a
         model SST cannot use; None for any other node.
 
     Raises:

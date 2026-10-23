@@ -32,7 +32,7 @@ class FakeAgentStream(FakeAgentRun):
     Attributes:
         agent_streams: Each question's events, or the error its run raises.
         stale_threads: Threads an earlier session left, as `list_threads` reports them.
-        cancelled: The run ids cancelled, in order.
+        canceled: The run ids canceled, in order.
     """
 
     agent_streams: dict[str, list[AgentEvent] | SnowflakePortError] | None = None
@@ -58,7 +58,7 @@ class FakeAgentStream(FakeAgentRun):
 
     @property
     def cancelled(self) -> list[str]:
-        """Every run id cancelled, in order."""
+        """Every run id canceled, in order."""
         found: list[str] = self.__dict__.setdefault("_cancelled", [])
         return found
 

@@ -124,7 +124,7 @@ Paths are relative to the manifest root; `<id>` is a node's unique id.
 | `nodes` | every model and test | not an object: the run stops, naming the path |
 | `nodes.<id>.resource_type` | `model` selects models, `test` selects tests; every other node is ignored | no model at all: `SST-DBT001` |
 | `nodes.<id>.name` | the name `{{ ref() }}` resolves, case-insensitively | empty: the model is skipped (`SST-DBT013`); a ref to a name no model has: `SST-REF001` |
-| `nodes.<id>.relation_name` | the relation a view or tool reads, honouring `alias:` | empty: the model has no relation, so a view table that names it gets `SST-VAL303` and any other member that uses it `SST-DBT009`; not a three-part name: `SST-REF019`; two models on one relation with different semantic columns: `SST-DBT010`; a literal relation that names a model where dbt builds it under another name: `SST-DBT006` |
+| `nodes.<id>.relation_name` | the relation a view or tool reads, honoring `alias:` | empty: the model has no relation, so a view table that names it gets `SST-VAL303` and any other member that uses it `SST-DBT009`; not a three-part name: `SST-REF019`; two models on one relation with different semantic columns: `SST-DBT010`; a literal relation that names a model where dbt builds it under another name: `SST-DBT006` |
 | `nodes.<id>.database`, `nodes.<id>.schema` | checked only, since the relation already names them | present and empty: the model is skipped (`SST-DBT014`) |
 | `nodes.<id>.config.materialized` | why a model has no relation (`ephemeral` when unset); whether a search service indexes a relation every dbt run rebuilds | a table or view under an `INCREMENTAL` search service: `SST-VAL617` |
 | `nodes.<id>.meta.sst`, else `nodes.<id>.config.meta.sst` | `primary_key` and `unique_keys`, as lists of column names | the 0.3 forms: `SST-DBT032`; neither key: `SST-VAL312`; a key column the model lacks: `SST-VAL310`; `database` or `schema` here: `SST-DBT030`; any other key: `SST-PRS004` |
@@ -149,7 +149,7 @@ on the order of keys in the file.
 `tests/contract/test_dbt_manifest_contract.py` holds every manifest under
 `tests/fixtures/dbt_manifests/` to this table: each path is present, with the
 JSON type SST expects, on the reference project's models, columns, tests and
-sources; each model checksum is one the staleness check recognises; and the
+sources; each model checksum is one the staleness check recognizes; and the
 reference project renders the same semantic views from it as the DDL goldens
 pin. The committed manifests must also read as one catalog apart from the dbt
 version and the checksums, which dbt 1.12 computes over whitespace-collapsed
@@ -264,7 +264,7 @@ a setting that turns JSON artifacts off (`DBT_ENGINE_WRITE_JSON=0`,
 A dbt SST does not identify is run as configured, and a manifest it does not
 write is `SST-DBT029`.
 
-The dbt Cloud CLI is recognised from its `dbt --version` output and parsed with
+The dbt Cloud CLI is recognized from its `dbt --version` output and parsed with
 the same command as dbt Core, without `--write-json`. One combination is
 refused: `defer.auto_compile` (`SST-DBT021`), because the Cloud CLI cannot parse
 a target other than its default locally. Running the Cloud CLI through `dbt
@@ -273,7 +273,7 @@ itself and give SST `--manifest`, or set `dbt.invoke: false`.
 
 ### Using dbt v2
 
-dbt v2 is recognised from its one-line `dbt --version` answer, `dbt 2.0.8` or
+dbt v2 is recognized from its one-line `dbt --version` answer, `dbt 2.0.8` or
 `dbt-oss 2.0.8`; `sst debug` reports it as installation `v2` or `v2-oss`, and it
 warns nothing. It is parsed with the same arguments as dbt Core. The `dbt`
 extra stays on dbt Core 1.x until a `dbt-snowflake` 2.x ships, so install dbt v2
@@ -378,7 +378,7 @@ it against the code it records, so a later edit to the project does not fail
 it; capture them again when the edit touches something the table lists.
 Replacing the reduced manifest with a full one changes which seam diagnostics
 the reference project reports (a full manifest records each model's
-materialisation, so `SST-VAL617` fires on the search service), so do it as its
+materialization, so `SST-VAL617` fires on the search service), so do it as its
 own change.
 
 Drawn from: [manifest.py](../../snowflake_semantic_tools/adapters/dbt/manifest.py), [seam_projects.py](../../tests/helpers/seam_projects.py), [manifest_capture.py](../../tests/helpers/manifest_capture.py), [test_dbt_manifest_contract.py](../../tests/contract/test_dbt_manifest_contract.py), [test_sst_dbt017.py](../../tests/codes/dbt/test_sst_dbt017.py), [test_dbt_manifest.py](../../tests/unit/adapters/test_dbt_manifest.py), [test_debug.py](../../tests/unit/cli/test_debug.py), [reference_project.py](../../tests/helpers/reference_project.py), [tests/README.md](../../tests/README.md), [slow.yml](../../.github/workflows/slow.yml).

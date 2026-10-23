@@ -6,7 +6,7 @@ origin. `Emitter` binds those once so each check names only its code and context
 diagnostics stay in authoring order. `NamePolicy` states a naming rule once, with the
 exact wording its diagnostic uses. The rest are the shared rules: a description that never
 says when to use its object, a reference cycle, a name taken in another namespace, keys
-rendered without being modelled, and a comparison of values that were never normalised.
+rendered without being modeled, and a comparison of values that were never normalized.
 """
 
 from __future__ import annotations
@@ -168,18 +168,18 @@ def namespace_collisions(declared: Iterable[tuple[str, str, str]], others: Mappi
     )
 
 
-def unmodelled_key_diagnostics(
+def unmodeled_key_diagnostics(
     type_name: str, name: str, keys: Iterable[str], *, allow: bool, subject: str | None = None
 ) -> tuple[Diagnostic, ...]:
-    """Report the keys an artifact renders without SST modelling them.
+    """Report the keys an artifact renders without SST modeling them.
 
     Args:
         allow: `snowflake.allow_unknown_keys`: True reports all of them in one warning; False
             makes each an error.
 
     Diagnostics:
-        SST-VAL014: with `allow`, the artifact renders one or more unmodelled keys.
-        SST-VAL013: without `allow`, once per unmodelled key.
+        SST-VAL014: with `allow`, the artifact renders one or more unmodeled keys.
+        SST-VAL013: without `allow`, once per unmodeled key.
     """
     found = sorted(dict.fromkeys(keys))
     if not found:
@@ -193,5 +193,5 @@ _DIGEST = re.compile(r"[0-9a-f]{64}")
 
 
 def is_digest(value: str) -> bool:
-    """Report whether `value` is a SHA-256 digest in lowercase hex: the form a normalised definition takes."""
+    """Report whether `value` is a SHA-256 digest in lowercase hex: the form a normalized definition takes."""
     return _DIGEST.fullmatch(value) is not None

@@ -7,7 +7,7 @@ entry in the [error code reference](../reference/error-codes.md).
 
 Files live under `project.semantic_models_dir` (default `semantic_models/`) and
 can be split and named however you like: SST reads every YAML file there, at any
-depth, and recognises members by their root key. Views themselves live under its
+depth, and recognizes members by their root key. Views themselves live under its
 `semantic_views/` folder, where folder routes apply; a view anywhere else is not
 built and is reported (`SST-PRS004`).
 
@@ -251,12 +251,12 @@ models:
           synonyms: [sale, transaction]
     columns:
       - name: order_state
-        description: Where the order is in fulfilment.
+        description: Where the order is in fulfillment.
         config:
           meta:
             sst:
               column_type: dimension
-              synonyms: [order status, fulfilment state]
+              synonyms: [order status, fulfillment state]
               is_enum: true
               sample_values: [placed, completed, returned]
 ```
@@ -298,7 +298,7 @@ models:
 The `order_state` column above renders as:
 
 ```sql
-ORDERS.ORDER_STATE AS ORDERS.ORDER_STATE WITH SYNONYMS ('order status', 'fulfilment state') COMMENT = 'Where the order is in fulfilment.' SAMPLE_VALUES ('placed', 'completed', 'returned') IS_ENUM
+ORDERS.ORDER_STATE AS ORDERS.ORDER_STATE WITH SYNONYMS ('order status', 'fulfillment state') COMMENT = 'Where the order is in fulfillment.' SAMPLE_VALUES ('placed', 'completed', 'returned') IS_ENUM
 ```
 
 ## Metrics
@@ -520,7 +520,7 @@ The right table of an equality join must declare a `primary_key` or
 cardinality is guessed, and SST warns (`SST-VAL210`); when the join columns are
 only part of a composite key, the join fans out, and SST warns (`SST-VAL208`).
 
-### Modelling relationships so the numbers stay right
+### Modeling relationships so the numbers stay right
 
 A wrong join still publishes, and its metrics come out plausible and wrong. Three
 shapes are worth getting right on purpose.
@@ -561,7 +561,7 @@ ranges kept per customer overlap between customers; join those as-of on the
 customer key and the range's start.
 
 **Keys and ranges are declarations.** SST checks offline that a primary key or
-`distinct_range` is declared, not that the data honours it. When `sst validate`
+`distinct_range` is declared, not that the data honors it. When `sst validate`
 connects to Snowflake it reads the joined tables: rows of an equality join's
 target that repeat a join key are `SST-VAL212`, and overlapping ranges are
 `SST-VAL218`.
@@ -589,10 +589,10 @@ ORDERS.IS_COMPLETED_ORDER LABELS = (FILTER) AS ORDERS.ORDER_STATE = 'completed' 
 ```
 
 - A filter's tables are the models its expression names with `ref()`. A
-  labelled filter must be boolean (`SST-VAL401`) and must name exactly one
+  labeled filter must be boolean (`SST-VAL401`) and must name exactly one
   table.
 - A boolean expression without a `labels:` key is an error (`SST-VAL405`).
-- A filter not labelled `filter` renders as prose instead: one sentence on one
+- A filter not labeled `filter` renders as prose instead: one sentence on one
   line, `For <TABLE>, <name> is <expr>. <description>`, appended to the view's
   `AI_SQL_GENERATION`. Its expression must name exactly one table.
 - A filter cannot carry `synonyms:`; nothing renders them (`SST-VAL406`).
@@ -603,8 +603,8 @@ ORDERS.IS_COMPLETED_ORDER LABELS = (FILTER) AS ORDERS.ORDER_STATE = 'completed' 
 # semantic_models/verified_queries/order_count_by_state.yml
 verified_query:
   name: order_count_by_state
-  description: Order volume by fulfilment state.
-  question: How many orders are there in each fulfilment state?
+  description: Order volume by fulfillment state.
+  question: How many orders are there in each fulfillment state?
   sql: |-
     SELECT orders.order_state, COUNT(DISTINCT orders.order_id) AS order_count
     FROM {{ ref('orders') }} AS orders

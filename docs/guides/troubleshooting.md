@@ -150,7 +150,7 @@ can show Snowflake would refuse, so apply does not fail part-way:
 | [`SST-PLN001`](../reference/error-codes.md#sst-pln001) | a read the plan needs failed, such as the state table or an object's grants | check the role and the connection |
 | [`SST-VAL020`](../reference/error-codes.md#sst-val020) (info) | a check skipped because the role may not make its read | optional; see [operating SST](security.md#operating-sst) |
 
-`SST-PLN008` reads the schema's (or stage's) grants. Snowflake authorises a
+`SST-PLN008` reads the schema's (or stage's) grants. Snowflake authorizes a
 `CREATE` statement by the primary role alone, so for a `CREATE` privilege it
 climbs from each role holding it through `SHOW GRANTS OF ROLE` (and, only for
 what no account role passes up, `SHOW GRANTS OF DATABASE ROLE`) until it
@@ -162,7 +162,7 @@ no inheritance path from the primary role was found within that depth. With no
 secondary role active (`CURRENT_SECONDARY_ROLES()` names none), plan skips the
 climb and asks the session alone, since its roles are then the primary role's. `READ` and `WRITE`
 on an existing spec stage are not `CREATE` privileges, and a secondary role
-does authorise them, so for those plan asks whether any role holding them,
+does authorize them, so for those plan asks whether any role holding them,
 directly or through a database role, is in the session. An update is not
 checked for its own `CREATE` privilege: it replaces an object the role already
 owns.
@@ -172,7 +172,7 @@ publishes it: `SST-VAL616`, a consumer without `USAGE` on an object a tool
 calls, and `SST-VAL542`, one without `READ` on an extension the agent pins (see
 [what people who use an agent need](security.md#what-people-who-use-an-agent-need)).
 A statement Snowflake still refuses is reported with its cause:
-`SST-SNO003` for an object that does not exist or is not authorised,
+`SST-SNO003` for an object that does not exist or is not authorized,
 `SST-SNO004` for insufficient privileges, and `SST-PRT004` for a refusal
 outside the changes apply makes.
 
@@ -446,7 +446,7 @@ most often means Snowflake answered too slowly because the warehouse is busy
 with the runs' own judges. It does not count toward the five:
 polling goes on until the run's 20-minute deadline. If many runs share a small
 warehouse, pace them (`evals.+concurrency` or `--threads`) or let the warehouse
-scale out (`MAX_CLUSTER_COUNT` above 1). A run SST gives up on is cancelled in
+scale out (`MAX_CLUSTER_COUNT` above 1). A run SST gives up on is canceled in
 Snowflake; when the cancel fails, the `SST-APL023` message names the run, so
 you can cancel it yourself with `EXECUTE_AI_EVALUATION('CANCEL', ...)`.
 

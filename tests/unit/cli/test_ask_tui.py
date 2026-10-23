@@ -287,7 +287,7 @@ def test_cancel_while_a_reply_runs_and_a_rebuild_that_fails_or_finds_no_agent(tm
         await pilot.press("enter")  # type: ignore[attr-defined]
         await _until(pilot, lambda: app._busy)
         await pilot.press("ctrl+c")  # type: ignore[attr-defined]
-        assert app.status_text == "cancelling…"
+        assert app.status_text == "canceling…"
         # Ctrl-A waits for no reply; Ctrl-R waits for this one to end, then compiles again.
         await pilot.press("ctrl+a", "ctrl+r")  # type: ignore[attr-defined]
         assert not app.query_one("#picker").display

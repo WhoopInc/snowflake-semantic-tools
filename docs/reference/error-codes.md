@@ -1044,7 +1044,7 @@ Fix: use ASCII identifiers
 
 `<artifact>: '<field>' is '<found>', expected one of <expected>`
 
-Raised when a closed-enum field holds an unrecognised value.
+Raised when a closed-enum field holds an unrecognized value.
 
 Fix: use one of {expected}
 
@@ -1134,13 +1134,13 @@ Fix: use relationship_conditions
 
 `<artifact>: unknown field '<field>'; did you mean '<expected>'?`
 
-Raised when an unknown key is 1-2 edits from a modelled key, so it is a typo.
+Raised when an unknown key is 1-2 edits from a modeled key, so it is a typo.
 
 Fix: correct the spelling
 
 ### SST-PRS023
 
-**Passthrough block collides with a modelled key** (error)
+**Passthrough block collides with a modeled key** (error)
 
 `<artifact>: passthrough key '<key>' is already rendered by SST`
 
@@ -1292,7 +1292,7 @@ Fix: declare at least one entry, or remove the key
 
 `<artifact>: '<field>' is '<found>', expected one of <expected>`
 
-Raised when a metric's `access_modifier`, or a window `order_by` entry's `sort_direction` or `null_order`, holds an unrecognised value.
+Raised when a metric's `access_modifier`, or a window `order_by` entry's `sort_direction` or `null_order`, holds an unrecognized value.
 
 Fix: use one of {expected}
 
@@ -1720,19 +1720,19 @@ Fix: add content, or remove the reference
 
 ### SST-LOD020
 
-**Unrecognised file extension accepted** (warning)
+**Unrecognized file extension accepted** (warning)
 
 `<file> uses '<found>'`
 
 Raised when a discovered file uses an extension SST tolerates other than `.yml` and `.yaml`, such as `.YML`.
 
-Fix: standardise on .yml
+Fix: standardize on .yml
 
 ### SST-LOD021
 
-**Document declares no recognised root key** (error)
+**Document declares no recognized root key** (error)
 
-`<file> declares no recognised root key`
+`<file> declares no recognized root key`
 
 Raised when the root mapping has keys and none is a registered artifact type's root key; when only some are unclaimed, SST-PRS001 names each.
 
@@ -1768,9 +1768,9 @@ Raised when a file whose bytes were already parsed in this invocation is served 
 
 ### SST-LOD202
 
-**Line-ending normalisation applied on read** (info)
+**Line-ending normalization applied on read** (info)
 
-`<file> normalised <count> line endings on read`
+`<file> normalized <count> line endings on read`
 
 Raised when CRLF line endings were read as LF in memory; the file itself is left as it is.
 
@@ -2482,9 +2482,9 @@ Note: An error, so a 0.3 project does not publish under 1.0 unmigrated. The old 
 
 ### SST-VAL013
 
-**Unmodelled key would be rendered unvalidated** (error)
+**Unmodeled key would be rendered unvalidated** (error)
 
-`<type> '<name>': '<key>' is not modelled and would be rendered as-is`
+`<type> '<name>': '<key>' is not modeled and would be rendered as-is`
 
 Raised when an agent spec renders a key SST does not model and `snowflake.allow_unknown_keys` is `false`; reported once per key.
 
@@ -2492,9 +2492,9 @@ Fix: promote the key, remove it, or set `snowflake.allow_unknown_keys: true` to 
 
 ### SST-VAL014
 
-**Unmodelled key reported** (warning)
+**Unmodeled key reported** (warning)
 
-`<type> '<name>': <count> unmodelled keys rendered`
+`<type> '<name>': <count> unmodeled keys rendered`
 
 Raised when an agent spec renders keys SST does not model and `snowflake.allow_unknown_keys` is `true`, its default; reported once per agent.
 
@@ -2726,7 +2726,7 @@ Note: Left unset, Snowflake's default null ordering applies.
 
 ### SST-VAL121
 
-**access_modifier holds an unrecognised value** (error)
+**access_modifier holds an unrecognized value** (error)
 
 `metric '<metric>': access_modifier is '<found>'`
 
@@ -3022,11 +3022,11 @@ Fix: reference it in an expr, or remove it
 
 `<artifact>: '<name>' in <field> is neither a column nor a declared variable`
 
-Raised when the `expr:` of a filter not labelled `filter`, which renders as prose in the view's instructions, has a bare word that is neither a column of the view's tables nor a variable the view declares.
+Raised when the `expr:` of a filter not labeled `filter`, which renders as prose in the view's instructions, has a bare word that is neither a column of the view's tables nor a variable the view declares.
 
 Fix: declare the variable, correct the name, or wrap the column in a two-arg ref
 
-Note: In a metric or a labelled filter, which the view is created with, the same word is `SST-VAL326`.
+Note: In a metric or a labeled filter, which the view is created with, the same word is `SST-VAL326`.
 
 ### SST-VAL222
 
@@ -3056,9 +3056,9 @@ Note: `{artifact}` is the model, not a view.
 
 `<artifact> resolves no dimension and no metric`
 
-Raised when a semantic view's tables have no dimension or time dimension in scope, and no metric or filter labelled `filter` attaches to it.
+Raised when a semantic view's tables have no dimension or time dimension in scope, and no metric or filter labeled `filter` attaches to it.
 
-Fix: attach a metric or a labelled filter, or set `column_type` on the base models' columns (`sst enrich`)
+Fix: attach a metric or a labeled filter, or set `column_type` on the base models' columns (`sst enrich`)
 
 ### SST-VAL302
 
@@ -3066,7 +3066,7 @@ Fix: attach a metric or a labelled filter, or set `column_type` on the base mode
 
 `<artifact>: table '<name>' resolves to relation '<value>'`
 
-Raised when a table SST built would render against a relation other than its dbt model's resolved `relation_name`, which honours `alias:`; this is an SST defect.
+Raised when a table SST built would render against a relation other than its dbt model's resolved `relation_name`, which honors `alias:`; this is an SST defect.
 
 Fix: report this as a bug; SST renders each table at its dbt model's resolved relation
 
@@ -3076,9 +3076,9 @@ Fix: report this as a bug; SST renders each table at its dbt model's resolved re
 
 `<artifact>: '<name>' is <found> in dbt and produces no relation`
 
-Raised when a view's `tables:` names a dbt model that is `enabled: false` or materialised as `ephemeral`.
+Raised when a view's `tables:` names a dbt model that is `enabled: false` or materialized as `ephemeral`.
 
-Fix: enable the model, or change its materialisation
+Fix: enable the model, or change its materialization
 
 ### SST-VAL305
 
@@ -3224,11 +3224,11 @@ Raised when a view holds relationships, filters, metrics or verified queries by 
 
 ### SST-VAL320
 
-**Drift comparison not normalised on both sides** (error)
+**Drift comparison not normalized on both sides** (error)
 
 `<artifact>: drift comparison compared raw DDL`
 
-Raised when a plan compares a recorded or rendered definition that is not a normalised digest, so raw text would decide drift; this is an SST defect.
+Raised when a plan compares a recorded or rendered definition that is not a normalized digest, so raw text would decide drift; this is an SST defect.
 
 Fix: report this as a bug
 
@@ -3350,7 +3350,7 @@ Fix: include the relationship, or exclude the metric
 
 ### SST-VAL333
 
-**Column access_modifier holds an unrecognised value** (error)
+**Column access_modifier holds an unrecognized value** (error)
 
 `<artifact>: column '<member>' declares access_modifier '<found>'`
 
@@ -3422,7 +3422,7 @@ Note: A column the YAML does not describe yet is reported too, and an excluded o
 
 `filter '<member>' carries labels: [filter] and its expr is not boolean`
 
-Raised when a filter labelled `filter` has an expression SST does not read as boolean: neither a predicate by its shape nor one `ref()` to a column dbt declares BOOLEAN.
+Raised when a filter labeled `filter` has an expression SST does not read as boolean: neither a predicate by its shape nor one `ref()` to a column dbt declares BOOLEAN.
 
 Fix: make the expression boolean, or remove `labels: [filter]` so it renders as prose
 
@@ -4048,9 +4048,9 @@ Fix: treat it as an orchestration bound, not a spend cap, and say so in a commen
 
 `agent '<artifact>': <field> '<found>' <detail>`
 
-Raised when an agent's avatar is not in `snowflake.profile.avatar_allowlist`, when that is set, or its color is neither a plain colour name nor `var(--token)`.
+Raised when an agent's avatar is not in `snowflake.profile.avatar_allowlist`, when that is set, or its color is neither a plain color name nor `var(--token)`.
 
-Fix: use an allowlisted avatar, or a plain colour name or var(--token)
+Fix: use an allowlisted avatar, or a plain color name or var(--token)
 
 ### SST-VAL549
 
@@ -4204,7 +4204,7 @@ Note: A comparison of orchestration models commits a version of the published ag
 
 ### SST-VAL603
 
-**Tool type is not recognised** (error)
+**Tool type is not recognized** (error)
 
 `tool member '<name>': type '<found>' is not a known tool type`
 
@@ -5190,7 +5190,7 @@ Note: The message names which; rename the folder, keep one manifest spelling, or
 
 `skill '<artifact>': TYPE is <found>`
 
-Raised when a plan finds a CORTEX EXTENSION already at the target with no TYPE, or one SST does not recognise; the release is blocked.
+Raised when a plan finds a CORTEX EXTENSION already at the target with no TYPE, or one SST does not recognize; the release is blocked.
 
 Fix: publish with an explicit TYPE of SKILL or PLUGIN
 
@@ -5332,7 +5332,7 @@ Note: The skill loads and is selected; the script cannot run.
 
 Raised when a bundled script holds an absolute local path, or any bundled text file a credential literal.
 
-Fix: parameterise it; a path that resolves locally will not resolve in the sandbox
+Fix: parameterize it; a path that resolves locally will not resolve in the sandbox
 
 ### SST-VAL816
 
@@ -6030,9 +6030,9 @@ Fix: point the semantic layer at the resolved relation
 
 `model '<model>' is <found> and produces no relation`
 
-Raised when a model the semantic layer consumes is disabled, or materialised so that it has no relation.
+Raised when a model the semantic layer consumes is disabled, or materialized so that it has no relation.
 
-Fix: enable it, or change the materialisation
+Fix: enable it, or change the materialization
 
 ### SST-DBT010
 
@@ -6576,7 +6576,7 @@ Note: SST refuses rather than discard the file, because discarding it is what ma
 
 ### SST-MAN023
 
-**State file schema is unrecognised** (error)
+**State file schema is unrecognized** (error)
 
 `<path> declares schema <found>`
 
@@ -6768,7 +6768,7 @@ Raised when the session's primary role does not hold, directly, through a role i
 
 Fix: grant the privilege to the session's primary role, or to a role it inherits
 
-Note: Plan blocks the change rather than let apply fail with SST-SNO004. Snowflake authorises a CREATE by the primary role alone, so a CREATE privilege only a secondary role holds does not count, and the message says a secondary role holds it. The walk up from the primary role stops at 16 roles; a privilege the session holds that it has not reached by then is said to have no inheritance path within that depth instead. With no secondary role active, the session is asked alone. An update is not checked for its own CREATE privilege: it replaces an object the role already owns.
+Note: Plan blocks the change rather than let apply fail with SST-SNO004. Snowflake authorizes a CREATE by the primary role alone, so a CREATE privilege only a secondary role holds does not count, and the message says a secondary role holds it. The walk up from the primary role stops at 16 roles; a privilege the session holds that it has not reached by then is said to have no inheritance path within that depth instead. With no secondary role active, the session is asked alone. An update is not checked for its own CREATE privilege: it replaces an object the role already owns.
 
 ### SST-PLN009
 
@@ -6786,7 +6786,7 @@ Note: Unless the name is free by then, apply refuses the create (SST-APL012).
 
 **Target schema does not exist** (error)
 
-`schema <value> does not exist or is not authorised`
+`schema <value> does not exist or is not authorized`
 
 Raised when the schema a planned write targets does not exist, or the role cannot see it, and `apply.create_schemas` is false; reported once per schema.
 
@@ -6796,7 +6796,7 @@ Fix: set `apply.create_schemas: true`, create the schema, or correct the target
 
 **Target database does not exist** (error)
 
-`database <value> does not exist or is not authorised`
+`database <value> does not exist or is not authorized`
 
 Raised when the database a planned write targets does not exist, or the role cannot see it; reported once per database.
 
@@ -6804,9 +6804,9 @@ Fix: create the database, or correct the target
 
 ### SST-PLN012
 
-**Warehouse does not exist or is not authorised** (error)
+**Warehouse does not exist or is not authorized** (error)
 
-`warehouse <value> does not exist or is not authorised`
+`warehouse <value> does not exist or is not authorized`
 
 Raised when the warehouse the profile names does not exist, or the role cannot see it; reported once per plan.
 
@@ -6882,7 +6882,7 @@ Fix: re-run plan
 
 Raised when the observation shows a competing writer.
 
-Fix: retry, or serialise the publishers
+Fix: retry, or serialize the publishers
 
 Note: Reading other sessions' locks needs MONITOR on the account. A role without it skips this check, reported as `SST-VAL020`, and the plan goes ahead.
 
@@ -6926,7 +6926,7 @@ Fix: resolve the dependency conflict
 
 Raised when an unquoted declared identifier matches a live object only after case folding.
 
-Fix: normalise the declaration to the rendered case
+Fix: normalize the declaration to the rendered case
 
 ### SST-PLN024
 
@@ -7234,7 +7234,7 @@ Raised when Snowflake rejected a statement `apply` or `drop` ran, or a change fa
 
 Fix: fix the statement or the account as the error in the message says
 
-Note: The message's detail is the error itself; when SST recognises a Snowflake refusal it also reports it under its SST-SNO code.
+Note: The message's detail is the error itself; when SST recognizes a Snowflake refusal it also reports it under its SST-SNO code.
 
 ### SST-APL002
 
@@ -7468,7 +7468,7 @@ Fix: check OWNERSHIP on the dataset
 
 `eval '<artifact>': <detail>`
 
-Raised when an eval could not run, or one of its attempts failed: it has no run configuration; its agent version could not be read or its config could not be staged; EXECUTE_AI_EVALUATION refused to start the run; its status could not be read (a read failed for good, or 5 reads in a row failed in transit); it did not reach a terminal status within 20 minutes; or it ended FAILED, CANCELLED, or in a status Snowflake does not document. A run SST gives up on while it may still be running is cancelled in Snowflake, and the detail says whether the cancel went through.
+Raised when an eval could not run, or one of its attempts failed: it has no run configuration; its agent version could not be read or its config could not be staged; EXECUTE_AI_EVALUATION refused to start the run; its status could not be read (a read failed for good, or 5 reads in a row failed in transit); it did not reach a terminal status within 20 minutes; or it ended FAILED, CANCELLED, or in a status Snowflake does not document. A run SST gives up on while it may still be running is canceled in Snowflake, and the detail says whether the cancel went through.
 
 Fix: fix what the detail names, then re-run the eval
 
@@ -7582,7 +7582,7 @@ Raised when `state.+table_kind` is `hybrid` (or `sst state convert --to hybrid` 
 
 Fix: set state.+table_kind: standard
 
-Note: Its error number is not measured, so it is recognised by a message that names hybrid tables; any other refusal is reported as Snowflake gave it
+Note: Its error number is not measured, so it is recognized by a message that names hybrid tables; any other refusal is reported as Snowflake gave it
 
 ### SST-APL036
 
@@ -7918,7 +7918,7 @@ Note: Snowflake private preview: CoWork profiles. An unpublished run would need 
 
 ### SST-SNO001
 
-**Snowflake refused and SST does not recognise the refusal** (error)
+**Snowflake refused and SST does not recognize the refusal** (error)
 
 `Snowflake refused: <detail>`
 
@@ -7940,9 +7940,9 @@ Fix: choose another name, or -- for a semantic view -- let the unconditional `CR
 
 ### SST-SNO003
 
-**Object does not exist or is not authorised** (error)
+**Object does not exist or is not authorized** (error)
 
-`<value> does not exist or is not authorised`
+`<value> does not exist or is not authorized`
 
 Raised when Snowflake reported error 2003 (SQLSTATE 02000), SQLSTATE 42S02, or a message saying `does not exist` that names no schema, database or warehouse.
 
@@ -7964,9 +7964,9 @@ Note: The message ends with what Snowflake said is missing, such as which privil
 
 ### SST-SNO005
 
-**Schema does not exist or is not authorised** (error)
+**Schema does not exist or is not authorized** (error)
 
-`schema <value> does not exist or is not authorised`
+`schema <value> does not exist or is not authorized`
 
 Raised when Snowflake reported error 2043, or a message saying `schema '<name>' does not exist`.
 
@@ -7976,9 +7976,9 @@ Note: Plan reports a missing schema first, as SST-PLN010.
 
 ### SST-SNO006
 
-**Database does not exist or is not authorised** (error)
+**Database does not exist or is not authorized** (error)
 
-`database <value> does not exist or is not authorised`
+`database <value> does not exist or is not authorized`
 
 Raised when Snowflake reported a message saying `database '<name>' does not exist`.
 
@@ -7988,9 +7988,9 @@ Note: Plan reports a missing database first, as SST-PLN011.
 
 ### SST-SNO007
 
-**Warehouse does not exist or is not authorised** (error)
+**Warehouse does not exist or is not authorized** (error)
 
-`warehouse <value> does not exist or is not authorised`
+`warehouse <value> does not exist or is not authorized`
 
 Raised when Snowflake reported a message saying `warehouse '<name>' does not exist`.
 
@@ -8142,7 +8142,7 @@ Fix: shorten the name
 
 Raised when Snowflake reported a lock timeout or wait, a deadlock, or a concurrent change.
 
-Fix: retry, or serialise the publishers
+Fix: retry, or serialize the publishers
 
 Note: Plan warns of an object another session holds a lock on as SST-PLN019.
 
@@ -8270,7 +8270,7 @@ Fix: refresh the credential
 
 `query timed out after <detail>`
 
-Raised when a statement times out or is cancelled, or the connection drops while it runs.
+Raised when a statement times out or is canceled, or the connection drops while it runs.
 
 Fix: retry; this is retryable
 
@@ -8454,7 +8454,7 @@ Fix: pass one of {expected}
 
 Raised when the user interrupts a run, with Ctrl-C, SIGTERM or SIGHUP, or declines a confirmation prompt; the run exits 130. An interrupted `apply` starts no further change, records in state the changes that finished, and releases its lock; after an eval run started, the message names each run, which goes on in Snowflake.
 
-Fix: after apply, run sst plan to see what remains; an eval run already started keeps running in Snowflake until it ends or is cancelled there
+Fix: after apply, run sst plan to see what remains; an eval run already started keeps running in Snowflake until it ends or is canceled there
 
 Note: Every signal is handled as Ctrl-C is, so a CI cancellation, `timeout`, or `docker stop` ends the run cleanly; a signal the process inherited as ignored, as `nohup` leaves SIGHUP, stays ignored. A further SIGTERM or SIGHUP is ignored while it cleans up, and a second Ctrl-C stops apply's running changes at their next statement. SIGKILL cannot be handled: an apply it ends leaves its lock to expire (`--break-stale-lock` then takes it over). An object it updated but did not record still carries SST's marker for the new definition, so the next apply updates it again, and records it; one it created, which state never recorded, is refused as SST-PLN024 until it is dropped by hand.
 
@@ -8695,7 +8695,7 @@ Retired because `generation.publish_via` is removed, so there is one publish pat
 
 ### SST-CFG024
 
-**spec_version is not recognised** (retired in 1.0.0)
+**spec_version is not recognized** (retired in 1.0.0)
 
 Retired because configuration carries no spec version to check.
 
@@ -8989,7 +8989,7 @@ Superseded by [`SST-PRS002`](#sst-prs002).
 
 ### SST-VAL501
 
-**create_mode holds an unrecognised value** (retired in 1.0.0)
+**create_mode holds an unrecognized value** (retired in 1.0.0)
 
 Retired because `create_mode` is removed: an artifact is created when absent and updated by its type's rule.
 

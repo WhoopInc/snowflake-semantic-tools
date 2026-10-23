@@ -3,8 +3,8 @@
 A finding is its severity and code, its message, the line it points at with a caret under the
 column, then what to do: the suggestion, and the `sst explain` command for the code. The
 verdict is the run's one closing line: whether it passed, what it counted, and how long it took,
-then what was hidden and the next step. Colour and symbols come from `Style`, so the same
-layout reads in ASCII and without colour.
+then what was hidden and the next step. Color and symbols come from `Style`, so the same
+layout reads in ASCII and without color.
 """
 
 from __future__ import annotations

@@ -15,7 +15,7 @@ import pytest
 
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.app.drift import written_digest
-from snowflake_semantic_tools.domain.diagnostics.signatures import UNRECOGNISED, match_signature
+from snowflake_semantic_tools.domain.diagnostics.signatures import UNRECOGNIZED, match_signature
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import PublishShape, RenderedArtifact, ShowRow, drifted_properties
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -74,7 +74,7 @@ def test_a_refused_statement_returns_a_failure_whose_text_the_signature_table_kn
     assert not result.ok and result.query_ids == ()
     assert result.error is not None
     found = match_signature(result.error.message, errno=result.error.errno, sqlstate=result.error.sqlstate)
-    assert found is not UNRECOGNISED, f"unrecognised Snowflake failure text: {result.error.message!r}"
+    assert found is not UNRECOGNIZED, f"unrecognized Snowflake failure text: {result.error.message!r}"
 
 
 @pytest.fixture(params=[STANDARD_TABLES, HYBRID_TABLES])

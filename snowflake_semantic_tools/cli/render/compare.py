@@ -6,7 +6,7 @@ of its spread across runs, every other metric's mean, its credits per question (
 its p95 latency, and the version and alias its runs evaluated; a model that failed says why.
 Then the questions on which a candidate fixes or breaks what the pinned model did, the verdict,
 the config line to review for a winner, and the notes. The report's files close the output.
-Under `-o plain` nothing is coloured or cut.
+Under `-o plain` nothing is colored or cut.
 
 Example:
     eval:sales_agent  8 questions × 2 runs  winner claude-opus-4-8

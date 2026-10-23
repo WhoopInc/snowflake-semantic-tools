@@ -33,7 +33,7 @@ def commit(port: FakeSnowflake, *models: str, kind: str = "agent") -> tuple[list
         if kind == "agent"
         else compare_subject("concierge", kind="cowork_profile", target="DB.PROFILES.CONCIERGE")
     )
-    if subject.target.sql not in port.modelled_agents:
+    if subject.target.sql not in port.modeled_agents:
         publish(port, subject)
     result = CompareLifecycle(port, run_id=RUN, git_sha=GIT_SHA).commit(subject, models)
     return [text for script in port.scripts for text in script], result

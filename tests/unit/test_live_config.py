@@ -107,7 +107,7 @@ def test_a_named_connection_supplies_what_the_other_sources_leave_unset(tmp_path
     }
 
 
-def test_connections_toml_is_read_before_config_toml_and_snowflake_home_is_honoured(tmp_path: Path) -> None:
+def test_connections_toml_is_read_before_config_toml_and_snowflake_home_is_honored(tmp_path: Path) -> None:
     write(tmp_path / "config.toml", BROWSER_CONNECTION)
     write(tmp_path / "connections.toml", '[sst-test]\naccount = "toml-acct"\nprivate_key_file = "/keys/k.p8"\n')
     assert named_connection(tmp_path, "sst-test") == {"account": "toml-acct", "private_key_file": "/keys/k.p8"}

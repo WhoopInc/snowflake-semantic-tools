@@ -161,7 +161,7 @@ def test_the_profile_comes_from_profile_without_a_project(tmp_path: Path, monkey
     assert (undeclared.exit_code, "SST-CFG010" in undeclared.output) == (4, True)
 
 
-def test_a_configured_state_table_is_honoured_and_a_broken_config_ignored(
+def test_a_configured_state_table_is_honored_and_a_broken_config_ignored(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = _project(tmp_path)

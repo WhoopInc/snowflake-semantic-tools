@@ -37,13 +37,13 @@ def _detect(
     return detect_terminal(environ, _Stream(out), _Stream(err), choice=choice, colorable=colorable)
 
 
-def test_a_terminal_gets_colour_and_a_live_line() -> None:
+def test_a_terminal_gets_color_and_a_live_line() -> None:
     terminal = _detect({"COLUMNS": "120"})
     assert terminal.color and terminal.color_out and terminal.live and terminal.unicode
     assert terminal.width == 120
 
 
-def test_a_pipe_gets_neither_colour_nor_a_live_line() -> None:
+def test_a_pipe_gets_neither_color_nor_a_live_line() -> None:
     terminal = _detect({}, out=False, err=False)
     assert not terminal.color and not terminal.color_out and not terminal.live
 
@@ -63,17 +63,17 @@ def test_stdout_and_stderr_are_decided_apart() -> None:
         ({}, "never", False),
     ],
 )
-def test_colour_follows_the_choice_then_the_environment(environ: dict[str, str], choice: str, expected: bool) -> None:
+def test_color_follows_the_choice_then_the_environment(environ: dict[str, str], choice: str, expected: bool) -> None:
     assert _detect(environ, choice=choice).color is expected
 
 
 @pytest.mark.parametrize("variable", ["FORCE_COLOR", "CLICOLOR_FORCE"])
-def test_a_forcing_variable_colours_a_pipe(variable: str) -> None:
+def test_a_forcing_variable_colors_a_pipe(variable: str) -> None:
     assert _detect({variable: "1"}, err=False).color
     assert not _detect({variable: "0"}, err=False).color
 
 
-def test_an_uncolourable_format_is_never_coloured() -> None:
+def test_an_uncolorable_format_is_never_colored() -> None:
     assert not _detect({}, choice="always", colorable=False).color
 
 
@@ -107,7 +107,7 @@ def test_a_link_is_plain_text_without_hyperlinks() -> None:
     assert linked == "\x1b]8;;https://x\x1b\\SST-REF002\x1b]8;;\x1b\\"
 
 
-def test_style_paints_only_when_colour_is_on() -> None:
+def test_style_paints_only_when_color_is_on() -> None:
     assert Style(PLAIN)("text", "error") == "text"
     assert Style(Terminal(color=True))("text", "error") != "text"
     assert Style(Terminal(color=True))("", "error") == ""

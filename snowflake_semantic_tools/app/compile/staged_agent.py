@@ -152,7 +152,7 @@ def render_agent_object(staged: StagedAgentObject, comment: str | None) -> Rende
             properties_lead=programs.properties_lead,
         ),
         # Snowflake's docs name agent_spec.yaml only when reading a version back; the server
-        # reads a staged spec from that file (docs/design/snowflake-behaviour.md).
+        # reads a staged spec from that file (docs/design/snowflake-behavior.md).
         upload=(
             None
             if staged.temporary
@@ -207,7 +207,7 @@ def agent_programs(
     version holding the same specification, then its alias and tags are set. Snowsight
     shows the live version, and a request naming no version is served it, so an agent
     without one shows and runs with no instructions, tools, or skills
-    (docs/design/snowflake-behaviour.md). Each version committed carries
+    (docs/design/snowflake-behavior.md). Each version committed carries
     `git:<sha> sst-spec:<fingerprint>`, which plan reads back to tell the newest version
     already holds a specification:
 
@@ -312,7 +312,7 @@ def _version_programs(
     )
     update_live = (
         # Snowflake's docs do not say ADD VERSION fails beside a live version; the server refuses
-        # it (docs/design/snowflake-behaviour.md).
+        # it (docs/design/snowflake-behavior.md).
         # `literal` escapes backslashes, so the JSON's own escapes survive; MEASURED that the
         # committed version's spec then reads back byte for byte.
         sql(
@@ -331,7 +331,7 @@ def _alias_statement(metadata: AgentObjectMetadata, agent: Sql) -> tuple[Sql, ..
     if not metadata.alias:
         return ()
     # Snowflake's docs list LAST as a version shortcut; the server rejects it unquoted in
-    # MODIFY VERSION (docs/design/snowflake-behaviour.md).
+    # MODIFY VERSION (docs/design/snowflake-behavior.md).
     return (
         sql(
             'ALTER AGENT {agent}\n  MODIFY VERSION "LAST" SET ALIAS = {alias}',

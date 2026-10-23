@@ -222,7 +222,7 @@ def test_severity_overrides_change_what_a_code_reports_and_what_blocks(tmp_path:
     assert exit_code == 1 and {(item["severity"], item["promoted_from"]) for item in promoted} == {("error", "warning")}
 
 
-def test_verbose_quiet_grouping_and_colour_shape_only_the_human_render(tmp_path: Path) -> None:
+def test_verbose_quiet_grouping_and_color_shape_only_the_human_render(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
     args = ["validate", *common(project), "--no-strict"]
     verbose = CliRunner().invoke(cli, [*args, "-v"])

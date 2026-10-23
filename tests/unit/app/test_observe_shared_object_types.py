@@ -92,7 +92,7 @@ def test_targets_by_kind_takes_each_rendered_target_then_each_state_records() ->
             "agent:x": applied_entry(AGENT.sql, "1" * 64),
             "cowork_profile:gone": applied_entry("DB.B.GONE", "2" * 64),
             # A key naming no kind, and an entry naming no object, are left out.
-            "uncategorised": applied_entry("DB.C.Z", "3" * 64),
+            "uncategorized": applied_entry("DB.C.Z", "3" * 64),
             "agent:unnamed": applied_entry("", "4" * 64),
         }
     )

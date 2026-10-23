@@ -99,7 +99,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "role in the session holds READ and WRITE on an existing one"
         ),
         note=(
-            "Plan blocks the change rather than let apply fail with SST-SNO004. Snowflake authorises "
+            "Plan blocks the change rather than let apply fail with SST-SNO004. Snowflake authorizes "
             "a CREATE by the primary role alone, so a CREATE privilege only a secondary role holds "
             "does not count, and the message says a secondary role holds it. The walk up from the "
             "primary role stops at 16 roles; a privilege the session holds that it has not reached "
@@ -123,7 +123,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-PLN010",
         Severity.ERROR,
         "Target schema does not exist",
-        "schema {value} does not exist or is not authorised",
+        "schema {value} does not exist or is not authorized",
         "set `apply.create_schemas: true`, create the schema, or correct the target",
         condition=(
             "the schema a planned write targets does not exist, or the role cannot see it, and "
@@ -135,7 +135,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-PLN011",
         Severity.ERROR,
         "Target database does not exist",
-        "database {value} does not exist or is not authorised",
+        "database {value} does not exist or is not authorized",
         "create the database, or correct the target",
         condition=(
             "the database a planned write targets does not exist, or the role cannot see it; reported once per database"
@@ -145,8 +145,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-PLN012",
         Severity.ERROR,
-        "Warehouse does not exist or is not authorised",
-        "warehouse {value} does not exist or is not authorised",
+        "Warehouse does not exist or is not authorized",
+        "warehouse {value} does not exist or is not authorized",
         "grant USAGE, or name an existing warehouse",
         condition="the warehouse the profile names does not exist, or the role cannot see it; reported once per plan",
         precheck=Precheck.OBSERVE,
@@ -244,7 +244,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Concurrent DDL detected on the target",
         "{value} is being modified by another session",
-        "retry, or serialise the publishers",
+        "retry, or serialize the publishers",
         condition="the observation shows a competing writer",
         note="Reading other sessions' locks needs MONITOR on the account. A role without it skips "
         "this check, reported as `SST-VAL020`, and the plan goes ahead.",
@@ -286,7 +286,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Declared name differs from the live object only by case",
         "{artifact}: declared '{value}', live object is '{found}'",
-        "normalise the declaration to the rendered case",
+        "normalize the declaration to the rendered case",
         condition="an unquoted declared identifier matches a live object only after case folding",
         precheck=Precheck.OBSERVE,
     ),

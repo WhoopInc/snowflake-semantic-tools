@@ -196,7 +196,7 @@ def test_a_cell_tooltip_holds_the_reason_and_for_a_profile_the_route() -> None:
     assert sum("Route: declined" in title for title in profile_titles) == 2
 
 
-def test_costs_not_known_are_labelled_never_zero() -> None:
+def test_costs_not_known_are_labeled_never_zero() -> None:
     tree = _render(sample_compare_report())
     first = _with("data-section", _within(tree, 0), "cost")[0]
     rows = [item for item in _within(tree, 0).elements if item.tag == "tr"]

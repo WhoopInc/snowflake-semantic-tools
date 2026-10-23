@@ -55,12 +55,12 @@ These go before the command name.
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--version` | flag |  | Show the version and exit. |
-| `--output / -o` | table\|plain\|agent\|json\|yaml\|csv |  | `table` (default), `plain` (`table` without colour), `agent` (short fixed-grammar text for coding agents), or `json`, else `$SST_OUTPUT`; `list` also takes `yaml` and `csv`. With neither set, a run whose stdout is not a terminal defaults to `agent` when a coding agent's variable is set (`SST_AGENT`, `CLAUDECODE`, `COCO_AGENT`, `CURSOR_AGENT`, `CODEX_SANDBOX`, `GEMINI_CLI`; `0` or empty is unset) and says so. A format the command does not take is refused (SST-PRT106). |
+| `--output / -o` | table\|plain\|agent\|json\|yaml\|csv |  | `table` (default), `plain` (`table` without color), `agent` (short fixed-grammar text for coding agents), or `json`, else `$SST_OUTPUT`; `list` also takes `yaml` and `csv`. With neither set, a run whose stdout is not a terminal defaults to `agent` when a coding agent's variable is set (`SST_AGENT`, `CLAUDECODE`, `COCO_AGENT`, `CURSOR_AGENT`, `CODEX_SANDBOX`, `GEMINI_CLI`; `0` or empty is unset) and says so. A format the command does not take is refused (SST-PRT106). |
 | `--verbose / -v` | flag |  | Add each diagnostic's phase and fingerprint, and report each file the run's parse cache served (SST-LOD201). Cannot be combined with `--quiet`. |
 | `--quiet / -q` | flag |  | Show error diagnostics only, with no counts line or progress lines; the report still prints. |
 | `--log-level` | debug\|info\|warn\|error |  | Threshold for log records on stderr, else `$SST_LOG_LEVEL`, else `warn`. The libraries SST runs, such as the Snowflake connector, log each request at `info`, so `info` shows those. Independent of `--verbose`. |
-| `--no-color` | flag |  | No ANSI colour, else `$SST_NO_COLOR`; a non-empty `$NO_COLOR` does the same. Wins over `--color`. |
-| `--color` | auto\|always\|never |  | When to colour `table` output: `auto` (the default) on a terminal, `always` even through a pipe, as a CI log viewer renders it, or `never`; else `$SST_COLOR`. Under `auto`, a non-empty `$FORCE_COLOR` or `$CLICOLOR_FORCE` turns colour on and `$NO_COLOR` off. No other format is ever coloured. |
+| `--no-color` | flag |  | No ANSI color, else `$SST_NO_COLOR`; a non-empty `$NO_COLOR` does the same. Wins over `--color`. |
+| `--color` | auto\|always\|never |  | When to color `table` output: `auto` (the default) on a terminal, `always` even through a pipe, as a CI log viewer renders it, or `never`; else `$SST_COLOR`. Under `auto`, a non-empty `$FORCE_COLOR` or `$CLICOLOR_FORCE` turns color on and `$NO_COLOR` off. No other format is ever colored. |
 | `--project-dir` | DIRECTORY |  | Project root, else `$SST_PROJECT_DIR`, else the current directory: where `sst_config.yml` and `dbt_project.yml` are. |
 | `--config` | PATH |  | Read this configuration file, else `$SST_CONFIG`, instead of discovering one in the project. |
 | `--profiles-dir` | DIRECTORY |  | Look for `profiles.yml` here first, else in `$SST_PROFILES_DIR`; then in `$DBT_PROFILES_DIR`, the project root, and `~/.dbt`. The first that has one wins. |
@@ -121,7 +121,7 @@ whether it is this one; and the resolved target: profile, role, warehouse,
 database, schema, state table, and how it authenticates, never a credential. The
 connection is then opened, and its role and account reported; with --no-connect nothing
 connects. --snowflake-signatures reports instead how often Snowflake refusals went
-unrecognised, from `sst_target/run_log.jsonl`, offline.
+unrecognized, from `sst_target/run_log.jsonl`, offline.
 
 Exit 0 when everything resolved, 1 when a resolved value is invalid, 4 when the configuration
 or profile cannot be, and 5 when the connection fails.
@@ -141,7 +141,7 @@ sst debug [OPTIONS]
 |---|---|---|---|
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
 | `--no-connect` | flag |  | Report everything but the connection, offline. |
-| `--snowflake-signatures` | flag |  | Report how often Snowflake refusals went unrecognised, from the run log. |
+| `--snowflake-signatures` | flag |  | Report how often Snowflake refusals went unrecognized, from the run log. |
 
 ## sst migrate
 
@@ -1140,6 +1140,6 @@ sst ask [OPTIONS] [AGENT] [QUESTION]
 | `--published` | flag |  | Copy nothing: run the agent on the published views, tools, skills and agents it names, and warn of each edit it does not see (SST-ASK001). |
 | `--cleanup` | flag |  | Remove every scratch copy and `sst_ask` thread earlier sessions left, in each agent's scratch schema, then exit. |
 | `--show-tools` | flag |  | With QUESTION, also print each tool call the agent made and each tool result, on stderr. |
-| `--timeout` | INTEGER RANGE | `600` | Seconds one turn may take before it is cancelled, 1 to 900; default 600. |
+| `--timeout` | INTEGER RANGE | `600` | Seconds one turn may take before it is canceled, 1 to 900; default 600. |
 | `--transcript / --no-transcript` | flag |  | Keep a transcript in `sst_target/ask/`: each turn whole, rows included, and each specification the agent ran on, replaced after every turn; `--no-transcript` keeps none. Else `ask.transcripts`, else none. `sst clean` removes them. |
 | `--theme` | TEXT |  | The conversation's color theme, else `$SST_ASK_THEME`, else `ask.theme`, else `sst-dark`; Textual's own themes are named too, and Ctrl-P changes it for the session. |

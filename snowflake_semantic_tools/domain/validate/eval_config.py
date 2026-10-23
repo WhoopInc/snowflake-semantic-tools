@@ -192,7 +192,7 @@ def _system_metric(resolved: ResolvedEval, defaults: EvalDefaults, metric: EvalS
             expected=SYSTEM_EVAL_METRIC_VERSION,
         )
         # Snowflake's docs list v1 among the versions a metric may name; the server rejects
-        # `version: v1` (docs/design/snowflake-behaviour.md), so that refusal is not demotable.
+        # `version: v1` (docs/design/snowflake-behavior.md), so that refusal is not demotable.
         if version.casefold() == "v1":
             emit("SST-VAL764", name=name, found=version)
         else:

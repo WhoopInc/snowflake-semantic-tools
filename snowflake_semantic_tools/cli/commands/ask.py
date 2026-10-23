@@ -236,7 +236,7 @@ def _one_shot(
 def _streamed(session: AskSession, question: str, *, show: bool, timeout: int) -> Turn:
     """Run one turn, writing its answer to stdout as it streams when stdout is a terminal for a person.
 
-    A turn still running after `timeout` seconds is cancelled.
+    A turn still running after `timeout` seconds is canceled.
     """
     streaming = _streams_to_terminal()
     timer = threading.Timer(timeout, session.conversation.cancel)

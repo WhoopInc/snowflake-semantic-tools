@@ -302,7 +302,7 @@ tool:
   serch_column: "{{ ref('docs', 'body') }}"
   columns:
     - column: "{{ ref('docs', 'body') }}"
-      colour: red
+      color: red
 """,
     )
     found = [
@@ -310,7 +310,7 @@ tool:
     ]
     assert ("SST-PRS004", "tools/t.yml: unknown field 'version'", 1) in found
     assert ("SST-PRS022", "tool:docs_search: unknown field 'serch_column'; did you mean 'search_column'?", 6) in found
-    assert ("SST-PRS004", "tool:docs_search: unknown field 'colour'", 9) in found
+    assert ("SST-PRS004", "tool:docs_search: unknown field 'color'", 9) in found
 
 
 def _column_codes(tmp_path: Path, column: str, *, relations: bool = False) -> list[tuple[str, str]]:

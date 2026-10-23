@@ -10,7 +10,7 @@ from tests.helpers.seam_projects import COUNTED, SmallProject, metric_file
 
 
 def test_sst_prs020_fires(tmp_path: Path) -> None:
-    # `visibility` is still honoured, and reported as SST-VAL122; this spelling is not read.
+    # `visibility` is still honored, and reported as SST-VAL122; this spelling is not read.
     files = metric_file(COUNTED + "    non_additive_by: []\n")
     [diagnostic] = coded(SmallProject(tmp_path, files=files).load().diagnostics, "SST-PRS020")
     assert diagnostic.severity is Severity.ERROR

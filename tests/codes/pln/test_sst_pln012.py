@@ -12,7 +12,7 @@ def test_sst_pln012_fires() -> None:
     preflight = Preflight("dev", "DEPLOYER", warehouse="REPORTING_WH", warehouse_usable=False)
     [diagnostic] = coded(plan((view("sales"),), preflight=preflight).diagnostics, "SST-PLN012")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "warehouse REPORTING_WH does not exist or is not authorised"
+    assert diagnostic.message == "warehouse REPORTING_WH does not exist or is not authorized"
 
 
 def test_sst_pln012_silent() -> None:

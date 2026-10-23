@@ -9,7 +9,7 @@ An evaluation run of a profile leaves its spans in SNOWFLAKE.LOCAL.AI_OBSERVABIL
 one root span per record, and one span per routing call, whose
 `snow.ai.observability.agent.tool.agent_router.subagent_name` attribute names the subagent the
 router chose. One read returns both for the whole run, keyed by the record id
-GET_AI_EVALUATION_DATA reports (see docs/design/snowflake-behaviour.md).
+GET_AI_EVALUATION_DATA reports (see docs/design/snowflake-behavior.md).
 
 The read is filtered by the run's name and by the profile both. A run's spans outlive
 `EXECUTE_AI_EVALUATION('DELETE')`, so a name used again would return an earlier run's records

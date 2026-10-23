@@ -1,4 +1,4 @@
-"""SST-VAL122: a metric writes the 0.3 `visibility` key, which SST honours as `access_modifier`."""
+"""SST-VAL122: a metric writes the 0.3 `visibility` key, which SST honors as `access_modifier`."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def test_sst_val122_fires(tmp_path: Path) -> None:
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "metric 'order_count' uses visibility; the current key is access_modifier"
     assert diagnostic.subject == "metric:order_count"
-    # Honoured: the metric renders private.
+    # Honored: the metric renders private.
     sales = next(view for view in load(project).views if view.fqn.endswith(".JAFFLE_SALES"))
     assert next(item for item in sales.metrics if item.name == "ORDER_COUNT").access_modifier == "private_access"
 

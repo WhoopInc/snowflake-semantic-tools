@@ -320,10 +320,10 @@ def _require_reachable(
 
 
 def _view_filters(filters: tuple[FilterDef, ...], resolver: _Resolver) -> tuple[list[Column], list[FilterDef]]:
-    """Build each labelled filter as a filter column, and set the unlabelled ones aside as prose.
+    """Build each labeled filter as a filter column, and set the unlabeled ones aside as prose.
 
     Raises:
-        ProjectError: A labelled filter does not resolve to exactly one table, or its expression
+        ProjectError: A labeled filter does not resolve to exactly one table, or its expression
             does not resolve.
     """
     entity_filters: list[Column] = []
@@ -342,7 +342,7 @@ def _malformed(filter_def: FilterDef, subject: str, detail: str) -> NoReturn:
 
 
 def _entity_filter(filter_def: FilterDef, resolver: _Resolver) -> Column:
-    """Build one labelled filter as a filter column of its table: its `tables:` entry, else its ref.
+    """Build one labeled filter as a filter column of its table: its `tables:` entry, else its ref.
 
     Raises:
         ProjectError: The filter does not resolve to exactly one table, or its expression does
@@ -356,7 +356,7 @@ def _entity_filter(filter_def: FilterDef, resolver: _Resolver) -> Column:
     )
     subject = artifact_key("filter", filter_def.name.casefold())
     if len(referenced) != 1:
-        _malformed(filter_def, subject, "a labelled filter must resolve to exactly one table")
+        _malformed(filter_def, subject, "a labeled filter must resolve to exactly one table")
     model_name = referenced[0].casefold()
     (name,) = _names((filter_def.name,), subject, filter_def.origin)
     resolved = resolver.resolve(filter_def.expr, ref_field("filter.expression"), filter_def.origin, "filter.expression")
@@ -377,10 +377,10 @@ def _instruction_parts(
     """Collect the text of the view's two instruction channels: SQL generation and categorization.
 
     The SQL channel takes each instruction's text in attachment order, then one sentence per
-    unlabelled filter, its expression resolved as the view names its columns.
+    unlabeled filter, its expression resolved as the view names its columns.
 
     Raises:
-        ProjectError: An unlabelled filter is not attached to exactly one table, or its
+        ProjectError: An unlabeled filter is not attached to exactly one table, or its
             expression does not resolve in this view.
     """
     sql_parts = [item.ai_sql_generation for item in instructions if item.ai_sql_generation]
@@ -390,14 +390,14 @@ def _instruction_parts(
 
 
 def _standalone_filter_instruction(filter_def: FilterDef, resolver: _Resolver) -> str:
-    """Compose an unlabelled filter's sentence for the view's SQL generation instructions.
+    """Compose an unlabeled filter's sentence for the view's SQL generation instructions.
 
     Diagnostics:
         SST-PRS123: the filter is not attached to exactly one table; raised.
     """
     if len(filter_def.tables) != 1:
         subject = artifact_key("filter", filter_def.name.casefold())
-        _malformed(filter_def, subject, "an unlabelled filter must attach to exactly one table")
+        _malformed(filter_def, subject, "an unlabeled filter must attach to exactly one table")
     table = resolver.logical_by_model[filter_def.tables[0]]
     expression = resolver.resolve(
         filter_def.expr, ref_field("filter.expression"), filter_def.origin, "filter.expression"

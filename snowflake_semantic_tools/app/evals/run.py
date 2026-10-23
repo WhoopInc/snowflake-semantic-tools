@@ -218,7 +218,7 @@ class _Progress:
     def next_steps(self) -> tuple[tuple[_Progress, _RunSetup, int], ...]:
         """Return the attempts the next round starts, by number: one per completed attempt still needed.
 
-        Never past the attempt limit, and none once an attempt was cancelled or the eval could
+        Never past the attempt limit, and none once an attempt was canceled or the eval could
         not be set up. An eval needing one completed attempt so starts another only after one
         that did not pass: it failed, was partial, or its status or results could not be read.
         """
@@ -439,7 +439,7 @@ class RunEvalSuite:
                 failed for good, or `max_read_failures` in a row failed in transit), it did not
                 end by the deadline, or it ended in a status that is neither a pass nor partial,
                 such as `FAILED` or one Snowflake does not document; the message carries its
-                status details. A run given up on while it may still be running is cancelled
+                status details. A run given up on while it may still be running is canceled
                 first, and the message says whether the cancel went through.
             SST-APL024: the run ended partially completed, in a status the config does not
                 accept.
@@ -578,8 +578,8 @@ class RunEvalSuite:
             )
         except SnowflakePortError as exc:
             reason = short_reason(str(exc))
-            return f"cancelling run {run_name!r} failed, so it may still be running in Snowflake ({reason})"
-        return "SST cancelled the run in Snowflake"
+            return f"canceling run {run_name!r} failed, so it may still be running in Snowflake ({reason})"
+        return "SST canceled the run in Snowflake"
 
 
 def validate_eval_publication(

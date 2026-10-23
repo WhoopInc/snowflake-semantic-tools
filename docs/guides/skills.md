@@ -51,7 +51,7 @@ name: sales-semantics
 description: |-
   Use when writing or reviewing a question against the sales semantic views:
   which view answers which question, and how the joins behave. Do NOT use for
-  menu catalogue questions.
+  menu catalog questions.
 ---
 # Sales semantics
 

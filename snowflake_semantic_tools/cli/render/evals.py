@@ -11,7 +11,7 @@ question's time and tokens and the agent's answer. A reason or an answer is cut 
 Every count names whose it is: the agent's time and tokens, and the judge's tokens; a count
 nothing measured says so rather than showing 0. Under `--quiet` only the attempt's line, its
 metrics and its cost are shown. Under `-o plain` the tree is printed without connectors or
-colour, each line indented by its depth, and nothing is cut.
+color, each line indented by its depth, and nothing is cut.
 """
 
 from __future__ import annotations
@@ -172,7 +172,7 @@ def _attempt_nodes(attempt: EvalRunAttempt, layout: _Layout, summary_only: bool)
 
 
 def _metric_nodes(rows: tuple[EvalResultRow, ...], layout: _Layout) -> list[TreeNode]:
-    """Summarise each metric over the attempt's questions: passes, average, threshold and kind."""
+    """Summarize each metric over the attempt's questions: passes, average, threshold and kind."""
     by_name: dict[str, list[EvalMetricResult]] = {}
     for row in rows:
         for metric in row.metrics:
@@ -221,13 +221,13 @@ def _question_node(row: EvalResultRow, layout: _Layout, depth: int) -> TreeNode:
         first, more = lines[0], tuple(lines[1:])
     children: list[TreeNode] = []
     if row.error is not None:
-        children.append(_labelled(style("error", "error"), "error", row.error, layout, depth + 1))
+        children.append(_labeled(style("error", "error"), "error", row.error, layout, depth + 1))
     metrics = [metric for metric in row.metrics if metric.metric_name not in layout.marks.unscored]
     width = max((len(metric.metric_name) for metric in metrics), default=0)
     for metric in metrics:
         children.append(_metric_node(row, metric, width, layout, depth + 1))
     if layout.verbose and row.answer is not None:
-        children.append(_labelled("answer", "answer", row.answer, layout, depth + 1))
+        children.append(_labeled("answer", "answer", row.answer, layout, depth + 1))
     return TreeNode(first, more, tuple(children))
 
 
@@ -255,11 +255,11 @@ def _metric_node(row: EvalResultRow, metric: EvalMetricResult, width: int, layou
         children.append(TreeNode("expected  " + _subagent_list(row.expected_subagents, "none (a decline)")))
         children.append(TreeNode("routed    " + _subagent_list(row.routed_subagents, "none")))
     elif explain and metric.explanation:
-        children.append(_labelled("reason", "reason", metric.explanation, layout, depth + 1))
+        children.append(_labeled("reason", "reason", metric.explanation, layout, depth + 1))
     return TreeNode("  ".join(parts).rstrip(), children=tuple(children))
 
 
-def _labelled(label: str, plain_label: str, text: str, layout: _Layout, depth: int) -> TreeNode:
+def _labeled(label: str, plain_label: str, text: str, layout: _Layout, depth: int) -> TreeNode:
     """A `label  text` row, its text cut to two lines; `plain_label` is the label's width."""
     first, more = _wrapped(plain_label + "  ", text, layout, depth)
     return TreeNode(label + first[len(plain_label) :], more)
@@ -305,7 +305,7 @@ def _packed(label: str, parts: list[str], sep: str, width: int | None, depth: in
 
 
 def _visible(text: str) -> int:
-    """Count the characters of `text` a terminal shows, leaving out colour codes."""
+    """Count the characters of `text` a terminal shows, leaving out color codes."""
     return len(click.unstyle(text))
 
 

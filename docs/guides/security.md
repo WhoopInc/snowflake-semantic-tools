@@ -151,7 +151,7 @@ and computes is still the author's, and runs with the target's role.
   withheld envelope or report makes the run exit 1. `sst debug` shows the authentication
   method, never the credential.
 - **`insecure_mode: true` is reported.** The setting turns off OCSP certificate revocation
-  checks. SST honours it, and warns (`SST-CFG051`) on every run that uses that target.
+  checks. SST honors it, and warns (`SST-CFG051`) on every run that uses that target.
 
 ### Rendering touches nothing
 
@@ -221,7 +221,7 @@ before (see [state and ownership](../concepts.md#state-and-ownership)).
   review the plan, and apply exactly that plan from the protected branch with
   `sst apply --plan sst_target/plan.json`.
 - **Prune deliberately.** `--prune` drops semantic views and agents whose source was deleted,
-  and SST recognises its objects by the ownership marker in their comments together with the
+  and SST recognizes its objects by the ownership marker in their comments together with the
   state table's record. Anyone who can alter an object's comment and write the state table can
   forge both, so treat them as a record, not an access control: limit who can alter objects
   and write state in the schemas SST publishes to, and read the plan's drops before
@@ -264,10 +264,10 @@ not follow the role hierarchy, so a role that holds the privilege through anothe
 reported too. An agent not yet published has no grants to read, so only the session's role
 is checked. Semantic views and the objects defined tool members publish are not checked.
 
-**When a caller lacks a tool.** What the agent does then is Snowflake's behaviour, chosen by
+**When a caller lacks a tool.** What the agent does then is Snowflake's behavior, chosen by
 the agent's `config.tool_not_accessible` (`accept`, `reject`, or `legacy`), or
 `agents.+tool_not_accessible`. SST writes the value into the specification as given and
-leaves it out when neither sets one, so set it to keep the behaviour in the project.
+leaves it out when neither sets one, so set it to keep the behavior in the project.
 
 **An eval shows one role's view.** An eval runs as the session's primary role (see
 [operating SST](#operating-sst)), so a passing eval says what the agent answers for that

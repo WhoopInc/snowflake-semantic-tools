@@ -7,7 +7,7 @@ holds. `unstorable_diagnostics` refuses a loaded value holding what Snowflake ca
 
 For YAML, the refusals raise `ProjectError` with their diagnostics: those above, and tabs used
 for indentation. The formatting findings are returned instead, since the file still loads:
-CRLF line endings, which are normalised in memory and never written back, and trailing
+CRLF line endings, which are normalized in memory and never written back, and trailing
 whitespace.
 """
 
@@ -109,7 +109,7 @@ def unstorable_diagnostics(
     )
 
 
-def normalised_text(text: str, path: str) -> tuple[str, tuple[Diagnostic, ...]]:
+def normalized_text(text: str, path: str) -> tuple[str, tuple[Diagnostic, ...]]:
     """Return `text` with CRLF line endings made LF and trailing whitespace dropped, and what was found.
 
     Both are dropped in memory so that neither changes a published value: YAML already drops
@@ -119,7 +119,7 @@ def normalised_text(text: str, path: str) -> tuple[str, tuple[Diagnostic, ...]]:
 
     Diagnostics:
         SST-LOD012: lines end in CRLF, or carry trailing whitespace; once for each.
-        SST-LOD202: the CRLF line endings were normalised in memory, with how many.
+        SST-LOD202: the CRLF line endings were normalized in memory, with how many.
     """
     findings: list[Diagnostic] = []
     crlf = text.count("\r\n")

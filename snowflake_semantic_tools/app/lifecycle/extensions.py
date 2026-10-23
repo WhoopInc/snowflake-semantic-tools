@@ -426,7 +426,7 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         if version is None:
             return self.fail(f"alias {release.alias} is absent from {target} after ADD VERSION", "SST-APL016")
         # Snowflake publishes no CORTEX EXTENSION reference; the server adds an empty version from a
-        # path that holds nothing, so the files are checked (docs/design/snowflake-behaviour.md).
+        # path that holds nothing, so the files are checked (docs/design/snowflake-behavior.md).
         published = tuple(sorted(self._port.list_location(version.location)))
         leftover = sorted(set(published) - set(release.paths))
         if leftover and set(published) > set(release.paths):
@@ -461,7 +461,7 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         """Make the release's version the default unless a certified version outranks it, then read it back.
 
         MEASURED: SET DEFAULT_VERSION takes a version's system name and refuses its alias, and a
-        default set so stays put when a version is added (docs/design/snowflake-behaviour.md).
+        default set so stays put when a version is added (docs/design/snowflake-behavior.md).
         A default that does not read back fails the change (SST-APL016).
         """
         release = self._release
@@ -563,7 +563,7 @@ def _refusal(
             certification would move it, changing the name every pinned reference uses.
         SST-PLN026: the bundle stage encrypts client-side.
         SST-PLN024: the extension exists, but state does not record it as SST's.
-        SST-VAL802: the extension exists with no TYPE, or one SST does not recognise.
+        SST-VAL802: the extension exists with no TYPE, or one SST does not recognize.
         SST-PLN002: the extension exists with another type.
         SST-PLN027: the alias names a version whose files are not the bundle's.
         SST-VAL824: the bundle's stage prefix holds a file the bundle no longer has, which

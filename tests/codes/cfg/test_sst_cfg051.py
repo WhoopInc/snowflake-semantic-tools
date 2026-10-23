@@ -19,7 +19,7 @@ def test_sst_cfg051_fires(tmp_path: Path) -> None:
     assert diagnostic.message == (
         "target 'x': insecure_mode is true, so OCSP certificate revocation checks are off for this connection"
     )
-    # Reported, not refused: the connection still honours the setting.
+    # Reported, not refused: the connection still honors the setting.
     assert target.connection_params["insecure_mode"] is True
 
 

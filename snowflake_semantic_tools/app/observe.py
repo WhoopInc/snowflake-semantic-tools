@@ -48,7 +48,7 @@ from snowflake_semantic_tools.domain.state import AppliedEntry
 _FoldedName = tuple[str, str, str]
 # One listing: an artifact type's objects of one object type in one schema.
 _Unit = tuple[ArtifactType, str, SchemaScope]
-# The object types whose replace drops every tag it does not name (docs/design/snowflake-behaviour.md).
+# The object types whose replace drops every tag it does not name (docs/design/snowflake-behavior.md).
 _TAGS_REPLACED = frozenset(("SEMANTIC VIEW",))
 
 

@@ -1,6 +1,6 @@
 """A driver double for hybrid run-lock and state tables, with the row locking Snowflake measured.
 
-`HybridTables` answers the connector's hybrid lock-table and state-table statements, recognised
+`HybridTables` answers the connector's hybrid lock-table and state-table statements, recognized
 by their text and binds, as a live Snowflake account answered them when measured, and no more:
 
 - `SELECT ... FOR UPDATE` locks the row it reads until the transaction ends, and fails at once

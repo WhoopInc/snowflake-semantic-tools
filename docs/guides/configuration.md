@@ -262,7 +262,7 @@ artifact's, so no artifact lists it.
 | `state` | Where the state table lives (default `SST_STATE` in the target's database and schema). |
 | `governance` | Which Snowflake column tags make a column sensitive, and whether `enrich` and connected `validate` read them; see [governance tags](enrich.md#governance-tags). |
 | `semantic_views`, `tools`, `agents` | Location and defaults for each type. |
-| `cowork_profiles` | Location and defaults for Snowflake CoWork profiles (a private preview); see [CoWork profiles](cowork-profiles.md). |
+| `cowork_profiles` | Location and defaults for Snowflake CoWork profiles (a private preview[^preview]); see [CoWork profiles](cowork-profiles.md). |
 | `evals` | Defaults for evaluations; never a location, because evals publish into their agent's schema. |
 | `skills`, `plugins` | Where each skill and plugin publishes as a Cortex Extension, if `+bundle_stage` resolves for it; see [skills](skills.md) and [plugins and profiles](plugins-and-coco-desktop-profiles.md). |
 | `coco_desktop_profiles` | Where each CoCo Desktop profile publishes, if `+stage` resolves for it; see [plugins and profiles](plugins-and-coco-desktop-profiles.md). |
@@ -351,8 +351,8 @@ on one session at a time. The plan, its diagnostics and the saved plan file are
 the same for any count. `sst test` and `sst eval` default to 1.
 
 SST also reads `$DBT_PROFILES_DIR` (see [above](#which-files-are-read)) and the
-standard `$NO_COLOR`: any non-empty value turns colour off, as `--no-color`
-does. Colour is only ever used for `table` output on a terminal. Variables that
+standard `$NO_COLOR`: any non-empty value turns color off, as `--no-color`
+does. Color is only ever used for `table` output on a terminal. Variables that
 `profiles.yml` names with `env_var()` are read as the next section describes.
 
 ## Authentication
@@ -412,3 +412,5 @@ sst debug                     # the files, profile, target, and state table SST 
 sst debug --no-connect        # the same, offline
 sst validate --no-snowflake-syntax-check   # fully offline
 ```
+
+[^preview]: A Snowflake private preview, as of 2026-10-23.

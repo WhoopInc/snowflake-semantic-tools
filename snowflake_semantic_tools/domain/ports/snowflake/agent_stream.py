@@ -3,7 +3,7 @@
 This is how `sst ask` talks to an agent as it compiles now: `POST /api/v2/cortex/agent:run`
 with the whole specification in the body, so no agent object is created for it. A thread keeps
 the conversation, so each turn sends one question and the message it follows. A turn runs as a
-background run, which is what lets it be cancelled (a synchronous run's cancel is refused as
+background run, which is what lets it be canceled (a synchronous run's cancel is refused as
 already completed while it still streams, measured), and a dropped stream resumes after the
 last sequence number read. The calls run as the SQL session's own role: with a session token,
 Snowflake ignores a role header (measured), so none is sent.

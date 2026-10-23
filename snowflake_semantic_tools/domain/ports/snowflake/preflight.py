@@ -86,7 +86,7 @@ class PreflightPort(Protocol):
         granted a database role that holds it, directly or through other database roles, no
         further than `ROLE_HIERARCHY_DEPTH` grants. Whether a role is in the session, primary,
         secondary, or inherited, is Snowflake's to answer, so secondary roles count. Snowflake
-        authorises a `CREATE <object>` statement by the primary role alone, so plan asks
+        authorizes a `CREATE <object>` statement by the primary role alone, so plan asks
         `walk_role_privileges` of the primary role for its `CREATE` privileges, and asks this
         only about what that role lacks: a privilege held here is then held by a secondary role,
         or by a role further up than the walk climbs. With no secondary role active, plan asks

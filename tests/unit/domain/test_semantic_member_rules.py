@@ -6,7 +6,7 @@ from dataclasses import replace
 
 from snowflake_semantic_tools.domain.model.authored import InstructionDef, MetricDef, WindowDef, WindowOrderDef
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship
-from snowflake_semantic_tools.domain.validate.semantic.deprecated import deprecated_key_diagnostics, honoured
+from snowflake_semantic_tools.domain.validate.semantic.deprecated import deprecated_key_diagnostics, honored
 from snowflake_semantic_tools.domain.validate.semantic.fidelity import renderer_fidelity_diagnostics, verifier_change
 from snowflake_semantic_tools.domain.validate.semantic.instructions import (
     contradiction_diagnostics,
@@ -135,12 +135,12 @@ def test_a_value_the_renderer_drops_or_changes_is_reported() -> None:
     ]
 
 
-def test_a_0_3_spelling_is_honoured_alone_and_refused_beside_its_1_0_key() -> None:
-    assert honoured({"access_modifier": "x"}, "access_modifier", "metric") == "x"
-    assert honoured({"visibility": " Private "}, "access_modifier", "metric") == "private_access"
-    assert honoured({"visibility": "odd"}, "access_modifier", "metric") == "odd"
-    assert honoured({"sql_generation": "s"}, "ai_sql_generation", "custom_instruction") == "s"
-    assert honoured({}, "expr", "filter") is None
+def test_a_0_3_spelling_is_honored_alone_and_refused_beside_its_1_0_key() -> None:
+    assert honored({"access_modifier": "x"}, "access_modifier", "metric") == "x"
+    assert honored({"visibility": " Private "}, "access_modifier", "metric") == "private_access"
+    assert honored({"visibility": "odd"}, "access_modifier", "metric") == "odd"
+    assert honored({"sql_generation": "s"}, "ai_sql_generation", "custom_instruction") == "s"
+    assert honored({}, "expr", "filter") is None
     instructions, metrics, relationships = (
         member_root(name) for name in ("custom_instruction", "metric", "relationship")
     )

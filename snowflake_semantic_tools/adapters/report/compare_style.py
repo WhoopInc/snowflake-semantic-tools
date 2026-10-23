@@ -1,7 +1,7 @@
 """The one stylesheet a comparison report inlines: light and dark themes, print, and chart classes.
 
-Colours are custom properties set once per theme, so the inline SVG charts, which draw with the
-classes below rather than fill attributes, follow the reader's colour scheme too. Nothing here
+Colors are custom properties set once per theme, so the inline SVG charts, which draw with the
+classes below rather than fill attributes, follow the reader's color scheme too. Nothing here
 names a font file or a URL: the type is the system's own.
 """
 

@@ -59,7 +59,7 @@ compared, so an update that changes only those says
 `definition (no member-level difference)`.
 
 The terminal cuts a long diff short; every plan writes all of it, as a unified
-diff an editor or a pull request colours red and green, to
+diff an editor or a pull request colors red and green, to
 `sst_target/plan.<target>.diff` (`--diff-out` to put it elsewhere). Paste it
 into the pull request, or upload it as an artifact. JSON reports each change's
 members as `diff`, with `diff_status` saying whether it was compared. Each
@@ -169,6 +169,16 @@ its locks first (`SST-APL010`). Once you know a run elsewhere is gone,
 once (`SST-APL040`).
 
 ## Known warnings: the baseline
+
+`--strict` turns every warning into a failure, which is what CI should run. A
+project that already has warnings, though, cannot turn it on until every one is
+fixed, and while it waits, new warnings slip in unnoticed. A baseline breaks that
+deadlock: it records the warnings that exist today, so strict mode can be turned
+on now. Those recorded warnings are counted rather than failing the run, any new
+warning still fails, and each entry expires, so the list cannot quietly become
+permanent. It never covers an error. Other linters work the same way: Android
+Lint and detekt baselines, PHPStan's baseline file, and ESLint's bulk
+suppressions.
 
 A project that adopts `--strict` with warnings it cannot fix yet records them in
 a baseline instead of turning strict off:
@@ -387,7 +397,7 @@ shown indented here:
   its entry in the [error code reference](../reference/error-codes.md).
   `internal_detail` is the diagnostic's `detail` value, the same text its message
   shows and `params.detail` holds, for an internal error
-  (`SST-INT001`) or an unrecognised Snowflake refusal (`SST-SNO001`), and null for
+  (`SST-INT001`) or an unrecognized Snowflake refusal (`SST-SNO001`), and null for
   every other code.
 - `summary` counts a baselined diagnostic under `baselined` and under no
   severity.
@@ -403,7 +413,7 @@ shown indented here:
 `schema_version` changes only when a field is removed or changes meaning; new
 fields can appear in the same version.
 
-## Progress and colour in a CI log
+## Progress and color in a CI log
 
 With the default output, a run on a terminal shows one live progress line on
 stderr after its first second; a command doing several things at once (eval
@@ -415,7 +425,7 @@ runners set it: a line as each slow phase ends, a heartbeat every 15 seconds
 while one runs, a finished line for each probe or change, and, for a command that
 connects, the account and role it connected as. Library log records stay below `--log-level`, which defaults to
 `warn`; `--log-level info` shows the Snowflake connector's request logs again.
-Colour is off without a terminal; `--color always` (or `SST_COLOR=always`, or
+Color is off without a terminal; `--color always` (or `SST_COLOR=always`, or
 `FORCE_COLOR=1`) keeps it for a log viewer that renders ANSI.
 
 A coding agent that runs `sst` in a pipeline step gets `--output agent` on its
@@ -432,7 +442,7 @@ for every step.
 | 3 | The command line is invalid. |
 | 4 | The project, its configuration, or a saved plan cannot be used. |
 | 5 | Snowflake could not be reached, rejected the credential, refused a privilege, or did not finish in time. The diagnostic code says which: a refused privilege (`SST-PRT004`, or an `SST-SNO` privilege code) needs a grant, not a retry. |
-| 130 | The run was interrupted: Ctrl-C, `SIGTERM` (a cancelled job), or `SIGHUP`, or a prompt was declined. Any command can return it. `apply` records what finished and releases its lock first. |
+| 130 | The run was interrupted: Ctrl-C, `SIGTERM` (a canceled job), or `SIGHUP`, or a prompt was declined. Any command can return it. `apply` records what finished and releases its lock first. |
 
 A pipeline that runs `sst format --check` gates on canonical YAML the same way
 it gates `plan`: `2` means a file would be rewritten. The

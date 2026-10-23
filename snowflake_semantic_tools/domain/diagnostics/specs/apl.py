@@ -18,7 +18,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "no other APL code names"
         ),
         note=(
-            "The message's detail is the error itself; when SST recognises a Snowflake refusal it "
+            "The message's detail is the error itself; when SST recognizes a Snowflake refusal it "
             "also reports it under its SST-SNO code."
         ),
         precheck=Precheck.RUNTIME,
@@ -312,7 +312,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "EXECUTE_AI_EVALUATION refused to start the run; its status could not be read (a read "
             "failed for good, or 5 reads in a row failed in transit); it did not reach a terminal "
             "status within 20 minutes; or it ended FAILED, CANCELLED, or in a status Snowflake does "
-            "not document. A run SST gives up on while it may still be running is cancelled in "
+            "not document. A run SST gives up on while it may still be running is canceled in "
             "Snowflake, and the detail says whether the cancel went through"
         ),
         note=(
@@ -473,7 +473,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "tables and is not the transient schema's (SST-APL030)"
         ),
         note=(
-            "Its error number is not measured, so it is recognised by a message that names hybrid "
+            "Its error number is not measured, so it is recognized by a message that names hybrid "
             "tables; any other refusal is reported as Snowflake gave it"
         ),
         precheck=Precheck.RUNTIME,

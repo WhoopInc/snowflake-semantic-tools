@@ -6,7 +6,7 @@ import pytest
 
 from snowflake_semantic_tools.domain.diagnostics.signatures import (
     SIGNATURES,
-    UNRECOGNISED,
+    UNRECOGNIZED,
     SessionFailure,
     detail_of,
     fragile_signatures,
@@ -28,7 +28,7 @@ def test_a_number_beats_a_sqlstate_and_a_sqlstate_beats_the_wording() -> None:
     assert match_signature("Schema 'A.B' does not exist", errno=2002).code == "SST-SNO002"
     assert match_signature("Schema 'A.B' does not exist", sqlstate="42710").code == "SST-SNO002"
     assert match_signature("Schema 'A.B' does not exist").code == "SST-SNO005"
-    assert match_signature("x", errno=123456, sqlstate="ZZZZZ") is UNRECOGNISED
+    assert match_signature("x", errno=123456, sqlstate="ZZZZZ") is UNRECOGNIZED
 
 
 def test_a_fragile_row_has_neither_a_number_nor_a_sqlstate() -> None:

@@ -18,7 +18,7 @@ Each property is read where Snowflake shows it:
 | Semantic view | `definition` | GET_DDL, unless the drift check is basic |
 
 A digest is `<property>=<16 hex>` pairs, sorted by property and joined by `;`, each hex the
-start of the SHA-256 of the property's normalised value. Only a property both digests carry is
+start of the SHA-256 of the property's normalized value. Only a property both digests carry is
 compared, so a digest recorded before a property was read, or by a basic check, is never
 drift for that property.
 """
@@ -60,7 +60,7 @@ def drift_properties(
         newest_spec: The specification fingerprint of an agent's newest committed version.
 
     Returns:
-        The properties by name, each value normalised so a read twice of an unchanged object
+        The properties by name, each value normalized so a read twice of an unchanged object
         gives the same text; empty for an object type no digest covers.
     """
     kind = " ".join(object_type.upper().split())
@@ -113,5 +113,5 @@ def _pairs(digest: str) -> dict[str, str]:
 
 
 def _word(value: str | None) -> str | None:
-    """Normalise a SHOW or DESCRIBE value: its words single-spaced and upper-cased; None for none."""
+    """Normalize a SHOW or DESCRIBE value: its words single-spaced and upper-cased; None for none."""
     return " ".join(value.split()).upper() if value is not None else None

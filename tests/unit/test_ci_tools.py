@@ -131,7 +131,7 @@ def test_a_recording_names_no_account_and_no_run_and_compares_byte_for_byte(tmp_
         markers={view.sql: marker},
         existing=(orders_table(schema).sql,),
     )
-    captured = session_recorder.normalise(session_recorder.observe(port, schema), schema)
+    captured = session_recorder.normalize(session_recorder.observe(port, schema), schema)
     for leak in ("SCRATCH_DB", session_recorder.RECORDING_SCHEMA, "CI_ROLE", "2026-01-01", "a" * 64):
         assert leak not in captured
     assert json.loads(captured)["existing"] == ["<DATABASE>.<SCHEMA>.ORDERS"]

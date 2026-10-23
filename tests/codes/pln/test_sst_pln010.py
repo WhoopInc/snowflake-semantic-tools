@@ -14,7 +14,7 @@ def test_sst_pln010_fires() -> None:
     planned = plan((view("sales"), view("orders")), preflight=Preflight("dev", "DEPLOYER", missing_schemas=missing))
     [diagnostic] = coded(planned.diagnostics, "SST-PLN010")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "schema DB.SCH does not exist or is not authorised"
+    assert diagnostic.message == "schema DB.SCH does not exist or is not authorized"
     assert {change.action for change in planned.changes} == {Action.BLOCKED}
 
 

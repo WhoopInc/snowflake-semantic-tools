@@ -110,7 +110,7 @@ propagated, or set by classification. A read that fails fails the model (`SST-SN
 column tags"): nothing is sampled or written for it, so no column the read would have protected
 is read. A refused privilege stops the whole run, as for any other read. What a role that cannot
 see a tag is answered has not been measured; the read fails closed only when Snowflake returns
-an error ([Snowflake behaviour](../design/snowflake-behaviour.md#tag_references_all_columns-lists-inherited-tags-on-every-column)).
+an error ([Snowflake behavior](../design/snowflake-behavior.md#tag_references_all_columns-lists-inherited-tags-on-every-column)).
 
 The sensitive tags found are written back to each column as `meta.sst.governance_tags`, sorted,
 each named as Snowflake stores it (upper case unless the tag was created quoted), so review sees
@@ -268,6 +268,6 @@ the block's warnings and leaves the rest of the file to `sst validate`.
 | `--include-sources`, `--sources-only`, `--source` | not supported: 1.0 enriches dbt models only |
 | `--allow-non-prod` | `--allow-non-prod`: still needed for a target that is not production-like |
 
-Each removed flag is refused with exit `3` and what replaces it. Some behaviours differ:
+Each removed flag is refused with exit `3` and what replaces it. Some behaviors differ:
 `time_dimension` is no longer derived; and 0.3's `enrichment.generate_synonyms` and `generate_column_synonyms` keys are not
 read (`SST-CFG003`): synonyms are generated only when `--include` names them.

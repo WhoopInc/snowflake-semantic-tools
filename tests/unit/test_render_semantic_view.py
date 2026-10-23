@@ -1,4 +1,4 @@
-"""Unit tests for the pure renderer -- the behaviours the golden cannot isolate.
+"""Unit tests for the pure renderer -- the behaviors the golden cannot isolate.
 
 The golden proves the whole statement is right for one real view. These prove the
 individual rules hold in cases the fixture does not happen to contain: an apostrophe

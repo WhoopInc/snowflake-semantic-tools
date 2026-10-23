@@ -79,7 +79,7 @@ as a mapping: `semantic_view:` (only under `semantic_views/`), `metric:`, `relat
 (`semantic_views:`, `snowflake_metrics:`, `snowflake_relationships:`, `snowflake_filters:`,
 `snowflake_verified_queries:`, `snowflake_custom_instructions:`) is still read, as several
 items in one file; a file holding both forms of one type is `SST-PRS003`. Every YAML file
-under the semantic models directory is read, at any depth, and each member is recognised by
+under the semantic models directory is read, at any depth, and each member is recognized by
 its root key.
 
 A view does not list most members. A member's tables are the models its `ref()` calls name,
@@ -181,7 +181,7 @@ relationship:
 
 ## Filters, verified queries, custom instructions
 
-- A filter is a boolean `expr` labelled `labels: [filter]`; an unlabelled boolean filter is
+- A filter is a boolean `expr` labeled `labels: [filter]`; an unlabeled boolean filter is
   `SST-VAL405`.
 - A verified query has `question` and `sql` (`SST-PRS002`). Its SQL names each table with
   `{{ ref('<model>') }}`, as a dbt model does (`SST-VAL414`); those models are its tables. Keep

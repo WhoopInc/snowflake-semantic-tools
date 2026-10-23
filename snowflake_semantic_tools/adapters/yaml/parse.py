@@ -38,7 +38,7 @@ from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml, Templat
 from snowflake_semantic_tools.adapters.yaml.text_checks import (
     decoded_text,
     executable_lines,
-    normalised_text,
+    normalized_text,
     refuse_tab_indentation,
     unstorable_diagnostics,
 )
@@ -206,7 +206,7 @@ def parse_yaml_bytes(
         SST-LOD012, SST-LOD202: CRLF line endings, read as LF, or trailing whitespace; returned.
         SST-LOD011, SST-LOD016: a folded scalar, or an implicit boolean or null; returned.
     """
-    text, findings = normalised_text(decoded_text(raw, path), path)
+    text, findings = normalized_text(decoded_text(raw, path), path)
     executable = executable_lines(text)
     refuse_tab_indentation(text, path, executable)
     neutralized, templates = _neutralize_templates(text, path, executable)

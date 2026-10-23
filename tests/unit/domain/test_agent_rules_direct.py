@@ -91,7 +91,7 @@ def test_a_live_signature_disagrees_with_the_schema_in_arity_or_type() -> None:
     assert signature_disagreement(("NUMBER",), {"properties": None}) is None
 
 
-def test_the_profile_colour_must_be_a_name_or_a_token_and_a_deprecated_agent_keeps_no_alias() -> None:
+def test_the_profile_color_must_be_a_name_or_a_token_and_a_deprecated_agent_keeps_no_alias() -> None:
     model = agent(profile=AgentProfile("Sales", None, "#ff0000"), deprecated=True, alias="promoted")
     found = agent_rules(model, frozenset(("claude",)), ())
     assert [(item.code, item.context.get("field")) for item in found] == [("SST-VAL548", "color"), ("SST-VAL550", None)]

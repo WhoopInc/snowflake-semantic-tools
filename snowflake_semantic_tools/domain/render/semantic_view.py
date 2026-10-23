@@ -18,7 +18,7 @@ THE CLAUSE ORDER IS THE CONTRACT, and it is Snowflake's:
       COPY GRANTS               <- only with OR REPLACE: a plain create has no grants to copy
 
 It is the order the server accepts, not the published grammar's, which puts MAX_STALENESS
-before the AI clauses (docs/design/snowflake-behaviour.md).
+before the AI clauses (docs/design/snowflake-behavior.md).
 
 WHAT IS DELIBERATELY ABSENT. `FILTERS (...)`, `VERIFIED QUERIES (...)` and
 `CUSTOM INSTRUCTIONS (...)` appear in no grammar: filters fold into `DIMENSIONS`
@@ -198,7 +198,7 @@ def render_variable(var: Variable) -> Sql:
         data_type=var.data_type,
         default=var.default,
         # Snowflake's docs give a variable's COMMENT without `=`; the server requires it
-        # (docs/design/snowflake-behaviour.md).
+        # (docs/design/snowflake-behavior.md).
         comment=_comment(var.comment),
     )
 
@@ -223,7 +223,7 @@ def render_column(col: Column) -> Sql:
     parts.append(_comment(col.comment))
     # Snowflake's docs omit SAMPLE_VALUES and IS_ENUM; the server accepts both, in this order,
     # and IS_ENUM on a dimension only, which validation enforces (SST-VAL335,
-    # docs/design/snowflake-behaviour.md).
+    # docs/design/snowflake-behavior.md).
     if col.sample_values:
         parts.append(sql(" SAMPLE_VALUES ({values})", values=_quoted_list(col.sample_values)))
     if col.is_enum:
@@ -469,7 +469,7 @@ def _render_counted(view: SemanticView) -> tuple[Sql, int]:
 
 # The clauses after `METRICS`, by their leading keywords, in the order the server accepts.
 # Snowflake's docs put MAX_STALENESS before the AI clauses; the server rejects it there
-# (docs/design/snowflake-behaviour.md). `plan --capture-prior` puts a GET_DDL read back
+# (docs/design/snowflake-behavior.md). `plan --capture-prior` puts a GET_DDL read back
 # into this order, so the render and the restore agree.
 TRAILING_CLAUSES: tuple[str, ...] = (
     "COMMENT",

@@ -38,7 +38,7 @@ for `VAL7xx` and `VAL8xx`, which two modules each share by range:
 | `VAL7xx`, 700-769 | evals | `val_eval` |
 | `VAL7xx`, 770-789 | comparing orchestration models on an eval's published subject | `val_compare` |
 | `VAL8xx`, 801-869 | skills, plugins, and CoCo Desktop profiles | `val_skill` |
-| `VAL8xx`, 870-889 | Snowflake CoWork profiles, a Snowflake private preview | `val_cowork_profile` |
+| `VAL8xx`, 870-889 | Snowflake CoWork profiles, a Snowflake private preview[^preview] | `val_cowork_profile` |
 
 An artifact or member type's `validation_rules` names the bands that check it, and `RULE_SETS` maps
 each name to its band.
@@ -296,13 +296,13 @@ pass in table order, because a number is the most stable evidence and wording th
 matches on wording alone is fragile; `fragile_signatures` lists those rows so the set stays visible
 and can shrink as numbers are observed.
 
-An error no row matches is `SST-SNO001`, "Snowflake refused and SST does not recognise the refusal",
+An error no row matches is `SST-SNO001`, "Snowflake refused and SST does not recognize the refusal",
 and never a guessed specific code. A wrong specific code sends the user to the wrong fix; `SNO001`
 is honest and countable. Every command appends the `SNO` diagnostics its result reports to
 `sst_target/run_log.jsonl`, and a refusal that reaches the exception guard below under the signature
-it matched, whether or not the error carries its own diagnostic, so an unrecognised one reported as
+it matched, whether or not the error carries its own diagnostic, so an unrecognized one reported as
 `SST-PRT001` still counts as `SNO001`. `sst debug
---snowflake-signatures` reports what share went unrecognised, which is the signal to add a signature.
+--snowflake-signatures` reports what share went unrecognized, which is the signal to add a signature.
 
 During `apply`, a failed statement is classified by the same table, and the change's outcome carries
 the code, the kind of failure, and whether a retry may succeed; the run then reports the refusal
@@ -314,9 +314,9 @@ flowchart TD
     port["SnowflakePortError"] --> own{"carries its own diagnostic?"}
     own -- yes --> reported["that diagnostic, exit 5"]
     own -- no --> match["match_signature"]
-    match -- "no row matches" --> unrecognised["UNRECOGNISED"]
+    match -- "no row matches" --> unrecognized["UNRECOGNIZED"]
     match -- "a row matches" --> row{"which row"}
-    unrecognised --> prt["SST-PRT001, exit 5"]
+    unrecognized --> prt["SST-PRT001, exit 5"]
     row -- "SST-SNO014" --> prt
     row -- "SST-SNO013" --> auth["SST-PRT002, exit 5"]
     row -- "a privilege or transient row, or SST-SNO011" --> five["snowflake_diagnostic, exit 5"]
@@ -324,7 +324,7 @@ flowchart TD
 ```
 
 A rejected login is reported as the credential rejected, `SST-PRT002`, as it is when connecting;
-a dropped connection and an error no signature recognises are reported as the connection failing,
+a dropped connection and an error no signature recognizes are reported as the connection failing,
 `SST-PRT001`. A refused privilege or a missed
 deadline is Snowflake not cooperating, exit 5; any other refusal, such as an object that does not
 exist or a compilation error, is a statement Snowflake rejected, exit 1.
@@ -334,3 +334,5 @@ Drawn from: [signatures.py](../../snowflake_semantic_tools/domain/diagnostics/si
 [cli/runner.py](../../snowflake_semantic_tools/cli/runner.py),
 [cli/run_log.py](../../snowflake_semantic_tools/cli/run_log.py),
 [specs/sno.py](../../snowflake_semantic_tools/domain/diagnostics/specs/sno.py).
+
+[^preview]: A Snowflake private preview, as of 2026-10-23.

@@ -586,7 +586,7 @@ def _port_error(exc: Exception, *, connecting_to: str | None = None) -> Snowflak
     Diagnostics:
         SST-PRT002: Snowflake rejected the session's credential while connecting.
         SST-PRT001: connecting to `connecting_to` failed for another reason.
-        SST-PRT003: the connection dropped or the statement timed out or was cancelled.
+        SST-PRT003: the connection dropped or the statement timed out or was canceled.
         SST-PRT004: Snowflake refused the statement for want of a privilege.
     """
     message = scrubbed_message(exc)

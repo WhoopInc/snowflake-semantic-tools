@@ -209,11 +209,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: '{name}' in {field} is neither a column nor a declared variable",
         "declare the variable, correct the name, or wrap the column in a two-arg ref",
         condition=(
-            "the `expr:` of a filter not labelled `filter`, which renders as prose in the view's "
+            "the `expr:` of a filter not labeled `filter`, which renders as prose in the view's "
             "instructions, has a bare word that is neither a column of the view's tables nor a variable "
             "the view declares"
         ),
-        note="In a metric or a labelled filter, which the view is created with, the same word is `SST-VAL326`.",
+        note="In a metric or a labeled filter, which the view is created with, the same word is `SST-VAL326`.",
     ),
     spec(
         "SST-VAL222",

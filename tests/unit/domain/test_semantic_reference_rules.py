@@ -70,7 +70,7 @@ def test_a_template_that_does_not_parse_is_named_by_its_file() -> None:
     assert scan_expression("{{ ref('x') }}", ORIGIN, "filter:f") != ()
 
 
-def test_a_filter_is_boolean_when_labelled_and_labelled_when_boolean_and_names_no_column_bare() -> None:
+def test_a_filter_is_boolean_when_labeled_and_labeled_when_boolean_and_names_no_column_bare() -> None:
     filters = (
         _filter("{{ ref('orders', 'total') }}"),
         _filter("{{ ref('orders', 'total') }} > 0", entity=False, labeled=False),

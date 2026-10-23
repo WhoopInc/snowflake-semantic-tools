@@ -41,7 +41,7 @@ from snowflake_semantic_tools.app.evals.compare_runs import (
     ComparisonRuns,
     EvalRequest,
     PlannedEval,
-    labelled,
+    labeled,
     run_comparison,
 )
 from snowflake_semantic_tools.app.evals.options import EvalRunOptions
@@ -156,7 +156,7 @@ class RunEvalComparison:
     """Compare models on each eval's published subject, as the module docstring says.
 
     Runs that go on at once each lease a session from `sessions`, opened from `port`; without it
-    they run one at a time. Each run's progress goes to `progress`, labelled by eval and model.
+    they run one at a time. Each run's progress goes to `progress`, labeled by eval and model.
     """
 
     def __init__(
@@ -305,7 +305,7 @@ class RunEvalComparison:
             )
             for item in compared
         ]
-        progress = labelled(self._progress, plans, run_id=run_id)
+        progress = labeled(self._progress, plans, run_id=run_id)
         suite = RunEvalSuite(self._port, self._clock, self._lifecycle_config(), self._sessions, progress)
         defaults = self._inputs.eval_catalog().defaults
         return run_comparison(

@@ -10,7 +10,7 @@ act and nothing else, in a grammar a line-by-line reader can rely on:
   not current follow, one line each, the first two marked `+ ~ - ! =`;
 - the last line is `next:`, which never tells an agent to change Snowflake on its own.
 
-Its own marks are ASCII, and it has no colour, progress, links, info findings, or baselined
+Its own marks are ASCII, and it has no color, progress, links, info findings, or baselined
 ones (both are counted in the verdict); a project's own text is kept as written, control
 characters replaced. It stops at `MAX_LINES`, the last line then saying how many were left out.
 `--output json` has every field; this format is for reading, not parsing.

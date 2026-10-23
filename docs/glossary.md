@@ -17,7 +17,7 @@ where it is explained.
 - **Apply.** The command that executes a plan's changes against a target and
   records them in state. See [the pipeline](concepts.md#the-pipeline).
 - **Artifact.** One thing SST publishes and tracks: a semantic view, tool,
-  skill, plugin, profile, agent, CoWork profile, or eval. See
+  skill, plugin, CoCo Desktop profile, agent, CoWork profile, or eval. See
   [artifacts](concepts.md#artifacts).
 - **Association.** How metrics, relationships, filters, and verified queries
   join views: a member attaches to every view whose `tables:` include all of
@@ -26,6 +26,10 @@ where it is explained.
   holding known warnings that are counted rather than shown and do not block
   until the baseline expires. See
   [known warnings](guides/ci-cd.md#known-warnings-the-baseline).
+- **CoCo Desktop profile.** A profile for Cortex Code Desktop that SST publishes
+  from `coco_desktop_profile.yml`, bundling skills, a system prompt, MCP
+  servers, and hooks. See
+  [profiles](guides/plugins-and-coco-desktop-profiles.md#profiles). Not a CoWork profile.
 - **Connected validation.** The checks `sst validate` and `sst plan` make
   against Snowflake, such as compiling expressions and reading live objects.
   They run unless `--no-snowflake-syntax-check` is given,
@@ -35,6 +39,10 @@ where it is explained.
 - **Consumer.** A role that uses a published object, such as one granted
   `USAGE` on an agent. SST grants consumers nothing. See
   [what people who use an agent need](guides/security.md#what-people-who-use-an-agent-need).
+- **CoWork profile.** A Snowflake CoWork profile SST publishes from
+  `cowork_profile.yml`: an AGENT whose router hands each question to one of the
+  agents it lists. A [Snowflake private preview](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles)[^preview]. See
+  [CoWork profiles](guides/cowork-profiles.md).
 - **Defer target.** A second target whose dbt relations `ref()` resolves to,
   while publishing still goes to `--target`. See [targets](concepts.md#targets).
 - **Diagnostic.** A problem SST reports, with a stable code such as
@@ -80,12 +88,6 @@ where it is explained.
   Extension. See [plugins](guides/plugins-and-coco-desktop-profiles.md#plugins).
 - **Poisoned.** Said of a member or view with an error: still checked, but not
   attached or built. See [terms used in the code](concepts.md#terms-used-in-the-code).
-- **Profile.** A CoCo Desktop profile SST publishes from `coco_desktop_profile.yml`. See
-  [profiles](guides/plugins-and-coco-desktop-profiles.md#profiles). Not a CoWork profile.
-- **CoWork profile.** A Snowflake CoWork profile SST publishes from
-  `cowork_profile.yml`: an AGENT whose router hands each question to one of the
-  agents it lists. A [Snowflake private preview](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles). See
-  [CoWork profiles](guides/cowork-profiles.md).
 - **Prune.** `--prune`: extend a plan to managed artifacts whose source was
   deleted. See [ownership, grants, and prune](concepts.md#ownership-grants-and-prune).
 - **Reference.** A `{{ ... }}` call, such as `{{ ref('orders') }}`, that SST
@@ -143,3 +145,5 @@ Drawn from: [artifact keys](../snowflake_semantic_tools/domain/model/artifact_ke
 | metric | an entry in a semantic view's `METRICS` | a metric in dbt's semantic layer | a `metric:` file or a `snowflake_metrics:` entry; an eval's judge metric is a different thing, named with `eval_metric()` |
 
 Drawn from: [configuration keys](../snowflake_semantic_tools/domain/model/config_schema/keys.py), [agent model](../snowflake_semantic_tools/domain/model/agent.py), [tool model](../snowflake_semantic_tools/domain/model/tool.py), [dbt model](../snowflake_semantic_tools/domain/model/dbt.py), [skill model](../snowflake_semantic_tools/domain/model/skill/model.py), [manifest](../snowflake_semantic_tools/app/manifest.py).
+
+[^preview]: A Snowflake private preview, as of 2026-10-23.

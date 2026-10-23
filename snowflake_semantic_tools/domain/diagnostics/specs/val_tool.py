@@ -10,7 +10,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL603",
         Severity.ERROR,
-        "Tool type is not recognised",
+        "Tool type is not recognized",
         "tool member '{name}': type '{found}' is not a known tool type",
         "use one of {expected}",
         condition="a member declares an unregistered type",

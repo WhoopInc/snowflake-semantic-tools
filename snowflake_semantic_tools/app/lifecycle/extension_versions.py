@@ -2,7 +2,7 @@
 
 The catalog serves an extension's latest certified version once any version is certified, and
 its default version otherwise. A default set by name stays where it is when a version is added
-(docs/design/snowflake-behaviour.md), so apply makes a release's version the default whenever
+(docs/design/snowflake-behavior.md), so apply makes a release's version the default whenever
 no certified version outranks it; one that does is served whatever the default, and plan warns
 of it instead. Agents pin their version, so only catalog users are affected.
 """

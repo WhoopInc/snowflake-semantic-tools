@@ -5,7 +5,7 @@ description: |-
   which `sst` command does what, which ones connect to Snowflake, write to it, or cost
   credits, the safe edit-validate-plan-apply loop, exit codes, and reading `-o agent` and `-o json`.
   Routes to the other sst-* skills for authoring, diagnostics, agents and evals,
-  troubleshooting, migration, and bug reports. Do NOT use for dbt modelling questions that
+  troubleshooting, migration, and bug reports. Do NOT use for dbt modeling questions that
   do not involve SST, or for SST's own source code.
 ---
 # Working in an SST project

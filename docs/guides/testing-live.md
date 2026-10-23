@@ -223,7 +223,7 @@ and nothing waits on it. Pick a suite:
 | Suite | Runs |
 |---|---|
 | `live` | `pytest -m live --require-snowflake -n 4` over the three live layers, then drops the run's scratch schemas even when a test failed |
-| `sweep` | `sweep_scratch --older-than-hours` with the `older_than_hours` input (default `6`), for schemas a cancelled job left |
+| `sweep` | `sweep_scratch --older-than-hours` with the `older_than_hours` input (default `6`), for schemas a canceled job left |
 | `recording` | `session_recorder`, uploading the capture as an artifact either way; the first capture passes and is the one to commit |
 | `evals` | on the reference project's `verify` target, with a key-pair profile written for the run: `dbt build`, `sst compile`, `sst apply --no-strict`, then `sst eval`; uploads `evals.json`. What it publishes stays in place for the next run. |
 
@@ -248,7 +248,7 @@ checkout, readable only by the runner user, and removed by the last step.
 ## When the live suites run
 
 At release time, and otherwise whenever a maintainer chooses. The offline gate proves SST still
-relies on the Snowflake behaviours it was written against; only a live run proves Snowflake still
+relies on the Snowflake behaviors it was written against; only a live run proves Snowflake still
 has them, so the release checklist in [CONTRIBUTING.md](../../CONTRIBUTING.md#releasing) runs the
 `live` suite and the `recording` suite before every tag, and commits the fresh capture as the
 recording. The committed recording is therefore what Snowflake showed at the last release, and a

@@ -20,7 +20,7 @@ depends on nothing read, so whether it re-evaluates after waiting does not matte
 statement after it begins once no rival transaction is open, so by (3) it reads what the last
 one committed, and nothing can change under it before this transaction commits: a rival's
 INSERT, which (1) does not block, only ever runs inside such a transaction too. Claim, extend,
-release and the fenced state write all serialise this way, and none waits for anything
+release and the fenced state write all serialize this way, and none waits for anything
 else, so they cannot deadlock: the state write takes the lock table before the state table.
 
 A claim then reads the target's row and decides: a free lock is inserted, an expired one is

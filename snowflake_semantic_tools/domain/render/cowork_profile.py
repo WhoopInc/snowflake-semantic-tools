@@ -135,7 +135,7 @@ def desired_cowork_profile_definition(model: CoworkProfileModel, spec: Mapping[s
 
 def _subagent_entry(subagent: ResolvedSubagent) -> dict[str, object]:
     # The routing guide asks for all four fields, though the server routes without them
-    # (docs/design/snowflake-behaviour.md). The router reads `source.sample_questions` as a
+    # (docs/design/snowflake-behavior.md). The router reads `source.sample_questions` as a
     # list of strings and refuses every run on question objects, unlike an agent's
     # instructions, so these stay plain text.
     fqn = subagent.fqn.sql

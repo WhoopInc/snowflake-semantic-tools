@@ -1,4 +1,4 @@
-"""SST-VAL012: a custom instruction writes a 0.3 key spelling, which SST still honours."""
+"""SST-VAL012: a custom instruction writes a 0.3 key spelling, which SST still honors."""
 
 from __future__ import annotations
 

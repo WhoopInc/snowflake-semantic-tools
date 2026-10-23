@@ -42,7 +42,7 @@ from snowflake_semantic_tools.domain.render.cowork_profile import (
 from snowflake_semantic_tools.domain.resolve.tags import DeclaredTags
 from snowflake_semantic_tools.domain.validate.agent import AgentIdentities, published_agent_rules, spec_size
 from snowflake_semantic_tools.domain.validate.cowork_profile import unlisted_profile
-from snowflake_semantic_tools.domain.validate.shared import unmodelled_key_diagnostics
+from snowflake_semantic_tools.domain.validate.shared import unmodeled_key_diagnostics
 
 __all__ = [
     "COWORK_STAGE_FOLDER",
@@ -169,7 +169,7 @@ class CompileCoworkProfiles:
         subagents, subagent_problems = resolve_subagents(model, self._context)
         rules = published_agent_rules(model, context.allowed_models, context.avatar_allowlist)
         skills, dependencies, skill_problems = resolve_skills(model, context)
-        unmodelled = unmodelled_key_diagnostics(
+        unmodeled = unmodeled_key_diagnostics(
             "cowork profile",
             model.name,
             (f"spec.passthrough.{key}" for key in model.passthrough),
@@ -179,7 +179,7 @@ class CompileCoworkProfiles:
         resolved = ResolvedCoworkProfile(replace(model, skills=skills), subagents, dependencies)
         payload = render_cowork_profile_json(resolved)
         rendered = (*spec_size(model, payload), *cowork_profile_render_checks(resolved, payload))
-        return resolved, payload, (*subagent_problems, *rules, *skill_problems, *unmodelled, *rendered)
+        return resolved, payload, (*subagent_problems, *rules, *skill_problems, *unmodeled, *rendered)
 
     def _compile(self, resolved: ResolvedCoworkProfile, payload: str) -> CompiledCoworkProfile:
         spec = render_cowork_profile_spec(resolved)

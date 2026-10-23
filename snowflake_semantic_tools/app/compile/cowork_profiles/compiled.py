@@ -51,7 +51,7 @@ class CompiledCoworkProfile(StandaloneArtifact):
             staged; empty until `for_cowork_publication` sets it, and a profile without one has
             metadata statements only.
         stage: The stage `stage_path` starts with; None until `for_cowork_publication` sets it.
-        dirty: The project had uncommitted changes, so each version committed is labelled
+        dirty: The project had uncommitted changes, so each version committed is labeled
             `git:<sha>-dirty`; the stage path still names the sha.
     """
 
@@ -150,7 +150,7 @@ def for_cowork_publication(
     """Return the profile ready to publish, staged under `<stage>/cowork-profiles/<profile>/<git_sha>`.
 
     Compile leaves a profile without a stage path, so it has metadata statements only; plan
-    and apply call this first. A `dirty` profile's versions are labelled `git:<sha>-dirty`.
+    and apply call this first. A `dirty` profile's versions are labeled `git:<sha>-dirty`.
     """
     return replace(
         compiled,

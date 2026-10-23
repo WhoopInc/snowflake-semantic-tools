@@ -15,7 +15,7 @@ An **artifact** is one thing SST publishes and tracks. There are eight types:
 | `plugin` | `plugin.yml` | a version of a plugin-type Cortex Extension |
 | `coco_desktop_profile` | `coco_desktop_profile.yml` | a CoCo Desktop profile: stage trees and one registry row |
 | `agent` | `agent.yml` | a Cortex Agent |
-| `cowork_profile` | `cowork_profile.yml` | a Snowflake CoWork profile: an AGENT with an `agent_router` tool ([Snowflake private preview](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles)) |
+| `cowork_profile` | `cowork_profile.yml` | a Snowflake CoWork profile: an AGENT with an `agent_router` tool ([Snowflake private preview](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles)[^preview]) |
 | `eval` | the dataset and config files an agent's or CoWork profile's `evals:` names | an evaluation table, dataset, and run configuration |
 
 Every command works on the same set, in the same order: an artifact is always
@@ -320,14 +320,14 @@ semantics:
 | | Standard table | Hybrid table |
 |---|---|---|
 | Primary key | declared, not enforced | required and enforced |
-| Concurrent `MERGE`/`UPDATE`/`DELETE` | serialised by a table lock | row-level locks |
+| Concurrent `MERGE`/`UPDATE`/`DELETE` | serialized by a table lock | row-level locks |
 | `SELECT ... FOR UPDATE` | not supported | supported |
 | Availability | every account | not every account or region; never in a transient database or schema |
 
 **On standard tables, contention is per lock table, not per target.** A
 standard table cannot enforce the lock row's key, and `SELECT ... FOR UPDATE`
 is for hybrid tables only, so SST relies on neither: its lock transactions
-serialise on the table lock that an `UPDATE` of the mutex row takes and holds
+serialize on the table lock that an `UPDATE` of the mutex row takes and holds
 until `COMMIT`, and each then reads what the previous one committed. Every lock
 transaction writes the same mutex row, so a claim, extend, release or state
 write for one target waits for any such transaction for another target that
@@ -615,3 +615,5 @@ The engine's docstrings and diagnostics use a few words in one sense each:
 - **ownership marker**: the `[sst:<manifest id>:<fingerprint>]` tag SST writes at
   the end of an object's comment, after its description, which `plan` reads to
   prove that SST published it. A marker anywhere in the comment is read.
+
+[^preview]: A Snowflake private preview, as of 2026-10-23.

@@ -109,7 +109,7 @@ def classify(
         SST-PLN102: an otherwise unchanged agent's versions drifted from what SST published.
         SST-PLN107: an otherwise unchanged agent's default follows LAST, which apply pins by name.
         SST-VAL320: the recorded or rendered fingerprint is not a canonical digest, so the
-            comparison would not be of normalised definitions.
+            comparison would not be of normalized definitions.
     """
     artifact_type = registry.artifacts[artifact.artifact_type]
     if validation.has_errors:
@@ -232,7 +232,7 @@ class _StateRule:
     report: Callable[[_Evidence], Diagnostic] | None = None
 
 
-def _unnormalised(evidence: _Evidence) -> bool:
+def _unnormalized(evidence: _Evidence) -> bool:
     # Drift is decided by comparing digests of the canonical definition. A recorded or rendered
     # value that is not one would compare raw text, which differs for reasons that are not drift.
     return not (is_digest(evidence.recorded.fingerprint) and is_digest(evidence.artifact.fingerprint))
@@ -348,7 +348,7 @@ def _hand_version(evidence: _Evidence, changed: tuple[str, ...]) -> str:
 # definition and newest committed specification are both as SST left them. A default that
 # serves the release only by following LAST comes last, as the one thing left to set.
 _STATE_RULES: tuple[_StateRule, ...] = (
-    _StateRule(_unnormalised, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _raw_comparison),
+    _StateRule(_unnormalized, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _raw_comparison),
     _StateRule(_recorded_elsewhere, Action.BLOCKED, ChangeReason.TARGET_MOVED, _target_moved),
     _StateRule(_published_unrecorded, Action.UPDATE, ChangeReason.UNRECORDED_PUBLISH),
     _StateRule(_changed_out_of_band, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _out_of_band),

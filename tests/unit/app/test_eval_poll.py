@@ -40,7 +40,7 @@ from tests.helpers.eval_inputs import settled
 
 RUN = "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z"
 DROPPED = SnowflakeTransientError("250003: Failed to execute request: Read timed out.\nretry 4 of 4")
-SLOW_REASON = "000604 (57014): SQL execution was cancelled by the client due to a timeout."
+SLOW_REASON = "000604 (57014): SQL execution was canceled by the client due to a timeout."
 SLOW = SnowflakeStatementTimedOut(SLOW_REASON, sqlstate="57014", errno=604)
 PARTIAL = status_result("PARTIALLY_COMPLETED")
 EventT = TypeVar("EventT")
@@ -126,8 +126,8 @@ def test_max_read_failures_in_a_row_then_a_failed_last_read_fail_the_attempt() -
     )
     [diagnostic] = result.diagnostics
     assert diagnostic.code == "SST-APL023"
-    assert diagnostic.message.endswith("; SST cancelled the run in Snowflake")
-    # The run given up on is cancelled, so Snowflake stops computing it.
+    assert diagnostic.message.endswith("; SST canceled the run in Snowflake")
+    # The run given up on is canceled, so Snowflake stops computing it.
     [cancel] = cancels(port)
     assert RUN in cancel
     # The last read is made, and fails, without a warning that it will be retried.
@@ -146,7 +146,7 @@ def test_a_cancel_that_fails_names_the_run_that_may_still_be_running() -> None:
     assert result.evals[0].attempts[0].terminal_status == "STATUS_FAILED"
     [diagnostic] = result.diagnostics
     assert diagnostic.message.endswith(
-        f"; cancelling run '{RUN}' failed, so it may still be running in Snowflake (002003: Evaluation run not found.)"
+        f"; canceling run '{RUN}' failed, so it may still be running in Snowflake (002003: Evaluation run not found.)"
     )
 
 
@@ -196,7 +196,7 @@ def test_reads_that_time_out_until_the_deadline_fail_the_attempt_and_cancel_the_
         f"it was CREATED, and its last status read timed out ({SLOW_REASON})"
     )
     [diagnostic] = result.diagnostics
-    assert diagnostic.message.endswith("; SST cancelled the run in Snowflake")
+    assert diagnostic.message.endswith("; SST canceled the run in Snowflake")
     assert len(cancels(port)) == 1
 
 
@@ -335,8 +335,8 @@ def test_progress_lines_render_durations_and_short_reasons() -> None:
     assert StatusReadFailed(RUN, 1, 5, "Read timed out.").line == (
         f"eval run {RUN}: status read failed (1/5), retrying: Read timed out."
     )
-    assert StatusReadTimedOut(RUN, "cancelled by the client").line == (
-        f"eval run {RUN}: status read timed out, polling until the deadline: cancelled by the client"
+    assert StatusReadTimedOut(RUN, "canceled by the client").line == (
+        f"eval run {RUN}: status read timed out, polling until the deadline: canceled by the client"
     )
     assert StatusChanged(RUN, "PARTIALLY_COMPLETED", 415_000, 180_000).line == (
         f"eval run {RUN}: PARTIALLY_COMPLETED after 6m55s (waiting up to 3m00s for it to settle)"

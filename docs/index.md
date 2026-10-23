@@ -2,7 +2,7 @@
 
 SST builds Snowflake semantic views, Cortex Agents, their tools and evaluations,
 Cortex Extension skills and plugins, CoCo Desktop profiles, and Snowflake
-CoWork profiles (a Snowflake private preview) from files in a dbt project, and
+CoWork profiles (a Snowflake private preview[^preview]) from files in a dbt project, and
 publishes them with a reviewed plan.
 
 ## Start here
@@ -58,9 +58,7 @@ For maintainers, and anyone weighing SST: how the engine is built and why.
 - [Design overview](design/README.md): what SST is for, and what it is not.
 - [Architecture](design/architecture.md): the rings, ports, compile pipeline,
   and where state lives.
-- [Decisions](design/decisions.md): each design choice and the alternative it
-  rejected.
-- [Snowflake behaviour](design/snowflake-behaviour.md): where the server
+- [Snowflake behavior](design/snowflake-behavior.md): where the server
   differs from its documentation, and the code that depends on it.
 - [dbt compatibility](design/dbt-compatibility.md): what SST reads from dbt, and
   keeping it working when dbt changes.
@@ -80,3 +78,5 @@ sst --project-dir tests/fixtures/reference_project \
     --manifest tests/fixtures/reference_project_manifest.json \
     validate --no-snowflake-syntax-check --no-strict
 ```
+
+[^preview]: A Snowflake private preview, as of 2026-10-23.

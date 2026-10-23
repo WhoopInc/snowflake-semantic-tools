@@ -46,7 +46,7 @@ relationship:
 RAW = """\
 semantic_view:
   name: raw_products
-  description: Use this view for questions about the product catalogue as its seed loads it.
+  description: Use this view for questions about the product catalog as its seed loads it.
   tables:
     - "{{ ref('products_raw') }}"
 """

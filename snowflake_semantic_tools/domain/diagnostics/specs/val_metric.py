@@ -180,7 +180,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL121",
         Severity.ERROR,
-        "access_modifier holds an unrecognised value",
+        "access_modifier holds an unrecognized value",
         "metric '{metric}': access_modifier is '{found}'",
         "use `public_access` or `private_access`",
         condition="a metric's `access_modifier` is neither `public_access` nor `private_access`",

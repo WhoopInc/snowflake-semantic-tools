@@ -5,7 +5,7 @@ one row per request, keyed by the REQUEST_ID an evaluation's results report for 
 A judge's calls are in `CORTEX_REST_API_USAGE_HISTORY`, which has tokens and no credits, keyed by
 the request ids an evaluation's `eval` spans list. Both views lag: a row may land an hour after
 its request, and an agent row's SQL credits up to eight hours after
-(docs/design/snowflake-behaviour.md). The port is apart from `SnowflakePort`, so the doubles of
+(docs/design/snowflake-behavior.md). The port is apart from `SnowflakePort`, so the doubles of
 one need not implement the other.
 """
 

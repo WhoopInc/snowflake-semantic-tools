@@ -6,7 +6,7 @@ copy of the released specification, which closes the live version; one version p
 model, whose specification is the released one with `models.orchestration` alone changed, each
 aliased `EVAL_<MODEL>`; and a restore copy, from which a live version is opened again. Nothing
 here moves the default or the released alias: only `sst apply` does
-(docs/design/snowflake-behaviour.md).
+(docs/design/snowflake-behavior.md).
 
 Each version is staged under `<folder>/eval/<run id>/<slug>/` of the agent's specification stage,
 where `<slug>` is the candidate's alias in lowercase without its prefix, or `restore`; the hold
@@ -75,7 +75,7 @@ def staged_spec_path(stage: QualifiedName, folder: str, run_id: str, slug: str) 
     """Return the stage path one comparison version's specification is uploaded to.
 
     Snowflake reads a staged specification from `agent_spec.yaml` in the directory ADD VERSION
-    names, as an agent's own versions are staged (docs/design/snowflake-behaviour.md).
+    names, as an agent's own versions are staged (docs/design/snowflake-behavior.md).
     """
     return f"@{stage.sql}/{version_directory(folder, run_id, slug)}agent_spec.yaml"
 
@@ -137,7 +137,7 @@ def open_live_statement(agent: QualifiedName) -> Sql:
     """Open a live version from the newest committed one, the restore copy.
 
     Snowflake opens a live version from no named version, only `FROM LAST`
-    (docs/design/snowflake-behaviour.md).
+    (docs/design/snowflake-behavior.md).
     """
     return sql("ALTER AGENT {agent} ADD LIVE VERSION FROM LAST", agent=qname(agent))
 

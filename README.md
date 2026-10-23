@@ -1,7 +1,9 @@
 # Snowflake Semantic Tools (SST)
 
-Build, validate, and publish Snowflake semantic views, Cortex Agents, and Cortex
-skills from your dbt project.
+An agent platform as code for Snowflake: define semantic views, the tools agents
+call, Cortex Agents, their evals, and the skills that shape them, all beside your
+dbt models, and publish them with the same validate, plan, apply loop you use for
+infrastructure.
 
 [![Python](https://img.shields.io/badge/python-3.11--3.13-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -10,18 +12,25 @@ skills from your dbt project.
 
 ## What is SST?
 
-SST keeps a Snowflake semantic layer as code, next to the dbt models it
-describes, and publishes it the way infrastructure is published: validate
-offline, review a plan, apply exactly that plan.
+SST started as a way to keep a Snowflake semantic layer as code. It now covers
+the whole path from a dbt model to an agent people talk to: the semantic views
+that describe your data, the search services and procedures an agent calls, the
+agents themselves, the evals that decide whether a change ships, and the skills
+and desktop profiles that put it all in front of people.
 
-It publishes eight artifact types from one project:
+Every piece is a file in your repository, reviewed like code, and published the
+way infrastructure is: validate offline, review a plan of exactly what changes in
+Snowflake, and apply that plan. Nothing is clicked together in a UI, and nothing
+changes that the plan did not show.
+
+One project publishes eight artifact types:
 
 - **Semantic views**, assembled from dbt models plus metrics, relationships,
   filters, verified queries, and custom instructions written in YAML;
 - **tools** that agents call: Cortex Search services, procedures, functions, and
   stages, a routine's body naming its tables with `{{ ref() }}` as a view does;
 - **Cortex Agents**, with every tool, view, and skill they use resolved and pinned;
-- **CoWork profiles** (a Snowflake private preview): an agent that routes each
+- **CoWork profiles**[^preview]: an agent that routes each
   question to one of the agents it lists;
 - **evals** that score an agent or CoWork profile against a fixed question set and gate a change
   on the result;
@@ -34,6 +43,12 @@ It records the lineage between them as it compiles, from each dbt source,
 through the models built on it, to the view members, tools, agents and evals
 that read them. `sst lineage` shows what any of them is built from and what a
 change to it reaches, and `--select model:orders+` plans only that.
+
+Before anything publishes, `sst ask` lets you talk to an agent exactly as it
+compiles now, on scratch copies of your edits, and `sst eval` scores it against a
+fixed question set and fails the change if it got worse.
+
+[^preview]: A Snowflake private preview, as of 2026-10-23.
 
 ## Quick start
 
@@ -53,31 +68,43 @@ semantic view end to end.
 
 ## Commands
 
+Listed in the order you meet them: set up, author, publish, test, inspect,
+maintain, and, last, the one-time upgrade from 0.3.
+
 | Command | Purpose |
 |---------|---------|
+| **Set up** | |
 | `sst init` | Write `sst_config.yml` and the semantic-model directory into a dbt project, never overwriting a file |
 | `sst debug` | Show the resolved configuration, profile, target, and state table, and test the connection (`--no-connect` skips it) |
+| `sst agent-kit` | Install, upgrade, show the status of, or remove skills that teach Cortex Code or Claude Code to work in an SST project |
+| **Author** | |
 | `sst enrich` | Fill missing column types, data types, sample values, enums, and synonyms from the warehouse, editing the YAML in place |
 | `sst format` | Rewrite YAML into canonical form; `--check` exits 2 when a file would change |
 | `sst validate` | Check every artifact, offline or with Snowflake syntax checks |
+| `sst explain` | Explain one diagnostic code, offline |
+| **Publish** | |
 | `sst compile` | Render every artifact and write the SST manifest; `--emit-ddl` writes each rendered payload |
 | `sst plan` | Compare the project with Snowflake and save a reviewable plan |
 | `sst apply` | Execute a saved plan |
 | `sst diff` | Compare two states -- local, a dbt target, or a saved plan |
+| **Test** | |
+| `sst ask` | Talk to an agent as it compiles now, on scratch copies of your edits, publishing nothing |
 | `sst test` | Run smoke probes against what `sst apply` published |
 | `sst eval` | Run agent evals in Snowflake and gate them against their baselines |
-| `sst ask` | Talk to an agent as it compiles now, on scratch copies of your edits, publishing nothing |
+| **Inspect** | |
 | `sst list` | List compiled artifacts and their status |
 | `sst lineage` | Show what a dbt node, member, or artifact reads and what reads it, from dbt sources to agents and evals |
-| `sst baseline` | Record known, not yet fixed warnings so they stop blocking under `--strict`, and maintain that file |
-| `sst explain` | Explain one diagnostic code, offline |
-| `sst migrate refs` | Write every bare reference as its `{{ }}` call, 0.3 `table()` / `column()` as `ref()`, and old item settings under `config:`; a dry run unless `--write` |
-| `sst migrate split` | Write each listed member to its own single-item file, and tool groups into folders; a dry run unless `--write` |
 | `sst docs` | Regenerate the reference pages from the engine's registries |
+| **Maintain** | |
+| `sst baseline` | Turn on `--strict` in an existing project without fixing every warning first: record today's known warnings so only new ones block, with entries that expire |
 | `sst clean` | Remove local build output |
 | `sst drop` | Break-glass: drop one object SST owns from one target |
-| `sst state recover` / `convert` / `unlock` | Repair state: record lost entries from ownership markers and content digests, rebuild the state tables as hybrid or standard, or release a named run's lock |
-| `sst agent-kit` | Install, upgrade, show the status of, or remove skills that teach Cortex Code or Claude Code to work in an SST project |
+| `sst state recover` | Record lost state entries from ownership markers and content digests |
+| `sst state convert` | Rebuild the state tables as hybrid or standard tables |
+| `sst state unlock` | Release a named run's lock |
+| **Upgrade from 0.3** | |
+| `sst migrate refs` | Write every bare reference as its `{{ }}` call, 0.3 `table()` / `column()` as `ref()`, and old item settings under `config:`; a dry run unless `--write` |
+| `sst migrate split` | Write each listed member to its own single-item file, and tool groups into folders; a dry run unless `--write` |
 
 Every command that reports results takes `--output json` for one machine-readable
 result on stdout.

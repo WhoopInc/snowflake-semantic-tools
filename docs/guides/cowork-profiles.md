@@ -1,6 +1,6 @@
 # CoWork profiles
 
-> **Snowflake private preview.** CoWork profiles are a Snowflake private
+> **Snowflake private preview[^preview].** CoWork profiles are a Snowflake private
 > preview (PrPr) feature, available only to accounts Snowflake has enrolled.
 > See Snowflake's
 > [About profiles in Snowflake CoWork](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles)
@@ -291,4 +291,6 @@ alone.
 - **Route to another profile.** A subagent is always an agent.
 
 Where the preview's server differs from its guides, and the code that depends
-on it, is in [Snowflake behaviour](../design/snowflake-behaviour.md#cowork-profiles-private-preview).
+on it, is in [Snowflake behavior](../design/snowflake-behavior.md#cowork-profiles-private-preview).
+
+[^preview]: A Snowflake private preview, as of 2026-10-23.

@@ -9,7 +9,7 @@ from tests.helpers.sno_codes import driver_error, refusal
 def test_sst_sno006_fires() -> None:
     [diagnostic] = refusal(driver_error("Database 'DB' does not exist or not authorized."))
     assert (diagnostic.code, diagnostic.severity) == ("SST-SNO006", Severity.ERROR)
-    assert diagnostic.message == "database DB does not exist or is not authorised"
+    assert diagnostic.message == "database DB does not exist or is not authorized"
     assert diagnostic.subject == "semantic_view:v"
 
 

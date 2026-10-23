@@ -593,7 +593,7 @@ How to read the numbers:
   question and counted on its metric's line.
 
 `--quiet` prints each attempt's line, metrics and cost, and no questions.
-`-o plain` prints the same tree without connectors or colour, each line indented
+`-o plain` prints the same tree without connectors or color, each line indented
 by its depth, and cuts nothing.
 
 With `--output json`, `data` carries `evals` (each eval's retention class and
@@ -1079,7 +1079,7 @@ sst eval --target dev_jdoe
 
 ## Evaluating CoWork profiles
 
-> **Snowflake private preview.** CoWork profiles are a Snowflake private
+> **Snowflake private preview[^preview].** CoWork profiles are a Snowflake private
 > preview (PrPr) feature. See Snowflake's
 > [About profiles in Snowflake CoWork](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles)
 > and
@@ -1282,3 +1282,5 @@ measured. A refused read is `SST-SNO034`.
 | `SST-SNO035` | warning | Some questions of a profile run have no trace after the last read. |
 
 Drawn from: [routes.py](../../snowflake_semantic_tools/app/evals/routes.py), [routing.py](../../snowflake_semantic_tools/domain/evaluate/routing.py), [eval_subject.py](../../snowflake_semantic_tools/domain/validate/eval_subject.py), [gate.py](../../snowflake_semantic_tools/app/evals/gate.py).
+
+[^preview]: A Snowflake private preview, as of 2026-10-23.

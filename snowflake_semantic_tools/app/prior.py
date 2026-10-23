@@ -7,7 +7,7 @@ Each kind is read the way it is published:
   A routine is addressed by its argument types. GET_DDL prints no `COPY GRANTS`, so running
   its text as returned would revoke every grant on the object. A semantic view's text is
   therefore put in the form the server re-executes, which also moves `MAX_STALENESS` after the
-  AI clauses (docs/design/snowflake-behaviour.md), and a routine's gains `COPY GRANTS` after
+  AI clauses (docs/design/snowflake-behavior.md), and a routine's gains `COPY GRANTS` after
   its argument list. A search service takes no `COPY GRANTS`, so its prior is followed by the
   GRANT statements that give back the grants plan read on it. A text of any other shape is
   kept as returned, under a comment that says what to check before running it.
@@ -86,7 +86,7 @@ def prior_definition(
     except SnowflakePortError as exc:
         return None, (D("SST-PLN037", value=row.qualified_name.sql, detail=str(exc)),)
     # Snowflake's docs do not say GET_DDL rewrites a semantic view; the server's output fails
-    # to re-execute as returned (docs/design/snowflake-behaviour.md).
+    # to re-execute as returned (docs/design/snowflake-behavior.md).
     if object_type == "SEMANTIC VIEW":
         return restorable_semantic_view(text), ()
     if object_type in _ROUTINES:
@@ -182,14 +182,14 @@ def restorable_semantic_view(text: str) -> str:
     try:
         tokens = tokenize(text)
     except LexError as exc:
-        return _unnormalised(text, f"it does not lex: {exc}")
+        return _unnormalized(text, f"it does not lex: {exc}")
     significant = [token for token in tokens if token.kind is not TokenKind.SPACE]
     header = tuple(token.text.upper() for token in significant[: len(_VIEW_HEADER)] if token.kind is TokenKind.WORD)
     if header != _VIEW_HEADER:
-        return _unnormalised(text, "it is not a CREATE OR REPLACE SEMANTIC VIEW")
+        return _unnormalized(text, "it is not a CREATE OR REPLACE SEMANTIC VIEW")
     clauses = _view_clauses(significant, _name_end(significant, len(_VIEW_HEADER)))
     if isinstance(clauses, str):
-        return _unnormalised(text, clauses)
+        return _unnormalized(text, clauses)
     starts, body_end = clauses
     trailing = [(name, start) for name, start in starts if name in TRAILING_CLAUSES]
     names = [name for name, _ in trailing]
@@ -270,7 +270,7 @@ def _clause_at(tokens: list[Token], index: int, end: int) -> tuple[str, int] | s
     return name, index
 
 
-def _unnormalised(text: str, reason: str) -> str:
+def _unnormalized(text: str, reason: str) -> str:
     return (
         f"-- SST did not put this definition in the form the server re-executes: {reason}.\n"
         "-- Before running it, check that it ends with COPY GRANTS, which keeps the view's grants,\n"

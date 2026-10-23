@@ -151,7 +151,7 @@ def test_commands_load_like_a_desktop_command_repository(tmp_path: Path) -> None
             "coco_desktop_profiles/shared/coco_desktop_profile.yml": (
                 "skills: []\ncommands: [\"{{ command('daily') }}\"]\n"
             ),
-            "commands/daily.md": "Summarise yesterday.\n",
+            "commands/daily.md": "Summarize yesterday.\n",
             "commands/review.md": (
                 "---\ndescription: Review a PR.\nallowed-tools: [Read, Grep]\nhidden: false\n---\nGo.\n"
             ),

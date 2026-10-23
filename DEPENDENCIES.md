@@ -40,8 +40,8 @@ stops at the next minor release.
 
 Every other package `pip install snowflake-semantic-tools` can install, on any platform, as
 `poetry.lock` resolves it. `tests/unit/test_dependencies.py` fails when a re-lock reaches a package
-this table does not list, when a listed licence is not permissive, and when an installed package's
-own metadata names a copyleft or proprietary licence.
+this table does not list, when a listed license is not permissive, and when an installed package's
+own metadata names a copyleft or proprietary license.
 
 | Package | Pulled in by | License |
 |---------|--------------|---------|

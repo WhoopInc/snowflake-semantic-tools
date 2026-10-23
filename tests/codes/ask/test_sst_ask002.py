@@ -1,6 +1,6 @@
-"""SST-ASK002: an unpublished run of an agent failed, or ended other than completed or cancelled.
+"""SST-ASK002: an unpublished run of an agent failed, or ended other than completed or canceled.
 
-Fires for a turn that answered Snowflake's error, or timed out; a completed or cancelled turn stays quiet.
+Fires for a turn that answered Snowflake's error, or timed out; a completed or canceled turn stays quiet.
 """
 
 from __future__ import annotations

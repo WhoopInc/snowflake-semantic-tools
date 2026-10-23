@@ -129,7 +129,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Value outside the allowed set for a closed field",
         "{artifact}: '{field}' is '{found}', expected one of {expected}",
         "use one of {expected}",
-        condition="a closed-enum field holds an unrecognised value",
+        condition="a closed-enum field holds an unrecognized value",
     ),
     spec(
         "SST-PRS014",
@@ -201,12 +201,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unknown field within edit distance of a known field",
         "{artifact}: unknown field '{field}'; did you mean '{expected}'?",
         "correct the spelling",
-        condition="an unknown key is 1-2 edits from a modelled key, so it is a typo",
+        condition="an unknown key is 1-2 edits from a modeled key, so it is a typo",
     ),
     spec(
         "SST-PRS023",
         Severity.ERROR,
-        "Passthrough block collides with a modelled key",
+        "Passthrough block collides with a modeled key",
         "{artifact}: passthrough key '{key}' is already rendered by SST",
         "remove the key from passthrough",
         condition="a passthrough or tool_spec_passthrough key duplicates a rendered key",
@@ -345,7 +345,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "use one of {expected}",
         condition=(
             "a metric's `access_modifier`, or a window `order_by` entry's `sort_direction` or "
-            "`null_order`, holds an unrecognised value"
+            "`null_order`, holds an unrecognized value"
         ),
     ),
     spec(

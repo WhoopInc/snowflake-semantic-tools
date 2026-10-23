@@ -12,10 +12,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "View resolves no dimensions and no metrics",
         "{artifact} resolves no dimension and no metric",
-        "attach a metric or a labelled filter, or set `column_type` on the base models' columns (`sst enrich`)",
+        "attach a metric or a labeled filter, or set `column_type` on the base models' columns (`sst enrich`)",
         condition=(
             "a semantic view's tables have no dimension or time dimension in scope, and no metric or "
-            "filter labelled `filter` attaches to it"
+            "filter labeled `filter` attaches to it"
         ),
     ),
     spec(
@@ -26,7 +26,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "report this as a bug; SST renders each table at its dbt model's resolved relation",
         condition=(
             "a table SST built would render against a relation other than its dbt model's resolved "
-            "`relation_name`, which honours `alias:`; this is an SST defect"
+            "`relation_name`, which honors `alias:`; this is an SST defect"
         ),
     ),
     spec(
@@ -34,8 +34,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "View references a disabled or ephemeral model",
         "{artifact}: '{name}' is {found} in dbt and produces no relation",
-        "enable the model, or change its materialisation",
-        condition="a view's `tables:` names a dbt model that is `enabled: false` or materialised as `ephemeral`",
+        "enable the model, or change its materialization",
+        condition="a view's `tables:` names a dbt model that is `enabled: false` or materialized as `ephemeral`",
     ),
     spec(
         "SST-VAL305",
@@ -180,11 +180,11 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL320",
         Severity.ERROR,
-        "Drift comparison not normalised on both sides",
+        "Drift comparison not normalized on both sides",
         "{artifact}: drift comparison compared raw DDL",
         "report this as a bug",
         condition=(
-            "a plan compares a recorded or rendered definition that is not a normalised digest, so raw "
+            "a plan compares a recorded or rendered definition that is not a normalized digest, so raw "
             "text would decide drift; this is an SST defect"
         ),
     ),
@@ -311,7 +311,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL333",
         Severity.ERROR,
-        "Column access_modifier holds an unrecognised value",
+        "Column access_modifier holds an unrecognized value",
         "{artifact}: column '{member}' declares access_modifier '{found}'",
         "use `public_access`, or remove `access_modifier` from the column",
         condition=("a column's `meta.sst.access_modifier` is neither `public_access` nor `private_access`"),

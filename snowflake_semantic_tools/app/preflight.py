@@ -413,7 +413,7 @@ def _missing_privileges(
     """Return, by scope, the create privileges the primary role lacks, and which the session holds.
 
     The second map holds those a secondary role holds; the third those the session holds that
-    the walk up from the primary role stopped short of. Snowflake authorises `CREATE <object>`
+    the walk up from the primary role stopped short of. Snowflake authorizes `CREATE <object>`
     by the session's primary role alone, so a create privilege counts only when `primary`, or a
     role it inherits, holds it. The session is then asked about what it lacks, so a privilege
     only a secondary role holds is told apart from one nothing holds, unless the walk stopped at

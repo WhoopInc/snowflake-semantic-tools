@@ -66,7 +66,7 @@ equal bytes; and `manifest_id` is the SHA-256 of that encoding of the manifest
 without its id and schema version. Two compiles of
 the same project write the same `manifest.json`, which
 `tests/unit/cli/test_compile.py` checks, and `tests/unit/test_goldens.py` compares
-rendered text with committed files byte for byte (after the two normalisations
+rendered text with committed files byte for byte (after the two normalizations
 `tests/golden/README.md` names).
 
 The import contract is static: it cannot see a call that opens a file through an
@@ -180,7 +180,7 @@ it, and `RegistryBuilder.freeze` refuses any other owner with `SST-REG022`.
 
 Every field is plain data: names, integers, booleans, enums, tuples. A type whose objects
 no single statement publishes is marked `ArtifactLifecycle.COMPOSITE`, and its
-behaviour lives in a `CompositeLifecycleHandler` in `app/lifecycle/` (the
+behavior lives in a `CompositeLifecycleHandler` in `app/lifecycle/` (the
 eval, extension, and profile handlers, all built on `CompositeHandler`). Plan
 and apply route every artifact of such a type to its handler, which observes,
 decides, publishes, and reports which resources state should record. An

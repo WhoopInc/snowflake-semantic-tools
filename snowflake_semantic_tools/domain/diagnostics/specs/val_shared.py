@@ -156,8 +156,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL013",
         Severity.ERROR,
-        "Unmodelled key would be rendered unvalidated",
-        "{type} '{name}': '{key}' is not modelled and would be rendered as-is",
+        "Unmodeled key would be rendered unvalidated",
+        "{type} '{name}': '{key}' is not modeled and would be rendered as-is",
         "promote the key, remove it, or set `snowflake.allow_unknown_keys: true` to render it with a warning instead",
         condition=(
             "an agent spec renders a key SST does not model and `snowflake.allow_unknown_keys` is "
@@ -167,8 +167,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL014",
         Severity.WARNING,
-        "Unmodelled key reported",
-        "{type} '{name}': {count} unmodelled keys rendered",
+        "Unmodeled key reported",
+        "{type} '{name}': {count} unmodeled keys rendered",
         "promote the keys to first-class fields if they are load-bearing",
         condition=(
             "an agent spec renders keys SST does not model and `snowflake.allow_unknown_keys` is `true`, "

@@ -4,7 +4,7 @@ A state maps each artifact key to what is recorded for it: the fingerprint of it
 the object it publishes to, and the manifest that rendered it. Compared against an earlier state,
 each key is in one of four states, the same four `state:<state>` selects: `new` (only in the later
 one), `orphaned` (only in the earlier one), `modified` (in both, fingerprints differing), and
-`unmodified`. Fingerprints are of normalised renders, so two states that differ only in how
+`unmodified`. Fingerprints are of normalized renders, so two states that differ only in how
 Snowflake reads an object back compare equal.
 """
 

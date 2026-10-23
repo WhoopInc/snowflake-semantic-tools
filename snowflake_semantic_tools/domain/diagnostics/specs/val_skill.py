@@ -39,7 +39,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "publish with an explicit TYPE of SKILL or PLUGIN",
         condition=(
             "a plan finds a CORTEX EXTENSION already at the target with no TYPE, or one SST does not "
-            "recognise; the release is blocked"
+            "recognize; the release is blocked"
         ),
         note=("SST did not create that object. Drop or rename it, or publish the skill under another name."),
     ),
@@ -168,7 +168,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Bundled script reads a credential or an absolute local path",
         "skill '{artifact}': '{path}' contains {detail}",
-        "parameterise it; a path that resolves locally will not resolve in the sandbox",
+        "parameterize it; a path that resolves locally will not resolve in the sandbox",
         condition="a bundled script holds an absolute local path, or any bundled text file a credential literal",
     ),
     spec(

@@ -9,7 +9,7 @@ that runs dbt passes the one it just wrote), is checked for:
 - a schema version SST accepts, filed under that version and its dbt release;
 - each path of the read-surface table in docs/design/dbt-compatibility.md, with the JSON type SST
   expects, on the reference project's models, tests and sources;
-- model checksums SST's staleness check recognises as fresh against the code dbt hashed;
+- model checksums SST's staleness check recognizes as fresh against the code dbt hashed;
 - the semantic views the reference project renders, which must be the goldens' views.
 
 The committed fixtures must also read as one catalog, apart from what names the release.
@@ -212,7 +212,7 @@ def test_the_manifest_has_every_path_sst_reads(manifest_path: Path) -> None:
     assert read_surface_gaps(_document(manifest_path)) == []
 
 
-def test_sst_recognises_each_model_checksum_the_release_wrote(manifest_path: Path, tmp_path: Path) -> None:
+def test_sst_recognizes_each_model_checksum_the_release_wrote(manifest_path: Path, tmp_path: Path) -> None:
     document = _document(manifest_path)
     project = _hashed_code_project(tmp_path, document)
     catalog = catalog_from_document(document)

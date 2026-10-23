@@ -188,7 +188,7 @@ class RenderPolicy:
     """How the human render shows diagnostics, from the global visibility and format flags.
 
     Attributes:
-        color: Whether stderr is coloured: `table` output on a terminal, as `--color` decides,
+        color: Whether stderr is colored: `table` output on a terminal, as `--color` decides,
             unless `--no-color`, `$SST_NO_COLOR`, or a non-empty `$NO_COLOR` says otherwise.
         terminal: What the terminal can show; `detect_terminal` decides it once per run.
         progress: Whether a long-running command reports progress on stderr: never with
@@ -470,7 +470,7 @@ def _hidden_reason(diagnostic: Diagnostic, baselined: frozenset[str], policy: Re
 def refusal_text(diagnostic: Diagnostic) -> str:
     """Render a refusal made before the run's options are read, such as a usage error, for stderr.
 
-    Colour follows the environment alone (`$NO_COLOR`, a terminal), since `--no-color` may be
+    Color follows the environment alone (`$NO_COLOR`, a terminal), since `--no-color` may be
     the very flag that did not parse.
     """
     terminal = system_terminal(choice="auto", colorable=True)

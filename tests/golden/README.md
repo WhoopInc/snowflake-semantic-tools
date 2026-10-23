@@ -26,13 +26,13 @@ and edit the golden to match.
 (validate with and without errors, list, a usage error, help, a plan on a fake Snowflake that
 holds nothing, and the agent document), each as a transcript of its exit code, stdout and
 stderr, on up to four terminals (`color`, `plain`, `ascii`, `narrow`), with the project's path
-and every run's seconds normalised. `unit/cli/test_cli_goldens.py` compares them;
+and every run's seconds normalized. `unit/cli/test_cli_goldens.py` compares them;
 `python -m tests.helpers.cli_goldens` rewrites the ones that differ, and is refused in CI.
 
 ## How a golden is compared
 
 `unit/test_goldens.py` compiles the reference project and compares every artifact's rendered
-text with its golden exactly, after two normalisations on both sides: trailing whitespace at
+text with its golden exactly, after two normalizations on both sides: trailing whitespace at
 the end of the file is dropped and one final newline kept, and a `GIT_<commit>` name carries
 `GIT_0000000` in place of the commit.
 `python -m tests.helpers.update_goldens`, run from the repository root, writes a golden in that
@@ -58,4 +58,4 @@ the kind of thing that gets lost: these files are **not** what `GET_DDL` returns
 be compared against it raw. `GET_DDL` lowercases every keyword, rewrites
 `WITH SYNONYMS ('a', 'b')` into `with synonyms=('a','b')` while leaving
 `sample_values ('x', 'y')` spaced and un-`=`-ed, and drops `COPY GRANTS` entirely. Two clauses
-authored alike come back unalike, so a drift normaliser cannot be inferred from just one.
+authored alike come back unalike, so a drift normalizer cannot be inferred from just one.

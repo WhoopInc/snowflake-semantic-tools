@@ -57,7 +57,7 @@ class ExecutionPort(Protocol):
 
         Args:
             timeout_seconds: How long the statement may take end to end, network retries
-                included, before it is cancelled and fails as transient; None leaves it to
+                included, before it is canceled and fails as transient; None leaves it to
                 the session's own timeouts.
 
         Raises:

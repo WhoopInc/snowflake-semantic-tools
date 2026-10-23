@@ -62,7 +62,7 @@ OBJECT_TYPES = frozenset(
 PARAMETER_OBJECT_TYPES = frozenset(("WAREHOUSE",))
 # The observed types SHOW GRANTS ON <type> cannot address: Snowflake reports a dataset's
 # grants only in SHOW GRANTS TO ROLE, and its owner in SHOW DATASETS. Snowflake's docs give
-# SHOW GRANTS ON for any object; the server rejects it for a dataset (docs/design/snowflake-behaviour.md).
+# SHOW GRANTS ON for any object; the server rejects it for a dataset (docs/design/snowflake-behavior.md).
 _UNLISTED_GRANTS = frozenset(("DATASET",))
 # How GET_DDL spells each observed type it reads. MEASURED: it rejects 'AGENT' as an invalid
 # object type and reads an agent as 'CORTEX_AGENT'. It reads no stage, dataset, or Cortex
@@ -81,10 +81,10 @@ _ROUTINE_TYPES = frozenset(("PROCEDURE", "FUNCTION"))
 # The object_domain TAG_REFERENCES is asked for a semantic view's tags. UNVERIFIED against a
 # live account: the documented domain list has no semantic-view entry, and says 'TABLE' is for
 # all table-like objects such as views, so 'TABLE' is sent. The probe in
-# docs/design/snowflake-behaviour.md must confirm it before a release.
+# docs/design/snowflake-behavior.md must confirm it before a release.
 _SEMANTIC_VIEW_TAG_DOMAIN = "TABLE"
 # The domain of each type whose tags are read: only a semantic view's, which a replace without
-# WITH TAG removes (docs/design/snowflake-behaviour.md).
+# WITH TAG removes (docs/design/snowflake-behavior.md).
 _TAG_DOMAINS: Mapping[str, str] = {"SEMANTIC VIEW": _SEMANTIC_VIEW_TAG_DOMAIN}
 # The levels a tag set on a parent shows at; a replace of the object keeps such a tag.
 _PARENT_TAG_LEVELS = frozenset(("DATABASE", "SCHEMA"))
@@ -323,7 +323,7 @@ class CatalogMethods(Session, CatalogPort):
     def dataset_version_metadata(self, qualified_name: QualifiedName, version: str) -> str | None:
         rows = self._dict_rows(sql("SHOW VERSIONS IN DATASET {dataset}", dataset=qname(qualified_name)))
         # MEASURED: SHOW VERSIONS IN DATASET lists a version's METADATA in `metadata`, as JSON
-        # text (docs/design/snowflake-behaviour.md); an object is taken as the same JSON.
+        # text (docs/design/snowflake-behavior.md); an object is taken as the same JSON.
         match = next((row for row in rows if str(row.get("version") or "").casefold() == version.casefold()), None)
         value = match.get("metadata") if match is not None else None
         if value is None:

@@ -75,7 +75,7 @@ class Preflight:
             `CREATE SEMANTIC VIEW`. A `CREATE` privilege counts only when the session's primary
             role holds it, directly or through the roles it inherits.
         secondary_privileges: By folded scope, those of `missing_privileges` a secondary role in
-            the session holds, which Snowflake does not let authorise a `CREATE`.
+            the session holds, which Snowflake does not let authorize a `CREATE`.
         unreached_privileges: By folded scope, those of `missing_privileges` the session holds
             but the walk up from the primary role stopped short of, at `ROLE_HIERARCHY_DEPTH`
             roles: a secondary role may hold them, or a more distant inheritance.

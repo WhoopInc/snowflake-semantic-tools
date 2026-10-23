@@ -27,7 +27,7 @@ from snowflake_semantic_tools.cli.render.terminal import Terminal
 from snowflake_semantic_tools.cli.runner import _internal_error
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.diagnostics.baseline import stable_fingerprint
-from snowflake_semantic_tools.domain.diagnostics.signatures import UNRECOGNISED, snowflake_diagnostic
+from snowflake_semantic_tools.domain.diagnostics.signatures import UNRECOGNIZED, snowflake_diagnostic
 from tests.helpers.cli_projects import common, invoke_with_port
 from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
@@ -135,7 +135,7 @@ def test_an_internal_error_reports_the_exception_as_its_internal_detail() -> Non
 
 def test_only_a_code_that_declares_internal_detail_reports_it() -> None:
     message = "999999 (XX000): the warehouse declined the statement"
-    refused = snowflake_diagnostic(UNRECOGNISED.code, message, value="the object", subject="cli")
+    refused = snowflake_diagnostic(UNRECOGNIZED.code, message, value="the object", subject="cli")
     assert diagnostic_json(refused)["internal_detail"] == "the warehouse declined the statement"
     # PRT008 carries a detail too, but its code does not declare it internal.
     written = D("SST-PRT008", subject="cli", path="out.yml", detail="disk full")

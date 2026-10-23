@@ -407,7 +407,7 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
             ("SST-PRS021", "ERROR", "relationship:self", None, None),
         ]
     )
-    # The 0.3 spellings SST still honours, and the keys that change nothing, are reported by
+    # The 0.3 spellings SST still honors, and the keys that change nothing, are reported by
     # their own codes instead.
     assert [
         (item.code, item.severity.name, item.subject, item.context.get("field"))

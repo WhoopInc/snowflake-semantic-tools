@@ -280,7 +280,7 @@ def cli(ctx: click.Context, /, **params: Any) -> None:
     SST_COLOR, SST_PROJECT_DIR, SST_CONFIG and SST_PROFILES_DIR; the commands whose help names them read
     SST_TARGET, SST_DEFER_TARGET, SST_STATE_DIR, SST_STRICT and SST_THREADS. A boolean
     variable takes 1, true, yes, on, or their negations, and a value that does not parse
-    exits 4 before anything runs. NO_COLOR and DBT_PROFILES_DIR are honoured.
+    exits 4 before anything runs. NO_COLOR and DBT_PROFILES_DIR are honored.
     """
     forward_globals(ctx, cli, forwarded(ctx, params))
 

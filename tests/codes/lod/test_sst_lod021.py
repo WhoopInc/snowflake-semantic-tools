@@ -16,11 +16,11 @@ def test_sst_lod021_fires(tmp_path: Path) -> None:
         SmallProject(tmp_path, files={FILE: "models:\n  - name: x\n"}).load().diagnostics, "SST-LOD021"
     )
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == f"{FILE} declares no recognised root key"
+    assert diagnostic.message == f"{FILE} declares no recognized root key"
     assert diagnostic.origin == Origin(FILE)
 
 
 def test_sst_lod021_silent(tmp_path: Path) -> None:
-    # A document with one recognised root key is not refused; its other keys warn instead.
+    # A document with one recognized root key is not refused; its other keys warn instead.
     project = SmallProject(tmp_path, files={FILE: "snowflake_metrics: []\nextras: 1\n"}).load()
     assert coded(project.diagnostics, "SST-LOD021") == []

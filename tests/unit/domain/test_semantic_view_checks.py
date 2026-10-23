@@ -30,7 +30,7 @@ from snowflake_semantic_tools.domain.validate.shared import (
     lacks_invocation,
     namespace_collisions,
     reference_cycle,
-    unmodelled_key_diagnostics,
+    unmodeled_key_diagnostics,
 )
 from tests.helpers.artifact_builders import change, marker, observed, rendered
 from tests.helpers.sql_values import authored, authored_query
@@ -127,14 +127,14 @@ def test_a_name_another_namespace_holds_collides() -> None:
     ]
 
 
-def test_unmodelled_keys_warn_once_or_error_per_key() -> None:
-    warned = unmodelled_key_diagnostics("agent", "a", ("y", "x", "y"), allow=True)
+def test_unmodeled_keys_warn_once_or_error_per_key() -> None:
+    warned = unmodeled_key_diagnostics("agent", "a", ("y", "x", "y"), allow=True)
     assert [(item.code, item.severity, item.context["count"]) for item in warned] == [
         ("SST-VAL014", Severity.WARNING, 2)
     ]
-    refused = unmodelled_key_diagnostics("agent", "a", ("y", "x"), allow=False)
+    refused = unmodeled_key_diagnostics("agent", "a", ("y", "x"), allow=False)
     assert [(item.code, item.context["key"]) for item in refused] == [("SST-VAL013", "x"), ("SST-VAL013", "y")]
-    assert unmodelled_key_diagnostics("agent", "a", (), allow=False) == ()
+    assert unmodeled_key_diagnostics("agent", "a", (), allow=False) == ()
 
 
 def test_only_a_lowercase_sha256_is_a_digest() -> None:

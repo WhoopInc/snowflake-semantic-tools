@@ -29,7 +29,7 @@ SST_ENVIRONMENT = (
     "SST_COLOR",
     "NO_COLOR",
     "DBT_PROFILES_DIR",
-    # What decides colour, width, CI progress lines, and the agent output format.
+    # What decides color, width, CI progress lines, and the agent output format.
     *FORCE_COLOR_VARIABLES,
     *AGENT_MARKERS,
     "CI",

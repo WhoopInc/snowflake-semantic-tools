@@ -143,9 +143,9 @@ def _column_description_diagnostics(model: DbtModel, column: DbtColumn) -> list[
 
 
 def _column_meta_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
-    """Report a column's `meta.sst` keys SST does not read, and an access modifier it cannot honour.
+    """Report a column's `meta.sst` keys SST does not read, and an access modifier it cannot honor.
 
-    A column renders as public, so only `public_access` is honoured: a private column is
+    A column renders as public, so only `public_access` is honored: a private column is
     refused rather than published as public. A column with no `column_type`, or one excluded,
     never renders, so its modifier publishes nothing and is not refused.
 
@@ -169,7 +169,7 @@ def _column_meta_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnos
     elif modifier == "private_access" and not column.excluded:
         if column.column_type in ("dimension", "time_dimension"):
             # Snowflake's docs say a dimension cannot be private; the server accepts and enforces
-            # it, and SST refuses it anyway (docs/design/snowflake-behaviour.md).
+            # it, and SST refuses it anyway (docs/design/snowflake-behavior.md).
             diagnostics.append(D("SST-VAL222", artifact=artifact, member=column.name, value=modifier, subject=subject))
         elif column.column_type == "fact":
             diagnostics.append(D("SST-VAL334", artifact=artifact, member=column.name, subject=subject))

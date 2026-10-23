@@ -408,7 +408,7 @@ A release is a `v<version>` tag on `main`; `publish-to-pypi.yml` runs the requir
 
 1. Set the version, as [Version](#version) says.
 2. Run the live suites against the release candidate on `main`: the `live` suite of the manual workflow (`slow.yml`), or locally `poetry run pytest -m live --require-snowflake -n 4 tests/contract_live tests/integration tests/e2e`. Every test must pass; a skip means the account was not configured.
-3. Run the `recording` suite, or locally `poetry run python -m tests.helpers.session_recorder --out capture.json`, and commit the capture (the `--out` file, or the run's `recorded-session` artifact) as `tests/fixtures/recordings/live_project.json`. The first capture creates the file. After that, a capture that differs from the committed recording means Snowflake's behaviour moved: check the difference against [docs/design/snowflake-behaviour.md](docs/design/snowflake-behaviour.md) before the capture replaces the recording, and say what moved in the release notes.
+3. Run the `recording` suite, or locally `poetry run python -m tests.helpers.session_recorder --out capture.json`, and commit the capture (the `--out` file, or the run's `recorded-session` artifact) as `tests/fixtures/recordings/live_project.json`. The first capture creates the file. After that, a capture that differs from the committed recording means Snowflake's behavior moved: check the difference against [docs/design/snowflake-behavior.md](docs/design/snowflake-behavior.md) before the capture replaces the recording, and say what moved in the release notes.
 4. Tag the commit that adds the recording, which changes nothing else, and push the tag.
 
 [docs/guides/testing-live.md](docs/guides/testing-live.md#when-the-live-suites-run) describes this cadence; no schedule runs the live suites.
@@ -501,7 +501,7 @@ Pull requests will be evaluated on:
 
 ## Maintaining 0.3.x
 
-SST 1.0 is a new major version. SST 0.3 lives at the tag `v0.3.1`. Maintenance fixes for 0.3.x are made on a branch cut from that tag (for example `release/0.3.x`), released as 0.3.x patch versions, and never merged into 1.0.
+SST 1.0 is a new major version. SST 0.3 lives at the latest `v0.3.x` tag (`git tag --list 'v0.3.*'`). Maintenance fixes for 0.3.x are made on a branch cut from that tag (for example `release/0.3.x`), released as 0.3.x patch versions, and never merged into 1.0.
 
 ## Questions?
 

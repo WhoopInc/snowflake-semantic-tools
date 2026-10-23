@@ -102,7 +102,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-MAN023",
         Severity.ERROR,
-        "State file schema is unrecognised",
+        "State file schema is unrecognized",
         "{path} declares schema {found}",
         "delete it and re-run plan",
         condition="the local state cache declares a schema version this release does not read or migrate",

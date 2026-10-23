@@ -54,7 +54,7 @@ Options:
 Global options:
   -o, --output [table|plain|agent|json|yaml|csv]
                                   `table` (default), `plain` (`table` without
-                                  colour), `agent` (short fixed-grammar text for
+                                  color), `agent` (short fixed-grammar text for
                                   coding agents), or `json`, else `$SST_OUTPUT`;
                                   `list` also takes `yaml` and `csv`. With
                                   neither set, a run whose stdout is not a
@@ -77,16 +77,16 @@ Global options:
                                   SST runs, such as the Snowflake connector, log
                                   each request at `info`, so `info` shows those.
                                   Independent of `--verbose`.
-  --no-color                      No ANSI colour, else `$SST_NO_COLOR`; a non-
+  --no-color                      No ANSI color, else `$SST_NO_COLOR`; a non-
                                   empty `$NO_COLOR` does the same. Wins over
                                   `--color`.
-  --color [auto|always|never]     When to colour `table` output: `auto` (the
+  --color [auto|always|never]     When to color `table` output: `auto` (the
                                   default) on a terminal, `always` even through
                                   a pipe, as a CI log viewer renders it, or
                                   `never`; else `$SST_COLOR`. Under `auto`, a
                                   non-empty `$FORCE_COLOR` or `$CLICOLOR_FORCE`
-                                  turns colour on and `$NO_COLOR` off. No other
-                                  format is ever coloured.
+                                  turns color on and `$NO_COLOR` off. No other
+                                  format is ever colored.
   --project-dir DIRECTORY         Project root, else `$SST_PROJECT_DIR`, else
                                   the current directory: where `sst_config.yml`
                                   and `dbt_project.yml` are.

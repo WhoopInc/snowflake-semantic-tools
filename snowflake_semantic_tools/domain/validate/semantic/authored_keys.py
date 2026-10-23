@@ -316,7 +316,7 @@ def _unread_keys(
     """Report each key of `mapping`, and of the mappings nested in it, that the loader does not read.
 
     `scope` is the node type, or `<type>.<field>` for a nested mapping, and picks both the nested
-    fields to descend into and the 0.3 spellings to name. A key is labelled `prefix` plus its
+    fields to descend into and the 0.3 spellings to name. A key is labeled `prefix` plus its
     name, such as `window.order_by[0].column`, and located by its node path. The mapping's own
     keys come first, in authored order, then each nested field's, in `NESTED_KEYS` order; a
     nested field of the wrong shape is left to its own check.

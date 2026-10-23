@@ -127,7 +127,7 @@ def scratch_scope(account: LiveAccount, name: str) -> SchemaScope:
 
 
 def create_scratch(port: ExecutionPort, schema: SchemaScope) -> None:
-    """Create `schema` with the marker the sweep recognises; refuse one that already exists.
+    """Create `schema` with the marker the sweep recognizes; refuse one that already exists.
 
     Raises:
         ValueError: `schema` is not a scratch schema, so it is never created.

@@ -1,4 +1,4 @@
-"""SST-DBT025: every semantic load summarises what it read across the dbt seam."""
+"""SST-DBT025: every semantic load summarizes what it read across the dbt seam."""
 
 from __future__ import annotations
 

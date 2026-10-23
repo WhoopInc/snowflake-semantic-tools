@@ -124,7 +124,7 @@ def held_by(
     read: Callable[[Grantee], tuple[Grantee, ...]],
     depth: int,
 ) -> tuple[frozenset[str], frozenset[str]]:
-    """Return the privileges `role` holds, and those still travelling when the walk stopped.
+    """Return the privileges `role` holds, and those still traveling when the walk stopped.
 
     A holder reaches `role` in fewer than `depth` grants; a privilege not held that a frontier
     node still carries after `depth` grants is cut short, as a deeper path might pass it on.

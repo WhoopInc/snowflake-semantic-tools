@@ -9,7 +9,7 @@ the state rows -- and drops the schema again.
 The observation is written in the shape `run_recorded_plan.py` reads, with the account's database
 and schema and every per-run value (timestamps, owners, run ids) replaced by placeholders, so two
 captures of an unchanged Snowflake are byte-identical. Our side of the comparison cannot move,
-because the project and the schema are fixed; a difference means Snowflake's behaviour moved.
+because the project and the schema are fixed; a difference means Snowflake's behavior moved.
 
 The capture is always written to `--out`. When there is no recording yet (none is committed until
 the first capture), the capture is also written to `--recording`, creating it, for review and
@@ -56,7 +56,7 @@ _SHA256 = re.compile(r"\b[0-9a-f]{64}\b")
 
 
 def observe(port: SnowflakePort, schema: SchemaScope) -> dict[str, Any]:
-    """What Snowflake shows of the live project published in `schema`, unnormalised."""
+    """What Snowflake shows of the live project published in `schema`, unnormalized."""
     view = live_view(schema)
     table = orders_table(schema)
     marker = port.describe_marker(view, "SEMANTIC VIEW")
@@ -71,7 +71,7 @@ def observe(port: SnowflakePort, schema: SchemaScope) -> dict[str, Any]:
     }
 
 
-def normalise(observation: Mapping[str, Any], schema: SchemaScope) -> str:
+def normalize(observation: Mapping[str, Any], schema: SchemaScope) -> str:
     """The observation as canonical JSON, with names and per-run values replaced by placeholders."""
 
     def scrub(value: Any, key: str | None = None) -> Any:
@@ -138,7 +138,7 @@ def capture(port: SnowflakePort, account: LiveAccount, root: Path) -> str:
             run = run_sst(command[0], *project_args(project, manifest), *command[1:])
             if run.exit_code != 0:
                 raise RuntimeError(f"sst {command[0]} exited {run.exit_code}: {run.stdout}{run.stderr}")
-        return normalise(observe(port, schema), schema)
+        return normalize(observe(port, schema), schema)
     finally:
         port.execute_script((sql("DROP SCHEMA IF EXISTS {schema} CASCADE", schema=scope(schema)),))
 

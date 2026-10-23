@@ -33,7 +33,7 @@ def test_the_ascii_and_plain_variants_hold_no_escape_and_no_unicode_mark() -> No
                 assert not set("✓✗·→…⠋") & set(text), case.name
 
 
-def test_the_colour_variant_is_coloured() -> None:
+def test_the_color_variant_is_colored() -> None:
     text = golden_path(CASES[0], "color").read_text(encoding="utf-8")
     assert "\x1b[31m" in text and "\x1b[1m" in text
 

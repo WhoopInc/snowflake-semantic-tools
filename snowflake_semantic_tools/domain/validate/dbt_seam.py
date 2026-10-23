@@ -32,7 +32,7 @@ def unreadable_model(catalog: DbtCatalog, name: str, *, subject: str | None = No
     """Report a consumed model that produces no relation; None when the catalog has no such model.
 
     Diagnostics:
-        SST-DBT009: the model is disabled, or materialised so that it has no relation.
+        SST-DBT009: the model is disabled, or materialized so that it has no relation.
     """
     reason = catalog.unreadable_models.get(name.casefold())
     if reason is None:
@@ -131,7 +131,7 @@ def fan_out_diagnostics(feeds: Mapping[str, Iterable[str]], catalog: DbtCatalog)
 
 
 def seam_summary(catalog: DbtCatalog, consumed: Iterable[str], refs_resolved: int) -> Diagnostic:
-    """Summarise what the semantic layer read across the dbt seam.
+    """Summarize what the semantic layer read across the dbt seam.
 
     Diagnostics:
         SST-DBT025: always, once: models and sources read, refs resolved, and columns checked.

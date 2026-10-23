@@ -14,7 +14,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "filter '{member}' carries labels: [filter] and its expr is not boolean",
         "make the expression boolean, or remove `labels: [filter]` so it renders as prose",
         condition=(
-            "a filter labelled `filter` has an expression SST does not read as boolean: neither a predicate "
+            "a filter labeled `filter` has an expression SST does not read as boolean: neither a predicate "
             "by its shape nor one `ref()` to a column dbt declares BOOLEAN"
         ),
     ),

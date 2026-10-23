@@ -57,7 +57,7 @@ def _plan(before: ResolvedEval, after: ResolvedEval) -> tuple[Action, list[tuple
 
 
 def test_sst_val744_fires() -> None:
-    action, found = _plan(resolved_eval(), _with_prompt("Score from 0 to 5. Penalise any unsourced claim."))
+    action, found = _plan(resolved_eval(), _with_prompt("Score from 0 to 5. Penalize any unsourced claim."))
     assert action is Action.BLOCKED
     [(code, message, subject)] = found
     assert code == "SST-VAL744"
@@ -68,6 +68,6 @@ def test_sst_val744_fires() -> None:
 
 def test_sst_val744_silent() -> None:
     # The same edit under a new name is a new metric, which is how a metric is versioned.
-    action, found = _plan(resolved_eval(), _with_prompt("Score from 0 to 5. Penalise.", name="grounding_v2"))
+    action, found = _plan(resolved_eval(), _with_prompt("Score from 0 to 5. Penalize.", name="grounding_v2"))
     assert "SST-VAL744" not in [code for code, _, _ in found]
     assert action is not Action.BLOCKED

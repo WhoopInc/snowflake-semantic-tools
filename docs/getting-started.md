@@ -161,7 +161,7 @@ metric:
 Each file holds one item under its type's singular root. A list under the plural
 root (`semantic_views:`, `snowflake_metrics:`) is also read, for several items in
 one file. Any YAML file under `semantic_models/` is read, and each member is
-recognised by its root key; only views must live under `semantic_views/`. A metric's tables
+recognized by its root key; only views must live under `semantic_views/`. A metric's tables
 are the models its expression names with `ref()`, and it joins every view whose
 tables include all of them, so `order_count` lands in `sales` without the view
 naming it.

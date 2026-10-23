@@ -158,7 +158,7 @@ def test_rejects_an_unsupported_manifest_schema() -> None:
     assert [diagnostic.code for diagnostic in exc_info.value.diagnostics] == ["SST-DBT017"]
 
 
-def test_a_model_without_a_physical_relation_is_left_out_with_its_materialisation() -> None:
+def test_a_model_without_a_physical_relation_is_left_out_with_its_materialization() -> None:
     document = manifest_document()
     nodes = document["nodes"]
     assert isinstance(nodes, dict)

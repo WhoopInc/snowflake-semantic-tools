@@ -16,7 +16,7 @@ command:
   classified by the signature table: a statement Snowflake rejected -- an object that does not
   exist, a compilation error -- exits 1 (ERROR) under its SNO code; a refused privilege or a
   missed deadline exits 5 under its SNO code; a rejected login is SST-PRT002, and a dropped
-  connection or an error no signature recognises is SST-PRT001, both exiting 5;
+  connection or an error no signature recognizes is SST-PRT001, both exiting 5;
 - `WriteFailure` exits 1 (ERROR) with SST-PRT008: a file SST writes could not be written;
 - `ProjectError`, `ValueError`, `OSError`, and `JSONDecodeError` exit 4 (CONFIG), reporting the
   error's diagnostics, or SST-INT010 when it carries none;
@@ -91,7 +91,7 @@ from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, audit
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
 from snowflake_semantic_tools.domain.diagnostics.signatures import (
-    UNRECOGNISED,
+    UNRECOGNIZED,
     SessionFailure,
     match_signature,
     session_failure,
@@ -418,7 +418,7 @@ def _report(command: str, options: GlobalOptions, result: CommandResult) -> None
     """Print `result` as one envelope, YAML, CSV, or human text, and exit with its code when it is not 0.
 
     YAML is the envelope serialized as YAML; CSV is the result's rows with a header, and its
-    diagnostics go to stderr. `plain` is `table` without colour. Output of any form that would
+    diagnostics go to stderr. `plain` is `table` without color. Output of any form that would
     carry a credential the run resolved is withheld for SST-PRT012, and the run exits 1.
     """
     audited = audit(result.diagnostics)
@@ -514,7 +514,7 @@ def guarded(action: Callable[[], None], *, command: str, output: str, project_di
 def _snowflake_failed(command: str, output: str, exc: SnowflakePortError, project_dir: Path | None) -> NoReturn:
     """Exit with the code `snowflake_failure` gives a port error, reporting its diagnostic.
 
-    The run log records the signature the error matched, not the code reported: an unrecognised
+    The run log records the signature the error matched, not the code reported: an unrecognized
     error reported as SST-PRT001 still counts as SST-SNO001.
     """
     diagnostic, exit_code, matched = _classified(exc)
@@ -534,9 +534,9 @@ def _snowflake_failed(command: str, output: str, exc: SnowflakePortError, projec
     raise click.exceptions.Exit(exit_code) from exc
 
 
-# The signatures of a session Snowflake would not keep, or of an error nothing recognises: a
+# The signatures of a session Snowflake would not keep, or of an error nothing recognizes: a
 # dropped connection. A command reports them as the connection failing.
-_CONNECTION_SIGNATURES = frozenset((UNRECOGNISED.code, "SST-SNO014"))
+_CONNECTION_SIGNATURES = frozenset((UNRECOGNIZED.code, "SST-SNO014"))
 # A rejected login, which a command reports as its credential rejected, as connecting does.
 _AUTHENTICATION_SIGNATURE = "SST-SNO013"
 
@@ -546,13 +546,13 @@ def snowflake_failure(exc: SnowflakePortError) -> tuple[Diagnostic, int]:
 
     The error's own diagnostic exits 5. Otherwise the signature table classifies its message,
     errno and SQLSTATE: a rejected login is the credential rejected; a dropped connection or an
-    unrecognised error is the connection failing, but a session Snowflake ended, which had
+    unrecognized error is the connection failing, but a session Snowflake ended, which had
     connected, is the network failure (SST-SNO014) it is, exit 5; a refused privilege or a
     missed deadline is the warehouse not cooperating, exit 5; any other signature -- an object
     that does not exist, a compilation error -- is a statement Snowflake rejected, exit 1.
 
     Diagnostics:
-        SST-PRT001: the connection failed, or no signature recognises the error.
+        SST-PRT001: the connection failed, or no signature recognizes the error.
         SST-PRT002: Snowflake rejected the session's credential.
         Any SNO code of the signature table, as `snowflake_diagnostic` reports it.
     """
@@ -564,7 +564,7 @@ def _classified(exc: SnowflakePortError) -> tuple[Diagnostic, int, Diagnostic]:
     """Return `snowflake_failure`'s diagnostic and exit code, and the diagnostic the run log records.
 
     The run log records the signature the error matched even when the error carries its own
-    diagnostic: the session attaches one to every failure it reads, so an unrecognised refusal it
+    diagnostic: the session attaches one to every failure it reads, so an unrecognized refusal it
     reports as SST-PRT001 must still count as SST-SNO001.
     """
     message = str(exc)

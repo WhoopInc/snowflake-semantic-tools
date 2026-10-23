@@ -169,7 +169,7 @@ def test_run_plans_from_state_with_agents_staged_and_every_composite_type_handle
     assert agent_change.rendered is not None
     assert "@SPECS.SCH.AGENT_STAGE/helper/abc1234" in "\n".join(texts(agent_change.rendered.statements))
     assert ready.state.applied == {"semantic_view:gone": gone}
-    # Clean, so no version is labelled dirty.
+    # Clean, so no version is labeled dirty.
     assert "-dirty" not in "\n".join(texts(agent_change.rendered.statements))
     assert inputs.reads[-3:] == ["config", "git_dirty", "git_sha"]
 

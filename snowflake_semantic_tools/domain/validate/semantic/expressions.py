@@ -186,7 +186,7 @@ def filter_diagnostics(
     declares BOOLEAN.
 
     Diagnostics:
-        SST-VAL401: when a filter labelled `filter` has an expression that is not boolean.
+        SST-VAL401: when a filter labeled `filter` has an expression that is not boolean.
         SST-VAL405: when a filter with no `labels:` key has a boolean expression.
         SST-VAL404: for each column of the filter's tables its expression names without `ref()`.
     """

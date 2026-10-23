@@ -533,7 +533,7 @@ def test_only_a_failure_in_transit_is_transient(error: Exception, transient: boo
     [
         (
             ProgrammingError(
-                msg="SQL execution was cancelled by the client due to a timeout.", errno=604, sqlstate="57014"
+                msg="SQL execution was canceled by the client due to a timeout.", errno=604, sqlstate="57014"
             ),
             True,
         ),
@@ -924,7 +924,7 @@ def test_tag_references_name_each_tag_set_on_a_view_and_leave_out_inherited_ones
     connector = FakeDriverConnector(session)
     assert connector.tag_references("semantic view", QualifiedName.parse("DB.S.V")) == ('GOV."t".OWNER', "GOV.T.PII")
     # The documented domain for a table-like object; unverified for a semantic view against a
-    # live account (docs/design/snowflake-behaviour.md).
+    # live account (docs/design/snowflake-behavior.md).
     assert session.statements == ["SELECT * FROM TABLE(DB.INFORMATION_SCHEMA.TAG_REFERENCES('DB.S.V', 'TABLE'))"]
     with pytest.raises(SnowflakePortError, match="tags are read only on a semantic view, not on AGENT"):
         connector.tag_references("AGENT", QualifiedName.parse("DB.S.A"))

@@ -8,7 +8,7 @@ ignores a role header, so none is sent. A session that expired -- measured: afte
 minutes Snowflake answers HTTP 200 with a JSON body, code 390112, not an event stream, and a
 401 with 390104 for a token it does not know -- is renewed by a cheap statement on the
 connector's session, and the request is sent once more. Requests go
-through the standard library with certifi's CA bundle, and honour `HTTPS_PROXY` as the
+through the standard library with certifi's CA bundle, and honor `HTTPS_PROXY` as the
 connector does.
 
 A turn is a background run, streamed: that is what makes cancel work, and its events resume

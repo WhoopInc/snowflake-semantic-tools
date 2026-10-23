@@ -47,7 +47,7 @@ from snowflake_semantic_tools.domain.validate.agent_spec import (
     resource_keys,
     spec_completeness,
 )
-from snowflake_semantic_tools.domain.validate.shared import unmodelled_key_diagnostics
+from snowflake_semantic_tools.domain.validate.shared import unmodeled_key_diagnostics
 from snowflake_semantic_tools.domain.validate.skill import unrunnable_scripts
 
 __all__ = ["AgentCompileContext", "CompileAgents", "CompiledAgent", "ExtensionPin", "for_publication"]
@@ -157,7 +157,7 @@ class CompileAgents:
         document = render_agent_spec(resolved.model, resolved.tools)
         payload = render_agent_json(resolved.model, resolved.tools)
         checks = agent_render_checks(resolved.model, resolved.tools, payload)
-        unmodelled = unmodelled_key_diagnostics(
+        unmodeled = unmodeled_key_diagnostics(
             "agent", model.name, _passthrough_keys(model), allow=self._context.allow_unknown_keys, subject=model.key
         )
         incomplete = spec_completeness(resolved.model, resolved.tools, document)
@@ -167,7 +167,7 @@ class CompileAgents:
             (
                 *token_budget(model),
                 *problems,
-                *unmodelled,
+                *unmodeled,
                 *((incomplete,) if incomplete is not None else ()),
                 *resource_keys(resolved.model, document),
                 *spec_size(resolved.model, payload),

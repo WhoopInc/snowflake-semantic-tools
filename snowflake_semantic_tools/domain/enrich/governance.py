@@ -2,7 +2,7 @@
 
 `TAG_REFERENCES_ALL_COLUMNS` lists, for each column of one table or view, every tag on it: one
 set on the column, and one set on its table, schema or database, which every column inherits.
-Each counts, whatever its `LEVEL` and `APPLY_METHOD` (docs/design/snowflake-behaviour.md). The
+Each counts, whatever its `LEVEL` and `APPLY_METHOD` (docs/design/snowflake-behavior.md). The
 statement only reads; a relation that is missing or not visible fails it.
 """
 
@@ -26,7 +26,7 @@ def column_tags_sql(relation: QualifiedName) -> Sql:
 
     The relation is named by a string constant, as the table function takes it, and its
     database's INFORMATION_SCHEMA is the one asked. The domain is `'table'`, spelled as the
-    measured read spelled it (docs/design/snowflake-behaviour.md); a view was not measured.
+    measured read spelled it (docs/design/snowflake-behavior.md); a view was not measured.
     """
     return sql(
         "SELECT * FROM TABLE({database}.INFORMATION_SCHEMA.TAG_REFERENCES_ALL_COLUMNS({name}, 'table'))",

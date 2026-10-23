@@ -15,7 +15,7 @@ are listed as SHA-256 digests of the case-folded word or path, and a committed l
 is checked against them: company words token by token, personal names only where
 they name a schema or package someone owns (`personal_namespace`), and document
 paths by their root, name and trailing segments (`design_doc_path`). Only the places
-the project genuinely lives -- its licence, security policy, code owners and package
+the project genuinely lives -- its license, security policy, code owners and package
 metadata -- may name its owner. Every other pattern below is safe to publish.
 """
 
@@ -159,7 +159,7 @@ RULES: tuple[tuple[str, Callable[[str], object], str], ...] = (
     (
         "dated-measurement",
         re.compile(f"(?i){_MEASURED}.{{0,40}}?{_ISO_DATE}|{_ISO_DATE}.{{0,40}}?{_MEASURED}").search,
-        "dates a measurement; keep the behaviour it records and drop when it was observed",
+        "dates a measurement; keep the behavior it records and drop when it was observed",
     ),
     (
         "internal-design-doc",

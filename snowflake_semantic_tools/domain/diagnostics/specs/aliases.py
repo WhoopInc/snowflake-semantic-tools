@@ -269,7 +269,7 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         None,
         "`generation.publish_via` is removed, so there is one publish path for every feature",
     ),
-    ("SST-CFG024", "spec_version is not recognised", None, "configuration carries no spec version to check"),
+    ("SST-CFG024", "spec_version is not recognized", None, "configuration carries no spec version to check"),
     (
         "SST-CFG026",
         "dependency_order is incomplete or has unknown entries",
@@ -391,7 +391,7 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
     ),
     (
         "SST-VAL501",
-        "create_mode holds an unrecognised value",
+        "create_mode holds an unrecognized value",
         None,
         "`create_mode` is removed: an artifact is created when absent and updated by its type's rule",
     ),

@@ -1,4 +1,4 @@
-"""Severity policy: overrides resolve before strict promotion, are recorded, and the audit honours them."""
+"""Severity policy: overrides resolve before strict promotion, are recorded, and the audit honors them."""
 
 from __future__ import annotations
 

@@ -20,7 +20,7 @@ from snowflake_semantic_tools.domain.parse.template import (
     single_template_call,
 )
 from snowflake_semantic_tools.domain.resolve.calls import member_reference
-from snowflake_semantic_tools.domain.validate.semantic.deprecated import honoured
+from snowflake_semantic_tools.domain.validate.semantic.deprecated import honored
 from snowflake_semantic_tools.domain.validate.semantic.nodes import list_of, load_nodes, member_root, node_origin
 
 
@@ -69,7 +69,7 @@ def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir
                     for value in list_of(node.get("non_additive_dimensions"))
                     if (entry := _non_additive(value)) is not None
                 ),
-                access_modifier=str(honoured(node, "access_modifier", "metric") or "public_access"),
+                access_modifier=str(honored(node, "access_modifier", "metric") or "public_access"),
                 origin=origin,
                 template_calls=template_calls,
                 poisoned=poisoned or window_poisoned,
@@ -168,9 +168,9 @@ def load_instructions(
         name = str(node["name"])
         out[name.casefold()] = InstructionDef(
             name=name,
-            ai_sql_generation=str(honoured(node, "ai_sql_generation", "custom_instruction") or "").strip() or None,
+            ai_sql_generation=str(honored(node, "ai_sql_generation", "custom_instruction") or "").strip() or None,
             ai_question_categorization=str(
-                honoured(node, "ai_question_categorization", "custom_instruction") or ""
+                honored(node, "ai_question_categorization", "custom_instruction") or ""
             ).strip()
             or None,
             origin=node_origin(document, member_root("custom_instruction"), index),

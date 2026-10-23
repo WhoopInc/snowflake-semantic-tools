@@ -105,7 +105,7 @@ ignores an edit, the agent is not following it, which a broad instruction such a
 conversation keeps no copies and runs the agent as it compiles against what is
 published, and the status line says so.
 
-A cancelled reply is saved to the thread as far as it got, and the next question
+A canceled reply is saved to the thread as far as it got, and the next question
 follows it. On exit `sst ask` prints the agents, the turns, the tokens they used,
 how many scratch objects were removed, and the transcript, when one was kept.
 
@@ -161,7 +161,7 @@ the session's role and ignores an `X-Snowflake-Role` header, so SST sends none:
 the REST calls run as the same role as SQL. A session that expired while you
 were idle is renewed by a cheap statement on the connector's session, and the
 call is sent once more. Requests go through Python's standard library with
-certifi's CA bundle, and honour `HTTPS_PROXY` as the connector does. The
+certifi's CA bundle, and honor `HTTPS_PROXY` as the connector does. The
 role needs `CORTEX_USER` or `CORTEX_AGENT_USER`, `USAGE` on each tool's
 warehouse, and access to each tool's object
 ([access control](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-setup)).

@@ -106,7 +106,7 @@ def test_a_routine_show_lists_no_comment_for_reads_as_uncommented_and_a_refused_
     assert (definitions, unread[_PROCEDURE.artifact_key]) == ({}, "denied")
 
 
-def test_each_name_a_target_publishes_is_labelled_and_one_two_artifacts_claim_is_not() -> None:
+def test_each_name_a_target_publishes_is_labeled_and_one_two_artifacts_claim_is_not() -> None:
     twin = _tool(
         "orders_status",
         "procedure",
@@ -139,7 +139,7 @@ def test_an_agent_labels_the_outside_objects_its_tools_and_skills_name_and_nothi
 
 
 def test_a_cowork_profile_labels_the_partner_agent_it_routes_to_by_its_tool_member() -> None:
-    # CoWork profiles are a Snowflake private preview. The project agent it routes to is labelled
+    # CoWork profiles are a Snowflake private preview. The project agent it routes to is labeled
     # by its own key, as every compiled target is; another team's agent by the tool member naming it.
     partner = subagent("partner", "tool", line=8, display_name="Partner", description="Partner deals.")
     result = compile_profiles(

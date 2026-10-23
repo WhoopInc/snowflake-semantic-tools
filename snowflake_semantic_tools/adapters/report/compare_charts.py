@@ -1,9 +1,9 @@
 """The comparison report's charts, drawn as inline SVG from the report's numbers.
 
 Each chart is sized in a fixed coordinate space and scales to its container through `viewBox`.
-It draws with the stylesheet's classes, never a colour of its own, carries a `<title>` and an
+It draws with the stylesheet's classes, never a color of its own, carries a `<title>` and an
 `aria-label` saying what it shows, and prints every value as text beside its mark, so a reader
-who cannot tell the colours apart, or sees no chart at all, loses nothing.
+who cannot tell the colors apart, or sees no chart at all, loses nothing.
 """
 
 from __future__ import annotations
@@ -163,7 +163,7 @@ def _scatter(points: Sequence[tuple[ModelRow, float, float]], metric: str) -> st
 
 
 def _point(model: ModelRow, x: float, y: float, flip: bool, detail: str) -> str:
-    """Draw one point, a diamond for the pinned model, labelled on whichever side has room."""
+    """Draw one point, a diamond for the pinned model, labeled on whichever side has room."""
     name = esc(model.name) + (" (pinned)" if model.pinned else "")
     if model.pinned:
         mark = f'<path class="point pinned" d="M{x:.1f} {y - 8:.1f}l8 8l-8 8l-8 -8z"/>'

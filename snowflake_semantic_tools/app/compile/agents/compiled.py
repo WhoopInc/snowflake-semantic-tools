@@ -37,7 +37,7 @@ class CompiledAgent(StandaloneArtifact):
         stage: The stage `stage_path` starts with; None until `for_publication` sets it.
         temporary: Publish as a TEMPORARY agent created from the inline specification,
             staging nothing.
-        dirty: The project had uncommitted changes, so each version committed is labelled
+        dirty: The project had uncommitted changes, so each version committed is labeled
             `git:<sha>-dirty`; the stage path still names the sha.
     """
 
@@ -127,7 +127,7 @@ def for_publication(
 
     Compile leaves an agent without a stage path, so it has no statements; plan and apply
     call this first. A temporary agent keeps the stage path but stages nothing. A `dirty`
-    agent's versions are labelled `git:<sha>-dirty`.
+    agent's versions are labeled `git:<sha>-dirty`.
     """
     return replace(
         compiled,

@@ -1,7 +1,7 @@
 """The look of `sst`'s terminal output: one palette and one set of symbols, each with an ASCII form.
 
 Every renderer styles text through `Style`, so the whole look changes here. The palette uses
-the 16 basic ANSI colours only, which every terminal theme maps to something readable on its
+the 16 basic ANSI colors only, which every terminal theme maps to something readable on its
 own background, light or dark.
 """
 
@@ -13,7 +13,7 @@ import click
 
 from snowflake_semantic_tools.cli.render.terminal import Terminal
 
-# Each role's foreground colour, bold, and dim: what it marks, never decoration.
+# Each role's foreground color, bold, and dim: what it marks, never decoration.
 _ROLES: dict[str, tuple[str | None, bool, bool]] = {
     "error": ("red", True, False),
     "warning": ("yellow", True, False),
@@ -50,7 +50,7 @@ class Style:
     """Paint text by role and pick symbols, as one terminal can show them.
 
     Args:
-        stdout: Style for stdout, whose colour can differ from stderr's when one is redirected.
+        stdout: Style for stdout, whose color can differ from stderr's when one is redirected.
     """
 
     def __init__(self, terminal: Terminal, *, stdout: bool = False) -> None:
@@ -59,7 +59,7 @@ class Style:
         self._muted = False
 
     def __call__(self, text: str, role: str) -> str:
-        """Return `text` in `role`'s style, or as it is when colour is off."""
+        """Return `text` in `role`'s style, or as it is when color is off."""
         if not self.enabled or not text:
             return text
         fg, bold, dim = _ROLES["dim" if self._muted else role]

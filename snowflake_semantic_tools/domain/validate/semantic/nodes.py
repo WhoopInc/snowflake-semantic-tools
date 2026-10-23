@@ -65,11 +65,11 @@ def load_nodes(documents: AuthoredDocuments, root_key: str) -> tuple[tuple[Autho
             continue
         for index, node in enumerate(document.tree.get(root_key) or []):
             if isinstance(node, dict):
-                loaded.append((document, index, normalise_node_strings(node)))
+                loaded.append((document, index, normalize_node_strings(node)))
     return tuple(loaded)
 
 
-def normalise_node_strings(node: dict[str, Any]) -> dict[str, Any]:
+def normalize_node_strings(node: dict[str, Any]) -> dict[str, Any]:
     """Return a node with string keys and its `description` on one line, stripped."""
     return {
         str(key): (

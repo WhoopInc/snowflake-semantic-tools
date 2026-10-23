@@ -80,14 +80,14 @@ def test_codemod_leaves_clean_text_and_orphan_items_untouched() -> None:
     assert "  - {{ ref('z') }}\n" in spaced.text and "{{ table( }}" in spaced.text
 
 
-def test_filter_labels_are_added_only_to_unlabelled_boolean_filters() -> None:
+def test_filter_labels_are_added_only_to_unlabeled_boolean_filters() -> None:
     text = (
         "snowflake_filters:\n"
         "  - name: completed\n"
         "    expr: \"{{ ref('orders', 'state') }} = 'completed'\"\n"
         "  - name: threshold\n"
         '    expr: "1000"\n'
-        "  - name: labelled\n"
+        "  - name: labeled\n"
         '    expr: "TRUE"\n'
         "    labels: [filter]\n"
         "  - name: last\n"
@@ -102,7 +102,7 @@ def test_filter_labels_are_added_only_to_unlabelled_boolean_filters() -> None:
     result = add_filter_labels(MigrationResult(text), sites)
     assert result.text.count("labels:\n      - filter\n") == 2
     assert "    expr: NOT flag\n    labels:\n      - filter\n" in result.text
-    assert '- name: threshold\n    expr: "1000"\n  - name: labelled' in result.text
+    assert '- name: threshold\n    expr: "1000"\n  - name: labeled' in result.text
     assert [item.line for item in result.rewrites] == [4, 11]
     assert add_filter_labels(MigrationResult(""), ()).text == ""
 

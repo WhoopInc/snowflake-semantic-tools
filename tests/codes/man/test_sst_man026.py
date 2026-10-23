@@ -1,4 +1,4 @@
-"""SST-MAN026: a plan summarises, per artifact type, what change detection found."""
+"""SST-MAN026: a plan summarizes, per artifact type, what change detection found."""
 
 from __future__ import annotations
 

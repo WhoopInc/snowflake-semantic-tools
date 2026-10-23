@@ -3,7 +3,7 @@
 The connection is tested by default; `--no-connect` reports everything else offline. Every
 configuration path discovery checked is reported, so which file configured a run is never a
 guess. `--snowflake-signatures` reports instead how often Snowflake refused something SST did not
-recognise, from the run log every command appends to.
+recognize, from the run log every command appends to.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ def debug(
     database, schema, state table, and how it authenticates, never a credential. The
     connection is then opened, and its role and account reported; with --no-connect nothing
     connects. --snowflake-signatures reports instead how often Snowflake refusals went
-    unrecognised, from `sst_target/run_log.jsonl`, offline.
+    unrecognized, from `sst_target/run_log.jsonl`, offline.
 
     Exit 0 when everything resolved, 1 when a resolved value is invalid, 4 when the configuration
     or profile cannot be, and 5 when the connection fails.
@@ -312,7 +312,7 @@ def _print_report(data: Mapping[str, object]) -> None:
     lines = table(
         [[name, mark, text] for (name, _, text), mark in zip(checks, marks, strict=True)], terminal.width, gap=1
     )
-    # Laid out plain, then the mark is coloured in place: a styled cell would throw the columns off.
+    # Laid out plain, then the mark is colored in place: a styled cell would throw the columns off.
     at = max(len(name) for name, _, _ in checks) + 1
     for (_, ok, _), mark, line in zip(checks, marks, lines, strict=True):
         if ok is not None:

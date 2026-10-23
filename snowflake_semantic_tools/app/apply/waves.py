@@ -166,7 +166,7 @@ class _WaveRun:
                 for future in ended:
                     self._end(running.pop(future), future.result())
         except KeyboardInterrupt:
-            # Set before the queued changes are cancelled, so a worker taking one meanwhile skips it.
+            # Set before the queued changes are canceled, so a worker taking one meanwhile skips it.
             self._interrupted = True
             raise
         finally:
@@ -267,7 +267,7 @@ class _WaveRun:
                     break
             return tuple(outcomes)
         except KeyboardInterrupt:
-            # Set before the queued changes are cancelled, so a worker taking one meanwhile skips it.
+            # Set before the queued changes are canceled, so a worker taking one meanwhile skips it.
             self._interrupted = True
             raise
         finally:
@@ -295,7 +295,7 @@ class _WaveRun:
 
     def _wait_for_started(self) -> None:
         """Wait for the interrupted wave's running changes; a second interrupt halts them first."""
-        # A change cancelled before it started is never done for `wait`, which would block on it
+        # A change canceled before it started is never done for `wait`, which would block on it
         # for ever; every other was taken by a worker, so it ends.
         started = [future for _, future in self._started if not future.cancelled()]
         try:

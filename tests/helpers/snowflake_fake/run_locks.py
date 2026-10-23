@@ -2,7 +2,7 @@
 
 `InMemoryRunLocks` keeps one row per (state table, target). Each operation, a claim, an
 extension, a release, a verification, or a fence check, is one critical section that reads and then decides,
-as each runs in the connector as one transaction that serialises on the lock table's mutex row
+as each runs in the connector as one transaction that serializes on the lock table's mutex row
 before it reads; every claim that wins is issued the next generation. Time is a number of
 seconds the test controls through `now`.
 """

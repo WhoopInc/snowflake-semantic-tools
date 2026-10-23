@@ -8,7 +8,7 @@ reads.
 
 - Credentials of any kind: passwords, tokens, private keys and their passphrases, and the
   values of environment variables that hold them.
-- The Snowflake account: its identifier or locator, organisation name, region, and any
+- The Snowflake account: its identifier or locator, organization name, region, and any
   `*.snowflakecomputing.com` host.
 - People: user names, email addresses, and names in comments, commit messages, or
   `verified_by` fields.

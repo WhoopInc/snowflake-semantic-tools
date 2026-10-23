@@ -65,7 +65,7 @@ def test_unexpected_json_failure_emits_one_error_document(tmp_path: Path, monkey
     assert payload["diagnostics"][0]["message"] == "internal error: RuntimeError: unexpected failure"
 
 
-def test_a_recognised_snowflake_failure_is_reported_as_its_diagnostic(
+def test_a_recognized_snowflake_failure_is_reported_as_its_diagnostic(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = project_copy(tmp_path, offline=False)
@@ -181,7 +181,7 @@ def test_a_failing_human_report_fails_the_command_like_its_body() -> None:
                 sqlstate="02000",
             ),
             1,
-            "error[SST-SNO003]: DB.MISSING does not exist or is not authorised",
+            "error[SST-SNO003]: DB.MISSING does not exist or is not authorized",
             1,
             ["SST-SNO003"],
             id="port-error-not-found",
@@ -276,16 +276,16 @@ def test_each_exception_ends_the_run_with_its_exit_code(
 @pytest.mark.parametrize(
     ("error", "logged"),
     [
-        pytest.param(SnowflakePortError("some unknown failure"), ["SST-SNO001"], id="unrecognised"),
+        pytest.param(SnowflakePortError("some unknown failure"), ["SST-SNO001"], id="unrecognized"),
         pytest.param(
             SnowflakePortError("003001 (42501): Insufficient privileges to operate on schema 'S'", errno=3001),
             ["SST-SNO004"],
-            id="recognised",
+            id="recognized",
         ),
         pytest.param(
             SnowflakePortError("refused", diagnostic=D("SST-PRT001", value="acme", detail="refused")),
             ["SST-SNO001"],
-            id="own-diagnostic-unrecognised",
+            id="own-diagnostic-unrecognized",
         ),
         pytest.param(
             SnowflakePortError(
@@ -294,7 +294,7 @@ def test_each_exception_ends_the_run_with_its_exit_code(
                 diagnostic=D("SST-PRT004", value="the session's role", detail="a privilege"),
             ),
             ["SST-SNO004"],
-            id="own-diagnostic-recognised",
+            id="own-diagnostic-recognized",
         ),
     ],
 )

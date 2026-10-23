@@ -27,7 +27,7 @@ def esc(value: object) -> str:
 
 
 def pill(state: str, label: str) -> str:
-    """Return a labelled pill for a figure not known yet, `state` ``pending`` or ``unavailable``.
+    """Return a labeled pill for a figure not known yet, `state` ``pending`` or ``unavailable``.
 
     The label is escaped; `state` names a class and must be one of the two, never report text.
     """

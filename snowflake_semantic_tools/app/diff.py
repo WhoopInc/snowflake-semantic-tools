@@ -134,7 +134,7 @@ def live_states(
 
 
 def compiled_definitions(result: CompileResult, names: NameMap) -> dict[str, Definition]:
-    """Return what each compiled artifact renders, member by member, its names labelled by `names`."""
+    """Return what each compiled artifact renders, member by member, its names labeled by `names`."""
     definitions: dict[str, Definition] = {}
     for item in result.compiled:
         comparison = _COMPARED.get(item.artifact_type)
@@ -203,11 +203,11 @@ def live_definitions(
 def name_map(result: CompileResult) -> NameMap:
     """Return each physical name a target's compile names, mapped to the label it has on every target.
 
-    An artifact's object is labelled by its key, `semantic_view:sales`, and each other object it
+    An artifact's object is labeled by its key, `semantic_view:sales`, and each other object it
     spans by its key and type, `eval:a:table`; a stage by `stage:<name>`; a dbt model's relation by
     `ref('<model>')`. An object outside the project an agent's tool or skill names, or an agent
     another team owns that a CoWork profile routes to, which each target may name differently,
-    is labelled by the tool or skill, `tool:lookup`, unless one of those names it already. A
+    is labeled by the tool or skill, `tool:lookup`, unless one of those names it already. A
     name two labels claim is left out, so it stays physical.
     """
     claims: dict[tuple[str, str, str], set[str]] = {}
@@ -260,7 +260,7 @@ def _agent_references(agent: CompiledAgent) -> Iterator[tuple[QualifiedName, str
 def _profile_references(profile: CompiledCoworkProfile) -> Iterator[tuple[QualifiedName, str]]:
     """Each partner agent a CoWork profile routes to, by its tool member, then each of its skills' paths.
 
-    An agent this project publishes is labelled by its own key already, as every compiled target is.
+    An agent this project publishes is labeled by its own key already, as every compiled target is.
     """
     for subagent in profile.resolved.subagents:
         # Only an external subagent resolved through a tool member.
@@ -270,7 +270,7 @@ def _profile_references(profile: CompiledCoworkProfile) -> Iterator[tuple[Qualif
 
 
 def _skill_references(skills: tuple[AgentSkill, ...]) -> Iterator[tuple[QualifiedName, str]]:
-    """Each three-part name the skills' paths hold, labelled by the extension it names."""
+    """Each three-part name the skills' paths hold, labeled by the extension it names."""
     for skill in skills:
         name = _qualified(skill.path)
         if name is not None:

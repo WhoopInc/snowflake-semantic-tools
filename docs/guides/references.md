@@ -97,7 +97,7 @@ an error (`SST-PRS126`).
 
 ### CoWork profiles
 
-CoWork profiles are a Snowflake private preview, and so are these fields.
+CoWork profiles are a Snowflake private preview[^preview], and so are these fields.
 
 | Field | Function | A name that resolves to nothing |
 |---|---|---|
@@ -249,3 +249,5 @@ These fields are not references, and take no template call:
 | SQL and prose outside the calls they hold | Only the calls are resolved; the rest renders as written. |
 | An artifact's own `name:` | It declares the name other files reference, so it is the target, not a reference. |
 | `project.*_dir` | Folder paths are configuration, read before any template resolves. |
+
+[^preview]: A Snowflake private preview, as of 2026-10-23.

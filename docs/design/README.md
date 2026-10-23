@@ -8,10 +8,8 @@ How to use SST is in the [concepts](../concepts.md) and the guides under
 
 **Pages**
 
-- [Decisions](decisions.md): the design choices, each with the alternative it
-  rejected and what would reopen it.
 - [Architecture](architecture.md): the rings, the pipeline, and how an artifact type plugs in.
-- [Snowflake behaviour](snowflake-behaviour.md): what Snowflake does that the engine compensates for.
+- [Snowflake behavior](snowflake-behavior.md): what Snowflake does that the engine compensates for.
 - [dbt compatibility](dbt-compatibility.md): the seam between SST and dbt.
 - [Diagnostics](diagnostics.md): how problems are coded, ranked, and reported.
 - [Model comparison report](compare-report-schema.md): the `sst.compare/1` schema of `compare.json`.
@@ -21,7 +19,7 @@ How to use SST is in the [concepts](../concepts.md) and the guides under
 SST is a command-line compiler and publisher for a Snowflake semantic layer kept
 as code in a dbt project. From files beside the dbt models it builds semantic
 views, the tools agents call, Cortex Agents, Snowflake CoWork profiles (a
-private preview), their evaluations, skills, plugins, and CoCo Desktop profiles. It validates them offline, saves a reviewable plan of
+private preview[^preview]), their evaluations, skills, plugins, and CoCo Desktop profiles. It validates them offline, saves a reviewable plan of
 what would change in Snowflake, and applies exactly that plan.
 
 The command line is the interface. The package exports nothing but its version.
@@ -102,7 +100,7 @@ Drawn from: [manifest](../../snowflake_semantic_tools/domain/state/manifest.py),
   to, runs queries only to check them -- syntax checks, connected validation,
   smoke probes, evaluation runs -- and to read what `sst enrich` derives.
 - **Not a UI.** It is a CLI whose JSON output is a contract for CI.
-- **Not a library.** There is no Python API; new behaviour is a command or an
+- **Not a library.** There is no Python API; new behavior is a command or an
   option.
 - **Not a manager of the account.** Databases, warehouses, and roles exist
   before SST runs. Beyond the objects it publishes, SST creates only what
@@ -121,3 +119,5 @@ Drawn from: [dbt invocation](../../snowflake_semantic_tools/adapters/dbt/invoke.
 [state table](../../snowflake_semantic_tools/adapters/snowflake/connector/state_table.py),
 [eval state](../../snowflake_semantic_tools/adapters/snowflake/eval_state.py),
 [package root](../../snowflake_semantic_tools/__init__.py).
+
+[^preview]: A Snowflake private preview, as of 2026-10-23.

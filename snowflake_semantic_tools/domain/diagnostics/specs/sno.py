@@ -10,7 +10,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-SNO001",
         Severity.ERROR,
-        "Snowflake refused and SST does not recognise the refusal",
+        "Snowflake refused and SST does not recognize the refusal",
         "Snowflake refused: {detail}",
         "read internal_detail; if this recurs, add a signature",
         internal_detail=True,
@@ -37,8 +37,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-SNO003",
         Severity.ERROR,
-        "Object does not exist or is not authorised",
-        "{value} does not exist or is not authorised",
+        "Object does not exist or is not authorized",
+        "{value} does not exist or is not authorized",
         "publish the object, or grant access",
         condition=(
             "Snowflake reported error 2003 (SQLSTATE 02000), SQLSTATE 42S02, or a message saying "
@@ -67,8 +67,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-SNO005",
         Severity.ERROR,
-        "Schema does not exist or is not authorised",
-        "schema {value} does not exist or is not authorised",
+        "Schema does not exist or is not authorized",
+        "schema {value} does not exist or is not authorized",
         "create the schema, or correct the target",
         condition="Snowflake reported error 2043, or a message saying `schema '<name>' does not exist`",
         note="Plan reports a missing schema first, as SST-PLN010.",
@@ -77,8 +77,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-SNO006",
         Severity.ERROR,
-        "Database does not exist or is not authorised",
-        "database {value} does not exist or is not authorised",
+        "Database does not exist or is not authorized",
+        "database {value} does not exist or is not authorized",
         "create the database, or correct the target",
         condition="Snowflake reported a message saying `database '<name>' does not exist`",
         note="Plan reports a missing database first, as SST-PLN011.",
@@ -87,8 +87,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-SNO007",
         Severity.ERROR,
-        "Warehouse does not exist or is not authorised",
-        "warehouse {value} does not exist or is not authorised",
+        "Warehouse does not exist or is not authorized",
+        "warehouse {value} does not exist or is not authorized",
         "grant USAGE, or name an existing warehouse",
         condition="Snowflake reported a message saying `warehouse '<name>' does not exist`",
         note="Plan reports an unusable warehouse first, as SST-PLN012.",
@@ -236,7 +236,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Concurrent DDL or lock timeout",
         "lock timeout on {value}",
-        "retry, or serialise the publishers",
+        "retry, or serialize the publishers",
         condition="Snowflake reported a lock timeout or wait, a deadlock, or a concurrent change",
         note="Plan warns of an object another session holds a lock on as SST-PLN019.",
         precheck=Precheck.RUNTIME,

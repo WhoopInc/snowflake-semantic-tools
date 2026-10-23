@@ -82,13 +82,13 @@ def compare_subject(
 
 
 def publish(port: FakeSnowflake, subject: CompareSubject, *, earlier: tuple[AgentVersion, ...] = ()) -> AppliedEntry:
-    """Stage the subject on `port` as apply leaves it, its versions modelled; return the state entry.
+    """Stage the subject on `port` as apply leaves it, its versions modeled; return the state entry.
 
     Args:
         earlier: Versions an earlier comparison committed, listed after the release.
     """
     target = subject.target
-    port.modelled_agents.add(target.sql)
+    port.modeled_agents.add(target.sql)
     port.show(
         ShowRow(
             target.name.value,

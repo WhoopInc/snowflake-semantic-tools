@@ -1,8 +1,8 @@
 """The CLI's own goldens: what `sst` prints for a few runs of the reference project, per terminal.
 
 Each case is one command line, run in-process on a fresh copy of the reference project, and
-each variant one terminal: colour on, plain, ASCII only, and 80 columns. The text is
-normalised before it is compared or written -- the project's temporary path becomes
+each variant one terminal: color on, plain, ASCII only, and 80 columns. The text is
+normalized before it is compared or written -- the project's temporary path becomes
 `<project>`, a run's seconds `<n>s` -- so a golden changes only when what `sst` prints does.
 `tests/unit/cli/test_cli_goldens.py` compares them; `python -m tests.helpers.cli_goldens`
 rewrites them (refused in CI, as `update_goldens` is).
@@ -284,7 +284,7 @@ CASES = (
 
 
 def render_case(case: Case, variant: str, root: Path) -> str:
-    """Run `case` on the `variant` terminal in a project under `root`; return the normalised transcript."""
+    """Run `case` on the `variant` terminal in a project under `root`; return the normalized transcript."""
     project = case.prepare(root)
     manifest = common(project)[3]
     args = [manifest if arg == "<manifest>" else arg.replace("<project>", project.as_posix()) for arg in case.args]
@@ -303,12 +303,12 @@ def render_case(case: Case, variant: str, root: Path) -> str:
     head = f"$ sst {' '.join(case.args)}\n--- exit {result.exit_code}\n"
     if case.data_only:
         data = json.dumps(json.loads(result.stdout)["data"], indent=2, ensure_ascii=False)
-        return normalised(f"{head}--- data\n{data}\n", project)
+        return normalized(f"{head}--- data\n{data}\n", project)
     text = f"{head}--- stdout\n{result.stdout}--- stderr\n{result.stderr}"
-    return normalised(text, project)
+    return normalized(text, project)
 
 
-def normalised(text: str, project: Path) -> str:
+def normalized(text: str, project: Path) -> str:
     """Replace what varies between runs: the project's path, a temporary directory, and seconds."""
     for path in {project.as_posix(), project.resolve().as_posix()}:
         text = text.replace(path, "<project>")

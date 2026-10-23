@@ -1,4 +1,4 @@
-"""Reconcile authoritative remote state with the local cache, and summarise what a plan found changed.
+"""Reconcile authoritative remote state with the local cache, and summarize what a plan found changed.
 
 `read_state` returns the state a run starts from; `change_summary` counts, per artifact type,
 what change detection found against it.

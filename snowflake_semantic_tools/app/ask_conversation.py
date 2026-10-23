@@ -92,7 +92,7 @@ class AskConversation:
     def cancel(self) -> bool:
         """Cancel the turn in flight; False when there is none, or it had already ended.
 
-        A turn whose run id has not arrived yet is cancelled as soon as it does. The thread
+        A turn whose run id has not arrived yet is canceled as soon as it does. The thread
         follows the partial reply the cancel saved.
         """
         if self.turn.finished:
@@ -129,7 +129,7 @@ def turn_diagnostics(artifact_key: str, turn: Turn) -> tuple[Diagnostic, ...]:
 
     Diagnostics:
         SST-ASK010: Snowflake refused the run because a tool is missing or unreachable.
-        SST-ASK002: the run failed, or ended other than completed or cancelled.
+        SST-ASK002: the run failed, or ended other than completed or canceled.
     """
     error = turn.error
     if isinstance(error, RunError):

@@ -5,7 +5,7 @@ the one run that may apply to it. Both live in the state table's schema. Their t
 the connector's choice and is described where the connector creates them.
 
 The lock is mutual exclusion by construction: claiming, extending, releasing, and writing
-state each run as one transaction that serialises with every other one on the lock table
+state each run as one transaction that serializes with every other one on the lock table
 before it reads anything, so each decides on what the previous one committed. A claim that
 wins is issued a `LockFence`; only its holder may extend or release the lock or write state.
 """
@@ -62,7 +62,7 @@ class StatePort(Protocol):
     ) -> bool:
         """Apply one run's change to a target's entries in one transaction, while `fence` holds the lock.
 
-        The transaction first serialises with every lock operation, then checks that the
+        The transaction first serializes with every lock operation, then checks that the
         target's lock row still records `fence`; only then does each upsert run as one MERGE
         on the target and artifact key, each delete as one DELETE, and every row of the target
         record `manifest_id`. A takeover therefore lands wholly before the write, which then
@@ -102,7 +102,7 @@ class StatePort(Protocol):
     ) -> LockAcquisition:
         """Take the target's run lock for `claim` unless another run holds it, without waiting for it.
 
-        In one transaction that has serialised with every other lock operation, the target's
+        In one transaction that has serialized with every other lock operation, the target's
         row is read and judged: a free lock is taken, an expired one only with `break_stale`,
         and a live one never. Of any number of runs racing for one lock, exactly one wins.
         Expiry is judged by Snowflake's clock, never this machine's. Waiting for a rival's

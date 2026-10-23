@@ -191,16 +191,16 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-LOD020",
         Severity.WARNING,
-        "Unrecognised file extension accepted",
+        "Unrecognized file extension accepted",
         "{file} uses '{found}'",
-        "standardise on .yml",
+        "standardize on .yml",
         condition="a discovered file uses an extension SST tolerates other than `.yml` and `.yaml`, such as `.YML`",
     ),
     spec(
         "SST-LOD021",
         Severity.ERROR,
-        "Document declares no recognised root key",
-        "{file} declares no recognised root key",
+        "Document declares no recognized root key",
+        "{file} declares no recognized root key",
         "add the artifact's root key",
         condition=(
             "the root mapping has keys and none is a registered artifact type's root key; when only "
@@ -243,8 +243,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-LOD202",
         Severity.INFO,
-        "Line-ending normalisation applied on read",
-        "{file} normalised {count} line endings on read",
+        "Line-ending normalization applied on read",
+        "{file} normalized {count} line endings on read",
         None,
         condition="CRLF line endings were read as LF in memory; the file itself is left as it is",
     ),

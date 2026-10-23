@@ -242,7 +242,7 @@ def _render_fields(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
 def _handler_keys(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
     """Report each key only a Java, Python or Scala routine takes, set on one in another language.
 
-    A language SST does not recognise is SST-PRS013's, so it is not checked here.
+    A language SST does not recognize is SST-PRS013's, so it is not checked here.
     """
     emit = Emitter(subject=subject, origin=member.origin, artifact=subject)
     language = (member.language or "").strip().casefold()

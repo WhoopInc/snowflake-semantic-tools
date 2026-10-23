@@ -115,7 +115,7 @@ def _canonical(text: str, path: str, *, sanitize: bool) -> str:
         _name_first_in_roots(document)
         _canonicalise(document, sanitize=sanitize, parent_key=None)
     if sanitize:
-        expected = [_sanitised_value(document) for document in documents]
+        expected = [_sanitized_value(document) for document in documents]
     stream = io.StringIO()
     if len(documents) == 1:
         yaml.dump(documents[0], stream)
@@ -231,7 +231,7 @@ def _literal(value: object) -> object:
     return LiteralScalarString(str(value))
 
 
-def _sanitised_value(node: object) -> object:
+def _sanitized_value(node: object) -> object:
     """Load the plain value of a node the round-trip loader built, for the semantic check."""
     stream = io.StringIO()
     _layout().dump(node, stream)

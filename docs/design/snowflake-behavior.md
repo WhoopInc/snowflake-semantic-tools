@@ -1,13 +1,13 @@
-# Snowflake behaviour SST depends on
+# Snowflake behavior SST depends on
 
 SST renders and publishes Snowflake objects, so its code encodes how the
-Snowflake server behaves. In several places that behaviour contradicts
+Snowflake server behaves. In several places that behavior contradicts
 Snowflake's published documentation, or the documentation says nothing about
 it. Code written against the server can therefore look wrong to someone reading
 the docs. A maintainer who "fixes" it to match the docs reintroduces a defect the
 code was written to avoid.
 
-This page records each such behaviour: what the docs say, what the server does,
+This page records each such behavior: what the docs say, what the server does,
 how strongly SST's own tests hold the dependency in place, where the code relies
 on it, and how to check it again. The working rule is **docs for the grammar,
 probe for whether the server agrees**. The documentation is the cheapest source
@@ -16,7 +16,7 @@ it, and answers queries over it.
 
 ## How to read an entry
 
-Each behaviour is a `###` heading with four fields:
+Each behavior is a `###` heading with four fields:
 
 - **Docs say**: the claim in Snowflake's published documentation, or the fact
   that it says nothing.
@@ -24,14 +24,14 @@ Each behaviour is a `###` heading with four fields:
 - **Evidence**: one of two grades.
   - `Enforced`: a code site and an offline test pin SST's side of the
     dependency, so changing the code to follow the docs fails a test. Both are
-    linked. The test runs offline: it proves SST still depends on the behaviour,
+    linked. The test runs offline: it proves SST still depends on the behavior,
     not that the server still has it.
-  - `Observed`: the code relies on the behaviour, but no automated check would
+  - `Observed`: the code relies on the behavior, but no automated check would
     fail if the code were changed. The entry gives a probe to run instead.
 - **SST depends on it at**: the code, tests, and user docs that rely on it.
 
 Probe sketches use placeholder names. Run them only in a disposable scratch
-schema, as [Re-checking a behaviour](#re-checking-a-behaviour) describes.
+schema, as [Re-checking a behavior](#re-checking-a-behavior) describes.
 
 ## Semantic views
 
@@ -92,7 +92,7 @@ right.
 **Server does**: `COMMENT '<text>'` on a variable is a syntax error, reported at
 the string literal rather than at `COMMENT`, so it reads as a bad string.
 `COMMENT = '<text>'` is accepted. An `=` after either AI clause is a syntax
-error. The rule is per clause and does not generalise in either direction.
+error. The rule is per clause and does not generalize in either direction.
 
 **Evidence**: `Enforced`. `test_variable_default_is_rendered_verbatim` in
 [test_render_semantic_view.py](../../tests/unit/test_render_semantic_view.py)
@@ -199,7 +199,7 @@ and appends `COPY GRANTS`. Text of another shape is kept as returned, under a
 comment saying what to fix by hand. The
 [CI/CD guide](../guides/ci-cd.md#recording-what-an-update-replaces) says to run
 the recorded text as it is only for a semantic view, and only for that form; since
-this behaviour is `Observed`, so is that advice. Nothing here records whether
+this behavior is `Observed`, so is that advice. Nothing here records whether
 `GET_DDL`'s text for a search service, procedure or function re-executes, so the
 guide says to review those before running them. The
 [golden README](../../tests/golden/README.md) warns that a golden and a `GET_DDL`
@@ -302,7 +302,7 @@ metric. The same query against a public dimension succeeds.
 
 **Evidence**: `Enforced`, in the other direction. SST refuses a private dimension
 (SST-VAL222), and the reason is now a house rule rather than the grammar. It
-would depend on behaviour the vendor's docs deny, which could be removed without
+would depend on behavior the vendor's docs deny, which could be removed without
 notice. Do not loosen SST-VAL222 on the strength of the server.
 [test_sst_val222.py](../../tests/codes/val/test_sst_val222.py).
 
@@ -820,7 +820,7 @@ account in October 2026.
 
 ## CoWork profiles (private preview)
 
-CoWork profiles are a Snowflake private preview (PrPr), documented in
+CoWork profiles are a Snowflake private preview[^preview] (PrPr), documented in
 [About profiles in Snowflake CoWork](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles) and
 [Set up profile routing in Snowflake CoWork](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing). Each entry below was
 measured on an account enrolled in the preview, routing through
@@ -1072,7 +1072,7 @@ attempt's run name carries its timestamp and attempt number, as
 
 **Docs say**: nothing. The published SQL reference has no
 `CREATE CORTEX EXTENSION` or `ALTER CORTEX EXTENSION` page, and `GET_DDL` reads
-no extension. Every behaviour in this section comes from probing.
+no extension. Every behavior in this section comes from probing.
 
 **Server does**: `CREATE CORTEX EXTENSION ... FROM <location> VERSION <alias>`
 must put `FROM` and `VERSION` before `TYPE`. The name given to `ADD VERSION`
@@ -1340,7 +1340,7 @@ without access to ACCOUNT_USAGE or the events table is refused the read.
 **Evidence**: `Enforced`. The comparison reads both views once each, binding
 every id as one JSON array; a request with no row yet is `pending`, a null SQL
 credit younger than eight hours is `pending`, a refused read is `unavailable`
-(SST-VAL773, SST-VAL774), and a profile's cost is labelled its router's
+(SST-VAL773, SST-VAL774), and a profile's cost is labeled its router's
 (SST-VAL776). [test_usage_port.py](../../tests/contract/test_usage_port.py),
 [test_eval_compare_cost.py](../../tests/unit/app/test_eval_compare_cost.py),
 [test_sst_val776.py](../../tests/codes/val/test_sst_val776.py).
@@ -1452,10 +1452,10 @@ Agents, skills, plugins, profiles and evals are never replaced. SST never sends
 
 ## Roles and privileges
 
-### CREATE is authorised by the primary role alone
+### CREATE is authorized by the primary role alone
 
-**Docs say**: a session's secondary roles authorise any SQL action except
-`CREATE <object>`, which is authorised by the primary role alone.
+**Docs say**: a session's secondary roles authorize any SQL action except
+`CREATE <object>`, which is authorized by the primary role alone.
 `IS_ROLE_IN_SESSION` reports a role active through the primary role or a
 secondary role.
 
@@ -1614,9 +1614,9 @@ which the state and lock table creates and `sst state convert`
 ([connector/convert.py](../../snowflake_semantic_tools/adapters/snowflake/connector/convert.py))
 share; [concepts](../concepts.md).
 
-## Re-checking a behaviour
+## Re-checking a behavior
 
-A behaviour here can change in any Snowflake release, with or without a change
+A behavior here can change in any Snowflake release, with or without a change
 to the docs. Re-check an entry when Snowflake ships a release that touches the
 object, before relying on it in a new feature, or when a user reports something
 that contradicts it. A check has three legs:
@@ -1645,7 +1645,7 @@ Probes come in three kinds, and the kind must match the claim:
   not evidence: the derived-metric and distinct-range entries both pass `CREATE`
   and fail, or give wrong numbers, only at query time.
 
-A probe whose own artifacts could look like the vendor's behaviour proves
+A probe whose own artifacts could look like the vendor's behavior proves
 nothing. Check that a failure is not a stray terminator, a padding character that
 appears in a keyword, or a pattern that matches part of a correct value.
 
@@ -1674,3 +1674,5 @@ So the live suite confirms `COPY GRANTS` on a semantic view, that the
 renderer's simplest output is accepted, and that a procedure's drift digest is
 stable across reads. It exercises nothing else on this page.
 Every other entry is held offline or by the probes above.
+
+[^preview]: A Snowflake private preview, as of 2026-10-23.

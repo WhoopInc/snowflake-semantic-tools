@@ -38,7 +38,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Query timed out",
         "query timed out after {detail}",
         "retry; this is retryable",
-        condition="a statement times out or is cancelled, or the connection drops while it runs",
+        condition="a statement times out or is canceled, or the connection drops while it runs",
         precheck=Precheck.RUNTIME,
     ),
     spec(
@@ -205,7 +205,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Run interrupted",
         "interrupted after {detail}; {value}",
         "after apply, run sst plan to see what remains; an eval run already started keeps running in "
-        "Snowflake until it ends or is cancelled there",
+        "Snowflake until it ends or is canceled there",
         condition=(
             "the user interrupts a run, with Ctrl-C, SIGTERM or SIGHUP, or declines a confirmation "
             "prompt; the run exits 130. An interrupted `apply` starts no further change, records in "

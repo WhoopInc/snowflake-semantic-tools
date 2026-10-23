@@ -15,7 +15,7 @@ from snowflake_semantic_tools.domain.resolve.calls import syntax_problem
 
 
 def _as_str_tuple(value: Any, *, subject: str, field: str, origin: Origin | None = None) -> tuple[str, ...]:
-    """Normalise a YAML scalar-or-list into a tuple of strings.
+    """Normalize a YAML scalar-or-list into a tuple of strings.
 
     Numbers are stringified because `sample_values: [1100, 700]` is authored as
     integers but renders as `'1100', '700'` -- YAML typing is not SQL typing.

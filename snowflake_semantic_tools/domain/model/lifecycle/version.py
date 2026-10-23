@@ -5,7 +5,7 @@ from, `<sha>-dirty` when the project had uncommitted changes, and the fingerprin
 specification alone. Plan reads the fingerprint back from
 SHOW VERSIONS IN AGENT to tell whether the newest committed version already holds the
 specification being planned, so a change to only the agent's comment, profile, tags, alias or
-`secure` moves no version. A version committed before SST wrote the fingerprint is recognised
+`secure` moves no version. A version committed before SST wrote the fingerprint is recognized
 by its specification instead, when the role may read it.
 
 An eval-model comparison commits versions of a published agent too, to evaluate an

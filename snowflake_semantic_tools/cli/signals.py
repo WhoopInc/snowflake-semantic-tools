@@ -33,7 +33,7 @@ _received: list[str] = []
 def terminated_as_interrupt() -> Iterator[None]:
     """Raise SIGTERM and SIGHUP in the block as `KeyboardInterrupt`, ignoring them after any interrupt.
 
-    Ctrl-C keeps Python's own behaviour, raising each time; SIGINT is not taken over when it is
+    Ctrl-C keeps Python's own behavior, raising each time; SIGINT is not taken over when it is
     ignored, as it is for a job a non-interactive shell started in the background, and SIGTERM
     or SIGHUP is not taken over when it is ignored, as `nohup` leaves SIGHUP. Each replaced
     handler is restored when the block ends. Outside the main thread no handler can be set, so

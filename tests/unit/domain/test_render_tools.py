@@ -70,7 +70,7 @@ def test_routine_renderers_include_copy_grants_and_sidecar_body() -> None:
     assert rendered.grant_preservation is GrantPreservation.CLAUSE
 
     function = member(
-        name="normalise",
+        name="normalize",
         type="function",
         language="python",
         runtime_version="3.11",
@@ -79,8 +79,8 @@ def test_routine_renderers_include_copy_grants_and_sidecar_body() -> None:
         returns="VARCHAR",
         signature=(ToolParameter("value", "VARCHAR"),),
     )
-    rendered = render_tool(function, QualifiedName.parse("DB.S.NORMALISE"), None)
-    assert "CREATE OR REPLACE FUNCTION DB.S.NORMALISE(VALUE VARCHAR)" in rendered.ddl
+    rendered = render_tool(function, QualifiedName.parse("DB.S.NORMALIZE"), None)
+    assert "CREATE OR REPLACE FUNCTION DB.S.NORMALIZE(VALUE VARCHAR)" in rendered.ddl
     assert "EXECUTE AS" not in rendered.ddl
 
 

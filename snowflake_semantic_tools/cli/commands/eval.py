@@ -400,7 +400,7 @@ def _scratch_agent(
 def _print_eval_progress(event: EvalProgressEvent) -> None:
     """Show one eval progress event: as a row of the live block on a terminal, else as a line.
 
-    On a terminal each run is a unit, labelled with its eval's key, whose status the events
+    On a terminal each run is a unit, labeled with its eval's key, whose status the events
     change, and which leaves one finished line when it ends; the heartbeat says nothing the rows
     do not. A status read that failed or timed out is also printed as a warning, so it outlives
     the row. Elsewhere each event prints as its line, a failed or timed-out read as a warning.

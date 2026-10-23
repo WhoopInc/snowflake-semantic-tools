@@ -51,7 +51,7 @@ def test_each_agent_names_its_folder_and_skills_root() -> None:
     ]
 
 
-def test_a_digest_is_a_labelled_sha256_of_the_bytes() -> None:
+def test_a_digest_is_a_labeled_sha256_of_the_bytes() -> None:
     assert content_digest(b"abc") == "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 
 

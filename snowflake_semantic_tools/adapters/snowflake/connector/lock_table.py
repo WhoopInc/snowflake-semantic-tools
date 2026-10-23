@@ -2,7 +2,7 @@
 
 `run_lock` claims, extends and releases the lock; `state_table` writes state only while the
 writer's fence holds it. Both open their transaction through `_lock_transaction`, and
-`run_lock` explains why that makes them serialise. What the transaction locks first depends
+`run_lock` explains why that makes them serialize. What the transaction locks first depends
 on the kind of table `state.+table_kind` names:
 
 - A standard table's transaction first writes the table's mutex row, which has the empty
@@ -158,9 +158,9 @@ def create_refusal(
     """Return the error naming why Snowflake would not create `table` as a `kind` table; None otherwise.
 
     Only a failed CREATE of a hybrid table counts, never a migration, copy, or rename that ran
-    in the same script. The transient schema's error is recognised by its number; an account's
+    in the same script. The transient schema's error is recognized by its number; an account's
     refusal of hybrid tables, whose number is not measured, by a message that names them (see
-    docs/design/snowflake-behaviour.md).
+    docs/design/snowflake-behavior.md).
 
     Diagnostics:
         SST-APL030: the hybrid table falls in a transient database or schema.
@@ -191,7 +191,7 @@ def generation(value: object) -> int:
 
 
 class LockTableMethods(Session):
-    """Create the lock table, and run transactions on it that serialise with every rival one."""
+    """Create the lock table, and run transactions on it that serialize with every rival one."""
 
     # The tables this session found to be of the kind it was configured with; checked once each.
     _kinds_checked: frozenset[str] = frozenset()

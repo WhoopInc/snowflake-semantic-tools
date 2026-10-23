@@ -11,7 +11,7 @@ A run that does several units of work at once (eval runs, smoke probes, the chan
 publishes) reports each unit as it starts, changes and ends. Each unit in flight is one row of
 the live block, above the line, in the order they started: a spinner, its key, its status and
 its time. A unit that ends leaves the block and prints once as a finished line (`✓` or `✗`, its
-status and time), so only work in flight is live and a long suite is never summarised. When
+status and time), so only work in flight is live and a long suite is never summarized. When
 more units are in flight than the terminal has rows, the block shows the first ones and
 `+N more running`. Without a terminal, in CI, each unit prints its finished line only.
 

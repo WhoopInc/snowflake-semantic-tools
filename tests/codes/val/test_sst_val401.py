@@ -1,4 +1,4 @@
-"""SST-VAL401: a filter labelled `filter` has an expression that is not boolean."""
+"""SST-VAL401: a filter labeled `filter` has an expression that is not boolean."""
 
 from __future__ import annotations
 

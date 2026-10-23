@@ -137,11 +137,11 @@ def checked_text(text: str) -> str:
     """
     if not isinstance(text, str):
         raise TypeError(f"authored SQL must be str, found {type(text).__name__}")
-    normalised = text.replace("\r\n", "\n")
-    for offset, character in enumerate(normalised):
+    normalized = text.replace("\r\n", "\n")
+    for offset, character in enumerate(normalized):
         if character not in "\t\n" and unicodedata.category(character) in _AMBIGUOUS_CATEGORIES:
-            raise UnsafeSqlError(offset, f"control character {character!r} is not allowed", normalised)
-    checked = "\n".join(line.rstrip() for line in normalised.split("\n"))
+            raise UnsafeSqlError(offset, f"control character {character!r} is not allowed", normalized)
+    checked = "\n".join(line.rstrip() for line in normalized.split("\n"))
     if not checked.strip():
         raise UnsafeSqlError(0, "the SQL is empty", checked)
     return checked

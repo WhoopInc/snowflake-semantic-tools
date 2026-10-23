@@ -13,7 +13,7 @@ def test_sst_pln011_fires() -> None:
     planned = plan((view("sales"),), preflight=Preflight("dev", "DEPLOYER", missing_databases=frozenset(("DB",))))
     [diagnostic] = coded(planned.diagnostics, "SST-PLN011")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "database DB does not exist or is not authorised"
+    assert diagnostic.message == "database DB does not exist or is not authorized"
     assert coded(planned.diagnostics, "SST-PLN010") == []
     assert planned.changes[0].action is Action.BLOCKED
 

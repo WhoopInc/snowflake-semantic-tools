@@ -1,4 +1,4 @@
-"""SST-VAL320: plan would compare a recorded definition that was never normalised."""
+"""SST-VAL320: plan would compare a recorded definition that was never normalized."""
 
 from __future__ import annotations
 

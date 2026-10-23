@@ -7,7 +7,7 @@ how it is published.
 
 To route a group's questions across several agents in Snowflake CoWork, publish
 a [CoWork profile](cowork-profiles.md) that names them; profiles are a
-[Snowflake private preview](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles).
+[Snowflake private preview](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles)[^preview].
 
 ## Layout
 
@@ -222,6 +222,13 @@ Each `spec.tools` entry is one tool. SST splits it into the spec's `tools` and
 | `agent_toolset` | `agent: "{{ agent('<name>') }}"`, or `identifier: "{{ tool('<name>') }}"`, an `agent` tool member; see [agent toolsets](#agent-toolsets). |
 | `data_to_chart`, `web_search`, `code_execution` | Built-ins: no resources. Unnamed, a built-in is named after its type, and `web_search` must be named `web_search` (`SST-VAL517`). |
 
+You do not need to declare `data_to_chart` for an agent to draw charts. An agent
+whose spec lists only a `cortex_analyst_text_to_sql` tool still called
+`data_to_chart` and returned a chart when asked for one, exactly as an agent that
+declares it did (measured on a live account, with orchestration
+`auto`; a pinned orchestration model was not measured). Declaring it does no
+harm.
+
 - `type: mcp` is refused (`SST-VAL559`): Snowflake accepts it in `CREATE AGENT`,
   then every run of the agent fails with "Tool type mcp is not valid". Snowflake
   attaches an MCP server with the spec's top-level `mcp_servers:` key instead,
@@ -270,6 +277,14 @@ Each `spec.tools` entry is one tool. SST splits it into the spec's `tools` and
   `PARSE_JSON`. The same routine stays valid for any other caller.
 
 ### Tool members
+
+If you know dbt, a tool member works like a dbt source. You declare the object
+once, in one file, and everything else names it by its project name,
+`{{ tool('<name>') }}`, never by its database and schema. A member SST
+publishes is like a model; a member that writes `relations:` points at an
+object someone else owns, like a source. The one difference from a dbt source is
+that `relations:` names the object for each target rather than once, so a `dev`
+run can never quietly call a `prod` object.
 
 Every object a search, generic, or toolset tool calls is declared once as a
 **tool member** under `project.tools_dir`, in any folder below it, and
@@ -714,7 +729,7 @@ eval baseline taken against that version stays valid. The eval gate reads the
 fingerprint too: a baseline stays valid for any later version whose comment
 carries the fingerprint it was captured on, as one a revert or restore commits
 does ([evals guide](evals.md#when-a-baseline-stops-matching)). A version committed
-before SST wrote the fingerprint is recognised by its specification, when the
+before SST wrote the fingerprint is recognized by its specification, when the
 role may read it; a secure agent's version the role cannot read gets a new
 version, as before.
 
@@ -917,3 +932,5 @@ For the evaluation service itself, a baseline, or an edited view tried with the
 agent, publish to a [per-developer target](evals.md#a-per-developer-target). An
 agent may live in a personal `USER$<user>.PUBLIC` schema, but its evals may not
 (`SST-VAL766`).
+
+[^preview]: A Snowflake private preview, as of 2026-10-23.

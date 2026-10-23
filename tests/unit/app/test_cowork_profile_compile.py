@@ -340,7 +340,7 @@ def test_profiles_repeating_a_name_or_display_name_are_reported_and_a_disabled_o
     assert "cowork_profile:off" not in [item.artifact_key for item in result.compiled]
 
 
-def test_passthrough_keys_are_unmodelled_as_an_agents_are() -> None:
+def test_passthrough_keys_are_unmodeled_as_an_agents_are() -> None:
     profile = cowork_profile(passthrough=MappingProxyType({"mcp_servers": []}))
     assert "SST-VAL014" in codes(profile, agents=(described_agent(),))
 

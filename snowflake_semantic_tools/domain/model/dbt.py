@@ -186,7 +186,7 @@ class DbtCatalog:
     models: tuple[DbtModel, ...]
     # Models left out because they have no relation, such as ephemeral ones.
     relationless_models: tuple[str, ...] = ()
-    # Why each model with no relation has none, by casefolded name: its materialisation, such
+    # Why each model with no relation has none, by casefolded name: its materialization, such
     # as `ephemeral`, or `disabled` for a model dbt moved to the manifest's `disabled` map.
     unreadable_models: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
     # The declared dbt sources, in sorted unique-id order.

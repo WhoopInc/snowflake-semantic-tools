@@ -11,11 +11,11 @@ from tests.helpers.registry_types import refused
 
 
 def test_sst_reg016_fires() -> None:
-    entry = spec("SST-ABC001", Severity.ERROR, "Title", "{artifact} is {colour}", None)
+    entry = spec("SST-ABC001", Severity.ERROR, "Title", "{artifact} is {color}", None)
     refused(
         lambda: build_registry((entry,)),
         "SST-REG016",
-        "'SST-ABC001' template names colour, absent from declared params",
+        "'SST-ABC001' template names color, absent from declared params",
     )
 
 

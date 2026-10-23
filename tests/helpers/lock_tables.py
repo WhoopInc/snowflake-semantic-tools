@@ -1,6 +1,6 @@
 """A driver double for the run lock and state tables with Snowflake's transactional locking.
 
-`LockTables` answers the connector's lock-table and state-table statements, recognised by
+`LockTables` answers the connector's lock-table and state-table statements, recognized by
 their text and binds, with the semantics the run lock depends on ("Transactions" in the
 Snowflake documentation), and no more:
 

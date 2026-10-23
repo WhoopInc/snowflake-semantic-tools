@@ -1,4 +1,4 @@
-"""SST-SNO003: Snowflake reported 002003: an object does not exist or is not authorised."""
+"""SST-SNO003: Snowflake reported 002003: an object does not exist or is not authorized."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def test_sst_sno003_fires() -> None:
         )
     )
     assert (diagnostic.code, diagnostic.severity) == ("SST-SNO003", Severity.ERROR)
-    assert diagnostic.message == "DB.SCHEMA.T does not exist or is not authorised"
+    assert diagnostic.message == "DB.SCHEMA.T does not exist or is not authorized"
     assert diagnostic.subject == "semantic_view:v"
 
 

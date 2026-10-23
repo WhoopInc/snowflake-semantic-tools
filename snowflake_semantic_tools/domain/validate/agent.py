@@ -36,7 +36,7 @@ from snowflake_semantic_tools.domain.validate.sql import (
 
 SPEC_LIMIT_BYTES = 100_000
 SPEC_WARNING_BYTES = 80_000
-# The most bytes of profile JSON `ALTER AGENT ... SET PROFILE` accepts (docs/design/snowflake-behaviour.md).
+# The most bytes of profile JSON `ALTER AGENT ... SET PROFILE` accepts (docs/design/snowflake-behavior.md).
 PROFILE_LIMIT_BYTES = 1_000
 
 
@@ -163,7 +163,7 @@ def agent_rules(
         SST-VAL545: the agent's `tool_not_accessible` is not accept, reject, or legacy.
         SST-VAL546: the agent enables analytical search without a cortex_search tool.
         SST-VAL548: the avatar is outside the allowlist, or the color is neither a plain
-            colour name nor a `var(--token)`.
+            color name nor a `var(--token)`.
         SST-VAL558: the profile renders more than `PROFILE_LIMIT_BYTES` of JSON.
         SST-VAL550: the agent is deprecated and an alias still points at a version of it.
     """
@@ -197,7 +197,7 @@ def published_agent_rules(
             name.
         SST-VAL543: the orchestration model is not in `allowed_models`.
         SST-VAL548: the avatar is outside the allowlist, or the color is neither a plain
-            colour name nor a `var(--token)`.
+            color name nor a `var(--token)`.
         SST-VAL558: the profile renders more than `PROFILE_LIMIT_BYTES` of JSON.
         SST-VAL550: the object is deprecated and an alias still points at a version of it.
     """
@@ -315,7 +315,7 @@ def _profile_problems(model: PublishedAgent, avatar_allowlist: frozenset[str] | 
                 artifact=model.name,
                 field="color",
                 found=color,
-                detail="is neither a plain colour name nor a var(--token)",
+                detail="is neither a plain color name nor a var(--token)",
                 subject=model.key,
             )
         )

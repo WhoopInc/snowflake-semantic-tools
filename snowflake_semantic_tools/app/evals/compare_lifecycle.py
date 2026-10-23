@@ -1,7 +1,7 @@
 """Commit a comparison's versions of one published agent or CoWork profile, and always restore it.
 
 The sequence never exposes a candidate to a caller that names no version, and never moves the
-default or the released alias (docs/design/snowflake-behaviour.md):
+default or the released alias (docs/design/snowflake-behavior.md):
 
 1. Hold: COMMIT the live version, which holds the released specification. With no live version,
    an unversioned caller is served the default, which `sst apply` pinned by name to the release.

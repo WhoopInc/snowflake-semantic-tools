@@ -475,10 +475,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Profile value outside its declared allowlist or form",
         "agent '{artifact}': {field} '{found}' {detail}",
-        "use an allowlisted avatar, or a plain colour name or var(--token)",
+        "use an allowlisted avatar, or a plain color name or var(--token)",
         condition=(
             "an agent's avatar is not in `snowflake.profile.avatar_allowlist`, when that is set, or its "
-            "color is neither a plain colour name nor `var(--token)`"
+            "color is neither a plain color name nor `var(--token)`"
         ),
     ),
     spec(

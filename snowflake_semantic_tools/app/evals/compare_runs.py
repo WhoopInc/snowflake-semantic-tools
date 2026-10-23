@@ -160,7 +160,7 @@ def run_comparison(
     )
 
 
-def labelled(progress: EvalProgress, plans: Sequence[PlannedEval], *, run_id: str) -> EvalProgress:
+def labeled(progress: EvalProgress, plans: Sequence[PlannedEval], *, run_id: str) -> EvalProgress:
     """Label each run's progress `<eval> <model> run <n>`, in place of the eval key every copy shares."""
     labels = {
         compare_run_name(plan.compiled.name, run_id, model.model, number): (

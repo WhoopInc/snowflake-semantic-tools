@@ -1,7 +1,7 @@
 """The comparison report's two tables: each question's result by model, and each model's costs.
 
-A cell's colour is never its only signal: a result carries a symbol and its score, a change a
-triangle, and a cost not known yet a labelled pill, never a zero. A heatmap cell's tooltip holds
+A cell's color is never its only signal: a result carries a symbol and its score, a change a
+triangle, and a cost not known yet a labeled pill, never a zero. A heatmap cell's tooltip holds
 the judge's reason and, for a CoWork profile, the subagents the router chose.
 """
 

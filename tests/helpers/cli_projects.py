@@ -149,7 +149,7 @@ def profile_with_commands_and_plugin(root: Path) -> Path:
             "commands: [\"{{ command('sql/check') }}\"]\nplugins: [\"{{ plugin('kit') }}\"]\n"
         ),
         "coco_desktop_profiles/shared/coco_desktop_profile.yml": "commands: [\"{{ command('daily') }}\"]\n",
-        "commands/daily.md": "Summarise yesterday.\n",
+        "commands/daily.md": "Summarize yesterday.\n",
         "commands/sql/check.md": "---\ndescription: Check SQL.\n---\nCheck it.\n",
         "plugins/kit/plugin.yml": (
             "name: kit\ndescription: Kit.\nowner_team: Data\nskills: [\"{{ skill('month-close') }}\"]\n"

@@ -2,7 +2,7 @@
 
 `python -m tests.helpers.sweep_scratch --run <id>` is a CI job's own teardown, run even when the job
 failed; `--older-than-hours <n>` is the sweep a maintainer starts by hand (the `sweep` suite of the
-manual workflow, slow.yml), the only cleanup for a cancelled job or a killed runner. Nothing runs
+manual workflow, slow.yml), the only cleanup for a canceled job or a killed runner. Nothing runs
 it on a schedule. Either drops a schema only when `live_snowflake.sweepable` chooses it -- the
 scratch prefix, a parseable stamp, and SST's marker comment -- so a schema anything else created is
 out of reach. It prints each schema it drops, and a sweep that finds schemas after runs that

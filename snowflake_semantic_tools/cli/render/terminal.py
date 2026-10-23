@@ -1,4 +1,4 @@
-"""What the terminal a run writes to can show: colour, Unicode, its width, live redraws, and links.
+"""What the terminal a run writes to can show: color, Unicode, its width, live redraws, and links.
 
 `detect_terminal` decides once per run, from the environment and the two streams, so every
 renderer agrees and a test can drive it with a fake environment. `agent_marker` says which
@@ -16,7 +16,7 @@ from typing import TextIO
 
 # Environment variables a coding agent sets in the shells it runs; `SST_AGENT=1` names any other.
 AGENT_MARKERS = ("SST_AGENT", "CLAUDECODE", "COCO_AGENT", "CURSOR_AGENT", "CODEX_SANDBOX", "GEMINI_CLI")
-# Variables that force colour on where no terminal is attached, as CI log viewers render ANSI.
+# Variables that force color on where no terminal is attached, as CI log viewers render ANSI.
 FORCE_COLOR_VARIABLES = ("FORCE_COLOR", "CLICOLOR_FORCE")
 # Terminals that render OSC 8 hyperlinks, by `$TERM_PROGRAM`.
 _HYPERLINK_PROGRAMS = frozenset(("iTerm.app", "WezTerm", "vscode", "ghostty"))
@@ -30,12 +30,12 @@ class Terminal:
     """What one run may draw on stderr, where diagnostics, progress and the verdict go.
 
     Attributes:
-        color: ANSI colour on stderr.
-        color_out: ANSI colour on stdout, where a command's report (a plan, a table) goes.
+        color: ANSI color on stderr.
+        color_out: ANSI color on stdout, where a command's report (a plan, a table) goes.
         unicode: Symbols such as `✓` and `→`; ASCII stand-ins when the stream cannot encode them.
         width: Columns to fit to, at least `MIN_WIDTH`.
         live: stderr is a terminal, so a progress line may be redrawn in place.
-        hyperlinks: OSC 8 links render; only where colour is on and the terminal is known to.
+        hyperlinks: OSC 8 links render; only where color is on and the terminal is known to.
     """
 
     color: bool = False
@@ -59,12 +59,12 @@ def detect_terminal(
 ) -> Terminal:
     """Decide what this run's terminal can show.
 
-    Colour follows `choice` (`--color`): `never` and `always` decide alone; `auto` is off under a
+    Color follows `choice` (`--color`): `never` and `always` decide alone; `auto` is off under a
     non-empty `$NO_COLOR` or `TERM=dumb`, on under a non-empty `$FORCE_COLOR` or `$CLICOLOR_FORCE`
     other than `0`, and otherwise on for a stream that is a terminal.
 
     Args:
-        colorable: False for an output format that is never coloured (`plain`, `agent`, `csv`).
+        colorable: False for an output format that is never colored (`plain`, `agent`, `csv`).
     """
     err_tty, out_tty = _isatty(stderr), _isatty(stdout)
     color = colorable and _wants_color(environ, choice, err_tty)

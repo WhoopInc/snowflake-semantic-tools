@@ -69,8 +69,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Consumed model is disabled or ephemeral",
         "model '{model}' is {found} and produces no relation",
-        "enable it, or change the materialisation",
-        condition="a model the semantic layer consumes is disabled, or materialised so that it has no relation",
+        "enable it, or change the materialization",
+        condition="a model the semantic layer consumes is disabled, or materialized so that it has no relation",
     ),
     spec(
         "SST-DBT010",

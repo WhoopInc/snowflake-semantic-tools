@@ -2,7 +2,7 @@
 name: sst-report-issue
 description: |-
   Use when SST itself looks wrong and the user wants to report it: an internal error
-  (SST-INT001), a Snowflake refusal SST does not recognise (SST-SNO001), a crash, output that
+  (SST-INT001), a Snowflake refusal SST does not recognize (SST-SNO001), a crash, output that
   contradicts SST's docs, or a missing feature. Confirms it is not a project problem, builds
   a minimal repro, removes anything private, drafts the issue, and files it only with the
   user's approval. Do NOT use for fixing the project's own YAML (use sst-fix-diagnostics),
@@ -33,7 +33,7 @@ Most surprises are configuration. Before calling it a bug:
 
 It is likely SST's fault when there is a traceback or `SST-INT001`, an `SST-INT` code of
 any kind, `SST-SNO001`, an exit code the CLI reference does not document for the command,
-or behaviour the docs contradict.
+or behavior the docs contradict.
 
 ## 2. Look for an existing issue
 

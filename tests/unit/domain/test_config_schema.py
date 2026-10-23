@@ -157,7 +157,7 @@ def test_types_domains_and_bounds() -> None:
     assert _codes({"diagnostics": {"severity_overrides": {"SST-VAL003": "WARNING"}}}) == [
         ("SST-CFG008", "config:diagnostics.severity_overrides.SST-VAL003")
     ]
-    # The keys every channel once had to fix are gone: their behaviour is the only one there is.
+    # The keys every channel once had to fix are gone: their behavior is the only one there is.
     assert _codes({"coco_desktop_profiles": {"+layout": "by_type", "+flatten": False}}) == [
         ("SST-CFG003", "config:coco_desktop_profiles.+layout"),
         ("SST-CFG003", "config:coco_desktop_profiles.+flatten"),

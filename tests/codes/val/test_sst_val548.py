@@ -13,7 +13,7 @@ def test_sst_val548_fires() -> None:
     [diagnostic] = coded(compile_agents(model).diagnostics, "SST-VAL548")
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == (
-        "agent 'sales_agent': color '#ff0000' is neither a plain colour name nor a var(--token)"
+        "agent 'sales_agent': color '#ff0000' is neither a plain color name nor a var(--token)"
     )
     assert diagnostic.subject == "agent:sales_agent"
 

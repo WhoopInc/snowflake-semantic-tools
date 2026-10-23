@@ -77,7 +77,7 @@ class _Side:
     """One state as diff reads it: by fingerprint, and member by member where it could be read.
 
     Attributes:
-        definitions: Each artifact's definition, physical names labelled; empty for a saved plan,
+        definitions: Each artifact's definition, physical names labeled; empty for a saved plan,
             and under `--no-diff`.
         unread: Why an artifact's definition was not read, by key.
     """

@@ -9,7 +9,7 @@ from tests.helpers.sno_codes import driver_error, refusal
 def test_sst_sno007_fires() -> None:
     [diagnostic] = refusal(driver_error("Warehouse 'REPORTING_WH' does not exist or not authorized."))
     assert (diagnostic.code, diagnostic.severity) == ("SST-SNO007", Severity.ERROR)
-    assert diagnostic.message == "warehouse REPORTING_WH does not exist or is not authorised"
+    assert diagnostic.message == "warehouse REPORTING_WH does not exist or is not authorized"
     assert diagnostic.subject == "semantic_view:v"
 
 

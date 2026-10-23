@@ -1,9 +1,9 @@
 """The fake's versions of an agent the test models: what each ALTER AGENT of a comparison does.
 
 Only an agent named in `modelled_agents` changes; every other ALTER AGENT is logged and has no
-effect, as before. For a modelled agent, `agent_version_rows` is what SHOW VERSIONS IN AGENT
+effect, as before. For a modeled agent, `agent_version_rows` is what SHOW VERSIONS IN AGENT
 lists, the live version the row with no name, and each statement changes it as measured on a
-live account (docs/design/snowflake-behaviour.md):
+live account (docs/design/snowflake-behavior.md):
 
 - COMMIT COMMENT = '<c>' turns the live version into the next `VERSION$<n>`, carrying `<c>`;
   it fails with no live version.
@@ -34,16 +34,16 @@ _DEFAULT = re.compile(r"SET DEFAULT_VERSION = '([^']+)'$", re.IGNORECASE)
 _NUMBER = re.compile(r"VERSION\$(\d+)", re.IGNORECASE)
 
 
-def modelled_agent(world: SnowflakeWorld, normalized: str) -> str | None:
+def modeled_agent(world: SnowflakeWorld, normalized: str) -> str | None:
     """Return the agent an ALTER AGENT statement names, when the test models it; None otherwise."""
     if not normalized.upper().startswith("ALTER AGENT "):
         return None
     name = QualifiedName.parse(normalized.split()[2]).sql
-    return name if name in world.modelled_agents else None
+    return name if name in world.modeled_agents else None
 
 
 def apply_agent_statement(world: SnowflakeWorld, agent: str, normalized: str) -> None:
-    """Change a modelled agent's versions as the statement does.
+    """Change a modeled agent's versions as the statement does.
 
     Raises:
         SnowflakePortError: the statement fails on Snowflake, as the module docstring says.

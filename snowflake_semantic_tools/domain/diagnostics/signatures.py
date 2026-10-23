@@ -4,7 +4,7 @@
 that consults it. Matching is most specific first: a row whose `errno` equals the error's
 number, then a row whose `sqlstate` equals its SQLSTATE, then a row whose `pattern`
 searches its message, each pass in table order. A number the driver gives several failures
-matches its row only when the wording does too. An error no row matches is `UNRECOGNISED`,
+matches its row only when the wording does too. An error no row matches is `UNRECOGNIZED`,
 SST-SNO001, and never a specific code. A row with neither a number nor a SQLSTATE matches
 on Snowflake's wording alone, so it is `fragile`, and `fragile_signatures` lists those rows
 so the set stays visible and can shrink as numbers are observed.
@@ -154,7 +154,7 @@ SIGNATURES: tuple[Signature, ...] = (
     ),
 )
 
-UNRECOGNISED = Signature("SST-SNO001")
+UNRECOGNIZED = Signature("SST-SNO001")
 
 # A driver message opens with Snowflake's number and SQLSTATE, then the query id when there was one.
 _NUMBER_PREFIX = re.compile(
@@ -166,7 +166,7 @@ _QUOTED = re.compile(r"'([^']+)'")
 
 
 def match_signature(message: str, *, errno: int | None = None, sqlstate: str | None = None) -> Signature:
-    """Return the most specific row matching a driver error; `UNRECOGNISED` when none does.
+    """Return the most specific row matching a driver error; `UNRECOGNIZED` when none does.
 
     The number is tried first, then the SQLSTATE, then the wording, each in table order.
     """
@@ -181,7 +181,7 @@ def match_signature(message: str, *, errno: int | None = None, sqlstate: str | N
     for row in SIGNATURES:
         if _searches(row, message):
             return row
-    return UNRECOGNISED
+    return UNRECOGNIZED
 
 
 def _searches(row: Signature, message: str) -> bool:
@@ -254,7 +254,7 @@ def detail_of(message: str) -> str:
 
 def signature_codes() -> frozenset[str]:
     """Return every code a driver error can map to, SST-SNO001 included."""
-    return frozenset((UNRECOGNISED.code, *(row.code for row in SIGNATURES)))
+    return frozenset((UNRECOGNIZED.code, *(row.code for row in SIGNATURES)))
 
 
 def snowflake_diagnostic(code: str, message: str, *, value: str, subject: str | None = None) -> Diagnostic:
@@ -270,7 +270,7 @@ def snowflake_diagnostic(code: str, message: str, *, value: str, subject: str | 
         KeyError: `code` is not a code of `signature_codes`.
 
     Diagnostics:
-        Any SNO code of `SIGNATURES`, or SST-SNO001 for `UNRECOGNISED`.
+        Any SNO code of `SIGNATURES`, or SST-SNO001 for `UNRECOGNIZED`.
     """
     if code not in signature_codes():
         raise KeyError(code)
