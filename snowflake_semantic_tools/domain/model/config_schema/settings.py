@@ -18,7 +18,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 
-from snowflake_semantic_tools.domain.model.config_schema.keys import CHILDREN, ConfigKey, KeyStatus
+from snowflake_semantic_tools.domain.model.config_schema.key_types import ConfigKey, KeyStatus
+from snowflake_semantic_tools.domain.model.config_schema.keys import CHILDREN
 from snowflake_semantic_tools.domain.model.config_schema.values import config_block
 from snowflake_semantic_tools.domain.model.setting import (
     CONFIG_SOURCE,

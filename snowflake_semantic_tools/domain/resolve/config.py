@@ -15,7 +15,8 @@ from collections.abc import Mapping
 from typing import Any
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
-from snowflake_semantic_tools.domain.model.config_schema.keys import CONFIG_KEYS, KeyKind
+from snowflake_semantic_tools.domain.model.config_schema.key_types import KeyKind
+from snowflake_semantic_tools.domain.model.config_schema.keys import CONFIG_KEYS
 from snowflake_semantic_tools.domain.resolve.calls import variable_problem
 
 _LITERAL = r"'([^']*)'"

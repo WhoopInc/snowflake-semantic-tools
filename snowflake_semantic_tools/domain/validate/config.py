@@ -22,16 +22,14 @@ from snowflake_semantic_tools.domain.diagnostics import (
     override_refusal,
 )
 from snowflake_semantic_tools.domain.model.config_schema import stated, tag_pattern
-from snowflake_semantic_tools.domain.model.config_schema.keys import (
-    CHILDREN,
+from snowflake_semantic_tools.domain.model.config_schema.key_types import (
     CONFIG_FILE,
-    CONFIG_KEYS,
-    TOP_LEVEL_KEYS,
     ChildPolicy,
     ConfigKey,
     KeyKind,
     KeyStatus,
 )
+from snowflake_semantic_tools.domain.model.config_schema.keys import CHILDREN, CONFIG_KEYS, TOP_LEVEL_KEYS
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, vocabulary_key
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls

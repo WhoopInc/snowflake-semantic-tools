@@ -1,26 +1,29 @@
 """The declared shape of `sst_config.yml`, and how the engine reads values out of it.
 
 `keys` holds the key table: every key, block, and wildcard slot SST reads, which the
-generated configuration reference renders row by row; `values` reads the values the engine
-uses out of a parsed tree, and `settings` resolves an artifact's settings through the one
-precedence chain; `domain.validate.config` checks a tree against the table.
+generated configuration reference renders row by row, built from the types in `key_types`;
+`values` reads the values the engine uses out of a parsed tree, and `settings` resolves an
+artifact's settings through the one precedence chain; `domain.validate.config` checks a tree
+against the table.
 This module re-exports their public surfaces, so importers never reach into the submodules.
 """
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.model.config_schema.keys import (
-    CHILDREN,
+from snowflake_semantic_tools.domain.model.config_schema.key_types import (
     CONFIG_FILE,
-    CONFIG_KEYS,
     CONFIG_NAMES,
-    CONFIG_SCHEMA,
     DEFAULT_THREADS,
-    TOP_LEVEL_KEYS,
     ChildPolicy,
     ConfigKey,
     KeyKind,
     KeyStatus,
+)
+from snowflake_semantic_tools.domain.model.config_schema.keys import (
+    CHILDREN,
+    CONFIG_KEYS,
+    CONFIG_SCHEMA,
+    TOP_LEVEL_KEYS,
 )
 from snowflake_semantic_tools.domain.model.config_schema.settings import (
     Setting,
