@@ -45,9 +45,9 @@ from typing import TYPE_CHECKING
 import pytest
 from hypothesis import settings
 
-from snowflake_semantic_tools.cli.render.terminal import AGENT_MARKERS, FORCE_COLOR_VARIABLES
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from tests.helpers import live_config, network_guard
+from tests.helpers.environment import SST_ENVIRONMENT
 from tests.helpers.live_snowflake import (
     ENV_PREFIX,
     LiveAccount,
@@ -64,27 +64,7 @@ from tests.helpers.live_snowflake import (
 if TYPE_CHECKING:
     from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 
-_SST_ENVIRONMENT = (
-    "SST_PROJECT_DIR",
-    "SST_CONFIG",
-    "SST_PROFILES_DIR",
-    "SST_TARGET",
-    "SST_DEFER_TARGET",
-    "SST_STATE_DIR",
-    "SST_THREADS",
-    "SST_OUTPUT",
-    "SST_LOG_LEVEL",
-    "SST_STRICT",
-    "SST_NO_COLOR",
-    "SST_COLOR",
-    "NO_COLOR",
-    "DBT_PROFILES_DIR",
-    # What decides colour, width, CI progress lines, and the agent output format.
-    *FORCE_COLOR_VARIABLES,
-    *AGENT_MARKERS,
-    "CI",
-    "COLUMNS",
-)
+_SST_ENVIRONMENT = SST_ENVIRONMENT
 # How long a thread a test started may take to finish after the test returns, before it counts as
 # left running.
 _THREAD_GRACE_SECONDS = 2.0

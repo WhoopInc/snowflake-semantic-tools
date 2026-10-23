@@ -44,6 +44,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.agent_run import AgentReply
 from tests.helpers.cli_projects import applied_port, common, compile_project
 from tests.helpers.compare_reports import JsonReportWriter, jaffle_outcome
 from tests.helpers.described_objects import described_view
+from tests.helpers.environment import cleared_environment
 from tests.helpers.published_target import published
 from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
@@ -326,6 +327,14 @@ def main() -> int:
     if os.environ.get("CI", "").strip().casefold() not in _NOT_CI:
         print("refusing to rewrite goldens in CI; run this locally and commit the result", file=sys.stderr)
         return 1
+    # Render as the tests do: a variable from the shell, such as a coding agent's marker, would
+    # change what SST prints, and so every golden written.
+    with cleared_environment():
+        return _rewrite()
+
+
+def _rewrite() -> int:
+    """Render and write every CLI golden that differs."""
     GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
     written = 0
     for case in CASES:

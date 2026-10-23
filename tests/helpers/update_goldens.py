@@ -22,6 +22,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from tests.helpers.environment import cleared_environment
 from tests.helpers.goldens import DBT_MANIFEST, REPO_ROOT, GoldenFileStore, UpdateGoldens, compile_twice
 from tests.helpers.reference_project import project_copy, with_profile_eval
 
@@ -34,6 +35,14 @@ def main() -> int:
     if os.environ.get("CI", "").strip().casefold() not in _NOT_CI:
         print("refusing to rewrite goldens in CI; run this locally and commit the result", file=sys.stderr)
         return 1
+    # Render as the tests do: a variable from the shell, such as a coding agent's marker, would
+    # change what SST prints, and so every golden written.
+    with cleared_environment():
+        return _rewrite()
+
+
+def _rewrite() -> int:
+    """Compile, render and write each golden that differs; exit 1 when a project fails to compile."""
     with tempfile.TemporaryDirectory() as root:
         compiled = compile_twice(project_copy(Path(root) / "plain", offline=False), DBT_MANIFEST)
         scoped_project = project_copy(Path(root) / "scoped", offline=False)

@@ -5,10 +5,13 @@
 
 from __future__ import annotations
 
+import dataclasses
+import os
 from pathlib import Path
 
 import pytest
 
+from tests.helpers import cli_goldens
 from tests.helpers.cli_goldens import CASES, Case, golden_path, render_case
 
 PARAMS = [pytest.param(case, variant, id=f"{case.name}-{variant}") for case in CASES for variant in case.variants]
@@ -33,3 +36,22 @@ def test_the_ascii_and_plain_variants_hold_no_escape_and_no_unicode_mark() -> No
 def test_the_colour_variant_is_coloured() -> None:
     text = golden_path(CASES[0], "color").read_text(encoding="utf-8")
     assert "\x1b[31m" in text and "\x1b[1m" in text
+
+
+@pytest.mark.parametrize("marker", ["COCO_AGENT", "CLAUDECODE", "SST_OUTPUT"])
+def test_the_writer_renders_as_the_tests_do_whatever_the_shell_sets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], marker: str
+) -> None:
+    # Run from a coding agent's shell, the writer once rewrote every golden in the agent format.
+    [case] = [item for item in CASES if item.name == "list"]
+    variant = case.variants[0]
+    committed = golden_path(case, variant)
+    (tmp_path / committed.name).write_text(committed.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(cli_goldens, "CASES", (dataclasses.replace(case, variants=(variant,)),))
+    monkeypatch.setattr(cli_goldens, "GOLDEN_DIR", tmp_path)
+    monkeypatch.setenv(marker, "json" if marker == "SST_OUTPUT" else "1")
+
+    assert cli_goldens.main() == 0
+    assert "0 CLI golden file(s) written" in capsys.readouterr().out
+    assert (tmp_path / committed.name).read_text(encoding="utf-8") == committed.read_text(encoding="utf-8")
+    assert os.environ[marker]
