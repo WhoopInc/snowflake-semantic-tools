@@ -219,6 +219,10 @@ sst enrich --select model:orders --include sample-values    # also sample values
   becomes a fact, so a numeric ID that is not a key needs `column_type: dimension` by hand.
 - `--include synonyms` (or `column-synonyms`, `table-synonyms`, `all`) calls a Cortex model,
   which costs credits: ask before using it.
+- Never write a sample value by hand that holds personal data. Enrich skips any column whose
+  values look like an email, phone, card, SSN or IP address (`SST-VAL339`); a committed one
+  fails validation (`SST-VAL340`) and cannot be baselined. The fix is to delete the
+  `sample_values` and add `pii_tags` to the column, never to change the value.
 - The model must be built where the target points. @SST_DOCS@/guides/enrich.md covers the
   rest.
 

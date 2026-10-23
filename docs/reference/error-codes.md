@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 338 codes
+- [Validation (VAL)](#validation-val) -- 340 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
@@ -3415,6 +3415,30 @@ Raised when the connected `sst validate`, with `governance.read_column_tags` on,
 Fix: run `sst enrich` on the model to record it in `meta.sst.governance_tags`, or add `pii_tags` to the column
 
 Note: A column the YAML does not describe yet is reported too, and an excluded one is not. A table a view reads through `source()` has no model YAML, so it is not checked.
+
+### SST-VAL339
+
+**Sampled values look like personal data** (warning)
+
+`model '<model>': column '<column>' was sampled and holds <kind>, so no sample values were written`
+
+Raised when an `sst enrich` run that reads row data samples a column no tag marks sensitive, and one of its values is shaped like an email address, a phone number, a payment card number, a US social security number, or (on a column named for one) an IP address.
+
+Fix: add `pii_tags` to the column, or tag it sensitive in Snowflake, so it is never sampled
+
+Note: Nothing from the column is written, and its values are not sent to Cortex for synonyms. The message names the kind of data only, never the value.
+
+### SST-VAL340
+
+**Committed sample value looks like personal data** (error, always an error)
+
+`model '<model>': column '<column>' has a sample value that holds <kind>`
+
+Raised when a column of any dbt model has a `sample_values` entry shaped like an email address, a phone number, a payment card number, a US social security number, or (on a column named for one) an IP address, whatever tags the column carries.
+
+Fix: delete the column's `sample_values` (and `is_enum`), and add `pii_tags` to the column
+
+Note: No setting lowers it and no baseline holds it, so a value that reached the YAML fails validation in CI and pre-commit. Such values are never rendered: the column publishes without `SAMPLE_VALUES` and `IS_ENUM`. The message names the kind of data only, never the value.
 
 ### SST-VAL401
 

@@ -66,6 +66,17 @@ component; forcing a component includes it. `sample_values: []` counts as writte
   yet is covered too. Sample values still on such a column are reported (`SST-VAL328`) when the
   run reads row data, and are never published: a sensitive column renders without
   `SAMPLE_VALUES` or `IS_ENUM`.
+- **Values that look like personal data are never written or published, tagged or not.** A
+  sampled value shaped like an email address (also inside a URL), a phone number, a payment
+  card number, a US social security number, or, on a column named for one, an IP address,
+  means nothing is written for the column and none of its values is sent to Cortex
+  (`SST-VAL339`, which tells you to tag it). A committed value of that shape fails `sst
+  validate` offline (`SST-VAL340`), an error no setting lowers and no baseline holds, and is
+  never rendered. Messages name the kind of data, never the value. The checks run on values
+  SST already holds: no query, no credits, and a fraction of a second for a large project.
+  Names gate the shapes that collide with ordinary data: a dotted version such as `4.10.2.1`
+  is an IP address only on a column such as `client_ip`, and an unformatted run of digits is a
+  phone or card number only on a column named for one.
 
 ## Sample values and enums
 

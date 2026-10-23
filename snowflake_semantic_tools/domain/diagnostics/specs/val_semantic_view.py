@@ -383,4 +383,39 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         precheck=Precheck.OBSERVE,
     ),
+    spec(
+        "SST-VAL339",
+        Severity.WARNING,
+        "Sampled values look like personal data",
+        "model '{model}': column '{column}' was sampled and holds {kind}, so no sample values were written",
+        "add `pii_tags` to the column, or tag it sensitive in Snowflake, so it is never sampled",
+        condition=(
+            "an `sst enrich` run that reads row data samples a column no tag marks sensitive, and one of "
+            "its values is shaped like an email address, a phone number, a payment card number, a US "
+            "social security number, or (on a column named for one) an IP address"
+        ),
+        note=(
+            "Nothing from the column is written, and its values are not sent to Cortex for synonyms. "
+            "The message names the kind of data only, never the value."
+        ),
+    ),
+    spec(
+        "SST-VAL340",
+        Severity.ERROR,
+        "Committed sample value looks like personal data",
+        "model '{model}': column '{column}' has a sample value that holds {kind}",
+        "delete the column's `sample_values` (and `is_enum`), and add `pii_tags` to the column",
+        demotable=False,
+        condition=(
+            "a column of any dbt model has a `sample_values` entry shaped like an email address, "
+            "a phone number, a payment card number, a US social security number, or (on a column named "
+            "for one) an IP address, whatever tags the column carries"
+        ),
+        note=(
+            "No setting lowers it and no baseline holds it, so a value that reached the YAML fails "
+            "validation in CI and pre-commit. Such values are never rendered: the column publishes "
+            "without `SAMPLE_VALUES` and `IS_ENUM`. The message names the kind of data only, never the "
+            "value."
+        ),
+    ),
 )

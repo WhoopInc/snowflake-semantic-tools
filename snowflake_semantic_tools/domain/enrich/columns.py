@@ -32,6 +32,7 @@ from snowflake_semantic_tools.domain.model.config_schema import EnrichmentConfig
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.governance import sensitivity_reason
 from snowflake_semantic_tools.domain.model.identifier import Identifier
+from snowflake_semantic_tools.domain.model.pii_shape import first_pii_shape
 from snowflake_semantic_tools.domain.validate.column_metadata import printable
 
 # The `meta.sst` keys enrich writes, in the order it adds them to a column. `governance_tags` is
@@ -446,6 +447,29 @@ def _governed_samples(
                 )
             )
     return reported
+
+
+def withhold_pii_samples(
+    model: DbtModel, samples: Mapping[str, Sequence[str]]
+) -> tuple[Mapping[str, Sequence[str]], tuple[Diagnostic, ...]]:
+    """Drop every column whose sampled values hold one shaped like personal data.
+
+    The values are read before anything uses them, so a column dropped here is neither written
+    nor sent to Cortex in a synonym prompt. `samples` is keyed by casefolded relation column
+    name, which is also the name the shape checks read.
+
+    Diagnostics:
+        SST-VAL339: once per column dropped, naming the kind of data, never the value.
+    """
+    kept: dict[str, Sequence[str]] = {}
+    withheld: list[Diagnostic] = []
+    for name, values in samples.items():
+        kind = first_pii_shape(values, name)
+        if kind is None:
+            kept[name] = values
+            continue
+        withheld.append(D("SST-VAL339", model=model.name, column=name, kind=kind, subject=_subject(model, name)))
+    return MappingProxyType(kept), tuple(withheld)
 
 
 def _unwritten(model: DbtModel, name: str, refused: Sequence[str]) -> list[Diagnostic]:

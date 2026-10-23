@@ -420,3 +420,24 @@ def test_dbt_s_graph_operators_select_the_models_dbt_s_graph_reaches() -> None:
     assert chosen("stg_*+1") == ["orders", "stg_orders"]
     assert chosen("+refunds", excluded=("1+orders",)) == ["refunds"]
     assert [item.code for item in select_models(catalog, EnrichRequest(selected=("+gone",)))[1]] == ["SST-DBT002"]
+
+
+def test_values_shaped_like_personal_data_are_neither_written_nor_sent_to_cortex() -> None:
+    prompts: list[str] = []
+
+    def answer(prompt: str, _schema: object) -> dict[str, object]:
+        prompts.append(prompt)
+        return {"columns": []}
+
+    port = ScriptedEnrich(
+        columns={"DB.SCH.ORDERS": [("ORDER_ID", "TEXT"), ("CONTACT", "TEXT")]},
+        values={"DB.SCH.ORDERS": {"ORDER_ID": ["a", "b"], "CONTACT": ["jane.doe@example.com"]}},
+        answer=answer,
+    )
+    project, _, files = _project(port=port)
+    report = project.run(_request(C.SAMPLE_VALUES, C.COLUMN_SYNONYMS))
+    [withheld] = [item for item in report.diagnostics if item.code == "SST-VAL339"]
+    assert withheld.subject == "dbt_column:orders.contact" and "jane" not in withheld.message
+    assert prompts and not any("jane.doe" in prompt for prompt in prompts)
+    project.write(report)
+    assert "jane.doe" not in files.texts["models/orders.yml"]

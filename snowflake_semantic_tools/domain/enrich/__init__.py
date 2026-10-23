@@ -22,6 +22,7 @@ from snowflake_semantic_tools.domain.enrich.columns import (
     sample_columns,
     sensitive,
     synonym_columns,
+    withhold_pii_samples,
     yaml_column_name,
 )
 from snowflake_semantic_tools.domain.enrich.components import (
@@ -109,5 +110,6 @@ __all__ = [
     "table_synonyms_prompt",
     "taken_names",
     "usable_sample",
+    "withhold_pii_samples",
     "yaml_column_name",
 ]

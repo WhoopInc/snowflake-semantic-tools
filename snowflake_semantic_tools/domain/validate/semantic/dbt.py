@@ -7,6 +7,7 @@ from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, vie
 from snowflake_semantic_tools.domain.model.authored import ACCESS_MODIFIERS, MetricDef
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.governance import sensitivity_reason
+from snowflake_semantic_tools.domain.model.pii_shape import first_pii_shape
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.validate.column_metadata import is_numeric, is_sentinel, is_temporal
 from snowflake_semantic_tools.domain.validate.semantic.shape import synonym_diagnostics
@@ -22,7 +23,8 @@ def dbt_column_diagnostics(
     casefolded names, and None means every model. Sentinel sample values are reported on every
     model. Per column the rules run in the order below, so its diagnostics come out rule by rule:
     role, data type, sample values, sensitive sample values, description, unknown meta keys,
-    declared type, sentinels.
+    declared type, sentinels, personal-data sample values. Values shaped like personal data are
+    reported on every model too.
     """
     diagnostics: list[Diagnostic] = []
     for model in sorted(models.values(), key=lambda item: item.name):
@@ -37,6 +39,7 @@ def dbt_column_diagnostics(
                 diagnostics.extend(_column_meta_diagnostics(model, column))
                 diagnostics.extend(_declared_type_diagnostics(model, column))
             diagnostics.extend(_sentinel_diagnostics(model, column))
+            diagnostics.extend(_pii_shaped_sample_diagnostics(model, column))
     return tuple(diagnostics)
 
 
@@ -105,6 +108,19 @@ def _sample_value_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagno
             )
         ]
     return []
+
+
+def _pii_shaped_sample_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
+    """Report a column whose committed sample values hold one shaped like personal data.
+
+    Diagnostics:
+        SST-VAL340: once per such column, naming the kind of data, never the value.
+    """
+    kind = first_pii_shape(column.sample_values, column.name)
+    if kind is None:
+        return []
+    _, subject = _column_keys(model, column)
+    return [D("SST-VAL340", model=model.name, column=column.name, kind=kind, subject=subject)]
 
 
 def _sensitive_sample_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:

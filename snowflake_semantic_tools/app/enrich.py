@@ -37,6 +37,7 @@ from snowflake_semantic_tools.domain.enrich import (
     table_synonyms,
     table_synonyms_prompt,
     taken_names,
+    withhold_pii_samples,
     yaml_column_name,
 )
 from snowflake_semantic_tools.domain.lineage.graph import GraphSelector, dbt_lineage, parse_graph_selector
@@ -413,9 +414,10 @@ class EnrichProject:
         """Read one model's relation, its column tags, values and synonyms, and decide what its YAML gains."""
         path = model_file(model)
         settings = run.enrichment
+        withheld: tuple[Diagnostic, ...] = ()
         try:
             warehouse = self._columns(model, request, run.governance)
-            samples = self._samples(model, request, warehouse, settings)
+            samples, withheld = withhold_pii_samples(model, self._samples(model, request, warehouse, settings))
             synonyms, dropped = self._column_synonyms(model, warehouse, samples, request.options, settings)
             enrichment = enrich_model(
                 model,
@@ -429,9 +431,9 @@ class EnrichProject:
             taken = taken_by_views(views, model.name)
             edits, dropped_tables = self._table_synonyms(model, warehouse, taken, request.options, settings)
         except _ModelFailed as failure:
-            return ModelReport(model.name, path, None, section=yaml_section(model)), [failure.diagnostic]
+            return ModelReport(model.name, path, None, section=yaml_section(model)), [*withheld, failure.diagnostic]
         report = ModelReport(model.name, path, enrichment, edits, yaml_section(model))
-        return report, [*enrichment.diagnostics, *dropped, *dropped_tables]
+        return report, [*withheld, *enrichment.diagnostics, *dropped, *dropped_tables]
 
     def _synonym_model(self, model: str) -> list[Diagnostic]:
         """Check once that the synonym model answers, and how SHOW lists it, before any read.

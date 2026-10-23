@@ -34,6 +34,7 @@ from snowflake_semantic_tools.domain.model.authored import FilterDef, Instructio
 from snowflake_semantic_tools.domain.model.config_schema import Setting, setting_value
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtSource, DbtTarget
 from snowflake_semantic_tools.domain.model.identifier import Identifier
+from snowflake_semantic_tools.domain.model.pii_shape import first_pii_shape
 from snowflake_semantic_tools.domain.model.project import ParsedMember
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
@@ -494,9 +495,10 @@ def _view_column(model: DbtModel, column: DbtColumn, logical: str) -> Column:
     subject = f"dbt_model:{model.name}"
     (name,) = _names((column.member_name,), subject, None)
     reference = column_ref(Identifier.parse(logical), column.identifier).text
-    # A sensitive column's values are never published, however they reached its YAML (SST-VAL328);
+    # A sensitive column's values are never published, however they reached its YAML (SST-VAL328),
+    # and neither are values shaped like personal data on any column (SST-VAL340);
     # without them, `IS_ENUM` would claim a closed set the view does not list.
-    published = not column.sensitive
+    published = not column.sensitive and first_pii_shape(column.sample_values, column.name) is None
     return Column(
         table=logical,
         name=name,
