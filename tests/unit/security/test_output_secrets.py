@@ -6,7 +6,8 @@ import click
 import pytest
 
 from snowflake_semantic_tools.cli import output
-from snowflake_semantic_tools.cli.output import captured, print_report, register_secrets
+from snowflake_semantic_tools.cli.envelope import captured, json_envelope, print_envelope, print_report
+from snowflake_semantic_tools.cli.output import register_secrets
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 
 
@@ -77,7 +78,7 @@ def test_a_progress_line_carrying_a_credential_is_withheld(
 
 def test_a_secret_json_escapes_is_still_refused_in_an_envelope(capsys: pytest.CaptureFixture[str]) -> None:
     register_secrets(('pa"ss\\wörd',))
-    leaked = output.json_envelope("debug", DiagnosticBag(), data={"error": 'login pa"ss\\wörd refused'})
-    assert output.print_envelope(leaked) is True
+    leaked = json_envelope("debug", DiagnosticBag(), data={"error": 'login pa"ss\\wörd refused'})
+    assert print_envelope(leaked) is True
     printed = capsys.readouterr().out
     assert "SST-PRT012" in printed and "w\\u00f6rd" not in printed and "wörd" not in printed

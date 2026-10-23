@@ -18,6 +18,7 @@ from typing import IO, Any
 import click
 
 from snowflake_semantic_tools._version import __version__ as VERSION
+from snowflake_semantic_tools.cli.envelope import aborted_line, emit_agent, json_envelope, print_envelope
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, INTERRUPTED, OK, USAGE
 from snowflake_semantic_tools.cli.globals import (
     GLOBAL_NAMES,
@@ -27,14 +28,7 @@ from snowflake_semantic_tools.cli.globals import (
     group_global_options,
 )
 from snowflake_semantic_tools.cli.help_form import ConciseHelp
-from snowflake_semantic_tools.cli.output import (
-    aborted_line,
-    emit_agent,
-    json_envelope,
-    print_envelope,
-    refusal_text,
-    start_invocation,
-)
+from snowflake_semantic_tools.cli.output import refusal_text, start_invocation
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 
 

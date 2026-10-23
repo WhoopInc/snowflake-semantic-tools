@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from snowflake_semantic_tools.cli import signals
-from snowflake_semantic_tools.cli.output import aborted_line
+from snowflake_semantic_tools.cli.envelope import aborted_line
 from tests.helpers.cli_projects import common, compile_project
 from tests.helpers.network_guard import guarded_environment
 from tests.helpers.reference_project import REPO_ROOT, project_copy

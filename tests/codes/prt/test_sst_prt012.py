@@ -7,14 +7,15 @@ import json
 import pytest
 
 from snowflake_semantic_tools.cli import output
+from snowflake_semantic_tools.cli.envelope import json_envelope, print_envelope
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 
 
 def test_sst_prt012_fires(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(output, "_SECRETS", set())
     output.register_secrets(("hunter2", ""))
-    leaked = output.json_envelope("debug", DiagnosticBag(), data={"error": "login hunter2 refused"})
-    assert output.print_envelope(leaked) is True
+    leaked = json_envelope("debug", DiagnosticBag(), data={"error": "login hunter2 refused"})
+    assert print_envelope(leaked) is True
     envelope = json.loads(capsys.readouterr().out)
     [diagnostic] = envelope["diagnostics"]
     assert (diagnostic["code"], diagnostic["severity"]) == ("SST-PRT012", "error")
@@ -27,5 +28,5 @@ def test_sst_prt012_fires(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Captur
 def test_sst_prt012_silent(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(output, "_SECRETS", set())
     output.register_secrets(("hunter2",))
-    assert output.print_envelope(output.json_envelope("debug", DiagnosticBag(), data={"ok": True})) is False
+    assert print_envelope(json_envelope("debug", DiagnosticBag(), data={"ok": True})) is False
     assert "SST-PRT012" not in capsys.readouterr().out

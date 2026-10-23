@@ -26,6 +26,7 @@ from snowflake_semantic_tools.app.baseline import held_by_baseline
 from snowflake_semantic_tools.app.observe import ObserveOptions
 from snowflake_semantic_tools.app.plan import PlanRefused
 from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
+from snowflake_semantic_tools.cli.envelope import announce_interrupt
 from snowflake_semantic_tools.cli.exit_codes import ERROR, INTERRUPTED, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
@@ -44,7 +45,7 @@ from snowflake_semantic_tools.cli.options import (
     threads_option,
     validation_options,
 )
-from snowflake_semantic_tools.cli.output import announce_interrupt, render_policy
+from snowflake_semantic_tools.cli.output import render_policy
 from snowflake_semantic_tools.cli.plan_output import outcome_json, print_plan, write_plan_sql
 from snowflake_semantic_tools.cli.render.progress import active_display
 from snowflake_semantic_tools.cli.render.report import apply_headline, blocked_count, outcome_lines

@@ -52,6 +52,14 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths, locate_pro
 from snowflake_semantic_tools.adapters.paths import write_within
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.adapters.yaml.dump import dump_yaml
+from snowflake_semantic_tools.cli.envelope import (
+    captured,
+    emit_agent,
+    emit_json,
+    interrupted,
+    json_envelope,
+    print_report,
+)
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, CONNECTION, ERROR, OK
 from snowflake_semantic_tools.cli.globals import (
     DEFAULT_OUTPUTS,
@@ -63,15 +71,9 @@ from snowflake_semantic_tools.cli.globals import (
 from snowflake_semantic_tools.cli.logs import configure_logging
 from snowflake_semantic_tools.cli.output import (
     RenderPolicy,
-    captured,
-    emit_agent,
-    emit_json,
     first_next_step,
-    interrupted,
-    json_envelope,
     next_steps_for,
     note_output_choice,
-    print_report,
     print_verdict,
     record_baselined,
     record_reported,

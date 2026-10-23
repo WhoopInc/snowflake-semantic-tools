@@ -13,12 +13,11 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools import __version__
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
+from snowflake_semantic_tools.cli.envelope import diagnostic_json, json_envelope
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.output import (
     RenderPolicy,
     counted,
-    diagnostic_json,
-    json_envelope,
     print_verdict,
     resolve_invocation,
     start_invocation,

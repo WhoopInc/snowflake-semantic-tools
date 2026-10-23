@@ -16,10 +16,11 @@ from click.testing import CliRunner
 from snowflake_semantic_tools.adapters.dbt.invoke import CompletedRun
 from snowflake_semantic_tools.cli import output
 from snowflake_semantic_tools.cli.commands import debug
+from snowflake_semantic_tools.cli.envelope import emit_agent, interrupted
 from snowflake_semantic_tools.cli.group import _machine_output
 from snowflake_semantic_tools.cli.logs import configure_logging
 from snowflake_semantic_tools.cli.main import cli
-from snowflake_semantic_tools.cli.output import RenderPolicy, emit_agent, interrupted, use_render_policy
+from snowflake_semantic_tools.cli.output import RenderPolicy, use_render_policy
 from snowflake_semantic_tools.cli.render.agent import agent_document
 from snowflake_semantic_tools.cli.render.progress import ProgressDisplay
 from snowflake_semantic_tools.cli.render.report import outcome_lines, plan_lines, table
