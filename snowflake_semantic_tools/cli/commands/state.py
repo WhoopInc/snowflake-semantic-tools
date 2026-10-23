@@ -20,7 +20,7 @@ import click
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.app.observe import ObserveOptions
-from snowflake_semantic_tools.app.plan import PlanRefused
+from snowflake_semantic_tools.app.plan_values import PlanRefused
 from snowflake_semantic_tools.app.recover import RecoverResult, RecoverState
 from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK

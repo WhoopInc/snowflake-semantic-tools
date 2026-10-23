@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.app.manifest import manifest_for
-from snowflake_semantic_tools.app.plan import PlanCandidates, PlanScope, PreparePlan
+from snowflake_semantic_tools.app.plan import PreparePlan
+from snowflake_semantic_tools.app.plan_values import PlanCandidates, PlanScope
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.state import Manifest
 from tests.helpers.clocks import FixedClock

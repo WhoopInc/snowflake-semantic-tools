@@ -29,7 +29,8 @@ from snowflake_semantic_tools.adapters.snowflake.connector.session import ReadCa
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.observe import ObserveOptions
-from snowflake_semantic_tools.app.plan import PlanCandidates, PlanReady, PlanRefused, PlanScope, PreparePlan
+from snowflake_semantic_tools.app.plan import PreparePlan
+from snowflake_semantic_tools.app.plan_values import PlanCandidates, PlanReady, PlanRefused, PlanScope
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.compile import compiled_universe, manifest_universe, selection, selector_report

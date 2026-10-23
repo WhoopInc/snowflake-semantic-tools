@@ -16,7 +16,7 @@ import click
 from snowflake_semantic_tools.adapters.paths import make_folders_within, output_root, remove_within, write_within
 from snowflake_semantic_tools.app.baseline import blocking
 from snowflake_semantic_tools.app.evals.run import EvalSuiteResult
-from snowflake_semantic_tools.app.plan import PlanReady
+from snowflake_semantic_tools.app.plan_values import PlanReady
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
 from snowflake_semantic_tools.cli.output import render_policy
 from snowflake_semantic_tools.cli.render.evals import NO_MARKS, EvalMarks, EvalShown, eval_lines

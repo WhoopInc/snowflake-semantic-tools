@@ -24,7 +24,7 @@ from snowflake_semantic_tools.app.apply import ApplyArtifacts, writes_nothing
 from snowflake_semantic_tools.app.apply.observation import stale_observation
 from snowflake_semantic_tools.app.baseline import held_by_baseline
 from snowflake_semantic_tools.app.observe import ObserveOptions
-from snowflake_semantic_tools.app.plan import PlanRefused
+from snowflake_semantic_tools.app.plan_values import PlanRefused
 from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
 from snowflake_semantic_tools.cli.envelope import announce_interrupt
 from snowflake_semantic_tools.cli.exit_codes import ERROR, INTERRUPTED, OK

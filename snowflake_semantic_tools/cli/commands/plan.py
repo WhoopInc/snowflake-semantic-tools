@@ -14,7 +14,7 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.app.baseline import held_by_baseline
 from snowflake_semantic_tools.app.observe import ObserveOptions
-from snowflake_semantic_tools.app.plan import PlanReady, PlanRefused
+from snowflake_semantic_tools.app.plan_values import PlanReady, PlanRefused
 from snowflake_semantic_tools.cli.exit_codes import ERROR
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError

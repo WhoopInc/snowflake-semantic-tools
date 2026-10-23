@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.app.plan import OBSERVATION_TTL_MS, stale_observation
+from snowflake_semantic_tools.app.plan import stale_observation
+from snowflake_semantic_tools.app.plan_values import OBSERVATION_TTL_MS
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.project_inputs import dev_target
 

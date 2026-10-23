@@ -7,7 +7,8 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.manifest import manifest_for
-from snowflake_semantic_tools.app.plan import PlanCandidates, PlanReady, PlanScope, PreparePlan
+from snowflake_semantic_tools.app.plan import PreparePlan
+from snowflake_semantic_tools.app.plan_values import PlanCandidates, PlanReady, PlanScope
 from snowflake_semantic_tools.app.preflight import read_preflight
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
