@@ -853,9 +853,11 @@ def test_agent_tools_resolve_by_type_and_unknown_types_resolve_to_nothing() -> N
     assert unknown is None
     assert [(item.code, item.origin) for item in unknown_diagnostics] == [("SST-RND012", origin)]
 
-    chart, chart_diagnostics = resolve_tool(model, AgentTool("data_to_chart", origin, description="Charts."), context())
+    chart, chart_diagnostics = resolve_tool(
+        model, AgentTool("code_execution", origin, description="Runs code."), context()
+    )
     assert chart_diagnostics == ()
-    assert chart is not None and (chart.name, dict(chart.resources)) == ("data_to_chart", {})
+    assert chart is not None and (chart.name, dict(chart.resources)) == ("code_execution", {})
 
     # An `mcp` tool is refused, whatever `snowflake.tool_types` adds: every run of the agent
     # would fail, and Snowflake attaches MCP servers through the spec's `mcp_servers:` key.

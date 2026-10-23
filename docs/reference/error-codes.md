@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 337 codes
+- [Validation (VAL)](#validation-val) -- 338 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 17 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
@@ -4201,6 +4201,18 @@ Raised when an agent's or CoWork profile's `alias` starts with `EVAL_`, ignoring
 Fix: choose an alias that does not start with EVAL_
 
 Note: A comparison of orchestration models commits a version of the published agent per model and aliases it `EVAL_<MODEL>`; plan never unsets such an alias, so a project alias with the prefix could not be told from one.
+
+### SST-VAL562
+
+**data_to_chart tool is implicit** (info)
+
+`agent '<artifact>': tool '<name>' of type data_to_chart is not needed; the agent charts without it`
+
+Raised when an agent or CoWork profile declares a `data_to_chart` tool.
+
+Fix: keep it or remove it; it changes nothing
+
+Note: An agent whose spec declares no data_to_chart tool still calls one and returns a chart when asked for one, measured on a live account with orchestration `auto`. A declared one is still rendered, as written.
 
 ### SST-VAL603
 

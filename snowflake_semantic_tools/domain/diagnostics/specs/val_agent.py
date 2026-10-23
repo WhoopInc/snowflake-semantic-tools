@@ -672,4 +672,17 @@ SPECS: tuple[ErrorSpec, ...] = (
             "alias with the prefix could not be told from one."
         ),
     ),
+    spec(
+        "SST-VAL562",
+        Severity.INFO,
+        "data_to_chart tool is implicit",
+        "agent '{artifact}': tool '{name}' of type data_to_chart is not needed; the agent charts without it",
+        "keep it or remove it; it changes nothing",
+        condition="an agent or CoWork profile declares a `data_to_chart` tool",
+        note=(
+            "An agent whose spec declares no data_to_chart tool still calls one and returns a chart "
+            "when asked for one, measured on a live account with orchestration `auto`. A declared "
+            "one is still rendered, as written."
+        ),
+    ),
 )

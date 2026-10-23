@@ -11,7 +11,7 @@ AGENT = AgentModel("sales", Origin("agent.yml"), ("agent.yml",))
 
 
 def _codes(name: str) -> list[tuple[str, Severity, str, str | None]]:
-    tool = AgentTool("data_to_chart", Origin("agent.yml"), name=name, description="Charts.")
+    tool = AgentTool("code_execution", Origin("agent.yml"), name=name, description="Charts.")
     _, diagnostics = resolve_tool(AGENT, tool, agent_context())
     return [(item.code, item.severity, item.message, item.subject) for item in diagnostics]
 

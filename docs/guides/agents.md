@@ -222,12 +222,13 @@ Each `spec.tools` entry is one tool. SST splits it into the spec's `tools` and
 | `agent_toolset` | `agent: "{{ agent('<name>') }}"`, or `identifier: "{{ tool('<name>') }}"`, an `agent` tool member; see [agent toolsets](#agent-toolsets). |
 | `data_to_chart`, `web_search`, `code_execution` | Built-ins: no resources. Unnamed, a built-in is named after its type, and `web_search` must be named `web_search` (`SST-VAL517`). |
 
-You do not need to declare `data_to_chart` for an agent to draw charts. An agent
-whose spec lists only a `cortex_analyst_text_to_sql` tool still called
-`data_to_chart` and returned a chart when asked for one, exactly as an agent that
-declares it did (measured on a live account, with orchestration
-`auto`; a pinned orchestration model was not measured). Declaring it does no
-harm.
+**Charts come for free.** You do not need to declare `data_to_chart` for an
+agent to draw charts. An agent whose spec lists only a `cortex_analyst_text_to_sql`
+tool still called `data_to_chart` and returned a chart when asked for one,
+exactly as an agent that declares it did (measured on a live account, with
+orchestration `auto`; a pinned orchestration model was not measured). Declaring
+it is still supported: SST renders it as written and reports an info
+(`SST-VAL562`) that it is not needed, which never blocks, even under `--strict`.
 
 - `type: mcp` is refused (`SST-VAL559`): Snowflake accepts it in `CREATE AGENT`,
   then every run of the agent fails with "Tool type mcp is not valid". Snowflake

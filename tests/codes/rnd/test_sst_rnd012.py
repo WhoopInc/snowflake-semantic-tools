@@ -20,5 +20,5 @@ def test_sst_rnd012_fires() -> None:
 
 
 def test_sst_rnd012_silent() -> None:
-    tool, found = resolve_tool(AGENT, AgentTool("data_to_chart", ORIGIN, description="Charts."), agent_context())
+    tool, found = resolve_tool(AGENT, AgentTool("code_execution", ORIGIN, description="Runs code."), agent_context())
     assert tool is not None and found == ()

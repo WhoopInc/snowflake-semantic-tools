@@ -47,7 +47,7 @@ def described_agent(name: str = "sales", **fields: Any) -> AgentModel:
         "comment": "Pipeline and quota.",
         "profile": AgentProfile(display_name="Sales"),
         "sample_questions": ("What closed last week?",),
-        "tools": (AgentTool("data_to_chart", AGENT_ORIGIN, description="Charts.", declared_keys=("type",)),),
+        "tools": (AgentTool("code_execution", AGENT_ORIGIN, description="Charts.", declared_keys=("type",)),),
         **fields,
     }
     return AgentModel(name, AGENT_ORIGIN, ("agents/sales/agent.yml",), **values)

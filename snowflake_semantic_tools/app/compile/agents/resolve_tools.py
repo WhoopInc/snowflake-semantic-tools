@@ -371,6 +371,8 @@ def _builtin(
     name = authored.name or authored.type
     if authored.passthrough:
         diagnostics.append(D("SST-VAL529", artifact=agent.name, name=name, subject=agent.key))
+    if authored.type == "data_to_chart":
+        diagnostics.append(D("SST-VAL562", artifact=agent.name, name=name, subject=agent.key))
     return _Resolution(name, authored.description or "")
 
 
