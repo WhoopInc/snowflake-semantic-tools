@@ -17,7 +17,7 @@ cannot be downgraded by any setting.
 
 - [Registry (REG)](#registry-reg) -- 24 codes
 - [Configuration (CFG)](#configuration-cfg) -- 47 codes
-- [Discovery (DIS)](#discovery-dis) -- 14 codes
+- [Discovery (DIS)](#discovery-dis) -- 15 codes
 - [Parsing (PRS)](#parsing-prs) -- 59 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
@@ -862,7 +862,7 @@ Fix: correct model-paths in dbt_project.yml
 
 `--select <selector> matched no artifact`
 
-Raised when a `--select` value matches no artifact, or an `sst enrich` selector or PATH matches no dbt model; `state:` selectors are not checked.
+Raised when a `--select` value matches no artifact; `state:` selectors are not checked.
 
 Fix: widen the selector, or check the artifact name
 
@@ -885,6 +885,16 @@ Fix: check the artifact name, or drop the exclusion
 Raised when `sst test` runs on a selection that compiles no artifact with a smoke probe -- no semantic view, tool, agent, or CoWork profile -- so it would probe nothing.
 
 Fix: add a semantic view, or widen --select and --exclude
+
+### SST-DIS013
+
+**Selection matched no dbt model** (error)
+
+`<selector> matched no dbt model`
+
+Raised when `sst enrich` is given a PATH or `--select` value and no dbt model of the project matches any of them, so there is nothing to enrich; one per value.
+
+Fix: check the PATH or selector against model-paths and the model names
 
 ### SST-DIS200
 

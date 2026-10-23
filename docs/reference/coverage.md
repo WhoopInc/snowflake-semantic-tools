@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 814
+- Codes: 815
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -164,9 +164,10 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-DIS007`](error-codes.md#sst-dis007) | DIS | error | local | `snowflake_semantic_tools.adapters.yaml.discover` | `tests/codes/dis/test_sst_dis007.py` |
 | [`SST-DIS008`](error-codes.md#sst-dis008) | DIS | warning | local | `snowflake_semantic_tools.adapters.yaml.ownership` | `tests/codes/dis/test_sst_dis008.py` |
 | [`SST-DIS009`](error-codes.md#sst-dis009) | DIS | error | local | `snowflake_semantic_tools.adapters.dbt.project` | `tests/codes/dis/test_sst_dis009.py` |
-| [`SST-DIS010`](error-codes.md#sst-dis010) | DIS | warning | local | `snowflake_semantic_tools.app.plan`<br>`snowflake_semantic_tools.cli.commands.enrich`<br>`snowflake_semantic_tools.cli.commands.eval`<br>`snowflake_semantic_tools.cli.wiring.compile` | `tests/codes/dis/test_sst_dis010.py` |
+| [`SST-DIS010`](error-codes.md#sst-dis010) | DIS | warning | local | `snowflake_semantic_tools.app.plan`<br>`snowflake_semantic_tools.cli.commands.eval`<br>`snowflake_semantic_tools.cli.wiring.compile` | `tests/codes/dis/test_sst_dis010.py` |
 | [`SST-DIS011`](error-codes.md#sst-dis011) | DIS | warning | local | `snowflake_semantic_tools.cli.wiring.compile` | `tests/codes/dis/test_sst_dis011.py` |
 | [`SST-DIS012`](error-codes.md#sst-dis012) | DIS | error | local | `snowflake_semantic_tools.cli.commands.test` | `tests/codes/dis/test_sst_dis012.py` |
+| [`SST-DIS013`](error-codes.md#sst-dis013) | DIS | error | local | `snowflake_semantic_tools.cli.commands.enrich` | `tests/codes/dis/test_sst_dis013.py` |
 | [`SST-DIS200`](error-codes.md#sst-dis200) | DIS | info | local | `snowflake_semantic_tools.adapters.yaml.ownership` | `tests/codes/dis/test_sst_dis200.py` |
 | [`SST-DIS201`](error-codes.md#sst-dis201) | DIS | info | local | `snowflake_semantic_tools.cli.wiring.compile` | `tests/codes/dis/test_sst_dis201.py` |
 | [`SST-INT001`](error-codes.md#sst-int001) | INT | error | local | `snowflake_semantic_tools.cli.runner` | `tests/codes/int/test_sst_int001.py` |

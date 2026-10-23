@@ -204,7 +204,7 @@ def test_a_selection_naming_no_model_exits_1_without_connecting(monkeypatch: pyt
 def test_a_pattern_matching_no_model_exits_4_without_connecting(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
     result = _invoke(monkeypatch, project, _port(), "--select", "model:nope_*", ".")
     assert result.exit_code == 4, result.output
-    assert "no dbt model of the project" in result.output
+    assert "error[SST-DIS013]: model:nope_* matched no dbt model" in result.output
     assert result.opened == []  # type: ignore[attr-defined]
 
 

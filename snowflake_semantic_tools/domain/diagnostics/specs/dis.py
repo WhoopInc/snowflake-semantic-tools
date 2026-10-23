@@ -93,10 +93,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Selector matched nothing",
         "--select {selector} matched no artifact",
         "widen the selector, or check the artifact name",
-        condition=(
-            "a `--select` value matches no artifact, or an `sst enrich` selector or PATH matches no "
-            "dbt model; `state:` selectors are not checked"
-        ),
+        condition="a `--select` value matches no artifact; `state:` selectors are not checked",
     ),
     spec(
         "SST-DIS011",
@@ -117,6 +114,17 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "`sst test` runs on a selection that compiles no artifact with a smoke probe -- no "
             "semantic view, tool, agent, or CoWork profile -- so it would probe nothing"
+        ),
+    ),
+    spec(
+        "SST-DIS013",
+        Severity.ERROR,
+        "Selection matched no dbt model",
+        "{selector} matched no dbt model",
+        "check the PATH or selector against model-paths and the model names",
+        condition=(
+            "`sst enrich` is given a PATH or `--select` value and no dbt model of the project matches "
+            "any of them, so there is nothing to enrich; one per value"
         ),
     ),
     spec(
