@@ -46,7 +46,7 @@ def _dir(paths: ProjectPaths, key: str, default: str) -> str:
 
 
 @migrate.command(cls=SstCommand, name="refs")
-@click.option("--write", "write_files", is_flag=True, help="Rewrite the files in place; without it, only report.")
+@click.option("--write", "write_files", is_flag=True)
 @command_body("migrate refs")
 def migrate_refs_command(paths: ProjectPaths, write_files: bool) -> CommandResult:
     """Rewrite references as template calls, move old settings under config:, and label filters.
@@ -94,9 +94,7 @@ def migrate_refs_command(paths: ProjectPaths, write_files: bool) -> CommandResul
 
 
 @migrate.command(cls=SstCommand, name="split")
-@click.option(
-    "--write", "write_files", is_flag=True, help="Write the new files and remove the old; without it, only report."
-)
+@click.option("--write", "write_files", is_flag=True)
 @command_body("migrate split")
 def migrate_split_command(paths: ProjectPaths, write_files: bool) -> CommandResult:
     """Write each listed member to a file of its own, tool group members to their group's folder.

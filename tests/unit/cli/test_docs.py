@@ -8,7 +8,7 @@ from pathlib import Path
 import click
 from click.testing import CliRunner
 
-from snowflake_semantic_tools.cli.help_text import _COMMAND_OPTION_HELP, command_docs
+from snowflake_semantic_tools.cli.help_text import _COMMAND_OPTION_HELP, _OPTION_HELP, command_docs
 from snowflake_semantic_tools.cli.main import cli
 from tests.helpers.reference_project import REPO_ROOT
 
@@ -98,3 +98,22 @@ def test_every_command_specific_option_text_reaches_that_commands_reference_sect
     }
     for (path, flag), text in _COMMAND_OPTION_HELP.items():
         assert documented.get((path, flag)) == text, f"{path} {flag}"
+
+
+def test_every_option_takes_its_help_from_help_text() -> None:
+    # Help written inline at the option would bypass the one place the reference and --help read.
+    # `--version` is click's own option, with click's own help.
+    def walk(command: click.Command, path: str) -> list[str]:
+        stray = [
+            f"{path} {param.opts[0]}"
+            for param in command.params
+            if isinstance(param, click.Option)
+            and not param.hidden
+            and param.name != "version"
+            and param.help != (_COMMAND_OPTION_HELP.get((path, param.opts[0])) or _OPTION_HELP.get(param.opts[0]))
+        ]
+        for name, child in getattr(command, "commands", {}).items():
+            stray += walk(child, f"{path} {name}")
+        return stray
+
+    assert walk(cli, "sst") == []

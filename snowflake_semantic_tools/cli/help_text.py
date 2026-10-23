@@ -440,6 +440,8 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst agent-kit remove", "--only"): "Repeatable. Remove only this installed skill.",
     ("sst agent-kit remove", "--force"): "Also remove files you changed since SST wrote them.",
     ("sst agent-kit remove", "--dry-run"): "List what would be removed; remove nothing.",
+    ("sst migrate refs", "--write"): "Rewrite the files in place; without it, only report.",
+    ("sst migrate split", "--write"): "Write the new files and remove the old; without it, only report.",
 }
 
 
