@@ -115,7 +115,7 @@ class CocoDesktopProfile:
         name: The folder name, which is also the registry row's CONFIG_NAME.
         prompt: The folder's own `AGENTS.md`; None when it has none.
         source_files: The profile's own files, relative to the project root.
-        config: The manifest's `config:` block: the `profiles:` settings the profile sets for
+        config: The manifest's `config:` block: the `coco_desktop_profiles:` settings the profile sets for
             itself, without their `+`; compile resolves them over the folder route over its
             folder and the block root.
     """

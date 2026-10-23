@@ -3,7 +3,7 @@
 - `skills.catalog`'s keys move to the `skills:` root, and a `plugins:` block takes the same
   location (`+database`, `+schema`, `+bundle_stage`) with the root's `+certified` and
   `+version_prefix`, since the catalog published plugins too;
-- `skills.stage` becomes the top-level `profiles:` block, and `skills.extensions` the top-level
+- `skills.stage` becomes the top-level `coco_desktop_profiles:` block, and `skills.extensions` the top-level
   `extensions:` block;
 - the always-fixed keys `+flatten`, `+prune_deleted`, `+auto_compress` and `+layout`, and the
   removed `+registry_table` of the catalog, go;

@@ -77,7 +77,7 @@ def load_coco_desktop_profile_catalog(
     reported and left out, and so is anything reached through a symbolic link.
 
     Args:
-        config: The run's resolved configuration, whose `profiles:` folder routes are checked
+        config: The run's resolved configuration, whose `coco_desktop_profiles:` folder routes are checked
             against the folders under `coco_desktop_profiles_dir`; None checks no route. Each profile records
             its own `config:`, which compile resolves over the routes.
 
@@ -85,7 +85,7 @@ def load_coco_desktop_profile_catalog(
         OSError: A manifest, script, prompt, rule or command file cannot be read.
 
     Diagnostics:
-        SST-CFG041: a `profiles:` folder route names no folder under `coco_desktop_profiles_dir`.
+        SST-CFG041: a `coco_desktop_profiles:` folder route names no folder under `coco_desktop_profiles_dir`.
         SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
             reports a profile manifest's `config:` block.
         SST-VAL801: when a profile folder holds no manifest or both spellings, or its manifest's

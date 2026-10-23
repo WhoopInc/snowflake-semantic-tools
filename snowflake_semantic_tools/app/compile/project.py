@@ -267,7 +267,7 @@ class CompileProject:
         `+stage` does. The catalogs are read whatever is configured, so every declared skill and
         plugin can be reported as unpublished with its reason. When no block of the three is
         written and no item places itself, nothing compiles; profiles compile when the
-        `profiles:` block is written or a profile has a stage.
+        `coco_desktop_profiles:` block is written or a profile has a stage.
         """
         catalog = self._inputs.skill_catalog(
             skills_dir=settings.directory("skills_dir", "skills"),
@@ -663,7 +663,7 @@ def _catalog_channel(settings: _Settings, block: str, item: Skill | Plugin) -> C
 def _desktop_channel(settings: _Settings, profile: CocoDesktopProfile) -> DesktopChannel | None:
     """Return where a profile publishes, from the settings it resolves; None without a `+stage`.
 
-    Its settings resolve over the `profiles:` route of its folder and the block root, below its
+    Its settings resolve over the `coco_desktop_profiles:` route of its folder and the block root, below its
     own `config:`. The stage and registry are qualified in its database and schema unless written
     qualified; its VERSION takes the `skills:` block root's version prefix.
     """
