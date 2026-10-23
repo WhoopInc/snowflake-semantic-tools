@@ -424,13 +424,13 @@ def test_profiles_publish_then_deactivate_under_prune(tmp_path: Path, monkeypatc
     assert [item["artifact_key"] for item in json.loads(compiled.output)["data"]["artifacts"]] == [
         "coco_desktop_profile:analyst"
     ]
-    assert json.loads(compiled.output)["data"]["artifacts"][0]["target"] == "DB.SCH.PROFILE_REGISTRY"
+    assert json.loads(compiled.output)["data"]["artifacts"][0]["target"] == "CORTEX_CODE.CONFIG.PROFILE_REGISTRY"
 
     port = FakeSnowflake(existing=())
     applied = invoke_with_port(monkeypatch, port, ["apply", "--project-dir", str(project), "--yes", "--output", "json"])
     assert applied.exit_code == 0, applied.output
-    row = port.desktop_profile_rows(QualifiedName.parse("DB.SCH.PROFILE_REGISTRY"))[0]
-    assert row["CONFIG_NAME"] == "analyst" and str(row["VERSION"]).startswith("SST_")
+    row = port.desktop_profile_rows(QualifiedName.parse("CORTEX_CODE.CONFIG.PROFILE_REGISTRY"))[0]
+    assert (row["CONFIG_NAME"], row["VERSION"]) == ("analyst", "1")
 
     replanned = invoke_with_port(monkeypatch, port, ["plan", "--project-dir", str(project), "--output", "json"])
     assert [item["action"] for item in json.loads(replanned.output)["data"]["changes"]] == ["noop"]
@@ -445,7 +445,7 @@ def test_profiles_publish_then_deactivate_under_prune(tmp_path: Path, monkeypatc
     )
     assert pruned.exit_code == 0, pruned.output
     assert json.loads(pruned.output)["data"]["pruned"] == ["coco_desktop_profile:analyst"]
-    assert port.desktop_profile_rows(QualifiedName.parse("DB.SCH.PROFILE_REGISTRY")) == ()
+    assert port.desktop_profile_rows(QualifiedName.parse("CORTEX_CODE.CONFIG.PROFILE_REGISTRY")) == ()
 
 
 def test_profile_commands_and_plugins_publish_and_every_pointer_resolves(
@@ -457,7 +457,7 @@ def test_profile_commands_and_plugins_publish_and_every_pointer_resolves(
     port = FakeSnowflake(existing=())
     applied = invoke_with_port(monkeypatch, port, ["apply", "--project-dir", str(project), "--yes", "--output", "json"])
     assert applied.exit_code == 0, applied.output
-    row = port.desktop_profile_rows(QualifiedName.parse("DB.SCH.PROFILE_REGISTRY"))[0]
+    row = port.desktop_profile_rows(QualifiedName.parse("CORTEX_CODE.CONFIG.PROFILE_REGISTRY"))[0]
     commands = json.loads(str(row["COMMAND_REPOS"]))
     plugins = json.loads(str(row["PLUGINS"]))
     assert [pointer["snowflake_stage"].split("/")[1:3] for pointer in commands] == [

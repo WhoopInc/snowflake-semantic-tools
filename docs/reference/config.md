@@ -232,7 +232,7 @@ Defaults for skills, overridable per folder and by a skill's own `config:`. A sk
 | `skills.+schema` | identifier | the target schema | Schema for skill extensions. |
 | `skills.+bundle_stage` | identifier or three-part name |  | Internal stage that `ADD VERSION` reads from; created when absent. Unset, the skill does not publish. |
 | `skills.+certified` | boolean | `false` | Tag each new skill version `SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'`. |
-| `skills.+version_prefix` | string | `SST_` | Prefix of every version alias, and of each profile's VERSION; the rest is 12 hex characters of the digest. |
+| `skills.+version_prefix` | string | `SST_` | Prefix of every version alias; the rest is 12 hex characters of the digest. |
 | `skills.+threads` | integer, 1 to 16, root only | `4` | Changes `apply` applies at once when neither `--threads`, `$SST_THREADS`, nor `generation.threads` says. Profiles always publish one at a time. |
 | `skills.<route>` | block |  | Folder route: overrides for the skills under that directory. |
 
@@ -258,7 +258,8 @@ Defaults for CoCo Desktop profiles, overridable per folder and by a profile's ow
 | `coco_desktop_profiles.+database` | identifier | the target database | Database of the profile stage and registry. |
 | `coco_desktop_profiles.+schema` | identifier | the target schema | Schema of the profile stage and registry. |
 | `coco_desktop_profiles.+stage` | identifier or three-part name |  | Internal stage that holds profile trees; created when absent. Unset, the profile does not publish. |
-| `coco_desktop_profiles.+registry_table` | identifier or three-part name | `PROFILE_REGISTRY` | Profile registry table. Desktop reads `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`. |
+| `coco_desktop_profiles.+registry_table` | identifier or three-part name | `CORTEX_CODE.CONFIG.PROFILE_REGISTRY` | Profile registry table; the default is the only one Desktop reads. A bare name is qualified in `+database`.`+schema`, for rehearsal. |
+| `coco_desktop_profiles.+name_suffix` | string |  | Appended to each profile's name to make its row's `CONFIG_NAME`, so targets sharing one registry write separate rows; letters, digits, `_`, and `-`. |
 | `coco_desktop_profiles.<route>` | block |  | Folder route: overrides for the profile in that directory. |
 
 ## extensions

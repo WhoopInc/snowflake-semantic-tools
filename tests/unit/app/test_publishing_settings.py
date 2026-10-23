@@ -125,8 +125,12 @@ def test_each_profile_publishes_through_its_own_stage_and_each_registry_is_noted
         "coco_desktop_profile:x": "DB.SCH.TREES",
     }
     assert compiled["coco_desktop_profile:x"].channel.registry.sql == "DB.SCH.OTHER"
+    # By default every profile publishes where Desktop reads; only the rehearsal registry is noted.
+    assert {item.channel.registry.sql for key, item in compiled.items() if not key.endswith(":x")} == {
+        "CORTEX_CODE.CONFIG.PROFILE_REGISTRY"
+    }
     notes = [item.context["value"] for item in result.diagnostics if item.code == "SST-VAL854"]
-    assert notes == ["DB.SCH.PROFILE_REGISTRY", "DB.OPS.PROFILE_REGISTRY", "DB.SCH.OTHER"]
+    assert notes == ["DB.SCH.OTHER"]
     settings = {item.key: (item.value, item.source) for item in compiled["coco_desktop_profile:x"].settings}
     assert settings["registry_table"] == ("OTHER", "route:x")
 
@@ -197,4 +201,19 @@ def test_a_profile_stage_or_registry_that_renders_to_no_name_is_refused() -> Non
     compiled = {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledCocoDesktopProfile)}
     # The stage leaves analyst nowhere to publish; operator keeps the default registry.
     assert list(compiled) == ["coco_desktop_profile:operator"]
-    assert compiled["coco_desktop_profile:operator"].channel.registry.sql == "DB.SCH.PROFILE_REGISTRY"
+    assert compiled["coco_desktop_profile:operator"].channel.registry.sql == "CORTEX_CODE.CONFIG.PROFILE_REGISTRY"
+
+
+def test_a_name_suffix_names_each_row_and_one_that_is_no_name_is_refused() -> None:
+    profiles = CocoDesktopProfileCatalog((_profile("analyst"), _profile("operator", name_suffix="bad suffix!")))
+    tree: dict[str, object] = {"coco_desktop_profiles": {"+stage": "TREES", "+name_suffix": "-dev"}}
+    result = _compiled(tree, profiles=profiles)
+    compiled = {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledCocoDesktopProfile)}
+    analyst = compiled["coco_desktop_profile:analyst"]
+    assert (analyst.config_name, analyst.release.row["CONFIG_NAME"]) == ("analyst-dev", "analyst-dev")
+    # The trees keep the profile's own name, so only the row is the target's.
+    assert all("/analyst/" in tree.prefix or "/shared/" in tree.prefix for tree in analyst.release.trees)
+    assert compiled["coco_desktop_profile:operator"].config_name == "operator"
+    assert [(item.subject, item.context["key"]) for item in result.diagnostics if item.code == "SST-CFG008"] == [
+        ("coco_desktop_profile:operator", "config.name_suffix")
+    ]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import replace
+from types import MappingProxyType
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.coco_desktop_profiles import (
@@ -28,6 +29,8 @@ from snowflake_semantic_tools.domain.model.coco_desktop_profile import (
     HookDefinition,
     McpConfig,
     SharedCocoDesktopProfile,
+    next_version,
+    same_version,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
@@ -138,7 +141,9 @@ def test_compile_reports_desktop_registry_and_blocks_on_broken_members() -> None
     assert item.source_files[-1] == "mcp-servers/dbt/mcp.json"
     artifact = item.rendered_for_publish("a" * 64)
     assert artifact.target == REGISTRY and artifact.statements == ()
-    assert dict(artifact.component_fingerprints)["version"] == item.release.version
+    fingerprints = dict(artifact.component_fingerprints)
+    assert (fingerprints["content"], fingerprints["config_name"]) == (item.release.content, "analyst")
+    assert "version" not in fingerprints  # a plan numbers the row; state records the VERSION apply wrote
     notes = CompileCocoDesktopProfiles(catalog(), SKILLS, CHANNEL, catalog_published=PUBLISHED).run_result().diagnostics
     assert [note.code for note in notes] == ["SST-VAL854"]
     desktop = replace(CHANNEL, registry=QualifiedName.parse("CORTEX_CODE.CONFIG.PROFILE_REGISTRY"))
@@ -204,9 +209,9 @@ def test_first_publish_creates_registry_uploads_trees_and_reads_back_like_deskto
     assert len(port.uploads) == sum(len(tree.entries) for tree in release.trees)
     rows = port.desktop_profile_rows(REGISTRY)
     view = desktop_view(rows[0])
-    assert view["VERSION"] == release.version
+    assert view["VERSION"] == 1  # Desktop parses the text "1" as JSON, as it parses every column
     assert len(stage_pointers(view)) == 5
-    assert dict(after.applied["coco_desktop_profile:analyst"].component_fingerprints)["version"] == release.version
+    assert dict(after.applied["coco_desktop_profile:analyst"].component_fingerprints)["version"] == "1"
 
     changeset, result, after = publish(port, compiled, after)
     assert [change.action for change in changeset.changes] == [Action.NOOP]
@@ -217,20 +222,22 @@ def test_first_publish_creates_registry_uploads_trees_and_reads_back_like_deskto
     assert [change.action for change in changeset.changes] == [Action.UPDATE]
     assert result.success
     assert len(port.uploads) == uploads + 1  # only the new prompt tree; every other tree is reused
+    assert desktop_view(port.desktop_profile_rows(REGISTRY)[0])["VERSION"] == 2
 
+    # Going back to earlier content is a change too: the counter only goes up.
     changeset, result, _ = publish(port, compiled, after)
-    assert result.success and desktop_view(port.desktop_profile_rows(REGISTRY)[0])["VERSION"] == release.version
+    assert result.success and desktop_view(port.desktop_profile_rows(REGISTRY)[0])["VERSION"] == 3
 
 
 def test_unmanaged_concurrent_wrong_shape_and_client_side_stage_block() -> None:
     compiled = compile_profiles(catalog())
-    version = compiled["coco_desktop_profile:analyst"].release.version
     port = FakeSnowflake(existing=())
     port.ensure_profile_registry(REGISTRY)
     port.merge_profile_row(REGISTRY, {"CONFIG_NAME": "analyst", "VERSION": "66.00000"}, expected_version=None)
     changeset, _, _ = publish(port, compiled, empty_state())
     assert [item.code for item in changeset.diagnostics] == ["SST-PLN024"]
     assert changeset.changes[0].reason is ChangeReason.UNMANAGED_OBJECT
+    assert "+name_suffix" in changeset.diagnostics[0].message
 
     owned = AppliedEntry(
         "f", REGISTRY.sql, "now", "run", "applied", "f", "m", component_fingerprints=(("version", "SST_OLD"),)
@@ -251,7 +258,6 @@ def test_unmanaged_concurrent_wrong_shape_and_client_side_stage_block() -> None:
     client_side.stage_types[STAGE.sql] = "INTERNAL"
     changeset, _, _ = publish(client_side, compiled, empty_state())
     assert [item.code for item in changeset.diagnostics] == ["SST-PLN026"]
-    assert version.startswith("SST_")
 
 
 def test_lost_race_bad_pointer_and_merge_failure_are_reported() -> None:
@@ -438,7 +444,7 @@ def test_a_failed_update_leaves_state_on_the_version_the_row_still_carries() -> 
     retry, retried, _ = publish(port, edited, after)
     assert [change.diagnostics for change in retry.changes] == [DiagnosticBag()]
     assert retried.success
-    assert port.desktop_profile_rows(REGISTRY)[0]["VERSION"] == edited["coco_desktop_profile:analyst"].release.version
+    assert (old, port.desktop_profile_rows(REGISTRY)[0]["VERSION"]) == ("1", "2")
 
 
 def test_a_failed_read_back_after_the_row_is_written_keeps_ownership() -> None:
@@ -451,7 +457,8 @@ def test_a_failed_read_back_after_the_row_is_written_keeps_ownership() -> None:
         assert outcome.status is OutcomeStatus.FAILED and outcome.write_succeeded, inject
         entry = after.applied["coco_desktop_profile:analyst"]
         assert entry.outcome == FAILED_AFTER_WRITE
-        assert dict(entry.component_fingerprints)["version"] == compiled["coco_desktop_profile:analyst"].release.version
+        # The row carries VERSION 1, so state records it even though the publish then failed.
+        assert dict(entry.component_fingerprints)["version"] == "1"
         retry, retried, converged = publish(port, compiled, after)
         assert [(change.action, change.reason) for change in retry.changes] == [
             (Action.UPDATE, ChangeReason.STATE_MANIFEST_MISMATCH)
@@ -552,10 +559,10 @@ def test_every_tree_a_profile_uploads_is_one_its_registry_row_points_at() -> Non
         assert any(pointer.startswith(f"@{STAGE.sql}/{tree.prefix}") for pointer in pointers), tree.prefix
 
 
-def test_a_profile_version_covers_every_tree_it_ships_so_any_tree_change_is_a_new_version() -> None:
+def test_a_profile_content_covers_every_tree_it_ships_so_any_tree_change_is_a_new_version() -> None:
     compiled = compile_profiles(catalog())["coco_desktop_profile:analyst"].release
     document = json.dumps(compiled.row)
-    # Each tree is named by its own digest, and the row that VERSION digests names each tree.
+    # Each tree is named by its own digest, and the row whose content is digested names each tree.
     assert all(tree.prefix in document for tree in compiled.trees)
     changed = {
         "prompt": catalog(prompt="Be careful twice.\n"),
@@ -577,7 +584,59 @@ def test_a_profile_version_covers_every_tree_it_ships_so_any_tree_change_is_a_ne
         ),
     }
     versions = {
-        kind: compile_profiles(value)["coco_desktop_profile:analyst"].release.version for kind, value in changed.items()
+        kind: compile_profiles(value)["coco_desktop_profile:analyst"].release.content for kind, value in changed.items()
     }
-    assert compiled.version not in versions.values()
+    assert compiled.content not in versions.values()
     assert len(set(versions.values())) == len(versions)
+
+
+def _recorded_at(port: FakeSnowflake, state: State, version: str) -> State:
+    """Record the analyst profile at `version` in state and in the account's state table, as an earlier apply did."""
+    entry = state.applied["coco_desktop_profile:analyst"]
+    kept = tuple((key, value) for key, value in entry.component_fingerprints if key != "version")
+    fingerprints = (*kept, ("version", version))
+    recorded = {**state.applied, "coco_desktop_profile:analyst": replace(entry, component_fingerprints=fingerprints)}
+    port.remote_state = MappingProxyType(recorded)
+    return replace(state, applied=MappingProxyType(recorded))
+
+
+def test_a_row_an_earlier_sst_wrote_at_a_digest_moves_to_the_counter_once() -> None:
+    port = FakeSnowflake(existing=())
+    compiled = compile_profiles(catalog())
+    _, _, after = publish(port, compiled, empty_state())
+    row = port.profile_rows[REGISTRY.sql]["analyst"]
+    row["VERSION"] = "SST_A3582B5B2BC3"
+    legacy = _recorded_at(port, after, "SST_A3582B5B2BC3")
+    plan, result, moved = publish(port, compiled, legacy)
+    assert [(change.action, change.diagnostics) for change in plan.changes] == [(Action.UPDATE, DiagnosticBag())]
+    assert result.success and port.profile_rows[REGISTRY.sql]["analyst"]["VERSION"] == "1"
+    assert dict(moved.applied["coco_desktop_profile:analyst"].component_fingerprints)["version"] == "1"
+    again, _, _ = publish(port, compiled, moved)
+    assert [change.action for change in again.changes] == [Action.NOOP]
+
+
+def test_a_counter_written_as_a_decimal_is_kept_while_the_content_is_unchanged() -> None:
+    # A registry another tool created may hold VERSION as a number, read back as 166.00000.
+    port = FakeSnowflake(existing=())
+    compiled = compile_profiles(catalog())
+    _, _, after = publish(port, compiled, empty_state())
+    port.profile_rows[REGISTRY.sql]["analyst"]["VERSION"] = "166.00000"
+    state = _recorded_at(port, after, "166.00000")
+    unchanged, _, _ = publish(port, compiled, state)
+    assert [change.action for change in unchanged.changes] == [Action.NOOP]
+    _, result, _ = publish(port, compile_profiles(catalog(prompt="Be even more careful.\n")), state)
+    assert result.success and port.profile_rows[REGISTRY.sql]["analyst"]["VERSION"] == "167"
+
+
+def test_the_next_version_counts_on_from_a_whole_number_and_starts_again_from_anything_else() -> None:
+    assert [next_version(value) for value in (None, "", "1", "41", "166.00000", 166.0)] == [
+        "1",
+        "1",
+        "2",
+        "42",
+        "167",
+        "167",
+    ]
+    assert [next_version(value) for value in ("1.5", "SST_A1", "-3", "v2")] == ["1"] * 4
+    assert same_version("166.00000", 166) and same_version("SST_A", "SST_A")
+    assert not same_version("1", "2") and not same_version(None, None) and not same_version("1.5", "1")

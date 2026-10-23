@@ -345,7 +345,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: registry row '{value}' has VERSION {found}, and SST last wrote {expected}",
         "another writer changed the row; reconcile it, then plan again",
         demotable=False,
-        condition="a profile-registry row carries a VERSION neither state nor this release names",
+        condition=(
+            "a profile-registry row carries a VERSION state did not record, and content other than this release's"
+        ),
         precheck=Precheck.OBSERVE,
     ),
     spec(
@@ -353,7 +355,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Registry table has the wrong shape",
         "{artifact}: {value} {detail}",
-        "SST never alters the registry; fix the table or point profiles.+registry_table at a compatible one",
+        "SST never alters the registry; fix the table or point "
+        "coco_desktop_profiles.+registry_table at a compatible one",
         demotable=False,
         condition="the profile registry table lacks a column SST writes, or types it differently",
         precheck=Precheck.OBSERVE,

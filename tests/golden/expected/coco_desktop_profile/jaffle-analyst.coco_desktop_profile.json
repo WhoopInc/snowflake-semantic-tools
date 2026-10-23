@@ -41,8 +41,7 @@
     ],
     "SYSTEM_PROMPT_REPO": {
       "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/prompts/jaffle-analyst/de73ec596abf/AGENTS.md"
-    },
-    "VERSION": "SST_A0DF2357DF2E"
+    }
   },
   "trees": [
     {

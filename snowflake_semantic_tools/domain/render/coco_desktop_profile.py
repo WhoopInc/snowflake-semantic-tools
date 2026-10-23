@@ -4,7 +4,8 @@ Each input a profile carries becomes its own tree below a fixed `by_type` prefix
 reads -- `skills/`, `prompts/`, `mcp/`, `hooks/`, `commands/`, `plugins/` -- named by the
 digest of its own content, and the row points at the trees by stage path. Uploading a new
 tree never touches one a live row points at, so the row write is the atomic switch and the
-previous trees remain for rollback. The row's VERSION is a digest of every other column.
+previous trees remain for rollback. The row carries no VERSION: its content is digested, and a
+plan numbers it one past the live row's when that content changes.
 """
 
 from __future__ import annotations
@@ -17,7 +18,6 @@ from hashlib import sha256
 
 from snowflake_semantic_tools.domain.model.coco_desktop_profile.model import (
     SHARED_PROFILE,
-    TREE_HASH_CHARACTERS,
     CocoDesktopProfile,
     CocoDesktopProfileCatalog,
     CocoDesktopProfileRelease,
@@ -51,13 +51,14 @@ def build_coco_desktop_profile(
     skills: Mapping[str, Skill],
     *,
     stage: str,
-    version_prefix: str,
+    name_suffix: str = "",
     plugins: Mapping[str, Plugin] | None = None,
 ) -> CocoDesktopProfileRelease:
     """Render the nested trees and the registry row one profile publishes.
 
     A name the catalog does not define is left out here; validation reports it. A tree with
     no files is not published, and its column holds an empty value instead of a pointer.
+    The row's CONFIG_NAME is the profile's name, then `name_suffix`; trees keep the bare name.
 
     Returns:
         The release, its trees in upload order: skills (shared, then the profile's own), prompt,
@@ -81,8 +82,9 @@ def build_coco_desktop_profile(
         _command_tree(profile.name, chosen.own_commands, chosen.commands),
     )
     plugin_repos, included = _plugin_repositories(trees, profile, plugins, skills)
+    config_name = f"{profile.name}{name_suffix}"
     row: dict[str, object] = {
-        "CONFIG_NAME": profile.name,
+        "CONFIG_NAME": config_name,
         "DESCRIPTION": profile.description,
         "OWNER_TEAM": profile.owner_team,
         "SKILL_REPOS": skill_repos,
@@ -94,9 +96,10 @@ def build_coco_desktop_profile(
         "ENV_VARS": {},
         "SETTINGS_OVERRIDES": {},
     }
-    row["VERSION"] = _version(row, version_prefix)
     sources = _source_files(profile, catalog.shared, chosen, skills, tuple(plugins[name] for name in included))
-    return CocoDesktopProfileRelease(profile.name, str(row["VERSION"]), tuple(trees.published), row, sources)
+    return CocoDesktopProfileRelease(
+        profile.name, content_digest(row), tuple(trees.published), row, sources, config_name=config_name
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,16 +238,15 @@ def _plugin_repositories(
 
 
 def version_input(row: Mapping[str, object]) -> str:
-    """Return the text a row's VERSION digests: the canonical JSON of every column but VERSION."""
+    """Return the text a row's content digest covers: the canonical JSON of every column but VERSION."""
     return json.dumps(
         {key: value for key, value in row.items() if key != "VERSION"}, sort_keys=True, separators=(",", ":")
     )
 
 
-def _version(row: Mapping[str, object], prefix: str) -> str:
-    """Name the row's content: `prefix`, then 12 hex characters of its canonical JSON's digest."""
-    digest = sha256(version_input(row).encode("utf-8")).hexdigest()
-    return f"{prefix}{digest[:TREE_HASH_CHARACTERS].upper()}"
+def content_digest(row: Mapping[str, object]) -> str:
+    """Name the row's content: the sha256 of its canonical JSON, VERSION left out."""
+    return sha256(version_input(row).encode("utf-8")).hexdigest()
 
 
 def _source_files(

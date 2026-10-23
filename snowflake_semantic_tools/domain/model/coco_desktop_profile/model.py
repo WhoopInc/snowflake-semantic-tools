@@ -27,6 +27,37 @@ REJECTED_COCO_DESKTOP_PROFILE_KEYS: Mapping[str, str] = {
     "env_vars": "environment variables change every user's local environment, so SST does not publish them",
     "settings_overrides": "settings overrides change every user's local settings, so SST does not publish them",
 }
+# A suffix that keeps CONFIG_NAME a plain profile name, as Desktop lists it.
+NAME_SUFFIX_PATTERN = r"[A-Za-z0-9_-]{0,64}"
+
+
+def next_version(live: object) -> str:
+    """The VERSION a row's next content gets: one past the live counter, or 1.
+
+    A whole number written as a decimal, such as `166.00000`, counts as that number. Any other
+    live VERSION, such as the digest an earlier SST wrote, starts the counter again at 1.
+
+    Example:
+        `next_version("41")` is `"42"`; `next_version(None)` and `next_version("SST_A1")` are `"1"`.
+    """
+    return str(int(str(live).strip().partition(".")[0]) + 1) if is_counter(live) else "1"
+
+
+def same_version(left: object, right: object) -> bool:
+    """Report whether two VERSIONs name one counter, `166` and `166.00000` alike, or are the same text."""
+    if is_counter(left) and is_counter(right):
+        return int(str(left).strip().partition(".")[0]) == int(str(right).strip().partition(".")[0])
+    return left is not None and right is not None and str(left) == str(right)
+
+
+def is_counter(version: object) -> bool:
+    """Report whether a VERSION is a whole number, written plainly or as a decimal like `166.00000`."""
+    if version is None:
+        return False
+    whole, _, fraction = str(version).strip().partition(".")
+    return whole.isdigit() and fraction.strip("0") == ""
+
+
 # Frontmatter a Desktop command may carry; Desktop ignores anything else.
 COMMAND_FRONTMATTER_KEYS = frozenset(("description", "allowed-tools", "skill", "hidden"))
 
@@ -203,16 +234,24 @@ class CocoDesktopProfileRelease:
     """Everything one profile publishes: its trees and the registry row naming them.
 
     Attributes:
-        version: The row's VERSION: the version prefix, then a digest of the other columns.
+        content: A digest of every column the row carries. The row has no VERSION: that is a
+            counter, the live row's plus one, chosen when a plan finds the content changed.
         trees: In upload order: skills, prompt, MCP config, hooks, commands, plugins.
+        row: Every column but VERSION.
         source_files: Every authored file the release is built from, in first-use order.
+        config_name: The row's CONFIG_NAME: the profile's name, then its `+name_suffix`.
     """
 
     name: str
-    version: str
+    content: str
     trees: tuple[StageTree, ...]
     row: Mapping[str, object]
     source_files: tuple[str, ...]
+    config_name: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.config_name:
+            object.__setattr__(self, "config_name", self.name)
 
     @property
     def key(self) -> str:

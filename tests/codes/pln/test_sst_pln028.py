@@ -1,4 +1,4 @@
-"""SST-PLN028: a profile registry row carries a VERSION SST did not last write."""
+"""SST-PLN028: a profile registry row carries a VERSION SST did not last write, and other content."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def test_sst_pln028_fires() -> None:
     assert diagnostic.severity is Severity.ERROR
     assert (
         diagnostic.message
-        == "coco_desktop_profile:analyst: registry row 'analyst' has VERSION 66.0, and SST last wrote SST_OLD"
+        == "coco_desktop_profile:analyst: registry row 'analyst' has VERSION 66.00000, and SST last wrote SST_OLD"
     )
 
 

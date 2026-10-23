@@ -5710,9 +5710,9 @@ Fix: write mcp.json as `{"mcpServers": {"<name>": {...}}}`
 
 `profiles publish to <value>; CoCo Desktop reads only <expected>`
 
-Raised when profiles publish to a registry other than CORTEX_CODE.CONFIG.PROFILE_REGISTRY, the one CoCo Desktop reads (`profiles.+database`, `+schema` and `+registry_table`, or a profile's own `config:`).
+Raised when profiles publish to a registry other than CORTEX_CODE.CONFIG.PROFILE_REGISTRY, the one CoCo Desktop reads (`coco_desktop_profiles.+registry_table`, or a profile's own `config:`).
 
-Fix: point profiles.+registry_table at the Desktop registry to publish for real, or keep this for rehearsal
+Fix: unset coco_desktop_profiles.+registry_table to publish where Desktop reads, or keep this for rehearsal
 
 ### SST-VAL855
 
@@ -7010,7 +7010,7 @@ Fix: an earlier publish left a damaged version under this alias; remove the alia
 
 `<artifact>: registry row '<value>' has VERSION <found>, and SST last wrote <expected>`
 
-Raised when a profile-registry row carries a VERSION neither state nor this release names.
+Raised when a profile-registry row carries a VERSION state did not record, and content other than this release's.
 
 Fix: another writer changed the row; reconcile it, then plan again
 
@@ -7022,7 +7022,7 @@ Fix: another writer changed the row; reconcile it, then plan again
 
 Raised when the profile registry table lacks a column SST writes, or types it differently.
 
-Fix: SST never alters the registry; fix the table or point profiles.+registry_table at a compatible one
+Fix: SST never alters the registry; fix the table or point coco_desktop_profiles.+registry_table at a compatible one
 
 ### SST-PLN030
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 from snowflake_semantic_tools.domain.model.coco_desktop_profile.model import (
     COMMAND_FRONTMATTER_KEYS,
     DESKTOP_REGISTRY,
+    NAME_SUFFIX_PATTERN,
     REJECTED_COCO_DESKTOP_PROFILE_KEYS,
     SHARED_PROFILE,
     TREE_HASH_CHARACTERS,
@@ -27,11 +28,15 @@ from snowflake_semantic_tools.domain.model.coco_desktop_profile.model import (
     McpConfig,
     SharedCocoDesktopProfile,
     StageTree,
+    is_counter,
+    next_version,
+    same_version,
 )
 
 __all__ = [
     "COMMAND_FRONTMATTER_KEYS",
     "DESKTOP_REGISTRY",
+    "NAME_SUFFIX_PATTERN",
     "REJECTED_COCO_DESKTOP_PROFILE_KEYS",
     "SHARED_PROFILE",
     "TREE_HASH_CHARACTERS",
@@ -43,4 +48,7 @@ __all__ = [
     "CocoDesktopProfileRelease",
     "SharedCocoDesktopProfile",
     "StageTree",
+    "is_counter",
+    "next_version",
+    "same_version",
 ]

@@ -107,7 +107,6 @@ def test_build_profile_renders_trees_pointers_and_a_content_version() -> None:
         catalog,
         SKILLS,
         stage="DB.S.PROFILES",
-        version_prefix="SST_",
     )
     kinds = [(tree.kind, tree.scope, tree.paths) for tree in release.trees]
     assert kinds == [
@@ -145,7 +144,9 @@ def test_build_profile_renders_trees_pointers_and_a_content_version() -> None:
         }
     ]
     assert (row["PLUGINS"], row["COMMAND_REPOS"], row["ENV_VARS"], row["SETTINGS_OVERRIDES"]) == ([], [], {}, {})
-    assert release.version == row["VERSION"] and release.version.startswith("SST_")
+    # The row has no VERSION: a plan numbers it. Its content is digested instead.
+    assert "VERSION" not in row and len(release.content) == 64
+    assert release.config_name == row["CONFIG_NAME"] == "analyst"
     assert release.key == "coco_desktop_profile:analyst"
     assert "mcp-servers/dbt/mcp.json" in release.source_files
     document = json.loads(release.document())
@@ -156,7 +157,6 @@ def test_build_profile_renders_trees_pointers_and_a_content_version() -> None:
         CocoDesktopProfileCatalog(),
         SKILLS,
         stage="DB.S.PROFILES",
-        version_prefix="SST_",
     )
     assert bare.trees == ()
     assert (bare.row["SKILL_REPOS"], bare.row["SYSTEM_PROMPT_REPO"], bare.row["MCP_SERVERS"], bare.row["HOOKS"]) == (
@@ -170,17 +170,15 @@ def test_build_profile_renders_trees_pointers_and_a_content_version() -> None:
         CocoDesktopProfileCatalog(),
         SKILLS,
         stage="DB.S.PROFILES",
-        version_prefix="SST_",
     )
-    assert changed.version == bare.version
+    assert changed.content == bare.content
     renamed = build_coco_desktop_profile(
         profile(skills=(), mcp_servers=("missing",), description="Other."),
         CocoDesktopProfileCatalog(),
         SKILLS,
         stage="DB.S.PROFILES",
-        version_prefix="SST_",
     )
-    assert renamed.version != bare.version
+    assert renamed.content != bare.content
 
 
 def test_validation_covers_members_hooks_mcp_shape_and_credentials() -> None:
@@ -270,7 +268,6 @@ def test_commands_and_plugins_publish_as_trees_named_by_the_row() -> None:
         catalog,
         SKILLS,
         stage="DB.S.PROFILES",
-        version_prefix="SST_",
         plugins={"kit": KIT},
     )
     trees = {(tree.kind, tree.scope): tree for tree in release.trees}
@@ -289,13 +286,19 @@ def test_commands_and_plugins_publish_as_trees_named_by_the_row() -> None:
     assert {"commands/daily.md", "commands/sql/check.md", "plugins/kit/plugin.yml"} <= set(release.source_files)
 
     plain = build_coco_desktop_profile(
-        profile(), CocoDesktopProfileCatalog(), SKILLS, stage="DB.S.PROFILES", version_prefix="SST_"
+        profile(),
+        CocoDesktopProfileCatalog(),
+        SKILLS,
+        stage="DB.S.PROFILES",
     )
     assert (plain.row["PLUGINS"], plain.row["COMMAND_REPOS"]) == ([], [])
     missing = build_coco_desktop_profile(
-        profile(plugins=("ghost",)), CocoDesktopProfileCatalog(), SKILLS, stage="DB.S.PROFILES", version_prefix="SST_"
+        profile(plugins=("ghost",)),
+        CocoDesktopProfileCatalog(),
+        SKILLS,
+        stage="DB.S.PROFILES",
     )
-    assert missing.version == plain.version and missing.trees == plain.trees
+    assert missing.content == plain.content and missing.trees == plain.trees
 
 
 def test_command_and_plugin_references_are_validated() -> None:
@@ -439,7 +442,6 @@ def test_hooks_group_by_event_then_matcher_in_the_order_the_profile_first_names_
         CocoDesktopProfileCatalog(hooks=hooks),
         SKILLS,
         stage="DB.S.PROFILES",
-        version_prefix="SST_",
     )
     events = release.row["HOOKS"]
     assert isinstance(events, dict)

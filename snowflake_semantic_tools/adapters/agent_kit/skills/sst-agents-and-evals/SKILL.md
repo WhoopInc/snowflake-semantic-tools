@@ -144,6 +144,15 @@ routes under those blocks name folders below `skills_dir`, `plugins_dir`, and `c
 (`SST-CFG041` for one that names none). `skills.+threads` may be set only at the root
 (`SST-CFG055`).
 
+CoCo Desktop reads profiles only from `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`, one per account,
+as the signed-in user's roles; that is `+registry_table`'s default, and SST grants nothing, so
+readers need USAGE on the database and schema, SELECT on the table, and READ on the stage.
+Targets that share an account share that registry: give each non-prod target its own
+`coco_desktop_profiles.+name_suffix` (for example
+`"{{ '' if target.name == 'prod' else '-dev' }}"`), or its plan stops on the other
+target's rows (`SST-PLN024`). A row's VERSION is a counter that goes up by one whenever the
+profile's content changes.
+
 ## CoWork profiles
 
 A CoWork profile (a Snowflake private preview) is an agent that routes each question to one of

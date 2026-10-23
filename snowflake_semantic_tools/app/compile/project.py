@@ -8,6 +8,7 @@ and merges their results in DDL order.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
@@ -35,7 +36,12 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.diagnostics.policy import apply_overrides
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key, view_key
-from snowflake_semantic_tools.domain.model.coco_desktop_profile import CocoDesktopProfile, CocoDesktopProfileCatalog
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import (
+    DESKTOP_REGISTRY,
+    NAME_SUFFIX_PATTERN,
+    CocoDesktopProfile,
+    CocoDesktopProfileCatalog,
+)
 from snowflake_semantic_tools.domain.model.config_schema import (
     CONFIG_FILE,
     KeyKind,
@@ -664,8 +670,11 @@ def _desktop_channel(settings: _Settings, profile: CocoDesktopProfile) -> Deskto
     """Return where a profile publishes, from the settings it resolves; None without a `+stage`.
 
     Its settings resolve over the `coco_desktop_profiles:` route of its folder and the block root, below its
-    own `config:`. The stage and registry are qualified in its database and schema unless written
-    qualified; its VERSION takes the `skills:` block root's version prefix.
+    own `config:`. The stage is qualified in its database and schema unless written qualified;
+    the registry defaults to the one Desktop reads, and a bare name is qualified the same way.
+
+    Diagnostics:
+        SST-CFG008: `+name_suffix` holds more than letters, digits, `_`, and `-`; no suffix is used.
     """
     resolved = resolve_settings(settings.tree.get("coco_desktop_profiles"), (profile.name,), profile.config)
     if not isinstance(setting_value(resolved, "stage"), str):
@@ -676,20 +685,42 @@ def _desktop_channel(settings: _Settings, profile: CocoDesktopProfile) -> Deskto
     target = settings.target
     database, schema = settings.place(resolved, "coco_desktop_profiles", profile.key)
     registry = settings.setting(
-        resolved, "registry_table", "PROFILE_REGISTRY", "coco_desktop_profiles", profile.key, KeyKind.OBJECT_NAME
+        resolved, "registry_table", DESKTOP_REGISTRY, "coco_desktop_profiles", profile.key, KeyKind.OBJECT_NAME
     )
-    defaults: dict[str, object] = {"database": database, "schema": schema, "registry_table": "PROFILE_REGISTRY"}
+    defaults: dict[str, object] = {
+        "database": database,
+        "schema": schema,
+        "registry_table": DESKTOP_REGISTRY,
+        "name_suffix": "",
+    }
     return DesktopChannel(
         stage=_object_in(stage, database, schema),
         registry=_object_in(registry, database, schema),
-        version_prefix=_version_prefix(settings.block("skills"), target),
+        name_suffix=_name_suffix(settings, resolved, profile),
         settings=_rendered("coco_desktop_profiles", resolved, target, defaults),
     )
 
 
-def _version_prefix(skills_config: Mapping[str, object], target: TargetIdentity) -> str:
-    prefix = target_text(skills_config.get("+version_prefix"), target, DEFAULT_VERSION_PREFIX)
-    return prefix or DEFAULT_VERSION_PREFIX
+def _name_suffix(settings: _Settings, resolved: Mapping[str, Setting], profile: CocoDesktopProfile) -> str:
+    setting = resolved.get("name_suffix")
+    if setting is None:
+        return ""
+    suffix = target_text(setting.value, settings.target, "") or ""
+    if re.fullmatch(NAME_SUFFIX_PATTERN, suffix):
+        return suffix
+    own = setting.source == CONFIG_SOURCE
+    key = _setting_key("coco_desktop_profiles", setting)
+    settings.problems.append(
+        D(
+            "SST-CFG008",
+            origin=None if own else Origin(settings.file),
+            subject=profile.key if own else f"config:{key}",
+            key=key,
+            found=repr(suffix),
+            expected="up to 64 letters, digits, underscores, or hyphens",
+        )
+    )
+    return ""
 
 
 def _blocked(skills: CompileResult, kind: str) -> frozenset[str]:

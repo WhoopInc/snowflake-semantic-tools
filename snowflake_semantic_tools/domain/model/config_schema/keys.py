@@ -532,7 +532,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "skills.+version_prefix",
         _S,
-        "Prefix of every version alias, and of each profile's VERSION; the rest is 12 hex characters of the digest.",
+        "Prefix of every version alias; the rest is 12 hex characters of the digest.",
         default=DEFAULT_VERSION_PREFIX,
     ),
     _key(
@@ -599,8 +599,16 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "coco_desktop_profiles.+registry_table",
         _OBJ,
-        "Profile registry table. Desktop reads `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`.",
-        default="PROFILE_REGISTRY",
+        "Profile registry table; the default is the only one Desktop reads. A bare name is "
+        "qualified in `+database`.`+schema`, for rehearsal.",
+        default="CORTEX_CODE.CONFIG.PROFILE_REGISTRY",
+    ),
+    _key(
+        "coco_desktop_profiles.+name_suffix",
+        _S,
+        "Appended to each profile's name to make its row's `CONFIG_NAME`, so targets sharing one "
+        "registry write separate rows; letters, digits, `_`, and `-`.",
+        default="",
     ),
     _key("coco_desktop_profiles.<route>", _BLOCK, "Folder route: overrides for the profile in that directory."),
     _removed("profiles", "renamed coco_desktop_profiles:"),

@@ -160,7 +160,7 @@ def configure_profiles_as_published(port: FakeSnowflake, changes: list[dict[str,
             f"@{stage}/{tree['prefix']}{entry['path']}" for tree in document["trees"] for entry in tree["files"]
         )
         port.tables[registry] = PROFILE_REGISTRY_SHAPE
-        port.profile_rows.setdefault(registry, {})[name] = {**document["row"], "ACTIVE": True}
+        port.profile_rows.setdefault(registry, {})[name] = {**document["row"], "VERSION": "1", "ACTIVE": True}
 
 
 def test_plan_live_observation_saved_plan_and_detailed_exitcode(
@@ -254,6 +254,9 @@ def published_target(project: Path, payload: dict[str, Any]) -> FakeSnowflake:
                     )
                 )
                 if item["artifact_type"] == "eval"
+                # Apply records the VERSION it wrote a profile's row at; a first publish writes 1.
+                else tuple(sorted({**item.get("component_fingerprints", {}), "version": "1"}.items()))
+                if item["artifact_type"] == "coco_desktop_profile"
                 else tuple(sorted(item.get("component_fingerprints", {}).items()))
             ),
             physical_resources=tuple(

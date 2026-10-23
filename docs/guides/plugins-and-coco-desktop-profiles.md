@@ -247,7 +247,9 @@ coco_desktop_profiles:
   +database: "{{ target.database }}"
   +schema: "{{ target.schema }}"
   +stage: PROFILE_BUNDLES
-  +registry_table: CORTEX_CODE.CONFIG.PROFILE_REGISTRY
+  # Every target publishes to the one registry Desktop reads; each non-prod
+  # target names its rows apart, so `sales-analyst-dev` can be tried in Desktop.
+  +name_suffix: "{{ '' if target.name == 'prod' else '-dev' }}"
   sales-analyst:           # coco_desktop_profiles/sales-analyst/
     +schema: SALES
 ```
@@ -255,11 +257,15 @@ coco_desktop_profiles:
 - Each profile resolves these settings through the one
   [precedence chain](configuration.md#precedence): its `coco_desktop_profile.yml`'s
   `config:`, then the route that names its folder, then the root. A profile
-  publishes only where `+stage` resolves for it. Like `+registry_table`, an
-  unqualified name is in the profile's database and schema, which default to
-  the target's; a qualified name is used as written.
-- `+registry_table` defaults to `PROFILE_REGISTRY` in that database and schema,
-  which is a rehearsal registry (see below).
+  publishes only where `+stage` resolves for it. An unqualified stage name is in
+  the profile's database and schema, which default to the target's; a
+  qualified name is used as written.
+- `+registry_table` defaults to `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`, the only
+  table Desktop reads (see below). Set it only to rehearse somewhere Desktop
+  does not look; an unqualified name is in the profile's database and schema.
+- `+name_suffix` is appended to each profile's name to make its row's
+  `CONFIG_NAME`: letters, digits, `_`, and `-`, up to 64 characters
+  (`SST-CFG008` otherwise). The trees keep the profile's own name.
 - Trees are always uploaded uncompressed and nested as authored, under the
   prefixes below; none of that is configurable.
 
@@ -279,26 +285,43 @@ registry table that points at them:
 
 Each `<hash>` is 12 hex characters of that tree's own digest, so a new version of
 a tree lands at a new path and never overwrites one a published row names. A
-tree with no files is not published, and its column holds an empty value. The
-row's `VERSION` is the `skills:` root's `+version_prefix` followed by 12 hex characters of a
-digest of every other column, so it changes whenever anything the profile
-carries does.
+tree with no files is not published, and its column holds an empty value.
+
+The row's `VERSION` is a counter, which Desktop shows as `v1`, `v2`, and so on.
+`sst plan` compares what Desktop reads from the live row, `VERSION` aside, with
+what the profile renders: a new row is `1`, and a row whose content differs
+takes the live `VERSION` plus one. A row that already carries the content keeps
+its `VERSION`, so an unchanged profile plans no change. A live `VERSION` that is
+not a whole number, such as the digest earlier SST releases wrote, is replaced
+by `1` on the next apply. Going back to earlier content is a change too: the
+counter only goes up.
 
 `sst apply` creates the registry table and the stage when they are absent,
 uploads and byte-checks every tree, then writes the registry row in one `MERGE`
 guarded by the `VERSION` the plan saw: that is the moment the profile changes
 for its users. It then reads the row back with the query Desktop runs (`WHERE
-active = TRUE`), and checks that the row carries this `VERSION` and that every
-pointer resolves. Old trees stay on the stage, so pointing the row back at them
-is a rollback.
+active = TRUE`), and checks that the row carries the planned `VERSION` and
+content, and that every pointer resolves. State records the `VERSION` written.
+Old trees stay on the stage, so a rollback is publishing the earlier content
+again, which reuses its trees under the next `VERSION`.
 
 - **The registry table.** CoCo Desktop reads profiles only from
-  `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`. Any other `+registry_table`, including
-  the default, is useful for rehearsal and gets an info diagnostic saying
-  Desktop will not see it (`SST-VAL854`, once per registry the profiles name).
-  SST creates the table only when it is
-  absent. One that exists must have every column SST writes, with the right
-  type, or the plan stops (`SST-PLN029`); SST never alters it.
+  `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`, in whichever account it is connected
+  to, and runs that query as the user, with their primary and secondary roles.
+  Each account therefore has exactly one registry, and every target that
+  publishes to an account shares it: give each target's rows their own
+  `+name_suffix`, or a second target's plan stops on the first one's rows
+  (`SST-PLN024`). Any other `+registry_table` is a rehearsal and gets an info
+  diagnostic saying Desktop will not see it (`SST-VAL854`, once per registry
+  the profiles name). SST creates the table only when it is absent. One that
+  exists must have every column SST writes, with the right type, or the plan
+  stops (`SST-PLN029`); SST never alters it.
+- **Who sees a profile.** SST issues no grants. A user sees the profiles only
+  when one of their roles has USAGE on the `CORTEX_CODE` database and its
+  `CONFIG` schema and SELECT on the registry table, and can apply one only with
+  READ on the stage its row points into. A common setup is a reader database
+  role holding those privileges, granted to an account role every Desktop user
+  has, and a writer database role for the role that runs `sst apply`.
 - **What the row holds.** SST writes `CONFIG_NAME`, `DESCRIPTION`,
   `OWNER_TEAM`, `VERSION`, `ACTIVE`, `UPDATED_AT`, and the pointer columns
   `SKILL_REPOS`, `SYSTEM_PROMPT_REPO`, `MCP_SERVERS`, `HOOKS`, `PLUGINS`, and

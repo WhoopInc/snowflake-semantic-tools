@@ -25,7 +25,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.model.setting import Setting
-from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, Plugin, Skill, SkillCatalog
+from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog
 from snowflake_semantic_tools.domain.render.coco_desktop_profile import build_coco_desktop_profile, version_input
 from snowflake_semantic_tools.domain.render.skill_bundle import build_plugin_bundle
 from snowflake_semantic_tools.domain.render.skill_flatten import flatten_skill
@@ -46,13 +46,15 @@ class DesktopChannel:
     """Where one profile publishes: the stage its trees go to and the registry Desktop reads its row from.
 
     Attributes:
+        name_suffix: Appended to the profile's name to make its row's CONFIG_NAME, so targets
+            sharing one registry each write their own row.
         settings: The settings the profile resolved, its location rendered and each built-in
             default it took recorded, sorted by key; what the manifest records for it.
     """
 
     stage: QualifiedName
     registry: QualifiedName
-    version_prefix: str = DEFAULT_VERSION_PREFIX
+    name_suffix: str = ""
     settings: tuple[Setting, ...] = ()
 
 
@@ -73,6 +75,11 @@ class CompiledCocoDesktopProfile(StandaloneArtifact):
     @property
     def name(self) -> str:
         return self.release.name
+
+    @property
+    def config_name(self) -> str:
+        """The row's CONFIG_NAME: the profile's name, then its channel's suffix."""
+        return self.release.config_name
 
     @property
     def artifact_key(self) -> str:
@@ -104,7 +111,8 @@ class CompiledCocoDesktopProfile(StandaloneArtifact):
             statements=StatementPlan(default=()),
             composite=CompositeFacts(
                 component_fingerprints=(
-                    ("version", self.release.version),
+                    ("content", self.release.content),
+                    ("config_name", self.release.config_name),
                     ("trees", sha256(prefixes.encode("utf-8")).hexdigest()),
                 ),
                 physical_resources=(("STAGE", self.channel.stage), ("TABLE", self.channel.registry)),
@@ -247,7 +255,7 @@ class CompileCocoDesktopProfiles:
             self._catalog,
             skills,
             stage=channel.stage.sql,
-            version_prefix=channel.version_prefix,
+            name_suffix=channel.name_suffix,
             plugins=plugins,
         )
         shared_skills = self._shared_skills()

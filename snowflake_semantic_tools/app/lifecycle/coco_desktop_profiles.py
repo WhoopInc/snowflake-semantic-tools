@@ -6,12 +6,18 @@ switch, guarded by the VERSION the plan observed; afterwards the row is re-read
 with Desktop's own query and every pointer must resolve. Profiles publish one at
 a time. Nothing is ever deleted: prune deactivates a row, and only under --prune.
 Lost state is recovered from the row itself, when Desktop reads it as the release.
+
+VERSION is a counter, as Desktop shows it: a new row is 1, and a row whose content
+changes takes the live VERSION plus one. Whether the content changed is decided by
+comparing the columns Desktop reads, VERSION aside; state records the VERSION written.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from hashlib import sha256
 from threading import Lock
 from types import MappingProxyType
 from typing import Protocol
@@ -30,6 +36,7 @@ from snowflake_semantic_tools.app.lifecycle.composite import (
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.diagnostics.signatures import match_signature
+from snowflake_semantic_tools.domain.model.coco_desktop_profile import is_counter, next_version, same_version
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     ABSENT,
@@ -90,6 +97,17 @@ class _Observed:
     row_version: str | None
     row_active: bool
     trees: Mapping[str, tuple[str, ...]]
+    row_content: str | None = None
+
+    def version_for(self, content: str) -> str:
+        """Return the VERSION a row with `content` is written with.
+
+        The live VERSION when the row already holds that content as a counter, else the next
+        counter: 1 for a new row.
+        """
+        if self.row_content == content and self.row_version is not None and is_counter(self.row_version):
+            return self.row_version
+        return next_version(self.row_version)
 
 
 class CocoDesktopProfilePublicationPort(CatalogPublicationPort, ProfileRegistryPort, Protocol):
@@ -116,11 +134,12 @@ class CocoDesktopProfileLifecycleHandler(
 
     def report_prune(self, artifact_key: str, state_entry: AppliedEntry) -> Change:
         """Deactivation is the only removal, guarded by the VERSION SST last wrote."""
-        recorded = dict(state_entry.component_fingerprints).get("version", "")
+        fingerprints = dict(state_entry.component_fingerprints)
+        recorded = fingerprints.get("version", "")
         observation = CompositeObservation(
             artifact_key,
             details=(
-                ("config_name", artifact_key.split(":", 1)[1]),
+                ("config_name", fingerprints.get("config_name") or artifact_key.split(":", 1)[1]),
                 ("registry", state_entry.qualified_name),
                 ("version", recorded),
             ),
@@ -145,14 +164,15 @@ class CocoDesktopProfileLifecycleHandler(
         channel = compiled.channel
         stage_type = self._port.stage_type(channel.stage)
         columns = self._port.table_columns(channel.registry)
-        row = self._port.read_profile_row(channel.registry, compiled.name) if columns is not None else None
+        row = self._port.read_profile_row(channel.registry, compiled.config_name) if columns is not None else None
         trees = {
             tree.prefix: tuple(sorted(self._port.list_location(f"@{channel.stage.sql}/{tree.prefix}")))
             for tree in compiled.release.trees
             if stage_type is not None
         }
         view = desktop_view(row) if row is not None else {}
-        version = view.get("VERSION")
+        # The column's own text, not Desktop's JSON reading of it: the MERGE guard compares text.
+        version = next((value for key, value in (row or {}).items() if str(key).upper() == "VERSION"), None)
         active = row.get("ACTIVE") if row is not None else None
         return _Observed(
             stage_type=stage_type,
@@ -161,6 +181,7 @@ class CocoDesktopProfileLifecycleHandler(
             row_version=str(version) if row is not None and version is not None else None,
             row_active=active is True or str(active).casefold() == "true",
             trees=MappingProxyType(trees),
+            row_content=row_content(view) if row is not None else None,
         )
 
     def _decide(
@@ -185,7 +206,9 @@ class CocoDesktopProfileLifecycleHandler(
             planned = change.composite_observation
             if planned is None or _stale(planned.details, self._observation(compiled, current).details):
                 registry = compiled.channel.registry.sql
-                return failed(change, f"{registry} row '{compiled.name}' changed since the plan", code="SST-APL012")
+                return failed(
+                    change, f"{registry} row '{compiled.config_name}' changed since the plan", code="SST-APL012"
+                )
             return _CocoDesktopProfileRun(self._port, change, artifact, compiled, current).publish()
 
     def _apply_prune(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
@@ -218,9 +241,9 @@ class CocoDesktopProfileLifecycleHandler(
         """Prove an unrecorded profile's registry row is this release's, as Desktop reads it.
 
         The registry must have every column SST writes, with its type, and the row, read again,
-        must show Desktop exactly the release's twelve columns, VERSION included, on a
-        server-side encrypted stage. ACTIVE is not compared: an inactive row is recorded, and
-        the next apply reactivates it. The trees are content-addressed under the row's
+        must show Desktop exactly the release's columns, VERSION aside, on a server-side
+        encrypted stage; state records the VERSION it carries. ACTIVE is not compared: an
+        inactive row is recorded, and the next apply reactivates it. The trees are content-addressed under the row's
         pointers, so they are not read: the next plan publishes any that is incomplete.
 
         Raises:
@@ -228,22 +251,24 @@ class CocoDesktopProfileLifecycleHandler(
         """
         compiled = self._releases[change.key]
         channel = compiled.channel
-        name = f"{channel.registry.sql} row '{compiled.name}'"
+        name = f"{channel.registry.sql} row '{compiled.config_name}'"
         columns = self._port.table_columns(channel.registry)
         if columns is None:
             return RecoveryProof(ABSENT, qualified_name=name)
         if _shape_problem(columns) is not None:
             return RecoveryProof(OTHER_DEFINITION, qualified_name=name)
-        row = self._port.read_profile_row(channel.registry, compiled.name)
+        row = self._port.read_profile_row(channel.registry, compiled.config_name)
         if row is None:
             return RecoveryProof(ABSENT, qualified_name=name)
-        if desktop_view(row) != desktop_view(compiled.release.row):
+        view = desktop_view(row)
+        if row_content(view) != release_content(compiled):
             return RecoveryProof(ROW_DIFFERS, qualified_name=name)
         stage_type = self._port.stage_type(channel.stage)
         if stage_type is None or stage_type.upper() != SSE_STAGE_TYPE:
             return RecoveryProof(OTHER_DEFINITION if stage_type else BUNDLE_PREFIX_MISSING, qualified_name=name)
         assert change.rendered is not None
-        return RecoveryProof(RECORDED, change.rendered.component_fingerprints, _resources(channel), name)
+        fingerprints = _with_version(change.rendered.component_fingerprints, str(view.get("VERSION") or ""))
+        return RecoveryProof(RECORDED, fingerprints, _resources(channel), name)
 
     def _observation(self, compiled: CompiledCocoDesktopProfile, observed: _Observed) -> CompositeObservation:
         return CompositeObservation(
@@ -257,7 +282,9 @@ class CocoDesktopProfileLifecycleHandler(
                 ("stage_type", observed.stage_type or ""),
                 ("registry", "present" if observed.columns is not None else "absent"),
                 ("row_version", observed.row_version or ""),
+                ("row_content", observed.row_content or ""),
                 ("row_active", "true" if observed.row_active else "false"),
+                ("version", observed.version_for(release_content(compiled))),
                 ("complete_trees", ",".join(prefix for prefix, paths in sorted(observed.trees.items()) if paths)),
             ),
         )
@@ -282,6 +309,8 @@ class _CocoDesktopProfileRun(PublicationRun[CocoDesktopProfilePublicationPort]):
         self._row_written = False
         # Every tree is on the stage: a failure from here on is the registry channel's alone.
         self._uploaded = False
+        self._content = release_content(compiled)
+        self._version = current.version_for(self._content)
 
     def publish(self) -> ApplyOutcome:
         """Create what is missing and upload the trees, then MERGE the row and read it back as Desktop does."""
@@ -302,6 +331,15 @@ class _CocoDesktopProfileRun(PublicationRun[CocoDesktopProfilePublicationPort]):
 
     def _recorded_resources(self) -> tuple[tuple[str, str], ...]:
         return _resources(self._compiled.channel) if self._row_written else ()
+
+    def _fingerprints(self) -> tuple[tuple[str, str], ...]:
+        """The release's fingerprints, with the VERSION this run writes, which state guards prune with."""
+        return _with_version(self._artifact.component_fingerprints, self._version)
+
+    def fail(self, detail: str, code: str = "SST-APL001", *, value: str = "") -> ApplyOutcome:
+        """Fail as a publication does, recording the VERSION once the row carries it."""
+        outcome = super().fail(detail, code, value=value)
+        return replace(outcome, component_fingerprints=self._fingerprints()) if self._row_written else outcome
 
     def _interrupted(self, error: SnowflakePortError) -> ApplyOutcome:
         """Fail on a port error: the registry write after the upload (SST-APL018), else a partial write.
@@ -351,13 +389,13 @@ class _CocoDesktopProfileRun(PublicationRun[CocoDesktopProfilePublicationPort]):
         )
 
     def _merge_row(self) -> None:
-        """MERGE the release row, guarded by the VERSION the plan saw, and record whether it landed."""
+        """MERGE the release row at its VERSION, guarded by the one the plan saw; record whether it landed."""
         compiled = self._compiled
         self._attempts += 1
         try:
             changed = self._port.merge_profile_row(
                 compiled.channel.registry,
-                compiled.release.row,
+                {**compiled.release.row, "VERSION": self._version},
                 expected_version=self._current.row_version,
             )
         except SnowflakePortError:
@@ -374,29 +412,33 @@ class _CocoDesktopProfileRun(PublicationRun[CocoDesktopProfilePublicationPort]):
         self._written = self._written or self._row_written
 
     def _verify(self) -> ApplyOutcome:
-        """Read the row with Desktop's own query: it must carry this VERSION and every pointer resolve."""
+        """Read the row as Desktop does: it must carry this VERSION and content, and every pointer resolve."""
         compiled = self._compiled
         channel = compiled.channel
+        name = compiled.config_name
         rows = self._port.desktop_profile_rows(channel.registry)
-        row = next((item for item in rows if str(desktop_view(item).get("CONFIG_NAME")) == compiled.name), None)
+        row = next((item for item in rows if str(desktop_view(item).get("CONFIG_NAME")) == name), None)
         if row is None:
-            return self.fail(f"Desktop's query returns no active row '{compiled.name}'", "SST-APL012")
+            return self.fail(f"Desktop's query returns no active row '{name}'", "SST-APL012")
         view = desktop_view(row)
-        if str(view.get("VERSION")) != compiled.release.version:
+        if str(view.get("VERSION")) != self._version:
             return self.fail(
-                f"row '{compiled.name}' carries VERSION {view.get('VERSION')}, another writer won the MERGE",
+                f"row '{name}' carries VERSION {view.get('VERSION')}, another writer won the MERGE",
                 "SST-APL012",
             )
         for pointer in stage_pointers(view):
             if not self._resolves(pointer):
                 # The registry channel reports success; the stage channel does not hold the tree.
                 return self.fail(
-                    f"the registry row '{compiled.name}' was written, but the stage does not hold {pointer}",
+                    f"the registry row '{name}' was written, but the stage does not hold {pointer}",
                     "SST-APL017",
                 )
+        if row_content(view) != self._content:
+            # Two writers counted to the same VERSION; the content shows which one won.
+            return self.fail(f"row '{name}' carries VERSION {self._version} with other content", "SST-APL012")
         return self.applied(
             write_succeeded=True,
-            component_fingerprints=self._artifact.component_fingerprints,
+            component_fingerprints=self._fingerprints(),
             physical_resources=_resources(channel),
         )
 
@@ -407,8 +449,8 @@ class _CocoDesktopProfileRun(PublicationRun[CocoDesktopProfilePublicationPort]):
         return name in self._port.list_location(f"{directory}/")
 
     def _row_carries_release(self) -> bool:
-        row = self._port.read_profile_row(self._compiled.channel.registry, self._compiled.name)
-        return row is not None and str(desktop_view(row).get("VERSION")) == self._compiled.release.version
+        row = self._port.read_profile_row(self._compiled.channel.registry, self._compiled.config_name)
+        return row is not None and _carries(desktop_view(row), self._version, self._content)
 
 
 def _refusal(
@@ -424,7 +466,7 @@ def _refusal(
         SST-PLN026: the profile stage encrypts client-side.
         SST-PLN029: the registry lacks a column SST writes, or has it with another type.
         SST-PLN024: the row exists, but state does not record it as SST's.
-        SST-PLN028: the row carries a VERSION neither state nor this release names.
+        SST-PLN028: the row carries a VERSION state did not record, and content other than this release's.
     """
     stage_type = observed.stage_type
     if stage_type and stage_type.upper() != SSE_STAGE_TYPE:
@@ -443,18 +485,26 @@ def _refusal(
     if state_entry is None:
         return blocked(
             observation,
-            D("SST-PLN024", subject=key, artifact=key, value=f"{compiled.channel.registry.sql} row '{compiled.name}'"),
+            D(
+                "SST-PLN024",
+                subject=key,
+                artifact=key,
+                value=(
+                    f"{compiled.channel.registry.sql} row '{compiled.config_name}' (if another target or project "
+                    "writes this CONFIG_NAME, give this one its own coco_desktop_profiles.+name_suffix)"
+                ),
+            ),
             ChangeReason.UNMANAGED_OBJECT,
         )
     recorded = dict(state_entry.component_fingerprints).get("version")
-    if observed.row_version not in (recorded, compiled.release.version):
+    if not same_version(observed.row_version, recorded) and observed.row_content != release_content(compiled):
         return blocked(
             observation,
             D(
                 "SST-PLN028",
                 subject=key,
                 artifact=key,
-                value=compiled.name,
+                value=compiled.config_name,
                 found=observed.row_version or "NULL",
                 expected=recorded or "nothing",
             ),
@@ -468,21 +518,49 @@ def _action(
     compiled: CompiledCocoDesktopProfile,
     observed: _Observed,
 ) -> tuple[Action, ChangeReason]:
-    """Decide what an unblocked profile needs: its row, its trees, or only a state record."""
-    desired = compiled.release.version
+    """Decide what an unblocked profile needs: its row, its trees, or only a state record.
+
+    The row needs writing when its content differs, it is inactive, or its VERSION is not yet
+    a counter; state needs writing when it records another release or another VERSION.
+    """
+    content = release_content(compiled)
+    version = observed.version_for(content)
     # A `deactivated` entry is the tombstone SST's own --prune left: the row is
     # still SST's, carrying the VERSION it deactivated, and can be reactivated.
     retired = state_entry is not None and state_entry.outcome == DEACTIVATED
     complete = all(observed.trees.get(tree.prefix) == tuple(sorted(tree.paths)) for tree in compiled.release.trees)
     if not observed.row_exists:
         return Action.CREATE, ChangeReason.NOT_PRESENT
-    if observed.row_version != desired or not observed.row_active or not complete:
+    if not same_version(observed.row_version, version) or not observed.row_active or not complete:
         return Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS
+    recorded = dict(state_entry.component_fingerprints).get("version") if state_entry is not None else None
     if state_entry is not None and (
-        state_entry.fingerprint != artifact.fingerprint or retired or state_entry.outcome == FAILED_AFTER_WRITE
+        state_entry.fingerprint != artifact.fingerprint
+        or retired
+        or state_entry.outcome == FAILED_AFTER_WRITE
+        or not same_version(recorded, version)
     ):
         return Action.UPDATE, ChangeReason.STATE_MANIFEST_MISMATCH
     return Action.NOOP, ChangeReason.UNCHANGED
+
+
+def row_content(view: Mapping[str, object]) -> str:
+    """Digest what Desktop reads from a row, VERSION aside: two rows with one digest load alike."""
+    columns = {column: value for column, value in view.items() if column != "VERSION"}
+    return sha256(json.dumps(columns, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
+
+
+def release_content(compiled: CompiledCocoDesktopProfile) -> str:
+    """Digest what Desktop will read from the release's row, as `row_content` reads a live one."""
+    return row_content(desktop_view(compiled.release.row))
+
+
+def _carries(view: Mapping[str, object], version: str, content: str) -> bool:
+    return str(view.get("VERSION")) == version and row_content(view) == content
+
+
+def _with_version(fingerprints: tuple[tuple[str, str], ...], version: str) -> tuple[tuple[str, str], ...]:
+    return (*((key, value) for key, value in fingerprints if key != "version"), ("version", version))
 
 
 def _refused(change: Change, detail: str, attempts: int) -> ApplyOutcome:

@@ -287,7 +287,6 @@ def _drop_stage(port: FakeSnowflake, compiled: CompiledCocoDesktopProfile) -> No
     ("edit", "found"),
     [
         (_edit_description, ROW_DIFFERS),
-        (_older_version, ROW_DIFFERS),
         (_drop_column, OTHER_DEFINITION),
         (_drop_registry, ABSENT),
         (_delete_row, ABSENT),
@@ -296,7 +295,6 @@ def _drop_stage(port: FakeSnowflake, compiled: CompiledCocoDesktopProfile) -> No
     ],
     ids=[
         "VERSION kept, content edited",
-        "older VERSION",
         "registry shape",
         "no registry",
         "no row",
@@ -311,6 +309,15 @@ def test_a_profile_row_that_is_not_exactly_the_release_is_not_recovered(
     edit(port, compiled)
     proof = _profile_proof(port, compiled)
     assert (proof.found, proof.component_fingerprints, proof.physical_resources) == (found, (), ())
+
+
+def test_a_profile_row_at_another_version_with_the_release_content_is_recovered_at_that_version() -> None:
+    # VERSION is a counter apply chose; only the content Desktop loads says whose row it is.
+    port, compiled, _ = _published_profile()
+    _older_version(port, compiled)
+    proof = _profile_proof(port, compiled)
+    assert proof.found == RECORDED
+    assert dict(proof.component_fingerprints)["version"] == "SST_000000000000"
 
 
 def test_a_profile_name_more_than_one_row_carries_raises_for_recover_to_report() -> None:

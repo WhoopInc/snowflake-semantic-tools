@@ -478,11 +478,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.INFO,
         "Desktop profile registry is not the one Desktop reads",
         "profiles publish to {value}; CoCo Desktop reads only {expected}",
-        "point profiles.+registry_table at the Desktop registry to publish for real, or keep this for rehearsal",
+        "unset coco_desktop_profiles.+registry_table to publish where Desktop reads, or keep this for rehearsal",
         condition=(
             "profiles publish to a registry other than CORTEX_CODE.CONFIG.PROFILE_REGISTRY, the one "
-            "CoCo Desktop reads (`profiles.+database`, `+schema` and `+registry_table`, or a profile's "
-            "own `config:`)"
+            "CoCo Desktop reads (`coco_desktop_profiles.+registry_table`, or a profile's own `config:`)"
         ),
     ),
     spec(
