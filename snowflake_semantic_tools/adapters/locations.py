@@ -179,8 +179,7 @@ def locate_project(
                 "SST-CFG005",
                 subject="config:discovery",
                 count=len(present),
-                used=str(present[0]),
-                shadowed=", ".join(str(path) for path in present[1:]),
+                files=", ".join(str(path) for path in present),
             )
         )
     if not present and required:

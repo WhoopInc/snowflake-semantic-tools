@@ -322,7 +322,7 @@ Fix: correct the value type
 
 **Multiple config files discoverable** (error)
 
-`<count> candidate config files found; used <used>, shadowed <shadowed>`
+`<count> config files found at the project root: <files>`
 
 Raised when both `sst_config.yml` and `sst_config.yaml` exist at the project root and neither `--config` nor `$SST_CONFIG` names the file to use.
 

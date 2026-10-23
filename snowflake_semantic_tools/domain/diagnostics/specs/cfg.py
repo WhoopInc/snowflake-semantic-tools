@@ -52,7 +52,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-CFG005",
         Severity.ERROR,
         "Multiple config files discoverable",
-        "{count} candidate config files found; used {used}, shadowed {shadowed}",
+        "{count} config files found at the project root: {files}",
         "delete one of the two, or pass --config naming the one to use",
         condition=(
             "both `sst_config.yml` and `sst_config.yaml` exist at the project root and neither "

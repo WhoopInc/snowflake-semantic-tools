@@ -19,7 +19,7 @@ def test_sst_cfg005_fires(tmp_path: Path) -> None:
     [diagnostic] = raised.value.diagnostics
     assert (diagnostic.code, diagnostic.severity) == ("SST-CFG005", Severity.ERROR)
     assert diagnostic.message == (
-        f"2 candidate config files found; used {tmp_path / 'sst_config.yml'}, shadowed {tmp_path / 'sst_config.yaml'}"
+        f"2 config files found at the project root: {tmp_path / 'sst_config.yml'}, {tmp_path / 'sst_config.yaml'}"
     )
     assert diagnostic.subject == "config:discovery"
 

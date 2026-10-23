@@ -30,7 +30,7 @@ PLACEHOLDERS = frozenset(
     {
         *("a", "area", "artifact", "b", "block", "blocker", "cls", "code", "col", "column", "command"),
         *("components", "config", "count", "covered", "cycle", "date", "declared", "detail"),
-        *("direction", "elapsed_ms", "expected", "field", "file", "flag", "found", "function", "group"),
+        *("direction", "elapsed_ms", "expected", "field", "file", "files", "flag", "found", "function", "group"),
         *("identifier", "index", "key", "kind", "line", "member", "member_type", "member_types"),
         *("metric", "model", "module", "name", "offset", "other", "outside", "path", "placeholder"),
         *("policy", "position", "problem", "profile", "reason", "ref_function", "relation"),
