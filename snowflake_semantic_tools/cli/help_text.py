@@ -476,20 +476,25 @@ def command_docs(group: click.Group, prefix: str = "sst") -> tuple[CommandDoc, .
                     if isinstance(param, click.Argument)
                     for piece in param.get_usage_pieces(command_ctx)
                 )
-            documented.append(CommandDoc(path, description, option_docs(command), arguments=arguments))
+            documented.append(CommandDoc(path, description, option_docs(command, path), arguments=arguments))
     return tuple(documented)
 
 
-def option_docs(command: click.Command) -> tuple[OptionDoc, ...]:
+def option_docs(command: click.Command, path: str | None = None) -> tuple[OptionDoc, ...]:
     """Document each visible option of `command`, in declaration order, as the CLI reference lists it.
+
+    A global option is documented once, in its own section, and under the command at `path` only
+    where that command gives it a meaning of its own (`_COMMAND_OPTION_HELP`), so the page says
+    what `--help --full` says.
 
     A flag takes no value; a choice lists its choices, a path says `DIRECTORY`, `FILE`, or
     `PATH`, and any other type gives its name. Only a string, number, or path default is shown.
     """
     documented: list[OptionDoc] = []
     for param in command.params:
-        # The global options are documented once, in their own section, not under every command.
-        if not isinstance(param, click.Option) or param.hidden or isinstance(param, GlobalOption):
+        if not isinstance(param, click.Option) or param.hidden:
+            continue
+        if isinstance(param, GlobalOption) and (path, param.opts[0]) not in _COMMAND_OPTION_HELP:
             continue
         if param.is_flag:
             value = None

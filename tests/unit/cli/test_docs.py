@@ -8,6 +8,7 @@ from pathlib import Path
 import click
 from click.testing import CliRunner
 
+from snowflake_semantic_tools.cli.help_text import _COMMAND_OPTION_HELP, command_docs
 from snowflake_semantic_tools.cli.main import cli
 from tests.helpers.reference_project import REPO_ROOT
 
@@ -87,3 +88,13 @@ def test_every_command_and_option_is_documented() -> None:
         return missing
 
     assert walk(cli, "sst") == []
+
+
+def test_every_command_specific_option_text_reaches_that_commands_reference_section() -> None:
+    # The page says what `--help --full` says: a narrower meaning one command gives an option,
+    # a global option included, is printed under that command, and names a real one.
+    documented = {
+        (doc.path, option.flags.split(" / ")[0]): option.help for doc in command_docs(cli) for option in doc.options
+    }
+    for (path, flag), text in _COMMAND_OPTION_HELP.items():
+        assert documented.get((path, flag)) == text, f"{path} {flag}"

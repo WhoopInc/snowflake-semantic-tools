@@ -337,6 +337,7 @@ sst validate [OPTIONS]
 | `--semantic` | DIRECTORY |  | Read the semantic models from this directory instead of `project.semantic_models_dir`. |
 | `--verify-schema` | flag |  | Connects: confirm each column a semantic view reads exists in the warehouse. |
 | `--threads` | INTEGER RANGE |  | Snowflake sessions to work on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 4; 1 works serially. Output is the same for any count. |
+| `--show-info` | flag |  | Show info diagnostics instead of counting them, among them which registered type owns each semantic-model file. |
 
 ## sst baseline
 
