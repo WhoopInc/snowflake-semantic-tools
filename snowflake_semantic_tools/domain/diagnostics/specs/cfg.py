@@ -214,8 +214,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "set it true or false explicitly",
         condition="`sst_config.yml` does not set `validation.snowflake_syntax_check`",
         note=(
-            "1.0 defaults it true, but whether expressions are compiled decides what a green validate "
-            "proves, so intent must be stated."
+            "Whether expressions are compiled decides what a green validate proves, so intent must be "
+            "stated: unset, this error blocks the run and nothing is compiled against Snowflake; demoted "
+            "with `diagnostics.severity_overrides`, the check runs as if the key were `true`."
         ),
     ),
     spec(

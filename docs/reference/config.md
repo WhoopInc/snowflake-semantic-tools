@@ -42,7 +42,7 @@ What blocks a build.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `validation.strict` | boolean | `false` | Promote every warning to an error. |
-| `validation.snowflake_syntax_check` | boolean | `true` | Compile expressions against Snowflake during validate and plan, and run each allowed orchestration model in a throwaway agent (SST-VAL551 to SST-VAL556). Must be written out, true or false (SST-CFG031). |
+| `validation.snowflake_syntax_check` | boolean | none: SST-CFG031; `true` with it demoted | Compile expressions against Snowflake during validate and plan, and run each allowed orchestration model in a throwaway agent (SST-VAL551 to SST-VAL556). Write it out, true or false. |
 | `validation.description_floor` | integer, at least 1 |  | Shortest description, in characters, a semantic view or metric may carry (SST-VAL004); unset checks none. |
 | `validation.instruction_budget` | integer, at least 1 |  | Longest composed comment and instructions, in characters, a semantic view may publish (SST-VAL018); unset checks none. |
 | `validation.exclude_dirs` | list | `[]` | Globs of project-relative directories discovery skips: no semantic model file under one is read. |

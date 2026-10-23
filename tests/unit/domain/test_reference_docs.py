@@ -198,6 +198,19 @@ def test_config_page_renders_types_root_only_keys_and_removed_keys() -> None:
     assert "| `pick.named` | has its own code | [`SST-CFG040`](error-codes.md#sst-cfg040) |" in removed
 
 
+def test_a_key_that_must_be_written_out_shows_the_code_an_unset_one_reports_not_a_default() -> None:
+    schema = (
+        ConfigKey("check", KeyKind.BLOCK, "Checks."),
+        ConfigKey("check.on", KeyKind.BOOLEAN, "On.", default="true", unset_code="SST-CFG031"),
+        ConfigKey("check.off", KeyKind.BOOLEAN, "Off.", unset_code="SST-CFG031"),
+    )
+    page = render_config(schema)
+    assert "| `check.on` | boolean | none: SST-CFG031; `true` with it demoted | On. |" in page
+    assert "| `check.off` | boolean | none: SST-CFG031 | Off. |" in page
+    [row] = [line for line in render_config().splitlines() if line.startswith("| `validation.snowflake_syntax_check`")]
+    assert "| none: SST-CFG031; `true` with it demoted |" in row
+
+
 def test_cli_usage_shows_positional_arguments_and_config_page_names_the_other_files() -> None:
     commands = (CommandDoc("sst format", "Format files.", arguments=("[PATH]...",)), *COMMANDS)
     cli_page = reference_pages(commands, GLOBAL, EXITS, {})[f"{REFERENCE_DIR}/cli.md"]

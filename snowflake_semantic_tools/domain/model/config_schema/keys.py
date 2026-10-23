@@ -79,7 +79,9 @@ class ConfigKey:
 
     Attributes:
         summary: The reference-page description; for a removed key, why it was removed.
-        default: The default as the reference prints it, or None when the key has none.
+        default: The default as the reference prints it, or None when the key has none. For a
+            key with an `unset_code`, the value that applies once that code is demoted, and the
+            one `sst init` writes.
         minimum: Inclusive lower bound of an integer value, or None for no bound.
         maximum: Inclusive upper bound of an integer value, or None for no bound.
         replacement: For a removed key, the reason its diagnostic gives; for a deprecated key,
@@ -90,6 +92,8 @@ class ConfigKey:
             and runs of spaces, as the member key it is the default for is matched.
         root_only: A `+` key that only the block's root may set: a folder route or an artifact's
             `config:` that sets it is an error (SST-CFG055).
+        unset_code: The code reported when the key is not written out, for a key whose intent
+            must be stated; None when an unset key takes its default silently.
     """
 
     path: str
@@ -105,6 +109,7 @@ class ConfigKey:
     code: str | None = None
     folded: bool = False
     root_only: bool = False
+    unset_code: str | None = None
 
     @property
     def segments(self) -> tuple[str, ...]:
@@ -192,8 +197,9 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "validation.snowflake_syntax_check",
         _B,
         "Compile expressions against Snowflake during validate and plan, and run each allowed orchestration "
-        "model in a throwaway agent (SST-VAL551 to SST-VAL556). Must be written out, true or false (SST-CFG031).",
+        "model in a throwaway agent (SST-VAL551 to SST-VAL556). Write it out, true or false.",
         default="true",
+        unset_code="SST-CFG031",
     ),
     _key(
         "validation.description_floor",

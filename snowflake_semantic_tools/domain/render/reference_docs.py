@@ -410,13 +410,22 @@ def _deprecated_rows(schema: tuple[ConfigKey, ...]) -> list[str]:
     return lines
 
 
+def _default(key: ConfigKey) -> str:
+    """Return a key's Default cell; a key that must be written out names the code an unset one reports."""
+    shown = f"`{key.default}`" if key.default and not key.default.startswith("the ") else (key.default or "")
+    if key.unset_code is None:
+        return shown
+    return f"none: {key.unset_code}; {shown} with it demoted" if shown else f"none: {key.unset_code}"
+
+
 def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
     """Render the configuration reference page from the configuration schema.
 
     Current keys are grouped by top-level block, in schema order, and a block's own key gives
     its summary and notes. A table of deprecated keys follows, then one of
     removed keys, where a key that names no code links SST-CFG043. A default that starts with
-    "the " is prose and shown as written; any other default is shown as code.
+    "the " is prose and shown as written; any other default is shown as code, and a key that
+    must be written out shows the code an unset one reports instead (`_default`).
     """
     current = [key for key in schema if key.status is KeyStatus.CURRENT]
     removed = [key for key in schema if key.status is KeyStatus.REMOVED]
@@ -452,8 +461,9 @@ def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
             continue
         lines.extend(("", "| Key | Type | Default | Description |", "|---|---|---|---|"))
         for key in rows:
-            default = f"`{key.default}`" if key.default and not key.default.startswith("the ") else (key.default or "")
-            lines.append(f"| `{_cell(key.path)}` | {_type(key)} | {_cell(default)} | {_cell(_description(key))} |")
+            lines.append(
+                f"| `{_cell(key.path)}` | {_type(key)} | {_cell(_default(key))} | {_cell(_description(key))} |"
+            )
     lines.extend(_deprecated_rows(schema))
     lines.extend(
         (
