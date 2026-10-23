@@ -1,9 +1,8 @@
 """The key table of `sst_config.yml`: every key, block, and wildcard slot SST reads.
 
-One table serves two consumers. Validation (`validate.py`) turns an unknown, removed, or
-mistyped key into a diagnostic instead of a silent no-op, and the
-generated configuration reference renders the same rows, so the documentation cannot
-drift from what the engine accepts. Row order is the reference page's order.
+One table serves two consumers. Validation (`validate.py`) turns an unknown, removed, or mistyped key into
+a diagnostic instead of a silent no-op, and the generated configuration reference renders the same rows, so
+the documentation cannot drift from what the engine accepts. Row order is the reference page's order.
 """
 
 from __future__ import annotations
@@ -79,21 +78,16 @@ class ConfigKey:
 
     Attributes:
         summary: The reference-page description; for a removed key, why it was removed.
-        default: The default as the reference prints it, or None when the key has none. For a
-            key with an `unset_code`, the value that applies once that code is demoted, and the
-            one `sst init` writes.
-        minimum: Inclusive lower bound of an integer value, or None for no bound.
-        maximum: Inclusive upper bound of an integer value, or None for no bound.
-        replacement: For a removed key, the reason its diagnostic gives; for a deprecated key,
-            the key it is read as.
+        default: The default as the reference prints it, or None when the key has none.
+        minimum, maximum: Inclusive lower and upper bounds of an integer value; None for no bound on that side.
+        replacement: For a removed key, the reason its diagnostic gives; for a deprecated key, the key it is read as.
         code: The code reported instead of the generic one: a removed key's dedicated
             code, or the code for a value outside `choices` or bounds.
         folded: An `ENUM` value is matched against `choices` by `vocabulary_key`, ignoring case
             and runs of spaces, as the member key it is the default for is matched.
         root_only: A `+` key that only the block's root may set: a folder route or an artifact's
             `config:` that sets it is an error (SST-CFG055).
-        unset_code: The code reported when the key is not written out, for a key whose intent
-            must be stated; None when an unset key takes its default silently.
+        unset_code: The code an unset key reports; `default` applies once that code is demoted.
     """
 
     path: str
