@@ -10,7 +10,8 @@ description: |-
 # Agents, tools, published skills, and evals
 
 Guides: @SST_DOCS@/guides/agents.md, @SST_DOCS@/guides/skills.md,
-@SST_DOCS@/guides/plugins-and-coco-desktop-profiles.md, and @SST_DOCS@/guides/evals.md.
+@SST_DOCS@/guides/plugins-and-coco-desktop-profiles.md, @SST_DOCS@/guides/evals.md, and,
+for where each publishes, @SST_DOCS@/guides/configuration.md.
 
 ## Two kinds of skill
 
@@ -64,6 +65,8 @@ spec:
   `- {name: "{{ tag('cost_center') }}", value: sales}`. A bare name is `SST-REF050`.
 - Each tool's `description` is what the agent reads to pick it: say when to use it, and when
   not to.
+- An agent draws charts without a `data_to_chart` tool. Declaring one is allowed and is
+  rendered as written, but SST reports it as not needed (`SST-VAL562`, info); don't add one.
 - Load a project skill with `{{ skill('<name>') }}` and write neither `name:` (`SST-VAL540`),
   which is the skill's own, nor `version:` (`SST-VAL838`): SST pins the version it publishes. An extension another project publishes
   is `{{ extension('<name>') }}` and must pin a version.
@@ -195,13 +198,15 @@ sst compile --emit-agent-spec target/agents
 ```
 
 `--emit-agent-spec` writes each agent's rendered specification, which is exactly what
-publishes. Publishing (`sst plan`, then `sst apply`) is the user's call.
+publishes. Publishing (`sst plan`, then `sst apply`) is the user's call. The people who will
+use a published agent need grants SST never makes; @SST_DOCS@/guides/security.md lists them.
+To run this in a pipeline, see @SST_DOCS@/guides/ci-cd.md.
 
 ## Trying a change before publishing
 
 When the user wants to know whether an edit makes the agent answer better, before committing
 or publishing it, offer these in order, and run each only when the user asks: each runs the
-agent in Snowflake and costs credits.
+agent in Snowflake and costs credits. @SST_DOCS@/guides/ask.md has the details.
 
 1. `sst ask <agent> "<question>" --show-tools --output json`: runs the agent as it compiles
    now, once, on scratch copies (`<NAME>__SST_ASK_<id>`) of each view, search service, tool,

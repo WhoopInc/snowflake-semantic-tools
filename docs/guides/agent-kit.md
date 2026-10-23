@@ -15,10 +15,11 @@ Snowflake. The kit adds no setting to `sst_config.yml`.
 | Skill | Use |
 |---|---|
 | `sst-core` | Start here: every command by risk (offline, reads Snowflake, writes Snowflake, costs credits), the edit, validate, plan, apply loop, exit codes, JSON output, and where things live. |
+| `sst-getting-started` | For someone new to SST or dbt: what each piece is (semantic views, agents, tools, skills, profiles, evals), the dbt ideas SST builds on, a first project step by step, and which guide to read. |
 | `sst-semantic-authoring` | Column metadata, views, metrics, relationships, filters, verified queries, and custom instructions. |
 | `sst-fix-diagnostics` | Reading what `sst validate` reports, `sst explain`, strict mode, cascades, and why the baseline file is not a fix. |
 | `sst-agents-and-evals` | Agents, tools, published skills, profiles, and evals. |
-| `sst-troubleshoot` | dbt parse failures, profiles and configuration discovery, sign-in, privileges, wrong targets, refused applies, and run locks. |
+| `sst-troubleshoot` | dbt parse failures, profiles and configuration discovery, sign-in, privileges, wrong targets, refused applies, run locks, and how to get more detail (JSON output, log levels, the run log). |
 | `sst-migrate-from-0-3` | Moving a 0.3 project to this release. |
 | `sst-report-issue` | Confirming a problem is SST's, reproducing it small, removing anything private, and drafting an issue that is filed only with your approval. |
 

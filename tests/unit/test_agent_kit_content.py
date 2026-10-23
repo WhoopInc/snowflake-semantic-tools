@@ -168,3 +168,35 @@ def test_the_checks_catch_a_stale_command_flag_or_code() -> None:
     assert resolved[0][0] is None and resolved[0][2] == "sst publish"
     assert resolved[1][1] == ["--no-such-flag"]
     assert "SST-ZZZ999" not in ERROR_REGISTRY
+
+
+DOCS = Path(__file__).resolve().parents[2] / "docs"
+DOCS_LINK = re.compile(r"@SST_DOCS@/([A-Za-z0-9_./-]*[A-Za-z0-9_-])(?:#([a-z0-9_-]+))?")
+
+
+def _anchors(page: Path) -> set[str]:
+    """The heading anchors GitHub derives for a page, outside fenced code."""
+    prose = FENCE.sub("", page.read_text(encoding="utf-8"))
+    titles = re.findall(r"^#{1,6} (.+)$", prose, re.MULTILINE)
+    return {re.sub(r"[^a-z0-9 _-]", "", title.strip().casefold()).replace(" ", "-") for title in titles}
+
+
+def _broken_docs_links(text: str) -> list[str]:
+    broken = []
+    for path, anchor in DOCS_LINK.findall(text):
+        page = DOCS / path
+        if not page.is_file() or (anchor and anchor not in _anchors(page)):
+            broken.append(f"{path}#{anchor}" if anchor else path)
+    return broken
+
+
+@pytest.mark.parametrize("source", sorted(str(path.relative_to(KIT_ROOT)) for path in KIT_ROOT.rglob("*.md")))
+def test_every_docs_link_a_skill_names_resolves(source: str) -> None:
+    broken = _broken_docs_links((KIT_ROOT / source).read_text(encoding="utf-8"))
+    assert not broken, f"{source} links pages or anchors docs/ does not have: {broken}"
+
+
+def test_the_docs_link_check_bites() -> None:
+    assert _broken_docs_links("see @SST_DOCS@/guides/agents.md.") == []
+    assert _broken_docs_links("see @SST_DOCS@/guides/nowhere.md") == ["guides/nowhere.md"]
+    assert _broken_docs_links("see @SST_DOCS@/concepts.md#no-such-heading") == ["concepts.md#no-such-heading"]

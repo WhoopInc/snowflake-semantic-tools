@@ -12,7 +12,11 @@ description: |-
 
 SST compiles a dbt project's semantic YAML into Snowflake semantic views, Cortex Agents,
 CoWork profiles, skills, and CoCo Desktop profiles, then publishes them. This kit was installed by SST
-@SST_VERSION@; its documentation is at @SST_DOCS@.
+@SST_VERSION@; its documentation is at @SST_DOCS@/index.md, and the terms are defined in
+@SST_DOCS@/glossary.md.
+
+If the user is new to SST or to dbt, or asks where to start, use `sst-getting-started` first,
+and explain each SST term the first time you use it.
 
 ## Ground rules
 
@@ -97,6 +101,16 @@ sst test                                    # queries what was published
 
 `sst plan` and `sst apply` read the manifest `sst compile` writes, so compile first.
 
+## Before a change: what does it reach?
+
+```bash
+sst lineage model:orders                  # what reads the model, down to agents and evals
+sst plan --select model:orders+           # plan only the model and what is built on it
+```
+
+Use `sst lineage` before editing a model or member the user did not write, and tell them what
+else the change reaches. Selectors and `+` are in @SST_DOCS@/guides/lineage.md.
+
 ## Exit codes
 
 | Code | Meaning |
@@ -126,6 +140,8 @@ sst test                                    # queries what was published
 
 ## Other skills in this kit
 
+- `sst-getting-started`: what SST and its pieces are, the dbt basics, a first project, and
+  which guide to read.
 - `sst-semantic-authoring`: writing views, metrics, relationships, filters, verified queries.
 - `sst-fix-diagnostics`: reading and fixing what `sst validate` reports.
 - `sst-agents-and-evals`: agents, tools, published skills, and evals.

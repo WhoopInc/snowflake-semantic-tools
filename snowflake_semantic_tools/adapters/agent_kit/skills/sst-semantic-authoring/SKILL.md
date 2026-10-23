@@ -11,7 +11,8 @@ description: |-
 
 The full rules are in @SST_DOCS@/guides/semantic-views.md and the key list in
 @SST_DOCS@/reference/config.md. This skill is the working summary; when it and those pages
-differ, trust the pages and `sst explain`.
+differ, trust the pages and `sst explain`. Where a view publishes, and every setting's
+precedence, is in @SST_DOCS@/guides/configuration.md.
 
 ## Before you edit
 
@@ -62,7 +63,8 @@ models:
 - Identifiers are dimensions, never facts. Timestamps and dates are time dimensions.
   Measures are facts.
 - Every column a view exposes needs a `data_type` (`SST-VAL309`). `sst enrich` can fill
-  types from the warehouse, but it connects: ask first.
+  types from the warehouse, but it connects: ask first (see Filling metadata from the
+  warehouse, below).
 - `primary_key` is a list of columns and `unique_keys` a list of column lists.
 - A table's metadata is its model's too: the model `description` is the table's COMMENT, and
   model-level `synonyms` and `distinct_range: {start, end}` sit beside the keys. A view never
@@ -199,6 +201,26 @@ groups. Their settings come from `tools:` folder routes and the member's own `co
 `{{ ref('<on model>', '<column>') }}` (`SST-VAL622` for another model). A routine's body file
 names the tables it reads with `{{ ref() }}` or `{{ source() }}`, as a view does. For the rest,
 use sst-agents-and-evals.
+
+## Filling metadata from the warehouse
+
+`sst enrich` reads each model's built relation and writes what its YAML leaves out, under
+`config.meta.sst`, in place. It never writes to Snowflake and never writes a description, but
+it connects, so run it only when the user agrees. Show the change before writing it:
+
+```bash
+sst enrich --select model:orders --dry-run                  # print each change as a diff
+sst enrich --select model:orders --target prod              # column and data types, the default
+sst enrich --select model:orders --include sample-values    # also sample values and is_enum
+```
+
+- Without `--include`, it fills `column_type` and `data_type`, which read no rows. Check the
+  column types it guesses: a declared key is always a dimension, but any other numeric column
+  becomes a fact, so a numeric ID that is not a key needs `column_type: dimension` by hand.
+- `--include synonyms` (or `column-synonyms`, `table-synonyms`, `all`) calls a Cortex model,
+  which costs credits: ask before using it.
+- The model must be built where the target points. @SST_DOCS@/guides/enrich.md covers the
+  rest.
 
 ## After every edit
 

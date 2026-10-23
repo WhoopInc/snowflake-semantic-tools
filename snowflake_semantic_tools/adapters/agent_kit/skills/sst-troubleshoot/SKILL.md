@@ -4,7 +4,8 @@ description: |-
   Use when SST cannot get started or acts on the wrong thing: `dbt parse` fails, no
   `profiles.yml` or `sst_config.yml` is found, the manifest is stale or of another schema,
   sign-in hangs or is refused, a privilege is missing, SST publishes to the wrong database
-  or schema, a plan shows unexpected changes, an apply is refused, or a run lock is held. Do
+  or schema, a plan shows unexpected changes, an apply is refused, a run lock is held, or more
+  detail or logs are needed. Do
   NOT use for validation findings in the semantic YAML (use sst-fix-diagnostics).
 ---
 # Troubleshooting SST
@@ -19,6 +20,26 @@ sst debug --no-connect
 It prints the SST and dbt versions, every configuration path it checked, where the dbt
 manifest comes from, and the resolved target: profile, role, warehouse, database, schema,
 state table, and how it signs in. It never prints a credential.
+
+## Getting more detail
+
+SST writes no log file of its own: everything a run knows is in what it prints. When the
+usual output is not enough:
+
+- **`-o json`** (before the command name) prints one JSON object with every diagnostic's
+  `code`, `severity`, `message`, `location`, and `help_url` (its entry in
+  @SST_DOCS@/reference/error-codes.md). An `SST-INT` or `SST-SNO` diagnostic also carries
+  `internal_detail`, the underlying error, which is what to read first.
+- **`sst explain <CODE>`** prints, offline, when a code is raised, its fix, and its docs link.
+- **`--log-level debug`** (or `$SST_LOG_LEVEL=debug`) prints SST's and the Snowflake
+  connector's log records on stderr; `info` shows each Snowflake request.
+- **`--verbose`** adds each diagnostic's phase and fingerprint.
+- **`sst_target/run_log.jsonl`** records one line per Snowflake refusal a run reported (the
+  command and the `SST-SNO` code only), and `sst debug --snowflake-signatures` summarizes it.
+- dbt's own output from `dbt parse` is printed above `SST-DBT028`; dbt keeps its log in
+  `logs/dbt.log`.
+
+Remove credentials and private names before sharing any of it.
 
 ## `dbt parse` fails before anything else runs
 
@@ -66,6 +87,8 @@ SST runs `dbt parse` itself, with the directory of the first `profiles.yml` it f
 Snowflake answers the same for an object that is absent and one the role cannot see. Check
 that it was built or applied on this target, that the target resolves where you looked, and
 that the role has `USAGE` on the database and schema. `SST-PRT004` names a missing privilege.
+The roles SST needs, and the grants the people who use an agent need, are in
+@SST_DOCS@/guides/security.md; SST never grants anything to consumers.
 
 ## `plan` shows changes when nothing changed
 
