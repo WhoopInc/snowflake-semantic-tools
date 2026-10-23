@@ -18,13 +18,12 @@ from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.adapters.agent_kit import read_lock
 from snowflake_semantic_tools.adapters.dbt.invoke import DbtRunner, installation_type, subprocess_runner
 from snowflake_semantic_tools.adapters.dbt.manifest import SUPPORTED_SCHEMA_VERSIONS, schema_version_number
-from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_profile_target
+from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_profile_target, read_plain_yaml
 from snowflake_semantic_tools.adapters.dbt.project import target_path
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.json_files import read_json_file
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
-from snowflake_semantic_tools.adapters.yaml.parse import read_yaml_mapping
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, ERROR, OK
 from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.options import target_option
@@ -244,7 +243,7 @@ def _manifest(paths: ProjectPaths, manifest_path: Path | None, settings: DbtSett
 def _target_manifest(project_dir: Path) -> Path:
     """Return the manifest dbt writes for the project; `target/manifest.json` when that cannot be read."""
     try:
-        return target_path(project_dir, read_yaml_mapping)
+        return target_path(project_dir, read_plain_yaml)
     except ProjectError:
         return project_dir / "target" / "manifest.json"
 

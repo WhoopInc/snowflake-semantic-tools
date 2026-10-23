@@ -17,7 +17,12 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.dbt.invoke import DbtRunner, parse_project, subprocess_runner
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
-from snowflake_semantic_tools.adapters.dbt.profiles import declared_targets, load_profile_target, profile_output
+from snowflake_semantic_tools.adapters.dbt.profiles import (
+    declared_targets,
+    load_profile_target,
+    profile_output,
+    read_plain_yaml,
+)
 from snowflake_semantic_tools.adapters.dbt.project import (
     check_model_paths,
     dbt_project_name,
@@ -39,7 +44,7 @@ from snowflake_semantic_tools.adapters.yaml.discover import directory_refused, d
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache, load_documents
 from snowflake_semantic_tools.adapters.yaml.evals import load_eval_catalog, parse_eval_defaults
 from snowflake_semantic_tools.adapters.yaml.fields import strings
-from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
+from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic import load_semantic_views_result, read_semantic_inputs
 from snowflake_semantic_tools.adapters.yaml.skills import _published, load_skill_catalog
@@ -118,7 +123,7 @@ class YamlProjectSource:
         Raises:
             ProjectError: `dbt_project.yml` cannot be read.
         """
-        return self._manifest_path or target_path(self._project_dir, read_yaml_mapping)
+        return self._manifest_path or target_path(self._project_dir, read_plain_yaml)
 
     def _parsed_manifest(self) -> Path:
         """Return the manifest to read, running dbt first the first time dbt may be run.
@@ -134,7 +139,7 @@ class YamlProjectSource:
         path = self.manifest_file()
         settings = dbt_settings(self._config_tree())
         if self._manifest_path is None and self._invoke_dbt and settings.invoke and not self._parsed:
-            check_model_paths(self._project_dir, read_yaml_mapping)
+            check_model_paths(self._project_dir, read_plain_yaml)
             self._parse_warnings = parse_project(
                 self._project_dir,
                 self._target_name,
@@ -226,7 +231,7 @@ class YamlProjectSource:
         """
         found = [*self._parse_warnings, *catalog.diagnostics, *empty_catalog(catalog)]
         if not self._parsed and (self._project_dir / "dbt_project.yml").is_file():
-            paths, unreadable = model_paths(self._project_dir, read_yaml_mapping)
+            paths, unreadable = model_paths(self._project_dir, read_plain_yaml)
             if self._files.model_paths is not None:
                 paths, unreadable = self._files.model_paths, ()
             stale = stale_models(self._project_dir, catalog, paths)

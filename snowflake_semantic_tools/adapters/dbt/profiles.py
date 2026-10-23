@@ -113,18 +113,28 @@ def _resolve_env(value: object) -> object:
     return text
 
 
-def _read_yaml(path: Path) -> dict[str, Any]:
-    """Read one YAML mapping: `dbt_project.yml` or the configuration file.
+def read_plain_yaml(path: Path) -> dict[str, Any]:
+    """Read one YAML mapping as plain YAML: `dbt_project.yml`, or the configuration file for its profile.
+
+    dbt's files are dbt's YAML, so anchors, aliases and merge keys are allowed here; SST's strict
+    parser, which refuses them (SST-LOD013, SST-LOD014), is for SST's own files.
 
     Raises:
-        ProjectError: the file is not valid YAML (SST-CFG002), or does not hold a mapping (SST-LOD002).
+        ProjectError: the file cannot be read (SST-PRT009), is not valid YAML (SST-CFG002), or does
+            not hold a mapping (SST-LOD002).
 
     Diagnostics:
+        SST-PRT009: the file cannot be read; raised.
         SST-CFG002: the file is not valid YAML; raised.
         SST-LOD002: the file's root is not a mapping; raised.
     """
     try:
-        value = bounded_yaml.safe_load(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        unreadable = D("SST-PRT009", path=str(path), detail=str(exc))
+        raise ProjectError(unreadable.message, diagnostics=(unreadable,)) from exc
+    try:
+        value = bounded_yaml.safe_load(text)
     except yaml.YAMLError as exc:
         diagnostic = D(
             "SST-CFG002", origin=Origin(path.name), subject=f"config:{path.name}", path=str(path), detail=str(exc)
@@ -281,12 +291,12 @@ def resolve_profile_name(files: ProjectPaths) -> str:
 
     Raises:
         ProjectError: neither names a profile, or the two disagree (SST-CFG056); a file cannot be
-            read as YAML, as `_read_yaml` says.
+            read as YAML, as `read_plain_yaml` says.
 
     Diagnostics:
         SST-CFG056: neither names a profile, or the two disagree; raised.
     """
-    config = _read_yaml(files.config_file) if files.config_file is not None else {}
+    config = read_plain_yaml(files.config_file) if files.config_file is not None else {}
     project_block = config.get("project")
     configured = project_block.get("target_profile") if isinstance(project_block, dict) else None
     dbt_project_path = files.project_dir / "dbt_project.yml"
@@ -294,7 +304,7 @@ def resolve_profile_name(files: ProjectPaths) -> str:
         if not isinstance(configured, str) or not configured:
             _unnamed("the project has no dbt_project.yml, and project.target_profile is not set", files.config_name)
         return configured
-    profile_name = _read_yaml(dbt_project_path).get("profile")
+    profile_name = read_plain_yaml(dbt_project_path).get("profile")
     if not isinstance(profile_name, str) or not profile_name:
         _unnamed("dbt_project.yml declares no profile", "dbt_project.yml")
     if configured is not None and configured != profile_name:

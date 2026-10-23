@@ -19,6 +19,7 @@ from pathlib import Path
 
 import click
 
+from snowflake_semantic_tools.adapters.dbt.profiles import read_plain_yaml
 from snowflake_semantic_tools.adapters.dbt.project import model_paths
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
@@ -26,7 +27,6 @@ from snowflake_semantic_tools.adapters.paths import output_root, walk_refusal
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.discover import YAML_SUFFIXES, registry_roots
 from snowflake_semantic_tools.adapters.yaml.format import canonical_yaml
-from snowflake_semantic_tools.adapters.yaml.parse import read_yaml_mapping
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, ERROR, OK
 from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
@@ -186,7 +186,7 @@ def _configured(paths: ProjectPaths) -> tuple[str, ...]:
     roots = registry_roots(resolved_config(paths).tree)
     directories = [root for root in roots.values() if "*" not in root]
     if (paths.project_dir / "dbt_project.yml").is_file():
-        directories.extend(model_paths(paths.project_dir, read_yaml_mapping)[0])
+        directories.extend(model_paths(paths.project_dir, read_plain_yaml)[0])
     return tuple(dict.fromkeys(directories))
 
 
